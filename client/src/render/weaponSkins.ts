@@ -6,8 +6,8 @@
 // ROADMAP 5.3 follow-up: per-FRAME business-end art. `scattergun`/`seeker`/`mortar`/
 // `lasercutter`/`tomahawk`/`novaburst`/`gyre`/`hammer`/`spear`/`blaster`/`repeater`/
 // `cannon`/`carom`/`enemygun`/`saber`/`emberblade`/`frostbrand`/`stormglaive`/`leech`
-// (`enemyclaw`/`enemymaul` have entries but borrow player art — see their own note below)
-// each get a distinct silhouette (a shotgun muzzle reads differently from a beam
+// plus `enemyclaw`/`enemymaul`, the mob melee pair, which got their own art on 2026-09-06
+// (see their note below) — each get a distinct silhouette (a shotgun muzzle reads differently from a beam
 // emitter). Looked up by `WeaponSimSpec.name` (the weapon id), falling back to the
 // KIND default for anything else.
 //
@@ -111,22 +111,39 @@ export const WEAPON_DEFS: Partial<Record<string, WeaponVisualDef>> = {
   stormglaive: { path: '/weapons/sword_stormglaive.png', anchor: { x: 0.14, y: 0.32 }, scale: 100 / 160, rotationOffsetRad: deg(-5.8) },
   leech: { path: '/weapons/sword_leech.png', anchor: { x: 0.28, y: 0.35 }, scale: 90 / 160, rotationOffsetRad: deg(-12.9) },
 
-  // Mob melee loadouts (ENGINE_VERSION 59, engine/content/weaponSpecs/dropOnly.ts). These
-  // are the ONLY two entries in this table that do not have art of their own: both point
-  // at an existing player blade whose silhouette matches the swing the mob actually makes
-  // — `enemyclaw` at the spear's narrow point (a 90° lunge with 1.1 grid of reach),
-  // `enemymaul` at the hammer's head (a 150° sweep with the heaviest knockback in the
-  // game). That is a deliberate PLACEHOLDER, not a fallback: pointing them at
-  // `sword_default` would trip `muzzleParity`'s "never the kind default" rule, and pointing
-  // them at a path with no PNG behind it would ship a missing texture. Each still carries
-  // its own anchor/scale/rotation entry, so replacing the `path` with real art later is a
-  // one-line change per mob with nothing else to re-measure. Tracked in design/12.
+  // Mob melee loadouts (ENGINE_VERSION 59, engine/content/weaponSpecs/dropOnly.ts). Real art
+  // as of 2026-09-06 — until then these were the only two entries in this table pointing at
+  // ANOTHER weapon's texture (the player spear's and hammer's), which made a raider's claw
+  // read on screen as player gear, i.e. as loot you could pick up. What carries that signal
+  // at a ~40 px on-screen body is the PALETTE rather than the silhouette, so the new art is
+  // the mob one `gun_enemygun.png` established: dark blue-grey housing with a violet crystal,
+  // against the player roster's white-and-gold. Prompts + workflow in `art/weapon/prompts.md`.
   //
-  // Scaled slightly down from the player originals: a mob's module hangs off the 'held'
-  // path (`rigWeaponMount`), which has no socket tether to give a big blade somewhere to
-  // sit, so a full-size hammer reads as bigger than the body carrying it.
-  enemyclaw: { path: '/weapons/sword_spear.png', anchor: { x: 0.906, y: 0.346 }, scale: 70 / 160, rotationOffsetRad: deg(-161.1) },
-  enemymaul: { path: '/weapons/sword_hammer.png', anchor: { x: 0.906, y: 0.508 }, scale: 85 / 160, rotationOffsetRad: deg(173.7) },
+  // Three things about this batch's calibration, none of which carried over from the
+  // placeholder values it replaced:
+  //
+  //   - `rotationOffsetRad` is ~-47/-54 deg rather than the ~-160 the borrowed spear/hammer
+  //     entries used. Those were cancelling THAT art's baked pointing direction, which is a
+  //     property of the file and not of the weapon; re-measured here by the same
+  //     alpha-farthest-pixel-from-anchor method the table's header documents (validated on
+  //     the same pass against five shipped entries, which it reproduced within a few
+  //     degrees — the residual being their own eyeballed anchors).
+  //   - `anchor` is measured too, not eyeballed: the centroid of the alpha mass in the first
+  //     12% of the object's own long axis from the socket end, i.e. the middle of the
+  //     connector nub rather than the extreme pixel off the end of it.
+  //   - `scale` is chosen so the weapon's ALONG-AXIS length in authoring px matches what the
+  //     placeholder rendered (55.7 vs 55.6, and 65.6 vs 65.5), which is deliberately not the
+  //     same thing as matching its `scale` divisor. This art is composed on a diagonal and
+  //     the placeholders' were composed as flat strips, so equal divisors would have made
+  //     these read ~40% longer. `rigComposition.test.ts`'s module-proportion band measures
+  //     texture WIDTH, so it cannot see that difference — it is why this note exists.
+  //
+  // Both stay slightly smaller than the player originals for the reason the placeholders
+  // already did: a mob's module hangs off the 'held' path (`rigWeaponMount`), which has no
+  // socket tether to give a big blade somewhere to sit, so a full-size head reads as bigger
+  // than the body carrying it.
+  enemyclaw: { path: '/weapons/sword_enemyclaw.png', anchor: { x: 0.09, y: 0.088 }, scale: 60 / 160, rotationOffsetRad: deg(-47.1) },
+  enemymaul: { path: '/weapons/sword_enemymaul.png', anchor: { x: 0.079, y: 0.07 }, scale: 80 / 160, rotationOffsetRad: deg(-53.8) },
 
   // 2026-08-03 batch: the 6 starter-frame elemental variants that never got their own
   // silhouette (flamer/cryobolt/teslagun/venomspit all fell back to gun_default) plus

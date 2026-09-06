@@ -1902,8 +1902,10 @@ exactly the shape an energy sibling would take — but a fifth buff family touch
 `RUN_BUFFS`/`BUFF_CAPS`/`applyBuff` and deserves its own measured pass rather than riding along on
 this one. **Both were closed in v60 below.** The two mob blades also borrow player weapon art
 (`render/weaponSkins.ts` records which and why); they carry their own calibration entries, so real
-art is a one-line `path` change per mob — still open as of v60, with the generation prompts now
-written down in `art/weapon/prompts.md`.
+art is a one-line `path` change per mob — **also closed on 2026-09-06**, when both were generated
+from the prompts in `art/weapon/prompts.md`. That was a render-only change and bumped nothing;
+what it cost was three re-calibrations, none of which the borrowed values could supply — see
+design/12's 2026-09-06 update.
 
 ## v60: the ammo economy gets a card, and capacity becomes a character trait (2026-09-06)
 

@@ -1,7 +1,8 @@
 # Work log — 2026-09-06: the three things volume 38 wrote down and did not do
 
 Volume 39. One `ENGINE_VERSION` bump (60) closing two of the three gaps volume 38 named for
-itself, plus the third one turned from an open question into a written-down prompt.
+itself, and — later the same day, once the owner ran the prompts this pass wrote — the third
+one too, render-only and bumping nothing.
 
 Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
@@ -170,13 +171,14 @@ The fresh-save run being byte-identical is the claim, not a null result — `van
 reference pool, `cell_up` is card-only so the drop stream never moved, and `BUFF_DROP_POOL` is
 untouched.
 
-## The third gap: prompts, not pixels
+## The third gap: prompts, then pixels, same day
 
-`enemyclaw` and `enemymaul` are still the only two entries in `WEAPON_DEFS` pointing at
-another weapon's texture — the player spear's and hammer's. No image-generation tool was
-available in this session, so on the owner's call the gap was closed as far as it can be
-closed without one: two complete, copy-paste-ready GPT Image 2 prompts now live in
-`art/weapon/prompts.md`.
+`enemyclaw` and `enemymaul` were the only two entries in `WEAPON_DEFS` pointing at another
+weapon's texture — the player spear's and hammer's. No image-generation tool was available in
+this session, so on the owner's call the gap was first closed as far as it can be without one:
+two complete, copy-paste-ready GPT Image 2 prompts in `art/weapon/prompts.md`. The owner then
+ran them and handed back both images, first attempt each, no rejects — so the gap closed the
+whole way the same day.
 
 The part that needed working out rather than writing down is what the prompts have to say that
 none of the archived ones did. Every prompt in that file is for a PLAYER weapon, and they all
@@ -187,11 +189,43 @@ its own: dark blue-grey housing `#202030`–`#404050`, **violet** crystal `#4020
 and colour is what actually says *this is theirs, not yours* — which is the real defect in
 borrowing, since a claw that reads as player gear reads as **loot you could pick up**.
 
-Both halves of the workflow are written down with it, including the two corrections a later
-batch would otherwise repeat: `compress.mjs --long-axis=160`, not the 320 the archived section
-still says (every weapon PNG went 320 → 160 on 2026-08-25 for the WeChat budget, and all 27
-`scale` divisors moved with them), and re-measure `rotationOffsetRad` instead of keeping the
-borrowed near-180° value, which belongs to art that will not be there any more.
+### Wiring it up found three things, and only the first was expected
+
+**`rotationOffsetRad` had to be re-measured**, which the prompt file already predicted: the old
+~-161°/+174° values were cancelling the SPEAR's and HAMMER's baked pointing direction, a
+property of those files. New values -47.1° and -53.8° — not near-zero, because "socket
+upper-left, business end lower-right" produces a genuinely DIAGONAL composition while
+`gun_default`/`sword_default` run closer to horizontal. The method was validated against five
+shipped entries before being trusted on new art; it reproduced their published numbers within a
+few degrees.
+
+**`scale` could not be inherited either, and that one nothing would have caught.** The diagonal
+composition puts a ~200 px-long object inside a ~160 px-wide texture, where the archived batch's
+flat strips were ~165 px long inside 160 px wide. `rigComposition.test.ts`'s module-proportion
+band measures `pngWidth × scale × MODULE_SCALE` — so keeping the placeholder's divisor would have
+**passed every gate while rendering these ~40% longer** than what they replace. The divisors are
+picked against the object's own along-axis length instead: 55.7 vs 55.6 authoring px, 65.6 vs
+65.5.
+
+**Measuring the ANCHOR is worth ten lines, and the number that says so is not ours.** Every
+previous batch eyeballed it; the table's header says so in as many words. Taking the centroid of
+the alpha mass in the first 12% of the long axis instead — the middle of the connector nub rather
+than the extreme pixel off the end of it — put both new entries at **0.0°** tip error, driven live
+against a real target. The shipped `enemygun`, measured the same way in the same frame, is
+**18.2°** off. That is the standing cost of the eyeballed-anchor convention, and it had never
+been quantified.
+
+Two things about verifying it that generalize past this batch. `worldTransform` is stale outside
+a render pass and hands back the *untransformed* texture angle — the first measurement returned
+exactly that, and the only tell was the reference weapon also reading "correct"; compute from the
+sprite's own `rotation` and `scale` instead. And always put a SHIPPED weapon in the same frame as
+the control: a harness that reports 0° for everything is not measuring anything, and `enemygun`'s
+18.2° is what proves this one can fail.
+
+The alpha needed the documented treatment too: both files came back with **zero pixels at alpha
+255** — a 250-254 plateau wrapped in a 1-10 veil, exactly what `alphaClamp.mjs` exists for. The
+generator also returned WebP, which nothing on the Node side of this repo can decode; Pillow
+converts it losslessly (verified pixel-for-pixel, not assumed).
 
 ## Still open
 
@@ -203,5 +237,4 @@ borrowed near-180° value, which belongs to art that will not be there any more.
   matches against a 33% fair share, identically before and after. The 2026-07-28 retune left
   it near fair share, so something between then and now moved it; unrelated to capacity, and
   it needs its own pass.
-- **The two mob blades still borrow player art** — prompts written, generation pending.
 - **`boss-core` still mounts no weapon module**, unchanged from v59.

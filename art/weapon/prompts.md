@@ -1,6 +1,6 @@
 <!-- Weapon-art generation prompts. Two sections:
      1. Elemental-weapon prompts (archive) - all 6 shipped, kept as the reusable reference.
-     2. Mob melee-weapon prompts (OPEN) - enemyclaw/enemymaul, written 2026-09-06, not yet generated. -->
+     2. Mob melee-weapon prompts (SHIPPED) - enemyclaw/enemymaul, written and generated 2026-09-06. -->
 
 # Elemental-weapon prompts (archive)
 
@@ -159,7 +159,7 @@ All 6 entries already exist in `WEAPON_DEFS` (`client/src/render/weaponSkins.ts`
 
 ---
 
-# Mob melee-weapon prompts (OPEN — the art does not exist yet)
+# Mob melee-weapon prompts (SHIPPED 2026-09-06)
 
 `enemyclaw` and `enemymaul` (ENGINE_VERSION 59, `engine/content/weaponSpecs/dropOnly.ts`) are the
 only two entries in `client/src/render/weaponSkins.ts`'s `WEAPON_DEFS` table that **point at
@@ -170,9 +170,18 @@ and pointing them at a path with no PNG behind it would ship a missing texture �
 raider's claw currently reads on screen as a piece of player gear, i.e. as **loot you could pick
 up**, which is the opposite of what a mob's weapon should signal.
 
-**Status: prompts written 2026-09-06, art not yet generated.** Both entries already carry their
-own anchor/scale/rotation calibration, so wiring real art is a one-line `path` change per mob plus
-a re-measured `rotationOffsetRad`.
+**Status: both prompts written AND generated 2026-09-06, first attempt each, no rejects.** Live in
+`client/public/weapons/sword_enemyclaw.png` / `sword_enemymaul.png`, sources archived as
+`art/weapon/enemyclaw_raw.png` / `enemymaul_raw.png`, `WEAPON_DEFS` re-pointed and re-calibrated.
+
+Four things this batch learned that the archived one above could not have, all in "Workflow"
+below: the generator returned **WebP, not PNG** (Pillow converts it losslessly — verified
+pixel-identical, no image library exists on the Node side of this repo); the alpha came back with
+**zero pixels at 255** and a 250-254 plateau, i.e. exactly the pathology `alphaClamp.mjs` was
+written for; the composition instruction landed but produced a **diagonal** object where the
+archived batch produced flat strips, which is a `scale` problem and not a rotation one; and the
+anchor is worth MEASURING rather than eyeballing — doing so put both new entries at **0.0°** tip
+error live, against the shipped `enemygun`'s 18.2°.
 
 ## What makes these different from every prompt above: the MOB palette
 
@@ -261,41 +270,89 @@ should read heavy at a glance against the claw above.
 > TRANSPARENT background (real alpha, not a grey or white matte fill — this will be decoded and
 > checked pixel-by-pixel for alpha). No text, no ground shadow, no character.
 
-## Workflow (art half)
+## Workflow (art half) — as actually run, 2026-09-06
 
-1. Save each accepted generation as `art/weapon/enemyclaw_raw.png` / `art/weapon/enemymaul_raw.png`
-   (rejects into `art/weapon/leftover/`).
-2. **Decode the alpha before trusting it** — an opaque-grey and a genuinely transparent
-   background look identical by eye. Use `tools/png-pipeline/pngCodec.mjs`'s `decodePNG`; several
-   PNGs in earlier batches came back with a translucent-but-not-absent background baked in.
-3. `node tools/png-pipeline/compress.mjs --long-axis=160 <file>` — **160, not the 320 the archive
-   section above says.** Every file in `client/public/weapons/` went 320 → 160 px on 2026-08-25 for
-   the WeChat package budget, and all 27 `scale` divisors in `WEAPON_DEFS` moved with them.
-4. Drop the results in as `client/public/weapons/sword_enemyclaw.png` and
-   `client/public/weapons/sword_enemymaul.png` (the `sword_` prefix is the melee kind's, matching
-   every other melee entry).
+1. **The generator returned `.webp`, not `.png`.** Nothing on the Node side of this repo can
+   decode WebP (`pngCodec.mjs` is a hand-rolled PNG codec, and there is no image library);
+   **Pillow is installed and does**, and the conversion is lossless — verified with a
+   pixel-for-pixel array compare, not assumed:
+
+   ```python
+   from PIL import Image
+   Image.open(src_webp).convert('RGBA').save('art/weapon/<id>_raw.png')
+   ```
+
+   The originals were kept, moved into `art/weapon/leftover/` — they are byte-originals, not
+   rejects, but that is where the previous batch's `.webp` files already live.
+
+2. **Decode the alpha before trusting it**, and expect this exact shape. Both files came back
+   with **zero pixels at alpha 255**: a 250-254 plateau (26-32% of the canvas) wrapped in a
+   1-10 veil (~0.5%). That is the pathology `alphaClamp.mjs` was written for, and its defaults
+   are correct for it:
+
+   ```bash
+   node tools/png-pipeline/alphaClamp.mjs client/public/weapons/sword_<id>.png
+   ```
+
+   Verify it the way that tool's own header asks: the post-clamp bbox should match the bbox
+   measured at `alpha > 25` on the ORIGINAL. Here it matched within 1 px on every edge, and
+   `alpha-audit.mjs` then called both files clean.
+
+3. `node tools/png-pipeline/compress.mjs --long-axis=160 <file>` — **160, not the 320 the
+   archived section above says.** Every file in `client/public/weapons/` went 320 → 160 px on
+   2026-08-25 for the WeChat package budget, and all 27 `scale` divisors in `WEAPON_DEFS` moved
+   with them. Run it AFTER the clamp: compress is what trims, and the point is to fix the alpha
+   before the trim reads it. Result here: 1920² → 159×160 and 160×156, ~27 KB each.
 
 ## Workflow (code half — NOT art, do not skip)
 
-Both entries already exist in `WEAPON_DEFS` (`client/src/render/weaponSkins.ts`), so this is an
-edit, not an addition:
+Both entries already existed in `WEAPON_DEFS` (`client/src/render/weaponSkins.ts`), so this was
+an edit. **None of the three calibration fields survived the swap**, and the second and third are
+the ones a future batch will otherwise get wrong:
 
-1. Change each entry's `path` to its new `/weapons/sword_enemy*.png`, and delete the placeholder
-   note above them (the paragraph explaining why they point at player art).
-2. **Re-measure `rotationOffsetRad` for real — do not keep the borrowed value.** It is currently
-   the spear's / hammer's own baked angle, which will not match new art. Load the PNG, take the
-   alpha-farthest pixel from the (eyeballed) anchor as the tip, then
-   `rotationOffsetRad = -atan2(tipY - anchorY, tipX - anchorX)` in image space (y-down). If the
-   prompts' "socket upper-left, business end lower-right" instruction lands, the offsets should be
-   SMALL (the 2026-07-29 batch all came in within ~25° of their `KIND_DEFAULTS` reference), not the
-   near-180° flips the borrowed spear/hammer values carry today.
-3. Re-derive each `scale` divisor against the new file's real pixel width, and keep both entries
-   slightly SMALLER than their player originals (currently 70/160 and 85/160 against the player
-   spear's 100/160 and hammer's 75/160): a mob's module hangs off the 'held' path
-   (`rigWeaponMount`) with no socket tether to give a big blade somewhere to sit, so a full-size
-   head reads as bigger than the body carrying it. `rigComposition.test.ts`'s module-proportion
-   band is what catches a stale divisor — it has caught exactly this twice.
-4. `preloadWeaponSkins()` already iterates `allDefs()`, so nothing to add there.
-5. Verify live, moving — a static screenshot at rest does not exercise `rotationOffsetRad` at all.
-   Spawn a `stalker`/`ravager`, let it close, and confirm the mounted sprite tracks its swing
-   direction instead of pointing backwards.
+1. **`path`** — the only trivial one.
+
+2. **`rotationOffsetRad`: re-measure, never inherit.** The old values (~-161°, ~+174°) were
+   cancelling the SPEAR's and HAMMER's own baked pointing direction, which is a property of those
+   files. Load the PNG, take the alpha-farthest pixel from the anchor as the tip, then
+   `rotationOffsetRad = -atan2(tipY - anchorY, tipX - anchorX)` in image space (y-down). New
+   values: **-47.1°** and **-53.8°** — not the near-zero the prompt's "socket upper-left, business
+   end lower-right" instruction suggests, because that instruction produces a genuinely DIAGONAL
+   composition while `gun_default`/`sword_default` run closer to horizontal. That is fine; the
+   offset exists precisely to absorb it.
+
+   Validate the method before trusting it on new art: run it against five shipped entries and
+   check it reproduces their published numbers. It did here, within a few degrees — the residual
+   being their own eyeballed anchors, see point 4.
+
+3. **`scale`: choose it against the object's ALONG-AXIS length, not its width.** This is the
+   trap. The diagonal composition puts a ~200 px-long object inside a ~160 px-wide texture,
+   where the archived batch's flat strips were ~165 px long inside 160 px wide.
+   `rigComposition.test.ts`'s module-proportion band measures `pngWidth × scale × MODULE_SCALE`,
+   so **keeping the placeholder's divisor would have passed every gate while rendering these
+   ~40% longer than what they replaced.** Compute the length as
+   `hypot(tip - anchor)` in texture px and pick the divisor that reproduces the previous
+   rendered length: 60/160 and 80/160 here, giving 55.7 vs 55.6 and 65.6 vs 65.5 authoring px.
+
+4. **`anchor`: measure it too.** Every previous batch eyeballed this, and the table's header says
+   so. Measuring it costs ten lines — take the centroid of the alpha mass in the first 12% of the
+   object's long axis from the socket end, i.e. the middle of the connector nub rather than the
+   extreme pixel off the end of it — and it is worth it: driven live, both new entries put the
+   weapon's tip **0.0°** off the direction of the target, while the shipped `enemygun` measured
+   the same way in the same frame is **18.2°** off. Prefer this to eyeballing from now on.
+
+5. `preloadWeaponSkins()` already iterates `allDefs()` — nothing to add there.
+
+6. **Verify live, MOVING** — a static screenshot at rest does not exercise `rotationOffsetRad` at
+   all, and at a ~40 px body these modules are ~20 px on screen, which is too small to judge by
+   eye. Drive it numerically instead: start a run from the console (`mainMenu.onPlay()` →
+   `modeSelect.onSolo()` → `forge.onStart()`, then `gameLoop.stepSim()` in a loop — never await
+   rAF), park mobs at known offsets from the player, and compute the mounted tip's screen
+   direction from the SPRITE's own `rotation` and `scale` rather than from `worldTransform`
+   (which is stale outside a render pass and will silently hand back the untransformed texture
+   angle — it did here, and the reference weapon reading "correct" was the only tell). Always
+   include a weapon with SHIPPED art in the same frame as the control: a harness that reports 0°
+   for everything is not measuring anything, and the shipped entry's 18.2° is what proves it can
+   fail. Note that at aim ≈ 180° every weapon including the shipped ones reads ~180° off under
+   this model — that is the facing mirror, pre-existing and identical for shipped art, not a
+   defect in the new entries.

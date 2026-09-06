@@ -288,11 +288,10 @@ Three things follow, and only the first was intended:
 
 ### Still open
 
-The two mob melee weapons (`enemyclaw`, `enemymaul`) still borrow player weapon art;
-generation prompts are written down in `art/weapon/prompts.md` and each entry already
-carries its own calibration, so wiring real art is a one-line `path` change per mob plus a
-re-measured rotation offset. And the PvE bot still never swaps off the starter gun, which
-is what leaves the row above unable to measure an expensive frame running dry.
+The PvE bot never swaps off the starter gun (`weaponFireStats` reads `blaster` 100%), which
+is what leaves the row above unable to measure an expensive frame running dry — a bot that
+swaps under pressure is the one change that would make it real. *(The mob melee weapons'
+placeholder art was the other item here; both shipped real art on 2026-09-06, see `12`.)*
 
 
 ## Deflect / parry (core mechanic)
