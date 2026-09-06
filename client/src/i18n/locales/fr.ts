@@ -7,7 +7,7 @@ import type { en } from './en';
 
 export const fr: Translations<typeof en> = {
   mainMenu: {
-    title: 'DAYDAYUP',
+    title: 'BLIGHTBLOOM',
     subtitle: 'descendre, extraire, survivre',
     play: 'JOUER',
     squad: 'ESCOUADE',

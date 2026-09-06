@@ -12,7 +12,7 @@ import type { en } from './en';
 
 export const ru: Translations<typeof en> = {
   mainMenu: {
-    title: 'DAYDAYUP',
+    title: 'BLIGHTBLOOM',
     subtitle: 'спускайся, добывай, выживай',
     play: 'ИГРАТЬ',
     squad: 'ОТРЯД',

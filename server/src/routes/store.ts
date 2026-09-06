@@ -165,7 +165,7 @@ async function forward(
     const status = result.status ?? 0;
     if (status === 401 || status === 403) {
       console.error(
-        `[daydayup] store: billsvc REFUSED the control plane's internal key on ${route} (${status}). ` +
+        `[blightbloom] store: billsvc REFUSED the control plane's internal key on ${route} (${status}). ` +
           'Check DDU_INTERNAL_KEY is set to the same value on matchsvc and billsvc — no purchase can ' +
           'complete until it is.',
       );
@@ -177,7 +177,7 @@ async function forward(
       return { ok: false };
     }
     console.warn(
-      `[daydayup] store: ${route} could not reach the billing plane — ${result.failure}` +
+      `[blightbloom] store: ${route} could not reach the billing plane — ${result.failure}` +
         `${result.status ? ` ${result.status}` : ''}${result.error ? ` (${result.error})` : ''}`,
     );
     return unavailable(res);
@@ -186,7 +186,7 @@ async function forward(
   // A 2xx with nothing parseable behind it. `internalFetchJson` already swallowed the parse
   // error, so this is the only place it becomes visible.
   if (json === null || typeof json !== 'object') {
-    console.warn(`[daydayup] store: ${route} got a ${result.status} from the billing plane with no usable JSON body`);
+    console.warn(`[blightbloom] store: ${route} got a ${result.status} from the billing plane with no usable JSON body`);
     return unavailable(res);
   }
   return { ok: true, json };
@@ -209,7 +209,7 @@ function unavailable(res: ServerResponse): Forwarded {
  */
 function guard(route: string, work: Promise<unknown>): void {
   void work.catch((e: unknown) => {
-    console.error(`[daydayup] store: ${route} failed after the response was decided — ${(e as Error).message}`);
+    console.error(`[blightbloom] store: ${route} failed after the response was decided — ${(e as Error).message}`);
   });
 }
 

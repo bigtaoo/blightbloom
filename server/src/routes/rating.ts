@@ -87,7 +87,7 @@ export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) 
       // claim: `reportKey` arrives in a request body, and a newline in it would forge a
       // second line into the log an operator reads this one from.
       console.error(
-        `[daydayup] matchsvc: /rating/report failed to apply${
+        `[blightbloom] matchsvc: /rating/report failed to apply${
           typeof reportKey === 'string' ? ` (reportKey ${sanitizeAuditValue(reportKey)})` : ''
         }: ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -127,7 +127,7 @@ function applyReport(
 ): { duplicate: boolean; changes: RatingChange[]; reportKey?: string } {
   if (reportKey === undefined) {
     console.warn(
-      '[daydayup] matchsvc: /rating/report with no reportKey — applied WITHOUT the ' +
+      '[blightbloom] matchsvc: /rating/report with no reportKey — applied WITHOUT the ' +
         'exactly-once claim (design/19 §3). A retried delivery of this report will double-apply it; ' +
         'the sender is running a pre-8.1-followup gameserver.',
     );

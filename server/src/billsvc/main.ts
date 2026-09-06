@@ -54,7 +54,7 @@ export function main(env: StartupEnv = process.env, port = PORT, host = HOST): B
   const handle = createBillsvcServer({ env });
   handle.server.listen(port, host, () => {
     const stub = devStubEnabled(env) ? '  [DEV RECEIPT STUB ENABLED]' : '';
-    console.log(`daydayup billsvc (billing plane) on http://${host}:${port}  db=${defaultBillingDbPath()}${stub}`);
+    console.log(`blightbloom billsvc (billing plane) on http://${host}:${port}  db=${defaultBillingDbPath()}${stub}`);
   });
   // Sweeps whatever a previous process left owed, then arms the backstop interval. Started
   // AFTER `listen` for no functional reason (nothing in the pump touches the socket) but for

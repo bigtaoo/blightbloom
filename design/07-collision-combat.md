@@ -2,7 +2,7 @@
 
 The bodies of the simulation's hit-detection and damage steps. `08-simulation-core.md` locks the `step()` **order and interfaces** — this doc fills in the *what happens* for steps 4–9 (movement/collision, projectile flight, deflect, hit resolution, death & drops). All math obeys `06-netcode-determinism.md`: fixed-point (`Fp`), integer brad angles, `isqrt` (never `Math.sqrt`), injected `Prng` (never `Math.random`). It realizes the swing-based deflect mechanic from `03-weapon-system.md` and the run economy (drops) from `05-gameplay.md`.
 
-> **funny mapping.** funny (`C:\Users\TaoWang\Documents\funny/server/engine/src/`) is a *lane* game: units advance along grid columns and its "collision" is one-dimensional gap arithmetic; its projectiles **home on a target id**; it has **no trig at all**. DayDayUp is free-2D with directional bullets and angular arcs, so collision and ballistics **diverge heavily** — flagged **⟂ diverges** below. What *does* port cleanly is funny's damage discipline: circle radii + `isqrt` distance, flat-armor `takeDamage`, a frozen hit payload, one shared hit-resolver, and two-phase death.
+> **funny mapping.** funny (`C:\Users\TaoWang\Documents\funny/server/engine/src/`) is a *lane* game: units advance along grid columns and its "collision" is one-dimensional gap arithmetic; its projectiles **home on a target id**; it has **no trig at all**. Blightbloom is free-2D with directional bullets and angular arcs, so collision and ballistics **diverge heavily** — flagged **⟂ diverges** below. What *does* port cleanly is funny's damage discipline: circle radii + `isqrt` distance, flat-armor `takeDamage`, a frozen hit payload, one shared hit-resolver, and two-phase death.
 
 ## The decisions (locked)
 

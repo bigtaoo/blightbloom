@@ -270,7 +270,7 @@ function main(): void {
   const registry = new GameRegistry();
   const server = createMatchsvcServer({ registry });
   server.listen(PORT, HOST, () => {
-    console.log(`daydayup matchsvc (control plane) on http://${HOST}:${PORT}  → ${startupTarget(registry)}`);
+    console.log(`blightbloom matchsvc (control plane) on http://${HOST}:${PORT}  → ${startupTarget(registry)}`);
   });
 }
 

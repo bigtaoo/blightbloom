@@ -6,7 +6,7 @@
  */
 export const en = {
   mainMenu: {
-    title: 'DAYDAYUP',
+    title: 'BLIGHTBLOOM',
     subtitle: 'descend, extract, survive',
     play: 'PLAY',
     squad: 'SQUAD',

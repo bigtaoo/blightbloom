@@ -163,8 +163,8 @@ describe('createInternalVerifier — refusals', () => {
 
 describe('sanitizeAuditValue — the untrusted header never writes the log', () => {
   it('strips newlines and carriage returns, so a fake log record cannot be injected', () => {
-    const hostile = 'gameserver\n[daydayup] internal auth ACCEPTED everything\r\n';
-    expect(sanitizeAuditValue(hostile)).toBe('gameserver[daydayup] internal auth ACCEPTED everything');
+    const hostile = 'gameserver\n[blightbloom] internal auth ACCEPTED everything\r\n';
+    expect(sanitizeAuditValue(hostile)).toBe('gameserver[blightbloom] internal auth ACCEPTED everything');
     expect(sanitizeAuditValue(hostile)).not.toContain('\n');
   });
 

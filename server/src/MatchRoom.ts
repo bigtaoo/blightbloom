@@ -3,7 +3,7 @@
  * shell around the pure @dd/engine FrameBroadcast core: it fills seats, starts the
  * metronome when the room is full, relays each client's commands into the broadcaster,
  * and fans the resulting batches back out. It is the co-op adaptation of funny's
- * `gameserver/src/Room.ts`, minus the PvP concerns DayDayUp doesn't have (sides/ELO/
+ * `gameserver/src/Room.ts`, minus the PvP concerns Blightbloom doesn't have (sides/ELO/
  * decks/ticket settlement) and generalised from 2 fixed sides to N co-op seats.
  *
  * Deliberately free of any socket/timer import: the WebSocket glue lives only in the

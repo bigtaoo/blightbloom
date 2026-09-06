@@ -134,7 +134,7 @@ describe('parseReplayFile fails loud rather than replaying garbage (design/08)',
   const good = () => JSON.parse(JSON.stringify(record(FLAT, 30).file)) as Record<string, unknown>;
 
   it('rejects a foreign JSON on identity, not on a missing field', () => {
-    expect(() => parseReplayFile({ hello: 'world' })).toThrow(/Not a DayDayUp replay/);
+    expect(() => parseReplayFile({ hello: 'world' })).toThrow(/Not a Blightbloom replay/);
     expect(() => parseReplayFileText('[]')).toThrow(/not an object/);
     expect(() => parseReplayFileText('{oops')).toThrow(/not valid JSON/);
   });

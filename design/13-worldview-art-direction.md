@@ -139,7 +139,7 @@ The hex values already driving combat FX (`client/src/game/theme.ts`'s `THEME.co
 
 - **Setting — the Blight (枯潮).** A spreading contamination is **crystallising** the world along **elemental lines** — fire / ice / lightning / poison. Each expresses as a different contaminated zone, which is why the run's floors are **elemental biomes** (`05`), the enemies are **wild crystal-blooms** corrupted by each element (the `09` variants emberling/frostling/galvanist/ironclad), and the boss is a **giant failed core**.
 - **Role — a purifier core (提纯核).** You are a **purpose-built reclaimer core** — a small clean floating machine-being — that dives into contaminated zones to **siphon corrupted matter and refine it into pure crystal**, banking it before the Blight claims it (the belly literally fills). You are the **polished, contained** counterpart to the wild crystal creatures.
-- **Tone — bright, luminous, hopeful.** Post-contamination but plucky and beautiful-dangerous, not grim, not horror. The crystal glows; the world is stylised, not gory. You are *reclaiming*, diving a little deeper and getting a little stronger each run — which is exactly the name **DayDayUp (天天向上, "better every day")** and the casual WeChat audience.
+- **Tone — bright, luminous, hopeful.** Post-contamination but plucky and beautiful-dangerous, not grim, not horror. The crystal glows; the world is stylised, not gory. You are *reclaiming*, diving a little deeper and getting a little stronger each run — which is exactly what the casual WeChat audience is here for, and what the shipping title **Blightbloom /《绽晶》** names: something blooms out of the rot. *(The codename **DayDayUp (天天向上, "better every day")** carried this tone bullet for the doc's whole life; the title below replaced it 2026-09-06 and the tone did not change — 绽 is the same "better every day" read, told as one image instead of a slogan.)*
 
 ### The fiction earns every locked rule
 
@@ -202,4 +202,20 @@ The art-first setting still makes each locked mechanic diegetic:
   by this doc's own universal-mount rule, and is frequently behind it — small, moving and intermittently hidden are the conditions a
   legibility backstop should survive, not share. The equipped weapon's tier already reads from the HUD `WeaponCard`'s rarity-bordered
   chip, 40 px away and stationary; the overlay's job is the case with no card.
-- **Shipping title** — is "DayDayUp" the final name or a codename? The Blight/crystal-core setting may suggest a title.
+- ~~**Shipping title**~~ — **locked 2026-09-06: `Blightbloom` /《绽晶》.** "DayDayUp" was the codename, and it had to go for a reason that has nothing to do with taste: **天天向上 is Hunan TV's flagship variety show**, which is the single worst collision to carry into a WeChat mini-game name review, and "DayDayUp" is an unownable Chinglish meme with no trademark path and no search space. The setting did supply the title, as this item guessed it would — the English name is **this doc's own two poles in one word**: the `Blight` that crystallises the world, and the `bloom` that is both what the enemies are ("wild crystal-blooms") and what the tone bullet above promises. The Chinese name is deliberately **not** a translation but a second name on the same image — 绽 (to burst into bloom) + 晶 (crystal) — and it leads with the bloom where the English leads with the rot, because 枯-initial candidates prime 枯燥 and a two-character CN title has no room to recover from that.
+
+  **What the availability check found**, since the answer is what picked between three finalists (2026-09-06):
+
+  | | verdict |
+  |---|---|
+  | `Blightbloom` as a game title | **Free** — nothing on Steam, Google Play or the App Store. Existing uses are an EverQuest 2 item, a War Metal card, and two small social handles (so plan a handle variant). |
+  | `blightbloom.com` / `.net` | **Unregistered**, verified via Verisign RDAP against a working control (`blightbound.com` returns full registration data, so the 404s are real availability). |
+  | 《枯潮》, the first pick | **Rejected.** Two characters ending in the identical 潮 as **《鸣潮》** (Wuthering Waves, Kuro Games, mark registered 2021-07) in the same classes, and CN defensive-registration practice explicitly covers *"在相同类别注册与其商标音同、形似等的相似商标"* — 形似 is exactly that axis. |
+  | 《枯晶》, the second pick | **Rejected on discoverability, not law.** Unused, but search engines rewrite it to **《晶核》** (Crystal of Atlan, ByteDance-published) — a title that gets auto-corrected into a competitor pays that tax forever. |
+  | 《绽晶》 | **Free** — no game, no mark, no novel, not even an existing word. Nearest neighbour is the cosmetics brand 绽界 (class 3, not 9/41). |
+
+  **Two known costs of 绽晶, accepted:** 绽 is a low-frequency character living mostly inside 绽放/破绽, so some players will hesitate on the reading; and 绽晶 (zhànjīng) sits one tone from 战警 (zhànjǐng, the 警 of X战警), so expect some voice-search drift.
+
+  **Still open, and not closable from this repo:** a real CNIPA register search on classes 9 + 41 (via `tm.aliyun.com` or a 商标代理), and WeChat's own 小程序名称唯一性 check. Everything web-searchable is green; neither of those is a web search. The Chinese half ships as **暂定** until the register clears.
+
+  **枯潮 survives as fiction, not as a title** — it is still the in-world name of the Blight (see the Worldview section above), which needs no clearance and keeps the flavour this doc locked.

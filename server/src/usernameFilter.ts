@@ -13,7 +13,10 @@
  */
 const RESERVED_NAMES = [
   'admin', 'administrator', 'root', 'system', 'sysadmin', 'moderator', 'mod',
-  'support', 'staff', 'official', 'daydayup', 'gm', 'superuser', 'null', 'undefined',
+  'support', 'staff', 'official', 'gm', 'superuser', 'null', 'undefined',
+  // Both brand names: 'daydayup' stays reserved after the 2026-09-06 rename, since a
+  // name nobody can defend impersonating is still worth nobody being able to claim.
+  'daydayup', 'blightbloom',
 ];
 
 // A small, deliberately conservative starter list — first-pass profanity/slur coverage,

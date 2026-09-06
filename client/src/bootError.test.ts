@@ -23,7 +23,7 @@ describe('reportWebBootFailure', () => {
     const err = new Error('platform init failed');
     reportWebBootFailure(err);
 
-    expect(errorSpy).toHaveBeenCalledWith('daydayup: boot failed', err);
+    expect(errorSpy).toHaveBeenCalledWith('blightbloom: boot failed', err);
     expect(el.innerHTML).toContain('refresh');
     errorSpy.mockRestore();
   });
@@ -41,7 +41,7 @@ describe('reportWeChatBootFailure', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const err = new Error('wx platform init failed');
     reportWeChatBootFailure(err);
-    expect(errorSpy).toHaveBeenCalledWith('daydayup (wechat): boot failed', err);
+    expect(errorSpy).toHaveBeenCalledWith('blightbloom (wechat): boot failed', err);
     errorSpy.mockRestore();
   });
 

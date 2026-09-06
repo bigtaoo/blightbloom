@@ -238,3 +238,65 @@ converts it losslessly (verified pixel-for-pixel, not assumed).
   it near fair share, so something between then and now moved it; unrelated to capacity, and
   it needs its own pass.
 - **`boss-core` still mounts no weapon module**, unchanged from v59.
+
+## The game gets its name: Blightbloom (2026-09-06, docs + client + server, no engine change)
+
+`design/13`'s last open item was *"is 'DayDayUp' the final name or a codename?"*. It was a
+codename, and the reason to retire it is not taste: **天天向上 is Hunan TV's flagship variety
+show**, which is the worst possible collision to carry into a WeChat mini-game name review, and
+"DayDayUp" is an unownable Chinglish meme — no trademark path, no search space, and it says
+nothing about the game. The item guessed the setting would supply the replacement, and it did.
+
+**`Blightbloom` is this doc's own two poles in one word** — the `Blight` that crystallises the
+world and the `bloom` that is simultaneously what the enemies literally are ("wild
+crystal-blooms") and what `13`'s tone bullet promises. **《绽晶》 is deliberately not a
+translation** but a second name on the same image, 绽 (burst into bloom) + 晶 (crystal), leading
+with the bloom where the English leads with the rot.
+
+**Three finalists, and availability picked between them — the rejections are the useful part.**
+《枯潮》 was the owner's first choice and died on trademark: two characters ending in the
+*identical* 潮 as **《鸣潮》** (Wuthering Waves, mark registered 2021-07) in the same classes, and
+CN defensive-registration practice explicitly covers *"在相同类别注册与其商标音同、形似等的相似商标"* —
+形似 is precisely that axis. 《枯晶》 replaced it, was legally clean, and died on **discoverability**:
+search engines rewrite 枯晶 to **《晶核》** (Crystal of Atlan, ByteDance-published), and a title that
+gets auto-corrected into a competitor pays that tax forever — a failure mode no trademark search
+would ever have surfaced, found only because the check was run as a real search and the engine
+did it to us mid-query. 《绽晶》 has neither problem: no game, no mark, no novel, not even an
+existing word, nearest neighbour a class-3 cosmetics brand (绽界). `Blightbloom` itself is free on
+every storefront and `blightbloom.com`/`.net` are unregistered — verified by RDAP against a
+**working control** (`blightbound.com` returns full registration data, so the 404s are real
+availability rather than a dead endpoint, which is the only thing that makes a 404 evidence).
+
+**The line the code change was held to: a name a human READS moves, an identifier a machine
+MATCHES does not.** That is what decided each of ~30 occurrences rather than a judgement call per
+file. Moved: `mainMenu.title` in all eight locale files (`BLIGHTBLOOM`, and 绽晶 for `zh` — the
+first Chinese title this game has ever had, since `zh.ts` had been carrying the English
+`'DAYDAYUP'` for its whole life), the `<title>`, Capacitor `appName`, the WeChat project name, the
+`Not a Blightbloom replay` throw, the boot-failure console prefix, every `[blightbloom]` server log
+prefix and the three service startup lines. **Did not move**, each now carrying a comment saying
+why so a later reader does not "finish the job": `daydayup.*` localStorage keys (meta, identity,
+session, perf) — renaming them wipes every existing player's save and login; `REPLAY_FILE_KIND =
+'daydayup.replay'` — it is matched against bytes on disk, so renaming it rejects every replay a
+player has already saved; `server/data/daydayup.db` and the `/health` `service: 'daydayup-*'` ids —
+matched by a deployed volume and by monitors outside this repo; the `daydayup-client` /
+`-animator` / `-map-editor` Worker names — a renamed Worker is a *new* Worker with the custom
+domain still bound to the old one; and `de.elk.daydayup` — a changed bundle id is a new app, not a
+renamed one. `usernameFilter`'s reserved list gained `blightbloom` and **kept** `daydayup`: a name
+nobody can defend impersonating is still worth nobody being able to claim.
+
+Two smaller things fell out of doing it properly. `internalAuth.test.ts`'s log-injection payload
+spoofs the real log prefix, so it moved with it — the test passes either way (sanitisation strips
+newlines regardless), but a payload forging a prefix the server no longer prints is no longer
+testing what its name says. And the title got a **test of its own**: `i18n.test.ts` now pins
+`en` = `BLIGHTBLOOM`, `zh` = 绽晶, and — the actual invariant — that **every other locale keeps the
+Latin title**, because `Translations<typeof en>` only checks that a key exists, never that its
+value is still the brand, so a helpful translator localising a proper noun is a branding bug the
+type system cannot see.
+
+No `ENGINE_VERSION` bump: nothing here touches simulation state, and the golden-hash gate confirms
+it. `npm run typecheck` clean, 8489 tests green across all eight workspace packages.
+
+**Still open, and not closable from inside this repo:** a real CNIPA register search on classes
+9 + 41 (`tm.aliyun.com` or a 商标代理), and WeChat's own 小程序名称唯一性 check. The Chinese half is
+**暂定** until the register clears. 枯潮 survives as the in-fiction name of the Blight itself, which
+needs no clearance at all. `docs` `i18n` `platform` `test`

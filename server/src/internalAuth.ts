@@ -141,5 +141,5 @@ export function describeInternalAuthFailure(
   route: string,
 ): string {
   const who = result.claimedCaller === undefined ? 'unidentified' : `claimed "${sanitizeAuditValue(result.claimedCaller)}"`;
-  return `[daydayup] internal auth REJECTED ${route}: ${result.reason} (caller ${who})`;
+  return `[blightbloom] internal auth REJECTED ${route}: ${result.reason} (caller ${who})`;
 }

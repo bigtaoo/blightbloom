@@ -340,7 +340,7 @@ export class BillingService {
       const def = findSku(order.sku);
       if (!def) {
         console.error(
-          `[daydayup] billsvc: order '${orderId}' settled for SKU '${order.sku}', which is no longer in the ` +
+          `[blightbloom] billsvc: order '${orderId}' settled for SKU '${order.sku}', which is no longer in the ` +
             'catalogue — the ledger row was written but nothing was granted. Needs a manual grant.',
         );
       }

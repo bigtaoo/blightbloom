@@ -53,7 +53,7 @@ describe('loadReplayFile', () => {
 
   it('propagates the parser\'s own complaint about a foreign file', async () => {
     await expect(loadReplayFile('/x.json', fakeFetch('{"kind":"something else"}'))).rejects.toThrow(
-      /Not a DayDayUp replay/,
+      /Not a Blightbloom replay/,
     );
   });
 });

@@ -187,7 +187,7 @@ export class DeliveryPump {
         );
         result.failed += 1;
         console.error(
-          `[daydayup] billsvc: delivery '${row.id}' has unreadable grants_json and can never be delivered — ` +
+          `[blightbloom] billsvc: delivery '${row.id}' has unreadable grants_json and can never be delivered — ` +
             `account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING. ` +
             'Needs a manual grant; filed for review.',
         );
@@ -213,7 +213,7 @@ export class DeliveryPump {
         });
         result.failed += 1;
         console.error(
-          `[daydayup] billsvc: the control plane REFUSED delivery '${row.id}' with ${outcome.status} — ` +
+          `[blightbloom] billsvc: the control plane REFUSED delivery '${row.id}' with ${outcome.status} — ` +
             `account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING. ` +
             'Needs a manual grant; filed for review.',
         );
@@ -221,7 +221,7 @@ export class DeliveryPump {
       }
       result.deferred += 1;
       console.warn(
-        `[daydayup] billsvc: delivery '${row.id}' deferred after ${row.attempts + 1} attempt(s) — ` +
+        `[blightbloom] billsvc: delivery '${row.id}' deferred after ${row.attempts + 1} attempt(s) — ` +
           `${outcome.failure}${outcome.status === undefined ? '' : ` ${outcome.status}`}` +
           `${outcome.error === undefined ? '' : ` (${outcome.error})`}. Still owed; will retry.`,
       );

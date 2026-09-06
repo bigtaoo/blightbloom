@@ -1,4 +1,10 @@
-# DayDayUp
+# Blightbloom
+
+**Blightbloom** /《绽晶》 (Chinese title 暂定 — see `design/13`'s *Shipping title*). Renamed from
+the codename *DayDayUp* on 2026-09-06. The `daydayup` string survives on purpose in three
+places, and none of them is a leftover: persisted keys (`daydayup.*` in localStorage,
+`daydayup.replay` in a saved replay, `server/data/daydayup.db`), the deployed Cloudflare
+Worker names, and the `de.elk.daydayup` bundle id. Renaming any of those is a migration.
 
 A 2D top-down (3/4 view) free-shooter roguelite, inspired by Soul Knight. The core of the game is a **rich weapon system** — ranged and melee, where melee weapons can block and deflect bullets. Different characters are only skins.
 

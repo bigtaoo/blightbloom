@@ -7,7 +7,7 @@ import type { en } from './en';
 
 export const zh: Translations<typeof en> = {
   mainMenu: {
-    title: 'DAYDAYUP',
+    title: '绽晶',
     subtitle: '深入·撤离·生存',
     play: '开始',
     squad: '组队',

@@ -14,7 +14,7 @@
 /** Web entry's boot() failure handler — clears the boot splash and shows a real
  *  failure state instead of leaving `#boot-loading`'s spinner up forever. */
 export function reportWebBootFailure(err: unknown): void {
-  console.error('daydayup: boot failed', err);
+  console.error('blightbloom: boot failed', err);
   const el = document.getElementById('boot-loading');
   if (el) el.innerHTML = '<div>Failed to load — please refresh the page.</div>';
 }
@@ -23,5 +23,5 @@ export function reportWebBootFailure(err: unknown): void {
  *  mini-game shell to update, but the error must still surface clearly rather than
  *  vanish as a bare unhandled rejection. */
 export function reportWeChatBootFailure(err: unknown): void {
-  console.error('daydayup (wechat): boot failed', err);
+  console.error('blightbloom (wechat): boot failed', err);
 }

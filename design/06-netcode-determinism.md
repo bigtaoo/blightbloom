@@ -1,6 +1,6 @@
 # Netcode & determinism
 
-How DayDayUp goes online. This is the single source of truth for the simulation-core / netcode split. It mirrors the proven architecture of the sibling project **funny** (`C:\Users\TaoWang\Documents\funny`, Notebook Wars) — a shipping TS+PixiJS deterministic-lockstep game on the same platforms (Web / WeChat) — and records where DayDayUp must diverge because it is a **real-time twin-stick shooter**, not a turn-based game.
+How Blightbloom goes online. This is the single source of truth for the simulation-core / netcode split. It mirrors the proven architecture of the sibling project **funny** (`C:\Users\TaoWang\Documents\funny`, Notebook Wars) — a shipping TS+PixiJS deterministic-lockstep game on the same platforms (Web / WeChat) — and records where Blightbloom must diverge because it is a **real-time twin-stick shooter**, not a turn-based game.
 
 ## The decision (locked)
 
@@ -10,7 +10,7 @@ How DayDayUp goes online. This is the single source of truth for the simulation-
 
 ### Why this and not the alternatives
 
-| Model | Verdict for DayDayUp |
+| Model | Verdict for Blightbloom |
 |-------|----------------------|
 | Peer lockstep (wait for slowest) | ✗ Packet loss freezes the whole match; unacceptable for action. |
 | **Server frame-broadcast lockstep** | ✓ Server is the clock, **never waits for a client**; a lagging player falls behind and catches up alone. Scales to 5v5+ (王者荣耀 proves it), so an 8-seat lobby is comfortable. |
@@ -53,7 +53,7 @@ Adopt funny's `math/fixed.ts` almost verbatim:
 
 ### Deterministic trig — the twin-stick-specific hazard
 
-funny's units advance along grid columns, so it barely needs trig. **DayDayUp fires bullets at arbitrary angles**, so `Math.atan2 / cos / sin` are everywhere in the current demo (`Game.ts` facing, bullet velocity, block-arc test). These are float and platform-divergent — they must leave the logic layer:
+funny's units advance along grid columns, so it barely needs trig. **Blightbloom fires bullets at arbitrary angles**, so `Math.atan2 / cos / sin` are everywhere in the current demo (`Game.ts` facing, bullet velocity, block-arc test). These are float and platform-divergent — they must leave the logic layer:
 
 - **A `PlayerCommand` field may carry STATE, not just an edge — and `cardVote` does** (`ENGINE_VERSION` 58, `05`'s floor cards). Most discrete actions are one-tick pulses the engine edge-detects (`SWAP_WEAPON`, `CONFIRM_EXTRACT`/`CONFIRM_DESCEND`) or one-shot values it consumes immediately (`pickupTargetId`). A floor-card vote is neither: `ApplyInputSystem` copies a non-zero `cardVote` onto the seat and leaves it there until the checkpoint consumes the offer, so `0` means "not changing my vote" rather than "no vote". That is a determinism requirement and not a convenience — the winning card is decided by a tally over every seat, computed independently on every client, so the votes have to live in shared simulated state rather than in whatever happened to arrive on one tick. The tally itself (`tallyCardVote`) is total and order-independent for the same reason: ties resolve to the lowest slot, never to a re-roll.
 - **A new PRNG stream is a version bump even when nothing else changes.** `cardPrng` (`ENGINE_VERSION` 58) draws three times per checkpoint and is hashed by `serializeState` like every other stream. It is its OWN stream rather than a share of `dropPrng` on purpose: a checkpoint's three cards and a kill's loot are independent decisions, and sharing would make "how many enemies did you kill on this floor" silently decide which cards you are offered at the end of it.
@@ -124,7 +124,7 @@ Frame-broadcast lockstep means **every client holds full match state** → mapha
 
 ## Persistent vs in-run state
 
-Follow funny's split (ADR-002): **in-run resources/drops are engine state, wiped each match; persistent progression is server-authoritative meta**, loaded into the engine as initial config at match start. In DayDayUp's concrete form (`05`/`14`) the persistent side is **materials** (banked out of a run) plus the **account-level blueprint and character unlocks** they (or purchase) buy; the brought-in loadout weapon is *crafted* from an unlocked blueprint + materials at match start but, like every weapon, is itself wiped at run end (`05` "weapons are ephemeral; materials are the only carry-out"). The architecture is unchanged — meta in as initial config, in-run state out each match. Rewards are recomputed server-side, never trusted from the client (funny ADR-006). The fairness split (`14`): crafted weapons are compile-time barred from PvP, only character choice reaches it — so persistent meta never becomes a PvP power ladder, keeping casual-first intact under a bounded, no-gacha monetization model.
+Follow funny's split (ADR-002): **in-run resources/drops are engine state, wiped each match; persistent progression is server-authoritative meta**, loaded into the engine as initial config at match start. In Blightbloom's concrete form (`05`/`14`) the persistent side is **materials** (banked out of a run) plus the **account-level blueprint and character unlocks** they (or purchase) buy; the brought-in loadout weapon is *crafted* from an unlocked blueprint + materials at match start but, like every weapon, is itself wiped at run end (`05` "weapons are ephemeral; materials are the only carry-out"). The architecture is unchanged — meta in as initial config, in-run state out each match. Rewards are recomputed server-side, never trusted from the client (funny ADR-006). The fairness split (`14`): crafted weapons are compile-time barred from PvP, only character choice reaches it — so persistent meta never becomes a PvP power ladder, keeping casual-first intact under a bounded, no-gacha monetization model.
 
 ## Numbers live in one place
 

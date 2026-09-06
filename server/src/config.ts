@@ -30,7 +30,7 @@ export function ticketSecret(): { secret: string; isDev: boolean } {
   if (!warned) {
     warned = true;
     console.warn(
-      '[daydayup] DDU_TICKET_SECRET unset — using an insecure DEV ticket secret. ' +
+      '[blightbloom] DDU_TICKET_SECRET unset — using an insecure DEV ticket secret. ' +
         'Set DDU_TICKET_SECRET (same value on matchsvc + gameserver) for any real deployment.',
     );
   }
@@ -80,7 +80,7 @@ export function internalKeys(): { registry: InternalCaller[]; isDev: boolean } {
     if (!internalWarned) {
       internalWarned = true;
       console.warn(
-        '[daydayup] DDU_INTERNAL_KEY unset in production — every internal route now REJECTS ' +
+        '[blightbloom] DDU_INTERNAL_KEY unset in production — every internal route now REJECTS ' +
           'every call (fail closed). Set DDU_INTERNAL_KEY (same value on matchsvc + gameserver).',
       );
     }
@@ -89,7 +89,7 @@ export function internalKeys(): { registry: InternalCaller[]; isDev: boolean } {
   if (!internalWarned) {
     internalWarned = true;
     console.warn(
-      '[daydayup] DDU_INTERNAL_KEY unset — using an insecure DEV internal key. ' +
+      '[blightbloom] DDU_INTERNAL_KEY unset — using an insecure DEV internal key. ' +
         'Set DDU_INTERNAL_KEY (same value on matchsvc + gameserver) for any real deployment.',
     );
   }

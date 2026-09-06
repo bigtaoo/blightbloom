@@ -107,6 +107,10 @@ export function openDb(path: string = defaultDbPath()): DatabaseSync {
   return db;
 }
 
+/** NOTE: the file is still `daydayup.db` after the 2026-09-06 rename to Blightbloom, and
+ *  the `/health` `service:` ids in `index.ts`/`matchsvc.ts`/`billsvc/server.ts` are still
+ *  `daydayup-*`, on purpose: those are matched by something outside this repo (a deployed
+ *  volume, a monitor), so renaming them is a migration, not a rename. Display text moved. */
 export function defaultDbPath(): string {
   const env = process.env.DDU_DB_PATH;
   if (env && env.length > 0) return env;

@@ -114,7 +114,7 @@ export function reportSettledMatch(match: SettledMatch, opts: InternalFetchInit 
     // Best-effort still, but no longer invisible: D2's whole cost was that a total outage
     // and a healthy server looked identical from here.
     console.warn(
-      `[daydayup] ladder report for room ${match.roomId} failed after ${result.attempts} ` +
+      `[blightbloom] ladder report for room ${match.roomId} failed after ${result.attempts} ` +
         `attempt(s): ${result.failure}${result.status === undefined ? '' : ` ${result.status}`}` +
         `${result.error === undefined ? '' : ` (${result.error})`}`,
     );
@@ -308,7 +308,7 @@ export function main(opts: MainOptions = {}): {
   const port = opts.port ?? PORT;
   const host = opts.host ?? HOST;
   server.listen(port, host, () => {
-    console.log(`daydayup gameserver (co-op frame relay) on ws://${host}:${port}/ws`);
+    console.log(`blightbloom gameserver (co-op frame relay) on ws://${host}:${port}/ws`);
   });
   return { server, wss, manager, shutdown };
 }

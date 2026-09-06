@@ -4,7 +4,7 @@ The data-driven backbone: **where every gameplay number and every piece of conte
 
 It exists because `03`, `05`, `07`, and `08` all say "numbers live in one place" and repeatedly defer their concrete formats here.
 
-> **funny mapping.** funny keeps *all* balance in `server/engine/src/config.ts` (single source), blueprints as plain `Record<Type, Blueprint>`, PvE levels as pure-data `LevelDefinition`s driven by a `WaveDirector`, and affixes as an `AFFIX_FIELD_MAP` mutating blueprints in place. DayDayUp reuses the discipline and the fairness wall wholesale. It **⟂ diverges** on world data: funny levels are fully hand-scripted with a fixed seed; DayDayUp's PvE is **hybrid** — hand-authored room *pieces* stitched by a **seeded procedural layout** (`05`) — so the level format is a piece library + assembly rules, not one scripted timeline.
+> **funny mapping.** funny keeps *all* balance in `server/engine/src/config.ts` (single source), blueprints as plain `Record<Type, Blueprint>`, PvE levels as pure-data `LevelDefinition`s driven by a `WaveDirector`, and affixes as an `AFFIX_FIELD_MAP` mutating blueprints in place. Blightbloom reuses the discipline and the fairness wall wholesale. It **⟂ diverges** on world data: funny levels are fully hand-scripted with a fixed seed; Blightbloom's PvE is **hybrid** — hand-authored room *pieces* stitched by a **seeded procedural layout** (`05`) — so the level format is a piece library + assembly rules, not one scripted timeline.
 
 ## The decisions (locked)
 

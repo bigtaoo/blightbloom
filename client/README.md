@@ -1,4 +1,4 @@
-# DayDayUp Client
+# Blightbloom Client
 
 Single-engine PixiJS v8 client — the render/host half of the game. It owns screens, input,
 scene views, audio and art; it owns **no** gameplay outcome (those all come from `@dd/engine`).

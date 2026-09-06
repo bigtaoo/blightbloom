@@ -30,7 +30,10 @@ import { BRAD_FULL, type Brad } from './math/trig';
 /** Bumped only for a BREAKING envelope change; unrelated to ENGINE_VERSION. */
 export const REPLAY_FILE_VERSION = 1;
 
-/** Magic string, so a truncated/foreign JSON fails on identity instead of on a field. */
+/** Magic string, so a truncated/foreign JSON fails on identity instead of on a field.
+ *  Deliberately NOT renamed with the game (DayDayUp -> Blightbloom, 2026-09-06): this is
+ *  matched against bytes on disk, so changing it would reject every replay a player has
+ *  already saved. The human-readable half of that read did move — see the throw below. */
 export const REPLAY_FILE_KIND = 'daydayup.replay';
 
 /**
@@ -97,7 +100,7 @@ export function packReplayFile(opts: {
 export function parseReplayFile(value: unknown): ReplayFile {
   const o = asObject(value, 'replay file');
   if (o.kind !== REPLAY_FILE_KIND) {
-    throw new Error(`Not a DayDayUp replay (kind=${JSON.stringify(o.kind)}, want "${REPLAY_FILE_KIND}").`);
+    throw new Error(`Not a Blightbloom replay (kind=${JSON.stringify(o.kind)}, want "${REPLAY_FILE_KIND}").`);
   }
   const fileVersion = asInt(o.fileVersion, 'fileVersion');
   if (fileVersion !== REPLAY_FILE_VERSION) {

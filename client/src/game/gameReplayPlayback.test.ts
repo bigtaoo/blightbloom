@@ -294,7 +294,7 @@ describe('Game — booting into a recording with ?replay=', () => {
 
     expect(h.game.replayStopTick()).toBeNull();
     expect(h.toasts).toHaveLength(1);
-    expect(h.toasts[0]).toContain('Not a DayDayUp replay');
+    expect(h.toasts[0]).toContain('Not a Blightbloom replay');
     expect(h.inner.run.phase).not.toBe('playing'); // and it did not half-enter a run
     expect(h.inner.run.engine).toBeNull();
   });

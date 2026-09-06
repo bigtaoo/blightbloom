@@ -128,13 +128,13 @@ export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = (req, res, 
       // to its own timeout and then retry anyway — and the 5xx is what tells it to retry
       // rather than to write the purchase off. Whatever failed here (a locked database, a
       // disk error) may well succeed on the next sweep.
-      console.error(`[daydayup] entitlements: grant for account '${accountId}' order '${orderId}' failed — ${(e as Error).message}`);
+      console.error(`[blightbloom] entitlements: grant for account '${accountId}' order '${orderId}' failed — ${(e as Error).message}`);
       return send(res, 500, { error: 'grant failed' });
     }
 
     const deliveryId = typeof b.deliveryId === 'string' ? b.deliveryId : '(none)';
     console.log(
-      `[daydayup] entitlements: delivery '${deliveryId}' for account '${accountId}' order '${orderId}' — ` +
+      `[blightbloom] entitlements: delivery '${deliveryId}' for account '${accountId}' order '${orderId}' — ` +
         `granted [${granted.join(', ')}], already owned [${alreadyOwned.join(', ')}]`,
     );
     send(res, 200, { ok: true, granted, alreadyOwned });

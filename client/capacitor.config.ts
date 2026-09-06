@@ -8,7 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // `npm run cap:add:android` / `cap:add:ios`, then open in Android Studio / Xcode.
 const config: CapacitorConfig = {
   appId: 'de.elk.daydayup',
-  appName: 'DayDayUp',
+  appName: 'Blightbloom',
   webDir: 'dist',
 };
 
