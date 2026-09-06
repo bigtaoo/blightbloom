@@ -6,7 +6,7 @@ places, and none of them is a leftover: persisted keys (`daydayup.*` in localSto
 `daydayup.replay` in a saved replay, `server/data/daydayup.db`), the deployed Cloudflare
 Worker names, and the `de.elk.daydayup` bundle id. Renaming any of those is a migration.
 
-A 2D top-down (3/4 view) free-shooter roguelite, inspired by Soul Knight. The core of the game is a **rich weapon system** — ranged and melee, where melee weapons can block and deflect bullets. Different characters are only skins.
+A 2D top-down (3/4 view) free-shooter roguelite, inspired by Soul Knight. The core of the game is a **rich weapon system** — ranged and melee, where melee weapons can block and deflect bullets. Characters are a **flat roster of balanced side-grades**, not skins: each carries its own `(maxHp, maxShield, maxEnergy)` triple plus one shield-break passive, with its theme confined to the orb-core and never to the weapons (`design/13`).
 
 ## Structure
 
