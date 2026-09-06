@@ -1,13 +1,15 @@
 # Entity model: Actor / Skin / Weapon
 
-Core principle: **offensive depth is not tied to the character.** A character contributes *only* its **defensive identity** — a `(maxHp, maxShield)` pair plus one **shield-break passive** — and nothing else; all moment-to-moment power is the weapon. There is **no cosmetic skin-swap layer**: the game ships a flat **roster of distinct characters** (themed orb-cores, `13`), each its own look + those two-ish defensive knobs — not a base body with reskins, and not a stat sheet. (`05` locks the two-pool survivability model these knobs feed; `14` the roster + monetization.)
+Core principle: **offensive depth is not tied to the character.** A character contributes its **defensive identity** — a `(maxHp, maxShield)` pair plus one **shield-break passive** — and, since `ENGINE_VERSION` 60, exactly one non-defensive stat: `maxEnergy`, its weapon-energy capacity (`03`). All moment-to-moment power is still the weapon.
+
+That one exception is worth stating precisely rather than waving at, because it is the only place a character touches the offensive side at all. **Capacity buys BURST and provably cannot buy SUSTAIN**: energy regen is a flat shared constant, so on an empty bar every character in the game fires at exactly `ENERGY_REGEN_PER_SEC / energyCost` regardless of pool size. A deeper bar is a longer opening, never a higher dps ceiling — a pacing knob, not an offensive stat. That is what keeps this principle intact and what lets the stat cross `15`'s PvP fairness wall; `14` records the side-grade consequences. There is **no cosmetic skin-swap layer**: the game ships a flat **roster of distinct characters** (themed orb-cores, `13`), each its own look + those two-ish defensive knobs — not a base body with reskins, and not a stat sheet. (`05` locks the two-pool survivability model these knobs feed; `14` the roster + monetization.)
 
 ## Three-layer responsibilities
 
 | Layer | Responsibility | Carries gameplay? |
 |-------|----------------|-------------------|
 | **Actor** | Logical entity: `gx/gy`, `facing`, movement, `hp/maxHp`, **`shield/maxShield` + `ticksSinceHit`**, faction | Yes (core) |
-| **Skin (character)** | Appearance: the shared orb-core rig + this character's own part atlas (its theme — shell / eye / spikes / belly, `13`). Carries the character's `(maxHp, maxShield)` and its **shield-break passive** | Defensive identity only — no offense |
+| **Skin (character)** | Appearance: the shared orb-core rig + this character's own part atlas (its theme — shell / eye / spikes / belly, `13`). Carries the character's `(maxHp, maxShield, maxEnergy)` and its **shield-break passive** | Defensive identity, plus `maxEnergy` — a burst-length knob, never dps (see above) |
 | **Weapon** | First-class citizen: stats, ballistics, socket mount, muzzle position, fire/deflect behavior | **Yes (all offensive depth)** |
 
 ## Key constraints
