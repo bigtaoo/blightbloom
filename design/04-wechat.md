@@ -193,7 +193,9 @@ made the situation look more constrained than it is.
 
 **The main package is code and nothing else, as of 2026-09-01** (`design/12`, "the first download
 is code only"). It holds `js/game.js` — **0.95 MB / 4.00 MB** — and every asset lives in one of
-**eight** subpackages totalling 4.77 MB (5.72 MB for the whole game against the 30 MB ceiling).
+**eight** subpackages totalling ~4.52 MB (~5.47 MB for the whole game against the 30 MB ceiling —
+both dropped ~0.25 MB on 2026-09-06, when the music loops were re-cut shorter for the tempo pass
+in `design/11-audio.md`).
 Until that pass main was 3.42 MB, of which 2.49 MB was art, which is why a 2,729-byte headroom
 crisis was reachable at all.
 
@@ -201,7 +203,7 @@ crisis was reachable at all.
 |---|---|---|---|
 | `main` | `js/game.js` | 0.95 MB | first download |
 | `lobby` | `ui/*` | 0.38 MB | awaited at boot, behind a progress screen |
-| `music` | `audio/music/*` | 1.09 MB | background, never awaited |
+| `music` | `audio/music/*` | 0.84 MB | background, never awaited |
 | `forge` | `weapons/*` | 0.43 MB | background, awaited at the run boundary |
 | `run` | rigs, fire/neutral biome, environment, SFX — the default pack | 2.28 MB | background, awaited at the run boundary |
 | `biome-ice` / `-lightning` / `-poison` / `boss` | see the table below | 0.64 MB | background, awaited at the run boundary |

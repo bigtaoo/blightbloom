@@ -5,7 +5,7 @@
  * The music counterpart of `wechatAudioLoad.test.ts`, and it exists for a sharper version of that
  * file's reason. A cue that fails to load on this target is inaudible but harmless — the
  * procedural voice plays instead. Music has no fallback at all: every WeChat-specific difference
- * below is a way to ship 1.09 MB of dead weight and hear nothing, with no error anywhere.
+ * below is a way to ship 0.84 MB of dead weight and hear nothing, with no error anywhere.
  *
  *   - **The src is a SUBPACKAGE path.** `/audio/music/menu.mp3` really lives at
  *     `packs/music/audio/music/menu.mp3` (`render/assetPacks.json`'s `music` pack, which the byte

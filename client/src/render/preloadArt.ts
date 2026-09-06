@@ -110,7 +110,7 @@ let runArtDone = false;
 /**
  * Phase two, kicked and not awaited: start the background download the moment the lobby is up.
  *
- * The `background` packs go first and are never awaited by anything (`music` — 1.09 MB, and the
+ * The `background` packs go first and are never awaited by anything (`music` — 0.84 MB, and the
  * one asset class a game can start without). Its completion is the single push
  * `musicDirector`'s per-frame derivation needs: a deck handed a path inside an unfetched pack
  * plays nothing and records the track as current anyway, so without this the menu bed would be

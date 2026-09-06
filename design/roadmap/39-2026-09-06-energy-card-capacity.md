@@ -300,3 +300,47 @@ it. `npm run typecheck` clean, 8489 tests green across all eight workspace packa
 9 + 41 (`tm.aliyun.com` or a 商标代理), and WeChat's own 小程序名称唯一性 check. The Chinese half is
 **暂定** until the register clears. 枯潮 survives as the in-fiction name of the Blight itself, which
 needs no clearance at all. `docs` `i18n` `platform` `test`
+
+## The BGM gets quieter and slower, and the tempo turns out to live in the file (2026-09-06, client + tools + docs, no engine change)
+
+A balance request in plain language — *"背景音乐的音量大概是音效的一半，节奏是目前的0.7倍"* — split into
+one one-line fix and one real pipeline problem, because only one of the two has a runtime knob.
+**Volume** is a slider product (`effectiveVolume = master * sfx|music`), so the new-install default
+`music` moved from 0.5 to 0.25 — half of `sfx`'s 0.5 — in `SettingsState.ts`; a returning player's
+own explicit choice is untouched, since `store.ts`'s `migrate()` only falls back to the default
+when the field is absent.
+
+**Tempo has no equivalent knob, because every track is a fixed AI-generated master, not something
+the engine synthesizes** — and the first attempt assumed otherwise. `HTMLMediaElement.playbackRate`
+/ `InnerAudioContext.playbackRate` at 0.7 is mechanically safe for the loop wrap
+(`MusicPlayer.checkWrap` reads `position()` in the deck's own media-time, undisturbed by
+`playbackRate`) and was shipped, then reverted: web's `preservesPitch` is a real guarantee, but
+WeChat's `InnerAudioContext` documents no pitch-preservation behaviour for its `playbackRate`, so
+the identical multiplier would have shipped a *different pitch* on each platform. Baking the
+stretch into the file instead — `process_music.py`'s new `TEMPO_FACTOR`, via `pip install
+pedalboard`'s `time_stretch` (Rubber Band, pitch preserved) — ships identical bytes on both
+targets, which matters because nobody on this project can hear either build to catch a mismatch
+after the fact.
+
+**Getting the shipped files to actually pass the gate took two more wrong turns, both the same
+class of bug this pipeline has hit before.** Stretching the already-cut ~65 s region in isolation
+blew the loop seam's `xfade_band_diff` from ~1.5 dB (native tempo) to 6.6 dB (`menu`) / 2.2-2.9 dB
+(`boss`) — `pedalboard.time_stretch` had no musical context beyond the clip's own hard edges.
+Stretching the WHOLE master first, then slicing the region out, fixed `boss` but not `menu` — which
+falsified "isolated clip is the whole problem": the algorithm is content-adaptive, not a uniform
+transform like this pipeline's own zero-phase shelf, so a region that closes well NATIVELY can
+simply not survive being stretched at all, full context or not. The actual fix was the pipeline's
+own recurring lesson (`README.md`'s search-vs-gate drift table, now four rows deep) applied again:
+`search_regions` had to rank candidates on the STRETCHED signal, not the raw master, because that
+is what ships. Re-searching found new regions for both tracks — `menu` 68.0 s from 81.0 s of the
+stretched master (native position ~56.7 s, band-diff 1.77 dB), `boss` 47.5 s from 147.5 s (native
+~103.2 s, 1.60 dB) — both comfortably inside the 2.5 dB gate, both shorter than the 2026-08-31
+regions they replace (69.0 s / 64.5 s), and the music subpackage dropped from 1.09 MB to 0.84 MB
+as a result. `credits.json`, `musicCatalogue.ts`'s `lengthS`, and every design doc citing the old
+duration/byte/band-diff figures moved with them.
+
+**Verified**: `audit.py --class music` passes both files (1.77 dB / 1.60 dB, -30.00 dBFS mid-band,
+0 flagged); `npm run check` green across all eight workspace packages, `tsc --noEmit` clean.
+**Still open, and the one thing no measurement here can close**: nobody has listened to either
+loop at the new tempo — the gates confirm the loop seam and mix level are technically sound, not
+that 0.7x reads as relaxed rather than sluggish. `audio` `tools` `docs`

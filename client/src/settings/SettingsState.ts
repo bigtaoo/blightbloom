@@ -30,7 +30,11 @@ export interface SettingsState {
 }
 
 export function defaultSettingsState(): SettingsState {
-  return { master: 1, sfx: 0.5, music: 0.5, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto' };
+  // `music` is half of `sfx` by design: the bed should sit under the cues, not level with
+  // them (2026-09-06 balance pass — the equal 0.5/0.5 default read as too loud relative to
+  // the SFX bus). A save that already stores an explicit `music` value keeps it —
+  // `store.ts`'s `migrate()` only falls back to this default when the field is absent.
+  return { master: 1, sfx: 0.5, music: 0.25, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto' };
 }
 
 /** The effective 0..1 gain to hand the AudioBus for a given slider — `muted` zeroes

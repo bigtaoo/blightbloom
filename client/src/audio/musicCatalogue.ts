@@ -38,8 +38,9 @@ export const MUSIC_DIR = '/audio/music';
  * and both shipped loops were MEASURED against it: the `music` gate's `xfade_band_diff`
  * compares the head and tail windows of exactly this width, and it is the reason the files
  * only had to be tonally compatible over 2 s rather than sample-continuous (`menu` measures
- * 1.15 dB, `boss` 1.63 dB). Widening it here would judge the loops on a window nobody
- * measured; narrowing it would leave measured seam quality on the table.
+ * 1.76 dB, `boss` 1.60 dB, both post the 2026-09-06 tempo stretch — see `MUSIC_CATALOGUE`).
+ * Widening it here would judge the loops on a window nobody measured; narrowing it would leave
+ * measured seam quality on the table.
  */
 export const XFADE_S = 2.0;
 
@@ -81,9 +82,13 @@ export interface TrackDef {
  * has an entry here, which is the guarantee `cueCatalogue.ts` already provides for cues.
  */
 export const MUSIC_CATALOGUE: Record<MusicTrack, TrackDef> = {
-  // `Crystal Menu.mp3`, 69.0 s from 218.5 s. Best loop region in that master at any length
-  // (band-diff 1.15 dB across the crossfade window); energy sits 160 Hz-1.2 kHz, so no shelf.
-  menu: { path: `${MUSIC_DIR}/menu.mp3`, lengthS: 69.0, gain: 1.0, borrowedFrom: null },
+  // `Crystal Menu.mp3`, 68.0 s from 81.0 s of the STRETCHED master (native master position
+  // ~56.7 s). 2026-09-06: tempo x0.7 is baked into this file by `process_music.py`'s
+  // `TEMPO_FACTOR` (`pedalboard.time_stretch`, pitch preserved) — the region itself was
+  // RE-PICKED that pass, because the 2026-08-31 region (69.0 s from 218.5 s, band-diff
+  // 1.15 dB natively) measured 6.6 dB once stretched, far over the gate. This region measures
+  // 1.76 dB post-stretch. Energy sits 160 Hz-1.2 kHz, so still no shelf.
+  menu: { path: `${MUSIC_DIR}/menu.mp3`, lengthS: 68.0, gain: 1.0, borrowedFrom: null },
 
   // NO MASTER YET — this entry plays `menu.mp3`.
   //
@@ -99,16 +104,19 @@ export const MUSIC_CATALOGUE: Record<MusicTrack, TrackDef> = {
   // client knows this track is a stand-in.
   'dungeon.ember': {
     path: `${MUSIC_DIR}/menu.mp3`,
-    lengthS: 69.0,
+    lengthS: 68.0,
     gain: 1.0,
     borrowedFrom: 'menu',
   },
 
-  // `Frozen Resonance.mp3`, 64.5 s from 145.0 s, with a 4th-order zero-phase shelf at
-  // 80 Hz / -14 dB. Generated against the MENU brief and measured as a sub-bass drone instead
-  // (90% of its energy below 109 Hz), which is dread rather than a calm hub — so it became the
-  // boss bed. Band-diff 1.63 dB.
-  boss: { path: `${MUSIC_DIR}/boss.mp3`, lengthS: 64.5, gain: 1.0, borrowedFrom: null },
+  // `Frozen Resonance.mp3`, 47.5 s from 147.5 s of the STRETCHED master (native master
+  // position ~103.2 s), with a 4th-order zero-phase shelf at 80 Hz / -14 dB. Generated against
+  // the MENU brief and measured as a sub-bass drone instead (90% of its energy below 109 Hz),
+  // which is dread rather than a calm hub — so it became the boss bed. Same 2026-09-06
+  // tempo x0.7 pass as `menu`, same reason the region was re-picked (the 2026-08-31 region
+  // measured 2.2-2.9 dB once stretched, too close to the gate to keep); this region measures
+  // 1.60 dB post-stretch.
+  boss: { path: `${MUSIC_DIR}/boss.mp3`, lengthS: 47.5, gain: 1.0, borrowedFrom: null },
 };
 
 /** Every track, at runtime. Derived from the catalogue, so it cannot drift from the union the

@@ -13,6 +13,21 @@ Mirrors the `art/` convention: this directory holds the **source** audio and its
 paperwork. Nothing here is loaded at runtime — what the game ships is the processed copy
 under `client/public/audio/`.
 
+> **Status (2026-09-06): the two music loops got shorter and slower.** A balance pass wanted the
+> beds more relaxed (0.7x tempo) and quieter under the SFX bus. Tempo has no runtime knob — every
+> track is a fixed AI-generated master — so `tools/audio-pipeline/process_music.py` now stretches
+> each master with `pedalboard.time_stretch` (pitch preserved) before slicing out its loop region,
+> and BOTH regions had to be re-picked: the 2026-08-31 regions did not survive being stretched
+> (`menu`'s band-diff went from 1.15 dB natively to 6.6 dB once stretched, `boss`'s from 1.63 to
+> 2.2-2.9 dB — the first far past the 2.5 dB gate, the second too close to it to keep). New
+> shipped files: `menu.mp3` 68.0 s / 482.2 kB (was 69.0 s / 511.8 kB), `boss.mp3` 47.5 s / 381.9 kB
+> (was 64.5 s / 603.4 kB) — both loops measure comfortably inside the gate (1.77 dB / 1.60 dB) and
+> the music subpackage dropped from 1.09 MB to 0.84 MB. See "Music" below for the updated table and
+> `design/11-audio.md`'s "The music runtime" for why this was tried as a runtime `playbackRate`
+> first and reverted (WeChat's `InnerAudioContext` has no documented pitch-preservation guarantee,
+> so the same multiplier would have shipped a different pitch on each platform). Still nobody has
+> listened to any of it.
+>
 > **Status (2026-09-02): the four cues a CHARACTER makes about itself now exist.** `swing`, `hurt`, `death.player` and `spawn` — the audio half of the rig's own authored clips, which had animated a body since earlier the same day and made no sound. **11 more files, 20.9 kB; the set is 61 files, 122.7 kB** and still inside its 160 KiB budget, which was not raised. `death` was renamed `death.enemy` at the same time (it only ever fired for an enemy, so a player death had no sound at all). One new SOURCE came with them, the first that is not a Kenney zip: **BigSoundBank**, because none of the six packs' 323 files is a whoosh — see "Provenance" below for what changes when a source is per-sound instead of a pack. Still nobody has listened to any of it.
 >
 > **Status (2026-08-31): the SFX set is complete and playing, and so is MUSIC.** Two loops ship under `client/public/audio/music/` (`menu.mp3` 69.0 s / 511.8 kB, `boss.mp3` 64.5 s / 603.4 kB), cut from AI-generated masters in `sources/suno/` — see "Music" below. They are **not** CC0 library material like everything else here, so their provenance is a separate `music`/`music_terms` block in `credits.json` rather than an entry in `packs.json`. Two passes the same day: the first cut and gated the files, the second built the runtime that plays them (`client/src/audio/musicCatalogue.ts` + `MusicPlayer.ts`, a deck per platform, and `client/src/game/musicDirector.ts`). **Nobody has listened to them, or to the 50 cues.** That is the one open item on this set a measurement cannot close.
@@ -274,22 +289,38 @@ came from — CC0 music turned out to be almost entirely chiptune, a direct styl
 exactly like the Kenney packs. `tools/audio-pipeline/process_music.py` cuts them; `audit.py --class
 music` gates them.
 
-| shipped | from | region | length | bytes | rate | xfade band-diff | mid-band |
+| shipped | from | native region | shipped length | bytes | rate | xfade band-diff | mid-band |
 |---|---|---|---|---|---|---|---|
-| `music/menu.mp3` | `Crystal Menu.mp3` (322.7 s) | 218.5 s + 69.0 s | 69.0 s | 511.8 kB | 24 kHz stereo | 1.15 dB | -30.00 dBFS |
-| `music/boss.mp3` | `Frozen Resonance.mp3` (248.0 s) | 145.0 s + 64.5 s | 64.5 s | 603.4 kB | 24 kHz stereo | 1.63 dB | -30.00 dBFS |
+| `music/menu.mp3` | `Crystal Menu.mp3` (322.7 s) | ~56.7 s (native) | 68.0 s | 482.2 kB | 24 kHz stereo | 1.77 dB | -30.00 dBFS |
+| `music/boss.mp3` | `Frozen Resonance.mp3` (248.0 s) | ~103.2 s (native) | 47.5 s | 381.9 kB | 24 kHz stereo | 1.60 dB | -30.00 dBFS |
+
+**Tempo (2026-09-06).** Both loops are stretched to 0.7x tempo (`process_music.py`'s
+`TEMPO_FACTOR`, `pedalboard.time_stretch`, pitch preserved) as part of a balance pass that wanted
+the beds more relaxed — baked into the file rather than applied by the player, because
+`InnerAudioContext.playbackRate` has no documented pitch-preservation guarantee on WeChat, where
+`HTMLMediaElement.preservesPitch` is a real guarantee on web. **Both regions above were re-picked
+for this pass**, not just re-cut: the 2026-08-31 regions (69.0 s from 218.5 s native for `menu`,
+64.5 s from 145.0 s native for `boss`) did not survive being stretched — `menu`'s band-diff went
+from 1.15 dB natively to 6.6 dB once stretched, `boss`'s from 1.63 to 2.2-2.9 dB, the first far
+past the 2.5 dB gate and the second too close to it to keep. The "native region" column above is
+where each loop sits in the ORIGINAL master, for anyone locating the passage by ear; "shipped
+length" is what the file actually plays for and what `MusicCatalogue.lengthS` records.
 
 **Per-track selection rationale.**
 
 - **`menu`** — the second generation, after the first came back in the wrong register (below). Best
-  loop region in the whole track at any length. Energy sits 160 Hz-1.2 kHz; 40-49 Hz reads -66 dBFS,
-  so no shelf was needed. The requested high sparkle above 4 kHz never arrived (-70 dBFS and below):
-  not a defect, an open taste question.
+  loop region in the whole track at any length (native tempo). Energy sits 160 Hz-1.2 kHz; 40-49 Hz
+  reads -66 dBFS, so no shelf was needed. The requested high sparkle above 4 kHz never arrived
+  (-70 dBFS and below): not a defect, an open taste question. Its region was re-picked post-stretch
+  (see "Tempo" above) to the 68.0 s / 1.77 dB region in the table; a shorter candidate measured as
+  low as 0.83 dB post-stretch but was not worth trading this much loop length away for.
 - **`boss`** — generated against the **menu** brief and measured as something else entirely: 90% of
   its energy below 109 Hz, 95% below 198 Hz, nothing above 2 kHz, with the 40-49 Hz band 13 dB above
   every other. That is dread, not a calm hub, so it became the boss bed. A 4th-order zero-phase shelf
-  at 80 Hz / -14 dB took its 20-250 Hz RMS from -11.1 to -26.7 dBFS. Its 33.5 s region at 103.0 s
-  ties on seam quality at half the bytes, but a boss fight would hear it turn over.
+  at 80 Hz / -14 dB took its 20-250 Hz RMS from -11.1 to -26.7 dBFS. Its region was likewise
+  re-picked post-stretch to the 47.5 s / 1.60 dB region in the table; a tighter 20-30 s cluster
+  measured better still (down to 1.27 dB) but roughly halves the loop length, and nobody has heard
+  either to judge whether the shorter one reads as repetitive in a boss fight.
 - **`dungeon.ember`** — no master yet. It is the only one of the three that has to survive real
   combat density, so its brief depends on how the two above actually sound in the game. **The
   runtime plays `menu.mp3` in its place**, declared as such in the catalogue
@@ -327,7 +358,7 @@ inversions rather than copies — **stereo is required** where the cue gate requ
 assertions ever agree, one is broken); the catalogue **length** is checked against each file's real
 audible duration to 50 ms, because that number is where `MusicPlayer` places the crossfade; and
 `XFADE_S` is read out of `tools/audio-pipeline/audit.py` and asserted equal to the player's, since
-the 1.15 / 1.63 dB figures in the table above ARE a measurement over a window of exactly that
+the 1.77 / 1.60 dB figures in the table above ARE a measurement over a window of exactly that
 width.
 
 **Why MP3 here too, against this file's own earlier note.** The OGG-vs-MP3 section below ends by

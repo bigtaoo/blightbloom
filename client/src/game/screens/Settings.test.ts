@@ -45,7 +45,7 @@ describe('Settings — sliders', () => {
     const onChange = vi.fn();
     s.onChange = onChange;
     privateOf(s).masterSlider.onChange?.(0.3);
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ master: 0.3, sfx: 0.5, music: 0.5, muted: false }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ master: 0.3, sfx: 0.5, music: 0.25, muted: false }));
   });
 });
 
@@ -157,7 +157,7 @@ describe('Settings — control-layout toggle (design/10 open question, left-hand
     s.onChange = onChange;
     privateOf(s).controlLayoutBtn.onTap?.();
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en' }),
+      expect.objectContaining({ master: 1, sfx: 0.5, music: 0.25, muted: false, locale: 'en' }),
     );
   });
 

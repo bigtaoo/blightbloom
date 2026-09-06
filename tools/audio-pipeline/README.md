@@ -117,11 +117,21 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   | 3.01 dB | 5.61 dB | the search sampled four 4096-point frames of the 2 s crossfade window instead of measuring it |
   | 2.44 dB | 3.39 dB | the gate weighted band differences by energy; the search averaged all 30 equally |
   | 1.41 dB | 3.69 dB | the search read the *raw* master, but the shelf that always applies to that track moves the energy weighting onto the mids |
+  | 1.15 dB / 1.63 dB | 6.6 dB / 2.2-2.9 dB | (2026-09-06) the region was picked at NATIVE tempo, but `TEMPO_FACTOR`'s `pedalboard.time_stretch` is content-adaptive rather than a uniform transform, so a region that closed well natively did not survive being stretched. Fix was the same shape as row 3: search the signal that will actually ship — the whole track stretched, THEN sliced — not the raw master |
 
   Both now call `audit.profile_diff(band_profile(...), band_profile(...))`, and `--search`
-  applies the track's shelf. Search, extraction and post-encode figures now agree to within
-  0.02 dB (`menu` 1.15 / 1.15 / 1.15; `boss` 1.62 / 1.64 / 1.63). If you add a processing
-  step that changes a measured property, `--search` has to apply it too.
+  applies the track's shelf AND its tempo stretch. Search, extraction and post-encode figures
+  agree to within 0.02-0.05 dB (`menu` 1.76 / 1.76 / 1.77; `boss` 1.68 / 1.61 / 1.60). If you add
+  a processing step that changes a measured property, `--search` has to apply it too — the
+  2026-09-06 tempo pass is the fourth time this exact lesson landed, see the table row above.
+
+  **`TEMPO_FACTOR`** (2026-09-06) needs `pip install pedalboard` in this `venv/` — a pitch-
+  preserving time-stretch (Rubber Band under the hood), the one thing this pipeline reaches
+  outside `numpy`/`soundfile` for. Baked into the shipped file rather than applied at the deck
+  (`client/src/audio/musicCatalogue.ts` has why: WeChat's `InnerAudioContext.playbackRate` has no
+  documented pitch-preservation guarantee, unlike web's `preservesPitch`). It stretches the WHOLE
+  master before any region is sliced out — slicing first and stretching an isolated clip starves
+  the algorithm of context and visibly worsens the loop seam (see the table row above).
 
 - **`selftest.py`** — 23 cases over the measurement and gating layer, plain asserts, no
   pytest. Measurement is checked against synthetic signals with known ground truth (a 1 kHz

@@ -24,7 +24,7 @@
     "  - `main`: root '', WeChat's first download. Code only. A rule is required to opt INTO it.",
     "  - `lobby`: awaited at boot before `new Game(...)`. UI chrome, which is all the login /",
     "    menu / mode-select / settings / party / account screens draw.",
-    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 1.09 MB,",
+    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 0.84 MB,",
     "    and music is the one asset class a game can start without. See MusicPlayer.invalidate():",
     "    a deck handed a path inside an unfetched pack plays nothing and never retries, so the",
     "    pack's completion clears the director's memo instead of being awaited.",
@@ -86,7 +86,7 @@
       "root": "packs/music",
       "phase": "background",
       "limitBytes": 3145728,
-      "note": "audio/music/*.mp3 — the design/11 loops. 1.09 MB shipped (menu + boss); the third launch track (dungeon.ember) has no master yet, and the limit leaves room for it and not for much else. Never awaited: see MusicPlayer.invalidate()."
+      "note": "audio/music/*.mp3 — the design/11 loops. 0.84 MB shipped (menu + boss); the third launch track (dungeon.ember) has no master yet, and the limit leaves room for it and not for much else. Never awaited: see MusicPlayer.invalidate()."
     },
     {
       "name": "forge",

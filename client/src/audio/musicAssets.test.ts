@@ -48,12 +48,13 @@ const CREDITS = new URL('../../../art/audio/credits.json', import.meta.url);
 const ART_AUDIO = new URL('../../../art/audio/', import.meta.url);
 
 /**
- * Total budget for the music set. 1.09 MB shipped (menu + boss); the third launch track has no
- * master yet and `assetPacks.json`'s `music` pack allows 3.00 MB, so this is the finer drift
- * check between "a third loop lands" and "a package overrun with no name on it".
+ * Total budget for the music set. 0.84 MB shipped (menu + boss, since the 2026-09-06 tempo
+ * pass re-picked both regions shorter — was 1.09 MB); the third launch track has no master yet
+ * and `assetPacks.json`'s `music` pack allows 3.00 MB, so this is the finer drift check between
+ * "a third loop lands" and "a package overrun with no name on it".
  *
  * Deliberately NOT generous. Music is by far the heaviest asset class in the game — the two
- * loops together outweigh the whole cue set by ~9x (1.09 MB against 122.7 kB) — so the one
+ * loops together outweigh the whole cue set by ~7x (0.84 MB against 122.7 kB) — so the one
  * thing this number has to do is make a
  * re-encode at a higher bitrate an explicit decision rather than a silent 40% increase.
  */
@@ -177,8 +178,9 @@ describe('the music catalogue and the files on disk', () => {
   it('crossfades over exactly the window the loops were MEASURED across', () => {
     // The one number shared with a tool that is NOT in `npm run check` (Python in CI is a line
     // this repo has not crossed). `audit.py`'s XFADE_S is the width of the two windows
-    // `xfade_band_diff` compares, and the shipped figures — menu 1.15 dB, boss 1.63 dB — are that
-    // measurement. Widen `XFADE_S` on the TypeScript side alone and the player fades across
+    // `xfade_band_diff` compares, and the shipped figures — menu 1.77 dB, boss 1.60 dB, both
+    // measured post the 2026-09-06 tempo stretch — are that measurement. Widen `XFADE_S` on the
+    // TypeScript side alone and the player fades across
     // material whose compatibility was never checked; narrow it and measured seam quality is left
     // on the table. Either way both sides stay internally consistent and nothing else notices,
     // which is exactly the drift the pipeline pass hit three times in one afternoon between its

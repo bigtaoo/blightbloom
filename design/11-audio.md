@@ -333,8 +333,10 @@ Same principle as the section above — the failure is inaudible, so the tests a
   instead starts a second deck at `length - 2 s` and equal-power crossfades into it: the same
   mechanism a track-to-track change needs, reused for the loop itself. Consequence for the assets, and it is a large one: head and
   tail have to be *tonally compatible over 2 s*, not sample-continuous — a much weaker and much
-  more achievable requirement. `menu` measures **1.15 dB** mean energy-weighted per-band difference
-  across that window; `boss` **1.63 dB**.
+  more achievable requirement. `menu` measures **1.77 dB** mean energy-weighted per-band difference
+  across that window; `boss` **1.60 dB** — both post the 2026-09-06 tempo pass below (the
+  native-tempo regions this measured before that pass, on different and slightly longer regions,
+  were 1.15 dB / 1.63 dB).
 - **Level is set by a band target, and that target IS the mix decision.** The shipped cue set was
   deliberately peak-matched DOWN to the synth voices it replaced and sits at **-14..-21 dBFS peak**;
   both AI masters arrived at **-0.1 dBFS**, about 20 dB hot. Music is normalised so its **250-2000 Hz
@@ -361,6 +363,23 @@ Same principle as the section above — the failure is inaudible, so the tests a
   zero-phase multiply over the *whole region's* spectrum, i.e. circular convolution — and a loop
   region *is* circular, so filtering cannot introduce an endpoint discontinuity the way a
   windowed/overlap-add filter would.
+- **Tempo is baked into the file, not applied by the player (2026-09-06 balance pass).** There is
+  no synthesized "tempo" to turn a knob on — every track is a fixed AI-generated master — so
+  slowing the beds down 0.7x means slowing the AUDIO down, in `process_music.py`, via
+  `pedalboard.time_stretch` (Rubber Band under the hood, pitch preserved) applied to the WHOLE
+  master before the loop region is sliced out. **This was tried the other way first, at the deck
+  level** (`HTMLMediaElement.playbackRate` / `InnerAudioContext.playbackRate`) and reverted:
+  `preservesPitch` is a web guarantee, but WeChat's `InnerAudioContext` documents no
+  pitch-preservation behaviour for its own `playbackRate`, so the same multiplier would have
+  shipped a different pitch on each platform. Baking the stretch into the file means both
+  platforms ship identical bytes. **Both loop regions had to be re-picked, not just re-cut**: a
+  region chosen at native tempo does not survive being stretched — `pedalboard.time_stretch` is
+  content-adaptive (its transient handling reacts to what is locally there), not a uniform
+  circular transform the way the shelf below is — so the 2026-08-31 regions measured 6.6 dB
+  (`menu`) / 2.2-2.9 dB (`boss`) once stretched, the first far past the 2.5 dB gate and the second
+  too close to it to keep. `process_music.py --search` now stretches the whole track before
+  ranking candidates, for the same reason it already searches the shelved signal for `boss` — see
+  its `TEMPO_FACTOR` paragraph.
 - **The gate is a new `audit.py` class, `music`, not the existing `loop`.** `loop` requires
   `step_db <= -50` (what `el.loop = true` needs) and forbids stereo; `music` drops both, and adds
   `xfade_band_diff <= 2.5` and `mid_band_dbfs` within `[-31, -29]`. Files route to it **by
@@ -385,7 +404,7 @@ assets, the gate, the subpackage rule and the documentation all existed and noth
   frame level, no decoder) to within 50 ms.
 - **`XFADE_S = 2.0` is shared with the asset pipeline and must not move on one side alone.**
   `tools/audio-pipeline/audit.py`'s `XFADE_S` is the width of the two windows `xfade_band_diff`
-  compares, and the shipped figures (menu 1.15 dB, boss 1.63 dB) ARE that measurement. Widen it here
+  compares, and the shipped figures (menu 1.77 dB, boss 1.60 dB) ARE that measurement. Widen it here
   alone and the player crossfades material whose compatibility was never checked; narrow it and
   measured seam quality is left on the table. Both sides stay internally consistent either way,
   which is why a test now reads `audit.py` and asserts the two numbers agree — the same class of
