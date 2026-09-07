@@ -21,6 +21,7 @@
 // `keydownAction` is the piece with real behaviour, and it is a PURE function on purpose:
 // the key table used to be an `if` chain inside a DOM listener, so the rule that F9 and pause
 // are offline-only could not be asserted without a `window`.
+import { isPortalHost } from '../../platform/hostKind';
 import type { InputSource } from '../../platform/types';
 import type { CommandBuilder } from './CommandBuilder';
 import type { ForgeInput } from './ForgeInput';
@@ -72,7 +73,23 @@ export interface WiringDeps {
 
 /** Every screen's own buttons. */
 export function wireScreens(d: WiringDeps): void {
-  d.mainMenu.onPlay = () => d.nav.showModeSelect();
+  // PLAY. Two shapes, chosen by host (`platform/hostKind.ts`):
+  //
+  //   default   PLAY opens SELECT MODE, which is where every mode including the tutorial
+  //             lives. Four clicks to a run, and that is the loop this game is designed as.
+  //   portal    PLAY starts a run immediately and a second button opens SELECT MODE, because
+  //             the platform allows a first-time visitor at most one click to gameplay
+  //             (`docs.crazygames.com/requirements/gameplay`). Nothing becomes unreachable —
+  //             the four-click route is the second button.
+  //
+  // Both hand off to something that already existed; the branch is only which one PLAY is.
+  if (isPortalHost()) {
+    d.mainMenu.setQuickPlay(true);
+    d.mainMenu.onPlay = () => d.runs.beginQuickRun();
+    d.mainMenu.onModes = () => d.nav.showModeSelect();
+  } else {
+    d.mainMenu.onPlay = () => d.nav.showModeSelect();
+  }
   d.mainMenu.onSquad = () => d.nav.showSquad();
   d.mainMenu.onAccount = () => d.nav.showAccount();
   d.mainMenu.onSettings = () => d.nav.openSettings();

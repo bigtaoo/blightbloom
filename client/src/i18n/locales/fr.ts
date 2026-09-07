@@ -10,6 +10,7 @@ export const fr: Translations<typeof en> = {
     title: 'BLIGHTBLOOM',
     subtitle: 'descendre, extraire, survivre',
     play: 'JOUER',
+    modes: 'CHOISIR UN MODE',
     squad: 'ESCOUADE',
     account: 'CONNEXION',
     settings: 'PARAMÈTRES',
@@ -173,6 +174,8 @@ export const fr: Translations<typeof en> = {
     passwordChangeFailed: 'Impossible de changer le mot de passe.',
     loggedInAs: 'Connecté en tant que {username}',
     playingAsGuest: 'Jouer en tant qu\'invité',
+    dataNotice:
+      'Facultatif. L’inscription enregistre votre nom d’utilisateur, une empreinte du mot de passe et votre progression sur notre serveur. Sans compte, rien n’est envoyé.',
   },
   party: {
     title: 'ESCOUADE',

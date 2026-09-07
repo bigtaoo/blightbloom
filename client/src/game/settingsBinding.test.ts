@@ -7,10 +7,11 @@
  * invariant, and it has to be kept by hand every time a new setting is added — quality was the
  * fifth. So every case below checks both paths, not one.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { SettingsBinding, type SettingsBindingDeps } from './settingsBinding';
 import { MemorySettingsStore, defaultSettingsState, type SettingsState } from '../settings';
 import { getLocale, resetLocaleForTests } from '../i18n';
+import { resetExternalMute, setExternalMute } from '../audio/externalMute';
 
 function harness(initial: Partial<SettingsState> = {}) {
   const audio = { sfx: -1, music: -1 };
@@ -96,5 +97,72 @@ describe('SettingsBinding.update — a change persists and applies', () => {
     expect(h.binding.state.quality).toBe('high');
     expect(h.binding.state.controlLayout).toBe('mirrored');
     expect(h.input.mirrored).toBe(true);
+  });
+});
+
+describe('SettingsBinding — the external (ad) mute', () => {
+  // `audio/externalMute.ts` is the sink a portal video ad reaches the audio bus through; this
+  // class is the bus's only authority, so this is where the two meet. The property that
+  // matters is that it is a FACTOR and not a write: an ad must leave the player's own volumes
+  // exactly as it found them.
+
+  afterEach(() => resetExternalMute());
+
+  it('silences both buses while set, and restores the player’s own levels after', () => {
+    const h = harness({ master: 1, sfx: 0.5, music: 0.25 });
+    h.binding.load();
+    expect(h.audio.sfx).toBeCloseTo(0.5);
+    expect(h.audio.music).toBeCloseTo(0.25);
+
+    setExternalMute(true);
+    expect(h.audio.sfx).toBe(0);
+    expect(h.audio.music).toBe(0);
+
+    setExternalMute(false);
+    // Back to 0.25, not to a default — the whole reason this is not a second `muted` flag.
+    expect(h.audio.sfx).toBeCloseTo(0.5);
+    expect(h.audio.music).toBeCloseTo(0.25);
+  });
+
+  it('never touches the persisted state the settings screen renders', () => {
+    const h = harness({ master: 1, sfx: 0.5, music: 0.25, muted: false });
+    h.binding.load();
+    setExternalMute(true);
+    expect(h.binding.state.muted).toBe(false);
+    expect(h.binding.state.sfx).toBeCloseTo(0.5);
+    // ...and it is not written through to the store either, so it cannot outlive the ad.
+    expect(h.store.load().muted).toBe(false);
+  });
+
+  it('keeps a player who muted themselves muted after the ad', () => {
+    // The interaction that would be easy to get backwards: releasing the ad's mute must not
+    // un-mute a player who had turned the sound off.
+    const h = harness({ master: 1, sfx: 0.5, music: 0.25, muted: true });
+    h.binding.load();
+    expect(h.audio.sfx).toBe(0);
+    setExternalMute(true);
+    setExternalMute(false);
+    expect(h.audio.sfx).toBe(0);
+  });
+
+  it('applies at BOOT as well as on change', () => {
+    // This file's founding bug shape — a setting that applies on change but not at load.
+    // An ad in flight while the settings are (re)loaded has to stay silent.
+    setExternalMute(true);
+    const h = harness({ master: 1, sfx: 0.5, music: 0.25 });
+    h.binding.load();
+    expect(h.audio.sfx).toBe(0);
+    expect(h.audio.music).toBe(0);
+  });
+
+  it('keeps applying the factor across an ordinary settings edit', () => {
+    // A volume drag while an ad is playing must not push audio back into the bus.
+    const h = harness({ master: 1, sfx: 0.5, music: 0.25 });
+    h.binding.load();
+    setExternalMute(true);
+    h.binding.update({ ...h.binding.state, sfx: 1 });
+    expect(h.audio.sfx).toBe(0);
+    setExternalMute(false);
+    expect(h.audio.sfx).toBeCloseTo(1);
   });
 });

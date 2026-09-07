@@ -69,6 +69,43 @@ export const webAssetHost: AssetHost = {
   readBinary: async (path: string): Promise<ArrayBuffer> => (await fetch(path)).arrayBuffer(),
 };
 
+/**
+ * The web host, but with every asset path rewritten against a base — the form a build needs
+ * when it does not own the root of the URL it is served from.
+ *
+ * A game portal serves an uploaded bundle from a path it chooses
+ * (`docs.crazygames.com/requirements/technical`: "use only relative paths when referring to
+ * other files in the game bundle... avoid absolute paths as they fail to load"). Vite's
+ * `base` handles the paths IT writes — the script tag, the hashed chunks — and handles
+ * nothing at all about the paths in this repository's own source, which are absolute by
+ * convention (`'/skins/orb-core/eye.png'`) and are the majority of the bytes.
+ *
+ * `base` is Vite's own `import.meta.env.BASE_URL`, passed in rather than read here so this
+ * is testable with no bundler in the picture. Two shapes matter:
+ *
+ *   `'/'`   the root-hosted build (`b.gamestao.com`). Identity — byte-for-byte the
+ *           behaviour of `webAssetHost`, which is what makes this safe to share.
+ *   `'./'`  the portal build. Produces a DOCUMENT-relative path with no `./` prefix
+ *           (`'skins/orb-core/eye.png'`), which resolves against the served directory.
+ *
+ * The missing `./` is not cosmetic. `platform/web/webMusicDeck.ts` decides whether a deck
+ * already holds the file it is being pointed at with `el.src.endsWith(url)` — `el.src` reads
+ * back absolute, so a `'./'` prefix would never match, and every loop wrap would re-assign
+ * `src` and restart the download of a multi-megabyte track. A bare relative path resolves
+ * identically and still matches the suffix test.
+ */
+export function baseAssetHost(base: string): AssetHost {
+  // A leading './' would survive into every path and break the suffix test described above.
+  const prefix = base.replace(/^\.\//, '');
+  const rewrite = (path: string): string => prefix + path.replace(/^\//, '');
+  return {
+    assetsInit: webAssetHost.assetsInit,
+    resolveUrl: rewrite,
+    readJson: async <T>(path: string): Promise<T> => (await fetch(rewrite(path))).json() as Promise<T>,
+    readBinary: async (path: string): Promise<ArrayBuffer> => (await fetch(rewrite(path))).arrayBuffer(),
+  };
+}
+
 let host: AssetHost = webAssetHost;
 
 export function setAssetHost(next: AssetHost): void {

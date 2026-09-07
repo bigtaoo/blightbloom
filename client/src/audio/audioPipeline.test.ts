@@ -497,26 +497,26 @@ describe('the audio pipeline — the boot wiring', () => {
   const entry = (name: string): string =>
     readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 
-  it('both entries preload the SFX set', () => {
-    for (const name of ['main.ts', 'main.wechat.ts']) {
+  it('every entry preloads the SFX set', () => {
+    for (const name of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       expect(entry(name), `${name} never calls audio.preload()`).toMatch(/audio\.preload\(\)/);
     }
   });
 
-  it('both entries attach the UI cue sink to that same device', () => {
+  it('every entry attaches the UI cue sink to that same device', () => {
     // Same class of guard, and the same reason: `uiSound`'s sink is module state, so a boot
     // that never attaches it leaves every button in the game silent while every unit test
     // that installs its own fake bus still passes. Nothing else in the suite can see this
     // line, because nothing else runs `boot()`.
-    for (const name of ['main.ts', 'main.wechat.ts']) {
+    for (const name of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       expect(entry(name), `${name} never calls setUiAudio(audio)`).toMatch(/setUiAudio\(audio\)/);
     }
   });
 
-  it('neither entry AWAITS it — boot must not block on audio', () => {
+  it('no entry AWAITS it — boot must not block on audio', () => {
     // 95 kB behind the first frame would be a bad trade: every cue has a procedural voice to
     // fall back on while it lands (design/11), so the call is fire-and-forget by design.
-    for (const name of ['main.ts', 'main.wechat.ts']) {
+    for (const name of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       expect(entry(name)).not.toMatch(/await\s+audio\.preload\(\)/);
     }
   });

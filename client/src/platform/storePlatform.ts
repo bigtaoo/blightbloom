@@ -24,6 +24,8 @@
 // keeps that testable without a browser — every branch below is reachable from a plain
 // object.
 
+import { getHostKind, isPortalHost, type HostKind } from './hostKind';
+
 /** The platforms this client can start a purchase on. Values are the `IapPlatform` strings
  * `POST /store/order` takes; anything not listed here is a platform the client never names. */
 export type StorePlatform = 'stripe' | 'dev';
@@ -64,7 +66,27 @@ export function isWebStoreHost(host: StoreHost): boolean {
  * constructing one there throws a bare ReferenceError. That host has already returned `null`
  * above, but the guard is not conditional on that — it is a property of this function.
  */
-export function detectStorePlatform(host: StoreHost = globalThis as StoreHost): StorePlatform | null {
+export function detectStorePlatform(
+  host: StoreHost = globalThis as StoreHost,
+  hostKind: HostKind = getHostKind(),
+): StorePlatform | null {
+  // A GAME PORTAL is the one host this file cannot feature-detect, and the exception is
+  // worth stating rather than hiding in a truth table.
+  //
+  // Every other branch here asks the runtime a question, because every other difference was
+  // about capability. A CrazyGames page is an ordinary Chrome in an iframe: it has a
+  // `document`, it has `fetch`, it has no `wx`, and it would sail through both checks
+  // around this one. What it does not have is PERMISSION — in-game purchases there are
+  // limited to invited games and must be handled through the platform's own Xsolla account
+  // (`docs.crazygames.com/sdk/in-game-purchases`), so a checkout of ours is exactly the
+  // "steering the player somewhere else" that the iOS branch above already refuses for the
+  // same underlying reason. Hence `platform/hostKind.ts`: a declared fact, because the
+  // runtime does not know it.
+  //
+  // As everywhere else here, the answer is `null` rather than a disabled button — the Forge
+  // renders no STORE entry and binds no `[B]` key at all, which is what makes this a policy
+  // the screen cannot violate rather than a label it could get wrong.
+  if (isPortalHost(hostKind)) return null;
   if (!isWebStoreHost(host)) return null;
   const search = host.location?.search;
   if (typeof search === 'string' && typeof URLSearchParams !== 'undefined') {

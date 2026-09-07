@@ -511,8 +511,8 @@ describe('the music pipeline — the boot wiring', () => {
   const src = (name: string): string =>
     readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 
-  it('both entries attach music to the same device the cues use', () => {
-    for (const name of ['main.ts', 'main.wechat.ts']) {
+  it('every entry attaches music to the same device the cues use', () => {
+    for (const name of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       expect(src(name), `${name} never calls setMusicAudio(audio)`).toMatch(
         /setMusicAudio\(audio\)/,
       );

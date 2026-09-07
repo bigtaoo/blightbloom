@@ -73,6 +73,7 @@ function make(over: Partial<RunLifecycleDeps> = {}) {
     hud: { toast: vi.fn() } as never,
     hudView: { visible: false } as never,
     forge: { hide: note('forge.hide') } as never,
+    mainMenu: { hide: note('mainMenu.hide') },
     modeSelect: { hide: note('modeSelect.hide') } as never,
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
@@ -188,9 +189,32 @@ describe('the primed entry points', () => {
     expect(t.run.phase).toBe('playing');
   });
 
+  it('the quick run enters the dungeon and hides the MAIN MENU, not the forge', () => {
+    // The portal's one-click entry (`docs.crazygames.com/requirements/gameplay`). It is a
+    // second door to the SAME run `beginRun` starts — so the only thing that can be wrong
+    // about it is which screen it takes down, and getting that wrong leaves the main menu
+    // drawn on top of a live run.
+    const t = make();
+    t.runs.beginQuickRun();
+    expect(t.run.phase).toBe('playing');
+    expect(t.order).toContain('mainMenu.hide');
+    expect(t.run.tutorialActive).toBe(false);
+  });
+
+  it('the quick run spends the staged loadout, exactly as START RUN does', () => {
+    // It must not become a way to keep crafted weapons across runs — design/05's one-run
+    // rule. Asserted through the shared `beginRun` rather than restated: this is a door,
+    // not a mode.
+    const t = make();
+    t.run.setMeta({ ...t.run.meta, loadout: ['blaster'] });
+    t.runs.beginQuickRun();
+    expect(t.run.meta.loadout).toEqual([]);
+  });
+
   it.each([
     ['beginTutorialRun', undefined],
     ['beginArenaDemoRun', 'landing_basic'],
+    ['beginQuickRun', undefined],
   ] as const)('%s WAITS for run art before starting', (method, arena) => {
     // A run with no screen between it and the gate: starting before the art is in shows a
     // player placeholder squares for the whole first fight.

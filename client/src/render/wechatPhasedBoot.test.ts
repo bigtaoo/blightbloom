@@ -147,12 +147,12 @@ describe('phase one — the only wait a player sees', () => {
     expect(readyAfterKick).toBe(false);
   });
 
-  it('is kicked before either entry point can enter a run', () => {
+  it('is kicked before any entry point can enter a run', () => {
     // The hole this closes: `Game.start()` enters a run on its own first pass when `?replay=` is
     // set, so a kick placed after `start()` would let that run begin with placeholder art and no
     // gate. A source-order assertion because there is no way to observe it from inside a module
     // — same technique as audio/musicPipeline.test.ts's check that GameLoop calls the director.
-    for (const entry of ['main.ts', 'main.wechat.ts']) {
+    for (const entry of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       const src = readFileSync(new URL(`../${entry}`, import.meta.url), 'utf8');
       const kick = src.indexOf('beginDeferredArt();');
       const construct = src.indexOf('new Game(app, input, audio)');

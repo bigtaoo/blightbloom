@@ -10,6 +10,7 @@ export const zh: Translations<typeof en> = {
     title: '绽晶',
     subtitle: '深入·撤离·生存',
     play: '开始',
+    modes: '选择模式',
     squad: '组队',
     account: '登录',
     settings: '设置',
@@ -173,6 +174,8 @@ export const zh: Translations<typeof en> = {
     passwordChangeFailed: '无法修改密码。',
     loggedInAs: '已登录：{username}',
     playingAsGuest: '以访客身份游玩',
+    dataNotice:
+      '可选。注册会在我们的服务器上保存你的用户名、密码哈希和游戏进度。不注册也能玩，不会上传任何数据。',
   },
   party: {
     title: '组队',

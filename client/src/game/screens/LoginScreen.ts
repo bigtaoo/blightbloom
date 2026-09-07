@@ -31,6 +31,8 @@ export class LoginScreen {
   private panel = new Panel({ alpha: 0.85, background: 'hub' });
   private title: Text;
   private statusText: Text;
+  /** The one-line "what registering stores" notice — see its construction below. */
+  private privacyText: Text;
   private whoText: Text;
   private loginBtn: Button;
   private registerBtn: Button;
@@ -69,6 +71,24 @@ export class LoginScreen {
     this.whoText.anchor.set(0.5, 0);
     this.statusText = new Text({ text: '', style: { fill: 0xf56565, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
     this.statusText.anchor.set(0.5, 0);
+    // The data notice, at the point of collection.
+    //
+    // This screen is the ONLY place this game sends anything about a player anywhere: an
+    // account is never required to play (design/16's own rule), so a player who never opens
+    // it has had nothing about them leave the device. Which makes this the honest place to
+    // say what registering does, rather than a policy page nobody opens — and it is what a
+    // host that asks for consent before data collection beyond its own SDK events is asking
+    // for (`docs.crazygames.com/requirements/technical`).
+    //
+    // Deliberately factual and derived from the code rather than legal boilerplate: what is
+    // stored is a username, a password hash and the account's progress
+    // (`server/src/AuthService.ts`, `EntitlementService.ts`), and the alternative is to
+    // simply not do this.
+    this.privacyText = new Text({
+      text: '',
+      style: { fill: 0x8fa2b8, fontSize: 12, fontFamily: 'monospace', align: 'center', lineHeight: 17, padding: 12, wordWrap: true, wordWrapWidth: 420 },
+    });
+    this.privacyText.anchor.set(0.5, 0);
 
     this.loginBtn = new Button(t('auth.login'), { w: 200, h: 44, fontSize: 15 });
     this.loginBtn.onTap = () => this.beginLogin();
@@ -87,7 +107,7 @@ export class LoginScreen {
     this.backBtn.setIcon(getUiTexture('icon_back'));
 
     this.view.addChild(
-      this.panel.view, this.title, this.whoText, this.statusText,
+      this.panel.view, this.title, this.whoText, this.statusText, this.privacyText,
       this.loginBtn.view, this.registerBtn.view, this.changePasswordBtn.view, this.logoutBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
@@ -112,6 +132,7 @@ export class LoginScreen {
     this.changePasswordBtn.setText(t('auth.changePassword'));
     this.logoutBtn.setText(t('auth.logout'));
     this.backBtn.setText(t('auth.back'));
+    this.privacyText.text = t('auth.dataNotice');
   }
 
   hide(): void {
@@ -132,6 +153,7 @@ export class LoginScreen {
     this.changePasswordBtn.view.position.set(cx - 100, cy - 40);
     this.logoutBtn.view.position.set(cx - 80, cy + 14);
     this.backBtn.view.position.set(cx - 60, cy + 170);
+    this.privacyText.position.set(cx, cy + 216);
   }
 
   private beginLogin(): void {

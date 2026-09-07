@@ -20,6 +20,7 @@ import {
   type SettingsStore,
 } from '../settings';
 import { setLocale } from '../i18n';
+import { isExternallyMuted, onExternalMuteChange } from '../audio/externalMute';
 import type { QualitySetting } from '../render/quality';
 
 export interface SettingsBindingDeps {
@@ -36,7 +37,14 @@ export class SettingsBinding {
   constructor(
     private readonly deps: SettingsBindingDeps,
     private readonly store: SettingsStore = createWebSettingsStore(),
-  ) {}
+  ) {
+    // This class is the ONE authority on what the audio bus is set to, so it is also the
+    // one place an outside-the-game mute can land (`audio/externalMute.ts` explains why a
+    // portal ad has to reach it through a module sink rather than a parameter). Re-applying
+    // is all it takes: `applyAll` recomputes from the settings and the flag together, so
+    // release restores whatever the player had rather than a default.
+    onExternalMuteChange(() => this.applyAll());
+  }
 
   /** The live state, for the screens that render it. Read-only by convention: every write goes
    *  through `update` so that persistence and application cannot be skipped. */
@@ -73,8 +81,12 @@ export class SettingsBinding {
   }
 
   private applyAll(): void {
-    this.deps.audio.setSfxVolume(effectiveVolume(this.current, 'sfx'));
-    this.deps.audio.setMusicVolume(effectiveVolume(this.current, 'music'));
+    // The external mute is a FACTOR over the settings, never a write to them: `this.current`
+    // is untouched, so the settings screen keeps rendering the player's real values while an
+    // ad is playing and the release path needs no saved copy to restore from.
+    const gain = isExternallyMuted() ? 0 : 1;
+    this.deps.audio.setSfxVolume(gain * effectiveVolume(this.current, 'sfx'));
+    this.deps.audio.setMusicVolume(gain * effectiveVolume(this.current, 'music'));
     this.deps.input.setControlMirror?.(this.current.controlLayout === 'mirrored');
   }
 }

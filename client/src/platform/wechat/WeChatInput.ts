@@ -35,6 +35,10 @@ export class WeChatInput implements InputSource {
   attach() {
     // app.screen is logical (CSS) pixels — the same units wx touch coords use.
     this.controls.layout(this.app.screen.width, this.app.screen.height);
+    // Unconditional here: a mini-game has no other pointer, so the controls are the whole
+    // control scheme and must be on screen before the first touch rather than after it
+    // (TouchControls' `assumeTouch` field explains what the first-touch trigger cost).
+    this.controls.setAssumeTouch(true);
 
     wx.onTouchStart((e) => {
       for (const t of e.changedTouches) {

@@ -15,9 +15,22 @@ function privateOf(m: MainMenu) {
   return m as unknown as {
     title: { text: string };
     subtitle: { text: string };
-    playBtn: { label: { text: string }; onTap: (() => void) | null };
-    squadBtn: { label: { text: string }; onTap: (() => void) | null };
-    accountBtn: { label: { text: string }; onTap: (() => void) | null };
+    playBtn: { label: { text: string }; onTap: (() => void) | null; view: { position: { x: number; y: number } } };
+    modesBtn: {
+      label: { text: string };
+      onTap: (() => void) | null;
+      view: { visible: boolean; position: { x: number; y: number } };
+    };
+    squadBtn: {
+      label: { text: string };
+      onTap: (() => void) | null;
+      view: { position: { x: number; y: number } };
+    };
+    accountBtn: {
+      label: { text: string };
+      onTap: (() => void) | null;
+      view: { position: { x: number; y: number } };
+    };
     settingsBtn: { label: { text: string }; onTap: (() => void) | null };
   };
 }
@@ -181,5 +194,77 @@ describe('MainMenu — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     m.show(800, 600);
     expect(privateOf(m).subtitle.text).toBe('descend, extract, survive');
+  });
+});
+
+describe('MainMenu — quick play', () => {
+  // A game portal allows a first-time visitor at most one click to reach gameplay
+  // (`docs.crazygames.com/requirements/gameplay`), and this menu's default route is four:
+  // PLAY -> SELECT MODE -> SOLO PvE -> START RUN. Quick play makes PLAY direct and keeps the
+  // old route on a second button, so nothing becomes unreachable.
+
+  it('hides SELECT MODE in the default layout', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).modesBtn.view.visible).toBe(false);
+  });
+
+  it('reveals SELECT MODE once quick play is on', () => {
+    const m = new MainMenu();
+    m.setQuickPlay(true);
+    m.show(800, 600);
+    expect(privateOf(m).modesBtn.view.visible).toBe(true);
+    expect(privateOf(m).modesBtn.label.text).toBe('SELECT MODE');
+  });
+
+  it('routes the two buttons to two different callbacks', () => {
+    // The whole point: PLAY stops being the way to the mode list, so both have to be wired
+    // and they must not be the same handler.
+    const m = new MainMenu();
+    m.setQuickPlay(true);
+    const fired: string[] = [];
+    m.onPlay = () => fired.push('play');
+    m.onModes = () => fired.push('modes');
+    privateOf(m).playBtn.onTap?.();
+    privateOf(m).modesBtn.onTap?.();
+    expect(fired).toEqual(['play', 'modes']);
+  });
+
+  it('makes room for the extra row instead of overlapping the ones below it', () => {
+    // The layout is hand-computed from a card top plus fixed row heights, so an added row
+    // is exactly the kind of change that silently lands a button on top of another. Asserted
+    // as "every row is below the previous one by at least its own height".
+    const m = new MainMenu();
+    m.setQuickPlay(true);
+    m.show(800, 600);
+    const p = privateOf(m);
+    const play = p.playBtn.view.position.y;
+    const modes = p.modesBtn.view.position.y;
+    const squad = p.squadBtn.view.position.y;
+    const account = p.accountBtn.view.position.y;
+    expect(modes - play).toBeGreaterThanOrEqual(68);
+    expect(squad - modes).toBeGreaterThanOrEqual(50);
+    expect(account - squad).toBeGreaterThanOrEqual(50);
+  });
+
+  it('keeps the block centred rather than pushing it off the bottom', () => {
+    // `menuLayer.ts`'s fit-scale handles a block that is too tall for the viewport, but only
+    // if it is still centred — a block that grows downward only would sit low on a landscape
+    // phone even after scaling.
+    const plain = new MainMenu();
+    plain.show(800, 600);
+    const quick = new MainMenu();
+    quick.setQuickPlay(true);
+    quick.show(800, 600);
+    const mid = (m: MainMenu) =>
+      (privateOf(m).playBtn.view.position.y + privateOf(m).accountBtn.view.position.y) / 2;
+    const plainTop = privateOf(plain).playBtn.view.position.y;
+    const quickTop = privateOf(quick).playBtn.view.position.y;
+    // Grew in BOTH directions by half the added row, which is what "still centred" means
+    // here — the midpoint between the first and last row is unchanged.
+    expect(quickTop).toBeLessThan(plainTop);
+    expect(privateOf(quick).accountBtn.view.position.y)
+      .toBeGreaterThan(privateOf(plain).accountBtn.view.position.y);
+    expect(mid(quick)).toBeCloseTo(mid(plain), 5);
   });
 });

@@ -1,12 +1,18 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>Blightbloom — Vertical Slice</title>
+    <title>Blightbloom</title>
     <style>
       html, body { margin: 0; height: 100%; background: #0b0d12; overflow: hidden; }
-      canvas { display: block; }
+      /* No text selection, no long-press magnifier, no double-tap zoom, no touch scroll.
+         Asked for by name in the CrazyGames technical requirements ("add CSS to prevent
+         magnification/selection"), and correct on every other target too: every drag in
+         this game is a control input, so a browser gesture reading one as a selection or a
+         pan is always a lost input rather than a feature. */
+      html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+      canvas { display: block; touch-action: none; }
       /* Boot splash: paints immediately on page load, well before main.ts runs or
          Pixi's WebGL context exists — removed by main.ts once game.start() fires. */
       #boot-loading {

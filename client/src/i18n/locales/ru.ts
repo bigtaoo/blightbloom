@@ -15,6 +15,7 @@ export const ru: Translations<typeof en> = {
     title: 'BLIGHTBLOOM',
     subtitle: 'спускайся, добывай, выживай',
     play: 'ИГРАТЬ',
+    modes: 'ВЫБОР РЕЖИМА',
     squad: 'ОТРЯД',
     account: 'ВХОД',
     settings: 'НАСТРОЙКИ',
@@ -178,6 +179,8 @@ export const ru: Translations<typeof en> = {
     passwordChangeFailed: 'Не удалось изменить пароль.',
     loggedInAs: 'Вход выполнен как {username}',
     playingAsGuest: 'Игра как гость',
+    dataNotice:
+      'Необязательно. При регистрации мы храним имя пользователя, хеш пароля и прогресс на нашем сервере. Без аккаунта ничего не отправляется.',
   },
   party: {
     title: 'ОТРЯД',

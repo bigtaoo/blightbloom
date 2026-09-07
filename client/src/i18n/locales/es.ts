@@ -10,6 +10,7 @@ export const es: Translations<typeof en> = {
     title: 'BLIGHTBLOOM',
     subtitle: 'desciende, extrae, sobrevive',
     play: 'JUGAR',
+    modes: 'ELEGIR MODO',
     squad: 'ESCUADRA',
     account: 'ACCEDER',
     settings: 'AJUSTES',
@@ -173,6 +174,8 @@ export const es: Translations<typeof en> = {
     passwordChangeFailed: 'No se pudo cambiar la contraseña.',
     loggedInAs: 'Sesión iniciada como {username}',
     playingAsGuest: 'Jugando como invitado',
+    dataNotice:
+      'Opcional. Al registrarte guardamos tu nombre de usuario, un hash de la contraseña y tu progreso en nuestro servidor. Sin cuenta no se envía nada.',
   },
   party: {
     title: 'ESCUADRA',

@@ -24,6 +24,7 @@ This directory records **decisions** and **architecture**. It is the single sour
 | [17-i18n.md](17-i18n.md) | Internationalization: English-canonical `t()` with compile-time key checking, the locale files, what is deliberately left untranslated, and the repo's English-only rule for code/comments/docs |
 | [18-test-strategy.md](18-test-strategy.md) | Test strategy: the two meanings of "out of sync" — replay divergence, and systems disagreeing inside one build — the six gaps that were measured, and the four layers that closed them (contract gates incl. the committed golden hash, unit tests, parity sweeps, invariant smoke runs) |
 | [19-server-platform.md](19-server-platform.md) | Server platform: the three planes (control / data / billing), the internal-key trust seam and the two defects it closes, entitlements moving server-side out of the client-authored meta blob, the billing order/receipt/ledger model and its idempotency rules, IAP adapters + the fail-closed dev stub, and the gameserver registry that keeps topology out of the ticket |
+| [20-game-portals.md](20-game-portals.md) | Game portals (CrazyGames): why a portal is the first target that constrains what the client MAY do rather than what it CAN do, the declared-host seam that replaced feature detection, the requirement-by-requirement record of what changed, the one-input phase derivation the game does not know about, three live findings the SDK docs do not contain, and what still needs a registered domain or a product decision |
 
 ## Where the plan lives
 

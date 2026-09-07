@@ -197,7 +197,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     roomBuilder: p.roomBuilder, gameLoop, screenFlow,
     nav, artGate: p.artGate, recorder: p.recorder,
     tutorialHints: p.tutorialHints, hud: p.hud, hudView: p.hudView,
-    forge: p.forge, modeSelect: p.modeSelect, matchmaking: p.matchmaking,
+    forge: p.forge, mainMenu: p.mainMenu, modeSelect: p.modeSelect, matchmaking: p.matchmaking,
     partyScreen, pauseMenu: p.pauseMenu, screens: p.screens,
     allySkinId: () => host.allySkinId(),
   });

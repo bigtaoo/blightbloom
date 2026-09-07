@@ -9,6 +9,7 @@ export const en = {
     title: 'BLIGHTBLOOM',
     subtitle: 'descend, extract, survive',
     play: 'PLAY',
+    modes: 'SELECT MODE',
     squad: 'SQUAD',
     account: 'LOGIN',
     settings: 'SETTINGS',
@@ -187,6 +188,8 @@ export const en = {
     passwordChangeFailed: 'Could not change password.',
     loggedInAs: 'Logged in as {username}',
     playingAsGuest: 'Playing as guest',
+    dataNotice:
+      'Optional. Registering stores your username, a password hash and your progress on our server. Play without an account and nothing is sent.',
   },
   party: {
     title: 'SQUAD',

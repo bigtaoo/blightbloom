@@ -27,11 +27,15 @@ export class MainMenu {
   private title: Text;
   private subtitle: Text;
   private playBtn: Button;
+  private modesBtn: Button;
   private squadBtn: Button;
   private accountBtn: Button;
   private settingsBtn: Button;
+  private quickPlay = false;
 
   onPlay: (() => void) | null = null;
+  /** Only wired in quick-play mode — see `setQuickPlay`. */
+  onModes: (() => void) | null = null;
   onSquad: (() => void) | null = null;
   onAccount: (() => void) | null = null;
   onSettings: (() => void) | null = null;
@@ -55,6 +59,13 @@ export class MainMenu {
     this.playBtn = new Button(t('mainMenu.play'), { w: 280, h: 68, fontSize: 26, color: 0x2f855a, borderColor: 0x68d391 });
     this.playBtn.onTap = () => this.onPlay?.();
     this.playBtn.setIcon(getUiTexture('icon_play'));
+    // Quick-play's companion (see `setQuickPlay`): with PLAY taken over by "start a run
+    // now", this is where SELECT MODE — and with it co-op, PvP and the tutorial — stays
+    // reachable. Hidden entirely in the default layout, where PLAY already opens it.
+    this.modesBtn = new Button(t('mainMenu.modes'), { w: 280, h: 50, fontSize: 18, borderColor: 0x718096 });
+    this.modesBtn.onTap = () => this.onModes?.();
+    this.modesBtn.setIcon(getUiTexture('icon_play'), 0x2c5282);
+    this.modesBtn.view.visible = false;
     this.squadBtn = new Button(t('mainMenu.squad'), { w: 280, h: 50, fontSize: 18, borderColor: 0x718096 });
     this.squadBtn.onTap = () => this.onSquad?.();
     this.squadBtn.setIcon(getUiTexture('icon_squad'), 0x2c5282);
@@ -67,10 +78,29 @@ export class MainMenu {
 
     this.view.addChild(
       this.panel.view, this.menuCard.view, this.title, this.subtitle,
-      this.playBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
+      this.playBtn.view, this.modesBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
+  }
+
+  /**
+   * Turn PLAY into "start a run right now" and reveal SELECT MODE beside it.
+   *
+   * A game portal requires that a first-time visitor reach gameplay in at most one click
+   * (`docs.crazygames.com/requirements/gameplay`), and the default route through this menu
+   * is four. Rather than delete the route — the forge is the between-run decision this game
+   * is built around, and the portal's rule is about the FIRST click, not about the loop —
+   * this makes the front door direct and keeps the old door next to it. `Game` still owns
+   * what each button does; this only decides which two are on screen.
+   *
+   * Called once during assembly, from the host branch in `gameWiring.ts`. Not a constructor
+   * argument because `Screens`/`ModeSelect`/every other screen here takes none, and one
+   * screen with a different construction signature is how that convention starts to rot.
+   */
+  setQuickPlay(enabled: boolean): void {
+    this.quickPlay = enabled;
+    this.modesBtn.view.visible = enabled;
   }
 
   show(w: number, h: number) {
@@ -78,18 +108,28 @@ export class MainMenu {
     this.panel.layout(w, h);
     const cx = w / 2;
     const cy = h / 2;
-    this.title.position.set(cx, cy - 150);
-    this.subtitle.position.set(cx, cy - 96);
+
+    // One extra row in quick-play mode. The card grows and the whole block shifts up by
+    // half the growth so it stays centred — `menuLayer.ts`'s fit-scale then keeps it inside
+    // a landscape phone's viewport exactly as it does the shorter version.
+    const extra = this.quickPlay ? 50 + 12 : 0;
+    this.title.position.set(cx, cy - 150 - extra / 2);
+    this.subtitle.position.set(cx, cy - 96 - extra / 2);
 
     const cardW = 280 + 40;
-    const cardTop = cy - 44;
-    const cardH = 68 + 12 + 50 + 12 + 42 + 24;
+    const cardTop = cy - 44 - extra / 2;
+    const cardH = 68 + 12 + 50 + 12 + 42 + 24 + extra;
     this.menuCard.layout(cardW, cardH);
     this.menuCard.view.position.set(cx - cardW / 2, cardTop);
 
     this.playBtn.view.position.set(cx - 140, cardTop + 12);
-    this.squadBtn.view.position.set(cx - 140, cardTop + 12 + 68 + 12);
-    const tertiaryY = cardTop + 12 + 68 + 12 + 50 + 12;
+    let y = cardTop + 12 + 68 + 12;
+    if (this.quickPlay) {
+      this.modesBtn.view.position.set(cx - 140, y);
+      y += 50 + 12;
+    }
+    this.squadBtn.view.position.set(cx - 140, y);
+    const tertiaryY = y + 50 + 12;
     this.accountBtn.view.position.set(cx - 140, tertiaryY);
     this.settingsBtn.view.position.set(cx + 5, tertiaryY);
     this.refreshAccountLabel();
@@ -114,6 +154,7 @@ export class MainMenu {
     this.title.text = t('mainMenu.title');
     this.subtitle.text = t('mainMenu.subtitle');
     this.playBtn.setText(t('mainMenu.play'));
+    this.modesBtn.setText(t('mainMenu.modes'));
     this.squadBtn.setText(t('mainMenu.squad'));
     this.settingsBtn.setText(t('mainMenu.settings'));
     this.refreshAccountLabel();

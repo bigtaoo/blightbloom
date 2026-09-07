@@ -7,7 +7,7 @@
  * files in this repo.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WebInput } from './WebInput';
+import { WebInput, prefersTouchControls } from './WebInput';
 import type { InputCanvas } from '../types';
 
 type Handler = (e: unknown) => void;
@@ -19,8 +19,14 @@ function fakeEventTarget() {
       (listeners[type] ??= []).push(fn);
     },
     removeEventListener() {},
-    fire(type: string, e: unknown = {}) {
-      for (const fn of listeners[type] ?? []) fn(e);
+    /** Fire a listener. A real `KeyboardEvent` always carries `preventDefault`, and
+     *  `WebInput` now calls it for the page-scroll keys — so the fake carries one too,
+     *  auto-spied unless the test supplies its own. A fake event without it would make the
+     *  production code look like it needed an optional call. */
+    fire(type: string, e: Record<string, unknown> = {}) {
+      const event = 'preventDefault' in e ? e : { ...e, preventDefault: vi.fn() };
+      for (const fn of listeners[type] ?? []) fn(event);
+      return event as { preventDefault: ReturnType<typeof vi.fn> };
     },
   };
 }
@@ -88,6 +94,91 @@ describe('WebInput — keyboard movement', () => {
     win.fire('keyup', { code: 'KeyE' });
     win.fire('keydown', { code: 'Space' });
     expect(input.read().interacting).toBe(true);
+  });
+});
+
+describe('WebInput — page-scroll keys are cancelled', () => {
+  // Why this exists: the game is embedded in somebody else's scrollable page on a portal,
+  // and the CrazyGames SDK docs and requirements both ask for arrow/space defaults to be
+  // cancelled by name. Space is the worse of the two — it is a game key here (the revive
+  // channel), so without this a held revive scrolls the host page under the player.
+
+  it('cancels the default for the arrows and Space', () => {
+    for (const code of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']) {
+      const e = win.fire('keydown', { code });
+      expect(e.preventDefault, code).toHaveBeenCalledOnce();
+      win.fire('keyup', { code });
+    }
+  });
+
+  it('leaves every other key alone', () => {
+    // Not a blanket preventDefault: cancelling everything breaks browser shortcuts and, for
+    // Tab specifically, keyboard navigation out of the frame.
+    for (const code of ['KeyW', 'KeyE', 'Digit1', 'Tab', 'Escape', 'F9']) {
+      const e = win.fire('keydown', { code });
+      expect(e.preventDefault, code).not.toHaveBeenCalled();
+      win.fire('keyup', { code });
+    }
+  });
+
+  it('cancels on every repeat of a HELD key, not just the first', () => {
+    // A held arrow fires `keydown` continuously. The cancellation therefore has to happen
+    // BEFORE the already-held early return, or the page scrolls from the second event on —
+    // which is the shape this test pins and the reason for the ordering in the handler.
+    const first = win.fire('keydown', { code: 'ArrowUp' });
+    const repeat = win.fire('keydown', { code: 'ArrowUp' });
+    expect(first.preventDefault).toHaveBeenCalledOnce();
+    expect(repeat.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('yields to a focused text field', () => {
+    // `game/ui/TextInputOverlay.ts` puts a real `<input>` over the canvas for the login and
+    // party-code screens. Space and the arrows are editing keys in there: cancelling them
+    // would stop the player typing a space in a username and freeze the caret.
+    vi.stubGlobal('document', { activeElement: { tagName: 'INPUT' } });
+    const e = win.fire('keydown', { code: 'Space' });
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('prefersTouchControls', () => {
+  it('is true for a coarse primary pointer — a phone or tablet', () => {
+    expect(prefersTouchControls((q) => ({ matches: q === '(pointer: coarse)' }))).toBe(true);
+  });
+
+  it('is false for a fine primary pointer, even on a touchscreen laptop', () => {
+    // The reason the query is `pointer` and not `any-pointer`: a touchscreen laptop has a
+    // coarse pointer AVAILABLE but a mouse as its primary, and drawing a twin-stick overlay
+    // over a mouse session would be a regression on desktop.
+    expect(prefersTouchControls(() => ({ matches: false }))).toBe(false);
+  });
+
+  it('is false when there is nothing to ask', () => {
+    expect(prefersTouchControls(undefined)).toBe(false);
+    expect(
+      prefersTouchControls(() => {
+        throw new Error('no matchMedia');
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('WebInput — touch controls are visible before the first touch', () => {
+  it('declares a touch session to TouchControls on a coarse-pointer device', () => {
+    // The bug: `TouchVisual.active` used to be set only by the first `pointerDown`, so a
+    // phone player opened the game and saw no joystick, no fire button and no weapon
+    // buttons until they had already guessed where to press.
+    win = fakeEventTarget();
+    vi.stubGlobal('window', { ...win, matchMedia: () => ({ matches: true }) });
+    const touchInput = new WebInput();
+    touchInput.attach(fakeCanvas() as unknown as InputCanvas);
+    expect(touchInput.getTouchVisual().active).toBe(true);
+  });
+
+  it('leaves them hidden on a mouse session until something is touched', () => {
+    // `input` comes from `beforeEach`, whose fake `window` has no `matchMedia` at all.
+    expect(input.getTouchVisual().active).toBe(false);
   });
 });
 

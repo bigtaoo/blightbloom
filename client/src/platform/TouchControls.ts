@@ -47,6 +47,20 @@ export class TouchControls {
   // which is momentary and drives which input source read() prefers right now.
   private everTouched = false;
 
+  // ...and the other half of that answer, which `everTouched` alone got wrong.
+  //
+  // A first-touch trigger means a phone player opens the game and sees NO controls: no
+  // joystick, no fire button, no weapon buttons — the overlay appears only once they have
+  // already guessed where to press. That is fine on a desktop (the overlay must not appear
+  // over a mouse session at all) and it is the whole control scheme on a touch device, so
+  // one flag cannot serve both and the platform has to say which case this is.
+  //
+  // Set by the platform's input layer: `WebInput` from a coarse-pointer probe, `WeChatInput`
+  // unconditionally (a mini-game has no other input). Deliberately not derived here — this
+  // class takes normalized coordinates and owns no globals, which is what lets every test
+  // in the suite drive it without a DOM.
+  private assumeTouch = false;
+
   private weapon1Btn: Button = { cx: 0, cy: 0, r: 0 };
   private weapon2Btn: Button = { cx: 0, cy: 0, r: 0 };
   private fireBtn: Button = { cx: 0, cy: 0, r: 0 };
@@ -93,6 +107,20 @@ export class TouchControls {
     if (this.mirrored === mirrored) return;
     this.mirrored = mirrored;
     if (this.w > 0 && this.h > 0) this.layout(this.w, this.h);
+  }
+
+  /**
+   * Declare that this session's primary input IS touch, so the controls are drawn before
+   * the player has touched anything (see the `assumeTouch` field for why one flag could not
+   * cover both hosts).
+   *
+   * Called once, at input attach. Never unset: a session that starts on a touchscreen keeps
+   * its overlay even while a paired mouse is being used, which is the right way round — an
+   * overlay nobody presses costs a few translucent circles, while a missing one costs the
+   * player every control they have.
+   */
+  setAssumeTouch(assume: boolean) {
+    this.assumeTouch = assume;
   }
 
   pointerDown(id: number, x: number, y: number) {
@@ -145,7 +173,7 @@ export class TouchControls {
   // normalized [-1,1] `read()` uses into the raw pixel offset a render layer wants.
   getVisual(): TouchVisual {
     return {
-      active: this.everTouched,
+      active: this.everTouched || this.assumeTouch,
       stickRadius: this.stickRadius,
       move: this.move
         ? { ox: this.move.ox, oy: this.move.oy, dx: this.move.dx * this.stickRadius, dy: this.move.dy * this.stickRadius }

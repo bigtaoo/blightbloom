@@ -14,9 +14,10 @@
  * must end up pointing at something. A slot left null is a dead button — it does nothing, it
  * logs nothing, and it is only findable by pressing it.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultMetaState, type MetaStore } from '../../meta';
 import { RunState } from '../runState';
+import { resetHostKind, setHostKind } from '../../platform/hostKind';
 import { keydownAction, wireHud, wireScreens, type WiringDeps } from './gameWiring';
 
 const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
@@ -92,7 +93,8 @@ function make() {
     resume: track('nav.resume'), pause: track('nav.pause'),
   };
   const runs = {
-    beginTutorialRun: track('runs.beginTutorialRun'), finalizeOnlineRun: track('runs.finalizeOnlineRun'),
+    beginTutorialRun: track('runs.beginTutorialRun'), beginQuickRun: track('runs.beginQuickRun'),
+    finalizeOnlineRun: track('runs.finalizeOnlineRun'),
     quitRun: track('runs.quitRun'), saveReplay: track('runs.saveReplay'),
   };
   const net = {
@@ -124,7 +126,8 @@ function make() {
     } as never,
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
-    mainMenu: screenStub('onPlay', 'onSquad', 'onAccount', 'onSettings') as never,
+    mainMenu: { ...screenStub('onPlay', 'onModes', 'onSquad', 'onAccount', 'onSettings'),
+      setQuickPlay: vi.fn() } as never,
     modeSelect: screenStub('onSolo', 'onCoop', 'onPvpSolo', 'onTutorial', 'onBack') as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
@@ -152,7 +155,12 @@ describe('wireScreens', () => {
     for (const name of screens) {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
-        if (slot === 'refreshAccountLabel') continue;
+        if (slot === 'refreshAccountLabel' || slot === 'setQuickPlay') continue;
+        // `onModes` is the one slot that is deliberately unwired on the default host: the
+        // button it belongs to is hidden there, because PLAY already opens the mode list.
+        // The portal branch below asserts the other half — that it IS wired when the button
+        // is on screen — so between the two, neither shape can ship a dead button.
+        if (slot === 'onModes') continue;
         expect(value, `${name}.${slot} is still unassigned`).toBeTypeOf('function');
       }
     }
@@ -302,5 +310,53 @@ describe('wireHud', () => {
     t.run.phase = 'forge';
     onSwitch(2);
     expect(t.called).toEqual([]);
+  });
+});
+
+describe('wireScreens — the portal host', () => {
+  // A game portal allows a first-time visitor at most one click to gameplay, so PLAY starts
+  // a run there and SELECT MODE moves to its own button. The pair of tests below is what
+  // keeps both shapes honest: neither host may end up with a button that does nothing, and
+  // the portal host may not lose the route to co-op / PvP / the tutorial.
+
+  afterEach(() => resetHostKind());
+
+  it('turns PLAY into a run and gives SELECT MODE its own button', () => {
+    setHostKind('crazygames');
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as {
+      onPlay: () => void;
+      onModes: () => void;
+      setQuickPlay: ReturnType<typeof vi.fn>;
+    };
+    expect(menu.setQuickPlay).toHaveBeenCalledWith(true);
+    menu.onPlay();
+    menu.onModes();
+    expect(t.called).toEqual(['runs.beginQuickRun', 'nav.showModeSelect']);
+  });
+
+  it('leaves every other route exactly where it was', () => {
+    // The portal branch must be one button's behaviour and not a different screen flow:
+    // co-op, PvP and the tutorial all still hang off SELECT MODE.
+    setHostKind('crazygames');
+    const t = make();
+    wireScreens(t.d);
+    const modeSelect = t.d.modeSelect as unknown as Record<string, () => void>;
+    modeSelect.onSolo!();
+    modeSelect.onCoop!();
+    modeSelect.onPvpSolo!();
+    modeSelect.onTutorial!();
+    expect(t.called).toEqual([
+      'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
+      'runs.beginTutorialRun',
+    ]);
+  });
+
+  it('does not touch the quick-play switch on the default host', () => {
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as { setQuickPlay: ReturnType<typeof vi.fn> };
+    expect(menu.setQuickPlay).not.toHaveBeenCalled();
   });
 });

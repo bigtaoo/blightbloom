@@ -288,3 +288,45 @@ describe('TouchControls.getVisual().active', () => {
     expect(c.getVisual().active).toBe(true);
   });
 });
+
+describe('TouchControls.setAssumeTouch', () => {
+  // The bug this exists for: `active` used to be `everTouched` alone, so a phone player
+  // opened the game and saw NO controls — no joystick, no fire button, no weapon buttons —
+  // until they had already guessed where to press. The platform has to declare which case a
+  // session is (`WebInput` from a coarse-pointer probe, `WeChatInput` unconditionally),
+  // because this class owns no globals and cannot ask.
+
+  it('draws the controls before any touch when the platform declares one', () => {
+    const c = laidOut();
+    expect(c.getVisual().active).toBe(false);
+    c.setAssumeTouch(true);
+    expect(c.getVisual().active).toBe(true);
+  });
+
+  it('leaves a real touch session active even if the declaration is withdrawn', () => {
+    // `everTouched` and the declaration are independent inputs to one answer; a session
+    // that HAS been touched stays a touch session regardless.
+    const c = laidOut();
+    c.pointerDown(1, 100, 100);
+    c.setAssumeTouch(false);
+    expect(c.getVisual().active).toBe(true);
+  });
+
+  it('changes nothing else about the visual', () => {
+    // Specifically not a layout or geometry switch — the buttons were always positioned,
+    // only the layer's visibility was gated. A control that MOVED when it appeared would be
+    // a different bug with the same symptom.
+    const before = laidOut().getVisual();
+    const after = (() => {
+      const c = laidOut();
+      c.setAssumeTouch(true);
+      return c.getVisual();
+    })();
+    expect(after.fire).toEqual(before.fire);
+    expect(after.weapon1).toEqual(before.weapon1);
+    expect(after.weapon2).toEqual(before.weapon2);
+    expect(after.interact).toEqual(before.interact);
+    expect(after.stickRadius).toEqual(before.stickRadius);
+    expect(after.move).toEqual(before.move);
+  });
+});

@@ -89,6 +89,9 @@ and produces input, and nothing else (`design/06`/`design/08`).
 src/
 ├─ main.ts            Web entry (WebPlatform → Game)
 ├─ main.wechat.ts     WeChat entry (WeChatPlatform → Game); loaded by ../wechat/game.js
+├─ main.crazygames.ts Game-portal entry (design/20) — WebPlatform again, plus relative
+│                     asset paths, the declared host, and the portal session. Built by
+│                     vite.crazygames.config.js
 ├─ game/
 │  ├─ Game.ts         the assembly shell: Pixi objects, the constructor, buildHud, and
 │  │                  the host interfaces. 497 lines since the 2026-09-03 split — the
@@ -135,9 +138,14 @@ src/
 ├─ i18n/              English-canonical t() + locales
 └─ platform/          platform isolation: canvas, Pixi Application, input, lifecycle
    ├─ types.ts        Platform / InputSource / InputState interfaces
-   ├─ TouchControls.ts  shared virtual twin-stick (used by both web and wechat)
+   ├─ hostKind.ts     WHICH host this build is, DECLARED by the entry point — the one
+   │                  platform fact no capability probe can answer (design/20)
+   ├─ TouchControls.ts  shared virtual twin-stick (used by every touch host)
    ├─ web/            WebPlatform + WebInput (keyboard + mouse, and touch)
-   └─ wechat/         WeChatPlatform + WeChatAdapter + WeChatInput (wx canvas + touch)
+   ├─ wechat/         WeChatPlatform + WeChatAdapter + WeChatInput (wx canvas + touch)
+   └─ crazygames/     the game-portal integration (design/20): the SDK façade, the ad
+                      policy, the banner container, and the one-input phase session that
+                      drives them. Nothing under game/ imports any of it.
 
 sim/                  offline harnesses (PvP/PvE balance sims, the arena audit, and
                       replay/ — the recorded-run inspector behind

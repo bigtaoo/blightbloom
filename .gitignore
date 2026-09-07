@@ -3,6 +3,9 @@ node_modules/
 
 # Build output
 dist/
+# Game-portal bundle (generated from src/main.crazygames.ts by build:crazygames, design/20).
+# Its own directory so it cannot overwrite the Cloudflare build, hence its own rule.
+client/dist-crazygames/
 *.tsbuildinfo
 # WeChat mini-game bundle (generated from src/main.wechat.ts by build:wechat)
 client/wechat/js/

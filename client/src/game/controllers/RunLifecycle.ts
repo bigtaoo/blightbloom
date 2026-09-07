@@ -58,6 +58,9 @@ export interface RunLifecycleDeps {
   /** The in-run HUD's visibility root — every phase transition toggles it. */
   hudView: Container;
   forge: Forge;
+  /** Only `beginQuickRun` needs it — the one run entry point reached from the main menu
+   *  itself, so the one that has to hide the main menu rather than the forge. */
+  mainMenu: { hide(): void };
   modeSelect: ModeSelect;
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -141,6 +144,33 @@ export class RunLifecycle {
     d.hudView.visible = true;
     d.forge.hide();
     d.screens.hide();
+  }
+
+  /**
+   * One click from the front door into a run — the main menu's PLAY on a host that requires
+   * it (`platform/hostKind.ts`).
+   *
+   * A game portal's own rule is "land new users in gameplay immediately... a maximum of 1
+   * click is allowed" (`docs.crazygames.com/requirements/gameplay`), and this game's normal
+   * route is PLAY → SELECT MODE → SOLO PvE → START RUN, which is four. That route is not
+   * wrong — the forge IS the between-run decision this game is built around — it is simply
+   * not what a portal's first-time visitor is given a chance to sit through. So this is a
+   * second door to the SAME run, not a different mode: it calls `beginRun` with whatever the
+   * meta already holds, which for a first-time player is an empty loadout that
+   * `resolveLoadout` fills with the starter kit — exactly what pressing START RUN in the
+   * forge without crafting anything does.
+   *
+   * The art gate is the one thing this must not skip, and the reason it is a method here
+   * rather than a second `onPlay` handler in the wiring table: the forge is normally what
+   * `showForge` gates on the player's behalf (see `ScreenNav.showForge`), and a run entered
+   * with no screen in between has to gate for itself or the first room is drawn out of
+   * placeholder rectangles. Same shape as `beginTutorialRun`/`beginArenaDemoRun`, which are
+   * the other two entry points with no screen between them and the run.
+   */
+  beginQuickRun(): void {
+    if (this.deps.artGate.defer(() => this.beginQuickRun())) return; // a run, with no screen between
+    this.deps.mainMenu.hide();
+    this.beginRun();
   }
 
   /**
