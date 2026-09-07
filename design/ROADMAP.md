@@ -776,17 +776,20 @@ reconciliation cost, and it lost to a tax-and-compliance argument.
   the short version is that the **price ids cannot be**, since funny sells coin tiers and this
   project sells ten named blueprint SKUs, and neither can the **webhook secret**, which is per
   notification destination.
-- **9.0 🔴 THE PRECONDITION, ahead of every item above: billsvc has no public address.** Found
-  2026-09-05 while writing the setup steps, and it outranks the credential question because no
-  credential can be exercised without it. A Paddle webhook is a server-to-server POST to a public
-  HTTPS URL, and this repository has **no server deployment of any kind** — no Dockerfile, no
-  compose file, no process manager config, and `.github/workflows/` carries deploys for the client,
-  the animator and the map editor only. `b.gamestao.com` is Cloudflare Workers static assets
-  (`wrangler/client.jsonc`), which cannot host a Node process at all, let alone one opening
-  `node:sqlite` files. So Phase 9 is blocked on standing the three planes up somewhere reachable,
-  not on Paddle. The sibling project solved exactly this — a VPS running docker-compose behind Caddy
-  with automatic Let's Encrypt, published as one domain — and the cheapest route here is the same
-  box and the same zone under a new subdomain, since the Cloudflare account is already shared.
+- **9.0 🟢 THE PRECONDITION — RESOLVED 2026-09-07: the three planes are deployed.** Found
+  2026-09-05 while writing the setup steps (billsvc has no public address, and a Paddle webhook
+  needs one), and it outranked the credential question because no credential can be exercised
+  without it. `gameserver`/`matchsvc`/`billsvc` now run as three containers
+  (`server/Dockerfile`/`server/docker-compose.yml`, built via `server/scripts/build.mjs` — an
+  esbuild bundle per entrypoint, since this server pulls live TypeScript from sibling workspaces
+  via path aliases and can't just rsync `src/` the way the sibling project's simpler server does)
+  on the SAME VPS + Cloudflare zone the sibling project's own backend uses, under the new
+  subdomain `bb.gamestao.com`, behind the same Caddy instance (one appended site block, see
+  `server/deploy/README.md`). CI-based deploy is built (`.github/workflows/server-deploy.yml`)
+  modulo one root-owned step a human has to run once (README §6). **billsvc still runs in
+  dev-stub mode** — no real Paddle credential exists yet, so this resolves the deployment
+  precondition only; 9.1–9.4's actual Paddle work is still ahead, now genuinely unblocked rather
+  than blocked twice over.
 - **9.5 🟢 One consequence outside billsvc.** Paddle is web-only, so with it as the only real
   platform the store sells on the web build and nowhere else. `platform/storePlatform.ts` (8.8)
   already produces exactly that, and offering Paddle checkout inside an iOS build is the App Store

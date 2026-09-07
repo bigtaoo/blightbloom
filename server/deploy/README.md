@@ -1,15 +1,20 @@
 # Deploying the backend
 
-> **Status (2026-09-07): fully live.** All three containers are up and healthy on
-> `wnet-server` at `~/blightbloom-server/`, the Caddy site block is appended and reloaded,
-> DNS is in place, and `curl https://bb.gamestao.com/health` returns
+> **Status (2026-09-07): backend live, client wired, CI built minus one manual step.**
+> All three containers are up and healthy on `wnet-server` at `~/blightbloom-server/`, the
+> Caddy site block is appended and reloaded, DNS is in place, and
+> `curl https://bb.gamestao.com/health` returns
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
-> certificate. One thing worth knowing for next time: Caddy attempted the ACME challenge
-> the instant the Caddyfile was reloaded, *before* the DNS record actually existed — that
-> attempt failed (NXDOMAIN) and Caddy backed off ~10 minutes before its next automatic
-> retry, which is what actually succeeded once DNS had propagated. Add the DNS record
-> FIRST, confirm it resolves, only then append/reload the Caddy block, and this wait
-> disappears. §3 onward (client wiring, CI, Paddle) is still open.
+> certificate (§0–§2). The client now points at it by default on a deployed build (§3).
+> CI-based deploy (§6) is fully built but for one root-owned step no SSH session as `tao`
+> can do — see §6 for the exact command and who needs to run it. The only thing left after
+> that is Paddle (§7), which is not an engineering task at all.
+>
+> One thing worth knowing for next time: Caddy attempted the ACME challenge the instant
+> the Caddyfile was reloaded, *before* the DNS record actually existed — that attempt
+> failed (NXDOMAIN) and Caddy backed off ~10 minutes before its next automatic retry,
+> which is what actually succeeded once DNS had propagated. Add the DNS record FIRST,
+> confirm it resolves, only then append/reload the Caddy block, and this wait disappears.
 
 Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on the **same VPS
 `deutsch` already uses** (`wnet-server` = `92.205.18.79`, Debian 13; see `deutsch`'s own
@@ -159,12 +164,15 @@ curl https://bb.gamestao.com/health
 # {"ok":true,"service":"daydayup-matchsvc"}
 ```
 
-## 3. Client
+## 3. Client — DONE (2026-09-07)
 
-Point the client at this deployment (`DDU_MATCHSVC_URL` equivalent on the client side —
-whatever env var `client/` reads for its control-plane base URL) to
-`https://bb.gamestao.com`. Left for a follow-up pass — this step only stands the backend
-up, it does not yet wire the shipped client to it.
+`client/src/game/runState.ts`'s `matchBaseUrl` now reads a build-time
+`VITE_MATCHSVC_URL` (falling back to `DEFAULT_MATCH_BASE_URL`,
+`http://localhost:8788`, when unset — `?mm=` still overrides either at runtime).
+`.github/workflows/client-deploy.yml`'s build step injects it from the repo Variable
+`MATCHSVC_URL`, set to `https://bb.gamestao.com`. Local equivalent: `client/.env.example`.
+A deployed client build now actually points its online co-op/PvP queue at this backend
+instead of silently trying `localhost:8788` and failing with no visible error.
 
 ## 4. Acceptance checklist
 
@@ -199,12 +207,57 @@ scp wnet-server:~/blightbloom-server/data/billsvc/billing.db   ./billing-backup-
 ssh wnet-server 'cd ~/blightbloom-server && docker compose down && rm -rf ~/blightbloom-server'
 ```
 
-## 6. Not yet built
+## 6. CI-based deploy — built, ONE manual step outstanding
 
-- **CI-based deploy.** deutsch's `deploy/ci-deploy.sh` + a restricted forced-command SSH
-  key is the template to follow once this manual path is proven — deliberately deferred
-  rather than guessed at here.
+`.github/workflows/server-deploy.yml` + `server/deploy/ci-deploy.sh`, same shape as
+deutsch's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
+`server/**`/`engine/**`/`client/src/**` (or manual dispatch) → builds the bundles → ships
+them over SSH with a key that can do exactly one thing on the VPS.
+
+**What's already done:**
+- A dedicated keypair generated (`D:\cloud\blightbloom_server_ci_ed25519` — the only
+  readable copy; a GitHub Secret is write-only), private half in the repo Secret
+  `SERVER_DEPLOY_KEY`.
+- `server/deploy/ci-deploy.sh` installed on the VPS at
+  `~/blightbloom-server-ci-deploy.sh` (outside the deploy target on purpose — see its own
+  header), `chmod 700`.
+- Repo Variables set: `SERVER_SSH_HOST=92.205.18.79`, `SERVER_SSH_USER=tao`,
+  `SERVER_SSH_KNOWN_HOSTS` (pinned, fingerprint cross-checked against the VPS's own
+  `/etc/ssh/ssh_host_ed25519_key.pub` — never `StrictHostKeyChecking=no`),
+  `SERVER_API_BASE=https://bb.gamestao.com`.
+
+**What's still outstanding, and can't be done by an agent working over SSH as `tao`:**
+`~/.ssh/authorized_keys` on that VPS is **root-owned** and `tao`'s `sudo` needs an
+interactive password — deutsch's own README hit the identical wall and solved it the same
+way, with a human running the append. Whoever has that password needs to run, once:
+
+```bash
+ssh -t wnet-server 'sudo sh -c "cat >> /home/tao/.ssh/authorized_keys" <<EOF
+command="/home/tao/blightbloom-server-ci-deploy.sh",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMegdXb4BJ1gsqZg5rztWUPjte/Rzn/eUnVBZMYEGAuo github-actions blightbloom-server deploy
+EOF'
+```
+
+Then flip the switch (unset today on purpose — deutsch's README explains why: a deploy
+key that isn't authorized yet would otherwise turn every push to `main` red):
+
+```bash
+gh variable set SERVER_DEPLOY_ENABLED -R bigtaoo/daydayup -b "true"
+```
+
+Verify with a manual run before trusting the automatic trigger:
+
+```bash
+gh workflow run server-deploy -R bigtaoo/daydayup
+gh run watch -R bigtaoo/daydayup
+```
+
+## 7. Still open
+
 - **Paddle credentials**, which is the actual reason billsvc exists at all
   (design/19-server-platform.md §9). Until those exist, billsvc stays in dev-stub mode and
   the store is not really "for sale" — it just proves the proxy plumbing end to end.
-- **The client pointed at this deployment** (§3 above).
+  **This one is not an engineering task**: it means opening a real Paddle seller account
+  with real business/bank/tax details and going through their merchant-domain review
+  (§9 already documents that funny was rejected twice on exactly that). No agent should
+  do this part — it needs a human with the authority to accept a Merchant of Record
+  agreement and hand over real financial/business information.

@@ -45,6 +45,17 @@ export const SEED_BASE = 0xda1d;
 /** The default matchsvc origin, before any `?mm=` override. */
 export const DEFAULT_MATCH_BASE_URL = 'http://localhost:8788';
 
+/**
+ * The build-time override (server/deploy/README.md §3): `VITE_MATCHSVC_URL`, injected by
+ * `.github/workflows/client-deploy.yml` from the repo variable `MATCHSVC_URL` so a deployed
+ * build points at the real backend (`https://bb.gamestao.com`) instead of localhost. Read
+ * once at module load — `import.meta.env` is a compile-time replacement, not something that
+ * changes at runtime, so capturing it in a constant costs nothing and keeps `RunState`'s own
+ * field a plain assignment. Unset (local dev, or a test runner with no such env var) falls
+ * back to `DEFAULT_MATCH_BASE_URL`; `?mm=` (gameQueryParams.ts) still overrides either one.
+ */
+const BUILD_MATCH_BASE_URL: string = import.meta.env.VITE_MATCHSVC_URL || DEFAULT_MATCH_BASE_URL;
+
 export class RunState {
   // ── screen / run phase ────────────────────────────────────────────────────
   phase: Phase = 'menu';
@@ -92,7 +103,7 @@ export class RunState {
   arenaDemo: ArenaId | null = null;
 
   // ── dev harnesses ─────────────────────────────────────────────────────────
-  matchBaseUrl = DEFAULT_MATCH_BASE_URL;
+  matchBaseUrl = BUILD_MATCH_BASE_URL;
   // `?lag=` DEV harness (LaggyTransport, CoopSession construction in the matchmaking
   // controller) to feel/tune the online predictor's smoothing without real devices — the
   // predictor itself lives in GameLoop.

@@ -1,0 +1,97 @@
+name: server-deploy
+
+# Auto-deploy the backend (gameserver/matchsvc/billsvc) to the VPS at bb.gamestao.com —
+# the same box `deutsch`'s sync backend runs on (server/deploy/README.md).
+# Trigger: push to main touching anything the server's esbuild bundle can pull in
+# (server/**, engine/**, client/src/** — see server/scripts/build.mjs's workspace
+# aliases), or this workflow file; or manual Run from the Actions page.
+#
+# Unlike client-deploy.yml this has no Cloudflare step — it's a straight SSH deploy, same
+# shape as `deutsch`'s deploy-server job (that repo's own deploy.yml is the template this
+# was built from). Needs, in Settings → Secrets and variables → Actions:
+#   Secrets    SERVER_DEPLOY_KEY      — SSH private key, forced-command-restricted on the
+#                                       VPS (local copy: D:\cloud\blightbloom_server_ci_ed25519,
+#                                       since a GitHub Secret is write-only)
+#   Variables  SERVER_DEPLOY_ENABLED = true       — deploy switch (unset = job skipped, so a
+#                                       misconfigured secret doesn't turn every CI run red)
+#              SERVER_SSH_HOST / SERVER_SSH_USER / SERVER_SSH_KNOWN_HOSTS
+#              SERVER_API_BASE = https://bb.gamestao.com
+#
+# The key deployed here can do exactly one thing: it is registered on the VPS with
+# `command="/home/tao/blightbloom-server-ci-deploy.sh",restrict` — see
+# server/deploy/ci-deploy.sh's own header for why, and server/deploy/README.md §6 for how
+# it's installed (a step this workflow's key cannot do to itself, on purpose).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'engine/**'
+      - 'client/src/**'
+      - '.github/workflows/server-deploy.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: server-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-server:
+    name: backend (VPS)
+    runs-on: ubuntu-latest
+    if: ${{ vars.SERVER_DEPLOY_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # Single root lockfile (npm workspaces) — the esbuild bundling needs the whole
+      # monorepo present to resolve @dd/engine / @dd/game / @dd/net (server/scripts/build.mjs).
+      - name: install
+        run: npm ci
+
+      - name: build server bundles
+        run: npm run build -w server
+
+      - name: deploy over ssh
+        env:
+          DEPLOY_KEY: ${{ secrets.SERVER_DEPLOY_KEY }}
+          SSH_HOST: ${{ vars.SERVER_SSH_HOST }}
+          SSH_USER: ${{ vars.SERVER_SSH_USER }}
+          SSH_KNOWN_HOSTS: ${{ vars.SERVER_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host key — deliberately NOT StrictHostKeyChecking=no, which would accept
+          # any host claiming to be this one and hand it the private key and payload.
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          # Payload over stdin: the forced command on the far end reads a tar.gz from it.
+          # Excludes node_modules (installed server-side) and .env/data (secrets and state
+          # never leave the VPS).
+          tar czf - -C server dist Dockerfile docker-compose.yml deploy/package.json |
+            ssh -T -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST"
+
+      - name: verify from the outside
+        # The forced command already checked each container's own /health; this step goes
+        # over the public internet instead, which also proves DNS/Caddy/the cert didn't
+        # break as a side effect of this deploy.
+        env:
+          API_BASE: ${{ vars.SERVER_API_BASE }}
+        run: |
+          set -eu
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 10 "$API_BASE/health"; then
+              echo
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "public health check did not respond" >&2
+          exit 1

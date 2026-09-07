@@ -710,15 +710,19 @@ human has to know which of two places to look.
   refund events, which makes the refund bullet below a dependency of this work rather than a
   parallel question.
 
-  **THE PRECONDITION, found 2026-09-05 and ahead of every credential: billsvc has no public
-  address.** A Paddle webhook is a server-to-server POST to a public HTTPS URL, and this project
-  has no server deployment of any kind — no container or process-manager config anywhere, and the
-  only deploys that exist publish the client, the animator and the map editor. `b.gamestao.com` is
-  Cloudflare Workers static assets, which cannot host a Node process at all, let alone one opening
-  `node:sqlite` files. Phase 9 is therefore blocked on standing the three planes up somewhere
-  reachable, not on Paddle. funny solved exactly this shape — a VPS running its stack behind Caddy
-  with automatic Let's Encrypt, published as one domain — and the same box under a new subdomain is
-  the cheapest route, the Cloudflare zone already being shared.
+  **THE PRECONDITION, found 2026-09-05 — RESOLVED 2026-09-07: billsvc now has a public address.**
+  A Paddle webhook is a server-to-server POST to a public HTTPS URL, and until this date the
+  project had no server deployment of any kind. `gameserver`/`matchsvc`/`billsvc` now run as three
+  containers (`server/Dockerfile`, `server/docker-compose.yml`) on the same VPS + Cloudflare zone
+  `funny` (via `deutsch`) already uses, behind the same Caddy instance, at the new subdomain
+  `bb.gamestao.com` — full runbook in `server/deploy/README.md`. Getting there needed one thing
+  this section didn't anticipate: this server pulls live TypeScript from sibling workspaces via
+  path aliases (`@dd/engine`, `@dd/game/*`, `@dd/net/*`), so rsync-and-run (funny's/deutsch's own
+  approach) would have meant shipping and `npm ci`-ing the whole monorepo onto the VPS.
+  `server/scripts/build.mjs` instead esbuild-bundles each entrypoint into one flat file, resolving
+  those aliases at BUILD time, so the deploy target needs nothing but Docker. **billsvc still runs
+  in dev-stub mode** — this resolves the deployment precondition only, not the credential
+  question below, which is unchanged and still open.
 
   **What is reusable from funny's Paddle setup, and what is not.** The seller account is the same
   one; nothing else transfers cleanly. **Price ids cannot be reused at all** — funny sells coin

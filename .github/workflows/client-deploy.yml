@@ -52,6 +52,12 @@ jobs:
         run: npm ci
 
       - name: build client
+        # The backend's origin is a BUILD-time value (client/src/game/runState.ts reads
+        # import.meta.env.VITE_MATCHSVC_URL) — unset means every deployed build silently
+        # falls back to localhost:8788 and online co-op/PvP just never connects, with no
+        # error (client/.env.example, server/deploy/README.md §3).
+        env:
+          VITE_MATCHSVC_URL: ${{ vars.MATCHSVC_URL }}
         run: npm run build -w client
 
       # Run from repo root using -c to specify the client config (assets point to

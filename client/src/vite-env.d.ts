@@ -3,10 +3,12 @@
 // `vite/client`, so each one has to be declared here.
 
 /** `import.meta.env` — Vite statically replaces these at build time. Only the flags this
- * codebase actually reads are declared; see autoReload.ts for PROD's use. */
+ * codebase actually reads are declared; see autoReload.ts for PROD's use, runState.ts for
+ * VITE_MATCHSVC_URL's (server/deploy/README.md §3). */
 interface ImportMetaEnv {
   readonly PROD: boolean;
   readonly DEV: boolean;
+  readonly VITE_MATCHSVC_URL: string | undefined;
 }
 
 interface ImportMeta {
