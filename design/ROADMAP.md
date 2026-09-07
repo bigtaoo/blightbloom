@@ -785,11 +785,18 @@ reconciliation cost, and it lost to a tax-and-compliance argument.
   via path aliases and can't just rsync `src/` the way the sibling project's simpler server does)
   on the SAME VPS + Cloudflare zone the sibling project's own backend uses, under the new
   subdomain `bb.gamestao.com`, behind the same Caddy instance (one appended site block, see
-  `server/deploy/README.md`). CI-based deploy is built (`.github/workflows/server-deploy.yml`)
-  modulo one root-owned step a human has to run once (README §6). **billsvc still runs in
-  dev-stub mode** — no real Paddle credential exists yet, so this resolves the deployment
-  precondition only; 9.1–9.4's actual Paddle work is still ahead, now genuinely unblocked rather
-  than blocked twice over.
+  `server/deploy/README.md`). CI-based deploy is fully live too
+  (`.github/workflows/server-deploy.yml` + a forced-command-restricted SSH key, proven both
+  manually and through a real green `gh workflow run`) — push to `main` touching
+  `server/**`/`engine/**`/`client/src/**` now redeploys automatically. The client
+  (`client/src/game/runState.ts`) points at this backend by default as of the same date. On the
+  VPS itself, everything is deliberately named `wnet-test` rather than after this project — the
+  box is company hardware borrowed for idle capacity, not provisioned for this game. **billsvc
+  still runs in dev-stub mode** — no real Paddle credential exists yet, so this resolves the
+  deployment precondition only; 9.1–9.4's actual Paddle work is still ahead, now genuinely
+  unblocked rather than blocked twice over, and is explicitly NOT an engineering task an agent
+  can finish — it needs a human to open a real merchant account with real business/bank/tax
+  details.
 - **9.5 🟢 One consequence outside billsvc.** Paddle is web-only, so with it as the only real
   platform the store sells on the web build and nowhere else. `platform/storePlatform.ts` (8.8)
   already produces exactly that, and offering Paddle checkout inside an iOS build is the App Store
