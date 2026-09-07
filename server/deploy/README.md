@@ -1,7 +1,7 @@
 # Deploying the backend
 
 > **Status (2026-09-07): backend live, client wired, CI built minus one manual step.**
-> All three containers are up and healthy on `wnet-server` at `~/blightbloom-server/`, the
+> All three containers are up and healthy on `wnet-server` at `~/wnet-test/`, the
 > Caddy site block is appended and reloaded, DNS is in place, and
 > `curl https://bb.gamestao.com/health` returns
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
@@ -24,7 +24,16 @@ Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on the **s
 That machine also runs the company's wnet mock stack (frontend / webapi / mssql / grafana
 / caddy) *and* `deutsch-sync`. This project's footprint on it is the same shape deutsch's
 is: **one line added to `~/wnet/docker/Caddyfile`**, everything else self-contained under
-`~/blightbloom-server/`, removable in one command.
+`~/wnet-test/`, removable in one command.
+
+**On naming (2026-09-07):** the box is the company's, borrowed for its idle spare
+capacity rather than provisioned for this project — so everything visible on the VPS
+itself (the directory, the containers, the CI script, the Caddyfile comment) is named
+generically (`wnet-test`) instead of after this project. Nothing about the game or its
+name appears anywhere on that shared machine on purpose; this repo's own naming
+(`blightbloom`/`daydayup`) stays exactly where it always was — in this private repo, and
+in the GitHub Actions secrets/variables, neither of which anyone with shell access to the
+VPS can see.
 
 Three processes, one image (`server/Dockerfile`, `server/docker-compose.yml`):
 `gameserver` (WS data plane, design/06), `matchsvc` (control plane — matchmaking,
@@ -81,13 +90,13 @@ npm run build -w server        # → server/dist/{index,matchsvc,billsvc}.mjs
 ```
 
 Then ship the small built output — NOT the monorepo — from `server/`. `deploy/package.json`
-has to land at `~/blightbloom-server/deploy/package.json` (the Dockerfile's
+has to land at `~/wnet-test/deploy/package.json` (the Dockerfile's
 `COPY deploy/package.json ./package.json` expects it there), which is why it's passed as
 its own top-level arg rather than flattened:
 
 ```bash
 cd server
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json .env wnet-server:~/blightbloom-server/
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json .env wnet-server:~/wnet-test/
 ```
 
 **No `rsync` on Windows Git Bash** (this is how the first deploy actually happened,
@@ -95,16 +104,16 @@ rsync -av dist Dockerfile docker-compose.yml deploy/package.json .env wnet-serve
 `deploy/package.json` as its own copy so it lands at the right path:
 
 ```bash
-ssh wnet-server 'mkdir -p ~/blightbloom-server/deploy'
-scp -rq dist Dockerfile docker-compose.yml .env wnet-server:~/blightbloom-server/
-scp -q deploy/package.json wnet-server:~/blightbloom-server/deploy/package.json
+ssh wnet-server 'mkdir -p ~/wnet-test/deploy'
+scp -rq dist Dockerfile docker-compose.yml .env wnet-server:~/wnet-test/
+scp -q deploy/package.json wnet-server:~/wnet-test/deploy/package.json
 ```
 
 Then on the server:
 
 ```bash
 ssh wnet-server
-cd ~/blightbloom-server
+cd ~/wnet-test
 docker compose up -d --build
 docker compose logs -f          # all three should log "on http://0.0.0.0:..." / "on ws://0.0.0.0:8787/ws"
 ```
@@ -121,9 +130,9 @@ docker compose restart matchsvc billsvc
 Self-check (bypassing Caddy, straight to each container):
 
 ```bash
-docker exec blightbloom-gameserver node -e "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log)"
-docker exec blightbloom-matchsvc  node -e "fetch('http://127.0.0.1:8788/health').then(r=>r.json()).then(console.log)"
-docker exec blightbloom-billsvc   node -e "fetch('http://127.0.0.1:8789/health').then(r=>r.json()).then(console.log)"
+docker exec wnet-test-gameserver node -e "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log)"
+docker exec wnet-test-matchsvc  node -e "fetch('http://127.0.0.1:8788/health').then(r=>r.json()).then(console.log)"
+docker exec wnet-test-billsvc   node -e "fetch('http://127.0.0.1:8789/health').then(r=>r.json()).then(console.log)"
 ```
 
 ## 2. Wire up Caddy
@@ -134,8 +143,8 @@ two-line path split, not a whole-host proxy the way deutsch's single-service one
 
 ```caddyfile
 bb.gamestao.com {
-	reverse_proxy /ws* blightbloom-gameserver:8787
-	reverse_proxy blightbloom-matchsvc:8788
+	reverse_proxy /ws* wnet-test-gameserver:8787
+	reverse_proxy wnet-test-matchsvc:8788
 }
 ```
 
@@ -147,8 +156,8 @@ ssh wnet-server 'cd ~/wnet/docker && cp Caddyfile Caddyfile.bak-$(date +%Y%m%d-%
   && cat >> Caddyfile <<EOF
 
 bb.gamestao.com {
-	reverse_proxy /ws* blightbloom-gameserver:8787
-	reverse_proxy blightbloom-matchsvc:8788
+	reverse_proxy /ws* wnet-test-gameserver:8787
+	reverse_proxy wnet-test-matchsvc:8788
 }
 EOF
   && docker exec docker-caddy-1 caddy validate --config /etc/caddy/Caddyfile \
@@ -181,7 +190,7 @@ instead of silently trying `localhost:8788` and failing with no visible error.
 - [ ] A WS client can open `wss://bb.gamestao.com/ws?ticket=...` and receive frames
 - [ ] `docker compose logs billsvc` shows `[DEV RECEIPT STUB ENABLED]` — confirms billsvc
       is NOT accidentally in production mode
-- [ ] `docker inspect blightbloom-billsvc --format '{{.Config.Env}}'` does **not** show
+- [ ] `docker inspect wnet-test-billsvc --format '{{.Config.Env}}'` does **not** show
       `NODE_ENV=production` (that combination is refused at the process level, but the
       compose file should never even attempt it)
 - [ ] A `/store/skus` request through matchsvc returns the SKU table (proves the
@@ -191,20 +200,20 @@ instead of silently trying `localhost:8788` and failing with no visible error.
 
 ```bash
 # Logs
-docker compose -f ~/blightbloom-server/docker-compose.yml logs -f
+docker compose -f ~/wnet-test/docker-compose.yml logs -f
 
 # Redeploy after a code change (build locally, then re-ship + rebuild)
 cd server && npm run build
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json wnet-server:~/blightbloom-server/
-ssh wnet-server 'cd ~/blightbloom-server && docker compose up -d --build'
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json wnet-server:~/wnet-test/
+ssh wnet-server 'cd ~/wnet-test && docker compose up -d --build'
 
 # Back up both SQLite files
-scp wnet-server:~/blightbloom-server/data/matchsvc/accounts.db ./accounts-backup-$(date +%F).sqlite
-scp wnet-server:~/blightbloom-server/data/billsvc/billing.db   ./billing-backup-$(date +%F).sqlite
+scp wnet-server:~/wnet-test/data/matchsvc/accounts.db ./accounts-backup-$(date +%F).sqlite
+scp wnet-server:~/wnet-test/data/billsvc/billing.db   ./billing-backup-$(date +%F).sqlite
 
 # Tear down entirely (zero effect on wnet or deutsch-sync — remember to also remove the
 # Caddyfile block above)
-ssh wnet-server 'cd ~/blightbloom-server && docker compose down && rm -rf ~/blightbloom-server'
+ssh wnet-server 'cd ~/wnet-test && docker compose down && rm -rf ~/wnet-test'
 ```
 
 ## 6. CI-based deploy — built, ONE manual step outstanding
@@ -215,11 +224,11 @@ deutsch's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
 them over SSH with a key that can do exactly one thing on the VPS.
 
 **What's already done:**
-- A dedicated keypair generated (`D:\cloud\blightbloom_server_ci_ed25519` — the only
+- A dedicated keypair generated (`D:\cloud\wnet_test_ci_ed25519` — the only
   readable copy; a GitHub Secret is write-only), private half in the repo Secret
   `SERVER_DEPLOY_KEY`.
 - `server/deploy/ci-deploy.sh` installed on the VPS at
-  `~/blightbloom-server-ci-deploy.sh` (outside the deploy target on purpose — see its own
+  `~/wnet-test-ci-deploy.sh` (outside the deploy target on purpose — see its own
   header), `chmod 700`.
 - Repo Variables set: `SERVER_SSH_HOST=92.205.18.79`, `SERVER_SSH_USER=tao`,
   `SERVER_SSH_KNOWN_HOSTS` (pinned, fingerprint cross-checked against the VPS's own
@@ -233,7 +242,7 @@ way, with a human running the append. Whoever has that password needs to run, on
 
 ```bash
 ssh -t wnet-server 'sudo sh -c "cat >> /home/tao/.ssh/authorized_keys" <<EOF
-command="/home/tao/blightbloom-server-ci-deploy.sh",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMegdXb4BJ1gsqZg5rztWUPjte/Rzn/eUnVBZMYEGAuo github-actions blightbloom-server deploy
+command="/home/tao/wnet-test-ci-deploy.sh",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEhzrE0mY6rqpxjF10kaVT7kegktsOBvHMjNJ/8llyZq wnet-test-deploy
 EOF'
 ```
 

@@ -1,22 +1,22 @@
 #!/bin/sh
-# The ONLY command CI is allowed to run on wnet-server, deploying the backend.
+# The ONLY command CI is allowed to run on the host, deploying the backend.
 #
 # ── Why it has this shape ──
 # The deploy key is registered in the server's `~/.ssh/authorized_keys` as:
 #
-#   command="/home/tao/blightbloom-server-ci-deploy.sh",restrict ssh-ed25519 AAAA...
+#   command="/home/tao/wnet-test-ci-deploy.sh",restrict ssh-ed25519 AAAA...
 #
 # `command=` is OpenSSH's FORCED COMMAND: whoever holds this private key, whatever they
 # ask sshd to run, sshd runs only this script. That pins this key's capability down to
-# "deploy the backend once" instead of "log into this box as tao" — a box that also runs
-# the company's wnet stack. `restrict` turns off port/agent forwarding, pty and X11
-# (otherwise those could be used to route around the forced command).
+# "deploy the backend once" instead of "log into this box" — a shared box borrowed for
+# spare capacity, not owned by this project. `restrict` turns off port/agent forwarding,
+# pty and X11 (otherwise those could be used to route around the forced command).
 #
-# ── Why it lives OUTSIDE ~/blightbloom-server ──
+# ── Why it lives OUTSIDE ~/wnet-test ──
 # Because it must not be deployable content itself — installed inside the deploy target,
 # a deploy could replace this script and the forced-command constraint would be gone at
-# that point. So the LIVE copy is `~/blightbloom-server-ci-deploy.sh`; this file in the
-# repo is only a copy — editing it here does nothing until it's re-installed by hand
+# that point. So the LIVE copy is `~/wnet-test-ci-deploy.sh`; this file in the repo is only
+# a copy — editing it here does nothing until it's re-installed by hand
 # (deploy/README.md's CI section has the command).
 #
 # ── Why it only moves five things ──
@@ -27,7 +27,7 @@
 # (server/deploy/README.md §5), a handful of times a year at most.
 set -eu
 
-TARGET="$HOME/blightbloom-server"
+TARGET="$HOME/wnet-test"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -58,7 +58,7 @@ docker compose ps --format '{{.Name}} {{.Status}}'
 for svc in gameserver:8787 matchsvc:8788 billsvc:8789; do
   name="${svc%%:*}"
   port="${svc##*:}"
-  container="blightbloom-$name"
+  container="wnet-test-$name"
   docker exec "$container" node -e "
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     (async () => {

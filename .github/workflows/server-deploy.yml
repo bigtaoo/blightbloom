@@ -10,7 +10,7 @@ name: server-deploy
 # shape as `deutsch`'s deploy-server job (that repo's own deploy.yml is the template this
 # was built from). Needs, in Settings → Secrets and variables → Actions:
 #   Secrets    SERVER_DEPLOY_KEY      — SSH private key, forced-command-restricted on the
-#                                       VPS (local copy: D:\cloud\blightbloom_server_ci_ed25519,
+#                                       VPS (local copy: D:\cloud\wnet_test_ci_ed25519,
 #                                       since a GitHub Secret is write-only)
 #   Variables  SERVER_DEPLOY_ENABLED = true       — deploy switch (unset = job skipped, so a
 #                                       misconfigured secret doesn't turn every CI run red)
@@ -18,7 +18,7 @@ name: server-deploy
 #              SERVER_API_BASE = https://bb.gamestao.com
 #
 # The key deployed here can do exactly one thing: it is registered on the VPS with
-# `command="/home/tao/blightbloom-server-ci-deploy.sh",restrict` — see
+# `command="/home/tao/wnet-test-ci-deploy.sh",restrict` — see
 # server/deploy/ci-deploy.sh's own header for why, and server/deploy/README.md §6 for how
 # it's installed (a step this workflow's key cannot do to itself, on purpose).
 
