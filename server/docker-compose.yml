@@ -1,0 +1,114 @@
+# Independent compose project, mirroring the sibling deutsch-sync deploy on the same box
+# (deutsch/deploy/README.md): touches nothing of the host's own wnet stack except one
+# Caddyfile site block (see server/deploy/README.md), and can be torn down entirely on its
+# own (`docker compose down && rm -rf ~/blightbloom-server`).
+#
+# Network: joins the wnet stack's existing `docker_default` so Caddy can reach `gameserver`
+# and `matchsvc` by container name, and so the three services here can reach each other the
+# same way. Ports are `expose`d, never `ports`-published — everything comes in through
+# Caddy's :443, nothing binds a host port directly.
+#
+# One image (server/Dockerfile, built from the ALREADY-BUILT server/dist/*.mjs —
+# `npm run build -w server` first), three processes selected by `command:`.
+services:
+  gameserver:
+    build: .
+    image: blightbloom-server:latest
+    container_name: blightbloom-gameserver
+    command: ["node", "index.mjs"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8787"
+      NODE_ENV: production
+      DDU_MATCHSVC_URL: http://matchsvc:8788
+    expose:
+      - "8787"
+    networks:
+      - wnet
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  matchsvc:
+    build: .
+    image: blightbloom-server:latest
+    container_name: blightbloom-matchsvc
+    command: ["node", "matchsvc.mjs"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MATCH_PORT: "8788"
+      NODE_ENV: production
+      # Public address a client's issued ticket gets redeemed against — NOT the internal
+      # gameserver:8787 hop, this is what the browser itself opens a WebSocket to.
+      DDU_GAMESERVER_URL: wss://bb.gamestao.com/ws
+      DDU_BILLSVC_URL: http://billsvc:8789
+      DDU_DB_PATH: /data/accounts.db
+    volumes:
+      - ./data/matchsvc:/data
+    expose:
+      - "8788"
+    networks:
+      - wnet
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  billsvc:
+    build: .
+    image: blightbloom-server:latest
+    container_name: blightbloom-billsvc
+    command: ["node", "billsvc.mjs"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BILL_PORT: "8789"
+      # Deliberately NOT production: no real Paddle credential exists yet
+      # (design/19-server-platform.md §9), and billsvc/startupGuard.ts refuses to boot a
+      # dev-stub flag under NODE_ENV=production, full stop, by design. This process is
+      # reachable ONLY from matchsvc over the internal network — never through Caddy.
+      NODE_ENV: development
+      DDU_BILLING_DEV_STUB: "1"
+      DDU_BILLING_DB_PATH: /data/billing.db
+    volumes:
+      - ./data/billsvc:/data
+    expose:
+      - "8789"
+    networks:
+      - wnet
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8789/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  wnet:
+    external: true
+    name: docker_default

@@ -15,7 +15,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check:filelength": "node ../build/checkFileLength.mjs"
+    "check:filelength": "node ../build/checkFileLength.mjs",
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
+    "esbuild": "^0.25.12",
     "tsx": "^4.19.2"
   }
 }

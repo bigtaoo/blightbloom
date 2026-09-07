@@ -1,0 +1,10 @@
+{
+  "name": "daydayup-server-deploy",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Runtime package.json for the built server bundles (server/dist/*.mjs). Ships alongside them — see server/scripts/build.mjs for what gets bundled vs. left external.",
+  "dependencies": {
+    "ws": "8.21.1"
+  }
+}
