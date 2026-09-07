@@ -137,6 +137,11 @@ export function runBotClient(opts: BotClientOptions & { transport: Transport }):
   }
 
   function tick(): void {
+    // `done` is the only arm of this guard a test can reach (see BotClient.test.ts): `stop`
+    // clears the interval, so a tick after teardown needs one already in flight, and
+    // `session.started` is set before `onMatchStart` arms the interval at all. Both stay
+    // uncovered on purpose — the cost of dropping them is a bot that submits into a closed
+    // session, which surfaces as a matchsvc crash rather than a missing bot.
     if (done || !session.started) return;
     const s = session.state!;
     session.submit(bot.build(s, opts.owner, session.frame));

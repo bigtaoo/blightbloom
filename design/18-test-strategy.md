@@ -1,7 +1,9 @@
 # Test strategy: keeping the logic in sync with itself
 
-> Status: **all four layers shipped**, 2026-08-30, at `ENGINE_VERSION` **49**, and since
-> 2026-09-03 **measured and gated** — see "Layer 4: coverage as a gate" below. Repo-wide
+> Status: **all four PLANNED layers shipped**, 2026-08-30, at `ENGINE_VERSION` **49**, and since
+> 2026-09-03 **measured and gated** — see "Layer 4: coverage as a gate" below. Two layers have been
+> added since, neither in the original six-gap plan: **5** the content axis (2026-09-04) and **6**
+> the deploy axis (2026-09-07). The table below is the current list. Repo-wide
 > `npm run check` was green at 5,885 tests when they landed (engine 885 → 1064), and at
 > **7,190** (engine **1164**, client **4,810**, server **285**) when last measured, 2026-09-03
 > (the day's last pass was the coverage gate + the Game.ts split, +151 client and +96 server
@@ -33,6 +35,7 @@
 | **4** coverage as a gate | `build/coverageLib.mjs` + `checkCoverageThreshold.mjs` + `coverageReport.mjs`, `build/coverageScope.test.mjs`, `client/src/game/pureLayerBoundary.test.ts` | ✅ 2026-09-03 — 90% lines **and** 90% branches over each package's whole tree, plus the two guards that keep the scope honest |
 | **4** the gates, by name | `build/logicConsistency.mjs` + its manifest test | ✅ 2026-09-03 — the 12 gates above as a named CI job, failing closed when one is renamed away |
 | **5** the content axis | `engine/content/weapons.test.ts`, `engine/systems/rangedCatalog.test.ts`, `engine/balance/weaponProfile.ts` + `weaponBalance.test.ts`, `client/sim/weaponSweep.sim.ts` | ✅ 2026-09-04 — every weapon, not every system; see "Layer 5" below for the four gaps it closed and the three dead-content findings it turned up |
+| **6** the deploy axis | `server/test/deploy.bundle.test.ts`, `server/test/deploy.manifests.test.ts` | ✅ 2026-09-07 — the artifact that actually runs in production, and the five manifests no compiler compares; see "Layer 6" below |
 
 `check:full` = `check` + the `.sim.ts` suites. `.github/workflows/check.yml` runs both in CI —
 until it existed, `.github/workflows/` held only deploy workflows, so nothing ran the tests on
@@ -197,6 +200,67 @@ Falling out of the sweeps, and each recorded as a live drift check rather than f
   a surviving mutant: blanking `lifestealPermille` out of `WeaponFireSystem`'s spawn payload
   kills nothing, because the freeze sweep compares `undefined` to `undefined` for all 17
   ranged weapons. Both are pinned as named cases so neither assertion stays quietly vacuous.
+
+
+## Layer 6: the deploy axis — the artifact is not the thing you tested (2026-09-07)
+
+Layers 0-5 all test the source. Since 2026-09-07 (ROADMAP 9.0) production runs something else:
+three flat ESM bundles that `server/scripts/build.mjs` produced by collapsing the
+`@dd/engine` / `@dd/game/*` / `@dd/net/*` workspace graph into one file per process, with `ws`
+and `node:sqlite` left external, inside a container whose behaviour is set by four more files.
+**None of it was reachable from any test in the repo.** The server tree measured 99.56% lines /
+97.93% branches at the time, and that number said nothing about whether the thing being deployed
+could start.
+
+The failure mode is the specific reason a build step needs its own layer: a wrong `external`, an
+alias esbuild silently failed to resolve, or a dependency missing from the deploy manifest all
+leave every test green and produce a container that dies on `ERR_MODULE_NOT_FOUND` seconds after
+`docker compose up`. Nothing in `src/` changed, so nothing in `src/`'s coverage could move.
+
+**`deploy.bundle.test.ts` boots the real artifact.** It builds into a scratch directory in the OS
+temp tree — never `server/dist`, which is a live deploy artifact — and then links in ONLY what
+`server/deploy/package.json` declares, standing in for the image's `npm install --omit=dev`. That
+placement is the half that makes it worth running: Node's upward `node_modules` walk from a
+bundle in the temp tree finds nothing of this monorepo, so a bundle reaching for anything the
+deploy manifest does not list fails here exactly as it would in the container. Each bundle is
+then started as a bare `node` process and has to answer its own `/health` with its OWN service
+name — `{ok: true}` alone would wave through a mis-mapped entry in `build.mjs`, which is one typo.
+Proven by deleting `ws` from `deploy/package.json`: two of the three boots go red with the
+production stack trace in the failure message.
+
+**`deploy.manifests.test.ts` cross-checks the five places the same facts are written down** —
+`scripts/build.mjs`, `Dockerfile`, `docker-compose.yml`, `deploy/package.json`,
+`deploy/ci-deploy.sh`, plus the `tar` list in `.github/workflows/server-deploy.yml`. Bundle names
+must agree across build script, compose `command:`, the forced command's payload check and what
+CI actually ships; the deploy manifest must declare exactly the non-builtin externals, each at an
+exact version; the base image's Node major must be at least `build.mjs`'s `target`; every compose
+env var must be a name `src/` actually reads; no secret may be inlined where `env_file: .env`
+is the mechanism; each service must expose and healthcheck **its own** port; and every internal
+`http://` URL must name a real service at the port that service listens on. `build.mjs` was
+refactored to export `entries` / `external` / `target` and take an output directory so both files
+read the real values rather than a second copy of them.
+
+Two of those assertions are worth naming, because they are the ones a percentage could never
+reach. A **renamed env var** leaves compose quietly passing a value nobody reads while the
+process runs on its default — the code is correct, the tests are green, and the deployed
+configuration is inert. A **copy-pasted service block** leaves a healthcheck polling its
+neighbour's port, which reports a dead container healthy, i.e. worse than having no healthcheck.
+
+The billing guard gets the same treatment from the other direction: the compose file's billsvc
+env block is fed to the real `assertBillingStartupSafety`, with a control asserting the same env
+flipped to `NODE_ENV=production` throws. Without the control, the first assertion passes just as
+happily against a guard that never throws at all.
+
+**Cost and evidence.** `deploy.manifests.test.ts` is 15 cases in ~180 ms (it only reads files);
+`deploy.bundle.test.ts` is 6 cases in ~600 ms including the esbuild run and three process boots.
+Every assertion was mutation-checked rather than trusted for being green: five separate compose
+mutations (healthcheck port, env name, internal port, `NODE_ENV`, bundle name) each killed
+exactly one case.
+
+**What this layer deliberately does not do** is run Docker. Building the image and starting the
+compose project needs a daemon CI would have to provide, and the two properties that actually
+break — "the bundle can resolve everything it imports" and "the manifests agree" — are both
+reachable without one.
 
 
 ## What v49 fixed

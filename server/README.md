@@ -71,6 +71,19 @@ the monotonic watermark, the reconnect log) is proven in `@dd/engine`'s
 `FrameBroadcast → NetInputSource → engine` and asserts it reproduces a plain replay
 byte-for-byte.
 
+**Deploy artifact** — what actually runs in production (design/19 §9, ROADMAP 9.0):
+
+| File | Role | Tested |
+|------|------|--------|
+| `scripts/build.mjs` | esbuild-bundles the three entrypoints into `dist/*.mjs`, resolving the `@dd/engine` / `@dd/game/*` / `@dd/net/*` aliases at BUILD time; `ws` and `node:sqlite` stay external. Exports `entries`/`external`/`target` so the tests read the real values. | ✅ `test/deploy.bundle.test.ts` |
+| `Dockerfile` / `docker-compose.yml` / `deploy/package.json` | One image, three processes selected by `command:`; the image installs only the deploy manifest's dependencies and runs as non-root. | ✅ `test/deploy.manifests.test.ts` |
+| `deploy/ci-deploy.sh` | The forced command the CI deploy key is pinned to (see `deploy/README.md`). Its payload check is cross-checked against the workflow's `tar` list. | ✅ `test/deploy.manifests.test.ts` |
+
+The bundle test builds into an OS temp directory and boots each `.mjs` as a bare `node` process,
+so anything the deploy manifest does not declare fails there the same way it would in the
+container — the whole point being that `src/`'s coverage says nothing about the artifact.
+
+
 ## Protocol
 
 Shared wire types live in `@dd/engine/net/protocol.ts` (`ClientMsg` / `ServerMsg`).

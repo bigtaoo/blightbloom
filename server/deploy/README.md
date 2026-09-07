@@ -199,6 +199,18 @@ instead of silently trying `localhost:8788` and failing with no visible error.
 
 ## 5. Ops
 
+**Before changing any file in this directory, `Dockerfile`, `docker-compose.yml` or
+`scripts/build.mjs`, run `npm test -w server`.** Two suites cover exactly those files
+(design/18-test-strategy.md "Layer 6", added 2026-09-07):
+`test/deploy.manifests.test.ts` cross-checks bundle names, ports, externals, the base image's
+Node major and every compose env var against what `src/` actually reads — including that a
+healthcheck polls its own service's port, that no secret is inlined where `env_file: .env` is
+the mechanism, and that this script's payload check matches what CI ships;
+`test/deploy.bundle.test.ts` builds the bundles and boots each one as a bare `node` process
+with ONLY `deploy/package.json`'s dependencies available, so a missing external fails locally
+instead of on the box. Neither runs Docker.
+
+
 ```bash
 # Logs
 docker compose -f ~/wnet-test/docker-compose.yml logs -f

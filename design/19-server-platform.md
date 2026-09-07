@@ -724,6 +724,18 @@ human has to know which of two places to look.
   in dev-stub mode** — this resolves the deployment precondition only, not the credential
   question below, which is unchanged and still open.
 
+  **The deploy layer got its own tests on 2026-09-07** (design/18-test-strategy.md "Layer 6").
+  Nothing had ever exercised the artifact that actually runs here: the server tree measured
+  99.56% lines / 97.93% branches over `src/`, and every one of those tests imported TypeScript
+  the way `tsx` does in dev, while production runs three esbuild bundles inside a container
+  configured by four files no compiler reads. `server/test/deploy.bundle.test.ts` builds into a
+  scratch directory, links in ONLY what `server/deploy/package.json` declares, and boots each
+  bundle as a bare `node` process until it answers its own `/health` with its own service name —
+  so a missing external fails here exactly as it would in the container.
+  `server/test/deploy.manifests.test.ts` cross-checks bundle names, ports, externals, the base
+  image's Node major and every compose env var against `build.mjs` and `src/`, and feeds the
+  compose file's own billsvc env block to the real `assertBillingStartupSafety`.
+
   **What is reusable from funny's Paddle setup, and what is not.** The seller account is the same
   one; nothing else transfers cleanly. **Price ids cannot be reused at all** — funny sells coin
   tiers and this project sells ten named blueprint SKUs, so ten Products and ten Prices are new
@@ -758,8 +770,14 @@ human has to know which of two places to look.
   `process.env.X ?? fallback`, since it overrides the fallback with nothing. And **a value written
   into an env file is not a value the process can see**: funny's Apple credential sat in its `.env`
   for months while production stayed fail-closed, because its compose file interpolates rather than
-  loads and the service block never listed the variable. This project has no deploy mechanism yet,
-  which makes that the cheapest possible moment to design one that cannot reproduce it.
+  loads and the service block never listed the variable. **That specific failure is now gated
+  here**: this project's deploy mechanism landed 2026-09-07, and
+  `server/test/deploy.manifests.test.ts` requires every variable in `docker-compose.yml` to be a
+  name `src/` actually reads, requires each service to carry `env_file: .env` (compose LOADS the
+  file rather than interpolating it), and refuses to let either credential be inlined into the
+  tracked compose file. A variable that reaches the `.env` and not the process is still possible
+  — nothing tracked can see inside an untracked `.env` — but the compose half of funny's failure
+  cannot recur silently.
 - Whether `entitlements` should also absorb the **materials** half of `MetaState` (it is farmable,
   not purchasable, so it is only worth it if duplication-by-blob-replay turns out to matter).
 - **CLIENT HALF CLOSED 2026-09-05 (ROADMAP 8.8).** `ForgeActions.acquireBlueprint`'s `demo: free

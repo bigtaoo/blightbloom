@@ -343,3 +343,87 @@ describe('RoomManager.handle — the message router', () => {
     expect(() => manager.handle(new FakeConn(0), 'no-such-room', { type: 'result', stateHash: 1, winner: 0 } as never)).not.toThrow();
   });
 });
+
+describe('the metronome under partial rooms', () => {
+  it('a disconnect BEFORE launch stops no clock and still destroys the empty room', () => {
+    // onDisconnect's phase arm. A room that is still filling has no metronome to stop, and
+    // the destroy-when-empty rule has to hold there too: without it a room somebody opened
+    // and abandoned sits in RoomManager forever, holding its seed and its id.
+    const { r, scheduler, destroyed } = room(2);
+    const first = new FakeConn(0);
+    expect(r.join(first)).toBe(true);
+    expect(r.phase).toBe(Phase.WAITING);
+    expect(scheduler.running).toBe(false);
+
+    r.onDisconnect(first);
+    expect(scheduler.running).toBe(false);
+    expect(destroyed).toEqual(['r1']);
+  });
+
+  it('a resume into a room that never lost anyone does not arm a SECOND interval', () => {
+    // `resume` calls startMetronome whenever every seat is connected — which is still true
+    // when nothing disconnected in the first place (a client that reconnects over a socket
+    // the server has not yet noticed is gone). Two live intervals would tick the shared
+    // clock twice per batch window, so every client would receive the same match at double
+    // speed. Asserted through the frame counter rather than an interval count: the doubling
+    // is the symptom that reaches players.
+    const { r, scheduler } = live(2);
+    expect(r.frame).toBe(0);
+    scheduler.pulse();
+    const perPulse = r.frame;
+    expect(perPulse).toBeGreaterThan(0);
+
+    expect(r.resume(new FakeConn(0), 0)).toBe(true);
+    scheduler.pulse();
+    expect(r.frame).toBe(perPulse * 2); // still one tick per pulse, not two
+  });
+});
+
+describe('kickSeat — the integrity kick against a seat that is already gone', () => {
+  /** Four seats (above CHECKPOINT_QUORUM), all joined, one strike already on seat 3. */
+  function struck() {
+    const ctx = room(4);
+    const conns = [new FakeConn(0), new FakeConn(1), new FakeConn(2), new FakeConn(3)];
+    for (const c of conns) expect(ctx.r.join(c)).toBe(true);
+    for (const owner of [0, 1, 2]) ctx.r.reportCheckpoint(owner, 150, 0xaaa);
+    ctx.r.reportCheckpoint(3, 150, 0xbad); // strike 1 — one short of the kick
+    expect(conns[3]!.ofType('error')).toHaveLength(0);
+    return { ...ctx, conns };
+  }
+
+  it('is a no-op when the convicted seat dropped before the vote completed', () => {
+    // The race the guard exists for: seat 3 reports its divergent hash, its socket drops,
+    // and only THEN do the remaining seats finish that tick and convict it. Sending to a
+    // freed seat would throw on a null connection; freeing it twice would run the
+    // destroy-when-empty check against a room whose other seats are all still playing.
+    const { r, conns, destroyed } = struck();
+    r.reportCheckpoint(3, 300, 0xbad); // the second divergent report, still connected
+    r.onDisconnect(conns[3]!); // ...then the socket goes
+
+    expect(() => {
+      for (const owner of [0, 1, 2]) r.reportCheckpoint(owner, 300, 0xaaa);
+    }).not.toThrow();
+
+    // Nothing was sent to the seat that had already left, and the match goes on.
+    expect(conns[3]!.ofType('error')).toHaveLength(0);
+    expect(destroyed).toEqual([]);
+    expect(r.phase).toBe(Phase.IN_MATCH);
+    for (const c of [conns[0]!, conns[1]!, conns[2]!]) expect(c.ofType('error')).toHaveLength(0);
+  });
+
+  it('destroys the room when the kick takes the last connection with it', () => {
+    // The other end of the same rule. Three seats drop mid-tick; the fourth is then kicked
+    // for the divergence it had already been reported for, leaving nobody. A room that did
+    // not destroy itself here would keep its metronome and its RoomManager entry alive with
+    // zero connections — the leak `onDisconnect` avoids on the ordinary path.
+    const { r, conns, destroyed, scheduler } = struck();
+    for (const owner of [0, 1, 2]) r.reportCheckpoint(owner, 300, 0xaaa);
+    for (const owner of [0, 1, 2]) r.onDisconnect(conns[owner]!);
+    expect(destroyed).toEqual([]); // seat 3 is still connected
+
+    r.reportCheckpoint(3, 300, 0xbad); // completes the tick → strike 2 → kick
+    expect(conns[3]!.ofType('error')[0]!.code).toBe('integrity_mismatch');
+    expect(destroyed).toEqual(['r1']);
+    expect(scheduler.running).toBe(false);
+  });
+});

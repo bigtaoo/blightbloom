@@ -16,32 +16,54 @@
  * optional native/WASM fallback bindings resolved by a runtime `require()` esbuild can't
  * see through, and `node:sqlite` is a Node built-in, not something to inline. Both are
  * satisfied by the deploy image's own minimal `package.json` (`server/deploy/package.json`).
+ *
+ * The build parameters below are EXPORTED, and `buildAll` takes its output directory as an
+ * argument, so `test/deploy.manifests.test.ts` can assert the Dockerfile / compose file /
+ * deploy package.json against the real values instead of re-typing them, and
+ * `test/deploy.bundle.test.ts` can build into a scratch directory and actually boot the
+ * result. Running this file directly still builds into `server/dist` exactly as before.
  */
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverRoot = join(here, '..');
-const tsconfig = join(serverRoot, 'tsconfig.json');
-const outdir = join(serverRoot, 'dist');
+export const serverRoot = join(here, '..');
+export const defaultOutdir = join(serverRoot, 'dist');
 
-const entries = [
+/** Left out of the bundles; supplied by the deploy image (`ws`) or by Node itself. */
+export const external = ['ws', 'node:sqlite'];
+
+/** Matches the Dockerfile's base image — `node:sqlite` is what sets the floor. */
+export const target = 'node22';
+
+/** One bundle per process. `out` is the bare basename docker-compose.yml's `command:` runs. */
+export const entries = [
   { in: join(serverRoot, 'src/index.ts'), out: 'index' },
   { in: join(serverRoot, 'src/matchsvc.ts'), out: 'matchsvc' },
   { in: join(serverRoot, 'src/billsvc/main.ts'), out: 'billsvc' },
 ];
 
-for (const entry of entries) {
-  await build({
-    entryPoints: [entry.in],
-    outfile: join(outdir, `${entry.out}.mjs`),
-    bundle: true,
-    platform: 'node',
-    format: 'esm',
-    target: 'node22',
-    tsconfig,
-    external: ['ws', 'node:sqlite'],
-    logLevel: 'info',
-  });
+export async function buildAll(outdir = defaultOutdir, logLevel = 'info') {
+  const tsconfig = join(serverRoot, 'tsconfig.json');
+  for (const entry of entries) {
+    await build({
+      entryPoints: [entry.in],
+      outfile: join(outdir, `${entry.out}.mjs`),
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      target,
+      tsconfig,
+      external,
+      logLevel,
+    });
+  }
+  return entries.map((e) => join(outdir, `${e.out}.mjs`));
+}
+
+// Only build when run directly (`npm run build -w server`), not when imported by a test —
+// the same ESM `require.main === module` guard src/index.ts and src/matchsvc.ts use.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  await buildAll();
 }

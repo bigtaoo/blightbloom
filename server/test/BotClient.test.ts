@@ -215,3 +215,42 @@ describe('spawnBotClient — the production entry point', () => {
     }
   }, 20_000);
 });
+
+describe('BotClient — a bot torn down before its match ever starts', () => {
+  /**
+   * The unarmed-timer path through `stop()`. `onMatchStart` is what arms the tick interval,
+   * so a bot whose room never fills — matchmaking cancelled, the human seat never arrived,
+   * the process shutting down between spawn and launch — reaches `stop()` having never had
+   * one. `spawnBotClient` is fire-and-forget, so anything that throws in here lands on
+   * matchsvc rather than on the bot.
+   *
+   * What this asserts is the TEARDOWN, not the `timer !== null` check itself: that check is
+   * defensive rather than load-bearing (Node's `clearInterval` tolerates a null handle, so
+   * deleting the guard keeps this test green — checked). The property worth pinning is that
+   * a bot abandoned before launch still closes its transport and leaves nothing scheduled;
+   * a leaked interval here is a matchsvc that never exits.
+   */
+  it('closes its transport without touching a timer that was never armed', () => {
+    vi.useFakeTimers();
+    const bridge = new BridgeTransport(1);
+    const bot = runBotClient({
+      transport: bridge,
+      wsUrl: 'unused',
+      token: 'unused',
+      roomId: 'r5',
+      owner: 1,
+      seed: 11,
+      playerCount: 2,
+    });
+    // Nobody joined this bot to a room, so no `match_start` ever reached it.
+    expect(vi.getTimerCount()).toBe(0);
+
+    expect(() => bot.stop()).not.toThrow();
+    expect(bridge.closed).toBe(true);
+
+    // And it stays torn down: the late `match_start` a racing matchmaker could still deliver
+    // must not resurrect a bot whose session is already closed.
+    vi.advanceTimersByTime(1000);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

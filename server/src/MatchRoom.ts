@@ -204,6 +204,10 @@ export class MatchRoom {
 
   private startMetronome(): void {
     if (this.metronome !== null) return;
+    // Belt-and-braces: both callers already gate on `connected` (launch fires only once the
+    // last seat joins, resume checks it), so this arm is unreachable from the public surface
+    // and stays permanently uncovered. Kept as the invariant a third caller would have to
+    // respect — a metronome ticking a seat nobody is on advances the clock past that player.
     if (!this.connected) return;
     this.metronome = this.deps.scheduler.setInterval(() => this.pulse(), this.batchMs);
   }
@@ -334,6 +338,10 @@ export class MatchRoom {
     });
     seat.conn = null;
     this.integrityStrikes.delete(owner);
+    // Same shape as `onDisconnect`, and the phase check is likewise unreachable here (the
+    // only caller, reportCheckpoint, refuses outside IN_MATCH) — symmetry with the ordinary
+    // disconnect path is worth more than deleting a branch the coverage report will keep
+    // showing. The destroy arm below is NOT dead: a kick can take the room's last seat.
     if (this.phase === Phase.IN_MATCH) this.stopMetronome();
     if (this.seats.every((s) => s.conn === null)) this.destroy();
   }
