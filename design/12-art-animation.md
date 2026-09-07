@@ -667,7 +667,7 @@ visibility, correct blend mode and a default (0, 0) position, with green tests a
 So there are exactly **two art phases**, not per-asset laziness:
 
 - **LOBBY** — `preloadLobbyArt()`: `Assets.init`, then the `lobby` pack, then `preloadUiArt()`.
-  Awaited by both entries before `new Game(...)`, behind a Graphics-drawn progress screen
+  Awaited by every entry before `new Game(...)`, behind a Graphics-drawn progress screen
   (`game/ui/loadingScreen.ts` — no art in it, because there is no art yet). Login, main menu, mode
   select, settings, party and account screens are UI chrome only and are fully dressed here.
 - **RUN** — `ensureRunArt()`: every remaining `run`-phase pack, then the four remaining loaders
@@ -705,11 +705,11 @@ keep the change small:
    genuine wait defers, and then the spinner goes up and the same transition re-runs on the other
    side.
 2. **Inert unless something actually deferred.** `isRunArtReady()` answers `true` until
-   `beginDeferredArt()` has been called, and only the two entry points call it. Every unit test
+   `beginDeferredArt()` has been called, and only the entry points call it. Every unit test
    that drives `Game` therefore sees the pre-2026-09-01 behaviour with no changes, and the gate
    cannot silently swallow a transition in a test that never opted into deferral.
 
-`beginDeferredArt()` is called BEFORE `new Game(...)` in both entries, and that ordering is
+`beginDeferredArt()` is called BEFORE `new Game(...)` in every entry, and that ordering is
 load-bearing rather than tidy: the call is what ARMS the gate, and `Game.start()` can enter a run
 on its own first pass (the `?replay=` path does). Placed after `start()`, as it was first written,
 that run begins with placeholder art and no gate at all. `render/wechatPhasedBoot.test.ts` pins the

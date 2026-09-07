@@ -35,7 +35,7 @@
 | **4** coverage as a gate | `build/coverageLib.mjs` + `checkCoverageThreshold.mjs` + `coverageReport.mjs`, `build/coverageScope.test.mjs`, `client/src/game/pureLayerBoundary.test.ts` | ✅ 2026-09-03 — 90% lines **and** 90% branches over each package's whole tree, plus the two guards that keep the scope honest |
 | **4** the gates, by name | `build/logicConsistency.mjs` + its manifest test | ✅ 2026-09-03 — the 12 gates above as a named CI job, failing closed when one is renamed away |
 | **5** the content axis | `engine/content/weapons.test.ts`, `engine/systems/rangedCatalog.test.ts`, `engine/balance/weaponProfile.ts` + `weaponBalance.test.ts`, `client/sim/weaponSweep.sim.ts` | ✅ 2026-09-04 — every weapon, not every system; see "Layer 5" below for the four gaps it closed and the three dead-content findings it turned up |
-| **6** the deploy axis | `server/test/deploy.bundle.test.ts`, `server/test/deploy.manifests.test.ts` | ✅ 2026-09-07 — the artifact that actually runs in production, and the five manifests no compiler compares; see "Layer 6" below |
+| **6** the deploy/build axis | `server/test/deploy.bundle.test.ts`, `server/test/deploy.manifests.test.ts`, `client/src/platform/crazygames/portalBuild.test.ts` | ✅ 2026-09-07 — the artifact that actually runs in production, the five manifests no compiler compares, and (client side) the build config that decides which entry module a portal upload even loads; see "Layer 6" below |
 
 `check:full` = `check` + the `.sim.ts` suites. `.github/workflows/check.yml` runs both in CI —
 until it existed, `.github/workflows/` held only deploy workflows, so nothing ran the tests on
@@ -202,7 +202,7 @@ Falling out of the sweeps, and each recorded as a live drift check rather than f
   ranged weapons. Both are pinned as named cases so neither assertion stays quietly vacuous.
 
 
-## Layer 6: the deploy axis — the artifact is not the thing you tested (2026-09-07)
+## Layer 6: the deploy/build axis — the artifact is not the thing you tested (2026-09-07)
 
 Layers 0-5 all test the source. Since 2026-09-07 (ROADMAP 9.0) production runs something else:
 three flat ESM bundles that `server/scripts/build.mjs` produced by collapsing the
@@ -256,6 +256,26 @@ happily against a guard that never throws at all.
 Every assertion was mutation-checked rather than trusted for being green: five separate compose
 mutations (healthcheck port, env name, internal port, `NODE_ENV`, bundle name) each killed
 exactly one case.
+
+**The client has the same axis, and it opened the same day.** A game-portal upload
+(`design/20`) is assembled by `client/vite.crazygames.config.js`, which rewrites `index.html` to
+swap the entry module and inject the SDK script — so *which code the page runs at all* is decided
+by a build config that no module test can see. `portalBuild.test.ts` therefore imports the real
+config and exercises the config's OWN transform against the real `index.html`, never a copy of
+either, plus the entry module's source ORDER (the asset host installed before the first preload,
+the host declared before `new Game(...)`, no auto-reload installed) — orderings that are
+unobservable from inside a module, the technique `render/wechatPhasedBoot.test.ts` already used
+for the other two entries.
+
+It earned itself immediately, on the failure mode this layer exists for: the rewrite was on the
+wrong hook. `vite:build-html` has already replaced the entry's `src` with the emitted chunk by
+the time `transformIndexHtml` runs at `generateBundle`, so a `transformIndexHtml`-only plugin
+cannot swap the entry in a production build **at all** — the dev server would have looked
+perfect. What caught it was the plugin's own `closeBundle` guard failing the build, and that
+guard is now asserted from both sides (a build where no rewrite fired must throw; a build where
+one did must not), with a FRESH plugin instance per case, because `applied` is per-build state
+and sharing the configured instance let an earlier test's success satisfy a later test's
+"nothing happened" case.
 
 **What this layer deliberately does not do** is run Docker. Building the image and starting the
 compose project needs a daemon CI would have to provide, and the two properties that actually

@@ -8,6 +8,20 @@
       "port": 5173
     },
     {
+      // The portal build's dev server (design/20). Same rewrite as `build:crazygames` — the
+      // SDK script and the `main.crazygames.ts` entry — so the quick-play menu, the declared
+      // host and the SDK bracket are all live here.
+      //
+      // NOTE: this serves from the ROOT, so it cannot prove the one thing the portal target
+      // is most likely to get wrong. Relative asset paths only fail when the bundle is served
+      // from a SUB-PATH, which is what a portal does: build it, copy `client/dist-crazygames`
+      // into `<somewhere>/games/<name>/`, and serve the parent.
+      "name": "client-crazygames-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:crazygames", "--prefix", "client"],
+      "port": 5173
+    },
+    {
       // Serves the built client/dist. Needed to exercise anything gated on a production
       // build — notably the version.json foreground auto-reload (src/platform/web/autoReload.ts),
       // which is inert under `client-dev`. Run `npm run build -w client` first.

@@ -31,8 +31,9 @@
 | Android / iOS | Capacitor shell over the web build | configured (`capacitor.config.ts` + scripts); native build pending on your SDKs |
 | PC (Windows/macOS) | Desktop browser now; Capacitor+Electron later | web build runs; native shell to do |
 | WeChat mini-game | Pixi v8 + own `DOMAdapter` (no weapp-adapter) + unsafe-eval, WebGL | **boot + render verified in DevTools** (see 04) |
+| Game portals (CrazyGames) | The web build, plus relative asset paths, the portal SDK and a declared host (`20`) | **built and verified served from a sub-path**, including a live online match; banner fill and real ad playback need a registered domain (see 20) |
 
 Input is unified across platforms: keyboard/mouse on desktop, a shared virtual
 move stick + fire zone + corner buttons (`client/src/platform/TouchControls.ts`) on all
-touch targets (mobile web, Capacitor, WeChat). *(Said "twin-stick" until 2026-09-03; `10`
+touch targets (mobile web, Capacitor, WeChat, a portal page). *(On a portal the overlay is drawn from the first frame rather than after the first touch — `20`; it used to wait, so a phone player saw no controls at all until they guessed where to press.)* *(Said "twin-stick" until 2026-09-03; `10`
 v33 removed aim input, so there is one stick — see `10`'s controls section.)*

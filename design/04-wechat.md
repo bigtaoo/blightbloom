@@ -32,7 +32,7 @@ The WeChat mini-game is the most constrained target: **no DOM, no full window/do
 > twin-stick controls bypass Pixi's interaction system entirely. "It renders" proved nothing
 > about "it plays", and "it plays" proved nothing about "you can read it".
 >
-> The asset half is likewise verified against the real base library: both entries call the
+> The asset half is likewise verified against the real base library: every entry calls the
 > same `render/preloadArt.ts`, `client/public` is mirrored into `platforms/wechat` by
 > package, the main package sits at **3.41 MB / 4.00 MB** with four subpackages, and every
 > registered texture of every loader resolves (checklist item 9). `wx.loadSubpackage` works,
@@ -771,7 +771,7 @@ with identical probe builds before the table above was believed.
    Pixi does that assignment before every measurement and every `fillText`. Localised by
    bisecting Pixi's own draw sequence one call at a time inside the running mini-game: 1058
    painted pixels with the step omitted, 0 with it included. Fixed by
-   `disableBrokenLetterSpacing()` (`render/textMetrics.ts`), called from both entries, which
+   `disableBrokenLetterSpacing()` (`render/textMetrics.ts`), called from every entry, which
    checks an invariant rather than a platform name — a spacing of ZERO must not change what a
    measurement returns — and turns Pixi's flag off when it fails, dropping to the
    per-character drawing path. A non-finite guard on the measurement itself
