@@ -1,14 +1,15 @@
 # Deploying the backend
 
-> **Status (2026-09-07): backend live, client wired, CI built minus one manual step.**
-> All three containers are up and healthy on `wnet-server` at `~/wnet-test/`, the
-> Caddy site block is appended and reloaded, DNS is in place, and
-> `curl https://bb.gamestao.com/health` returns
+> **Status (2026-09-07): fully live, including CI.** All three containers are up and
+> healthy on `wnet-server` at `~/wnet-test/`, the Caddy site block is appended and
+> reloaded, DNS is in place, and `curl https://bb.gamestao.com/health` returns
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
 > certificate (§0–§2). The client now points at it by default on a deployed build (§3).
-> CI-based deploy (§6) is fully built but for one root-owned step no SSH session as `tao`
-> can do — see §6 for the exact command and who needs to run it. The only thing left after
-> that is Paddle (§7), which is not an engineering task at all.
+> CI-based deploy (§6) is fully wired end to end: the forced-command key is installed,
+> confirmed to reject an arbitrary command and run only `ci-deploy.sh`, exercised once
+> manually over SSH, then proven again through an actual `gh workflow run server-deploy`
+> that went green (build → SSH deploy → public health check). Push-to-`main` deploys are
+> now live. The only thing left is Paddle (§7), which is not an engineering task at all.
 >
 > One thing worth knowing for next time: Caddy attempted the ACME challenge the instant
 > the Caddyfile was reloaded, *before* the DNS record actually existed — that attempt
@@ -216,49 +217,34 @@ scp wnet-server:~/wnet-test/data/billsvc/billing.db   ./billing-backup-$(date +%
 ssh wnet-server 'cd ~/wnet-test && docker compose down && rm -rf ~/wnet-test'
 ```
 
-## 6. CI-based deploy — built, ONE manual step outstanding
+## 6. CI-based deploy — DONE (2026-09-07)
 
 `.github/workflows/server-deploy.yml` + `server/deploy/ci-deploy.sh`, same shape as
 deutsch's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
 `server/**`/`engine/**`/`client/src/**` (or manual dispatch) → builds the bundles → ships
 them over SSH with a key that can do exactly one thing on the VPS.
 
-**What's already done:**
-- A dedicated keypair generated (`D:\cloud\wnet_test_ci_ed25519` — the only
-  readable copy; a GitHub Secret is write-only), private half in the repo Secret
-  `SERVER_DEPLOY_KEY`.
-- `server/deploy/ci-deploy.sh` installed on the VPS at
-  `~/wnet-test-ci-deploy.sh` (outside the deploy target on purpose — see its own
-  header), `chmod 700`.
-- Repo Variables set: `SERVER_SSH_HOST=92.205.18.79`, `SERVER_SSH_USER=tao`,
+Everything is wired and verified:
+- Dedicated keypair (`D:\cloud\wnet_test_ci_ed25519` — the only readable copy, since a
+  GitHub Secret is write-only), private half in the repo Secret `SERVER_DEPLOY_KEY`.
+- `server/deploy/ci-deploy.sh` installed at `~/wnet-test-ci-deploy.sh` (outside the deploy
+  target on purpose — see its own header), `chmod 700`.
+- Repo Variables: `SERVER_SSH_HOST=92.205.18.79`, `SERVER_SSH_USER=tao`,
   `SERVER_SSH_KNOWN_HOSTS` (pinned, fingerprint cross-checked against the VPS's own
   `/etc/ssh/ssh_host_ed25519_key.pub` — never `StrictHostKeyChecking=no`),
-  `SERVER_API_BASE=https://bb.gamestao.com`.
+  `SERVER_API_BASE=https://bb.gamestao.com`, `SERVER_DEPLOY_ENABLED=true`.
+- The forced-command `authorized_keys` line — the one step that needed a human with the
+  VPS's `sudo` password, since that file is root-owned — is installed. **Verified it
+  actually restricts**: sending an arbitrary command (`whoami`) over this key does not run
+  it; the forced command runs `ci-deploy.sh` regardless, which then correctly rejects
+  non-tar.gz stdin rather than doing anything with it.
+- **Proven twice**: once manually (`tar czf - dist Dockerfile docker-compose.yml
+  deploy/package.json | ssh -i ... tao@92.205.18.79`, all three containers rebuilt and
+  came back healthy), then for real via `gh workflow run server-deploy` — a genuine CI
+  run that went green end to end (build → SSH deploy → public `/health` check).
 
-**What's still outstanding, and can't be done by an agent working over SSH as `tao`:**
-`~/.ssh/authorized_keys` on that VPS is **root-owned** and `tao`'s `sudo` needs an
-interactive password — deutsch's own README hit the identical wall and solved it the same
-way, with a human running the append. Whoever has that password needs to run, once:
-
-```bash
-ssh -t wnet-server 'sudo sh -c "cat >> /home/tao/.ssh/authorized_keys" <<EOF
-command="/home/tao/wnet-test-ci-deploy.sh",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEhzrE0mY6rqpxjF10kaVT7kegktsOBvHMjNJ/8llyZq wnet-test-deploy
-EOF'
-```
-
-Then flip the switch (unset today on purpose — deutsch's README explains why: a deploy
-key that isn't authorized yet would otherwise turn every push to `main` red):
-
-```bash
-gh variable set SERVER_DEPLOY_ENABLED -R bigtaoo/daydayup -b "true"
-```
-
-Verify with a manual run before trusting the automatic trigger:
-
-```bash
-gh workflow run server-deploy -R bigtaoo/daydayup
-gh run watch -R bigtaoo/daydayup
-```
+Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**`/
+`client/src/**`.
 
 ## 7. Still open
 
