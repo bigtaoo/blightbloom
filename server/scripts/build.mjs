@@ -37,11 +37,14 @@ export const external = ['ws', 'node:sqlite'];
 /** Matches the Dockerfile's base image — `node:sqlite` is what sets the floor. */
 export const target = 'node22';
 
-/** One bundle per process. `out` is the bare basename docker-compose.yml's `command:` runs. */
+/** One bundle per process. `out` is the bare basename docker-compose.yml's `command:` runs.
+ *  `backup` is the one that is not an HTTP server — it runs a loop, and the same bundle
+ *  answers compose's healthcheck when invoked as `node backup.mjs --health`. */
 export const entries = [
   { in: join(serverRoot, 'src/index.ts'), out: 'index' },
   { in: join(serverRoot, 'src/matchsvc.ts'), out: 'matchsvc' },
   { in: join(serverRoot, 'src/billsvc/main.ts'), out: 'billsvc' },
+  { in: join(serverRoot, 'src/backup/main.ts'), out: 'backup' },
 ];
 
 export async function buildAll(outdir = defaultOutdir, logLevel = 'info') {

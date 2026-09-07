@@ -220,14 +220,81 @@ cd server && npm run build
 rsync -av dist Dockerfile docker-compose.yml deploy/package.json wnet-server:~/wnet-test/
 ssh wnet-server 'cd ~/wnet-test && docker compose up -d --build'
 
-# Back up both SQLite files
-scp wnet-server:~/wnet-test/data/matchsvc/accounts.db ./accounts-backup-$(date +%F).sqlite
-scp wnet-server:~/wnet-test/data/billsvc/billing.db   ./billing-backup-$(date +%F).sqlite
+# Pull the automated backups off the box (see the Backups section below — the snapshots
+# themselves are taken on the box, daily, by the `backup` service; this is the off-box copy)
+rsync -av wnet-server:~/wnet-test/backups/ ./backups/
 
 # Tear down entirely (zero effect on wnet or deutsch-sync — remember to also remove the
 # Caddyfile block above)
 ssh wnet-server 'cd ~/wnet-test && docker compose down && rm -rf ~/wnet-test'
 ```
+
+### Backups — automated 2026-09-07
+
+Until this landed, "the backup procedure" was the two `scp` lines that used to sit in the
+block above: a procedure exactly as reliable as somebody remembering it, protecting the two
+things this project cannot regenerate — `accounts.db` (who somebody is) and `billing.db`
+(what they paid for).
+
+Now the compose project runs a fourth process, `wnet-test-backup` (`src/backup/`), and there
+is nothing to remember:
+
+- **Daily**, and once immediately at start, it snapshots both databases with SQLite's
+  `VACUUM INTO` — a point-in-time consistent copy taken while the services keep running.
+  `cp` of a live database is what this deliberately is not: it captures a torn page set that
+  opens fine and fails on the page that mattered.
+- **It cannot write to either database.** The two data directories are mounted `:ro`, and
+  the SQLite handle is opened read-only (`VACUUM INTO` works that way — verified, see
+  `src/backup/snapshot.ts`). Its only writable mount is `~/wnet-test/backups`.
+- **Each snapshot is verified before it is published**: `PRAGMA integrity_check` on the copy,
+  then gzip, then an atomic rename. Nothing in that directory is ever a file that merely
+  looks like a backup — an interrupted run leaves a `.part`, which the pruner neither counts
+  nor deletes.
+- **14 per database are kept**, pruned per source, and only after that source's own
+  snapshot succeeded — so a database that has been failing for a week keeps its last good
+  snapshots instead of ageing them out on schedule.
+
+```bash
+# Is it working? (this is what the container's own healthcheck runs)
+ssh wnet-server 'docker exec wnet-test-backup node backup.mjs --health && echo HEALTHY'
+ssh wnet-server 'cat ~/wnet-test/backups/status.json'
+ssh wnet-server 'ls -lh ~/wnet-test/backups'
+docker ps --filter name=wnet-test-backup   # STATUS shows (healthy)/(unhealthy)
+
+# Force a cycle now (it runs one at start, so a restart is a manual backup)
+ssh wnet-server 'cd ~/wnet-test && docker compose restart backup'
+```
+
+**Restoring.** A snapshot is an ordinary gzipped SQLite file, so a restore needs no tooling
+from this repo:
+
+```bash
+ssh wnet-server
+cd ~/wnet-test
+docker compose stop matchsvc                      # nothing may hold the file open
+cp data/matchsvc/accounts.db data/matchsvc/accounts.db.before-restore
+gunzip -c backups/accounts-2026-09-07T02-00-00Z.db.gz > data/matchsvc/accounts.db
+docker compose start matchsvc
+curl -fsS http://127.0.0.1:8788/health            # or the Caddy route from §2
+```
+
+Same for `billing.db` with `billsvc`. Keep the `.before-restore` copy until the restore is
+confirmed — a restore is the one operation here that can lose data that still existed.
+
+**What it deliberately does NOT do: it does not copy anything off the box.** A snapshot beside
+the database survives every failure this project has actually had (a bad migration, a
+hand-edited row, an `rm` in the wrong directory) and none of the ones that take the host with
+it. The off-box copy is the `rsync` line in §5 and it is a human step — stated here rather
+than papered over, because a backup system that quietly protects less than it appears to is
+worse than one whose limit is written down. On a borrowed box, "the host is gone" is a real
+scenario.
+
+**Its verification is part of the deploy.** `ci-deploy.sh` asks the worker for a healthy
+cycle after `docker compose up`, alongside the three `/health` polls, so a deploy that
+silently stops backing up fails in CI. `test/backup.*.test.ts` covers the config refusals,
+the retention rules and the health verdict; `test/deploy.bundle.test.ts` builds the real
+bundle, runs it against a real SQLite file, decompresses what it wrote and reads the row
+back.
 
 ## 6. CI-based deploy — DONE (2026-09-07)
 
@@ -268,3 +335,10 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   (§9 already documents that funny was rejected twice on exactly that). No agent should
   do this part — it needs a human with the authority to accept a Merchant of Record
   agreement and hand over real financial/business information.
+- **The OFF-BOX copy of the backups.** The `backup` service (§5, "Backups") takes and
+  verifies a daily snapshot of both databases and keeps 14 of each, on the same disk as the
+  databases. Getting them somewhere else is still the `rsync` line in §5, run by a person.
+  What would close it: a scheduled pull from a machine that is not this VPS (the box is
+  borrowed, so a push credential stored ON it is the thing not to add), or an object-store
+  bucket the worker uploads to. Deliberately not guessed at here — it needs a destination
+  somebody owns.

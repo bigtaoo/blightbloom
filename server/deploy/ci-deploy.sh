@@ -19,12 +19,22 @@
 # a copy — editing it here does nothing until it's re-installed by hand
 # (deploy/README.md's CI section has the command).
 #
-# ── Why it only moves five things ──
-# `docker-compose.yml` and `.env` are never touched. That keeps this key unable to write a
-# compose file that bind-mounts the host's `/` into a container to get host root — the
-# single biggest hole in "CI can deploy containers" — closed here rather than anywhere
-# downstream. Cost: changing compose or env vars still needs a manual server-side edit
-# (server/deploy/README.md §5), a handful of times a year at most.
+# ── What it moves, and the one capability that comes with it ──
+# `.env` is never touched: the ticket secret, the internal key and (eventually) the Paddle
+# credential live only on the box, and this key cannot read or replace them.
+#
+# `docker-compose.yml` IS replaced, and that is a deliberate capability rather than an
+# oversight — it is what lets a deploy add or change a SERVICE (the `backup` worker landed
+# that way, 2026-09-07) instead of needing a hand-edit on a box nobody logs into. Be clear
+# about what it costs, because an earlier version of this comment claimed the opposite and
+# was wrong for long enough to be worth naming: whoever holds this key can ship a compose
+# file that bind-mounts the host's `/` into a container, i.e. can reach host root on a box
+# this project only borrows. The bounding facts are that the compose file is tracked in
+# git and reviewed like code, and that the key already ships `dist/*.mjs` and the
+# Dockerfile — arbitrary code inside the containers either way. If the box's owner ever
+# wants that capability gone, the change is to drop `docker-compose.yml` from BOTH this
+# script's copy list and the workflow's `tar`, and to hand-install compose changes again
+# (server/deploy/README.md §5).
 set -eu
 
 TARGET="$HOME/wnet-test"
@@ -35,7 +45,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # | ssh ...`, so the payload arrives on stdin.
 tar xzf - -C "$STAGE"
 
-for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs Dockerfile docker-compose.yml deploy/package.json; do
+for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs Dockerfile docker-compose.yml deploy/package.json; do
   if [ ! -e "$STAGE/$path" ]; then
     echo "payload is missing $path, aborting (no half-finished deploy)" >&2
     exit 1
@@ -79,3 +89,27 @@ for svc in gameserver:8787 matchsvc:8788 billsvc:8789; do
     })();
   "
 done
+
+# The backup worker serves nothing, so it is verified the way compose does it: by asking
+# its own bundle. It runs one cycle immediately at start, so a healthy answer here means a
+# real snapshot of both databases was taken and verified seconds ago — and a deploy that
+# silently stopped backing up is exactly the failure this loop's own comment above refuses
+# to wave through.
+docker exec wnet-test-backup node -e "
+  const { execFileSync } = require('node:child_process');
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  (async () => {
+    for (let i = 0; i < 15; i += 1) {
+      try {
+        execFileSync(process.execPath, ['backup.mjs', '--health'], { stdio: 'pipe' });
+        console.log('wnet-test-backup health ok');
+        process.exit(0);
+      } catch {
+        /* no verified cycle yet */
+      }
+      await wait(1000);
+    }
+    console.error('wnet-test-backup: no healthy backup cycle within 15s, deploy counts as failed');
+    process.exit(1);
+  })();
+"

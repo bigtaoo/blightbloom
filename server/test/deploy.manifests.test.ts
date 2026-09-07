@@ -109,24 +109,77 @@ const services = parseCompose(compose);
 /** The port env var each process reads for its own listener (src/index.ts, matchsvc.ts, billsvc/main.ts). */
 const PORT_VAR: Record<string, string> = { gameserver: 'PORT', matchsvc: 'MATCH_PORT', billsvc: 'BILL_PORT' };
 
+/**
+ * The services that serve HTTP, which is every assertion about ports, `expose` and a
+ * `/health` route. `backup` (2026-09-07) is a WORKER: no port, no route, and its
+ * healthcheck runs its own bundle. Kept as an explicit list rather than "whatever has a
+ * PORT_VAR entry" so that adding a service forces a decision about which kind it is —
+ * derive it and a new HTTP service that simply forgot its port silently becomes a worker.
+ */
+const HTTP_SERVICES = ['billsvc', 'gameserver', 'matchsvc'] as const;
+const WORKER_SERVICES = ['backup'] as const;
+
 describe('the compose reader actually read something', () => {
-  it('found all three services, each fully populated', () => {
+  it('found all four services, each fully populated', () => {
     // Every other test in this file is vacuous if this one is wrong: an empty `env` makes
     // "no unknown env var" trivially true, an empty `command` makes the bundle-name check
     // an assertion about nothing. Pinned to the exact shape rather than "at least one".
-    expect(Object.keys(services).sort()).toEqual(['billsvc', 'gameserver', 'matchsvc']);
+    expect(Object.keys(services).sort()).toEqual([...HTTP_SERVICES, ...WORKER_SERVICES].sort());
     for (const [name, svc] of Object.entries(services)) {
       expect(svc.command, name).toHaveLength(2);
       expect(Object.keys(svc.env).length, name).toBeGreaterThanOrEqual(3);
-      expect(svc.expose, name).toHaveLength(1);
-      expect(svc.healthcheck, name).toContain('/health');
+      expect(svc.healthcheck, name).not.toBe('');
       expect(svc.envFile, name).toBe('.env');
     }
+    for (const name of HTTP_SERVICES) {
+      expect(services[name]!.expose, name).toHaveLength(1);
+      expect(services[name]!.healthcheck, name).toContain('/health');
+    }
+  });
+
+  it('the worker exposes no port and healthchecks itself', () => {
+    // Both halves matter. A worker that `expose`s a port is a copy-paste leftover; a worker
+    // whose healthcheck polls `/health` would report a container that serves nothing as
+    // permanently unhealthy, and `restart: unless-stopped` would then loop it forever.
+    for (const name of WORKER_SERVICES) {
+      const svc = services[name]!;
+      expect(svc.expose, name).toEqual([]);
+      expect(svc.healthcheck, name).not.toContain('/health');
+      // It asks the SAME bundle it runs — a second implementation of the health rule (an
+      // inline `node -e` in this file) is one no test could reach.
+      expect(svc.healthcheck, name).toContain(svc.command[1]!);
+      expect(svc.healthcheck, name).toContain('--health');
+    }
+  });
+
+  it('the backup worker mounts its sources READ-ONLY and writes only to its own volume', () => {
+    // The property that makes this container safe to run beside a live database at all
+    // (src/backup/snapshot.ts: `VACUUM INTO` works through a read-only handle). A `:ro`
+    // dropped from these two lines is invisible until the day the worker has a bug.
+    const block = /\n  backup:\n([\s\S]*?)\n(?:  [\w-]+:|networks:)/.exec(compose)?.[1] ?? '';
+    expect(block).not.toBe('');
+    // Only the `volumes:` list — `networks:` is a bullet list too, and matching every
+    // bullet in the block swept `- wnet` in as a fourth "mount" (caught by the length
+    // assertion below, which is why it is an exact count and not `>= 2`).
+    const volumes = /\n    volumes:\n([\s\S]*?)\n    [a-z_]+:/.exec(block)?.[1] ?? '';
+    // `host:container[:mode]`, split on the colons rather than matched with two greedy
+    // groups (which quietly makes `mode` the whole container path).
+    const mounts = [...volumes.matchAll(/^\s+- (\S+)$/gm)].map(([, spec]) => spec!.split(':'));
+    expect(mounts).toHaveLength(3);
+    for (const parts of mounts) {
+      expect(parts.length, parts.join(':')).toBeGreaterThanOrEqual(2);
+      const [host, , mode] = parts as [string, string, string | undefined];
+      // Every mount of a service DATA directory is read-only; the only writable one is the
+      // backup directory itself.
+      expect(mode === 'ro', parts.join(':')).toBe(host.startsWith('./data/'));
+    }
+    expect(services.backup!.env.DDU_BACKUP_DIR).toBe('/backups');
+    expect(mounts.some((p) => p[0] === './backups' && p[1] === '/backups' && p[2] === undefined)).toBe(true);
   });
 });
 
-describe('the three bundle filenames', () => {
-  it('are the same three in build.mjs, compose and the deploy script', () => {
+describe('the bundle filenames', () => {
+  it('are the same set in build.mjs, compose and the deploy script', () => {
     // These names exist independently in three files and are matched by nothing at build
     // time: renaming an entrypoint in build.mjs alone ships an image whose `command:`
     // names a file that is no longer there.
@@ -229,10 +282,11 @@ describe('compose env vars', () => {
 });
 
 describe('ports and internal addresses', () => {
-  it('each service healthchecks and exposes its OWN port', () => {
+  it('each HTTP service healthchecks and exposes its OWN port', () => {
     // The copy-pasted-block bug: a healthcheck polling the neighbour's port reports a dead
     // container healthy, which is worse than having no healthcheck at all.
-    for (const [name, svc] of Object.entries(services)) {
+    for (const name of HTTP_SERVICES) {
+      const svc = services[name]!;
       const port = svc.env[PORT_VAR[name]!];
       expect(port, `${name} sets no ${PORT_VAR[name]}`).toBeTruthy();
       expect(svc.expose).toEqual([port]);
@@ -286,7 +340,7 @@ describe("billsvc's compose environment against the real startup guard", () => {
   });
 
   it('is the only service carrying a dev-only flag', () => {
-    for (const name of ['gameserver', 'matchsvc']) {
+    for (const name of ['gameserver', 'matchsvc', 'backup']) {
       expect(() => assertBillingStartupSafety({ ...services[name]!.env, NODE_ENV: 'production' })).not.toThrow();
     }
   });

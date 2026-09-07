@@ -205,9 +205,12 @@ Falling out of the sweeps, and each recorded as a live drift check rather than f
 ## Layer 6: the deploy/build axis — the artifact is not the thing you tested (2026-09-07)
 
 Layers 0-5 all test the source. Since 2026-09-07 (ROADMAP 9.0) production runs something else:
-three flat ESM bundles that `server/scripts/build.mjs` produced by collapsing the
+**four** flat ESM bundles that `server/scripts/build.mjs` produced by collapsing the
 `@dd/engine` / `@dd/game/*` / `@dd/net/*` workspace graph into one file per process, with `ws`
 and `node:sqlite` left external, inside a container whose behaviour is set by four more files.
+Three of the four are the HTTP planes; the fourth is the backup worker that landed later the
+same day, and it is the one that made this layer's own assertions turn out to be shaped around
+"a service answers a route".
 **None of it was reachable from any test in the repo.** The server tree measured 99.56% lines /
 97.93% branches at the time, and that number said nothing about whether the thing being deployed
 could start.
@@ -222,11 +225,21 @@ temp tree — never `server/dist`, which is a live deploy artifact — and then 
 `server/deploy/package.json` declares, standing in for the image's `npm install --omit=dev`. That
 placement is the half that makes it worth running: Node's upward `node_modules` walk from a
 bundle in the temp tree finds nothing of this monorepo, so a bundle reaching for anything the
-deploy manifest does not list fails here exactly as it would in the container. Each bundle is
+deploy manifest does not list fails here exactly as it would in the container. Each HTTP bundle is
 then started as a bare `node` process and has to answer its own `/health` with its OWN service
 name — `{ok: true}` alone would wave through a mis-mapped entry in `build.mjs`, which is one typo.
-Proven by deleting `ws` from `deploy/package.json`: two of the three boots go red with the
+Proven by deleting `ws` from `deploy/package.json`: two of the three HTTP boots go red with the
 production stack trace in the failure message.
+
+**The worker bundle has no route, so it is driven the way compose drives it.** `backup.mjs`
+(2026-09-07) is started the same way and then verified through its own OUTPUT: wait for the
+`status.json` its first cycle publishes, **gunzip the snapshot it actually wrote and read a row
+back out of it**, then ask the same bundle for its health verdict in a second process
+(`node backup.mjs --health`), which is literally the container's healthcheck. A second case
+asserts it exits 2 with `no databases to back up` when misconfigured — the failure that would
+otherwise be a container coming up green and backing up nothing. This is the only place the
+`VACUUM INTO` path is exercised through the built artifact on real `node:sqlite`, which is where
+it runs.
 
 **`deploy.manifests.test.ts` cross-checks the five places the same facts are written down** —
 `scripts/build.mjs`, `Dockerfile`, `docker-compose.yml`, `deploy/package.json`,
@@ -236,7 +249,13 @@ CI actually ships; the deploy manifest must declare exactly the non-builtin exte
 exact version; the base image's Node major must be at least `build.mjs`'s `target`; every compose
 env var must be a name `src/` actually reads; no secret may be inlined where `env_file: .env`
 is the mechanism; each service must expose and healthcheck **its own** port; and every internal
-`http://` URL must name a real service at the port that service listens on. `build.mjs` was
+`http://` URL must name a real service at the port that service listens on. Since the worker
+joined, the file also asserts that a WORKER exposes nothing, healthchecks its own bundle with
+`--health` (naming the same file its `command:` runs, so the health rule cannot drift into a
+second inline implementation), and mounts every service data directory `:ro`. The HTTP/worker
+split is two explicit lists rather than "whatever has a port variable", on purpose: derive it
+and an HTTP service that merely forgot its port silently becomes a worker with no port
+assertions at all. `build.mjs` was
 refactored to export `entries` / `external` / `target` and take an output directory so both files
 read the real values rather than a second copy of them.
 
@@ -252,7 +271,8 @@ flipped to `NODE_ENV=production` throws. Without the control, the first assertio
 happily against a guard that never throws at all.
 
 **Cost and evidence.** `deploy.manifests.test.ts` is 15 cases in ~180 ms (it only reads files);
-`deploy.bundle.test.ts` is 6 cases in ~600 ms including the esbuild run and three process boots.
+`deploy.bundle.test.ts` is 8 cases in ~1.5 s including the esbuild run, three HTTP boots and the
+worker's own cycle.
 Every assertion was mutation-checked rather than trusted for being green: five separate compose
 mutations (healthcheck port, env name, internal port, `NODE_ENV`, bundle name) each killed
 exactly one case.
@@ -364,8 +384,13 @@ which is why it is the smoke suite and not a unit test that enforces it. `cleara
 pins the limit itself, and pins that one authored grid cell is *exactly* two player radii — so
 raising `PLAYER_BASE.solidRadius` by one fp seals every single-cell corridor in the game.
 
-**Still open.** The report itself. Nothing in the engine now explains it, which is a result and
-not a resolution: the remaining candidates are all on the render side of the boundary.
+**Closed, from the other end (2026-09-07).** The reporter played several days of builds carrying
+v51 and the symptom has not recurred, so the report is resolved by the mechanism v51 fixed (see
+"Still open, restated" below, now answered). Worth recording *how* it closed: not by a
+measurement and not by a replay, but by the absence of the symptom over real play — which is the
+only instrument that was ever going to settle it, since four rounds of sweeps had each returned a
+correct zero. The sweeps were not wasted; they are what made v51's mechanism the one remaining
+candidate instead of one guess among many.
 
 **And "the seed and floor" was the wrong ask (2026-08-31).** A seed does not reproduce a drop
 position — a monster dies where the player pushed it to, so the whole run's input stream is the
@@ -413,11 +438,11 @@ next tighter room piece, not this fix.
 | `systems/doors.test.ts` "a door that locks over a dropped item must not seal it inside stone" | **Yes** — three cases on a 2-room fixture: the sealed item is re-seated, an item across the room does not move by one fp, and the re-seated item is not parked on the far side of the closed door |
 | `sim/dropReachability.sim.ts` | **No, by measurement** — a content gate, like the smoke pickup invariant it extends; no door in 16 bot-driven runs ever closed over a drop |
 
-**Still open, restated.** The report is no longer unexplained by anything in the engine — v51 is
-a mechanism that produces exactly the reported symptom, from an ordinary sequence (a mob dies on
-a threshold, or a weapon is swapped in a doorway, and then the room activates). Whether it is
-*the* report is still unknown and still needs a recorded run; a replay is the only thing that can
-close it. What changed is that the engine now has one candidate too many rather than none.
+**Answered (2026-09-07).** v51 was *the* report. It named a mechanism that produces exactly the
+reported symptom from an ordinary sequence (a mob dies on a threshold, or a weapon is swapped in a
+doorway, and then the room activates), and the reporter confirmed after several days of play on
+builds carrying it that the symptom is gone. The replay ask stands as the right ask for the NEXT
+report of this shape — it just was not what closed this one.
 
 **A gate-reading gotcha, recorded because it inverts what the gate appears to say.**
 `goldenHash` passed with the v51 fix applied and `ENGINE_VERSION` still at 50 — that, and only

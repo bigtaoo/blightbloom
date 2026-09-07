@@ -18,7 +18,21 @@
 // Frequency is deliberately NOT tracked here. The SDK enforces the "one midgame ad every
 // three minutes" cap itself and the docs say so explicitly; a second timer in this file
 // could only ever disagree with the authoritative one, and would be untestable against it.
+//
+// The ONE timer that does live here answers a different question, and the SDK cannot answer
+// it: a rewarded ad does not count against the midgame cap, so a player who watches one on
+// the results screen and then presses CONFIRM would be handed a second ad within a couple of
+// seconds — the platform's own "comes as a surprise" case, arrived at by two individually
+// legal calls. `REWARDED_MIDGAME_COOLDOWN_MS` suppresses the midgame after a rewarded ad the
+// player actually watched. It is our policy, not the platform's cap, which is why it does not
+// contradict the paragraph above.
 import type { CgAdType, CrazyGamesSdk } from './sdk';
+
+/** How long a played rewarded ad suppresses the next automatic midgame ad. One minute:
+ *  long enough to cover the results screen → menu → next-run click-through that produced
+ *  the stacked pair, short enough that a player who then plays a real run still sees the
+ *  ordinary break ad afterwards. */
+export const REWARDED_MIDGAME_COOLDOWN_MS = 60_000;
 
 /**
  * Everything the game has to do for the duration of an ad, as one pair of calls.
@@ -59,7 +73,10 @@ export type AdRefusal =
   | 'busy'
   /** Requested, and the network had nothing to show (the docs' "unfilled" case) — or the
    *  player dismissed it. Normal, not an error. */
-  | 'not-filled';
+  | 'not-filled'
+  /** A rewarded ad the player watched is still inside `REWARDED_MIDGAME_COOLDOWN_MS`, so
+   *  this automatic midgame would have stacked onto it. Only ever refuses a `midgame()`. */
+  | 'too-soon';
 
 export type AdOutcome = { played: true } | { played: false; reason: AdRefusal };
 
@@ -67,11 +84,18 @@ export class AdController {
   private inFlight = false;
   private adblocked = false;
   private probed = false;
+  /** When the last rewarded ad the player actually WATCHED finished, or `null` for none
+   *  this session. Only a played one counts: an unfilled request cost the player nothing
+   *  and must not suppress the ordinary break ad. */
+  private rewardedAt: number | null = null;
 
   constructor(
     private readonly sdk: CrazyGamesSdk,
     private readonly suspension: AdSuspension,
     private readonly context: AdContext,
+    /** Injected in tests. Wall clock, not the ticker: an ad stops the ticker (see
+     *  `suspension.ts`), so a tick count cannot measure the gap this guards. */
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   /** Ask once whether this player blocks ads, so `rewardAvailable()` can answer
@@ -107,7 +131,10 @@ export class AdController {
    * `PortalSession.onLeftRun`) so that "between runs" is a fact about the code and not an
    * intention. The SDK decides whether enough time has passed to actually fill it.
    */
-  midgame(): Promise<AdOutcome> {
+  async midgame(): Promise<AdOutcome> {
+    if (this.rewardedAt !== null && this.now() - this.rewardedAt < REWARDED_MIDGAME_COOLDOWN_MS) {
+      return { played: false, reason: 'too-soon' };
+    }
     return this.request('midgame');
   }
 
@@ -117,8 +144,12 @@ export class AdController {
    * alternative rather than nothing (the requirements page asks for one explicitly — here
    * it is the ordinary banked-materials amount, which is never taken away).
    */
-  rewarded(): Promise<AdOutcome> {
-    return this.request('rewarded');
+  async rewarded(): Promise<AdOutcome> {
+    const outcome = await this.request('rewarded');
+    // Stamped from the OUTCOME, not from the request: see `rewardedAt`'s note on why an
+    // unfilled request must not suppress the next break ad.
+    if (outcome.played) this.rewardedAt = this.now();
+    return outcome;
   }
 
   private async request(type: CgAdType): Promise<AdOutcome> {

@@ -128,6 +128,63 @@ is the shape that breaks absolute paths:
   which asserts against the real `index.html` and the real config's own transform rather than
   a copy of them (`design/18` Layer 6's technique, applied to the client).
 
+## The rewarded-ad placement (decided and shipped 2026-09-07)
+
+This section used to be a paragraph under **What remains** saying the reward was a product
+decision an engineering pass must not settle by accident. It was settled, deliberately, by the
+project owner: **a successful extraction may be doubled.** Watch a rewarded ad on the results
+screen and the run's carry-out bag is banked a second time.
+
+**Why that reward and not one of the other three that were on the table.** It is the only one
+that clears both locked rules at once:
+
+- `design/05`'s **wipe rule** is why the offer does not exist on the defeat screen at all. Not
+  disabled there — absent. "Keep your materials after a wipe" and "watch an ad to continue" are
+  both the same violation, and the DEFEAT arm of `RunOutcome.handle` passes no offer argument
+  whatsoever, so a later pass cannot wire one in and merely grey it out.
+- `design/14`'s **"sell breadth, not power"** is why the currency is materials. A material is
+  not power: it is the farmable half of the economy, and it is spendable only on blueprints the
+  account already owns. An ad that handed out a run buff, a revive or a weapon would be selling
+  power for attention, which is the same axis the monetisation model refuses to sell for money.
+- The **non-ad player is never worse off**, and that is guaranteed by ORDERING rather than by a
+  second code path: the baseline bag is banked *before* the offer is drawn. A player who ignores
+  the button, blocks ads, or gets an unfilled request keeps 100% of what they carried out. The
+  requirements page asks for exactly this ("leave them the non-ad alternative"), and it is
+  asserted in `RunOutcome.test.ts` on `banked` — the only observable that can tell the two
+  orderings apart.
+
+**Four independent reasons no offer is drawn**, each a case in the tests: no rewarded ad is
+installed (every target but the portal), the player blocks ads, the run was ONLINE (an ad freezes
+this client, and a lockstep session cannot wait — `design/06`), or the run carried nothing out
+(an offer to double zero is a button that lies about what it does).
+
+**One rule the platform's own cap does not cover.** A rewarded ad does not count against the
+SDK's "one midgame every three minutes", so watching one and then pressing CONFIRM handed the
+player a second ad seconds later — two individually legal calls making one illegal outcome (the
+requirements page's "comes as a surprise"). `AdController.REWARDED_MIDGAME_COOLDOWN_MS`
+suppresses the automatic midgame for a minute after a rewarded ad the player actually WATCHED. An
+unfilled request starts no cooldown: it cost the player no time, so it must not cost them the
+ordinary break ad.
+
+**Where it lives, and why the portal's "the game does not know it exists" shape survives it.**
+An offer is the one thing `PortalSession` cannot derive from the phase stream — it has to be
+DRAWN on a screen the game owns, and its reward lands in the meta layer. So the capability is
+declared game-side (`client/src/platform/rewardedAd.ts`, a module-level registry beside
+`hostKind.ts`/`storePlatform.ts`), the portal supplies an adapter over `AdController`
+(`crazygames/portalRewardedAd.ts`), and `main.crazygames.ts` installs it. `src/game/` still
+imports nothing from `platform/crazygames/`, and deleting the portal target still costs one
+entry point and one directory.
+
+**Verified live** on the portal dev build with the real SDK reporting `local`: a forced
+extraction with 4 banked materials drew the amber offer, a real tap ran a real
+`sdk.requestAd('rewarded')`, the materials row became `Materials banked: 8 (ad bonus x2)`, the
+account bank went 4 → 8, the button retired and the two exits closed the row it had occupied, the
+ticker was running again afterwards (no leaked suspension), and a midgame requested immediately
+after came back `{played: false, reason: 'too-soon'}`.
+
+**Still unbuilt, on purpose:** nothing offers a rewarded ad anywhere else. A second placement is
+a second balance decision, not a second call site.
+
 ## What remains
 
 - **A registered portal domain.** Everything above ran on `local`, where the SDK renders
@@ -135,12 +192,6 @@ is the shape that breaks absolute paths:
   behaviour that could not be settled here — the local SDK answered "no available banner size
   has been found" even with the container sized, which is why the request is the explicit
   `requestBanner({id, width, height})` form rather than the responsive one.
-- **A rewarded-ad placement.** The SDK and controller support `rewarded` and it is tested, but
-  nothing offers one, because every rewarded reward in a roguelite touches balance: doubling
-  banked materials halves the grind and interacts with `design/14`'s "sell breadth, not power";
-  keeping a run's materials after a wipe contradicts `design/05`'s locked wipe rule. **This is
-  a product decision, not an engineering task**, and 9.x-style adapters must not settle it by
-  accident.
 - **A hosted privacy policy / terms URL.** The in-game data notice covers the collection point;
   a hosted document is a human deliverable. Nothing renders a link until one exists — an empty
   placeholder link is worse than none.

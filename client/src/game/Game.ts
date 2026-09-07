@@ -6,7 +6,7 @@ import { bankMaterials, unlockBlueprint, createAccountSyncMetaStore, type MetaSt
 import type { SettingsState } from '../settings';
 import { Layers } from './scene/layers';
 import { Scene } from './scene/Scene';
-import { Screens } from './screens/Screens';
+import { Screens, type ResultOffer } from './screens/Screens';
 import { Forge } from './screens/Forge';
 import { MainMenu } from './screens/MainMenu';
 import { ModeSelect } from './screens/ModeSelect';
@@ -382,9 +382,9 @@ export class Game {
     this.store.save(this.run.meta);
   }
 
-  showOutcomeScreen(won: boolean, title: string, lines: readonly string[]): void {
+  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null): void {
     const { w, h } = this.layers.menu.fit(this.screenSize());
-    this.screens.show(w, h, won, title, lines);
+    this.screens.show(w, h, won, title, lines, offer);
   }
 
   /**

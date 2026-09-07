@@ -64,6 +64,15 @@ const SCREENS: Array<[string, (w: number, h: number) => Container]> = [
   ['ModeSelect', (w, h) => { const s = new ModeSelect(); s.show(w, h); return s.view; }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s.view; }],
   ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one', 'line two']); return s.view; }],
+  // The rewarded-ad offer makes this screen a row TALLER and, with the longest locale's
+  // label, wider than any fixed-width button on it — so the offer variant is the one the
+  // fit actually has to clear, exactly as `storeEnabled` is for the Forge above.
+  ['Screens + ad offer', (w, h) => {
+    const s = new Screens();
+    s.show(w, h, true, 'EXTRACTED', ['line one', 'line two', 'line three', 'line four'],
+      { label: 'СМОТРЕТЬ РЕКЛАМУ: МАТЕРИАЛЫ x2', claim: async () => [] });
+    return s.view;
+  }],
   ['Settings', (w, h) => { const s = new Settings(); s.show(w, h, defaultSettingsState()); return s.view; }],
   ['PauseMenu', (w, h) => { const s = new PauseMenu(); s.show(w, h); return s.view; }],
   ['PartyScreen', (w, h) => { const s = new PartyScreen({ matchBaseUrl: '' }); s.show(w, h); return s.view; }],

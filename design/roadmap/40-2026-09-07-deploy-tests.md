@@ -36,8 +36,16 @@ SSH to a key registered with a **forced command** (`command="…/wnet-test-ci-de
 so whatever that key asks sshd to run, sshd runs only the deploy script. The live copy of that
 script sits OUTSIDE the deploy target on purpose — installed inside it, a deploy could replace
 the script and the constraint would be gone — and it moves five things, never
-`docker-compose.yml` or `.env`, which is what keeps the key unable to write a compose file that
-bind-mounts the host's `/` into a container. Success is defined as each container answering its
+`.env`, so the ticket secret and the internal key are beyond this key's reach.
+
+> **Correction, 2026-09-07 (volume 42).** As written, this paragraph also said the script never
+> moves `docker-compose.yml`, and argued from that the key cannot ship a compose file
+> bind-mounting the host's `/` into a container. **That was false when written**: the script has
+> always copied `docker-compose.yml`, and `deploy.manifests.test.ts` asserts it is in the
+> payload. The capability is real — it is also what let the `backup` worker deploy itself as a
+> new service — and it is now named in `deploy/ci-deploy.sh`'s own header, with its bounding
+> facts and the exact change to revoke it. Corrected here rather than rewritten away, because
+> the wrong sentence was about a security boundary and a reader would have relied on it. Success is defined as each container answering its
 own `/health`, not as the command returning 0.
 
 Everything on the box is named `wnet-test` rather than after this game: it is company hardware

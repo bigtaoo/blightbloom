@@ -5,6 +5,8 @@ import { WebPlatform } from './platform/web/WebPlatform';
 import { setHostKind } from './platform/hostKind';
 import { adSuspension } from './platform/crazygames/suspension';
 import { PortalSession } from './platform/crazygames/PortalSession';
+import { portalRewardedAd } from './platform/crazygames/portalRewardedAd';
+import { setRewardedAd } from './platform/rewardedAd';
 import { CrazyGamesSdk } from './platform/crazygames/sdk';
 import { baseAssetHost, setAssetHost } from './render/assetHost';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
@@ -32,7 +34,11 @@ import { parseGameQueryParams } from './game/match/gameQueryParams';
 //  3. **The portal is told what is happening.** `PortalSession` brackets loading and
 //     gameplay, places ads at the one legal moment, and shows a banner on the menu. It is
 //     installed on its own ticker callback and the game does not know it exists — see that
-//     file's header for why that is the shape rather than hooks inside `src/game/`.
+//     file's header for why that is the shape rather than hooks inside `src/game/`. The one
+//     exception is the rewarded-ad OFFER (3c below): an offer is a button on a screen the
+//     game owns, so it cannot be derived from the outside. It goes through a declared
+//     capability (`platform/rewardedAd.ts`) rather than an import, so what the game learns
+//     is that a rewarded ad exists — never that a portal does.
 //  4. **No self-managed auto-reload.** `main.ts` polls `/version.json` so a tab left open
 //     across a deploy reloads itself. A portal serves a versioned, immutable upload from its
 //     own CDN: the file is not there to poll, the URL is not ours, and reloading somebody
@@ -87,6 +93,15 @@ async function boot() {
   const portal = new PortalSession(game, { sdk, suspension: adSuspension(app.ticker) });
   app.ticker.add(() => portal.update());
   void portal.start();
+
+  // (3c) The one thing the portal cannot derive from the phase stream: the rewarded-ad
+  // OFFER on the results screen, which has to be drawn by a screen the game owns and paid
+  // into the meta layer. `platform/rewardedAd.ts`'s header has the full reasoning; the
+  // install is here because an entry point is where a capability gets declared, and every
+  // other entry point declaring nothing is what keeps the offer off every other target.
+  // After `portal.start()`, deliberately: `probe()` runs in there, and `available()` is
+  // what decides whether the button is drawn at all.
+  setRewardedAd(portalRewardedAd(portal.ads));
 
   // Expose for debugging — `__portal` alongside `__game` so a live portal page can be
   // interrogated from a console (`__portal.diagnostics()`), which is the only place any of

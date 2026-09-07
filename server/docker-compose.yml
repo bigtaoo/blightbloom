@@ -10,7 +10,9 @@
 # in through the proxy's :443, nothing binds a host port directly.
 #
 # One image (server/Dockerfile, built from the ALREADY-BUILT server/dist/*.mjs —
-# `npm run build -w server` first), three processes selected by `command:`.
+# `npm run build -w server` first), FOUR processes selected by `command:` — three HTTP
+# services and one worker (`backup`), which has no port and whose healthcheck therefore
+# asks its own bundle rather than a `/health` route.
 services:
   gameserver:
     build: .
@@ -108,6 +110,56 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # The only process here that serves nothing. It snapshots the two databases this project
+  # cannot regenerate — accounts.db (who somebody is) and billing.db (what they paid for) —
+  # because until 2026-09-07 the backup procedure was a `scp` line in a README, i.e. a
+  # procedure only as reliable as somebody remembering it.
+  #
+  # Two properties worth reading off this block:
+  #
+  #  - **The source mounts are `:ro`.** `VACUUM INTO` works through a read-only SQLite
+  #    handle (verified, see src/backup/snapshot.ts), so this container cannot write to a
+  #    live database even if its code were wrong. They are mounted under `/sources/` rather
+  #    than `/data/` so that role is visible in every path in the logs.
+  #  - **The healthcheck is real logic, not a ping.** `node backup.mjs --health` reads
+  #    `status.json` and fails when any source failed OR when the last cycle is too old —
+  #    so a worker whose loop died after one good cycle goes unhealthy instead of staying
+  #    green forever on a stale success.
+  backup:
+    build: .
+    image: wnet-test:latest
+    container_name: wnet-test-backup
+    command: ["node", "backup.mjs"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Same variable names the owning services use for these files (src/backup/config.ts
+      # explains why), pointed at this container's read-only mounts.
+      DDU_DB_PATH: /sources/matchsvc/accounts.db
+      DDU_BILLING_DB_PATH: /sources/billsvc/billing.db
+      DDU_BACKUP_DIR: /backups
+      DDU_BACKUP_INTERVAL_HOURS: "24"
+      DDU_BACKUP_KEEP: "14"
+    volumes:
+      - ./data/matchsvc:/sources/matchsvc:ro
+      - ./data/billsvc:/sources/billsvc:ro
+      - ./backups:/backups
+    networks:
+      - wnet
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "backup.mjs", "--health"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   wnet:

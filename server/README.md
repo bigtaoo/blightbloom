@@ -75,14 +75,31 @@ byte-for-byte.
 
 | File | Role | Tested |
 |------|------|--------|
-| `scripts/build.mjs` | esbuild-bundles the three entrypoints into `dist/*.mjs`, resolving the `@dd/engine` / `@dd/game/*` / `@dd/net/*` aliases at BUILD time; `ws` and `node:sqlite` stay external. Exports `entries`/`external`/`target` so the tests read the real values. | ✅ `test/deploy.bundle.test.ts` |
-| `Dockerfile` / `docker-compose.yml` / `deploy/package.json` | One image, three processes selected by `command:`; the image installs only the deploy manifest's dependencies and runs as non-root. | ✅ `test/deploy.manifests.test.ts` |
+| `scripts/build.mjs` | esbuild-bundles the four entrypoints into `dist/*.mjs`, resolving the `@dd/engine` / `@dd/game/*` / `@dd/net/*` aliases at BUILD time; `ws` and `node:sqlite` stay external. Exports `entries`/`external`/`target` so the tests read the real values. | ✅ `test/deploy.bundle.test.ts` |
+| `Dockerfile` / `docker-compose.yml` / `deploy/package.json` | One image, four processes selected by `command:` — the three HTTP planes plus the `backup` worker; the image installs only the deploy manifest's dependencies and runs as non-root. | ✅ `test/deploy.manifests.test.ts` |
 | `deploy/ci-deploy.sh` | The forced command the CI deploy key is pinned to (see `deploy/README.md`). Its payload check is cross-checked against the workflow's `tar` list. | ✅ `test/deploy.manifests.test.ts` |
 
 The bundle test builds into an OS temp directory and boots each `.mjs` as a bare `node` process,
 so anything the deploy manifest does not declare fails there the same way it would in the
-container — the whole point being that `src/`'s coverage says nothing about the artifact.
+container — the whole point being that `src/`'s coverage says nothing about the artifact. The
+three HTTP bundles have to answer their own `/health` with their own service name; the worker,
+which serves nothing, is driven through its output instead — its snapshot is gunzipped and a row
+read back out of it, then the same bundle is asked for its health verdict the way compose asks.
 
+
+**Backup worker** — the fourth process, and the only one that serves nothing (design/19 "Backups", `deploy/README.md`):
+
+| File | Role | I/O? | Tested |
+|------|------|------|--------|
+| `src/backup/config.ts` | Reads `DDU_DB_PATH` / `DDU_BILLING_DB_PATH` (the SAME names the owning services use) + `DDU_BACKUP_DIR`/`_INTERVAL_HOURS`/`_KEEP`. Mostly refusals: no source, a zero/garbage interval or a source inside the backup directory is a startup error, because a backup worker with nothing to do looks exactly like a working one. An EMPTY var counts as unset. | env | ✅ `test/backup.config.test.ts` |
+| `src/backup/snapshot.ts` | One consistent copy: `VACUUM INTO` through a **read-only** handle (so this process cannot write to a live database), `integrity_check` on the copy, gzip, atomic rename. The timestamp lives in the FILENAME, since a restore or an `rsync -a` rewrites mtimes. | file | ✅ `test/backup.snapshot.test.ts` |
+| `src/backup/prune.ts` | Pure retention: newest N **per source**, and only files matching what `snapshot.ts` writes are ever candidates. The one function here whose bug destroys data rather than failing to protect it. | no | ✅ `test/backup.prune.test.ts` |
+| `src/backup/runner.ts` | One cycle (per-source failures recorded, never thrown, so one bad database cannot cost the other its backup), the `status.json` it publishes atomically, and the health verdict read back off it — unhealthy when any source failed OR the last cycle is too old. | file | ✅ `test/backup.runner.test.ts` |
+| `src/backup/main.ts` | Two modes, one bundle: the loop (one cycle immediately, then every interval) and `--health`, which is the container's healthcheck. Refuses to start (exit 2) rather than idle. | file | ✅ `test/backup.main.test.ts`, `test/deploy.bundle.test.ts` |
+
+It holds no writable handle on `accounts.db` or `billing.db` at all — compose mounts both data
+directories `:ro` — and it copies nothing off the box, which is stated as still open in
+`deploy/README.md` §7 rather than papered over.
 
 ## Protocol
 
@@ -128,7 +145,7 @@ opens the account database **read-only** and files into billsvc's `review_queue`
 over a day it has already filed produces nothing.
 
 Or from inside `server/`: `npm test` (ticket / Matchmaker / MatchRoom / RoomManager),
-`npm run typecheck` (incl. all three entrypoints), `npm run dev`, `npm run matchsvc`, `npm run billsvc`.
+`npm run typecheck` (incl. all four entrypoints), `npm run dev`, `npm run matchsvc`, `npm run billsvc`.
 
 **Handshake (ROADMAP 3.3):** the client calls the control plane to matchmake —
 `POST /find {playerCount}` then poll `GET /find/:queueId` — and receives a **signed
@@ -170,7 +187,7 @@ differences. `DDU_GRANT_AUDIT_THRESHOLD` overrides the grant audit's per-account
 (default 3; the comparison is `>`, so exactly at it is not an anomaly).
 
 **Internal key (ROADMAP 8.1, design/19 §3):** set `DDU_INTERNAL_KEY` to the SAME value on
-all three processes, the same way as the ticket secret and for the same reason — it is what the
+all three HTTP processes (the backup worker makes no internal calls and gets none of this), the same way as the ticket secret and for the same reason — it is what the
 gameserver presents on `POST /rating/report` and what billsvc presents on
 `POST /internal/entitlements/grant`, both of which are INTERNAL routes and refuse anything
 else. billsvc also needs `DDU_MATCHSVC_URL` to know where to deliver (default

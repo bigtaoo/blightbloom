@@ -19,7 +19,16 @@
 // listener the game added"). The game does not know it exists. Nothing in `src/game/` imports
 // it. Removing the portal target is deleting one entry point and this directory.
 //
-// Everything it needs turns out to be derivable from the phase:
+// One thing is NOT derivable from the phase, and it arrived later (2026-09-07): the
+// rewarded-ad OFFER. Everything above is something the portal wants to be TOLD; an offer is
+// something the player has to be SHOWN, on the results screen, and its reward lands in the
+// meta layer. That cannot be observed from out here. It is also the only such case, and it
+// does not weaken the rule above — `main.crazygames.ts` installs an adapter
+// (`portalRewardedAd.ts`) into a capability the game declares for itself
+// (`platform/rewardedAd.ts`), so `src/game/` still imports nothing from this directory and
+// deleting the portal target still costs one entry point and one directory.
+//
+// Everything else it needs turns out to be derivable from the phase:
 //
 //   gameplay bracket   `playing` vs not (plus "an ad is up", which is not a phase)
 //   midgame ad         a transition OUT of a run into a menu phase = "between runs"

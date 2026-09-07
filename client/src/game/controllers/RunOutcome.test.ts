@@ -6,6 +6,8 @@
  * Pixi/Game.ts (which this file, by design, never imports).
  */
 import { describe, it, expect, afterEach } from 'vitest';
+import { setRewardedAd, type RewardedAd } from '../../platform/rewardedAd';
+import type { ResultOffer } from '../screens/Screens';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
@@ -37,6 +39,11 @@ interface RecordedHost extends RunOutcomeHost {
   readonly hudHidden: boolean;
   readonly banked: GameState[];
   readonly shown: { won: boolean; title: string; lines: readonly string[] } | undefined;
+  /** The rewarded-ad offer the last `showOutcomeScreen` was handed. `undefined` when the
+   *  call site passed none at all (every arm but the PvE win), `null` when it passed one
+   *  and decided against it — two different facts, so they stay distinguishable. */
+  readonly offer: ResultOffer | null | undefined;
+  online: boolean;
 }
 
 function mockHost(localOwner = 0): RecordedHost {
@@ -45,18 +52,22 @@ function mockHost(localOwner = 0): RecordedHost {
   const banked: GameState[] = [];
   let hudHidden = false;
   let shown: { won: boolean; title: string; lines: readonly string[] } | undefined;
+  let offer: ResultOffer | null | undefined;
   return {
     localOwner,
+    online: false,
     addScore: (delta) => { score += delta; },
     currentScore: () => score,
     setPhase: (p) => { phaseSet.push(p); },
     hideHud: () => { hudHidden = true; },
     bankRunMaterials: (s) => { banked.push(s); },
-    showOutcomeScreen: (won, title, lines) => { shown = { won, title, lines }; },
+    isOnline() { return this.online; },
+    showOutcomeScreen: (won, title, lines, o) => { shown = { won, title, lines }; offer = o; },
     get phaseSet() { return phaseSet; },
     get hudHidden() { return hudHidden; },
     get banked() { return banked; },
     get shown() { return shown; },
+    get offer() { return offer; },
   };
 }
 
@@ -282,5 +293,151 @@ describe('RunOutcome — a flat (non-dungeon) floors config reports its own floo
     new RunOutcome(host).handle(s);
 
     expect(host.shown?.lines[0]).toBe('Fell on floor 2/2');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// The rewarded-ad materials bonus (design/20's "A rewarded-ad placement", 2026-09-07).
+//
+// What these cases are actually defending is a pair of design rules that a plausible
+// implementation breaks silently: an offer on the DEFEAT screen would buy back a wipe
+// (design/05's locked rule), and a reward paid before the ad plays — or a baseline that is
+// only banked when the ad DOESN'T play — would make the non-ad player worse off than the
+// ad player by more than the bonus. So every case below asserts on `banked`, which is the
+// only observable that distinguishes those.
+// ---------------------------------------------------------------------------------------
+describe('RunOutcome — rewarded-ad materials bonus', () => {
+  /** A stub rewarded ad. `plays` decides the outcome; `shown` counts requests, so a test
+   *  can tell "refused to offer" from "offered and the ad was unfilled". */
+  function stubAd(opts: { available?: boolean; plays?: boolean } = {}) {
+    const { available = true, plays = true } = opts;
+    let shown = 0;
+    const ad: RewardedAd = {
+      available: () => available,
+      show: async () => { shown += 1; return plays; },
+    };
+    setRewardedAd(ad);
+    return { requests: () => shown };
+  }
+
+  function extractedState(): GameState {
+    const s = pveState();
+    s.floorIndex = 0;
+    s.bankedMaterials = { fire: 4 };
+    return s;
+  }
+
+  afterEach(() => setRewardedAd(null));
+
+  it('no ad installed (every target but the portal): no offer, and the win is unchanged', () => {
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer).toBeNull();
+    expect(host.shown?.lines[1]).toBe('Materials banked: 4');
+    expect(host.banked).toHaveLength(1);
+  });
+
+  it('offers the double on a successful extraction, labelled from the locale', () => {
+    stubAd();
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer?.label).toBe('WATCH AD: MATERIALS x2');
+  });
+
+  it('the offer label follows the active locale, like every other results-screen string', () => {
+    stubAd();
+    setLocale('zh');
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer?.label).toBe('看广告：材料 x2');
+  });
+
+  it('claiming a PLAYED ad banks the same carry-out a second time and says so', async () => {
+    const ad = stubAd({ plays: true });
+    const host = mockHost();
+    const s = extractedState();
+    new RunOutcome(host).handle(s);
+
+    // Baseline first: exactly one banking before the ad is ever requested. This is the
+    // ordering that makes "the non-ad player keeps everything" true by construction.
+    expect(host.banked).toEqual([s]);
+
+    const lines = await host.offer!.claim();
+
+    expect(ad.requests()).toBe(1);
+    expect(host.banked).toEqual([s, s]); // the SAME bag, banked twice = doubled
+    expect(lines[1]).toBe('Materials banked: 8 (ad bonus x2)');
+    // The other three rows are untouched — the bonus rewrites one line, not the block.
+    expect(lines[0]).toBe(host.shown!.lines[0]);
+    expect(lines[2]).toBe(host.shown!.lines[2]);
+    expect(lines[3]).toBe(host.shown!.lines[3]);
+  });
+
+  it('an UNFILLED ad banks nothing more, keeps the baseline, and says the materials are safe', async () => {
+    const ad = stubAd({ plays: false });
+    const host = mockHost();
+    const s = extractedState();
+    new RunOutcome(host).handle(s);
+
+    const lines = await host.offer!.claim();
+
+    expect(ad.requests()).toBe(1);
+    expect(host.banked).toEqual([s]); // still one — the reward is paid only on a played ad
+    expect(lines[1]).toBe('No ad available - your 4 materials are safe');
+  });
+
+  it('no offer when the player blocks ads — a button that cannot work is not drawn', () => {
+    stubAd({ available: false });
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer).toBeNull();
+  });
+
+  it('no offer in an online match: an ad freezes this client and lockstep cannot wait', () => {
+    stubAd();
+    const host = mockHost();
+    host.online = true;
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer).toBeNull();
+  });
+
+  it('no offer when the run carried nothing out — doubling zero is a button that lies', () => {
+    stubAd();
+    const host = mockHost();
+    const s = pveState();
+    s.bankedMaterials = {};
+    new RunOutcome(host).handle(s);
+
+    expect(host.offer).toBeNull();
+  });
+
+  it('DEATH gets no offer at all: design/05 locks the wipe, so there is nothing to double', () => {
+    stubAd();
+    const host = mockHost();
+    const s = extractedState();
+    s.winner = 'enemies';
+    new RunOutcome(host).handle(s);
+
+    expect(host.shown?.won).toBe(false);
+    // `undefined`, not `null`: the defeat arm passes no offer argument whatsoever, so this
+    // stays red if a later pass ever wires one in and merely disables it.
+    expect(host.offer).toBeUndefined();
+    expect(host.banked).toEqual([]);
+  });
+
+  it('a PvP arena win gets no offer either — an arena run has no carry-out bag', () => {
+    stubAd();
+    const host = mockHost(0);
+    const s = pvpState(2);
+    s.winner = 0;
+    new RunOutcome(host).handle(s);
+
+    expect(host.shown?.won).toBe(true);
+    expect(host.offer).toBeUndefined();
   });
 });

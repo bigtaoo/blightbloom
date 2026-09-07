@@ -3,6 +3,8 @@ import { SCORE } from '../score';
 import { t } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
 import { localSeatWon } from './localOutcome';
+import { rewardedAd } from '../../platform/rewardedAd';
+import type { ResultOffer } from '../screens/Screens';
 
 /** The bits of Game a run-outcome reaction needs — score/meta/phase/screen are all
  *  Game-owned state, so this stays a callback interface (same EventReactor-style
@@ -13,12 +15,17 @@ export interface RunOutcomeHost {
   currentScore(): number;
   setPhase(phase: 'victory' | 'defeat'): void;
   hideHud(): void;
-  /** Bank the run's carry-out into the persistent account (design/05/14). */
+  /** Bank the run's carry-out into the persistent account (design/05/14). Called a SECOND
+   *  time, with the same state, to pay the rewarded-ad bonus — see `doubleOffer`. */
   bankRunMaterials(s: GameState): void;
+  /** Whether this run is a networked match. Read only to suppress the ad offer: an ad
+   *  freezes this client, which a lockstep session cannot survive (design/06), so
+   *  `AdController` refuses one outright and a button that cannot work must not be drawn. */
+  isOnline(): boolean;
   /** `won` drives the result icon (Screens.ts) — kept as an explicit flag rather than
    * inferred from `title` text now that `title` is a translated, locale-dependent
    * string (design/17-i18n.md) instead of a fixed English literal. */
-  showOutcomeScreen(won: boolean, title: string, lines: readonly string[]): void;
+  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer?: ResultOffer | null): void;
 }
 
 /** Total materials safely banked so far this run (design/05 carry-out bag). */
@@ -88,12 +95,57 @@ export class RunOutcome {
     this.host.setPhase('victory');
     this.host.hideHud();
     this.host.addScore(SCORE.victory);
-    this.host.showOutcomeScreen(true, t('results.extractedTitle'), [
+    // The stat block as a function of its materials row, because the ad bonus rewrites
+    // that one row and has to leave the other three exactly as they were — re-deriving
+    // them later would re-read `currentScore()` after some other screen had moved it.
+    const lines = (materials: string): readonly string[] => [
       t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
-      t('results.materialsBanked', { count: carried }),
+      materials,
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
-    ]);
+    ];
+    this.host.showOutcomeScreen(
+      true,
+      t('results.extractedTitle'),
+      lines(t('results.materialsBanked', { count: carried })),
+      this.doubleOffer(s, carried, lines),
+    );
+  }
+
+  /**
+   * The rewarded-ad offer on a successful extraction: watch one, and the run's carry-out
+   * is banked a second time (design/20 "A rewarded-ad placement", decided 2026-09-07).
+   *
+   * Why this reward and not another. It is the only one that fits both locked rules at
+   * once: design/05's wipe rule means a DEATH may never be bought back, and this offer
+   * does not exist on the defeat screen at all — `lose()` never calls this. design/14's
+   * "sell breadth, not power" means the ad may not hand out power, and a material is not
+   * power: it is the farmable currency, spendable only on blueprints the account already
+   * owns. And the baseline is banked BEFORE the offer is drawn, so a player who ignores
+   * it, blocks ads, or gets an unfilled request keeps 100% of what they carried out —
+   * the requirements page's "leave them the non-ad alternative", satisfied by ordering
+   * rather than by a second code path.
+   *
+   * Four independent reasons there is no offer, each one a case in the tests: no rewarded
+   * ad is installed (every target but the portal), the player blocks ads, the run was
+   * online, or the run carried nothing out — an offer to double zero is a button that
+   * lies about what it does.
+   */
+  private doubleOffer(
+    s: GameState,
+    carried: number,
+    lines: (materials: string) => readonly string[],
+  ): ResultOffer | null {
+    const ad = rewardedAd();
+    if (ad === null || !ad.available() || this.host.isOnline() || carried <= 0) return null;
+    return {
+      label: t('results.doubleMaterialsButton'),
+      claim: async () => {
+        if (!(await ad.show())) return lines(t('results.adNotFilled', { count: carried }));
+        this.host.bankRunMaterials(s);
+        return lines(t('results.materialsDoubled', { count: carried * 2 }));
+      },
+    };
   }
 
   private lose(s: GameState): void {

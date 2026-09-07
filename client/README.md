@@ -140,12 +140,16 @@ src/
    ├─ types.ts        Platform / InputSource / InputState interfaces
    ├─ hostKind.ts     WHICH host this build is, DECLARED by the entry point — the one
    │                  platform fact no capability probe can answer (design/20)
+   ├─ rewardedAd.ts   a rewarded ad, if this build has one: a capability the ENTRY POINT
+   │                  installs and game/ reads, so the results screen can offer one
+   │                  without importing a portal (design/20). Uninstalled = no offer.
    ├─ TouchControls.ts  shared virtual twin-stick (used by every touch host)
    ├─ web/            WebPlatform + WebInput (keyboard + mouse, and touch)
    ├─ wechat/         WeChatPlatform + WeChatAdapter + WeChatInput (wx canvas + touch)
    └─ crazygames/     the game-portal integration (design/20): the SDK façade, the ad
-                      policy, the banner container, and the one-input phase session that
-                      drives them. Nothing under game/ imports any of it.
+                      policy, the banner container, the one-input phase session that
+                      drives them, and the adapter that fills in `rewardedAd.ts` above.
+                      Nothing under game/ imports any of it.
 
 sim/                  offline harnesses (PvP/PvE balance sims, the arena audit, and
                       replay/ — the recorded-run inspector behind

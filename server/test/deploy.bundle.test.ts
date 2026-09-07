@@ -19,10 +19,12 @@
  * through, and it is one typo in `build.mjs`'s `entries` away.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 // @ts-expect-error — plain .mjs build script, the same untyped-helper import vitest.config.ts uses.
@@ -137,8 +139,8 @@ describe('the built bundles are self-contained', () => {
   it('emits exactly one file per entrypoint', () => {
     // The guard for every assertion below: a build that silently produced nothing would
     // make "no unresolved alias survived" trivially true of an empty set of files.
-    expect(built).toHaveLength(3);
-    expect(entries.map((e: { out: string }) => e.out)).toEqual(['index', 'matchsvc', 'billsvc']);
+    expect(built).toHaveLength(4);
+    expect(entries.map((e: { out: string }) => e.out)).toEqual(['index', 'matchsvc', 'billsvc', 'backup']);
   });
 
   it('resolved every @dd/* workspace alias at build time', () => {
@@ -160,6 +162,11 @@ describe('the built bundles are self-contained', () => {
     expect(byName('index')).toMatch(/from\s*["']ws["']/);
     expect(byName('matchsvc')).toMatch(/from\s*["']node:sqlite["']/);
     expect(byName('billsvc')).toMatch(/from\s*["']node:sqlite["']/);
+    // The backup worker reads both databases through the same builtin — and must NOT drag
+    // `ws` in, since bundling a websocket library into a process that opens no socket is
+    // the tell that an entrypoint is pointed at the wrong source file.
+    expect(byName('backup')).toMatch(/from\s*["']node:sqlite["']/);
+    expect(byName('backup')).not.toMatch(/from\s*["']ws["']/);
   });
 });
 
@@ -188,4 +195,92 @@ describe('each bundle boots as a bare node process and answers /health', () => {
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });
   }, 30_000);
+});
+
+/**
+ * The worker bundle, which has no `/health` route to poll — so this drives the artifact
+ * the way compose does: run it, wait for the status file its cycle publishes, then ask the
+ * SAME bundle for its health verdict in a second process.
+ *
+ * This is the one test that exercises `VACUUM INTO` through the built artifact on real
+ * `node:sqlite`, as a bare process with only the deploy manifest's dependencies staged —
+ * i.e. the only place the backup path is proven to work where it actually runs.
+ */
+describe('the backup worker bundle snapshots a real database', () => {
+  /** A real SQLite file with a row in it, written by the same builtin the server uses. */
+  function seedDatabase(file: string): void {
+    const db = new DatabaseSync(file);
+    db.exec(`CREATE TABLE accounts (id TEXT PRIMARY KEY); INSERT INTO accounts VALUES ('a1');`);
+    db.close();
+  }
+
+  it('writes a verified snapshot, then reports itself healthy', async () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), 'ddu-backup-src-'));
+    const destDir = mkdtempSync(join(tmpdir(), 'ddu-backup-dest-'));
+    const source = join(sourceDir, 'accounts.db');
+    seedDatabase(source);
+
+    const env = {
+      DDU_DB_PATH: source,
+      DDU_BACKUP_DIR: destDir,
+      // Long enough that the loop sleeps after its first cycle instead of racing the
+      // assertions below — the cycle this checks is the one it runs immediately at start.
+      DDU_BACKUP_INTERVAL_HOURS: '1',
+      DDU_BACKUP_KEEP: '2',
+    };
+    const child = spawn(process.execPath, [join(outdir, 'backup.mjs')], {
+      env: { ...process.env, NODE_ENV: 'development', ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    children.push(child);
+    let output = '';
+    child.stdout?.on('data', (d) => (output += String(d)));
+    child.stderr?.on('data', (d) => (output += String(d)));
+
+    let status: { ok: boolean; sources: { file?: string }[] } | undefined;
+    for (let i = 0; i < 100 && status === undefined; i += 1) {
+      await sleep(100);
+      try {
+        status = JSON.parse(readFileSync(join(destDir, 'status.json'), 'utf8'));
+      } catch {
+        /* not written yet */
+      }
+    }
+    expect(status, `no status.json in 10s:\n${output}`).toBeDefined();
+    expect(status!.ok).toBe(true);
+
+    // The snapshot is a real gzipped SQLite file: decompress it, open it, read the row
+    // back. Asserting on the status file alone would pass on a worker that writes a
+    // plausible report and an empty archive.
+    const file = join(destDir, status!.sources[0]!.file!);
+    const restored = join(destDir, 'restored.db');
+    writeFileSync(restored, gunzipSync(readFileSync(file)));
+    const db = new DatabaseSync(restored, { readOnly: true });
+    expect(db.prepare('SELECT id FROM accounts').all()).toEqual([{ id: 'a1' }]);
+    db.close();
+
+    // ...and the health mode of the same bundle agrees, which is what compose runs.
+    const health = spawnSync(process.execPath, [join(outdir, 'backup.mjs'), '--health'], {
+      env: { ...process.env, ...env },
+      encoding: 'utf8',
+    });
+    expect(health.status, health.stderr).toBe(0);
+
+    child.kill();
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(destDir, { recursive: true, force: true });
+  }, 30_000);
+
+  it('REFUSES to start with no source configured, instead of idling green', () => {
+    // The silent-no-op failure `src/backup/config.ts` is written against, asserted against
+    // the built artifact: exit code 2 and a message, not a container that comes up and
+    // backs up nothing.
+    const run = spawnSync(process.execPath, [join(outdir, 'backup.mjs')], {
+      env: { ...process.env, DDU_DB_PATH: '', DDU_BILLING_DB_PATH: '', DDU_BACKUP_DIR: outdir },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('no databases to back up');
+  });
 });

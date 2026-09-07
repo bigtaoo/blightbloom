@@ -123,6 +123,7 @@ function outcomeHost(localOwner: number): RunOutcomeHost & { won(): boolean | un
     setPhase: () => {},
     hideHud: () => {},
     bankRunMaterials: () => {},
+    isOnline: () => false,
     showOutcomeScreen: (w) => { won = w; },
     won: () => won,
   };

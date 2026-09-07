@@ -9,7 +9,7 @@
  * stopped, which from the player's side is indistinguishable from a crash.
  */
 import { describe, expect, it } from 'vitest';
-import { AdController, type AdContext, type AdSuspension } from './AdController';
+import { AdController, REWARDED_MIDGAME_COOLDOWN_MS, type AdContext, type AdSuspension } from './AdController';
 import type { CgAdCallbacks, CrazyGamesSdk } from './sdk';
 
 /** A stand-in for the SDK wrapper, narrowed to what the controller touches. `live` is the
@@ -179,5 +179,63 @@ describe('AdController rewarded-ad offers', () => {
     const { sdk, calls } = stubSdk({ ad: () => true });
     await new AdController(sdk, stubSuspension(), ctx()).rewarded();
     expect(calls).toContain('requestAd:rewarded');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// The rewarded → midgame cooldown (2026-09-07, with the rewarded-ad offer on the results
+// screen). Two individually legal calls produced one illegal outcome: a rewarded ad does
+// not count against the SDK's midgame cap, so watching one on the results screen and then
+// pressing CONFIRM handed the player a second ad seconds later.
+// ---------------------------------------------------------------------------------------
+describe('AdController — a midgame ad never stacks onto a rewarded one', () => {
+  /** A controller whose clock the test drives, and whose ads always fill. */
+  function harness(fills = true) {
+    const { sdk, calls } = stubSdk({ ad: (_t, hooks) => { hooks.adStarted?.(); return fills; } });
+    let now = 10_000;
+    const ads = new AdController(sdk, stubSuspension(), ctx(), () => now);
+    return { ads, calls, advance: (ms: number) => { now += ms; } };
+  }
+
+  it('suppresses the midgame inside the cooldown, and requests nothing at all', async () => {
+    const h = harness();
+    expect(await h.ads.rewarded()).toEqual({ played: true });
+    h.advance(REWARDED_MIDGAME_COOLDOWN_MS - 1);
+
+    expect(await h.ads.midgame()).toEqual({ played: false, reason: 'too-soon' });
+    // The refusal is ours, before the SDK: exactly one request happened, the rewarded one.
+    expect(h.calls.filter((c) => c.startsWith('requestAd'))).toEqual(['requestAd:rewarded']);
+  });
+
+  it('allows the midgame once the cooldown has passed', async () => {
+    const h = harness();
+    await h.ads.rewarded();
+    h.advance(REWARDED_MIDGAME_COOLDOWN_MS);
+
+    expect(await h.ads.midgame()).toEqual({ played: true });
+  });
+
+  it('an UNFILLED rewarded request suppresses nothing — it cost the player no time', async () => {
+    const h = harness(false);
+    expect(await h.ads.rewarded()).toEqual({ played: false, reason: 'not-filled' });
+
+    // No cooldown was started, so the ordinary break ad is still allowed immediately.
+    expect(await h.ads.midgame()).toEqual({ played: false, reason: 'not-filled' });
+    expect(h.calls.filter((c) => c.startsWith('requestAd'))).toEqual(['requestAd:rewarded', 'requestAd:midgame']);
+  });
+
+  it('does not gate the REWARDED ad itself — the player asked for that one', async () => {
+    const h = harness();
+    await h.ads.rewarded();
+    h.advance(1_000);
+
+    // A second rewarded ad inside the window is still allowed: the cooldown exists to stop
+    // an ad the player did not ask for, not one they pressed a button for.
+    expect(await h.ads.rewarded()).toEqual({ played: true });
+  });
+
+  it('with no rewarded ad this session, the midgame path is exactly as it was', async () => {
+    const h = harness();
+    expect(await h.ads.midgame()).toEqual({ played: true });
   });
 });

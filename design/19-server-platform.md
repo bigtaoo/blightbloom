@@ -158,7 +158,7 @@ Borrowed from funny's `shared/src/internalAuth` and `shared/src/internalFetch`, 
 **Inbound** (`server/src/internalAuth.ts`): an `x-internal-key` header compared with
 `timingSafeEqual`, plus an advisory `x-internal-caller` for logs. funny's per-caller key registry
 (one key per calling service, independently rotatable) is the right end state but is not worth it
-at three processes — keep the *shape* (a verifier object built from a registry that currently has
+at three calling services — keep the *shape* (a verifier object built from a registry that currently has
 one entry) so adding the registry later is not a rewrite. This is a third namespace, deliberately
 distinct from player bearer sessions and from the `ticket.ts` HMAC: internal routes never accept a
 player token, and the mismatch is structural rather than a check.
@@ -648,6 +648,57 @@ than four. `review_queue` holding findings about the CONTROL PLANE's `entitlemen
 deliberate: that file is the one an operator already opens when money is the question, the delivery
 pump has that connection and no other, and a second queue in the account database would mean a
 human has to know which of two places to look.
+
+### Backups — SHIPPED 2026-09-07
+
+§7 is about knowing what happened. This is about still having it. Two SQLite files hold the
+only two facts this project cannot regenerate — `accounts.db` (identity, ladder, meta) and
+`billing.db` (orders, entitlements, the outbox) — and until this landed the backup procedure
+was two `scp` lines in `server/deploy/README.md`: a procedure exactly as reliable as somebody
+remembering it, guarding the data that a launch makes irreplaceable.
+
+The worker is a **fourth compose process** (`server/src/backup/`, bundled as `backup.mjs` by
+the same `scripts/build.mjs`), not a host cron job, and that is the load-bearing choice: the
+CI deploy key runs one forced command and installs `dist/` + `Dockerfile` +
+`docker-compose.yml`, so a service rides the existing deploy while a host-level cron entry
+would be a manual install nobody re-does — the same class of failure as §9's "a value written
+into an env file is not a value the process can see".
+
+Four properties worth locking down, each with a test that fails if it is dropped:
+
+- **`VACUUM INTO`, not `cp`.** A copy of a live database captures a torn page set that opens
+  fine and fails on the page that mattered. `VACUUM INTO` runs in a read transaction, so the
+  destination is a point-in-time consistent snapshot with no cooperation from — and no
+  interruption of — the running service.
+- **The worker cannot write to a live database.** `VACUUM INTO` works through a *read-only*
+  SQLite handle (verified against `node:sqlite`, not assumed), so both data directories are
+  mounted `:ro` and its only writable mount is its own `backups` volume. "The backup job
+  corrupted the database" is not a failure mode it has.
+- **A snapshot is verified before it is published.** `PRAGMA integrity_check` on the copy,
+  then gzip, then an atomic rename — so the directory never holds a file that merely looks
+  like a backup, and an interrupted run leaves a `.part` that the pruner neither counts nor
+  deletes.
+- **Retention is per SOURCE and only advances on success.** 14 each, pruned after that
+  source's own snapshot succeeded. A directory-wide count would let a busy database age out
+  the other one's history, and pruning on schedule regardless of success turns a retention
+  policy into a countdown to having nothing.
+
+**It is observable, which is the other half of the problem.** A worker with no port is a
+worker nothing polls, so each cycle publishes `status.json` and the same bundle answers
+`node backup.mjs --health`: unhealthy when any source failed OR when the last cycle is too
+old — the second is what stops a worker whose loop died after one good cycle from reporting
+green forever off a stale success. That is the container's healthcheck, and `ci-deploy.sh`
+asks for it after `docker compose up`, so a deploy that silently stops backing up fails in
+CI. It also **refuses to start** with no source configured, rather than idling green: an
+empty `DDU_DB_PATH` is treated as unset, which is §9's own env-var trap applied one file over.
+
+**Two limits, stated rather than papered over.** Nothing is copied OFF the box — a snapshot
+beside the database survives every failure this project has actually had and none of the ones
+that take the host with it, and on hardware this project only borrows that is a real
+scenario; the off-box copy is a human `rsync`, filed as still open in
+`server/deploy/README.md` §7. And a restore is downtime plus a shell (`docker compose stop`,
+`gunzip -c > …`, start) — documented step by step there, deliberately needing no tooling from
+this repo, because the day it is needed is the wrong day to depend on a script nobody has run.
 
 ## 8. Deliberately not built (all of these exist in funny)
 

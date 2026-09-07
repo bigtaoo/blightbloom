@@ -19,7 +19,7 @@
  * widgets.test.ts covers for Button in general.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { Screens } from './Screens';
+import { Screens, type ResultOffer } from './Screens';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 
 function privateOf(s: Screens) {
@@ -28,6 +28,7 @@ function privateOf(s: Screens) {
     sub: { position: { x: number; y: number } };
     confirmBtn: { view: { emit: (event: string) => void; position: { x: number; y: number } }; label: { text: string } };
     menuBtn: { view: { emit: (event: string) => void; position: { x: number; y: number } }; label: { text: string } };
+    offerBtn: { view: { emit: (event: string) => void; visible: boolean; position: { x: number; y: number } }; label: { text: string } };
   };
 }
 
@@ -150,5 +151,131 @@ describe('Screens — i18n (design/17-i18n.md)', () => {
     s.show(800, 600, true, 'EXTRACTED', ['line one']);
     expect(privateOf(s).menuBtn.label.text).toBe('MAIN MENU');
     expect(privateOf(s).confirmBtn.label.text).toBe('CONFIRM');
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// The optional offer row (`ResultOffer`) — today the rewarded-ad materials bonus, built by
+// RunOutcome.ts. This screen's half of it is three promises: the button only exists when
+// there is an offer, it is ONE-SHOT, and it leaves the screen before the numbers change.
+// ---------------------------------------------------------------------------------------
+describe('Screens — the optional offer button', () => {
+  /** An offer whose claim is resolved by the test, so the in-flight window is observable
+   *  rather than something that has already closed by the time an assertion runs. */
+  function deferredOffer(label = 'WATCH AD') {
+    let calls = 0;
+    let release: (lines: readonly string[]) => void = () => {};
+    let fail: (e: Error) => void = () => {};
+    const offer: ResultOffer = {
+      label,
+      claim: () => {
+        calls += 1;
+        return new Promise<readonly string[]>((resolve, reject) => { release = resolve; fail = reject; });
+      },
+    };
+    return { offer, calls: () => calls, release: (l: readonly string[]) => release(l), fail: (e: Error) => fail(e) };
+  }
+
+  it('is hidden when show() is handed no offer — every build without a rewarded ad', () => {
+    const s = new Screens();
+    s.show(800, 600, true, 'EXTRACTED', ['a', 'b']);
+    expect(privateOf(s).offerBtn.view.visible).toBe(false);
+  });
+
+  it('appears with the offer’s own label, and pushes the two exits down a row', () => {
+    const bare = new Screens();
+    bare.show(800, 600, true, 'EXTRACTED', ['a']);
+    const bareConfirmY = privateOf(bare).confirmBtn.view.position.y;
+    const bareMenuY = privateOf(bare).menuBtn.view.position.y;
+
+    const s = new Screens();
+    const { offer } = deferredOffer('WATCH AD: MATERIALS x2');
+    s.show(800, 600, true, 'EXTRACTED', ['a'], offer);
+    const p = privateOf(s);
+
+    expect(p.offerBtn.view.visible).toBe(true);
+    expect(p.offerBtn.label.text).toBe('WATCH AD: MATERIALS x2');
+    // The offer sits above CONFIRM, and both exits move down by the same amount — the
+    // numbers matter less than the invariant that nothing lands on top of anything.
+    expect(p.offerBtn.view.position.y).toBeLessThan(p.confirmBtn.view.position.y);
+    expect(p.confirmBtn.view.position.y - bareConfirmY).toBe(56);
+    expect(p.menuBtn.view.position.y - bareMenuY).toBe(56);
+  });
+
+  it('a tap runs the claim, then swaps in its lines and retires the button', async () => {
+    const s = new Screens();
+    const d = deferredOffer();
+    s.show(800, 600, true, 'EXTRACTED', ['floor', 'Materials banked: 4', 'time']);
+    s.show(800, 600, true, 'EXTRACTED', ['floor', 'Materials banked: 4', 'time'], d.offer);
+
+    emitTap(privateOf(s).offerBtn.view);
+    expect(d.calls()).toBe(1);
+    // Still on screen while the ad is up: the button is retired by the RESULT, not by the
+    // tap, so a claim that never settles cannot silently drop the offer.
+    expect(privateOf(s).offerBtn.view.visible).toBe(true);
+
+    d.release(['floor', 'Materials banked: 8 (ad bonus x2)', 'time']);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(privateOf(s).offerBtn.view.visible).toBe(false);
+    expect((s as unknown as { sub: { text: string } }).sub.text)
+      .toBe('floor\nMaterials banked: 8 (ad bonus x2)\ntime');
+    // ...and the exits move back up, closing the row the button occupied.
+    const bare = new Screens();
+    bare.show(800, 600, true, 'EXTRACTED', ['x']);
+    expect(privateOf(s).confirmBtn.view.position.y).toBe(privateOf(bare).confirmBtn.view.position.y);
+  });
+
+  it('is one-shot: a second tap while the first claim is in flight does not re-run it', () => {
+    const s = new Screens();
+    const d = deferredOffer();
+    s.show(800, 600, true, 'EXTRACTED', ['a'], d.offer);
+
+    emitTap(privateOf(s).offerBtn.view);
+    emitTap(privateOf(s).offerBtn.view);
+    emitTap(privateOf(s).offerBtn.view);
+
+    expect(d.calls()).toBe(1);
+  });
+
+  it('is one-shot after it settles too — the reward cannot be taken twice', async () => {
+    const s = new Screens();
+    const d = deferredOffer();
+    s.show(800, 600, true, 'EXTRACTED', ['a'], d.offer);
+
+    emitTap(privateOf(s).offerBtn.view);
+    d.release(['b']);
+    await Promise.resolve();
+    await Promise.resolve();
+    emitTap(privateOf(s).offerBtn.view);
+
+    expect(d.calls()).toBe(1);
+  });
+
+  it('a claim that REJECTS retires the button and leaves the lines alone', async () => {
+    const s = new Screens();
+    const d = deferredOffer();
+    s.show(800, 600, true, 'EXTRACTED', ['floor', 'Materials banked: 4'], d.offer);
+
+    emitTap(privateOf(s).offerBtn.view);
+    d.fail(new Error('ad layer blew up'));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(privateOf(s).offerBtn.view.visible).toBe(false);
+    expect((s as unknown as { sub: { text: string } }).sub.text).toBe('floor\nMaterials banked: 4');
+  });
+
+  it('a later show() with no offer clears the previous one — screens are reused', () => {
+    const s = new Screens();
+    const d = deferredOffer();
+    s.show(800, 600, true, 'EXTRACTED', ['a'], d.offer);
+    s.show(800, 600, false, 'DEFEAT', ['b']);
+
+    expect(privateOf(s).offerBtn.view.visible).toBe(false);
+    emitTap(privateOf(s).offerBtn.view);
+    expect(d.calls()).toBe(0);
   });
 });

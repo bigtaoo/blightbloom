@@ -58,6 +58,14 @@ The persistent layer **between runs**: what carries across, what materials buy, 
 - **Sell breadth, not power.** RMB buys **weapon blueprints** (PvE-only impact — weapons never touch PvP) and **characters** (PvP-relevant but side-grades only). It never buys raw stats, boosts, or any edge that breaks PvP fairness.
 - **Bounded, direct-purchase, no gacha.** All purchasable content is **directly buyable and finite** — no loot boxes, no random blueprint pulls, no energy/stamina gates, no pay-per-craft. A committed player tops out around **a few thousand RMB** and then there is nothing left to buy.
 - **Mass-DAU / word-of-mouth model.** Revenue leans on a broad, casual player base rather than whales. This deliberately caps ARPU in exchange for a fair, casual-friendly game (`06`) — and it is precisely that bounded, fair shape that *lets* PvP stay clean. Reputation first; a player who spends thousands is a happy bonus, not the plan.
+- **A second revenue line, on one target only: ads (2026-09-07).** The game-portal build
+  (`20`) carries a banner on the main menu, a break ad between runs, and one rewarded ad. It
+  does not weaken "sell breadth, not power" — the rewarded ad's reward is **materials**, which
+  are the farmable currency and are spendable only on blueprints the account already owns, and
+  it is offered on a successful extraction only, never over `05`'s wipe. The rule it adds is
+  that an ad may not sell what money may not: no ad revive, no ad run buff, no ad weapon. See
+  `20`'s "The rewarded-ad placement" for the three rejected rewards and why each fails one of
+  these two docs' locked rules.
 - ✅ **Shipped: grant-scaffolding (ROADMAP 2.4).** `meta/forge.ts`'s `acquireBlueprint`/`grantCharacter`/`purchasableBlueprints` are the direct-purchase/grant APIs a platform's real billing flow would call after its own payment step — no gacha, no in-engine pricing logic. Real billing integration is deliberately out of scope; these are the seam a payment adapter plugs into, not a payment implementation.
 
 ## The forge outpost (to design — `13`)
