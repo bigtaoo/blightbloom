@@ -1,12 +1,15 @@
 # Deploying the backend
 
-> **Status (2026-09-07): live except DNS.** All three containers are up and healthy on
-> `wnet-server` at `~/blightbloom-server/`, the Caddy site block below is already appended
-> and reloaded. The one step still outstanding is §0's DNS record — whoever holds the
-> Cloudflare `gamestao.com` zone needs to add it (no API token for that zone was available
-> on the machine that did the rest of this deploy), after which `curl
-> https://bb.gamestao.com/health` in §2 should just work. Everything past that point (§3
-> onward) is still open.
+> **Status (2026-09-07): fully live.** All three containers are up and healthy on
+> `wnet-server` at `~/blightbloom-server/`, the Caddy site block is appended and reloaded,
+> DNS is in place, and `curl https://bb.gamestao.com/health` returns
+> `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
+> certificate. One thing worth knowing for next time: Caddy attempted the ACME challenge
+> the instant the Caddyfile was reloaded, *before* the DNS record actually existed — that
+> attempt failed (NXDOMAIN) and Caddy backed off ~10 minutes before its next automatic
+> retry, which is what actually succeeded once DNS had propagated. Add the DNS record
+> FIRST, confirm it resolves, only then append/reload the Caddy block, and this wait
+> disappears. §3 onward (client wiring, CI, Paddle) is still open.
 
 Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on the **same VPS
 `deutsch` already uses** (`wnet-server` = `92.205.18.79`, Debian 13; see `deutsch`'s own
