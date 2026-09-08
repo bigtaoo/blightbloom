@@ -157,14 +157,34 @@ describe('Game — the auto downgrade', () => {
     for (const w of windows) game.observePerfWindow(w);
   }
 
-  it('drops to the low tier after a sustained slow stretch', () => {
+  it('steps to MEDIUM after one sustained slow stretch, and to low after a second', () => {
+    // The ladder (2026-09-08, `render/quality.ts`'s `AUTO_LADDER`): "high does not fit" is no
+    // evidence about medium, so the first streak buys the cheaper rung and the second measures
+    // THAT one. What the renderer shows for it: the three passes above the lighting unmounted
+    // (`world` 2 -> 0, `fx` 1 -> 0), `lit` still lit, and the resolution untouched.
     const { game, renderer, inner } = newGame({ quality: 'auto' }, 2);
     feed(game, [SLOW, SLOW]);
     expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 }); // not yet
     feed(game, [SLOW]);
+    expect(activeQuality().tier).toBe('medium');
+    expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 1 });
+    expect(renderer.resolution).toBe(2);
+    expect(renderer.resizes).toHaveLength(0);
+
+    // A fresh streak, because the step reset it — two more windows are not enough.
+    feed(game, [SLOW, SLOW]);
+    expect(activeQuality().tier).toBe('medium');
+    feed(game, [SLOW]);
     expect(activeQuality().tier).toBe('low');
     expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 0 });
     expect(renderer.resolution).toBe(1);
+  });
+
+  it('stops at the bottom rung however long the device stays slow', () => {
+    const { game, inner } = newGame({ quality: 'auto' }, 2);
+    for (let i = 0; i < 30; i++) game.observePerfWindow(SLOW);
+    expect(activeQuality().tier).toBe('low');
+    expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 0 });
   });
 
   it('leaves a healthy device alone', () => {
@@ -186,7 +206,7 @@ describe('Game — the auto downgrade', () => {
   it('does not persist the downgrade — the SETTING stays auto', () => {
     const { game, inner } = newGame({ quality: 'auto' }, 2);
     feed(game, [SLOW, SLOW, SLOW]);
-    expect(activeQuality().tier).toBe('low');
+    expect(activeQuality().tier).toBe('medium');
     // A downgrade is a fact about this session's measured framerate, not a choice the player
     // made. Writing it to disk would make one bad afternoon permanent.
     expect(inner.settingsBinding.state.quality).toBe('auto');
@@ -194,19 +214,20 @@ describe('Game — the auto downgrade', () => {
 
   it('re-arms the watchdog when the player pins a tier and returns to auto', () => {
     const { game, inner } = newGame({ quality: 'auto' }, 2);
-    feed(game, [SLOW, SLOW, SLOW]);
-    expect(activeQuality().tier).toBe('low');
+    feed(game, [SLOW, SLOW, SLOW, SLOW, SLOW, SLOW]);
+    expect(activeQuality().tier).toBe('low'); // both rungs spent
 
     inner.settingsScreen.onChange!({ ...inner.settingsBinding.state, quality: 'high' });
     expect(activeQuality().tier).toBe('high');
     inner.settingsScreen.onChange!({ ...inner.settingsBinding.state, quality: 'auto' });
-    // Back on auto with the verdict cleared: high again, and it takes a FULL fresh streak to
-    // drop back — otherwise one bad stretch would haunt every later auto session.
+    // Back on auto with the verdict cleared: high again, from the TOP of the ladder and not
+    // from where it left off, and it takes a FULL fresh streak to step — otherwise one bad
+    // stretch would haunt every later auto session.
     expect(activeQuality().tier).toBe('high');
     feed(game, [SLOW, SLOW]);
     expect(activeQuality().tier).toBe('high');
     feed(game, [SLOW]);
-    expect(activeQuality().tier).toBe('low');
+    expect(activeQuality().tier).toBe('medium');
   });
 });
 
@@ -257,9 +278,11 @@ describe('Game — a real perf window drops a real tier', () => {
     ticker.update(1000);
     const perf = installPerf(perfApp, { onSnapshot: (s) => game.observePerfWindow(s.window) });
     try {
-      // 100ms per frame — a device genuinely rendering at 10fps, for ~10s.
+      // 100ms per frame — a device genuinely rendering at 10fps, for ~20s. Long enough for
+      // BOTH rungs of the ladder: the sampler closes a window every 2s and the watchdog wants a
+      // fresh streak of 3 per step, so reaching `low` from a real stream takes ~12s of them.
       let t = 1000;
-      for (let i = 0; i < 100; i++) { t += 100; ticker.update(t); }
+      for (let i = 0; i < 200; i++) { t += 100; ticker.update(t); }
     } finally {
       perf.uninstall();
     }

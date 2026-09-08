@@ -110,6 +110,36 @@ describe('Layers', () => {
     expect(layers.world.children).not.toContain(layers.ui);
   });
 
+  // The other half of `game/powerBudget.ts`'s premise (2026-09-08). It switches ONE display bit,
+  // on `world`, and claims that stops the whole scene being drawn — which holds only while every
+  // layer the run draws into is under `world`, and breaks silently if one is ever promoted to a
+  // sibling for its own reasons (`terrain` was moved BETWEEN two parents once already, see the
+  // paint-order case above). `menuCoversWorld.test.ts` guards the same premise from the other
+  // end: that the screens drawn instead of it are opaque.
+  it('puts every layer a RUN draws into under world, and the two screen-space ones outside it', () => {
+    const layers = new Layers();
+    const drawnByARun = [layers.terrain, layers.lit, layers.ground, layers.shadow, layers.entities, layers.fx, layers.hud];
+    for (const layer of drawnByARun) {
+      let node = layer.parent;
+      const chain: unknown[] = [];
+      while (node) {
+        chain.push(node);
+        node = node.parent;
+      }
+      expect(chain, `${drawnByARun.indexOf(layer)}`).toContain(layers.world);
+    }
+    // ...and these must NOT be, or switching the world off would take the menu with it.
+    for (const layer of [layers.backdrop, layers.ui, layers.hudOverlay, layers.menu, layers.overlay]) {
+      let node = layer.parent;
+      const chain: unknown[] = [];
+      while (node) {
+        chain.push(node);
+        node = node.parent;
+      }
+      expect(chain).not.toContain(layers.world);
+    }
+  });
+
   // Regression guard for the reverted `EntityLayerCompositor` (commit d5c06db, reverted
   // 2026-08-15). It replaced `entities` with a Sprite fed by a per-frame `RenderTexture`
   // bake, to work around what was thought to be a Pixi filter bug under non-integer camera

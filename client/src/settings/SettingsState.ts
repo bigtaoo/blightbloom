@@ -7,6 +7,7 @@
 import type { Locale } from '../i18n';
 import { DEFAULT_LOCALE } from '../i18n';
 import type { QualitySetting } from '../render/quality';
+import { PLAY_MAX_FPS, type FrameRateSetting } from '../game/powerBudget';
 
 /** design/10 open question ("control layout … left-handed mirror") — 'mirrored' swaps
  * which half of the screen drives the movement vs. aim/fire stick, and moves the
@@ -24,9 +25,15 @@ export interface SettingsState {
   locale: Locale;
   controlLayout: ControlLayout;
   /** Render quality tier (`render/quality.ts`, 2026-08-25). `'auto'` starts on the high tier
-   * and drops to low once the frame watchdog decides the device cannot hold it; `'high'`/
-   * `'low'` pin it. Presentation-only — it never reaches the sim (design/06/12). */
+   * and steps down through `medium` to `low` as the frame watchdog decides the device cannot
+   * hold what it is running; an explicit pick fixes it. Presentation-only — it never reaches
+   * the sim (design/06/12). */
   quality: QualitySetting;
+  /** In-run render frame rate (`game/powerBudget.ts`, 2026-09-08). The battery knob a quality
+   * tier cannot express: 30 halves the frames a fight costs while still drawing every 30 Hz
+   * sim tick. Presentation-only for the same reason the tier is — the sim runs off its own
+   * fixed accumulator, so two clients capped differently stay byte-identical (design/06). */
+  frameRate: FrameRateSetting;
 }
 
 export function defaultSettingsState(): SettingsState {
@@ -34,7 +41,7 @@ export function defaultSettingsState(): SettingsState {
   // them (2026-09-06 balance pass — the equal 0.5/0.5 default read as too loud relative to
   // the SFX bus). A save that already stores an explicit `music` value keeps it —
   // `store.ts`'s `migrate()` only falls back to this default when the field is absent.
-  return { master: 1, sfx: 0.5, music: 0.25, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto' };
+  return { master: 1, sfx: 0.5, music: 0.25, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto', frameRate: PLAY_MAX_FPS };
 }
 
 /** The effective 0..1 gain to hand the AudioBus for a given slider — `muted` zeroes

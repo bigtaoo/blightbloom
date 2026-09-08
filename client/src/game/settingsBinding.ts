@@ -1,13 +1,13 @@
 // Split out of Game.ts (2026-08-25, 500-line convention — the quality tier pushed that file
 // past its recorded baseline, and CLAUDE.md's priority order says split rather than baseline).
 //
-// Owns one concern: the persisted `SettingsState` and the four places a change to it has to
+// Owns one concern: the persisted `SettingsState` and the five places a change to it has to
 // land — the audio bus (design/11), the touch control layout (design/10), the render quality
-// tier (`renderQuality.ts`), and the live i18n mirror (design/17). Before this, those four were
-// four private methods on `Game` plus a load block plus an `onChange` closure, all of which had
-// to be kept in step by hand: `applyQuality` was added to the load path and to `onChange`
-// separately, which is exactly the shape of the bug where a setting applies on change but not
-// at boot.
+// tier (`renderQuality.ts`), the in-run frame cap (`powerBudget.ts`) and the live i18n mirror
+// (design/17). Before this, they were private methods on `Game` plus a load block plus an
+// `onChange` closure, all of which had to be kept in step by hand: `applyQuality` was added to
+// the load path and to `onChange` separately, which is exactly the shape of the bug where a
+// setting applies on change but not at boot.
 //
 // Form (2) from CLAUDE.md: the cross-boundary call list is `load`/`update`/`state` outward and
 // the three-member `deps` object below inward, each narrowed to the methods actually used rather
@@ -22,6 +22,7 @@ import {
 import { setLocale } from '../i18n';
 import { isExternallyMuted, onExternalMuteChange } from '../audio/externalMute';
 import type { QualitySetting } from '../render/quality';
+import { setPlayFrameCap } from './powerBudget';
 
 export interface SettingsBindingDeps {
   audio: { setSfxVolume(v: number): void; setMusicVolume(v: number): void };
@@ -53,9 +54,9 @@ export class SettingsBinding {
   }
 
   /**
-   * Load the persisted state and apply ALL of it. Volume, language, control layout and quality
-   * all take effect immediately at boot rather than only after the first settings edit — the
-   * property that is easy to lose when each of them is wired separately.
+   * Load the persisted state and apply ALL of it. Volume, language, control layout, quality and
+   * the in-run frame cap all take effect immediately at boot rather than only after the first
+   * settings edit — the property that is easy to lose when each of them is wired separately.
    */
   load(): SettingsState {
     this.current = this.store.load();
@@ -88,5 +89,10 @@ export class SettingsBinding {
     this.deps.audio.setSfxVolume(gain * effectiveVolume(this.current, 'sfx'));
     this.deps.audio.setMusicVolume(gain * effectiveVolume(this.current, 'music'));
     this.deps.input.setControlMirror?.(this.current.controlLayout === 'mirrored');
+    // The in-run frame cap (`powerBudget.ts`), through its module mirror rather than a dep for
+    // the reason that file's own note gives: the reader is the main loop, 60 times a second.
+    // In `applyAll` and not next to `quality.apply` below, so it lands on BOTH paths — boot and
+    // change — which is the bug shape this class was extracted to prevent.
+    setPlayFrameCap(this.current.frameRate);
   }
 }

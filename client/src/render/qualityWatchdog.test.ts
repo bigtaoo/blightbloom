@@ -3,8 +3,13 @@
  *
  * Every case below is about the SHAPE of the window stream rather than about one number, because
  * the failure modes are all sequence-shaped: firing on a single loading hitch, never firing
- * because a healthy window in the middle reset the streak, firing twice, or counting a window
- * from a backgrounded tab (where rAF is throttled and every device looks broken).
+ * because a healthy window in the middle reset the streak, firing more times than there are
+ * rungs to step down, or counting a window from a backgrounded tab (where rAF is throttled and
+ * every device looks broken).
+ *
+ * Rewritten 2026-09-08 when the boolean latch became a STEP counter (the `medium` tier): the
+ * cases that read `downgraded` now read `downgrades`, and "fires once" became "fires once per
+ * rung, and never more than there are rungs".
  */
 import { describe, it, expect } from 'vitest';
 import { QualityWatchdog, type FrameWindowLike } from './qualityWatchdog';
@@ -26,7 +31,7 @@ describe('QualityWatchdog', () => {
   it('does not fire on fewer than the sustain count of slow windows', () => {
     const wd = new QualityWatchdog({ sustainWindows: 3 });
     expect(fire(wd, [slow(), slow()])).toBe(0);
-    expect(wd.downgraded).toBe(false);
+    expect(wd.downgrades).toBe(0);
   });
 
   it('fires on exactly the window that completes the streak', () => {
@@ -34,12 +39,33 @@ describe('QualityWatchdog', () => {
     expect(wd.observe(slow())).toBe(false);
     expect(wd.observe(slow())).toBe(false);
     expect(wd.observe(slow())).toBe(true);
-    expect(wd.downgraded).toBe(true);
+    expect(wd.downgrades).toBe(1);
   });
 
-  it('latches: a downgrade fires once, however many slow windows follow', () => {
+  it('steps once per FRESH streak, not once per slow window', () => {
+    // The windows that condemned the tier we were on are no evidence about the cheaper one we
+    // just switched to, so the streak restarts. With sustain 2: the 2nd window steps, the 3rd
+    // does not (streak of 1), the 4th steps again.
     const wd = new QualityWatchdog({ sustainWindows: 2 });
-    expect(fire(wd, [slow(), slow(), slow(), slow(), slow()])).toBe(1);
+    expect(wd.observe(slow())).toBe(false);
+    expect(wd.observe(slow())).toBe(true);
+    expect(wd.observe(slow())).toBe(false);
+    expect(wd.observe(slow())).toBe(true);
+    expect(wd.downgrades).toBe(2);
+  });
+
+  it('stops at the bottom rung, however many slow windows follow', () => {
+    // `resolveTier`'s ladder is three tiers, i.e. two steps. A third `true` could only mean
+    // "downgrade something already on the cheapest tier", which is a lie to the caller.
+    const wd = new QualityWatchdog({ sustainWindows: 1 });
+    expect(fire(wd, [slow(), slow(), slow(), slow(), slow(), slow()])).toBe(2);
+    expect(wd.downgrades).toBe(2);
+  });
+
+  it('honours a maxSteps of one — a two-tier ladder is still expressible', () => {
+    const wd = new QualityWatchdog({ sustainWindows: 1, maxSteps: 1 });
+    expect(fire(wd, [slow(), slow(), slow()])).toBe(1);
+    expect(wd.downgrades).toBe(1);
   });
 
   it('resets the streak on a healthy window — a loading hitch is not a slow device', () => {
@@ -77,7 +103,7 @@ describe('QualityWatchdog', () => {
     const wd = new QualityWatchdog({ sustainWindows: 2 });
     expect(fire(wd, [slow(), slow()])).toBe(1);
     wd.reset();
-    expect(wd.downgraded).toBe(false);
+    expect(wd.downgrades).toBe(0);
     // And the streak went with the latch — one slow window must not be enough now.
     expect(wd.observe(slow())).toBe(false);
     expect(wd.observe(slow())).toBe(true);
@@ -88,6 +114,6 @@ describe('QualityWatchdog', () => {
     // that is the whole reason this is a streak detector and not a threshold.
     const wd = new QualityWatchdog();
     expect(wd.observe(slow())).toBe(false);
-    expect(wd.downgraded).toBe(false);
+    expect(wd.downgrades).toBe(0);
   });
 });

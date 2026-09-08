@@ -47,6 +47,9 @@ export const ru: Translations<typeof en> = {
     qualityHigh: 'ВЫСОКОЕ',
     qualityLow: 'НИЗКОЕ',
     qualityAutoLow: 'АВТО (НИЗКОЕ)',
+    qualityMedium: 'СРЕДНЕЕ',
+    qualityAutoMedium: 'АВТО (СРЕДНЕЕ)',
+    frameRate: 'ЧАСТОТА КАДРОВ: {fps}',
     back: 'НАЗАД',
   },
   forge: {

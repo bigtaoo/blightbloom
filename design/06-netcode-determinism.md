@@ -69,7 +69,7 @@ funny's `math/prng.ts`: an LCG (`Math.imul`-based, uint32), `Math.random()` bann
 
 ### Fixed tick + the loop
 
-- Logic tick **30 Hz** (match funny's `TICK_RATE`); render runs at display rate (60 fps) and **interpolates** between the last two sim states.
+- Logic tick **30 Hz** (match funny's `TICK_RATE`); render runs at a **capped** rate — 60 fps in a run, or 30 if the player picks it, and 30 on any screen that is not a run (`client/src/game/powerBudget.ts`, 2026-09-08; it read "display rate (60 fps)" until then, which stopped being true on a 120 Hz panel) — and **interpolates** between the last two sim states. The cap is presentation-only: the sim steps off the loop's own fixed accumulator, so two clients rendering at different rates stay byte-identical.
 - Loop is the accumulator pattern from funny's `engine/loop.ts`, including its **catch-up multiplier** (backlog >1 s/10 s/30 s → 2×/3×/5×) and `MAX_CATCHUP_TICKS` spiral guard. This is *exactly* the "lagging client falls behind the broadcast and speeds up to resync" behavior we need — already written.
 
 ### Banned in the logic layer (enforced)

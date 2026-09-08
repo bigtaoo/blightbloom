@@ -24,6 +24,7 @@ import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import { updateCheckpointOverlays } from './checkpointOverlays';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
+import { applyPowerBudget, type FrameRateLike, type WorldLayerLike } from '../powerBudget';
 
 const SIM_DT_MS = 1000 / 30; // fixed sim step: the engine runs at 30 Hz (design/06)
 const MAX_STEPS = 5; // catch-up cap per render frame → no spiral of death
@@ -41,6 +42,10 @@ export interface GameLoopDeps {
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
   partyScreen: PartyScreen;
+  /** `layers.world` and the app ticker, each narrowed to the one knob `powerBudget.ts`
+   *  writes: the world is not DRAWN outside a run, and the render rate is capped. */
+  world: WorldLayerLike;
+  ticker: FrameRateLike;
   builder: CommandBuilder;
   ally: AllyController;
   input: InputSource;
@@ -153,6 +158,10 @@ export class GameLoop {
 
   update(dt: number): void {
     const phase = this.host.getPhase();
+    // What this frame is allowed to cost: outside a run the world layer is provably invisible
+    // and is not drawn, and the render rate is capped so a 120 Hz panel does not spend twice
+    // the battery on a 30 Hz sim. `powerBudget.ts` holds the measurement and the reasoning.
+    applyPowerBudget(phase, this.deps.world, this.deps.ticker);
     // Music (design/11), before the branch so it runs in EVERY phase — the menu bed is as much
     // a case as the dungeon one. `musicDirector` derives the track from the situation and
     // setting the one already playing is a no-op, so there is no transition to detect here and

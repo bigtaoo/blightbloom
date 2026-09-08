@@ -42,6 +42,9 @@ export const de: Translations<typeof en> = {
     qualityHigh: 'HOCH',
     qualityLow: 'NIEDRIG',
     qualityAutoLow: 'AUTO (NIEDRIG)',
+    qualityMedium: 'MITTEL',
+    qualityAutoMedium: 'AUTO (MITTEL)',
+    frameRate: 'BILDRATE: {fps}',
     back: 'ZURÜCK',
   },
   forge: {

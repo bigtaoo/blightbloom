@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import { createWebSettingsStore, MemorySettingsStore } from './store';
 import { defaultSettingsState } from './SettingsState';
+import { QUALITY_SETTINGS } from '../render/quality';
+import { FRAME_RATE_SETTINGS } from '../game/powerBudget';
 
 // jsdom-free: this repo's plain-node vitest has no `localStorage`, so exercise the
 // migrate()/fails-soft path directly the way store.ts itself falls back — via an
@@ -147,7 +149,7 @@ describe('createWebSettingsStore — first-boot browser-locale detection', () =>
 describe('SettingsStore — render quality (render/quality.ts, 2026-08-25)', () => {
   it('round-trips every quality setting', () => {
     withFakeLocalStorage(() => {
-      for (const q of ['auto', 'high', 'low'] as const) {
+      for (const q of QUALITY_SETTINGS) {
         const store = createWebSettingsStore(`t.settings.q.${q}`);
         store.save({ ...defaultSettingsState(), quality: q });
         expect(createWebSettingsStore(`t.settings.q.${q}`).load().quality).toBe(q);
@@ -168,6 +170,41 @@ describe('SettingsStore — render quality (render/quality.ts, 2026-08-25)', () 
     withFakeLocalStorage(() => {
       localStorage.setItem('t.settings.q.bad', JSON.stringify({ ...defaultSettingsState(), quality: 'ultra' }));
       expect(createWebSettingsStore('t.settings.q.bad').load().quality).toBe('auto');
+    });
+  });
+});
+
+describe('SettingsStore — in-run frame cap (game/powerBudget.ts, 2026-09-08)', () => {
+  it('round-trips every offered rate', () => {
+    withFakeLocalStorage(() => {
+      for (const fps of FRAME_RATE_SETTINGS) {
+        const store = createWebSettingsStore(`t.settings.fps.${fps}`);
+        store.save({ ...defaultSettingsState(), frameRate: fps });
+        expect(createWebSettingsStore(`t.settings.fps.${fps}`).load().frameRate).toBe(fps);
+      }
+    });
+  });
+
+  it('falls back to 60 for a save that predates the setting', () => {
+    withFakeLocalStorage(() => {
+      const { frameRate, ...preFrameRate } = defaultSettingsState();
+      void frameRate;
+      localStorage.setItem('t.settings.fps.old', JSON.stringify(preFrameRate));
+      expect(createWebSettingsStore('t.settings.fps.old').load().frameRate).toBe(60);
+    });
+  });
+
+  it('rejects a rate that is not one of the two, however numeric it looks', () => {
+    // The value is written straight onto `Ticker.maxFPS`, where 0 means "no cap at all" — the
+    // exact state `powerBudget.ts` exists to remove — and a single-digit rate would also widen
+    // the ticker's own catch-up clamp (see IDLE_MAX_FPS's note). A `typeof === 'number'` check
+    // would accept all three of these.
+    withFakeLocalStorage(() => {
+      for (const bad of [0, 5, 144, -60, 'sixty', null] as unknown[]) {
+        const key = `t.settings.fps.bad.${String(bad)}`;
+        localStorage.setItem(key, JSON.stringify({ ...defaultSettingsState(), frameRate: bad }));
+        expect(createWebSettingsStore(key).load().frameRate, String(bad)).toBe(60);
+      }
     });
   });
 });

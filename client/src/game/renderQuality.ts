@@ -41,15 +41,15 @@ export class RenderQualityController {
   }
 
   /**
-   * Resolve the effective tier from `setting` + the watchdog's verdict, push it into the live
-   * mirror, and re-apply everything that reads it.
+   * Resolve the effective tier from `setting` + how many rungs the watchdog has stepped down,
+   * push it into the live mirror, and re-apply everything that reads it.
    *
    * Safe to call at any time and idempotent — the resolution branch is the only part with a real
    * cost, and it is guarded on an actual change because `renderer.resize` reallocates the
    * backing buffer.
    */
   apply(setting: QualitySetting): void {
-    setActiveQuality(resolveTier(setting, this.watchdog.downgraded));
+    setActiveQuality(resolveTier(setting, this.watchdog.downgrades));
     this.deps.fx.applyQuality();
     this.deps.scene.refreshQuality();
     const wanted = Math.min(this.baseResolution, activeQuality().resolutionCap);

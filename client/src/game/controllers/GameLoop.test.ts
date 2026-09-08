@@ -114,15 +114,20 @@ function buildDeps(extra: Partial<GameLoopDeps> = {}) {
   const events = { consume: vi.fn() };
   const runOutcome = { handle: vi.fn() };
   const tutorialHints = { consume: vi.fn(), reset: vi.fn() };
+  // The two power-budget knobs (game/powerBudget.ts) — plain objects, exactly the two
+  // properties the loop writes. Seeded to the OPPOSITE of what a playing frame wants so a
+  // test that asserts them cannot pass on the initial value.
+  const world = { renderable: false };
+  const ticker = { maxFPS: 0 };
 
   const deps: GameLoopDeps = {
     scene, fx, hud, touchControlsView, portalPrompt, floorCardPrompt, roomBuilder, partyScreen,
-    builder, ally, input, events, runOutcome, tutorialHints,
+    builder, ally, input, events, runOutcome, tutorialHints, world, ticker,
     pickupDebugOverlay: null,
     ...extra,
   } as unknown as GameLoopDeps;
 
-  return { deps, scene, fx, hud, roomBuilder, portalPrompt, floorCardPrompt, touchControlsView, partyScreen, input, builder, ally, events, runOutcome, tutorialHints };
+  return { deps, scene, fx, hud, roomBuilder, portalPrompt, floorCardPrompt, touchControlsView, partyScreen, input, builder, ally, events, runOutcome, tutorialHints, world, ticker };
 }
 
 function buildHost(overrides: Partial<GameLoopHost> = {}): GameLoopHost & { localOwner: number } {

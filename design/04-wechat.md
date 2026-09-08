@@ -625,11 +625,15 @@ with identical probe builds before the table above was believed.
    - how `InnerAudioContext.currentTime` behaves across a real audio interruption, since that
      value is what `MusicPlayer` decides the loop wrap from.
 3. [ ] Real-device check: frame rate on low-end Android (target 30 vs 60 fps). **Now readable
-   without tooling** (2026-08-25): the frame watchdog (`render/qualityWatchdog.ts`) drops the
-   renderer to the low tier after ~6s below 25fps, and the settings screen then reads
-   `AUTO (LOW)` / `自动 (低)`. So the device answers the question itself — open settings after
-   a few minutes of play and read the button. A remote-debug console additionally shows the
-   `[perf]` warning, which names whether the expensive half was update or render.
+   without tooling** (2026-08-25): the frame watchdog (`render/qualityWatchdog.ts`) steps the
+   renderer down a rung after ~6s below 25fps, and the settings screen then reads
+   `AUTO (MEDIUM)` / `AUTO (LOW)` (`自动 (中)` / `自动 (低)`). So the device answers the question
+   itself — open settings after a few minutes of play and read the button. A remote-debug console
+   additionally shows the `[perf]` warning, which names whether the expensive half was update or
+   render. **Read the target itself with care since 2026-09-08:** the render rate is capped (60
+   in a run, 30 elsewhere, 30 in a run if the player picks it — `01`'s power budget), so "30 vs
+   60 fps" is now a question about whether the device HOLDS its cap, and a reading of ~30 on a
+   menu is the cap working rather than a slow device.
 4. [ ] Verify WebGL2 availability; define a fallback path if unavailable. **See "WebGL1
    degrades silently" above** — the fallback already exists inside Pixi and is invisible;
    what is unknown is only whether any target device takes it. The simulator reports WebGL2
@@ -645,7 +649,10 @@ with identical probe builds before the table above was believed.
    failing to compile). What remains is purely the COST on a handset — and unlike before, a bad
    answer now has a remedy: `render/quality.ts`'s low tier turns this pass off along with the
    other three, and halves the renderer resolution. To measure it by hand on a device, pin the
-   quality setting to `HIGH` and then to `LOW` in the same room and compare.
+   quality setting to `HIGH` and then to `LOW` in the same room and compare. **`MEDIUM` is the
+   rung that isolates this item** (2026-09-08): it is the only tier that keeps this pass and
+   drops the other three, so `HIGH` → `MEDIUM` prices the three stacked above it and `MEDIUM` →
+   `LOW` prices this one on its own.
 7. [x] Real art loads at all, through the real loaders, in a runtime with none of the
    browser globals. *(2026-08-25, `wechatAssetLoad.test.ts` — simulation, not a device.)*
 8. [x] The package fits, gated by `npm run check:wechatpackage`. Main was 3.41 MB / 4.00 MB

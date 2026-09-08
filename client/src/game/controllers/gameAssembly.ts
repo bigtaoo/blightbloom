@@ -48,6 +48,7 @@ import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import type { TouchControlsView } from '../ui/TouchControlsView';
 import type { Backdrop } from '../scene/Backdrop';
 import type { Layers } from '../scene/layers';
+import type { FrameRateLike } from '../powerBudget';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
 import type { RoomBuilder } from '../scene/RoomBuilder';
 import type { Scene } from '../scene/Scene';
@@ -102,6 +103,9 @@ export interface AssemblyParts {
   touchControlsView: TouchControlsView;
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
+  /** The app ticker, narrowed to the one knob `powerBudget.ts` writes (the render-rate cap).
+   *  `layers.world` — the other half of that budget — comes off `layers` above. */
+  ticker: FrameRateLike;
   pickupDebugOverlay: PickupDebugOverlay | null;
   settingsBtn: Button;
   mainMenu: MainMenu;
@@ -188,6 +192,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     touchControlsView: p.touchControlsView, portalPrompt: p.portalPrompt,
     floorCardPrompt: p.floorCardPrompt,
     partyScreen, builder: p.builder, ally: p.ally,
+    world: p.layers.world, ticker: p.ticker,
     input: p.input, events: p.events, runOutcome: p.runOutcome,
     tutorialHints: p.tutorialHints, pickupDebugOverlay: p.pickupDebugOverlay,
   }, host);

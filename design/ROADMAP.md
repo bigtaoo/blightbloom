@@ -1183,11 +1183,17 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-08** [The codename's last surface](roadmap/45-2026-09-08-env-prefix.md#the-codenames-last-surface-2026-09-08-server--deploy--docs-no-engine-change) — *"现在游戏有自己的名字了，改为BB开头的吧"*: the `DDU_*` environment prefix is the last family of identifiers still carrying the codename, and volume 39's rename rule is why it was left — machine-matched names do not move. It is also the one machine-matched name in the tree whose match is **re-bindable at zero cost**, which is a third category the 2026-09-06 list did not have: the other side of the match is one file an operator owns, so rebinding it loses no save, rejects no replay and orphans no custom domain. 22 names across 66 files, 314 lines, line for line — no behaviour, no test added or removed, 9066 green. Two things are worth more than the rename. **The gate that made it a `sed` rather than an audit hardcodes the string being renamed**: `deploy.manifests.test.ts` requires every compose env name to be read somewhere in `src/`, and one of its three scan patterns is the prefix literal `/'(BB_[A-Z0-9_]+)'/` (there because `startupGuard`'s `DEV_ONLY_FLAGS` reaches its names through `env[name]`) — a checker whose implementation contains the string under rename is the shape that goes quietly blind, and this one only happens to fail safe. And **the whole risk is two lines in the one file CI is forbidden to ship**: `.env` holds the ticket secret and the internal key, and their failures are asymmetric in the wrong direction — an unset `BB_INTERNAL_KEY` fails closed and loudly, while an unset `BB_TICKET_SECRET` falls back to the *published dev secret* with a warning and keeps working, a live-server downgrade whose only symptom is looking healthy. Since `env_file` injects names and not a schema, a `.env` carrying both prefixes is read correctly by both codes, so the migration is additive-then-subtractive with no window — both commands in `server/deploy/README.md`. Not moved, and now annotated so the next sweep does not finish the job: the map editor's three `ddu-mapeditor:*` autosave keys, matched against a key already in a designer's browser. `platform` `docs`
 
+**[2026-09-08 — the frame nobody sees: a power budget, a middle rung, and a frame rate](roadmap/46-2026-09-08-power-budget.md)**
+
+- **09-08** [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change) — *"游戏现在运行在手机和ipad上时耗电量非常高"*, and what it named was not a slow frame: **every instrument here measures framerate, and nothing measured waste.** Two of them. Outside `'playing'` **nothing in `layers.world` is visible and all of it was still being drawn** — every menu, the pause menu and both result screens are backed by the same opaque full-viewport panel art, and nothing unmounts the room when a run ENDS (`resetRenderState` runs at the start of the next one), so a player sitting in the forge paid a complete in-run frame (29 ground pieces, 64 entity views, four filter passes) at the display's refresh rate for as long as they sat there: 42 draws/18 programs, and hiding `layers.world` moved **0 of 329,160 pixels**. And **`app.ticker.maxFPS` was 0**, so a 120 Hz ProMotion iPad drew FOUR frames per 30 Hz sim tick — `grep maxFPS` over the client matched nothing outside `src/perf/`. `game/powerBudget.ts` fixes both as one function of `phase`: menu 11 draws → **3**, pause 40 → **4**, forge-after-a-run 42 → **7**, 60 fps in a run and 30 elsewhere. The finding about the INSTRUMENT outlives the numbers: `frameProbe`'s default liveness control blanks the whole stage, so it fires whenever anything is drawn — including a frame that is entirely opaque menu — and every "0 pixels changed" reading came back `trustworthy: true` meaning nothing; hiding `layers.ui` instead moved 99.1% and is what separates *drawn and covered* from *not drawn*. Two `pixi.js` `Ticker` facts needed tests of their own (the cap gate truncates elapsed time to an integer, so 60 on a 60 Hz panel has an obvious way to halve everyone's frame rate; and `set maxFPS` silently lowers `minFPS`, which is the post-stall `deltaMS` clamp). The CPU half stayed, measured and deliberately: `update 0.4 ms` against `render 1.2 ms`. `perf` `render`
+- **09-08** [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change) — The owner picked both remaining levers. **`medium` is a rung, not "low with lighting"**: it keeps the one `sceneLight` pass and drops the three stacked above it, so a frame goes from four full-viewport render-target passes to one — draws 41/34/32 and **framebuffer binds 11/3/1** across high/medium/low, and the bind line is the one a mobile tiler charges for. Its `resolutionCap` stays at high's 2 for a reason worth keeping: Pixi's `Filter.resolution` defaults to 1 and does not follow the renderer's, so the world is ALREADY rasterized at 1x everywhere and lowering the renderer resolution buys only the unfiltered layers — the HUD and the menu text. `resolveTier` is a ladder now and `QualityWatchdog` steps instead of latching (`downgrades: number`, streak restarting per rung, bounded by `maxSteps`): "high does not fit" is no evidence about medium, so dropping straight to the cheapest tier would cost every mid-range phone the lighting it could afford — reaching `low` off the real sampler takes ~12 s of slow windows rather than 6. Plus a **FRAME RATE setting (60/30)**, 30 being one render frame per sim tick, on a module mirror because the reader is the main loop, landing in `SettingsBinding.applyAll` so it applies at boot AND on change AND on the ad-mute re-apply. Two cross-constraints became assertions: the idle cap may not fall below the watchdog's 25 fps floor (30 never trips it, 20 does — measured against the real sampler), and an idle screen may never cost more frames than the run. Three i18n keys × eight locales, and three source comments that COUNTED tiers had to be rephrased to name the property instead. `render` `ui` `i18n`
+- **09-08** [The premises a perf fix rests on, and the test that was vacuous](roadmap/46-2026-09-08-power-budget.md#the-premises-a-perf-fix-rests-on-and-the-test-that-was-vacuous-2026-09-08-client-tests-only-no-code-change) — An 18-mutant battery, 18 killed and both controls surviving — after two rounds, and the two things the first round found are worth more than the score. **One survivor was a genuinely vacuous test of mine**: `maxFpsForPhase` returns `min(IDLE_MAX_FPS, playCap)`, `IDLE_MAX_FPS` is 30 and the lowest offered rate is 30, so every assertion written from a legal value passes whether the `min` exists or not — deleting it survived 5,500 tests, the dominant survivor cause this log already records (the fixture made two different things equal), fixed by driving the mirror past its own type. The other was a **no-op mutant** whose SURVIVED line said nothing; re-run as real edits it died instantly. Both premises of the fix are now tests rather than one browser reading: `menuCoversWorld.test.ts` (every menu-shaped screen mounts a full-bleed opaque sprite over the whole viewport — mocking `getUiTexture` is what makes the shipped branch reachable, since a `Panel` with no art is a translucent scrim) and a `layers.test.ts` parent-chain case (every layer a run draws into is under `world`). Adding the only two screens `viewportFit.test.ts` had ever been missing — `Matchmaking` and `StoreScreen`, missing because both do async work in `show()`, which left the queue and the store unchecked against a 390 px phone — exposed that **a fits-the-viewport sweep is blind to the bug it was written for**: a bottom-anchored control always "fits" (the store's BACK sits at `h - 56`, so its content ends 24 px above the bottom at every height), an overlap is not an overflow, and **±Infinity passes both bounds assertions** so the suite passed hardest on the emptiest screen. The guard that works is the BUILDER asserting its own precondition — deleting the settle point then failed 18 cases instead of 1. `test` `ui`
+
 ## The work log — by theme
 
-The same 133 entries, grouped. An entry with more than one tag appears more than once.
+The same 136 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(57)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(59)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1246,6 +1252,8 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-03 [The floor a door lights is not always south of it](roadmap/23-2026-09-03-door-floor-plane.md#the-floor-a-door-lights-is-not-always-south-of-it-2026-09-03d-client-only-no-engine-bump)
 - 09-04 [A door's ring belongs to the door it lights](roadmap/24-2026-09-04-door-ring-fit.md#a-doors-ring-belongs-to-the-door-it-lights-2026-09-04-client-only-no-engine-bump)
 - 09-06 [The two mob blades get their own art](roadmap/39-2026-09-06-energy-card-capacity.md#the-third-gap-prompts-then-pixels-same-day)
+- 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
+- 09-08 [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change)
 
 **`art`** — authored assets and the art pipeline *(17)*
 
@@ -1267,7 +1275,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-02 [The other three clips finally get a signal](roadmap/14-2026-09-02-muzzle.md#the-other-three-clips-finally-get-a-signal-2026-09-02-client-only)
 - 09-06 [The two mob blades get their own art](roadmap/39-2026-09-06-energy-card-capacity.md#the-third-gap-prompts-then-pixels-same-day)
 
-**`perf`** — frame time, draw calls, geometry budgets *(12)*
+**`perf`** — frame time, draw calls, geometry budgets *(13)*
 
 - 08-19 [Volume, measured: the numbers behind the two passes above](roadmap/03-2026-08-17--08-19.md#volume-measured-the-numbers-behind-the-two-passes-above-2026-08-19-render-only)
 - 08-24 [Room props get real art, and three loaders that were never mip-mapped](roadmap/05-2026-08-21--08-24.md#room-props-get-real-art-and-three-loaders-that-were-never-mip-mapped-2026-08-24-client-only)
@@ -1281,6 +1289,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The pillar crease stops being 12 rects](roadmap/09-2026-08-26.md#the-pillar-crease-stops-being-12-rects-2026-08-26-client-only)
 - 08-27 [The floor stops at its own walls](roadmap/10-2026-08-27.md#the-floor-stops-at-its-own-walls-2026-08-27-client-only)
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
+- 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
 **`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(27)*
 
@@ -1334,7 +1343,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(63)*
+**`test`** — coverage sweeps, gates, mutation batteries *(64)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1399,6 +1408,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [The room the portal wants told about, and the name every other client draws](roadmap/43-2026-09-08-portal-accounts.md#the-room-the-portal-wants-told-about-and-the-name-every-other-client-draws-2026-09-08-client--server--engine-protocol--docs-no-engine-bump)
 - 09-08 [The backup that never ran, and the check that existed only in the repo](roadmap/44-2026-09-08-go-live.md#the-backup-that-never-ran-and-the-check-that-existed-only-in-the-repo-2026-09-08-server--deploy--ci--docs-no-engine-change)
 - 09-08 [A hosted policy, and the guest that was really a broken SDK](roadmap/44-2026-09-08-go-live.md#a-hosted-policy-and-the-guest-that-was-really-a-broken-sdk-2026-09-08-client--docs-no-engine-change)
+- 09-08 [The premises a perf fix rests on, and the test that was vacuous](roadmap/46-2026-09-08-power-budget.md#the-premises-a-perf-fix-rests-on-and-the-test-that-was-vacuous-2026-09-08-client-tests-only-no-code-change)
 
 **`audio`** — cues, music, the engine to sound channel *(6)*
 
@@ -1430,7 +1440,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [A hosted policy, and the guest that was really a broken SDK](roadmap/44-2026-09-08-go-live.md#a-hosted-policy-and-the-guest-that-was-really-a-broken-sdk-2026-09-08-client--docs-no-engine-change)
 - 09-08 [The codename's last surface](roadmap/45-2026-09-08-env-prefix.md#the-codenames-last-surface-2026-09-08-server--deploy--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(18)*
+**`ui`** — HUD, screens, widgets *(20)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1450,6 +1460,8 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [The login page a portal forbids, and the onboarding that was never on the first-click path](roadmap/43-2026-09-08-portal-accounts.md#the-login-page-a-portal-forbids-and-the-onboarding-that-was-never-on-the-first-click-path-2026-09-08-client--server--docs-no-engine-change)
 - 09-08 [The room the portal wants told about, and the name every other client draws](roadmap/43-2026-09-08-portal-accounts.md#the-room-the-portal-wants-told-about-and-the-name-every-other-client-draws-2026-09-08-client--server--engine-protocol--docs-no-engine-bump)
 - 09-08 [A hosted policy, and the guest that was really a broken SDK](roadmap/44-2026-09-08-go-live.md#a-hosted-policy-and-the-guest-that-was-really-a-broken-sdk-2026-09-08-client--docs-no-engine-change)
+- 09-08 [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change)
+- 09-08 [The premises a perf fix rests on, and the test that was vacuous](roadmap/46-2026-09-08-power-budget.md#the-premises-a-perf-fix-rests-on-and-the-test-that-was-vacuous-2026-09-08-client-tests-only-no-code-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(18)*
 
@@ -1561,7 +1573,7 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [The login page a portal forbids, and the onboarding that was never on the first-click path](roadmap/43-2026-09-08-portal-accounts.md#the-login-page-a-portal-forbids-and-the-onboarding-that-was-never-on-the-first-click-path-2026-09-08-client--server--docs-no-engine-change)
 - 09-08 [The room the portal wants told about, and the name every other client draws](roadmap/43-2026-09-08-portal-accounts.md#the-room-the-portal-wants-told-about-and-the-name-every-other-client-draws-2026-09-08-client--server--engine-protocol--docs-no-engine-bump)
 
-**`i18n`** — locales and text layout *(6)*
+**`i18n`** — locales and text layout *(7)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -1569,3 +1581,5 @@ The same 133 entries, grouped. An entry with more than one tag appears more than
 - 09-05 [A trigger pull costs energy](roadmap/38-2026-09-05-weapon-energy.md#a-trigger-pull-costs-energy-2026-09-05-engine--client-engine_version-59)
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [The game gets its name: Blightbloom](roadmap/39-2026-09-06-energy-card-capacity.md#the-game-gets-its-name-blightbloom-2026-09-06-docs--client--server-no-engine-change)
+- 09-08 [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change)
+

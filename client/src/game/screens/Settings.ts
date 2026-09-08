@@ -3,16 +3,24 @@ import type { ControlLayout, SettingsState } from '../../settings';
 import { Panel, Slider, Button } from '../ui/widgets';
 import { t, setLocale, LOCALES, type Locale } from '../../i18n';
 import { QUALITY_SETTINGS, activeQuality, type QualitySetting } from '../../render/quality';
+import { FRAME_RATE_SETTINGS, type FrameRateSetting } from '../powerBudget';
 
 function nextControlLayout(current: ControlLayout): ControlLayout {
   return current === 'standard' ? 'mirrored' : 'standard';
 }
 
-/** Same tap-to-cycle shape as the language and control-layout buttons — three values, so a
+/** Same tap-to-cycle shape as the language and control-layout buttons — four values, so a
  *  picker widget would be more ceremony than the setting is worth (see `nextLocale`). */
 function nextQuality(current: QualitySetting): QualitySetting {
   const i = QUALITY_SETTINGS.indexOf(current);
   return QUALITY_SETTINGS[(i + 1) % QUALITY_SETTINGS.length]!;
+}
+
+/** ...and the in-run frame rate (`game/powerBudget.ts`), which is two values and so cycles
+ *  rather than needing a picker at all. */
+function nextFrameRate(current: FrameRateSetting): FrameRateSetting {
+  const i = FRAME_RATE_SETTINGS.indexOf(current);
+  return FRAME_RATE_SETTINGS[(i + 1) % FRAME_RATE_SETTINGS.length]!;
 }
 
 /**
@@ -24,8 +32,12 @@ function nextQuality(current: QualitySetting): QualitySetting {
  */
 function qualityLabel(setting: QualitySetting): string {
   if (setting === 'high') return t('settings.qualityHigh');
+  if (setting === 'medium') return t('settings.qualityMedium');
   if (setting === 'low') return t('settings.qualityLow');
-  return activeQuality().tier === 'low' ? t('settings.qualityAutoLow') : t('settings.qualityAuto');
+  const tier = activeQuality().tier;
+  if (tier === 'low') return t('settings.qualityAutoLow');
+  if (tier === 'medium') return t('settings.qualityAutoMedium');
+  return t('settings.qualityAuto');
 }
 
 /** Display name for the LANGUAGE toggle — always shown in that language's own name
@@ -71,16 +83,18 @@ export class Settings {
   private languageBtn: Button;
   private controlLayoutBtn: Button;
   private qualityBtn: Button;
+  private frameRateBtn: Button;
   private backBtn: Button;
 
   onChange: ((s: SettingsState) => void) | null = null;
   onBack: (() => void) | null = null;
 
   private state: SettingsState = {
-    master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en', controlLayout: 'standard', quality: 'auto',
+    master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en', controlLayout: 'standard',
+    quality: 'auto', frameRate: 60,
   };
 
-  // Screen-space anchors for the four buttons below, captured by `show()` and reused by
+  // Screen-space anchors for the buttons below, captured by `show()` and reused by
   // `layoutButtons()` on every locale/state change — `update()` (a mute/language/control
   // tap) doesn't re-run `show()`, but with `autoWidth` buttons a text change can still
   // change their width, so it must still re-run the positioning math to stay centered.
@@ -88,6 +102,7 @@ export class Settings {
   private languageY = 0;
   private controlY = 0;
   private qualityY = 0;
+  private frameRateY = 0;
   private pairY = 0;
 
   constructor() {
@@ -108,7 +123,7 @@ export class Settings {
     this.sfxSlider.onChange = (v) => this.update({ ...this.state, sfx: v });
     this.musicSlider.onChange = (v) => this.update({ ...this.state, music: v });
 
-    // `autoWidth: true` on all four below — their labels are translated (design/17-
+    // `autoWidth: true` on every button below — their labels are translated (design/17-
     // i18n.md) and a fixed pixel width sized for English overflows once a locale's
     // string runs longer (e.g. Russian "ВКЛЮЧИТЬ ЗВУК", "УПРАВЛЕНИЕ: ЛЕВША"); the `w`
     // passed here becomes a minimum, not a fixed size — see widgets.ts's Button.
@@ -145,6 +160,15 @@ export class Settings {
       this.update({ ...this.state, quality: nextQuality(this.state.quality) });
     };
 
+    // In-run frame rate (`game/powerBudget.ts`) — the battery knob the quality tier cannot
+    // express, and the one directly below it here because a player looking for either is
+    // looking for the same thing. No 'auto': see `FrameRateSetting`'s note on why a second
+    // policy must not also be steering off the frame-rate stream.
+    this.frameRateBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    this.frameRateBtn.onTap = () => {
+      this.update({ ...this.state, frameRate: nextFrameRate(this.state.frameRate) });
+    };
+
     this.backBtn = new Button(t('settings.back'), { w: 120, h: 34, autoWidth: true, sound: 'ui.back' });
     this.backBtn.onTap = () => this.onBack?.();
 
@@ -154,7 +178,7 @@ export class Settings {
       this.sfxLabel, this.sfxSlider.view,
       this.musicLabel, this.musicSlider.view,
       this.muteBtn.view, this.languageBtn.view, this.controlLayoutBtn.view, this.qualityBtn.view,
-      this.backBtn.view,
+      this.frameRateBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -185,10 +209,11 @@ export class Settings {
     const modeKey = this.state.controlLayout === 'mirrored' ? 'settings.controlLayoutMirrored' : 'settings.controlLayoutStandard';
     this.controlLayoutBtn.setText(t('settings.controlLayout', { mode: t(modeKey) }));
     this.qualityBtn.setText(t('settings.quality', { mode: qualityLabel(this.state.quality) }));
+    this.frameRateBtn.setText(t('settings.frameRate', { fps: String(this.state.frameRate) }));
     this.layoutButtons();
   }
 
-  /** Positions the four `autoWidth` buttons from their current (post-`setText`) widths,
+  /** Positions the `autoWidth` buttons from their current (post-`setText`) widths,
    * not the fixed-pixel halves this used to be (`cx - 80`, `cx - 100`, `cx - 130`) —
    * those assumed the English string length and left longer translations off-center or
    * overflowing their box. Runs after every `syncWidgets()` — the anchors themselves
@@ -200,6 +225,7 @@ export class Settings {
     this.languageBtn.view.position.set(cx - this.languageBtn.width / 2, this.languageY);
     this.controlLayoutBtn.view.position.set(cx - this.controlLayoutBtn.width / 2, this.controlY);
     this.qualityBtn.view.position.set(cx - this.qualityBtn.width / 2, this.qualityY);
+    this.frameRateBtn.view.position.set(cx - this.frameRateBtn.width / 2, this.frameRateY);
     // Mute + Back sit side-by-side as a pair, centered as a unit under `cx` (was
     // `cx - 130` / `cx + 10`, i.e. two fixed 120px boxes with a 20px gap between them —
     // reproduced here from each button's actual width instead).
@@ -232,6 +258,8 @@ export class Settings {
     this.controlY = y + 10;
     y += 44;
     this.qualityY = y + 10;
+    y += 44;
+    this.frameRateY = y + 10;
     y += 44;
     this.pairY = y + 10;
     this.syncWidgets();

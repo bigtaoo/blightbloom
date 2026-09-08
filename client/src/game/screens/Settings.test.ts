@@ -32,6 +32,7 @@ function privateOf(s: Settings) {
     languageBtn: ButtonInternals;
     controlLayoutBtn: ButtonInternals;
     qualityBtn: ButtonInternals;
+    frameRateBtn: ButtonInternals;
     backBtn: ButtonInternals;
   };
 }
@@ -285,36 +286,47 @@ describe('Settings — render quality', () => {
     resetLocaleForTests();
   });
 
-  it('cycles auto -> high -> low -> auto, reporting each pick through onChange', () => {
+  it('cycles auto -> high -> medium -> low -> auto, reporting each pick through onChange', () => {
     const s = new Settings();
     const seen: SettingsState['quality'][] = [];
     s.onChange = (next) => { seen.push(next.quality); s.show(800, 600, next); };
     s.show(800, 600, { ...defaultSettingsState(), quality: 'auto' });
     const p = privateOf(s);
-    p.qualityBtn.onTap?.();
-    p.qualityBtn.onTap?.();
-    p.qualityBtn.onTap?.();
-    expect(seen).toEqual(['high', 'low', 'auto']);
+    for (let i = 0; i < 4; i++) p.qualityBtn.onTap?.();
+    // Four taps and back where it started: the cycle covers every setting and wraps, so no
+    // pick is reachable only by going round twice.
+    expect(seen).toEqual(['high', 'medium', 'low', 'auto']);
   });
 
   it('labels a pinned tier from the setting alone', () => {
     const s = new Settings();
     const p = privateOf(s);
+    // Every pinned pick, and with the live mirror deliberately set to something ELSE, so a
+    // label that read the mirror instead of the setting could not pass.
+    setActiveQuality('low');
     s.show(800, 600, { ...defaultSettingsState(), quality: 'high' });
     expect(p.qualityBtn.label.text).toBe('QUALITY: HIGH');
+    setActiveQuality('high');
+    s.show(800, 600, { ...defaultSettingsState(), quality: 'medium' });
+    expect(p.qualityBtn.label.text).toBe('QUALITY: MEDIUM');
     s.show(800, 600, { ...defaultSettingsState(), quality: 'low' });
     expect(p.qualityBtn.label.text).toBe('QUALITY: LOW');
   });
 
-  it('says AUTO while auto is running high, and AUTO (LOW) once it has dropped', () => {
+  it('says AUTO while auto is running high, and names the rung once it has stepped down', () => {
     const s = new Settings();
     const p = privateOf(s);
     setActiveQuality('high');
     s.show(800, 600, { ...defaultSettingsState(), quality: 'auto' });
     expect(p.qualityBtn.label.text).toBe('QUALITY: AUTO');
 
-    // The watchdog fired. The SETTING is unchanged — only the resolved tier moved, and the
-    // button is the only place the player can find that out.
+    // The watchdog stepped. The SETTING is unchanged — only the resolved tier moved, and the
+    // button is the only place the player can find that out. Both rungs are named, because
+    // "AUTO" on a screen that is visibly not running the authored look is the confusion this
+    // label exists to remove, and the medium rung is the one a mid-range phone will sit on.
+    setActiveQuality('medium');
+    s.show(800, 600, { ...defaultSettingsState(), quality: 'auto' });
+    expect(p.qualityBtn.label.text).toBe('QUALITY: AUTO (MEDIUM)');
     setActiveQuality('low');
     s.show(800, 600, { ...defaultSettingsState(), quality: 'auto' });
     expect(p.qualityBtn.label.text).toBe('QUALITY: AUTO (LOW)');
@@ -325,10 +337,58 @@ describe('Settings — render quality', () => {
     const p = privateOf(s);
     for (const loc of LOCALES) {
       setLocale(loc);
-      s.show(800, 600, { ...defaultSettingsState(), locale: loc, quality: 'low' });
+      // `medium`, not `low`: it is the longest of the four in most locales, so it is the pick
+      // that actually exercises the auto-width centring.
+      s.show(800, 600, { ...defaultSettingsState(), locale: loc, quality: 'medium' });
       expect(p.qualityBtn.label.text, loc).not.toContain('{mode}');
       expect(p.qualityBtn.label.text, loc).not.toBe('settings.quality');
       const centre = p.qualityBtn.view.position.x + p.qualityBtn.width / 2;
+      expect(centre, loc).toBeCloseTo(400, 6);
+    }
+  });
+});
+
+/**
+ * The in-run frame cap (`game/powerBudget.ts`, 2026-09-08) — the battery setting. Same three
+ * questions as the quality button above: does a tap cycle and report, does the label read the
+ * setting, and does it survive every locale without overflowing or leaving a placeholder in.
+ */
+describe('Settings — frame rate', () => {
+  afterEach(() => resetLocaleForTests());
+
+  it('cycles 60 -> 30 -> 60, reporting each pick through onChange', () => {
+    const s = new Settings();
+    const seen: SettingsState['frameRate'][] = [];
+    s.onChange = (next) => { seen.push(next.frameRate); s.show(800, 600, next); };
+    s.show(800, 600, { ...defaultSettingsState(), frameRate: 60 });
+    const p = privateOf(s);
+    p.frameRateBtn.onTap?.();
+    p.frameRateBtn.onTap?.();
+    expect(seen).toEqual([30, 60]);
+  });
+
+  it('labels the rate the player is on, and changes nothing else', () => {
+    const s = new Settings();
+    const p = privateOf(s);
+    const onChange = vi.fn();
+    s.show(800, 600, { ...defaultSettingsState(), frameRate: 60 });
+    expect(p.frameRateBtn.label.text).toBe('FRAME RATE: 60');
+    s.onChange = onChange;
+    p.frameRateBtn.onTap?.();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ frameRate: 30, quality: 'auto', muted: false }));
+    expect(p.frameRateBtn.label.text).toBe('FRAME RATE: 30');
+  });
+
+  it('stays centred and translated in every locale', () => {
+    const s = new Settings();
+    const p = privateOf(s);
+    for (const loc of LOCALES) {
+      setLocale(loc);
+      s.show(800, 600, { ...defaultSettingsState(), locale: loc, frameRate: 30 });
+      expect(p.frameRateBtn.label.text, loc).not.toContain('{fps}');
+      expect(p.frameRateBtn.label.text, loc).not.toBe('settings.frameRate');
+      expect(p.frameRateBtn.label.text, loc).toContain('30');
+      const centre = p.frameRateBtn.view.position.x + p.frameRateBtn.width / 2;
       expect(centre, loc).toBeCloseTo(400, 6);
     }
   });

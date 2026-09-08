@@ -303,7 +303,7 @@ export class Game {
       runOutcome: this.runOutcome, tutorialHints: this.tutorialHints, artGate: this.artGate,
       forgeActions: this.forgeActions, hud: this.hud, hudView: this.hudView,
       touchControlsView: this.touchControlsView, portalPrompt: this.portalPrompt,
-      floorCardPrompt: this.floorCardPrompt,
+      floorCardPrompt: this.floorCardPrompt, ticker: this.app.ticker,
       pickupDebugOverlay: this.pickupDebugOverlay, settingsBtn: this.settingsBtn,
       mainMenu: this.mainMenu, modeSelect: this.modeSelect, pvpPreview: this.pvpPreview,
       matchmaking: this.matchmaking, forge: this.forge, screens: this.screens,

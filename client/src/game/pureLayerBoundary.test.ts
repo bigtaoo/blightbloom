@@ -72,6 +72,12 @@ const GAME_ROOT = resolve(dirname(fileURLToPath(import.meta.url)));
  */
 const PURE_FILES = [
   'runState.ts',
+  // The per-phase power budget (2026-09-08). It writes a Pixi display bit and a Pixi ticker
+  // knob, and is listed here BECAUSE of that: both arrive as one-property structural
+  // interfaces, so the policy — which phases draw the world, what each caps the frame rate
+  // at — is decidable and testable with two plain objects. A `Container`/`Ticker` import
+  // would make the same file need a renderer to answer a question about `phase`.
+  'powerBudget.ts',
   'controllers/ScreenNav.ts',
   'controllers/OnlineMatch.ts',
   'controllers/ForgeInput.ts',

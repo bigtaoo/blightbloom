@@ -42,6 +42,9 @@ export const zh: Translations<typeof en> = {
     qualityHigh: '高',
     qualityLow: '低',
     qualityAutoLow: '自动 (低)',
+    qualityMedium: '中',
+    qualityAutoMedium: '自动 (中)',
+    frameRate: '帧率: {fps}',
     back: '返回',
   },
   forge: {

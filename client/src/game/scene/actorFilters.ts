@@ -222,8 +222,9 @@ export class ActorFilters {
     if (this.dissolveMs >= 0 && this.dissolveMs < DISSOLVE_MS) {
       this.dissolveMs = Math.min(DISSOLVE_MS, this.dissolveMs + frameDt);
       if (this.dissolveFilter) this.dissolveFilter.progress = this.dissolveMs / DISSOLVE_MS;
-      // The low tier's shader-free equivalent, driven from the same clock so the two tiers
-      // agree on WHEN the actor is gone even though they disagree on how it looks going.
+      // The shader-free equivalent for every tier that does not run `actorShaders`, driven from
+      // the same clock so all of them agree on WHEN the actor is gone even though they disagree
+      // on how it looks going.
       if (!activeQuality().actorShaders) this.host.setSkinAlpha(this.lowTierAlpha());
     }
   }

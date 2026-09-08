@@ -362,6 +362,21 @@ describe('FxController quality tiers', () => {
     expect(m.lit).toEqual([fx.sceneLight]);
   });
 
+  it('mounts ONLY the lighting pass on the medium tier — the rung is the pass count', () => {
+    // The whole value of the middle rung (2026-09-08, the phone/iPad battery pass): a frame goes
+    // from four render-target passes to one, measured live as 11 framebuffer binds -> 3, while
+    // keeping the pass that carries the game's look. Asserted here as the mounted filters
+    // because that IS the pass count — each of these is one full-viewport target switch.
+    setActiveQuality('medium');
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    const m = mounted(layers);
+    expect(m.lit).toEqual([fx.sceneLight]);
+    expect(m.world).toEqual([]);
+    expect(m.fx).toEqual([]);
+  });
+
   it('mounts none of them on the low tier', () => {
     setActiveQuality('low');
     const layers = new Layers();
@@ -373,7 +388,7 @@ describe('FxController quality tiers', () => {
     expect(m.lit).toEqual([]);
   });
 
-  it('keeps `lit`\'s filterArea across both tiers, so re-mounting needs no second call', () => {
+  it('keeps `lit`\'s filterArea across a tier change, so re-mounting needs no second call', () => {
     setActiveQuality('low');
     const layers = new Layers();
     const fx = new FxController(layers);

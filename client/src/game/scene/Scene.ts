@@ -95,7 +95,7 @@ export class Scene {
    * previous tier produced until something happened to it.
    *
    * Includes the `dying` list: a tier flip during a death animation has to reach the actor
-   * playing it, which is exactly the case where the two tiers differ most (shader dissolve vs
+   * playing it, which is exactly the case where the tiers differ most (shader dissolve vs
    * alpha ramp).
    */
   refreshQuality(): void {

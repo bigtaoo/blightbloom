@@ -2,6 +2,7 @@
 import { defaultSettingsState, type ControlLayout, type SettingsState } from './SettingsState';
 import { LOCALES, detectBrowserLocale, type Locale } from '../i18n';
 import { QUALITY_SETTINGS, type QualitySetting } from '../render/quality';
+import { FRAME_RATE_SETTINGS, type FrameRateSetting } from '../game/powerBudget';
 
 export interface SettingsStore {
   load(): SettingsState;
@@ -83,6 +84,12 @@ function migrate(parsed: unknown): SettingsState {
   // whatever tier happened to be the default when they last played.
   const quality = (v: unknown, fallback: QualitySetting): QualitySetting =>
     QUALITY_SETTINGS.includes(v as QualitySetting) ? (v as QualitySetting) : fallback;
+  // Validated against the LIST, not `typeof v === 'number'`: the cap is written straight onto
+  // `Ticker.maxFPS`, where a hand-edited 0 would mean "no cap at all" (the exact state
+  // powerBudget.ts exists to remove) and a 5 would silently widen the ticker's own catch-up
+  // clamp — see IDLE_MAX_FPS's note.
+  const frameRate = (v: unknown, fallback: FrameRateSetting): FrameRateSetting =>
+    FRAME_RATE_SETTINGS.includes(v as FrameRateSetting) ? (v as FrameRateSetting) : fallback;
   return {
     master: num(p.master, d.master),
     sfx: num(p.sfx, d.sfx),
@@ -91,5 +98,6 @@ function migrate(parsed: unknown): SettingsState {
     locale: locale(p.locale, d.locale),
     controlLayout: controlLayout(p.controlLayout, d.controlLayout),
     quality: quality(p.quality, d.quality),
+    frameRate: frameRate(p.frameRate, d.frameRate),
   };
 }

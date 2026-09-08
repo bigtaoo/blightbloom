@@ -23,6 +23,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Container, Ticker, UPDATE_PRIORITY } from 'pixi.js';
 import { installPerf, type InstalledPerf, type PerfSnapshot } from '../perf';
 import { QualityWatchdog } from './qualityWatchdog';
+import { FRAME_RATE_SETTINGS, IDLE_MAX_FPS } from '../game/powerBudget';
 
 let installed: InstalledPerf | null = null;
 afterEach(() => {
@@ -81,7 +82,7 @@ describe('the real perf stream drives the real watchdog', () => {
     play(h.ticker, 400, 16); // ~6.4s of 62fps -> three closed windows
     expect(h.windows.length).toBeGreaterThanOrEqual(3);
     expect(h.downgrades()).toBe(0);
-    expect(h.watchdog.downgraded).toBe(false);
+    expect(h.watchdog.downgrades).toBe(0);
   });
 
   it('the window the sampler really produces carries the three fields the watchdog reads', () => {
@@ -105,15 +106,17 @@ describe('the real perf stream drives the real watchdog', () => {
     play(h.ticker, 100, 100);
     expect(h.windows.length).toBeGreaterThanOrEqual(3);
     expect(h.windows.every((w) => w.fps < 25)).toBe(true);
-    expect(h.watchdog.downgraded).toBe(true);
-    expect(h.downgrades()).toBe(1); // latched: fires once, not once per slow window
+    expect(h.watchdog.downgrades).toBeGreaterThanOrEqual(1);
+    // Bounded by the ladder (high -> medium -> low), not once per slow window: this run closes
+    // far more slow windows than there are rungs to step down.
+    expect(h.downgrades()).toBeLessThanOrEqual(2);
   });
 
   it('needs the streak — two real slow windows are not enough', () => {
     const h = harness(new QualityWatchdog({ sustainWindows: 3 }));
     play(h.ticker, 40, 100); // ~4s -> two closed windows
     expect(h.windows.length).toBe(2);
-    expect(h.watchdog.downgraded).toBe(false);
+    expect(h.watchdog.downgrades).toBe(0);
   });
 
   it('ignores a window the sampler marks discarded, even though it is delivered and slow', () => {
@@ -132,11 +135,64 @@ describe('the real perf stream drives the real watchdog', () => {
     expect(h.windows.length).toBe(2);
     expect(h.windows.every((w) => w.discarded)).toBe(true);
     expect(h.windows.every((w) => w.fps < 25)).toBe(true);
-    expect(h.watchdog.downgraded).toBe(false);
+    expect(h.watchdog.downgrades).toBe(0);
 
     // ...and the same number of VISIBLE slow windows does trip it, so the case above is the
     // `discarded` flag doing the work and not the streak simply never being reached.
     play(h.ticker, 40, 100, t);
-    expect(h.watchdog.downgraded).toBe(true);
+    expect(h.watchdog.downgrades).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * The frame CAP (`game/powerBudget.ts`, 2026-09-08) against this same watchdog — two systems
+ * reading one number, in opposite directions.
+ *
+ * `powerBudget` deliberately renders fewer frames to save battery; the watchdog reads the frames
+ * that come out and downgrades the renderer when there are too few. Nothing connects them, so a
+ * cap set below the watchdog's floor would quietly make every player who chose it lose the
+ * scene lighting as well — a battery setting with a hidden second effect, and no error anywhere.
+ * The unit version of this check lives in `game/powerBudget.test.ts` and feeds the watchdog a
+ * literal `fps: 30`. This one asks the REAL sampler what a capped game actually measures, which
+ * is the number that decides it (Pixi's cap gate truncates, so a 30 cap does not deliver a clean
+ * 30.000 and the margin to the floor is not exactly what arithmetic says).
+ */
+describe('the frame caps stay clear of the downgrade floor, measured', () => {
+  const CAPS = [...FRAME_RATE_SETTINGS, IDLE_MAX_FPS];
+
+  it.each(CAPS)('a game running at the %i fps cap never downgrades', (cap) => {
+    const h = harness();
+    // ~10s at exactly the capped rate — well past the 3-window streak, and long enough that a
+    // borderline reading would have three chances to fire.
+    play(h.ticker, Math.round(cap * 10), 1000 / cap);
+    expect(h.windows.length).toBeGreaterThanOrEqual(3);
+    expect(h.windows.every((w) => !w.discarded)).toBe(true);
+    expect(h.watchdog.downgrades).toBe(0);
+    expect(h.downgrades()).toBe(0);
+  });
+
+  it('reports each capped rate back as roughly the rate itself', () => {
+    // The control for the case above: if the sampler read every one of these as 60, the
+    // "never downgrades" result would be about the fixture and not about the cap. It also
+    // pins the direction — a cap must not measure BELOW itself by any meaningful margin.
+    for (const cap of CAPS) {
+      const h = harness();
+      play(h.ticker, Math.round(cap * 10), 1000 / cap);
+      const fps = h.windows.map((w) => w.fps);
+      for (const f of fps) {
+        expect(f, `${cap} cap read ${f}`).toBeGreaterThan(cap - 2);
+        expect(f, `${cap} cap read ${f}`).toBeLessThan(cap + 2);
+      }
+      h.perf.uninstall();
+    }
+  });
+
+  it('a rate below the floor WOULD downgrade — the margin is real, not assumed', () => {
+    // The negative control, and the reason `IDLE_MAX_FPS`/`FRAME_RATE_SETTINGS` may not simply
+    // be lowered when someone next wants more battery back: 20 fps is a perfectly reasonable-
+    // looking cap and it costs the player their renderer.
+    const h = harness();
+    play(h.ticker, 200, 1000 / 20);
+    expect(h.watchdog.downgrades).toBeGreaterThanOrEqual(1);
   });
 });

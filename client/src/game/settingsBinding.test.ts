@@ -1,17 +1,20 @@
 /**
- * `SettingsBinding` (2026-08-25) — the persisted settings and the four places a change to them
+ * `SettingsBinding` (2026-08-25) — the persisted settings and the five places a change to them
  * has to land.
  *
- * The bug shape this exists to prevent, and the reason it is a class rather than four private
+ * The bug shape this exists to prevent, and the reason it is a class rather than five private
  * methods on `Game`: a setting that applies on CHANGE but not at BOOT. That is a two-call-site
  * invariant, and it has to be kept by hand every time a new setting is added — quality was the
- * fifth. So every case below checks both paths, not one.
+ * fifth, the in-run frame cap the sixth. So every case below checks both paths, not one.
  */
 import { afterEach, describe, it, expect } from 'vitest';
 import { SettingsBinding, type SettingsBindingDeps } from './settingsBinding';
 import { MemorySettingsStore, defaultSettingsState, type SettingsState } from '../settings';
 import { getLocale, resetLocaleForTests } from '../i18n';
 import { resetExternalMute, setExternalMute } from '../audio/externalMute';
+import { activePlayFrameCap, resetPlayFrameCap } from './powerBudget';
+
+afterEach(() => resetPlayFrameCap());
 
 function harness(initial: Partial<SettingsState> = {}) {
   const audio = { sfx: -1, music: -1 };
@@ -66,6 +69,45 @@ describe('SettingsBinding.load — everything takes effect at boot', () => {
       store,
     );
     expect(() => binding.load()).not.toThrow();
+  });
+});
+
+describe('SettingsBinding — the in-run frame cap', () => {
+  it('applies the persisted rate at BOOT, not only after the first tap', () => {
+    // The cap is a module mirror (`powerBudget.ts`), so "applied" means the mirror moved. A
+    // player who picked 30 last session must not spend their first run back at 60.
+    expect(activePlayFrameCap()).toBe(60);
+    harness({ frameRate: 30 }).binding.load();
+    expect(activePlayFrameCap()).toBe(30);
+  });
+
+  it('applies a change reported by the settings screen', () => {
+    const h = harness({ frameRate: 60 });
+    h.binding.load();
+    expect(activePlayFrameCap()).toBe(60);
+    h.binding.update({ ...h.binding.state, frameRate: 30 });
+    expect(activePlayFrameCap()).toBe(30);
+    // ...and back, in the same session.
+    h.binding.update({ ...h.binding.state, frameRate: 60 });
+    expect(activePlayFrameCap()).toBe(60);
+  });
+
+  it('survives an unrelated edit — a volume drag must not reset the cap', () => {
+    const h = harness({ frameRate: 30 });
+    h.binding.load();
+    h.binding.update({ ...h.binding.state, master: 0.4 });
+    expect(activePlayFrameCap()).toBe(30);
+  });
+
+  it('is restored by the ad-mute re-apply path, which recomputes from the settings', () => {
+    // `applyAll` runs on the external-mute callback too, so the cap has to be idempotent
+    // there rather than reset to the default by a path that only meant to touch the audio.
+    const h = harness({ frameRate: 30 });
+    h.binding.load();
+    setExternalMute(true);
+    expect(activePlayFrameCap()).toBe(30);
+    setExternalMute(false);
+    expect(activePlayFrameCap()).toBe(30);
   });
 });
 

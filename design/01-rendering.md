@@ -2,7 +2,7 @@
 
 Goal: a fixed tilted view (not pure top-down; slightly forward-leaning, like Soul Knight) that produces playable spatial relationships with 2D techniques.
 
-This file is the **index, the fidelity roadmap and the quality tiers**. The mechanisms — how a
+This file is the **index, the fidelity roadmap, the quality tiers and the power budget**. The mechanisms — how a
 wall is built, how the x-ray works, what the arena's frame costs — live in
 [`design/rendering/`](rendering/), grouped by subject, each part under 1000 lines. The doc had
 reached 2,719 lines in one file.
@@ -252,17 +252,23 @@ measurement: `04`'s checklist items 3 and 6 ("frame rate on low-end Android", "l
 performance on low-end devices") were unanswerable in the only way that matters, because a bad
 answer had no remedy attached to it.
 
-`render/quality.ts` holds two tiers and the table that separates them. `render/qualityWatchdog.ts`
+`render/quality.ts` holds the tiers and the table that separates them. `render/qualityWatchdog.ts`
 holds the `'auto'` policy. `game/renderQuality.ts` applies a tier to the live renderer.
 
-| Knob | high | low | why it is on this list |
-|---|---|---|---|
-| `resolutionCap` | 2 | 1 | Fill rate. A DPR-3 phone rendering at 2 draws 4x the fragments of one at 1, and **every pass below pays that multiplier again**. The platform's own `min(devicePixelRatio, 2)` still applies on top — the cap only ever lowers it. |
-| `sceneLight` | on | off | The one `SceneLightFilter` pass over `layers.lit`. |
-| `screenFx` | on | off | `VignetteFilter` + `ChromaticAberrationFilter` over `layers.world`. |
-| `bloom` | on | off | The bloom-lite `BlurFilter` over the additive `layers.fx`. |
-| `actorShaders` | on | off | The four per-actor skin shaders. One render-target pass **per actor** that currently has a status effect — the cost profile the 2026-08-24 lighting pass existed to remove from the frame, still reachable through the status shaders. |
-| `particleBudget` | 1 | 0.35 | Burst counts and ambient dust rate. Each particle is its own `Graphics` node. |
+| Knob | high | medium | low | why it is on this list |
+|---|---|---|---|---|
+| `resolutionCap` | 2 | 2 | 1 | Fill rate. A DPR-3 phone rendering at 2 draws 4x the fragments of one at 1, and **every pass below pays that multiplier again**. The platform's own `min(devicePixelRatio, 2)` still applies on top — the cap only ever lowers it. Unchanged at `medium` on purpose — see the note under the second table. |
+| `sceneLight` | on | **on** | off | The one `SceneLightFilter` pass over `layers.lit`. |
+| `screenFx` | on | off | off | `VignetteFilter` + `ChromaticAberrationFilter` over `layers.world`. |
+| `bloom` | on | off | off | The bloom-lite `BlurFilter` over the additive `layers.fx`. |
+| `actorShaders` | on | off | off | The four per-actor skin shaders. One render-target pass **per actor** that currently has a status effect — the cost profile the 2026-08-24 lighting pass existed to remove from the frame, still reachable through the status shaders. |
+| `particleBudget` | 1 | 0.6 | 0.35 | Burst counts and ambient dust rate. Each particle is its own `Graphics` node. |
+
+The **`medium` rung landed 2026-09-08** with the power budget below, for the report *"游戏现在运行
+在手机和ipad上时耗电量非常高"*. It keeps the one pass that carries the game's look and drops the
+three stacked above it, so a frame goes from four full-viewport render-target passes to one — and
+on a mobile tiler the pass COUNT is what costs, since each one is a tile flush and a reload of the
+whole viewport.
 
 **Measured, in the live scene** (`?perf=1`, a level-1 room with 8 enemies, via
 `perf/drawAttribution`'s GL counters):
@@ -280,20 +286,43 @@ quarters the fragments in the one that remains. The A/B was confirmed to be real
 a no-op by frame diff: switching tiers moves **48.8%** of the composited frame, against an
 independent liveness control (hiding `layers.entities`) at 32.4%.
 
+**And the same three counters with the middle rung in them** (2026-09-08, a separate reading — a
+live PvE room on a DPR-1 surface, so these numbers are not comparable with the table above; what
+is comparable is the three columns against each other):
+
+| | high | medium | low |
+|---|---|---|---|
+| draw calls | 41 | 34 | 32 |
+| **framebuffer binds** | **11** | **3** | **1** |
+| program switches | 18 | 14 | 12 |
+
+`medium` buys 8 of the 11 render-target switches while keeping the lighting, which is why it is a
+rung rather than "low with lighting". Its `resolutionCap` deliberately stays at high's 2: Pixi's
+`Filter.resolution` defaults to 1 and does **not** follow the renderer's, so everything inside
+`layers.lit`/`world`'s filters is already rasterized at 1x on every device, and lowering the
+renderer resolution therefore buys only the final composite and the UNFILTERED layers — which are
+the HUD and the menu text. Blurring the text to save the cheapest pass in the frame is the wrong
+trade at this rung; `low` still makes it, because a device on `low` needs every fragment back.
+
 Two rules the tiers are built around:
 
 - **Quality is presentation-only.** It never reaches the sim (`06`/`12`'s locked "art never
   decides an outcome"), so two clients on different tiers stay byte-identical in simulation. A
   low-tier client sees a flatter scene, never a different fight.
 - **`'auto'` never climbs back up.** A device that downgraded is by definition one whose frame
-  budget the high tier does not fit, so re-enabling would re-measure a slow frame and downgrade
+  budget that tier does not fit, so re-enabling would re-measure a slow frame and downgrade
   again — an oscillation the player would read as the game flickering between two looks. An
   explicit `'high'` pick always outranks the watchdog: the player asking for the good-looking
   version beats our guess about their hardware.
+- **...but it STEPS, one rung per fresh streak** (2026-09-08, with `medium`). `QualityWatchdog`
+  counts downgrades instead of latching a boolean, and its streak restarts after each step:
+  "high does not fit" is no evidence about medium, and dropping straight to the cheapest tier on
+  the first slow stretch would cost every mid-range phone the lighting it could actually afford.
+  Reaching `low` off the real sampler therefore takes ~12s of slow windows rather than 6.
 
 ### The one place the tiers are not simply "less"
 
-The low tier has no `DissolveFilter`, so a dying actor would stand at full opacity for the whole
+Neither `medium` nor `low` runs `DissolveFilter`, so a dying actor would stand at full opacity for the whole
 `DISSOLVE_MS` and then vanish in a single frame — which reads as a dropped frame, not as a
 cheaper effect. `ActorFilters` therefore drives a plain alpha ramp off the same clock
 (`ActorFilterHost.setSkinAlpha`). The other three shaders need no such stand-in: they each have a
@@ -303,6 +332,69 @@ own positional burst), so dropping them costs detail rather than meaning.
 ### What a device tester can read without any tooling
 
 The settings screen's quality button reports what `'auto'` actually RESOLVED to, not just that
-it is auto: once the frame watchdog fires it reads `AUTO (LOW)` / `自动 (低)`. That makes `04`'s
-item 3 answerable by anyone holding the phone — a low-end device reporting itself — rather than
-requiring a remote console session.
+it is auto: once the frame watchdog steps it reads `AUTO (MEDIUM)` / `AUTO (LOW)` (`自动 (中)` /
+`自动 (低)`). That makes `04`'s item 3 answerable by anyone holding the phone — a device reporting
+itself, and now reporting WHICH rung it settled on — rather than requiring a remote console
+session.
+
+## The power budget (2026-09-08)
+
+A tier decides what a drawn frame contains. This decides **whether the frame is drawn at all, and
+how often** — and it exists because the report that prompted it (*"游戏现在运行在手机和ipad上时耗
+电量非常高"*) was invisible to every instrument above. `game/powerBudget.ts` is the whole policy,
+`GameLoop.update` applies it every frame, and both of its knobs are a function of `phase` alone.
+
+**Nothing in `layers.world` is visible outside `'playing'`, and all of it was being drawn.** Every
+menu-shaped screen (main menu, mode select, forge, squad lobby, PvP preview, matchmaking,
+settings) *and* the pause menu *and* both result screens are backed by the same opaque
+full-viewport panel art, so `GameLoop`'s own "freeze the last frame behind the menu" has never
+been visible to a player. `RunLifecycle.resetRenderState` runs when the NEXT run starts, not when
+one ends, so a player sitting in the forge after a dungeon paid for a complete in-run frame — 29
+ground pieces, 64 live entity views, four filter passes — at the display's refresh rate, for as
+long as they sat there. Measured with `?perf=1` at a phone-landscape 844x390 viewport, each phase
+reached through its real flow:
+
+| phase | frame | hiding `layers.world` moves | with `layers.ui` hidden |
+|---|---|---|---|
+| playing | 39 draws / 18 programs | 92.0% of pixels | 99.1% |
+| paused | 39 / 18 | **0 px** of 329,160 | 99.1% |
+| forge, after a run | 42 / 18 | **0 px** | 99.1% |
+
+The third column is the load-bearing control, and the reason to state it: `perf/frameProbe.ts`'s
+default liveness check blanks the whole stage, so it fires whether or not the subtree under test
+is on screen. Hiding `layers.ui` instead is what separates "drawn and covered" — which costs
+battery — from "not drawn at all", which costs nothing. With the world switched off, the pause
+frame is 5 draws / 0 programs / 3 framebuffer binds.
+
+**The ticker had no cap at all** (`maxFPS === 0`), so the render rate was whatever the panel ran
+at: a 120 Hz ProMotion iPad drew FOUR frames per 30 Hz sim tick and spent twice the power of the
+60 Hz phone beside it on interpolation nobody asked for. Now 60 while playing — two frames per
+sim tick, which is what every frame-time number in this document was measured at — 30 on every
+other screen, and 30 in a run if the player asks for it (`10`'s FRAME RATE row).
+
+Three rules it is built around:
+
+- **Power is a separate axis from framerate, and that is why the quality tiers could not see
+  this.** `'auto'` is chosen by a framerate watchdog; a device that holds 60 fps while drawing an
+  invisible dungeon at 120 Hz never trips it and never will. It is not struggling, it is wasting.
+- **The idle cap has a floor, and it is not taste.** `PerfMonitor` keeps sampling on a menu and
+  the watchdog steps down after three windows under 25 fps, so an idle cap below that would
+  downgrade the renderer for anyone who paused for six seconds — with the settings screen still
+  reading `auto` and nothing having actually been slow. Measured against the real sampler: 30
+  never trips it, 20 does.
+- **An idle screen may never cost more frames than the run does.** `maxFpsForPhase` takes the
+  lower of the idle cap and the player's own pick, so someone who asked for 30 in a fight does
+  not get a menu drawing more frames than the game.
+
+Presentation-only, like the tiers: the sim runs off `GameLoop`'s own fixed 30 Hz accumulator, not
+off the render rate, so two clients capped differently stay byte-identical (`06`).
+
+### The premises it rests on, as tests rather than as a measurement
+
+Both halves above were verified once, by hand, in a browser — the kind of evidence that stops
+being true without anything turning red. Both are now pinned headlessly:
+`game/screens/menuCoversWorld.test.ts` (every screen a menu-shaped phase can show mounts a
+full-bleed sprite at `alpha === 1` covering the viewport, from `Panel`'s background art) and a
+`game/scene/layers.test.ts` case (every layer a run draws into is under `world`; `backdrop`/`ui`
+are not). Deleting `background: 'hub'` from one screen turns the first red — without it, the
+world-hiding rule would quietly turn that screen into a hole.
