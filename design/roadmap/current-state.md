@@ -219,3 +219,27 @@ listened to any of it.** A repo structure pass (bottom
 of this doc) made the engine its own DOM-free package and the repo an npm workspace. Per-item
 detail, including what each phase deliberately did *not* build, is in the volumes under [design/roadmap/](.); the
 [Dependency summary](../ROADMAP.md#dependency-summary) in the index is the one-screen version.
+
+## Distribution targets and accounts, as of 2026-09-08
+
+Appended rather than folded into the phase paragraph above, which was written before Phases 8–9
+existed and describes the engine/content state it was written for. Per-item detail is in volumes
+[40](40-2026-09-07-deploy-tests.md), [41](41-2026-09-07-crazygames.md),
+[42](42-2026-09-07-rewarded-ad.md) and [43](43-2026-09-08-portal-accounts.md).
+
+- **Four build targets ship**: our own domain (`b.gamestao.com`), the WeChat mini-game, the
+  Capacitor shells, and a game portal (`npm run build:crazygames -w client`). The portal target
+  loads **`crazygames-sdk-v3.js`** — the shipped v2 script has no `updateRoom`/`leftRoom`/
+  `isInstantMultiplayer`, which is the whole of that platform's room requirement.
+- **The backend is deployed** — `gameserver`/`matchsvc`/`billsvc` plus a backup worker on the
+  borrowed VPS at `bb.gamestao.com`, and the portal build points at it by default.
+- **Accounts have a second provider.** Username/password is unchanged and still never required to
+  play; a game portal additionally signs a player in silently through its own user token
+  (`POST /auth/portal`), and on that host our credential screen is unreachable because the
+  platform disallows it. `accounts` gained `display_name`, applied by this project's first real
+  schema migration — **so the first `matchsvc` start after that deploy alters the live database.**
+- **Not yet done, and none of it is code**: the portal upload and its review round trip, a
+  registered portal domain (without which banner fill, real ad playback and whether the account
+  module is enabled at all cannot be settled), a hosted privacy/terms URL, `DDU_CG_GAME_ID` on
+  the deployed matchsvc, and one question for the platform — its SDK logs that `getUser` is still
+  in BETA, and the whole silent-login path rides on it.
