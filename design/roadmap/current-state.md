@@ -225,7 +225,8 @@ detail, including what each phase deliberately did *not* build, is in the volume
 Appended rather than folded into the phase paragraph above, which was written before Phases 8–9
 existed and describes the engine/content state it was written for. Per-item detail is in volumes
 [40](40-2026-09-07-deploy-tests.md), [41](41-2026-09-07-crazygames.md),
-[42](42-2026-09-07-rewarded-ad.md) and [43](43-2026-09-08-portal-accounts.md).
+[42](42-2026-09-07-rewarded-ad.md), [43](43-2026-09-08-portal-accounts.md) and
+[44](44-2026-09-08-go-live.md).
 
 - **Four build targets ship**: our own domain (`b.gamestao.com`), the WeChat mini-game, the
   Capacitor shells, and a game portal (`npm run build:crazygames -w client`). The portal target
@@ -237,9 +238,23 @@ existed and describes the engine/content state it was written for. Per-item deta
   play; a game portal additionally signs a player in silently through its own user token
   (`POST /auth/portal`), and on that host our credential screen is unreachable because the
   platform disallows it. `accounts` gained `display_name`, applied by this project's first real
-  schema migration — **so the first `matchsvc` start after that deploy alters the live database.**
+  schema migration, which **has now landed** on the deployed box (`display_name TEXT`, nullable,
+  `integrity_check ok`). Worth knowing before the next one: both databases held **0 rows in every
+  table** when it ran, so it is not yet production-proven — a green migration over an empty table
+  says nothing about a full one.
+- **A hosted privacy policy and terms are live** at `b.gamestao.com/privacy` and `/terms`
+  (volume 44), linked from under the in-game data notice on both the portal menu and
+  `LoginScreen`. The documents describe what this game actually collects — no email address, no
+  analytics anywhere in the tree, and no payment processor connected — rather than adapting the
+  sibling project's, which would overstate all three.
+- **The daily backup actually runs now.** It had taken zero snapshots in its first 18 hours: a
+  bind mount hides the image's `chown`, and the deploy check that would have caught it existed
+  only in the repo because that script's live copy is hand-installed. Both written up in
+  `server/deploy/README.md`; the transferable half is that **CI going green is not evidence a new
+  deploy check ran.**
 - **Not yet done, and none of it is code**: the portal upload and its review round trip, a
   registered portal domain (without which banner fill, real ad playback and whether the account
-  module is enabled at all cannot be settled), a hosted privacy/terms URL, `DDU_CG_GAME_ID` on
-  the deployed matchsvc, and one question for the platform — its SDK logs that `getUser` is still
-  in BETA, and the whole silent-login path rides on it.
+  module is enabled at all cannot be settled), `DDU_CG_GAME_ID` on the deployed matchsvc, and one
+  question for the platform — its SDK logs that `getUser` is still in BETA, and the whole
+  silent-login path rides on it. What is no longer a gap is the ability to SEE that fail:
+  `diagnostics()` reported a broken `getUser` as `guest` until volume 44 gave it a fifth state.
