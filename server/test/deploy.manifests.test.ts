@@ -41,6 +41,8 @@ interface ComposeService {
   expose: string[];
   healthcheck: string;
   envFile: string | null;
+  /** Host side of each bind mount, exactly as written (`./data/matchsvc`). */
+  volumes: string[];
 }
 
 /**
@@ -54,7 +56,7 @@ interface ComposeService {
 function parseCompose(yaml: string): Record<string, ComposeService> {
   const out: Record<string, ComposeService> = {};
   let service: ComposeService | null = null;
-  let section: 'env' | 'expose' | 'healthcheck' | null = null;
+  let section: 'env' | 'expose' | 'healthcheck' | 'volumes' | null = null;
   let inServices = false;
 
   for (const raw of yaml.split(/\r?\n/)) {
@@ -72,7 +74,7 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
     if (indent === 2) {
       const name = /^([\w-]+):$/.exec(line)?.[1];
       if (!name) continue;
-      service = { command: [], env: {}, expose: [], healthcheck: '', envFile: null };
+      service = { command: [], env: {}, expose: [], healthcheck: '', envFile: null, volumes: [] };
       out[name] = service;
       section = null;
       continue;
@@ -88,6 +90,7 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
       else if (key === 'environment') section = 'env';
       else if (key === 'expose') section = 'expose';
       else if (key === 'healthcheck') section = 'healthcheck';
+      else if (key === 'volumes') section = 'volumes';
       continue;
     }
 
@@ -99,6 +102,10 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
       if (m) service.expose.push(m[1]!);
     } else if (section === 'healthcheck' && line.startsWith('test:')) {
       service.healthcheck = line.slice('test:'.length).trim();
+    } else if (section === 'volumes') {
+      // `- ./data/matchsvc:/sources/matchsvc:ro` -> `./data/matchsvc`.
+      const m = /^-\s*(\.[^:]+):/.exec(line);
+      if (m) service.volumes.push(m[1]!);
     }
   }
   return out;
@@ -175,6 +182,29 @@ describe('the compose reader actually read something', () => {
     }
     expect(services.backup!.env.DDU_BACKUP_DIR).toBe('/backups');
     expect(mounts.some((p) => p[0] === './backups' && p[1] === '/backups' && p[2] === undefined)).toBe(true);
+  });
+
+  it('every bind-mounted state dir is one the deploy script makes container-writable', () => {
+    // Docker creates a MISSING bind-mount source as `root:root`, and the mount then HIDES
+    // the image's own `chown node:node /data /backups` — so a state dir the host does not
+    // already own as uid 1000 is one the container cannot write to, and it finds out at
+    // runtime. Not hypothetical: `backups/` landed root-owned from the 2026-09-07 deploy
+    // that introduced the worker, which then spent 18 hours failing EACCES on every write
+    // — zero snapshots — while CI reported success. `ci-deploy.sh` normalises the ownership
+    // now; this pins its list to the mounts that actually exist, because a mount added to
+    // compose alone reintroduces precisely the original bug.
+    const mounted = [...new Set(Object.values(services).flatMap((s) => s.volumes))];
+    expect(mounted.sort()).toEqual(['./backups', './data/billsvc', './data/matchsvc']);
+    const fixed = /for dir in (.+); do/.exec(ciDeploy)?.[1]?.split(' ') ?? [];
+    for (const host of mounted) {
+      expect(fixed, `${host} is bind-mounted but never made writable`).toContain(host.slice('./'.length));
+    }
+    // The uid is written as a literal `1000` in a shell script, which is only correct while
+    // the image still runs as the node image's own `node` user. If that USER line changes,
+    // the chown starts handing every state dir to a user the container is not — so the two
+    // are asserted together rather than left as a coincidence.
+    expect(dockerfile).toMatch(/^USER node$/m);
+    expect(ciDeploy).toContain('1000:1000');
   });
 });
 

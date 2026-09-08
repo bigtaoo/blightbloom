@@ -59,6 +59,29 @@ mkdir -p "$TARGET/deploy"
 cp "$STAGE/deploy/package.json" "$TARGET/deploy/package.json"
 
 cd "$TARGET"
+
+# ── Bind-mount ownership, before anything tries to write through one ──
+# Docker creates a MISSING bind-mount source as `root:root`, and the image's own
+# `chown node:node /data /backups` (Dockerfile) is invisible once a mount is in place —
+# the mount replaces that directory, ownership included. So a state dir the host doesn't
+# already own correctly is one the container user (uid 1000 = `node`) cannot write to,
+# and the process finds that out at runtime rather than at deploy time.
+#
+# This is not hypothetical: `backups/` was created root-owned by the 2026-09-07 deploy
+# that introduced the worker, which then spent 18 hours in a restart loop failing EACCES
+# on every write — with CI green, because the live copy of THIS script predated the
+# backup check at the bottom of it. Zero snapshots were taken in that window.
+#
+# Idempotent by construction: the chown container only runs for a dir that is actually
+# wrong, so the steady state costs one `stat` per dir and starts nothing.
+for dir in data/matchsvc data/billsvc backups; do
+  mkdir -p "$TARGET/$dir"
+  if [ "$(stat -c %u "$TARGET/$dir")" != "1000" ]; then
+    echo "fixing ownership of $dir (was uid $(stat -c %u "$TARGET/$dir"), needs 1000)"
+    docker run --rm -v "$TARGET/$dir:/fix" --entrypoint chown alpine:latest -R 1000:1000 /fix
+  fi
+done
+
 docker compose up -d --build
 docker compose ps --format '{{.Name}} {{.Status}}'
 
