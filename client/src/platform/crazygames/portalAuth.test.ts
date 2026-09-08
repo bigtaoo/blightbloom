@@ -92,6 +92,7 @@ describe('PortalAuth.start — a signed-in portal player', () => {
       portalUser: 'Ada',
       session: 'Ada',
       lastError: null,
+      userReadFailed: false,
     });
   });
 
@@ -141,6 +142,73 @@ describe('PortalAuth.start — a signed-in portal player', () => {
   });
 });
 
+describe('PortalAuth — a guest and a BROKEN read are not the same thing', () => {
+  // Both leave `portalUser` null and both leave the player playing as a guest, which is why
+  // `diagnostics()` reported them identically until 2026-09-08. They are different bugs: one
+  // is a player who is not signed in, the other is the whole silent-login path not working.
+  // `getUser` is in BETA on the platform's side, so the second is the likelier of the two.
+
+  it('says the read FAILED when getUser rejects', async () => {
+    const host = userHost({ getUser: async () => { throw new Error('gated in BETA'); } });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    const d = auth.diagnostics();
+    expect(d.userReadFailed).toBe(true);
+    expect(d.lastError).toBe('gated in BETA');
+    // Still a guest as far as the GAME is concerned — the flag changes what is reported,
+    // never what happens.
+    expect(getSession()).toBeNull();
+    expect(d.portalUser).toBeNull();
+  });
+
+  it('says the read SUCCEEDED for a real guest', async () => {
+    const host = userHost({ getUser: async () => null });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    const d = auth.diagnostics();
+    // The control for the case above. Without this, "reports a failure" would pass just as
+    // well for an implementation that always reports one.
+    expect(d.userReadFailed).toBe(false);
+    expect(d.lastError).toBeNull();
+    expect(d.portalUser).toBeNull();
+  });
+
+  it('says the read FAILED when getUser answers with a shape this build cannot read', async () => {
+    // The renamed-field case. The platform's own migration notes have already removed one
+    // field from this object, so an answer we cannot narrow is a live possibility — and
+    // reporting it as "not signed in" would hide precisely that.
+    const host = userHost({ getUser: async () => 'a bare string' });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    const d = auth.diagnostics();
+    expect(d.userReadFailed).toBe(true);
+    expect(d.lastError).toContain('unreadable');
+  });
+
+  it('stops accusing the SDK once a login arrives through the listener', async () => {
+    // A boot-time failure must not outlive itself: if the player logs in on the portal while
+    // the game is open, the read demonstrably works and the flag has to clear, or the
+    // instrument keeps reporting a broken integration for the rest of the session.
+    const host = userHost({ getUser: async () => { throw new Error('transient'); } });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    expect(auth.diagnostics().userReadFailed).toBe(true);
+    await host.fire(ADA);
+    expect(auth.diagnostics().userReadFailed).toBe(false);
+    expect(auth.diagnostics().portalUser).toBe('Ada');
+  });
+
+  it('reports no failure on a domain with no account module at all', async () => {
+    // `auth unavailable` is its own state and comes BEFORE the read is ever attempted, so it
+    // must not be dressed up as a broken read.
+    const host = userHost({ isUserAccountAvailable: async () => false });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    expect(auth.diagnostics().userReadFailed).toBe(false);
+    expect(auth.diagnostics().available).toBe(false);
+  });
+});
+
 describe('PortalAuth.start — every way to end up a guest', () => {
   const guestCases: [string, Partial<Record<keyof NonNullable<UserApi>, unknown>>][] = [
     ['the account module is unavailable on this domain', { isUserAccountAvailable: async () => false }],
@@ -178,6 +246,9 @@ describe('PortalAuth.start — every way to end up a guest', () => {
       portalUser: 'Ada',
       session: null,
       lastError: 'invalid portal token',
+      // The exchange failed, but the READ worked — the player really is signed in on the
+      // portal. Keeping these apart is the whole point of the flag.
+      userReadFailed: false,
     });
   });
 
@@ -373,7 +444,9 @@ describe('PortalAuth — the default exchange', () => {
 describe('PortalAuth.diagnostics — before anything has run', () => {
   it('reports the honest empty state rather than a guess', () => {
     const auth = new PortalAuth({ sdk: userHost().sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
-    expect(auth.diagnostics()).toEqual({ available: false, portalUser: null, session: null, lastError: null });
+    expect(auth.diagnostics()).toEqual({
+      available: false, portalUser: null, session: null, lastError: null, userReadFailed: false,
+    });
   });
 
   it('reports a session it did not create — the state a stale storage entry produces', () => {

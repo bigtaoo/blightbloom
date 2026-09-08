@@ -218,24 +218,51 @@ describe('PortalSession.diagnostics', () => {
     expect(session.diagnostics()).toBe('portal disabled · ads unprobed · auth n/a');
   });
 
-  it('reports the four account states, because each one is a different bug', () => {
+  it('reports the five account states, because each one is a different bug', () => {
     // The account half of the one instrument this repository has for the parts of the
     // integration it cannot test. `auth n/a` above is the shipped-entry-point case only in
     // a test harness that passes none; every state below is one a live page can be in, and
-    // the last is the one worth having an instrument for at all.
+    // the interesting ones are the two that report a BROKEN integration rather than an
+    // absent player.
+    const ok = { userReadFailed: false } as const;
     const states = [
-      [{ available: false, portalUser: null, session: null, lastError: null }, 'auth unavailable'],
-      [{ available: true, portalUser: null, session: null, lastError: null }, 'guest'],
-      [{ available: true, portalUser: 'Ada', session: 'Ada', lastError: null }, 'signed in Ada'],
-      [{ available: true, portalUser: 'Ada', session: null, lastError: 'invalid portal token' },
+      [{ available: false, portalUser: null, session: null, lastError: null, ...ok }, 'auth unavailable'],
+      [{ available: true, portalUser: null, session: null, lastError: null, ...ok }, 'guest'],
+      [{ available: true, portalUser: 'Ada', session: 'Ada', lastError: null, ...ok }, 'signed in Ada'],
+      [{ available: true, portalUser: 'Ada', session: null, lastError: 'invalid portal token', ...ok },
         'NOT signed in (invalid portal token)'],
-      [{ available: true, portalUser: 'Ada', session: null, lastError: null },
+      [{ available: true, portalUser: 'Ada', session: null, lastError: null, ...ok },
         'NOT signed in (no reason recorded)'],
+      // A failed read, which leaves `portalUser` null exactly like a guest does. Reported as
+      // `guest` until 2026-09-08, which made the likeliest failure of the whole silent-login
+      // path — `getUser` is in BETA on the platform's side — look like a quiet day.
+      [{ available: true, portalUser: null, session: null, lastError: 'getUser is gated', userReadFailed: true },
+        'getUser BROKEN (getUser is gated)'],
+      [{ available: true, portalUser: null, session: null, lastError: null, userReadFailed: true },
+        'getUser BROKEN (no reason recorded)'],
     ] as const;
     for (const [diag, expected] of states) {
       const { session } = harness({ live: false, auth: { diagnostics: () => diag } });
       expect(session.diagnostics()).toContain(expected);
     }
+  });
+
+  it('does not call a failed read a guest', () => {
+    // The two states share a null `portalUser`, so the ONLY thing separating them is which
+    // arm runs first. A guard placed after the guest arm would be unreachable — this pins
+    // the order, not just the wording.
+    const { session } = harness({
+      live: false,
+      auth: {
+        diagnostics: () => ({
+          available: true, portalUser: null, session: null,
+          lastError: 'boom', userReadFailed: true,
+        }),
+      },
+    });
+    const line = session.diagnostics();
+    expect(line).toContain('getUser BROKEN');
+    expect(line).not.toContain('guest');
   });
 });
 

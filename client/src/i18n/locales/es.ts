@@ -178,6 +178,7 @@ export const es: Translations<typeof en> = {
     dataNotice:
       'Opcional. Al registrarte guardamos tu nombre de usuario, un hash de la contraseña y tu progreso en nuestro servidor. Sin cuenta no se envía nada.',
     portalDataNotice: 'Cuando tienes la sesión iniciada en CrazyGames, guardamos tu nombre de CrazyGames y tu progreso en nuestro servidor.',
+    privacyLink: 'Política de Privacidad',
   },
   party: {
     title: 'ESCUADRA',

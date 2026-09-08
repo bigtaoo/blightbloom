@@ -178,6 +178,7 @@ export const pl: Translations<typeof en> = {
     dataNotice:
       'Opcjonalnie. Rejestracja zapisuje nazwę użytkownika, skrót hasła i postęp na naszym serwerze. Bez konta nic nie jest wysyłane.',
     portalDataNotice: 'Gdy jesteś zalogowany w CrazyGames, przechowujemy Twoją nazwę CrazyGames i postęp w grze na naszym serwerze.',
+    privacyLink: 'Polityka prywatności',
   },
   party: {
     title: 'DRUŻYNA',

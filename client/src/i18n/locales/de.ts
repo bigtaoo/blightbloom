@@ -178,6 +178,7 @@ export const de: Translations<typeof en> = {
     dataNotice:
       'Optional. Bei der Registrierung speichern wir Benutzername, Passwort-Hash und Fortschritt auf unserem Server. Ohne Konto wird nichts gesendet.',
     portalDataNotice: 'Solange du bei CrazyGames angemeldet bist, speichern wir deinen CrazyGames-Namen und deinen Spielfortschritt auf unserem Server.',
+    privacyLink: 'Datenschutzerklärung',
   },
   party: {
     title: 'TRUPP',

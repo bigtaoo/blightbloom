@@ -5,6 +5,7 @@ import * as authApi from '../../net/auth';
 import { getSession, setSession, type Session } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
+import { openPolicy, policyUrl } from '../../platform/policyLinks';
 
 /** The auth network calls this screen needs — injected (default: the real
  * `net/auth.ts` functions), same DI convention as PartyScreen's `PartyApi`. */
@@ -33,6 +34,9 @@ export class LoginScreen {
   private statusText: Text;
   /** The one-line "what registering stores" notice — see its construction below. */
   private privacyText: Text;
+  /** The hosted-policy link under the notice. Rendered only where a URL exists
+   *  (`policyLinks.ts`) — the notice above stands on its own without it. */
+  private privacyLink: Text;
   private whoText: Text;
   private loginBtn: Button;
   private registerBtn: Button;
@@ -89,6 +93,15 @@ export class LoginScreen {
       style: { fill: 0x8fa2b8, fontSize: 12, fontFamily: 'monospace', align: 'center', lineHeight: 17, padding: 12, wordWrap: true, wordWrapWidth: 420 },
     });
     this.privacyText.anchor.set(0.5, 0);
+    // The notice says what registering does; this points at the full document for the
+    // player who wants it. Visible only if a URL exists, and it is the only tappable thing
+    // in this corner of the screen.
+    this.privacyLink = new Text({ text: '', style: { fill: 0x63b3ed, fontSize: 12, fontFamily: 'monospace', padding: 12, align: 'center' } });
+    this.privacyLink.anchor.set(0.5, 0);
+    this.privacyLink.visible = policyUrl('privacy') !== null;
+    this.privacyLink.eventMode = 'static';
+    this.privacyLink.cursor = 'pointer';
+    this.privacyLink.on('pointertap', () => openPolicy('privacy'));
 
     this.loginBtn = new Button(t('auth.login'), { w: 200, h: 44, fontSize: 15 });
     this.loginBtn.onTap = () => this.beginLogin();
@@ -107,7 +120,7 @@ export class LoginScreen {
     this.backBtn.setIcon(getUiTexture('icon_back'));
 
     this.view.addChild(
-      this.panel.view, this.title, this.whoText, this.statusText, this.privacyText,
+      this.panel.view, this.title, this.whoText, this.statusText, this.privacyText, this.privacyLink,
       this.loginBtn.view, this.registerBtn.view, this.changePasswordBtn.view, this.logoutBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
@@ -133,6 +146,7 @@ export class LoginScreen {
     this.logoutBtn.setText(t('auth.logout'));
     this.backBtn.setText(t('auth.back'));
     this.privacyText.text = t('auth.dataNotice');
+    this.privacyLink.text = t('auth.privacyLink');
   }
 
   hide(): void {
@@ -154,6 +168,10 @@ export class LoginScreen {
     this.logoutBtn.view.position.set(cx - 80, cy + 14);
     this.backBtn.view.position.set(cx - 60, cy + 170);
     this.privacyText.position.set(cx, cy + 216);
+    // Below the notice. A FIXED offset, not `privacyText.height`: reading `.height` on a
+    // Pixi `Text` forces a canvas text measurement, and this screen is unit-tested with no
+    // `document`. 54px clears three lines at this font's 17px line height.
+    this.privacyLink.position.set(cx, cy + 216 + 54);
   }
 
   private beginLogin(): void {

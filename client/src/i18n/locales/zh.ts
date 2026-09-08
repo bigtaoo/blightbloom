@@ -178,6 +178,7 @@ export const zh: Translations<typeof en> = {
     dataNotice:
       '可选。注册会在我们的服务器上保存你的用户名、密码哈希和游戏进度。不注册也能玩，不会上传任何数据。',
     portalDataNotice: '当你在 CrazyGames 上处于登录状态时，我们会在服务器上保存你的 CrazyGames 名称和游戏进度。',
+    privacyLink: '隐私政策',
   },
   party: {
     title: '组队',

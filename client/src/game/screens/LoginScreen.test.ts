@@ -49,6 +49,15 @@ function privateOf(s: LoginScreen) {
     doRegister(username: string, password: string): Promise<void>;
     doChangePassword(oldPassword: string, newPassword: string): Promise<void>;
     doLogout(): Promise<void>;
+    privacyText: { text: string; position: { x: number; y: number } };
+    privacyLink: {
+      text: string;
+      visible: boolean;
+      cursor: string;
+      eventMode: string;
+      position: { x: number; y: number };
+      emit: (event: string) => void;
+    };
   };
 }
 
@@ -305,5 +314,45 @@ describe('LoginScreen — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     s.show(800, 600);
     expect(privateOf(s).title.text).toBe('ACCOUNT');
+  });
+});
+
+describe('LoginScreen — the hosted policy link (design/20)', () => {
+  // This screen is the point of collection on every target that keeps its own login, and it
+  // already carried the factual data notice. The link is the hosted document that notice
+  // summarises; design/20's rule was that nothing renders one until a URL exists.
+
+  it('renders under the notice and is tappable', () => {
+    const s = makeScreen(fakeApi());
+    const p = privateOf(s);
+    expect(p.privacyLink.visible).toBe(true);
+    expect(p.privacyLink.text.length).toBeGreaterThan(0);
+    expect(p.privacyLink.position.y).toBeGreaterThan(p.privacyText.position.y);
+    expect(p.privacyLink.eventMode).toBe('static');
+    expect(p.privacyLink.cursor).toBe('pointer');
+  });
+
+  it('opens an absolute URL in a new tab when tapped', () => {
+    const s = makeScreen(fakeApi());
+    const open = vi.fn();
+    const original = globalThis.open;
+    (globalThis as { open?: unknown }).open = open;
+    try {
+      privateOf(s).privacyLink.emit('pointertap');
+    } finally {
+      (globalThis as { open?: unknown }).open = original;
+    }
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(String(open.mock.calls[0]![0])).toMatch(/^https:\/\//);
+    expect(open.mock.calls[0]![1]).toBe('_blank');
+  });
+
+  it('translates with the rest of the screen', () => {
+    const s = makeScreen(fakeApi());
+    const english = privateOf(s).privacyLink.text;
+    setLocale('zh');
+    s.show(800, 600);
+    expect(privateOf(s).privacyLink.text).not.toBe(english);
+    expect(privateOf(s).privacyLink.text.length).toBeGreaterThan(0);
   });
 });

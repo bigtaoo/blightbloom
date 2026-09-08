@@ -3,7 +3,7 @@
  * fine under plain vitest with no renderer attached (same finding PartyScreen.test.ts/
  * Forge.test.ts made) — asserted here via `.visible`/`.text`, not pixel output.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Graphics } from 'pixi.js';
 import { MainMenu } from './MainMenu';
 import { getSession, setSession, resetSessionCacheForTests, type Session } from '../../net/session';
@@ -38,6 +38,14 @@ function privateOf(m: MainMenu) {
     };
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
+    privacyLink: {
+      text: string;
+      visible: boolean;
+      cursor: string;
+      eventMode: string;
+      position: { x: number; y: number };
+      emit: (event: string) => void;
+    };
   };
 }
 
@@ -365,5 +373,59 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     m.show(800, 600);
     expect(privateOf(m).dataNotice.text).not.toBe(english);
     expect(privateOf(m).dataNotice.text.length).toBeGreaterThan(0);
+  });
+
+  it('links to the hosted policy, below the notice it belongs to', () => {
+    // design/20 required a hosted document as well as the in-game notice; this is the link
+    // to it. Below the notice rather than beside it, because the notice wraps to two lines
+    // in most locales and a link on the same row would collide with the second.
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    const link = privateOf(m).privacyLink;
+    expect(link.visible).toBe(true);
+    expect(link.text.length).toBeGreaterThan(0);
+    expect(link.position.y).toBeGreaterThan(privateOf(m).dataNotice.position.y);
+    // Tappable, unlike every other thing under the card.
+    expect(link.eventMode).toBe('static');
+    expect(link.cursor).toBe('pointer');
+  });
+
+  it('opens the policy when tapped', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    const open = vi.fn();
+    const original = globalThis.open;
+    (globalThis as { open?: unknown }).open = open;
+    try {
+      privateOf(m).privacyLink.emit('pointertap');
+    } finally {
+      (globalThis as { open?: unknown }).open = original;
+    }
+    // The absolute URL matters more than the exact host: a relative one would resolve
+    // against the PORTAL's origin inside its frame (`platform/policyLinks.ts`).
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(String(open.mock.calls[0]![0])).toMatch(/^https:\/\//);
+    expect(open.mock.calls[0]![1]).toBe('_blank');
+  });
+
+  it('renders NO link on a target that keeps its own login', () => {
+    // The notice and the link are both the portal's requirement; on our own domain the
+    // equivalent pair lives on `LoginScreen`, at its own point of collection.
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).privacyLink.visible).toBe(false);
+  });
+
+  it('translates the link with the rest of the screen', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    const english = privateOf(m).privacyLink.text;
+    setLocale('zh');
+    m.show(800, 600);
+    expect(privateOf(m).privacyLink.text).not.toBe(english);
+    expect(privateOf(m).privacyLink.text.length).toBeGreaterThan(0);
   });
 });

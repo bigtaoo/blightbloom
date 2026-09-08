@@ -25,7 +25,7 @@
 // both ways. Every call here also goes through `settle`, because these promises REJECT for the
 // ordinary cases — a guest asking for a token, the module disabled on this domain — rather than
 // resolving falsy.
-import { settle, guard } from './settle';
+import { guard, settle, settleReporting } from './settle';
 import type { CgSdkShape } from './sdk';
 
 /** The portal's own idea of who is playing. `username` is what the platform requires the
@@ -88,7 +88,39 @@ export async function userAvailable(api: CgUserApi): Promise<boolean> {
  * that cannot be exercised outside a real portal domain.
  */
 export async function readUser(api: CgUserApi): Promise<CgUser | null> {
-  return narrowUser(await settle(() => api?.getUser?.()));
+  return (await readUserReporting(api)).user;
+}
+
+/** What `readUserReporting` saw. `failed` separates "this player is a guest" from "the call
+ *  itself did not work", which are the same value and different bugs. */
+export interface UserRead {
+  user: CgUser | null;
+  failed: boolean;
+  reason: string | null;
+}
+
+/**
+ * `readUser`, keeping the reason nothing came back.
+ *
+ * `getUser` is the call the whole silent login rests on, and the platform's own SDK logs
+ * that it is still in BETA on every invocation — so "it stopped working" is a live
+ * possibility rather than a defensive hypothetical. Both outcomes still mean the player
+ * plays as a guest; only the diagnostics line tells them apart (`settleReporting`).
+ *
+ * A value that comes back but is not a user object counts as FAILED rather than as a guest:
+ * the SDK answered with a shape this build does not understand, which is the renamed-field
+ * case, and reporting that as "not signed in" would hide it.
+ */
+export async function readUserReporting(api: CgUserApi): Promise<UserRead> {
+  const outcome = await settleReporting(() => api?.getUser?.());
+  if (outcome.failed) return { user: null, failed: true, reason: outcome.reason };
+  const user = narrowUser(outcome.value);
+  if (user) return { user, failed: false, reason: null };
+  // `undefined`/`null` is the documented guest answer. Anything else is a shape we cannot
+  // read, and the difference matters enough to name.
+  const raw = outcome.value;
+  if (raw === null || raw === undefined) return { user: null, failed: false, reason: null };
+  return { user: null, failed: true, reason: `getUser returned an unreadable ${typeof raw}` };
 }
 
 /**

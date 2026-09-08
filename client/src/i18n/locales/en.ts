@@ -192,6 +192,7 @@ export const en = {
     dataNotice:
       'Optional. Registering stores your username, a password hash and your progress on our server. Play without an account and nothing is sent.',
     portalDataNotice: 'When you are signed in on CrazyGames we store your CrazyGames name and your game progress on our server.',
+    privacyLink: 'Privacy Policy',
   },
   party: {
     title: 'SQUAD',

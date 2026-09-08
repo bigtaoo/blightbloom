@@ -178,6 +178,7 @@ export const fr: Translations<typeof en> = {
     dataNotice:
       'Facultatif. L’inscription enregistre votre nom d’utilisateur, une empreinte du mot de passe et votre progression sur notre serveur. Sans compte, rien n’est envoyé.',
     portalDataNotice: 'Lorsque vous êtes connecté sur CrazyGames, nous conservons votre nom CrazyGames et votre progression sur notre serveur.',
+    privacyLink: 'Politique de confidentialité',
   },
   party: {
     title: 'ESCOUADE',

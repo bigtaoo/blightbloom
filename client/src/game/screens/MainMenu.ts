@@ -3,6 +3,7 @@ import { Panel, Button } from '../ui/widgets';
 import { getSession } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
+import { openPolicy, policyUrl } from '../../platform/policyLinks';
 
 /**
  * The boot/main-menu screen (design/10 screen flow — the front door that never got
@@ -39,6 +40,9 @@ export class MainMenu {
    *  One line, under the menu card, never over gameplay: the platform's own wording for
    *  what it wants is "unobtrusive rather than blocking". */
   private dataNotice: Text;
+  /** The hosted-policy link that goes WITH the notice above. Rendered only where a URL
+   *  actually exists (`policyLinks.ts`), because a link to nowhere is worse than none. */
+  private privacyLink: Text;
   private quickPlay = false;
   private accountEntry = true;
 
@@ -90,11 +94,19 @@ export class MainMenu {
     this.dataNotice = new Text({ text: '', style: { fill: 0x718096, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: 420 } });
     this.dataNotice.anchor.set(0.5, 0);
     this.dataNotice.visible = false;
+    // Underlined and link-coloured because it is the one thing under the card that is
+    // tappable, and nothing else on this row is.
+    this.privacyLink = new Text({ text: '', style: { fill: 0x63b3ed, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center' } });
+    this.privacyLink.anchor.set(0.5, 0);
+    this.privacyLink.visible = false;
+    this.privacyLink.eventMode = 'static';
+    this.privacyLink.cursor = 'pointer';
+    this.privacyLink.on('pointertap', () => openPolicy('privacy'));
 
     this.view.addChild(
       this.panel.view, this.menuCard.view, this.title, this.subtitle,
       this.playBtn.view, this.modesBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
-      this.accountLabel, this.dataNotice,
+      this.accountLabel, this.dataNotice, this.privacyLink,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -143,6 +155,9 @@ export class MainMenu {
     // it stores, so the one screen they do see has to say it. `LoginScreen` carries the
     // equivalent line on every other target, at its own point of collection.
     this.dataNotice.visible = !enabled;
+    // Same gate as the notice, AND a URL has to exist — design/20's rule that nothing
+    // renders a link until one does.
+    this.privacyLink.visible = !enabled && policyUrl('privacy') !== null;
   }
 
   show(w: number, h: number) {
@@ -183,6 +198,14 @@ export class MainMenu {
       // Below the card, not at the screen bottom: `BannerHost` owns the bottom centre of a
       // portal page, and a notice underneath an ad is a notice nobody reads.
       this.dataNotice.position.set(cx, cardTop + cardH + 14);
+      // Under the notice it belongs to, not beside it: the notice wraps to two lines on a
+      // narrow portal frame and a link on the same row would collide with the second.
+      //
+      // A FIXED offset rather than `dataNotice.height`, which every other position in this
+      // file also avoids: reading `.height` on a Pixi `Text` forces a canvas text
+      // measurement, and these screens are unit-tested with no `document` at all. 44px
+      // clears three wrapped lines at this font size, one more than the longest locale needs.
+      this.privacyLink.position.set(cx, cardTop + cardH + 14 + 44);
     }
     this.refreshAccountLabel();
     this.view.visible = true;
@@ -215,6 +238,7 @@ export class MainMenu {
     this.squadBtn.setText(t('mainMenu.squad'));
     this.settingsBtn.setText(t('mainMenu.settings'));
     this.dataNotice.text = t('auth.portalDataNotice');
+    this.privacyLink.text = t('auth.privacyLink');
     this.refreshAccountLabel();
   }
 }

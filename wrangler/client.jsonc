@@ -13,7 +13,13 @@
   "compatibility_date": "2026-08-03",
   "assets": {
     "directory": "../client/dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Serves `privacy.html` at `/privacy` (and `/privacy/`). This is the platform DEFAULT,
+    // stated explicitly because two things now depend on it and neither would fail loudly:
+    // the hosted policy pages' own cross-links, and `client/src/platform/policyLinks.ts`,
+    // which hands a game portal an absolute `https://b.gamestao.com/privacy`. If this were
+    // ever "none", those links would 404 while the game itself kept working perfectly.
+    "html_handling": "auto-trailing-slash"
   },
   "routes": [
     { "pattern": "b.gamestao.com", "custom_domain": true }

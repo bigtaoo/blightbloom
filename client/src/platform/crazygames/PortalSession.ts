@@ -70,7 +70,15 @@ export interface PortalSessionOptions {
    * everything. `portalAuth.ts`'s own state is exactly the sort of thing that fails silently
    * on a live page: a token exchange that 401s leaves a perfectly playable guest.
    */
-  auth?: { diagnostics(): { available: boolean; portalUser: string | null; session: string | null; lastError: string | null } };
+  auth?: {
+    diagnostics(): {
+      available: boolean;
+      portalUser: string | null;
+      session: string | null;
+      lastError: string | null;
+      userReadFailed: boolean;
+    };
+  };
   /** The room/invite half, for diagnostics only — same reasoning as `auth` above, and the
    *  same one-line-answers-everything reason for being here rather than beside it. */
   rooms?: { state(): string };
@@ -208,13 +216,21 @@ export class PortalSession {
       `${this.rooms ? ` · ${this.rooms.state()}` : ''}`;
   }
 
-  /** The account half of the line above. Four states, and they are four different bugs: no
-   *  user module at all, a guest, a signed-in portal player we hold a session for, and — the
-   *  one worth having an instrument for — a signed-in portal player we do NOT. */
+  /** The account half of the line above. FIVE states, and they are five different bugs: no
+   *  user module at all, a guest, a signed-in portal player we hold a session for, a
+   *  signed-in portal player we do NOT, and — added 2026-09-08 — a `getUser` that did not
+   *  work at all.
+   *
+   *  That last one used to be reported as `guest`, because a failed read and a real guest
+   *  produce the same null. It is separated out because it is the failure most likely to
+   *  actually occur: `getUser` is in BETA on the platform's side, and a page full of
+   *  players reading `guest` is indistinguishable from a working integration on a quiet
+   *  day. `getUser BROKEN` is not, and it is checked BEFORE the guest arm for that reason. */
   private authState(): string {
     const a = this.auth?.diagnostics();
     if (!a) return 'auth n/a';
     if (!a.available) return 'auth unavailable';
+    if (a.userReadFailed) return `getUser BROKEN (${a.lastError ?? 'no reason recorded'})`;
     if (!a.portalUser) return 'guest';
     if (a.session) return `signed in ${a.session}`;
     return `NOT signed in (${a.lastError ?? 'no reason recorded'})`;

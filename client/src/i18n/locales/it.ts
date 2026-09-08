@@ -178,6 +178,7 @@ export const it: Translations<typeof en> = {
     dataNotice:
       'Opzionale. La registrazione salva nome utente, hash della password e progressi sul nostro server. Senza account non viene inviato nulla.',
     portalDataNotice: 'Quando hai effettuato l\'accesso su CrazyGames, conserviamo il tuo nome CrazyGames e i tuoi progressi sul nostro server.',
+    privacyLink: 'Informativa sulla privacy',
   },
   party: {
     title: 'SQUADRA',

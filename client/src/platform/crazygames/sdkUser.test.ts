@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { CgSdkShape } from './sdk';
-import { readUser, readUserToken, subscribeAuth, userAvailable } from './sdkUser';
+import { readUser, readUserReporting, readUserToken, subscribeAuth, userAvailable } from './sdkUser';
 
 type UserApi = CgSdkShape['user'];
 
@@ -53,6 +53,66 @@ describe('userAvailable', () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe('readUserReporting', () => {
+  // `getUser` is the call the whole silent login rests on, and the platform's own SDK logs
+  // that it is still in BETA on every invocation. So "the call did not work" needs to be
+  // distinguishable from "this player is a guest" — the same null, two different bugs.
+
+  it('reports a user with no failure', async () => {
+    expect(await readUserReporting({ getUser: async () => ADA })).toEqual({ user: ADA, failed: false, reason: null });
+  });
+
+  it('reports a guest as a SUCCESS, because that is the documented answer', async () => {
+    for (const answer of [null, undefined]) {
+      expect(await readUserReporting({ getUser: async () => answer })).toEqual({
+        user: null, failed: false, reason: null,
+      });
+    }
+  });
+
+  it('reports a rejection as a failure, with the reason', async () => {
+    const got = await readUserReporting({
+      getUser: async () => {
+        throw new Error('still in BETA');
+      },
+    });
+    expect(got.user).toBeNull();
+    expect(got.failed).toBe(true);
+    expect(got.reason).toBe('still in BETA');
+  });
+
+  it('reports a missing method as a failure-free guest', async () => {
+    // An SDK with no `user` module at all is `auth unavailable` upstream, not a broken read;
+    // the optional-chain answers undefined and that is a legitimate nothing.
+    expect(await readUserReporting({})).toEqual({ user: null, failed: false, reason: null });
+    expect(await readUserReporting(undefined)).toEqual({ user: null, failed: false, reason: null });
+  });
+
+  it('reports an UNREADABLE answer as a failure, not as a guest', async () => {
+    // The renamed-field case: the platform has already removed one field from this object,
+    // so an answer that cannot be narrowed is live. Calling it "guest" would hide exactly
+    // the breakage worth knowing about.
+    for (const answer of ['a bare string', 42, true, []]) {
+      const got = await readUserReporting({ getUser: async () => answer });
+      expect(got.user, String(answer)).toBeNull();
+      expect(got.failed, String(answer)).toBe(true);
+      expect(got.reason, String(answer)).toContain('unreadable');
+    }
+  });
+
+  it('is what readUser is built on, so the two can never disagree', async () => {
+    const apis = [
+      { getUser: async () => ADA },
+      { getUser: async () => null },
+      { getUser: async () => { throw new Error('x'); } },
+      { getUser: async () => 'junk' },
+    ];
+    for (const api of apis) {
+      expect(await readUser(api)).toEqual((await readUserReporting(api)).user);
+    }
   });
 });
 

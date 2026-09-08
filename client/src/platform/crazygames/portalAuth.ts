@@ -35,7 +35,7 @@ import { getSession, setSession } from '../../net/session';
 import { portalLogin } from '../../net/auth';
 import { notifySessionChanged } from '../sessionEvents';
 import type { CrazyGamesSdk } from './sdk';
-import { readUser, readUserToken, subscribeAuth, userAvailable, type CgUser } from './sdkUser';
+import { readUserReporting, readUserToken, subscribeAuth, userAvailable, type CgUser } from './sdkUser';
 
 export interface PortalAuthDeps {
   sdk: CrazyGamesSdk;
@@ -54,12 +54,21 @@ export interface PortalAuthDiagnostics {
   portalUser: string | null;
   session: string | null;
   lastError: string | null;
+  /** Whether the `getUser` call itself failed, as opposed to answering "guest".
+   *
+   *  Both leave `portalUser` null, and without this they read identically — which is how a
+   *  broken account integration could look exactly like a page full of guests. `getUser` is
+   *  in BETA on the platform's side, so this is the failure most likely to actually happen. */
+  userReadFailed: boolean;
 }
 
 export class PortalAuth {
   private available = false;
   private portalUser: CgUser | null = null;
   private lastError: string | null = null;
+  /** Set when `getUser` threw or answered with a shape this build cannot read. Never
+   *  branched on — it only changes what `diagnostics()` says (`settle.ts`). */
+  private userReadFailed = false;
   private unsubscribe: (() => void) | null = null;
   private readonly exchange: typeof portalLogin;
   /** One exchange at a time. `addAuthListener` can fire while the boot exchange is still in
@@ -87,7 +96,14 @@ export class PortalAuth {
       return;
     }
     this.unsubscribe = subscribeAuth(api, (user) => void this.onAuthChanged(user));
-    await this.onAuthChanged(await readUser(api));
+    // Reporting variant: a `getUser` that fails and a `getUser` that says "guest" both mean
+    // the player plays as a guest, and the game does the same thing either way — but only
+    // one of them means the integration is broken, and `diagnostics()` is the only place
+    // that difference can be seen.
+    const read = await readUserReporting(api);
+    this.userReadFailed = read.failed;
+    if (read.failed) this.lastError = read.reason;
+    await this.onAuthChanged(read.user);
   }
 
   /** Stop listening. Nothing calls this in the shipped entry point — a page teardown takes
@@ -104,6 +120,7 @@ export class PortalAuth {
       portalUser: this.portalUser?.username ?? null,
       session: getSession()?.username ?? null,
       lastError: this.lastError,
+      userReadFailed: this.userReadFailed,
     };
   }
 
@@ -122,6 +139,9 @@ export class PortalAuth {
 
   private async applyUser(user: CgUser | null): Promise<void> {
     this.portalUser = user;
+    // A user arriving through the auth listener proves the read works after all, so a
+    // failure recorded at boot must not outlive it and keep accusing a working SDK.
+    if (user) this.userReadFailed = false;
     if (!user) {
       // Logged out on the portal, or never logged in. A session left over from a DIFFERENT
       // portal player on this browser is the thing being cleared here, and it is not a
