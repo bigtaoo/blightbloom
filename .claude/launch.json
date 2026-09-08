@@ -31,6 +31,21 @@
       "port": 4173
     },
     {
+      // The portal build served from a SUB-PATH, which is the one thing
+      // `client-crazygames-dev` above cannot prove and the portal target is most likely to
+      // get wrong: a portal serves the game from `<host>/games/<name>/`, and an absolute
+      // asset path only 404s there. `vite preview --base` reproduces that without copying
+      // the bundle anywhere. Run `npm run build:crazygames --prefix client` first.
+      "name": "client-crazygames-subpath",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec", "--", "vite", "preview", "client",
+        "--outDir", "dist-crazygames", "--base", "/games/blightbloom/", "--port", "4180"
+      ],
+      "port": 4180,
+      "url": "http://localhost:4180"
+    },
+    {
       "name": "map-editor-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "tools/map-editor"],
