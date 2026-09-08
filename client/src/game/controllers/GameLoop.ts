@@ -64,7 +64,10 @@ export interface GameLoopHost {
   isOnline(): boolean;
   isCoop(): boolean;
   isArenaDemo(): boolean;
-  isTutorialActive(): boolean;
+  /** Whether this run is TEACHING — the standalone tutorial level, or a first-time
+   *  player's first real run (`RunState.firstRunHints`). The hint toasts and the
+   *  "tutorial seen" mark both key off this rather than off the tutorial flag alone. */
+  isTeaching(): boolean;
   /** `?replay=` playback only (design/06 replay, match/replayPlayback.ts): the tick the
    *  recording is being watched AT. Non-null means the run's input comes from the
    *  recorded stream, so nothing here may submit a live command — and once that tick is
@@ -245,10 +248,10 @@ export class GameLoop {
     this.consumeEvents(events);
     // Tutorial-only teaching-beat toasts (design/10 screen-flow gap) — render-only,
     // reads the same state+events every real run's HUD/fx already read.
-    if (this.host.isTutorialActive()) this.deps.tutorialHints.consume(s, events);
+    if (this.host.isTeaching()) this.deps.tutorialHints.consume(s, events);
 
     if (s.phase === 'gameover') {
-      if (this.host.isTutorialActive()) this.host.markTutorialSeen();
+      if (this.host.isTeaching()) this.host.markTutorialSeen();
       this.deps.runOutcome.handle(s);
     }
   }
@@ -458,6 +461,9 @@ export class GameLoop {
       selectedSkin: this.host.selectedSkinId(),
       showAlly: this.host.isCoop() || this.host.isArenaDemo(),
       allySkinId: this.host.allySkinId(),
+      // Read off the live session rather than through a new host method: `getSession()` is
+      // already on this interface, and `Game.ts` sits at exactly its 500-line limit.
+      seatNames: this.host.getSession()?.seatNames,
       // Offline only: an online match's record is the server's confirmed stream, and a
       // replay-driven session is already replaying somebody else's file.
       canSaveReplay: !this.host.isOnline() && this.host.replayStopTick() === null,

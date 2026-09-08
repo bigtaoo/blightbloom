@@ -95,6 +95,10 @@ interface Waiter {
    * the signed ticket so a settled PvP match can credit real ladder rating. `undefined`
    * for guests/bots — falls back to `ladderReport.ts`'s scaffold accountId. */
   accountId?: string;
+  /** The display name other players see for this seat (design/20). Travels with
+   * `accountId` because it comes from the same place — the bearer session matchsvc
+   * verified — and for the same reason: neither may be a value the client declared. */
+  name?: string;
 }
 
 /** A coop 2-seat waiter and a pvp 2-seat waiter must never group together — key the
@@ -136,12 +140,20 @@ export class Matchmaker {
    * HTTP 400). `accountId` (design/16-accounts.md) is the logged-in caller's real
    * account id, if any — carried into the signed ticket for ladder-rating attribution.
    */
-  enqueue(playerCount: number, mode: MatchMode = 'coop', groupId?: string, accountId?: string): EnqueueResult {
+  enqueue(
+    playerCount: number,
+    mode: MatchMode = 'coop',
+    groupId?: string,
+    accountId?: string,
+    name?: string,
+  ): EnqueueResult {
     if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > MAX_PLAYERS) {
       throw new RangeError(`playerCount must be an integer in [1, ${MAX_PLAYERS}]`);
     }
     const queueId = `q${++this.counter}`;
-    const waiter: Waiter = { queueId, playerCount, mode, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, accountId };
+    const waiter: Waiter = {
+      queueId, playerCount, mode, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, accountId, name,
+    };
     this.waiters.set(queueId, waiter);
     this.liveQueue(playerCount, mode).push(queueId);
 
@@ -288,7 +300,9 @@ export class Matchmaker {
       const w = this.waiters.get(id);
       if (!w) return;
       const teamId = teamIdForOwner(owner, playerCount);
-      const grant: TicketPayload = { roomId, owner, seed, playerCount, teamId, exp, mode, accountId: w.accountId };
+      const grant: TicketPayload = {
+        roomId, owner, seed, playerCount, teamId, exp, mode, accountId: w.accountId, name: w.name,
+      };
       w.ticket = { roomId, owner, seed, playerCount, teamId, mode, token: this.sign(grant) };
     });
     return { roomId, seed };

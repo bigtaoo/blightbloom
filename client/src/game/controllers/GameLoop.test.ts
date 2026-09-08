@@ -131,7 +131,7 @@ function buildHost(overrides: Partial<GameLoopHost> = {}): GameLoopHost & { loca
     isOnline: () => false,
     isCoop: () => false,
     isArenaDemo: () => false,
-    isTutorialActive: () => false,
+    isTeaching: () => false,
     replayStopTick: () => null,
     localOwner: 0,
     getEngine: () => null,
@@ -464,7 +464,7 @@ describe('GameLoop — offline sim stepping (advanceSim/stepSim)', () => {
   it('feeds this tick\'s events to EventReactor and (while tutorialActive) TutorialHintController', () => {
     const { deps, events, tutorialHints } = buildDeps();
     const engine = createGameEngine(CFG);
-    const host = buildHost({ getEngine: () => engine, isTutorialActive: () => true });
+    const host = buildHost({ getEngine: () => engine, isTeaching: () => true });
     const loop = new GameLoop(deps, host);
 
     loop.update(SIM_DT_MS_FOR_TESTS);
@@ -476,7 +476,7 @@ describe('GameLoop — offline sim stepping (advanceSim/stepSim)', () => {
   it('does not feed TutorialHintController when the tutorial is not active', () => {
     const { deps, tutorialHints } = buildDeps();
     const engine = createGameEngine(CFG);
-    const host = buildHost({ getEngine: () => engine, isTutorialActive: () => false });
+    const host = buildHost({ getEngine: () => engine, isTeaching: () => false });
     const loop = new GameLoop(deps, host);
 
     loop.update(SIM_DT_MS_FOR_TESTS);

@@ -29,9 +29,15 @@ function privateOf(m: MainMenu) {
     accountBtn: {
       label: { text: string };
       onTap: (() => void) | null;
-      view: { position: { x: number; y: number } };
+      view: { visible: boolean; position: { x: number; y: number } };
     };
-    settingsBtn: { label: { text: string }; onTap: (() => void) | null };
+    settingsBtn: {
+      label: { text: string };
+      onTap: (() => void) | null;
+      view: { visible: boolean; position: { x: number; y: number } };
+    };
+    accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
+    dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
   };
 }
 
@@ -266,5 +272,98 @@ describe('MainMenu — quick play', () => {
     expect(privateOf(quick).accountBtn.view.position.y)
       .toBeGreaterThan(privateOf(plain).accountBtn.view.position.y);
     expect(mid(quick)).toBeCloseTo(mid(plain), 5);
+  });
+});
+
+describe('MainMenu — a host that forbids a login entry (design/20 account integration)', () => {
+  // A game portal disallows a game's own credential login outright: its account rules name
+  // email login, a logout that leads back to one, and a login button as a primary call to
+  // action. So the button is not drawn at all — `storePlatform.ts`'s precedent, "a build
+  // that may not sell renders no entry", rather than a button that is drawn and refuses.
+
+  it('hides the ACCOUNT button', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).accountBtn.view.visible).toBe(false);
+  });
+
+  it('keeps it by default, so every other target is unchanged', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).accountBtn.view.visible).toBe(true);
+    expect(privateOf(m).accountLabel.visible).toBe(false);
+    expect(privateOf(m).dataNotice.visible).toBe(false);
+  });
+
+  it('shows the signed-in name as a LABEL instead — the platform requires it be displayed', () => {
+    setSession(ALICE);
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).accountLabel.visible).toBe(true);
+    expect(privateOf(m).accountLabel.text).toBe('Hi, alice');
+    setSession(null);
+  });
+
+  it('shows NO label for a guest — there is nothing they could act on', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).accountLabel.visible).toBe(false);
+    expect(privateOf(m).accountLabel.text).toBe('');
+  });
+
+  it('follows a login that lands after the menu was drawn', () => {
+    // The portal signs the player in asynchronously, from the entry point, so the label has
+    // to be reachable without re-showing the screen (`refreshAccountLabel`, which
+    // `gameWiring.ts` drives off `sessionEvents.ts`).
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).accountLabel.visible).toBe(false);
+    setSession(ALICE);
+    m.refreshAccountLabel();
+    expect(privateOf(m).accountLabel.visible).toBe(true);
+    expect(privateOf(m).accountLabel.text).toBe('Hi, alice');
+    setSession(null);
+    m.refreshAccountLabel();
+    expect(privateOf(m).accountLabel.visible).toBe(false);
+  });
+
+  it('centres SETTINGS across the row its pair used to share', () => {
+    const paired = new MainMenu();
+    paired.show(800, 600);
+    const alone = new MainMenu();
+    alone.setAccountEntry(false);
+    alone.show(800, 600);
+    // 800/2 - 67 = 333: the row's centre, rather than the right-hand half it sat in.
+    expect(privateOf(alone).settingsBtn.view.position.x).toBe(333);
+    expect(privateOf(paired).settingsBtn.view.position.x).toBe(405);
+  });
+
+  it('shows the data notice, below the card and not over the banner', () => {
+    // The point of collection moved: nobody types anything on a portal, so the one screen
+    // they do see has to say what is stored. `BannerHost` owns the bottom of the viewport,
+    // so this sits under the menu card instead.
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    const notice = privateOf(m).dataNotice;
+    expect(notice.visible).toBe(true);
+    expect(notice.text).toContain('CrazyGames');
+    expect(notice.position.y).toBeGreaterThan(privateOf(m).settingsBtn.view.position.y);
+    expect(notice.position.y).toBeLessThan(600);
+  });
+
+  it('translates the notice with the rest of the screen', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    const english = privateOf(m).dataNotice.text;
+    setLocale('zh');
+    m.show(800, 600);
+    expect(privateOf(m).dataNotice.text).not.toBe(english);
+    expect(privateOf(m).dataNotice.text.length).toBeGreaterThan(0);
   });
 });

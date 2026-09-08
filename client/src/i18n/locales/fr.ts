@@ -150,6 +150,7 @@ export const fr: Translations<typeof en> = {
       bleedout: 'Saignement — {seconds}s restantes',
       reviving: 'EN COURS DE RÉANIMATION…',
     },
+    roster: { you: 'VOUS' },
     portalTitle: 'ÉTAGE NETTOYÉ — un portail s\'est ouvert',
     portalExtract: 'Stocker et extraire ({pending} matériaux)',
     portalDescend: "Descendre à l'étage {floor}",
@@ -176,6 +177,7 @@ export const fr: Translations<typeof en> = {
     playingAsGuest: 'Jouer en tant qu\'invité',
     dataNotice:
       'Facultatif. L’inscription enregistre votre nom d’utilisateur, une empreinte du mot de passe et votre progression sur notre serveur. Sans compte, rien n’est envoyé.',
+    portalDataNotice: 'Lorsque vous êtes connecté sur CrazyGames, nous conservons votre nom CrazyGames et votre progression sur notre serveur.',
   },
   party: {
     title: 'ESCOUADE',
@@ -222,8 +224,10 @@ export const fr: Translations<typeof en> = {
     errorGeneric: 'Connexion impossible — réessayez.',
   },
   tutorial: {
-    hintMove: 'Se déplacer : stick gauche / ZQSD.  Viser & tirer : stick droit / souris.',
-    hintSwap: "Appuyez sur le bouton de changement d'arme pour changer d'emplacement.",
+    hintMoveKeys: 'Déplacez-vous avec ZQSD. Maintenez le clic gauche pour attaquer — la visée est automatique.',
+    hintMoveTouch: 'Faites glisser le côté gauche de l’écran pour vous déplacer, maintenez le côté droit pour attaquer — la visée est automatique.',
+    hintSwapKeys: 'Appuyez sur 1 ou 2 pour changer d’arme.',
+    hintSwapTouch: 'Touchez un bouton d’arme pour changer d’arme.',
     hintDeflect: 'Frappez les balles entrantes avec votre arme de mêlée pour les dévier.',
     hintCleared: 'Bien joué — direction le portail.',
     skip: 'PASSER LE TUTORIEL',

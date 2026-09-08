@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defaultMetaState, type MetaState, type MetaStore } from '../meta';
 import type { GameQueryParams } from './match/gameQueryParams';
-import { DEFAULT_MATCH_BASE_URL, RunState, SEED_BASE } from './runState';
+import { DEFAULT_MATCH_BASE_URL, RunState, SEED_BASE, resolveMatchBaseUrl } from './runState';
 
 /** An in-memory MetaStore that records every save. */
 function fakeStore(initial: MetaState = defaultMetaState()) {
@@ -234,5 +234,33 @@ describe('applyQueryParams', () => {
     const s = new RunState(f.store);
     s.applyQueryParams(noParams({ loadoutOverride: ['x'], skinOverride: 'whatever' }));
     expect(f.saves).toEqual([]);
+  });
+});
+
+describe('resolveMatchBaseUrl', () => {
+  // An ENTRY POINT needs the backend origin before a `RunState` exists: a portal build logs
+  // the player in before the first screen is drawn (design/20). Exported so that answer is
+  // computed by the same precedence `applyQueryParams` applies, rather than by a second copy
+  // of the rule in `main.crazygames.ts`.
+
+  it('prefers ?mm= when it is present', () => {
+    expect(resolveMatchBaseUrl({ matchBaseUrl: 'https://staging.example' })).toBe('https://staging.example');
+  });
+
+  it('falls back to the build-time default when it is absent', () => {
+    // Under vitest `VITE_MATCHSVC_URL` is unset, so this is `DEFAULT_MATCH_BASE_URL` — the
+    // same value a fresh `RunState` starts with, which is the property worth pinning.
+    expect(resolveMatchBaseUrl({ matchBaseUrl: null })).toBe(DEFAULT_MATCH_BASE_URL);
+    expect(resolveMatchBaseUrl({ matchBaseUrl: null })).toBe(new RunState(fakeStore().store).matchBaseUrl);
+  });
+
+  it('agrees with what applyQueryParams would have produced', () => {
+    // The two paths must not drift: the entry point's answer and the run state's answer are
+    // the same origin, or a portal player logs in against one backend and plays on another.
+    for (const matchBaseUrl of [null, 'https://a.example', 'http://localhost:9999']) {
+      const s = new RunState(fakeStore().store);
+      s.applyQueryParams(noParams({ matchBaseUrl }));
+      expect(resolveMatchBaseUrl({ matchBaseUrl })).toBe(s.matchBaseUrl);
+    }
   });
 });

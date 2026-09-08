@@ -69,6 +69,15 @@ describe('vite.crazygames.config.js', () => {
     expect(out).not.toContain('/src/main.ts"');
   });
 
+  it('injects the v3 SDK specifically, because the VERSION is load-bearing', () => {
+    // Not a preference. The shipped v2 game module has no `updateRoom`, no `leftRoom` and no
+    // `isInstantMultiplayer` — the whole of the platform's room requirement — and a missing
+    // method on this SDK is a silent no-op by design (`settle`), so a downgrade would leave
+    // that requirement unmet with nothing turning red anywhere else.
+    // `vite.crazygames.config.js`'s `SDK_TAG` carries the full finding.
+    expect(htmlTransform()(INDEX_HTML)).toContain('crazygames-sdk-v3.js');
+  });
+
   it('injects the SDK script into the head', () => {
     const out = htmlTransform()(INDEX_HTML);
     const tag = out.indexOf('sdk.crazygames.com');

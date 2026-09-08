@@ -5,10 +5,11 @@
  * vitest with no renderer attached (same finding TouchControlsView.test.ts made) —
  * asserted here via `.visible`/`.text`, not pixel output.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { PartyScreen, type PartyApi } from './PartyScreen';
 import type { PartyInfo } from '../../net/party';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { getPartyPresence, resetPartyPresence } from '../../platform/partyPresence';
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -321,5 +322,109 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     s.show(800, 600);
     expect(privateOf(s).title.text).toBe('SQUAD');
+  });
+});
+
+describe('PartyScreen — declaring the squad to the host (design/20)', () => {
+  // A game portal requires room information be passed through its SDK so a friend can join
+  // (`platform/partyPresence.ts` is the seam, `crazygames/PortalRooms.ts` the reader). What
+  // is pinned here is the SOURCE of that declaration: this screen, from the one place all of
+  // create/join/start/leave and the poll converge.
+  beforeEach(() => resetPartyPresence());
+  afterEach(() => resetPartyPresence());
+
+  it('declares nothing before there is a party', () => {
+    makeScreen(fakeApi());
+    expect(getPartyPresence()).toBeNull();
+  });
+
+  it('declares a joinable squad once one is created', async () => {
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate();
+    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: 'ABCDE', joinable: true });
+  });
+
+  it('declares it CLOSED once the party is matching', async () => {
+    // The seats are being allocated; a joiner would be refused, so the platform must not
+    // be told the room is open.
+    const matching: PartyInfo = { ...PARTY, matching: true };
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue(matching) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate();
+    expect(getPartyPresence()?.joinable).toBe(false);
+  });
+
+  it('declares it CLOSED once the party is full', async () => {
+    // `SQUAD_SIZE` is 4 and the server's own `MAX_PARTY_SIZE` is an alias of it, so this is
+    // the same cap a fifth player's join would be refused by.
+    const full: PartyInfo = { ...PARTY, members: ['me', 'b', 'c', 'd'] };
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue(full) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate();
+    expect(getPartyPresence()?.joinable).toBe(false);
+  });
+
+  it('withdraws the declaration on leave', async () => {
+    const api = fakeApi({
+      createParty: vi.fn().mockResolvedValue(PARTY),
+      leaveParty: vi.fn().mockResolvedValue(null),
+    });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate();
+    expect(getPartyPresence()).not.toBeNull();
+    await privateOf(s).doLeave();
+    expect(getPartyPresence()).toBeNull();
+  });
+});
+
+describe('PartyScreen.joinWithCode — an accepted portal invite', () => {
+  beforeEach(() => resetPartyPresence());
+  afterEach(() => resetPartyPresence());
+
+  it('joins the code as if it had been typed', async () => {
+    const joined: PartyInfo = { ...PARTY, leaderId: 'them', members: ['them', 'me'] };
+    const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(joined) });
+    const s = makeScreen(api);
+    s.joinWithCode('ABCDE');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', 'ABCDE');
+    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: 'ABCDE', joinable: true });
+  });
+
+  it('trims the code, since it arrived from a URL', async () => {
+    const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(PARTY) });
+    makeScreen(api).joinWithCode('  ABCDE  ');
+    await Promise.resolve();
+    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', 'ABCDE');
+  });
+
+  it('shares the busy guard with a typed join rather than racing it', async () => {
+    const gate = deferred<PartyInfo>();
+    const api = fakeApi({ joinParty: vi.fn().mockReturnValue(gate.promise) });
+    const s = makeScreen(api);
+    s.joinWithCode('ABCDE');
+    s.joinWithCode('WXYZ');
+    gate.resolve(PARTY);
+    await Promise.resolve();
+    expect(api.joinParty).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a bad code the same way a typed one does, and declares no party', async () => {
+    const api = fakeApi({ joinParty: vi.fn().mockRejectedValue(new Error('not found')) });
+    const s = makeScreen(api);
+    s.joinWithCode('NOPE');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(privateOf(s).statusText.text).toBe('Invalid or full code.');
+    expect(getPartyPresence()).toBeNull();
+  });
+
+  it('ignores an empty code', async () => {
+    const api = fakeApi({ joinParty: vi.fn() });
+    makeScreen(api).joinWithCode('   ');
+    await Promise.resolve();
+    expect(api.joinParty).not.toHaveBeenCalled();
   });
 });

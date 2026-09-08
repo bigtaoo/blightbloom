@@ -36,6 +36,18 @@ export interface TicketPayload {
   exp: number;
   mode?: MatchMode;
   accountId?: string;
+  /**
+   * The display name to show other players for this seat (design/20 — a game portal
+   * requires the platform's own username be shown in-game).
+   *
+   * It rides in the SIGNED ticket rather than in the client's `join` message for the same
+   * reason `owner`/`seed` do: a value the client declares is a value the client chooses. A
+   * name is the one field here that other players SEE, so a self-declared one is an
+   * impersonation primitive — matchsvc reads it from the bearer session it just verified
+   * (`routes/match.ts`) and signs it, and the gameserver only ever trusts what it can
+   * verify. Absent for guests and bots, which is most seats.
+   */
+  name?: string;
 }
 
 const b64urlEncode = (s: string): string =>

@@ -150,6 +150,7 @@ export const de: Translations<typeof en> = {
       bleedout: 'Verblutet in {seconds}s',
       reviving: 'WIRD WIEDERBELEBT…',
     },
+    roster: { you: 'DU' },
     portalTitle: 'ETAGE GESÄUBERT — ein Portal hat sich geöffnet',
     portalExtract: 'Sichern & Extrahieren ({pending} Materialien)',
     portalDescend: 'Zu Etage {floor} absteigen',
@@ -176,6 +177,7 @@ export const de: Translations<typeof en> = {
     playingAsGuest: 'Als Gast spielen',
     dataNotice:
       'Optional. Bei der Registrierung speichern wir Benutzername, Passwort-Hash und Fortschritt auf unserem Server. Ohne Konto wird nichts gesendet.',
+    portalDataNotice: 'Solange du bei CrazyGames angemeldet bist, speichern wir deinen CrazyGames-Namen und deinen Spielfortschritt auf unserem Server.',
   },
   party: {
     title: 'TRUPP',
@@ -222,8 +224,10 @@ export const de: Translations<typeof en> = {
     errorGeneric: 'Verbindung fehlgeschlagen — bitte erneut versuchen.',
   },
   tutorial: {
-    hintMove: 'Bewegen: linker Stick / WASD.  Zielen & Feuern: rechter Stick / Maus.',
-    hintSwap: 'Tippe auf den Waffenwechsel-Button, um die Ausrüstungsslots zu wechseln.',
+    hintMoveKeys: 'Mit WASD bewegen. Linke Maustaste halten, um anzugreifen — das Zielen läuft automatisch.',
+    hintMoveTouch: 'Zum Bewegen die linke Bildschirmhälfte ziehen, zum Angreifen die rechte halten — das Zielen läuft automatisch.',
+    hintSwapKeys: 'Drücke 1 oder 2, um die Waffe zu wechseln.',
+    hintSwapTouch: 'Tippe auf eine Waffentaste, um die Waffe zu wechseln.',
     hintDeflect: 'Schlage mit deiner Nahkampfwaffe in ankommende Kugeln, um sie abzuwehren.',
     hintCleared: 'Gut gemacht — auf zum Portal.',
     skip: 'TUTORIAL ÜBERSPRINGEN',

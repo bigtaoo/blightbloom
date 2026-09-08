@@ -56,6 +56,20 @@ export const DEFAULT_MATCH_BASE_URL = 'http://localhost:8788';
  */
 const BUILD_MATCH_BASE_URL: string = import.meta.env.VITE_MATCHSVC_URL || DEFAULT_MATCH_BASE_URL;
 
+/**
+ * The matchsvc origin this session talks to, given already-parsed query params — the same
+ * precedence `applyQueryParams` below applies (`?mm=` beats the build-time value beats
+ * localhost), exported because an ENTRY POINT needs the answer before a `RunState` exists.
+ *
+ * `main.crazygames.ts` is that caller: a portal build logs the player in before the first
+ * screen is drawn (design/20 "account integration"), which means it needs the backend URL
+ * without going through the game. Deriving it there instead would be a second copy of this
+ * precedence rule, and the copy that is wrong is always the one nobody is looking at.
+ */
+export function resolveMatchBaseUrl(q: Pick<GameQueryParams, 'matchBaseUrl'>): string {
+  return q.matchBaseUrl ?? BUILD_MATCH_BASE_URL;
+}
+
 export class RunState {
   // ── screen / run phase ────────────────────────────────────────────────────
   phase: Phase = 'menu';
@@ -69,6 +83,19 @@ export class RunState {
   session: CoopSession | null = null;
   /** True only for the standalone tutorial level — always offline, never `online`. */
   tutorialActive = false;
+  /**
+   * True for a player's FIRST REAL run, when they have never been taught (design/20's
+   * onboarding pass, 2026-09-08) — the same `TutorialHintController` beats the standalone
+   * tutorial drives, over a real dungeon and the player's own loadout.
+   *
+   * Separate from `tutorialActive` rather than folded into it, because three other readers
+   * mean "the standalone level" by that flag and would all be wrong here: the pause menu's
+   * SKIP TUTORIAL label (`ScreenNav`), the quit route back to ModeSelect instead of the
+   * Forge (`endRun`), and the tutorial's own fixed config. What the two DO share is the
+   * teaching, which is why `Game.isTeaching()` is the union of them and is what `GameLoop`
+   * gates the hints on.
+   */
+  firstRunHints = false;
 
   // ── seat / mode ───────────────────────────────────────────────────────────
   // Local co-op (ROADMAP 3.1): the seat THIS client drives, and an optional second seat
@@ -202,6 +229,7 @@ export class RunState {
     this.online = false;
     const wasTutorial = this.tutorialActive;
     this.tutorialActive = false;
+    this.firstRunHints = false;
     return { wasTutorial };
   }
 }

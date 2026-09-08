@@ -33,6 +33,7 @@
  *   POST /auth/register     { username, password }        -> { accountId, username, token } | 400
  *   POST /auth/login        { username, password }        -> { accountId, username, token } | 401
  *   POST /auth/logout       { token }                      -> { ok: true }             routes/auth
+ *   POST /auth/portal       { token }  (a CrazyGames user token) -> { accountId, username, token } | 401/503
  *   GET  /auth/me           (Bearer token)                 -> { accountId, username } | 401
  *   POST /auth/change-password { token, oldPassword, newPassword } -> { ok: true } | 400/401
  *   GET  /account/meta      (Bearer token)  -> { data: MetaState | null, entitlements } | 401
@@ -67,16 +68,18 @@ import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
 import { PartyService } from './PartyService';
 import { signTicket, type TicketPayload } from './ticket';
-import { ticketSecret, teamIdForOwner } from './config';
+import { ticketSecret, teamIdForOwner, portalGameId } from './config';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { openDb } from './db';
 import { AuthService } from './AuthService';
+import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
 import * as matchRoutes from './routes/match';
 import * as ratingRoutes from './routes/rating';
 import * as partyRoutes from './routes/party';
 import * as authRoutes from './routes/auth';
+import type { PortalAuthDeps } from './routes/auth';
 import * as accountRoutes from './routes/account';
 import * as internalEntitlementRoutes from './routes/internalEntitlements';
 import * as storeRoutes from './routes/store';
@@ -106,6 +109,14 @@ export interface MatchsvcServerOptions {
    * instances, a full one, a stale one, and no instance at all.
    */
   registry?: GameRegistry;
+  /**
+   * Portal-login dependencies (design/20 "account integration") — the CrazyGames key store,
+   * the expected game id and the clock `/auth/portal` verifies a user token against.
+   * Defaults to the real HTTPS key store plus `portalGameId()`; injected so a test can mint
+   * its own RSA keypair and verify against it with no network at all, which is the only way
+   * that route's success path is reachable offline.
+   */
+  portal?: PortalAuthDeps;
   /**
    * Bot spawner seam, defaulting to the real `spawnBotClient` (which opens a socket to
    * the gameserver the registry picked). Injected so a test can assert WHAT was minted for each empty seat —
@@ -189,11 +200,15 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     newCode: partyRoutes.randomCode,
   });
   const auth = new AuthService(db);
+  // Portal login (design/20 "account integration"). The key store is constructed eagerly but
+  // fetches lazily — nothing leaves this process until the first `/auth/portal` call, so a
+  // deployment that never serves a portal build makes no outbound request at all.
+  const portal = opts.portal ?? { keys: createPortalKeyStore(), gameId: portalGameId() };
 
   // One bundle satisfying each route group's own narrow `*RouteDeps` interface. The groups
   // share no state, so this is a wiring convenience, not a shared context object — a
   // handler still declares (and can only reach) the few dependencies it names.
-  const deps = { matchmaker, pickGameserver, secret, ratings, parties, auth, db, billing: opts.billing };
+  const deps = { matchmaker, pickGameserver, secret, ratings, parties, auth, db, portal, billing: opts.billing };
 
   const server = createServer((req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204, {});
@@ -226,6 +241,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     if (req.method === 'POST' && path === '/auth/register') return authRoutes.postRegister(req, res, url, deps);
     if (req.method === 'POST' && path === '/auth/login') return authRoutes.postLogin(req, res, url, deps);
     if (req.method === 'POST' && path === '/auth/logout') return authRoutes.postLogout(req, res, url, deps);
+    if (req.method === 'POST' && path === '/auth/portal') return authRoutes.postPortalLogin(req, res, url, deps);
     if (req.method === 'GET' && path === '/auth/me') return authRoutes.getMe(req, res, url, deps);
     if (req.method === 'POST' && path === '/auth/change-password') {
       return authRoutes.postChangePassword(req, res, url, deps);

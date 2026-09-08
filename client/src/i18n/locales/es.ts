@@ -150,6 +150,7 @@ export const es: Translations<typeof en> = {
       bleedout: 'Desangrando — {seconds}s restantes',
       reviving: 'SIENDO REVIVIDO…',
     },
+    roster: { you: 'TÚ' },
     portalTitle: 'PISO DESPEJADO — se ha abierto un portal',
     portalExtract: 'Guardar y extraer ({pending} materiales)',
     portalDescend: 'Descender al piso {floor}',
@@ -176,6 +177,7 @@ export const es: Translations<typeof en> = {
     playingAsGuest: 'Jugando como invitado',
     dataNotice:
       'Opcional. Al registrarte guardamos tu nombre de usuario, un hash de la contraseña y tu progreso en nuestro servidor. Sin cuenta no se envía nada.',
+    portalDataNotice: 'Cuando tienes la sesión iniciada en CrazyGames, guardamos tu nombre de CrazyGames y tu progreso en nuestro servidor.',
   },
   party: {
     title: 'ESCUADRA',
@@ -222,8 +224,10 @@ export const es: Translations<typeof en> = {
     errorGeneric: 'No se pudo conectar — inténtalo de nuevo.',
   },
   tutorial: {
-    hintMove: 'Moverse: stick izquierdo / WASD.  Apuntar y disparar: stick derecho / ratón.',
-    hintSwap: 'Toca el botón de cambio de arma para alternar entre ranuras de equipo.',
+    hintMoveKeys: 'Muévete con WASD. Mantén el clic izquierdo para atacar: el apuntado es automático.',
+    hintMoveTouch: 'Arrastra el lado izquierdo de la pantalla para moverte y mantén el lado derecho para atacar: el apuntado es automático.',
+    hintSwapKeys: 'Pulsa 1 o 2 para cambiar de arma.',
+    hintSwapTouch: 'Toca un botón de arma para cambiar de arma.',
     hintDeflect: 'Golpea las balas entrantes con tu arma cuerpo a cuerpo para desviarlas.',
     hintCleared: 'Bien hecho — dirígete al portal.',
     skip: 'OMITIR TUTORIAL',

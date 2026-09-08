@@ -60,7 +60,24 @@ import { engineAlias } from '../build/ddAlias.mjs';
 // something else. `??=` rather than `=` is what keeps that override working.
 process.env.VITE_MATCHSVC_URL ??= 'https://bb.gamestao.com';
 
-const SDK_TAG = '<script src="https://sdk.crazygames.com/crazygames-sdk-v2.js"></script>';
+// v3, not v2, since 2026-09-08 — and the reason is a live finding rather than a preference.
+// The shipped `crazygames-sdk-v2.js` (2.9.0) game module has NO `updateRoom`, no `leftRoom` and
+// no `isInstantMultiplayer`: enumerating it on a live page returns exactly
+// `happytime / gameplayStart / gameplayStop / sdkGameLoadingStart / sdkGameLoadingStop /
+// inviteLink / showInviteButton / hideInviteButton / setScreenshotHandler* / getInviteParam`.
+// Those three are the whole of the platform's ROOM requirement
+// (`docs.crazygames.com/requirements/multiplayer`), so on v2 our calls to them were silent
+// no-ops — `settle` swallowing a missing method, which is the designed behaviour and is also
+// exactly how a requirement goes unmet without anything turning red. v3 has all three, is the
+// version the docs now describe by default, and keeps `requestAd(type, callbacks)`,
+// `requestBanner`, `hasAdblock` and the gameplay brackets under the same names (verified by
+// reading the shipped v3 bundle, not by reading about it).
+//
+// `platform/crazygames/sdk.ts` reads BOTH versions' shapes for the two things that were renamed
+// (`loadingStart`/`loadingStop` vs `sdkGameLoadingStart`/`sdkGameLoadingStop`, and
+// `isUserAccountAvailable` as a variable vs a method), so this tag is the only line that has to
+// change to go back.
+const SDK_TAG = '<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>';
 const DEFAULT_ENTRY = '/src/main.ts';
 const PORTAL_ENTRY = '/src/main.crazygames.ts';
 

@@ -155,6 +155,36 @@ export function controlPlaneUrl(): string {
 }
 
 /**
+ * The CrazyGames game id this deployment accepts user tokens for (design/20 "account
+ * integration"), or `undefined` while it is unknown.
+ *
+ * `undefined` is a real state rather than a placeholder: the id is assigned when the game is
+ * registered on the portal, and the build has to be uploadable before that. But a user token
+ * is a bearer credential that ANY game on the platform can obtain for the same player, so an
+ * unset id means this server would accept a token minted for somebody else's game — i.e. it
+ * trusts every other developer on the platform not to replay it here. `portalToken.ts`
+ * therefore treats the check as optional and this function warns once when it is skipped,
+ * the same posture `ticketSecret`/`internalKeys` take for their dev fallbacks.
+ *
+ * Deliberately NOT defaulted to a placeholder string: a wrong id rejects every real login,
+ * which looks exactly like a broken integration and would be debugged as one.
+ */
+let portalGameIdWarned = false;
+
+export function portalGameId(): string | undefined {
+  const env = process.env.DDU_CG_GAME_ID;
+  if (env && env.length > 0) return env;
+  if (!portalGameIdWarned) {
+    portalGameIdWarned = true;
+    console.warn(
+      '[blightbloom] DDU_CG_GAME_ID unset — /auth/portal accepts a CrazyGames user token ' +
+        'minted for ANY game on the platform. Set it to this game id once the portal assigns one.',
+    );
+  }
+  return undefined;
+}
+
+/**
  * Where the BILLING plane answers, for a process that needs to call it — the mirror of
  * `controlPlaneUrl()` above, and read per call for the same reason. Its only caller today is
  * matchsvc's store proxy (`routes/store.ts`, ROADMAP 8.8).

@@ -28,10 +28,19 @@
 // `__portal.diagnostics()`, prints it together with the adblock probe and the live brackets,
 // so a wrong method name is one console line away rather than silent.
 //
-// The v2 script is the one this targets (`crazygames-sdk-v2.js`). Its methods accept a
-// node-style `(error, result)` callback OR return a promise; we use the promise form and
-// the void form only, because the callback form's error arm is the same arm as a rejected
-// promise and having one path to test is worth more than symmetry with the docs.
+// **The build ships v3 (`crazygames-sdk-v3.js`, since 2026-09-08) and this file reads EITHER
+// version's shape.** `vite.crazygames.config.js`'s `SDK_TAG` carries the reason for the switch:
+// the shipped v2 game module simply has no `updateRoom`/`leftRoom`/`isInstantMultiplayer`, which
+// is the whole of the platform's room requirement. Two names differ between the versions and
+// both are declared and both are tried — the loading pair (`loadingStart`/`loadingStop` in v3,
+// `sdkGameLoading*` in v2) and `isUserAccountAvailable` (a variable in v3, a method in v2, see
+// `sdkUser.ts`). Everything else this file touches is named identically in both.
+//
+// Their methods accept a node-style `(error, result)` callback OR return a promise; we use the
+// promise form and the void form only, because the callback form's error arm is the same arm as
+// a rejected promise and having one path to test is worth more than symmetry with the docs.
+
+import { settle, guard } from './settle';
 
 /** What the SDK says about the page it is running in. `'local'` is a developer machine,
  *  `'crazygames'` a real portal page, `'disabled'` an environment where the SDK declines to
@@ -72,6 +81,11 @@ export interface CgSdkShape {
   getEnvironment?: () => unknown;
   init?: () => unknown;
   game?: {
+    /** v3's names. */
+    loadingStart?: () => unknown;
+    loadingStop?: () => unknown;
+    /** v2's names for the same two calls. Both shapes are declared and both are tried, so
+     *  this file works against either script — see `loadingStart()` below. */
     sdkGameLoadingStart?: () => unknown;
     sdkGameLoadingStop?: () => unknown;
     gameplayStart?: () => unknown;
@@ -79,10 +93,45 @@ export interface CgSdkShape {
     happytime?: () => unknown;
     inviteLink?: (params: Record<string, string>) => unknown;
     getInviteParam?: (name: string) => unknown;
+    updateRoom?: (opts: { roomId: string; isJoinable: boolean; inviteParams?: Record<string, string> }) => unknown;
+    leftRoom?: () => unknown;
+    showInviteButton?: (params: Record<string, string>) => unknown;
+    hideInviteButton?: () => unknown;
+    /**
+     * Documented as a PROPERTY, which is exactly the shape design/20's first live finding
+     * caught the documentation being wrong about (`SDK.environment` is documented as a
+     * property and the shipped v2.9.0 has no such property at all, only a promise-returning
+     * `getEnvironment()`). So this is declared as "either", and `instantMultiplayer()` below
+     * reads it both ways for the same reason `init` reads the environment both ways.
+     */
+    isInstantMultiplayer?: boolean | (() => unknown);
   };
   ad?: {
     requestAd?: (type: CgAdType, callbacks: CgAdCallbacks) => unknown;
     hasAdblock?: () => unknown;
+  };
+  /**
+   * The user module (design/20 "account integration"). Every one of these is a METHOD in
+   * v2 — including `isUserAccountAvailable`, which reads like a property and is not — and
+   * every one of them supports a callback form and a promise form. Called with no argument
+   * they return a promise, which is the form used here, and the promise REJECTS rather than
+   * resolving falsy for the ordinary cases (`getUserToken` on a guest, the module disabled
+   * on this domain) — hence `settle` around all of them.
+   *
+   * `showAuthPrompt` is declared but deliberately never called: the platform's requirements
+   * forbid triggering the auth prompt automatically, and a game-drawn "log in" call to
+   * action is forbidden as a primary one. It is here so the shape is complete and the
+   * omission is visible as a choice rather than as an oversight.
+   */
+  user?: {
+    /** v2: a METHOD (which reads like a property and is not). v3: a plain boolean VARIABLE.
+     *  `sdkUser.ts`'s `userAvailable` reads both — see its note. */
+    isUserAccountAvailable?: boolean | (() => unknown);
+    getUser?: () => unknown;
+    getUserToken?: () => unknown;
+    showAuthPrompt?: () => unknown;
+    addAuthListener?: (listener: (user: unknown) => void) => unknown;
+    removeAuthListener?: (listener: (user: unknown) => void) => unknown;
   };
   banner?: {
     requestBanner?: (opts: { id: string; width: number; height: number }) => unknown;
@@ -153,7 +202,7 @@ export class CrazyGamesSdk {
     //    here is the worst bug this file can have: `PortalSession.start()` would never
     //    resolve, so `loadingStop()` would never be called, and the portal would show a
     //    loading spinner over a game that had been playable for minutes.
-    await this.until(deadline, this.settle(() => this.sdk?.init?.()));
+    await this.until(deadline, settle(() => this.sdk?.init?.()));
 
     // 3. Read the environment, polling for it. It is not set synchronously by the script:
     //    on a live page the SDK object initially carries only `sdkInitializer` and a few
@@ -170,7 +219,7 @@ export class CrazyGamesSdk {
         this.env = prop;
         return prop;
       }
-      const asked = await this.until(deadline, this.settle(() => this.sdk?.getEnvironment?.()));
+      const asked = await this.until(deadline, settle(() => this.sdk?.getEnvironment?.()));
       if (isEnvironment(asked)) {
         this.env = asked;
         return asked;
@@ -224,36 +273,36 @@ export class CrazyGamesSdk {
 
   // ---- game module: the loading and gameplay brackets ----
   //
-  // These four are what the platform measures. `sdkGameLoading*` brackets the boot download,
+  // These four are what the platform measures. The loading pair brackets the boot download,
   // and the span from page open to the first `gameplayStart` is what its "initial download"
   // size rule is measured over (`docs.crazygames.com/requirements/technical`) — which is why
   // design/12's phased art loading matters here and must not regress into one eager preload.
 
   loadingStart(): void {
-    void this.settle(() => this.sdk?.game?.sdkGameLoadingStart?.());
+    void settle(() => (this.sdk?.game?.loadingStart ?? this.sdk?.game?.sdkGameLoadingStart)?.call(this.sdk?.game));
   }
 
   loadingStop(): void {
-    void this.settle(() => this.sdk?.game?.sdkGameLoadingStop?.());
+    void settle(() => (this.sdk?.game?.loadingStop ?? this.sdk?.game?.sdkGameLoadingStop)?.call(this.sdk?.game));
   }
 
   /** The player is now PLAYING — a run, not a menu. Also the platform's cue to capture
    *  keyboard input for the frame, which is why a menu must not claim it. */
   gameplayStart(): void {
-    void this.settle(() => this.sdk?.game?.gameplayStart?.());
+    void settle(() => this.sdk?.game?.gameplayStart?.());
   }
 
   /** The player is out of gameplay: a menu, a pause, a result screen, an ad. Required
    *  before requesting any ad — an ad during gameplay is the single rule the requirements
    *  page states most often. */
   gameplayStop(): void {
-    void this.settle(() => this.sdk?.game?.gameplayStop?.());
+    void settle(() => this.sdk?.game?.gameplayStop?.());
   }
 
   /** A real achievement (this game: surviving an extraction). Fires the portal's own
    *  celebration; harmless everywhere else. */
   happytime(): void {
-    void this.settle(() => this.sdk?.game?.happytime?.());
+    void settle(() => this.sdk?.game?.happytime?.());
   }
 
   // ---- ad module ----
@@ -278,20 +327,20 @@ export class CrazyGamesSdk {
       };
       try {
         fn.call(this.sdk?.ad, type, {
-          adStarted: () => this.guard(hooks.adStarted),
+          adStarted: () => guard(hooks.adStarted),
           adFinished: () => {
-            this.guard(hooks.adFinished);
+            guard(hooks.adFinished);
             finish(true);
           },
           adError: (error: unknown, data?: unknown) => {
-            this.guard(() => hooks.adError?.(error, data));
+            guard(() => hooks.adError?.(error, data));
             finish(false);
           },
         });
       } catch {
         // A synchronous throw means no callback will ever come. `adError` has to be
         // synthesised here or the caller waits forever with the game muted and frozen.
-        this.guard(() => hooks.adError?.(new Error('requestAd threw')));
+        guard(() => hooks.adError?.(new Error('requestAd threw')));
         finish(false);
       }
     });
@@ -310,7 +359,7 @@ export class CrazyGamesSdk {
     if (this.adblock !== null) return this.adblock;
     const fn = this.sdk?.ad?.hasAdblock;
     if (typeof fn !== 'function') return false;
-    const result = await this.settle(() => fn.call(this.sdk?.ad));
+    const result = await settle(() => fn.call(this.sdk?.ad));
     this.adblock = result === true;
     return this.adblock;
   }
@@ -330,15 +379,15 @@ export class CrazyGamesSdk {
    * this may be called at all.
    */
   async requestBanner(containerId: string, width: number, height: number): Promise<void> {
-    await this.settle(() => this.sdk?.banner?.requestBanner?.({ id: containerId, width, height }));
+    await settle(() => this.sdk?.banner?.requestBanner?.({ id: containerId, width, height }));
   }
 
   clearBanner(containerId: string): void {
-    void this.settle(() => this.sdk?.banner?.clearBanner?.(containerId));
+    void settle(() => this.sdk?.banner?.clearBanner?.(containerId));
   }
 
   clearAllBanners(): void {
-    void this.settle(() => this.sdk?.banner?.clearAllBanners?.());
+    void settle(() => this.sdk?.banner?.clearAllBanners?.());
   }
 
   // ---- invites (the portal's own multiplayer link) ----
@@ -352,38 +401,74 @@ export class CrazyGamesSdk {
    * to hand it over, never the only way.
    */
   async inviteLink(params: Record<string, string>): Promise<string | null> {
-    const link = await this.settle(() => this.sdk?.game?.inviteLink?.(params));
+    const link = await settle(() => this.sdk?.game?.inviteLink?.(params));
     return typeof link === 'string' && link.length > 0 ? link : null;
   }
 
   /** Read a parameter out of the invite link this session was opened with, if any. */
   async getInviteParam(name: string): Promise<string | null> {
-    const v = await this.settle(() => this.sdk?.game?.getInviteParam?.(name));
+    const v = await settle(() => this.sdk?.game?.getInviteParam?.(name));
     return typeof v === 'string' && v.length > 0 ? v : null;
   }
 
-  // ---- the two wrappers every call above goes through ----
+  // ---- rooms and invites: the portal's own multiplayer plumbing ----
+  //
+  // A portal requires that room information be passed through its SDK, so a friend can join
+  // a player in progress (`docs.crazygames.com/requirements/multiplayer`). `PortalRooms.ts`
+  // decides WHEN each of these happens, from the party presence the game declares; this is
+  // only the transport.
 
-  /** Run `fn`, awaiting it if it returned a promise, and swallow every failure. Returns
-   *  `undefined` on any failure path, which is indistinguishable from a method that
-   *  legitimately returns nothing — and that is the point: no caller branches on it. */
-  private async settle(fn: () => unknown): Promise<unknown> {
-    try {
-      return await fn();
-    } catch {
-      return undefined;
-    }
+  /** Announce the room the player is in, and whether one more player can join it. */
+  updateRoom(roomId: string, isJoinable: boolean, inviteParams?: Record<string, string>): void {
+    void settle(() => this.sdk?.game?.updateRoom?.({ roomId, isJoinable, inviteParams }));
   }
 
-  /** Synchronous version, for forwarding an SDK callback into game code. A throw inside a
-   *  hook must not propagate back into the SDK's own callback dispatch, which would leave
-   *  the remaining hooks unrun (this is the failure that makes an ad end with the game
-   *  still muted). */
-  private guard(fn: (() => void) | undefined): void {
-    try {
-      fn?.();
-    } catch {
-      /* a hook's failure is the hook's problem, never the ad's */
-    }
+  /** ...and that they have left it. Not `updateRoom({isJoinable:false})`, which means "the
+   *  room is full": a full room and no room are different states to whoever is being shown
+   *  a join button. */
+  leftRoom(): void {
+    void settle(() => this.sdk?.game?.leftRoom?.());
+  }
+
+  /** Show the portal's OWN invite button, carrying the params a joiner will read back with
+   *  `getInviteParam`. Preferred over drawing our own share UI: it is the affordance a
+   *  player of other games on that site already knows, and it is the one the platform's
+   *  requirements point at. */
+  showInviteButton(params: Record<string, string>): void {
+    void settle(() => this.sdk?.game?.showInviteButton?.(params));
+  }
+
+  hideInviteButton(): void {
+    void settle(() => this.sdk?.game?.hideInviteButton?.());
+  }
+
+  /**
+   * Whether this session was opened meaning "put me straight into multiplayer".
+   *
+   * Read as a property first and then as a method, the same two-shape read `init` performs
+   * for the environment and for the same recorded reason. `false` for every failure path,
+   * because the failure mode of guessing `true` is dropping a player who wanted the menu
+   * into a matchmaking queue.
+   */
+  async instantMultiplayer(): Promise<boolean> {
+    const raw = this.sdk?.game?.isInstantMultiplayer;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'function') return (await settle(() => raw.call(this.sdk?.game))) === true;
+    return false;
+  }
+
+  // ---- user module: who is playing ----
+
+  /**
+   * The raw user module, or `undefined` where the script installed none.
+   *
+   * The one accessor on this class that hands its caller an SDK object instead of an answer,
+   * and the reason is a split rather than a shortcut: the four user calls are independent
+   * functions over that object with no state of their own, so they live in `sdkUser.ts` as
+   * free functions (CLAUDE.md's preferred split form) rather than as four more methods on a
+   * class that was already at its line limit. `portalAuth.ts` is their only caller.
+   */
+  userApi(): CgSdkShape['user'] {
+    return this.sdk?.user;
   }
 }

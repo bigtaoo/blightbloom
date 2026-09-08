@@ -12,13 +12,21 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCHEMA = `
+-- \`username\` is the LOGIN HANDLE and is unique; \`display_name\` is what a human sees and is
+-- not. The two are the same string for a local account (display_name stays NULL and every
+-- reader falls back), and deliberately different for a federated one: a CrazyGames account's
+-- handle is \`cg:{userId}\` — unreachable by \`AuthService\`'s own \`[a-zA-Z0-9_]\` username rule,
+-- so it can never collide with a real local account — while its display_name is the portal's
+-- username, which the platform requires the game to show and which no uniqueness rule of
+-- ours may reject (design/20 "account integration").
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   provider TEXT NOT NULL DEFAULT 'local',
   provider_id TEXT,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  display_name TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_provider_id ON accounts(provider, provider_id);
 
@@ -99,11 +107,40 @@ CREATE TABLE IF NOT EXISTS rating_reports (
 );
 `;
 
+/**
+ * Columns added to a table that already exists in a DEPLOYED database. `CREATE TABLE IF NOT
+ * EXISTS` above is the whole schema story for a fresh file and cannot be for an old one:
+ * the table exists, so its body is never re-read, and the new column simply is not there.
+ *
+ * Kept as a table of `(table, column, ddl)` rather than a version counter because that is
+ * what this project's one real migration need looks like — one nullable column at a time,
+ * each independently idempotent, none of them ordered against another. A numbered-migration
+ * runner would be a mechanism with one entry in it. If this list ever grows a change that
+ * is NOT an additive nullable column (a rename, a backfill, a constraint), that is the
+ * point to build the runner rather than to stretch this.
+ */
+const ADDED_COLUMNS: readonly { table: string; column: string; ddl: string }[] = [
+  // 2026-09-08, design/20 "account integration": the portal's display name, which is not
+  // the login handle. NULL for every local account, and read through a fallback.
+  { table: 'accounts', column: 'display_name', ddl: 'ALTER TABLE accounts ADD COLUMN display_name TEXT' },
+];
+
+/** Applies `ADDED_COLUMNS` to an existing database. Idempotent: `PRAGMA table_info` is asked
+ *  first, because SQLite's `ADD COLUMN` has no `IF NOT EXISTS` and throws on a repeat. */
+function migrate(db: DatabaseSync): void {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (cols.some((c) => c.name === column)) continue;
+    db.exec(ddl);
+  }
+}
+
 /** Opens (creating if needed) the account DB and ensures the schema exists. */
 export function openDb(path: string = defaultDbPath()): DatabaseSync {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 

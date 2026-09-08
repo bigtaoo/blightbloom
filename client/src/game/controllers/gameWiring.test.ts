@@ -14,10 +14,12 @@
  * must end up pointing at something. A slot left null is a dead button — it does nothing, it
  * logs nothing, and it is only findable by pressing it.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultMetaState, type MetaStore } from '../../meta';
 import { RunState } from '../runState';
 import { resetHostKind, setHostKind } from '../../platform/hostKind';
+import { notifySessionChanged, resetSessionEvents } from '../../platform/sessionEvents';
+import { onlineEntry, setOnlineEntry } from '../../platform/onlineEntry';
 import { keydownAction, wireHud, wireScreens, type WiringDeps } from './gameWiring';
 
 const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
@@ -127,7 +129,7 @@ function make() {
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
     mainMenu: { ...screenStub('onPlay', 'onModes', 'onSquad', 'onAccount', 'onSettings'),
-      setQuickPlay: vi.fn() } as never,
+      setQuickPlay: vi.fn(), setAccountEntry: vi.fn() } as never,
     modeSelect: screenStub('onSolo', 'onCoop', 'onPvpSolo', 'onTutorial', 'onBack') as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
@@ -156,6 +158,7 @@ describe('wireScreens', () => {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
         if (slot === 'refreshAccountLabel' || slot === 'setQuickPlay') continue;
+        if (slot === 'setAccountEntry') continue;
         // `onModes` is the one slot that is deliberately unwired on the default host: the
         // button it belongs to is hidden there, because PLAY already opens the mode list.
         // The portal branch below asserts the other half — that it IS wired when the button
@@ -358,5 +361,131 @@ describe('wireScreens — the portal host', () => {
     wireScreens(t.d);
     const menu = t.d.mainMenu as unknown as { setQuickPlay: ReturnType<typeof vi.fn> };
     expect(menu.setQuickPlay).not.toHaveBeenCalled();
+  });
+
+  it('removes the account entry on the portal host, and leaves onAccount UNWIRED', () => {
+    // Both halves matter and neither implies the other. The switch is what stops the button
+    // being drawn; the unwired slot is what makes a drawn one inert if the switch is ever
+    // lost. The platform's rules do not allow a game's own credential login to be reachable
+    // at all (`MainMenu.setAccountEntry` has the citation).
+    setHostKind('crazygames');
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as {
+      onAccount: (() => void) | null;
+      setAccountEntry: ReturnType<typeof vi.fn>;
+    };
+    expect(menu.setAccountEntry).toHaveBeenCalledWith(false);
+    expect(menu.onAccount).toBeNull();
+    // ...and pressing it reaches nothing, rather than reaching the screen.
+    menu.onAccount?.();
+    expect(t.called).toEqual([]);
+  });
+
+  it('keeps the account entry on the default host', () => {
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as {
+      onAccount: () => void;
+      setAccountEntry: ReturnType<typeof vi.fn>;
+    };
+    expect(menu.setAccountEntry).not.toHaveBeenCalled();
+    menu.onAccount();
+    expect(t.called).toEqual(['nav.showAccount']);
+  });
+});
+
+describe('wireScreens — a session that did not come from a screen', () => {
+  // Every `wireScreens` call in every case ABOVE also subscribed, and the registry is
+  // module state — so these cases clear it first or they are counting other tests'
+  // listeners. `sessionEvents.ts` exports the reset for exactly this.
+  beforeEach(() => resetSessionEvents());
+  afterEach(() => {
+    resetSessionEvents();
+    resetHostKind();
+  });
+
+  /** The two things a session change has to cause, whichever side it arrived from. */
+  const reaction = (t: ReturnType<typeof make>) => ({
+    label: (t.d.mainMenu as unknown as { refreshAccountLabel: ReturnType<typeof vi.fn> })
+      .refreshAccountLabel.mock.calls.length,
+    sync: (t.d.net as unknown as { syncMetaWithSession: ReturnType<typeof vi.fn> })
+      .syncMetaWithSession.mock.calls.length,
+  });
+
+  it('reacts to notifySessionChanged exactly as it reacts to the login screen', () => {
+    // The portal's silent login lands in `net/session.ts` from the entry point, so the
+    // main-menu label and the account-bound meta re-sync have to be reachable without a
+    // screen having been touched. Asserted as EQUALITY with the login-screen path, because
+    // the failure worth catching is the two drifting apart.
+    const viaScreen = make();
+    wireScreens(viaScreen.d);
+    (viaScreen.d.loginScreen as unknown as { onSessionChange: () => void }).onSessionChange();
+
+    resetSessionEvents();
+    const viaPortal = make();
+    wireScreens(viaPortal.d);
+    notifySessionChanged();
+
+    expect(reaction(viaPortal)).toEqual(reaction(viaScreen));
+    expect(reaction(viaPortal)).toEqual({ label: 1, sync: 1 });
+  });
+
+  it('delivers a login that landed BEFORE the screens were wired', () => {
+    // The race `sessionEvents.ts` exists for: a boot-time exchange can resolve either side
+    // of screen assembly, and the losing order used to leave the player logged in on the
+    // server with a menu that says LOGIN.
+    notifySessionChanged();
+    const t = make();
+    wireScreens(t.d);
+    expect(reaction(t)).toEqual({ label: 1, sync: 1 });
+  });
+
+  it('delivers a pre-wire login ONCE, not on every later notification', () => {
+    notifySessionChanged();
+    notifySessionChanged();
+    const t = make();
+    wireScreens(t.d);
+    expect(reaction(t)).toEqual({ label: 1, sync: 1 });
+  });
+});
+
+describe('wireScreens — the two multiplayer doors a host can push (design/20)', () => {
+  // Every `wireScreens` call in every case above installed one too — the registry is
+  // module state, so these cases clear it first or they are observing another test's.
+  beforeEach(() => setOnlineEntry(null));
+  afterEach(() => {
+    setOnlineEntry(null);
+    resetHostKind();
+  });
+
+  it('installs the capability on every host, because the registry is inert unused', () => {
+    // Installed rather than host-branched: nothing on our own domain calls it, and a
+    // branch here would mean a portal-only wiring path to keep correct. Same shape as
+    // `rewardedAd.ts`, opposite direction.
+    expect(onlineEntry()).toBeNull();
+    wireScreens(make().d);
+    expect(onlineEntry()).not.toBeNull();
+  });
+
+  it('routes queueCoop to the co-op queue, not the PvP one', () => {
+    // An instant-multiplayer visitor consented to playing WITH people, not to being
+    // dropped into a battle royale against them.
+    const t = make();
+    wireScreens(t.d);
+    onlineEntry()!.queueCoop();
+    expect(t.called).toEqual(['net.beginSoloQueue(false)']);
+  });
+
+  it('shows the squad screen BEFORE joining, so the join is not discarded as stale', () => {
+    // `PartyScreen.show()` is what clears the previous visit's attempt token; joining
+    // first would have the answer thrown away.
+    const t = make();
+    wireScreens(t.d);
+    const joins: string[] = [];
+    (t.d.partyScreen as unknown as { joinWithCode: (c: string) => void }).joinWithCode = (c) => joins.push(c);
+    onlineEntry()!.joinPartyByCode('ABCD');
+    expect(t.called).toEqual(['nav.showSquad']);
+    expect(joins).toEqual(['ABCD']);
   });
 });

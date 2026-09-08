@@ -80,6 +80,7 @@ export const ALLOWLIST = [
   { token: '.sim.ts', why: 'a filename SUFFIX, not a file — design/18 says "both `.sim.ts` balance suites"' },
   { token: 'zh.json', why: 'a generic i18n example in CLAUDE.md\'s language policy; this repo\'s locales are .ts' },
   { token: '/audio/death-player_NN.mp3', why: 'a URL pattern with an NN placeholder (design/11), not a filename' },
+  { token: 'sdk.crazygames.com/publicKey.json', why: "a URL on CrazyGames' own CDN, not a repo path — design/20 names it because `portalKeys.ts` fetches it and its PKCS#1 encoding is why `createPublicKey` needs no format hint" },
 
   // ── Deleted files a decision doc cites AS deleted. Each of these sentences exists to record
   //    a retirement, so the reference is the point. If one is ever reworded into a

@@ -259,3 +259,62 @@ describe('CoopSession — reconnect (ROADMAP reconnect, design/06)', () => {
     expect(session.started).toBe(true); // an 'error' message is not a match_over/gameover signal
   });
 });
+
+describe('CoopSession — seat names (design/20)', () => {
+  function session(transport: FakeTransport) {
+    return new CoopSession({
+      transport,
+      roomId: 'r1',
+      owner: 0,
+      seed: SEED,
+      playerCount: 1,
+      buildConfig: () => CONFIG,
+    });
+  }
+
+  it('is empty before the match starts, and for a room with no names', () => {
+    const transport = new FakeTransport();
+    const s = session(transport);
+    expect(s.seatNames).toEqual([]);
+    transport.deliver({ type: 'match_start', seed: SEED, startFrame: 0, localOwner: 0, playerCount: 1 });
+    expect(s.seatNames).toEqual([]);
+  });
+
+  it('captures the names match_start carried', () => {
+    const transport = new FakeTransport();
+    const s = session(transport);
+    transport.deliver({
+      type: 'match_start', seed: SEED, startFrame: 0, localOwner: 0, playerCount: 2, names: ['Ada', null],
+    });
+    expect(s.seatNames).toEqual(['Ada', null]);
+  });
+
+  it('captures them from conn_resync too, which a RECONNECT is the only source of', () => {
+    // A reconnecting client never sees `match_start` again. Without this it would come back
+    // from a dropped socket with everyone's name gone — the failure `ConnResync.names`
+    // exists for, and one no `match_start`-only test could see.
+    const transport = new FakeTransport();
+    const s = session(transport);
+    transport.deliver({
+      type: 'match_start', seed: SEED, startFrame: 0, localOwner: 0, playerCount: 2, names: ['Ada', 'Grace'],
+    });
+    const second = new FakeTransport();
+    s.reconnect(second);
+    expect(s.seatNames).toEqual(['Ada', 'Grace']); // unchanged by the swap itself
+    second.deliver({ type: 'conn_resync', startFrame: 0, curFrame: 9, log: [], names: ['Ada', 'Hopper'] });
+    expect(s.seatNames).toEqual(['Ada', 'Hopper']);
+  });
+
+  it('keeps the names it had when a message carries none', () => {
+    // A `frame_batch` arrives ten times a second and says nothing about names; a resync from
+    // an older server says nothing either. Neither may blank the roster.
+    const transport = new FakeTransport();
+    const s = session(transport);
+    transport.deliver({
+      type: 'match_start', seed: SEED, startFrame: 0, localOwner: 0, playerCount: 2, names: ['Ada', 'Grace'],
+    });
+    transport.deliver({ type: 'frame_batch', toFrame: 1, frames: [] });
+    transport.deliver({ type: 'conn_resync', startFrame: 0, curFrame: 1, log: [] });
+    expect(s.seatNames).toEqual(['Ada', 'Grace']);
+  });
+});

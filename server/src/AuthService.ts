@@ -9,10 +9,14 @@
  * plain `DELETE`, matching this codebase's existing preference for a few extra bytes
  * over a new dependency (`ticket.ts` uses raw HMAC rather than a JWT library too).
  *
- * `accounts.provider`/`provider_id` (default `'local'`/`NULL`) are unused today but
- * reserved for third-party login (e.g. WeChat openid) — adding a provider later is a
- * new `provider != 'local'` row + a new `/auth/oauth/:provider` route, not a schema
- * migration.
+ * `accounts.provider`/`provider_id` (default `'local'`/`NULL`) were reserved for
+ * third-party login and, since 2026-09-08, are used: `loginWithProvider` is the
+ * federated half of this class, and CrazyGames is its first caller (design/20 "account
+ * integration", `routes/auth.ts`'s `/auth/portal`). What that reservation predicted
+ * held — a new provider is a `provider != 'local'` row plus a route — with one thing it
+ * did not predict, which is why `accounts.display_name` exists: a federated identity
+ * arrives with a name chosen under someone else's rules, and it cannot be forced through
+ * ours (see `loginWithProvider`).
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -23,6 +27,10 @@ const SCRYPT_KEYLEN = 64;
 const MIN_USERNAME = 3;
 const MAX_USERNAME = 20;
 const MIN_PASSWORD = 8;
+// A provider's display name is truncated, never rejected (see `loginWithProvider`) — this is
+// the one bound we do impose on it, so a name arriving pathologically long cannot become a
+// row nothing can render. Wider than MAX_USERNAME because it is not our namespace to size.
+const MAX_DISPLAY_NAME = 40;
 // Login brute-force lockout: after this many consecutive failures for a username,
 // further attempts are rejected outright (no password check at all, so a lockout
 // can't itself be used to brute-force-verify a guessed password) until the window
@@ -49,6 +57,21 @@ export interface AuthFailure {
 }
 export type AuthResult = AuthSuccess | AuthFailure;
 
+/**
+ * The `password_hash` of an account that has no password, because it authenticates through
+ * a provider instead. `password_hash` is `NOT NULL`, so a federated row needs SOME value,
+ * and the value must be one no password can ever verify against.
+ *
+ * It is checked EXPLICITLY (`verifyPassword`'s first line) rather than relied upon to fail
+ * the ordinary comparison. It would in fact fail it — there is no `:` to split on, so the
+ * hash half comes back `undefined` — but "no password matches this row" would then be a
+ * property of the storage FORMAT, three lines away from anything that says so, and the day
+ * that format changes the failure mode is silent password-free login. `login` additionally
+ * refuses any row whose provider is not `local`, so this is the second of two independent
+ * guards rather than the only one.
+ */
+const NO_PASSWORD = '!';
+
 function hashPassword(password: string): string {
   const salt = randomBytes(16);
   const hash = scryptSync(password, salt, SCRYPT_KEYLEN);
@@ -56,6 +79,7 @@ function hashPassword(password: string): string {
 }
 
 function verifyPassword(password: string, stored: string): boolean {
+  if (stored === NO_PASSWORD) return false; // see NO_PASSWORD — a federated row, never loginable by password
   const [saltHex, hashHex] = stored.split(':');
   if (!saltHex || !hashHex) return false;
   const expected = Buffer.from(hashHex, 'hex');
@@ -131,10 +155,20 @@ export class AuthService {
       return { error: 'too many failed login attempts — try again later' };
     }
 
+    // `provider` is selected and checked below rather than filtered in the WHERE clause on
+    // purpose: a federated account must be indistinguishable, from the outside, from a
+    // username that does not exist — filtering it out here and letting the generic "invalid
+    // username or password" answer cover it is what makes the two identical. `displayName`
+    // COALESCEs to `username` for a local row, which is every row this path can reach.
     const row = this.db
-      .prepare('SELECT id, username, password_hash FROM accounts WHERE username = ? COLLATE NOCASE')
-      .get(username) as { id: string; username: string; password_hash: string } | undefined;
-    if (!row || !verifyPassword(password, row.password_hash)) {
+      .prepare(
+        `SELECT id, username, password_hash, provider, COALESCE(display_name, username) AS displayName
+         FROM accounts WHERE username = ? COLLATE NOCASE`,
+      )
+      .get(username) as
+      | { id: string; username: string; password_hash: string; provider: string; displayName: string }
+      | undefined;
+    if (!row || row.provider !== 'local' || !verifyPassword(password, row.password_hash)) {
       // Reaching here means any prior lockout already expired (a still-active one
       // returned above), so the streak simply continues from wherever it left off.
       const count = (attempt?.count ?? 0) + 1;
@@ -144,7 +178,76 @@ export class AuthService {
     }
 
     this.loginAttempts.delete(key);
-    return this.issueSession(row.id, row.username);
+    return this.issueSession(row.id, row.displayName);
+  }
+
+  /**
+   * Log in (registering on first sight) an identity a PROVIDER vouched for — CrazyGames
+   * today, via `routes/auth.ts`'s `/auth/portal` once `portalToken.ts` has verified the
+   * signature. There is no password anywhere in this path and no way to add one: the
+   * provider is the only credential, which is precisely why the token must be verified
+   * before this is called.
+   *
+   * Two things are NOT reused from `register`, and both are the point of this method
+   * existing rather than a flag on that one:
+   *
+   * - **The provider's name is not validated.** `validateUsername`'s 3–20 characters,
+   *   `[a-zA-Z0-9_]` and profanity blacklist are the rules for a name a player CHOOSES here.
+   *   A CrazyGames username was chosen under CrazyGames' rules, and applying ours to it
+   *   would mean a player whose name is 2 characters, has a dash in it, or trips our
+   *   substring blacklist could never log in at all — an unfixable dead end for them, in
+   *   exchange for a moderation rule the platform already applies at its own registration.
+   *   It is stored in `display_name`, never as a handle.
+   * - **The handle is derived, not chosen.** `{provider}:{providerId}` is unique by
+   *   construction and contains a `:`, which `validateUsername` forbids — so it can never
+   *   collide with, or be impersonated by, a local account. That is what lets a portal
+   *   player named `Alice` coexist with a local account named `Alice` (the project owner's
+   *   decision, 2026-09-08: the same human on two platforms is two accounts, deliberately,
+   *   because linking them is the one thing that would put a portal's account rules in
+   *   charge of our own).
+   *
+   * `UNIQUE(provider, provider_id)` (db.ts) is what makes the find-or-create safe under
+   * concurrency: two simultaneous first logins race, one INSERT loses, and the loser
+   * re-reads the winner's row instead of creating a second account.
+   */
+  loginWithProvider(opts: { provider: string; providerId: string; displayName: string }): AuthSuccess {
+    const { provider, providerId } = opts;
+    const displayName = opts.displayName.slice(0, MAX_DISPLAY_NAME);
+    const existing = this.findProviderAccount(provider, providerId);
+    if (existing) {
+      // The provider is authoritative over the name, every time — a player who renames on
+      // the portal must not still be shown to other players under their old name.
+      if (existing.displayName !== displayName) {
+        this.db.prepare('UPDATE accounts SET display_name = ? WHERE id = ?').run(displayName, existing.id);
+      }
+      return this.issueSession(existing.id, displayName);
+    }
+
+    const accountId = this.newAccountId();
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO accounts (id, username, password_hash, provider, provider_id, created_at, display_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(accountId, `${provider}:${providerId}`, NO_PASSWORD, provider, providerId, this.nowMs(), displayName);
+    } catch {
+      // Lost the race on `accounts_provider_id` (or on `username`, which is derived from the
+      // same two values). The winner's row is the account; ours was never created.
+      const winner = this.findProviderAccount(provider, providerId);
+      if (!winner) throw new Error('provider account insert failed');
+      return this.issueSession(winner.id, winner.displayName);
+    }
+    return this.issueSession(accountId, displayName);
+  }
+
+  private findProviderAccount(provider: string, providerId: string): { id: string; displayName: string } | undefined {
+    return this.db
+      .prepare(
+        `SELECT id, COALESCE(display_name, username) AS displayName
+         FROM accounts WHERE provider = ? AND provider_id = ?`,
+      )
+      .get(provider, providerId) as { id: string; displayName: string } | undefined;
   }
 
   logout(token: string): void {
@@ -156,7 +259,8 @@ export class AuthService {
     if (typeof token !== 'string' || !token) return null;
     const row = this.db
       .prepare(
-        `SELECT s.account_id as accountId, s.expires_at as expiresAt, a.username as username
+        `SELECT s.account_id as accountId, s.expires_at as expiresAt,
+                COALESCE(a.display_name, a.username) as username
          FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token = ?`,
       )
       .get(token) as { accountId: string; expiresAt: number; username: string } | undefined;
@@ -172,6 +276,13 @@ export class AuthService {
     const row = this.db.prepare('SELECT password_hash FROM accounts WHERE id = ?').get(accountId) as
       | { password_hash: string }
       | undefined;
+    // A federated account has no password to change, and no way to acquire one — saying so
+    // is safe (the caller already proved they hold this account's session) and is the only
+    // answer that is not a lie. `verifyPassword` would refuse it anyway; this is the
+    // difference between refusing and refusing for a reason the caller can act on.
+    if (row?.password_hash === NO_PASSWORD) {
+      return { error: 'this account signs in through its platform and has no password' };
+    }
     if (!row || typeof oldPassword !== 'string' || !verifyPassword(oldPassword, row.password_hash)) {
       return { error: 'invalid current password' };
     }

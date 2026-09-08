@@ -7,12 +7,13 @@ import { WeaponPickupPrompt } from './WeaponPickupPrompt';
 import { Minimap, type MinimapPlayer } from './Minimap';
 import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
 import { PlayerCard, AllyRow } from './PlayerCard';
+import { SeatRoster } from './SeatRoster';
 import { WeaponCard } from './WeaponCard';
 import { WeaponSlotChip } from './WeaponSlotChip';
 import { StatChip } from './StatChip';
 import { DownedBanner } from './DownedBanner';
 import type { HudIconId } from './hudIcons';
-import type { GameState } from '@dd/engine';
+import type { GameState, SeatNames } from '@dd/engine';
 import { t, type TranslationKey } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
 
@@ -24,6 +25,10 @@ export interface HudContext {
   /** Co-op teammate line (ROADMAP 3.1) — shown for a local bot ally or the arenaDemo harness. */
   showAlly: boolean;
   allySkinId: string;
+  /** Seat index -> display name, from the server (design/20). Absent offline and for a
+   *  room in which nobody was logged in, which is most rooms — `SeatRoster` then draws
+   *  nothing and the row is not laid out at all. */
+  seatNames?: SeatNames;
   /** Whether a replay of THIS run could actually be saved (`replayBtn`) — false for an
    *  online match, whose record is the server's confirmed stream, not ours. A control
    *  that cannot work should not be on screen. */
@@ -84,6 +89,7 @@ export class HudView {
   // whenever the loadout has fewer than two weapons (update()).
   readonly weaponSlotChip = new WeaponSlotChip();
   readonly allyRow = new AllyRow();
+  readonly seatRoster = new SeatRoster();
   readonly downedBanner = new DownedBanner();
   readonly chips = new Map<ChipKey, StatChip>();
   // Ground weapon-pickup panel (design/03, ENGINE_VERSION 32) — lists every nearby
@@ -152,6 +158,7 @@ export class HudView {
       this.weaponSlotChip.view,
       ...[...this.chips.values()].map((c) => c.view),
       this.allyRow.view,
+      this.seatRoster.view,
       this.toasts.view,
       this.weaponPickupPrompt.view,
       this.downedBanner.view,
@@ -253,7 +260,11 @@ export class HudView {
     this.downedBanner.set(p?.downed ?? false, p?.bleedoutTicks ?? 0, p?.reviveProgressTicks ?? 0);
     this.downedBanner.update(dt);
 
-    this.layout(s.zoneEnabled ? PVP_CHIPS : PVE_CHIPS, buffCount > 0, ally !== undefined);
+    // Who else is here, by name (design/20). Set BEFORE `layout`, which reserves the row
+    // only when there is something in it — and `set` returning that answer is why the two
+    // cannot disagree.
+    const showRoster = this.seatRoster.set(ctx.seatNames, ctx.localOwner);
+    this.layout(s.zoneEnabled ? PVP_CHIPS : PVE_CHIPS, buffCount > 0, ally !== undefined, showRoster);
     this.updateWeaponPickupPrompt(s, p);
     this.toasts.update(dt);
 
@@ -291,7 +302,7 @@ export class HudView {
    *  the widest of them. Sizing is `estimateMonoWidth`-derived throughout (never
    *  `Text.width`/`getBounds()`, both canvas-measurement calls) — see textWidth.ts for
    *  why: cheaper every frame, and testable without a live canvas. */
-  private layout(order: readonly ChipKey[], showBuffs: boolean, showAlly: boolean): void {
+  private layout(order: readonly ChipKey[], showBuffs: boolean, showAlly: boolean, showRoster = false): void {
     let chipX = PAD;
     for (const [key, chip] of this.chips) {
       const active = order.includes(key) && (key !== 'buffs' || showBuffs);
@@ -318,6 +329,11 @@ export class HudView {
       y += 8 + AllyRow.HEIGHT;
     }
 
+    if (showRoster) {
+      this.seatRoster.view.position.set(PAD, y + 6);
+      y += 6 + SeatRoster.HEIGHT;
+    }
+
     const w =
       Math.ceil(
         Math.max(
@@ -325,6 +341,7 @@ export class HudView {
           weaponRowW,
           chipsW,
           showAlly ? this.allyRow.estimatedWidth() : 0,
+          showRoster ? this.seatRoster.estimatedWidth() : 0,
         ),
       ) + PAD;
     const h = y + 10;

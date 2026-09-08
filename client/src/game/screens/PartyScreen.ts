@@ -6,6 +6,8 @@ import type { PartyInfo } from '../../net/party';
 import { getPlayerId } from '../../net/identity';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
+import { setPartyPresence } from '../../platform/partyPresence';
+import { SQUAD_SIZE } from '../match/pvpConfig';
 
 /** The party network calls this screen needs — injected (default: the real
  * `net/party.ts` functions) so tests can drive it with a fake, same DI convention as
@@ -206,6 +208,18 @@ export class PartyScreen {
     });
   }
 
+  /**
+   * Join a code the player did not type — an accepted portal invite
+   * (`platform/crazygames/portalBoot.ts`), arriving through `platform/onlineEntry.ts`.
+   *
+   * Deliberately the same `doJoin` a typed code runs through, rather than a second path:
+   * the busy guard, the stale-attempt token, the error text and the presence publish are all
+   * behaviour this must share, and the only difference is where the string came from.
+   */
+  joinWithCode(code: string): void {
+    void this.doJoin(code.trim());
+  }
+
   private async doJoin(code: string): Promise<void> {
     if (!code || this.busy) return;
     this.busy = true;
@@ -253,6 +267,27 @@ export class PartyScreen {
   }
 
   private refresh(): void {
+    // Declare the squad for whatever the host wants told about it (design/20 — a portal
+    // requires room information be passed through its SDK, and `platform/partyPresence.ts`
+    // is the seam because `src/game/` may not import `platform/crazygames/`). Published
+    // from HERE rather than from each of create/join/start/leave, because this is the one
+    // place all four of them plus the poll converge — and `setPartyPresence` de-duplicates,
+    // so the one-second poll does not become a one-second SDK call.
+    setPartyPresence(
+      this.party
+        ? {
+            partyId: this.party.partyId,
+            code: this.party.code,
+            // Not `!matching` alone: a FULL party is not joinable either, and the platform
+            // draws a join affordance off this answer — so a join that would be refused
+            // must not be advertised. `SQUAD_SIZE` and not a local constant: the server's
+            // own `PartyService.MAX_PARTY_SIZE` is an alias of this same export
+            // (`@dd/game/match/pvpConfig`), so the cap the join is refused by and the cap
+            // drawn from here cannot drift.
+            joinable: !this.party.matching && this.party.members.length < SQUAD_SIZE,
+          }
+        : null,
+    );
     if (!this.party) {
       this.codeText.text = '';
       this.membersText.text = '';

@@ -19,6 +19,7 @@ import { hashState, parseReplayFileText, runReplay, type GameState } from '@dd/e
 import { t } from '../i18n';
 import { installFakeTextCanvas } from './screens/fakeTextCanvas';
 import { Game } from './Game';
+import type { MetaState } from '../meta';
 
 installFakeTextCanvas();
 
@@ -117,7 +118,13 @@ function newGame(opts: { canDownload?: boolean } = {}) {
   game.start();
 
   const inner = game as unknown as {
-    run: { phase: string; engine: { state: GameState } | null; replayStop: number | null };
+    run: {
+      phase: string;
+      engine: { state: GameState } | null;
+      replayStop: number | null;
+      meta: MetaState;
+      setMeta(m: MetaState): void;
+    };
     hud: {
       replayBtn: { onTap: (() => void) | null };
       onSaveReplay: (() => void) | null;
@@ -145,6 +152,11 @@ function newGame(opts: { canDownload?: boolean } = {}) {
 
 function startedRun(opts: { canDownload?: boolean } = {}) {
   const h = newGame(opts);
+  // A player who has already been taught. Since design/20's onboarding pass a first-ever
+  // run also runs the teaching beats, whose toasts would otherwise share this harness's
+  // `toasts` list with the ones these cases are actually about (`TutorialHintController`
+  // owns that behaviour, and `RunLifecycle.test.ts` owns the flag).
+  h.inner.run.setMeta({ ...h.inner.run.meta, hasSeenTutorial: true });
   h.inner.nav.showForge();
   h.inner.runs.beginRun();
   h.frames(120); // a real run, long enough that the recorded stream is not trivially short

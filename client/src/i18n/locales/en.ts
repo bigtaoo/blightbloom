@@ -164,6 +164,7 @@ export const en = {
       bleedout: 'Bleeding out — {seconds}s left',
       reviving: 'BEING REVIVED…',
     },
+    roster: { you: 'YOU' },
     portalTitle: 'FLOOR CLEARED — a portal has opened',
     portalExtract: 'Bank & Extract ({pending} materials)',
     portalDescend: 'Descend to Floor {floor}',
@@ -190,6 +191,7 @@ export const en = {
     playingAsGuest: 'Playing as guest',
     dataNotice:
       'Optional. Registering stores your username, a password hash and your progress on our server. Play without an account and nothing is sent.',
+    portalDataNotice: 'When you are signed in on CrazyGames we store your CrazyGames name and your game progress on our server.',
   },
   party: {
     title: 'SQUAD',
@@ -236,8 +238,10 @@ export const en = {
     errorGeneric: 'Could not connect — try again.',
   },
   tutorial: {
-    hintMove: 'Move: left stick / WASD.  Aim & fire: right stick / mouse.',
-    hintSwap: 'Tap the weapon-swap button to switch loadout slots.',
+    hintMoveKeys: 'Move with WASD. Hold the left mouse button to attack — aiming is automatic.',
+    hintMoveTouch: 'Drag the left side of the screen to move. Hold the right side to attack — aiming is automatic.',
+    hintSwapKeys: 'Press 1 or 2 to switch weapon.',
+    hintSwapTouch: 'Tap a weapon button to switch weapon.',
     hintDeflect: 'Swing your melee weapon into incoming bullets to deflect them.',
     hintCleared: 'Nicely done — head to the portal.',
     skip: 'SKIP TUTORIAL',

@@ -150,6 +150,7 @@ export const it: Translations<typeof en> = {
       bleedout: 'Dissanguamento — {seconds}s rimasti',
       reviving: 'RIANIMAZIONE IN CORSO…',
     },
+    roster: { you: 'TU' },
     portalTitle: 'PIANO RIPULITO — un portale si è aperto',
     portalExtract: 'Deposita ed estrai ({pending} materiali)',
     portalDescend: 'Scendi al piano {floor}',
@@ -176,6 +177,7 @@ export const it: Translations<typeof en> = {
     playingAsGuest: 'Gioco come ospite',
     dataNotice:
       'Opzionale. La registrazione salva nome utente, hash della password e progressi sul nostro server. Senza account non viene inviato nulla.',
+    portalDataNotice: 'Quando hai effettuato l\'accesso su CrazyGames, conserviamo il tuo nome CrazyGames e i tuoi progressi sul nostro server.',
   },
   party: {
     title: 'SQUADRA',
@@ -222,8 +224,10 @@ export const it: Translations<typeof en> = {
     errorGeneric: 'Impossibile connettersi — riprova.',
   },
   tutorial: {
-    hintMove: 'Movimento: levetta sinistra / WASD.  Mira e fuoco: levetta destra / mouse.',
-    hintSwap: "Tocca il pulsante di cambio arma per alternare gli slot dell'equipaggiamento.",
+    hintMoveKeys: 'Muoviti con WASD. Tieni premuto il tasto sinistro del mouse per attaccare: la mira è automatica.',
+    hintMoveTouch: 'Trascina il lato sinistro dello schermo per muoverti e tieni premuto il lato destro per attaccare: la mira è automatica.',
+    hintSwapKeys: 'Premi 1 o 2 per cambiare arma.',
+    hintSwapTouch: 'Tocca un pulsante arma per cambiare arma.',
     hintDeflect: 'Colpisci i proiettili in arrivo con la tua arma da mischia per deviarli.',
     hintCleared: 'Ben fatto — dirigiti al portale.',
     skip: 'SALTA TUTORIAL',

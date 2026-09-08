@@ -128,6 +128,7 @@ class SocketConnection implements RoomConnection {
     readonly roomId: string,
     private readonly ws: WebSocket,
     readonly accountId?: string,
+    readonly name?: string,
   ) {}
   send(msg: ServerMsg): void {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(JSON.stringify(msg));
@@ -143,6 +144,11 @@ interface Seat {
   /** The logged-in account behind this seat (design/16-accounts.md), from the verified
    * ticket. `undefined` for guests/bots or the legacy dev raw-param handshake. */
   accountId?: string;
+  /** The display name to show other players for this seat (design/20), from the same
+   * verified ticket. Never from a query param, even in the dev handshake below: that
+   * handshake is trusted because nothing is configured, and a name is the one field a
+   * spoofing client would actually want. */
+  name?: string;
 }
 
 /**
@@ -163,6 +169,7 @@ function resolveSeat(url: URL, secret: string, isDev: boolean): Seat | null {
       count: payload.playerCount,
       mode: payload.mode ?? 'coop',
       accountId: payload.accountId,
+      name: payload.name,
     };
   }
   if (!isDev) return null; // a configured secret ⇒ ticket mandatory
@@ -223,9 +230,9 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
       ws.close(4401, 'invalid or missing ticket');
       return;
     }
-    const { roomId, owner, seed, count, mode, accountId } = seat;
+    const { roomId, owner, seed, count, mode, accountId, name } = seat;
 
-    const conn = new SocketConnection(owner, roomId, ws, accountId);
+    const conn = new SocketConnection(owner, roomId, ws, accountId, name);
 
     // A room already IN_MATCH (or settled/OVER) can never be `join()`-ed — that call
     // only succeeds while seats are still filling (MatchRoom.join). Reaching here with

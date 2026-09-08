@@ -8,6 +8,22 @@ export interface Session {
   accountId: string;
   username: string;
   token: string;
+  /**
+   * How this session was obtained. Absent means "a credential the player typed"
+   * (`LoginScreen`), which is every session that existed before 2026-09-08 — so absence is
+   * the safe default and no stored session needs migrating.
+   *
+   * `'portal'` means the host platform vouched for the player and `platform/crazygames/
+   * portalAuth.ts` exchanged that for this session. The distinction is load-bearing exactly
+   * once, and only in one direction: a portal session may be dropped automatically when the
+   * platform says a different player (or no player) is now at the keyboard, and a typed-in
+   * session may never be.
+   */
+  origin?: 'portal';
+  /** The provider's own id for this player, when `origin` says there is one. Compared on
+   *  boot to tell "the same player returning" from "somebody else on this browser" — the
+   *  accountId cannot answer that, because it is what we are trying to decide. */
+  providerId?: string;
 }
 
 const STORAGE_KEY = 'daydayup.session.v1';

@@ -28,6 +28,17 @@ export interface MatchRouteDeps {
   pickGameserver: () => { wsUrl: string } | null;
   /** The ticket-signing secret — `/resume` both verifies and re-signs with it. */
   secret: string;
+  /**
+   * The account layer, for the ONE thing `/find` reads from it: the bearer session, when
+   * the caller sent one (design/20). Narrowed to the single method this group calls rather
+   * than typed as `AuthService`, so the matchmaking group does not depend on that class's
+   * shape — the same narrowing `pickGameserver` above already applies to the registry.
+   *
+   * Optional: every pre-2026-09-08 caller of `createMatchsvcServer` (and every test that
+   * builds this deps bundle by hand) omits it, and a `/find` with no auth behind it behaves
+   * exactly as it always did.
+   */
+  auth?: { verifySession(token: unknown): { accountId: string; username: string } | null };
 }
 
 /**
@@ -53,6 +64,14 @@ const RESUME_TICKET_TTL_MS = 30_000;
 /** `GET /find/:queueId` — the poll half of the find API. */
 export const FIND_POLL_PATH = /^\/find\/([^/]+)$/;
 
+/** `Authorization: Bearer <token>` -> the token, or `undefined`. A local copy of
+ *  `routes/auth.ts`'s reader rather than an import of `requireAuth`, because that function
+ *  RESOLVES a session and this route must treat a missing or bad one as "a guest" rather
+ *  than as a 401 — importing it would mean importing a refusal this route must not make. */
+function bearerToken(header: string | undefined): string | undefined {
+  return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+}
+
 export const postFind: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => {
   readJson(req, (body) => {
     const playerCount = Number((body as { playerCount?: unknown })?.playerCount);
@@ -66,20 +85,32 @@ export const postFind: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => 
     // one squad chunk. Absent (every pre-party caller) → plain FIFO, unaffected.
     const rawGroupId = (body as { partyId?: unknown })?.partyId;
     const groupId = typeof rawGroupId === 'string' && rawGroupId ? rawGroupId : undefined;
-    // The logged-in caller's real account id (design/16-accounts.md), if any —
-    // absent for guests/bots, in which case ladderReport.ts falls back to its
-    // seat:{roomId}:{seatIdx} scaffold. Never verified against a live session here
-    // (matchsvc trusts it exactly as much as playerCount/mode already were); the
-    // account layer's trust boundary is `/auth/*`/`/account/*`, not `/find`.
+    // Who this seat belongs to. Two sources, and the ORDER is the point (design/20).
+    //
+    // An `Authorization: Bearer` header, if the caller sent one, is VERIFIED here and wins
+    // outright — both the account id and the display name come from the session, and the
+    // body's `accountId` is ignored rather than merged. That is what makes the name safe to
+    // put in the ticket and show to other players: a client that could name itself could
+    // name itself anything, and a name is the one field in a match other players SEE.
+    //
+    // Without a header, the body's `accountId` is used exactly as it was before — a guest's
+    // local id, trusted no more than `playerCount`/`mode` already are, and carrying no name.
+    // That is the pre-existing behaviour and this route's trust boundary is unchanged for
+    // it: the account layer's boundary is `/auth/*`/`/account/*`, and a guest's id only ever
+    // reaches `ladderReport.ts`, which falls back to its own `seat:{roomId}:{seatIdx}`
+    // scaffold anyway.
+    const session = deps.auth?.verifySession(bearerToken(req.headers.authorization)) ?? null;
     const rawAccountId = (body as { accountId?: unknown })?.accountId;
-    const accountId = typeof rawAccountId === 'string' && rawAccountId ? rawAccountId : undefined;
+    const bodyAccountId = typeof rawAccountId === 'string' && rawAccountId ? rawAccountId : undefined;
+    const accountId = session?.accountId ?? bodyAccountId;
+    const name = session?.username;
     try {
       // Asked BEFORE enqueueing, so a control plane with no data plane behind it does not
       // burn a queue slot — and, for the arrival that completes a group, a whole formed
       // room — on a request it is about to refuse anyway.
       const gs = deps.pickGameserver();
       if (!gs) return send(res, 503, NO_GAMESERVER);
-      const { queueId, ticket } = deps.matchmaker.enqueue(playerCount, mode, groupId, accountId);
+      const { queueId, ticket } = deps.matchmaker.enqueue(playerCount, mode, groupId, accountId, name);
       send(res, 200, { queueId, match: ticket ? withUrl(ticket, gs.wsUrl) : undefined });
     } catch (e) {
       send(res, 400, { error: (e as Error).message });

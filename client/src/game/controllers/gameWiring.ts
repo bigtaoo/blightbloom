@@ -22,6 +22,8 @@
 // the key table used to be an `if` chain inside a DOM listener, so the rule that F9 and pause
 // are offline-only could not be asserted without a `window`.
 import { isPortalHost } from '../../platform/hostKind';
+import { onSessionChanged } from '../../platform/sessionEvents';
+import { setOnlineEntry } from '../../platform/onlineEntry';
 import type { InputSource } from '../../platform/types';
 import type { CommandBuilder } from './CommandBuilder';
 import type { ForgeInput } from './ForgeInput';
@@ -87,11 +89,18 @@ export function wireScreens(d: WiringDeps): void {
     d.mainMenu.setQuickPlay(true);
     d.mainMenu.onPlay = () => d.runs.beginQuickRun();
     d.mainMenu.onModes = () => d.nav.showModeSelect();
+    // ...and no way into the account screen at all. A portal forbids a game's own
+    // credential login (`MainMenu.setAccountEntry` has the rules and the citation); the
+    // player is signed in silently from the entry point instead, so `onAccount` is left
+    // unwired rather than pointed at a screen the platform would reject. `LoginScreen` is
+    // still constructed and mounted, exactly as `StoreScreen` is on a build that may not
+    // sell — one policy fact, one screen unreachable, no screen with an opinion about it.
+    d.mainMenu.setAccountEntry(false);
   } else {
     d.mainMenu.onPlay = () => d.nav.showModeSelect();
+    d.mainMenu.onAccount = () => d.nav.showAccount();
   }
   d.mainMenu.onSquad = () => d.nav.showSquad();
-  d.mainMenu.onAccount = () => d.nav.showAccount();
   d.mainMenu.onSettings = () => d.nav.openSettings();
   d.modeSelect.onSolo = () => d.nav.showForge();
   d.modeSelect.onCoop = () => d.net.beginSoloQueue(false);
@@ -104,13 +113,34 @@ export function wireScreens(d: WiringDeps): void {
   d.matchmaking.onCancelled = () => d.net.onCancelled();
   d.partyScreen.onBack = () => d.nav.showMenu();
   d.partyScreen.onStartMatch = (partyId) => d.net.beginSquadMatch(partyId);
+  // The two multiplayer doors a HOST can push the game through (design/20's multiplayer
+  // requirements): "put me in a match" and "put me in this friend's party". Installed for
+  // every target because the registry is inert unless something calls it, and only a portal
+  // has anything to call it with — same shape as `rewardedAd.ts`, opposite direction.
+  setOnlineEntry({
+    queueCoop: () => d.net.beginSoloQueue(false),
+    joinPartyByCode: (code) => {
+      // Show first, then join: `show()` is what clears the previous visit's stale-attempt
+      // token, and joining before it would have the answer discarded as stale.
+      d.nav.showSquad();
+      d.partyScreen.joinWithCode(code);
+    },
+  });
   d.loginScreen.onBack = () => d.nav.showMenu();
   // A login/register/logout can change which MetaStore backs the forge (design/16
   // -accounts.md's account-bound blueprints) and the main menu's own "Hi, X" label.
-  d.loginScreen.onSessionChange = () => {
+  const sessionChanged = () => {
     d.mainMenu.refreshAccountLabel();
     void d.net.syncMetaWithSession();
   };
+  d.loginScreen.onSessionChange = sessionChanged;
+  // The same reaction, for a session that did not come from a screen: a portal signs the
+  // player in from the entry point (`platform/crazygames/portalAuth.ts`), and the meta
+  // re-sync is what carries a guest's accumulated Forge progress up to the account it just
+  // landed in. Subscribed rather than called because the login is asynchronous and may
+  // resolve either side of this wiring — `sessionEvents.ts`'s header has the race it is
+  // built to make impossible.
+  onSessionChanged(sessionChanged);
   d.forge.onBack = () => d.nav.showMenu();
   d.forge.onCycleCharacter = () => d.forgeInput.cycleCharacter();
   d.forge.onClear = () => d.forgeInput.clear();

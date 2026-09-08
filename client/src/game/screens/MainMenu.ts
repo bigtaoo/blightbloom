@@ -31,7 +31,16 @@ export class MainMenu {
   private squadBtn: Button;
   private accountBtn: Button;
   private settingsBtn: Button;
+  /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
+   *  `setAccountEntry`. Never interactive: it states who the player is, it does not offer
+   *  to change it. */
+  private accountLabel: Text;
+  /** The data notice a host may require at the point of collection — see `setAccountEntry`.
+   *  One line, under the menu card, never over gameplay: the platform's own wording for
+   *  what it wants is "unobtrusive rather than blocking". */
+  private dataNotice: Text;
   private quickPlay = false;
+  private accountEntry = true;
 
   onPlay: (() => void) | null = null;
   /** Only wired in quick-play mode — see `setQuickPlay`. */
@@ -75,10 +84,17 @@ export class MainMenu {
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096 });
     this.settingsBtn.onTap = () => this.onSettings?.();
     this.settingsBtn.setIcon(getUiTexture('icon_settings'), 0x4a5568);
+    this.accountLabel = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 14, fontFamily: 'monospace', padding: 16 } });
+    this.accountLabel.anchor.set(0.5, 0.5);
+    this.accountLabel.visible = false;
+    this.dataNotice = new Text({ text: '', style: { fill: 0x718096, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: 420 } });
+    this.dataNotice.anchor.set(0.5, 0);
+    this.dataNotice.visible = false;
 
     this.view.addChild(
       this.panel.view, this.menuCard.view, this.title, this.subtitle,
       this.playBtn.view, this.modesBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
+      this.accountLabel, this.dataNotice,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -101,6 +117,32 @@ export class MainMenu {
   setQuickPlay(enabled: boolean): void {
     this.quickPlay = enabled;
     this.modesBtn.view.visible = enabled;
+  }
+
+  /**
+   * Whether this menu offers a way INTO the account screen.
+   *
+   * `false` on a game portal, and the reason is policy rather than taste: that platform
+   * forbids a game's own credential login outright (its account rules name email login,
+   * a logout that leads back to one, and a login button as a primary call to action —
+   * `docs.crazygames.com/requirements/account-integration`), and a portal player is signed
+   * in silently instead (`platform/crazygames/portalAuth.ts`). So there is nothing for this
+   * button to open and nothing for the player to do.
+   *
+   * What replaces it is a plain LABEL, not a disabled button: the platform also requires
+   * that the CrazyGames username be shown, and `storePlatform.ts`'s own precedent here is
+   * "a build that may not sell renders no entry at all" rather than one that is drawn and
+   * refuses. Same shape as `setQuickPlay`, called from the same host branch in
+   * `gameWiring.ts`.
+   */
+  setAccountEntry(enabled: boolean): void {
+    this.accountEntry = enabled;
+    this.accountBtn.view.visible = enabled;
+    // The notice comes WITH the silent login rather than as a second switch, because it is
+    // the same fact from the player's side: nobody typed anything, so nobody was shown what
+    // it stores, so the one screen they do see has to say it. `LoginScreen` carries the
+    // equivalent line on every other target, at its own point of collection.
+    this.dataNotice.visible = !enabled;
   }
 
   show(w: number, h: number) {
@@ -130,8 +172,18 @@ export class MainMenu {
     }
     this.squadBtn.view.position.set(cx - 140, y);
     const tertiaryY = y + 50 + 12;
-    this.accountBtn.view.position.set(cx - 140, tertiaryY);
-    this.settingsBtn.view.position.set(cx + 5, tertiaryY);
+    if (this.accountEntry) {
+      this.accountBtn.view.position.set(cx - 140, tertiaryY);
+      this.settingsBtn.view.position.set(cx + 5, tertiaryY);
+    } else {
+      // SETTINGS takes the whole tertiary row rather than staying in its half, so the row
+      // does not read as one button that lost its pair.
+      this.settingsBtn.view.position.set(cx - 67, tertiaryY);
+      this.accountLabel.position.set(cx, cardTop - 24);
+      // Below the card, not at the screen bottom: `BannerHost` owns the bottom centre of a
+      // portal page, and a notice underneath an ad is a notice nobody reads.
+      this.dataNotice.position.set(cx, cardTop + cardH + 14);
+    }
     this.refreshAccountLabel();
     this.view.visible = true;
   }
@@ -144,7 +196,12 @@ export class MainMenu {
    * without needing to re-`show()` the whole menu. */
   refreshAccountLabel() {
     const session = getSession();
-    this.accountBtn.setText(session ? t('mainMenu.greeting', { username: session.username }) : t('mainMenu.account'));
+    const greeting = session ? t('mainMenu.greeting', { username: session.username }) : t('mainMenu.account');
+    this.accountBtn.setText(greeting);
+    // Without an account entry there is no "log in" state to advertise, so a guest gets no
+    // label at all — an empty row rather than a prompt the player cannot act on.
+    this.accountLabel.text = session ? greeting : '';
+    this.accountLabel.visible = !this.accountEntry && session !== null;
   }
 
   /** Re-apply every static label from the active locale — called on `show()` so a
@@ -157,6 +214,7 @@ export class MainMenu {
     this.modesBtn.setText(t('mainMenu.modes'));
     this.squadBtn.setText(t('mainMenu.squad'));
     this.settingsBtn.setText(t('mainMenu.settings'));
+    this.dataNotice.text = t('auth.portalDataNotice');
     this.refreshAccountLabel();
   }
 }

@@ -60,6 +60,20 @@ export interface PortalSessionOptions {
   /** Injected in tests; defaults to a real `<div>` over the canvas. */
   bannerDom?: BannerDom;
   now?: () => number;
+  /**
+   * The silent-login half of the integration, for DIAGNOSTICS ONLY — this object never asks
+   * it a question that changes what the portal is told.
+   *
+   * It is here rather than beside it in the entry point because `__portal.diagnostics()` is
+   * the only instrument this repository has for the parts of the integration it cannot test,
+   * and a second instrument nobody remembers to call is worse than one line that answers
+   * everything. `portalAuth.ts`'s own state is exactly the sort of thing that fails silently
+   * on a live page: a token exchange that 401s leaves a perfectly playable guest.
+   */
+  auth?: { diagnostics(): { available: boolean; portalUser: string | null; session: string | null; lastError: string | null } };
+  /** The room/invite half, for diagnostics only — same reasoning as `auth` above, and the
+   *  same one-line-answers-everything reason for being here rather than beside it. */
+  rooms?: { state(): string };
 }
 
 export class PortalSession {
@@ -71,12 +85,16 @@ export class PortalSession {
   /** The last phase that was not `settings` — see `onPhaseChange`'s note on why the
    *  settings screen has to be transparent to the break derivation. */
   private lastSubstantive: Phase | null = null;
+  private readonly auth: PortalSessionOptions['auth'];
+  private readonly rooms: PortalSessionOptions['rooms'];
 
   constructor(
     private readonly game: PortalGameView,
     opts: PortalSessionOptions,
   ) {
     this.sdk = opts.sdk ?? new CrazyGamesSdk();
+    this.auth = opts.auth;
+    this.rooms = opts.rooms;
     const context: AdContext = {
       inGameplay: () => isGameplayPhase(this.game.getPhase()),
       online: () => this.game.isOnline(),
@@ -185,6 +203,20 @@ export class PortalSession {
    */
   diagnostics(): string {
     return `portal ${this.sdk.environment()} · ads ${this.ads.adblockState()}` +
-      `${this.bracket.isLive() ? ' · gameplay' : ''}${this.banner.isVisible() ? ' · banner' : ''}`;
+      `${this.bracket.isLive() ? ' · gameplay' : ''}${this.banner.isVisible() ? ' · banner' : ''}` +
+      ` · ${this.authState()}` +
+      `${this.rooms ? ` · ${this.rooms.state()}` : ''}`;
+  }
+
+  /** The account half of the line above. Four states, and they are four different bugs: no
+   *  user module at all, a guest, a signed-in portal player we hold a session for, and — the
+   *  one worth having an instrument for — a signed-in portal player we do NOT. */
+  private authState(): string {
+    const a = this.auth?.diagnostics();
+    if (!a) return 'auth n/a';
+    if (!a.available) return 'auth unavailable';
+    if (!a.portalUser) return 'guest';
+    if (a.session) return `signed in ${a.session}`;
+    return `NOT signed in (${a.lastError ?? 'no reason recorded'})`;
   }
 }

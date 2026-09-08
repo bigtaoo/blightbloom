@@ -18,6 +18,7 @@ import {
   CHECKPOINT_QUORUM,
   INTEGRITY_KICK_STREAK,
   type PlayerCommand,
+  type SeatNames,
   type ServerMsg,
   type Winner,
 } from '@dd/engine';
@@ -30,6 +31,9 @@ export interface RoomConnection {
   /** The logged-in account behind this seat (design/16-accounts.md), if any — carried
    * from the verified ticket. `undefined` for guests/bots. */
   readonly accountId?: string;
+  /** The display name to show other players for this seat (design/20), from the same
+   *  verified ticket. `undefined` for guests/bots, which is most seats. */
+  readonly name?: string;
   send(msg: ServerMsg): void;
 }
 
@@ -105,6 +109,9 @@ interface Seat {
   /** Set from `conn.accountId` on join/resume (design/16-accounts.md) and kept across a
    * disconnect so a settled match can still credit a briefly-dropped player's account. */
   accountId?: string;
+  /** Kept across a disconnect for the same reason `accountId` is: a player who drops for
+   *  three seconds must not have their nameplate replaced by a blank for everyone else. */
+  name?: string;
 }
 
 export class MatchRoom {
@@ -169,8 +176,21 @@ export class MatchRoom {
     if (!seat || seat.conn !== null) return false;
     seat.conn = conn;
     if (conn.accountId !== undefined) seat.accountId = conn.accountId;
+    if (conn.name !== undefined) seat.name = conn.name;
     if (this.connected) this.launch();
     return true;
+  }
+
+  /**
+   * Seat index → display name, or `undefined` when no seat in this room has one.
+   *
+   * `undefined` rather than an array of nulls, so a room of guests and bots — every room
+   * this project had before 2026-09-08, and most rooms after — puts nothing new on the
+   * wire at all and every existing client/test sees a byte-identical `match_start`.
+   */
+  private seatNames(): SeatNames | undefined {
+    if (!this.seats.some((seat) => seat.name)) return undefined;
+    return this.seats.map((seat) => seat.name ?? null);
   }
 
   private launch(): void {
@@ -183,6 +203,7 @@ export class MatchRoom {
         localOwner: seat.owner,
         playerCount: this.playerCount,
         mode: this.mode,
+        names: this.seatNames(),
       });
     }
     this.startMetronome();
@@ -241,11 +262,13 @@ export class MatchRoom {
     if (!seat || this.phase !== Phase.IN_MATCH || this.settled) return false;
     seat.conn = conn;
     if (conn.accountId !== undefined) seat.accountId = conn.accountId;
+    if (conn.name !== undefined) seat.name = conn.name;
     conn.send({
       type: 'conn_resync',
       startFrame: START_FRAME,
       curFrame: this.broadcast.frame,
       log: this.broadcast.logSince(lastFrame),
+      names: this.seatNames(),
     });
     if (this.connected) this.startMetronome();
     return true;

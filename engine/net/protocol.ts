@@ -44,6 +44,20 @@ export interface FrameBatch {
  * (every existing loopback/test fixture) is unaffected — additive. */
 export type MatchMode = 'coop' | 'pvp';
 
+/**
+ * Seat index → the name to show for that seat, or `null` where there is none (a guest, a
+ * bot, a seat that never authenticated). Sparse-safe: shorter than `playerCount`, or absent
+ * entirely, means "no names known" rather than "unnamed seats" — every pre-2026-09-08
+ * server sends nothing here and every client must render exactly as it did before.
+ *
+ * PRESENTATION ONLY. Nothing in the sim reads it, nothing hashes it, and it deliberately
+ * does not travel in a `PlayerCommand`: design/06's determinism contract is that the state a
+ * frame produces is a function of the commands, and a display name is not an input. It is
+ * also SERVER-SUPPLIED rather than client-declared, which is the half that matters for
+ * moderation — a client that could name itself could name itself anything.
+ */
+export type SeatNames = readonly (string | null)[];
+
 /** Sent once when the room fills and the match begins — the engine's build config. */
 export interface MatchStart {
   seed: number;
@@ -51,6 +65,9 @@ export interface MatchStart {
   localOwner: number; // which seat index this client drives (owner in its PlayerCommands)
   playerCount: number; // total seats — the client builds EngineConfig.players of this length
   mode?: MatchMode;
+  /** Who is in the other seats (design/20 — a game portal requires the platform's own
+   *  usernames be shown so players can recognise their friends). */
+  names?: SeatNames;
 }
 
 /** Reconnect catch-up (design/06 mirror of funny's conn_resync): replay the frame log past `lastFrame`. */
@@ -58,6 +75,10 @@ export interface ConnResync {
   startFrame: number;
   curFrame: number; // watermark to jump to
   log: readonly FrameCmds[]; // the non-empty frames the client is missing (> lastFrame)
+  /** Carried here as well as in `match_start` because a RECONNECTING client never sees
+   *  `match_start` again — without this it would rejoin the match it left with everyone's
+   *  nameplate gone. */
+  names?: SeatNames;
 }
 
 /** End of match — the server's authoritative outcome (clients also re-judge via runHeadless).

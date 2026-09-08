@@ -156,3 +156,19 @@ multiplayer shipped — step 6 only became safe to attempt because they landed f
 - ~~Server transport / where the frame-broadcast server lives.~~ **RESOLVED (ROADMAP 3.3):** a two-service split like funny — a **control plane** (`matchsvc`, HTTP) that pools players and issues **signed HMAC tickets**, and a **data plane** (`gameserver`, the raw-WebSocket frame relay, ROADMAP 3.1). The client calls matchsvc to matchmake, then redeems its ticket on the gameserver socket (`/ws?ticket=`); the gameserver verifies the ticket and derives the trusted `{roomId, owner, seed, playerCount}` from it instead of raw params (closing the seat/seed spoof hole). Ticket = stateless `b64url(payload).b64url(hmac-sha256)` over a shared secret (`DDU_TICKET_SECRET`); no shared store. A real secret makes tickets mandatory; unset falls back to the dev raw-param handshake. Where the two services physically deploy (host/Docker) is a separate ops call, not an architecture question.
 - Match size ceiling and per-frame input packet budget for WeChat.
 - ~~Mid-match reconnect.~~ **RESOLVED (ROADMAP 3.1 update, 2026-08-04):** the wire protocol/server plumbing (`resume`/`conn_resync`, `MatchRoom.resume()`, `NetInputSource.resumeFrame()`/`onConnResync`) existed since 3.1 but was never actually reachable — nothing on the client called `resume`, and the gameserver's own `/ws` handshake unconditionally tried `join()` first, which rejects any socket for a room already `IN_MATCH`. A full client code review caught this (a dropped connection mid-match just froze the game forever with no recovery) and closed it end-to-end: `matchsvc` mints a fresh short-lived ticket for the same seat via `POST /resume` (proven by the caller's own now-expired original ticket's still-valid signature, since a match runs far longer than a ticket's 30s TTL); the gameserver handshake now detects an in-match room and waits for `resume` instead of always calling `join()`; `CoopSession.reconnect(transport)` swaps the live transport without touching engine/`NetInputSource` state, so `conn_resync` folds into the SAME confirmed-stream catch-up path a merely-backgrounded tab already used; a bounded client-side retry driver (`net/reconnect.ts`) with backoff, surfaced to the player via a reconnecting/reconnected HUD toast and a real "connection lost" result screen if every attempt is exhausted.
+
+## One field on the wire that the sim cannot see (2026-09-08)
+
+`MatchStart.names` and `ConnResync.names` (`engine/net/protocol.ts`) carry seat index → display
+name, so a client can label the other players (`design/20` — a game portal requires the platform's
+own usernames be shown in-game). It is worth naming here because it is the first thing this
+protocol carries that is **not** an input to the simulation, and the contract this document states
+is what makes that safe:
+
+- It never travels in a `PlayerCommand`, is never hashed, and no system reads it. A frame's output
+  stays a function of its commands, so the golden-hash fixture is untouched and a room where nobody
+  is logged in puts nothing new on the wire at all (`undefined`, not an array of nulls).
+- It is **server-supplied**, from the bearer session `POST /find` verifies — never client-declared.
+  A name is the one field in a match that other players SEE, which makes a self-declared one an
+  impersonation primitive rather than a cosmetic.
+- It rides on `conn_resync` as well, because a reconnecting client never sees `match_start` again.

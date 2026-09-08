@@ -14,13 +14,17 @@ import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './r
 import { reportWebBootFailure } from './bootError';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
+import { resolveMatchBaseUrl } from './game/runState';
+import { PortalAuth } from './platform/crazygames/portalAuth';
+import { PortalRooms } from './platform/crazygames/PortalRooms';
+import { applyPortalBootIntent } from './platform/crazygames/portalBoot';
 
 // Game-portal entry (CrazyGames). The third entry point, beside `main.ts` (our own domain)
 // and `main.wechat.ts` (the mini-game). Built by `vite.crazygames.config.js`, which is what
 // puts the SDK `<script>` in the page and sets `base: './'`.
 //
 // It is the SAME game: the platform is `WebPlatform`, the input is `WebInput`, the renderer
-// and the whole of `src/game/` are untouched. Four things differ, and each one is a rule of
+// and the whole of `src/game/` are untouched. Six things differ, and each one is a rule of
 // the host rather than a preference of ours:
 //
 //  1. **Relative asset paths.** The bundle is served from a path the portal chooses, so every
@@ -39,7 +43,19 @@ import { parseGameQueryParams } from './game/match/gameQueryParams';
 //     game owns, so it cannot be derived from the outside. It goes through a declared
 //     capability (`platform/rewardedAd.ts`) rather than an import, so what the game learns
 //     is that a rewarded ad exists — never that a portal does.
-//  4. **No self-managed auto-reload.** `main.ts` polls `/version.json` so a tab left open
+//  4. **The player is signed in without being asked.** A portal forbids a game's own
+//     credential login and requires that a logged-in portal user be registered and logged
+//     in automatically (`design/20` "account integration"). `PortalAuth` does that from
+//     here, before the first screen is drawn; `gameWiring.ts` hides the login entry on this
+//     host, and `platform/sessionEvents.ts` is how the resulting session reaches the menu
+//     and the Forge without `src/game/` importing anything from `platform/crazygames/`.
+//  5. **The portal is told about the SQUAD, and can put the player into one.** Room state,
+//     an invite button, an accepted invite and "open me straight into multiplayer" are all
+//     multiplayer requirements of that platform (`design/20`). Two more seams carry them,
+//     both in `platform/` so `src/game/` still imports nothing from `platform/crazygames/`:
+//     `partyPresence.ts` (the game declares its squad, `PortalRooms` announces it) and
+//     `onlineEntry.ts` (the game installs two doors, `portalBoot.ts` walks through one).
+//  6. **No self-managed auto-reload.** `main.ts` polls `/version.json` so a tab left open
 //     across a deploy reloads itself. A portal serves a versioned, immutable upload from its
 //     own CDN: the file is not there to poll, the URL is not ours, and reloading somebody
 //     else's frame is not ours to do either. Deliberately absent, not forgotten.
@@ -82,6 +98,14 @@ async function boot() {
   });
   document.getElementById('boot-loading')?.remove();
 
+  // (3b') Silent login, constructed BEFORE the session so its state can ride in that one
+  // diagnostics line, and started AFTER `sdk.init()` (which `portal.start()` performs) since
+  // every call it makes goes through the module the script installs.
+  const portalAuth = new PortalAuth({
+    sdk,
+    baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
+  });
+
   // (3b) The portal session. Its ticker callback is added AFTER `game.start()` for the same
   // reason `installPerf`'s brackets are: it then runs outside every listener the game
   // registered, so what it observes is the phase the frame ended in.
@@ -90,9 +114,30 @@ async function boot() {
   // very ticker this callback runs on, which is correct and not a deadlock: the release is
   // driven by the SDK's own `adFinished`/`adError` callback, which is a DOM event and does
   // not need our clock to arrive.
-  const portal = new PortalSession(game, { sdk, suspension: adSuspension(app.ticker) });
+  // (3b'') The room and invite affordances, driven by the party the game declares
+  // (`platform/partyPresence.ts`) rather than by the phase — see `PortalRooms`' header for
+  // why that one is a subscription while everything in `PortalSession` is a derivation.
+  const portalRooms = new PortalRooms(sdk);
+
+  const portal = new PortalSession(game, {
+    sdk,
+    suspension: adSuspension(app.ticker),
+    auth: portalAuth,
+    rooms: portalRooms,
+  });
   app.ticker.add(() => portal.update());
-  void portal.start();
+  // Everything that needs a live SDK, in one chain after `portal.start()` (which is what
+  // performs `sdk.init()`). Sequential rather than parallel on purpose: the boot intent may
+  // put the player straight into a party, and it should do that with their account already
+  // signed in — otherwise the seat they take is a guest's and their name is missing from
+  // everyone else's roster.
+  void portal
+    .start()
+    .then(() => portalAuth.start())
+    .then(() => {
+      portalRooms.start();
+      return applyPortalBootIntent(sdk);
+    });
 
   // (3c) The one thing the portal cannot derive from the phase stream: the rewarded-ad
   // OFFER on the results screen, which has to be drawn by a screen the game owns and paid
@@ -106,7 +151,7 @@ async function boot() {
   // Expose for debugging — `__portal` alongside `__game` so a live portal page can be
   // interrogated from a console (`__portal.diagnostics()`), which is the only place any of
   // the SDK half of this file can be verified at all.
-  Object.assign(globalThis, { __game: game, __portal: portal });
+  Object.assign(globalThis, { __game: game, __portal: portal, __auth: portalAuth, __rooms: portalRooms });
 }
 
 boot().catch(reportWebBootFailure);

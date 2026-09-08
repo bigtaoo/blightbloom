@@ -46,7 +46,7 @@ modules did, on 2026-09-04, and carry `.ts` below.
 
 | | Process | Port | Surface |
 |---|---|---|---|
-| Control plane | `matchsvc.ts` | 8788 | `/auth/*` (`AuthService.ts`), `/account/meta`, `/find` `/resume` (`Matchmaker.ts`), `/party/*` (`PartyService.ts`), `/rating/*` (`rating.ts`) |
+| Control plane | `matchsvc.ts` | 8788 | `/auth/*` (`AuthService.ts`, incl. `/auth/portal` — a verified game-portal user token, `portalToken.ts`, `design/20`), `/account/meta`, `/find` `/resume` (`Matchmaker.ts`), `/party/*` (`PartyService.ts`), `/rating/*` (`rating.ts`) |
 | Data plane | `index.ts` | 8787 | `/ws` frame broadcast (`RoomManager.ts` / `MatchRoom.ts`), checkpoint hash adjudication |
 
 Since 2026-09-04 `matchsvc.ts` is an **assembly shell only** — service construction, the

@@ -424,3 +424,132 @@ describe('CrazyGamesSdk banner and invite calls', () => {
     expect(await sdk.getInviteParam('other')).toBeNull();
   });
 });
+
+describe('CrazyGamesSdk.userApi', () => {
+  // The one accessor that hands back an SDK object instead of an answer — `sdkUser.ts`'s
+  // four free functions read through it. What matters is that it is `undefined` rather than
+  // a throw on every page where the script installed no user module, because that is the
+  // whole reason those functions take `CgUserApi | undefined`.
+
+  it('hands over the user module once the script is there', async () => {
+    const user = { isUserAccountAvailable: vi.fn() };
+    const sdk = new CrazyGamesSdk({ CrazyGames: { SDK: fakeSdk({ user }) } } as never, () => 0, async () => {});
+    await sdk.init();
+    expect(sdk.userApi()).toBe(user);
+  });
+
+  it('is undefined before init has found the script', () => {
+    const sdk = new CrazyGamesSdk({} as never, () => 0, async () => {});
+    expect(sdk.userApi()).toBeUndefined();
+  });
+
+  it('is undefined on a page whose SDK has no user module at all', async () => {
+    const sdk = new CrazyGamesSdk({ CrazyGames: { SDK: fakeSdk() } } as never, () => 0, async () => {});
+    await sdk.init();
+    expect(sdk.userApi()).toBeUndefined();
+  });
+});
+
+describe('CrazyGamesSdk room and invite calls', () => {
+  /** A live SDK whose game module records what it was told. */
+  async function live(game: Record<string, unknown>) {
+    const calls: string[] = [];
+    const record = (name: string) => (...args: unknown[]) => void calls.push(`${name}:${JSON.stringify(args)}`);
+    const sdk = new CrazyGamesSdk(
+      {
+        CrazyGames: {
+          SDK: fakeSdk({
+            game: {
+              updateRoom: record('updateRoom'),
+              leftRoom: record('leftRoom'),
+              showInviteButton: record('showInviteButton'),
+              hideInviteButton: record('hideInviteButton'),
+              ...game,
+            } as never,
+          }),
+        },
+      } as never,
+      () => 0,
+      async () => {},
+    );
+    await sdk.init();
+    return { sdk, calls };
+  }
+
+  it('passes the room id, the joinable flag and the invite params through verbatim', async () => {
+    const { sdk, calls } = await live({});
+    sdk.updateRoom('p-1', true, { party: 'ABCD' });
+    expect(calls).toEqual(['updateRoom:[{"roomId":"p-1","isJoinable":true,"inviteParams":{"party":"ABCD"}}]']);
+  });
+
+  it('sends leftRoom, showInviteButton and hideInviteButton', async () => {
+    const { sdk, calls } = await live({});
+    sdk.leftRoom();
+    sdk.showInviteButton({ party: 'ABCD' });
+    sdk.hideInviteButton();
+    expect(calls).toEqual(['leftRoom:[]', 'showInviteButton:[{"party":"ABCD"}]', 'hideInviteButton:[]']);
+  });
+
+  it('is a silent no-op on a page whose SDK has none of them', async () => {
+    // The property every call in this file has: a missing method is "nothing happened",
+    // never an exception in the middle of a frame.
+    const sdk = new CrazyGamesSdk({ CrazyGames: { SDK: fakeSdk({ game: {} }) } } as never, () => 0, async () => {});
+    await sdk.init();
+    expect(() => {
+      sdk.updateRoom('p-1', true);
+      sdk.leftRoom();
+      sdk.showInviteButton({ party: 'ABCD' });
+      sdk.hideInviteButton();
+    }).not.toThrow();
+  });
+
+  it('swallows a throwing room call', async () => {
+    const { sdk } = await live({
+      updateRoom: () => {
+        throw new Error('parent frame is gone');
+      },
+    });
+    expect(() => sdk.updateRoom('p-1', true)).not.toThrow();
+  });
+});
+
+describe('CrazyGamesSdk.instantMultiplayer', () => {
+  async function ask(game: Record<string, unknown>) {
+    const sdk = new CrazyGamesSdk(
+      { CrazyGames: { SDK: fakeSdk({ game: game as never }) } } as never,
+      () => 0,
+      async () => {},
+    );
+    await sdk.init();
+    return sdk.instantMultiplayer();
+  }
+
+  it('reads the documented PROPERTY shape', async () => {
+    expect(await ask({ isInstantMultiplayer: true })).toBe(true);
+    expect(await ask({ isInstantMultiplayer: false })).toBe(false);
+  });
+
+  it('also reads a METHOD, which is the shape the docs were wrong about last time', async () => {
+    // design/20's first live finding was `SDK.environment`: documented as a property, and
+    // the shipped v2.9.0 has only a promise-returning method. Both shapes are read here for
+    // that reason, and asserting both is what makes the fallback more than decoration.
+    expect(await ask({ isInstantMultiplayer: () => true })).toBe(true);
+    expect(await ask({ isInstantMultiplayer: async () => true })).toBe(true);
+    expect(await ask({ isInstantMultiplayer: async () => false })).toBe(false);
+  });
+
+  it('is false for every absent, wrong-typed or throwing answer', async () => {
+    // False and not true, deliberately: the cost of guessing true is dropping a player who
+    // wanted the menu into a matchmaking queue.
+    expect(await ask({})).toBe(false);
+    expect(await ask({ isInstantMultiplayer: 'yes' })).toBe(false);
+    expect(await ask({ isInstantMultiplayer: async () => 'yes' })).toBe(false);
+    expect(
+      await ask({
+        isInstantMultiplayer: () => {
+          throw new Error('nope');
+        },
+      }),
+    ).toBe(false);
+  });
+});

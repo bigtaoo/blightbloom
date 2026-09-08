@@ -7,11 +7,11 @@
  * as phase SEQUENCES — the sequence a player actually walks — rather than as method calls.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { PortalSession, type PortalGameView } from './PortalSession';
+import { PortalSession, type PortalGameView, type PortalSessionOptions } from './PortalSession';
 import type { CrazyGamesSdk } from './sdk';
 import type { Phase } from '../../game/phase';
 
-function harness(opts: { live?: boolean } = {}) {
+function harness(opts: { live?: boolean; auth?: PortalSessionOptions['auth'] } = {}) {
   const calls: string[] = [];
   let phase: Phase = 'menu';
   let online = false;
@@ -46,6 +46,7 @@ function harness(opts: { live?: boolean } = {}) {
     suspension: { suspend: () => void calls.push('suspend'), resume: () => void calls.push('resume') },
     bannerDom: { createContainer: () => ({ setVisible: () => {} }) },
     now: () => 0,
+    auth: opts.auth,
   });
 
   /** Walk a sequence of phases, one `update()` per phase (plus a repeat, so any per-frame
@@ -207,14 +208,34 @@ describe('PortalSession.diagnostics', () => {
     const { session, walk } = harness();
     await session.start();
     await walk('menu');
-    expect(session.diagnostics()).toBe('portal crazygames · ads clear · banner');
+    expect(session.diagnostics()).toBe('portal crazygames · ads clear · banner · auth n/a');
     await walk('playing');
-    expect(session.diagnostics()).toBe('portal crazygames · ads clear · gameplay');
+    expect(session.diagnostics()).toBe('portal crazygames · ads clear · gameplay · auth n/a');
   });
 
   it('says so when there is no portal', () => {
     const { session } = harness({ live: false });
-    expect(session.diagnostics()).toBe('portal disabled · ads unprobed');
+    expect(session.diagnostics()).toBe('portal disabled · ads unprobed · auth n/a');
+  });
+
+  it('reports the four account states, because each one is a different bug', () => {
+    // The account half of the one instrument this repository has for the parts of the
+    // integration it cannot test. `auth n/a` above is the shipped-entry-point case only in
+    // a test harness that passes none; every state below is one a live page can be in, and
+    // the last is the one worth having an instrument for at all.
+    const states = [
+      [{ available: false, portalUser: null, session: null, lastError: null }, 'auth unavailable'],
+      [{ available: true, portalUser: null, session: null, lastError: null }, 'guest'],
+      [{ available: true, portalUser: 'Ada', session: 'Ada', lastError: null }, 'signed in Ada'],
+      [{ available: true, portalUser: 'Ada', session: null, lastError: 'invalid portal token' },
+        'NOT signed in (invalid portal token)'],
+      [{ available: true, portalUser: 'Ada', session: null, lastError: null },
+        'NOT signed in (no reason recorded)'],
+    ] as const;
+    for (const [diag, expected] of states) {
+      const { session } = harness({ live: false, auth: { diagnostics: () => diag } });
+      expect(session.diagnostics()).toContain(expected);
+    }
   });
 });
 

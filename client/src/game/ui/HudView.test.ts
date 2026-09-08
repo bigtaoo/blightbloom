@@ -744,3 +744,58 @@ describe('HudView — i18n (design/17-i18n.md)', () => {
     expect(cjk.width).toBeGreaterThan(latin.width);
   });
 });
+
+describe('HudView — the seat roster (design/20)', () => {
+  it('is not drawn at all with no names, which is every offline run', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, CTX);
+    expect(hud.seatRoster.view.visible).toBe(false);
+    expect(hud.seatRoster.text).toBe('');
+  });
+
+  it('draws the named seats and marks the local one', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, { ...CTX, seatNames: ['Ada', 'Grace'] });
+    expect(hud.seatRoster.view.visible).toBe(true);
+    expect(hud.seatRoster.text).toBe('YOU Ada  ·  Grace');
+  });
+
+  it('marks the local seat by the localOwner in context, not by position', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, { ...CTX, localOwner: 1, seatNames: ['Ada', 'Grace'] });
+    expect(hud.seatRoster.text).toBe('Ada  ·  YOU Grace');
+  });
+
+  it('reserves a row for it, below everything else in the column', () => {
+    // The layout is hand-computed from a cursor, so an added row is exactly the kind of
+    // change that silently lands one element on top of another.
+    const hud = newHud();
+    hud.update(pveState(), 16, { ...CTX, showAlly: true, allySkinId: 'juggernaut', seatNames: ['Ada'] });
+    expect(hud.seatRoster.view.position.y).toBeGreaterThan(hud.allyRow.view.position.y);
+  });
+
+  it('reserves NO row when there is nothing in it', () => {
+    // The property that makes the row free for every existing run: a panel that grew to
+    // hold an invisible line would change every single-player HUD.
+    const withNames = newHud();
+    withNames.update(pveState(), 16, { ...CTX, seatNames: ['Ada'] });
+    const without = newHud();
+    without.update(pveState(), 16, CTX);
+    const height = (h: HudView) => (h as unknown as { panelH: number }).panelH;
+    expect(height(withNames)).toBeGreaterThan(height(without));
+  });
+
+  it('widens the panel for a long roster', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, CTX);
+    const narrow = (hud as unknown as { panelW: number }).panelW;
+    hud.update(pveState(), 16, { ...CTX, seatNames: ['a-rather-long-portal-username', 'another-long-one'] });
+    expect((hud as unknown as { panelW: number }).panelW).toBeGreaterThan(narrow);
+  });
+
+  it('works in PvP as well as co-op — the roster is not a co-op row', () => {
+    const hud = newHud();
+    hud.update(pvpState(), 16, { ...CTX, seatNames: ['Ada', 'Grace'] });
+    expect(hud.seatRoster.view.visible).toBe(true);
+  });
+});

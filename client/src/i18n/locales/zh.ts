@@ -150,6 +150,7 @@ export const zh: Translations<typeof en> = {
       bleedout: '流血倒计时——剩余 {seconds} 秒',
       reviving: '正在被救援…',
     },
+    roster: { you: '你' },
     portalTitle: '楼层已清空 — 传送门已开启',
     portalExtract: '存入并撤离（{pending} 份材料）',
     portalDescend: '下降至第 {floor} 层',
@@ -176,6 +177,7 @@ export const zh: Translations<typeof en> = {
     playingAsGuest: '以访客身份游玩',
     dataNotice:
       '可选。注册会在我们的服务器上保存你的用户名、密码哈希和游戏进度。不注册也能玩，不会上传任何数据。',
+    portalDataNotice: '当你在 CrazyGames 上处于登录状态时，我们会在服务器上保存你的 CrazyGames 名称和游戏进度。',
   },
   party: {
     title: '组队',
@@ -222,8 +224,10 @@ export const zh: Translations<typeof en> = {
     errorGeneric: '连接失败，请重试。',
   },
   tutorial: {
-    hintMove: '移动：左摇杆 / WASD。瞄准开火：右摇杆 / 鼠标。',
-    hintSwap: '点击换武器按钮切换武器槽位。',
+    hintMoveKeys: '用 WASD 移动。按住鼠标左键攻击——自动瞄准。',
+    hintMoveTouch: '拖动屏幕左侧移动。按住右侧攻击——自动瞄准。',
+    hintSwapKeys: '按 1 或 2 切换武器。',
+    hintSwapTouch: '点击武器按钮切换武器。',
     hintDeflect: '用近战武器挥砍来袭子弹以将其弹反。',
     hintCleared: '完成！前往传送门。',
     skip: '跳过教程',

@@ -108,6 +108,15 @@ export class RunLifecycle {
     const d = this.deps;
     this.resetRenderState();
     d.run.tutorialActive = false;
+    // Teach a player who has never been taught, on their first real run — the beats the
+    // standalone tutorial drives, over the dungeon and the loadout they actually have
+    // (design/20's onboarding pass). This is the FIRST-CLICK path on a portal, where the
+    // menu route to the tutorial exists but a new visitor is one PLAY press from a run and
+    // would otherwise be shown no controls at all; it is the same fix on every other target,
+    // which is why it lives here and not behind a host branch. `hasSeenTutorial` retires it
+    // (`GameLoop` marks it at gameover), so it is once per player, not once per run.
+    d.run.firstRunHints = !d.run.meta.hasSeenTutorial;
+    if (d.run.firstRunHints) d.tutorialHints.reset();
 
     // `?arenaDemo=1` (dev-only, see RunState's field comment) — a synthetic local PvP arena
     // instead of the PvE dungeon, purely so the zone HUD row + Minimap have real data to
@@ -187,6 +196,7 @@ export class RunLifecycle {
     if (d.artGate.defer(() => this.beginTutorialRun())) return; // a run, with no screen between
     this.resetRenderState();
     d.run.tutorialActive = true;
+    d.run.firstRunHints = false; // the standalone level teaches on its own flag
     d.tutorialHints.reset();
     const tutorial = this.startOfflineEngine(
       'tutorial',
@@ -228,6 +238,7 @@ export class RunLifecycle {
       const file = await loadReplayFile(url);
       this.resetRenderState();
       d.run.tutorialActive = false;
+      d.run.firstRunHints = false; // watching a recording is not being taught
       d.recorder.end(); // the stream is the file's, not a live run's
       d.run.replayStop = replayStopTick(file);
       d.run.engine = createGameEngine(file.replay.config, new ReplayInputSource(file.replay));
@@ -276,6 +287,10 @@ export class RunLifecycle {
     const d = this.deps;
     this.resetRenderState();
     d.run.tutorialActive = false;
+    // No hints in an online match: `GameLoop.advanceOnline` never consumed them (they are
+    // driven from the offline sim step alone), and a lockstep session is the wrong place to
+    // learn the controls anyway.
+    d.run.firstRunHints = false;
     // Drop the last offline run's stream: online input arrives on the confirmed net stream,
     // so nothing here records it and F9 must not export a stale file.
     d.recorder.end();

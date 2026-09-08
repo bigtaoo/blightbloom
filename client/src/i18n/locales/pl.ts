@@ -150,6 +150,7 @@ export const pl: Translations<typeof en> = {
       bleedout: 'Wykrwawianie — {seconds}s do końca',
       reviving: 'TRWA REANIMACJA…',
     },
+    roster: { you: 'TY' },
     portalTitle: 'PIĘTRO OCZYSZCZONE — otworzył się portal',
     portalExtract: 'Złóż i wydostań się ({pending} surowców)',
     portalDescend: 'Zejdź na piętro {floor}',
@@ -176,6 +177,7 @@ export const pl: Translations<typeof en> = {
     playingAsGuest: 'Gra jako gość',
     dataNotice:
       'Opcjonalnie. Rejestracja zapisuje nazwę użytkownika, skrót hasła i postęp na naszym serwerze. Bez konta nic nie jest wysyłane.',
+    portalDataNotice: 'Gdy jesteś zalogowany w CrazyGames, przechowujemy Twoją nazwę CrazyGames i postęp w grze na naszym serwerze.',
   },
   party: {
     title: 'DRUŻYNA',
@@ -222,8 +224,10 @@ export const pl: Translations<typeof en> = {
     errorGeneric: 'Nie udało się połączyć — spróbuj ponownie.',
   },
   tutorial: {
-    hintMove: 'Ruch: lewy drążek / WASD.  Celowanie i strzał: prawy drążek / mysz.',
-    hintSwap: 'Dotknij przycisku zmiany broni, aby przełączyć sloty ekwipunku.',
+    hintMoveKeys: 'Poruszaj się klawiszami WASD. Przytrzymaj lewy przycisk myszy, aby atakować — celowanie jest automatyczne.',
+    hintMoveTouch: 'Przeciągnij lewą stronę ekranu, aby się poruszyć, i przytrzymaj prawą, aby atakować — celowanie jest automatyczne.',
+    hintSwapKeys: 'Naciśnij 1 lub 2, aby zmienić broń.',
+    hintSwapTouch: 'Dotknij przycisku broni, aby zmienić broń.',
     hintDeflect: 'Zamachnij się bronią do walki wręcz na nadlatujące pociski, by je odbić.',
     hintCleared: 'Świetnie — czas na portal.',
     skip: 'POMIŃ SAMOUCZEK',

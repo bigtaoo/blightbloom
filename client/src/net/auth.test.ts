@@ -4,7 +4,7 @@
  * register/login/session behavior; this just pins the client's request/response shapes.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { register, login, logout, changePassword, fetchMe, fetchAccountMeta, saveAccountMeta } from './auth';
+import { register, login, portalLogin, logout, changePassword, fetchMe, fetchAccountMeta, saveAccountMeta } from './auth';
 
 const RESULT = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -36,6 +36,31 @@ describe('auth client calls', () => {
   it('login rejects on wrong credentials', async () => {
     const fetch = fakeFetch(401, { error: 'invalid username or password' });
     await expect(login('http://mm', 'alice', 'wrong', { fetch })).rejects.toThrow(/invalid/);
+  });
+
+  it('portalLogin posts the PORTAL token under `token`, and returns OUR session', async () => {
+    // The two tokens in one request (design/20 "account integration"): the body carries the
+    // platform's RS256 user token, the response carries this server's opaque session. A
+    // wiring mistake here reads as "login silently does nothing" on a live portal page.
+    const fetch = fakeFetch(200, RESULT);
+    const result = await portalLogin('http://mm', 'cg.user.token', { fetch });
+    expect(result).toEqual(RESULT);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe('http://mm/auth/portal');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ token: 'cg.user.token' });
+    // No bearer header: the portal token is the credential being presented, in the body.
+    expect((init as RequestInit).headers).toEqual({ 'content-type': 'application/json' });
+  });
+
+  it('portalLogin rejects with the reason, so a caller can record which failure it was', async () => {
+    // 401 and 503 mean different things to `portalAuth.ts` (a bad token vs. we could not
+    // check), and both have to arrive as a message rather than as a bare failure.
+    await expect(
+      portalLogin('http://mm', 'bad', { fetch: fakeFetch(401, { error: 'invalid portal token' }) }),
+    ).rejects.toThrow(/invalid portal token/);
+    await expect(
+      portalLogin('http://mm', 'ok', { fetch: fakeFetch(503, { error: 'portal verification key unavailable' }) }),
+    ).rejects.toThrow(/key unavailable/);
   });
 
   it('logout posts the token', async () => {

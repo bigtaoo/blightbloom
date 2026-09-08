@@ -35,6 +35,7 @@ import {
   type MatchOver,
   type MatchStart,
   type PlayerCommand,
+  type SeatNames,
 } from '@dd/engine';
 import type { Transport } from './transport';
 
@@ -64,6 +65,9 @@ export class CoopSession {
   // for `submit`/`drive`'s checkpoints/`reportResult`/`close` alike.
   private transport: Transport;
   private disconnectHandler: ((reason: string) => void) | null = null;
+  /** Seat index -> display name, as the SERVER reported it. Empty until the match starts,
+   *  and empty for a room in which nobody was logged in — which is most rooms. */
+  private names: SeatNames = [];
   private serverErrorHandler: ((code: string, message: string) => void) | null = null;
 
   constructor(private readonly opts: CoopSessionOptions) {
@@ -84,6 +88,14 @@ export class CoopSession {
   private wireTransport(t: Transport): void {
     t.onMessage((msg) => {
       if (msg.type === 'error') this.serverErrorHandler?.(msg.code, msg.message);
+      // Seat names (design/20) are captured HERE rather than in `onStart`, because they
+      // arrive on two different messages: `match_start` for a fresh match and
+      // `conn_resync` for a reconnect, which never sees `match_start` again. A client that
+      // read them only from the first would come back from a dropped socket with everyone's
+      // name gone — the failure `ConnResync.names`' own comment names.
+      if ((msg.type === 'match_start' || msg.type === 'conn_resync') && msg.names) {
+        this.names = msg.names;
+      }
       this.net.handleServerMsg(msg);
     });
     t.onDisconnect?.((reason) => this.disconnectHandler?.(reason));
@@ -121,6 +133,14 @@ export class CoopSession {
     this.engine = createGameEngine(this.opts.buildConfig(info), this.net);
     this.nextFrame = info.startFrame + 1; // first sim frame after the initial state
     this.opts.onMatchStart?.(info);
+  }
+
+  /**
+   * Who is in each seat (design/20). Presentation only: the HUD's `SeatRoster` reads it and
+   * nothing else does, nothing in the sim sees it, and it is never hashed.
+   */
+  get seatNames(): SeatNames {
+    return this.names;
   }
 
   /** The live sim state, or null before match_start. */

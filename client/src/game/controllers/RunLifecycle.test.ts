@@ -312,3 +312,58 @@ describe('saveReplay', () => {
     expect(t.deps.hud.toast).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('RunLifecycle — teaching a first-time player (design/20 onboarding)', () => {
+  // A portal lands a new visitor in a run on their first click, so the run itself has to be
+  // where the controls are explained — the menu route to the standalone tutorial still
+  // exists, but nobody on their first click has taken it. The same fix applies on every
+  // other target, which is why it is in `beginRun` and not behind a host branch.
+
+  it('arms the hints for a player who has never been taught', () => {
+    const t = make();
+    expect(t.run.meta.hasSeenTutorial).toBe(false);
+    t.runs.beginRun();
+    expect(t.run.firstRunHints).toBe(true);
+    expect(t.order).toContain('tutorialHints.reset');
+  });
+
+  it('does not arm them for a player who has', () => {
+    const t = make();
+    t.run.setMeta({ ...t.run.meta, hasSeenTutorial: true });
+    t.runs.beginRun();
+    expect(t.run.firstRunHints).toBe(false);
+    expect(t.order).not.toContain('tutorialHints.reset');
+  });
+
+  it('arms them through the one-click portal entry too', () => {
+    // `beginQuickRun` is the button the portal's one-click rule produced, and it is the one
+    // path a first-time visitor takes — so this is the case that actually ships.
+    const t = make();
+    t.runs.beginQuickRun();
+    expect(t.run.firstRunHints).toBe(true);
+  });
+
+  it('leaves the standalone tutorial on its own flag', () => {
+    const t = make();
+    t.runs.beginTutorialRun();
+    expect(t.run.tutorialActive).toBe(true);
+    expect(t.run.firstRunHints).toBe(false);
+  });
+
+  it('never arms them for an online match', () => {
+    // `GameLoop.advanceOnline` does not consume hints at all, and a lockstep session is the
+    // wrong place to be reading toasts about which key moves you.
+    const t = make();
+    t.runs.beginRun(); // arms them
+    t.runs.finalizeOnlineRun({ close: () => {} } as never);
+    expect(t.run.firstRunHints).toBe(false);
+  });
+
+  it('clears them when the run ends, so a quit mid-lesson does not leak into the next run', () => {
+    const t = make();
+    t.runs.beginRun();
+    expect(t.run.firstRunHints).toBe(true);
+    t.runs.quitRun();
+    expect(t.run.firstRunHints).toBe(false);
+  });
+});

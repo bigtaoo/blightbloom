@@ -39,6 +39,24 @@ export function login(baseUrl: string, username: string, password: string, opts:
   return post(baseUrl, '/auth/login', { username, password }, opts);
 }
 
+/**
+ * Exchange a game-portal user token for one of our sessions (design/20 "account
+ * integration"). The player never sees a form — this is the whole of the login they get on a
+ * portal, and it runs at boot.
+ *
+ * `portalToken` is the PORTAL's token (RS256, one hour, minted by CrazyGames and never
+ * decoded on this side); the `token` in the result is OURS. Distinguishing the two matters
+ * at exactly one call site and this is it.
+ *
+ * Throws like every other call in this file, and `portalAuth.ts` — the only caller — treats
+ * every throw as "stay a guest". That is deliberate rather than lazy: a portal player whose
+ * exchange failed is in precisely the state a player who never logged in is, and the game
+ * already works completely in that state.
+ */
+export function portalLogin(baseUrl: string, portalToken: string, opts: AuthCallOptions = {}): Promise<AuthResult> {
+  return post(baseUrl, '/auth/portal', { token: portalToken }, opts);
+}
+
 export async function logout(baseUrl: string, token: string, opts: AuthCallOptions = {}): Promise<void> {
   await post<{ ok: true }>(baseUrl, '/auth/logout', { token }, opts);
 }

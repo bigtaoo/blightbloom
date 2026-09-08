@@ -252,7 +252,7 @@ export class Game {
     // Built here (not as a field initializer) — it needs `this.audio`, which isn't
     // assigned yet when field initializers run.
     this.events = new EventReactor(this.fx, this.hud, this.audio, this);
-    this.tutorialHints = new TutorialHintController(this.hud, this);
+    this.tutorialHints = new TutorialHintController(this.hud, this, () => input.getTouchVisual().active);
     this.builder = new CommandBuilder(input);
     // Load persistent meta (bank / unlocks / loadout / chosen character, design/14).
     this.run.loadMeta();
@@ -473,8 +473,8 @@ export class Game {
     return this.run.arenaDemo !== null;
   }
 
-  isTutorialActive(): boolean {
-    return this.run.tutorialActive;
+  isTeaching(): boolean {
+    return this.run.tutorialActive || this.run.firstRunHints;
   }
 
   replayStopTick(): number | null {
