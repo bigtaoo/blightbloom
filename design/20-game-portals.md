@@ -242,7 +242,7 @@ progress need an account.
 | Every start | the same `start()`, plus `addAuthListener` for a mid-session login | "Request current user data every time the game starts" |
 | The name shown | `MainMenu`'s account LABEL (not a button), and `ui/SeatRoster.ts` in a match | The platform's username must be displayed |
 | Guest progress carried up | `platform/sessionEvents.ts` → `gameWiring`'s existing meta re-sync → `pullAccountMeta`'s brand-new-account branch pushes local state up | "Support migrating local guest progress upon login" |
-| The data notice | `auth.portalDataNotice`, one line under the main-menu card | Terms/privacy notice at the collection point |
+| The data notice | `auth.portalDataNotice`, one line under the main-menu card, with a link to the hosted policy under it (`platform/policyLinks.ts`) | Terms/privacy notice at the collection point |
 
 `showAuthPrompt` is declared in `CgSdkShape` and **deliberately never called**: auto-prompting is
 disallowed outright, and a game-drawn login call to action is disallowed as a primary one. The
@@ -429,12 +429,28 @@ exists.
   answers true at all, whether a real user token verifies against the published key, and whether
   the invite button and `updateRoom` render anything are all behaviours that only exist on a
   registered domain. `__portal.diagnostics()` grew an account clause and a room clause for exactly
-  that — four account states, because they are four different bugs, and the one worth the
-  instrument is *the portal says this player is signed in and we are not holding a session for
-  them*, with the reason.
-- **A hosted privacy policy / terms URL.** The in-game data notice covers the collection point;
-  a hosted document is a human deliverable. Nothing renders a link until one exists — an empty
-  placeholder link is worse than none.
+  that — FIVE account states, because they are five different bugs. Two of them report a broken
+  integration rather than an absent player: *the portal says this player is signed in and we are
+  not holding a session for them*, and (added later the same day) *`getUser` did not work at all*.
+  The second was the same null as `guest` until it was separated out — see "the guest that was
+  really a broken SDK" below.
+- ~~**A hosted privacy policy / terms URL.**~~ **Shipped 2026-09-08.**
+  `client/public/{privacy,terms}.html`, live at `b.gamestao.com/privacy` and `/terms`, linked
+  from under the data notice on `MainMenu` (portal) and `LoginScreen` (every other target).
+  The rule that outlived the gap is worth keeping: nothing renders a link until a URL exists,
+  and that is now a `string | null` in `platform/policyLinks.ts` rather than prose.
+  `isUsablePolicyUrl` also refuses a RELATIVE URL, which is the specific way this breaks on
+  this target only — `/privacy` resolves against the PORTAL's host inside its frame, so it
+  would 404 for exactly the players the link is required for while passing every check run on
+  our own domain. The clean URL depends on Cloudflare's `html_handling`, which
+  `wrangler/client.jsonc` now states explicitly for that reason.
+
+  The document CONTENT is written from what this game does rather than adapted from the
+  sibling project's: no email address is collected anywhere, no analytics or telemetry exists
+  in the tree, no payment processor is connected (`/webhook/dev` is not proxied publicly and
+  `/store/skus` needs a session, so nothing can be bought), ads are portal-only and
+  player-initiated, and an account is optional — so a guest's data never leaves the browser,
+  which is the strongest thing either document has to say.
 - **The upload itself**, its store listing, thumbnails and the review round trip.
 - **`SDK.game.addJoinRoomListener` is not used.** v3 has it (v2 did not), and it is the platform
   PUSHING a join into a running game rather than the game reading an invite parameter at boot —
@@ -444,7 +460,17 @@ exists.
 - **`getUser` is in BETA on the platform's side.** The v3 SDK logs, on every call:
   *"The getUser function is still in BETA, please get in touch with us if you are interested in
   using it."* The whole silent-login path depends on it, so ASK THEM at submission time rather
-  than discovering at review that it is gated. (Its sibling warning is already handled: the `id`
+  than discovering at review that it is gated.
+
+  What is no longer open is the ability to SEE it happen. Until 2026-09-08 a `getUser` that
+  threw was reported as `guest`, because `readUser` goes through `settle()` and that function's
+  whole contract is to make a failure indistinguishable from "returned nothing". So the
+  likeliest failure of the entire account integration looked exactly like a page full of
+  players who are not signed in — on the one instrument built to observe it. `settleReporting`
+  keeps the reason now and `diagnostics()` reports `getUser BROKEN (<reason>)`. Nothing
+  branches on it: every failure path still ends at a fully playable guest, which is the rule
+  `settle` exists to enforce and this does not relax. The new arm is checked BEFORE the guest
+  arm, because the two share a null user and a guard placed after it would be unreachable. (Its sibling warning is already handled: the `id`
   field is being removed from the user object, and this client reads `userId` and sends
   `getUserToken`'s token — never `id`.)
 - **`DDU_CG_GAME_ID` on the deployed matchsvc.** Until it is set, `/auth/portal` accepts a user

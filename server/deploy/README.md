@@ -296,6 +296,37 @@ the retention rules and the health verdict; `test/deploy.bundle.test.ts` builds 
 bundle, runs it against a real SQLite file, decompresses what it wrote and reads the row
 back.
 
+> #### It took ZERO backups for its first 18 hours (2026-09-08)
+>
+> Worth reading before trusting any of the above, because two independent faults lined up and
+> each one alone would have been caught:
+>
+> 1. **A bind mount hides the image's `chown`.** The Dockerfile does
+>    `mkdir -p /data /backups && chown -R node:node`, but Docker creates a MISSING bind-mount
+>    source as `root:root` on the host, and the mount then replaces the image's directory —
+>    ownership included. So `~/wnet-test/backups`, created by the very deploy that introduced
+>    this service, was root-owned, the container user (uid 1000 = `node`) could not write to
+>    it, and every cycle failed `EACCES`. The container sat in a restart loop for 18 hours,
+>    which is `--health`'s staleness arm working exactly as designed — nobody was looking.
+> 2. **The check that would have caught it was never installed.** The backup-health poll
+>    described above was added to `ci-deploy.sh` in the same commit as the worker, but the
+>    LIVE copy of that script is hand-installed on purpose (§6 — the CI key must not be able
+>    to rewrite its own forced command) and had not been updated. The deploy therefore ran the
+>    previous script: no `dist/backup.mjs` in the payload check, no backup verification, green
+>    in 46s. That script's own surviving comment reads *"a silently failed deploy is exactly as
+>    bad as a silently failed backup."*
+>
+> Fault 1 is now fixed by construction: `ci-deploy.sh` normalises the ownership of every
+> bind-mounted state dir before `compose up`, acting only on a dir that is actually wrong, and
+> `deploy.manifests.test.ts` pins that list to compose's real mounts so a NEW mount cannot
+> reintroduce it. Fault 2 has no code fix available — that is the point of the hand-install —
+> so the standing rule is: **after changing `deploy/ci-deploy.sh`, re-install it (§6) or the
+> change does nothing.** Diff the two before believing otherwise:
+>
+> ```bash
+> ssh wnet-server 'cat ~/wnet-test-ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
+> ```
+
 ## 6. CI-based deploy — DONE (2026-09-07)
 
 `.github/workflows/server-deploy.yml` + `server/deploy/ci-deploy.sh`, same shape as
