@@ -44,7 +44,7 @@ export interface PortalTokenClaims {
 export interface VerifyPortalTokenOptions {
   /**
    * Reject a token minted for a different game. Optional because the id is only knowable
-   * once the game is registered on the portal (`DDU_CG_GAME_ID`), and a first upload has to
+   * once the game is registered on the portal (`BB_CG_GAME_ID`), and a first upload has to
    * be able to work before it is known — but a token is a bearer credential that any other
    * CrazyGames game could also obtain for the same user, so leaving this unset means
    * trusting every game on the platform to hold OUR players' tokens honestly. Set it.

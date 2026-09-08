@@ -6,7 +6,7 @@
  *
  * FAIL CLOSED, FIRST OF TWO DEFENCES. This file enforces:
  *
- *   1. Under `NODE_ENV=production` the dev stub is off, FULL STOP — `DDU_BILLING_DEV_STUB`
+ *   1. Under `NODE_ENV=production` the dev stub is off, FULL STOP — `BB_BILLING_DEV_STUB`
  *      is not consulted at all, so a mis-set env var on a production box cannot switch it
  *      back on.
  *   2. Missing credentials mean VERIFICATION FAILS. There is no fallback to the stub, in
@@ -43,12 +43,12 @@ export function isProductionEnv(env: BillingEnv): boolean {
  * Whether the `product:<sku>` stub may resolve receipts.
  *
  * The production check comes FIRST and returns without reading the flag, which is the
- * whole point: the ordering is what makes a mis-set `DDU_BILLING_DEV_STUB=1` on a
+ * whole point: the ordering is what makes a mis-set `BB_BILLING_DEV_STUB=1` on a
  * production box inert rather than catastrophic.
  */
 export function devStubEnabled(env: BillingEnv): boolean {
   if (isProductionEnv(env)) return false;
-  const flag = env.DDU_BILLING_DEV_STUB;
+  const flag = env.BB_BILLING_DEV_STUB;
   return flag === '1' || flag === 'true';
 }
 
@@ -88,13 +88,13 @@ export function createReceiptVerifier(env: BillingEnv = process.env): ReceiptVer
  */
 function readCredentials(env: BillingEnv) {
   return {
-    apple: { sharedSecret: env.DDU_APPLE_SHARED_SECRET },
+    apple: { sharedSecret: env.BB_APPLE_SHARED_SECRET },
     google: {
-      serviceAccountJson: env.DDU_GOOGLE_SERVICE_ACCOUNT_JSON,
-      packageName: env.DDU_GOOGLE_PACKAGE_NAME,
+      serviceAccountJson: env.BB_GOOGLE_SERVICE_ACCOUNT_JSON,
+      packageName: env.BB_GOOGLE_PACKAGE_NAME,
     },
-    wechat: { mchId: env.DDU_WECHAT_MCH_ID, apiV3Key: env.DDU_WECHAT_API_V3_KEY },
-    stripe: { secretKey: env.DDU_STRIPE_SECRET_KEY, webhookSecret: env.DDU_STRIPE_WEBHOOK_SECRET },
+    wechat: { mchId: env.BB_WECHAT_MCH_ID, apiV3Key: env.BB_WECHAT_API_V3_KEY },
+    stripe: { secretKey: env.BB_STRIPE_SECRET_KEY, webhookSecret: env.BB_STRIPE_WEBHOOK_SECRET },
   };
 }
 
@@ -103,7 +103,7 @@ function readCredentials(env: BillingEnv) {
  * `createReceiptVerifier` and, deliberately, the same fail-closed rules:
  *
  *   1. Under `NODE_ENV=production` the dev platform is off, full stop, because
- *      `devStubEnabled` says so before `DDU_BILLING_DEV_STUB` is read.
+ *      `devStubEnabled` says so before `BB_BILLING_DEV_STUB` is read.
  *   2. A platform with no credentials REFUSES rather than returning an empty list. That is
  *      the rule with teeth here: an empty list is not a neutral answer to "what did you
  *      charge" — it would make every local order look like one the platform never saw, or,

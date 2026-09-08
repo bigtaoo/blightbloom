@@ -37,7 +37,7 @@ import { MAX_REPORT_KEY_LENGTH, postReport } from '../src/routes/rating';
 import { RatingStore, type ApplyMatchOnceResult, type RatingChange } from '../src/rating';
 import { openDb } from '../src/db';
 
-/** `config.ts`'s dev fallback, which is what an unset `DDU_INTERNAL_KEY` yields under test. */
+/** `config.ts`'s dev fallback, which is what an unset `BB_INTERNAL_KEY` yields under test. */
 const DEV_INTERNAL_KEY = 'dev-insecure-internal-key-do-not-use-in-prod';
 
 interface ReportBody {

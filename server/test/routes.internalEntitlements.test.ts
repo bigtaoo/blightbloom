@@ -40,7 +40,7 @@ let baseUrl: string;
 let accountId: string;
 
 beforeEach(async () => {
-  vi.stubEnv('DDU_INTERNAL_KEY', KEY);
+  vi.stubEnv('BB_INTERNAL_KEY', KEY);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});

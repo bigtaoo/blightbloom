@@ -28,7 +28,7 @@ export class BillingStartupError extends Error {
 }
 
 /** The dev flags that must never be set on a production billing box. */
-const DEV_ONLY_FLAGS = ['DDU_BILLING_DEV_STUB'] as const;
+const DEV_ONLY_FLAGS = ['BB_BILLING_DEV_STUB'] as const;
 
 /**
  * Throws `BillingStartupError` if this looks like a production deployment with any

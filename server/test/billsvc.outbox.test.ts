@@ -36,7 +36,7 @@ import {
 } from '../src/billsvc/outbox';
 
 const SKU = 'bp.cannon';
-const STUB = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+const STUB = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
 
 let db: DatabaseSync;
 let ids = 0;
@@ -202,7 +202,7 @@ describe('createOutboxDelivery', () => {
   it('survives the process that wrote it — a pending row is still owed by the next connection', async () => {
     // The ONLY reason this table exists. Everything else here could be done with a variable;
     // this cannot, and `:memory:` cannot show it.
-    const dir = mkdtempSync(join(tmpdir(), 'ddu-outbox-'));
+    const dir = mkdtempSync(join(tmpdir(), 'bb-outbox-'));
     tmpDirs.push(dir);
     const path = join(dir, 'billing.db');
 

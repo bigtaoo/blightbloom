@@ -1,5 +1,9 @@
 import type { RoomPiece } from '@dd/engine';
 
+// Kept on the `ddu-` codename prefix on purpose, the same rule the 2026-09-06 rename
+// applied to `daydayup.*` (roadmap/39): this string is MATCHED against a key already in a
+// designer's browser, so renaming it silently drops their unsaved draft rather than
+// renaming anything. A human never reads it.
 const AUTOSAVE_PREFIX = 'ddu-mapeditor:room:';
 
 /** In-memory editing state for one RoomPiece document, plus a localStorage

@@ -1,5 +1,9 @@
 import type { ArenaMap } from '@dd/engine/content/arenas';
 
+// Kept on the `ddu-` codename prefix on purpose, the same rule the 2026-09-06 rename
+// applied to `daydayup.*` (roadmap/39): this string is MATCHED against a key already in a
+// designer's browser, so renaming it silently drops their unsaved draft rather than
+// renaming anything. A human never reads it.
 const AUTOSAVE_KEY = 'ddu-mapeditor:arena:draft';
 
 /** In-memory editing state for the (single, per plan) open ArenaMap document,

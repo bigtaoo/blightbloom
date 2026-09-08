@@ -16,7 +16,7 @@ import { SNAPSHOT_RE, snapshotDatabase, snapshotName, sourceStem } from '../src/
 const dirs: string[] = [];
 
 function tmp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), `ddu-${prefix}-`));
+  const dir = mkdtempSync(join(tmpdir(), `bb-${prefix}-`));
   dirs.push(dir);
   return dir;
 }

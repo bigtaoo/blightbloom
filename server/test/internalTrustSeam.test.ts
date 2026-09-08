@@ -33,7 +33,7 @@ import { INTERNAL_CALLER_HEADER, INTERNAL_KEY_HEADER } from '../src/internalAuth
 import { postReport } from '../src/routes/rating';
 import type { RatingStore } from '../src/rating';
 
-/** `config.ts`'s dev fallback, which is what an unset `DDU_INTERNAL_KEY` yields under test. */
+/** `config.ts`'s dev fallback, which is what an unset `BB_INTERNAL_KEY` yields under test. */
 const DEV_INTERNAL_KEY = 'dev-insecure-internal-key-do-not-use-in-prod';
 
 let baseUrl: string;

@@ -16,7 +16,7 @@ import { openDb, defaultDbPath } from '../src/db';
 
 const tmpDirs: string[] = [];
 function tmpPath(name: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ddu-billing-'));
+  const dir = mkdtempSync(join(tmpdir(), 'bb-billing-'));
   tmpDirs.push(dir);
   return join(dir, name);
 }
@@ -183,18 +183,18 @@ describe('the NOT NULL columns the §4 rules rest on', () => {
 });
 
 describe('defaultBillingDbPath', () => {
-  it('honours DDU_BILLING_DB_PATH', () => {
-    vi.stubEnv('DDU_BILLING_DB_PATH', 'C:/tmp/whatever/bill.db');
+  it('honours BB_BILLING_DB_PATH', () => {
+    vi.stubEnv('BB_BILLING_DB_PATH', 'C:/tmp/whatever/bill.db');
     expect(defaultBillingDbPath()).toBe('C:/tmp/whatever/bill.db');
   });
 
-  it('ignores an empty DDU_BILLING_DB_PATH rather than opening a file named ""', () => {
-    vi.stubEnv('DDU_BILLING_DB_PATH', '');
+  it('ignores an empty BB_BILLING_DB_PATH rather than opening a file named ""', () => {
+    vi.stubEnv('BB_BILLING_DB_PATH', '');
     expect(defaultBillingDbPath()).toContain('billing.db');
   });
 
   it('falls back to a billing.db under the package data dir', () => {
-    vi.stubEnv('DDU_BILLING_DB_PATH', '');
+    vi.stubEnv('BB_BILLING_DB_PATH', '');
     const path = defaultBillingDbPath().split('\\').join('/');
     expect(path.endsWith('/data/billing.db')).toBe(true);
   });
@@ -202,11 +202,11 @@ describe('defaultBillingDbPath', () => {
   it('never collides with the account DB, on either the env path or the default', () => {
     // The variable names differ on purpose: one operator setting one variable must not be
     // able to point both planes at one file.
-    vi.stubEnv('DDU_BILLING_DB_PATH', '');
-    vi.stubEnv('DDU_DB_PATH', '');
+    vi.stubEnv('BB_BILLING_DB_PATH', '');
+    vi.stubEnv('BB_DB_PATH', '');
     expect(defaultBillingDbPath()).not.toBe(defaultDbPath());
 
-    vi.stubEnv('DDU_DB_PATH', 'C:/tmp/accounts.db');
+    vi.stubEnv('BB_DB_PATH', 'C:/tmp/accounts.db');
     expect(defaultBillingDbPath()).not.toBe(defaultDbPath());
   });
 });

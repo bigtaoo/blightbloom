@@ -5,12 +5,12 @@
  *
  * TWO DATABASES, OPENED DIFFERENTLY ON PURPOSE:
  *
- *   the ACCOUNT file (`DDU_DB_PATH`)      opened READ-ONLY. `entitlements` is the table this
+ *   the ACCOUNT file (`BB_DB_PATH`)      opened READ-ONLY. `entitlements` is the table this
  *                                         audit is judging, and the whole posture is that it
  *                                         observes and files — so it must not hold a
  *                                         connection that could change what it is looking at.
  *                                         SQLite enforces that; a comment would not.
- *   the BILLING file (`DDU_BILLING_DB_PATH`) opened read-write, for `review_queue` alone.
+ *   the BILLING file (`BB_BILLING_DB_PATH`) opened read-write, for `review_queue` alone.
  *
  * design/19 §7 rules out an admin service, so this is a script rather than a route — and it is
  * deliberately NOT mounted on matchsvc, which is a parallel workstream's file. All the logic is
@@ -44,7 +44,7 @@ const args = Object.fromEntries(
     }),
 );
 
-const threshold = Number(args.threshold ?? process.env.DDU_GRANT_AUDIT_THRESHOLD ?? DEFAULT_GRANT_THRESHOLD);
+const threshold = Number(args.threshold ?? process.env.BB_GRANT_AUDIT_THRESHOLD ?? DEFAULT_GRANT_THRESHOLD);
 if (!Number.isInteger(threshold) || threshold < 0) throw new Error(`--threshold must be a non-negative integer`);
 
 const days = Number(args.days ?? 1);
@@ -59,7 +59,7 @@ const first = args.day ?? dayKeyOf(dayWindow(endDayKey).sinceMs - (days - 1) * 8
 const sinceMs = dayWindow(first).sinceMs;
 const untilMs = args.day ? dayWindow(args.day).untilMs : dayWindow(endDayKey).untilMs;
 
-const accounts = new DatabaseSync(process.env.DDU_DB_PATH ?? defaultDbPath(), { readOnly: true });
+const accounts = new DatabaseSync(process.env.BB_DB_PATH ?? defaultDbPath(), { readOnly: true });
 const billing = openBillingDb();
 try {
   const rows = readGrantsInWindow(accounts, sinceMs, untilMs);

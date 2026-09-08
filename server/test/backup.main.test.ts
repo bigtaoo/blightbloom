@@ -16,7 +16,7 @@ import { readBackupConfig } from '../src/backup/config';
 
 const dirs: string[] = [];
 function tmp(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ddu-backup-main-'));
+  const dir = mkdtempSync(join(tmpdir(), 'bb-backup-main-'));
   dirs.push(dir);
   return dir;
 }
@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 function env(destDir: string): NodeJS.ProcessEnv {
-  return { DDU_DB_PATH: '/sources/matchsvc/accounts.db', DDU_BACKUP_DIR: destDir, DDU_BACKUP_INTERVAL_HOURS: '24' };
+  return { BB_DB_PATH: '/sources/matchsvc/accounts.db', BB_BACKUP_DIR: destDir, BB_BACKUP_INTERVAL_HOURS: '24' };
 }
 
 describe('healthExitCode', () => {

@@ -149,7 +149,7 @@ export function openDb(path: string = defaultDbPath()): DatabaseSync {
  *  `daydayup-*`, on purpose: those are matched by something outside this repo (a deployed
  *  volume, a monitor), so renaming them is a migration, not a rename. Display text moved. */
 export function defaultDbPath(): string {
-  const env = process.env.DDU_DB_PATH;
+  const env = process.env.BB_DB_PATH;
   if (env && env.length > 0) return env;
   const here = dirname(fileURLToPath(import.meta.url));
   return join(here, '../data/daydayup.db');

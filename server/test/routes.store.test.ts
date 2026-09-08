@@ -346,7 +346,7 @@ describe('store proxy — when the billing plane does not answer', () => {
 
   it('NEVER relays billsvc\'s 401 — a rejected internal key is our misconfiguration, not a bad session', async () => {
     // The mapping that matters most. A relayed 401 reads to `net/billing.ts` as an expired
-    // session, so a deploy that forgot DDU_INTERNAL_KEY would present to every player as a
+    // session, so a deploy that forgot BB_INTERNAL_KEY would present to every player as a
     // login problem and to no operator as anything at all.
     for (const status of [401, 403]) {
       const p = plane({ status, body: JSON.stringify({ error: 'unauthorized' }) });
@@ -355,7 +355,7 @@ describe('store proxy — when the billing plane does not answer', () => {
       expect(parsed(sent).error).toBe('store temporarily unavailable');
     }
     expect(error).toHaveBeenCalledTimes(2);
-    expect(String(error.mock.calls[0]?.[0])).toContain('DDU_INTERNAL_KEY');
+    expect(String(error.mock.calls[0]?.[0])).toContain('BB_INTERNAL_KEY');
   });
 
   it('turns a 2xx that is not JSON into 502 rather than an empty envelope', async () => {
@@ -405,8 +405,8 @@ describe('store proxy — the uninjected configuration', () => {
   it('reads the plane URL, the shared key and the caller name from config.ts', async () => {
     // Every case above pins `billing`, which is exactly how a config default goes untested.
     // This one injects only `fetchImpl`, so the other three fields come from the real path.
-    vi.stubEnv('DDU_BILLSVC_URL', 'http://bill.example:9999');
-    vi.stubEnv('DDU_INTERNAL_KEY', 'real-key');
+    vi.stubEnv('BB_BILLSVC_URL', 'http://bill.example:9999');
+    vi.stubEnv('BB_INTERNAL_KEY', 'real-key');
     const p = plane(json({ skus: [] }));
     const { res, sent } = fakeRes();
     getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
@@ -425,7 +425,7 @@ describe('store proxy — the uninjected configuration', () => {
     // The production fail-closed branch (`config.ts`): billsvc then refuses with a logged
     // reason, which this proxy turns into a 502 and an operator-facing error.
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('DDU_INTERNAL_KEY', '');
+    vi.stubEnv('BB_INTERNAL_KEY', '');
     const p = plane({ status: 401, body: JSON.stringify({ error: 'unauthorized' }) });
     const { res, sent } = fakeRes();
     getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {

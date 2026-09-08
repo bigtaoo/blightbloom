@@ -75,8 +75,31 @@ browser `ERR_SSL_...` with nothing useful in the server logs (deutsch hit this f
 Generate once, keep in a local `server/.env` (never committed — see `.env.example`):
 
 ```bash
-openssl rand -hex 32   # DDU_TICKET_SECRET
-openssl rand -hex 32   # DDU_INTERNAL_KEY
+openssl rand -hex 32   # BB_TICKET_SECRET
+openssl rand -hex 32   # BB_INTERNAL_KEY
+```
+
+#### Renaming an existing box's `.env` (`DDU_*` → `BB_*`, 2026-09-08)
+
+The env prefix moved with the game's name, and `.env` is the ONE file CI never ships (see
+`ci-deploy.sh`) — so a box provisioned before this rename still holds `DDU_TICKET_SECRET` /
+`DDU_INTERNAL_KEY`, and nothing in the repo can fix that for it. Left undone, the deploy that
+carries the rename is not loud: `BB_TICKET_SECRET` unset falls back to the **well-known dev
+secret** (a live-server security downgrade that only warns), and `BB_INTERNAL_KEY` unset under
+`NODE_ENV=production` fails closed, so rating reports and the store proxy start being rejected.
+
+Do it **before** merging the rename, and add rather than replace — a `.env` carrying both
+prefixes is read correctly by both the old code and the new, which is what makes this a
+zero-downtime step instead of a window:
+
+```bash
+ssh wnet-server "cd ~/wnet-test && sed -n 's/^DDU_/BB_/p' .env >> .env && grep -c '^BB_' .env"
+```
+
+Then merge, let the deploy land, confirm `/health`, and only then drop the old lines:
+
+```bash
+ssh wnet-server "cd ~/wnet-test && sed -i '/^DDU_/d' .env && docker compose up -d"
 ```
 
 ---

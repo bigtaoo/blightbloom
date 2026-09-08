@@ -130,7 +130,7 @@ is a test asserting exactly the trap: `differenceCount === 0` **and** `complete 
 **The dev platform's order book is authored, never derived.** `DevStubOrderBook` reads nothing from
 billsvc's tables. A dev platform computed from local `orders` could only ever report zero
 differences — a reconciliation that passes by construction, which is worse than none because it
-looks like evidence. It is seeded from `DDU_BILLING_DEV_ORDERS` (a JSON array), and
+looks like evidence. It is seeded from `BB_BILLING_DEV_ORDERS` (a JSON array), and
 `fromJson` **throws** on a malformed entry rather than skipping it: a skipped row would surface as
 a `local-not-on-platform` finding, inventing evidence out of a typo in the harness input.
 

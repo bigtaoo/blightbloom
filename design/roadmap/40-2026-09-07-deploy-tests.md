@@ -93,7 +93,7 @@ bytes can change without a commit, which is what makes a rollback meaningless); 
 Node major must be at least `build.mjs`'s `target`; every compose env var must be a name `src/`
 actually reads; neither credential may be inlined where `env_file: .env` is the mechanism; each
 service must expose and healthcheck **its own** port; and every internal `http://` URL must name
-a real service at the port that service listens on, while `DDU_GAMESERVER_URL` must be the
+a real service at the port that service listens on, while `BB_GAMESERVER_URL` must be the
 `wss://` public address and must NOT resolve to a container.
 
 Two of those are the ones a percentage could never reach. A **renamed env var** leaves compose

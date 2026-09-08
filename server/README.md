@@ -35,7 +35,7 @@ pure core + the shared ticket module:
 | `src/rating.ts` / `src/ladderReport.ts` | The ladder: Elo-ish squad-aware deltas, the store, and the pure placement→rank conversion. `applyMatchOnce` claims `rating_reports.report_key` (`ON CONFLICT DO NOTHING` + `changes()`) inside the same `BEGIN IMMEDIATE` that writes `ratings`, which is what makes the at-least-once settlement report exactly-once (design/19 §3). | no | ✅ `test/rating.test.ts`, `test/ladderReport.test.ts`, `test/ratingReportOnce.test.ts` |
 | `src/EntitlementService.ts` | Server-owned blueprint/character ownership (design/19 §2, ROADMAP 8.2) — the reason `/account/meta` is no longer a blind whole-blob upsert. Grant is `ON CONFLICT DO NOTHING` + `changes`, so an at-least-once delivery is idempotent. | no | ✅ `test/EntitlementService.test.ts` |
 | `src/routes/internalEntitlements.ts` | `POST /internal/entitlements/grant` (8.7) — the ONLY caller of `EntitlementService.grant`, behind `internalAuth`. billsvc's delivery pump is what calls it. A 4xx here is read as terminal by that pump, so every refusal has to be one the same bytes would earn again. | no | ✅ `test/routes.internalEntitlements.test.ts` |
-| `src/config.ts`      | The one place that reads `DDU_TICKET_SECRET`, `DDU_INTERNAL_KEY`, `DDU_MATCHSVC_URL` and `DDU_BILLSVC_URL` (env), so all three planes agree on each. | env | ✅ `test/config.test.ts` + `test/config.internalKeys.test.ts` |
+| `src/config.ts`      | The one place that reads `BB_TICKET_SECRET`, `BB_INTERNAL_KEY`, `BB_MATCHSVC_URL` and `BB_BILLSVC_URL` (env), so all three planes agree on each. | env | ✅ `test/config.test.ts` + `test/config.internalKeys.test.ts` |
 | `src/internalAuth.ts` | Inbound service-to-service auth (ROADMAP 8.1): `x-internal-key` against a per-caller registry, hashed before `timingSafeEqual`. A THIRD credential namespace — never a player token. | no | ✅ `test/internalAuth.test.ts`, `test/internalTrustSeam.test.ts` |
 | `src/internalFetch.ts` | Outbound service-to-service calls: always drains the response body, explicit per-attempt timeout, opt-in bounded retry. `collectBody`/`internalFetchJson` READ the body instead of cancelling it — the same drain obligation, for the one caller that needs the bytes. | no | ✅ `test/internalFetch.test.ts` |
 | `src/routes/store.ts` | `/store/skus`, `/store/order`, `/store/order/:id` (8.8) — matchsvc's proxy in front of billsvc, and the one file where the two credential namespaces meet. Verifies the player's bearer session locally, then forwards over `internalFetch` with the accountId **that session** named. `GET /store/order/:id` is narrowed to the caller's own account (billsvc does not check ownership) and billsvc's 401 becomes a 502, never a relayed 401. | net | ✅ `test/routes.store.test.ts`, `test/store.proxy.http.test.ts` |
@@ -44,7 +44,7 @@ pure core + the shared ticket module:
 
 | File | Role | I/O? | Tested |
 |------|------|------|--------|
-| `src/billingDb.ts` | billsvc's OWN SQLite file (`DDU_BILLING_DB_PATH`): `orders`/`receipts`/append-only `ledger`/`deliveries`, plus 8.5's `webhook_events`/`review_queue`. Six tables, and a test asserts exactly those and no more. Deliberately NOT `db.ts`'s `openDb` — money gets its own file, and a shared opener is how that gets undone. | file | ✅ `test/billingDb.test.ts` |
+| `src/billingDb.ts` | billsvc's OWN SQLite file (`BB_BILLING_DB_PATH`): `orders`/`receipts`/append-only `ledger`/`deliveries`, plus 8.5's `webhook_events`/`review_queue`. Six tables, and a test asserts exactly those and no more. Deliberately NOT `db.ts`'s `openDb` — money gets its own file, and a shared opener is how that gets undone. | file | ✅ `test/billingDb.test.ts` |
 | `src/billsvc/BillingService.ts` | The five §4 rules. `settle` claims the receipt row AND the ledger row (`ON CONFLICT DO NOTHING` + `changes()`), then updates the order and grants — one `BEGIN IMMEDIATE`, so a refused grant rolls all of it back. | no | ✅ `test/billsvc.BillingService.test.ts` |
 | `src/billsvc/delivery.ts` | The entitlement seam, called from INSIDE that transaction — synchronous and `void`, so a throw rolls the settlement back. `ledgerOnlyDelivery` is the explicit opt-out, no longer the default. | no | ✅ (above) |
 | `src/billsvc/outbox.ts` | The DURABLE half of the closed loop (8.7): one synchronous INSERT into `deliveries`, in the settlement transaction, keyed on the LEDGER row's id. After the COMMIT the delivery is OWED on disk. | no | ✅ `test/billsvc.outbox.test.ts` |
@@ -91,7 +91,7 @@ read back out of it, then the same bundle is asked for its health verdict the wa
 
 | File | Role | I/O? | Tested |
 |------|------|------|--------|
-| `src/backup/config.ts` | Reads `DDU_DB_PATH` / `DDU_BILLING_DB_PATH` (the SAME names the owning services use) + `DDU_BACKUP_DIR`/`_INTERVAL_HOURS`/`_KEEP`. Mostly refusals: no source, a zero/garbage interval or a source inside the backup directory is a startup error, because a backup worker with nothing to do looks exactly like a working one. An EMPTY var counts as unset. | env | ✅ `test/backup.config.test.ts` |
+| `src/backup/config.ts` | Reads `BB_DB_PATH` / `BB_BILLING_DB_PATH` (the SAME names the owning services use) + `BB_BACKUP_DIR`/`_INTERVAL_HOURS`/`_KEEP`. Mostly refusals: no source, a zero/garbage interval or a source inside the backup directory is a startup error, because a backup worker with nothing to do looks exactly like a working one. An EMPTY var counts as unset. | env | ✅ `test/backup.config.test.ts` |
 | `src/backup/snapshot.ts` | One consistent copy: `VACUUM INTO` through a **read-only** handle (so this process cannot write to a live database), `integrity_check` on the copy, gzip, atomic rename. The timestamp lives in the FILENAME, since a restore or an `rsync -a` rewrites mtimes. | file | ✅ `test/backup.snapshot.test.ts` |
 | `src/backup/prune.ts` | Pure retention: newest N **per source**, and only files matching what `snapshot.ts` writes are ever candidates. The one function here whose bug destroys data rather than failing to protect it. | no | ✅ `test/backup.prune.test.ts` |
 | `src/backup/runner.ts` | One cycle (per-source failures recorded, never thrown, so one bad database cannot cost the other its backup), the `status.json` it publishes atomically, and the health verdict read back off it — unhealthy when any source failed OR the last cycle is too old. | file | ✅ `test/backup.runner.test.ts` |
@@ -153,14 +153,14 @@ ticket**. It then opens the data-plane socket with it: `ws://host:8787/ws?ticket
 The gameserver verifies the ticket and derives the trusted `{roomId, owner, seed,
 playerCount}` from it, so a client can no longer claim another seat or a different seed.
 
-**Ticket secret:** set `DDU_TICKET_SECRET` to the SAME value on both processes for any real
+**Ticket secret:** set `BB_TICKET_SECRET` to the SAME value on both processes for any real
 deployment — then a valid ticket is mandatory (invalid/absent → close `4401`). Unset, both
 default to a shared insecure DEV secret (with a warning) and the gameserver *also* still
 accepts the legacy raw-param handshake (`/ws?roomId=..&owner=..&seed=..&count=..`) for local
 manual testing. Where the two services physically deploy is an ops call; the architecture split
 (design/06) is settled.
 
-**Gameserver address (ROADMAP 8.6, design/19 §6):** set `DDU_GAMESERVER_URL` on matchsvc so the
+**Gameserver address (ROADMAP 8.6, design/19 §6):** set `BB_GAMESERVER_URL` on matchsvc so the
 `wsUrl` it returns points at the data plane (default `ws://localhost:8787/ws`). It is read by
 `GameRegistry`, not baked into the ticket — the ticket is a seat authorization and carries no
 topology, so a seat granted while one instance was serving is redeemable against whichever instance
@@ -170,27 +170,27 @@ does not register at all. With no configured address and nothing registered, `/f
 /find/:queueId` and `/resume` answer **503 `{"error":"no gameserver available"}`** rather than
 issuing a ticket with nowhere to redeem it.
 
-**Billing (ROADMAP 8.3/8.4/8.5, design/19 §4/§5/§7):** `DDU_BILLING_DB_PATH` is billsvc's own SQLite
-file and is deliberately a DIFFERENT variable from `DDU_DB_PATH` — one operator setting one
-variable must not be able to point both planes at one file. `DDU_BILLING_DEV_STUB=1` enables the
+**Billing (ROADMAP 8.3/8.4/8.5, design/19 §4/§5/§7):** `BB_BILLING_DB_PATH` is billsvc's own SQLite
+file and is deliberately a DIFFERENT variable from `BB_DB_PATH` — one operator setting one
+variable must not be able to point both planes at one file. `BB_BILLING_DEV_STUB=1` enables the
 `product:<sku>` receipt stub, which is what makes the whole create → pay → callback → delivered
 chain drivable with no merchant account; under `NODE_ENV=production` it is ignored AND the process
 refuses to start with it set. No Apple/Google/WeChat/Stripe credential exists in this project, so
-those adapters return failure rather than granting anything (`DDU_APPLE_SHARED_SECRET`,
-`DDU_GOOGLE_SERVICE_ACCOUNT_JSON` + `DDU_GOOGLE_PACKAGE_NAME`, `DDU_WECHAT_MCH_ID` +
-`DDU_WECHAT_API_V3_KEY`, `DDU_STRIPE_SECRET_KEY` are read but cannot be verified) — and, since
-8.5, cannot be reconciled against either. `DDU_BILLING_DEV_ORDERS` points at a JSON array of
+those adapters return failure rather than granting anything (`BB_APPLE_SHARED_SECRET`,
+`BB_GOOGLE_SERVICE_ACCOUNT_JSON` + `BB_GOOGLE_PACKAGE_NAME`, `BB_WECHAT_MCH_ID` +
+`BB_WECHAT_API_V3_KEY`, `BB_STRIPE_SECRET_KEY` are read but cannot be verified) — and, since
+8.5, cannot be reconciled against either. `BB_BILLING_DEV_ORDERS` points at a JSON array of
 platform orders that becomes the dev platform's own order book, which is what makes reconciliation
 drivable at all with no merchant account; it is deliberately AUTHORED rather than derived from
 `orders`, since a platform side computed from the local side could only ever report zero
-differences. `DDU_GRANT_AUDIT_THRESHOLD` overrides the grant audit's per-account-per-day ceiling
+differences. `BB_GRANT_AUDIT_THRESHOLD` overrides the grant audit's per-account-per-day ceiling
 (default 3; the comparison is `>`, so exactly at it is not an anomaly).
 
-**Internal key (ROADMAP 8.1, design/19 §3):** set `DDU_INTERNAL_KEY` to the SAME value on
+**Internal key (ROADMAP 8.1, design/19 §3):** set `BB_INTERNAL_KEY` to the SAME value on
 all three HTTP processes (the backup worker makes no internal calls and gets none of this), the same way as the ticket secret and for the same reason — it is what the
 gameserver presents on `POST /rating/report` and what billsvc presents on
 `POST /internal/entitlements/grant`, both of which are INTERNAL routes and refuse anything
-else. billsvc also needs `DDU_MATCHSVC_URL` to know where to deliver (default
+else. billsvc also needs `BB_MATCHSVC_URL` to know where to deliver (default
 `http://localhost:8788`); with it wrong or the control plane down, a settled purchase stays
 `pending` in `deliveries` and is retried rather than lost. It is a **third** credential namespace, distinct from player sessions (`Authorization:
 Bearer`) and from the ticket HMAC; an internal route never accepts a player token. Unset, it

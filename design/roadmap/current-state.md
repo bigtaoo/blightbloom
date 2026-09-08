@@ -252,9 +252,16 @@ existed and describes the engine/content state it was written for. Per-item deta
   only in the repo because that script's live copy is hand-installed. Both written up in
   `server/deploy/README.md`; the transferable half is that **CI going green is not evidence a new
   deploy check ran.**
-- **Not yet done, and none of it is code**: the portal upload and its review round trip, a
+- **The server env prefix is `BB_*`, not `DDU_*`** (volume 45). Every name is set in
+  `docker-compose.yml` and rides the deploy, except the two secrets in `.env`, which CI is
+  forbidden to ship — so the live box needs those two lines duplicated under the new prefix by
+  hand (`server/deploy/README.md` §Secrets). Skipping it is not loud: an unset `BB_INTERNAL_KEY`
+  fails closed, but an unset `BB_TICKET_SECRET` falls back to the published dev secret and keeps
+  serving.
+- **Not yet done, and none of it is code**: the two `.env` lines above, the portal upload and its
+  review round trip, a
   registered portal domain (without which banner fill, real ad playback and whether the account
-  module is enabled at all cannot be settled), `DDU_CG_GAME_ID` on the deployed matchsvc, and one
+  module is enabled at all cannot be settled), `BB_CG_GAME_ID` on the deployed matchsvc, and one
   question for the platform — its SDK logs that `getUser` is still in BETA, and the whole
   silent-login path rides on it. What is no longer a gap is the ability to SEE that fail:
   `diagnostics()` reported a broken `getUser` as `guest` until volume 44 gave it a fifth state.

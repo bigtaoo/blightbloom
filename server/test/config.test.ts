@@ -21,7 +21,7 @@
  *     `warnsLazily` below pins the property this relies on: the warning comes from the first
  *     `ticketSecret()` CALL, not from importing the module.
  *  2. **Assertions are about the ticket warning, not about console traffic in general.**
- *     `ticketWarnings()` filters to calls that actually mention `DDU_TICKET_SECRET`, so an
+ *     `ticketWarnings()` filters to calls that actually mention `BB_TICKET_SECRET`, so an
  *     unrelated warning from anywhere can neither fail a "does not warn" case nor pad the
  *     count in a "warns once" case.
  *  3. **The cold import is paid in `beforeAll`, not by whichever `it` runs first** — see the
@@ -31,11 +31,11 @@
 import { describe, it, expect, vi, beforeAll, afterEach, type MockInstance } from 'vitest';
 
 const DEV_SECRET = 'dev-insecure-secret-do-not-use-in-prod';
-const ORIGINAL_ENV = process.env.DDU_TICKET_SECRET;
+const ORIGINAL_ENV = process.env.BB_TICKET_SECRET;
 
 afterEach(() => {
-  if (ORIGINAL_ENV === undefined) delete process.env.DDU_TICKET_SECRET;
-  else process.env.DDU_TICKET_SECRET = ORIGINAL_ENV;
+  if (ORIGINAL_ENV === undefined) delete process.env.BB_TICKET_SECRET;
+  else process.env.BB_TICKET_SECRET = ORIGINAL_ENV;
   vi.restoreAllMocks();
 });
 
@@ -79,19 +79,19 @@ async function freshConfig(): Promise<{
 /** Only the warnings this module is responsible for. Anything else on `console.warn` is
  *  somebody else's and must not move these assertions either way. */
 function ticketWarnings(warn: MockInstance<typeof console.warn>): string[] {
-  return warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('DDU_TICKET_SECRET'));
+  return warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('BB_TICKET_SECRET'));
 }
 
 describe('ticketSecret — real secret configured', () => {
   it('returns the env secret with isDev:false, and never warns', async () => {
-    process.env.DDU_TICKET_SECRET = 'a-real-production-secret';
+    process.env.BB_TICKET_SECRET = 'a-real-production-secret';
     const { ticketSecret, warn } = await freshConfig();
     expect(ticketSecret()).toEqual({ secret: 'a-real-production-secret', isDev: false });
     expect(ticketWarnings(warn)).toEqual([]);
   });
 
   it('repeated calls keep returning the same real secret, still without warning', async () => {
-    process.env.DDU_TICKET_SECRET = 'a-real-production-secret';
+    process.env.BB_TICKET_SECRET = 'a-real-production-secret';
     const { ticketSecret, warn } = await freshConfig();
     ticketSecret();
     ticketSecret();
@@ -118,17 +118,17 @@ describe('ticketSecret — real secret configured', () => {
  */
 describe('ticketSecret — env is read per call, not captured at import', () => {
   it('honours a secret set AFTER the module was imported', async () => {
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
     const { ticketSecret, warn } = await freshConfig();
-    process.env.DDU_TICKET_SECRET = 'set-after-the-import';
+    process.env.BB_TICKET_SECRET = 'set-after-the-import';
     expect(ticketSecret()).toEqual({ secret: 'set-after-the-import', isDev: false });
     expect(ticketWarnings(warn)).toEqual([]);
   });
 
   it('falls back and warns when the secret is removed AFTER the import', async () => {
-    process.env.DDU_TICKET_SECRET = 'set-before-the-import';
+    process.env.BB_TICKET_SECRET = 'set-before-the-import';
     const { ticketSecret, warn } = await freshConfig();
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
     expect(ticketSecret()).toEqual({ secret: DEV_SECRET, isDev: true });
     expect(ticketWarnings(warn)).toHaveLength(1);
   });
@@ -136,26 +136,26 @@ describe('ticketSecret — env is read per call, not captured at import', () => 
 
 describe('ticketSecret — unset (dev fallback)', () => {
   it('falls back to the hard-coded dev secret with isDev:true, and warns once', async () => {
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
     const { ticketSecret, warn } = await freshConfig();
     expect(ticketSecret()).toEqual({ secret: DEV_SECRET, isDev: true });
     const warnings = ticketWarnings(warn);
     expect(warnings).toHaveLength(1);
     // The message has to name the variable AND say what to do about it — this is the only
     // signal an operator gets that they are signing tickets with a public secret.
-    expect(warnings[0]).toContain('DDU_TICKET_SECRET');
+    expect(warnings[0]).toContain('BB_TICKET_SECRET');
     expect(warnings[0]).toContain('insecure');
   });
 
   it('treats an empty-string env var the same as unset', async () => {
-    process.env.DDU_TICKET_SECRET = '';
+    process.env.BB_TICKET_SECRET = '';
     const { ticketSecret, warn } = await freshConfig();
     expect(ticketSecret()).toEqual({ secret: DEV_SECRET, isDev: true });
     expect(ticketWarnings(warn)).toHaveLength(1);
   });
 
   it('warns only ONCE across many repeated calls (module-scope `warned` guard)', async () => {
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
     const { ticketSecret, warn } = await freshConfig();
     for (let i = 0; i < 5; i++) {
       expect(ticketSecret()).toEqual({ secret: DEV_SECRET, isDev: true });
@@ -164,7 +164,7 @@ describe('ticketSecret — unset (dev fallback)', () => {
   });
 
   it('a fresh module instance (vi.resetModules) gets its own independent warned flag', async () => {
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
 
     const first = await freshConfig();
     first.ticketSecret();
@@ -182,7 +182,7 @@ describe('ticketSecret — unset (dev fallback)', () => {
     // The property rule 1 in this file's header depends on. If the warning ever moves to
     // module scope, every spy-after-import assertion above would silently stop observing it,
     // so pin it explicitly rather than letting those cases quietly go vacuous.
-    delete process.env.DDU_TICKET_SECRET;
+    delete process.env.BB_TICKET_SECRET;
     vi.resetModules();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { ticketSecret } = await import('../src/config');

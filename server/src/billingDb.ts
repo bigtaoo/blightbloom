@@ -203,12 +203,12 @@ export function openBillingDb(path: string = defaultBillingDbPath()): DatabaseSy
 }
 
 /**
- * `DDU_BILLING_DB_PATH`, or a `data/billing.db` sibling of the account DB's own default.
+ * `BB_BILLING_DB_PATH`, or a `data/billing.db` sibling of the account DB's own default.
  * Distinct env var on purpose — pointing both planes at one file by setting one variable
  * is the failure this separation exists to prevent.
  */
 export function defaultBillingDbPath(): string {
-  const env = process.env.DDU_BILLING_DB_PATH;
+  const env = process.env.BB_BILLING_DB_PATH;
   if (env && env.length > 0) return env;
   const here = dirname(fileURLToPath(import.meta.url));
   return join(here, '../data/billing.db');

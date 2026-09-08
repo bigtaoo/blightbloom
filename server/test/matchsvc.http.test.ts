@@ -21,7 +21,7 @@ let close: () => Promise<void>;
 /**
  * `POST /rating/report` is an INTERNAL route since ROADMAP 8.1 (design/19's D1) — the
  * gameserver is the only legitimate caller, and it presents `config.ts`'s key. With
- * `DDU_INTERNAL_KEY` unset (as under test) that is the published dev fallback, spelled out
+ * `BB_INTERNAL_KEY` unset (as under test) that is the published dev fallback, spelled out
  * here rather than imported so this file states the credential it is using. The refusal
  * cases for this header live in `internalTrustSeam.test.ts`; what these cases still own is
  * the route's own request/response contract, which the key does not change.

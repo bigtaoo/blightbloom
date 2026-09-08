@@ -19,7 +19,7 @@ let tempDir: string | undefined;
 let openDbs: DatabaseSync[] = [];
 
 function fileDb(): DatabaseSync {
-  tempDir ??= mkdtempSync(join(tmpdir(), 'ddu-rating-'));
+  tempDir ??= mkdtempSync(join(tmpdir(), 'bb-rating-'));
   const db = openDb(join(tempDir, 'ratings.db'));
   openDbs.push(db);
   return db;

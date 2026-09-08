@@ -14,12 +14,12 @@
  * Google, WeChat or Stripe (design/19 §9), so those four ports return not-implemented and land
  * in `unreconciled`. The run then prints INCOMPLETE, which is the honest answer and not a
  * failure of this script. The `dev` platform is the one that can genuinely reconcile, against
- * the order book named by `DDU_BILLING_DEV_ORDERS` — a JSON array of `PlatformOrder`, authored
+ * the order book named by `BB_BILLING_DEV_ORDERS` — a JSON array of `PlatformOrder`, authored
  * rather than derived from the local tables, which is what makes a difference it reports mean
  * something.
  *
- * Environment: `DDU_BILLING_DB_PATH` (the billing file), `DDU_BILLING_DEV_STUB` (must be on for
- * the dev platform to answer at all), `DDU_BILLING_DEV_ORDERS` (path to the dev order book).
+ * Environment: `BB_BILLING_DB_PATH` (the billing file), `BB_BILLING_DEV_STUB` (must be on for
+ * the dev platform to answer at all), `BB_BILLING_DEV_ORDERS` (path to the dev order book).
  */
 import { readFileSync } from 'node:fs';
 import { openBillingDb } from '../src/billingDb';
@@ -45,7 +45,7 @@ const args = Object.fromEntries(
 const days = Number(args.days ?? 1);
 if (!Number.isInteger(days) || days < 1) throw new Error(`--days must be a positive integer, got '${args.days}'`);
 
-const bookPath = process.env.DDU_BILLING_DEV_ORDERS;
+const bookPath = process.env.BB_BILLING_DEV_ORDERS;
 const book = bookPath ? DevStubOrderBook.fromJson(readFileSync(bookPath, 'utf8')) : undefined;
 
 const db = openBillingDb();

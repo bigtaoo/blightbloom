@@ -15,7 +15,7 @@ RUN npm install --omit=dev
 COPY dist/*.mjs ./
 
 # Data volume mountpoint for matchsvc's accounts.db / billsvc's billing.db
-# (DDU_DB_PATH / DDU_BILLING_DB_PATH point here in docker-compose.yml), plus /backups for
+# (BB_DB_PATH / BB_BILLING_DB_PATH point here in docker-compose.yml), plus /backups for
 # the backup worker's own volume — it mounts the two data dirs READ-ONLY and writes only
 # here (src/backup/snapshot.ts). node:22-alpine already ships a non-root `node` user — run
 # as it rather than root.

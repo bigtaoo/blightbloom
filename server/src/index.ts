@@ -8,7 +8,7 @@
  * — issued by the matchmaking control plane (matchsvc.ts). The gameserver derives the
  * trusted `{roomId, owner, seed, playerCount}` from the VERIFIED ticket, never from raw
  * query params, so a client can no longer claim another seat or a different seed.
- * A real `DDU_TICKET_SECRET` makes a valid ticket mandatory (invalid/absent → 4401);
+ * A real `BB_TICKET_SECRET` makes a valid ticket mandatory (invalid/absent → 4401);
  * with no secret set (pure local dev) the legacy raw-param handshake
  * (`/ws?roomId=..&owner=..&seed=..&count=..`) is still accepted for manual testing.
  *
@@ -32,7 +32,7 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 // matchsvc's control-plane URL (design/15, ROADMAP 4.6) — where a settled PvP match's
 // checkpoint-verified placements get reported for ladder rating. Unset in dev = the
 // callback is skipped entirely (see `reportSettledMatch` below), not a hard failure.
-const MATCHSVC_URL = process.env.DDU_MATCHSVC_URL;
+const MATCHSVC_URL = process.env.BB_MATCHSVC_URL;
 
 /**
  * How hard the gameserver tries to land a settlement report (design/19 §3, ROADMAP 8.1).

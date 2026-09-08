@@ -26,7 +26,7 @@ import type { Snapshot } from '../src/backup/snapshot';
 
 const dirs: string[] = [];
 function tmp(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ddu-backup-run-'));
+  const dir = mkdtempSync(join(tmpdir(), 'bb-backup-run-'));
   dirs.push(dir);
   return dir;
 }

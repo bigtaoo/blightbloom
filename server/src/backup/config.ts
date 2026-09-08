@@ -26,12 +26,12 @@ export class BackupConfigError extends Error {
 }
 
 /**
- * The env names this worker reads. `DDU_DB_PATH` / `DDU_BILLING_DB_PATH` are deliberately
+ * The env names this worker reads. `BB_DB_PATH` / `BB_BILLING_DB_PATH` are deliberately
  * the SAME names matchsvc and billsvc use for the databases they own: a backup job that
  * names its sources independently is a job that keeps backing up the old path after a
  * move, and the compose file would then carry two spellings of one fact.
  */
-export const SOURCE_VARS = ['DDU_DB_PATH', 'DDU_BILLING_DB_PATH'] as const;
+export const SOURCE_VARS = ['BB_DB_PATH', 'BB_BILLING_DB_PATH'] as const;
 
 const DEFAULT_DEST = '/backups';
 const DEFAULT_INTERVAL_HOURS = 24;
@@ -79,7 +79,7 @@ export function readBackupConfig(env: NodeJS.ProcessEnv): BackupConfig {
       `no databases to back up: set at least one of ${SOURCE_VARS.join(', ')} (a backup worker with nothing to back up is a silent no-op)`,
     );
   }
-  const destDir = pick(env, 'DDU_BACKUP_DIR') ?? DEFAULT_DEST;
+  const destDir = pick(env, 'BB_BACKUP_DIR') ?? DEFAULT_DEST;
   for (const source of sources) {
     // A snapshot written beside its source would be backed up by the next cycle, and the
     // directory would grow by a copy of a copy every interval.
@@ -90,7 +90,7 @@ export function readBackupConfig(env: NodeJS.ProcessEnv): BackupConfig {
   return {
     sources,
     destDir,
-    intervalMs: positive(env, 'DDU_BACKUP_INTERVAL_HOURS', DEFAULT_INTERVAL_HOURS, false) * 3_600_000,
-    keep: positive(env, 'DDU_BACKUP_KEEP', DEFAULT_KEEP, true),
+    intervalMs: positive(env, 'BB_BACKUP_INTERVAL_HOURS', DEFAULT_INTERVAL_HOURS, false) * 3_600_000,
+    keep: positive(env, 'BB_BACKUP_KEEP', DEFAULT_KEEP, true),
   };
 }

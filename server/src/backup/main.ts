@@ -10,7 +10,7 @@
  *
  * ## Two modes, one bundle
  *
- *   node backup.mjs            the loop: one cycle now, then every DDU_BACKUP_INTERVAL_HOURS
+ *   node backup.mjs            the loop: one cycle now, then every BB_BACKUP_INTERVAL_HOURS
  *   node backup.mjs --health   read status.json, exit 0 if healthy, 1 if not
  *
  * The health mode is what compose's `healthcheck` runs. Putting it in the bundle rather

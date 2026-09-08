@@ -51,7 +51,7 @@ export interface RatingReportBody {
  * through still gets through once per room.
  *
  * What breaks it is the room id not always being ours. `index.ts`'s legacy dev handshake
- * (no `DDU_TICKET_SECRET` configured) takes `roomId` straight off the query string, and the
+ * (no `BB_TICKET_SECRET` configured) takes `roomId` straight off the query string, and the
  * room is destroyed when it settles — so a local `?roomId=dev` can host a second, genuinely
  * different match, and a roomId-only key would silently swallow every settlement after the
  * first. That failure is the one the tests below care about most: double-crediting a match

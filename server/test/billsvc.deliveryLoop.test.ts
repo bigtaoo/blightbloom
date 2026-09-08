@@ -35,7 +35,7 @@ import { deliveryById, pendingDeliveries } from '../src/billsvc/outbox';
 
 const KEY = 'loop-internal-key';
 const SKU = 'bp.cannon';
-const DEV_ENV = { DDU_BILLING_DEV_STUB: '1', DDU_INTERNAL_KEY: KEY };
+const DEV_ENV = { BB_BILLING_DEV_STUB: '1', BB_INTERNAL_KEY: KEY };
 
 let matchsvc: Server;
 let matchUrl: string;
@@ -48,7 +48,7 @@ beforeEach(async () => {
   // Both halves read the SAME env var through DIFFERENT functions — matchsvc's inbound
   // registry via `internalKeys()`, billsvc's outbound key via `sharedInternalKey()`. Pinning
   // the env rather than injecting a verifier is what makes that agreement part of the test.
-  vi.stubEnv('DDU_INTERNAL_KEY', KEY);
+  vi.stubEnv('BB_INTERNAL_KEY', KEY);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -56,7 +56,7 @@ beforeEach(async () => {
   matchsvc = createMatchsvcServer({ dbPath: ':memory:', secret: 'loop-secret' });
   await new Promise<void>((resolve) => matchsvc.listen(0, '127.0.0.1', resolve));
   matchUrl = `http://127.0.0.1:${(matchsvc.address() as AddressInfo).port}`;
-  vi.stubEnv('DDU_MATCHSVC_URL', matchUrl);
+  vi.stubEnv('BB_MATCHSVC_URL', matchUrl);
 
   const registered = await fetch(`${matchUrl}/auth/register`, {
     method: 'POST',
@@ -187,7 +187,7 @@ describe('the entitlement delivery loop', () => {
   });
 
   it('resumes an owed delivery after the BILLSVC PROCESS restarts — the outbox\'s whole reason', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ddu-loop-'));
+    const dir = mkdtempSync(join(tmpdir(), 'bb-loop-'));
     tmpDirs.push(dir);
     const path = join(dir, 'billing.db');
 

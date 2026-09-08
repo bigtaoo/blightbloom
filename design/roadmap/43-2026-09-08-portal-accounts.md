@@ -80,7 +80,7 @@ Three decisions in that module are worth stating because each closes a plausible
   outage, and locking every portal player out for the length of it would be the wrong trade;
   meanwhile a refetch-on-failure would let anyone force an outbound request per bad token, so key
   rotation costs up to one TTL of failed logins instead.
-- **`DDU_CG_GAME_ID` is optional and warned about.** A user token is a bearer credential any game
+- **`BB_CG_GAME_ID` is optional and warned about.** A user token is a bearer credential any game
   on the platform can obtain for the same player, so an unset id means trusting every other
   developer there not to replay one here. It is optional because the id is only knowable after
   registration and a first upload has to work before that — and it is deliberately not defaulted

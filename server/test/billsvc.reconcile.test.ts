@@ -41,7 +41,7 @@ import {
 
 const SKU = 'bp.cannon';
 const SKU_PRICE = 1800;
-const DEV_ENV = { DDU_BILLING_DEV_STUB: '1' };
+const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 
 let db: DatabaseSync;
 let clock = 1_000;
@@ -320,7 +320,7 @@ describe('the dev platform port', () => {
 
   it('refuses in production even with the flag set and a book present', async () => {
     const lister = createPlatformOrderLister(
-      { NODE_ENV: 'production', DDU_BILLING_DEV_STUB: '1' },
+      { NODE_ENV: 'production', BB_BILLING_DEV_STUB: '1' },
       new DevStubOrderBook(),
     );
     expect((await lister('dev', 0, DAY_MS)).ok).toBe(false);
@@ -344,12 +344,12 @@ describe('the dev platform port', () => {
     // lying. Both arms — the missing credential and the unimplemented round trip.
     const bare = createPlatformOrderLister({});
     const configured = createPlatformOrderLister({
-      DDU_APPLE_SHARED_SECRET: 's',
-      DDU_GOOGLE_SERVICE_ACCOUNT_JSON: '{}',
-      DDU_GOOGLE_PACKAGE_NAME: 'p',
-      DDU_WECHAT_MCH_ID: 'm',
-      DDU_WECHAT_API_V3_KEY: 'k',
-      DDU_STRIPE_SECRET_KEY: 'sk',
+      BB_APPLE_SHARED_SECRET: 's',
+      BB_GOOGLE_SERVICE_ACCOUNT_JSON: '{}',
+      BB_GOOGLE_PACKAGE_NAME: 'p',
+      BB_WECHAT_MCH_ID: 'm',
+      BB_WECHAT_API_V3_KEY: 'k',
+      BB_STRIPE_SECRET_KEY: 'sk',
     });
     for (const platform of ['apple', 'google', 'wechat', 'stripe'] as const) {
       const missing = await bare(platform, 0, DAY_MS);
@@ -362,12 +362,12 @@ describe('the dev platform port', () => {
   });
 
   it('google refuses on a missing package name even with the service account present', async () => {
-    const res = await createPlatformOrderLister({ DDU_GOOGLE_SERVICE_ACCOUNT_JSON: '{}' })('google', 0, DAY_MS);
+    const res = await createPlatformOrderLister({ BB_GOOGLE_SERVICE_ACCOUNT_JSON: '{}' })('google', 0, DAY_MS);
     expect(res.ok === false && res.reason).toContain('package name');
   });
 
   it('wechat refuses on a missing APIv3 key even with the merchant id present', async () => {
-    const res = await createPlatformOrderLister({ DDU_WECHAT_MCH_ID: 'm' })('wechat', 0, DAY_MS);
+    const res = await createPlatformOrderLister({ BB_WECHAT_MCH_ID: 'm' })('wechat', 0, DAY_MS);
     expect(res.ok === false && res.reason).toContain('APIv3 key');
   });
 
@@ -383,7 +383,7 @@ describe('the dev platform port', () => {
 
   it('createBillingAdapters builds NO book when the stub is off', () => {
     expect(createBillingAdapters({}).devOrderBook).toBeUndefined();
-    expect(createBillingAdapters({ NODE_ENV: 'production', DDU_BILLING_DEV_STUB: '1' }).devOrderBook).toBeUndefined();
+    expect(createBillingAdapters({ NODE_ENV: 'production', BB_BILLING_DEV_STUB: '1' }).devOrderBook).toBeUndefined();
   });
 });
 

@@ -137,7 +137,7 @@ parameter, and no amount of path rewriting fixes that.
 bearer locally, then do the work with the session's own `accountId`), plus three small pieces
 around it:
 
-- **`config.ts`** gains `billingPlaneUrl()` (`DDU_BILLSVC_URL`, default `http://localhost:8789`,
+- **`config.ts`** gains `billingPlaneUrl()` (`BB_BILLSVC_URL`, default `http://localhost:8789`,
   the exact mirror of `controlPlaneUrl()`) and `INTERNAL_CALLER_MATCHSVC`. billsvc's own
   `INTERNAL_CALLER_CONTROL_PLANE` became an **alias** of that constant rather than a second
   literal — the two label the same hop from its two ends, and an audit line is precisely where a
@@ -181,7 +181,7 @@ around it:
    BEFORE login has to relax this, and that is a product decision.
 4. **billsvc's 401 is NEVER relayed.** The mapping that is easy to get wrong and expensive when
    you do. billsvc refusing our internal key is *our* misconfiguration — an unset
-   `DDU_INTERNAL_KEY` in production, or two processes given different ones. Relayed verbatim it
+   `BB_INTERNAL_KEY` in production, or two processes given different ones. Relayed verbatim it
    reaches `net/billing.ts` as a 401, which every caller reads as "your session is bad": a deploy
    mistake would present to every player as a login problem and to no operator as anything at
    all. It becomes a 502 plus a `console.error` naming the env var. Everything else splits the

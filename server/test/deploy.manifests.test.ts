@@ -180,7 +180,7 @@ describe('the compose reader actually read something', () => {
       // backup directory itself.
       expect(mode === 'ro', parts.join(':')).toBe(host.startsWith('./data/'));
     }
-    expect(services.backup!.env.DDU_BACKUP_DIR).toBe('/backups');
+    expect(services.backup!.env.BB_BACKUP_DIR).toBe('/backups');
     expect(mounts.some((p) => p[0] === './backups' && p[1] === '/backups' && p[2] === undefined)).toBe(true);
   });
 
@@ -284,7 +284,7 @@ describe('compose env vars', () => {
           for (const m of text.matchAll(/\bprocess\.env\.([A-Z][A-Z0-9_]*)/g)) names.add(m[1]!);
           for (const m of text.matchAll(/\benv\.([A-Z][A-Z0-9_]*)/g)) names.add(m[1]!);
           // `startupGuard`'s DEV_ONLY_FLAGS reaches its names through `env[name]`.
-          for (const m of text.matchAll(/'(DDU_[A-Z0-9_]+)'/g)) names.add(m[1]!);
+          for (const m of text.matchAll(/'(BB_[A-Z0-9_]+)'/g)) names.add(m[1]!);
         }
       }
     };
@@ -306,8 +306,8 @@ describe('compose env vars', () => {
     // The ticket secret and the internal-auth key are the two credentials that make every
     // trust boundary in the server real. A tracked compose file is the wrong place for
     // either, and `env_file: .env` (asserted above) is how they arrive instead.
-    expect(compose).not.toContain('DDU_TICKET_SECRET');
-    expect(compose).not.toContain('DDU_INTERNAL_KEY');
+    expect(compose).not.toContain('BB_TICKET_SECRET');
+    expect(compose).not.toContain('BB_INTERNAL_KEY');
   });
 });
 
@@ -344,7 +344,7 @@ describe('ports and internal addresses', () => {
   it('sends clients to the PUBLIC gameserver address, not the container hop', () => {
     // matchsvc mints tickets a browser redeems, so this one is deliberately NOT an internal
     // name — it is the only cross-service URL in the file that must not resolve in Docker.
-    const url = new URL(services.matchsvc!.env.DDU_GAMESERVER_URL!);
+    const url = new URL(services.matchsvc!.env.BB_GAMESERVER_URL!);
     expect(url.protocol).toBe('wss:');
     expect(services[url.hostname]).toBeUndefined();
   });
@@ -357,7 +357,7 @@ describe("billsvc's compose environment against the real startup guard", () => {
     // Not a restatement of the compose file: this feeds the shipped env to the shipped
     // predicate. The deploy runs the dev receipt stub on purpose (no Paddle credential
     // exists yet, design/19 §9), and that is only legal below production.
-    expect(billsvcEnv().DDU_BILLING_DEV_STUB).toBe('1');
+    expect(billsvcEnv().BB_BILLING_DEV_STUB).toBe('1');
     expect(() => assertBillingStartupSafety(billsvcEnv())).not.toThrow();
   });
 

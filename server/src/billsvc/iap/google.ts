@@ -12,9 +12,9 @@
 import { listingUnavailable, missingCredentials, type IapVerifyResult, type PlatformOrderListing } from './types';
 
 export interface GoogleCredentials {
-  /** Service-account JSON (`DDU_GOOGLE_SERVICE_ACCOUNT_JSON`). */
+  /** Service-account JSON (`BB_GOOGLE_SERVICE_ACCOUNT_JSON`). */
   serviceAccountJson?: string;
-  /** Android package name (`DDU_GOOGLE_PACKAGE_NAME`). */
+  /** Android package name (`BB_GOOGLE_PACKAGE_NAME`). */
   packageName?: string;
 }
 

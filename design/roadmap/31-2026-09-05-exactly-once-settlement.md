@@ -77,7 +77,7 @@ room immediately after firing `onSettled` — and `matchsvc.ts` mints room ids w
 `onSettled` → `reportSettledMatch` path and is filtered only by that function's
 `hashOk`/`placements`/`winner` guard, but the filter is per-REPORT, so whatever gets through
 still gets through once per room. What breaks it is that the room id is not always ours:
-`index.ts`'s legacy dev handshake (no `DDU_TICKET_SECRET` configured) reads `roomId` straight
+`index.ts`'s legacy dev handshake (no `BB_TICKET_SECRET` configured) reads `roomId` straight
 off the query string, and the room is gone once it settles — so a local `?roomId=dev` really
 can host a second, genuinely different match, and a roomId-only key would swallow every
 settlement after the first. The key is therefore `{roomId}:{16 hex of sha256 over the

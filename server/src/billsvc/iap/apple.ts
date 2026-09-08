@@ -17,7 +17,7 @@
 import { listingUnavailable, missingCredentials, type IapVerifyResult, type PlatformOrderListing } from './types';
 
 export interface AppleCredentials {
-  /** App Store Connect shared secret (`DDU_APPLE_SHARED_SECRET`). */
+  /** App Store Connect shared secret (`BB_APPLE_SHARED_SECRET`). */
   sharedSecret?: string;
 }
 

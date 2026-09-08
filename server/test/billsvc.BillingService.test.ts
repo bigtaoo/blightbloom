@@ -31,7 +31,7 @@ import type { ReceiptVerifier } from '../src/billsvc/iap/types';
 const SKU = 'bp.cannon'; // 1800 CNY cents in the catalogue
 const OTHER_SKU = 'bp.leech'; // 1800 too, so a mismatch test cannot pass on price alone
 const THIRD_SKU = 'bp.seeker'; // a distinct SKU for the second account, so no receipt is shared
-const STUB = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+const STUB = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
 
 let db: DatabaseSync;
 let ids = 0;

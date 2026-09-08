@@ -79,7 +79,7 @@ function stageDeployDependencies(dir: string): void {
 }
 
 beforeAll(async () => {
-  outdir = mkdtempSync(join(tmpdir(), 'ddu-bundle-'));
+  outdir = mkdtempSync(join(tmpdir(), 'bb-bundle-'));
   built = await buildAll(outdir, 'silent');
   stageDeployDependencies(outdir);
 }, 120_000);
@@ -181,7 +181,7 @@ describe('each bundle boots as a bare node process and answers /health', () => {
     const port = await freePort();
     const body = await boot(join(outdir, 'matchsvc.mjs'), port, {
       MATCH_PORT: String(port),
-      DDU_DB_PATH: join(outdir, 'accounts.db'),
+      BB_DB_PATH: join(outdir, 'accounts.db'),
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-matchsvc' });
   }, 30_000);
@@ -190,8 +190,8 @@ describe('each bundle boots as a bare node process and answers /health', () => {
     const port = await freePort();
     const body = await boot(join(outdir, 'billsvc.mjs'), port, {
       BILL_PORT: String(port),
-      DDU_BILLING_DB_PATH: join(outdir, 'billing.db'),
-      DDU_BILLING_DEV_STUB: '1',
+      BB_BILLING_DB_PATH: join(outdir, 'billing.db'),
+      BB_BILLING_DEV_STUB: '1',
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });
   }, 30_000);
@@ -215,18 +215,18 @@ describe('the backup worker bundle snapshots a real database', () => {
   }
 
   it('writes a verified snapshot, then reports itself healthy', async () => {
-    const sourceDir = mkdtempSync(join(tmpdir(), 'ddu-backup-src-'));
-    const destDir = mkdtempSync(join(tmpdir(), 'ddu-backup-dest-'));
+    const sourceDir = mkdtempSync(join(tmpdir(), 'bb-backup-src-'));
+    const destDir = mkdtempSync(join(tmpdir(), 'bb-backup-dest-'));
     const source = join(sourceDir, 'accounts.db');
     seedDatabase(source);
 
     const env = {
-      DDU_DB_PATH: source,
-      DDU_BACKUP_DIR: destDir,
+      BB_DB_PATH: source,
+      BB_BACKUP_DIR: destDir,
       // Long enough that the loop sleeps after its first cycle instead of racing the
       // assertions below — the cycle this checks is the one it runs immediately at start.
-      DDU_BACKUP_INTERVAL_HOURS: '1',
-      DDU_BACKUP_KEEP: '2',
+      BB_BACKUP_INTERVAL_HOURS: '1',
+      BB_BACKUP_KEEP: '2',
     };
     const child = spawn(process.execPath, [join(outdir, 'backup.mjs')], {
       env: { ...process.env, NODE_ENV: 'development', ...env },
@@ -276,7 +276,7 @@ describe('the backup worker bundle snapshots a real database', () => {
     // the built artifact: exit code 2 and a message, not a container that comes up and
     // backs up nothing.
     const run = spawnSync(process.execPath, [join(outdir, 'backup.mjs')], {
-      env: { ...process.env, DDU_DB_PATH: '', DDU_BILLING_DB_PATH: '', DDU_BACKUP_DIR: outdir },
+      env: { ...process.env, BB_DB_PATH: '', BB_BILLING_DB_PATH: '', BB_BACKUP_DIR: outdir },
       encoding: 'utf8',
       timeout: 10_000,
     });

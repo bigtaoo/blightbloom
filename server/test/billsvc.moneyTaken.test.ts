@@ -24,7 +24,7 @@ import { DeliveryPump } from '../src/billsvc/deliveryPump';
 import { moneyTakenId, openReviews, reviewById } from '../src/billsvc/reviewQueue';
 
 const SKU = 'bp.cannon';
-const STUB = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+const STUB = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
 
 let db: DatabaseSync;
 let clock = 1_000;

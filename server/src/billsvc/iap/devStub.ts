@@ -72,7 +72,7 @@ export class DevStubOrderBook {
    * reconciliation script gets a dev platform to compare against at all: the book is
    * per-process and in-memory, so a script that runs in its own process cannot see the
    * server's, and "authored, not derived" means there is nowhere else for the data to come
-   * from. `DDU_BILLING_DEV_ORDERS` names the file.
+   * from. `BB_BILLING_DEV_ORDERS` names the file.
    *
    * THROWS on anything malformed rather than skipping it. A reconciliation whose platform
    * side silently dropped the rows it could not read would report them as

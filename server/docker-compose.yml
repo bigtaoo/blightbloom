@@ -24,7 +24,7 @@ services:
     environment:
       PORT: "8787"
       NODE_ENV: production
-      DDU_MATCHSVC_URL: http://matchsvc:8788
+      BB_MATCHSVC_URL: http://matchsvc:8788
     expose:
       - "8787"
     networks:
@@ -54,9 +54,9 @@ services:
       NODE_ENV: production
       # Public address a client's issued ticket gets redeemed against — NOT the internal
       # gameserver:8787 hop, this is what the browser itself opens a WebSocket to.
-      DDU_GAMESERVER_URL: wss://bb.gamestao.com/ws
-      DDU_BILLSVC_URL: http://billsvc:8789
-      DDU_DB_PATH: /data/accounts.db
+      BB_GAMESERVER_URL: wss://bb.gamestao.com/ws
+      BB_BILLSVC_URL: http://billsvc:8789
+      BB_DB_PATH: /data/accounts.db
     volumes:
       - ./data/matchsvc:/data
     expose:
@@ -90,8 +90,8 @@ services:
       # dev-stub flag under NODE_ENV=production, full stop, by design. This process is
       # reachable ONLY from matchsvc over the internal network — never through Caddy.
       NODE_ENV: development
-      DDU_BILLING_DEV_STUB: "1"
-      DDU_BILLING_DB_PATH: /data/billing.db
+      BB_BILLING_DEV_STUB: "1"
+      BB_BILLING_DB_PATH: /data/billing.db
     volumes:
       - ./data/billsvc:/data
     expose:
@@ -137,11 +137,11 @@ services:
       NODE_ENV: production
       # Same variable names the owning services use for these files (src/backup/config.ts
       # explains why), pointed at this container's read-only mounts.
-      DDU_DB_PATH: /sources/matchsvc/accounts.db
-      DDU_BILLING_DB_PATH: /sources/billsvc/billing.db
-      DDU_BACKUP_DIR: /backups
-      DDU_BACKUP_INTERVAL_HOURS: "24"
-      DDU_BACKUP_KEEP: "14"
+      BB_DB_PATH: /sources/matchsvc/accounts.db
+      BB_BILLING_DB_PATH: /sources/billsvc/billing.db
+      BB_BACKUP_DIR: /backups
+      BB_BACKUP_INTERVAL_HOURS: "24"
+      BB_BACKUP_KEEP: "14"
     volumes:
       - ./data/matchsvc:/sources/matchsvc:ro
       - ./data/billsvc:/sources/billsvc:ro

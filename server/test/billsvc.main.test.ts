@@ -22,7 +22,7 @@ const handles: BillsvcServer[] = [];
 const dirs: string[] = [];
 
 function tmpDbPath(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ddu-billsvc-main-'));
+  const dir = mkdtempSync(join(tmpdir(), 'bb-billsvc-main-'));
   dirs.push(dir);
   return join(dir, 'billing.db');
 }
@@ -58,11 +58,11 @@ describe('main — the delivery pump', () => {
     // webhook is coming a second time for a purchase that already settled, so if `main` did
     // not arm this sweep nothing ever would.
     const dbPath = tmpDbPath();
-    vi.stubEnv('DDU_BILLING_DB_PATH', dbPath);
+    vi.stubEnv('BB_BILLING_DB_PATH', dbPath);
     // Refused instantly, so the attempt is observable without waiting on a real timeout —
     // and a REFUSED attempt is the strongest evidence available here: it proves the sweep
     // ran and reached the network, which nothing but `start()` could have caused.
-    vi.stubEnv('DDU_MATCHSVC_URL', 'http://127.0.0.1:1');
+    vi.stubEnv('BB_MATCHSVC_URL', 'http://127.0.0.1:1');
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -76,7 +76,7 @@ describe('main — the delivery pump', () => {
       .run();
     seeded.close();
 
-    const handle = await listen({ DDU_BILLING_DEV_STUB: '1' });
+    const handle = await listen({ BB_BILLING_DEV_STUB: '1' });
     await handle.pump.stop(); // awaits the sweep `start()` already kicked off
 
     const row = deliveryById(handle.db, 'purchase:dev:T1')!;
@@ -90,8 +90,8 @@ describe('main — the delivery pump', () => {
 describe('main — the startup refusal', () => {
   it('DEFENCE 2: throws under production with the dev stub flag set', () => {
     const dbPath = tmpDbPath();
-    vi.stubEnv('DDU_BILLING_DB_PATH', dbPath);
-    expect(() => main({ NODE_ENV: 'production', DDU_BILLING_DEV_STUB: '1' }, 0, '127.0.0.1')).toThrow(
+    vi.stubEnv('BB_BILLING_DB_PATH', dbPath);
+    expect(() => main({ NODE_ENV: 'production', BB_BILLING_DEV_STUB: '1' }, 0, '127.0.0.1')).toThrow(
       BillingStartupError,
     );
     // Nothing was opened before the throw: no port bound, no database file created. A
@@ -101,8 +101,8 @@ describe('main — the startup refusal', () => {
 
   it('starts under production when nothing dev-only is set', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.stubEnv('DDU_BILLING_DB_PATH', tmpDbPath());
-    const { server } = await listen({ NODE_ENV: 'production', DDU_INTERNAL_KEY: 'k' });
+    vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
+    const { server } = await listen({ NODE_ENV: 'production', BB_INTERNAL_KEY: 'k' });
     expect((server.address() as AddressInfo).port).toBeGreaterThan(0);
     expect(log).toHaveBeenCalledOnce();
     expect(log.mock.calls[0]![0]).not.toContain('DEV RECEIPT STUB');
@@ -112,19 +112,19 @@ describe('main — the startup refusal', () => {
 describe('main — the listening process', () => {
   it('serves /health on the port it was given', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.stubEnv('DDU_BILLING_DB_PATH', tmpDbPath());
-    const { server } = await listen({ NODE_ENV: 'test', DDU_INTERNAL_KEY: 'k' });
+    vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
+    const { server } = await listen({ NODE_ENV: 'test', BB_INTERNAL_KEY: 'k' });
     const { port } = server.address() as AddressInfo;
     const res = await fetch(`http://127.0.0.1:${port}/health`);
     expect(await res.json()).toEqual({ ok: true, service: 'daydayup-billsvc' });
   });
 
-  it('creates its database at DDU_BILLING_DB_PATH, not at the account DB path', async () => {
+  it('creates its database at BB_BILLING_DB_PATH, not at the account DB path', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const billingPath = tmpDbPath();
     const accountPath = join(dirs[dirs.length - 1]!, 'daydayup.db');
-    vi.stubEnv('DDU_BILLING_DB_PATH', billingPath);
-    vi.stubEnv('DDU_DB_PATH', accountPath);
+    vi.stubEnv('BB_BILLING_DB_PATH', billingPath);
+    vi.stubEnv('BB_DB_PATH', accountPath);
     await listen({ NODE_ENV: 'test' });
     expect(existsSync(billingPath)).toBe(true);
     expect(existsSync(accountPath)).toBe(false);
@@ -134,22 +134,22 @@ describe('main — the listening process', () => {
     // The one banner an operator needs on a box they were not expecting to be a dev box.
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.stubEnv('DDU_BILLING_DB_PATH', tmpDbPath());
-    await listen({ NODE_ENV: 'test', DDU_BILLING_DEV_STUB: '1' });
+    vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
+    await listen({ NODE_ENV: 'test', BB_BILLING_DEV_STUB: '1' });
     expect(log.mock.calls[0]![0]).toContain('DEV RECEIPT STUB ENABLED');
   });
 
   it('logs the database path, so two planes pointed at one file are visible at a glance', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const path = tmpDbPath();
-    vi.stubEnv('DDU_BILLING_DB_PATH', path);
+    vi.stubEnv('BB_BILLING_DB_PATH', path);
     await listen({ NODE_ENV: 'test' });
     expect(log.mock.calls[0]![0]).toContain(path);
   });
 
   it('closes cleanly, so a deploy does not leave the process hanging', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.stubEnv('DDU_BILLING_DB_PATH', tmpDbPath());
+    vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
     const { server, db } = await listen({ NODE_ENV: 'test' });
     handles.pop(); // this case owns the shutdown, so afterEach must not double-close
     await new Promise<void>((resolve) => server.close(() => resolve()));

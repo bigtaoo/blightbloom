@@ -12,9 +12,9 @@
 import { listingUnavailable, missingCredentials, type IapVerifyResult, type PlatformOrderListing } from './types';
 
 export interface StripeCredentials {
-  /** Secret API key (`DDU_STRIPE_SECRET_KEY`). */
+  /** Secret API key (`BB_STRIPE_SECRET_KEY`). */
   secretKey?: string;
-  /** Webhook signing secret (`DDU_STRIPE_WEBHOOK_SECRET`). */
+  /** Webhook signing secret (`BB_STRIPE_WEBHOOK_SECRET`). */
   webhookSecret?: string;
 }
 

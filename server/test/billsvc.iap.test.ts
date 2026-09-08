@@ -6,7 +6,7 @@
  * the refusals, because every one of them is a branch whose *line* runs on every call
  * while only the taken side is normally exercised:
  *
- *   - `NODE_ENV=production` + `DDU_BILLING_DEV_STUB=1` must be INERT, not enabled. That is
+ *   - `NODE_ENV=production` + `BB_BILLING_DEV_STUB=1` must be INERT, not enabled. That is
  *     one boolean's ordering, and getting it backwards ships a production billing plane
  *     that grants any SKU to anyone who can name it.
  *   - Missing credentials must FAIL, never fall back to the stub. The fallback is the
@@ -133,33 +133,33 @@ describe('devStubEnabled', () => {
   });
 
   it.each([['1'], ['true']])('is on outside production with the flag set to %j', (flag) => {
-    expect(devStubEnabled({ DDU_BILLING_DEV_STUB: flag })).toBe(true);
-    expect(devStubEnabled({ NODE_ENV: 'test', DDU_BILLING_DEV_STUB: flag })).toBe(true);
+    expect(devStubEnabled({ BB_BILLING_DEV_STUB: flag })).toBe(true);
+    expect(devStubEnabled({ NODE_ENV: 'test', BB_BILLING_DEV_STUB: flag })).toBe(true);
   });
 
   it.each([['0'], ['false'], ['yes'], ['on'], ['']])('does not treat %j as on', (flag) => {
-    expect(devStubEnabled({ DDU_BILLING_DEV_STUB: flag })).toBe(false);
+    expect(devStubEnabled({ BB_BILLING_DEV_STUB: flag })).toBe(false);
   });
 
   it('DEFENCE 1: a mis-set flag is inert under NODE_ENV=production', () => {
     // The production check must come FIRST and return without consulting the flag. If this
     // ever flips, a production billing plane hands out any SKU for a `product:` string.
-    expect(devStubEnabled({ NODE_ENV: 'production', DDU_BILLING_DEV_STUB: '1' })).toBe(false);
-    expect(devStubEnabled({ NODE_ENV: 'production', DDU_BILLING_DEV_STUB: 'true' })).toBe(false);
+    expect(devStubEnabled({ NODE_ENV: 'production', BB_BILLING_DEV_STUB: '1' })).toBe(false);
+    expect(devStubEnabled({ NODE_ENV: 'production', BB_BILLING_DEV_STUB: 'true' })).toBe(false);
   });
 });
 
 describe('createReceiptVerifier', () => {
   it('resolves a product: receipt on ANY platform while the stub is on', async () => {
     // This is the property that makes /webhook/apple drivable with no Apple account.
-    const verify = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+    const verify = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
     for (const p of ['apple', 'google', 'wechat', 'stripe', 'dev'] as const) {
       await expect(verify(p, 'product:bp.cannon')).resolves.toEqual({ ok: true, product: 'bp.cannon' });
     }
   });
 
   it('DEFENCE 1, end to end: the same receipt is refused under production', async () => {
-    const verify = createReceiptVerifier({ NODE_ENV: 'production', DDU_BILLING_DEV_STUB: '1' });
+    const verify = createReceiptVerifier({ NODE_ENV: 'production', BB_BILLING_DEV_STUB: '1' });
     for (const p of ['apple', 'google', 'wechat', 'stripe', 'dev'] as const) {
       const r = await verify(p, 'product:bp.cannon');
       expect(r.ok).toBe(false);
@@ -176,7 +176,7 @@ describe('createReceiptVerifier', () => {
   });
 
   it("routes a non-stub receipt to its own platform's adapter, and each fails closed", async () => {
-    const verify = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+    const verify = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
     expect(reason(await verify('apple', 'MIIapple'))).toContain('apple:');
     expect(reason(await verify('google', '{"purchaseToken":"x"}'))).toContain('google:');
     expect(reason(await verify('wechat', '42000'))).toContain('wechat:');
@@ -190,7 +190,7 @@ describe('createReceiptVerifier', () => {
 
   it("the 'dev' platform still validates the prefix when the stub IS enabled", async () => {
     // Reaching the 'dev' case with the stub on means the receipt was malformed for it.
-    const verify = createReceiptVerifier({ DDU_BILLING_DEV_STUB: '1' });
+    const verify = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
     expect(reason(await verify('dev', 'not-a-stub-receipt'))).toContain('not a');
   });
 
@@ -198,12 +198,12 @@ describe('createReceiptVerifier', () => {
     // Constructed under a fully-credentialled env, so each adapter gets past its
     // missing-credential arm and lands on the not-implemented one.
     const verify = createReceiptVerifier({
-      DDU_APPLE_SHARED_SECRET: 's',
-      DDU_GOOGLE_SERVICE_ACCOUNT_JSON: '{}',
-      DDU_GOOGLE_PACKAGE_NAME: 'com.example',
-      DDU_WECHAT_MCH_ID: 'm',
-      DDU_WECHAT_API_V3_KEY: 'k',
-      DDU_STRIPE_SECRET_KEY: 'sk',
+      BB_APPLE_SHARED_SECRET: 's',
+      BB_GOOGLE_SERVICE_ACCOUNT_JSON: '{}',
+      BB_GOOGLE_PACKAGE_NAME: 'com.example',
+      BB_WECHAT_MCH_ID: 'm',
+      BB_WECHAT_API_V3_KEY: 'k',
+      BB_STRIPE_SECRET_KEY: 'sk',
     });
     expect(reason(await verify('apple', 'MII'))).toContain('not implemented');
     expect(reason(await verify('google', '{}'))).toContain('not implemented');

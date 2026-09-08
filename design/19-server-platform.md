@@ -175,7 +175,7 @@ in both directions — an internal route never accepts a player token, and a pla
 trusts an accountId the client asserted — but proxying adds a rule neither end had needed. **A
 peer's 401 must not be relayed to the player.** billsvc refusing our internal key is a
 misconfiguration on our side; forwarded verbatim it reaches the client as "your session is bad",
-so a deploy that missed `DDU_INTERNAL_KEY` would present to every player as a login problem and to
+so a deploy that missed `BB_INTERNAL_KEY` would present to every player as a login problem and to
 no operator as anything at all. It becomes a 502 and an error line naming the variable. The
 outbound helper also grew the one thing a proxy needs that a fire-and-forget caller does not —
 `collectBody`/`internalFetchJson`, which READ the response body rather than cancelling it. That is
@@ -203,10 +203,10 @@ which cannot forget the three things a bare `fetch` forgets:
   measure. Hashing first makes every comparison 32 bytes against 32 bytes, so it neither
   throws nor leaks the length. Without it a wrong-length key is a 500, not a refusal.
 - **An unset key in production yields an EMPTY registry, not the dev key.** `config.ts` gives
-  the internal key the same posture it already gives `DDU_TICKET_SECRET` (real env var →
+  the internal key the same posture it already gives `BB_TICKET_SECRET` (real env var →
   production; unset → a published dev key plus one loud warning, so the two-process local
   setup works out of the box) with exactly one difference: under `NODE_ENV=production` an
-  unset `DDU_INTERNAL_KEY` refuses *every* internal call rather than falling back. A key
+  unset `BB_INTERNAL_KEY` refuses *every* internal call rather than falling back. A key
   printed in this repository is not a weaker credential than none — it is the same one — and
   the fallback would look configured. This is §5's "fail closed in production" rule, which
   that section states for the billing dev stub, reaching one section earlier than expected.
@@ -313,7 +313,7 @@ on 8789 and its routes are `server/src/billsvc/server.ts`. Two amendments the pl
 anticipate are recorded at the end of this section, along with the one thing it left open — which
 closed the next day (2026-09-05, ROADMAP 8.7) and now reads CLOSED rather than open.
 
-Three tables in `billsvc`'s **own** SQLite file (`DDU_BILLING_DB_PATH`), never the account DB —
+Three tables in `billsvc`'s **own** SQLite file (`BB_BILLING_DB_PATH`), never the account DB —
 and never `db.ts`'s `openDb` either, because a shared opener is how a later refactor quietly
 re-merges two files this decision separated on purpose:
 
@@ -480,7 +480,7 @@ secondary branch is the *only* branch and the coin fields do not exist. The port
 simplification, not a translation.
 
 **As shipped, three notes.** The two fail-closed checks deliberately **share no code**:
-`server/src/billsvc/iap/factory.ts` reads `NODE_ENV` before it reads `DDU_BILLING_DEV_STUB`, and
+`server/src/billsvc/iap/factory.ts` reads `NODE_ENV` before it reads `BB_BILLING_DEV_STUB`, and
 `server/src/billsvc/startupGuard.ts` carries its own copy of that three-line predicate. Importing one into the other is the obvious
 tidy-up and it would make both defences one defence with two call sites, which is the failure
 "twice over" exists to survive — so each has a test asserting its own copy. The stub resolves a
@@ -549,7 +549,7 @@ here because they qualify the bullets above.
   `heartbeat()` returns `false` for an unknown id and writes nothing, so the half that can be
   enforced today is.
 
-Also settled here rather than in `config.ts`: `DDU_GAMESERVER_URL`'s default lives in
+Also settled here rather than in `config.ts`: `BB_GAMESERVER_URL`'s default lives in
 `GameRegistry.staticGameserverUrl()`, read per call for the reason `ticketSecret` is. The registry
 owns the topology question, so `config.ts` has no reason to.
 
@@ -609,7 +609,7 @@ records that no merchant account exists on any of the four real platforms, so th
 order list to pull. That is handled the way §5 handled the identical problem for verification:
 "list the platform's recent orders" is an injected PORT (`PlatformOrderLister`), the dev stub
 implements it against an **authored** order book (`DevStubOrderBook`, seeded from
-`DDU_BILLING_DEV_ORDERS`), and the four real adapters each carry the call they would make and
+`BB_BILLING_DEV_ORDERS`), and the four real adapters each carry the call they would make and
 return not-implemented. Two consequences are load-bearing:
 
 - A platform whose port refuses does **not** contribute zero differences — it lands in the
@@ -690,7 +690,7 @@ old — the second is what stops a worker whose loop died after one good cycle f
 green forever off a stale success. That is the container's healthcheck, and `ci-deploy.sh`
 asks for it after `docker compose up`, so a deploy that silently stops backing up fails in
 CI. It also **refuses to start** with no source configured, rather than idling green: an
-empty `DDU_DB_PATH` is treated as unset, which is §9's own env-var trap applied one file over.
+empty `BB_DB_PATH` is treated as unset, which is §9's own env-var trap applied one file over.
 
 **Two limits, stated rather than papered over.** Nothing is copied OFF the box — a snapshot
 beside the database survives every failure this project has actually had and none of the ones

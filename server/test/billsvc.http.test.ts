@@ -26,7 +26,7 @@ import { deliveryById, pendingDeliveries } from '../src/billsvc/outbox';
 
 const KEY = 'test-internal-key';
 /** Drives the receipt-stub policy only. The internal key is pinned as a registry below. */
-const DEV_ENV = { DDU_BILLING_DEV_STUB: '1' };
+const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 /**
  * The internal-key registry, pinned rather than stubbed into `process.env` — which is the
  * seam `internalAuth`'s verifier exists for, and the same thing `routes/rating.ts`'s tests
@@ -192,7 +192,7 @@ describe('billsvc HTTP — the internal-key boundary', () => {
   it('uses the shared ROADMAP 8.1 verifier, so an EMPTY registry refuses everything', async () => {
     // Not a billsvc-local check any more: the same `internalAuth` verifier and the same
     // fail-closed posture as `routes/rating.ts`. An empty registry is what `config.ts`
-    // returns for a production process with no `DDU_INTERNAL_KEY`, and it must reject
+    // returns for a production process with no `BB_INTERNAL_KEY`, and it must reject
     // rather than wave calls through.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await start({ internalAuth: createInternalVerifier([]) });
@@ -560,7 +560,7 @@ describe('billsvc HTTP — the webhook', () => {
   it('a `product:` receipt is INERT when the dev stub is off, even on /webhook/dev', async () => {
     // The fail-closed property, seen from the wire: nothing configured means nothing
     // granted, rather than the stub standing in for the missing credentials.
-    await start({ env: { DDU_INTERNAL_KEY: KEY } });
+    await start({ env: { BB_INTERNAL_KEY: KEY } });
     const id = await book();
     const { status, body } = await call('POST', '/webhook/dev', {
       key: null,
@@ -572,7 +572,7 @@ describe('billsvc HTTP — the webhook', () => {
   });
 
   it('and a real platform refuses it too, with no credentials configured', async () => {
-    await start({ env: { DDU_INTERNAL_KEY: KEY } });
+    await start({ env: { BB_INTERNAL_KEY: KEY } });
     const id = await book('a1', 'bp.cannon', 'apple');
     const { body } = await call('POST', '/webhook/apple', {
       key: null,
@@ -636,7 +636,7 @@ describe('createBillsvcServer wiring', () => {
     // The one case that exercises the REAL default rather than a pinned registry, so the
     // `internalKeys()` wiring cannot rot behind the convenience every other case uses.
     // Stubbed on process.env because that is where `config.ts` reads it, by design.
-    vi.stubEnv('DDU_INTERNAL_KEY', 'from-the-environment');
+    vi.stubEnv('BB_INTERNAL_KEY', 'from-the-environment');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     await start({ internalAuth: undefined });
     expect((await call('POST', '/order/create', { body: {}, key: 'from-the-environment' })).status).toBe(400);

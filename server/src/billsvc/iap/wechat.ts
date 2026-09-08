@@ -15,9 +15,9 @@
 import { listingUnavailable, missingCredentials, type IapVerifyResult, type PlatformOrderListing } from './types';
 
 export interface WechatCredentials {
-  /** Merchant id (`DDU_WECHAT_MCH_ID`). */
+  /** Merchant id (`BB_WECHAT_MCH_ID`). */
   mchId?: string;
-  /** APIv3 key (`DDU_WECHAT_API_V3_KEY`). */
+  /** APIv3 key (`BB_WECHAT_API_V3_KEY`). */
   apiV3Key?: string;
 }
 

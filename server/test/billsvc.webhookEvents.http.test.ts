@@ -26,7 +26,7 @@ import { createInternalVerifier } from '../src/internalAuth';
 import { recentWebhookEvents, webhookEventsForOrder } from '../src/billsvc/webhookLog';
 
 const KEY = 'test-internal-key';
-const DEV_ENV = { DDU_BILLING_DEV_STUB: '1' };
+const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 const SKU = 'bp.cannon';
 
 let baseUrl: string;

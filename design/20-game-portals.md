@@ -262,7 +262,7 @@ identity claim signed by somebody else. The order is the content: verify, then m
   serving the stale key, because it is still the right key during someone else's outage; a failed
   VERIFICATION never refetches, because that would let anyone force an outbound request per bad
   token. Key rotation therefore costs up to one TTL of failed logins, which is the cheaper failure.
-- `DDU_CG_GAME_ID` is **optional and warned about**. A user token is a bearer credential any game
+- `BB_CG_GAME_ID` is **optional and warned about**. A user token is a bearer credential any game
   on the platform can obtain for the same player, so leaving it unset means trusting every other
   developer there. It is optional because the id is only assigned at registration and a first
   upload has to work before that — and deliberately not defaulted to a placeholder, because a
@@ -473,7 +473,7 @@ exists.
   arm, because the two share a null user and a guard placed after it would be unreachable. (Its sibling warning is already handled: the `id`
   field is being removed from the user object, and this client reads `userId` and sends
   `getUserToken`'s token — never `id`.)
-- **`DDU_CG_GAME_ID` on the deployed matchsvc.** Until it is set, `/auth/portal` accepts a user
+- **`BB_CG_GAME_ID` on the deployed matchsvc.** Until it is set, `/auth/portal` accepts a user
   token minted for any game on the platform (warned once at startup, `config.portalGameId`).
 - **The CrazyGames AVATAR is not drawn anywhere.** The requirements name username *and* avatar;
   only the username is shown. The avatar is an external image URL, which means a texture load

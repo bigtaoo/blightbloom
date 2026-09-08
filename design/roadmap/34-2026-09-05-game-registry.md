@@ -18,7 +18,7 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md). Design account in
 `matchsvc.ts` held a module constant:
 
 ```ts
-const GAMESERVER_URL = process.env.DDU_GAMESERVER_URL ?? 'ws://localhost:8787/ws';
+const GAMESERVER_URL = process.env.BB_GAMESERVER_URL ?? 'ws://localhost:8787/ws';
 const withUrl = (t: MatchTicket) => ({ ...t, wsUrl: GAMESERVER_URL });
 ```
 
@@ -142,7 +142,7 @@ reason written where the guard was.
 - **`pick()` ignores `roomId`.** `/resume` picks the same way `/find` does, which is right while
   every room is on the one instance and becomes a lookup-by-room the day they are not. The comment
   at that call site says so.
-- **`server/src/config.ts` was not touched.** `DDU_GAMESERVER_URL`'s default moved *into*
+- **`server/src/config.ts` was not touched.** `BB_GAMESERVER_URL`'s default moved *into*
   `GameRegistry.ts` as `staticGameserverUrl()`, read per call for the same reason `ticketSecret` is
   — a module-scope capture makes the answer depend on whether the environment was loaded before the
   first import. The registry owns the topology question now, so `config.ts` has no reason to.

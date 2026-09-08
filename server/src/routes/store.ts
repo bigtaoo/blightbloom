@@ -133,7 +133,7 @@ type Forwarded =
  *    5xx relayed verbatim reads as "matchsvc broke".
  *  - **A 401/403 from billsvc → 502, and an ERROR in the log.** This is the one mapping that
  *    is not obvious and the one that matters most. billsvc refusing our internal key is OUR
- *    misconfiguration (an unset `DDU_INTERNAL_KEY` in production, or two processes given
+ *    misconfiguration (an unset `BB_INTERNAL_KEY` in production, or two processes given
  *    different ones) — relaying it would hand the client a 401, which `net/billing.ts` throws
  *    and every caller reads as "your session is bad", so a deployment mistake would present
  *    to every player as a login problem and to no operator as anything at all.
@@ -166,7 +166,7 @@ async function forward(
     if (status === 401 || status === 403) {
       console.error(
         `[blightbloom] store: billsvc REFUSED the control plane's internal key on ${route} (${status}). ` +
-          'Check DDU_INTERNAL_KEY is set to the same value on matchsvc and billsvc — no purchase can ' +
+          'Check BB_INTERNAL_KEY is set to the same value on matchsvc and billsvc — no purchase can ' +
           'complete until it is.',
       );
       return unavailable(res);

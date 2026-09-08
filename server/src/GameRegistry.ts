@@ -15,7 +15,7 @@
  * re-derive when they add the routes:
  *
  *  1. **A single-instance deployment does not register at all.** A configured static
- *     address (`DDU_GAMESERVER_URL`) supplies one entry. That is why `pick()` has a
+ *     address (`BB_GAMESERVER_URL`) supplies one entry. That is why `pick()` has a
  *     fallback arm at all, and why the fallback is held SEPARATELY from `entries`
  *     rather than seeded into the map as a competing entry: nothing reports load or
  *     liveness for a configured address, so as a map entry it would sit at load 0 and
@@ -99,7 +99,7 @@ export interface GameRegistryOptions {
  * registry owns the topology question, and matchsvc asks the registry.
  */
 export function staticGameserverUrl(): string {
-  const env = process.env.DDU_GAMESERVER_URL;
+  const env = process.env.BB_GAMESERVER_URL;
   return env && env.length > 0 ? env : 'ws://localhost:8787/ws';
 }
 

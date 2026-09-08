@@ -15,7 +15,7 @@
  *   shutdown            rooms not destroyed before close leaves each room's metronome
  *                       interval running, and the process never exits on deploy.
  *
- * `reportSettledMatch` reads `DDU_MATCHSVC_URL` at MODULE scope, so its cases re-import the
+ * `reportSettledMatch` reads `BB_MATCHSVC_URL` at MODULE scope, so its cases re-import the
  * module under a stubbed env rather than pretending a setter exists.
  *
  * ROADMAP 8.1 (2026-09-04) rewired that callback through `internalFetch` (design/19's D2 —
@@ -76,7 +76,7 @@ interface RecordedCall {
 }
 
 /**
- * Re-imports index.ts with `DDU_MATCHSVC_URL` set (or not) and a recording `fetch` that
+ * Re-imports index.ts with `BB_MATCHSVC_URL` set (or not) and a recording `fetch` that
  * hands back REAL `Response` objects — `bodyUsed` on one of those is the only honest
  * witness that D2's drain actually happens, and a `{ ok: true }` literal (what this helper
  * used to return) cannot report it. `statuses` scripts one status per attempt, the last
@@ -90,8 +90,8 @@ async function withMatchsvc(
   calls: RecordedCall[];
   fetchMock: ReturnType<typeof vi.fn>;
 }> {
-  if (url === undefined) vi.stubEnv('DDU_MATCHSVC_URL', '');
-  else vi.stubEnv('DDU_MATCHSVC_URL', url);
+  if (url === undefined) vi.stubEnv('BB_MATCHSVC_URL', '');
+  else vi.stubEnv('BB_MATCHSVC_URL', url);
   const calls: RecordedCall[] = [];
   const fetchMock = vi.fn((u: string, init: { body: string; headers: Record<string, string> }) => {
     const status = statuses[Math.min(calls.length, statuses.length - 1)]!;
@@ -158,7 +158,7 @@ describe('reportSettledMatch — the ladder callback', () => {
   });
 
   it('swallows a rejected report — a dropped rating never blocks settlement', async () => {
-    vi.stubEnv('DDU_MATCHSVC_URL', 'http://matchsvc.test');
+    vi.stubEnv('BB_MATCHSVC_URL', 'http://matchsvc.test');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',

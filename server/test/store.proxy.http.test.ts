@@ -66,11 +66,11 @@ async function register(username: string): Promise<string> {
 beforeAll(async () => {
   // Pinned rather than left to the dev fallback, so this file asserts that the two processes
   // AGREE on a key rather than that they share a published default.
-  vi.stubEnv('DDU_INTERNAL_KEY', KEY);
+  vi.stubEnv('BB_INTERNAL_KEY', KEY);
 
   ({ server: billsvc } = createBillsvcServer({
     dbPath: ':memory:',
-    env: { DDU_BILLING_DEV_STUB: '1' },
+    env: { BB_BILLING_DEV_STUB: '1' },
     pump: { fetchImpl: (async () => new Response('{"ok":true}', { status: 200 })) as unknown as typeof fetch },
   }));
   billBase = await listen(billsvc);

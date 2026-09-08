@@ -11,11 +11,11 @@
  */
 import { describe, it, expect, vi, beforeAll, afterEach, type MockInstance } from 'vitest';
 
-const ORIGINAL_ENV = process.env.DDU_CG_GAME_ID;
+const ORIGINAL_ENV = process.env.BB_CG_GAME_ID;
 
 afterEach(() => {
-  if (ORIGINAL_ENV === undefined) delete process.env.DDU_CG_GAME_ID;
-  else process.env.DDU_CG_GAME_ID = ORIGINAL_ENV;
+  if (ORIGINAL_ENV === undefined) delete process.env.BB_CG_GAME_ID;
+  else process.env.BB_CG_GAME_ID = ORIGINAL_ENV;
   vi.restoreAllMocks();
 });
 
@@ -35,21 +35,21 @@ async function freshConfig(): Promise<{
   const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   return {
     portalGameId: mod.portalGameId,
-    warnings: () => spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('DDU_CG_GAME_ID')),
+    warnings: () => spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('BB_CG_GAME_ID')),
     spy,
   };
 }
 
 describe('portalGameId', () => {
   it('returns the configured id and warns about nothing', async () => {
-    process.env.DDU_CG_GAME_ID = 'blightbloom-123';
+    process.env.BB_CG_GAME_ID = 'blightbloom-123';
     const { portalGameId, warnings } = await freshConfig();
     expect(portalGameId()).toBe('blightbloom-123');
     expect(warnings()).toEqual([]);
   });
 
   it('returns undefined and warns ONCE when unset', async () => {
-    delete process.env.DDU_CG_GAME_ID;
+    delete process.env.BB_CG_GAME_ID;
     const { portalGameId, warnings } = await freshConfig();
     expect(portalGameId()).toBeUndefined();
     expect(portalGameId()).toBeUndefined();
@@ -62,7 +62,7 @@ describe('portalGameId', () => {
     // An id of `''` would match no token's claim, so every login would 401 — which looks
     // like a broken integration rather than a missing variable. Falling back to "unchecked
     // and warned" is the honest reading of an empty string.
-    process.env.DDU_CG_GAME_ID = '';
+    process.env.BB_CG_GAME_ID = '';
     const { portalGameId, warnings } = await freshConfig();
     expect(portalGameId()).toBeUndefined();
     expect(warnings()).toHaveLength(1);
@@ -71,20 +71,20 @@ describe('portalGameId', () => {
   it('reads the env per CALL, not once at module scope', async () => {
     // config.ts's own stated rule for every getter in it: a module-scope capture makes the
     // answer depend on whether the environment was loaded before the first import.
-    delete process.env.DDU_CG_GAME_ID;
+    delete process.env.BB_CG_GAME_ID;
     const { portalGameId } = await freshConfig();
     expect(portalGameId()).toBeUndefined();
-    process.env.DDU_CG_GAME_ID = 'set-later';
+    process.env.BB_CG_GAME_ID = 'set-later';
     expect(portalGameId()).toBe('set-later');
   });
 
   it('warns lazily — importing the module warns nothing', async () => {
-    delete process.env.DDU_CG_GAME_ID;
+    delete process.env.BB_CG_GAME_ID;
     vi.resetModules();
     const mod = await import('../src/config');
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(spy).not.toHaveBeenCalled();
     mod.portalGameId();
-    expect(spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('DDU_CG_GAME_ID'))).toHaveLength(1);
+    expect(spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('BB_CG_GAME_ID'))).toHaveLength(1);
   });
 });

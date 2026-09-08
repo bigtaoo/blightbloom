@@ -4,7 +4,7 @@
  * imported by BOTH the control plane (matchsvc, signs) and the data plane (index.ts,
  * verifies) so they agree on the secret.
  *
- * Posture: a real `DDU_TICKET_SECRET` → production signing. Unset → a shared, well-known
+ * Posture: a real `BB_TICKET_SECRET` → production signing. Unset → a shared, well-known
  * DEV secret so the online path works out of the box locally, with a loud warning; in that
  * dev mode the gameserver also still honours the legacy raw-param handshake for manual
  * testing. Setting a real secret makes a valid ticket mandatory.
@@ -25,13 +25,13 @@ import type { InternalCaller } from './internalAuth';
 let warned = false;
 
 export function ticketSecret(): { secret: string; isDev: boolean } {
-  const env = process.env.DDU_TICKET_SECRET;
+  const env = process.env.BB_TICKET_SECRET;
   if (env && env.length > 0) return { secret: env, isDev: false };
   if (!warned) {
     warned = true;
     console.warn(
-      '[blightbloom] DDU_TICKET_SECRET unset — using an insecure DEV ticket secret. ' +
-        'Set DDU_TICKET_SECRET (same value on matchsvc + gameserver) for any real deployment.',
+      '[blightbloom] BB_TICKET_SECRET unset — using an insecure DEV ticket secret. ' +
+        'Set BB_TICKET_SECRET (same value on matchsvc + gameserver) for any real deployment.',
     );
   }
   return { secret: DEV_SECRET, isDev: true };
@@ -57,7 +57,7 @@ let internalWarned = false;
  * Where the internal key comes from, with the same posture `ticketSecret()` above already
  * establishes for the ticket secret — one mental model for both, because an operator
  * configures them together and a second, different rule is a second thing to get wrong:
- * a real `DDU_INTERNAL_KEY` is production, unset falls back to a shared well-known DEV key
+ * a real `BB_INTERNAL_KEY` is production, unset falls back to a shared well-known DEV key
  * with a loud one-time warning so the local two-process setup works out of the box.
  *
  * With ONE difference, and it is the important one: under `NODE_ENV=production` an unset
@@ -72,7 +72,7 @@ let internalWarned = false;
  * environment was loaded before the first import.
  */
 export function internalKeys(): { registry: InternalCaller[]; isDev: boolean } {
-  const env = process.env.DDU_INTERNAL_KEY;
+  const env = process.env.BB_INTERNAL_KEY;
   if (env && env.length > 0) {
     return { registry: [{ caller: INTERNAL_CALLER_GAMESERVER, key: env }], isDev: false };
   }
@@ -80,8 +80,8 @@ export function internalKeys(): { registry: InternalCaller[]; isDev: boolean } {
     if (!internalWarned) {
       internalWarned = true;
       console.warn(
-        '[blightbloom] DDU_INTERNAL_KEY unset in production — every internal route now REJECTS ' +
-          'every call (fail closed). Set DDU_INTERNAL_KEY (same value on matchsvc + gameserver).',
+        '[blightbloom] BB_INTERNAL_KEY unset in production — every internal route now REJECTS ' +
+          'every call (fail closed). Set BB_INTERNAL_KEY (same value on matchsvc + gameserver).',
       );
     }
     return { registry: [], isDev: false };
@@ -89,8 +89,8 @@ export function internalKeys(): { registry: InternalCaller[]; isDev: boolean } {
   if (!internalWarned) {
     internalWarned = true;
     console.warn(
-      '[blightbloom] DDU_INTERNAL_KEY unset — using an insecure DEV internal key. ' +
-        'Set DDU_INTERNAL_KEY (same value on matchsvc + gameserver) for any real deployment.',
+      '[blightbloom] BB_INTERNAL_KEY unset — using an insecure DEV internal key. ' +
+        'Set BB_INTERNAL_KEY (same value on matchsvc + gameserver) for any real deployment.',
     );
   }
   return { registry: [{ caller: INTERNAL_CALLER_GAMESERVER, key: DEV_INTERNAL_KEY }], isDev: true };
@@ -144,13 +144,13 @@ export function sharedInternalKey(): string | undefined {
  * the environment was loaded before the first import.
  *
  * Defaults to localhost rather than to "disabled", matching `matchsvc.ts`'s own
- * `DDU_GAMESERVER_URL` default — the local three-process setup then works with no
+ * `BB_GAMESERVER_URL` default — the local three-process setup then works with no
  * configuration, and a real deployment that forgets the variable fails visibly (a refused
  * connection, logged per attempt, with the owed deliveries still `pending`) rather than
  * silently doing nothing.
  */
 export function controlPlaneUrl(): string {
-  const env = process.env.DDU_MATCHSVC_URL;
+  const env = process.env.BB_MATCHSVC_URL;
   return env && env.length > 0 ? env : 'http://localhost:8788';
 }
 
@@ -172,12 +172,12 @@ export function controlPlaneUrl(): string {
 let portalGameIdWarned = false;
 
 export function portalGameId(): string | undefined {
-  const env = process.env.DDU_CG_GAME_ID;
+  const env = process.env.BB_CG_GAME_ID;
   if (env && env.length > 0) return env;
   if (!portalGameIdWarned) {
     portalGameIdWarned = true;
     console.warn(
-      '[blightbloom] DDU_CG_GAME_ID unset — /auth/portal accepts a CrazyGames user token ' +
+      '[blightbloom] BB_CG_GAME_ID unset — /auth/portal accepts a CrazyGames user token ' +
         'minted for ANY game on the platform. Set it to this game id once the portal assigns one.',
     );
   }
@@ -195,6 +195,6 @@ export function portalGameId(): string | undefined {
  * — rather than by quietly serving an empty store, which would look like a catalogue decision.
  */
 export function billingPlaneUrl(): string {
-  const env = process.env.DDU_BILLSVC_URL;
+  const env = process.env.BB_BILLSVC_URL;
   return env && env.length > 0 ? env : 'http://localhost:8789';
 }

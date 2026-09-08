@@ -96,30 +96,30 @@ describe('the static single-instance branch (design/19 §6, rule 1)', () => {
 });
 
 describe('the configured address itself', () => {
-  it('reads DDU_GAMESERVER_URL, per call rather than at module load', () => {
-    vi.stubEnv('DDU_GAMESERVER_URL', 'ws://from-env/ws');
+  it('reads BB_GAMESERVER_URL, per call rather than at module load', () => {
+    vi.stubEnv('BB_GAMESERVER_URL', 'ws://from-env/ws');
     expect(staticGameserverUrl()).toBe('ws://from-env/ws');
     // A module-scope capture would make the answer depend on whether the environment was
     // loaded before the first import — `config.ts` records the same reasoning for the
     // ticket secret. Changing it here must change the next answer.
-    vi.stubEnv('DDU_GAMESERVER_URL', 'ws://changed/ws');
+    vi.stubEnv('BB_GAMESERVER_URL', 'ws://changed/ws');
     expect(staticGameserverUrl()).toBe('ws://changed/ws');
     expect(new GameRegistry().pick()?.wsUrl).toBe('ws://changed/ws');
   });
 
   it('treats an empty variable as unset, matching config.ts controlPlaneUrl', () => {
-    vi.stubEnv('DDU_GAMESERVER_URL', '');
+    vi.stubEnv('BB_GAMESERVER_URL', '');
     expect(staticGameserverUrl()).toBe('ws://localhost:8787/ws');
   });
 
   it('defaults to localhost so the local three-process setup needs no configuration', () => {
-    vi.stubEnv('DDU_GAMESERVER_URL', undefined);
+    vi.stubEnv('BB_GAMESERVER_URL', undefined);
     expect(staticGameserverUrl()).toBe('ws://localhost:8787/ws');
     expect(new GameRegistry().pick()?.wsUrl).toBe('ws://localhost:8787/ws');
   });
 
   it('distinguishes an explicit null fallback from an omitted one', () => {
-    vi.stubEnv('DDU_GAMESERVER_URL', FALLBACK);
+    vi.stubEnv('BB_GAMESERVER_URL', FALLBACK);
     // Omitted → the configured default. Explicit null → genuinely no fallback. If the
     // constructor used `??` these two would collapse and a fallback-free deployment would
     // silently get localhost.
