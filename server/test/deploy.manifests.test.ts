@@ -297,6 +297,65 @@ describe('the compose reader actually read something', () => {
     expect(dockerfile).toMatch(/^USER node$/m);
     expect(ciDeploy).toContain('1000:1000');
   });
+
+  it('CREATING a state dir does not depend on the deploy user owning its parent', () => {
+    // The test above pins WHICH dirs get normalised. This one pins that the script can
+    // actually make one, which is a different property and was false: `~/wnet-test/data` is
+    // uid-1000-owned (container `node` == host `elkadmin`) while the deploy account is 1001,
+    // so a plain `mkdir -p "$TARGET/$dir"` cannot create anything under it. It had never
+    // shown up because it is a silent no-op for a dir that already exists — every dir did,
+    // until `data/adminsvc` on 2026-09-09, which failed `Permission denied` and aborted the
+    // deploy before compose ran.
+    //
+    // Asserted as a SHAPE — no unguarded mkdir, and a container-side fallback — rather than
+    // by matching the exact command, because a revert to the bare `mkdir -p` passes every
+    // other assertion in this file. That is the whole reason this one exists.
+    // `\r?\n` throughout, not `\n`: `core.autocrlf=true` with no `.gitattributes` means this
+    // shell script is CRLF in a Windows worktree and LF in CI, so a line anchor that assumes
+    // either one passes on one machine and fails on the other for no reason of its own.
+    const body = /for dir in .+; do\r?\n([\s\S]*?)\r?\ndone/.exec(ciDeploy)?.[1];
+    expect(body, 'the ownership loop moved or changed shape').toBeTruthy();
+
+    // A `mkdir` on the deploy user's own side is allowed only as an attempt whose failure is
+    // handled (`if ! mkdir …`), never as the single creation path.
+    const bare = /^[ \t]*mkdir\b[^\r\n]*$/m.exec(body!);
+    expect(
+      bare?.[0],
+      'an unguarded mkdir is the deploy user creating a dir it has no permission to create',
+    ).toBeUndefined();
+
+    // ...and the fallback has to reach a root container, because nothing else on this box can
+    // write into a directory owned by another uid — `sudo` there needs an interactive password.
+    expect(body!, 'no container-side fallback to create the dir').toMatch(/docker run[\s\S]*mkdir/);
+  });
+
+  it('the deploy script polls each service on the port and path it really serves', () => {
+    // The same failure the compose healthcheck assertions above guard against, one file over
+    // and until now unguarded: this loop carries port and path as literals, so a copy-pasted
+    // entry polls the NEIGHBOUR's port and reports a dead container healthy. It grew a third
+    // field for adminsvc (`/admin/health`, not `/health`) — a copy-paste there is the milder
+    // failure of a deploy that can never pass, but it is still worth catching in a suite that
+    // runs in seconds instead of after a build and an SSH round trip.
+    const loop = /for svc in ([^\n]+); do/.exec(ciDeploy)?.[1];
+    expect(loop, 'the service health loop moved or changed shape').toBeTruthy();
+
+    const parsed = loop!.trim().split(/\s+/).map((e) => e.split(':'));
+    for (const e of parsed) expect(e, `${e.join(':')} is not name:port:path`).toHaveLength(3);
+    // Every HTTP service is polled, and only those. A service missing from here is a service
+    // whose deploy is never verified — which is how the backup worker went 18 hours unnoticed.
+    expect(parsed.map((e) => e[0]!).sort()).toEqual([...HTTP_SERVICES].sort());
+
+    for (const [name, port, path] of parsed) {
+      // The port is compared against compose's own `expose` and the path against the route
+      // module, so neither is a second copy of a literal that can drift on its own.
+      expect(port, `${name} is polled on the wrong port`).toBe(services[name!]!.expose[0]);
+      expect(path, `${name} is polled on the wrong path`).toBe(HEALTH_PATH[name!]);
+    }
+    // The one path that is not `/health` is the one worth naming: every assertion above would
+    // still pass if adminsvc's health route moved out from under `/admin`, and that move is
+    // what would put it outside the single Caddy `handle` block the console depends on.
+    expect(HEALTH_PATH.adminsvc).toBe(ADMIN_HEALTH_PATH);
+  });
 });
 
 describe('the bundle filenames', () => {
@@ -412,6 +471,28 @@ describe('compose env vars', () => {
     // reason — its login page is on the public internet beside Grafana's (design/21 §3.3).
     const adminPassword = /BB_ADMIN_PASSWORD:\s*(.+)/.exec(compose)?.[1] ?? '';
     expect(adminPassword).toMatch(/^\$\{BB_ADMIN_PASSWORD:\?/);
+  });
+
+  it('every `:?` variable is one the deploy script checks BY NAME first', () => {
+    // The two assertions above each pin one variable's `:?`. This one pins the SET, derived
+    // from compose rather than listed here, so it keeps holding for a variable nobody has
+    // written yet — which is the only version of this check worth having.
+    //
+    // What it protects is not whether the deploy fails but HOW. `:?` makes compose refuse
+    // every service, not just the one with the missing value, so the operator's first clue
+    // is "required variable is not set" against a file they did not edit — and `.env` is
+    // the one file CI cannot ship, so this lands on an existing box precisely when someone
+    // has deployed a new service for the first time. `ci-deploy.sh` checks each name up
+    // front and says which one and what to do, and that list is worthless the moment it
+    // stops matching compose. `BB_ADMIN_PASSWORD` was added to both together on 2026-09-09;
+    // nothing made that a requirement rather than a habit.
+    const required = [...compose.matchAll(/\$\{([A-Z_]+):\?/g)].map((m) => m[1]!);
+    expect(required.length, 'no `:?` variables found — did compose change shape?').toBeGreaterThan(0);
+
+    const checked = /for var in ([^\r\n]+); do/.exec(ciDeploy)?.[1];
+    expect(checked, "the deploy script's required-variable loop moved or changed shape").toBeTruthy();
+
+    expect([...new Set(checked!.trim().split(/\s+/))].sort()).toEqual([...new Set(required)].sort());
   });
 });
 
