@@ -348,13 +348,18 @@ repair. Two ways out:
 ssh wnet-server 'docker cp ~/wnet/docker/Caddyfile docker-caddy-1:/tmp/Caddyfile.new   && docker exec docker-caddy-1 caddy validate --config /tmp/Caddyfile.new --adapter caddyfile   && docker exec docker-caddy-1 caddy reload --config /tmp/Caddyfile.new --adapter caddyfile'
 ```
 
-That fixes routing immediately and is what was done on 2026-09-09. It leaves ONE landmine:
-the container's `/etc/caddy/Caddyfile` is still the stale inode, so the next person who
-reloads from that path silently reverts whatever the file gained since. `docker restart
-docker-caddy-1` re-resolves the bind mount to the host path and collapses the split
-permanently — correct, but it is the company's shared proxy fronting `wnet-mock.elk.de`,
-the IP/hostname device block and `sync.gamestao.com`, so it costs all of them a second of
-downtime. Prefer it at a moment somebody has agreed to.
+That fixes routing immediately, but it leaves ONE landmine: the container's
+`/etc/caddy/Caddyfile` is still the stale inode, so the next person who reloads from that
+path silently reverts whatever the file gained since. `docker restart docker-caddy-1`
+re-resolves the bind mount to the host path and collapses the split permanently — correct,
+but it is the company's shared proxy fronting `wnet-mock.elk.de`, the IP/hostname device
+block and `sync.gamestao.com`, so it costs all of them a second of downtime. Prefer it at a
+moment somebody has agreed to.
+
+Both were done on 2026-09-09, in that order — the admin-API load to get `/admin*` serving,
+then the restart once it was agreed. **The split is collapsed**: both inodes read the same,
+the container's own copy carries the `/admin*` block, all four site blocks answer, and a
+reload from `/etc/caddy/Caddyfile` is safe again.
 
 After any reload, check the neighbours rather than just your own site — a reload replaces
 the WHOLE config, so a mistake takes their sites with it, from inside the box so the
