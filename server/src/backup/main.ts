@@ -28,7 +28,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { readBackupConfig, BackupConfigError, type BackupConfig } from './config';
-import { isHealthy, readStatus, runCycle, writeStatus } from './runner';
+import { isHealthy, readStatus, runCycle, writeStatus, type CycleIo } from './runner';
 import { createLogger } from '../log';
 import { startHeartbeat } from '../heartbeat';
 
@@ -43,16 +43,63 @@ export function healthExitCode(cfg: BackupConfig, now: Date): number {
   return 1;
 }
 
+/** How soon to retry after a FAILED cycle, before doubling. */
+export const FAILURE_RETRY_FLOOR_MS = 60_000;
+
+/**
+ * How long to wait after a cycle that failed — exponential from `FAILURE_RETRY_FLOOR_MS`,
+ * capped at the normal interval so a retry schedule can never be slower than the schedule
+ * it is standing in for.
+ *
+ * A failed cycle used to sleep the full interval, which made the first cycle's success a
+ * 24-hour commitment. That is wrong in both directions. It cost a whole day of snapshots
+ * for a failure that had already cleared seconds later — and it is a COLD-START RACE, not
+ * a hypothetical: on 2026-09-09 this worker's immediate first cycle ran 0.6s before
+ * matchsvc created `analytics.db`, so the source did not exist yet, the cycle recorded a
+ * failure, and the container was then unhealthy for a day over a file that was there
+ * before anyone could have looked. `ci-deploy.sh` demands a healthy cycle, so it also
+ * failed every deploy that recreated both containers together.
+ *
+ * Retrying instead of waiting keeps the reason the immediate cycle exists (a fresh deploy
+ * has a verified snapshot within seconds) without making that one attempt decisive. The
+ * doubling is what keeps a permanently broken source from writing a log line a minute
+ * forever: it degrades to one attempt per interval, which is the old behaviour, reached
+ * rather than assumed.
+ */
+export function retryDelayMs(failures: number, intervalMs: number): number {
+  if (failures < 1) return intervalMs;
+  // `2 ** n` reaches Infinity long before this matters; `Math.min` is what bounds it.
+  return Math.min(FAILURE_RETRY_FLOOR_MS * 2 ** (failures - 1), intervalMs);
+}
+
+/**
+ * The loop's two injectable edges. `sleep` is here so a test can drive the loop at all —
+ * it never returns, so the only way to observe its PACING is to be the thing it waits on,
+ * and pacing is the whole behaviour worth pinning after the cold-start race. `io` forwards
+ * to `runCycle`, letting a test script a source that fails and then recovers, which is
+ * what that race actually looked like.
+ */
+export interface LoopDeps {
+  now?: () => Date;
+  io?: CycleIo;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 /**
  * The loop. One cycle immediately, so a fresh deploy has a verified snapshot within
  * seconds instead of a day — and so the healthcheck has something to read before its
- * `start_period` runs out.
+ * `start_period` runs out. A cycle that FAILS is retried on `retryDelayMs` rather than
+ * the full interval; see there for why that is not a tuning knob.
  */
-export async function runForever(cfg: BackupConfig, now: () => Date = () => new Date()): Promise<never> {
+export async function runForever(cfg: BackupConfig, deps: LoopDeps = {}): Promise<never> {
+  const now = deps.now ?? ((): Date => new Date());
+  const wait = deps.sleep ?? sleep;
+  let failures = 0;
   for (;;) {
-    const result = runCycle(cfg, now());
+    const result = runCycle(cfg, now(), deps.io);
     writeStatus(cfg.destDir, result);
-    await sleep(cfg.intervalMs);
+    failures = result.ok ? 0 : failures + 1;
+    await wait(result.ok ? cfg.intervalMs : retryDelayMs(failures, cfg.intervalMs));
   }
 }
 

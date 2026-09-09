@@ -84,10 +84,25 @@ cd "$TARGET"
 # on every write — with CI green, because the live copy of THIS script predated the
 # backup check at the bottom of it. Zero snapshots were taken in that window.
 #
-# Idempotent by construction: the chown container only runs for a dir that is actually
-# wrong, so the steady state costs one `stat` per dir and starts nothing.
+# A NEW state dir under `data/` cannot be created by the deploy user at all: `data/` is
+# itself uid-1000-owned (mode 755) and the deploy account is 1001. `mkdir -p` is a silent
+# no-op for the dirs that already exist and a hard `Permission denied` for the first new
+# one — which is exactly how adding `data/adminsvc` failed on 2026-09-09. So creation
+# falls back to a root container, and only on that path, mounting the PARENT because that
+# is the dir being written into. `backups` sits at the top level, which the deploy user
+# owns, so its plain `mkdir` succeeds and no wide mount is ever taken for it.
+#
+# Idempotent by construction: neither container runs for a dir that already exists and is
+# already owned correctly, so the steady state costs one `stat` per dir and starts nothing.
 for dir in data/matchsvc data/billsvc data/adminsvc backups; do
-  mkdir -p "$TARGET/$dir"
+  if [ ! -d "$TARGET/$dir" ]; then
+    echo "creating $dir"
+    if ! mkdir -p "$TARGET/$dir" 2>/dev/null; then
+      # The leaf goes in as an ARGUMENT, never interpolated into the shell string, so a
+      # space or a quote in it cannot become code; `--` guards a dir named -foo.
+      docker run --rm -v "$(dirname "$TARGET/$dir"):/fix" --entrypoint sh alpine:latest         -c 'mkdir -p -- "/fix/$1"' sh "$(basename "$dir")"
+    fi
+  fi
   if [ "$(stat -c %u "$TARGET/$dir")" != "1000" ]; then
     echo "fixing ownership of $dir (was uid $(stat -c %u "$TARGET/$dir"), needs 1000)"
     docker run --rm -v "$TARGET/$dir:/fix" --entrypoint chown alpine:latest -R 1000:1000 /fix
