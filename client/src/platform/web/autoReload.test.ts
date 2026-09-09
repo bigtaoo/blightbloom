@@ -4,7 +4,7 @@
  * pin the comparison logic that decides whether a reload actually happens.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { createVersionWatcher, fetchDeployedHash } from './autoReload';
+import { createVersionWatcher, fetchDeployedHash, deployedVersion } from './autoReload';
 
 function watcherOn(hashes: Array<string | null>, canReload?: () => boolean) {
   const reload = vi.fn();
@@ -97,5 +97,24 @@ describe('fetchDeployedHash', () => {
   it('returns null when the payload has no hash field', async () => {
     const fetchImpl = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as Response);
     expect(await fetchDeployedHash(fetchImpl)).toBeNull();
+  });
+});
+
+describe('deployedVersion — the build stamp on every client log batch', () => {
+  it('is null before an install, rather than throwing', () => {
+    // `net/clientLog.ts` reads this per flush, and the first flush can in principle beat
+    // `installAutoReload` (which runs at the end of boot). A throw there would be an error
+    // inside the error reporter.
+    expect(deployedVersion()).toBeNull();
+  });
+
+  it('reports the baseline the reload watcher already fetched, once it has one', async () => {
+    // The whole point of the field: a dashboard asking "is this error only on the new
+    // build?" needs a real answer, and before this was wired every real client reported
+    // `unknown` — a panel that looked populated and said nothing.
+    const watcher = createVersionWatcher({ fetchHash: async () => 'abc123', reload: () => {} });
+    expect(watcher.baseline()).toBeNull();
+    await watcher.check();
+    expect(watcher.baseline()).toBe('abc123');
   });
 });

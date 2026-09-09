@@ -83,9 +83,36 @@ export function installAutoReload(canReload?: () => boolean): void {
     reload: () => window.location.reload(),
     canReload,
   });
+  installed = watcher;
 
   void watcher.check();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void watcher.check();
   });
+}
+
+let installed: VersionWatcher | null = null;
+
+/**
+ * The build hash this page is running, or `null` — the same baseline the reload watcher
+ * already fetched, exposed rather than re-fetched.
+ *
+ * This exists for `net/clientLog.ts`, which stamps every batch of browser logs with a build
+ * version so a dashboard can answer "is this error only on the new build?". That question is
+ * the entire point of the field, and without a source it answered `unknown` for every real
+ * client — a panel that looked populated and said nothing.
+ *
+ * Deliberately reuses the watcher's fetch instead of doing its own: `/version.json` is
+ * already fetched at boot and on every foreground return, and a second poller for the same
+ * file would be two requests answering one question.
+ *
+ * Honestly `null` in three cases, all of which degrade to `unknown` rather than break: a dev
+ * build (the manifest plugin is `apply: 'build'`), the WeChat mini-game (whose config does
+ * not run the plugin at all), and before the first fetch resolves. The portal build is the
+ * interesting one — it is served from a SUB-PATH while `VERSION_URL` is absolute, so the
+ * fetch 404s there; that is a pre-existing property of the reload watcher, and this function
+ * inherits it rather than papering over it.
+ */
+export function deployedVersion(): string | null {
+  return installed?.baseline() ?? null;
 }

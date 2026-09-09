@@ -3,7 +3,7 @@ import { setUiAudio } from './audio/uiSound';
 import { setMusicAudio } from './game/musicDirector';
 import type { Phase } from './game/phase';
 import { WebPlatform } from './platform/web/WebPlatform';
-import { installAutoReload } from './platform/web/autoReload';
+import { installAutoReload, deployedVersion } from './platform/web/autoReload';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
 import { reportWebBootFailure } from './bootError';
@@ -32,7 +32,14 @@ async function boot() {
   // global error handlers, so a throw from any line below is captured rather than only
   // being visible to whoever happens to have devtools open. Failure of the logger itself is
   // silent by construction (net/clientLog.ts).
-  installClientLog({ baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)), token: sessionToken });
+  installClientLog({
+    baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
+    token: sessionToken,
+    // Read per flush, not captured now: `installAutoReload` runs at the END of boot and its
+    // first fetch resolves later still, while the first flush is 30s away — so by the time
+    // it matters the baseline is there.
+    version: deployedVersion,
+  });
 
   // Before any Text exists — Pixi caches its measurement canvas on first use (see
   // render/textMetrics.ts for why the default offscreen one mis-measures Cyrillic).

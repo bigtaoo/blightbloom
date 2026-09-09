@@ -81,6 +81,10 @@ async function boot() {
   installClientLog({
     baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
     token: () => getSession()?.token ?? null,
+    // No `version` here on purpose. The portal build is served from a SUB-PATH and
+    // `autoReload`s `/version.json` is absolute, so it 404s — a getter would report
+    // `unknown` just as clearly while implying a source exists. design/20s no-self-managed-
+    // reload rule is why that was never fixed for the portal.
   });
 
   // (3a) Announce the download. The SDK measures the span from page open to the first
