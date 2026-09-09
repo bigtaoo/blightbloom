@@ -967,3 +967,11 @@ Neither is about observability; both would have been bugs if ignored.
 - **Client logs are `warn` and above.** The ring buffer holds everything, so the lines
   leading up to a failure are captured, but only the tail from `warn` up is sent. Lowering
   it is a volume decision that needs a real traffic number, and there is not one yet.
+- **Only the web build reports a real build version.** Every batch carries a `ver` field so
+  "is this error only on the new build?" has an answer, and it resolves for `web` from the
+  baseline the reload watcher already fetches. It is `unknown` on the other two, for reasons
+  that belong to those targets rather than to this one: the WeChat config never runs the
+  version-manifest plugin, and the portal build is served from a sub-path while the manifest
+  URL is absolute, so the fetch 404s there (a pre-existing property of the reload watcher —
+  design/20's no-self-managed-reload rule is why it was never fixed). Closing either means
+  changing that target's build, not this layer.

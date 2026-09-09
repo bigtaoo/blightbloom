@@ -212,3 +212,42 @@ match reconstructs with `| logfmt | roomId="…"`, and here the fields exist in 
 not others. And client logs are `warn` and above — the ring buffer holds everything, so the
 lines leading up to a failure are captured, but lowering what is *sent* is a volume decision
 that needs a real traffic number, and there is not one yet.
+
+### Two things found after the section above was written
+
+Both landed the same day, `fc60cbe`, and the second is not about this feature at all.
+
+**The build stamp on a client log batch had no source.** `net/clientLog.ts` sends a `ver`
+field so a dashboard can answer *"is this error only on the new build?"* — the entire reason
+the field exists — and the getter that supplies it was optional, with nothing passing one. So
+every real client reported `unknown`, and the "Client errors by build version" panel rendered
+a populated-looking bar chart of a single meaningless bucket. **A field that is always the
+same value is worse than an absent one**: absent, the panel would have been empty and
+obviously unfinished; constant, it looked like an answer. It reads the baseline `autoReload`
+already fetches now, rather than adding a second poller for the same `/version.json`. It is
+still honestly `null` → `unknown` in three cases, each annotated where it occurs: a dev build
+(the manifest plugin is `apply: 'build'`), the WeChat mini-game (whose Vite config never runs
+that plugin), and the portal build (served from a sub-path while `VERSION_URL` is absolute,
+so the fetch 404s — a pre-existing property of the reload watcher, inherited rather than
+papered over). Only the web build reports a real version today; the panel says so.
+
+**`git add` is not safe in this shared checkout, and knowing about the tree is not enough.**
+`D:/daydayup` is shared with concurrent sessions ([[daydayup-worktree-editing-gotcha]] in
+memory), and this pass already knew that — the first commit here was deliberately scoped to
+an explicit path list, checked against `git status`, and landed clean. The follow-up commit
+then swept 21 files of a peer session's in-progress analytics feature in under this commit's
+message, because **the git INDEX is shared state too**: the peer had staged their work, and
+`git add -- <my paths>` adds to whatever is already there. `git commit` with no pathspec then
+commits the index, not the addition.
+
+Caught by the post-commit `--name-only` check, repaired with `reset --soft` plus
+`restore --staged` of only the peer's paths, re-committed with the four intended files.
+Nothing was pushed and every byte of theirs survived. The two rules worth keeping:
+
+- **Check `git diff --cached --name-only` BEFORE committing, not after.** The verification
+  existed here and ran one step too late.
+- **`git add` + bare `git commit` is the unsafe pair.** `git commit -- <paths>` takes the
+  working-tree version of exactly those paths and ignores the rest of the index — which is
+  what this pass's *first* commit should have used, and could not, because that form does not
+  work for untracked files. For a commit that introduces new files in a shared checkout there
+  is no one-liner: stage, verify the staged list, then commit.

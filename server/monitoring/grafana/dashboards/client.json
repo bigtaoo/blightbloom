@@ -234,7 +234,7 @@
       "id": 4,
       "type": "bargauge",
       "title": "Client errors by build version, in range",
-      "description": "`ver` comes from the client's own build manifest. A version that appears here and nowhere in the sessions count is a build somebody is still running after a deploy.",
+      "description": "`ver` is the build hash the page booted with, read from the same /version.json the reload watcher already fetches. A version appearing here that is absent from the sessions count is a build somebody is still running after a deploy. ONLY THE WEB BUILD reports a real one: WeChat never runs the version-manifest plugin and the portal build is served from a sub-path while that URL is absolute, so both report `unknown` — an `unknown` bar is those targets, not a broken client.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
