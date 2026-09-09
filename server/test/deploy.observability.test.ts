@@ -104,6 +104,7 @@ describe('the addresses in each config resolve to a real service and port', () =
 
   it('read the ports at all', () => {
     expect(Object.keys(exposed).sort()).toEqual([
+      'adminsvc',
       'billsvc',
       'gameserver',
       'matchsvc',
@@ -295,7 +296,7 @@ describe('retention is bounded, on a disk this project does not own', () => {
     // log on a borrowed box is the one failure here that reaches the box's owner.
     const blocks = compose.split(/^ {2}(?=[a-z][\w-]*:$)/m).filter((b) => /^[\w-]+:/.test(b));
     const services = blocks.filter((b) => /container_name:/.test(b));
-    expect(services.length).toBe(8);
+    expect(services.length).toBe(9);
     for (const b of services) {
       const name = /^([\w-]+):/.exec(b)![1];
       expect(b, `${name} has no log size limit`).toMatch(/max-size:\s*"\d+m"/);

@@ -587,7 +587,8 @@ form), not a method.
   > **SUPERSEDED 2026-09-09 by `design/21-ops-analytics.md`** — and NOT by the trigger this
   > bullet named. No refund has arrived; what arrived is a need to measure retention and to look
   > at a player without an SSH session. A console is designed (§3 there) as a fifth process with
-  > `readOnly: true` handles.
+  > `readOnly: true` handles, and **built on 2026-09-09** (`server/src/adminsvc/`) — refused
+  > twice over, by SQLite and by `:ro` bind mounts.
   >
   > **The requirement above survives intact, and design/21 leans on it rather than replacing
   > it.** Its decision B2 — the publicly exposed console is read-only over player data, and every

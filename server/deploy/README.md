@@ -1,6 +1,6 @@
 # Deploying the backend
 
-> **Status (2026-09-07): fully live, including CI.** All three containers are up and
+> **Status (2026-09-07): fully live, including CI.** Every container is up and
 > healthy on `wnet-server` at `~/wnet-test/`, the Caddy site block is appended and
 > reloaded, DNS is in place, and `curl https://bb.gamestao.com/health` returns
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
@@ -10,6 +10,16 @@
 > manually over SSH, then proven again through an actual `gh workflow run server-deploy`
 > that went green (build → SSH deploy → public health check). Push-to-`main` deploys are
 > now live. The only thing left is Paddle (§7), which is not an engineering task at all.
+>
+> **What has landed since, and what has NOT.** The deployed set grew past the three
+> containers this box started with: the backup worker (2026-09-07), the four `obs-*`
+> observability images (2026-09-09) and analytics collection on matchsvc (2026-09-09) are
+> all live. **`adminsvc` — the ops console at `/admin/` — is built and gated but NOT
+> deployed**: it needs `BB_ADMIN_PASSWORD` in `.env` and the `/admin*` Caddy block, both
+> §2, and until then the checklist rows for it in §4 are unchecked on purpose. This
+> paragraph exists because the count above is the first thing anybody reads, and it was
+> already wrong twice before it was wrong a third time — so it now says "every" and the
+> current membership is listed here instead.
 >
 > One thing worth knowing for next time: Caddy attempted the ACME challenge the instant
 > the Caddyfile was reloaded, *before* the DNS record actually existed — that attempt
@@ -160,14 +170,21 @@ Self-check (bypassing Caddy, straight to each container):
 docker exec wnet-test-gameserver node -e "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log)"
 docker exec wnet-test-matchsvc  node -e "fetch('http://127.0.0.1:8788/health').then(r=>r.json()).then(console.log)"
 docker exec wnet-test-billsvc   node -e "fetch('http://127.0.0.1:8789/health').then(r=>r.json()).then(console.log)"
+docker exec wnet-test-adminsvc  node -e "fetch('http://127.0.0.1:8790/admin/health').then(r=>r.json()).then(console.log)"
 ```
+
+The console's probe is `/admin/health`, not `/health`: every path adminsvc answers lives
+under `/admin` so that ONE Caddy `handle` block covers the whole thing. It also refuses any
+request carrying `x-forwarded-for` — i.e. anything that came through Caddy — the same way
+matchsvc's `/metrics` does, so `curl https://bb.gamestao.com/admin/health` is a 404 by
+design and this `docker exec` is the only way to read it.
 
 ## 2. Wire up Caddy
 
 matchsvc answers everything except the WS upgrade, which is path-pinned to `/ws`
 (`server/src/index.ts`'s `WebSocketServer({ path: '/ws' })`), and — since 2026-09-09 —
-except `/grafana*`. So the site block is a three-way path split, not a whole-host proxy
-the way deutsch's single-service one is:
+except `/grafana*` and `/admin*`. So the site block is a FOUR-way path split, not a
+whole-host proxy the way deutsch's single-service one is:
 
 ```caddyfile
 bb.gamestao.com {
@@ -176,6 +193,9 @@ bb.gamestao.com {
 	}
 	handle /grafana* {
 		reverse_proxy wnet-test-grafana:3000
+	}
+	handle /admin* {
+		reverse_proxy wnet-test-adminsvc:8790
 	}
 	handle {
 		reverse_proxy wnet-test-matchsvc:8788
@@ -193,6 +213,20 @@ says what it does.
 configured with `GF_SERVER_SERVE_FROM_SUB_PATH=true`, meaning it expects to receive the
 prefix and generates its own links with it. Strip it and every asset 404s.
 
+**The `/admin*` prefix is not stripped either, and for a different reason.** adminsvc's own
+route table IS `/admin/...` — `/admin/`, `/admin/login`, `/admin/logout`, `/admin/health`
+(`server/src/adminsvc/routes.ts`) — so the prefix is not a mount point it is served under,
+it is part of every path it knows. That is deliberate: the session cookie is scoped
+`Path=/admin` so it never rides along on a player's `POST /client/events`, and one `handle`
+block covers the console because there is nothing outside the prefix to cover.
+`handle_path` here would deliver `/login` to a server that 404s it.
+
+**`/admin*` must come BEFORE the catch-all**, which is what `handle` guarantees: the blocks
+are mutually exclusive and first-match, so the ordering in the file is the ordering that
+runs. This is design/21 §3.4's named trap, and the reason it is worth naming is that
+getting it wrong is not an error — it is the console's page being answered by matchsvc's
+404 handler, i.e. a blank page with a 200.
+
 #### Before that deploy: the Grafana password must already be in `.env`
 
 `docker-compose.yml` declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?…}`,
@@ -207,8 +241,23 @@ ssh wnet-server "cd ~/wnet-test && printf 'BB_GRAFANA_ADMIN_PASSWORD=%s\n' \"\$(
 ssh wnet-server "grep '^BB_GRAFANA_ADMIN_PASSWORD=' ~/wnet-test/.env"   # note it down — this is the only copy
 ```
 
-`ci-deploy.sh` checks for it and fails the deploy with that explanation rather than letting
-compose's own "required variable is not set" be the only clue.
+#### ...and so must the ops console's, for exactly the same reason
+
+`BB_ADMIN_PASSWORD` (design/21 §3.3) is the second credential with a `:?` in
+`docker-compose.yml`, and the second login page on the public internet. It is refused
+TWICE: compose will not interpolate a missing value, and
+`server/src/adminsvc/credentials.ts` throws `AdminStartupError` before the process opens a
+database or binds a port — because adminsvc is also run from `npm` and from a test, and one
+guard per entry point is one guard that can be bypassed. There is no default and no reset
+flow: rotation is a new value here plus a redeploy (decision B3 — one operator, no roles).
+
+The floor is 16 characters, which a generated value clears by 2x. Generate it rather than
+choosing it, the same way as above, with `BB_ADMIN_PASSWORD` in place of the Grafana name.
+The operator name defaults to `admin`; set `BB_ADMIN_USER` in `.env` to change it — it is
+not a secret, and the password is the whole credential.
+
+`ci-deploy.sh` checks for BOTH by name and fails the deploy with that explanation rather
+than letting compose's own "required variable is not set" be the only clue.
 
 Same backup-append-validate-reload sequence deutsch's README uses (`reload`, not
 `restart` — the wnet stack's own connections stay up):
@@ -218,8 +267,18 @@ ssh wnet-server 'cd ~/wnet/docker && cp Caddyfile Caddyfile.bak-$(date +%Y%m%d-%
   && cat >> Caddyfile <<EOF
 
 bb.gamestao.com {
-	reverse_proxy /ws* wnet-test-gameserver:8787
-	reverse_proxy wnet-test-matchsvc:8788
+	handle /ws* {
+		reverse_proxy wnet-test-gameserver:8787
+	}
+	handle /grafana* {
+		reverse_proxy wnet-test-grafana:3000
+	}
+	handle /admin* {
+		reverse_proxy wnet-test-adminsvc:8790
+	}
+	handle {
+		reverse_proxy wnet-test-matchsvc:8788
+	}
 }
 EOF
   && docker exec docker-caddy-1 caddy validate --config /etc/caddy/Caddyfile \
@@ -262,7 +321,19 @@ instead of silently trying `localhost:8788` and failing with no visible error.
       matchsvc → billsvc internal hop works even with billsvc in dev-stub mode)
 - [ ] `https://bb.gamestao.com/grafana/` shows the login page, and `admin` +
       `BB_GRAFANA_ADMIN_PASSWORD` gets in
-- [ ] In Grafana, **Backend — logs** shows a heartbeat line for all four services within
+- [ ] `https://bb.gamestao.com/admin/` shows the ops console's login page — NOT matchsvc's
+      404 JSON, which would mean the `/admin*` `handle` block is missing or lost to the
+      catch-all — and `admin` + `BB_ADMIN_PASSWORD` gets in
+- [ ] Signed in, all three tabs answer: **Players** lists accounts, **Commerce** shows the
+      review queue and the webhook log, **Retention** shows the cohort grid. Retention says
+      "No rollup rows for any day" until a complete day has been rolled up; that is the
+      correct empty state and it prints the row count so it can be told from a broken reader
+- [ ] `curl -s https://bb.gamestao.com/admin/health` returns a **404** — like `/metrics`,
+      the console's health route must not be public
+- [ ] `docker compose logs adminsvc | grep 'ops console listening'` shows
+      `accounts=true billing=true analytics=true readOnly=true`. Any `false` is a path that
+      does not exist, and that tab reads "Unavailable" with the reason on it
+- [ ] In Grafana, **Backend — logs** shows a heartbeat line for all five services within
       five minutes, and **Server status** shows every scrape target `up`
 - [ ] Open the game, force an error in its console, and it appears in **Client — browser
       logs** within ~30 seconds (§8 has the one-liner)

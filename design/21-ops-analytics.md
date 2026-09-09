@@ -1,7 +1,9 @@
 # 21 — Ops and analytics: retention, a read-only console, and flags
 
-**Status: Phase A is SHIPPED and verified end to end (2026-09-09). Phases B and C are
-designed, not built.** This document is the plan for three things the project has never had —
+**Status: all three phases are SHIPPED (2026-09-09).** Phase A is verified end to end
+against a real client and a real server; B and C are built, fully gated and **not yet
+deployed** — every gate is green locally and nothing has been pushed. This document is the
+plan for three things the project has never had —
 retention instrumentation, a way to look at a player without an SSH session, and a runtime
 switch that does not need a deploy. It is written to be implemented in the order of §7, and
 each phase is meant to be shippable and useful on its own.
@@ -39,7 +41,7 @@ things that are already here and change the shape of the answer entirely.
 ## What this is built ON (and what that removes from scope)
 
 **The log store landed first, and it is not part of this document.** Loki, Alloy, Prometheus and
-Grafana are deployed alongside the three services; the client ships its console to
+Grafana are deployed alongside the game's own services; the client ships its console to
 `POST /client/log`; every service serves `/metrics`. That work is design/19's own section and a
 separate pass, landed 2026-09-09. It means two of `funny`'s ops pillars arrive here for
 free:
@@ -67,10 +69,10 @@ a row per player — and that is all §3 builds.
 | A3 | The event vocabulary is a **closed enum in shared code**, refused server-side | An open `track(name, props)` surface is an open write to our own log store from the internet. `funny`'s audit found an uncapped id field amplifying ~200× into its store; a closed vocabulary is the version of that lesson that cannot be forgotten by the next call site |
 | A4 | **One writer to `analytics.db`** — matchsvc. Everything else opens it read-only | SQLite's happy path, and the reason the console in §3 can be a total statement rather than a careful one |
 | A5 | The **daily rollup table is the record; Prometheus is a 15-day view** | `--storage.tsdb.retention.time=15d`, and a gauge cannot be backfilled. A D7 cohort chart that silently starts at "two weeks ago" is the kind of instrument that lies quietly. The rollup can always re-derive |
-| B1 | The console is a **fifth process** (`server/src/adminsvc/`), and it holds **no write handle to player data at all** | Blast radius. An auth bug in the thing every player talks to is worse than an auth bug in the thing one operator talks to. The backup worker already proved `readOnly: true` `node:sqlite` handles work on this box |
+| B1 | The console is a **fifth process** (`server/src/adminsvc/`), and it holds **no write handle to player data at all** | Blast radius. An auth bug in the thing every player talks to is worse than an auth bug in the thing one operator talks to. The backup worker already proved `readOnly: true` `node:sqlite` handles work on this box. **As built it is refused twice** — `readOnly: true` in `adminsvc/dbs.ts` and `:ro` bind mounts in compose — and `adminsvc.dbs.test.ts` asserts it by ATTEMPTING an INSERT/UPDATE/DELETE/DROP through each handle rather than by checking the option was passed |
 | B2 | The public console is **read-only over player data**. Every player-data mutation — password reset, ban, entitlement grant — stays a **CLI script run on the box** | This is the decision that makes a *publicly exposed* console proportionate. SSH access is the second factor, and it is one we already have and already protect. It also deletes RBAC, the approval workflow and the audit-visibility matrix from scope in one move: there are no writes to gate |
 | B3 | **One operator, one credential, no roles** | A role matrix with one subject is ceremony. `funny`'s four roles exist because it has a support team; when a second operator appears, revisit |
-| C1 | Feature flags are an **allowlist of names and types in code**; nothing security-relevant is ever a flag | A flag that could re-enable billsvc's dev stub is a remote "mint me free entitlements" button. The allowlist is what stops the flag table from growing one |
+| C1 | Feature flags are an **allowlist of names and types in code**; nothing security-relevant is ever a flag | A flag that could re-enable billsvc's dev stub is a remote "mint me free entitlements" button. The allowlist is what stops the flag table from growing one. **As built, `flags.defs.test.ts` pins the EXACT set of names** — adding one fails the suite, so the question gets answered in a review — plus a pattern test refusing any name containing `auth`/`stub`/`verif`/`secret`/`key`/`password`/`admin`, because a list of forbidden names is a list somebody has to have thought of |
 | P1 | The privacy policy is rewritten **in the same pass as the instrumentation**, not after | See §5. Shipping collection against a live policy that denies it is the failure this ordering exists to prevent |
 
 ---
@@ -310,6 +312,50 @@ pane does not stop the clock, it starves it.
 
 ## 3. Phase B — the read-only console
 
+**SHIPPED 2026-09-09.** As code: `server/src/adminsvc/` (the process, the credential guard,
+the session cookie, the three read-only handles, the dispatch chain), `adminsvc/views/`
+(the three queries), `adminsvc/page/` (the document, the stylesheet, the four section
+renderers), a fifth esbuild entry, a compose service with two `:ro` mounts, an
+`HTTP_SERVICES` entry in the manifest gate, and one Caddy `handle /admin*` block. 100% lines
+and branches on every new module except the entry point's `require.main` guard.
+
+### What building it found
+
+- **§3.2 named the wrong table for one column.** "Last active (from `daily_active`)" cannot
+  be answered from that table: its columns are `(day, install, host)` and it holds **no
+  account id at all** — deliberately, because a cohort is a question about a BROWSER and
+  joining it to an account would assemble exactly the profile §2.1 promises not to. It comes
+  from `events.account_id`, which the server attaches from the bearer. The consequence is on
+  the page rather than hidden: `events` is pruned at 90 days, so a blank cell means *no event
+  in the window* and never *never played*.
+- **Every database handle is nullable, and none of the nulls is defensive.** `readOnly` mode
+  does not create a missing file, it throws, and all three files belong to other processes —
+  `analytics.db` does not exist until collection is switched on, `billing.db` until billsvc
+  has booted once, `accounts.db` until somebody registers. So each section has its own
+  "unavailable" card carrying the reason, and a `deploy.bundle.test.ts` case boots the real
+  bundle with none of the three present. A console that refused to start could not be used to
+  find out why the file is not there.
+- **The XSS surface is real and it is `webhook_events.raw`** — a verbatim copy of bytes an
+  outside party POSTed to the billing plane, rendered in the browser of the one account that
+  can read every player's row. The rule is structural: the view modules deliberately do NOT
+  pre-escape, so there is no "already safe" category to reason about, and `page/layout.ts`'s
+  `esc` is the single gate with `default-src 'none'` on top. Asserted end to end, from the
+  real billing schema through the real read-only handle to the rendered page.
+- **A test caught a live bug in the retention tooltip.** It read
+  `${size} of ${dau} installs returned`, which rendered "4 of 4" on a 50% cell — `daily_rollup`
+  stores the rate and the cohort size and **not** the return count, so there was no numerator
+  to print. A cell whose tooltip contradicts its own percentage is an instrument that gets
+  believed.
+- **The Caddy trap below was already answered in practice.** The site block became
+  mutually-exclusive `handle` blocks when Grafana landed, so first-match ordering is what the
+  file says; `/admin*` is one more block ahead of the catch-all. The README's `ssh` snippet
+  still carried the OLD two-line form and is corrected.
+- **`RateLimiter`/`clientKey` moved to `server/src/rateLimit.ts`**, re-exported from
+  `routes/telemetry.ts` unchanged. Reaching for the limiter through that file would have
+  pulled the Loki push, the analytics ingest and the client-log parser into the console's
+  bundle for one class. The MECHANISM is shared; the budgets are not (20/min for telemetry,
+  10 per five minutes for a login, where the legitimate rate is one per working day).
+
 ### 3.1 Why a fifth process rather than routes on matchsvc
 
 matchsvc is proxied wholesale, so a route added there is public the moment it exists —
@@ -368,6 +414,56 @@ decision rather than let it default), and one Caddy line.
 > question first.
 
 ## 4. Phase C — feature flags
+
+**SHIPPED 2026-09-09, with one piece of it inert and labelled as such — see *the gap* below.**
+As code: `server/src/flags/` (the allowlist, `ops.db`, the poll client),
+`adminsvc/flagRoutes.ts` (the internal endpoint and the two write paths),
+`adminsvc/page/flags.ts` (the tab), matchsvc's poll wiring, and `Matchmaker`'s two timings
+converted from captured numbers to suppliers.
+
+### What building it found
+
+- **A flag captured at construction is not a flag.** `Matchmaker` took `queueTtlMs` and
+  `pvpBotFillMs` as numbers and held them in its constructor, so a console change would only
+  take effect on the next restart — i.e. a differently-spelled deploy. Both accept a supplier
+  now, read per decision, and a test asserts a value polled AFTER the server was built changes
+  the next answer.
+- **The poll parse is all-or-nothing.** A response missing any name, or carrying one value
+  outside its declared range, is refused whole. A partial merge would let a garbled response
+  turn one flag off and leave the rest — a state nobody configured and nobody could reproduce,
+  including silently reverting a deliberate override because a *different* flag was corrupt.
+- **C1 is enforced on both sides of the table.** `setFlag` will not write a name that is not
+  in code, and `readOverrides` will not return one. The two are edited by different people at
+  different times, so a row that got in some other way must still not become a live flag.
+- **A row means "overridden"; absence means "as shipped".** Clearing DELETES the row rather
+  than writing the default into it, because a stored copy of the default goes stale the day a
+  deploy changes it — with the table looking perfectly consistent.
+- **`ops.db` is the only writable database in adminsvc, and that is compatible with B1**, said
+  in one sentence: *a total compromise of the console can change how the game behaves; it
+  cannot change who anybody is or what they own.* It gets its own writable mount, deliberately
+  not under `/sources/`, so the path in every log line says which kind of handle it is. It is
+  deliberately **not** a fourth backup source: every row is a value an operator typed over a
+  default that is in git.
+
+### The gap: two of the four flags have no consumer
+
+**Two flags are about the CLIENT** — the rewarded-ad offer and a maintenance banner — and the
+delivery mechanism this section specifies is an `x-internal-key` endpoint that a browser
+cannot call and must never be able to. So those two have a row in `ops.db`, a control in the
+console, and nothing on the other end.
+
+A switch that looks live and changes nothing is the worst thing an ops panel can contain, and
+this project has already paid for that shape once — §2.5 records the log store's "errors by
+build version" panel, fully populated and meaningless because nothing could supply the field.
+So the state is carried in the TYPE (`FlagDef.consumer` / `FlagDef.delivered`), rendered as a
+per-row `not delivered` badge with a warning above the table, and pinned by a test that names
+which two they are — so it cannot be "fixed" by flipping the boolean instead of building the
+path. Deleting the two flags instead would also have deleted the boolean and string arms of
+`coerceFlag`: tested validation for the two shapes the first real client flag will need.
+
+**What it needs is a PUBLIC delivery path** — a field on a response the client already
+fetches, carrying only the flags marked public — and that is a decision about a new public
+surface rather than a missing line. Filed in §9.
 
 The one thing on this list that changes how the project is *operated* rather than how it is
 observed: today every switch is a deploy.
@@ -471,11 +567,18 @@ three tables, the daily rollup, the gauges, a Grafana dashboard, the backup sour
 given: a real measurement off a real client, not a merged branch. One host is deliberately
 excluded — see §9 on WeChat.
 
-**B. The read-only console** — adminsvc as a fifth process with read-only handles, the login,
-the three views, the compose service and manifest entries, the Caddy route.
+**B. The read-only console — SHIPPED 2026-09-09.** adminsvc as a fifth process with
+read-only handles, the login, the three views, the compose service and manifest entries, the
+Caddy route. §3's own "what building it found" has the two places this plan was wrong.
 
-**C. Feature flags** — `ops.db`, the internal poll endpoint, the compiled-in allowlist, the
-merge-over-defaults reader in each service, the two write paths in the console.
+**C. Feature flags — SHIPPED 2026-09-09**, with the client half of the delivery path
+missing and labelled: `ops.db`, the internal poll endpoint, the compiled-in allowlist, the
+merge-over-defaults reader in matchsvc, and the two write paths in the console. §4's *the gap*
+is the part that is plumbing without a consumer.
+
+**Not deployed.** Every gate is green locally and nothing has been pushed. The acceptance
+checklist in `server/deploy/README.md` §4 carries the console's rows, including the one that
+distinguishes a working `/admin*` route from matchsvc's 404 JSON answering it.
 
 Deferred, and filed rather than forgotten: player ban/disable (needs a schema change and a
 real incident to shape it), a second operator (needs B3 revisited), and anything that would
@@ -496,6 +599,12 @@ convenience one).
 
 ## 9. Open questions
 
+- **How does a flag reach the CLIENT?** §4's *the gap*: two of the four flags in the
+  allowlist are client-facing and nothing reads them, because the poll endpoint is
+  internal-key-only by design. The shape that would work is a PUBLIC field on a response the
+  client already fetches, carrying only flags explicitly marked public — which is a new
+  public surface and therefore a decision rather than a missing line. Until it exists the
+  console says `not delivered` on those rows, which is the honest state and not a bug.
 - **Is a consent banner required?** The policy states legitimate interest for both new rows,
   and reusing `daydayup.playerId.v1` means analytics adds no new storage access — but ePrivacy
   asks about the PURPOSE of reading terminal storage, not only about whether the read is new,

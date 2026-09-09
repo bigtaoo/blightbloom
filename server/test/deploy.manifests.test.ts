@@ -19,6 +19,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { assertBillingStartupSafety, BillingStartupError } from '../src/billsvc/startupGuard';
+import { assertAdminStartupSafety, AdminStartupError, MIN_ADMIN_PASSWORD } from '../src/adminsvc/credentials';
+import { DEFAULT_ADMIN_PORT, OTHER_PLANE_PORTS } from '../src/adminsvc/main';
+import { ADMIN_HEALTH_PATH } from '../src/adminsvc/routes';
 // @ts-expect-error — plain .mjs build script, the same untyped-helper import vitest.config.ts uses.
 import { entries, external, target } from '../scripts/build.mjs';
 
@@ -127,7 +130,26 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
 const services = parseCompose(compose);
 
 /** The port env var each process reads for its own listener (src/index.ts, matchsvc.ts, billsvc/main.ts). */
-const PORT_VAR: Record<string, string> = { gameserver: 'PORT', matchsvc: 'MATCH_PORT', billsvc: 'BILL_PORT' };
+const PORT_VAR: Record<string, string> = {
+  gameserver: 'PORT',
+  matchsvc: 'MATCH_PORT',
+  billsvc: 'BILL_PORT',
+  adminsvc: 'ADMIN_PORT',
+};
+/**
+ * The `/health` route each HTTP service answers on. Three of them use `/health`; adminsvc
+ * uses `/admin/health` because every path it serves lives under `/admin` so that ONE Caddy
+ * `handle` block covers the whole console (design/21 §3.4). A per-service path rather than
+ * a shared literal, because the shared literal would have silently passed for adminsvc:
+ * `'/admin/health'.includes('/health')` is true, so a `toContain('/health')` here would
+ * assert nothing about which port that probe actually names.
+ */
+const HEALTH_PATH: Record<string, string> = {
+  gameserver: '/health',
+  matchsvc: '/health',
+  billsvc: '/health',
+  adminsvc: '/admin/health',
+};
 
 /**
  * The services that serve HTTP, which is every assertion about ports, `expose` and a
@@ -136,7 +158,7 @@ const PORT_VAR: Record<string, string> = { gameserver: 'PORT', matchsvc: 'MATCH_
  * PORT_VAR entry" so that adding a service forces a decision about which kind it is —
  * derive it and a new HTTP service that simply forgot its port silently becomes a worker.
  */
-const HTTP_SERVICES = ['billsvc', 'gameserver', 'matchsvc'] as const;
+const HTTP_SERVICES = ['adminsvc', 'billsvc', 'gameserver', 'matchsvc'] as const;
 const WORKER_SERVICES = ['backup'] as const;
 /**
  * The observability stack (design/19 §10): off-the-shelf images that run no code from this
@@ -157,7 +179,7 @@ const OBS_PORT: Record<string, string> = {
 };
 
 describe('the compose reader actually read something', () => {
-  it('found all eight services, each fully populated', () => {
+  it('found all nine services, each fully populated', () => {
     // Every other test in this file is vacuous if this one is wrong: an empty `env` makes
     // "no unknown env var" trivially true, an empty `command` makes the bundle-name check
     // an assertion about nothing. Pinned to the exact shape rather than "at least one".
@@ -171,7 +193,7 @@ describe('the compose reader actually read something', () => {
     }
     for (const name of HTTP_SERVICES) {
       expect(services[name]!.expose, name).toHaveLength(1);
-      expect(services[name]!.healthcheck, name).toContain('/health');
+      expect(services[name]!.healthcheck, name).toContain(HEALTH_PATH[name]!);
     }
     for (const name of OBS_SERVICES) {
       const svc = services[name]!;
@@ -257,7 +279,7 @@ describe('the compose reader actually read something', () => {
     const mountsOf = (h: string): Array<{ readonly: boolean }> => all.filter((v) => v.host === h);
     const rw = hosts.filter((h) => mountsOf(h).some((v) => !v.readonly));
     const ro = hosts.filter((h) => mountsOf(h).every((v) => v.readonly));
-    expect(rw.sort()).toEqual(['./backups', './data/billsvc', './data/matchsvc']);
+    expect(rw.sort()).toEqual(['./backups', './data/adminsvc', './data/billsvc', './data/matchsvc']);
     expect(ro.length).toBeGreaterThan(0);
     for (const host of ro) expect(host, 'a never-written mount is config, and config lives here').toMatch(/^\.\/monitoring\//);
     const fixed = /for dir in (.+); do/.exec(ciDeploy)?.[1]?.split(' ') ?? [];
@@ -386,6 +408,10 @@ describe('compose env vars', () => {
     // image's own admin/admin on a login page that is on the public internet.
     const grafanaPassword = /GF_SECURITY_ADMIN_PASSWORD:\s*(.+)/.exec(compose)?.[1] ?? '';
     expect(grafanaPassword).toMatch(/^\$\{BB_GRAFANA_ADMIN_PASSWORD:\?/);
+    // The console's operator password is the fourth, and the same rule applies for the same
+    // reason — its login page is on the public internet beside Grafana's (design/21 §3.3).
+    const adminPassword = /BB_ADMIN_PASSWORD:\s*(.+)/.exec(compose)?.[1] ?? '';
+    expect(adminPassword).toMatch(/^\$\{BB_ADMIN_PASSWORD:\?/);
   });
 });
 
@@ -398,7 +424,7 @@ describe('ports and internal addresses', () => {
       const port = svc.env[PORT_VAR[name]!];
       expect(port, `${name} sets no ${PORT_VAR[name]}`).toBeTruthy();
       expect(svc.expose).toEqual([port]);
-      expect(svc.healthcheck).toContain(`http://127.0.0.1:${port}/health`);
+      expect(svc.healthcheck).toContain(`http://127.0.0.1:${port}${HEALTH_PATH[name]!}`);
     }
   });
 
@@ -454,5 +480,95 @@ describe("billsvc's compose environment against the real startup guard", () => {
     for (const name of Object.keys(services).filter((n) => n !== 'billsvc')) {
       expect(() => assertBillingStartupSafety({ ...services[name]!.env, NODE_ENV: 'production' })).not.toThrow();
     }
+  });
+});
+
+describe("the ops console's compose environment against the real startup guard", () => {
+  const adminEnv = (): Record<string, string> => ({ ...services.adminsvc!.env });
+
+  it('carries the credential as an interpolation the guard would REFUSE if empty', () => {
+    // The two halves that matter, and neither is a restatement of the compose file.
+    //
+    // Compose's value is the literal text `${BB_ADMIN_PASSWORD:?…}` — long enough to clear
+    // the length floor — so feeding it to the guard and asserting "does not throw" would
+    // pass against a guard that never throws at all. What is asserted instead is the
+    // property that actually protects the box: with the value ABSENT (which is what `.env`
+    // not carrying it means, once compose has interpolated), the shipped predicate refuses.
+    expect(adminEnv().BB_ADMIN_PASSWORD).toMatch(/^\$\{BB_ADMIN_PASSWORD:\?/);
+    const { BB_ADMIN_PASSWORD: _absent, ...withoutPassword } = adminEnv();
+    expect(() => assertAdminStartupSafety(withoutPassword)).toThrow(AdminStartupError);
+    // ...and a short one is refused too, so the floor is not a comment.
+    expect(() => assertAdminStartupSafety({ ...adminEnv(), BB_ADMIN_PASSWORD: 'x'.repeat(MIN_ADMIN_PASSWORD - 1) })).toThrow(
+      AdminStartupError,
+    );
+    expect(() => assertAdminStartupSafety({ ...adminEnv(), BB_ADMIN_PASSWORD: 'x'.repeat(MIN_ADMIN_PASSWORD) })).not.toThrow();
+  });
+
+  it('never relaxes the session cookie in the deployed environment', () => {
+    // `BB_ADMIN_INSECURE_COOKIE=1` drops `Secure` so the console can be developed against
+    // `http://localhost`. Under `NODE_ENV=production` the guard refuses it outright, and
+    // compose sets production — so this asserts the pair, not either half.
+    expect(adminEnv().NODE_ENV).toBe('production');
+    expect(() => assertAdminStartupSafety({ ...adminEnv(), BB_ADMIN_PASSWORD: 'x'.repeat(32), BB_ADMIN_INSECURE_COOKIE: '1' })).toThrow(
+      AdminStartupError,
+    );
+    expect(compose).not.toContain('BB_ADMIN_INSECURE_COOKIE');
+  });
+
+  it('reads all three databases through READ-ONLY mounts and writes nothing', () => {
+    // Decision B1, as a property of the deploy rather than of the code: this container has
+    // no writable mount at all. `dbs.ts` also opens every handle `readOnly: true`, so the
+    // process is refused twice over — and this is the half a bug in the code cannot undo.
+    const svc = services.adminsvc!;
+    // Three mounts, and exactly ONE of them writable: the two player-data sources are `:ro`,
+    // and `./data/adminsvc` is where `ops.db` lives (design/21 §4). That split IS decision
+    // B1 as a property of the deploy — the console can change how the game behaves and
+    // cannot change who anybody is — so it is asserted as a partition rather than as "all
+    // read-only", which stopped being true when Phase C landed.
+    expect(svc.volumes.length).toBe(3);
+    const ro = svc.volumes.filter((v) => v.readonly).map((v) => v.host).sort();
+    const rwMounts = svc.volumes.filter((v) => !v.readonly).map((v) => v.host);
+    expect(ro).toEqual(['./data/billsvc', './data/matchsvc']);
+    expect(rwMounts).toEqual(['./data/adminsvc']);
+    // ...pointed at the files their OWNERS name with the same variables (src/backup/config.ts's
+    // reason). A console reading a path nobody writes shows an empty console.
+    expect(svc.env.BB_DB_PATH).toBe('/sources/matchsvc/accounts.db');
+    expect(svc.env.BB_BILLING_DB_PATH).toBe('/sources/billsvc/billing.db');
+    expect(svc.env.BB_ANALYTICS_DB_PATH).toBe('/sources/matchsvc/analytics.db');
+    // ...and the two READ-ONLY mounts are the state dirs their owners write, mounted under
+    // `/sources/` so the role is visible in every path in the logs. The exact lines are
+    // asserted because the env paths above are only correct RELATIVE to them: a mount point
+    // renamed on its own leaves three paths pointing at nothing, and every section then
+    // reports "unavailable" on a deploy that looks fine.
+    expect(compose).toContain('- ./data/matchsvc:/sources/matchsvc:ro');
+    expect(compose).toContain('- ./data/billsvc:/sources/billsvc:ro');
+    expect(compose).toContain('- ./data/adminsvc:/data');
+    for (const path of [svc.env.BB_DB_PATH!, svc.env.BB_BILLING_DB_PATH!, svc.env.BB_ANALYTICS_DB_PATH!]) {
+      expect(path.startsWith('/sources/'), path).toBe(true);
+    }
+    // ...and the writable one is NOT under `/sources/`, so the path in every log line says
+    // which kind of handle it is. A flag store pointed at `/sources/...` would be aimed at a
+    // read-only mount and every write would fail at runtime.
+    expect(svc.env.BB_OPS_DB_PATH).toBe('/data/ops.db');
+    expect(svc.env.BB_OPS_DB_PATH!.startsWith('/sources/')).toBe(false);
+  });
+
+  it('listens on its own plane, and the port the code defaults to is the one compose sets', () => {
+    // A mutation battery on billsvc's equivalent constant changed it to a neighbour's port
+    // and no test noticed, because every case binds port 0. This is that gap closed for the
+    // fourth plane: the code's default, compose's value and the other three planes, compared.
+    expect(String(DEFAULT_ADMIN_PORT)).toBe(services.adminsvc!.env.ADMIN_PORT);
+    expect(Object.values(OTHER_PLANE_PORTS)).not.toContain(DEFAULT_ADMIN_PORT);
+    for (const [name, portVar] of Object.entries(PORT_VAR)) {
+      if (name === 'adminsvc') continue;
+      expect(Number(services[name]!.env[portVar]!), name).not.toBe(DEFAULT_ADMIN_PORT);
+    }
+  });
+
+  it('probes the health path the code actually serves', () => {
+    // `/admin/health`, not `/health` — and the route is defined once, in `routes.ts`, so a
+    // rename there fails here instead of turning the healthcheck into a permanent red.
+    expect(services.adminsvc!.healthcheck).toContain(ADMIN_HEALTH_PATH);
+    expect(HEALTH_PATH.adminsvc).toBe(ADMIN_HEALTH_PATH);
   });
 });

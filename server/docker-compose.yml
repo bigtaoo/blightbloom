@@ -5,12 +5,12 @@
 # its own (`docker compose down && rm -rf ~/wnet-test`).
 #
 # Network: joins the host's existing `docker_default` so the reverse proxy can reach
-# `gameserver` and `matchsvc` by container name, and so the three services here can reach
+# `gameserver` and `matchsvc` by container name, and so the services here can reach
 # each other the same way. Ports are `expose`d, never `ports`-published — everything comes
 # in through the proxy's :443, nothing binds a host port directly.
 #
 # One image (server/Dockerfile, built from the ALREADY-BUILT server/dist/*.mjs —
-# `npm run build -w server` first), FOUR processes selected by `command:` — three HTTP
+# `npm run build -w server` first), FIVE processes selected by `command:` — four HTTP
 # services and one worker (`backup`), which has no port and whose healthcheck therefore
 # asks its own bundle rather than a `/health` route.
 #
@@ -32,9 +32,9 @@
 #    2026-09-08. These images run as their own uids (Loki 10001, Grafana 472), so a
 #    bind-mounted data dir would need a third ownership rule in `ci-deploy.sh`. A named
 #    volume is owned by whoever writes it first. Only read-only CONFIG is bind-mounted.
-#  - **Grafana is the one thing here a human logs into**, and the only one Caddy exposes
-#    (`/grafana*` — server/deploy/README.md §2). Its admin password comes from `.env`,
-#    which CI never ships, and self-registration is off.
+#  - **Grafana is one of the two things here a human logs into** (`adminsvc` above is the
+#    other), and Caddy exposes it at `/grafana*` — server/deploy/README.md §2. Its admin
+#    password comes from `.env`, which CI never ships, and self-registration is off.
 services:
   gameserver:
     build: .
@@ -94,6 +94,12 @@ services:
       # accounts.db on the same mount, so one volume covers both and a snapshot of the box
       # holds a consistent pair.
       BB_ANALYTICS_DB_PATH: /data/analytics.db
+      # Where to poll for feature flags (design/21 §4, src/flags/client.ts). Unset would be
+      # a complete and supported state — every value then comes from `flags/defs.ts` — so
+      # this line is the opt-in, not a requirement. The poll carries `x-internal-key`, so it
+      # is the same trust seam design/19 §3 already built, and a 401/timeout/garbled body
+      # all leave the compiled-in defaults in place.
+      BB_ADMINSVC_URL: http://adminsvc:8790
     volumes:
       - ./data/matchsvc:/data
     expose:
@@ -149,6 +155,86 @@ services:
       retries: 3
       start_period: 10s
 
+  # The ops console (design/21 §3, decision B1) — the FIFTH process and the second one a
+  # human logs into, at https://bb.gamestao.com/admin/ beside Grafana.
+  #
+  # Two properties are worth reading straight off this block, because they are the whole
+  # security argument and neither is visible in the code:
+  #
+  #  - **Every mount is `:ro`, and there is no writable mount at all.** The process also
+  #    opens all three files with `readOnly: true` (src/adminsvc/dbs.ts), so it is refused
+  #    twice over — by SQLite and by the kernel. That is what lets B1 be stated as "it
+  #    cannot write player data" rather than "it does not". Mounted under `/sources/` for
+  #    the same reason the backup worker's are: the role is then visible in every path in
+  #    the logs.
+  #  - **It has no `.env`-independent default credential.** `BB_ADMIN_PASSWORD` uses the
+  #    same `:?` form Grafana's does, so a box whose `.env` predates this service fails
+  #    `compose up` rather than booting a login page with a compiled-in password on the
+  #    public internet. `deploy/ci-deploy.sh` checks for it by name first, so the deploy log
+  #    says which value is missing instead of leaving compose's own interpolation error as
+  #    the only clue.
+  #
+  # It joins no other service: nothing calls it and it calls nothing. `BB_MATCHSVC_URL` and
+  # friends are deliberately absent — the console reads databases, not APIs.
+  adminsvc:
+    build: .
+    image: wnet-test:latest
+    container_name: wnet-test-adminsvc
+    command: ["node", "adminsvc.mjs"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ADMIN_PORT: "8790"
+      NODE_ENV: production
+      BB_LOG_LEVEL: info
+      # No default and no fallback, exactly as Grafana's password has none. `:?` makes a
+      # missing value fail `compose up`; src/adminsvc/credentials.ts ALSO refuses to boot
+      # without it, because this process is run from `npm` and from a test as well as from
+      # compose and one guard per entry point is one guard that can be bypassed.
+      BB_ADMIN_PASSWORD: ${BB_ADMIN_PASSWORD:?set BB_ADMIN_PASSWORD in .env (openssl rand -hex 16)}
+      # The three files, at the read-only paths below. Same variable names their OWNING
+      # services use (the reason src/backup/config.ts gives): "which file is this" must be
+      # one fact with one name, not one per reader.
+      BB_DB_PATH: /sources/matchsvc/accounts.db
+      BB_BILLING_DB_PATH: /sources/billsvc/billing.db
+      BB_ANALYTICS_DB_PATH: /sources/matchsvc/analytics.db
+      # The FOURTH database and the only one this process can write (design/21 §4,
+      # src/flags/store.ts). Its own directory, its own mount, NOT `:ro`, and deliberately
+      # not under `/sources/`: the path itself is what says which handles are read-only and
+      # which one is not. Nothing about a player is in it — one row per feature flag,
+      # holding a name this repo declared and a value this repo validated — so B1's sentence
+      # ("cannot write player data") stays exactly true.
+      #
+      # SETTING this is what switches flags on, the same way BB_ANALYTICS_DB_PATH switches
+      # collection on: unset means the flags tab says so, /internal/flags answers 503, and
+      # every service runs on its compiled-in defaults, which is the shipped behaviour.
+      BB_OPS_DB_PATH: /data/ops.db
+    volumes:
+      - ./data/matchsvc:/sources/matchsvc:ro
+      - ./data/billsvc:/sources/billsvc:ro
+      - ./data/adminsvc:/data
+    expose:
+      - "8790"
+    networks:
+      - wnet
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # `/admin/health` rather than `/health`: every path this process answers is under
+    # `/admin` so that ONE Caddy `handle` block covers the whole console. The route refuses
+    # a request carrying `x-forwarded-for` (i.e. one that came through Caddy) the same way
+    # matchsvc's `/metrics` does, so this probe works only from inside the container —
+    # which is exactly where a healthcheck runs.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/admin/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # The only process here that serves nothing. It snapshots the two databases this project
   # cannot regenerate — accounts.db (who somebody is) and billing.db (what they paid for) —
   # because until 2026-09-07 the backup procedure was a `scp` line in a README, i.e. a
@@ -183,6 +269,12 @@ services:
       # worse: a per-source exception costs a special case in `prunable`, in the health
       # arithmetic and in this file, and buys back a few kilobytes a day.
       BB_ANALYTICS_DB_PATH: /sources/matchsvc/analytics.db
+      # `ops.db` is deliberately NOT a fourth backup source. Every row in it is a value an
+      # operator typed, over a default that is in git — so a lost `ops.db` costs the current
+      # override set, which the console shows and a human can retype in a minute, and
+      # nothing that cannot be reconstructed. The other three hold identity, money and
+      # measurement. Adding it would mean a `:ro` mount, a `SOURCE_VARS` entry and a fourth
+      # line in the health arithmetic, to protect four rows of typed input.
       BB_BACKUP_DIR: /backups
       BB_BACKUP_INTERVAL_HOURS: "24"
       BB_BACKUP_KEEP: "14"

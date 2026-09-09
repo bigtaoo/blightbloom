@@ -125,7 +125,7 @@ describe('startHeartbeat', () => {
     const serverRoot = fileURLToPath(new URL('..', import.meta.url));
     const compose = readFileSync(join(serverRoot, 'docker-compose.yml'), 'utf8');
     const bundles = [...compose.matchAll(/command: \["node", "(\w+)\.mjs"\]/g)].map((m) => m[1]!);
-    expect(bundles.sort()).toEqual(['backup', 'billsvc', 'index', 'matchsvc']);
+    expect(bundles.sort()).toEqual(['adminsvc', 'backup', 'billsvc', 'index', 'matchsvc']);
 
     // Each bundle name maps to the entrypoint file that becomes it (scripts/build.mjs).
     const entryOf: Record<string, string> = {
@@ -133,6 +133,7 @@ describe('startHeartbeat', () => {
       matchsvc: 'src/matchsvc.ts',
       billsvc: 'src/billsvc/main.ts',
       backup: 'src/backup/main.ts',
+      adminsvc: 'src/adminsvc/main.ts',
     };
     for (const bundle of bundles) {
       const src = readFileSync(join(serverRoot, entryOf[bundle]!), 'utf8');

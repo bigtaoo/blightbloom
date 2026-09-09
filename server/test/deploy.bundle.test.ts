@@ -110,7 +110,15 @@ afterAll(() => {
  * can't resolve at runtime) that output IS the diagnosis, and swallowing it would leave
  * a red test saying only "health did not answer".
  */
-async function boot(file: string, port: number, env: Record<string, string>): Promise<unknown> {
+async function boot(
+  file: string,
+  port: number,
+  env: Record<string, string>,
+  // adminsvc serves every path under `/admin` so that one Caddy `handle` block covers the
+  // whole console (design/21 §3.4), so its probe is `/admin/health`. A parameter rather
+  // than a second copy of this helper.
+  healthPath = '/health',
+): Promise<unknown> {
   const child = spawn(process.execPath, [file], {
     env: { ...process.env, HOST: '127.0.0.1', NODE_ENV: 'development', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -125,7 +133,7 @@ async function boot(file: string, port: number, env: Record<string, string>): Pr
   for (let i = 0; i < 100; i += 1) {
     if (exited !== null) throw new Error(`${file} exited with ${exited} before answering:\n${output}`);
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`);
+      const res = await fetch(`http://127.0.0.1:${port}${healthPath}`);
       if (res.ok) return await res.json();
     } catch {
       /* not listening yet */
@@ -139,8 +147,14 @@ describe('the built bundles are self-contained', () => {
   it('emits exactly one file per entrypoint', () => {
     // The guard for every assertion below: a build that silently produced nothing would
     // make "no unresolved alias survived" trivially true of an empty set of files.
-    expect(built).toHaveLength(4);
-    expect(entries.map((e: { out: string }) => e.out)).toEqual(['index', 'matchsvc', 'billsvc', 'backup']);
+    expect(built).toHaveLength(5);
+    expect(entries.map((e: { out: string }) => e.out)).toEqual([
+      'index',
+      'matchsvc',
+      'billsvc',
+      'backup',
+      'adminsvc',
+    ]);
   });
 
   it('resolved every @dd/* workspace alias at build time', () => {
@@ -167,6 +181,13 @@ describe('the built bundles are self-contained', () => {
     // the tell that an entrypoint is pointed at the wrong source file.
     expect(byName('backup')).toMatch(/from\s*["']node:sqlite["']/);
     expect(byName('backup')).not.toMatch(/from\s*["']ws["']/);
+    // The ops console (design/21 §3) reads all three databases and serves one page. Same
+    // `ws` argument as the worker's, and a sharper one: adminsvc's whole reason to exist is
+    // that it is NOT matchsvc, so a `ws` import here would mean the entrypoint had dragged
+    // the control plane in behind it — the one import that would put a writable
+    // `AuthService` in the same process as the read-only console.
+    expect(byName('adminsvc')).toMatch(/from\s*["']node:sqlite["']/);
+    expect(byName('adminsvc')).not.toMatch(/from\s*["']ws["']/);
   });
 });
 
@@ -194,6 +215,90 @@ describe('each bundle boots as a bare node process and answers /health', () => {
       BB_BILLING_DEV_STUB: '1',
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });
+  }, 30_000);
+
+  /**
+   * adminsvc (design/21 §3), with NO databases on disk — which is the state a fresh box is
+   * in, and the one worth booting the real artifact against.
+   *
+   * `node:sqlite`'s `readOnly` mode does not create a missing file, it throws, and all
+   * three files here belong to other processes. So "the console boots, says which handles
+   * it has, and serves anyway" is a property of the shipped bundle rather than of a mock,
+   * and the three `false`s are the evidence that the null arms in `dbs.ts` are the ones
+   * being taken.
+   */
+  it('adminsvc (adminsvc.mjs) boots with none of its three databases present', async () => {
+    const port = await freePort();
+    const body = await boot(
+      join(outdir, 'adminsvc.mjs'),
+      port,
+      {
+        ADMIN_PORT: String(port),
+        BB_ADMIN_PASSWORD: 'x'.repeat(32),
+        BB_DB_PATH: join(outdir, 'nothing-here-accounts.db'),
+        BB_BILLING_DB_PATH: join(outdir, 'nothing-here-billing.db'),
+        BB_ANALYTICS_DB_PATH: join(outdir, 'nothing-here-analytics.db'),
+      },
+      '/admin/health',
+    );
+    expect(body).toEqual({
+      ok: true,
+      service: 'blightbloom-adminsvc',
+      // `ops` is the flag store (design/21 §4) and the only handle here that would be
+      // CREATED rather than opened — so `BB_OPS_DB_PATH` is left unset above and this is
+      // false, which is the state of a deployment that wants no remote switch.
+      databases: { accounts: false, billing: false, analytics: false, ops: false },
+      sessions: 0,
+    });
+  }, 30_000);
+
+  /**
+   * The same bundle with a REAL accounts database, so the read-only open is exercised
+   * against a file rather than only its failure. Built with matchsvc's own bundle, not with
+   * a hand-written schema: a console that can read a database this repo's own writer did not
+   * create proves nothing about the deployed pair.
+   */
+  it('adminsvc reads a database matchsvc created, read-only', async () => {
+    const dbPath = join(outdir, 'admin-real-accounts.db');
+    const matchPort = await freePort();
+    await boot(join(outdir, 'matchsvc.mjs'), matchPort, { MATCH_PORT: String(matchPort), BB_DB_PATH: dbPath });
+
+    const port = await freePort();
+    const body = (await boot(
+      join(outdir, 'adminsvc.mjs'),
+      port,
+      {
+        ADMIN_PORT: String(port),
+        BB_ADMIN_PASSWORD: 'x'.repeat(32),
+        BB_DB_PATH: dbPath,
+        BB_BILLING_DB_PATH: join(outdir, 'nothing-here-billing.db'),
+        BB_ANALYTICS_DB_PATH: join(outdir, 'nothing-here-analytics.db'),
+      },
+      '/admin/health',
+    )) as { databases: Record<string, boolean> };
+    expect(body.databases).toEqual({ accounts: true, billing: false, analytics: false, ops: false });
+  }, 40_000);
+
+  /**
+   * The fail-closed half, against the artifact (design/21 §3.3).
+   *
+   * Every other assertion about `BB_ADMIN_PASSWORD` is against `assertAdminStartupSafety`
+   * as a function. This one is about the PROCESS: a bundle with no credential must exit
+   * non-zero with an explanation, not listen with a default. A guard that throws inside a
+   * builder nobody calls before `listen` would pass every unit test and ship a public login
+   * page with a compiled-in password.
+   */
+  it('adminsvc REFUSES to start with no credential, and says why', () => {
+    const run = spawnSync(process.execPath, [join(outdir, 'adminsvc.mjs')], {
+      env: { ...process.env, HOST: '127.0.0.1', ADMIN_PORT: '0', BB_ADMIN_PASSWORD: '' },
+      encoding: 'utf8',
+      timeout: 15_000,
+    });
+    expect(run.status).toBe(1);
+    expect(`${run.stderr}${run.stdout}`).toContain('BB_ADMIN_PASSWORD');
+    // The message has to name the fix, not just the variable — this is the line an operator
+    // reads at 2am, and "unset" without "openssl rand -hex 16" is a puzzle.
+    expect(`${run.stderr}${run.stdout}`).toContain('openssl rand -hex 16');
   }, 30_000);
 });
 

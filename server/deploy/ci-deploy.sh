@@ -45,7 +45,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # | ssh ...`, so the payload arrives on stdin.
 tar xzf - -C "$STAGE"
 
-for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs Dockerfile docker-compose.yml deploy/package.json monitoring; do
+for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs dist/adminsvc.mjs Dockerfile docker-compose.yml deploy/package.json monitoring; do
   if [ ! -e "$STAGE/$path" ]; then
     echo "payload is missing $path, aborting (no half-finished deploy)" >&2
     exit 1
@@ -86,7 +86,7 @@ cd "$TARGET"
 #
 # Idempotent by construction: the chown container only runs for a dir that is actually
 # wrong, so the steady state costs one `stat` per dir and starts nothing.
-for dir in data/matchsvc data/billsvc backups; do
+for dir in data/matchsvc data/billsvc data/adminsvc backups; do
   mkdir -p "$TARGET/$dir"
   if [ "$(stat -c %u "$TARGET/$dir")" != "1000" ]; then
     echo "fixing ownership of $dir (was uid $(stat -c %u "$TARGET/$dir"), needs 1000)"
@@ -94,18 +94,21 @@ for dir in data/matchsvc data/billsvc backups; do
   fi
 done
 
-# ── The one value this script cannot supply ──
-# docker-compose.yml declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?}`,
+# ── The two values this script cannot supply ──
+# docker-compose.yml declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?}`
+# and `BB_ADMIN_PASSWORD: ${BB_ADMIN_PASSWORD:?}` (the ops console, design/21 §3.3),
 # and `.env` is the file this key deliberately cannot write. So a box whose `.env` predates
 # the Grafana service fails `compose up` for EVERY service, not just Grafana — a loud stop
 # rather than a public admin/admin, but one whose real cause ("compose refused to
 # interpolate") reads like a broken compose file. Named here so the deploy log says which
 # it is. server/deploy/README.md §2 has the one-liner that fixes it.
-if ! grep -q '^BB_GRAFANA_ADMIN_PASSWORD=..*' .env; then
-  echo "BB_GRAFANA_ADMIN_PASSWORD is missing or empty in ~/wnet-test/.env." >&2
-  echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2
-  exit 1
-fi
+for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD; do
+  if ! grep -q "^$var=..*" .env; then
+    echo "$var is missing or empty in ~/wnet-test/.env." >&2
+    echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2
+    exit 1
+  fi
+done
 
 docker compose up -d --build --force-recreate
 docker compose ps --format '{{.Name}} {{.Status}}'
@@ -113,16 +116,22 @@ docker compose ps --format '{{.Name}} {{.Status}}'
 # Success is "the services actually answer", not "the command returned 0" — without this,
 # a container that never comes up healthy would still show green in CI, and a silently
 # failed deploy is exactly as bad as a silently failed backup.
-for svc in gameserver:8787 matchsvc:8788 billsvc:8789; do
+# `name:port:path` — three fields now, because adminsvc answers `/admin/health` rather than
+# `/health`: every path it serves lives under `/admin` so that one Caddy `handle` block
+# covers the whole console. A shared `/health` here would probe a route that does not exist
+# and fail every deploy.
+for svc in gameserver:8787:/health matchsvc:8788:/health billsvc:8789:/health adminsvc:8790:/admin/health; do
   name="${svc%%:*}"
-  port="${svc##*:}"
+  rest="${svc#*:}"
+  port="${rest%%:*}"
+  path="${rest#*:}"
   container="wnet-test-$name"
   docker exec "$container" node -e "
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     (async () => {
       for (let i = 0; i < 15; i += 1) {
         try {
-          const res = await fetch('http://127.0.0.1:$port/health');
+          const res = await fetch('http://127.0.0.1:$port$path');
           if (res.ok) {
             console.log('$container health', JSON.stringify(await res.json()));
             process.exit(0);
@@ -132,7 +141,7 @@ for svc in gameserver:8787 matchsvc:8788 billsvc:8789; do
         }
         await wait(1000);
       }
-      console.error('$container: /health did not answer within 15s, deploy counts as failed');
+      console.error('$container: $path did not answer within 15s, deploy counts as failed');
       process.exit(1);
     })();
   "
@@ -149,7 +158,7 @@ done
 # deploy that leaves Loki unable to ingest, or Grafana unable to boot its provisioning,
 # should be red here rather than discovered the next time somebody has a question.
 #
-# They are checked AFTER the four application services on purpose: if both halves are
+# They are checked AFTER the application services on purpose: if both halves are
 # broken, the failure worth reading first is the one that affects players.
 for probe in obs-loki:3100:/ready obs-prometheus:9090:/-/healthy obs-grafana:3000:/grafana/api/health; do
   name="${probe%%:*}"

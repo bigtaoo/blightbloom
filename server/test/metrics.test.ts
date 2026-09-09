@@ -112,6 +112,44 @@ describe('the service-specific gauges', () => {
     matchmaker.enqueue(2, 'coop');
     const after = matchsvcMetrics(matchmaker, new GameRegistry());
     expect(after.find((m) => m.name === 'bb_matchsvc_queue_waiting' && m.labels!.mode === 'coop')!.value).toBe(1);
+
+    // `bb_matchsvc_gameservers_available`, BOTH ways — and getting the ZERO state needs
+    // `fallbackUrl: null`, which is the finding here. A bare `new GameRegistry()` picks its
+    // STATIC fallback (`staticGameserverUrl()`, `ws://localhost:8787/ws` when
+    // `BB_GAMESERVER_URL` is unset), so it reports 1 with nothing registered. That means an
+    // "empty registry" in a test is not the state this gauge exists to report: the zero is
+    // what makes every `/find` answer 503 while every container stays green, and it is only
+    // reachable with the fallback explicitly switched off.
+    expect(after.find((m) => m.name === 'bb_matchsvc_gameservers_available')!.value).toBe(1);
+    const none = matchsvcMetrics(matchmaker, new GameRegistry({ fallbackUrl: null }));
+    expect(none.find((m) => m.name === 'bb_matchsvc_gameservers_available')!.value).toBe(0);
+  });
+
+  it('folds in the analytics rollup gauges when there IS one, and none when there is not', () => {
+    // The `rollup?.metrics() ?? []` arm, both ways. `matchsvcMetrics` is called with two
+    // arguments everywhere else in this file, so without this the third parameter's present
+    // branch is untested — and the absent one is the state of every deployment that has not
+    // switched analytics on, which must not add a `bb_dau` gauge of zero. A gauge that reads
+    // 0 where the answer is "we do not collect this" is exactly design/21 §2.5's trap.
+    const matchmaker = new Matchmaker({
+      nowMs: () => 0,
+      nextSeed: () => 1,
+      newRoomId: () => 'r',
+      sign: () => 't',
+    });
+    const withNone = matchsvcMetrics(matchmaker, new GameRegistry(), null);
+    expect(withNone.some((m) => m.name.startsWith('bb_dau'))).toBe(false);
+
+    const rollup = {
+      metrics: () => [
+        { name: 'bb_dau', help: 'h', type: 'gauge' as const, value: 7, labels: { host: 'all' } },
+      ],
+      stop: () => {},
+    };
+    const withRollup = matchsvcMetrics(matchmaker, new GameRegistry(), rollup as never);
+    expect(withRollup.find((m) => m.name === 'bb_dau')?.value).toBe(7);
+    // Copied rather than referenced, so a scrape cannot hand out the job's own live objects.
+    expect(withRollup.find((m) => m.name === 'bb_dau')).not.toBe(rollup.metrics()[0]);
   });
 
   it('gameserver reports the rooms it is actually holding', () => {

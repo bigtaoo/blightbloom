@@ -39,7 +39,6 @@
  * and it means the budget bounds what one address can do to this server rather than what it
  * can do to one of its endpoints.
  */
-import type { IncomingMessage } from 'node:http';
 import type { AuthService } from '../AuthService';
 import type { Logger } from '../log';
 import type { DatabaseSync } from 'node:sqlite';
@@ -48,6 +47,7 @@ import { pushToLoki } from '../lokiPush';
 import { parseAnalyticsBatch } from '../analytics/ingest';
 import { writeBatch } from '../analytics/store';
 import { LIMITS as ANALYTICS_LIMITS } from '@dd/net/analyticsEvents';
+import { RateLimiter, clientKey } from '../rateLimit';
 import { readJsonUpTo, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
 
@@ -99,58 +99,16 @@ export interface TelemetryRouteDeps {
 }
 
 /**
- * A fixed-window counter per client IP.
+ * The per-IP limiter and the proxied-address key both live in `../rateLimit` now
+ * (2026-09-09) and are re-exported here, unchanged, so this module's importers and tests
+ * keep the names they have always used.
  *
- * In-process on purpose: matchsvc is one container (`docker-compose.yml`), so a shared
- * store would add a dependency to make a single process agree with itself. If a second
- * instance is ever run, this becomes per-instance — which is a weaker limit, not a broken
- * one, and is noted here rather than left to be discovered.
- *
- * The map is swept on write rather than on a timer: a timer would keep the process alive
- * (or need `unref`), and the sweep is over a map whose size is bounded by the number of
- * distinct IPs inside one 60s window.
+ * They moved because adminsvc rate-limits its login with the same mechanism (design/21
+ * §3.3) and importing it from THIS file would have pulled the Loki push, the analytics
+ * ingest and the client-log parser into the admin console's bundle for one class. See
+ * `rateLimit.ts`'s header — the budget stays per-caller, only the shape is shared.
  */
-export class RateLimiter {
-  private readonly hits = new Map<string, { count: number; windowStart: number }>();
-
-  constructor(
-    private readonly limit: number,
-    private readonly windowMs: number,
-  ) {}
-
-  /** True when this request is allowed. */
-  take(key: string, nowMs: number): boolean {
-    for (const [k, v] of this.hits) if (nowMs - v.windowStart >= this.windowMs) this.hits.delete(k);
-    const entry = this.hits.get(key);
-    if (!entry || nowMs - entry.windowStart >= this.windowMs) {
-      this.hits.set(key, { count: 1, windowStart: nowMs });
-      return true;
-    }
-    entry.count += 1;
-    return entry.count <= this.limit;
-  }
-}
-
-/**
- * The caller's address as the rate-limit key.
- *
- * Every real request arrives through Caddy on the same host, so `socket.remoteAddress` is
- * the proxy for all of them and would make the limit global rather than per-client. Caddy
- * appends the real client to `X-Forwarded-For`, and the LAST entry is the one it added
- * itself — earlier entries are attacker-supplied and taking the first is the classic way to
- * make a per-IP limit trivially evadable. Falls back to the socket address for a direct
- * request (a health probe, a test), and to a constant when even that is absent, which
- * makes the limit stricter rather than looser.
- */
-export function clientKey(req: IncomingMessage): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  const chain = Array.isArray(forwarded) ? forwarded.join(',') : (forwarded ?? '');
-  const hops = chain
-    .split(',')
-    .map((h) => h.trim())
-    .filter((h) => h.length > 0);
-  return hops.length > 0 ? hops[hops.length - 1]! : (req.socket.remoteAddress ?? 'unknown');
-}
+export { RateLimiter, clientKey };
 
 export const postClientLog: RouteHandler<TelemetryRouteDeps> = (req, res, _url, deps) => {
   const now = deps.now ?? Date.now;

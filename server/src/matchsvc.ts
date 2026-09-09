@@ -70,7 +70,15 @@ import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
 import { PartyService } from './PartyService';
 import { signTicket, type TicketPayload } from './ticket';
-import { ticketSecret, teamIdForOwner, portalGameId } from './config';
+import {
+  ticketSecret,
+  teamIdForOwner,
+  portalGameId,
+  adminPlaneUrl,
+  sharedInternalKey,
+  INTERNAL_CALLER_MATCHSVC,
+} from './config';
+import { createFlagClient, type FlagClient } from './flags/client';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { openDb } from './db';
@@ -82,7 +90,8 @@ import { send } from './routes/http';
 import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
-import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from './metrics';
+import { renderMetrics, METRICS_CONTENT_TYPE } from './metrics';
+import { matchsvcMetrics } from './matchsvcMetrics';
 import * as matchRoutes from './routes/match';
 import * as ratingRoutes from './routes/rating';
 import * as partyRoutes from './routes/party';
@@ -99,6 +108,15 @@ const PORT = Number(process.env.MATCH_PORT ?? 8788);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 export interface MatchsvcServerOptions {
+  /**
+   * Feature flags (design/21 §4), or one built from the environment when omitted.
+   *
+   * The fail-safe direction is already the default: a client with no `BB_ADMINSVC_URL`
+   * polls nothing and answers every `get` from `defaultFlags()`, which is the shipped
+   * behaviour. A test that wants a pinned value passes its own client; a test that does not
+   * care passes nothing and gets the compiled-in defaults.
+   */
+  flags?: FlagClient;
   /** DB path override (design/16-accounts.md) — tests pass `':memory:'` for isolation;
    * defaults to `openDb`'s own real-file default. */
   dbPath?: string;
@@ -182,7 +200,21 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   let seedCounter = Date.now() & 0x7fffffff;
   const spawnBot = opts.spawnBot ?? spawnBotClient;
   const registry = opts.registry ?? new GameRegistry();
+  // Hoisted above the matchmaker (it used to sit further down) because the flag client
+  // needs it and the matchmaker needs the flag client.
+  const log = opts.log ?? createLogger('matchsvc');
+  // Feature flags (design/21 §4). Built before the matchmaker because two of its timings
+  // are flags. `start()` is deliberately NOT called here: it arms an interval, and a
+  // builder that arms one cannot be called by a test without leaving it running — the same
+  // rule `billsvc/main.ts` follows for the delivery pump. `main` starts it.
+  const flags = opts.flags ?? defaultFlagClient(log);
   const matchmaker = new Matchmaker({
+    // The two live timings (design/21 §4). SUPPLIERS, not numbers: a value captured at
+    // construction would only take effect on the next restart, i.e. it would not be a flag.
+    // Spread BEFORE `opts.matchmaker` so a test that pins either one still wins — this is
+    // the deployment's default, not an override.
+    queueTtlMs: () => flags.get('match.queueTimeoutMs'),
+    pvpBotFillMs: () => flags.get('match.pvpBotBackfillDelayMs'),
     ...opts.matchmaker,
     nowMs: () => Date.now(),
     nextSeed: () => (seedCounter = (seedCounter + 1) & 0x7fffffff),
@@ -240,7 +272,6 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   // One bundle satisfying each route group's own narrow `*RouteDeps` interface. The groups
   // share no state, so this is a wiring convenience, not a shared context object — a
   // handler still declares (and can only reach) the few dependencies it names.
-  const log = opts.log ?? createLogger('matchsvc');
   // Resolved ONCE, at construction. Reading the env per request would let a running
   // process silently change where a player's logs go, and would hide the single startup
   // warning that is the only signal an operator gets when it is unset (lokiPush.ts).
@@ -351,11 +382,53 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     send(res, 404, { error: 'not found' });
   });
 
-  // Stopping the job here rather than exposing it: the builder's return type is a plain
-  // `Server` and every caller already knows how to close one.
+  // Stopping both background things here rather than exposing them: the builder's return
+  // type is a plain `Server` and every caller already knows how to close one. The flag
+  // client's interval is `unref`ed anyway, so this is tidiness for a test rather than a
+  // process that would otherwise hang — but a poll firing against a closed server is a
+  // pointless request and a confusing log line.
   if (rollup) server.on('close', () => rollup.stop());
+  server.on('close', () => flags.stop());
+  // Hung off the server so `main` can arm it without the builder's signature changing, and
+  // so nothing else can reach it — `startFlagPolling` below is the only caller.
+  FLAG_CLIENTS.set(server, flags);
 
   return server;
+}
+
+/**
+ * The flag client this process uses when nothing was injected.
+ *
+ * `adminPlaneUrl()` returns `null` when `BB_ADMINSVC_URL` is unset, and that is the state of
+ * every deployment that has not opted into a flag store — the client then polls nothing and
+ * answers every `get` from `defaultFlags()`. Fail-safe by configuration as well as by
+ * failure (`flags/client.ts`'s header).
+ */
+function defaultFlagClient(log: Logger): FlagClient {
+  return createFlagClient({
+    baseUrl: adminPlaneUrl(),
+    key: sharedInternalKey(),
+    caller: INTERNAL_CALLER_MATCHSVC,
+    log,
+  });
+}
+
+/**
+ * The flag client belonging to a built server, so `main` can start its poll loop without
+ * `createMatchsvcServer` returning something other than a `Server`.
+ *
+ * A `WeakMap` rather than a module-level variable: a test file builds a dozen servers, and
+ * one shared slot would mean the eleventh test's `start()` armed the twelfth's client. Weak
+ * so a closed server's entry goes away with it.
+ */
+const FLAG_CLIENTS = new WeakMap<Server, FlagClient>();
+
+/** Arms the flag poll for a built server. Called by `main` only — see the comment on
+ *  `FLAG_CLIENTS`, and `flags/client.ts` on why `start` is not part of the builder. */
+export function startFlagPolling(server: Server): FlagClient | undefined {
+  const client = FLAG_CLIENTS.get(server);
+  client?.start();
+  return client;
 }
 
 /**
@@ -373,39 +446,11 @@ export function analyticsDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): st
 }
 
 /**
- * What only matchsvc knows. Two gauges, and both were chosen because a question exists for
- * them: "is anybody waiting and not getting matched?" (the queue depths, split by mode
- * because a co-op queue and a PvP queue fill at completely different rates) and "is there
- * anywhere to send them?" (the registry, whose empty state makes every `/find` answer 503
- * while every container stays green).
+ * matchsvc's own gauges live in `matchsvcMetrics.ts` since 2026-09-09 (Phase C's flag
+ * wiring pushed this file past the 500-line convention) and are re-exported here unchanged,
+ * so `metrics.test.ts` and `deploy.dashboardMetrics.test.ts` keep the import they have.
  */
-export function matchsvcMetrics(
-  matchmaker: Matchmaker,
-  registry: GameRegistry,
-  rollup?: RollupJob | null,
-): Metric[] {
-  return [
-    ...processMetrics('matchsvc'),
-    gauge('bb_matchsvc_queue_waiting', 'Players waiting in the matchmaking queue.', matchmaker.waiting(2, 'coop'), {
-      mode: 'coop',
-      playerCount: '2',
-    }),
-    gauge('bb_matchsvc_queue_waiting', 'Players waiting in the matchmaking queue.', matchmaker.waiting(2, 'pvp'), {
-      mode: 'pvp',
-      playerCount: '2',
-    }),
-    gauge(
-      'bb_matchsvc_gameservers_available',
-      'Gameserver instances the registry would hand a new match to. Zero means every /find answers 503.',
-      registry.pick() ? 1 : 0,
-    ),
-    // The analytics rollup's cached gauges (design/21 §2.5). A field read, not a query —
-    // see `analytics/job.ts` for why the scrape must not recompute. Absent entirely when
-    // analytics is off, and absent for any retention offset that cannot be answered yet,
-    // which is what makes a dashboard say "No data" instead of "0% came back".
-    ...(rollup?.metrics() ?? []).map((m) => ({ ...m })),
-  ];
-}
+export { matchsvcMetrics } from './matchsvcMetrics';
 
 /**
  * The data-plane half of the startup banner. Extracted from `main` because it is the one
@@ -423,6 +468,9 @@ function main(): void {
   const server = createMatchsvcServer({ registry, log });
   server.listen(PORT, HOST, () => {
     log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
+    // Arms the flag poll, and does one immediate cycle — so a restarted process is on the
+    // operator's current values rather than on its defaults for the first minute.
+    startFlagPolling(server);
     // Beats once immediately, then every 5 minutes — see heartbeat.ts for why an idle log
     // store and a broken one are otherwise the same picture.
     startHeartbeat({ log });

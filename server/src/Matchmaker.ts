@@ -29,15 +29,25 @@ export interface MatchmakerDeps {
   ticketTtlMs?: number;
   /** How long a still-waiting player lives before poll reports `expired` (ms). Default 30 s.
    * PvP never actually reaches this for a waiter that's had ANY company — see `pvpBotFillMs`,
-   * which fires first at the same default and forms the room with bots instead. */
-  queueTtlMs?: number;
+   * which fires first at the same default and forms the room with bots instead.
+   *
+   * A FUNCTION here is read on every use rather than once at construction, which is what
+   * makes it a live value: design/21 §4's `match.queueTimeoutMs` flag is delivered this way,
+   * and a value captured in the constructor would only take effect on the next restart —
+   * i.e. it would not be a flag, it would be a differently-spelled deploy. */
+  queueTtlMs?: number | (() => number);
   /**
    * PvP practice-bot backfill (design/15 follow-up): how long a still-waiting PvP request
    * may sit before the group forms anyway, topped up with bots for the empty seats.
    * Default 30 s. Coop is unaffected — it only ever expires (queueTtlMs), never bot-fills;
    * a squad-only mode without a solo-bot fairness story doesn't get the same treatment.
+   *
+   * Accepts a function for the same reason `queueTtlMs` does: this is design/21 §4's
+   * `match.pvpBotBackfillDelayMs` flag, and the right value depends on how many people are
+   * actually queueing — which changes without a deploy, which is the whole point of it
+   * being a flag.
    */
-  pvpBotFillMs?: number;
+  pvpBotFillMs?: number | (() => number);
   /**
    * Fired once, synchronously inside the `poll()` call that triggers a bot-filled PvP
    * room, with everything the shell needs to actually spawn a bot connection per empty
@@ -55,6 +65,19 @@ export interface MatchmakerDeps {
     /** Seat indices left empty by real waiters — the shell mints one bot ticket each. */
     botOwners: readonly number[];
   }) => void;
+}
+
+/**
+ * A number or a supplier, as a supplier.
+ *
+ * One code path rather than a `typeof === 'function'` check at every read site: an
+ * `undefined` becomes a constant function too, so the class has no "is this configured"
+ * branch and a caller passing a plain number is indistinguishable from the default.
+ */
+function asSupplier(value: number | (() => number) | undefined, fallback: number): () => number {
+  if (typeof value === 'function') return value;
+  const fixed = value ?? fallback;
+  return () => fixed;
 }
 
 /** One player's seat assignment — everything the client needs to open the /ws socket. */
@@ -111,14 +134,16 @@ export class Matchmaker {
   private readonly queues = new Map<string, string[]>();
   private counter = 0;
   private readonly ticketTtlMs: number;
-  private readonly queueTtlMs: number;
-  private readonly pvpBotFillMs: number;
+  /** Read per use, never captured — see `MatchmakerDeps.queueTtlMs`. A plain number in the
+   *  deps becomes a constant function here, so there is one code path and not two. */
+  private readonly queueTtlMs: () => number;
+  private readonly pvpBotFillMs: () => number;
   private readonly sign: (p: TicketPayload) => string;
 
   constructor(private readonly deps: MatchmakerDeps) {
     this.ticketTtlMs = deps.ticketTtlMs ?? DEFAULT_TICKET_TTL_MS;
-    this.queueTtlMs = deps.queueTtlMs ?? DEFAULT_QUEUE_TTL_MS;
-    this.pvpBotFillMs = deps.pvpBotFillMs ?? DEFAULT_QUEUE_TTL_MS;
+    this.queueTtlMs = asSupplier(deps.queueTtlMs, DEFAULT_QUEUE_TTL_MS);
+    this.pvpBotFillMs = asSupplier(deps.pvpBotFillMs, DEFAULT_QUEUE_TTL_MS);
     // Default signer uses the injected `sign`; a caller can omit it in a test that only
     // asserts grouping (tokens are then empty — verify is covered by ticket.test.ts).
     this.sign = deps.sign ?? (() => '');
@@ -174,14 +199,14 @@ export class Matchmaker {
     // is still queued for this shape, topping up the empty seats with bots — checked
     // BEFORE the plain expiry below (same 30s default) so PvP never actually expires
     // once it has this path; coop (mode check) always falls through to expiry as before.
-    if (waiter.mode === 'pvp' && waited >= this.pvpBotFillMs) {
+    if (waiter.mode === 'pvp' && waited >= this.pvpBotFillMs()) {
       this.formWithBots(waiter.playerCount, waiter.mode);
       if (waiter.ticket) {
         this.waiters.delete(queueId);
         return { status: 'matched', ticket: waiter.ticket };
       }
     }
-    if (waited > this.queueTtlMs) {
+    if (waited > this.queueTtlMs()) {
       this.dropWaiting(waiter);
       return { status: 'expired' };
     }
@@ -207,7 +232,7 @@ export class Matchmaker {
       // via formIfReady (full group) or formWithBots (bot-filled at pvpBotFillMs), and
       // reaping by age here too would race formWithBots into dropping the very waiter
       // whose own poll() just triggered it (both default to the identical 30 s).
-      if (mode !== 'pvp' && now - w.enqueuedAt > this.queueTtlMs) {
+      if (mode !== 'pvp' && now - w.enqueuedAt > this.queueTtlMs()) {
         this.waiters.delete(id);
         continue;
       }

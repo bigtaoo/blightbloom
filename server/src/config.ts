@@ -198,3 +198,25 @@ export function billingPlaneUrl(): string {
   const env = process.env.BB_BILLSVC_URL;
   return env && env.length > 0 ? env : 'http://localhost:8789';
 }
+
+/**
+ * Where the OPS CONSOLE answers, for a service that polls it for feature flags
+ * (design/21 §4) — e.g. `http://adminsvc:8790`.
+ *
+ * The one URL in this file that does NOT default to localhost, and the asymmetry is the
+ * whole point. `controlPlaneUrl` and `billingPlaneUrl` default to a local port because the
+ * game does not work without those hops, so a forgotten variable should fail visibly (a
+ * refused connection, logged per attempt) rather than quietly do nothing.
+ *
+ * Flags are the opposite: not polling is a supported, complete state — every service runs
+ * on the compiled-in defaults in `flags/defs.ts`, which is the behaviour that shipped. So
+ * `null` here means "no remote switch on this deployment" rather than "misconfigured", and
+ * a localhost default would instead produce a refused connection every 60 seconds on every
+ * developer machine, for a feature nobody had asked for.
+ *
+ * Read per call, never captured at module scope, for the reason `ticketSecret` gives.
+ */
+export function adminPlaneUrl(): string | null {
+  const env = process.env.BB_ADMINSVC_URL?.trim();
+  return env !== undefined && env.length > 0 ? env : null;
+}

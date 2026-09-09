@@ -1,5 +1,5 @@
 /**
- * Deploy build (design/19-server-platform.md, ROADMAP 9). Bundles the three process
+ * Deploy build (design/19-server-platform.md, ROADMAP 9). Bundles the five process
  * entrypoints into self-contained ESM files under `server/dist/`, resolving the
  * `@dd/engine` / `@dd/game/*` / `@dd/net/*` workspace aliases (../tsconfig.base.json)
  * at BUILD time instead of at runtime.
@@ -45,6 +45,10 @@ export const entries = [
   { in: join(serverRoot, 'src/matchsvc.ts'), out: 'matchsvc' },
   { in: join(serverRoot, 'src/billsvc/main.ts'), out: 'billsvc' },
   { in: join(serverRoot, 'src/backup/main.ts'), out: 'backup' },
+  // The ops console (design/21 §3.4). A fifth entry rather than routes on matchsvc, and a
+  // fifth BUNDLE rather than a fifth deploy target: it serves its own page from its own
+  // origin, so there is no static asset to publish anywhere and no CORS story.
+  { in: join(serverRoot, 'src/adminsvc/main.ts'), out: 'adminsvc' },
 ];
 
 export async function buildAll(outdir = defaultOutdir, logLevel = 'info') {
