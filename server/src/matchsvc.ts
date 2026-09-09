@@ -79,6 +79,7 @@ import {
   INTERNAL_CALLER_MATCHSVC,
 } from './config';
 import { createFlagClient, type FlagClient } from './flags/client';
+import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { openDb } from './db';
@@ -300,6 +301,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     lokiUrl,
     limiter,
     analyticsDb,
+    flags,
     fetchImpl: opts.fetchImpl,
   };
 
@@ -331,6 +333,10 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     if (req.method === 'POST' && path === telemetryRoutes.CLIENT_EVENTS_PATH) {
       return telemetryRoutes.postClientEvents(req, res, url, deps);
     }
+    // design/21 §9's client flag delivery path: the one PUBLIC flag readout, answered from
+    // the values this process already polls. See routes/clientFlags.ts for why it is its own
+    // route, and why it is neither rate-limited nor hidden from proxied requests.
+    if (req.method === 'GET' && path === PUBLIC_FLAGS_PATH) return getClientFlags(res, deps);
 
     if (req.method === 'POST' && path === '/find') return matchRoutes.postFind(req, res, url, deps);
     if (req.method === 'GET' && matchRoutes.FIND_POLL_PATH.test(path)) {

@@ -12,6 +12,7 @@ import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
+import { installPublicFlags } from './net/clientFlags';
 import { getLocale } from './i18n';
 import { getSession } from './net/session';
 
@@ -55,6 +56,13 @@ async function boot() {
     build: deployedVersion,
     locale: getLocale,
   });
+
+  // The public feature flags (design/21 §9's delivery path) — the maintenance banner and
+  // the rewarded-ad offer switch. AFTER the logger for the same reason analytics is: the
+  // one line this can produce is a warning, and the logger is what carries it. It does one
+  // fetch now and re-polls every five minutes; every failure leaves the values this build
+  // shipped with, so nothing here can delay or break boot.
+  installPublicFlags({ baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)) });
 
   // Before any Text exists — Pixi caches its measurement canvas on first use (see
   // render/textMetrics.ts for why the default offscreen one mis-measures Cyrillic).

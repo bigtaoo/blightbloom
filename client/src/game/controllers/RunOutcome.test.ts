@@ -7,6 +7,8 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { setRewardedAd, type RewardedAd } from '../../platform/rewardedAd';
+import { setPublicFlags } from '../../net/clientFlags';
+import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 import type { ResultOffer } from '../screens/Screens';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { createGameState } from '@dd/engine/state/GameState';
@@ -327,7 +329,10 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
     return s;
   }
 
-  afterEach(() => setRewardedAd(null));
+  afterEach(() => {
+    setRewardedAd(null);
+    setPublicFlags(null);
+  });
 
   it('no ad installed (every target but the portal): no offer, and the win is unchanged', () => {
     const host = mockHost();
@@ -387,6 +392,63 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
     expect(ad.requests()).toBe(1);
     expect(host.banked).toEqual([s]); // still one — the reward is paid only on a played ad
     expect(lines[1]).toBe('No ad available - your 4 materials are safe');
+  });
+
+  it('no offer when the OPERATOR has turned it off, with an ad that would otherwise play', () => {
+    // design/21 §9's delivery path, at the one call site that reads it. The whole point of
+    // the flag is this case: the offer doubles an extraction payout, so if the balance turns
+    // out wrong — or the platform's ad fill collapses and the button becomes a lie — it has
+    // to be switchable without a client deploy.
+    //
+    // The ad stub is FULLY working here, which is what makes this a test of the flag rather
+    // than of anything else: every other reason to refuse is absent, so `offer === null` can
+    // only be the flag.
+    const ad = stubAd();
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ads.rewardedOfferEnabled': false });
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+
+    expect(host.offer).toBeNull();
+    // Not shown AND not requested: a refusal that still asked the SDK for an ad would burn
+    // the platform's fill rate on an offer nobody can accept.
+    expect(ad.requests()).toBe(0);
+    // ...and the baseline payout is untouched, which is the property design/20 protects by
+    // ORDERING rather than by a second code path.
+    expect(host.shown?.lines[1]).toBe('Materials banked: 4');
+    expect(host.banked).toHaveLength(1);
+  });
+
+  it('offers it again the moment the operator turns it back on — read per offer, not at install', () => {
+    // The difference between a flag and a differently-spelled deploy (design/21 §4, "a flag
+    // captured at construction is not a flag"). `main.crazygames.ts` could have declined to
+    // install the rewarded ad at all when the flag was off, and that switch would only take
+    // effect on a reload.
+    stubAd();
+    // ONE `RunOutcome`, two runs, a flip in between. That is what makes this an assertion
+    // about reading per offer: a value captured in the constructor would still be `false` on
+    // the second run, and a test that built a fresh `RunOutcome` after the flip could not
+    // tell the two implementations apart.
+    const host = mockHost();
+    const outcome = new RunOutcome(host);
+
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ads.rewardedOfferEnabled': false });
+    outcome.handle(extractedState());
+    expect(host.offer).toBeNull();
+
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ads.rewardedOfferEnabled': true });
+    outcome.handle(extractedState());
+    expect(host.offer).not.toBeNull();
+  });
+
+  it('offers it by DEFAULT, so an unreachable flag route does not cost the offer', () => {
+    // The shipped default is `true` and the store starts there, so every client that cannot
+    // reach `GET /client/flags` still shows the offer. The wrong way round would mean an
+    // outage silently switching off the one thing on this screen that pays.
+    stubAd();
+    setPublicFlags(null);
+    const host = mockHost();
+    new RunOutcome(host).handle(extractedState());
+    expect(host.offer).not.toBeNull();
   });
 
   it('no offer when the player blocks ads — a button that cannot work is not drawn', () => {

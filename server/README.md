@@ -30,7 +30,7 @@ pure core + the shared ticket module:
 | `src/ticket.ts`      | Stateless HMAC-SHA256 sign/verify over `{roomId,owner,seed,playerCount,exp}`. Shared by both planes. | no | ✅ `test/ticket.test.ts` |
 | `src/Matchmaker.ts`  | Pure queue: `enqueue`→group-when-full→signed tickets, `poll`. Injected clock/seed/roomId/signer. | no | ✅ `test/Matchmaker.test.ts` |
 | `src/matchsvc.ts`    | HTTP bootstrap and assembly shell — the ONLY control-plane file that imports `node:http`; wires the real clock/seed/signer around `Matchmaker`, then dispatches to `src/routes/`. | yes | ✅ `test/matchsvc.http.test.ts` |
-| `src/routes/*.ts`    | One module per surface (`auth`, `account`, `match`, `party`, `rating`, `store`, `internalEntitlements`), each a set of free `(req, res, url, deps)` handlers, over a shared `routes/http.ts` (CORS, `send`, `readJson`). | no | ✅ `test/routes.test.ts` + the two `*.http.test.ts` |
+| `src/routes/*.ts`    | One module per surface — `auth`, `account`, `match`, `party`, `rating`, `store`, `internalEntitlements`, `telemetry` (the client log + analytics ingest) and `clientFlags` (the one PUBLIC flag readout) — each a set of free `(req, res, url, deps)` handlers over a shared `routes/http.ts` (CORS, `send`, `readJson`). Enumerated rather than described, so adding a surface forces a decision about whether it is public. | no | ✅ `test/routes.test.ts` + the `*.http.test.ts` set |
 | `src/db.ts` / `src/AuthService.ts` | The SQLite (`node:sqlite`) account store: `accounts`/`sessions`/`ratings`/`meta_state`/`entitlements`/`rating_reports` (design/16-accounts.md). | file | ✅ `test/db.test.ts`, `test/AuthService.test.ts` |
 | `src/rating.ts` / `src/ladderReport.ts` | The ladder: Elo-ish squad-aware deltas, the store, and the pure placement→rank conversion. `applyMatchOnce` claims `rating_reports.report_key` (`ON CONFLICT DO NOTHING` + `changes()`) inside the same `BEGIN IMMEDIATE` that writes `ratings`, which is what makes the at-least-once settlement report exactly-once (design/19 §3). | no | ✅ `test/rating.test.ts`, `test/ladderReport.test.ts`, `test/ratingReportOnce.test.ts` |
 | `src/EntitlementService.ts` | Server-owned blueprint/character ownership (design/19 §2, ROADMAP 8.2) — the reason `/account/meta` is no longer a blind whole-blob upsert. Grant is `ON CONFLICT DO NOTHING` + `changes`, so an at-least-once delivery is idempotent. | no | ✅ `test/EntitlementService.test.ts` |
@@ -75,17 +75,51 @@ byte-for-byte.
 
 | File | Role | Tested |
 |------|------|--------|
-| `scripts/build.mjs` | esbuild-bundles the four entrypoints into `dist/*.mjs`, resolving the `@dd/engine` / `@dd/game/*` / `@dd/net/*` aliases at BUILD time; `ws` and `node:sqlite` stay external. Exports `entries`/`external`/`target` so the tests read the real values. | ✅ `test/deploy.bundle.test.ts` |
-| `Dockerfile` / `docker-compose.yml` / `deploy/package.json` | One image, four processes selected by `command:` — the three HTTP planes plus the `backup` worker; the image installs only the deploy manifest's dependencies and runs as non-root. | ✅ `test/deploy.manifests.test.ts` |
+| `scripts/build.mjs` | esbuild-bundles the five entrypoints into `dist/*.mjs`, resolving the `@dd/engine` / `@dd/game/*` / `@dd/net/*` aliases at BUILD time; `ws` and `node:sqlite` stay external. Exports `entries`/`external`/`target` so the tests read the real values. | ✅ `test/deploy.bundle.test.ts` |
+| `Dockerfile` / `docker-compose.yml` / `deploy/package.json` | One image, five processes selected by `command:` — the three HTTP planes, the `backup` worker, and the `adminsvc` ops console; the image installs only the deploy manifest's dependencies and runs as non-root. | ✅ `test/deploy.manifests.test.ts` |
 | `deploy/ci-deploy.sh` | The forced command the CI deploy key is pinned to (see `deploy/README.md`). Its payload check is cross-checked against the workflow's `tar` list. | ✅ `test/deploy.manifests.test.ts` |
 
 The bundle test builds into an OS temp directory and boots each `.mjs` as a bare `node` process,
 so anything the deploy manifest does not declare fails there the same way it would in the
 container — the whole point being that `src/`'s coverage says nothing about the artifact. The
-three HTTP bundles have to answer their own `/health` with their own service name; the worker,
-which serves nothing, is driven through its output instead — its snapshot is gunzipped and a row
+four HTTP bundles have to answer their own health route with their own service name — `/health`
+for the three planes, `/admin/health` for the console, whose every path lives under `/admin` so
+one Caddy `handle` block covers it; the worker, which serves nothing, is driven through its
+output instead — its snapshot is gunzipped and a row
 read back out of it, then the same bundle is asked for its health verdict the way compose asks.
 
+
+**Ops console** — the fifth process, and the only one a player never talks to on purpose (design/21-ops-analytics.md §3, `deploy/README.md` §2):
+
+| File | Role | I/O? | Tested |
+|------|------|------|--------|
+| `src/adminsvc/credentials.ts` | The one seeded operator credential from the environment (`BB_ADMIN_USER` / `BB_ADMIN_PASSWORD`, 16-char floor). `credentialMatches` hashes both halves before `timingSafeEqual` and compares both without short-circuiting, so neither the password's length nor which half was wrong is measurable. `assertAdminStartupSafety` throws before anything is opened or bound — and refuses the `Secure`-cookie relaxation under `NODE_ENV=production`. | env | ✅ `test/adminsvc.credentials.test.ts` |
+| `src/adminsvc/dbs.ts` | The three handles, all `readOnly: true` — decision B1's whole claim is that this console **cannot** write player data, not that it does not. Every handle is nullable and none of the nulls is defensive: `readOnly` does not create a missing file, and all three belong to other processes. | file | ✅ `test/adminsvc.dbs.test.ts` (ATTEMPTS INSERT/UPDATE/DELETE/DROP through each and requires each to throw, with a `SELECT` as the control) |
+| `src/adminsvc/views/*.ts` | The three read-only queries (players, commerce, retention). LIKE wildcards are escaped in BOTH the count and the row query — without it a search for `%` returns the whole accounts table, and a count that forgot would render "1 shown of 5 matching". | no | ✅ `test/adminsvc.views.test.ts` |
+| `src/adminsvc/page/*.ts` | The document, the stylesheet and the four section renderers. The view modules deliberately do NOT pre-escape, so there is no "already safe" category to reason about: `page/layout.ts`'s `esc` is the single gate, with `default-src 'none'` on top. The real XSS surface is `webhook_events.raw` — bytes an outsider POSTed to the billing plane, rendered in the one browser that can read every player's row. | no | ✅ `test/adminsvc.page.test.ts`, `test/flags.page.test.ts` |
+| `src/adminsvc/routes.ts` | The dispatch chain, the session cookie (`HttpOnly` + `Secure` + `SameSite=Strict`, `Path=/admin` so it never rides a player's `POST /client/events`), the login rate limit, and one audit line per request — carrying `operator` only when a session actually arrived. | yes | ✅ `test/adminsvc.http.test.ts` |
+| `src/adminsvc/flagRoutes.ts` | `GET /internal/flags` (the endpoint services poll) plus the two write paths. Its verifier is REQUIRED rather than defaulting to an empty registry, so "forgot the verifier" is a compile error and not a silently-open route. | yes | ✅ `test/flags.http.test.ts` |
+| `src/adminsvc/session.ts` | Minting, expiry and the two cookie string formats. Pure of `node:http` and of `process.env` (injected clock, plain header string in), the way `ticket.ts` is. Sessions live in a `Map` in this process, so a deploy logs the operator out — deliberately: persisting them needs a table, and with one operator and an 8-hour TTL the cost is one login. Credential rotation is an env change plus a redeploy (decision B3 — one operator, no roles). | no | ✅ `test/adminsvc.session.test.ts` |
+| `src/adminsvc/http.ts` | This console's own transport primitives — the security header block (`default-src 'none'`), the HTML responder and the form-body reader. Separate from `routes/http.ts` because that one sends JSON with CORS and this one sends a same-origin document with a CSP; sharing them would mean one set of headers trying to be right for both. | no | ✅ `test/adminsvc.transport.test.ts` |
+| `src/adminsvc/server.ts` | Assembly shell — the ONLY console file that imports `node:http`. Opens the three read-only handles and `ops.db`, then hands the dispatch chain its typed deps. | yes | ✅ `test/adminsvc.http.test.ts` |
+| `src/adminsvc/main.ts` | Process entry on 8790. Asserts startup safety BEFORE opening a database or binding. | yes | ✅ `test/adminsvc.main.test.ts`, `test/deploy.bundle.test.ts` |
+
+**Feature flags** — the only remote switch, and the only writable database in the console (design/21 §4):
+
+| File | Role | I/O? | Tested |
+|------|------|------|--------|
+| `src/flags/defs.ts` | The ALLOWLIST — decision C1, and the whole safety argument. A flag is a literal in code, so adding one is a commit and a deploy, and the console can only set a value for a name already here. `coerceFlag` refuses a type mismatch, an out-of-range number and unusable text rather than guessing. `FlagDef.public` marks the flags served to browsers, and it is only HALF the marker — the other half is membership of `@dd/net/publicFlags`. | no | ✅ `test/flags.defs.test.ts`, `test/publicFlags.contract.test.ts` |
+| `src/flags/store.ts` | `ops.db`. A row means "overridden"; ABSENCE means "as shipped", so clearing DELETES rather than writing today's default into the table where it would go stale. C1 is enforced on both sides: `setFlag` will not write an unknown name and `readOverrides` will not return one. | file | ✅ `test/flags.store.test.ts` |
+| `src/flags/client.ts` | The reader every service uses: poll, then merge over the compiled-in defaults. Fail-safe by construction — the parse is ALL-OR-NOTHING, so an unreachable console, a 401, an HTML error page and one out-of-range value all leave the previous values in place. | net | ✅ `test/flags.client.test.ts` |
+
+`ops.db` gets its own writable mount, deliberately NOT under `/sources/`, so the path in every log
+line says which kind of handle it is — and it is deliberately not a fourth backup source, because
+every row in it is a value an operator typed over a default that is in git. A total compromise of
+this console can change how the game behaves; it cannot change who anybody is or what they own.
+
+The CLIENT half of the flag path is `@dd/net/publicFlags` (the shared contract, imported by
+`src/flags/defs.ts` so each default and bound is one literal) plus `src/routes/clientFlags.ts`,
+which serves `GET /client/flags` — unauthenticated on purpose, carrying only the public names.
 
 **Backup worker** — the fourth process, and the only one that serves nothing (design/19 "Backups", `deploy/README.md`):
 

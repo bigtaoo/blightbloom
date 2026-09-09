@@ -104,23 +104,55 @@ describe('flagsSection', () => {
   });
 
   it('names the flags with no consumer, since setting one changes nothing', () => {
-    // The gap building Phase C found. `delivered: false` is in the type; this is where a
-    // person actually sees it.
-    const html = flagsSection(view());
+    // The shape the gap had, kept as a case after the gap itself closed: `delivered: false`
+    // is in the type, and this is where a person actually sees it. Driven through the view's
+    // own list rather than through `FLAG_DEFS`, which is why it survives every flag becoming
+    // delivered — see the case below for the state the allowlist is actually in today.
+    const html = flagsSection(view({ undelivered: ['ui.maintenanceBanner'] }));
     expect(html).toContain('NO consumer yet');
     expect(html).toContain('not delivered');
   });
 
   it('drops the warning entirely once every flag HAS a consumer', () => {
-    // The state this project should be in once a client delivery path exists. It is
-    // reachable only because the list is passed in rather than derived inside the renderer
-    // — a renderer that computed it from `FLAG_DEFS` could never be tested for the day the
-    // gap closes, so the note would quietly outlive its own reason.
+    // The state the project reached on 2026-09-09, when the public delivery path landed —
+    // and `FLAG_NAMES.filter(...)` in `routes.ts` now produces exactly this empty list, so
+    // it is the live case rather than a hypothetical. It was testable BEFORE the path
+    // existed only because the list is passed in rather than derived inside the renderer.
     const html = flagsSection(view({ undelivered: [] }));
     expect(html).not.toContain('NO consumer yet');
     expect(html).not.toContain('not delivered');
     // ...and the table is still there, so this is not just an empty page.
     for (const name of FLAG_NAMES) expect(html, name).toContain(name);
+  });
+
+  it('marks a PUBLIC flag as public, and does NOT mark a private one', () => {
+    // The property an operator has to know before typing into the box: a public flag's
+    // value is served to every browser by an unauthenticated route, so the maintenance
+    // banner is published text and not just applied configuration.
+    //
+    // The negative half is the half that matters. Asserting only that the word appears
+    // would pass against a renderer that stamped the pill on every row — which would say
+    // that the PvP bot-backfill delay is handed to players, the one thing `FlagDef.public`
+    // exists to keep from happening.
+    const html = flagsSection(view());
+    const rowOf = (name: string): string => {
+      const rows = html.split('<tr>').filter((r) => r.includes(`<code>${name}</code>`));
+      expect(rows, name).toHaveLength(1);
+      return rows[0]!;
+    };
+    expect(rowOf('ui.maintenanceBanner')).toContain('>public<');
+    expect(rowOf('ads.rewardedOfferEnabled')).toContain('>public<');
+    expect(rowOf('match.queueTimeoutMs')).not.toContain('>public<');
+    expect(rowOf('match.pvpBotBackfillDelayMs')).not.toContain('>public<');
+  });
+
+  it('tells an operator that browsers poll on a DIFFERENT cadence from the services', () => {
+    // 60s for a service and 5 minutes for a browser. Without this on the page, "I set the
+    // banner and it is not showing" is a bug report with no bug behind it, filed during the
+    // four minutes when both statements are true.
+    const html = flagsSection(view());
+    expect(html).toContain('5 minutes');
+    expect(html).toContain('/client/flags');
   });
 
   it('escapes a hostile banner value and a hostile invalid-row name', () => {

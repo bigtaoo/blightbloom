@@ -57,6 +57,8 @@ import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
 import { defaultSettingsState } from '../../settings';
 import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
+import { setPublicFlags } from '../../net/clientFlags';
+import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
 // Forge.render()/Settings.show() flow off `Text.height` — see fakeTextCanvas.ts.
 installFakeTextCanvas();
@@ -86,6 +88,24 @@ const SCREENS: Array<[string, ScreenBuild]> = [
   // the TALLER of the two forge layouts and therefore the one the fit has to clear.
   ['Forge', (w, h) => { const s = new Forge(); s.storeEnabled = true; s.render(defaultMetaState(), w, h); return s.view; }],
   ['MainMenu', (w, h) => { const s = new MainMenu(); s.show(w, h); return s.view; }],
+  // The menu with a MAXIMUM-LENGTH maintenance banner, which is the taller of its two
+  // layouts and therefore the one the fit has to clear — the same reason the Forge entry
+  // above turns `storeEnabled` on rather than sweeping the shorter build.
+  //
+  // Without this entry the sweep would be structurally blind to the banner: a screen built
+  // by `new MainMenu(); show()` reads the flag store, the store starts empty, and the
+  // banner is never drawn. A zero here with no evidence the case arose is not a measurement,
+  // which is precisely the trap the store entry at the bottom of this file records.
+  ['MainMenu (maintenance banner)', (w, h) => {
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'M'.repeat(BANNER_MAX_LENGTH) });
+    try {
+      const s = new MainMenu();
+      s.show(w, h);
+      return s.view;
+    } finally {
+      setPublicFlags(null);
+    }
+  }],
   ['ModeSelect', (w, h) => { const s = new ModeSelect(); s.show(w, h); return s.view; }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s.view; }],
   ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one', 'line two']); return s.view; }],

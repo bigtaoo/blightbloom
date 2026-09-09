@@ -22,6 +22,7 @@
 // the key table used to be an `if` chain inside a DOM listener, so the rule that F9 and pause
 // are offline-only could not be asserted without a `window`.
 import { isPortalHost } from '../../platform/hostKind';
+import { setPublicFlagsListener } from '../../net/clientFlags';
 import { onSessionChanged } from '../../platform/sessionEvents';
 import { setOnlineEntry } from '../../platform/onlineEntry';
 import type { InputSource } from '../../platform/types';
@@ -102,6 +103,12 @@ export function wireScreens(d: WiringDeps): void {
   }
   d.mainMenu.onSquad = () => d.nav.showSquad();
   d.mainMenu.onSettings = () => d.nav.openSettings();
+  // The maintenance banner's live half (design/21 §9's delivery path). `show()` already
+  // re-reads the flag, so this is only about the player who is ALREADY sitting in the menu
+  // when an operator puts a notice up — which is precisely the player a notice about a
+  // shutdown in twenty minutes exists for. One slot, set here rather than in an entry
+  // point, because this is the layer that has a `mainMenu` to refresh.
+  setPublicFlagsListener(() => d.mainMenu.refreshBanner());
   d.modeSelect.onSolo = () => d.nav.showForge();
   d.modeSelect.onCoop = () => d.net.beginSoloQueue(false);
   d.modeSelect.onPvpSolo = () => d.net.beginSoloQueue(true);

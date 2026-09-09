@@ -35,6 +35,13 @@
  * "the flag service is down" means anything other than "the flags are as deployed".
  */
 
+import {
+  BANNER_MAX_LENGTH,
+  FLAG_TEXT_FORBIDDEN,
+  PUBLIC_FLAG_DEFAULTS,
+  type PublicFlags,
+} from '@dd/net/publicFlags';
+
 /** The value kinds a flag may have. Deliberately three, and deliberately not `object`: a
  *  JSON-shaped flag is a config file with no schema, and the next person to add one would
  *  be adding a remote code path rather than a remote switch. */
@@ -58,25 +65,38 @@ export interface FlagDef<T extends FlagValue = FlagValue> {
    * Which process actually READS this flag, and whether a value set in the console reaches
    * it today.
    *
-   * This field exists because building Phase C found a gap the design did not name. Two of
-   * the four flags below are about the CLIENT — the rewarded-ad offer and a maintenance
-   * banner — and the delivery mechanism §4 specifies is an internal `x-internal-key`
-   * endpoint that a browser cannot call and must never be able to. So those two have a row
-   * in `ops.db`, a control in the console, and nothing on the other end.
+   * This field exists because building Phase C found a gap the design did not name: two of
+   * the four flags below are about the CLIENT, and §4's delivery mechanism is an internal
+   * `x-internal-key` endpoint that a browser cannot call and must never be able to. For one
+   * pass those two had a row in `ops.db`, a control in the console and nothing on the other
+   * end, and the state was carried here rather than left to be discovered — because a
+   * switch that looks live and changes nothing is the worst thing an ops panel can contain,
+   * and this project had already paid for that shape once (design/21 §2.5's "errors by
+   * build version" panel, fully populated and meaningless).
    *
-   * A switch that looks live and changes nothing is the worst thing an ops panel can
-   * contain, and this project has already paid for the shape once: design/21 §2.5's own
-   * note about the log store's "errors by build version" panel, fully populated and
-   * meaningless because nothing could supply the field. So `delivered: false` is carried in
-   * the type, the console renders it as a warning on the row, and
-   * `flags.consumers.test.ts` requires every flag to declare it. The alternative — deleting
-   * the two flags until a delivery path exists — would also delete the boolean and string
-   * arms of `coerceFlag`, i.e. remove tested validation for the two shapes the first real
-   * client flag will need.
+   * **The gap is closed as of 2026-09-09** by the public delivery path — `FlagDef.public`
+   * below, `@dd/net/publicFlags` and matchsvc's `GET /client/flags`. The field stays,
+   * because it is what makes the NEXT undelivered flag visible instead of silent, and
+   * `flags.defs.test.ts` requires every flag to declare it.
    */
   consumer: string;
   /** False for a flag nothing reads yet. See `consumer`. */
   delivered: boolean;
+  /**
+   * Whether this flag's value is served to BROWSERS, by `GET /client/flags`.
+   *
+   * The marker half of the public delivery path, and only half on purpose: a flag reaches a
+   * client only if it is `public: true` HERE *and* present in `@dd/net/publicFlags`, which
+   * is the module the client compiles its own defaults from. Two independent edits, in two
+   * workspaces, so publishing a flag cannot happen as a side effect of adding one.
+   *
+   * The test for whether a flag may be public is not "is it harmless" — it is **"is its
+   * value already visible to the player it is delivered to"**. The banner IS its own
+   * disclosure and the ad offer is a button a player can see; `match.pvpBotBackfillDelayMs`
+   * would tell a player which opponent was not a person, so it stays internal. Absent means
+   * private, so a new flag is private until somebody says otherwise.
+   */
+  public?: boolean;
 }
 
 /**
@@ -92,10 +112,13 @@ export const FLAG_DEFS = {
    * turning it off should not wait for a client deploy.
    */
   'ads.rewardedOfferEnabled': {
-    default: true,
+    // From the shared contract, so the value a client compiles in and the value this
+    // console shows as "shipped default" are one literal rather than two that agree today.
+    default: PUBLIC_FLAG_DEFAULTS['ads.rewardedOfferEnabled'],
     help: 'Show the rewarded-ad offer that doubles an extraction payout (portal build only).',
-    consumer: 'client (portal build) — NO delivery path yet, see FlagDef.consumer',
-    delivered: false,
+    consumer: 'client (portal build) — RunOutcome.doubleOffer, via GET /client/flags',
+    delivered: true,
+    public: true,
   },
   /**
    * How long a PvP queue waits before matchmaking backfills a practice bot. Already a
@@ -125,11 +148,15 @@ export const FLAG_DEFS = {
    * banner is not a place to be able to put markup.
    */
   'ui.maintenanceBanner': {
-    default: '',
+    default: PUBLIC_FLAG_DEFAULTS['ui.maintenanceBanner'],
     help: 'One-line notice shown above the menu. Empty = no banner.',
-    maxLength: 140,
-    consumer: 'client (every build) — NO delivery path yet, see FlagDef.consumer',
-    delivered: false,
+    // The shared contract's cap, for the reason the `default` above is: the client refuses a
+    // longer value at its own boundary, and a server that accepted one would put a banner in
+    // the console that no player ever sees.
+    maxLength: BANNER_MAX_LENGTH,
+    consumer: 'client (web + portal) — MainMenu banner, via GET /client/flags',
+    delivered: true,
+    public: true,
   },
 } as const satisfies Record<string, FlagDef>;
 
@@ -146,6 +173,35 @@ export function defaultFlags(): FlagValues {
   const out = {} as Record<string, FlagValue>;
   for (const name of FLAG_NAMES) out[name] = FLAG_DEFS[name].default;
   return out as FlagValues;
+}
+
+/**
+ * The names marked `public: true` — the key set `GET /client/flags` answers with.
+ *
+ * Derived from the markers rather than written out, so it cannot fall behind them. Its
+ * agreement with the client's own `PUBLIC_FLAG_NAMES` is the one half of the contract a
+ * shared constant cannot make structural, and `publicFlags.contract.test.ts` asserts it in
+ * both directions.
+ */
+export const PUBLIC_FLAG_NAMES_FROM_DEFS = FLAG_NAMES.filter((name) => (FLAG_DEFS[name] as FlagDef).public === true);
+
+/**
+ * Projects a full flag set down to the public subset, in the shape the wire and the client
+ * share (`@dd/net/publicFlags`).
+ *
+ * Written as an explicit literal rather than as a filter-and-cast, and that is the whole
+ * value of it: a name added to `PublicFlags` and forgotten here is a MISSING PROPERTY, i.e.
+ * a compile error in this file, and a name removed from the allowlist is a compile error on
+ * the right-hand side. A `Object.fromEntries(...) as PublicFlags` would type-check whatever
+ * it produced and ship an object with a name missing — which the client's all-or-nothing
+ * parse would then refuse wholesale, leaving every browser on its defaults with nothing red
+ * anywhere.
+ */
+export function publicFlagValues(values: FlagValues): PublicFlags {
+  return {
+    'ads.rewardedOfferEnabled': values['ads.rewardedOfferEnabled'],
+    'ui.maintenanceBanner': values['ui.maintenanceBanner'],
+  };
 }
 
 /** Whether a string is a flag name. The membership test the wire parser and the console's
@@ -190,6 +246,9 @@ export function coerceFlag(name: FlagName, value: unknown): FlagValue | null {
   // Same reasoning as `range!` above: every string flag declares a cap, asserted over the
   // whole allowlist by `flags.defs.test.ts`.
   if (value.length > def.maxLength!) return null;
-  // No control character (a newline above all) and no `<`: see the doc comment above.
-  return /[\u0000-\u001f\u007f<]/.test(value) ? null : value;
+  // No control character (a newline above all) and no `<`: see the doc comment above. The
+  // class is imported rather than written here because the CLIENT enforces the same one at
+  // its own trust boundary (`@dd/net/publicFlags`), and two copies that drift would mean a
+  // banner the console accepts and no player ever sees.
+  return FLAG_TEXT_FORBIDDEN.test(value) ? null : value;
 }

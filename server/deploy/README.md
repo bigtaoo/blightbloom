@@ -259,6 +259,24 @@ not a secret, and the password is the whole credential.
 `ci-deploy.sh` checks for BOTH by name and fails the deploy with that explanation rather
 than letting compose's own "required variable is not set" be the only clue.
 
+**First read the file, because this snippet APPENDS a whole site block.** It is written for
+the first-time setup, and it has been edited in place twice since (Grafana, then `/admin*`) —
+so if a `bb.gamestao.com { … }` block is already there, running it verbatim adds a SECOND
+one. That failure is loud (`caddy validate` rejects a duplicate site address, and the
+`validate &&` in the chain means nothing is reloaded), but it wastes a round trip and reads
+like a broken snippet rather than a wrong instruction. So:
+
+```bash
+ssh wnet-server 'grep -n "bb.gamestao.com" -A 20 ~/wnet/docker/Caddyfile'
+```
+
+- **No block** → append, with the snippet below exactly as it stands.
+- **A block already there** → edit it in place instead, adding only the `handle` blocks it
+  is missing. `/admin*` must land **before** the final bare `handle { }`; that trailing block
+  is the catch-all, and `handle` is first-match, so anything after it is unreachable. This is
+  design/21 §3.4's named trap, and getting it wrong is not an error — it is the console's page
+  answered by matchsvc's 404 handler, i.e. a blank page with a 200.
+
 Same backup-append-validate-reload sequence deutsch's README uses (`reload`, not
 `restart` — the wnet stack's own connections stay up):
 
@@ -339,6 +357,23 @@ instead of silently trying `localhost:8788` and failing with no visible error.
       logs** within ~30 seconds (§8 has the one-liner)
 - [ ] `curl -s https://bb.gamestao.com/metrics` returns a **404** — the metrics endpoint
       must not be public (it is reachable only over the compose network)
+- [ ] `curl -s https://bb.gamestao.com/client/flags` returns
+      `{"flags":{"ads.rewardedOfferEnabled":true,"ui.maintenanceBanner":""}}` — the public
+      flag route (design/21 §4). Three things to actually check in that output, because it is
+      the one route on this host that is *supposed* to be readable by anybody:
+    - **Exactly two keys.** `match.queueTimeoutMs` or `match.pvpBotBackfillDelayMs`
+      appearing here is a private flag on a public surface — the backfill delay would tell a
+      player which of their opponents was not a person.
+    - **A 200, not a 404.** Unlike `/metrics` and `/admin/health` above, this one MUST be
+      public, so it is the one row in this list where a 404 is the failure. It is served by
+      matchsvc under the catch-all, so no Caddy block is needed for it.
+    - **`cache-control: no-store`** (`curl -sI`). A cached copy anywhere makes a flipped flag
+      take effect at some unpredictable later time, which is the failure mode that gets
+      reported as "the console does nothing".
+- [ ] Set `ui.maintenanceBanner` in the console, wait a minute, and `curl` the route again —
+      the value should be there. Then load the game and confirm the notice appears above the
+      main menu. **Clear it afterwards**: it is shown to every player on every host.
+      Services poll every 60s and browsers every 5 minutes, so allow for both.
 
 ## 5. Ops
 

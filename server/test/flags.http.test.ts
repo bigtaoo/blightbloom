@@ -280,7 +280,7 @@ describe('POST /admin/flags/set and /clear', () => {
 });
 
 describe('the flags TAB', () => {
-  it('shows every flag, marks an override, and names the undelivered ones', async () => {
+  it('shows every flag, marks an override, and marks the public ones', async () => {
     const base = await startConsole();
     const cookie = await signIn(base);
     await fetch(`${base}/admin/flags/set`, {
@@ -291,9 +291,15 @@ describe('the flags TAB', () => {
     for (const name of Object.keys(FLAG_DEFS)) expect(html, name).toContain(name);
     expect(html).toContain('overridden');
     expect(html).toContain('as shipped');
-    // The gap building this found, on the page rather than only in a comment.
-    expect(html).toContain('not delivered');
-    expect(html).toContain('NO consumer yet');
+    // Every flag has a consumer as of 2026-09-09, so the gap's two markers must be ABSENT
+    // from the real page — not merely absent from a hand-built view. This is the end-to-end
+    // half of `flags.page.test.ts`'s "drops the warning entirely" case: `routes.ts` derives
+    // the list from `FlagDef.delivered`, and asserting the absence here is what would catch
+    // a flag regressing to undelivered without anybody noticing on the page.
+    expect(html).not.toContain('not delivered');
+    expect(html).not.toContain('NO consumer yet');
+    // ...and the public marker is on the row of a flag served to browsers.
+    expect(html).toContain('<span class="pill">public</span>');
   });
 
   it('is loud about a stored row that is NOT being applied', async () => {

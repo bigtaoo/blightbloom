@@ -25,6 +25,17 @@ modules did, on 2026-09-04, and carry `.ts` below.
   (`index.ts`, 8787), and a new **billing plane** (`billsvc`, 8789). Login and account storage
   stay inside the control plane — they are 200-line injected-`DatabaseSync` classes, and
   splitting them buys a network hop and nothing else.
+
+  > **There are five now (2026-09-09), and the count is the only part that went stale.** The
+  > backup worker (§"Backups") and the ops console (`adminsvc`, design/21 §3.1) both arrived
+  > later. Neither is a PLANE: this bullet is about where a player's request may be served
+  > from, and both additions are things no player ever talks to — the worker serves nothing at
+  > all, and the console is a separate origin behind its own credential precisely so that
+  > admin routes do not inherit matchsvc's "public unless it remembers not to be". So the
+  > decision the bullet records — that login and accounts stay inside the control plane rather
+  > than becoming a fourth plane — still holds, and is what §7's superseding note leans on.
+  > Annotated rather than rewritten, because "not five" was an argument somebody made and the
+  > reasoning is worth more than a corrected number.
 - **Money gets its own process and its own database file.** Not for purity: the control plane is
   restarted and (later) horizontally scaled on a matchmaking cadence, and platform callbacks need
   a stable public entry point, pinned credentials, and an audit boundary that can be read and

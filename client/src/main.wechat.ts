@@ -15,6 +15,7 @@ import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './r
 import { reportWeChatBootFailure } from './bootError';
 import { installPerf } from './perf';
 import { installClientLog } from './net/clientLogInstall';
+import { installPublicFlags } from './net/clientFlags';
 import { resolveMatchBaseUrl } from './game/runState';
 import { getSession } from './net/session';
 
@@ -27,6 +28,18 @@ async function boot() {
   // `setHostKind` call to order against. No `location` in this shell either, so the base URL
   // is the build-time default with no query override; `parseGameQueryParams` is a web thing.
   installClientLog({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }), token: () => getSession()?.token ?? null });
+
+  // The public feature flags (design/21 §9's delivery path), installed here and INERT here,
+  // which is a different decision from the analytics one below.
+  //
+  // This shell has no `fetch` at all — the same fact that makes `installClientLog` above
+  // ship nothing — so the poll never runs and every flag stays at the value this build was
+  // compiled with. That is the fail-safe state, not a wrong number: a banner nobody is shown
+  // is an absence, where analytics on this host would produce a PLAUSIBLE number that is
+  // wrong (see below). The call is here rather than omitted so that the day an
+  // `IdentityStore`/fetch adapter over `wx.request` exists, this host is delivering flags
+  // without anybody having to remember a missing line.
+  installPublicFlags({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }) });
 
   // ANALYTICS IS DELIBERATELY NOT INSTALLED HERE (design/21 §9).
   //

@@ -60,17 +60,36 @@ describe('the allowlist', () => {
     }
   });
 
-  it('records which flags have NO consumer yet, rather than pretending they do', () => {
-    // The gap building Phase C found: §4's delivery mechanism is an `x-internal-key`
-    // endpoint, which a browser cannot call and must never be able to — so the two
-    // client-facing flags have a row, a control and nothing on the other end. A switch that
-    // looks live and changes nothing is the worst thing an ops panel can contain, so the
-    // state is in the TYPE and on the page. This test is what stops it being quietly
-    // "fixed" by flipping the boolean instead of building the path.
+  it('has a consumer for EVERY flag, the gap having closed on 2026-09-09', () => {
+    // The history matters, because this assertion is the inverse of the one it replaced.
+    //
+    // Phase C shipped with two client-facing flags that had a row in `ops.db`, a control in
+    // the console, and nothing on the other end — §4's delivery mechanism is an
+    // `x-internal-key` endpoint a browser cannot call and must never be able to. That state
+    // was carried in the TYPE and pinned HERE, deliberately, so it could not be "fixed" by
+    // flipping the boolean instead of building the path.
+    //
+    // The path was built (`@dd/net/publicFlags` + matchsvc's `GET /client/flags`), so the
+    // list is empty now. Keeping the assertion — as an exact `[]` rather than deleting the
+    // case — is what makes the NEXT undelivered flag fail a test instead of shipping as a
+    // switch that looks live and changes nothing.
     const undelivered = FLAG_NAMES.filter((n) => !(FLAG_DEFS[n] as { delivered: boolean }).delivered);
-    expect(undelivered).toEqual(['ads.rewardedOfferEnabled', 'ui.maintenanceBanner']);
-    for (const name of undelivered) {
-      expect((FLAG_DEFS[name] as { consumer: string }).consumer).toMatch(/client/);
+    expect(undelivered).toEqual([]);
+  });
+
+  it('names a REAL reader in every consumer line, not just the word "client"', () => {
+    // The predecessor of this test accepted any consumer string matching /client/, which
+    // `'client (portal build) — NO delivery path yet'` satisfied. It would therefore have
+    // gone on passing through the entire life of the gap it was written beside. A consumer
+    // line is only worth having if it says where to look, so this asserts the shape that
+    // makes it useful: a process, and a symbol or route inside it.
+    for (const name of FLAG_NAMES) {
+      const consumer = (FLAG_DEFS[name] as { consumer: string }).consumer;
+      expect(consumer, name).not.toMatch(/NO delivery path|TODO|none|n\/a/i);
+      expect(consumer, name).toMatch(/matchsvc|client/);
+      // A dot or a slash: `Matchmaker.pvpBotFillMs`, `RunOutcome.doubleOffer`,
+      // `GET /client/flags`. A bare process name tells nobody which line to read.
+      expect(consumer, name).toMatch(/[./]/);
     }
   });
 

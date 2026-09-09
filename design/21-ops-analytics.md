@@ -1,8 +1,11 @@
 # 21 — Ops and analytics: retention, a read-only console, and flags
 
-**Status: all three phases are SHIPPED (2026-09-09).** Phase A is verified end to end
-against a real client and a real server; B and C are built, fully gated and **not yet
-deployed** — every gate is green locally and nothing has been pushed. This document is the
+**Status: all three phases are SHIPPED (2026-09-09), and so is the client flag delivery
+path §9 filed as the one thing missing.** Phase A is verified end to end against a real
+client and a real server; so is the delivery path — a value typed into the console's form
+reached a real menu in a real browser, through matchsvc's poll and the client's own, with no
+reload. Everything is **not yet deployed**: every gate is green locally and nothing has been
+pushed. Three of §9's four open questions are now decided. This document is the
 plan for three things the project has never had —
 retention instrumentation, a way to look at a player without an SSH session, and a runtime
 switch that does not need a deploy. It is written to be implemented in the order of §7, and
@@ -447,11 +450,16 @@ decision rather than let it default), and one Caddy line.
 
 ## 4. Phase C — feature flags
 
-**SHIPPED 2026-09-09, with one piece of it inert and labelled as such — see *the gap* below.**
+**SHIPPED 2026-09-09.** It shipped with one piece of it inert and labelled as such, and
+that piece landed the same day — see *the gap* below for both halves.
 As code: `server/src/flags/` (the allowlist, `ops.db`, the poll client),
 `adminsvc/flagRoutes.ts` (the internal endpoint and the two write paths),
 `adminsvc/page/flags.ts` (the tab), matchsvc's poll wiring, and `Matchmaker`'s two timings
-converted from captured numbers to suppliers.
+converted from captured numbers to suppliers. Then the public delivery path:
+`client/src/net/publicFlags.ts` (the shared contract, imported by the server),
+`client/src/net/clientFlags.ts` (the store and its poll),
+`server/src/routes/clientFlags.ts` (`GET /client/flags`), `FlagDef.public`, and the two
+consumers — `RunOutcome.doubleOffer`'s fifth refusal and `MainMenu`'s banner.
 
 ### What building it found
 
@@ -477,25 +485,71 @@ converted from captured numbers to suppliers.
   deliberately **not** a fourth backup source: every row is a value an operator typed over a
   default that is in git.
 
-### The gap: two of the four flags have no consumer
+### The gap that HAD no consumer, and the public path that closed it
 
-**Two flags are about the CLIENT** — the rewarded-ad offer and a maintenance banner — and the
-delivery mechanism this section specifies is an `x-internal-key` endpoint that a browser
-cannot call and must never be able to. So those two have a row in `ops.db`, a control in the
-console, and nothing on the other end.
+**Shipped 2026-09-09, one pass after Phase C.** For one pass, two flags were about the
+CLIENT — the rewarded-ad offer and a maintenance banner — while the delivery mechanism this
+section specifies is an `x-internal-key` endpoint that a browser cannot call and must never
+be able to. So those two had a row in `ops.db`, a control in the console, and nothing on the
+other end.
 
-A switch that looks live and changes nothing is the worst thing an ops panel can contain, and
-this project has already paid for that shape once — §2.5 records the log store's "errors by
-build version" panel, fully populated and meaningless because nothing could supply the field.
-So the state is carried in the TYPE (`FlagDef.consumer` / `FlagDef.delivered`), rendered as a
-per-row `not delivered` badge with a warning above the table, and pinned by a test that names
-which two they are — so it cannot be "fixed" by flipping the boolean instead of building the
-path. Deleting the two flags instead would also have deleted the boolean and string arms of
-`coerceFlag`: tested validation for the two shapes the first real client flag will need.
+A switch that looks live and changes nothing is the worst thing an ops panel can contain,
+and this project has already paid for that shape once — §2.5 records the log store's "errors
+by build version" panel, fully populated and meaningless because nothing could supply the
+field. So the state was carried in the TYPE (`FlagDef.consumer` / `FlagDef.delivered`),
+rendered as a per-row `not delivered` badge with a warning above the table, and pinned by a
+test that named which two they were — so it could not be "fixed" by flipping the boolean
+instead of building the path. Deleting the two flags instead would also have deleted the
+boolean and string arms of `coerceFlag`: tested validation for the two shapes the first real
+client flag needed.
 
-**What it needs is a PUBLIC delivery path** — a field on a response the client already
-fetches, carrying only the flags marked public — and that is a decision about a new public
-surface rather than a missing line. Filed in §9.
+**What it needed was a PUBLIC delivery path, and §9's proposed shape for one did not exist.**
+The plan was "a field on a response the client already fetches", chosen to avoid adding a
+public surface. A browser makes exactly two unauthenticated calls to matchsvc —
+`POST /client/log` and `POST /client/events` — and both are batched on a 30-second timer,
+fire-and-forget, absent entirely on the WeChat shell, and (for the analytics one) behind an
+opt-out that §9's own consent question would switch off. That is a delivery path for the ad
+switch, which is read when a run ends; it is not one for a notice telling a player the
+servers are going down, and it would couple an operational switch to the analytics opt-in.
+
+So the path is its own route, and everything about it is a refusal to do more:
+
+- **`GET /client/flags` on matchsvc** — unauthenticated, `no-store`, answering from the flag
+  values that process already polls. It reads no database (there is no `ops.db` handle in
+  matchsvc at all, per B1), it is not rate-limited (`/health` beside it is the precedent: no
+  work, no state, and a per-IP limit would meet a school NAT long before an attacker), and it
+  answers proxied requests happily — the exact opposite of `/metrics` in the same dispatch
+  chain, and asserted with `/metrics` as its control, because a copy-paste of that guard
+  would produce a route that works from a test and 404s for every real player.
+- **The contract lives in the CLIENT tree** (`client/src/net/publicFlags.ts`), imported by
+  the server through `@dd/net/*` exactly as `analyticsEvents.ts` is. The client is the half
+  that cannot be redeployed in lockstep, so a value it may receive must have a compiled-in
+  meaning on the day it arrives. Each default, the banner's cap and the forbidden character
+  class are therefore ONE literal rather than two copies — a server that accepted a banner
+  the client refuses is a notice set in the console and invisible in the game, with nothing
+  anywhere saying why.
+- **`FlagDef.public` is only HALF the marker.** A flag reaches a browser only if it is
+  `public: true` on the server AND present in the client's contract — two edits in two
+  workspaces, so publishing a flag cannot happen as a side effect of adding one. Absent means
+  private. And the test of whether a flag MAY be public is not "is it harmless" but **"is its
+  value already visible to the player it is delivered to"**: the banner IS its own disclosure,
+  the ad offer is a button a player can read off their own screen, and
+  `match.pvpBotBackfillDelayMs` — not a secret, and still not ours to hand out — would tell a
+  player which of their opponents was not a person.
+- **All-or-nothing on the client too**, which gives the path a deploy ORDERING: a client that
+  knows a name the server does not yet send falls back to defaults for ALL of them, so a third
+  public flag ships SERVER-first. A client-first deploy costs one window with every override
+  off, including a banner somebody has just put up.
+- **Five minutes, not sixty seconds.** A client poll's cost scales with players rather than
+  processes. The console says so on the page, because without it "I set the banner and it is
+  not showing" is a real report with no bug behind it.
+
+The two consumers: `RunOutcome.doubleOffer` gains a FIFTH refusal, read per offer rather than
+at install time (an install-time check would be a switch that needs a reload — the same
+mistake `Matchmaker`'s captured timings made), and `MainMenu` gains a banner that does not
+affect the layout, is not localised (there is no key for a line an operator typed), and is
+subscribed to the flag store by `gameWiring.ts` so a notice set while a player is already in
+the menu appears without them navigating away.
 
 The one thing on this list that changes how the project is *operated* rather than how it is
 observed: today every switch is a deploy.
@@ -603,10 +657,11 @@ excluded — see §9 on WeChat.
 read-only handles, the login, the three views, the compose service and manifest entries, the
 Caddy route. §3's own "what building it found" has the two places this plan was wrong.
 
-**C. Feature flags — SHIPPED 2026-09-09**, with the client half of the delivery path
-missing and labelled: `ops.db`, the internal poll endpoint, the compiled-in allowlist, the
-merge-over-defaults reader in matchsvc, and the two write paths in the console. §4's *the gap*
-is the part that is plumbing without a consumer.
+**C. Feature flags — SHIPPED 2026-09-09**: `ops.db`, the internal poll endpoint, the
+compiled-in allowlist, the merge-over-defaults reader in matchsvc, and the two write paths in
+the console. It shipped with the CLIENT half of the delivery path missing and labelled, which
+is the state §4's *the gap* records; **that half landed the same day** — the public route,
+the shared contract, and the two consumers it exists for. All four flags are `delivered` now.
 
 **Not deployed.** Every gate is green locally and nothing has been pushed. The acceptance
 checklist in `server/deploy/README.md` §4 carries the console's rows, including the one that
@@ -629,21 +684,41 @@ convenience one).
   lose or amend the *"Loki / Alloy / Grafana"* row on the observability pass's own account.
 - **design/20** records that no analytics exists in the tree; that becomes false at Phase A.
 
-## 9. Open questions
+## 9. Open questions — and the four that are now DECIDED
 
-- **How does a flag reach the CLIENT?** §4's *the gap*: two of the four flags in the
-  allowlist are client-facing and nothing reads them, because the poll endpoint is
-  internal-key-only by design. The shape that would work is a PUBLIC field on a response the
-  client already fetches, carrying only flags explicitly marked public — which is a new
-  public surface and therefore a decision rather than a missing line. Until it exists the
-  console says `not delivered` on those rows, which is the honest state and not a bug.
-- **Is a consent banner required?** The policy states legitimate interest for both new rows,
-  and reusing `daydayup.playerId.v1` means analytics adds no new storage access — but ePrivacy
-  asks about the PURPOSE of reading terminal storage, not only about whether the read is new,
-  and first-party product analytics is the contested case. The design is built so that either
-  answer is cheap: `setAnalytics(null)` is already the default and already a no-op at every
-  call site, so a consent gate is a call site rather than a redesign. **An operator decision,
-  not an engineering one.**
+Kept as a record rather than pruned: a decision with its reasoning is what stops the same
+question being re-opened in a month, and two of these were made on grounds that are not
+recoverable from the code.
+
+- **DECIDED 2026-09-09, and SHIPPED: a flag reaches the CLIENT by its own public route.**
+  The shape filed here was "a PUBLIC field on a response the client already fetches", and
+  that turned out not to exist — the only two unauthenticated calls a browser makes are the
+  log and analytics POSTs, both 30-second batched, fire-and-forget, absent on WeChat, and one
+  of them behind an opt-out. So the answer is `GET /client/flags` on matchsvc, carrying only
+  the flags marked `public: true` AND present in `@dd/net/publicFlags`. §4's *the gap*
+  section has the whole account, including why the marker is deliberately two halves in two
+  workspaces and what test decides whether a flag may be published at all. Both flags now
+  read `delivered` and the console's `not delivered` badge is gone — asserted as an absence,
+  since the previous test asserted only that it was present.
+
+- **DECIDED 2026-09-09: no consent banner. Legitimate interest stands for both new rows.**
+  An operator decision, made on this reasoning: the policy states legitimate interest, and
+  reusing `daydayup.playerId.v1` means analytics adds no new access to terminal storage — it
+  reads an id the game already stored to run at all. ePrivacy asks about the PURPOSE of
+  reading terminal storage and not only about whether the read is new, and first-party
+  product analytics is the contested case rather than a settled one; the call is that the
+  contested case falls on the legitimate-interest side here, where the data is
+  install-scoped, carries no new fact about a person (§2.1), and feeds retention rather than
+  advertising.
+
+  **What keeps that cheap to reverse, and why this is filed rather than deleted.** The design
+  is built so either answer is a call site: `setAnalytics(null)` is already the default and
+  already a no-op at every call site, so a consent gate is one condition and a screen, not a
+  redesign. If the answer changes — a jurisdiction, a portal's own requirement, or advice —
+  nothing built here has to be unbuilt. Note that the flag delivery path above does NOT ride
+  on analytics, deliberately: an operational switch behind an analytics opt-out would have
+  made a maintenance notice conditional on a consent answer.
+
 - **DECIDED 2026-09-09: analytics is NOT installed on the WeChat entry point**, and the
   reason is worth keeping because it is not caution. Every row is keyed by the install id,
   which persists through `createWebIdentityStore` — and that reads `localStorage`, a global
@@ -659,11 +734,31 @@ convenience one).
   guest's progress does not survive a reload today either) and the settings store in one go.
   Adding one call in `main.wechat.ts` is the whole change once it exists.
 
+  **A fourth thing is now on that list, and it is a different KIND of gap.** The flag poll IS
+  installed on that entry point and is inert there, because the shell has no `fetch` at all —
+  the same fact that makes `installClientLog` ship nothing from it. The distinction from the
+  analytics decision above is what makes installing it right: an undelivered flag is an
+  ABSENCE (no banner, and the shipped ad-offer default), where analytics on that host would
+  produce a plausible number that is wrong. The call is present rather than omitted so that
+  a `fetch`/`wx.request` adapter makes this host deliver flags without anybody having to
+  remember a missing line.
+
   The portal build IS installed, and its weaker case is stated rather than discovered: the game
   runs in an embedded frame and some browsers block storage for embedded content — the same
   fact `client/public/privacy.html` §4 already tells players — so for those viewers the id is
   per-visit, DAU on that host reads slightly high and their retention reads as churn. A
   fraction of viewers rather than all of them is what separates it from the WeChat case.
-- **Prometheus retention.** 15 days is right for infrastructure and wrong for a retention
-  chart. Either raise it for this data (it is tiny) or accept that §3.2's table is the only
-  full history. Decide before the first month of data ages out, not after.
+- **DECIDED 2026-09-09: Prometheus retention stays at 15 days, ACCEPTED.** It is right for
+  infrastructure and wrong for a retention chart, and the resolution is to say which store
+  owns which question rather than to keep two sources of the same number: **Prometheus holds
+  infrastructure time series with a 15-day window; `daily_rollup` is the retention history,
+  and §3.2's cohort grid is how it is read.** That table is not pruned (the 90-day prune is on
+  `events`, the raw rows), so the full history lives in a database that is a backup source,
+  which the 15-day window never was.
+
+  Recorded with the reasoning because the alternative reads as an oversight: raising the whole
+  store's retention would cost one compose flag and almost no disk, so "we did not bother" is
+  a plausible and wrong reading of this state. The reason not to is that a retention number
+  answerable from two stores with two windows is a number two people can disagree about, and
+  the grid is the one with the cohort structure the question actually needs. Decided before
+  the first month of data aged out, which is what this bullet asked for.

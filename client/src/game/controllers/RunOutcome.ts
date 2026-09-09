@@ -5,6 +5,7 @@ import { totalFloorCount } from '../match/floorCount';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
 import { track } from '../../net/analytics';
+import { publicFlag } from '../../net/clientFlags';
 import type { ResultOffer } from '../screens/Screens';
 
 /** The bits of Game a run-outcome reaction needs — score/meta/phase/screen are all
@@ -138,10 +139,17 @@ export class RunOutcome {
    * the requirements page's "leave them the non-ad alternative", satisfied by ordering
    * rather than by a second code path.
    *
-   * Four independent reasons there is no offer, each one a case in the tests: no rewarded
-   * ad is installed (every target but the portal), the player blocks ads, the run was
-   * online, or the run carried nothing out — an offer to double zero is a button that
-   * lies about what it does.
+   * FIVE independent reasons there is no offer, each one a case in the tests: the operator
+   * has turned the offer off, no rewarded ad is installed (every target but the portal),
+   * the player blocks ads, the run was online, or the run carried nothing out — an offer to
+   * double zero is a button that lies about what it does.
+   *
+   * The first of those is the flag, and it is read HERE rather than at install time on
+   * purpose. `main.crazygames.ts` could decline to install the rewarded ad at all when the
+   * flag is off, and that would be a switch that only takes effect on a reload — i.e. a
+   * differently-spelled deploy, which is the exact mistake `Matchmaker`'s two captured
+   * timings made on the server side (design/21 §4, "a flag captured at construction is not
+   * a flag"). Read per offer, it takes effect on the next run that ends.
    */
   private doubleOffer(
     s: GameState,
@@ -149,6 +157,7 @@ export class RunOutcome {
     lines: (materials: string) => readonly string[],
   ): ResultOffer | null {
     const ad = rewardedAd();
+    if (!publicFlag('ads.rewardedOfferEnabled')) return null;
     if (ad === null || !ad.available() || this.host.isOnline() || carried <= 0) return null;
     // AFTER the four refusals, so `ad_offer_shown` counts offers a player could actually
     // see. Reporting it before them would make the take-up rate a fraction of a denominator

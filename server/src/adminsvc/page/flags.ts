@@ -101,7 +101,7 @@ nothing. A switch that looks live and does nothing is the worst thing an ops pan
 said here rather than discovered — see <code>FlagDef.consumer</code> in server/src/flags/defs.ts.</p>`;
 
   const rows = FLAG_NAMES.map((name) => {
-    const def = FLAG_DEFS[name] as { default: FlagValue; help: string; consumer: string };
+    const def = FLAG_DEFS[name] as { default: FlagValue; help: string; consumer: string; public?: boolean };
     const current = view.effective[name] ?? def.default;
     const row = overridden.get(name);
     const state =
@@ -119,8 +119,13 @@ said here rather than discovered — see <code>FlagDef.consumer</code> in server
     const consumer = undelivered.includes(name)
       ? `<span class="bad">not delivered</span> <span class="dim">${esc(def.consumer)}</span>`
       : `<span class="dim">${esc(def.consumer)}</span>`;
+    // A PUBLIC flag's value is served to every browser by `GET /client/flags`, unauthenticated.
+    // That is said on the row rather than left in a design document, because it is the one
+    // property of a flag an operator has to know BEFORE typing into the box: the maintenance
+    // banner is text that will be published verbatim to anybody who loads the game.
+    const visibility = def.public === true ? ' <span class="pill">public</span>' : '';
     return `<tr>
-<td><code>${esc(name)}</code><br><span class="dim">${esc(def.help)}</span><br>${consumer}</td>
+<td><code>${esc(name)}</code>${visibility}<br><span class="dim">${esc(def.help)}</span><br>${consumer}</td>
 <td>${showValue(current)}</td>
 <td>${showValue(def.default)}</td>
 <td>${state}</td>
@@ -134,7 +139,12 @@ said here rather than discovered — see <code>FlagDef.consumer</code> in server
 <p class="ro">Operational switches only (design/21 C1). Nothing that changes an authentication
 decision, nothing that could reach billsvc's dev-stub mode, nothing that disables a check at a
 trust boundary — those are deploys, permanently. Services poll every 60s and fall back to the
-compiled-in default whenever this console is unreachable.</p>${undeliveredNote}${invalidNote}
+compiled-in default whenever this console is unreachable.</p>
+<p class="ro">A flag marked <span class="pill">public</span> is served to every player's browser by
+matchsvc's unauthenticated <code>GET /client/flags</code> — its value is published, not just applied,
+so treat the maintenance banner as text anybody can read. Browsers poll every <b>5 minutes</b>, not
+60 seconds, so allow for that when timing a notice; a player already sitting in the menu gets it on
+the next poll without reloading.</p>${undeliveredNote}${invalidNote}
 <table><thead><tr><th>Flag</th><th>Effective</th><th>Shipped default</th><th>State</th><th>Change</th></tr></thead>
 <tbody>${rows}</tbody></table></div>`;
 }

@@ -12,8 +12,14 @@
  * logs the operator out. That is the right trade here and not a shortcut: persisting them
  * would need a table, and the only database this process could write it to is one of the
  * three it opens READ-ONLY (B1). A fourth, writable file would trade the console's one
- * genuinely strong property — it holds no write handle — for not having to log in again
- * after a deploy. With one operator and an 8-hour TTL, the cost is a login.
+ * genuinely strong property — it holds no write handle to PLAYER DATA — for not having to
+ * log in again after a deploy. With one operator and an 8-hour TTL, the cost is a login.
+ *
+ * (That qualifier was added on 2026-09-09. This paragraph originally read "it holds no write
+ * handle", which was true when written and stopped being true when Phase C's `ops.db` landed
+ * — a writable file in this process. The ARGUMENT is unchanged and is in fact why `ops.db` is
+ * not where sessions went: B1's claim is about identity and ownership, so the flag store gets
+ * its own mount outside `/sources/` and holds nothing but values an operator typed.)
  */
 import { randomBytes } from 'node:crypto';
 import { ADMIN_SESSION_TTL_MS } from './credentials';

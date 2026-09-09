@@ -8,6 +8,8 @@ import { Graphics } from 'pixi.js';
 import { MainMenu } from './MainMenu';
 import { getSession, setSession, resetSessionCacheForTests, type Session } from '../../net/session';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { setPublicFlags } from '../../net/clientFlags';
+import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
 const ALICE: Session = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -38,6 +40,7 @@ function privateOf(m: MainMenu) {
     };
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
+    banner: { text: string; visible: boolean; anchor: { x: number; y: number }; position: { x: number; y: number } };
     privacyLink: {
       text: string;
       visible: boolean;
@@ -50,7 +53,107 @@ function privateOf(m: MainMenu) {
 }
 
 beforeEach(() => resetSessionCacheForTests());
-afterEach(() => resetLocaleForTests());
+afterEach(() => {
+  resetLocaleForTests();
+  setPublicFlags(null);
+});
+
+/** Set just the maintenance banner, leaving the other public flags shipped. */
+function withBanner(text: string): void {
+  setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': text });
+}
+
+describe('MainMenu — the maintenance banner (design/21 §9)', () => {
+  it('draws nothing at all with no banner set, which is the shipped default', () => {
+    // The state every player is in almost always. It is asserted first because it is the
+    // one that must not regress: an empty flag has to leave this screen exactly as it was.
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).banner.visible).toBe(false);
+    expect(privateOf(m).banner.text).toBe('');
+  });
+
+  it('shows the operator’s text VERBATIM, unlocalised', () => {
+    // Verbatim is the contract: there is no key to look up, because the value is one line
+    // somebody typed into the console. Asserting the exact string is what pins that this
+    // screen does not decorate, prefix or translate it — any of which would make the 140
+    // character cap mean something different at the two ends.
+    withBanner('Back at 14:00 UTC — server move');
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).banner.visible).toBe(true);
+    expect(privateOf(m).banner.text).toBe('Back at 14:00 UTC — server move');
+  });
+
+  it('picks the banner up on show(), so re-entering the menu is enough', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).banner.visible).toBe(false);
+    withBanner('scheduled restart 03:00 UTC');
+    m.show(800, 600);
+    expect(privateOf(m).banner.text).toBe('scheduled restart 03:00 UTC');
+  });
+
+  it('refreshBanner() works while the menu is ALREADY on screen', () => {
+    // The case the flag exists for: a player sitting in the menu when an operator puts a
+    // notice up. `gameWiring.ts` subscribes this to the flag store so it happens without
+    // them navigating away and back.
+    const m = new MainMenu();
+    m.show(800, 600);
+    withBanner('going down in 20 minutes');
+    m.refreshBanner();
+    expect(privateOf(m).banner.visible).toBe(true);
+    expect(privateOf(m).banner.text).toBe('going down in 20 minutes');
+  });
+
+  it('goes away again when the operator clears it', () => {
+    // The reverse transition, which a show-only test would never reach. A banner that could
+    // be raised and not lowered is a banner nobody dares use.
+    withBanner('down for maintenance');
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).banner.visible).toBe(true);
+    setPublicFlags(null);
+    m.refreshBanner();
+    expect(privateOf(m).banner.visible).toBe(false);
+    expect(privateOf(m).banner.text).toBe('');
+  });
+
+  it('sits ABOVE the title and never moves the menu block', () => {
+    // The layout property the field's own comment claims, asserted rather than described.
+    // A banner that added a row would change the geometry `viewportFit.test.ts` measures
+    // every other screen against — depending on whether an operator had typed something.
+    const plain = new MainMenu();
+    plain.show(800, 600);
+    // x/y only: a Pixi `ObservablePoint` carries an internal uid, so comparing the objects
+    // would fail on two identical layouts.
+    const pos = (m: MainMenu): [number, number] => [privateOf(m).playBtn.view.position.x, privateOf(m).playBtn.view.position.y];
+    const before = pos(plain);
+
+    withBanner('x'.repeat(BANNER_MAX_LENGTH));
+    const withIt = new MainMenu();
+    withIt.show(800, 600);
+    expect(pos(withIt)).toEqual(before);
+    // Anchored at its BOTTOM edge, so wrapping grows it upward and its last line stays a
+    // fixed distance above the title instead of pushing into it.
+    expect(privateOf(withIt).banner.anchor.y).toBe(1);
+    expect(privateOf(withIt).banner.position.y).toBeLessThan(
+      (privateOf(withIt).title as unknown as { position: { y: number } }).position.y,
+    );
+    expect(privateOf(withIt).banner.position.y).toBeGreaterThan(0);
+  });
+
+  it('is positioned even while hidden, so a later refresh needs no re-layout', () => {
+    // Why `show()` positions it unconditionally: `refreshBanner` changes only the text and
+    // the visibility, so a banner arriving mid-screen has to already be somewhere sensible.
+    // Without this the first live banner would draw at (0, 0).
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).banner.visible).toBe(false);
+    expect(privateOf(m).banner.position.x).toBe(400);
+    expect(privateOf(m).banner.position.y).toBeGreaterThan(0);
+  });
+});
 
 describe('MainMenu — account label', () => {
   it('reads LOGIN as a guest (no session)', () => {

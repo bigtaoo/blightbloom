@@ -4,6 +4,7 @@ import { getSession } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
+import { publicFlag } from '../../net/clientFlags';
 
 /**
  * The boot/main-menu screen (design/10 screen flow — the front door that never got
@@ -43,6 +44,31 @@ export class MainMenu {
   /** The hosted-policy link that goes WITH the notice above. Rendered only where a URL
    *  actually exists (`policyLinks.ts`), because a link to nowhere is worse than none. */
   private privacyLink: Text;
+  /**
+   * The operator's maintenance notice (design/21 §4's `ui.maintenanceBanner`, delivered by
+   * `GET /client/flags`). Empty means no banner, and empty is the shipped default, so the
+   * ordinary menu is exactly what it was.
+   *
+   * Read from the flag store rather than passed in, the way `refreshAccountLabel` already
+   * reads `getSession()` — the value changes at runtime and no constructor argument can
+   * carry that. Three properties worth stating because each one is a decision:
+   *
+   *  - **It does not affect the layout.** It hangs at a fixed offset ABOVE the title rather
+   *    than adding a row the way quick-play's `extra` does, so a banner arriving while the
+   *    menu is already on screen needs no re-layout — and, more importantly, the geometry
+   *    every other screen in this project is measured against by `viewportFit.test.ts` does
+   *    not change depending on whether an operator has typed something.
+   *  - **It is not localised, and cannot be.** The value is one line an operator typed;
+   *    there is no key to look up. That is the honest cost of a switch that must work
+   *    without a deploy, and it is why the flag is capped at 140 characters and refuses
+   *    markup and control characters (`@dd/net/publicFlags`) rather than being a rich
+   *    message with a schema.
+   *  - **It is stroked, not carded.** A backing `Panel` would have to be sized from
+   *    `Text.height`, and reading that forces a canvas text measurement — the thing every
+   *    position in this file already avoids, and the reason these screens are unit-testable
+   *    with no `document`. A dark stroke buys the same contrast over the hub art for free.
+   */
+  private banner: Text;
   private quickPlay = false;
   private accountEntry = true;
 
@@ -103,8 +129,18 @@ export class MainMenu {
     this.privacyLink.cursor = 'pointer';
     this.privacyLink.on('pointertap', () => openPolicy('privacy'));
 
+    // `breakWords` alongside `wordWrap`, and it is not belt-and-braces: `wordWrap` alone
+    // breaks at spaces, so a 140-character banner with none — a URL, a long compound word,
+    // or `MMMM…` — cannot wrap at all and runs off both edges of the screen. That is a legal
+    // value (`@dd/net/publicFlags` refuses markup and control characters, not long words),
+    // and `viewportFit.test.ts`'s banner entry is what caught it: the sweep failed at five
+    // of seven viewports the moment the case was actually put in front of it.
+    this.banner = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 15, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 16, align: 'center', wordWrap: true, wordWrapWidth: 480, breakWords: true, stroke: { color: 0x1a202c, width: 4 } } });
+    this.banner.anchor.set(0.5, 1);
+    this.banner.visible = false;
+
     this.view.addChild(
-      this.panel.view, this.menuCard.view, this.title, this.subtitle,
+      this.panel.view, this.menuCard.view, this.banner, this.title, this.subtitle,
       this.playBtn.view, this.modesBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
       this.accountLabel, this.dataNotice, this.privacyLink,
     );
@@ -172,6 +208,12 @@ export class MainMenu {
     const extra = this.quickPlay ? 50 + 12 : 0;
     this.title.position.set(cx, cy - 150 - extra / 2);
     this.subtitle.position.set(cx, cy - 96 - extra / 2);
+    // Anchored (0.5, 1) — BOTTOM-centre — so it grows UPWARD as it wraps and its last line
+    // always sits the same 16px above the title, instead of a two-line notice pushing into
+    // it. Positioned unconditionally, hidden or not, which is what lets `refreshBanner`
+    // change only the text and the visibility while the menu is already on screen.
+    this.banner.position.set(cx, cy - 150 - extra / 2 - 16);
+    this.refreshBanner();
 
     const cardW = 280 + 40;
     const cardTop = cy - 44 - extra / 2;
@@ -213,6 +255,23 @@ export class MainMenu {
 
   hide() {
     this.view.visible = false;
+  }
+
+  /**
+   * Re-read the maintenance flag and show or hide the notice. Called by `show()`, and
+   * subscribed to the flag store by `gameWiring.ts` so a banner an operator sets while a
+   * player is sitting in this menu appears without them having to navigate away and back —
+   * which is exactly the player the banner exists for.
+   *
+   * Nothing here re-lays anything out; see the field's own comment on why it cannot need to.
+   */
+  refreshBanner() {
+    const text = publicFlag('ui.maintenanceBanner');
+    this.banner.text = text;
+    // An empty banner is hidden rather than drawn as an empty `Text`: a zero-height node in
+    // the middle of the menu is invisible either way, but a hidden one cannot be measured,
+    // hit-tested or picked up by a future layout that reads children.
+    this.banner.visible = text.length > 0;
   }
 
   /** Call after a login/register/logout so the button reflects the current session

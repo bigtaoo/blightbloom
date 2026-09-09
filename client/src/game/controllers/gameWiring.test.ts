@@ -21,6 +21,8 @@ import { resetHostKind, setHostKind } from '../../platform/hostKind';
 import { notifySessionChanged, resetSessionEvents } from '../../platform/sessionEvents';
 import { onlineEntry, setOnlineEntry } from '../../platform/onlineEntry';
 import { keydownAction, wireHud, wireScreens, type WiringDeps } from './gameWiring';
+import { setPublicFlags, setPublicFlagsListener } from '../../net/clientFlags';
+import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
 const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
 
@@ -129,7 +131,7 @@ function make() {
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
     mainMenu: { ...screenStub('onPlay', 'onModes', 'onSquad', 'onAccount', 'onSettings'),
-      setQuickPlay: vi.fn(), setAccountEntry: vi.fn() } as never,
+      setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
     modeSelect: screenStub('onSolo', 'onCoop', 'onPvpSolo', 'onTutorial', 'onBack') as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
@@ -157,7 +159,7 @@ describe('wireScreens', () => {
     for (const name of screens) {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
-        if (slot === 'refreshAccountLabel' || slot === 'setQuickPlay') continue;
+        if (slot === 'refreshAccountLabel' || slot === 'setQuickPlay' || slot === 'refreshBanner') continue;
         if (slot === 'setAccountEntry') continue;
         // `onModes` is the one slot that is deliberately unwired on the default host: the
         // button it belongs to is hidden there, because PLAY already opens the mode list.
@@ -392,6 +394,41 @@ describe('wireScreens — the portal host', () => {
     expect(menu.setAccountEntry).not.toHaveBeenCalled();
     menu.onAccount();
     expect(t.called).toEqual(['nav.showAccount']);
+  });
+});
+
+describe('wireScreens — the maintenance banner subscription', () => {
+  afterEach(() => {
+    setPublicFlagsListener(null);
+    setPublicFlags(null);
+  });
+
+  it('refreshes the menu banner when a flag value actually CHANGES', () => {
+    // design/21 §9's delivery path, live half. `MainMenu.show()` already re-reads the flag,
+    // so this subscription exists for exactly one player: the one already sitting in the
+    // menu when an operator puts a notice up — which is the player a notice about a
+    // shutdown in twenty minutes is written for.
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as { refreshBanner: ReturnType<typeof vi.fn> };
+    const before = menu.refreshBanner.mock.calls.length;
+
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'down in 20 minutes' });
+    expect(menu.refreshBanner.mock.calls.length).toBe(before + 1);
+  });
+
+  it('does NOT refresh on a poll that changed nothing', () => {
+    // The control, and the reason `setPublicFlags` returns whether it changed anything: the
+    // browser polls every five minutes forever, and an unconditional notification would
+    // re-run a screen refresh every five minutes for the entire life of every session.
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as { refreshBanner: ReturnType<typeof vi.fn> };
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'steady' });
+    const after = menu.refreshBanner.mock.calls.length;
+
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'steady' });
+    expect(menu.refreshBanner.mock.calls.length).toBe(after);
   });
 });
 

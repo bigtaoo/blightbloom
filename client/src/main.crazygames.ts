@@ -17,6 +17,7 @@ import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
+import { installPublicFlags } from './net/clientFlags';
 import { getLocale } from './i18n';
 import { getSession } from './net/session';
 import { PortalAuth } from './platform/crazygames/portalAuth';
@@ -110,6 +111,14 @@ async function boot() {
     build: () => null,
     locale: getLocale,
   });
+
+  // The public feature flags (design/21 §9's delivery path). This is the host the
+  // `ads.rewardedOfferEnabled` switch exists for: the offer doubles an extraction payout,
+  // so if the balance turns out wrong — or this platform's ad fill collapses and the offer
+  // becomes a button that does nothing — turning it off must not wait for a client deploy.
+  // `RunOutcome.doubleOffer` reads it per offer rather than at install time, so a flip takes
+  // effect on the next run that ends.
+  installPublicFlags({ baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)) });
 
   // (3a) Announce the download. The SDK measures the span from page open to the first
   // `gameplayStart` as the "initial download", so this bracket opens before the art phase
