@@ -14,11 +14,20 @@ import { showBootLoading } from './game/ui/loadingScreen';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
 import { reportWeChatBootFailure } from './bootError';
 import { installPerf } from './perf';
+import { installClientLog } from './net/clientLogInstall';
+import { resolveMatchBaseUrl } from './game/runState';
+import { getSession } from './net/session';
 
 // WeChat mini-game entry, loaded by client/wechat/game.js. There is no weapp-adapter (an
 // older version of this comment claimed there was): the bundle installs Pixi's own
 // DOMAdapter itself, in WeChatPlatform.createApp, before Application.init.
 async function boot() {
+  // Browser logs (design/19 §10). `hostKind` is already `wechat` here — the mini-game shell
+  // is selected by THIS entry point existing, so unlike the portal entry there is no
+  // `setHostKind` call to order against. No `location` in this shell either, so the base URL
+  // is the build-time default with no query override; `parseGameQueryParams` is a web thing.
+  installClientLog({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }), token: () => getSession()?.token ?? null });
+
   const platform = new WeChatPlatform();
   const app = await platform.createApp();
   // Same measure-canvas/paint-canvas pinning as the web entry (render/textMetrics.ts), but it

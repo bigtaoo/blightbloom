@@ -73,6 +73,8 @@ import type { EntitlementDelivery } from './delivery';
 import { createOutboxDelivery } from './outbox';
 import { DeliveryPump, type DeliveryPumpDeps } from './deliveryPump';
 import { recordWebhookEvent, webhookEventType, type WebhookOutcome } from './webhookLog';
+import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from '../metrics';
+import { pendingDeliveries } from './outbox';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -162,6 +164,31 @@ export interface BillsvcServer {
   devOrderBook?: DevStubOrderBook;
 }
 
+/**
+ * What only billsvc knows, and both gauges answer a question an operator has actually had.
+ *
+ * `outbox_pending` is the one to watch: a purchase is settled here and DELIVERED to the
+ * control plane asynchronously (design/19 §4), so a pending count that stops falling means
+ * players have paid for things they do not own — invisible in every container metric,
+ * because nothing is failing, and it is exactly the state the delivery pump exists to drain.
+ *
+ * `dev_stub` is a 0/1 posture gauge rather than a log line, because "is the billing plane
+ * still pretending?" is a question asked months after the log that answered it rotated away.
+ */
+export function billsvcMetrics(db: DatabaseSync, devStubOn: boolean): Metric[] {
+  return [
+    ...processMetrics('billsvc'),
+    gauge(
+      'bb_billsvc_outbox_pending',
+      'Settled purchases not yet delivered to the control plane. A count that stops falling means paid-for entitlements are not being granted.',
+      // Bounded rather than a COUNT(*): this is a scrape every 30s against a live file, and
+      // the interesting reading is "is it draining", which a ceiling does not hide.
+      pendingDeliveries(db, 1000).length,
+    ),
+    gauge('bb_billsvc_dev_stub', 'One while the dev receipt stub is enabled — no real money can move.', devStubOn ? 1 : 0),
+  ];
+}
+
 export function createBillsvcServer(opts: BillsvcServerOptions = {}): BillsvcServer {
   const env = opts.env ?? process.env;
   const db = opts.db ?? openBillingDb(opts.dbPath);
@@ -223,6 +250,13 @@ export function createBillsvcServer(opts: BillsvcServerOptions = {}): BillsvcSer
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return send(res, 200, { ok: true, service: 'daydayup-billsvc' });
+    }
+
+    // Never proxied — billsvc is reachable only from matchsvc over the internal network
+    // (server/deploy/README.md), so this needs no gate of its own.
+    if (req.method === 'GET' && url.pathname === '/metrics') {
+      res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
+      return res.end(renderMetrics(billsvcMetrics(db, devStubEnabled(env))));
     }
 
     if (req.method === 'GET' && url.pathname === '/skus') {

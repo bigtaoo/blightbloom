@@ -1,0 +1,69 @@
+# Loki, single binary, local filesystem storage — the log sink for BOTH halves of this
+# project's observability: the four backend containers (collected by Alloy off the Docker
+# socket) and the browser client (pushed by matchsvc's `/client/log` route).
+#
+# Ported from `funny`'s server/observability/loki/config.yml, with three deliberate
+# differences, each of which is a fact about THIS deployment rather than a preference:
+#
+#  - `reject_old_samples` stays FALSE, same as funny. A restarted container makes Alloy
+#    re-ingest history, and a rejection there is a silent hole in the log rather than an
+#    error anybody sees. It matters more here than there, because client logs carry a
+#    timestamp derived from a device clock we do not control — see `src/clientLog.ts`,
+#    which clamps a client's own age into a bounded window before it ever reaches this.
+#  - Retention is 14 days, matching funny. The disk is 197 GB with 168 GB free and shared
+#    with the box's owner, so this is bounded by courtesy rather than capacity.
+#  - Ingestion caps are a quarter of funny's (4/8 MB rather than 16/32). This project has
+#    one client and four containers where funny has nine processes; a rate this side of
+#    the cap is a signal that something is looping, and a cap nothing ever approaches
+#    cannot give that signal.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  # `info` here narrates every chunk flush into a log store that is itself scraped by
+  # Alloy — a feedback loop that costs more than it tells anyone.
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 336h # 14 days
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  reject_old_samples: false
+  # `/client/log` sends one stream per (level), and the backend one per (service, level).
+  # A cap this far above either is a guard against a label being added carelessly, not a
+  # working limit — the label sets are pinned by tests (`test/clientLog.test.ts`).
+  max_label_names_per_series: 12
+  # Enables the "Log volume" panel in Grafana's Explore and the dashboards' rate panels.
+  volume_enabled: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+# Single instance on somebody else's hardware — nothing about it is phoned home.
+analytics:
+  reporting_enabled: false

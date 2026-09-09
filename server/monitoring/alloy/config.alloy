@@ -1,0 +1,113 @@
+// Alloy: Docker socket -> container stdout/stderr -> parsed labels -> Loki.
+//
+// Ported from `funny`'s server/observability/alloy/config.alloy. Two things about it are
+// load-bearing and worth reading before changing anything here.
+//
+// **It discovers by container NAME, filtered to this project.** funny's version scrapes
+// every container on its host, which is correct there because the host runs nothing else.
+// This box does: it is the company's, borrowed for spare capacity, and already runs their
+// wnet stack, their own Loki/Promtail/Grafana, and `deutsch-sync`. Scraping all of it
+// would copy another team's logs into our store — so the `filter` below, plus the `keep`
+// rule that re-states it, restricts collection to `wnet-test-*`.
+//
+// (The reverse leak already exists and this file cannot close it: THEIR promtail scrapes
+// the same socket unfiltered, so our containers' stdout is in their Loki too. See
+// server/deploy/README.md "What the box's own monitoring already sees".)
+//
+// **Labels stay low-cardinality, always.** Only `source`, `svc`, `level` and `container`.
+// Everything identifying — an account id, a room id, an order id — stays in the line body
+// as `key=value` and is parsed at QUERY time with `| logfmt`. A label per room id would
+// make a stream per match, which is the standard way to make Loki unusable.
+
+// ── Discovery: this project's containers only ───────────────────────────────────────────
+discovery.docker "wnet_test" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "10s"
+
+	// Docker's own name filter is a substring match, so this catches every container the
+	// compose project creates (`wnet-test-gameserver`, `wnet-test-obs-loki`, ...) and
+	// nothing the host owns.
+	filter {
+		name   = "name"
+		values = ["wnet-test-"]
+	}
+}
+
+discovery.relabel "wnet_test" {
+	targets = discovery.docker.wnet_test.targets
+
+	// Belt and braces: the filter above is applied by the Docker daemon, this one by
+	// Alloy. A daemon that ignores or loosens the filter (it is documented as a substring
+	// match, not an anchored one) would otherwise silently start collecting the whole box.
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/wnet-test-.*"
+		action        = "keep"
+	}
+
+	// `/wnet-test-matchsvc` -> container="wnet-test-matchsvc", svc="matchsvc".
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/wnet-test-(.*)"
+		target_label  = "svc"
+	}
+
+	// The one label that separates the two halves of this store. `/client/log` pushes with
+	// source="client"; everything Alloy collects is source="backend". Every dashboard
+	// starts from this selector.
+	rule {
+		target_label = "source"
+		replacement  = "backend"
+	}
+}
+
+// ── Collection ──────────────────────────────────────────────────────────────────────────
+loki.source.docker "wnet_test" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.relabel.wnet_test.output
+	relabel_rules = discovery.relabel.wnet_test.rules
+	forward_to    = [loki.process.parse.receiver]
+}
+
+// ── Parse the structured line `src/log.ts` writes ───────────────────────────────────────
+loki.process "parse" {
+	// `12:34:56.789 INFO  [matchsvc] a message key=value` (server/src/log.ts). A line that
+	// does not match — Node's own `ExperimentalWarning`, Grafana's and Loki's startup
+	// output, a raw stack trace continuation — passes through with no `level` label rather
+	// than being dropped.
+	stage.regex {
+		expression = "^\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+(?P<level>[A-Z]+)\\s+\\[(?P<tag>[^\\]]+)\\]"
+	}
+
+	// `| level="error"` reads better than `| level="ERROR"`, and matches the level names
+	// the client half sends. Normalising here means one vocabulary across both sources.
+	stage.template {
+		source   = "level"
+		template = "{{ ToLower .Value }}"
+	}
+
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		// `obs-loki`, not `loki`: this compose project joins the host's shared
+		// `docker_default` network, where the box owner's own Loki already answers to the
+		// alias `loki`. A service named `loki` here would put two containers behind one
+		// DNS name on a shared network — their promtail's pushes could land in our store
+		// and ours in theirs, intermittently, with nothing failing. Every service this
+		// project adds to that network is prefixed for the same reason.
+		url = "http://obs-loki:3100/loki/api/v1/push"
+	}
+}

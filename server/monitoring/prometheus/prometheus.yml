@@ -1,0 +1,58 @@
+# Metrics for the "server status" half of the dashboards. Logs answer *what happened*;
+# this answers *how the box and the containers are doing while it happens*.
+#
+# **It runs no exporters of its own, on purpose.** The box already runs cAdvisor (container
+# CPU/memory/restarts) and node-exporter (host CPU/RAM/disk/load) for its owner's stack,
+# both on the shared `docker_default` network, and both measure the WHOLE machine — our
+# containers included. A second privileged cAdvisor here would mount `/`, `/sys`,
+# `/var/run` and `/dev/kmsg` a second time on hardware this project only borrows, to
+# recompute numbers that already exist one DNS name away. So we scrape theirs and add
+# nothing.
+#
+# The cost of that trade, stated rather than discovered later: if the box's owner stops or
+# renames those two containers, the `host` and `containers` jobs go DOWN and every infra
+# panel empties, while the log half keeps working. That is visible in Grafana as a target
+# that is down — not as a panel that quietly shows zero. `dashboards/infra.json` graphs
+# `up` for exactly this reason.
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  external_labels:
+    project: wnet-test
+
+scrape_configs:
+  # ── This project's own processes ──────────────────────────────────────────────────────
+  # `/metrics` on each service (server/src/metrics.ts) — process uptime/RSS plus the few
+  # numbers only the application knows: rooms in flight, queue depth, whether billsvc is
+  # still in dev-stub mode. The backup worker serves no port and is therefore absent here;
+  # its liveness is its container healthcheck, and its freshness is in `status.json`.
+  - job_name: services
+    metrics_path: /metrics
+    static_configs:
+      - targets: [gameserver:8787]
+        labels: { svc: gameserver }
+      - targets: [matchsvc:8788]
+        labels: { svc: matchsvc }
+      - targets: [billsvc:8789]
+        labels: { svc: billsvc }
+
+  # ── Borrowed from the host's stack (see the header) ───────────────────────────────────
+  - job_name: containers
+    static_configs:
+      - targets: [docker-cadvisor-1:8080]
+  - job_name: host
+    static_configs:
+      - targets: [docker-node-exporter-1:9100]
+
+  # ── The observability stack watching itself ───────────────────────────────────────────
+  # Without this, "Loki stopped ingesting" is indistinguishable from "nothing happened",
+  # which is the failure mode funny lived with for months (an empty Grafana that looked
+  # like a quiet week).
+  - job_name: obs
+    static_configs:
+      - targets: [obs-loki:3100]
+        labels: { svc: loki }
+      - targets: [obs-alloy:12345]
+        labels: { svc: alloy }
+      - targets: [obs-prometheus:9090]
+        labels: { svc: prometheus }

@@ -36,9 +36,12 @@ name appears anywhere on that shared machine on purpose; this repo's own naming
 in the GitHub Actions secrets/variables, neither of which anyone with shell access to the
 VPS can see.
 
-Three processes, one image (`server/Dockerfile`, `server/docker-compose.yml`):
+Four processes from one image (`server/Dockerfile`, `server/docker-compose.yml`):
 `gameserver` (WS data plane, design/06), `matchsvc` (control plane — matchmaking,
-accounts, store proxy) and `billsvc` (billing plane). **billsvc runs in dev-stub mode**:
+accounts, store proxy), `billsvc` (billing plane) and `backup` (the daily SQLite
+snapshotter, §5). Since 2026-09-09 the same compose project also runs **four off-the-shelf
+observability containers** — Loki, Alloy, Prometheus and Grafana (§8) — which run no code
+from this repo and which nothing above depends on. **billsvc runs in dev-stub mode**:
 no real Paddle credential exists yet (design/19-server-platform.md §9), so `NODE_ENV` is
 deliberately left off `production` for that one container — its
 `startupGuard.ts` refuses to boot a dev-stub flag under `NODE_ENV=production`, full stop.
@@ -120,7 +123,7 @@ its own top-level arg rather than flattened:
 
 ```bash
 cd server
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json .env wnet-server:~/wnet-test/
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring .env wnet-server:~/wnet-test/
 ```
 
 **No `rsync` on Windows Git Bash** (this is how the first deploy actually happened,
@@ -129,7 +132,7 @@ rsync -av dist Dockerfile docker-compose.yml deploy/package.json .env wnet-serve
 
 ```bash
 ssh wnet-server 'mkdir -p ~/wnet-test/deploy'
-scp -rq dist Dockerfile docker-compose.yml .env wnet-server:~/wnet-test/
+scp -rq dist Dockerfile docker-compose.yml monitoring .env wnet-server:~/wnet-test/
 scp -q deploy/package.json wnet-server:~/wnet-test/deploy/package.json
 ```
 
@@ -162,15 +165,50 @@ docker exec wnet-test-billsvc   node -e "fetch('http://127.0.0.1:8789/health').t
 ## 2. Wire up Caddy
 
 matchsvc answers everything except the WS upgrade, which is path-pinned to `/ws`
-(`server/src/index.ts`'s `WebSocketServer({ path: '/ws' })`) — so the site block is a
-two-line path split, not a whole-host proxy the way deutsch's single-service one is:
+(`server/src/index.ts`'s `WebSocketServer({ path: '/ws' })`), and — since 2026-09-09 —
+except `/grafana*`. So the site block is a three-way path split, not a whole-host proxy
+the way deutsch's single-service one is:
 
 ```caddyfile
 bb.gamestao.com {
-	reverse_proxy /ws* wnet-test-gameserver:8787
-	reverse_proxy wnet-test-matchsvc:8788
+	handle /ws* {
+		reverse_proxy wnet-test-gameserver:8787
+	}
+	handle /grafana* {
+		reverse_proxy wnet-test-grafana:3000
+	}
+	handle {
+		reverse_proxy wnet-test-matchsvc:8788
+	}
 }
 ```
+
+**`handle` blocks, not three bare `reverse_proxy` lines with matchers.** With more than
+two paths, "which directive wins" stops being obvious from reading the file, and the
+failure is not an error — it is Grafana's assets being answered by matchsvc's 404 handler,
+i.e. a blank page with a 200. `handle` is mutually exclusive and first-match, so the file
+says what it does.
+
+**The Grafana prefix is NOT stripped.** `handle_path` would remove it, and Grafana is
+configured with `GF_SERVER_SERVE_FROM_SUB_PATH=true`, meaning it expects to receive the
+prefix and generates its own links with it. Strip it and every asset 404s.
+
+#### Before that deploy: the Grafana password must already be in `.env`
+
+`docker-compose.yml` declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?…}`,
+and `.env` is the one file CI never ships (`ci-deploy.sh`). The `:?` is deliberate —
+Grafana's own default is `admin`/`admin` and this login page is on the public internet —
+but it means a box whose `.env` predates the Grafana service fails `docker compose up` for
+**every** service, not just Grafana. Same shape as the `DDU_*`→`BB_*` rename above: do it
+first, on the box, by hand.
+
+```bash
+ssh wnet-server "cd ~/wnet-test && printf 'BB_GRAFANA_ADMIN_PASSWORD=%s\n' \"\$(openssl rand -hex 16)\" >> .env && grep -c BB_GRAFANA .env"
+ssh wnet-server "grep '^BB_GRAFANA_ADMIN_PASSWORD=' ~/wnet-test/.env"   # note it down — this is the only copy
+```
+
+`ci-deploy.sh` checks for it and fails the deploy with that explanation rather than letting
+compose's own "required variable is not set" be the only clue.
 
 Same backup-append-validate-reload sequence deutsch's README uses (`reload`, not
 `restart` — the wnet stack's own connections stay up):
@@ -212,13 +250,24 @@ instead of silently trying `localhost:8788` and failing with no visible error.
 - [ ] `curl https://bb.gamestao.com/health` → `{"ok":true,"service":"daydayup-matchsvc"}`,
       cert issued by Let's Encrypt
 - [ ] A WS client can open `wss://bb.gamestao.com/ws?ticket=...` and receive frames
-- [ ] `docker compose logs billsvc` shows `[DEV RECEIPT STUB ENABLED]` — confirms billsvc
-      is NOT accidentally in production mode
+- [ ] `docker compose logs billsvc` shows `devStub=true` — confirms billsvc is NOT
+      accidentally in production mode. (It was a bracketed `[DEV RECEIPT STUB ENABLED]`
+      banner until the structured logger landed 2026-09-09; it is a logfmt FIELD now, which
+      is the point — a marker buried in prose cannot be queried, and "was the store real on
+      the day of that order?" is asked months after the log line has rotated away.)
 - [ ] `docker inspect wnet-test-billsvc --format '{{.Config.Env}}'` does **not** show
       `NODE_ENV=production` (that combination is refused at the process level, but the
       compose file should never even attempt it)
 - [ ] A `/store/skus` request through matchsvc returns the SKU table (proves the
       matchsvc → billsvc internal hop works even with billsvc in dev-stub mode)
+- [ ] `https://bb.gamestao.com/grafana/` shows the login page, and `admin` +
+      `BB_GRAFANA_ADMIN_PASSWORD` gets in
+- [ ] In Grafana, **Backend — logs** shows a heartbeat line for all four services within
+      five minutes, and **Server status** shows every scrape target `up`
+- [ ] Open the game, force an error in its console, and it appears in **Client — browser
+      logs** within ~30 seconds (§8 has the one-liner)
+- [ ] `curl -s https://bb.gamestao.com/metrics` returns a **404** — the metrics endpoint
+      must not be public (it is reachable only over the compose network)
 
 ## 5. Ops
 
@@ -235,12 +284,12 @@ instead of on the box. Neither runs Docker.
 
 
 ```bash
-# Logs
+# Logs (or, since 2026-09-09, the Backend dashboard at https://bb.gamestao.com/grafana/ — see section 8)
 docker compose -f ~/wnet-test/docker-compose.yml logs -f
 
 # Redeploy after a code change (build locally, then re-ship + rebuild)
 cd server && npm run build
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json wnet-server:~/wnet-test/
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring wnet-server:~/wnet-test/
 ssh wnet-server 'cd ~/wnet-test && docker compose up -d --build'
 
 # Pull the automated backups off the box (see the Backups section below — the snapshots
@@ -396,3 +445,129 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   borrowed, so a push credential stored ON it is the thing not to add), or an object-store
   bucket the worker uploads to. Deliberately not guessed at here — it needs a destination
   somebody owns.
+
+## 8. Observability — Loki + Alloy + Prometheus + Grafana (2026-09-09)
+
+**What it answers.** Before this, "what happened on the server?" meant `ssh` +
+`docker compose logs`, over a 10 MB × 3 rotating buffer, on a box only one person can
+reach. "What happened in a player's browser?" had no answer at all — every device-side bug
+this project has had (the blank WeChat labels, the CrazyGames SDK calls that were silent
+no-ops, the CORS preflight that failed as a bare `Failed to fetch`) was found by somebody
+happening to have devtools open at the time.
+
+**Where it lives.** Four containers in the same compose project, `obs-`prefixed
+(`wnet-test-loki` / `-alloy` / `-prometheus` / `-grafana`), configured from
+`server/monitoring/`. They run no code from this repo. Nothing the game serves depends on
+them: a dead Grafana cannot affect a match, and `docker compose down` still removes the
+whole footprint in one command.
+
+| | image | what it does |
+| --- | --- | --- |
+| `obs-loki` | `grafana/loki:3.4.2` | the log store, 14-day retention, filesystem, no published port |
+| `obs-alloy` | `grafana/alloy:v1.7.5` | reads container stdout off the Docker socket (read-only), pushes to Loki |
+| `obs-prometheus` | `prom/prometheus:v3.13.3` | scrapes `/metrics` on each service + the box's own cAdvisor/node-exporter |
+| `obs-grafana` | `grafana/grafana:11.5.2` | the only one a human opens, at `/grafana/` |
+
+Three dashboards, provisioned from files (`monitoring/grafana/dashboards/`) rather than
+clicked into existence, so a panel is reviewed like code and a fresh volume comes up
+already working:
+
+- **Backend — logs** — every container's stdout, by service and level, plus a *service
+  liveness* panel that counts the 5-minute heartbeat every process emits.
+- **Client — browser logs** — the same store, `source="client"`. Filter by build target,
+  build version, session id or account id; the last panel replays one visit in order.
+- **Server status** — container CPU/RAM, host CPU/RAM/disk, process uptime (a sawtooth is
+  a restart loop), matchmaking queue depth, live rooms, and billsvc's undelivered-purchase
+  count.
+
+### How a browser log gets there
+
+`client/src/net/clientLog.ts` keeps a 200-entry ring buffer of everything, wraps
+`console.error`/`console.warn` and the global error handlers, and flushes what is at or
+above `warn` every 30 seconds and once on `pagehide`. matchsvc's `POST /client/log`
+validates it, attaches the account from the bearer token (never from the body), and
+forwards it to Loki.
+
+Two things in that path are load-bearing and easy to break by "cleaning up":
+
+- **`fetch(..., { keepalive: true, credentials: 'omit' })`, never `navigator.sendBeacon`.**
+  `sendBeacon` always sends credentialed, which makes the browser require
+  `Access-Control-Allow-Credentials: true` — and matchsvc answers
+  `Access-Control-Allow-Origin: *`, which by specification cannot be combined with
+  credentials. The client is on `b.gamestao.com` and the server on `bb.gamestao.com`, so
+  every send is cross-origin. Swap it and the exit flush silently never lands.
+- **Every outcome is `200 {ok, accepted}`.** A 4xx teaches a client to retry, and a client
+  retrying a malformed batch retries it forever. A refused batch reports `accepted: 0`.
+
+Verify it end to end without playing anything — open the game, then in its console:
+
+```js
+console.error('smoke test from', location.href)
+```
+
+...and within ~30s it is in **Client — browser logs**. Nothing appearing there is a real
+signal; work down `BB_LOKI_PUSH_URL` → the network tab's `POST /client/log` → Loki's
+`/ready`.
+
+### If a dashboard is empty
+
+In this order, because each step rules out everything below it:
+
+```bash
+# 1. Is the stack even up?
+ssh wnet-server 'cd ~/wnet-test && docker compose ps'
+
+# 2. Is Loki accepting? (`ready` = yes)
+ssh wnet-server 'docker exec wnet-test-loki wget -qO- http://127.0.0.1:3100/ready'
+
+# 3. Is anything in it? (should list backend + client)
+ssh wnet-server 'docker exec wnet-test-grafana wget -qO- "http://obs-loki:3100/loki/api/v1/label/source/values"'
+
+# 4. Is the collector attached, and to OUR containers only?
+ssh wnet-server 'docker logs --tail 50 wnet-test-alloy'
+
+# 5. For the client half specifically — the variable that silently drops everything
+ssh wnet-server 'docker exec wnet-test-matchsvc printenv BB_LOKI_PUSH_URL'
+
+# 6. Are the metrics targets up? (two of them are the BOX OWNER's exporters — see below)
+ssh wnet-server 'docker exec wnet-test-prometheus wget -qO- "http://127.0.0.1:9090/api/v1/targets?state=any" | head -c 2000'
+```
+
+### Two things about running this on a borrowed box
+
+**The box's own monitoring already sees us, and this stack cannot change that.** The
+machine runs its owner's wnet stack, which includes their own Loki/Promtail/Grafana — and
+their promtail scrapes the Docker socket **unfiltered**, so every line our containers have
+ever written is already in their store, labelled `wnet-test-*`. (Confirmed 2026-09-09 by
+querying it; it also still holds `blightbloom-gameserver` / `-matchsvc` / `-billsvc`
+streams from a short-lived container naming on 2026-09-07, i.e. the game's name did reach
+that box despite the naming policy above, and log CONTENT carries it regardless.) Closing
+that would mean editing *their* promtail config, which is not this project's to change
+unilaterally — raise it with the box's owner if it matters.
+
+Our own Alloy does the opposite, deliberately: `monitoring/alloy/config.alloy` filters
+discovery to `wnet-test-*` twice over (a Docker-side filter and an Alloy-side `keep`), so
+we do not collect their containers' logs into our store.
+
+**Every service name here is `obs-`prefixed, and that is not cosmetic.** This compose
+project joins the host's shared `docker_default` network, and compose publishes each
+service NAME as a network alias on it. The owner's stack already answers to `loki`,
+`grafana`, `prometheus` and `promtail` there. A service called `loki` would put two
+containers behind one DNS name on a shared network — their collector's pushes could start
+landing in our store and ours in theirs, intermittently, with nothing failing anywhere.
+`server/test/deploy.observability.test.ts` fails the build on a colliding name.
+
+### Before touching any of it
+
+```bash
+npm test -w server        # test/deploy.observability.test.ts + test/deploy.manifests.test.ts
+```
+
+`deploy.observability.test.ts` cross-checks the six config files against each other and
+against the code — the Loki push URL against the compose service and its port, Prometheus's
+targets against each service's real port, Grafana's sub-path against the Caddy route, every
+dashboard's datasource uid against what provisioning declares, and **Alloy's log-parsing
+regex against a line the real `src/log.ts` produces**. That last one is the cross-check
+worth knowing about: two files, one regex, one formatter, no compiler between them, and the
+failure mode is a `level` label quietly going missing.
+

@@ -29,6 +29,8 @@
 import { fileURLToPath } from 'node:url';
 import { readBackupConfig, BackupConfigError, type BackupConfig } from './config';
 import { isHealthy, readStatus, runCycle, writeStatus } from './runner';
+import { createLogger } from '../log';
+import { startHeartbeat } from '../heartbeat';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -73,9 +75,20 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Pro
   if (argv.includes('--health')) {
     process.exit(healthExitCode(cfg, new Date()));
   }
-  console.log(
-    `backup: ${cfg.sources.length} source(s) -> ${cfg.destDir}, every ${cfg.intervalMs / 3_600_000}h, keeping ${cfg.keep} per source`,
-  );
+  const log = createLogger('backup');
+  log.info('snapshotter starting', {
+    sources: cfg.sources.length,
+    dest: cfg.destDir,
+    everyHours: cfg.intervalMs / 3_600_000,
+    keep: cfg.keep,
+  });
+  // The heartbeat matters MORE here than in the three HTTP services, which is the opposite
+  // of how it looks. Those talk constantly; this one writes two lines a day and is silent
+  // for the other 23 hours 59 minutes, so "no backup lines in the dashboard" is its normal
+  // state and its failed state at once. It is also the process that has actually failed
+  // silently — 18 hours of EACCES on every write, 2026-09-08 — which is precisely the shape
+  // the "service liveness" panel is there to make visible.
+  startHeartbeat({ log });
   await runForever(cfg);
 }
 

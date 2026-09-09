@@ -1,0 +1,17 @@
+# Loads every dashboard JSON from the read-only mount at /var/lib/grafana/dashboards
+# (server/monitoring/grafana/dashboards). `allowUiUpdates` is off: a dashboard edited in
+# the browser would be overwritten by the file on the next restart anyway, and a UI that
+# accepts an edit it will silently discard is worse than one that refuses it.
+apiVersion: 1
+
+providers:
+  - name: blightbloom
+    orgId: 1
+    folder: Blightbloom
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

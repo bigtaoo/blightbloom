@@ -37,13 +37,35 @@ export function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(json);
 }
 
+/**
+ * The size every route but one is bounded by. A `/find`, a login, a store order and a
+ * settlement report are all a few hundred bytes; nothing legitimate approaches this.
+ */
+export const DEFAULT_BODY_LIMIT = 4096;
+
 /** Read a JSON request body (bounded), then invoke `done`. Malformed/oversized → {}. */
 export function readJson(req: IncomingMessage, done: (body: unknown) => void): void {
+  readJsonUpTo(req, DEFAULT_BODY_LIMIT, done);
+}
+
+/**
+ * `readJson` with the limit named at the call site — for the one route whose legitimate
+ * body is not small: `/client/log` ships a batch of up to 200 browser log lines
+ * (`clientLog.ts`'s `LIMITS`), which does not fit in 4 KB and must not be silently halved
+ * into a parse failure.
+ *
+ * Overflow behaviour is the same as it has always been and is worth being explicit about:
+ * the tail past `limit` is DROPPED, so what reaches `JSON.parse` is truncated JSON, which
+ * throws, which yields `{}`. A caller therefore sees "nothing usable" rather than a
+ * half-read object — the safe direction, and the reason no route here has to defend
+ * against a partially-parsed body.
+ */
+export function readJsonUpTo(req: IncomingMessage, limit: number, done: (body: unknown) => void): void {
   const chunks: Buffer[] = [];
   let size = 0;
   req.on('data', (c: Buffer) => {
     size += c.length;
-    if (size > 4096) return; // a find request is tiny; ignore the overflow tail
+    if (size > limit) return; // ignore the overflow tail
     chunks.push(c);
   });
   req.on('end', () => {

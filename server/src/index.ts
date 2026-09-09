@@ -18,6 +18,9 @@
  */
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { createLogger, type Logger } from './log';
+import { startHeartbeat } from './heartbeat';
+import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from './metrics';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg } from '@dd/engine';
 import { RoomManager } from './RoomManager';
@@ -191,6 +194,21 @@ export interface GameserverOptions {
    * env-derived `ticketSecret()` default (mirrors matchsvc's `secret` option in
    * `MatchsvcServerOptions`). */
   ticketSecret?: { secret: string; isDev: boolean };
+  /** Structured logger (design/19 §10). Injected so a test can read the startup line and
+   *  the heartbeat off a capturing sink instead of spying on `console`. */
+  log?: Logger;
+}
+
+/**
+ * What only the gameserver knows: how much of a match load this process is actually
+ * carrying. `docker stats` shows the memory either way — this is the number that says
+ * whether the memory is doing anything.
+ */
+export function gameserverMetrics(manager: RoomManager): Metric[] {
+  return [
+    ...processMetrics('gameserver'),
+    gauge('bb_gameserver_rooms', 'Match rooms currently held by this process.', manager.size),
+  ];
 }
 
 /**
@@ -213,6 +231,13 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, service: 'daydayup-gameserver' }));
+      return;
+    }
+    // Reachable only over the compose network: Caddy routes just `/ws*` here
+    // (server/deploy/README.md §2), so unlike matchsvc's this needs no proxy check.
+    if (req.method === 'GET' && req.url === '/metrics') {
+      res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
+      res.end(renderMetrics(gameserverMetrics(manager)));
       return;
     }
     res.writeHead(426, { 'content-type': 'text/plain' });
@@ -314,8 +339,10 @@ export function main(opts: MainOptions = {}): {
 
   const port = opts.port ?? PORT;
   const host = opts.host ?? HOST;
+  const log = opts.log ?? createLogger('gameserver');
   server.listen(port, host, () => {
-    console.log(`blightbloom gameserver (co-op frame relay) on ws://${host}:${port}/ws`);
+    log.info('frame relay listening', { addr: `ws://${host}:${port}/ws` });
+    startHeartbeat({ log });
   });
   return { server, wss, manager, shutdown };
 }

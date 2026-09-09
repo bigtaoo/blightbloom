@@ -9,6 +9,9 @@ import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './r
 import { reportWebBootFailure } from './bootError';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
+import { resolveMatchBaseUrl } from './game/runState';
+import { installClientLog } from './net/clientLogInstall';
+import { getSession } from './net/session';
 
 // Web entry. The WeChat entry is client/src/main.wechat.ts (loaded by client/wechat/game.js).
 // Both reuse the Game core; only the Platform differs — including the art preload, which
@@ -16,7 +19,21 @@ import { parseGameQueryParams } from './game/match/gameQueryParams';
 // was the mechanism behind "the mini-game renders Graphics placeholders only": there was
 // no preload for the other entry to call. Web needs no AssetHost of its own — the default
 // in render/assetHost.ts is the web one.
+/** The bearer token of the logged-in session, or null for a guest. Read per flush rather
+ *  than captured once, so a player who logs in mid-visit starts being attributable without
+ *  the logger having to be told. */
+function sessionToken(): string | null {
+  return getSession()?.token ?? null;
+}
+
 async function boot() {
+  // Browser logs, on their way to the same store the backend writes to (design/19 §10).
+  // FIRST, before anything else in boot() can fail: this wraps console.error/warn and the
+  // global error handlers, so a throw from any line below is captured rather than only
+  // being visible to whoever happens to have devtools open. Failure of the logger itself is
+  // silent by construction (net/clientLog.ts).
+  installClientLog({ baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)), token: sessionToken });
+
   // Before any Text exists — Pixi caches its measurement canvas on first use (see
   // render/textMetrics.ts for why the default offscreen one mis-measures Cyrillic).
   pinTextMeasurementToPaintCanvas();

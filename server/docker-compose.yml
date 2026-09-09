@@ -13,6 +13,28 @@
 # `npm run build -w server` first), FOUR processes selected by `command:` — three HTTP
 # services and one worker (`backup`), which has no port and whose healthcheck therefore
 # asks its own bundle rather than a `/health` route.
+#
+# ── ...plus four OFF-THE-SHELF images: the observability stack (design/19 §10) ──
+# `obs-loki` / `obs-alloy` / `obs-prometheus` / `obs-grafana`. They run no code from this
+# repo, take no part in serving a player, and nothing above depends on them — a dead
+# Grafana cannot affect a match. Three things about them are load-bearing:
+#
+#  - **Every one of their service names is prefixed `obs-`.** This project joins the host's
+#    SHARED `docker_default` network, and compose publishes each service NAME as a network
+#    alias on it. The box's owner already runs their own Loki, Grafana, Prometheus and
+#    Promtail there under exactly those names — so a service called `loki` would put two
+#    containers behind one DNS name, and their collector's pushes could start landing in
+#    our store, or ours in theirs, intermittently, with nothing failing anywhere. The
+#    prefix is what makes a second stack on a shared network safe.
+#  - **All observability state lives in NAMED volumes, never a bind mount.** Docker creates
+#    a missing bind-mount source `root:root` and the mount then hides the image's own
+#    `chown` — which is what cost this deployment 18 hours of silently failing backups on
+#    2026-09-08. These images run as their own uids (Loki 10001, Grafana 472), so a
+#    bind-mounted data dir would need a third ownership rule in `ci-deploy.sh`. A named
+#    volume is owned by whoever writes it first. Only read-only CONFIG is bind-mounted.
+#  - **Grafana is the one thing here a human logs into**, and the only one Caddy exposes
+#    (`/grafana*` — server/deploy/README.md §2). Its admin password comes from `.env`,
+#    which CI never ships, and self-registration is off.
 services:
   gameserver:
     build: .
@@ -24,6 +46,7 @@ services:
     environment:
       PORT: "8787"
       NODE_ENV: production
+      BB_LOG_LEVEL: info
       BB_MATCHSVC_URL: http://matchsvc:8788
     expose:
       - "8787"
@@ -52,6 +75,13 @@ services:
     environment:
       MATCH_PORT: "8788"
       NODE_ENV: production
+      BB_LOG_LEVEL: info
+      # Where `POST /client/log` forwards a browser's log batch (src/lokiPush.ts). Unset is
+      # a real state and a quiet one — the route still answers 200, the client sees no
+      # error, and the dashboards stay empty in a way that looks exactly like a quiet week.
+      # funny shipped precisely that for months, which is why an unset value here produces a
+      # WARN on the first push rather than being ignored.
+      BB_LOKI_PUSH_URL: http://obs-loki:3100/loki/api/v1/push
       # Public address a client's issued ticket gets redeemed against — NOT the internal
       # gameserver:8787 hop, this is what the browser itself opens a WebSocket to.
       BB_GAMESERVER_URL: wss://bb.gamestao.com/ws
@@ -85,6 +115,7 @@ services:
     env_file: .env
     environment:
       BILL_PORT: "8789"
+      BB_LOG_LEVEL: info
       # Deliberately NOT production: no real Paddle credential exists yet
       # (design/19-server-platform.md §9), and billsvc/startupGuard.ts refuses to boot a
       # dev-stub flag under NODE_ENV=production, full stop, by design. This process is
@@ -135,6 +166,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      BB_LOG_LEVEL: info
       # Same variable names the owning services use for these files (src/backup/config.ts
       # explains why), pointed at this container's read-only mounts.
       BB_DB_PATH: /sources/matchsvc/accounts.db
@@ -160,6 +192,159 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # ──────────────────────────── observability (design/19 §10) ────────────────────────────
+
+  # The log store for BOTH halves: the four containers above (via obs-alloy) and the
+  # browser client (via matchsvc's /client/log). 14-day retention, filesystem storage, no
+  # published port — Grafana reaches it over this network and nothing else can.
+  obs-loki:
+    image: grafana/loki:3.4.2
+    container_name: wnet-test-loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    expose:
+      - "3100"
+    networks:
+      - wnet
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # Reads container stdout off the Docker socket and pushes it to obs-loki. The socket is
+  # mounted READ-ONLY, and monitoring/alloy/config.alloy filters discovery to `wnet-test-*`
+  # — this box is not ours, and the other containers on it are not ours to collect.
+  obs-alloy:
+    image: grafana/alloy:v1.7.5
+    container_name: wnet-test-alloy
+    command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data", "--server.http.listen-addr=0.0.0.0:12345"]
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    expose:
+      - "12345"
+    networks:
+      - wnet
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # NO healthcheck — the one service here without one, and worth the paragraph, because
+    # "the collector is quietly dead" is the exact failure this whole stack exists to end.
+    #
+    # A Docker healthcheck runs INSIDE the container, and this image ships no HTTP client at
+    # all: no wget, no curl, no nc, no busybox, and its /bin/sh is dash, so not even bash's
+    # /dev/tcp. The obvious probe against its own /-/ready therefore exits 127 forever — a
+    # container that is working perfectly, reported permanently unhealthy, which is worse
+    # than no check because it trains everyone to ignore that column. Found on the first
+    # deploy, 2026-09-09, by the container sitting in a restart loop.
+    #
+    # Its liveness is a Prometheus target instead: `up` for `svc="alloy"`, scraped over the
+    # network by obs-prometheus, shown on the first panel of the "Server status" dashboard
+    # and asserted by `deploy/ci-deploy.sh` after every deploy. That is a STRONGER check
+    # than a self-probe — it proves the endpoint answers AND that the container is reachable
+    # by name — and all it costs is the word in `docker compose ps`.
+
+  # Metrics. Runs NO exporters of its own: it scrapes each service's own /metrics plus the
+  # box's already-running cAdvisor and node-exporter — see monitoring/prometheus/prometheus.yml
+  # for why standing up a second privileged cAdvisor on borrowed hardware is the wrong trade.
+  obs-prometheus:
+    image: prom/prometheus:v3.13.3
+    container_name: wnet-test-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.listen-address=0.0.0.0:9090
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    expose:
+      - "9090"
+    networks:
+      - wnet
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # The only container here a person opens, at https://bb.gamestao.com/grafana/ behind its
+  # own admin login (server/deploy/README.md §2). Datasources and dashboards are PROVISIONED
+  # from the read-only mounts, so a fresh volume comes up already working and a dashboard is
+  # a reviewed file rather than something somebody clicked into existence on a live box.
+  obs-grafana:
+    image: grafana/grafana:11.5.2
+    container_name: wnet-test-grafana
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Served under a PATH, not a subdomain: another hostname on a box this project only
+      # borrows means another DNS record and another certificate for its owner to wonder about.
+      GF_SERVER_ROOT_URL: https://bb.gamestao.com/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: admin
+      # From .env, the one file CI never ships (deploy/ci-deploy.sh). No default and no
+      # fallback on purpose — Grafana's own is admin/admin, and this login page is on the
+      # public internet. `:?` makes a missing value fail `compose up` rather than boot one.
+      GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?set BB_GRAFANA_ADMIN_PASSWORD in .env}
+      # A public login page with self-registration is an open account factory.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    expose:
+      - "3000"
+    networks:
+      - wnet
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/grafana/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+# Named rather than bind-mounted, deliberately — see the second bullet of the file header.
+volumes:
+  loki-data:
+  alloy-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   wnet:

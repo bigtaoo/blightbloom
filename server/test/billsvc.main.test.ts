@@ -104,8 +104,14 @@ describe('main — the startup refusal', () => {
     vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
     const { server } = await listen({ NODE_ENV: 'production', BB_INTERNAL_KEY: 'k' });
     expect((server.address() as AddressInfo).port).toBeGreaterThan(0);
-    expect(log).toHaveBeenCalledOnce();
-    expect(log.mock.calls[0]![0]).not.toContain('DEV RECEIPT STUB');
+    // TWO lines now, not one: the listen banner and the heartbeat's immediate first beat
+    // (src/heartbeat.ts — it beats once at start precisely so a fresh process is visible
+    // without a five-minute wait). Asserted as an exact pair rather than relaxed to
+    // `toHaveBeenCalled`, because "how many lines does starting up produce" is the thing
+    // this assertion was protecting.
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(String(log.mock.calls[1]![0])).toContain('heartbeat');
+    expect(String(log.mock.calls[0]![0])).toContain('devStub=false');
   });
 });
 
@@ -130,13 +136,17 @@ describe('main — the listening process', () => {
     expect(existsSync(accountPath)).toBe(false);
   });
 
-  it('says so LOUDLY in the startup line when the dev receipt stub is live', async () => {
-    // The one banner an operator needs on a box they were not expecting to be a dev box.
+  it('says so in the startup line when the dev receipt stub is live', async () => {
+    // The one posture fact an operator needs on a box they were not expecting to be a dev
+    // box. It used to be a bracketed "[DEV RECEIPT STUB ENABLED]" banner inside the
+    // message; since the structured logger landed it is a FIELD, which is the half that
+    // matters — a marker buried in prose is invisible to `| logfmt`, so "was the store
+    // real on the day of that order?" had no query, only a grep of logs long since rotated.
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubEnv('BB_BILLING_DB_PATH', tmpDbPath());
     await listen({ NODE_ENV: 'test', BB_BILLING_DEV_STUB: '1' });
-    expect(log.mock.calls[0]![0]).toContain('DEV RECEIPT STUB ENABLED');
+    expect(String(log.mock.calls[0]![0])).toContain('devStub=true');
   });
 
   it('logs the database path, so two planes pointed at one file are visible at a glance', async () => {
@@ -144,7 +154,12 @@ describe('main — the listening process', () => {
     const path = tmpDbPath();
     vi.stubEnv('BB_BILLING_DB_PATH', path);
     await listen({ NODE_ENV: 'test' });
-    expect(log.mock.calls[0]![0]).toContain(path);
+    // Accepts either form on purpose. `formatFields` quotes a value that would not
+    // survive `| logfmt` as one token, and this path contains backslashes on Windows and
+    // none on the Linux deploy target — so a raw-string assertion would pass on the box
+    // and fail on the machine it is written on, which is the wrong way round.
+    const line = String(log.mock.calls[0]![0]);
+    expect(line.includes(path) || line.includes(JSON.stringify(path))).toBe(true);
   });
 
   it('closes cleanly, so a deploy does not leave the process hanging', async () => {

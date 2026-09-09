@@ -41,6 +41,8 @@
  *   GET  /store/skus        (Bearer token)  -> { skus } | 401/502                       routes/store
  *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502
  *   GET  /store/order/:id   (Bearer token)  -> { order } | 401/404/502
+ *   POST /client/log        { session, host, ver, now, entries } -> { ok, accepted }  routes/telemetry
+ *   GET  /metrics           (compose network only)         -> Prometheus exposition
  *   POST /internal/entitlements/grant  (x-internal-key)  -> { granted, alreadyOwned } | 401/400/404
  *                                                                                     routes/internalEntitlements
  *   GET  /health                                                                       (here)
@@ -75,6 +77,10 @@ import { openDb } from './db';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
+import { createLogger, type Logger } from './log';
+import { startHeartbeat } from './heartbeat';
+import { lokiPushUrl } from './lokiPush';
+import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from './metrics';
 import * as matchRoutes from './routes/match';
 import * as ratingRoutes from './routes/rating';
 import * as partyRoutes from './routes/party';
@@ -83,6 +89,8 @@ import type { PortalAuthDeps } from './routes/auth';
 import * as accountRoutes from './routes/account';
 import * as internalEntitlementRoutes from './routes/internalEntitlements';
 import * as storeRoutes from './routes/store';
+import * as telemetryRoutes from './routes/telemetry';
+import { RateLimiter, RATE_LIMIT } from './routes/telemetry';
 import type { BillingPlaneConfig } from './routes/store';
 
 const PORT = Number(process.env.MATCH_PORT ?? 8788);
@@ -133,6 +141,15 @@ export interface MatchsvcServerOptions {
    * exists for the same reason in the other direction.
    */
   billing?: Partial<BillingPlaneConfig>;
+  /**
+   * Observability seams (design/19 §10). `log` defaults to the real console logger; a
+   * test passes one with a capturing sink so it can assert on a LINE rather than on a
+   * `console` spy. `lokiUrl`/`fetchImpl` let `/client/log` be driven end to end with no
+   * log store in reach — which is also production's normal state for a local dev run.
+   */
+  log?: Logger;
+  lokiUrl?: string | null;
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -208,7 +225,27 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   // One bundle satisfying each route group's own narrow `*RouteDeps` interface. The groups
   // share no state, so this is a wiring convenience, not a shared context object — a
   // handler still declares (and can only reach) the few dependencies it names.
-  const deps = { matchmaker, pickGameserver, secret, ratings, parties, auth, db, portal, billing: opts.billing };
+  const log = opts.log ?? createLogger('matchsvc');
+  // Resolved ONCE, at construction. Reading the env per request would let a running
+  // process silently change where a player's logs go, and would hide the single startup
+  // warning that is the only signal an operator gets when it is unset (lokiPush.ts).
+  const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
+  const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
+  const deps = {
+    matchmaker,
+    pickGameserver,
+    secret,
+    ratings,
+    parties,
+    auth,
+    db,
+    portal,
+    billing: opts.billing,
+    log,
+    lokiUrl,
+    limiter,
+    fetchImpl: opts.fetchImpl,
+  };
 
   const server = createServer((req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204, {});
@@ -217,6 +254,23 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
 
     if (req.method === 'GET' && path === '/health') {
       return send(res, 200, { ok: true, service: 'daydayup-matchsvc' });
+    }
+
+    // Prometheus scrapes this over the compose network. matchsvc is the ONE service Caddy
+    // proxies wholesale (`reverse_proxy wnet-test-matchsvc:8788` — server/deploy/README.md
+    // §2), so unlike gameserver's and billsvc's it would otherwise be public: a free
+    // readout of how many players are queued and how many accounts exist. Caddy stamps
+    // `x-forwarded-for` on everything it proxies, so its presence is what "came from
+    // outside" means here, and the answer is a plain 404 rather than a 403 — a 403 confirms
+    // the route exists.
+    if (req.method === 'GET' && path === '/metrics') {
+      if (req.headers['x-forwarded-for'] !== undefined) return send(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
+      return res.end(renderMetrics(matchsvcMetrics(matchmaker, registry)));
+    }
+
+    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_LOG_PATH) {
+      return telemetryRoutes.postClientLog(req, res, url, deps);
     }
 
     if (req.method === 'POST' && path === '/find') return matchRoutes.postFind(req, res, url, deps);
@@ -273,6 +327,32 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
 }
 
 /**
+ * What only matchsvc knows. Two gauges, and both were chosen because a question exists for
+ * them: "is anybody waiting and not getting matched?" (the queue depths, split by mode
+ * because a co-op queue and a PvP queue fill at completely different rates) and "is there
+ * anywhere to send them?" (the registry, whose empty state makes every `/find` answer 503
+ * while every container stays green).
+ */
+export function matchsvcMetrics(matchmaker: Matchmaker, registry: GameRegistry): Metric[] {
+  return [
+    ...processMetrics('matchsvc'),
+    gauge('bb_matchsvc_queue_waiting', 'Players waiting in the matchmaking queue.', matchmaker.waiting(2, 'coop'), {
+      mode: 'coop',
+      playerCount: '2',
+    }),
+    gauge('bb_matchsvc_queue_waiting', 'Players waiting in the matchmaking queue.', matchmaker.waiting(2, 'pvp'), {
+      mode: 'pvp',
+      playerCount: '2',
+    }),
+    gauge(
+      'bb_matchsvc_gameservers_available',
+      'Gameserver instances the registry would hand a new match to. Zero means every /find answers 503.',
+      registry.pick() ? 1 : 0,
+    ),
+  ];
+}
+
+/**
  * The data-plane half of the startup banner. Extracted from `main` because it is the one
  * branch there — a matchsvc with no gameserver behind it starts fine and refuses every
  * `/find`, and the log line is the only place an operator learns that before a player
@@ -283,10 +363,14 @@ export function startupTarget(registry: GameRegistry): string {
 }
 
 function main(): void {
+  const log = createLogger('matchsvc');
   const registry = new GameRegistry();
-  const server = createMatchsvcServer({ registry });
+  const server = createMatchsvcServer({ registry, log });
   server.listen(PORT, HOST, () => {
-    console.log(`blightbloom matchsvc (control plane) on http://${HOST}:${PORT}  → ${startupTarget(registry)}`);
+    log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
+    // Beats once immediately, then every 5 minutes — see heartbeat.ts for why an idle log
+    // store and a broken one are otherwise the same picture.
+    startHeartbeat({ log });
   });
 }
 

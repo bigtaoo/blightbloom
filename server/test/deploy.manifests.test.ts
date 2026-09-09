@@ -36,13 +36,16 @@ const bundleNames: string[] = (entries as Array<{ out: string }>).map((e) => `${
 // ───────────────────────── a deliberately small compose reader ─────────────────────────
 
 interface ComposeService {
+  /** Empty for a service built from this repo's own Dockerfile (`build: .`). */
+  image: string;
   command: string[];
   env: Record<string, string>;
   expose: string[];
   healthcheck: string;
   envFile: string | null;
-  /** Host side of each bind mount, exactly as written (`./data/matchsvc`). */
-  volumes: string[];
+  /** Each bind mount's host side (`./data/matchsvc`) and whether it is `:ro`. Named
+   *  volumes (`loki-data:/loki`) and absolute host paths are not collected. */
+  volumes: Array<{ host: string; readonly: boolean }>;
 }
 
 /**
@@ -56,7 +59,7 @@ interface ComposeService {
 function parseCompose(yaml: string): Record<string, ComposeService> {
   const out: Record<string, ComposeService> = {};
   let service: ComposeService | null = null;
-  let section: 'env' | 'expose' | 'healthcheck' | 'volumes' | null = null;
+  let section: 'env' | 'expose' | 'healthcheck' | 'volumes' | 'command' | null = null;
   let inServices = false;
 
   for (const raw of yaml.split(/\r?\n/)) {
@@ -74,7 +77,7 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
     if (indent === 2) {
       const name = /^([\w-]+):$/.exec(line)?.[1];
       if (!name) continue;
-      service = { command: [], env: {}, expose: [], healthcheck: '', envFile: null, volumes: [] };
+      service = { image: '', command: [], env: {}, expose: [], healthcheck: '', envFile: null, volumes: [] };
       out[name] = service;
       section = null;
       continue;
@@ -85,7 +88,14 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
       section = null;
       const [key, ...rest] = line.split(':');
       const value = rest.join(':').trim();
-      if (key === 'command') service.command = JSON.parse(value) as string[];
+      // A command is written either inline as a JSON array (`["node", "index.mjs"]`) or as
+      // a YAML block list, which the observability services use for their long flag lists.
+      // Parsing the first shape only used to be safe because every service had it; with the
+      // second present, `JSON.parse('')` throws and takes the whole FILE down — every
+      // assertion here included. Handled rather than assumed.
+      if (key === 'command' && value.startsWith('[')) service.command = JSON.parse(value) as string[];
+      else if (key === 'command') section = 'command';
+      else if (key === 'image') service.image = value;
       else if (key === 'env_file') service.envFile = value;
       else if (key === 'environment') section = 'env';
       else if (key === 'expose') section = 'expose';
@@ -102,10 +112,13 @@ function parseCompose(yaml: string): Record<string, ComposeService> {
       if (m) service.expose.push(m[1]!);
     } else if (section === 'healthcheck' && line.startsWith('test:')) {
       service.healthcheck = line.slice('test:'.length).trim();
+    } else if (section === 'command') {
+      const m = /^-\s*(.+)$/.exec(line);
+      if (m) service.command.push(m[1]!);
     } else if (section === 'volumes') {
-      // `- ./data/matchsvc:/sources/matchsvc:ro` -> `./data/matchsvc`.
-      const m = /^-\s*(\.[^:]+):/.exec(line);
-      if (m) service.volumes.push(m[1]!);
+      // `- ./data/matchsvc:/sources/matchsvc:ro` -> `{ host: './data/matchsvc', readonly: true }`.
+      const m = /^-\s*(\.[^:]+):(.*)$/.exec(line);
+      if (m) service.volumes.push({ host: m[1]!, readonly: m[2]!.endsWith(':ro') });
     }
   }
   return out;
@@ -125,14 +138,32 @@ const PORT_VAR: Record<string, string> = { gameserver: 'PORT', matchsvc: 'MATCH_
  */
 const HTTP_SERVICES = ['billsvc', 'gameserver', 'matchsvc'] as const;
 const WORKER_SERVICES = ['backup'] as const;
+/**
+ * The observability stack (design/19 §10): off-the-shelf images that run no code from this
+ * repo. Almost every assertion in this file is about OUR bundles — a bundle name, a port an
+ * entrypoint reads, an env var `src/` looks up — and none of that applies to Grafana. Kept
+ * as an explicit list for the same reason the two above are: adding a service should force
+ * a decision about which kind it is, and deriving the category from "has no `build:`" would
+ * silently reclassify one of ours the day somebody pins it to a published image.
+ */
+const OBS_SERVICES = ['obs-alloy', 'obs-grafana', 'obs-loki', 'obs-prometheus'] as const;
+const APP_SERVICES = [...HTTP_SERVICES, ...WORKER_SERVICES] as const;
+/** The port each observability service listens on, cross-checked against `expose` below. */
+const OBS_PORT: Record<string, string> = {
+  'obs-loki': '3100',
+  'obs-alloy': '12345',
+  'obs-prometheus': '9090',
+  'obs-grafana': '3000',
+};
 
 describe('the compose reader actually read something', () => {
-  it('found all four services, each fully populated', () => {
+  it('found all eight services, each fully populated', () => {
     // Every other test in this file is vacuous if this one is wrong: an empty `env` makes
     // "no unknown env var" trivially true, an empty `command` makes the bundle-name check
     // an assertion about nothing. Pinned to the exact shape rather than "at least one".
-    expect(Object.keys(services).sort()).toEqual([...HTTP_SERVICES, ...WORKER_SERVICES].sort());
-    for (const [name, svc] of Object.entries(services)) {
+    expect(Object.keys(services).sort()).toEqual([...APP_SERVICES, ...OBS_SERVICES].sort());
+    for (const name of APP_SERVICES) {
+      const svc = services[name]!;
       expect(svc.command, name).toHaveLength(2);
       expect(Object.keys(svc.env).length, name).toBeGreaterThanOrEqual(3);
       expect(svc.healthcheck, name).not.toBe('');
@@ -141,6 +172,25 @@ describe('the compose reader actually read something', () => {
     for (const name of HTTP_SERVICES) {
       expect(services[name]!.expose, name).toHaveLength(1);
       expect(services[name]!.healthcheck, name).toContain('/health');
+    }
+    for (const name of OBS_SERVICES) {
+      const svc = services[name]!;
+      // No `build:`, so an unpinned image is a deploy whose bytes change without a commit.
+      expect(svc.image, name).not.toBe('');
+      expect(svc.image, `${name} is unpinned`).not.toMatch(/(:latest$|^[^:]+$)/);
+      expect(svc.command.length + Object.keys(svc.env).length, name).toBeGreaterThan(0);
+      expect(svc.expose, name).toEqual([OBS_PORT[name]]);
+      // Every service is verified after a deploy, but not all of them the same way, and the
+      // exception is not a relaxation: `obs-alloy`'s image contains no HTTP client at all
+      // (no wget/curl/nc/busybox, and /bin/sh is dash, so not even /dev/tcp), so a Docker
+      // healthcheck — which runs INSIDE the container — can only ever exit 127 and report a
+      // working collector as permanently unhealthy. It is checked from outside instead, by
+      // asking Prometheus whether its scrape of it is up. So the rule asserted here is
+      // "either a healthcheck, or a named check in the deploy script" — which is what stops
+      // a service from silently having neither.
+      if (svc.healthcheck === '') {
+        expect(ciDeploy, `${name} has no healthcheck and no deploy-time check either`).toContain(name);
+      }
     }
   });
 
@@ -193,12 +243,31 @@ describe('the compose reader actually read something', () => {
     // — zero snapshots — while CI reported success. `ci-deploy.sh` normalises the ownership
     // now; this pins its list to the mounts that actually exist, because a mount added to
     // compose alone reintroduces precisely the original bug.
-    const mounted = [...new Set(Object.values(services).flatMap((s) => s.volumes))];
-    expect(mounted.sort()).toEqual(['./backups', './data/billsvc', './data/matchsvc']);
+    // Two kinds of bind mount now, and only one of them needs an ownership rule:
+    // WRITABLE state (`./data/*`, `./backups`) which a container writes as uid 1000, and
+    // READ-ONLY config (`./monitoring/*`) which it only reads. Splitting them here rather
+    // than listing both is what keeps the rule stated as a rule — a new writable mount is
+    // caught, and a new config file is not made to look like one.
+    // Grouped by HOST path, not by mount, because the same directory is mounted twice with
+    // different modes on purpose: `./data/matchsvc` is writable for matchsvc and `:ro` for
+    // the backup worker. What decides whether it needs an ownership rule is whether ANY
+    // container writes it — so a host dir counts as writable if even one of its mounts is.
+    const all = Object.values(services).flatMap((s) => s.volumes);
+    const hosts = [...new Set(all.map((v) => v.host))];
+    const mountsOf = (h: string): Array<{ readonly: boolean }> => all.filter((v) => v.host === h);
+    const rw = hosts.filter((h) => mountsOf(h).some((v) => !v.readonly));
+    const ro = hosts.filter((h) => mountsOf(h).every((v) => v.readonly));
+    expect(rw.sort()).toEqual(['./backups', './data/billsvc', './data/matchsvc']);
+    expect(ro.length).toBeGreaterThan(0);
+    for (const host of ro) expect(host, 'a never-written mount is config, and config lives here').toMatch(/^\.\/monitoring\//);
     const fixed = /for dir in (.+); do/.exec(ciDeploy)?.[1]?.split(' ') ?? [];
-    for (const host of mounted) {
-      expect(fixed, `${host} is bind-mounted but never made writable`).toContain(host.slice('./'.length));
+    for (const host of rw) {
+      expect(fixed, `${host} is bind-mounted writable but never made writable`).toContain(host.slice('./'.length));
     }
+    // ...and the config mounts must NOT be chowned: they are tracked files the deploy
+    // replaces wholesale, and handing them to a container user would be a change to the
+    // repo's own content on the box.
+    for (const host of ro) expect(fixed).not.toContain(host.slice('./'.length));
     // The uid is written as a literal `1000` in a shell script, which is only correct while
     // the image still runs as the node image's own `node` user. If that USER line changes,
     // the chown starts handing every state dir to a user the container is not — so the two
@@ -213,9 +282,9 @@ describe('the bundle filenames', () => {
     // These names exist independently in three files and are matched by nothing at build
     // time: renaming an entrypoint in build.mjs alone ships an image whose `command:`
     // names a file that is no longer there.
-    const fromCompose = Object.values(services).map((s) => s.command[1]);
+    const fromCompose = APP_SERVICES.map((n) => services[n]!.command[1]);
     expect(new Set(fromCompose)).toEqual(new Set(bundleNames));
-    for (const svc of Object.values(services)) expect(svc.command[0]).toBe('node');
+    for (const name of APP_SERVICES) expect(services[name]!.command[0]).toBe('node');
     for (const name of bundleNames) expect(ciDeploy).toContain(`dist/${name}`);
   });
 
@@ -224,9 +293,9 @@ describe('the bundle filenames', () => {
     // so its list and the workflow's `tar` list have to agree — a file added to one and not
     // the other either never arrives or aborts every deploy.
     const shipped = /tar czf - -C server (.+?)\s*\|/.exec(workflow)?.[1]?.split(/\s+/) ?? [];
-    expect(shipped).toEqual(['dist', 'Dockerfile', 'docker-compose.yml', 'deploy/package.json']);
+    expect(shipped).toEqual(['dist', 'Dockerfile', 'docker-compose.yml', 'deploy/package.json', 'monitoring']);
     const required = /for path in ([^\n]+); do/.exec(ciDeploy)?.[1]?.split(/\s+/) ?? [];
-    expect(required).toHaveLength(bundleNames.length + 3);
+    expect(required).toHaveLength(bundleNames.length + 4);
     for (const path of required) {
       const top = path.split('/')[0]!;
       expect(shipped.some((s) => s === path || s === top), `${path} is checked for but never sent`).toBe(true);
@@ -295,8 +364,11 @@ describe('compose env vars', () => {
   it('are all names the code actually reads', () => {
     const known = readByCode();
     expect(known.size).toBeGreaterThan(5); // the scan found something to compare against
-    for (const [name, svc] of Object.entries(services)) {
-      for (const key of Object.keys(svc.env)) {
+    // APP services only. The observability containers read `GF_*`/`LOKI_*` names defined by
+    // their own images, which nothing in `src/` will ever mention — sweeping them in here
+    // would either fail forever or force the scan to be loosened until it caught nothing.
+    for (const name of APP_SERVICES) {
+      for (const key of Object.keys(services[name]!.env)) {
         expect([...known], `${name}.${key} is set in compose but read nowhere in src/`).toContain(key);
       }
     }
@@ -308,6 +380,12 @@ describe('compose env vars', () => {
     // either, and `env_file: .env` (asserted above) is how they arrive instead.
     expect(compose).not.toContain('BB_TICKET_SECRET');
     expect(compose).not.toContain('BB_INTERNAL_KEY');
+    // Grafana's admin password is the third credential, and the only one compose mentions
+    // by name at all. It must appear ONLY as an interpolation of the untracked .env — and
+    // with `:?`, which makes a missing value refuse the deploy rather than boot the
+    // image's own admin/admin on a login page that is on the public internet.
+    const grafanaPassword = /GF_SECURITY_ADMIN_PASSWORD:\s*(.+)/.exec(compose)?.[1] ?? '';
+    expect(grafanaPassword).toMatch(/^\$\{BB_GRAFANA_ADMIN_PASSWORD:\?/);
   });
 });
 
@@ -333,11 +411,14 @@ describe('ports and internal addresses', () => {
         .filter(([, v]) => v.startsWith('http://'))
         .map(([key, v]) => ({ name, key, url: new URL(v) })),
     );
-    expect(internal.length).toBeGreaterThanOrEqual(2);
+    expect(internal.length).toBeGreaterThanOrEqual(3);
     for (const { name, key, url } of internal) {
       const peer = services[url.hostname];
       expect(peer, `${name}.${key} points at unknown service ${url.hostname}`).toBeDefined();
-      expect(url.port, `${name}.${key}`).toBe(peer!.env[PORT_VAR[url.hostname]!]);
+      // An app service declares its port through the env var its entrypoint reads; an
+      // observability image's port is fixed by the image, so `expose` is the declaration.
+      const expected = PORT_VAR[url.hostname] ? peer!.env[PORT_VAR[url.hostname]!] : peer!.expose[0];
+      expect(url.port, `${name}.${key}`).toBe(expected);
     }
   });
 
@@ -370,7 +451,7 @@ describe("billsvc's compose environment against the real startup guard", () => {
   });
 
   it('is the only service carrying a dev-only flag', () => {
-    for (const name of ['gameserver', 'matchsvc', 'backup']) {
+    for (const name of Object.keys(services).filter((n) => n !== 'billsvc')) {
       expect(() => assertBillingStartupSafety({ ...services[name]!.env, NODE_ENV: 'production' })).not.toThrow();
     }
   });

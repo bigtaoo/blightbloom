@@ -45,7 +45,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # | ssh ...`, so the payload arrives on stdin.
 tar xzf - -C "$STAGE"
 
-for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs Dockerfile docker-compose.yml deploy/package.json; do
+for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs Dockerfile docker-compose.yml deploy/package.json monitoring; do
   if [ ! -e "$STAGE/$path" ]; then
     echo "payload is missing $path, aborting (no half-finished deploy)" >&2
     exit 1
@@ -54,6 +54,18 @@ done
 
 rm -rf "$TARGET/dist"
 cp -R "$STAGE/dist" "$TARGET/dist"
+# Replaced wholesale rather than merged, same as dist/: these are the observability stack's
+# config files (Loki retention, Alloy's scrape filter, Prometheus's targets, Grafana's
+# provisioned datasources and dashboards), all bind-mounted READ-ONLY into their
+# containers. A merge would leave a deleted dashboard on the box forever.
+#
+# Two of them only take effect on a container REBUILD, which is what makes the
+# `--force-recreate` below load-bearing rather than belt-and-braces: changing a
+# bind-mounted file does not change the container's definition, so a plain
+# `docker compose up -d` sees nothing to do and the old config keeps running. funny's own
+# deploy carries the same flag for the same reason.
+rm -rf "$TARGET/monitoring"
+cp -R "$STAGE/monitoring" "$TARGET/monitoring"
 cp "$STAGE/Dockerfile" "$STAGE/docker-compose.yml" "$TARGET/"
 mkdir -p "$TARGET/deploy"
 cp "$STAGE/deploy/package.json" "$TARGET/deploy/package.json"
@@ -82,7 +94,20 @@ for dir in data/matchsvc data/billsvc backups; do
   fi
 done
 
-docker compose up -d --build
+# ── The one value this script cannot supply ──
+# docker-compose.yml declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?}`,
+# and `.env` is the file this key deliberately cannot write. So a box whose `.env` predates
+# the Grafana service fails `compose up` for EVERY service, not just Grafana — a loud stop
+# rather than a public admin/admin, but one whose real cause ("compose refused to
+# interpolate") reads like a broken compose file. Named here so the deploy log says which
+# it is. server/deploy/README.md §2 has the one-liner that fixes it.
+if ! grep -q '^BB_GRAFANA_ADMIN_PASSWORD=..*' .env; then
+  echo "BB_GRAFANA_ADMIN_PASSWORD is missing or empty in ~/wnet-test/.env." >&2
+  echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2
+  exit 1
+fi
+
+docker compose up -d --build --force-recreate
 docker compose ps --format '{{.Name}} {{.Status}}'
 
 # Success is "the services actually answer", not "the command returned 0" — without this,
@@ -118,6 +143,64 @@ done
 # real snapshot of both databases was taken and verified seconds ago — and a deploy that
 # silently stopped backing up is exactly the failure this loop's own comment above refuses
 # to wave through.
+# ── The observability stack ──
+# Checked the same way and for the same reason as everything above: this stack's whole
+# failure mode is being quietly absent, which is indistinguishable from a quiet week. A
+# deploy that leaves Loki unable to ingest, or Grafana unable to boot its provisioning,
+# should be red here rather than discovered the next time somebody has a question.
+#
+# They are checked AFTER the four application services on purpose: if both halves are
+# broken, the failure worth reading first is the one that affects players.
+for probe in obs-loki:3100:/ready obs-prometheus:9090:/-/healthy obs-grafana:3000:/grafana/api/health; do
+  name="${probe%%:*}"
+  rest="${probe#*:}"
+  port="${rest%%:*}"
+  path="${rest#*:}"
+  container="wnet-test-${name#obs-}"
+  ok=""
+  for _ in $(seq 1 20); do
+    if docker exec "$container" wget --spider -q "http://127.0.0.1:$port$path" 2>/dev/null; then
+      echo "$container ok"
+      ok=1
+      break
+    fi
+    sleep 2
+  done
+  if [ -z "$ok" ]; then
+    echo "$container: $path did not answer within 40s, deploy counts as failed" >&2
+    exit 1
+  fi
+done
+
+# ── Alloy, which cannot be probed the way the three above are ──
+# It is the collector — if it is dead, both dashboards go quiet and nothing else here
+# notices — and it is also the one container with no HTTP client inside it at all (no wget,
+# no curl, no nc, no busybox; /bin/sh is dash, so not even /dev/tcp), which is why
+# docker-compose.yml gives it no healthcheck. So it is checked from OUTSIDE, by asking
+# Prometheus whether its scrape of `obs-alloy` is up. That is a stronger statement than a
+# self-probe: it proves the endpoint answers AND that the container resolves by name on the
+# shared network — the property the `obs-` prefix exists to protect.
+#
+# `grep` over the raw JSON rather than a JSON parser, because this script may only assume
+# a POSIX shell and Docker. Prometheus needs one scrape interval (30s) before it has an
+# answer at all, hence the wait rather than a single shot.
+alloy_ok=""
+for _ in $(seq 1 25); do
+  if docker exec wnet-test-prometheus wget -qO- \
+      'http://127.0.0.1:9090/api/v1/query?query=up{svc="alloy"}' 2>/dev/null |
+      grep -q '"value":\[[0-9.]*,"1"\]'; then
+    echo "wnet-test-alloy ok (up{svc=\"alloy\"} == 1)"
+    alloy_ok=1
+    break
+  fi
+  sleep 2
+done
+if [ -z "$alloy_ok" ]; then
+  echo "wnet-test-alloy: prometheus does not see it up within 50s, deploy counts as failed" >&2
+  echo "  (logs are still being written; they are just not being COLLECTED)" >&2
+  exit 1
+fi
+
 docker exec wnet-test-backup node -e "
   const { execFileSync } = require('node:child_process');
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));

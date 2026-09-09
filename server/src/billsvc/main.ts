@@ -18,6 +18,8 @@
  * called by a test without leaving one running.
  */
 import { fileURLToPath } from 'node:url';
+import { createLogger } from '../log';
+import { startHeartbeat } from '../heartbeat';
 import { createBillsvcServer, type BillsvcServer } from './server';
 import { assertBillingStartupSafety, type StartupEnv } from './startupGuard';
 import { devStubEnabled } from './iap/factory';
@@ -52,9 +54,19 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 export function main(env: StartupEnv = process.env, port = PORT, host = HOST): BillsvcServer {
   assertBillingStartupSafety(env);
   const handle = createBillsvcServer({ env });
+  const log = createLogger('billsvc');
   handle.server.listen(port, host, () => {
-    const stub = devStubEnabled(env) ? '  [DEV RECEIPT STUB ENABLED]' : '';
-    console.log(`blightbloom billsvc (billing plane) on http://${host}:${port}  db=${defaultBillingDbPath()}${stub}`);
+    // `devStub` stays in the line as a FIELD rather than the old inline
+    // "[DEV RECEIPT STUB ENABLED]" banner: it is the one posture fact worth being able to
+    // query for months afterwards ("was the store real on the day of that order?"), and a
+    // bracketed marker inside the message is invisible to `| logfmt`. The acceptance
+    // checklist in server/deploy/README.md §4 greps for it either way.
+    log.info('billing plane listening', {
+      addr: `http://${host}:${port}`,
+      db: defaultBillingDbPath(),
+      devStub: devStubEnabled(env),
+    });
+    startHeartbeat({ log });
   });
   // Sweeps whatever a previous process left owed, then arms the backstop interval. Started
   // AFTER `listen` for no functional reason (nothing in the pump touches the socket) but for

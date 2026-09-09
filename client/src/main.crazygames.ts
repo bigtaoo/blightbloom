@@ -15,6 +15,8 @@ import { reportWebBootFailure } from './bootError';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
+import { installClientLog } from './net/clientLogInstall';
+import { getSession } from './net/session';
 import { PortalAuth } from './platform/crazygames/portalAuth';
 import { PortalRooms } from './platform/crazygames/PortalRooms';
 import { applyPortalBootIntent } from './platform/crazygames/portalBoot';
@@ -71,6 +73,15 @@ async function boot() {
   setAssetHost(baseAssetHost(import.meta.env.BASE_URL));
   // (2) ...and the host declaration before `new Game(...)`, whose assembly reads it.
   setHostKind('crazygames');
+
+  // (2b) Browser logs (design/19 §10). AFTER `setHostKind`, unlike the web entry where the
+  // order does not matter: every batch is labelled with the host, and a batch sent before
+  // the declaration would be labelled `web` — which would quietly attribute a portal-only
+  // failure to the wrong build target, the one thing this label exists to prevent.
+  installClientLog({
+    baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
+    token: () => getSession()?.token ?? null,
+  });
 
   // (3a) Announce the download. The SDK measures the span from page open to the first
   // `gameplayStart` as the "initial download", so this bracket opens before the art phase

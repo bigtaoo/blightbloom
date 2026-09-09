@@ -1,0 +1,26 @@
+# Both datasources registered at startup, so a fresh `grafana-data` volume comes up with
+# working dashboards and nobody has to click "Add data source". The `uid`s are stable and
+# referenced by every panel in ../../dashboards/*.json — renaming one here breaks all of them.
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    # `obs-loki`, not `loki` — this compose project shares the host's `docker_default`
+    # network with the box owner's own Loki, which already holds that alias. See
+    # ../../alloy/config.alloy's `loki.write` block for the full account.
+    url: http://obs-loki:3100
+    isDefault: true
+    jsonData:
+      maxLines: 2000
+
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://obs-prometheus:9090
+    jsonData:
+      httpMethod: POST
+      timeInterval: 30s
