@@ -356,6 +356,38 @@ and branches on every new module except the entry point's `require.main` guard.
   bundle for one class. The MECHANISM is shared; the budgets are not (20/min for telemetry,
   10 per five minutes for a login, where the legitimate rate is one per working day).
 
+### What RUNNING it found (and the test that produced it did not)
+
+Phase A's own §2.5 rule — *the instrument must be shown to see the change* — applies to a
+page as much as to a gauge, so the console was driven against seeded databases before this
+section was called done. `server/scripts/seedOpsDemo.ts` writes the four databases through
+this repo's own openers and fills each section with the states that are worth LOOKING at
+rather than the states a fresh box has: an account with entitlements and one with none, an
+open review-queue item beside a reviewed one, a webhook row with divergences and one whose
+body could not be parsed at all, and a rollup history deep enough that the cohort grid holds
+a measured rate, a measured zero and an unknown at the same time.
+
+Two things came out of that run:
+
+- **The audit line stamped `operator=admin` on requests that carried no session.** The field
+  is the configured operator NAME, not the requester — so on a health probe, a stray
+  `/favicon.ico` or a *rejected login* it asserted that the operator made a request they did
+  not make. In an audit trail that is the one distinction that has to survive. `operator` is
+  now present only when a session actually arrived, and the test asserts its **absence** on
+  the login line. The test that produced the line already existed and was green: it checked
+  the fields that are there and never the field that should not be.
+- **The grid reads correctly as a picture**, which is the half no assertion covers: the
+  diagonal fills from the left, `0.0%` and `—` are visibly different things in the same
+  column, and the 502 HTML body in the webhook column renders as text. The whole write loop
+  was exercised through the real form — a value typed into the page reached
+  `GET /internal/flags` — rather than through a `POST` a test constructed.
+
+One practical note for whoever runs it next: `BB_ADMIN_INSECURE_COOKIE=1` is **required** to
+sign in over plain http, which is exactly what that flag exists for, and `tsx` must be
+invoked from `server/` or the `@dd/*` path aliases do not resolve (`config.ts` imports
+`@dd/game/match/pvpConfig`, so adminsvc inherits that alias through the internal-key
+registry).
+
 ### 3.1 Why a fifth process rather than routes on matchsvc
 
 matchsvc is proxied wholesale, so a route added there is public the moment it exists —
