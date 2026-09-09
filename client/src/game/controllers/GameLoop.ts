@@ -167,7 +167,8 @@ export class GameLoop {
     // phase change rather than announced from the fifteen places that write it — the same
     // argument the line above already relies on, spelled out in `analyticsTracking.ts`. A
     // no-op until an entry point installs analytics, so it costs one comparison per frame in
-    // a test, in a tool and in the WeChat build (which installs none, on purpose).
+    // a test and in a tool. All three entry points install one (the WeChat build since
+    // 2026-09-09 — `main.wechat.ts`).
     reportFrame(phase, trackedRunFrom(this.host.activeState(), this.host.localOwner));
     // Music (design/11), before the branch so it runs in EVERY phase — the menu bed is as much
     // a case as the dungeon one. `musicDirector` derives the track from the situation and

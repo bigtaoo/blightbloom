@@ -14,55 +14,130 @@ import { showBootLoading } from './game/ui/loadingScreen';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
 import { reportWeChatBootFailure } from './bootError';
 import { installPerf } from './perf';
+import { setHostKind } from './platform/hostKind';
 import { installClientLog } from './net/clientLogInstall';
+import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
+import { setIdentityStore } from './net/identity';
+import { createWeChatIdentityStore } from './platform/wechat/weChatStorage';
+import { createWeChatFetch } from './platform/wechat/weChatFetch';
 import { resolveMatchBaseUrl } from './game/runState';
+import { getLocale } from './i18n';
 import { getSession } from './net/session';
 
 // WeChat mini-game entry, loaded by client/wechat/game.js. There is no weapp-adapter (an
 // older version of this comment claimed there was): the bundle installs Pixi's own
 // DOMAdapter itself, in WeChatPlatform.createApp, before Application.init.
+
+/** The bearer token of the logged-in session, or null for a guest. Read per flush rather
+ *  than captured once, so a player who logs in mid-visit starts being attributable. */
+function sessionToken(): string | null {
+  return getSession()?.token ?? null;
+}
+
 async function boot() {
-  // Browser logs (design/19 §10). `hostKind` is already `wechat` here — the mini-game shell
-  // is selected by THIS entry point existing, so unlike the portal entry there is no
-  // `setHostKind` call to order against. No `location` in this shell either, so the base URL
-  // is the build-time default with no query override; `parseGameQueryParams` is a web thing.
-  installClientLog({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }), token: () => getSession()?.token ?? null });
+  // The network adapter this whole entry point used to be missing (design/21 §9;
+  // design/04-wechat.md item 19). This shell has no `fetch`, no `XMLHttpRequest` and no
+  // `sendBeacon`; `wx.request` is the only road out, and `platform/wechat/weChatFetch.ts`
+  // wraps it into the `fetchImpl` all three installs below already took. FIRST, because each
+  // of them is handed it.
+  //
+  // `undefined` on a runtime without `wx.request` is a real and deliberate value: every
+  // consumer treats it as "no network", which is exactly the state this host was in before —
+  // the flags stay as compiled in, the log and event batches are dropped, and nothing throws.
+  const wxFetch = createWeChatFetch();
 
-  // The public feature flags (design/21 §9's delivery path), installed here and INERT here,
-  // which is a different decision from the analytics one below.
+  // ...and the persistence adapter, which is the one that changes what analytics MEANS here.
+  // `net/identity.ts`'s default store reads `localStorage`, a global this shell does not
+  // have, so its availability check was false on every boot: `load()` answered null,
+  // `save()` dropped the write, and a FRESH install id was minted per visit. That is why
+  // analytics was deliberately not installed on this entry point until now — retention would
+  // have read 0% (bad) and DAU would have reported the number of VISITS while labelled
+  // *distinct installs* (worse, because it is a plausible number nobody would question).
   //
-  // This shell has no `fetch` at all — the same fact that makes `installClientLog` above
-  // ship nothing — so the poll never runs and every flag stays at the value this build was
-  // compiled with. That is the fail-safe state, not a wrong number: a banner nobody is shown
-  // is an absence, where analytics on this host would produce a PLAUSIBLE number that is
-  // wrong (see below). The call is here rather than omitted so that the day an
-  // `IdentityStore`/fetch adapter over `wx.request` exists, this host is delivering flags
-  // without anybody having to remember a missing line.
-  installPublicFlags({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }) });
+  // BEFORE `installAnalytics` below, and that order is load-bearing: the install id is read
+  // once, during the install, so a store swapped in afterwards would arrive one visit late
+  // and the first-ever boot would still persist nothing.
+  setIdentityStore(createWeChatIdentityStore());
 
-  // ANALYTICS IS DELIBERATELY NOT INSTALLED HERE (design/21 §9).
+  // The host declaration (`platform/hostKind.ts`). An older comment here claimed `hostKind`
+  // was "already `wechat` because this entry point exists" — it is not: `current` defaults to
+  // `web` and only a `setHostKind` call changes it, so this entry ran as `web` for as long as
+  // it has existed. That was harmless only because nothing this host sent ever left it. It
+  // stops being harmless on the line below: `clientLog` labels every batch with
+  // `getHostKind()`, and that label is a Loki stream label the server allowlists — so an
+  // undeclared host means every WeChat failure filed under `web` and `host="wechat"` never
+  // appearing at all. The portal entry's own comment already spelled this out; this entry
+  // simply never had the call. Nothing else changes: the two other readers ask
+  // `isPortalHost()`, which is false either way.
+  setHostKind('wechat');
+
+  // Browser logs (design/19 §10). AFTER the declaration above, for the reason just given. No
+  // `location` in this shell, so the base URL is the build-time default with no query
+  // override; `parseGameQueryParams` is a web thing.
   //
-  // Not caution, and not "later" — installing it would produce numbers that are WRONG in a
-  // way a dashboard cannot show. Every analytics row is keyed by an install id from
-  // `net/identity.ts`, which persists through `createWebIdentityStore` — and that reads
-  // `localStorage`, a global this shell does not have. The store's `available` check is
-  // therefore false on every boot, `load()` answers null, `save()` is a no-op, and a FRESH
-  // id is minted per visit.
+  // No `version`: the WeChat build never runs the version-manifest plugin, so there is no
+  // `/version.json` to read and a getter would report `unknown` while implying a source.
+  installClientLog({
+    baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }),
+    token: sessionToken,
+    fetchImpl: wxFetch,
+  });
+
+  // Retention and funnel instrumentation (design/21 §2.6), NOW INSTALLED on this host —
+  // the decision of 2026-09-09 not to was about the install id above, not about analytics.
+  // With a store that persists, the id survives a reload and this host answers the question
+  // the whole subsystem exists for ("do people come back") the same way the other two do.
   //
-  // The consequence is asymmetric and that is what decides it. Retention would read 0%
-  // rather than being absent, which is bad; but DAU would read the number of VISITS while
-  // being labelled distinct installs, which is worse — a plausible number nobody would
-  // question. No data beats wrong data, so this host sends none.
+  // AFTER the logger, deliberately, for the reason the web entry states: if this throws
+  // during boot the logger is already up to record it.
   //
-  // What it needs is not an analytics change: `IdentityStore` is already the seam, and a
-  // `wx.getStorageSync`/`setStorageSync` implementation of it would fix this, the meta save
-  // (`meta/store.ts`'s own header says the same adapter is "a later platform impl", and a
-  // WeChat guest's progress does not survive a reload today either) and the settings store
-  // in one go. Adding one line here once that exists is the whole change.
-  //
-  // Client LOGGING above is unaffected: it keys on a per-visit session id by design and
-  // never needed a persistent one.
+  // `build` is null for the same reason the logger has no `version` above. What is ABSENT
+  // here, and stays absent on purpose, is `session_end`: this runtime never fires `pagehide`,
+  // and the closest thing it has — `wx.onHide` — fires on every backgrounding and is followed
+  // by `onShow` when the player returns, so routing it into the visit-ended event would
+  // multiply the row the churn funnel counts and understate every duration. An absent event
+  // is a gap in one funnel; a plausible wrong one is the trap this host was switched off for.
+  // The queue is flushed on hide instead, below, which is the half of `pagehide` that is
+  // honest here.
+  const analytics = installAnalytics({
+    baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }),
+    token: sessionToken,
+    host: 'wechat',
+    build: () => null,
+    locale: getLocale,
+    fetchImpl: wxFetch,
+  });
+
+  // The public feature flags (design/21 §9's delivery path) — installed here since
+  // 2026-09-09 and INERT until now, because there was no `fetch` for the poll to use, so
+  // every flag stayed at the value this build was compiled with. That was the fail-safe
+  // state rather than a wrong number, and the call was left in place precisely so that the
+  // day an adapter over `wx.request` existed this host would deliver flags without anybody
+  // having to remember a missing line. This is that day, and this is that line.
+  installPublicFlags({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }), fetchImpl: wxFetch });
+
+  // One line in DevTools for the build mistake that is otherwise invisible: `wx.request`
+  // refuses plain http outright, and a plain `npm run build:wechat` bakes in
+  // `http://localhost:8788` — `VITE_MATCHSVC_URL` is injected by the web deploy workflow and
+  // there is no CI build for this target. Every consequence of getting it wrong is fail-safe
+  // and silent (flags as compiled in, batches dropped), so nothing anywhere would say why the
+  // events store has no `wechat` rows. AFTER `installClientLog`, so the line is in the ring
+  // buffer a USER_DATA_PATH probe can read as well as on the console.
+  if (!resolveMatchBaseUrl({ matchBaseUrl: null }).startsWith('https:')) {
+    console.warn(
+      `[wechat] matchsvc is ${resolveMatchBaseUrl({ matchBaseUrl: null })}, and wx.request refuses plain http — ` +
+        'build with VITE_MATCHSVC_URL=https://... or no flags, logs or analytics will leave this device',
+    );
+  }
+
+  // The exit flush, in the only form this platform offers. `installAnalytics` attaches its
+  // own to `pagehide` on `globalThis` — which exists here (Pixi's `EventSystem` needs it) and
+  // is never dispatched by this runtime, so that listener is dead weight rather than a
+  // second flush. `wx.onHide` is the real signal, and a backgrounded mini-game can be killed
+  // without any further notice, so a flush here is the last chance the queued events get.
+  // Deliberately NOT `analytics.track('session_end')` — see the install above.
+  if (typeof wx.onHide === 'function') wx.onHide(() => analytics.flush());
 
   const platform = new WeChatPlatform();
   const app = await platform.createApp();

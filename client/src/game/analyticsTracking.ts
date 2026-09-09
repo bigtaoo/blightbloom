@@ -21,8 +21,10 @@
 //
 // The convention `musicDirector.ts` established from this exact call site: a dep would have
 // to be threaded through `Game.ts`, whose length the drift gate pins. `track` is a no-op
-// until an entry point installs analytics, so a test, a tool and the WeChat build (which
-// deliberately installs none — see `main.wechat.ts`) all cost one comparison per frame.
+// until an entry point installs analytics, so a test and a tool cost one comparison per
+// frame. All three entry points install one — the WeChat build since 2026-09-09, when the
+// `wx.getStorageSync` identity store made its install id persist; see `main.wechat.ts` for
+// why a per-visit id was a reason to send nothing at all.
 import { track } from '../net/analytics';
 import type { Phase } from './phase';
 

@@ -14,7 +14,8 @@
  * §9 proposed "a PUBLIC field on a response the client already fetches". No such response
  * exists. The only two unauthenticated calls a browser makes to matchsvc are
  * `POST /client/log` and `POST /client/events`, and both are batched on a 30-second timer,
- * fire-and-forget, absent entirely on the WeChat shell, and — for the analytics one —
+ * fire-and-forget, absent entirely on the WeChat shell until the `wx.request` adapter landed
+ * the following day (design/21 §9), and — for the analytics one —
  * behind an opt-out that a consent gate would switch off. A maintenance banner that arrives
  * thirty seconds into a visit, and never at all for a player who declined analytics, is not
  * a maintenance banner. So the delivery path is its own route, and the surface it adds is

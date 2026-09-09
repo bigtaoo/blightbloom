@@ -4,7 +4,7 @@
  * environment (same reason settings/store.ts tests its web store separately).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getInstallId, getPlayerId, resetIdentityCacheForTests, type IdentityStore } from './identity';
+import { getInstallId, getPlayerId, resetIdentityCacheForTests, setIdentityStore, type IdentityStore } from './identity';
 import { setSession, resetSessionCacheForTests } from './session';
 
 function fakeStore(initial: string | null = null): IdentityStore {
@@ -97,5 +97,49 @@ describe('getInstallId', () => {
     expect(getInstallId(fakeStore('different-id-if-read'))).toBe(first);
     resetIdentityCacheForTests();
     expect(getInstallId(fakeStore('after-reset'))).toBe('after-reset');
+  });
+});
+
+describe('setIdentityStore — the seam an entry point installs a platform store through', () => {
+  it('is what the argument-less readers read', () => {
+    // The two production callers pass nothing: `installAnalytics` calls `getInstallId()` and
+    // the ladder report calls `getPlayerId()`. This sink is how a host whose persistence is
+    // not `localStorage` reaches them without a store threaded through everything between —
+    // `main.wechat.ts` installs `createWeChatIdentityStore()`.
+    setIdentityStore(fakeStore('installed-id'));
+    expect(getInstallId()).toBe('installed-id');
+    resetIdentityCacheForTests();
+    setIdentityStore(fakeStore('installed-id'));
+    expect(getPlayerId()).toBe('installed-id');
+  });
+
+  it('drops both caches on the way in, so a swap is not answered from the old store', () => {
+    setIdentityStore(fakeStore('first'));
+    expect(getInstallId()).toBe('first');
+    expect(getPlayerId()).toBe('first');
+    setIdentityStore(fakeStore('second'));
+    // Without the cache drop an id already handed out would keep being answered from a store
+    // that is no longer installed, which would make the swap silently a lie.
+    expect(getInstallId()).toBe('second');
+    expect(getPlayerId()).toBe('second');
+  });
+
+  it('falls back to the web store, and `null` puts it back', () => {
+    // No `localStorage` in this runner (the mini-game shape), so the web store persists
+    // nothing and each read mints its own id. That is the fallback being asserted: not a
+    // throw, and not the previously installed store.
+    setIdentityStore(fakeStore('installed'));
+    expect(getInstallId()).toBe('installed');
+    setIdentityStore(null);
+    const a = getInstallId();
+    expect(a).not.toBe('installed');
+    resetIdentityCacheForTests();
+    expect(getInstallId()).not.toBe(a);
+  });
+
+  it('is cleared by the test reset, so it cannot leak into the next file', () => {
+    setIdentityStore(fakeStore('leaky'));
+    resetIdentityCacheForTests();
+    expect(getInstallId()).not.toBe('leaky');
   });
 });

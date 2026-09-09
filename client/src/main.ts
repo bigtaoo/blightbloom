@@ -13,6 +13,7 @@ import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
+import { setHostKind } from './platform/hostKind';
 import { getLocale } from './i18n';
 import { getSession } from './net/session';
 
@@ -30,6 +31,15 @@ function sessionToken(): string | null {
 }
 
 async function boot() {
+  // The host declaration (`platform/hostKind.ts`), even though `web` is already the default.
+  // Not redundant, and the reason is a bug the WeChat entry shipped: that entry had no such
+  // call and a comment claiming it needed none, so it ran as `web` — which was invisible
+  // until its log batches started leaving the device, because `clientLog` LABELS every batch
+  // with this value. A default that any entry point silently relies on cannot be told from
+  // one that a new entry point forgot, so every entry states its own host and
+  // `hostKind.test.ts` sweeps all three.
+  setHostKind('web');
+
   // Browser logs, on their way to the same store the backend writes to (design/19 §10).
   // FIRST, before anything else in boot() can fail: this wraps console.error/warn and the
   // global error handlers, so a throw from any line below is captured rather than only

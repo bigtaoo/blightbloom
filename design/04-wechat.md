@@ -394,6 +394,81 @@ Both are now covered without a device by `client/src/render/wechatTextRaster.tes
 `client/src/game/scene/wechatRoomBuild.test.ts` — the same "WeChat-shaped host, real Pixi"
 method as `wechatAssetLoad.test.ts`, described under **Verification checklist**.
 
+## The network shell: no `fetch`, no `localStorage` (2026-09-09)
+
+Two globals this runtime does not have were paid for, for a while, by features being switched
+off rather than by adapters existing — and one of them was costing a MEASUREMENT rather than a
+convenience. Both adapters now sit in `client/src/platform/wechat/`, and `main.wechat.ts`
+installs them at the top of `boot()`.
+
+| absent global | adapter | what it turned back on |
+|---|---|---|
+| `localStorage` | `weChatStorage.ts` — `wx.getStorageSync`/`setStorageSync`, exported both as the raw pair and as an `IdentityStore` | the install id survives a reload, so **analytics** could be installed here at all |
+| `fetch` / `XMLHttpRequest` / `sendBeacon` | `weChatFetch.ts` — `wx.request` shaped as a `fetch` | `installClientLog`, `installPublicFlags` (installed and inert since the morning of the same day) and the analytics sender |
+
+**Why the storage half was the one that mattered.** Analytics keys every row by the install id
+from `net/identity.ts`, whose default store reads `localStorage`; its availability check was
+false on every boot here, so `load()` answered null, `save()` dropped the write, and a fresh id
+was minted per visit. Retention would have read 0% rather than being absent — bad — but DAU
+would have reported the number of VISITS while labelled *distinct installs*, which is worse,
+because it is a plausible number nobody would question. That is why the entry point sent nothing
+until the store existed, and design/21 §9 keeps both halves of the decision.
+
+`setIdentityStore(createWeChatIdentityStore())` must run BEFORE `installAnalytics`: the install
+id is read once, during the install, so a store swapped in afterwards arrives one visit late and
+the first-ever boot still persists nothing — which is indistinguishable, in the data, from the
+bug it fixes. Pinned as a source-order assertion in
+`client/src/platform/wechat/weChatNetInstall.test.ts`, the same technique
+`render/wechatPhasedBoot.test.ts` uses for the asset phases.
+
+**Three things about the `fetch` shim that fail silently in the direction of a wrong answer.**
+
+- **`wx.request` defaults to `dataType: 'json'`**, which makes the runtime `JSON.parse` the body
+  and hand back `undefined` for anything that is not JSON. `net/clientFlags.ts` is built on an
+  HTML error page being a FAILED parse that leaves the shipped values in place; pre-parsing turns
+  it into an answer that reads as empty. The shim asks for the raw string and parses it itself.
+- **A 404 resolves with `ok: false`** rather than rejecting, exactly as `fetch` does, because
+  that is the case `clientFlags.ts` separates from a transport failure.
+- **`credentials: 'omit'` and `keepalive: true` are accepted and ignored**, and both are
+  load-bearing on the web: the first because matchsvc answers `access-control-allow-origin: *`
+  and the second because a page can unload mid-flush. There is no origin, no cookie jar and no
+  page here; a request is gated by the account's 服务器域名 whitelist instead.
+
+**`session_end` is absent on this host, on purpose.** This runtime never fires `pagehide`.
+`wx.onHide` is the nearest signal and is NOT equivalent — it fires on every backgrounding and is
+followed by `onShow`, so feeding it into the visit-ended event would multiply the row the churn
+funnel counts and understate every duration. The entry point uses it for the FLUSH alone, which
+is the half of `pagehide` that is honest here (and a backgrounded mini-game can be killed with no
+further notice, so it is the last chance the queued events get).
+
+**Wiring the shim exposed a label that had been wrong for as long as this entry has existed.**
+`platform/hostKind.ts` defaults to `web` and only `main.crazygames.ts` ever called
+`setHostKind`; this entry point had a comment claiming `hostKind` was "already `wechat`
+because this entry exists", which was simply false. It was harmless while `isPortalHost` was
+the only reader — false either way — and stopped being harmless the moment there was a way to
+send anything, because `clientLog` does not SWITCH on that value, it **labels a batch** with
+it, and `server/src/clientLog.ts` turns the label into a Loki stream. An undeclared host is
+therefore not a no-op falling back to a safe default: it is every WeChat failure filed under
+`web`, and `host="wechat"` matching nothing, forever, with nothing red. Fixed by declaring the
+host (and `main.ts` now states `web` too, so the default is for tests and tools rather than
+something an entry point relies on), and swept over all three entries in
+`client/src/platform/hostKind.test.ts` — a single-entry check only exists where somebody
+thought of it, which is exactly how this one was missed.
+
+**Two operational gates decide whether any of this delivers on a device, and neither is
+visible as a failure.** `wx.request` refuses plain http outright, and a plain
+`npm run build:wechat` bakes in `http://localhost:8788` (`VITE_MATCHSVC_URL` is injected by the
+web deploy workflow, and there is no CI build for this target) — so the build has to be made with
+`VITE_MATCHSVC_URL=https://bb.gamestao.com`. That host must also be in the account's
+**服务器域名** whitelist: an un-whitelisted host fails on a handset while DevTools with 不校验域名
+ticked succeeds. Both failures are fail-safe and silent — no flags delivered, no rows sent,
+nothing red — so **zero `wechat` rows in `daily_active` is the symptom of both of them and of a
+build nobody played, and the events store cannot tell them apart.** That is checklist item 18.
+
+Still on the in-memory store, and only ever a convenience: `meta/store.ts` (a guest's progress
+does not survive a reload here) and `settings/store.ts`. The primitive they need is exported from
+the same file; what is left is each store's own migration question, not the adapter.
+
 ## On-device test plan (what a person holding a phone should actually do)
 
 Everything below needs hardware and cannot be run from here. Ordered by what is most likely to
@@ -807,6 +882,14 @@ with identical probe builds before the table above was believed.
    bar keeps counting units — see `design/12`), and any separation of "`loadSubpackage` made these
    files reachable" from "they were always on disk", which this simulator structurally cannot give
    (trap (b) above, and it retroactively narrows item 9).
+
+18. [ ] **A request actually leaves this shell, on a handset.** `wx.request` is wired
+    (`platform/wechat/weChatFetch.ts`, 2026-09-09) and covered device-lessly against a `wx` fake,
+    but nothing here can prove the two things only a real account and a real phone can: that
+    `https://bb.gamestao.com` is in the 服务器域名 whitelist, and that a build made with
+    `VITE_MATCHSVC_URL` pointed at it delivers. Both failure modes are silent and fail-safe, so
+    the check is a positive one — play a run on a device, then look for a `wechat` row in
+    `daily_active` and a `POST /client/events` in the log store. See **The network shell** above.
 
 **How to get diagnostics out of a mini-game at all.** There is no automation API worth the
 name: `miniprogram-automator` *connects* to `cli auto --auto-port` (use `ws://127.0.0.1:…`,

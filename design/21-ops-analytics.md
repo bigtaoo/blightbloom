@@ -4,8 +4,9 @@
 path §9 filed as the one thing missing.** Phase A is verified end to end against a real
 client and a real server; so is the delivery path — a value typed into the console's form
 reached a real menu in a real browser, through matchsvc's poll and the client's own, with no
-reload. Everything is **not yet deployed**: every gate is green locally and nothing has been
-pushed. Three of §9's four open questions are now decided. This document is the
+reload. **All of it is deployed** as of 2026-09-09 — nine containers on the VPS, and every
+row of `server/deploy/README.md` §4 walked against the live host, including the console's own
+and the four for the public flag route. Three of §9's four open questions are now decided. This document is the
 plan for three things the project has never had —
 retention instrumentation, a way to look at a player without an SSH session, and a runtime
 switch that does not need a deploy. It is written to be implemented in the order of §7, and
@@ -103,8 +104,8 @@ Explicitly not answered, and each of these is a decision rather than an omission
 
 **The plan said a new `install_id`; the build found it already existed.** `net/identity.ts`
 has stored a random UUID at `daydayup.playerId.v1` since the PvP squad work — a "which
-browser is this" grouping key, with a storage port that already covers WeChat and a
-non-`crypto` fallback for an older WebView. Analytics reuses it, and that changes three
+browser is this" grouping key, with a storage port whose WeChat half landed later the same
+day (§9) and a non-`crypto` fallback for an older WebView. Analytics reuses it, and that changes three
 things for the better: nothing new is stored, existing players keep the id they have (so
 retention is continuous from the day this ships rather than starting at zero), and there is
 one fewer thing for somebody clearing their site data to have to find.
@@ -507,7 +508,8 @@ client flag needed.
 The plan was "a field on a response the client already fetches", chosen to avoid adding a
 public surface. A browser makes exactly two unauthenticated calls to matchsvc —
 `POST /client/log` and `POST /client/events` — and both are batched on a 30-second timer,
-fire-and-forget, absent entirely on the WeChat shell, and (for the analytics one) behind an
+fire-and-forget, absent entirely on the WeChat shell (as it stood that morning; §9), and (for
+the analytics one) behind an
 opt-out that §9's own consent question would switch off. That is a delivery path for the ad
 switch, which is read when a run ends; it is not one for a notice telling a player the
 servers are going down, and it would couple an operational switch to the analytics opt-in.
@@ -650,8 +652,8 @@ Each phase is separately shippable and separately useful.
 the closed vocabulary, `POST /client/events` on the existing boundary, `analytics.db` and its
 three tables, the daily rollup, the gauges, a Grafana dashboard, the backup source entry —
 **and the privacy rewrite, in the same pass, per P1.** Delivered against the definition it was
-given: a real measurement off a real client, not a merged branch. One host is deliberately
-excluded — see §9 on WeChat.
+given: a real measurement off a real client, not a merged branch. One host was deliberately
+excluded for the rest of that day and then wired — see §9 on WeChat, which keeps both halves.
 
 **B. The read-only console — SHIPPED 2026-09-09.** adminsvc as a fifth process with
 read-only handles, the login, the three views, the compose service and manifest entries, the
@@ -663,9 +665,12 @@ the console. It shipped with the CLIENT half of the delivery path missing and la
 is the state §4's *the gap* records; **that half landed the same day** — the public route,
 the shared contract, and the two consumers it exists for. All four flags are `delivered` now.
 
-**Not deployed.** Every gate is green locally and nothing has been pushed. The acceptance
-checklist in `server/deploy/README.md` §4 carries the console's rows, including the one that
-distinguishes a working `/admin*` route from matchsvc's 404 JSON answering it.
+**Deployed 2026-09-09**, and §4's checklist is walked. The row that distinguishes a working
+`/admin*` route from matchsvc's 404 JSON answering it is the one that failed first, and not for
+the ordering reason §3.4 predicts: that Caddyfile is a FILE bind mount, so `mv`/`sed -i` over it
+swaps the inode and both `caddy validate` and `caddy reload` then read the container's stale copy
+and report success. The trap §3.4 names is real; the route to it was one nothing had described.
+`server/deploy/README.md` §2 carries the mechanics and the inode check that proves an edit landed.
 
 Deferred, and filed rather than forgotten: player ban/disable (needs a schema change and a
 real incident to shape it), a second operator (needs B3 revisited), and anything that would
@@ -693,8 +698,8 @@ recoverable from the code.
 - **DECIDED 2026-09-09, and SHIPPED: a flag reaches the CLIENT by its own public route.**
   The shape filed here was "a PUBLIC field on a response the client already fetches", and
   that turned out not to exist — the only two unauthenticated calls a browser makes are the
-  log and analytics POSTs, both 30-second batched, fire-and-forget, absent on WeChat, and one
-  of them behind an opt-out. So the answer is `GET /client/flags` on matchsvc, carrying only
+  log and analytics POSTs, both 30-second batched, fire-and-forget, absent on WeChat as it
+  stood that morning, and one of them behind an opt-out. So the answer is `GET /client/flags` on matchsvc, carrying only
   the flags marked `public: true` AND present in `@dd/net/publicFlags`. §4's *the gap*
   section has the whole account, including why the marker is deliberately two halves in two
   workspaces and what test decides whether a flag may be published at all. Both flags now
@@ -719,29 +724,64 @@ recoverable from the code.
   on analytics, deliberately: an operational switch behind an analytics opt-out would have
   made a maintenance notice conditional on a consent answer.
 
-- **DECIDED 2026-09-09: analytics is NOT installed on the WeChat entry point**, and the
-  reason is worth keeping because it is not caution. Every row is keyed by the install id,
-  which persists through `createWebIdentityStore` — and that reads `localStorage`, a global
-  that shell does not have. The store's availability check is false on every boot, so a FRESH
-  id is minted per visit. The consequence is asymmetric, and that is what decides it:
-  retention would read 0% instead of being absent, which is bad, but DAU would report the
-  number of VISITS while labelled *distinct installs*, which is worse — a plausible number
-  nobody would question. No data beats wrong data.
+- **DECIDED 2026-09-09: analytics is NOT installed on the WeChat entry point — REVERSED the
+  same day, once the adapter it was waiting on existed. It IS installed now.** The decision
+  and the reversal are both kept, because the reason is the same fact read twice and it is not
+  caution. Every row is keyed by the install id, which persists through `createWebIdentityStore`
+  — and that reads `localStorage`, a global that shell does not have. The store's availability
+  check was false on every boot, so a FRESH id was minted per visit. The consequence is
+  asymmetric, and that is what decided it: retention would read 0% instead of being absent,
+  which is bad, but DAU would report the number of VISITS while labelled *distinct installs*,
+  which is worse — a plausible number nobody would question. No data beats wrong data.
 
-  What it needs is not an analytics change. `IdentityStore` is already the seam, and a
-  `wx.getStorageSync`/`setStorageSync` implementation of it would fix this, the meta save
-  (`meta/store.ts`'s own header calls that adapter "a later platform impl", and a WeChat
-  guest's progress does not survive a reload today either) and the settings store in one go.
-  Adding one call in `main.wechat.ts` is the whole change once it exists.
+  It was never an analytics change, and the fix is the one this entry named: `IdentityStore` is
+  the seam, and `client/src/platform/wechat/weChatStorage.ts` implements it over
+  `wx.getStorageSync`/`setStorageSync`. `main.wechat.ts` installs it through a new module sink
+  (`setIdentityStore`) BEFORE `installAnalytics`, which is load-bearing — the install id is read
+  once, during the install, so a store swapped in afterwards arrives one visit late and the
+  first-ever boot still persists nothing, which is indistinguishable in the data from the bug.
 
-  **A fourth thing is now on that list, and it is a different KIND of gap.** The flag poll IS
-  installed on that entry point and is inert there, because the shell has no `fetch` at all —
-  the same fact that makes `installClientLog` ship nothing from it. The distinction from the
-  analytics decision above is what makes installing it right: an undelivered flag is an
-  ABSENCE (no banner, and the shipped ad-offer default), where analytics on that host would
-  produce a plausible number that is wrong. The call is present rather than omitted so that
-  a `fetch`/`wx.request` adapter makes this host deliver flags without anybody having to
-  remember a missing line.
+  **What the fourth item on that list turned out to need was a second adapter, not the same
+  one.** The flag poll IS installed on that entry point and was inert there, because the shell
+  has no `fetch` at all — the same fact that made `installClientLog` ship nothing from it. So
+  `client/src/platform/wechat/weChatFetch.ts` wraps `wx.request` into a `fetchImpl`, and all
+  three installs on that entry take it. The distinction from the analytics decision is still
+  what made installing the poll early right: an undelivered flag is an ABSENCE (no banner, and
+  the shipped ad-offer default), where analytics on that host would have produced a plausible
+  number that is wrong — and because the call was already in the right place, delivery arrived
+  as one argument rather than as a line somebody had to remember.
+
+  Four things about that shim are worth having written down, because each of them fails
+  silently in the direction of a wrong answer:
+
+  - **`wx.request` defaults to `dataType: 'json'`**, which makes the runtime `JSON.parse` the
+    body and hand back `undefined` for anything that is not JSON. That would break the
+    guarantee this whole flag path rests on: an HTML error page from something in front of the
+    server has to be a FAILED parse leaving the shipped values, not a body that reads as empty.
+    The shim asks for the raw string and parses it itself.
+  - **A 404 resolves with `ok: false`** rather than rejecting, the way `fetch` does, because
+    that is the case `clientFlags.ts` separates from a transport failure.
+  - **`session_end` is absent on this host, on purpose.** This runtime never fires `pagehide`,
+    and `wx.onHide` is not a substitute — it fires on every backgrounding and is followed by
+    `onShow`, so routing it into the visit-ended event would multiply the row the churn funnel
+    counts and understate every duration. The entry point uses it for the FLUSH alone, which is
+    the half of `pagehide` that is honest here. So DAU and retention on `wechat` are complete
+    and the exit half of the funnel is missing — an absence, by the same rule that switched the
+    whole thing off in the first place.
+  - **Two operational gates decide whether any of it delivers on a device, and neither shows up
+    as a failure.** The build must be made with `VITE_MATCHSVC_URL=https://bb.gamestao.com` (a
+    plain `npm run build:wechat` bakes in `http://localhost:8788`, and `wx.request` refuses
+    plain http outright), and that host must be in the account's 服务器域名 whitelist — an
+    un-whitelisted host fails on a handset while DevTools with 不校验域名 ticked succeeds. Both
+    failures are fail-safe and silent: no flags delivered, no rows sent, nothing red. **Zero
+    `wechat` rows in `daily_active` is the symptom of all three of those and of a build nobody
+    played, and the events store cannot tell them apart.**
+
+  Still NOT wired, and they are the two that were only ever a convenience: `meta/store.ts` and
+  `settings/store.ts`. The primitive they need is now exported from the same file
+  (`readWeChatStorage`/`writeWeChatStorage`); what is left is each store's own question rather
+  than the adapter — a meta save that has never persisted on that host means the first load
+  after wiring reads a fresh account, and `migrate` is what has to be right about it.
 
   The portal build IS installed, and its weaker case is stated rather than discovered: the game
   runs in an embedded frame and some browsers block storage for embedded content — the same

@@ -58,8 +58,18 @@ export interface AnalyticsInstallOptions {
   /** Injected by tests. */
   fetchImpl?: typeof fetch;
   now?: () => number;
-  /** The global to attach the exit listener to. `globalThis`, not `window` — the WeChat
-   *  shell has no `window` and this module is imported by that entry too. */
+  /**
+   * The global to attach the exit listener to. `globalThis`, not `window` — the WeChat shell
+   * has no `window` and that entry installs this module too.
+   *
+   * On that shell `globalThis.addEventListener` exists (Pixi's `EventSystem` needs it) and
+   * `pagehide` is never dispatched, so the listener below is dead weight there rather than a
+   * second flush: `session_end` is simply ABSENT on that host. `wx.onHide` is not a
+   * substitute — it fires on every backgrounding and is followed by `onShow`, so feeding it
+   * in would multiply the row the churn funnel counts and understate every duration.
+   * `main.wechat.ts` uses it for the flush alone, which is the half of `pagehide` that is
+   * honest there.
+   */
   target?: {
     addEventListener?: (type: string, fn: () => void) => void;
     removeEventListener?: (type: string, fn: () => void) => void;

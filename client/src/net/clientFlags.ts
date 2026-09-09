@@ -146,13 +146,14 @@ let poller: PublicFlagPoller | null = null;
  * `installAnalytics` and `installClientLog` do — every entry point calls this and two
  * entries can legitimately be loaded in one test file.
  *
- * **On the WeChat shell this is inert, and deliberately installed anyway.** That runtime has
- * no `fetch` at all (which is also why `installClientLog` ships nothing there), so the poll
- * never runs and every flag stays at its shipped default — the same fail-safe state as an
- * unreachable server. Calling it from that entry point rather than omitting the call is the
- * choice that leaves a record: the day an adapter over `wx.request` exists, delivery on that
- * host is one seam away instead of a missing call nobody remembers to add. §9's WeChat note
- * already names that adapter as the fix for three things; this is the fourth.
+ * **On the WeChat shell this was inert for one day, and the call was there anyway.** That
+ * runtime has no `fetch` at all, so the poll never ran and every flag stayed at its shipped
+ * default — the same fail-safe state as an unreachable server. Installing it from that entry
+ * point rather than omitting the call is what made the fix a seam rather than an
+ * archaeology exercise: `platform/wechat/weChatFetch.ts` (2026-09-09) wraps `wx.request`
+ * into a `fetchImpl`, and delivery on that host arrived as one argument on a call that was
+ * already in the right place. `fetchImpl === undefined` is still the inert path, and still
+ * what a shell without `wx.request` gets.
  */
 export function installPublicFlags(opts: PublicFlagPollerOptions): PublicFlagPoller {
   if (poller !== null) return poller;

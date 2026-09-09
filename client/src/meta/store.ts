@@ -3,7 +3,14 @@
  * persistent layer between runs"). Symmetric to platform's InputSource / AudioBus: a
  * small swappable interface so the meta layer never touches a concrete storage API
  * directly. Web uses localStorage; tests (and any no-storage host) use the in-memory
- * store. WeChat's own storage adapter (wx.setStorageSync) is a later platform impl.
+ * store.
+ *
+ * WeChat still uses the in-memory one, so a guest's progress there does not survive a
+ * reload — but the primitive it needs now exists: `platform/wechat/weChatStorage.ts`
+ * (2026-09-09) wraps `wx.getStorageSync`/`setStorageSync` and already backs the identity
+ * store. What is left here is not the adapter, it is this store's own question: a save that
+ * has never persisted on that host means the first load after wiring it reads a fresh
+ * account, and `migrate` below is what would have to be right about it.
  */
 import { defaultMetaState, type MetaState } from './MetaState';
 

@@ -108,6 +108,41 @@ interface WxLoadSubpackageTask {
   ): void;
 }
 
+/**
+ * What `wx.request` hands back on success. `data` is a STRING unless the caller asked for
+ * `dataType: 'json'` — see the `request` declaration below, and `weChatFetch.ts` for why
+ * this project never does.
+ */
+interface WxRequestSuccess {
+  data: unknown;
+  statusCode: number;
+  /** Response headers, lower-cased by the runtime. */
+  header: Record<string, string>;
+}
+
+interface WxRequestOptions {
+  /** Must be https, and must be in the account's 服务器域名 whitelist for a released
+   *  build — an un-whitelisted host fails with `url not in domain list` on a device while
+   *  succeeding in DevTools with 不校验域名 ticked. See design/04-wechat.md. */
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'HEAD' | 'OPTIONS';
+  /** A string is sent verbatim; an object is form-encoded or JSON-encoded by the runtime
+   *  depending on `content-type`. `weChatFetch.ts` only ever passes a string, so the
+   *  runtime never re-encodes a body this project already serialised. */
+  data?: string;
+  header?: Record<string, string>;
+  timeout?: number;
+  /** `'json'` (the DEFAULT) makes the runtime `JSON.parse` the body and hand back the
+   *  result — silently `undefined` when it is not JSON. Any other value leaves `data` the
+   *  raw string. */
+  dataType?: string;
+  responseType?: 'text' | 'arraybuffer';
+  success?: (res: WxRequestSuccess) => void;
+  /** Transport-level failure only: a timeout, a DNS error, an un-whitelisted domain. A 404
+   *  is a SUCCESS with `statusCode: 404`, exactly as `fetch` resolves one. */
+  fail?: (res: { errMsg?: string; errno?: number }) => void;
+}
+
 interface Wx {
   createCanvas(): WxCanvas;
   createImage(): WxImage;
@@ -126,6 +161,34 @@ interface Wx {
     success?: () => void;
     fail?: (res: { errMsg?: string }) => void;
   }): WxLoadSubpackageTask;
+  /**
+   * Synchronous key/value storage — this shell's `localStorage`, and the primitive behind
+   * `platform/wechat/weChatStorage.ts`.
+   *
+   * The one behaviour a caller has to encode: `getStorageSync` answers `''` for a key that
+   * was never written, not `null` or `undefined`. A store port whose `load()` promises
+   * `string | null` therefore has to map the empty string itself.
+   *
+   * Both can throw — the per-key and per-store size limits, and a store the runtime
+   * considers corrupt — so neither is called outside a `try`/`catch` here.
+   */
+  getStorageSync(key: string): unknown;
+  setStorageSync(key: string, data: unknown): void;
+  /**
+   * HTTPS request — this shell's `fetch`, wrapped into one by
+   * `platform/wechat/weChatFetch.ts` (design/21 §9). There is no `fetch`, no
+   * `XMLHttpRequest` and no `sendBeacon` on this runtime; this is the only road out.
+   */
+  request(opts: WxRequestOptions): void;
+  /**
+   * The mini-game went to the background — the player took a call, switched to a chat, or
+   * left. The closest thing here to `pagehide`, and NOT equivalent to it: it fires on every
+   * backgrounding and is followed by `onShow` when the player comes back, so it answers
+   * "flush what is queued" and never "the visit ended". See `main.wechat.ts`, which uses it
+   * for exactly the first of those. Optional for the same reason the audio hooks are: an
+   * entry point that assumes a lifecycle API exists turns a missing one into a boot failure.
+   */
+  onHide?: (cb: () => void) => void;
   getWindowInfo(): WxWindowInfo;
   onTouchStart(cb: (e: WxTouchEvent) => void): void;
   onTouchMove(cb: (e: WxTouchEvent) => void): void;

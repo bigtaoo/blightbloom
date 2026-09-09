@@ -166,9 +166,11 @@ describe('installPublicFlags', () => {
   });
 
   it('does nothing at all when the host has no fetch', async () => {
-    // The WeChat shell. `installPublicFlags` is called there on purpose and is inert, so the
-    // values stay as compiled in — the same fail-safe state as an unreachable server, rather
-    // than a wrong number.
+    // A host with no `fetch` and no adapter for one. The WeChat shell was exactly this until
+    // `platform/wechat/weChatFetch.ts` landed (2026-09-09) — see
+    // `platform/wechat/weChatNetInstall.test.ts`, which drives delivery through that shim and
+    // keeps this same inert case as its control. Either way the values stay as compiled in:
+    // the same fail-safe state as an unreachable server, rather than a wrong number.
     const poller = installPublicFlags({
       baseUrl: 'https://bb.example.test',
       fetchImpl: undefined as unknown as typeof fetch,
