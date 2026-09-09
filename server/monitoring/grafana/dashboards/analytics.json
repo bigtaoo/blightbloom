@@ -1,0 +1,508 @@
+{
+  "uid": "bb-analytics",
+  "title": "Analytics — retention and funnel",
+  "tags": [
+    "blightbloom",
+    "analytics",
+    "retention"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "How far back these panels can see",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "These panels are drawn from **Prometheus**, whose retention here is **15 days** (`docker-compose.yml`, `--storage.tsdb.retention.time=15d`). A gauge cannot be backfilled, so the left-hand side of every graph is empty for reasons that have nothing to do with the game.\n\n**The authority is `daily_rollup` in `analytics.db`**, which keeps every day it has ever computed and can re-derive the rest from `daily_active` (180 days). For anything older than two weeks, query that table — design/21 §2.5 (A5)."
+      }
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Daily active installs — total",
+      "description": "Distinct installs that sent at least one event on the last COMPLETE day (design/21 §2.4). An install is a browser, not a person and not an account: it is the id the game already stored for multiplayer, reused so that analytics adds no new identifier. Today is never included — a partial day's DAU is a number that keeps changing while looking like a measurement. **An absent line is not a zero.** This dashboard deliberately has no `or vector(0)` anywhere: the server omits a gauge it cannot answer, so a panel that says No data is saying we do not know yet, and a panel showing 0 is saying we measured zero. Those are different facts and the first week of a launch is full of the former.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_dau{host=\"all\"}",
+          "legendFormat": "all"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Daily active installs — by build target",
+      "description": "The same number split by where the player was: our own site, the WeChat mini-game, or a game portal. This is a PARTITION of the panel on the left — an install that played on two targets in one day is counted once, on whichever it appeared on first — so these lines sum to the total rather than overlapping it. If they ever do not, the cohort table's primary key has changed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_dau{host!=\"all\"}",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Retention — D1 to D7",
+      "description": "For each offset N: of the installs active on some day, the share that were active again N days later. The cohort behind each line is the NEWEST one whose answer is known, which is `the last complete day minus N` — so the D7 line is about a cohort a week older than the D1 line, by construction. A missing line means no cohort has aged that far yet. **An absent line is not a zero.** This dashboard deliberately has no `or vector(0)` anywhere: the server omits a gauge it cannot answer, so a panel that says No data is saying we do not know yet, and a panel showing 0 is saying we measured zero. Those are different facts and the first week of a launch is full of the former.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percentunit",
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_retention_ratio",
+          "legendFormat": "D{{d}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Cohort size behind each retention line",
+      "description": "How many installs the percentages on the left are computed over. Read this FIRST: a D1 of 50% over a cohort of 2 is one player coming back, and a launch-week dashboard is full of exactly that. Every rate is published with its denominator for this reason.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_retention_cohort_size",
+          "legendFormat": "D{{d}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Events per day, by name",
+      "description": "Every event stored on the last complete day, by name — the raw material of the funnel. The vocabulary is a closed list fixed in the game's code (`client/src/net/analyticsEvents.ts`), so a name that is NOT here is a name nothing sent, never a name the server rejected: anything off the list is dropped before it reaches a row.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day",
+          "legendFormat": "{{event}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Funnel — did a visit reach a run, and finish one?",
+      "description": "The steps that matter on the last complete day, as counts: visits started, the forge reached, runs started, runs ended. Read as ratios rather than absolutes — `run_start / session_start` is how many visits reach a run at all, and `run_end / run_start` is how many runs are seen through. All are counts of EVENTS, not of installs, so a player who plays four runs contributes four.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"session_start\"}",
+          "legendFormat": "visits started"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_screen_views_day{screen=\"forge\"}",
+          "legendFormat": "reached the forge"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"run_start\"}",
+          "legendFormat": "runs started"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"run_end\"}",
+          "legendFormat": "runs finished"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Screens reached, by screen",
+      "description": "Every `screen_view` on the last complete day, split by which screen. This is the early funnel in one panel: a visit that never leaves `menu` never reached the mode select, and a `store` count with no `store_purchase` beside it is the conversion question. Screen ids come from an explicit table in the client (`game/analyticsTracking.ts`) rather than from the phase names, because the server's id charset would refuse `modeSelect` and the step would silently never appear.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_screen_views_day",
+          "legendFormat": "{{screen}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Store — views against purchases",
+      "description": "The commercial conversion, such as it is while nothing is on sale: how many players opened the store, and how many bought. There is deliberately no `store_open` event — opening the store IS a screen view, and a second event for the same act would be two numbers to keep in agreement by hand.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_screen_views_day{screen=\"store\"}",
+          "legendFormat": "store opened"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"store_purchase\"}",
+          "legendFormat": "purchased"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Rewarded ad — offered vs taken",
+      "description": "The one commercial number this instrumentation carries today (design/20's rewarded-ad offer). `ad_completed / ad_offer_shown` is the take-up rate of an offer the player has to accept — nothing plays unless they do, so a low rate is a product finding and not a bug.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"ad_offer_shown\"}",
+          "legendFormat": "offered"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_events_day{event=\"ad_completed\"}",
+          "legendFormat": "watched"
+        }
+      ]
+    }
+  ]
+}

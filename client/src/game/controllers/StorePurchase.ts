@@ -33,6 +33,7 @@ import { getSession, type Session } from '../../net/session';
 import * as billingApi from '../../net/billing';
 import type { StoreOrder, StoreSku } from '../../net/billing';
 import type { StorePlatform } from '../../platform/storePlatform';
+import { track } from '../../net/analytics';
 import { playUiCue } from '../../audio/uiSound';
 
 /** The store network calls — injected (default: the real `net/billing.ts` functions), same
@@ -149,6 +150,12 @@ export class StorePurchase {
   async buy(sku: string): Promise<PurchaseResult> {
     const result = await this.attempt(sku);
     playUiCue(result.ok ? 'ui.tap' : 'ui.denied');
+    // Reported here rather than in `attempt`, and only on success: `attempt` has seven
+    // failure arms and every one of them means no money moved, so a `store_purchase` event
+    // covering them would count refusals as purchases. The conversion DENOMINATOR is the
+    // store's own `screen_view` (design/21 §2.2 — there is no `store_open`), so a failed
+    // attempt is visible as a view with no purchase after it, which is what it is.
+    if (result.ok) track('store_purchase', { sku });
     return result;
   }
 

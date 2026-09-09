@@ -74,6 +74,8 @@ import { ticketSecret, teamIdForOwner, portalGameId } from './config';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { openDb } from './db';
+import { openAnalyticsDb } from './analytics/db';
+import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
@@ -102,6 +104,19 @@ export interface MatchsvcServerOptions {
   dbPath?: string;
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
+  /**
+   * Where `analytics.db` lives (design/21 §2.4), or `null` for "collect nothing".
+   *
+   * Unlike `dbPath` this has **no default path**, and the asymmetry is deliberate. Identity
+   * has to persist wherever this process runs, so `openDb` falls back to a real file.
+   * Analytics is optional, and an implicit default would make it collect into a file that
+   * the backup worker — which discovers its sources by env var (`backup/config.ts`'s
+   * `SOURCE_VARS`) — does not know about. Tying both to the same explicit
+   * `BB_ANALYTICS_DB_PATH` keeps "is it collected" and "is it backed up" a single condition
+   * rather than two that can disagree. It also means nothing is collected by accident,
+   * which is the right default for the one subsystem with a privacy policy attached.
+   */
+  analyticsDbPath?: string | null;
   /**
    * Matchmaker timing overrides. The only reason this exists is `pvpBotFillMs`: PvP bot
    * backfill is a 30-SECOND wait by default, so `onBotFill` below — the block that mints a
@@ -231,6 +246,15 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   // warning that is the only signal an operator gets when it is unset (lokiPush.ts).
   const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
   const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
+
+  // Analytics (design/21 §2.4). Resolved once, like `lokiUrl` and for the same reason.
+  const analyticsPath = opts.analyticsDbPath !== undefined ? opts.analyticsDbPath : analyticsDbPathFromEnv();
+  const analyticsDb = analyticsPath === null ? null : openAnalyticsDb(analyticsPath);
+  // The job runs one cycle synchronously here, so a restarted process serves real gauges at
+  // once. Its interval is `unref`ed, and it is stopped on the server's own close event —
+  // which is what keeps a test file that builds a dozen servers from leaving a dozen timers.
+  const rollup: RollupJob | null = analyticsDb === null ? null : startRollupJob({ db: analyticsDb, log });
+
   const deps = {
     matchmaker,
     pickGameserver,
@@ -244,6 +268,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     log,
     lokiUrl,
     limiter,
+    analyticsDb,
     fetchImpl: opts.fetchImpl,
   };
 
@@ -266,11 +291,14 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     if (req.method === 'GET' && path === '/metrics') {
       if (req.headers['x-forwarded-for'] !== undefined) return send(res, 404, { error: 'not found' });
       res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
-      return res.end(renderMetrics(matchsvcMetrics(matchmaker, registry)));
+      return res.end(renderMetrics(matchsvcMetrics(matchmaker, registry, rollup)));
     }
 
     if (req.method === 'POST' && path === telemetryRoutes.CLIENT_LOG_PATH) {
       return telemetryRoutes.postClientLog(req, res, url, deps);
+    }
+    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_EVENTS_PATH) {
+      return telemetryRoutes.postClientEvents(req, res, url, deps);
     }
 
     if (req.method === 'POST' && path === '/find') return matchRoutes.postFind(req, res, url, deps);
@@ -323,7 +351,25 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     send(res, 404, { error: 'not found' });
   });
 
+  // Stopping the job here rather than exposing it: the builder's return type is a plain
+  // `Server` and every caller already knows how to close one.
+  if (rollup) server.on('close', () => rollup.stop());
+
   return server;
+}
+
+/**
+ * `BB_ANALYTICS_DB_PATH`, or `null` when it is unset or empty.
+ *
+ * An empty value is treated as unset, which design/19 §9 records as a mistake this project
+ * has already paid for once: an env var set to `""` beats a `??` fallback, and a compose
+ * file with a trailing `BB_ANALYTICS_DB_PATH:` and no value produces exactly that. Here the
+ * consequence would be `openAnalyticsDb('')` — a path SQLite reads as a temporary
+ * database, so collection would appear to work and vanish on restart.
+ */
+export function analyticsDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  const raw = env.BB_ANALYTICS_DB_PATH?.trim();
+  return raw !== undefined && raw.length > 0 ? raw : null;
 }
 
 /**
@@ -333,7 +379,11 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
  * anywhere to send them?" (the registry, whose empty state makes every `/find` answer 503
  * while every container stays green).
  */
-export function matchsvcMetrics(matchmaker: Matchmaker, registry: GameRegistry): Metric[] {
+export function matchsvcMetrics(
+  matchmaker: Matchmaker,
+  registry: GameRegistry,
+  rollup?: RollupJob | null,
+): Metric[] {
   return [
     ...processMetrics('matchsvc'),
     gauge('bb_matchsvc_queue_waiting', 'Players waiting in the matchmaking queue.', matchmaker.waiting(2, 'coop'), {
@@ -349,6 +399,11 @@ export function matchsvcMetrics(matchmaker: Matchmaker, registry: GameRegistry):
       'Gameserver instances the registry would hand a new match to. Zero means every /find answers 503.',
       registry.pick() ? 1 : 0,
     ),
+    // The analytics rollup's cached gauges (design/21 §2.5). A field read, not a query —
+    // see `analytics/job.ts` for why the scrape must not recompute. Absent entirely when
+    // analytics is off, and absent for any retention offset that cannot be answered yet,
+    // which is what makes a dashboard say "No data" instead of "0% came back".
+    ...(rollup?.metrics() ?? []).map((m) => ({ ...m })),
   ];
 }
 

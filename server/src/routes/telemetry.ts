@@ -1,20 +1,26 @@
 /**
- * `POST /client/log` — the browser's log lines, on their way to the same store the four
- * backend containers write to.
+ * The two routes a browser may POST to without a session: `POST /client/log` (log lines, on
+ * their way to the same store the four backend containers write to) and `POST /client/events`
+ * (analytics, on its way to `analytics.db` — design/21 §2.3).
  *
- * This is the only route in this directory that accepts a body from anybody at all: no
- * session required, deliberately. The errors most worth having are the ones that happen
- * INSTEAD of a login — a boot failure, a WebGL context that never came back, an asset that
- * 404s on one build target — and gating on a session would collect logs from exactly the
- * players whose client is working.
+ * These are the only routes in this directory that accept a body from anybody at all: no
+ * session required, deliberately, and for the same reason twice. The errors most worth
+ * having are the ones that happen INSTEAD of a login — a boot failure, a WebGL context that
+ * never came back, an asset that 404s on one build target — and gating on a session would
+ * collect logs from exactly the players whose client is working. Retention is the same
+ * argument from the other end: a player who never logs in is precisely who "did they come
+ * back?" is a question about.
  *
  * That makes it the widest trust boundary this server has, so it is built from refusals:
  *
  *  - **A bounded body**, read with an explicit limit rather than the 4 KB every other
  *    route uses (`http.ts`'s `readJsonUpTo`).
  *  - **A per-IP rate limit**, in-process, before any parsing work.
- *  - **Caps and allowlists on every client-supplied value**, in `clientLog.ts`.
- *  - **A fixed three-name label set**, so nothing a caller sends can create a Loki stream.
+ *  - **Caps and allowlists on every client-supplied value**, in `clientLog.ts` and
+ *    `analytics/ingest.ts`.
+ *  - **A fixed three-name label set**, so nothing a caller sends can create a Loki stream;
+ *    and, on the analytics side, a CLOSED event vocabulary, so nothing a caller sends can
+ *    create a row type.
  *
  * And from one thing it does NOT do: it never lets any of that reach the player. Every
  * outcome is `200 {ok:true, accepted:N}` — a refused batch reports `accepted: 0`, not a
@@ -25,12 +31,23 @@
  * The account id, when there is one, is resolved HERE from the request's bearer token and
  * never read from the body — otherwise the one field that says whose session this was
  * would be the one field anybody could write.
+ *
+ * ## One rate limiter, shared
+ *
+ * Both routes take from the same per-IP budget. A legitimate client makes two requests per
+ * 30s window across the pair, against a limit of 20 per minute, so sharing costs nothing —
+ * and it means the budget bounds what one address can do to this server rather than what it
+ * can do to one of its endpoints.
  */
 import type { IncomingMessage } from 'node:http';
 import type { AuthService } from '../AuthService';
 import type { Logger } from '../log';
+import type { DatabaseSync } from 'node:sqlite';
 import { buildLokiPayload, parseBatch, LIMITS } from '../clientLog';
 import { pushToLoki } from '../lokiPush';
+import { parseAnalyticsBatch } from '../analytics/ingest';
+import { writeBatch } from '../analytics/store';
+import { LIMITS as ANALYTICS_LIMITS } from '@dd/net/analyticsEvents';
 import { readJsonUpTo, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
 
@@ -40,8 +57,17 @@ import { requireAuth } from './auth';
  */
 export const CLIENT_LOG_BODY_LIMIT = 384 * 1024;
 
-/** Requests per IP per window. A client flushes every 30s (client/src/net/clientLog.ts),
- *  so this is ten times the legitimate rate — a limit that only a loop can reach. */
+/**
+ * The analytics batch is much smaller than a log batch: 100 events, each a short name, a
+ * timestamp and at most three small fields. 64 KB is roughly eight times the largest
+ * legitimate body, which leaves the limit doing its job without ever being reached by a
+ * real client.
+ */
+export const CLIENT_EVENTS_BODY_LIMIT = 64 * 1024;
+
+/** Requests per IP per window, SHARED by both routes (see the file header). A client flushes
+ *  each of them every 30s, so this is ten times the legitimate rate — a limit that only a
+ *  loop can reach. */
 export const RATE_LIMIT = { requests: 20, windowMs: 60_000 } as const;
 
 export interface TelemetryRouteDeps {
@@ -59,6 +85,17 @@ export interface TelemetryRouteDeps {
   /** Injected by tests to observe the push without a network, and to freeze the clock. */
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /**
+   * The analytics database, or null when this process has none.
+   *
+   * Nullable rather than required, and the null arm is reachable rather than defensive: a
+   * test that only exercises the log route does not need one, and — the case that matters —
+   * a deployment that has not set `BB_ANALYTICS_DB_PATH` should keep serving the game while
+   * quietly collecting nothing, not fail to boot. `postClientEvents` answers
+   * `accepted: 0` in that state, exactly as it does for a refused batch, because from the
+   * client's side those two are the same fact.
+   */
+  analyticsDb?: DatabaseSync | null;
 }
 
 /**
@@ -146,6 +183,45 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = (req, res, _url, 
   });
 };
 
+/**
+ * `POST /client/events` — analytics (design/21 §2.3).
+ *
+ * Structurally the same as the route above and deliberately so: same limiter, same IP key,
+ * same "every outcome is 200 with a count" contract. What differs is only where the rows
+ * go, and one thing worth stating: the write is SYNCHRONOUS, unlike the Loki push, because
+ * `node:sqlite` is synchronous and there is nothing to await. That makes the write part of
+ * the request, so it is wrapped — a database error must answer `accepted: 0` and be logged,
+ * never surface to the player and never take the process down.
+ */
+export const postClientEvents: RouteHandler<TelemetryRouteDeps> = (req, res, _url, deps) => {
+  const now = deps.now ?? Date.now;
+
+  if (!deps.limiter.take(clientKey(req), now())) {
+    return send(res, 200, { ok: true, accepted: 0 });
+  }
+
+  const session = requireAuth(req, deps.auth);
+  const db = deps.analyticsDb ?? null;
+
+  readJsonUpTo(req, CLIENT_EVENTS_BODY_LIMIT, (body) => {
+    if (db === null) return send(res, 200, { ok: true, accepted: 0 });
+    const batch = parseAnalyticsBatch(body, now());
+    if (!batch) return send(res, 200, { ok: true, accepted: 0 });
+
+    try {
+      const written = writeBatch(db, batch, session?.accountId ?? null);
+      send(res, 200, { ok: true, accepted: written.events });
+    } catch (e) {
+      // A failed write is worth a line in the log store, because the alternative is a
+      // dashboard that goes flat with nothing anywhere saying why.
+      deps.log.warn('analytics write failed', { err: (e as Error).message });
+      send(res, 200, { ok: true, accepted: 0 });
+    }
+  });
+};
+
 /** Exported for the deploy manifest test and for `matchsvc.ts`'s dispatch chain. */
 export const CLIENT_LOG_PATH = '/client/log';
 export const CLIENT_LOG_MAX_ENTRIES = LIMITS.entries;
+export const CLIENT_EVENTS_PATH = '/client/events';
+export const CLIENT_EVENTS_MAX_ENTRIES = ANALYTICS_LIMITS.eventsPerBatch;

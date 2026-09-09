@@ -11,6 +11,8 @@ import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog } from './net/clientLogInstall';
+import { installAnalytics } from './net/analyticsInstall';
+import { getLocale } from './i18n';
 import { getSession } from './net/session';
 
 // Web entry. The WeChat entry is client/src/main.wechat.ts (loaded by client/wechat/game.js).
@@ -39,6 +41,19 @@ async function boot() {
     // first fetch resolves later still, while the first flush is 30s away — so by the time
     // it matters the baseline is there.
     version: deployedVersion,
+  });
+
+  // Retention and funnel instrumentation (design/21 §2.6). AFTER the logger, deliberately:
+  // if this throws during boot the logger is already up to record it, and the reverse order
+  // would lose exactly the failure worth having. `build` and `locale` are getters for the
+  // same reason the logger's `version` is — the manifest arrives after boot, and a player
+  // can change language mid-visit.
+  installAnalytics({
+    baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
+    token: sessionToken,
+    host: 'web',
+    build: deployedVersion,
+    locale: getLocale,
   });
 
   // Before any Text exists — Pixi caches its measurement canvas on first use (see

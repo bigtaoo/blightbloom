@@ -19,12 +19,12 @@
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="meta">Last updated: 2026-09-08 &nbsp;·&nbsp; Blightbloom &nbsp;·&nbsp; <a href="mailto:support@gamestao.com">support@gamestao.com</a></p>
+  <p class="meta">Last updated: 2026-09-09 &nbsp;·&nbsp; Blightbloom &nbsp;·&nbsp; <a href="mailto:support@gamestao.com">support@gamestao.com</a></p>
 
   <p>This Privacy Policy explains what data Blightbloom collects, why, and what you can do about it. It applies wherever you play the game — on our own site and on third-party game portals such as CrazyGames. We comply with the EU General Data Protection Regulation (GDPR) and applicable data protection law.</p>
 
   <div class="callout">
-    <strong>Playing without an account collects nothing on our server.</strong> An account is never required to play Blightbloom. As a guest, your settings and progress are stored only in your own browser and are never sent to us. The data described below is collected only if you create an account, or if you play on a game portal while signed in to that portal.
+    <strong>An account is never required to play Blightbloom, and your saved game stays in your own browser until you create one.</strong> As a guest, your settings and progress are stored locally and are never sent to us. Two things are sent even without an account, and both are described in full below: anonymous <strong>gameplay statistics</strong> (§2), which tell us which parts of the game get played and whether players come back, and <strong>error reports</strong> (§2) when something breaks. Neither carries your name, and neither is shared with anyone.
   </div>
 
   <h2>1. Data Controller</h2>
@@ -63,22 +63,38 @@
       <td>Security, abuse prevention, debugging</td>
       <td>Legitimate interest (Art. 6(1)(f))</td>
     </tr>
+    <tr>
+      <td>Gameplay statistics <em>(with or without an account)</em></td>
+      <td>A short, fixed list of in-game events — a visit starting and ending, a screen being shown, a run starting and ending (with its outcome and how far you got), the store being opened, and an optional ad being offered or watched. Each is sent with the random installation id from §4, a random per-visit id, which platform you are on, the game version and your language. <strong>Nothing else can be sent: the list of events, and the fields each one may carry, are fixed in the game’s code, and our server discards anything that is not on it.</strong></td>
+      <td>Understanding which parts of the game get played, where players stop, and whether they come back — so that the game can be improved</td>
+      <td>Legitimate interest (Art. 6(1)(f))</td>
+    </tr>
+    <tr>
+      <td>Error reports <em>(with or without an account)</em></td>
+      <td>Error and warning messages the game produces in your browser, with the random per-visit id, the game version and the platform. These are the messages a developer would see in a browser console.</td>
+      <td>Finding and fixing crashes and broken features, including ones that happen before you can sign in</td>
+      <td>Legitimate interest (Art. 6(1)(f))</td>
+    </tr>
   </table>
+  <p>What identifies you in the two rows above is an <em>installation</em>, not a person. The id is random, is created by your own browser, means nothing anywhere else, and is not linked to your name or to any identifier from another site. If you happen to be signed in, our server attaches your account id so that a support request can be answered — the game itself never sends it.</p>
 
   <h2>3. What We Do Not Collect</h2>
   <ul>
     <li><strong>No email address.</strong> Account registration asks for a username and password only.</li>
-    <li><strong>No gameplay analytics or telemetry.</strong> The game does not report your play sessions, events, or behaviour to us or to any analytics provider.</li>
+    <li><strong>No third-party analytics provider.</strong> The gameplay statistics in §2 are collected by our own server and go nowhere else. There is no Google Analytics, no Firebase, no advertising SDK and no third-party tracking script anywhere in the game.</li>
     <li><strong>No advertising identifier and no cross-site tracking.</strong> We do not build a profile of you and do not track you across other sites or apps.</li>
+    <li><strong>No sale or sharing of your data</strong>, for any purpose.</li>
+    <li><strong>No free text.</strong> The events in §2 are a fixed list of names and numbers. Nothing you type is collected, and the game has no chat.</li>
     <li><strong>No payment data.</strong> See §5.</li>
   </ul>
 
   <h2>4. Local Storage in Your Browser</h2>
-  <p>The game stores a small amount of data in your browser's local storage rather than in cookies. There are three items, and you can clear them at any time through your browser's site-data controls:</p>
+  <p>The game stores a small amount of data in your browser's local storage rather than in cookies. There are four items, and you can clear them at any time through your browser's site-data controls:</p>
   <ul>
     <li><code>daydayup.session.v1</code> — your session token, if you are signed in</li>
     <li><code>daydayup.settings.v1</code> — your settings, such as volume and language</li>
     <li><code>daydayup.meta.v1</code> — your local progress</li>
+    <li><code>daydayup.playerId.v1</code> — a random installation id, created by your browser. It identifies this installation of the game to itself: it is how a guest is recognised in multiplayer, and it is the id attached to the gameplay statistics in §2. Clearing it makes this browser a new installation as far as we are concerned.</li>
   </ul>
   <p>These keys carry the project's original working name, which is why they do not match the game's title. We use no third-party tracking cookies.</p>
   <p>On a game portal the game runs inside an embedded frame, and some browsers block storage for embedded content. If that happens, a guest's progress simply does not persist between sessions; nothing breaks, and a signed-in player is unaffected because their progress is held on our server.</p>
@@ -101,10 +117,18 @@
 
   <h2>8. Data Retention</h2>
   <p>Account data and game state are kept for as long as your account exists, and are deleted when you ask us to delete the account. Server logs containing technical data are short-lived and kept only as long as needed for security and debugging. Because we take no payments, we hold no transaction records and are under no accounting-law obligation to retain them.</p>
+  <p>The gameplay statistics and error reports in §2 have their own fixed limits, and these are limits the software deletes on rather than intentions we hold:</p>
+  <ul>
+    <li><strong>Individual gameplay events: 90 days</strong>, then deleted.</li>
+    <li><strong>The day-level record that an installation was active: 180 days</strong>, then deleted. That record is one installation id and one date, with no event detail, and it is what return rates are computed from. 180 days is what a full three-month return curve needs, and nothing is kept past it.</li>
+    <li><strong>Error reports: 14 days</strong>, then deleted.</li>
+    <li><strong>Day-level totals</strong> — how many installations played on a given day, how many runs were started — are kept without a time limit. These are aggregate counts only: no id of any kind is part of them, and no individual can be identified from them.</li>
+  </ul>
 
   <h2>9. Your Rights (GDPR)</h2>
   <p>You have the right to access your data, correct inaccurate data, erase your data ("right to be forgotten"), restrict or object to processing, and receive your data in a portable form. To exercise any of these, email <a href="mailto:support@gamestao.com">support@gamestao.com</a>. We will respond within 30 days, free of charge.</p>
   <p>You also have the right to lodge a complaint with your local data protection authority.</p>
+  <p>For the two rows in §2 that do not need an account, what we can do depends on whether you have one, and the reason is worth stating plainly. <strong>If you are signed in</strong>, those records carry your account id, so they are found and deleted with the rest of your account data. <strong>If you play as a guest</strong>, they carry only the random installation id from §4 — which exists solely in your own browser, is not linked to your name, your email or anything else we hold, and which we therefore have no way to look up on your behalf. Clearing that key (or your site data) is the remedy that actually works, and it is one only you can apply. We would rather say this than imply we can identify a guest.</p>
 
   <h2>10. Children</h2>
   <p>We do not knowingly collect personal data from children under 13. Because an account is optional and no email address is ever collected, a child can play the game without providing any personal data to us at all. If you believe a child has given us personal data, contact us and we will delete it promptly.</p>

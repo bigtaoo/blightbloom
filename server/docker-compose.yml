@@ -87,6 +87,13 @@ services:
       BB_GAMESERVER_URL: wss://bb.gamestao.com/ws
       BB_BILLSVC_URL: http://billsvc:8789
       BB_DB_PATH: /data/accounts.db
+      # Analytics (design/21 §2.4). SETTING this is what switches collection on: matchsvc
+      # has no default path for it, deliberately, because an implicit default would collect
+      # into a file the backup service below does not know about — and "collected" and
+      # "backed up" would then be two conditions that can quietly disagree. Beside
+      # accounts.db on the same mount, so one volume covers both and a snapshot of the box
+      # holds a consistent pair.
+      BB_ANALYTICS_DB_PATH: /data/analytics.db
     volumes:
       - ./data/matchsvc:/data
     expose:
@@ -171,6 +178,11 @@ services:
       # explains why), pointed at this container's read-only mounts.
       BB_DB_PATH: /sources/matchsvc/accounts.db
       BB_BILLING_DB_PATH: /sources/billsvc/billing.db
+      # The third source. Its loss is survivable where the other two are not — analytics can
+      # be re-collected and identity cannot — so it is here for the reason the alternative is
+      # worse: a per-source exception costs a special case in `prunable`, in the health
+      # arithmetic and in this file, and buys back a few kilobytes a day.
+      BB_ANALYTICS_DB_PATH: /sources/matchsvc/analytics.db
       BB_BACKUP_DIR: /backups
       BB_BACKUP_INTERVAL_HOURS: "24"
       BB_BACKUP_KEEP: "14"

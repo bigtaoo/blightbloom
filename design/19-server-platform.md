@@ -584,6 +584,18 @@ form), not a method.
   list above is a TABLE for that reason, not a dashboard: `review_queue` in billsvc's own file,
   worked at a `sqlite3` prompt.
 
+  > **SUPERSEDED 2026-09-09 by `design/21-ops-analytics.md`** — and NOT by the trigger this
+  > bullet named. No refund has arrived; what arrived is a need to measure retention and to look
+  > at a player without an SSH session. A console is designed (§3 there) as a fifth process with
+  > `readOnly: true` handles.
+  >
+  > **The requirement above survives intact, and design/21 leans on it rather than replacing
+  > it.** Its decision B2 — the publicly exposed console is read-only over player data, and every
+  > player-data mutation stays a CLI script run on the box — is only proportionate *because* the
+  > schema is hand-correctable with SQL. So this bullet's actual content became load-bearing at
+  > the moment its conclusion stopped being. What did change is the sentence "no admin service":
+  > read design/21 §6 for the eight things funny's admin has that are still deliberately absent.
+
 Five things the plan above did not say, each because it only appears once the code is real.
 
 **AMENDMENT 1: `${txnId}:${eventType}` needs two fallbacks, and they are not a detail.** A
@@ -931,6 +943,16 @@ a device-context envelope and a localStorage crash sentinel. Neither is ported w
   credentials. The client is on `b.gamestao.com` and this server on `bb.gamestao.com`, so
   every send is cross-origin. Getting it wrong makes the exit flush silently never land,
   which is precisely the report you most wanted.
+
+  > **Amended 2026-09-09 (design/21 Phase A), and it is the other half of this same bullet.**
+  > `keepalive` protects a request the page has already STARTED — it does nothing for a request
+  > still waiting on a CORS PREFLIGHT. The shared `CORS` block in `routes/http.ts` set no
+  > `access-control-max-age`, so a browser cached no preflight and every flush was an `OPTIONS`
+  > followed by a `POST`: observed one-for-one in live traffic. On the exit path that is two
+  > sequential round trips behind an unloading document, which is the same failure this bullet
+  > exists to prevent, reached a different way. `access-control-max-age: 600` fixed it — verified
+  > live as one preflight for three POSTs — and every other route on this server gets the same
+  > saving, since the block is shared.
 - **The heartbeat is ported**, and is more load-bearing here than its five lines suggest:
   an idle log store and a broken one draw the same empty dashboard. funny ran for months in
   exactly that state. Every process logs `heartbeat` once at start and every five minutes,

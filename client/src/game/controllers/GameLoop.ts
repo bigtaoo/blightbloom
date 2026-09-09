@@ -25,6 +25,7 @@ import { updateCheckpointOverlays } from './checkpointOverlays';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
 import { applyPowerBudget, type FrameRateLike, type WorldLayerLike } from '../powerBudget';
+import { reportFrame, trackedRunFrom } from '../analyticsTracking';
 
 const SIM_DT_MS = 1000 / 30; // fixed sim step: the engine runs at 30 Hz (design/06)
 const MAX_STEPS = 5; // catch-up cap per render frame → no spiral of death
@@ -162,6 +163,12 @@ export class GameLoop {
     // and is not drawn, and the render rate is capped so a 120 Hz panel does not spend twice
     // the battery on a 30 Hz sim. `powerBudget.ts` holds the measurement and the reasoning.
     applyPowerBudget(phase, this.deps.world, this.deps.ticker);
+    // `screen_view`, `run_start` and the abandon half of `run_end`, all DERIVED from the
+    // phase change rather than announced from the fifteen places that write it — the same
+    // argument the line above already relies on, spelled out in `analyticsTracking.ts`. A
+    // no-op until an entry point installs analytics, so it costs one comparison per frame in
+    // a test, in a tool and in the WeChat build (which installs none, on purpose).
+    reportFrame(phase, trackedRunFrom(this.host.activeState(), this.host.localOwner));
     // Music (design/11), before the branch so it runs in EVERY phase — the menu bed is as much
     // a case as the dungeon one. `musicDirector` derives the track from the situation and
     // setting the one already playing is a no-op, so there is no transition to detect here and

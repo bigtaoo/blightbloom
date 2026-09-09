@@ -16,6 +16,8 @@ import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog } from './net/clientLogInstall';
+import { installAnalytics } from './net/analyticsInstall';
+import { getLocale } from './i18n';
 import { getSession } from './net/session';
 import { PortalAuth } from './platform/crazygames/portalAuth';
 import { PortalRooms } from './platform/crazygames/PortalRooms';
@@ -85,6 +87,28 @@ async function boot() {
     // `autoReload`s `/version.json` is absolute, so it 404s — a getter would report
     // `unknown` just as clearly while implying a source exists. design/20s no-self-managed-
     // reload rule is why that was never fixed for the portal.
+  });
+
+  // Analytics (design/21 §2.6). Installed here and NOT on the WeChat entry, and the
+  // difference is whether the install id can persist: this is an ordinary browser, so
+  // `localStorage` is there and the id survives a visit.
+  //
+  // The caveat that does apply here, stated because it inflates a number rather than
+  // emptying one: the game runs in an EMBEDDED frame, and some browsers block storage for
+  // embedded content (the same fact `client/public/privacy.html` §4 already tells players,
+  // where it explains why a guest's progress may not persist). For such a viewer the id is
+  // per-visit, so they count as a new install each time — DAU on this host reads slightly
+  // high and their retention reads as churn. It is a fraction of viewers rather than all of
+  // them, which is what separates this from the WeChat case.
+  //
+  // `build` is null for the reason the logger's `version` is absent above: this build is
+  // served from a sub-path and the version manifest is fetched from an absolute path.
+  installAnalytics({
+    baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
+    token: () => getSession()?.token ?? null,
+    host: 'crazygames',
+    build: () => null,
+    locale: getLocale,
   });
 
   // (3a) Announce the download. The SDK measures the span from page open to the first

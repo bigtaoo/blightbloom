@@ -11,15 +11,29 @@ import { readBackupConfig, BackupConfigError, SOURCE_VARS } from '../src/backup/
 const base = { BB_DB_PATH: '/sources/matchsvc/accounts.db' };
 
 describe('readBackupConfig — sources', () => {
-  it('takes both databases, in declaration order, from the owning services’ own var names', () => {
+  it('takes every database, in declaration order, from the owning services’ own var names', () => {
     const cfg = readBackupConfig({
       BB_DB_PATH: '/sources/matchsvc/accounts.db',
       BB_BILLING_DB_PATH: '/sources/billsvc/billing.db',
+      BB_ANALYTICS_DB_PATH: '/sources/matchsvc/analytics.db',
     });
-    expect(cfg.sources).toEqual(['/sources/matchsvc/accounts.db', '/sources/billsvc/billing.db']);
+    expect(cfg.sources).toEqual([
+      '/sources/matchsvc/accounts.db',
+      '/sources/billsvc/billing.db',
+      '/sources/matchsvc/analytics.db',
+    ]);
     // The names are shared with matchsvc/billsvc on purpose; a rename there must not leave
     // this worker backing up a path nobody writes to any more.
-    expect(SOURCE_VARS).toEqual(['BB_DB_PATH', 'BB_BILLING_DB_PATH']);
+    expect(SOURCE_VARS).toEqual(['BB_DB_PATH', 'BB_BILLING_DB_PATH', 'BB_ANALYTICS_DB_PATH']);
+  });
+
+  it('keeps working when a source var is not set at all, which is how one is added', () => {
+    // design/21 §2.4 adds the analytics database to this list before compose sets its var.
+    // A worker that refused an unset member of SOURCE_VARS would turn "a new source is
+    // being introduced" into "no backups at all" — the exact failure this worker exists to
+    // prevent, arriving through its own configuration.
+    const cfg = readBackupConfig({ BB_DB_PATH: '/a.db', BB_BILLING_DB_PATH: '/b.db' });
+    expect(cfg.sources).toEqual(['/a.db', '/b.db']);
   });
 
   it('accepts either one alone — billing exists before accounts does not', () => {

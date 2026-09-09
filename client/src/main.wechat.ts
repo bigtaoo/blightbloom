@@ -28,6 +28,29 @@ async function boot() {
   // is the build-time default with no query override; `parseGameQueryParams` is a web thing.
   installClientLog({ baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }), token: () => getSession()?.token ?? null });
 
+  // ANALYTICS IS DELIBERATELY NOT INSTALLED HERE (design/21 §9).
+  //
+  // Not caution, and not "later" — installing it would produce numbers that are WRONG in a
+  // way a dashboard cannot show. Every analytics row is keyed by an install id from
+  // `net/identity.ts`, which persists through `createWebIdentityStore` — and that reads
+  // `localStorage`, a global this shell does not have. The store's `available` check is
+  // therefore false on every boot, `load()` answers null, `save()` is a no-op, and a FRESH
+  // id is minted per visit.
+  //
+  // The consequence is asymmetric and that is what decides it. Retention would read 0%
+  // rather than being absent, which is bad; but DAU would read the number of VISITS while
+  // being labelled distinct installs, which is worse — a plausible number nobody would
+  // question. No data beats wrong data, so this host sends none.
+  //
+  // What it needs is not an analytics change: `IdentityStore` is already the seam, and a
+  // `wx.getStorageSync`/`setStorageSync` implementation of it would fix this, the meta save
+  // (`meta/store.ts`'s own header says the same adapter is "a later platform impl", and a
+  // WeChat guest's progress does not survive a reload today either) and the settings store
+  // in one go. Adding one line here once that exists is the whole change.
+  //
+  // Client LOGGING above is unaffected: it keys on a per-visit session id by design and
+  // never needed a persistent one.
+
   const platform = new WeChatPlatform();
   const app = await platform.createApp();
   // Same measure-canvas/paint-canvas pinning as the web entry (render/textMetrics.ts), but it

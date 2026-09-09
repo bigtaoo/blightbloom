@@ -29,6 +29,24 @@ export const CORS = {
   // log at all — caught live via claude-in-chrome, not by any unit test, since node's
   // fetch/undici and curl don't enforce browser CORS preflight rules).
   'access-control-allow-headers': 'content-type, authorization',
+  /**
+   * How long a browser may reuse this preflight result. Found live, 2026-09-09: every
+   * `POST /client/events` in a real session was preceded by its own `OPTIONS`, because
+   * without this header the result is not cached at all.
+   *
+   * It matters for one request in particular and it is the one that cannot be retried. The
+   * telemetry routes flush on `pagehide`, which is why they use `fetch(keepalive)` — but
+   * `keepalive` protects the request the page has already STARTED, and an uncached preflight
+   * makes the exit flush two sequential round trips with an unloading document behind them.
+   * A cached preflight makes it one. That is precisely the `session_end` half of the churn
+   * funnel, and `funny` lost every one of those events to the same class of mistake.
+   *
+   * 600s rather than longer: browsers cap it anyway (Chrome at 2h) and a shorter window
+   * costs one preflight every ten minutes while keeping a changed CORS policy from being
+   * remembered for a day. Every route shares the block, so the login and store routes get
+   * the same saving.
+   */
+  'access-control-max-age': '600',
 };
 
 export function send(res: ServerResponse, status: number, body: unknown): void {

@@ -31,7 +31,7 @@ export class BackupConfigError extends Error {
  * names its sources independently is a job that keeps backing up the old path after a
  * move, and the compose file would then carry two spellings of one fact.
  */
-export const SOURCE_VARS = ['BB_DB_PATH', 'BB_BILLING_DB_PATH'] as const;
+export const SOURCE_VARS = ['BB_DB_PATH', 'BB_BILLING_DB_PATH', 'BB_ANALYTICS_DB_PATH'] as const;
 
 const DEFAULT_DEST = '/backups';
 const DEFAULT_INTERVAL_HOURS = 24;

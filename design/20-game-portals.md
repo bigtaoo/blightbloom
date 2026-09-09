@@ -451,6 +451,19 @@ exists.
   `/store/skus` needs a session, so nothing can be bought), ads are portal-only and
   player-initiated, and an account is optional — so a guest's data never leaves the browser,
   which is the strongest thing either document has to say.
+
+  > **Superseded 2026-09-09, two clauses of it (design/21-ops-analytics.md §5).** The
+  > paragraph above is kept as written because it records why the documents say what they
+  > say. Two of its premises have since stopped holding: **analytics and telemetry now exist**
+  > (a log store, and the retention instrumentation of design/21 Phase A), and therefore **a
+  > guest's data does leave the browser** — anonymous gameplay events and error reports do,
+  > which is the whole point of measuring retention, since a guest is who retention is about.
+  > `client/public/privacy.html` is the authority on what is collected and was rewritten in
+  > the same pass; the other three clauses (no email, no payment processor, portal-only
+  > player-initiated ads) are still true. **A data declaration on the portal's own side was
+  > made from the same premise and has to be revisited** — it is filed in design/21 §5 rather
+  > than here, because it is now one item on a list of consequences rather than a portal
+  > detail.
 - **The upload itself**, its store listing, thumbnails and the review round trip.
 - **`SDK.game.addJoinRoomListener` is not used.** v3 has it (v2 did not), and it is the platform
   PUSHING a join into a running game rather than the game reading an invite parameter at boot —

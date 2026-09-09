@@ -2,7 +2,8 @@
 
 Ported from the sibling project `funny` (`client/src/cache/PerfMonitor.ts` +
 `client/src/cache/MemoryMonitor.ts`), adapted to this client's Pixi v8 renderer and to the
-fact that daydayup has no telemetry backend to send findings to.
+fact that, when this was ported, daydayup had no telemetry backend to send findings to. **It
+has since 2026-09-09** — see the amendment under *How funny's version was changed*.
 
 ## What it is
 
@@ -65,10 +66,20 @@ localStorage.setItem('daydayup.perf.busyWarn', '0.3') // long-task busy ratio
 
 ## How funny's version was changed, and why
 
-1. **No telemetry sink.** funny's monitors exist to file `reportAnomaly` events to Loki so a
-   slow client in the field is visible without a repro. daydayup has no such channel, so a
-   breach goes to `console.warn` and to the overlay. `onWarn` / `onSnapshot` are the seams
-   where a backend would attach later.
+1. **No telemetry sink** — true when ported, **no longer true since 2026-09-09.** funny's
+   monitors exist to file `reportAnomaly` events to Loki so a slow client in the field is
+   visible without a repro; daydayup had no such channel, so a breach goes to `console.warn`
+   and to the overlay, with `onWarn` / `onSnapshot` left as the seams where a backend would
+   attach later.
+
+   Two channels now exist and **neither is wired up here yet**, which is a to-do rather than a
+   decision. `console.warn` is already captured by the client logger (design/19 §10 wraps the
+   console, so a breach DOES reach the log store today — as a log line, not as a metric). And
+   `client/src/net/analytics.ts` (design/21) is the typed channel a `perf_breach` event would
+   belong on. What has to be decided before adding one is the thing the vocabulary is strict
+   about: an event carries a closed set of capped fields, so "which quality tier, which host,
+   which half of the frame" has to be expressible in a few enumerated values rather than a
+   free-form snapshot. Until then the seams are still seams.
 2. **The frame is split into update vs render.** funny reports a single fps number; here
    every sample also carries the CPU cost of the game's own update and of
    `renderer.render`, so a report says *which half* to look at. Done by bracketing the

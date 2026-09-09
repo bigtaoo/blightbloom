@@ -4,6 +4,7 @@ import { t } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
+import { track } from '../../net/analytics';
 import type { ResultOffer } from '../screens/Screens';
 
 /** The bits of Game a run-outcome reaction needs — score/meta/phase/screen are all
@@ -77,6 +78,17 @@ export class RunOutcome {
     // needed the same answer and had been guessing), the second is the arena/PvE split
     // below, which only picks the copy — placement text or floor/materials text.
     const won = localSeatWon(s, this.host.localOwner, s.winner);
+    // `run_end` for a run that actually ENDED, reported here rather than in the four
+    // branches below because this is the one place that knows `won` before the arena/PvE
+    // split picks which copy to show — and one call cannot disagree with itself about the
+    // outcome the way four could. The abandon case is NOT here: it has no gameover state to
+    // reach this method with, and is detected from the phase change instead
+    // (`analyticsTracking.ts`).
+    track('run_end', {
+      outcome: won ? 'win' : 'loss',
+      floor: s.floorIndex + 1,
+      duration_s: Math.max(0, Math.floor(s.tick / TICK_RATE)),
+    });
     if (s.zoneEnabled) {
       if (won) this.winArena(s);
       else this.loseArena(s);
@@ -138,10 +150,18 @@ export class RunOutcome {
   ): ResultOffer | null {
     const ad = rewardedAd();
     if (ad === null || !ad.available() || this.host.isOnline() || carried <= 0) return null;
+    // AFTER the four refusals, so `ad_offer_shown` counts offers a player could actually
+    // see. Reporting it before them would make the take-up rate a fraction of a denominator
+    // that includes every run on a platform with no ads at all.
+    track('ad_offer_shown');
     return {
       label: t('results.doubleMaterialsButton'),
       claim: async () => {
+        // `ad.show()` resolves false for an unfilled ad — no inventory, or the player closed
+        // it early. `ad_completed` is therefore the reward being earned, not the button being
+        // pressed, which is the only version of the number worth having.
         if (!(await ad.show())) return lines(t('results.adNotFilled', { count: carried }));
+        track('ad_completed');
         this.host.bankRunMaterials(s);
         return lines(t('results.materialsDoubled', { count: carried * 2 }));
       },
