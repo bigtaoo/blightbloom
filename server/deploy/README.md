@@ -11,15 +11,21 @@
 > that went green (build → SSH deploy → public health check). Push-to-`main` deploys are
 > now live. The only thing left is Paddle (§7), which is not an engineering task at all.
 >
-> **What has landed since, and what has NOT.** The deployed set grew past the three
-> containers this box started with: the backup worker (2026-09-07), the four `obs-*`
-> observability images (2026-09-09) and analytics collection on matchsvc (2026-09-09) are
-> all live. **`adminsvc` — the ops console at `/admin/` — is built and gated but NOT
-> deployed**: it needs `BB_ADMIN_PASSWORD` in `.env` and the `/admin*` Caddy block, both
-> §2, and until then the checklist rows for it in §4 are unchecked on purpose. This
-> paragraph exists because the count above is the first thing anybody reads, and it was
-> already wrong twice before it was wrong a third time — so it now says "every" and the
-> current membership is listed here instead.
+> **What has landed since.** The deployed set grew past the three containers this box
+> started with: the backup worker (2026-09-07), the four `obs-*` observability images
+> (2026-09-09), analytics collection on matchsvc (2026-09-09) and — as of **2026-09-09** —
+> **`adminsvc`, the ops console at `/admin/`**, are all live. Nine containers. Every §4 row
+> has been walked against the live deploy, including the console's own and the four
+> `GET /client/flags` rows. This paragraph exists because the count above is the first thing
+> anybody reads, and it was already wrong twice before it was wrong a third time — so it now
+> says "every" and the current membership is listed here instead.
+>
+> **Three hand steps preceded that deploy, not two** (§2). `BB_ADMIN_PASSWORD` and the
+> `/admin*` Caddy block were the two this file already named. The third is
+> re-installing `~/wnet-test-ci-deploy.sh`, and skipping it is not cosmetic: the live copy
+> had no `dist/adminsvc.mjs` in its payload check, no `data/adminsvc` in its ownership loop
+> and no adminsvc health probe, so the deploy would have created that bind-mount source
+> `root:root` and reproduced 2026-09-08's silent-backup failure exactly. See §6.
 >
 > One thing worth knowing for next time: Caddy attempted the ACME challenge the instant
 > the Caddyfile was reloaded, *before* the DNS record actually existed — that attempt
@@ -259,6 +265,33 @@ not a secret, and the password is the whole credential.
 `ci-deploy.sh` checks for BOTH by name and fails the deploy with that explanation rather
 than letting compose's own "required variable is not set" be the only clue.
 
+#### ...and the THIRD hand step: re-install `~/wnet-test-ci-deploy.sh`
+
+The live script is hand-installed by design (§6 — the CI key must not be able to rewrite
+its own forced command), so **editing the repo copy does nothing and CI going green is not
+evidence the new check ran**. That is not a general caution: on 2026-09-09 the live copy
+predated adminsvc entirely — no `dist/adminsvc.mjs` in the payload check, no
+`data/adminsvc` in the ownership loop, no `adminsvc:8790:/admin/health` in the health loop
+— so the deploy would have let compose create that bind-mount source `root:root` and
+reproduced 2026-09-08's 18 hours of silent EACCES, with CI reporting success. Same failure
+class as the backup guard that shipped only to the repo.
+
+```bash
+# install (LF only — the worktree holds CRLF under core.autocrlf, and a CRLF shell script
+# dies on the box with `$'': command not found`)
+tr -d '' < server/deploy/ci-deploy.sh | ssh wnet-server   "cat > ~/wnet-test-ci-deploy.sh && chmod 700 ~/wnet-test-ci-deploy.sh && bash -n ~/wnet-test-ci-deploy.sh"
+# then prove it, which is the standing check before believing anything about a deploy step
+ssh wnet-server 'cat ~/wnet-test-ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
+```
+
+**And a NEW state dir under `data/` cannot be created by the deploy user at all.**
+`~/wnet-test/data` is uid-1000-owned (container `node` == host `elkadmin`) while the deploy
+account `tao` is 1001, so the script's own `mkdir -p` — a silent no-op for the dirs that
+already existed — failed hard on `data/adminsvc` with `Permission denied` and aborted the
+deploy before compose ran. Fixed in `ci-deploy.sh`: creation falls back to a root container
+mounting the parent, and only on that path. Nothing to do by hand, but if a future service
+adds a state dir and the deploy dies there, this is why.
+
 **First read the file, because this snippet APPENDS a whole site block.** It is written for
 the first-time setup, and it has been edited in place twice since (Grafana, then `/admin*`) —
 so if a `bb.gamestao.com { … }` block is already there, running it verbatim adds a SECOND
@@ -276,6 +309,62 @@ ssh wnet-server 'grep -n "bb.gamestao.com" -A 20 ~/wnet/docker/Caddyfile'
   is the catch-all, and `handle` is first-match, so anything after it is unreachable. This is
   design/21 §3.4's named trap, and getting it wrong is not an error — it is the console's page
   answered by matchsvc's 404 handler, i.e. a blank page with a 200.
+
+#### The Caddyfile is a FILE bind mount, so HOW you edit it decides whether it lands
+
+This cost a full diagnosis on 2026-09-09 and it looks like success the whole way through.
+`docker inspect docker-caddy-1` shows the mount as
+`/home/tao/wnet/docker/Caddyfile -> /etc/caddy/Caddyfile`: a single **file**, so the mount
+is bound to that file's **inode**, not to its path. Any editor that writes a new file and
+renames it over the old one — `mv new Caddyfile`, and `sed -i`, which does exactly that
+internally — leaves the host path pointing at a NEW inode while the container keeps the
+OLD one. The host file is then correct, and:
+
+- `docker exec docker-caddy-1 caddy validate --config /etc/caddy/Caddyfile` reads the OLD
+  inode and says **Valid configuration**,
+- `caddy reload --config /etc/caddy/Caddyfile` reloads the OLD config and logs
+  `adapted config to JSON`,
+- and `/admin/` is answered by matchsvc's 404 handler — `{"error":"not found"}`,
+  byte-identical to the catch-all's own 404, which is the trap two sections up wearing a
+  different hat.
+
+Every command reports success and the config never changed. Compare the two inodes to see
+it, which is also the only check that actually proves a Caddyfile edit reached Caddy:
+
+```bash
+ssh wnet-server 'stat -c "host %i" ~/wnet/docker/Caddyfile; docker exec docker-caddy-1 stat -c "container %i" /etc/caddy/Caddyfile'
+```
+
+**So edit IN PLACE and keep the inode**: `cat >> Caddyfile` (what the snippet below does,
+which is why the Grafana pass worked), or `cp new Caddyfile` — never `mv` over it, never
+`sed -i`. `cp` and `>>` both truncate/append through the existing inode.
+
+**If you already replaced it**, the container's mount is read-only so you cannot write
+back through it, and the old inode has no name left on the host — there is nothing to
+repair. Two ways out:
+
+```bash
+# Zero downtime: load the correct file through the admin API from a path you CAN write.
+ssh wnet-server 'docker cp ~/wnet/docker/Caddyfile docker-caddy-1:/tmp/Caddyfile.new   && docker exec docker-caddy-1 caddy validate --config /tmp/Caddyfile.new --adapter caddyfile   && docker exec docker-caddy-1 caddy reload --config /tmp/Caddyfile.new --adapter caddyfile'
+```
+
+That fixes routing immediately and is what was done on 2026-09-09. It leaves ONE landmine:
+the container's `/etc/caddy/Caddyfile` is still the stale inode, so the next person who
+reloads from that path silently reverts whatever the file gained since. `docker restart
+docker-caddy-1` re-resolves the bind mount to the host path and collapses the split
+permanently — correct, but it is the company's shared proxy fronting `wnet-mock.elk.de`,
+the IP/hostname device block and `sync.gamestao.com`, so it costs all of them a second of
+downtime. Prefer it at a moment somebody has agreed to.
+
+After any reload, check the neighbours rather than just your own site — a reload replaces
+the WHOLE config, so a mistake takes their sites with it, from inside the box so the
+self-signed device cert does not confuse the result:
+
+```bash
+ssh wnet-server 'for h in wnet-mock.elk.de wnet-server sync.gamestao.com bb.gamestao.com; do
+  printf "%s " "$h"; curl -sk -o /dev/null -w "%{http_code}
+" --resolve "$h:443:127.0.0.1" "https://$h/"; done'
+```
 
 Same backup-append-validate-reload sequence deutsch's README uses (`reload`, not
 `restart` — the wnet stack's own connections stay up):
@@ -324,40 +413,53 @@ instead of silently trying `localhost:8788` and failing with no visible error.
 
 ## 4. Acceptance checklist
 
-- [ ] `curl https://bb.gamestao.com/health` → `{"ok":true,"service":"daydayup-matchsvc"}`,
+**Walked end to end against the live deploy on 2026-09-09**, every row, after adminsvc
+landed. Two rows failed on the first pass and both are recorded where they belong rather
+than only here: `/admin/` was answered by matchsvc's 404 handler (§2 — the Caddyfile is a
+file bind mount and `mv` over it changes the inode, so `validate` and `reload` both read
+the stale file and reported success), and the `cache-control` sub-row below asked for a
+`curl -sI` that cannot pass.
+
+- [x] `curl https://bb.gamestao.com/health` → `{"ok":true,"service":"daydayup-matchsvc"}`,
       cert issued by Let's Encrypt
-- [ ] A WS client can open `wss://bb.gamestao.com/ws?ticket=...` and receive frames
-- [ ] `docker compose logs billsvc` shows `devStub=true` — confirms billsvc is NOT
+- [x] A WS client can open `wss://bb.gamestao.com/ws?ticket=...` and receive frames
+- [x] `docker compose logs billsvc` shows `devStub=true` — confirms billsvc is NOT
       accidentally in production mode. (It was a bracketed `[DEV RECEIPT STUB ENABLED]`
       banner until the structured logger landed 2026-09-09; it is a logfmt FIELD now, which
       is the point — a marker buried in prose cannot be queried, and "was the store real on
       the day of that order?" is asked months after the log line has rotated away.)
-- [ ] `docker inspect wnet-test-billsvc --format '{{.Config.Env}}'` does **not** show
+- [x] `docker inspect wnet-test-billsvc --format '{{.Config.Env}}'` does **not** show
       `NODE_ENV=production` (that combination is refused at the process level, but the
       compose file should never even attempt it)
-- [ ] A `/store/skus` request through matchsvc returns the SKU table (proves the
+- [x] A `/store/skus` request through matchsvc returns the SKU table (proves the
       matchsvc → billsvc internal hop works even with billsvc in dev-stub mode)
-- [ ] `https://bb.gamestao.com/grafana/` shows the login page, and `admin` +
+- [x] `https://bb.gamestao.com/grafana/` shows the login page, and `admin` +
       `BB_GRAFANA_ADMIN_PASSWORD` gets in
-- [ ] `https://bb.gamestao.com/admin/` shows the ops console's login page — NOT matchsvc's
+- [x] `https://bb.gamestao.com/admin/` shows the ops console's login page — NOT matchsvc's
       404 JSON, which would mean the `/admin*` `handle` block is missing or lost to the
       catch-all — and `admin` + `BB_ADMIN_PASSWORD` gets in
-- [ ] Signed in, all three tabs answer: **Players** lists accounts, **Commerce** shows the
-      review queue and the webhook log, **Retention** shows the cohort grid. Retention says
+- [x] Signed in, all **four** tabs answer: **Players** lists accounts, **Commerce** shows the
+      review queue and the webhook log, **Retention** shows the cohort grid, and **Flags** shows
+      the switches. (This row said "three" until 2026-09-09 — the Flags tab arrived with
+      design/21 §4 and the row that verifies the console did not learn about it, so a missing
+      fourth tab was a thing nobody was looking for.) Retention says
       "No rollup rows for any day" until a complete day has been rolled up; that is the
       correct empty state and it prints the row count so it can be told from a broken reader
-- [ ] `curl -s https://bb.gamestao.com/admin/health` returns a **404** — like `/metrics`,
-      the console's health route must not be public
-- [ ] `docker compose logs adminsvc | grep 'ops console listening'` shows
+- [x] `curl -s https://bb.gamestao.com/admin/health` returns a **404** — like `/metrics`,
+      the console's health route must not be public. **Check this row AFTER the one above it**,
+      not before: a missing `/admin*` Caddy block also returns 404 here, with the identical
+      `{"error":"not found"}` body, so on its own this row passes for the wrong reason. The
+      row above is what proves the prefix reaches adminsvc at all
+- [x] `docker compose logs adminsvc | grep 'ops console listening'` shows
       `accounts=true billing=true analytics=true readOnly=true`. Any `false` is a path that
       does not exist, and that tab reads "Unavailable" with the reason on it
-- [ ] In Grafana, **Backend — logs** shows a heartbeat line for all five services within
+- [x] In Grafana, **Backend — logs** shows a heartbeat line for all five services within
       five minutes, and **Server status** shows every scrape target `up`
-- [ ] Open the game, force an error in its console, and it appears in **Client — browser
+- [x] Open the game, force an error in its console, and it appears in **Client — browser
       logs** within ~30 seconds (§8 has the one-liner)
-- [ ] `curl -s https://bb.gamestao.com/metrics` returns a **404** — the metrics endpoint
+- [x] `curl -s https://bb.gamestao.com/metrics` returns a **404** — the metrics endpoint
       must not be public (it is reachable only over the compose network)
-- [ ] `curl -s https://bb.gamestao.com/client/flags` returns
+- [x] `curl -s https://bb.gamestao.com/client/flags` returns
       `{"flags":{"ads.rewardedOfferEnabled":true,"ui.maintenanceBanner":""}}` — the public
       flag route (design/21 §4). Three things to actually check in that output, because it is
       the one route on this host that is *supposed* to be readable by anybody:
@@ -367,13 +469,25 @@ instead of silently trying `localhost:8788` and failing with no visible error.
     - **A 200, not a 404.** Unlike `/metrics` and `/admin/health` above, this one MUST be
       public, so it is the one row in this list where a 404 is the failure. It is served by
       matchsvc under the catch-all, so no Caddy block is needed for it.
-    - **`cache-control: no-store`** (`curl -sI`). A cached copy anywhere makes a flipped flag
-      take effect at some unpredictable later time, which is the failure mode that gets
-      reported as "the console does nothing".
-- [ ] Set `ui.maintenanceBanner` in the console, wait a minute, and `curl` the route again —
+    - **`cache-control: no-store`** — read it off the **GET** with `curl -sD - -o /dev/null`,
+      NOT with `curl -sI`. matchsvc routes on `req.method === 'GET'`, so a HEAD request falls
+      through to the catch-all and returns **404** — this row's own stated failure, produced by
+      the command this row used to recommend. A cached copy anywhere makes a flipped flag take
+      effect at some unpredictable later time, which is the failure mode that gets reported as
+      "the console does nothing".
+- [x] Set `ui.maintenanceBanner` in the console, wait a minute, and `curl` the route again —
       the value should be there. Then load the game and confirm the notice appears above the
       main menu. **Clear it afterwards**: it is shown to every player on every host.
       Services poll every 60s and browsers every 5 minutes, so allow for both.
+
+
+**One artifact of walking this list**: rows 2 and 5 (a WS ticket, and `/store/skus`) both
+need a real session, so the 2026-09-09 pass registered account `acc_check_0909` through
+`POST /auth/register`. It is still there — it is the only row in `accounts.db`, and it is
+what makes the console's Players tab show something rather than an empty state. Removing it
+is a write to player data, which by design neither the console nor the deploy key can do:
+it needs a CLI script on the box (§5). Left deliberately rather than quietly, because a
+leftover test account that nobody wrote down is indistinguishable from a real one.
 
 ## 5. Ops
 

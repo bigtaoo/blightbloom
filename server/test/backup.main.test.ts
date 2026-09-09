@@ -170,9 +170,9 @@ describe('runForever pacing', () => {
   function flakyIo(failFor: number, log: string[] = []): CycleIo {
     let n = 0;
     return {
-      snapshot: (source, _destDir, at) => {
+      snapshot: (source, destDir, at) => {
         if (n++ < failFor) throw new Error('unable to open database file');
-        return { file: `accounts-${at.toISOString()}.db.gz`, bytes: 10, rawBytes: 100 };
+        return { source, file: `${destDir}/accounts-${at.toISOString()}.db.gz`, bytes: 10, rawBytes: 100 };
       },
       list: () => [],
       remove: () => {},
