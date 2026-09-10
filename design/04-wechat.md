@@ -311,7 +311,8 @@ math (`show(w, h)` / `render(meta, w, h)`) received it verbatim.
 Measured minimum heights of the shipped layouts at the time (via
 `client/src/game/screens/viewportFit.test.ts`'s own sweep): Forge 540 — 570 to also clear
 its fixed bottom action bar — Settings 485, LoginScreen 405, PvpPreview/PartyScreen 400,
-ModeSelect 380, Screens 370, MainMenu 330. Every one of them overflows 390; the Forge
+ModeSelect 380 (that screen is gone since 2026-09-10 — its routes are rows in the menu,
+which grew accordingly), Screens 370, MainMenu 330. Every one of them overflows 390; the Forge
 overflows it badly enough that START RUN, anchored at `h - 60`, landed *inside* the
 blueprint grid that flows to y≈509 and simply read as absent.
 

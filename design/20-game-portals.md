@@ -141,7 +141,10 @@ is the shape that breaks absolute paths:
   `Requesting game loading stop`, `Requesting adblock status`, `Requesting gameplay stop`.
 - PLAY goes straight from the front door into a live run — one click — and
   `__portal.diagnostics()` reports `· gameplay`, i.e. the bracket flipped.
-- SELECT MODE still reaches co-op, PvP solo queue and the tutorial.
+- SELECT MODE still reaches co-op, PvP solo queue and the tutorial. **Verified against the
+  screen that carried them until 2026-09-10**; that button is gone and the same three routes
+  are rows in the lobby directly under PLAY (design/10). What the line asserts — that a
+  one-click front door does not cost the portal build the other modes — is unchanged.
 - **Online play works against the deployed backend**: PVP SOLO QUEUE → bot-fill at 30 s → a
   live match, `ALIVE 2/2`, `zoneEnabled`, and the lockstep advancing 897 ticks over 4 seconds
   of wall clock. `vite.crazygames.config.js` defaults `VITE_MATCHSVC_URL` to
