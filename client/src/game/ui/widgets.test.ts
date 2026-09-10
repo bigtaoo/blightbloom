@@ -232,6 +232,47 @@ describe('Button — autoWidth', () => {
   });
 });
 
+describe('Button — the icon offset, and what used to undo it', () => {
+  const labelOf = (b: Button) => b.view.children.find((c) => c instanceof Text) as Text;
+  /** Where `setIcon` puts the label: hard against the right of the chip, left-anchored. */
+  const offsetFor = (h: number) => 8 + (h - 8) + 8;
+
+  it('moves the label right of the chip and anchors it there', () => {
+    const b = new Button('X', { w: 200, h: 40 });
+    b.setIcon(Texture.WHITE);
+    expect(labelOf(b).anchor.x).toBe(0);
+    expect(labelOf(b).position.x).toBe(offsetFor(40));
+  });
+
+  it('KEEPS that offset across a redraw — setFill, setBorder, and an autoWidth setText', () => {
+    // The regression this exists for (2026-09-10). `redraw()` re-centred the label
+    // unconditionally and `setIcon` was the only thing that ever applied the offset, so any
+    // later redraw dropped a left-anchored label at the middle of the box — running off the
+    // right edge by however far the offset had been. `LobbyRoutes.setSoloPrimary` calls
+    // `setFill`, on the portal build only, so this would have shipped there and nowhere else.
+    for (const [name, mutate] of [
+      ['setFill', (b: Button) => b.setFill(0x2f855a)],
+      ['setBorder', (b: Button) => b.setBorder(0x68d391)],
+      ['autoWidth setText', (b: Button) => b.setText('A MUCH LONGER LABEL THAN THE BOX')],
+    ] as Array<[string, (b: Button) => void]>) {
+      const b = new Button('X', { w: 200, h: 40, borderColor: 0x718096, autoWidth: name === 'autoWidth setText' });
+      b.setIcon(Texture.WHITE);
+      mutate(b);
+      expect(labelOf(b).anchor.x, name).toBe(0);
+      expect(labelOf(b).position.x, name).toBe(offsetFor(40));
+    }
+  });
+
+  it('re-centres the label when the icon is cleared', () => {
+    // The other direction, so the restore is not just "always offset".
+    const b = new Button('X', { w: 200, h: 40 });
+    b.setIcon(Texture.WHITE);
+    b.setIcon(undefined);
+    expect(labelOf(b).anchor.x).toBe(0.5);
+    expect(labelOf(b).position.x).toBe(100);
+  });
+});
+
 describe('Slider — drag lifecycle', () => {
   function draggingOf(s: Slider): boolean {
     return (s as unknown as { dragging: boolean }).dragging;

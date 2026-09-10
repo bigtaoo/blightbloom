@@ -60,7 +60,7 @@ export const ru: Translations<typeof en> = {
     title: 'ФОРПОСТ КУЗНИЦЫ',
     hint: '[↑↓]/[1-9]/[C]/[X]/[Enter] горячие клавиши по-прежнему работают',
     backButton: '← МЕНЮ',
-    clearLoadout: 'ОЧИСТИТЬ СНАРЯЖЕНИЕ',
+    clearLoadout: 'ОЧИСТИТЬ',
     startRun: 'НАЧАТЬ ЗАБЕГ ▸',
     pagePrevButton: '‹ СТРАНИЦА',
     pageNextButton: 'СТРАНИЦА ›',

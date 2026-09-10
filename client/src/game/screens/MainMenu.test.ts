@@ -51,6 +51,12 @@ function privateOf(m: MainMenu) {
   };
 }
 
+/** A button's own box: its `bg` Graphics is always child 0. Measuring the whole `view`
+ *  would pull in the label Text, whose bounds need a real canvas this runner has not got. */
+function bgOf(btn: { view: { children: unknown[] } }) {
+  return (btn.view.children[0] as Graphics).getLocalBounds();
+}
+
 beforeEach(() => resetSessionCacheForTests());
 afterEach(() => {
   resetLocaleForTests();
@@ -165,7 +171,51 @@ describe('MainMenu — account label', () => {
     setSession(ALICE);
     const m = new MainMenu();
     m.refreshAccountLabel();
-    expect(privateOf(m).accountBtn.label.text).toBe('Hi, alice');
+    // The BARE NAME on the chip, not the greeting sentence — 2026-09-10, after
+    // `labelFit.test.ts` measured "Cześć, alice" and five other locales' greetings running
+    // out of a 135px button with a five-letter name in them. The greeting still exists and
+    // still says hello; it just says it on the portal's LABEL, which has a whole row.
+    expect(privateOf(m).accountBtn.label.text).toBe('alice');
+  });
+
+  it('ellipsises a name too long to be a chip label', () => {
+    // A bound, not a fit: the chip is `autoWidth` so it grows to whatever it is handed, and
+    // this only stops one absurd name from pushing the pair wider than the card behind it.
+    setSession({ ...ALICE, username: 'a-very-long-display-name' });
+    const m = new MainMenu();
+    m.refreshAccountLabel();
+    const text = privateOf(m).accountBtn.label.text;
+    expect(text).toHaveLength(12);
+    expect(text.endsWith('…')).toBe(true);
+    expect(text.startsWith('a-very-long')).toBe(true);
+  });
+
+  it('grows the chip for the name and keeps the pair centred as a pair', () => {
+    // What `autoWidth` costs if a caller forgets it: the pair is positioned from measured
+    // widths, so SETTINGS moves right instead of being overlapped. Asserted as a relation
+    // between the two boxes rather than as pixel positions, which are layout constants.
+    const short = new MainMenu();
+    setSession({ ...ALICE, username: 'al' });
+    short.show(800, 600);
+    const wide = new MainMenu();
+    // A CJK name, because `estimateMonoWidth` counts one of those as a full em where a
+    // Latin character is 0.6 — so this is the case that actually outgrows a 135px box
+    // within the 12-character clip, and it is also the realistic one.
+    setSession({ ...ALICE, username: '一二三四五六七八九十' });
+    wide.show(800, 600);
+
+    const gapOf = (m: MainMenu) => {
+      const p = privateOf(m);
+      const account = p.accountBtn.view.position.x + bgOf(p.accountBtn).width;
+      return p.settingsBtn.view.position.x - account;
+    };
+    const midOf = (m: MainMenu) => {
+      const p = privateOf(m);
+      return (p.accountBtn.view.position.x + p.settingsBtn.view.position.x + bgOf(p.settingsBtn).width) / 2;
+    };
+    expect(bgOf(privateOf(wide).accountBtn).width).toBeGreaterThan(bgOf(privateOf(short).accountBtn).width);
+    expect(gapOf(wide)).toBeCloseTo(gapOf(short), 0); // no overlap, and no drifting apart
+    expect(midOf(wide)).toBeCloseTo(midOf(short), 0); // still centred on the same axis
   });
 
   it('show() re-reads the session, so a login after construction still surfaces', () => {
@@ -173,7 +223,7 @@ describe('MainMenu — account label', () => {
     expect(privateOf(m).accountBtn.label.text).toBe('LOGIN');
     setSession(ALICE);
     m.show(800, 600);
-    expect(privateOf(m).accountBtn.label.text).toBe('Hi, alice');
+    expect(privateOf(m).accountBtn.label.text).toBe('alice');
     expect(getSession()).toEqual(ALICE); // sanity: this test's own session write took
   });
 });
@@ -237,9 +287,7 @@ describe('MainMenu — button hierarchy and layout', () => {
   // Bounds come off each button's `bg` Graphics (view.children[0]), not the whole
   // `view` — `view` also holds the label Text, and measuring a Text's bounds needs a
   // real canvas, which this repo's plain-node vitest doesn't have.
-  function bgBounds(btn: { view: { children: unknown[] } }) {
-    return (btn.view.children[0] as Graphics).getLocalBounds();
-  }
+  const bgBounds = bgOf;
 
   it('sizes SOLO as the biggest route, the rest below it, ACCOUNT/SETTINGS smallest', () => {
     const m = new MainMenu();
@@ -351,15 +399,21 @@ describe('MainMenu — i18n (design/17-i18n.md)', () => {
     expect(p.settingsBtn.label.text).toBe('设置');
   });
 
-  it('the account label also retexts, guest and logged-in alike', () => {
+  it('the account chip retexts as a guest, and stops being localisable once signed in', () => {
     const m = new MainMenu();
     setLocale('zh');
     m.show(800, 600);
     expect(privateOf(m).accountBtn.label.text).toBe('登录');
 
+    // A NAME has no translation, which is the point: since 2026-09-10 the chip carries the
+    // player's, and the localised greeting moved to the portal label below (asserted in the
+    // host-forbids-a-login suite, where that label is the thing on screen).
     setSession(ALICE);
     m.show(800, 600);
-    expect(privateOf(m).accountBtn.label.text).toBe('你好，alice');
+    expect(privateOf(m).accountBtn.label.text).toBe('alice');
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).accountLabel.text).toBe('你好，alice');
   });
 
   it('switching back to English on a later show() fully reverts', () => {

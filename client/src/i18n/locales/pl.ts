@@ -191,7 +191,7 @@ export const pl: Translations<typeof en> = {
     title: 'DRUŻYNA',
     create: 'UTWÓRZ DRUŻYNĘ',
     join: 'DOŁĄCZ KODEM',
-    startMatching: 'ROZPOCZNIJ WYSZUKIWANIE',
+    startMatching: 'SZUKAJ MECZU',
     leave: 'OPUŚĆ DRUŻYNĘ',
     back: 'WSTECZ',
     partyClosed: 'Drużyna rozwiązana.',
