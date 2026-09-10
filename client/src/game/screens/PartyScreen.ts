@@ -79,19 +79,19 @@ export class PartyScreen {
     this.statusText = new Text({ text: '', style: { fill: 0xf56565, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
     this.statusText.anchor.set(0.5, 0);
 
-    this.createBtn = new Button(t('party.create'), { w: 200, h: 44, fontSize: 15 });
+    this.createBtn = new Button(t('party.create'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
     this.createBtn.onTap = () => void this.doCreate();
     this.createBtn.setIcon(getUiTexture('icon_party_create'));
-    this.joinBtn = new Button(t('party.join'), { w: 200, h: 44, fontSize: 15 });
+    this.joinBtn = new Button(t('party.join'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
     this.joinBtn.onTap = () => this.openJoinInput();
     this.joinBtn.setIcon(getUiTexture('icon_party_join'));
-    this.startBtn = new Button(t('party.startMatching'), { w: 200, h: 44, fontSize: 15, color: 0x2f855a });
+    this.startBtn = new Button(t('party.startMatching'), { w: 200, h: 44, fontSize: 15, color: 0x2f855a, autoWidth: true });
     this.startBtn.onTap = () => void this.doStart();
     this.startBtn.setIcon(getUiTexture('icon_play'));
-    this.leaveBtn = new Button(t('party.leave'), { w: 160, h: 36, fontSize: 13, color: 0x742a2a, sound: 'ui.back' });
+    this.leaveBtn = new Button(t('party.leave'), { w: 160, h: 36, fontSize: 13, color: 0x742a2a, sound: 'ui.back', autoWidth: true });
     this.leaveBtn.onTap = () => void this.doLeave();
     this.leaveBtn.setIcon(getUiTexture('icon_party_leave'));
-    this.backBtn = new Button(t('party.back'), { w: 120, h: 32, fontSize: 13, sound: 'ui.back' });
+    this.backBtn = new Button(t('party.back'), { w: 120, h: 32, fontSize: 13, sound: 'ui.back', autoWidth: true });
     this.backBtn.onTap = () => this.onBack?.();
     this.backBtn.setIcon(getUiTexture('icon_back'));
 
@@ -147,11 +147,19 @@ export class PartyScreen {
     this.codeText.position.set(cx, cy - 140);
     this.membersText.position.set(cx, cy - 90);
     this.statusText.position.set(cx, cy + 60);
-    this.createBtn.view.position.set(cx - 100, cy - 20);
-    this.joinBtn.view.position.set(cx - 100, cy + 34);
-    this.startBtn.view.position.set(cx - 100, cy - 20);
-    this.leaveBtn.view.position.set(cx - 80, cy + 90);
-    this.backBtn.view.position.set(cx - 60, cy + 150);
+    // Centred from the MEASURED width, not from half of the constructor's: every label on
+    // this screen is a phrase rather than a word ("join with code", "start matching",
+    // "leave squad"), and five of them overflowed a fixed box in French, Spanish or Italian
+    // — found by `screens/labelFit.test.ts`, 2026-09-10. `autoWidth` grows the box instead,
+    // which only works if the caller re-reads the width, exactly as `Settings.ts` already
+    // documents for the same reason. There is room: these are stacked rows on a 760-wide
+    // design space, so a wider button costs nothing but its own centring.
+    const centred = (b: Button, y: number) => b.view.position.set(cx - b.width / 2, y);
+    centred(this.createBtn, cy - 20);
+    centred(this.joinBtn, cy + 34);
+    centred(this.startBtn, cy - 20);
+    centred(this.leaveBtn, cy + 90);
+    centred(this.backBtn, cy + 150);
   }
 
   private async pollOnce(): Promise<void> {

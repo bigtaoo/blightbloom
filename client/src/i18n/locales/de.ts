@@ -190,7 +190,7 @@ export const de: Translations<typeof en> = {
   party: {
     title: 'TRUPP',
     create: 'TRUPP ERSTELLEN',
-    join: 'MIT CODE BEITRETEN',
+    join: 'CODE BEITRETEN',
     startMatching: 'SUCHE STARTEN',
     leave: 'TRUPP VERLASSEN',
     back: 'ZURÜCK',

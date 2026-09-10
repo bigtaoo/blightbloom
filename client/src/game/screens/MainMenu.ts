@@ -7,6 +7,20 @@ import { t } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
 
+/**
+ * Longest name the account chip will draw, in characters, before it ellipsises.
+ *
+ * A bound rather than a fit: the box grows to whatever it is given (`autoWidth`), so this
+ * only stops one absurd name from pushing the pair wider than the card. 12 is comfortably
+ * more than any name this project has seen and comfortably less than a CrazyGames display
+ * name's own limit.
+ */
+const NAME_MAX = 12;
+
+function clipName(name: string): string {
+  return name.length <= NAME_MAX ? name : `${name.slice(0, NAME_MAX - 1)}…`;
+}
+
 /** The quick-play button's height — a row this screen only has on a portal. */
 const PLAY_H = 60;
 /** Title top → card top: the title, the subtitle under it, and the gap. */
@@ -139,7 +153,12 @@ export class MainMenu {
     this.routes.onSquad = () => this.onSquad?.();
     this.routes.onTutorial = () => this.onTutorial?.();
 
-    this.accountBtn = new Button(t('mainMenu.account'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096 });
+    // `autoWidth`, alone among this screen's buttons, because it is the only one whose label
+    // is not ours to choose: signed in it carries a PLAYER'S NAME. Every fixed width that
+    // fits "LOGIN" fails some name, and `estimateMonoWidth` counts a CJK glyph as a full em,
+    // so growing the box is the only answer that holds in every script. `show()` lays the
+    // pair out from the measured widths for the same reason.
+    this.accountBtn = new Button(t('mainMenu.account'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096, autoWidth: true });
     this.accountBtn.onTap = () => this.onAccount?.();
     this.accountBtn.setIcon(getUiTexture('icon_account'), 0x6b46c1);
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096 });
@@ -238,6 +257,10 @@ export class MainMenu {
 
   show(w: number, h: number) {
     this.retext();
+    // BEFORE the layout below, not after: the account chip is `autoWidth`, so its box is
+    // whatever the current session's name makes it, and the pair cannot be placed until the
+    // text that sizes it is in.
+    this.refreshAccountLabel();
     this.panel.layout(w, h);
     const cx = w / 2;
     const cy = h / 2;
@@ -262,7 +285,11 @@ export class MainMenu {
     this.banner.position.set(cx, top - 16);
     this.refreshBanner();
 
-    const cardW = LOBBY_ROUTES_W + 40;
+    // The utility row is the one part of this card whose width is not a constant — see the
+    // account chip's own comment. The card grows with it rather than letting it hang over
+    // the edge; every other row is `LOBBY_ROUTES_W`.
+    const pairW = this.accountEntry ? this.accountBtn.width + 10 + this.settingsBtn.width : this.settingsBtn.width;
+    const cardW = Math.max(LOBBY_ROUTES_W + 40, pairW + 40);
     const cardTop = top + HEADER_H;
     this.menuCard.layout(cardW, cardH);
     this.menuCard.view.position.set(cx - cardW / 2, cardTop);
@@ -272,8 +299,10 @@ export class MainMenu {
 
     const tertiaryY = cardTop + 12 + extra + LOBBY_ROUTES_H + 12;
     if (this.accountEntry) {
-      this.accountBtn.view.position.set(cx - 140, tertiaryY);
-      this.settingsBtn.view.position.set(cx + 5, tertiaryY);
+      // Centred as a PAIR from the measured widths, so a long name pushes SETTINGS right
+      // instead of overlapping it.
+      this.accountBtn.view.position.set(cx - pairW / 2, tertiaryY);
+      this.settingsBtn.view.position.set(cx - pairW / 2 + this.accountBtn.width + 10, tertiaryY);
     } else {
       // SETTINGS takes the whole tertiary row rather than staying in its half, so the row
       // does not read as one button that lost its pair.
@@ -291,7 +320,6 @@ export class MainMenu {
       // clears three wrapped lines at this font size, one more than the longest locale needs.
       this.privacyLink.position.set(cx, cardTop + cardH + 14 + 44);
     }
-    this.refreshAccountLabel();
     this.view.visible = true;
   }
 
@@ -321,7 +349,11 @@ export class MainMenu {
   refreshAccountLabel() {
     const session = getSession();
     const greeting = session ? t('mainMenu.greeting', { username: session.username }) : t('mainMenu.account');
-    this.accountBtn.setText(greeting);
+    // The BUTTON gets the bare name, the label gets the sentence. A chip 135px wide cannot
+    // hold "Cześć, {username}" in any locale that greets with more than a word — measured:
+    // six of the eight overflowed it with a five-letter name — and the greeting word is the
+    // part that carries no information the icon does not already give.
+    this.accountBtn.setText(session ? clipName(session.username) : t('mainMenu.account'));
     // Without an account entry there is no "log in" state to advertise, so a guest gets no
     // label at all — an empty row rather than a prompt the player cannot act on.
     this.accountLabel.text = session ? greeting : '';
