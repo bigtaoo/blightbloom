@@ -4,9 +4,10 @@
  * HudView's checkpointPanel/checkpointText, see HudView.test.ts history). `show` is
  * computed by the caller (GameLoop.ts: at an eligible checkpoint AND standing near the
  * portal) — this class only renders it and reads `s` for the pending/floor text.
- * `isLastFloor` (2026-08-12 follow-up, defaults false) hides the Descend button — the
- * last floor's boss room has no next floor to descend to, but still shows this same
- * popup instead of auto-resolving EXTRACT with no gesture at all (see ExtractionSystem).
+ * `isLastFloor` picks WHICH single button is shown (ENGINE_VERSION 61): Extract on the boss
+ * floor, Descend on every other one. It used to only HIDE Descend on the last floor, leaving
+ * a two-button choice everywhere else — see the exclusion suite below for what changed and
+ * why the interior floor losing Extract had to be paired with `ExtractionSystem` ignoring it.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
@@ -19,8 +20,8 @@ afterEach(() => resetLocaleForTests());
 function privateOf(p: PortalPrompt) {
   return p as unknown as {
     titleText: { text: string; style: { wordWrap: boolean; breakWords: boolean } };
-    extractBtn: { onTap: (() => void) | null; view: { visible: boolean } };
-    descendBtn: { onTap: (() => void) | null; view: { visible: boolean } };
+    extractBtn: { onTap: (() => void) | null; view: { visible: boolean }; label: { text: string } };
+    descendBtn: { onTap: (() => void) | null; view: { visible: boolean }; label: { text: string } };
   };
 }
 
@@ -59,15 +60,29 @@ describe('PortalPrompt — visibility follows the caller-computed `show` flag', 
   });
 });
 
-describe('PortalPrompt — last floor hides Descend (2026-08-12, live bug report follow-up)', () => {
-  it('shows both buttons when isLastFloor is omitted/false', () => {
+/**
+ * One button, and WHICH one is the whole rule (ENGINE_VERSION 61, design/05 "Only the boss
+ * floor ends a run"). Before that this popup showed both on an interior floor and Extract
+ * alone on the last (2026-08-12, live bug report follow-up: the last floor used to skip the
+ * popup entirely and auto-resolve EXTRACT the instant the boss died, leaving no time to walk
+ * over to its death drops). Now the exclusion runs both ways.
+ *
+ * Both halves are asserted in every case, not just the one each is about: "Descend shows on
+ * an interior floor" would also pass with Extract sitting live beside it, which is exactly
+ * the state this version removed — and `ExtractionSystem` would ignore that press, so the
+ * player would be clicking a dead button.
+ */
+describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
+  it('an interior floor offers Descend and no Extract', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
     prompt.update(s, true);
-    expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
+    const p = privateOf(prompt);
+    expect(p.descendBtn.view.visible).toBe(true);
+    expect(p.extractBtn.view.visible).toBe(false);
   });
 
-  it('hides the Descend button when isLastFloor is true, keeping Extract visible', () => {
+  it('the last floor offers Extract and no Descend', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
     prompt.update(s, true, true);
@@ -76,12 +91,53 @@ describe('PortalPrompt — last floor hides Descend (2026-08-12, live bug report
     expect(p.extractBtn.view.visible).toBe(true);
   });
 
-  it('re-shows Descend on a later update() once isLastFloor flips back to false', () => {
+  it('swaps back and forth across updates rather than latching', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
     prompt.update(s, true, true);
     prompt.update(s, true, false);
     expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
+    expect(privateOf(prompt).extractBtn.view.visible).toBe(false);
+    prompt.update(s, true, true);
+    expect(privateOf(prompt).extractBtn.view.visible).toBe(true);
+  });
+
+  it('counts an absent quantity as zero rather than as NaN', () => {
+    // `floorMaterials`/`bankedMaterials` are `Partial<Record<string, number>>`, so a key
+    // present with no value is representable — and one `undefined` in the sum turns the
+    // whole button label into "NaN materials". The line runs either way; only this asserts
+    // the fallback arm (CLAUDE.md's note on branch coverage being the column that bites).
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    s.floorMaterials = { mat_fire: 3, mat_ice: undefined };
+    s.bankedMaterials = { mat_poison: undefined };
+    prompt.update(s, true, true);
+    expect(privateOf(prompt).extractBtn.label.text).toContain('3');
+    expect(privateOf(prompt).extractBtn.label.text).not.toContain('NaN');
+  });
+
+  it('titles the two cases differently — the boss floor is where the run ends', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    prompt.update(s, true, false);
+    const interior = privateOf(prompt).titleText.text;
+    prompt.update(s, true, true);
+    expect(privateOf(prompt).titleText.text).not.toBe(interior);
+  });
+
+  it('the Extract label counts the WHOLE carry-out, not just this floor\'s buffer', () => {
+    // Since v61 this press is the run's only exit, so the number beside it is what the
+    // player walks away with — both tiers. Naming the floor buffer alone (which is what it
+    // used to name, correctly, while any floor could extract) would understate it by
+    // everything the earlier floors' descends had folded in.
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    s.floorMaterials = { mat_fire: 5 };
+    s.bankedMaterials = { mat_ice: 12 };
+    prompt.update(s, true, true);
+    const label = privateOf(prompt).extractBtn.label.text;
+    expect(label).toContain('17');
+    expect(label).not.toContain('5 materials');
   });
 });
 

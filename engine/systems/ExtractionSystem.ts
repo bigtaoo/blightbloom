@@ -10,23 +10,28 @@
  * remain" (the same condition WinConditionSystem used to auto-win on when floors
  * are disabled — see its own floorsEnabled guard). At that point the run waits on
  * player 0's explicit portal-popup pick (single-player only; co-op's shared
- * decision is a Phase 3 concern) — CONFIRM_EXTRACT banks and ends the run,
- * CONFIRM_DESCEND banks and continues:
- *   - the LAST floor has no descend option (design/05 "the last floor's boss room
- *     IS its extraction room" — the boss fight was the challenge), so a
- *     CONFIRM_DESCEND press there is simply ignored; CONFIRM_EXTRACT still applies.
- *     This USED to auto-resolve EXTRACT the instant the capstone cleared, with no
+ * decision is a Phase 3 concern), and WHICH pick the portal accepts depends only on
+ * whether this is the last floor:
+ *   - the LAST floor is the only floor that can END a run. CONFIRM_EXTRACT banks and
+ *     wins; a CONFIRM_DESCEND press there is ignored, since design/05's "the last
+ *     floor's boss room IS its extraction room" leaves nowhere to descend to.
+ *     Extracting USED to auto-resolve the instant the capstone cleared, with no
  *     gesture at all — dropped (2026-08-12, live bug report: the boss's own death
  *     drops never had a chance to be picked up, since the run ended the same tick
  *     the boss died, before the player could walk over to them). The portal now
  *     opens and waits, exactly like every other floor's checkpoint, just without a
  *     Descend button — "walking through the portal after is automatic" now means
  *     the player chooses to walk up and confirm, not that the game does it for them.
- *   - any other floor offers the real choice via the same popup. This replaced an
- *     original hold-to-extract/tap-to-descend INTERACT gesture (design/10
- *     legibility fix, 2026-08-02: a render-side portal + explicit two-button choice
- *     reads far better than "hold E" — ROADMAP.md always flagged the hold/tap timer
- *     as a first-pass placeholder pending exactly this).
+ *   - every OTHER floor accepts CONFIRM_DESCEND and nothing else. A CONFIRM_EXTRACT
+ *     press on an interior floor is ignored the same way a CONFIRM_DESCEND press on
+ *     the last one is — **the mid-floor extraction option is gone** (ENGINE_VERSION
+ *     61, design/05 "Only the boss floor ends a run"). It was a real choice for six
+ *     weeks: reaching any floor's checkpoint let you bank and leave. What replaced it
+ *     is not a nerf of the decision but a MOVE of it — a single-player run that is
+ *     not finished is now SAVED and resumed instead (client/src/game/match/runSave.ts),
+ *     so "leave with what I have" became "come back to it" rather than
+ *     "cash out early". Both directions of the old choice are still reachable; what
+ *     is not reachable any more is banking materials without beating the boss.
  *
  * Both resolutions bank state.floorMaterials into state.bankedMaterials (design/05
  * "materials so far are locked in" on descend; "keep materials" on extract) — a
@@ -91,13 +96,18 @@ export class ExtractionSystem {
 
     const p = state.players[0];
     if (!p || !p.alive) return;
-    if (p.confirmExtract) {
+    if (isLastFloor) {
       // EXTRACT ends the run, so whatever the squad had voted for is moot — the card
-      // is deliberately NOT applied on the way out.
-      this.resolveExtract(state);
+      // is deliberately NOT applied on the way out. Nothing else resolves here: the
+      // last floor has no next floor, so CONFIRM_DESCEND falls off the end below.
+      if (p.confirmExtract) this.resolveExtract(state);
       return;
     }
-    if (isLastFloor || !p.confirmDescend) return;
+    // Interior floor: descend or stay. CONFIRM_EXTRACT is not consulted at all
+    // (ENGINE_VERSION 61 — see the header). It is dropped silently rather than
+    // treated as a descend: the two are different intentions, and turning one into
+    // the other would spend a floor card the player never chose.
+    if (!p.confirmDescend) return;
 
     // Descend needs a card chosen. The vote is the squad's, not the presser's
     // (2026-09-05: "whichever card the most people chose takes effect"), so this

@@ -143,12 +143,22 @@ describe('a descend holds until somebody picks', () => {
     for (const seat of eng.state.players) expect(seat.cardVote).toBe(0);
   });
 
-  it('applies nothing on EXTRACT — the run is over', () => {
+  it('an EXTRACT press cannot spend the offer, because it cannot resolve here at all', () => {
+    // Rewritten for ENGINE_VERSION 61 (design/05 "Only the boss floor ends a run"). This
+    // used to assert that EXTRACT ended the run without applying the voted card — a real
+    // rule while an interior checkpoint could end a run. It no longer can, and the two
+    // facts are now the same fact: an offer is only ever OPEN on a floor there is
+    // somewhere to descend to, which is exactly a floor where EXTRACT is ignored. So the
+    // assertion worth keeping is that the press leaves the whole offer standing —
+    // nothing banked, no vote consumed, the portal still waiting on a descend.
     const eng = atCheckpoint();
+    const offer = [...eng.state.floorCardOffer];
     eng.step([cmd(0, eng.state.tick + 1, { cardVote: 1 })]);
     eng.step([cmd(0, eng.state.tick + 1, { buttons: Button.CONFIRM_EXTRACT })]);
-    expect(eng.state.phase).toBe('gameover');
+    expect(eng.state.phase).not.toBe('gameover');
     expect(eng.state.floorCards).toEqual([]);
+    expect(eng.state.floorCardOffer).toEqual(offer); // still open, unrolled again
+    expect(eng.state.players[0]!.cardVote).toBe(1); // and the vote still stands
   });
 });
 

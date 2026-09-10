@@ -162,7 +162,16 @@ export function wireScreens(d: WiringDeps): void {
   d.screens.onMenu = () => d.nav.showMenu();
   d.pauseMenu.onResume = () => d.nav.resume();
   d.pauseMenu.onSettings = () => d.nav.openSettingsFromPause();
+  // The two exits are separate verbs on purpose (design/05 "Only the boss floor ends a run",
+  // ENGINE_VERSION 61): SAVE & QUIT keeps the run, QUIT throws it away. `ScreenNav.savable()`
+  // decides whether the first button is even drawn.
+  d.pauseMenu.onSaveQuit = () => d.runs.saveAndQuitRun();
   d.pauseMenu.onQuit = () => d.runs.quitRun();
+  // CONTINUE RUN — the forge's other primary button. Not routed through `d.confirm()` the
+  // way START RUN is: confirm() is the phase-router for a menu/result-screen keypress and
+  // starting a FRESH run is what it means from the forge, which is precisely the opposite
+  // of this one.
+  d.forge.onContinue = () => d.runs.resumeSavedRun();
 }
 
 /** The in-run HUD's own controls and the portal popup. */

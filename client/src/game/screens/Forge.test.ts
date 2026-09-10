@@ -22,6 +22,7 @@ import { setLocale, resetLocaleForTests } from '../../i18n';
 interface TestButton {
   view: { visible: boolean; position: { x: number; y: number } };
   label: { text: string };
+  onTap: (() => void) | null;
 }
 
 // `BlueprintCard`'s own text fields are private too; it exposes the same kind of
@@ -47,6 +48,7 @@ function privateOf(f: Forge) {
     rowCards: TestCard[];
     clearBtn: TestButton;
     startBtn: TestButton;
+    continueBtn: TestButton;
     storeBtn: TestButton;
     hint: { position: { x: number; y: number }; text: string };
     charText: { text: string };
@@ -352,5 +354,128 @@ describe('Forge — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     f.render(defaultMetaState(), 1280, 720);
     expect(privateOf(f).title.text).toBe('FORGE OUTPOST');
+  });
+});
+
+/**
+ * CONTINUE RUN (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — the forge's
+ * second primary button, and the two-row action bar it produces.
+ *
+ * The screen decides nothing here: it asks a `savedRun` PROVIDER, which the assembly points
+ * at the real save slot. That indirection is what these cases are mostly about — a provider
+ * read once and cached would show CONTINUE for a run that has since been won or abandoned,
+ * which is the failure the three clear-the-slot call sites exist to prevent, and it would be
+ * defeated entirely by this screen holding a stale copy.
+ */
+describe('Forge — CONTINUE RUN', () => {
+  const SAVED = { floorIndex: 2, ticks: 5400, savedAtMs: 0 }; // floor 3, 3:00 played
+
+  function withSave(saved: typeof SAVED | null = SAVED): Forge {
+    const f = new Forge();
+    f.savedRun = () => saved;
+    return f;
+  }
+
+  it('is hidden with no saved run — the default provider answers null', () => {
+    const f = new Forge();
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.view.visible).toBe(false);
+  });
+
+  it('appears when there is one', () => {
+    const f = withSave();
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.view.visible).toBe(true);
+  });
+
+  it('re-reads the provider on every render, so a cleared save stops being offered', () => {
+    // The live case: the run is resumed (or won, or abandoned), the slot is cleared, and the
+    // forge is re-rendered by the very navigation that got us back here.
+    let saved: typeof SAVED | null = SAVED;
+    const f = new Forge();
+    f.savedRun = () => saved;
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.view.visible).toBe(true);
+
+    saved = null;
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.view.visible).toBe(false);
+  });
+
+  it('takes the footer slot, and pushes START RUN to the row above', () => {
+    // Continuing is what a returning player came for, so it gets the primary position; and
+    // the two must not overlap, because the other one discards the save.
+    const f = withSave();
+    f.render(defaultMetaState(), 1280, 720);
+    const p = privateOf(f);
+    expect(p.continueBtn.view.position.y).toBe(720 - 60);
+    expect(p.startBtn.view.position.y).toBe(720 - 60 - 52);
+  });
+
+  it('leaves START RUN exactly where it was when there is no save', () => {
+    // The regression guard for every existing action-bar assertion in this file: adding a
+    // button must not move the one that was already there for the common case.
+    const f = withSave(null);
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).startBtn.view.position.y).toBe(720 - 60);
+  });
+
+  it('fires onContinue, never onStart', () => {
+    const f = withSave();
+    const calls: string[] = [];
+    f.onStart = () => calls.push('start');
+    f.onContinue = () => calls.push('continue');
+    f.render(defaultMetaState(), 1280, 720);
+    privateOf(f).continueBtn.onTap?.();
+    expect(calls).toEqual(['continue']);
+  });
+
+  it('names the saved run in the info block — floor and time played', () => {
+    // Two buttons that differ only by label are not enough to decide between "resume" and
+    // "throw it away" on. 5400 ticks at 30 Hz is 3:00.
+    const f = withSave();
+    f.render(defaultMetaState(), 1280, 720);
+    const text = privateOf(f).infoText.text;
+    expect(text).toContain('floor 3'); // 0-based 2, displayed 1-based
+    expect(text).toContain('3:00');
+  });
+
+  it('pads the seconds, so 65 ticks reads 0:02 and not 0:2', () => {
+    const f = withSave({ floorIndex: 0, ticks: 65, savedAtMs: 0 });
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).infoText.text).toContain('0:02');
+  });
+
+  it('says nothing about a saved run when there is none', () => {
+    const f = new Forge();
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).infoText.text).not.toContain('Saved run');
+  });
+
+  it('hides the compare card against the TOP of the two-row bar, not the footer row', () => {
+    // Without this the card is measured against the lower row and can overlap START RUN on
+    // a viewport that is short but not short enough to trip the original check — the same
+    // "floating on top of what is still there" shape the flowed layout used to have.
+    const tall = withSave();
+    tall.render(defaultMetaState(), 1280, 900);
+    expect(privateOf(tall).compareCard.view.visible).toBe(true);
+
+    const f = withSave();
+    f.render(defaultMetaState(), 1280, 620);
+    const p = privateOf(f);
+    if (p.compareCard.view.visible) {
+      expect(p.compareCard.view.position.y + p.compareCard.view.height)
+        .toBeLessThanOrEqual(p.startBtn.view.position.y);
+    }
+  });
+
+  it('retexts from the active locale', () => {
+    const f = withSave();
+    setLocale('zh');
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.label.text).toBe('继续行动 ▸');
+    setLocale('en');
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).continueBtn.label.text).toBe('CONTINUE RUN ▸');
   });
 });

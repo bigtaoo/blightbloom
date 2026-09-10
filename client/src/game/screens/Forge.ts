@@ -1,8 +1,9 @@
 import { Container, Sprite, Text } from 'pixi.js';
 import {
-  BLUEPRINT_CATALOG, SKIN_DEFS, DAMAGE_TYPES, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS, resolveLoadout,
-  type WeaponBlueprint,
+  BLUEPRINT_CATALOG, SKIN_DEFS, DAMAGE_TYPES, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS, TICK_RATE,
+  resolveLoadout, type WeaponBlueprint,
 } from '@dd/engine';
+import type { SavedRunSummary } from '../match/runSave';
 import type { MetaState } from '../../meta';
 import { bankTotal, canAfford, isUnlocked, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
 import { Panel, Button } from '../ui/widgets';
@@ -53,6 +54,7 @@ export class Forge {
   private charText: Text;
   private clearBtn: Button;
   private startBtn: Button;
+  private continueBtn: Button;
   private storeBtn: Button;
   private prevPageBtn: Button;
   private nextPageBtn: Button;
@@ -101,12 +103,27 @@ export class Forge {
    * answering `/account/meta` from its own entitlements table. It now opens a real
    * purchase screen instead; `KeyB` runs the same verb. */
   onStore: (() => void) | null = null;
+  /** CONTINUE RUN — resume the saved unfinished run (design/05 "Only the boss floor ends a
+   *  run", ENGINE_VERSION 61). Only ever called while `savedRun()` answers non-null. */
+  onContinue: (() => void) | null = null;
 
   /** Whether this build may show a store entry at all (`platform/storePlatform.ts` — a
    * web checkout inside an iOS store build is an App Store rule break, not a rough edge).
    * Set by the assembly; presentation never decides it. Default `false` so a caller that
    * forgets to set it shows NO store, which is the fail-closed direction. */
   storeEnabled = false;
+
+  /**
+   * The resumable saved run, or null when there is none (`match/runSaveStore.ts`).
+   *
+   * A PROVIDER rather than a field, because `render()` has five call sites (three in
+   * `ForgeActions`, two in the nav/flow controllers) and a field would have to be re-pushed
+   * at every one of them — which is four places for a stale answer to survive. Injected by
+   * the assembly so this screen still decides nothing, the same shape `storeEnabled` uses,
+   * and defaulted to "no save" so a caller that forgets to set it shows no CONTINUE button
+   * (the fail-closed direction: offering a resume that cannot happen is the worse error).
+   */
+  savedRun: () => SavedRunSummary | null = () => null;
 
   constructor() {
     // `padding` guards against a real observed font-metrics clipping bug (see
@@ -158,6 +175,9 @@ export class Forge {
     this.startBtn = new Button(t('forge.startRun'), { w: 220, h: 44, fontSize: 17 });
     this.startBtn.onTap = () => this.onStart?.();
     this.startBtn.setIcon(getUiTexture('icon_play'));
+    this.continueBtn = new Button(t('forge.continueRun'), { w: 220, h: 44, fontSize: 17 });
+    this.continueBtn.onTap = () => this.onContinue?.();
+    this.continueBtn.setIcon(getUiTexture('icon_play'));
     // Plain `ui.tap`, unlike the craft rows: opening a screen always does something, so
     // there is no outcome for a `silent` widget to wait on. The cues that DEPEND on a
     // transaction now live one screen further in, on the store's own rows.
@@ -173,7 +193,8 @@ export class Forge {
       this.infoText, this.storeBtn.view,
       ...this.rowCards.map((c) => c.view),
       this.prevPageBtn.view, this.pageLabel, this.nextPageBtn.view,
-      this.clearBtn.view, this.compareCard.view, this.startBtn.view, this.hint,
+      this.clearBtn.view, this.compareCard.view, this.startBtn.view, this.continueBtn.view,
+      this.hint,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -211,6 +232,7 @@ export class Forge {
     this.nextPageBtn.setText(t('forge.pageNextButton'));
     this.clearBtn.setText(t('forge.clearLoadout'));
     this.startBtn.setText(t('forge.startRun'));
+    this.continueBtn.setText(t('forge.continueRun'));
     this.storeBtn.setText(t('forge.storeButton'));
 
     // Material bank — the five elemental kinds (design/14), summed across every rolled tier.
@@ -237,10 +259,20 @@ export class Forge {
     // content-independent worst-case length is safer than trusting wordWrap to clip a
     // longer line to its declared width.
     const buyableText = buyable.length <= 3 ? buyable.join(', ') : t('forge.moreAvailable', { count: buyable.length });
+    // The saved-run line names what CONTINUE resumes and what START RUN would throw away.
+    // Two buttons whose difference is only their label is not enough on its own — a player
+    // who has been away a week has no way to know which run is in the slot, and the discard
+    // is irreversible.
+    const savedInfo = this.savedRun();
     this.infoText.text =
       t('forge.materialsLine', { bank, ownedChars: m.ownedCharacters.length }) + '\n' +
       t('forge.loadoutLine', { loadout, count: m.loadout.length, max: PLAYER_BASE.weaponSlots }) +
-      (buyable.length ? '\n' + t('forge.storeLine', { items: buyableText }) : '');
+      (buyable.length ? '\n' + t('forge.storeLine', { items: buyableText }) : '') +
+      (savedInfo ? '\n' + t('forge.savedRunLine', {
+        floor: savedInfo.floorIndex + 1, // 1-based, matching every other floor readout
+        m: Math.floor(savedInfo.ticks / TICK_RATE / 60),
+        ss: String(Math.floor(savedInfo.ticks / TICK_RATE) % 60).padStart(2, '0'),
+      }) : '');
 
     // Blueprint cards — icon, name, cost, status. The browse cursor (moveSelection /
     // a card tap) is a bright border instead of the old leading '»' glyph (design/14
@@ -327,9 +359,17 @@ export class Forge {
     this.nextPageBtn.view.position.set(cx + halfGrid - 80, y);
     y += 40;
 
+    // Action bar. With a saved run there are TWO primary buttons and they stack vertically
+    // rather than sitting side by side: CONTINUE takes the footer slot START RUN normally
+    // occupies (it is what the player came back for), and START RUN moves one row up as the
+    // "start over instead" option. Side by side would need ~450px of centred width, which
+    // runs straight into CLEAR LOADOUT at this screen's 760px design width.
     const footerY = h - 60;
+    const saved = this.savedRun();
     this.clearBtn.view.position.set(cx - halfGrid, footerY + 7);
-    this.startBtn.view.position.set(cx - 110, footerY);
+    this.continueBtn.view.visible = saved !== null;
+    this.continueBtn.view.position.set(cx - 110, footerY);
+    this.startBtn.view.position.set(cx - 110, saved ? footerY - 52 : footerY);
     this.hint.position.set(cx, h - 6);
 
     // Forger NPC — corner decoration, right of the centered blueprint grid. Only
@@ -348,7 +388,11 @@ export class Forge {
     }
 
     const cardShown = this.renderCompareCard(m, cx, y);
-    if (cardShown && y + this.compareCard.view.height + 16 > footerY) this.compareCard.hide();
+    // Measured against the TOP of the action bar, not the footer row — with a saved run the
+    // bar is two rows tall, and checking only the lower one let the card overlap START RUN
+    // (the same "floating on top of what is still there" bug the flowed layout used to have).
+    const barTopY = saved ? footerY - 52 : footerY;
+    if (cardShown && y + this.compareCard.view.height + 16 > barTopY) this.compareCard.hide();
 
     this.view.visible = true;
   }
