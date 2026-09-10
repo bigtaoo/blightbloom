@@ -126,7 +126,7 @@ describe('every Button in the client declares a cue that matches what it does', 
     expect(sites.length, 'found far fewer buttons than the client has').toBeGreaterThanOrEqual(40);
     const files = new Set(sites.map((s) => s.file));
     for (const expected of [
-      'screens/MainMenu.ts', 'screens/ModeSelect.ts', 'screens/Forge.ts', 'screens/Settings.ts',
+      'screens/MainMenu.ts', 'ui/LobbyRoutes.ts', 'screens/Forge.ts', 'screens/Settings.ts',
       'screens/PauseMenu.ts', 'screens/Screens.ts', 'ui/HudView.ts', 'ui/PortalPrompt.ts',
     ]) {
       expect(files, `${expected} contributed no buttons — did the sweep miss it?`).toContain(expected);

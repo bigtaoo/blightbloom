@@ -28,7 +28,7 @@ describe('isGameplayPhase', () => {
     // break, and a NEW phase added to the union later must default to "not gameplay" —
     // which this asserts by listing the whole union.
     const breaks: Phase[] = [
-      'menu', 'modeSelect', 'forge', 'pvpPreview', 'matchmaking', 'paused',
+      'menu', 'forge', 'pvpPreview', 'matchmaking', 'paused',
       'victory', 'defeat', 'settings', 'squad', 'account', 'store',
     ];
     for (const p of breaks) expect(isGameplayPhase(p), p).toBe(false);

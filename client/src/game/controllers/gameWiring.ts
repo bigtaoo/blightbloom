@@ -35,7 +35,6 @@ import type { HudView } from '../ui/HudView';
 import type { PortalPrompt } from '../ui/PortalPrompt';
 import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import type { MainMenu } from '../screens/MainMenu';
-import type { ModeSelect } from '../screens/ModeSelect';
 import type { PvpPreview } from '../screens/PvpPreview';
 import type { Matchmaking } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
@@ -59,7 +58,6 @@ export interface WiringDeps {
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
   mainMenu: MainMenu;
-  modeSelect: ModeSelect;
   pvpPreview: PvpPreview;
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -76,20 +74,26 @@ export interface WiringDeps {
 
 /** Every screen's own buttons. */
 export function wireScreens(d: WiringDeps): void {
-  // PLAY. Two shapes, chosen by host (`platform/hostKind.ts`):
+  // The lobby's five routes, wired once (design/10's 2026-09-10 merge — they used to be the
+  // mode-select screen's four plus this screen's SQUAD). Every one of them hands off to
+  // something that already existed; what the merge changed is which screen they are on.
+  d.mainMenu.onSolo = () => d.nav.showForge();
+  d.mainMenu.onCoop = () => d.net.beginSoloQueue(false);
+  d.mainMenu.onPvpSolo = () => d.net.beginSoloQueue(true);
+  d.mainMenu.onSquad = () => d.nav.showSquad();
+  d.mainMenu.onTutorial = () => d.runs.beginTutorialRun();
+  d.mainMenu.onSettings = () => d.nav.openSettings();
+  // ...and the one control whose presence depends on the HOST (`platform/hostKind.ts`):
   //
-  //   default   PLAY opens SELECT MODE, which is where every mode including the tutorial
-  //             lives. Four clicks to a run, and that is the loop this game is designed as.
-  //   portal    PLAY starts a run immediately and a second button opens SELECT MODE, because
-  //             the platform allows a first-time visitor at most one click to gameplay
-  //             (`docs.crazygames.com/requirements/gameplay`). Nothing becomes unreachable —
-  //             the four-click route is the second button.
-  //
-  // Both hand off to something that already existed; the branch is only which one PLAY is.
+  //   default   no PLAY button at all. SOLO is the primary action and goes to the forge —
+  //             the between-run decision this game is built around.
+  //   portal    a PLAY button above the routes that starts a run immediately, because the
+  //             platform allows a first-time visitor at most one click to gameplay
+  //             (`docs.crazygames.com/requirements/gameplay`). Nothing becomes unreachable:
+  //             SOLO is still directly below it.
   if (isPortalHost()) {
     d.mainMenu.setQuickPlay(true);
     d.mainMenu.onPlay = () => d.runs.beginQuickRun();
-    d.mainMenu.onModes = () => d.nav.showModeSelect();
     // ...and no way into the account screen at all. A portal forbids a game's own
     // credential login (`MainMenu.setAccountEntry` has the rules and the citation); the
     // player is signed in silently from the entry point instead, so `onAccount` is left
@@ -98,24 +102,16 @@ export function wireScreens(d: WiringDeps): void {
     // sell — one policy fact, one screen unreachable, no screen with an opinion about it.
     d.mainMenu.setAccountEntry(false);
   } else {
-    d.mainMenu.onPlay = () => d.nav.showModeSelect();
     d.mainMenu.onAccount = () => d.nav.showAccount();
   }
-  d.mainMenu.onSquad = () => d.nav.showSquad();
-  d.mainMenu.onSettings = () => d.nav.openSettings();
   // The maintenance banner's live half (design/21 §9's delivery path). `show()` already
   // re-reads the flag, so this is only about the player who is ALREADY sitting in the menu
   // when an operator puts a notice up — which is precisely the player a notice about a
   // shutdown in twenty minutes exists for. One slot, set here rather than in an entry
   // point, because this is the layer that has a `mainMenu` to refresh.
   setPublicFlagsListener(() => d.mainMenu.refreshBanner());
-  d.modeSelect.onSolo = () => d.nav.showForge();
-  d.modeSelect.onCoop = () => d.net.beginSoloQueue(false);
-  d.modeSelect.onPvpSolo = () => d.net.beginSoloQueue(true);
-  d.modeSelect.onTutorial = () => d.runs.beginTutorialRun();
-  d.modeSelect.onBack = () => d.nav.showMenu();
   d.pvpPreview.onQueue = () => d.nav.showMatchmaking();
-  d.pvpPreview.onBack = () => d.nav.showModeSelect();
+  d.pvpPreview.onBack = () => d.nav.showMenu();
   d.matchmaking.onConnected = (session) => d.runs.finalizeOnlineRun(session);
   d.matchmaking.onCancelled = () => d.net.onCancelled();
   d.partyScreen.onBack = () => d.nav.showMenu();

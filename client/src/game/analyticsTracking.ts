@@ -53,15 +53,14 @@ export const TICK_RATE = 30;
  * Phase → the id reported as `screen`.
  *
  * An explicit table rather than a camelCase-to-snake_case helper, and the second reason is
- * the load-bearing one. The server's `id` charset is `[a-z0-9_.:-]`, so `modeSelect` and
- * `pvpPreview` would be REFUSED and their funnel steps would silently never appear.
+ * the load-bearing one. The server's `id` charset is `[a-z0-9_.:-]`, so a camelCase phase
+ * like `pvpPreview` would be REFUSED and its funnel step would silently never appear.
  * `Record<Phase, string>` is exhaustive, so a new phase is a compile error here — which
  * forces the one decision worth forcing: is this new screen a funnel step, and what is it
  * called?
  */
 export const SCREEN_IDS: Record<Phase, string> = {
   menu: 'menu',
-  modeSelect: 'mode_select',
   forge: 'forge',
   pvpPreview: 'pvp_preview',
   matchmaking: 'matchmaking',

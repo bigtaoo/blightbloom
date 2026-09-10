@@ -124,7 +124,7 @@ describe('PortalSession phase derivation', () => {
     await session.start();
     await walk('menu');
     expect(calls).toContain('banner:cg-banner:320x50');
-    await walk('modeSelect');
+    await walk('forge');
     expect(calls).toContain('bannerClear:cg-banner');
   });
 

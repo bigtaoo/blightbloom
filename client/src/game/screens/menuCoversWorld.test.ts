@@ -29,7 +29,6 @@ import { Forge } from './Forge';
 import { LoginScreen } from './LoginScreen';
 import { MainMenu } from './MainMenu';
 import { Matchmaking } from './Matchmaking';
-import { ModeSelect } from './ModeSelect';
 import { PartyScreen } from './PartyScreen';
 import { PauseMenu } from './PauseMenu';
 import { PvpPreview } from './PvpPreview';
@@ -59,7 +58,6 @@ const H = 720;
  *  shows it (`ScreenNav`). Built, not shown — see the header. */
 const BACKDROPS: Array<[string, () => Panel]> = [
   ['menu → MainMenu', () => panelOf(new MainMenu())],
-  ['modeSelect → ModeSelect', () => panelOf(new ModeSelect())],
   ['forge → Forge', () => panelOf(new Forge())],
   ['pvpPreview → PvpPreview', () => panelOf(new PvpPreview())],
   ['matchmaking → Matchmaking', () => panelOf(new Matchmaking())],

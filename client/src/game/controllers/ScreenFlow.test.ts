@@ -10,7 +10,6 @@ import { describe, it, expect } from 'vitest';
 import { Container, DOMAdapter } from 'pixi.js';
 import { Button } from '../ui/widgets';
 import { MainMenu } from '../screens/MainMenu';
-import { ModeSelect } from '../screens/ModeSelect';
 import { PvpPreview } from '../screens/PvpPreview';
 import { Matchmaking } from '../screens/Matchmaking';
 import { PartyScreen } from '../screens/PartyScreen';
@@ -60,7 +59,6 @@ function storePurchaseStub(): StorePurchase {
 function buildWidgets(): ScreenFlowWidgets {
   return {
     mainMenu: new MainMenu(),
-    modeSelect: new ModeSelect(),
     pvpPreview: new PvpPreview(),
     matchmaking: new Matchmaking(),
     partyScreen: new PartyScreen({ matchBaseUrl: 'http://mm' }),
@@ -79,7 +77,6 @@ function buildWidgets(): ScreenFlowWidgets {
 // tell "did this call actually hide it" apart from "it was already hidden".
 function showEverything(w: ScreenFlowWidgets) {
   w.mainMenu.show(800, 600);
-  w.modeSelect.show(800, 600);
   w.pvpPreview.show(800, 600, 'default');
   w.matchmaking.show(800, 600, async () => { throw new Error('not used'); });
   w.partyScreen.show(800, 600);
@@ -96,10 +93,9 @@ describe('ScreenFlow', () => {
   it('showMenu: hides every other overlay + the HUD + settings button, shows mainMenu', () => {
     const w = buildWidgets();
     showEverything(w);
-    new ScreenFlow(w).showMenu(800, 600);
+    new ScreenFlow(w).showMenu(800, 600, false);
 
     expect(w.mainMenu.view.visible).toBe(true);
-    expect(w.modeSelect.view.visible).toBe(false);
     expect(w.pvpPreview.view.visible).toBe(false);
     expect(w.matchmaking.view.visible).toBe(false);
     expect(w.forge.view.visible).toBe(false);
@@ -111,18 +107,21 @@ describe('ScreenFlow', () => {
     expect(w.settingsBtn.view.visible).toBe(false);
   });
 
-  it('showModeSelect: threads the recommend-tutorial flag through and hides everything else', () => {
+  it('showMenu: threads the recommend-tutorial flag through to the lobby', () => {
+    // It used to ride on `showModeSelect`; the TUTORIAL route it badges is a row in the menu
+    // since the 2026-09-10 merge, so the flag arrives here instead. Still asserted through
+    // the real setter rather than by reading a private: what matters is that the value gets
+    // there, and `showMenu` is now the only call that can carry it.
     const w = buildWidgets();
     showEverything(w);
     let recommended: boolean | undefined;
-    const original = w.modeSelect.setRecommendTutorial.bind(w.modeSelect);
-    w.modeSelect.setRecommendTutorial = (v: boolean) => { recommended = v; original(v); };
+    const original = w.mainMenu.setRecommendTutorial.bind(w.mainMenu);
+    w.mainMenu.setRecommendTutorial = (v: boolean) => { recommended = v; original(v); };
 
-    new ScreenFlow(w).showModeSelect(800, 600, true);
+    new ScreenFlow(w).showMenu(800, 600, true);
 
     expect(recommended).toBe(true);
-    expect(w.modeSelect.view.visible).toBe(true);
-    expect(w.mainMenu.view.visible).toBe(false);
+    expect(w.mainMenu.view.visible).toBe(true);
     expect(w.settingsBtn.view.visible).toBe(false);
   });
 
@@ -145,7 +144,6 @@ describe('ScreenFlow', () => {
 
     expect(w.partyScreen.view.visible).toBe(true);
     expect(w.mainMenu.view.visible).toBe(false);
-    expect(w.modeSelect.view.visible).toBe(false);
     expect(w.settingsBtn.view.visible).toBe(true); // untouched — showSquad never references it
   });
 
@@ -193,14 +191,12 @@ describe('ScreenFlow', () => {
     w.mainMenu.show(800, 600);
     w.settingsBtn.view.visible = true;
     // Untouched by openSettings — must stay exactly as they were (it never references them).
-    w.modeSelect.show(800, 600);
 
     new ScreenFlow(w).openSettings(800, 600, defaultSettingsState());
 
     expect(w.mainMenu.view.visible).toBe(false);
     expect(w.settingsBtn.view.visible).toBe(false);
     expect(w.settingsScreen.view.visible).toBe(true);
-    expect(w.modeSelect.view.visible).toBe(true); // untouched
   });
 
   it('pause / resume: shows and hides the pause menu only', () => {

@@ -2,7 +2,7 @@ import { Container } from 'pixi.js';
 
 /**
  * The menu/overlay layer and the one piece of policy that belongs to it: every
- * full-screen screen (MainMenu/ModeSelect/Forge/Settings/…) is laid out in a fixed
+ * full-screen screen (MainMenu/Forge/Settings/…) is laid out in a fixed
  * DESIGN space and the whole layer is scaled DOWN to fit viewports smaller than it,
  * rather than each screen re-flowing its own layout per viewport.
  *
@@ -14,7 +14,8 @@ import { Container } from 'pixi.js';
  * still-there weapon cards and read as "the button to enter the map isn't there"
  * (reported as 卡在选武器的页面). Every other screen was over-tall too, by less:
  * measured minimum heights were Forge 540 (570 to also clear its own bottom bar),
- * Settings 485, LoginScreen 405, PvpPreview/PartyScreen 400, ModeSelect 380,
+ * Settings 485, LoginScreen 405, PvpPreview/PartyScreen 400, ModeSelect 380 (that screen
+ * is gone since 2026-09-10 — its routes are rows in the menu, which grew accordingly),
  * Screens 370, MainMenu 330 — against a 390px viewport.
  *
  * A uniform fit-scale fixes all of them at once and keeps one layout per screen. The

@@ -181,6 +181,18 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
     return i;
   };
 
+  /**
+   * Where a STATEMENT is, not where the string first appears.
+   *
+   * `at('game.start()')` was silently wrong the moment a comment in that file mentioned the
+   * call — which the 2026-09-10 identity-gate pass did, in the paragraph explaining what the
+   * old order got wrong. The first hit then landed in prose ABOVE the code, so an ordering
+   * assertion could pass while the code it describes was in the opposite order. Anchoring on
+   * the leading newline + the entry's two-space indent is what makes the needle a line.
+   */
+  const stmt = (line: string): number => at(`
+  ${line}`);
+
   it('installs the base asset host BEFORE the first preload', () => {
     // The one ordering bug with a half-working symptom: a host installed after
     // `preloadLobbyArt` leaves the lobby art fetched from the wrong place and everything
@@ -202,13 +214,40 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
   it('drives the portal session from the ticker, after start()', () => {
     // Same reason `installPerf` is installed after `start()`: the callback then runs outside
     // every listener the game added, so the phase it reads is the phase the frame ended in.
-    expect(at('game.start()')).toBeLessThan(at('app.ticker.add(() => portal.update())'));
+    expect(stmt('game.start();')).toBeLessThan(stmt('app.ticker.add(() => portal.update());'));
   });
 
   it('installs no auto-reload', () => {
     // Deliberately absent, not forgotten — and a source assertion because the absence of a
     // call is exactly what no runtime test can see.
     expect(ENTRY).not.toMatch(/installAutoReload/);
+  });
+
+  it('waits for the identity gate BEFORE the first frame and before the splash comes down', () => {
+    // The 2026-09-10 ordering fix (design/10). Both halves matter and they fail differently:
+    // starting the game first makes the account label paint as a guest and flip, and removing
+    // the splash first means the ONE-CLICK menu (design/20) is live while the login is still
+    // in flight — so the first click starts a run, and the session lands mid-run.
+    //
+    // A source assertion because there is no seam: an entry point runs `boot()` at import.
+    expect(stmt('const identity = await settleIdentity(')).toBeLessThan(stmt('game.start();'));
+    expect(stmt('const identity = await settleIdentity(')).toBeLessThan(
+      stmt("document.getElementById('boot-loading')?.remove();"),
+    );
+  });
+
+  it('does NOT make the boot intent part of that wait', () => {
+    // An accepted invite moves the player off the menu; doing that before there IS a menu is
+    // a race with no upside. So the gate waits for the login only, and the rooms/intent half
+    // of the same chain is attached after `game.start()`.
+    expect(stmt('game.start();')).toBeLessThan(at('return applyPortalBootIntent(sdk);'));
+  });
+
+  it('leaves nothing in the SDK chain unhandled', () => {
+    // `portal.start()` can reject (it awaits `sdk.init()` and `ads.probe()`), and until this
+    // pass the whole chain was a bare `void ...` with no catch — an unhandled rejection on a
+    // page where the console is something a platform reviewer reads.
+    expect(ENTRY).toMatch(/\.catch\(\(e: unknown\) =>/);
   });
 
   it('hands the ad suspension the real ticker', () => {

@@ -25,7 +25,6 @@ import type { Screens } from '../screens/Screens';
 import type { Forge } from '../screens/Forge';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { MainMenu } from '../screens/MainMenu';
-import type { ModeSelect } from '../screens/ModeSelect';
 import type { PvpPreview } from '../screens/PvpPreview';
 import type { Matchmaking, MatchmakingSignal } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
@@ -47,7 +46,6 @@ export interface ScreenNavDeps {
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
   mainMenu: MainMenu;
-  modeSelect: ModeSelect;
   pvpPreview: PvpPreview;
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -63,6 +61,13 @@ export interface ScreenNavDeps {
   settings: () => SettingsState;
   /** The Matchmaking screen's injected connect function — supplied by `OnlineMatch`. */
   connect: (signal: MatchmakingSignal) => Promise<CoopSession>;
+  /**
+   * Run anything the meta layer deferred until the player was between runs — supplied by
+   * `OnlineMatch.flushPendingMetaSync`, and injected for exactly the reason `connect` above
+   * is: this file must not depend on the controller that owns runs and sessions (see the
+   * header's one-way-edge note). What it means here is only "the hub is being entered now".
+   */
+  onHubEntered: () => void;
 }
 
 export class ScreenNav {
@@ -75,28 +80,26 @@ export class ScreenNav {
 
   // ---- The screens ----
 
-  /** The main menu — the boot front door (design/10 screen flow). PLAY drops into the
-   *  forge/loadout screen below; SQUAD opens the PvP party lobby (design/05/15);
-   *  SETTINGS reuses the same settings overlay the forge uses. */
+  /**
+   * The LOBBY — the boot front door and, since the 2026-09-10 merge, the branch point too
+   * (design/10 screen flow). SOLO drops into the forge/loadout screen below; CO-OP and PVP
+   * SOLO QUEUE open matchmaking; SQUAD opens the PvP party lobby (design/05/15); TUTORIAL
+   * starts the standalone level; SETTINGS reuses the same overlay the forge uses.
+   *
+   * It carries the recommend-tutorial flag the mode-select screen's own show used to, for
+   * the same reason: the badge is drawn from `MetaState.hasSeenTutorial`, and this method is
+   * the one with a `run` to read it from.
+   */
   showMenu(): void {
+    this.deps.onHubEntered();
     this.deps.run.phase = 'menu';
     const { w, h } = this.fit();
-    this.deps.screenFlow.showMenu(w, h);
-  }
-
-  /** The mode-select branch point (design/10 screen-flow gap) — PLAY's new destination.
-   *  BACK returns to the main menu; SOLO routes to the unchanged Forge/offline path,
-   *  CO-OP/PVP SOLO QUEUE open the matchmaking screen, TUTORIAL starts the standalone
-   *  level. */
-  showModeSelect(): void {
-    this.deps.run.phase = 'modeSelect';
-    const { w, h } = this.fit();
-    this.deps.screenFlow.showModeSelect(w, h, !this.deps.run.meta.hasSeenTutorial);
+    this.deps.screenFlow.showMenu(w, h, !this.deps.run.meta.hasSeenTutorial);
   }
 
   /**
    * PvP match preview (design/10 open question "PvP preset-pick has no UI yet", 15) —
-   * shown for the solo PVP-SOLO-QUEUE path only, between ModeSelect and Matchmaking, so a
+   * shown for the solo PVP-SOLO-QUEUE path only, between the lobby and Matchmaking, so a
    * player sees their character/the real map/PvP-scaled stats before committing to queue.
    * Does NOT run for the squad path — see phase.ts's doc comment on 'pvpPreview' for why.
    */
@@ -131,6 +134,10 @@ export class ScreenNav {
     // so it is gated rather than START RUN. Returns false — and costs nothing — once the art
     // is in.
     if (this.deps.artGate.defer(() => this.showForge())) return;
+    // AFTER the art gate, not before: a deferred call re-enters this method once the art
+    // lands, and flushing on the way past would run the sync while the loading screen is
+    // still up and the phase is still whatever it was.
+    this.deps.onHubEntered();
     this.deps.run.phase = 'forge';
     const { w, h } = this.fit();
     this.deps.screenFlow.showForge(w, h, this.deps.run.meta);
@@ -150,7 +157,7 @@ export class ScreenNav {
 
   /**
    * Wraps the injected connect with real connecting/error feedback (design/10 screen-flow
-   * gap) — reached from ModeSelect's CO-OP/PVP SOLO QUEUE or PartyScreen's START MATCHING,
+   * gap) — reached from the lobby's CO-OP/PVP SOLO QUEUE or PartyScreen's START MATCHING,
    * both of which set `matchmakingReturnPhase` first so Cancel/Back knows where to go back
    * to.
    */
@@ -250,8 +257,7 @@ export class ScreenNav {
     d.floorCardPrompt.reposition(size);
     d.screenFlow.repositionSettingsButtonIfForge(d.run.phase === 'forge', w, h);
     switch (d.run.phase) {
-      case 'menu': d.mainMenu.show(w, h); break;
-      case 'modeSelect': d.modeSelect.show(w, h); break;
+      case 'menu': d.mainMenu.show(w, h); break; // the badge is already set — see showMenu
       case 'pvpPreview': d.pvpPreview.show(w, h, d.run.meta.selectedSkin); break;
       case 'forge': d.forge.render(d.run.meta, w, h); break;
       case 'matchmaking': d.matchmaking.resize(w, h); break; // NOT show() — must not restart connect()

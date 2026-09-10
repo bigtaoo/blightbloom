@@ -90,7 +90,7 @@ function make() {
   const called: string[] = [];
   const track = (name: string) => vi.fn(() => void called.push(name));
   const nav = {
-    showMenu: track('nav.showMenu'), showModeSelect: track('nav.showModeSelect'),
+    showMenu: track('nav.showMenu'),
     showSquad: track('nav.showSquad'), showAccount: track('nav.showAccount'),
     openSettings: track('nav.openSettings'), showForge: track('nav.showForge'),
     showMatchmaking: track('nav.showMatchmaking'), openSettingsFromPause: track('nav.openSettingsFromPause'),
@@ -130,9 +130,9 @@ function make() {
     } as never,
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
-    mainMenu: { ...screenStub('onPlay', 'onModes', 'onSquad', 'onAccount', 'onSettings'),
+    mainMenu: { ...screenStub('onPlay', 'onSolo', 'onCoop', 'onPvpSolo', 'onSquad', 'onTutorial',
+      'onAccount', 'onSettings'),
       setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
-    modeSelect: screenStub('onSolo', 'onCoop', 'onPvpSolo', 'onTutorial', 'onBack') as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
     partyScreen: screenStub('onBack', 'onStartMatch') as never,
@@ -154,18 +154,20 @@ describe('wireScreens', () => {
     // nothing when pressed, with no error anywhere.
     const t = make();
     wireScreens(t.d);
-    const screens = ['mainMenu', 'modeSelect', 'pvpPreview', 'matchmaking', 'partyScreen',
+    const screens = ['mainMenu', 'pvpPreview', 'matchmaking', 'partyScreen',
       'loginScreen', 'forge', 'screens', 'pauseMenu'] as const;
     for (const name of screens) {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
         if (slot === 'refreshAccountLabel' || slot === 'setQuickPlay' || slot === 'refreshBanner') continue;
         if (slot === 'setAccountEntry') continue;
-        // `onModes` is the one slot that is deliberately unwired on the default host: the
-        // button it belongs to is hidden there, because PLAY already opens the mode list.
-        // The portal branch below asserts the other half — that it IS wired when the button
-        // is on screen — so between the two, neither shape can ship a dead button.
-        if (slot === 'onModes') continue;
+        if (slot === 'setRecommendTutorial') continue;
+        // `onPlay` is the one slot that is deliberately unwired on the default host: the
+        // button it belongs to is hidden there, because SOLO is the primary action and the
+        // one-click route only exists on a portal. The portal branch below asserts the other
+        // half — that it IS wired when the button is on screen — so between the two, neither
+        // shape can ship a dead button.
+        if (slot === 'onPlay') continue;
         expect(value, `${name}.${slot} is still unassigned`).toBeTypeOf('function');
       }
     }
@@ -177,34 +179,35 @@ describe('wireScreens', () => {
     const fire = (screen: keyof WiringDeps, slot: string, ...args: unknown[]): void => {
       (t.d[screen] as unknown as Record<string, (...a: unknown[]) => void>)[slot]!(...args);
     };
-    fire('mainMenu', 'onPlay');
+    fire('mainMenu', 'onSolo');
+    fire('mainMenu', 'onCoop');
+    fire('mainMenu', 'onPvpSolo');
     fire('mainMenu', 'onSquad');
+    fire('mainMenu', 'onTutorial');
     fire('mainMenu', 'onAccount');
-    fire('modeSelect', 'onSolo');
-    fire('modeSelect', 'onCoop');
-    fire('modeSelect', 'onPvpSolo');
-    fire('modeSelect', 'onTutorial');
     fire('pvpPreview', 'onQueue');
     fire('partyScreen', 'onStartMatch', 'p1');
     fire('pauseMenu', 'onQuit');
     fire('pauseMenu', 'onResume');
     expect(t.called).toEqual([
-      'nav.showModeSelect', 'nav.showSquad', 'nav.showAccount',
       'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
-      'runs.beginTutorialRun', 'nav.showMatchmaking', 'net.beginSquadMatch',
+      'nav.showSquad', 'runs.beginTutorialRun', 'nav.showAccount',
+      'nav.showMatchmaking', 'net.beginSquadMatch',
       'runs.quitRun', 'nav.resume',
     ]);
   });
 
-  it('sends every BACK button to the main menu', () => {
+  it('sends every BACK button to the lobby', () => {
     const t = make();
     wireScreens(t.d);
-    for (const screen of ['modeSelect', 'pvpPreview', 'partyScreen', 'loginScreen', 'forge'] as const) {
+    // pvpPreview used to be the exception — its BACK went one step to the mode-select
+    // screen rather than all the way home. With that screen merged into the lobby
+    // (2026-09-10) one step back and all the way home are the same place, so the exception
+    // is gone rather than forgotten.
+    for (const screen of ['pvpPreview', 'partyScreen', 'loginScreen', 'forge'] as const) {
       t.called.length = 0;
       (t.d[screen] as unknown as Record<string, () => void>).onBack!();
-      // pvpPreview's BACK goes one step back, not all the way home — the exception, and the
-      // reason this is a per-screen assertion rather than one loop with one expectation.
-      expect(t.called, screen).toEqual([screen === 'pvpPreview' ? 'nav.showModeSelect' : 'nav.showMenu']);
+      expect(t.called, screen).toEqual(['nav.showMenu']);
     }
   });
 
@@ -332,26 +335,26 @@ describe('wireScreens — the portal host', () => {
     wireScreens(t.d);
     const menu = t.d.mainMenu as unknown as {
       onPlay: () => void;
-      onModes: () => void;
+      onSolo: () => void;
       setQuickPlay: ReturnType<typeof vi.fn>;
     };
     expect(menu.setQuickPlay).toHaveBeenCalledWith(true);
     menu.onPlay();
-    menu.onModes();
-    expect(t.called).toEqual(['runs.beginQuickRun', 'nav.showModeSelect']);
+    menu.onSolo();
+    expect(t.called).toEqual(['runs.beginQuickRun', 'nav.showForge']);
   });
 
   it('leaves every other route exactly where it was', () => {
     // The portal branch must be one button's behaviour and not a different screen flow:
-    // co-op, PvP and the tutorial all still hang off SELECT MODE.
+    // co-op, PvP and the tutorial are the same rows they are everywhere else.
     setHostKind('crazygames');
     const t = make();
     wireScreens(t.d);
-    const modeSelect = t.d.modeSelect as unknown as Record<string, () => void>;
-    modeSelect.onSolo!();
-    modeSelect.onCoop!();
-    modeSelect.onPvpSolo!();
-    modeSelect.onTutorial!();
+    const menu = t.d.mainMenu as unknown as Record<string, () => void>;
+    menu.onSolo!();
+    menu.onCoop!();
+    menu.onPvpSolo!();
+    menu.onTutorial!();
     expect(t.called).toEqual([
       'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
       'runs.beginTutorialRun',

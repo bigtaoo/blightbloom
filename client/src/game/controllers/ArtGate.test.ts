@@ -222,7 +222,7 @@ describe('the transitions that are gated', () => {
     ]) {
       expect(bodyAfter(gated), gated).toContain('artGate.defer(');
     }
-    for (const ungated of ['showMenu(): void {', 'showModeSelect(): void {', 'showAccount(): void {', 'showSquad(): void {']) {
+    for (const ungated of ['showMenu(): void {', 'showAccount(): void {', 'showSquad(): void {']) {
       expect(bodyAfter(ungated), ungated).not.toContain('artGate');
     }
   });

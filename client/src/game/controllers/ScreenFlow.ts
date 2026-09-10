@@ -1,7 +1,6 @@
 import type { Container } from 'pixi.js';
 import type { Button } from '../ui/widgets';
 import type { MainMenu } from '../screens/MainMenu';
-import type { ModeSelect } from '../screens/ModeSelect';
 import type { PvpPreview } from '../screens/PvpPreview';
 import type { Matchmaking, MatchmakingConnect } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
@@ -21,7 +20,6 @@ import type { SettingsState } from '../../settings';
  * post-query-param-override `matchBaseUrl` — see Game.ts's own field comments). */
 export interface ScreenFlowWidgets {
   mainMenu: MainMenu;
-  modeSelect: ModeSelect;
   pvpPreview: PvpPreview;
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -53,9 +51,8 @@ export interface ScreenFlowWidgets {
 export class ScreenFlow {
   constructor(private readonly w: ScreenFlowWidgets) {}
 
-  showMenu(width: number, height: number): void {
+  showMenu(width: number, height: number, recommendTutorial: boolean): void {
     this.w.hudView.visible = false;
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
@@ -65,29 +62,15 @@ export class ScreenFlow {
     this.w.loginScreen.hide();
     this.w.storeScreen.hide();
     this.w.settingsBtn.view.visible = false;
+    // The tutorial badge rode in on `showModeSelect` before the 2026-09-10 merge; the route
+    // it belongs to is a row in this screen now, so the flag comes here instead.
+    this.w.mainMenu.setRecommendTutorial(recommendTutorial);
     this.w.mainMenu.show(width, height);
-  }
-
-  showModeSelect(width: number, height: number, recommendTutorial: boolean): void {
-    this.w.hudView.visible = false;
-    this.w.mainMenu.hide();
-    this.w.forge.hide();
-    this.w.pvpPreview.hide();
-    this.w.matchmaking.hide();
-    this.w.screens.hide();
-    this.w.settingsScreen.hide();
-    this.w.partyScreen.hide();
-    this.w.loginScreen.hide();
-    this.w.storeScreen.hide();
-    this.w.settingsBtn.view.visible = false;
-    this.w.modeSelect.setRecommendTutorial(recommendTutorial);
-    this.w.modeSelect.show(width, height);
   }
 
   showPvpPreview(width: number, height: number, selectedSkinId: string): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
     this.w.screens.hide();
@@ -102,7 +85,6 @@ export class ScreenFlow {
   showSquad(width: number, height: number): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
@@ -116,7 +98,6 @@ export class ScreenFlow {
   showAccount(width: number, height: number): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
@@ -130,7 +111,6 @@ export class ScreenFlow {
   showMatchmaking(width: number, height: number, connect: MatchmakingConnect): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.forge.hide();
     this.w.screens.hide();
@@ -147,7 +127,6 @@ export class ScreenFlow {
   showStore(width: number, height: number, meta: MetaState): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
@@ -162,7 +141,6 @@ export class ScreenFlow {
   showForge(width: number, height: number, meta: MetaState): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
-    this.w.modeSelect.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.screens.hide();

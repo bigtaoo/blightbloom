@@ -58,7 +58,6 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     portalPrompt: { reposition: vi.fn() } as never,
     floorCardPrompt: { reposition: vi.fn() } as never,
     mainMenu: screen() as never,
-    modeSelect: screen() as never,
     pvpPreview: screen() as never,
     matchmaking: screen() as never,
     partyScreen: screen() as never,
@@ -71,6 +70,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     screenSize: () => ({ w: 1600, h: 1200 }),
     settings: () => ({ quality: 'high' }) as never,
     connect: vi.fn(),
+    onHubEntered: vi.fn(),
     ...over,
   };
   const nav = new ScreenNav(deps);
@@ -92,7 +92,6 @@ function make(over: Partial<ScreenNavDeps> = {}) {
 describe('the plain transitions', () => {
   it.each([
     ['showMenu', 'menu', 'showMenu'],
-    ['showModeSelect', 'modeSelect', 'showModeSelect'],
     ['showSquad', 'squad', 'showSquad'],
     ['showAccount', 'account', 'showAccount'],
     ['showForge', 'forge', 'showForge'],
@@ -106,22 +105,22 @@ describe('the plain transitions', () => {
     expect(t.calls.some((c) => c.startsWith(`${flowCall}(`))).toBe(true);
   });
 
-  it('tells ModeSelect whether the tutorial is still unseen', () => {
+  it('tells the lobby whether the tutorial is still unseen', () => {
     // The prompt on the TUTORIAL button. Inverted, it nags a player who already played it.
     const t = make();
-    t.nav.showModeSelect();
-    expect(t.calls).toContain('showModeSelect(800,600,true)');
+    t.nav.showMenu();
+    expect(t.calls).toContain('showMenu(800,600,true)');
 
     t.run.meta = { ...t.run.meta, hasSeenTutorial: true };
     t.calls.length = 0;
-    t.nav.showModeSelect();
-    expect(t.calls).toContain('showModeSelect(800,600,false)');
+    t.nav.showMenu();
+    expect(t.calls).toContain('showMenu(800,600,false)');
   });
 });
 
 describe('the art gate', () => {
   const GATED = ['showForge', 'showPvpPreview', 'showMatchmaking'] as const;
-  const UNGATED = ['showMenu', 'showModeSelect', 'showSquad', 'showAccount'] as const;
+  const UNGATED = ['showMenu', 'showSquad', 'showAccount'] as const;
 
   it.each(GATED)('%s WAITS for run art, then completes when it arrives', (method) => {
     const t = make();
@@ -142,6 +141,44 @@ describe('the art gate', () => {
     t.closeGate();
     t.nav[method]();
     expect(t.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the hub hook (deferred meta sync, 2026-09-10)', () => {
+  // What is on the other end of this is `OnlineMatch.flushPendingMetaSync` — an account
+  // session that arrived mid-run and had its `setMeta` held back. See `phase.ts`'s
+  // `isHubPhase` for the clobber it avoids.
+  it('fires on the way into the menu and the forge', () => {
+    for (const method of ['showMenu', 'showForge'] as const) {
+      const onHubEntered = vi.fn();
+      const t = make({ onHubEntered });
+      t.nav[method]();
+      expect(onHubEntered, method).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('does NOT fire on the screens that are not the hub', () => {
+    // Naming them individually rather than asserting "not the two above": a new screen that
+    // should flush is a decision somebody has to make, and a blanket assertion would make it
+    // silently for them.
+    for (const method of ['showSquad', 'showAccount', 'showPvpPreview', 'showMatchmaking'] as const) {
+      const onHubEntered = vi.fn();
+      const t = make({ onHubEntered });
+      t.nav[method]();
+      expect(onHubEntered, method).not.toHaveBeenCalled();
+    }
+  });
+
+  it('waits for the art gate — a deferred forge flushes when the art lands, not before', () => {
+    // The ordering the hook is placed after `artGate.defer` for: a flush during the loading
+    // screen would apply the account's meta while the phase is still the one before it.
+    const onHubEntered = vi.fn();
+    const t = make({ onHubEntered });
+    t.closeGate();
+    t.nav.showForge();
+    expect(onHubEntered).not.toHaveBeenCalled();
+    t.releaseGate();
+    expect(onHubEntered).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -236,7 +273,6 @@ describe('relayout', () => {
 
   it.each([
     ['menu', 'mainMenu'],
-    ['modeSelect', 'modeSelect'],
     ['pvpPreview', 'pvpPreview'],
     ['squad', 'partyScreen'],
     ['account', 'loginScreen'],
@@ -291,7 +327,7 @@ describe('relayout', () => {
     const t = make();
     t.run.phase = 'playing';
     t.nav.relayout();
-    for (const dep of ['mainMenu', 'modeSelect', 'forge', 'storeScreen', 'screens', 'pauseMenu'] as const) {
+    for (const dep of ['mainMenu', 'forge', 'storeScreen', 'screens', 'pauseMenu'] as const) {
       const s = (t.deps as unknown as Record<string, { show: ReturnType<typeof vi.fn>; render: ReturnType<typeof vi.fn>; resize: ReturnType<typeof vi.fn> }>)[dep]!;
       expect(s.show, dep).not.toHaveBeenCalled();
       expect(s.render, dep).not.toHaveBeenCalled();

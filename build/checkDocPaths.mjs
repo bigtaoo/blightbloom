@@ -92,6 +92,8 @@ export const ALLOWLIST = [
   { token: 'client/src/game/ui/FloorProgress.ts', why: 'retired 2026-08-05; design/10 cites it in the row recording the retirement' },
   { token: 'floorProgressMath.ts', why: 'retired with it; design/05 and design/10 both cite it as deleted' },
   { token: 'world/arenas/arena_prototype_60.json', why: 'retired and deleted 2026-08-26; design/05 and design/09 both say so in the citing sentence' },
+  { token: 'ModeSelect.ts', why: 'the same file cited by bare name in two neighbouring bullets' },
+  { token: 'client/src/game/screens/ModeSelect.ts', why: 'deleted 2026-09-10 when the lobby merged its four routes into MainMenu; design/10 cites it in the bullet marking that supersession' },
 
   // ── A phantom the docs deliberately record as a phantom.
   { token: 'client/.../standingCoverParity.test.ts', why: 'design/18 records that commit 14e693b cited this test and it was NEVER created — the citation is the finding' },

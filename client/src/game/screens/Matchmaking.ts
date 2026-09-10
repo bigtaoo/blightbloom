@@ -51,7 +51,7 @@ export class Matchmaking {
 
   onConnected: ((session: CoopSession) => void) | null = null;
   /** Fired on Cancel (mid-connect) or Back (from the error state) alike — both mean
-   * "give up on matchmaking", Game.ts routes both back to ModeSelect/Squad. */
+   * "give up on matchmaking", Game.ts routes both back to the lobby/Squad. */
   onCancelled: (() => void) | null = null;
 
   constructor() {

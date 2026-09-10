@@ -9,7 +9,6 @@ import { Scene } from './scene/Scene';
 import { Screens, type ResultOffer } from './screens/Screens';
 import { Forge } from './screens/Forge';
 import { MainMenu } from './screens/MainMenu';
-import { ModeSelect } from './screens/ModeSelect';
 import { PvpPreview } from './screens/PvpPreview';
 import { Matchmaking } from './screens/Matchmaking';
 import { PartyScreen } from './screens/PartyScreen';
@@ -97,11 +96,8 @@ export class Game {
   private screens = new Screens();
   private forge = new Forge();
   private mainMenu = new MainMenu();
-  // ModeSelect (design/10 screen-flow gap): PLAY's new destination — solo PvE / co-op /
-  // PvP solo queue / tutorial, previously only reachable as boot-time URL flags.
-  private modeSelect = new ModeSelect();
   // PvP match preview (design/10 open question "PvP preset-pick has no UI yet") —
-  // ModeSelect's PVP SOLO QUEUE routes here before Matchmaking, so a player sees their
+  // The lobby's PVP SOLO QUEUE routes here before Matchmaking, so a player sees their
   // character/map/PvP-scaled stats instead of jumping straight into "Finding a match…".
   // Solo-queue path only — see phase.ts's doc comment for why squad doesn't route here.
   private pvpPreview = new PvpPreview();
@@ -109,7 +105,7 @@ export class Game {
   // connecting/error feedback — previously the game sat in a blank `playing` phase with
   // no UI while matchmaking ran, and a post-ticket failure hung forever with no error.
   private matchmaking = new Matchmaking();
-  // Where Cancel/Back on the Matchmaking screen returns to — modeSelect for a solo
+  // Where Cancel/Back on the Matchmaking screen returns to — the lobby for a solo
   // co-op/PvP queue (beginSoloQueue), squad for a pre-formed party (beginSquadMatch).
   // Same "remember the caller" convention as settingsReturnPhase.
   // Constructed in start(), not as a field initializer — it needs `this.run.matchBaseUrl`
@@ -227,7 +223,7 @@ export class Game {
   private readonly tutorialHints: TutorialHintController;
   // True only for the standalone tutorial level (beginTutorialRun) — always offline,
   // never `this.run.online`. Gates the tutorial hint reactions and where Pause/result-screen
-  // confirm/quit actually return to (ModeSelect instead of Forge).
+  // confirm/quit actually return to (the lobby instead of Forge).
 
   constructor(app: Application, input: InputSource, audio: AudioBus) {
     this.app = app;
@@ -305,7 +301,7 @@ export class Game {
       touchControlsView: this.touchControlsView, portalPrompt: this.portalPrompt,
       floorCardPrompt: this.floorCardPrompt, ticker: this.app.ticker,
       pickupDebugOverlay: this.pickupDebugOverlay, settingsBtn: this.settingsBtn,
-      mainMenu: this.mainMenu, modeSelect: this.modeSelect, pvpPreview: this.pvpPreview,
+      mainMenu: this.mainMenu, pvpPreview: this.pvpPreview,
       matchmaking: this.matchmaking, forge: this.forge, screens: this.screens,
       settingsScreen: this.settingsScreen, pauseMenu: this.pauseMenu,
     }, this);
@@ -321,7 +317,7 @@ export class Game {
       run: this.run, nav: this.nav, runs: this.runs, net: this.net,
       forgeInput: this.forgeInput, builder: this.builder, input: this.input,
       hud: this.hud, portalPrompt: this.portalPrompt, floorCardPrompt: this.floorCardPrompt,
-      mainMenu: this.mainMenu, modeSelect: this.modeSelect, pvpPreview: this.pvpPreview,
+      mainMenu: this.mainMenu, pvpPreview: this.pvpPreview,
       matchmaking: this.matchmaking, partyScreen: this.partyScreen, loginScreen: this.loginScreen,
       forge: this.forge, storeScreen: this.storeScreen, screens: this.screens, pauseMenu: this.pauseMenu,
       confirm: () => this.confirm(),
@@ -437,12 +433,12 @@ export class Game {
     if (this.run.phase === 'menu') this.nav.showForge();
     else if (this.run.phase === 'forge') this.runs.beginRun();
     else if (this.run.phase === 'victory' || this.run.phase === 'defeat') {
-      // The tutorial never touched the loadout, so it returns to ModeSelect instead of
+      // The tutorial never touched the loadout, so it returns to the lobby instead of
       // Forge (design/10 screen-flow gap) — `hasSeenTutorial` was already marked the
       // moment this run hit gameover (stepSim), not here.
       if (this.run.tutorialActive) {
         this.run.tutorialActive = false;
-        this.nav.showModeSelect();
+        this.nav.showMenu();
       } else {
         this.nav.showForge();
       }

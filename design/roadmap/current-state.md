@@ -201,9 +201,11 @@ with signed tickets, render-layer local prediction (3), 8-player solo-or-squad P
 60-room arena map with a shrinking zone, placement scoring, anti-cheat checkpoints and an Elo
 ladder (4), username/password accounts bound to ladder rating and forge progress (6), and an
 English-canonical i18n system with a 中文 translation (7). **Phase 5 (presentation) is the only
-partially-open phase** — the widget kit/HUD/screens (now including a menu-driven Mode Select,
-a real Matchmaking connecting/error screen, a standalone tutorial level, a local-player downed/
-revive HUD, a PvP match-preview screen, and a left-handed control-layout toggle, all 2026-08-03 —
+partially-open phase** — the widget kit/HUD/screens (now including a real Matchmaking
+connecting/error screen, a standalone tutorial level, a local-player downed/
+revive HUD, a PvP match-preview screen, and a left-handed control-layout toggle, all 2026-08-03,
+plus — 2026-09-10 — a single LOBBY that absorbed the menu-driven Mode Select those same screens
+shipped with, and an identity gate that holds boot until a host's silent login has answered —
 see that entry under [Phase 5](../ROADMAP.md#phase-5--presentation--platform)), the `.tao` art pipeline with a fully bound roster,
 post-processing, particles, all four fidelity-roadmap custom shaders (5.4), and (2026-08-03,
 see that entry under [Phase 5](../ROADMAP.md#phase-5--presentation--platform)) 5.4's dynamic-lighting milestone all ship; the project's art direction is

@@ -37,7 +37,7 @@ import type { Phase } from './phase';
 /** Where the settings screen's BACK button returns to — set right before each open. */
 export type SettingsReturnPhase = 'menu' | 'forge' | 'paused';
 /** Where Cancel/Back on the Matchmaking screen returns to (solo queue vs. a party). */
-export type MatchmakingReturnPhase = 'modeSelect' | 'squad';
+export type MatchmakingReturnPhase = 'menu' | 'squad';
 
 /** Per-run seed = base + run index. Deterministic, and deliberately not a clock read. */
 export const SEED_BASE = 0xda1d;
@@ -74,7 +74,7 @@ export class RunState {
   // ── screen / run phase ────────────────────────────────────────────────────
   phase: Phase = 'menu';
   settingsReturnPhase: SettingsReturnPhase = 'menu';
-  matchmakingReturnPhase: MatchmakingReturnPhase = 'modeSelect';
+  matchmakingReturnPhase: MatchmakingReturnPhase = 'menu';
 
   // ── the run itself ────────────────────────────────────────────────────────
   runCount = 0;
@@ -90,12 +90,22 @@ export class RunState {
    *
    * Separate from `tutorialActive` rather than folded into it, because three other readers
    * mean "the standalone level" by that flag and would all be wrong here: the pause menu's
-   * SKIP TUTORIAL label (`ScreenNav`), the quit route back to ModeSelect instead of the
+   * SKIP TUTORIAL label (`ScreenNav`), the quit route back to the lobby instead of the
    * Forge (`endRun`), and the tutorial's own fixed config. What the two DO share is the
    * teaching, which is why `Game.isTeaching()` is the union of them and is what `GameLoop`
    * gates the hints on.
    */
   firstRunHints = false;
+  /**
+   * A meta sync that arrived while a run was in flight and is waiting for the hub
+   * (`isHubPhase`). Set by `OnlineMatch.syncMetaWithSession`, cleared by its
+   * `flushPendingMetaSync`, which `ScreenNav` calls on the way into the menu or the forge.
+   *
+   * Lives here rather than inside `OnlineMatch` for the same reason `phase` does: it is a
+   * fact about the run's relationship to the meta layer, and `RunState` is where the two
+   * concerns already meet.
+   */
+  pendingMetaSync = false;
 
   // ── seat / mode ───────────────────────────────────────────────────────────
   // Local co-op (ROADMAP 3.1): the seat THIS client drives, and an optional second seat
@@ -211,7 +221,7 @@ export class RunState {
   /**
    * The state half of a voluntary quit: drop whichever run handle is live and clear the
    * per-run flags. Returns whether the run being abandoned was the tutorial, because the
-   * caller routes to a different screen for it (ModeSelect, not Forge — a tutorial run
+   * caller routes to a different screen for it (the lobby, not Forge — a tutorial run
    * never touched the loadout).
    *
    * Clearing `online` here is load-bearing and was a real bug before the split: `quitRun`

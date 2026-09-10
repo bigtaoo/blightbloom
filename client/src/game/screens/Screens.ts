@@ -86,7 +86,7 @@ export class Screens {
     this.title.anchor.set(0.5);
     this.sub.anchor.set(0.5);
 
-    // Primary action — same green "go" styling as MainMenu's PLAY / ModeSelect's
+    // Primary action — same green "go" styling as the lobby's primary route /
     // SOLO / PartyScreen's START MATCHING (widgets.ts's established convention for
     // "the button this screen wants you to press").
     this.confirmBtn = new Button(t('results.confirmButton'), { w: 220, h: 44, fontSize: 17, color: 0x2f855a, borderColor: 0x68d391 });

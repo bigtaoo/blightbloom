@@ -25,7 +25,6 @@ import type { Phase } from './phase';
 
 const MENU_PHASES: Phase[] = [
   'menu',
-  'modeSelect',
   'forge',
   'pvpPreview',
   'matchmaking',

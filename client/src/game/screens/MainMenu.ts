@@ -1,21 +1,52 @@
 import { Container, Text } from 'pixi.js';
 import { Panel, Button } from '../ui/widgets';
+import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H } from '../ui/LobbyRoutes';
 import { getSession } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
 
+/** The quick-play button's height — a row this screen only has on a portal. */
+const PLAY_H = 60;
+/** Title top → card top: the title, the subtitle under it, and the gap. */
+const HEADER_H = 88;
+/** What the portal's data notice + policy link occupy under the card. */
+const NOTICE_BLOCK_H = 14 + 44 + 18;
 /**
- * The boot/main-menu screen (design/10 screen flow — the front door that never got
- * built). Pure presentation, same shape as PauseMenu.ts/Settings.ts: Game owns what
- * each button actually does. Deliberately minimal (design/10's "clutter" decision) —
- * PvP arena entry is still a URL-flag boot-time choice (see Game.ts's `online`/`pvp`/
- * `arenaDemo` fields); SQUAD is the one runtime entry point added so far (design/05/15's
- * PvP squad follow-up) — a pre-formed party still needs somewhere to be created/joined
- * before a run starts, which a boot-time flag alone can't offer. ACCOUNT (design/16
- * -accounts.md) opens login/register; its label reflects the current session so a
- * logged-in player sees who they are without opening the screen.
+ * Room kept above the title for a maintenance banner that is not part of the centred block.
+ *
+ * MEASURED rather than derived, on a real page with the real font (2026-09-10): the tallest
+ * legal banner is 140 characters (`@dd/net/publicFlags`), and the worst of those is 140 `M`s,
+ * which wraps to three lines and 55px at the 700px width below. A realistic sentence is 38px.
+ * It hangs upward from 16px above the title, so 16 + 55 is the floor. Note what the unit
+ * suite cannot tell you here — `fakeTextCanvas` measures 0.6em per character, so the same
+ * string is two lines and fits under any floor at all. Without this the tallest
+ * CONFIGURATION — a portal build, so quick-play plus the data notice — centres high enough
+ * that those three lines start above y=0, which is off screen at every viewport
+ * `viewportFit.test.ts` sweeps.
+ */
+const BANNER_RESERVE = 72;
+
+/**
+ * The LOBBY — the boot front door and the branch point, one screen (design/10 screen flow).
+ *
+ * Still called `MainMenu`, and the phase is still `'menu'`: the 2026-09-10 merge changed what
+ * this screen CONTAINS, not what it is called, because the `Phase` union and every call site
+ * in `ScreenNav` already speak that word. The docs call it the lobby, the code calls it the
+ * menu, and this comment is the mapping.
+ *
+ * What merged, and why. Until 2026-09-10 this screen was PLAY · SQUAD · LOGIN · SETTINGS and
+ * PLAY opened a second screen (`ModeSelect.ts`, now deleted) holding SOLO · CO-OP · PVP SOLO
+ * QUEUE · TUTORIAL. That split put the two doors into multiplayer on two different screens —
+ * SQUAD here, CO-OP and PVP one level deeper — which is the incoherence the report that
+ * prompted the merge circled. Folding them together removes a layer rather than adding one:
+ * four screens to a run became three.
+ *
+ * Pure presentation, same shape as PauseMenu.ts/Settings.ts: `gameWiring.ts` owns what each
+ * route actually does. `ui/LobbyRoutes.ts` owns the five routes and their layout; everything
+ * here is the shell — title, maintenance banner, the account chip, SETTINGS, and (on a game
+ * portal only) the one-click PLAY button above the routes and the data notice below them.
  */
 export class MainMenu {
   readonly view = new Container();
@@ -28,9 +59,9 @@ export class MainMenu {
   private menuCard = new Panel({ radius: 18, color: 0x05070c, alpha: 0.62, borderColor: 0x3a4a5c, borderAlpha: 0.5 });
   private title: Text;
   private subtitle: Text;
+  /** One-click play, and ONLY on a host that requires it — see `setQuickPlay`. */
   private playBtn: Button;
-  private modesBtn: Button;
-  private squadBtn: Button;
+  private routes = new LobbyRoutes();
   private accountBtn: Button;
   private settingsBtn: Button;
   /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
@@ -47,17 +78,17 @@ export class MainMenu {
   /**
    * The operator's maintenance notice (design/21 §4's `ui.maintenanceBanner`, delivered by
    * `GET /client/flags`). Empty means no banner, and empty is the shipped default, so the
-   * ordinary menu is exactly what it was.
+   * ordinary lobby is exactly what it was.
    *
    * Read from the flag store rather than passed in, the way `refreshAccountLabel` already
    * reads `getSession()` — the value changes at runtime and no constructor argument can
    * carry that. Three properties worth stating because each one is a decision:
    *
    *  - **It does not affect the layout.** It hangs at a fixed offset ABOVE the title rather
-   *    than adding a row the way quick-play's `extra` does, so a banner arriving while the
-   *    menu is already on screen needs no re-layout — and, more importantly, the geometry
-   *    every other screen in this project is measured against by `viewportFit.test.ts` does
-   *    not change depending on whether an operator has typed something.
+   *    than adding a row the way quick-play's PLAY button does, so a banner arriving while
+   *    the lobby is already on screen needs no re-layout. What the layout does owe it is
+   *    ROOM: `show()` never places the title higher than `BANNER_RESERVE`, so the tallest
+   *    legal banner still lands on screen (see that constant).
    *  - **It is not localised, and cannot be.** The value is one line an operator typed;
    *    there is no key to look up. That is the honest cost of a switch that must work
    *    without a deploy, and it is why the flag is capped at 140 characters and refuses
@@ -72,10 +103,13 @@ export class MainMenu {
   private quickPlay = false;
   private accountEntry = true;
 
+  /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
-  /** Only wired in quick-play mode — see `setQuickPlay`. */
-  onModes: (() => void) | null = null;
+  onSolo: (() => void) | null = null;
+  onCoop: (() => void) | null = null;
+  onPvpSolo: (() => void) | null = null;
   onSquad: (() => void) | null = null;
+  onTutorial: (() => void) | null = null;
   onAccount: (() => void) | null = null;
   onSettings: (() => void) | null = null;
 
@@ -87,27 +121,24 @@ export class MainMenu {
     this.subtitle = new Text({ text: t('mainMenu.subtitle'), style: { fill: 0x90cdf4, fontSize: 16, fontFamily: 'monospace', padding: 26 } });
     this.subtitle.anchor.set(0.5, 0);
 
-    // Hierarchy (design/10 legibility fix, 2026-08-02): PLAY is the one primary
-    // action — biggest, filled with the same "go" green every other screen in this
-    // project uses for its primary action (PartyScreen's START MATCHING, LoginScreen's
-    // REGISTER), with a matching bright border so it reads as the obvious next step.
-    // SQUAD is the one secondary action a run needs before it starts. ACCOUNT/SETTINGS
-    // are tertiary utility — sized down and placed side by side (not stacked) so their
-    // near-identical badge-style icons at small scale don't invite a misclick between
-    // two vertically-adjacent targets; distinct chip colors give each a second cue.
-    this.playBtn = new Button(t('mainMenu.play'), { w: 280, h: 68, fontSize: 26, color: 0x2f855a, borderColor: 0x68d391 });
+    // Hierarchy (design/10 legibility fix, 2026-08-02, and it survived the merge intact):
+    // exactly ONE primary action, filled with the "go" green every other screen in this
+    // project uses for its primary — which is SOLO on `routes` by default, and this button
+    // instead on a portal. ACCOUNT/SETTINGS are tertiary utility, sized down and placed side
+    // by side (not stacked) so their near-identical badge-style icons at small scale don't
+    // invite a misclick between two vertically-adjacent targets; distinct chip colors give
+    // each a second cue.
+    this.playBtn = new Button(t('mainMenu.play'), { w: LOBBY_ROUTES_W, h: PLAY_H, fontSize: 24, color: 0x2f855a, borderColor: 0x68d391 });
     this.playBtn.onTap = () => this.onPlay?.();
     this.playBtn.setIcon(getUiTexture('icon_play'));
-    // Quick-play's companion (see `setQuickPlay`): with PLAY taken over by "start a run
-    // now", this is where SELECT MODE — and with it co-op, PvP and the tutorial — stays
-    // reachable. Hidden entirely in the default layout, where PLAY already opens it.
-    this.modesBtn = new Button(t('mainMenu.modes'), { w: 280, h: 50, fontSize: 18, borderColor: 0x718096 });
-    this.modesBtn.onTap = () => this.onModes?.();
-    this.modesBtn.setIcon(getUiTexture('icon_play'), 0x2c5282);
-    this.modesBtn.view.visible = false;
-    this.squadBtn = new Button(t('mainMenu.squad'), { w: 280, h: 50, fontSize: 18, borderColor: 0x718096 });
-    this.squadBtn.onTap = () => this.onSquad?.();
-    this.squadBtn.setIcon(getUiTexture('icon_squad'), 0x2c5282);
+    this.playBtn.view.visible = false;
+
+    this.routes.onSolo = () => this.onSolo?.();
+    this.routes.onCoop = () => this.onCoop?.();
+    this.routes.onPvpSolo = () => this.onPvpSolo?.();
+    this.routes.onSquad = () => this.onSquad?.();
+    this.routes.onTutorial = () => this.onTutorial?.();
+
     this.accountBtn = new Button(t('mainMenu.account'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096 });
     this.accountBtn.onTap = () => this.onAccount?.();
     this.accountBtn.setIcon(getUiTexture('icon_account'), 0x6b46c1);
@@ -134,14 +165,17 @@ export class MainMenu {
     // or `MMMM…` — cannot wrap at all and runs off both edges of the screen. That is a legal
     // value (`@dd/net/publicFlags` refuses markup and control characters, not long words),
     // and `viewportFit.test.ts`'s banner entry is what caught it: the sweep failed at five
-    // of seven viewports the moment the case was actually put in front of it.
-    this.banner = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 15, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 16, align: 'center', wordWrap: true, wordWrapWidth: 480, breakWords: true, stroke: { color: 0x1a202c, width: 4 } } });
+    // of seven viewports the moment the case was actually put in front of it. The 700 is
+    // 2026-09-10: at 480 the longest legal banner needed three lines, and the room for the
+    // third had to come out of the lobby's own rows (`BANNER_RESERVE`). It stays well inside
+    // the 760 design width, which is the narrowest this layer ever hands a screen.
+    this.banner = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 15, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 16, align: 'center', wordWrap: true, wordWrapWidth: 700, breakWords: true, stroke: { color: 0x1a202c, width: 4 } } });
     this.banner.anchor.set(0.5, 1);
     this.banner.visible = false;
 
     this.view.addChild(
       this.panel.view, this.menuCard.view, this.banner, this.title, this.subtitle,
-      this.playBtn.view, this.modesBtn.view, this.squadBtn.view, this.accountBtn.view, this.settingsBtn.view,
+      this.playBtn.view, this.routes.view, this.accountBtn.view, this.settingsBtn.view,
       this.accountLabel, this.dataNotice, this.privacyLink,
     );
     this.view.eventMode = 'static';
@@ -149,26 +183,32 @@ export class MainMenu {
   }
 
   /**
-   * Turn PLAY into "start a run right now" and reveal SELECT MODE beside it.
+   * Turn on the one-click PLAY button above the routes, and demote SOLO to an ordinary one.
    *
    * A game portal requires that a first-time visitor reach gameplay in at most one click
-   * (`docs.crazygames.com/requirements/gameplay`), and the default route through this menu
-   * is four. Rather than delete the route — the forge is the between-run decision this game
-   * is built around, and the portal's rule is about the FIRST click, not about the loop —
-   * this makes the front door direct and keeps the old door next to it. `Game` still owns
-   * what each button does; this only decides which two are on screen.
+   * (`docs.crazygames.com/requirements/gameplay`), and SOLO — the default primary — goes to
+   * the forge first. Rather than delete the forge route, which is the between-run decision
+   * this game is built around, this adds a direct one above it and hands the green to the new
+   * button (`LobbyRoutes.setSoloPrimary`), so the card still has exactly one primary action.
    *
    * Called once during assembly, from the host branch in `gameWiring.ts`. Not a constructor
-   * argument because `Screens`/`ModeSelect`/every other screen here takes none, and one
-   * screen with a different construction signature is how that convention starts to rot.
+   * argument because `Screens`/`PauseMenu`/every other screen here takes none, and one screen
+   * with a different construction signature is how that convention starts to rot.
    */
   setQuickPlay(enabled: boolean): void {
     this.quickPlay = enabled;
-    this.modesBtn.view.visible = enabled;
+    this.playBtn.view.visible = enabled;
+    this.routes.setSoloPrimary(!enabled);
+  }
+
+  /** Call before `show()` so the TUTORIAL badge reflects `!MetaState.hasSeenTutorial` — the
+   *  flag `ScreenFlow.showMenu` now carries in, as it already did for `ModeSelect`. */
+  setRecommendTutorial(recommend: boolean): void {
+    this.routes.setRecommendTutorial(recommend);
   }
 
   /**
-   * Whether this menu offers a way INTO the account screen.
+   * Whether this lobby offers a way INTO the account screen.
    *
    * `false` on a game portal, and the reason is policy rather than taste: that platform
    * forbids a game's own credential login outright (its account rules name email login,
@@ -202,33 +242,35 @@ export class MainMenu {
     const cx = w / 2;
     const cy = h / 2;
 
-    // One extra row in quick-play mode. The card grows and the whole block shifts up by
-    // half the growth so it stays centred — `menuLayer.ts`'s fit-scale then keeps it inside
-    // a landscape phone's viewport exactly as it does the shorter version.
-    const extra = this.quickPlay ? 50 + 12 : 0;
-    this.title.position.set(cx, cy - 150 - extra / 2);
-    this.subtitle.position.set(cx, cy - 96 - extra / 2);
+    // The whole block is CENTRED as one unit, so a host that adds a row (quick-play) or a
+    // paragraph (the portal's data notice) stays centred instead of drifting down — and
+    // `menuLayer.ts`'s fit-scale then keeps it inside a landscape phone's viewport.
+    const extra = this.quickPlay ? PLAY_H + 12 : 0;
+    const cardH = 12 + extra + LOBBY_ROUTES_H + 12 + 42 + 24;
+    const below = this.accountEntry ? 0 : NOTICE_BLOCK_H;
+    // ...but never so high that a maintenance banner would be drawn off the top. The banner
+    // is deliberately not part of the block (see its own comment), so the block owes it room
+    // rather than a row.
+    const top = Math.max(BANNER_RESERVE, cy - (HEADER_H + cardH + below) / 2);
+
+    this.title.position.set(cx, top);
+    this.subtitle.position.set(cx, top + 50);
     // Anchored (0.5, 1) — BOTTOM-centre — so it grows UPWARD as it wraps and its last line
     // always sits the same 16px above the title, instead of a two-line notice pushing into
     // it. Positioned unconditionally, hidden or not, which is what lets `refreshBanner`
-    // change only the text and the visibility while the menu is already on screen.
-    this.banner.position.set(cx, cy - 150 - extra / 2 - 16);
+    // change only the text and the visibility while the lobby is already on screen.
+    this.banner.position.set(cx, top - 16);
     this.refreshBanner();
 
-    const cardW = 280 + 40;
-    const cardTop = cy - 44 - extra / 2;
-    const cardH = 68 + 12 + 50 + 12 + 42 + 24 + extra;
+    const cardW = LOBBY_ROUTES_W + 40;
+    const cardTop = top + HEADER_H;
     this.menuCard.layout(cardW, cardH);
     this.menuCard.view.position.set(cx - cardW / 2, cardTop);
 
-    this.playBtn.view.position.set(cx - 140, cardTop + 12);
-    let y = cardTop + 12 + 68 + 12;
-    if (this.quickPlay) {
-      this.modesBtn.view.position.set(cx - 140, y);
-      y += 50 + 12;
-    }
-    this.squadBtn.view.position.set(cx - 140, y);
-    const tertiaryY = y + 50 + 12;
+    if (this.quickPlay) this.playBtn.view.position.set(cx - LOBBY_ROUTES_W / 2, cardTop + 12);
+    this.routes.layout(cx, cardTop + 12 + extra);
+
+    const tertiaryY = cardTop + 12 + extra + LOBBY_ROUTES_H + 12;
     if (this.accountEntry) {
       this.accountBtn.view.position.set(cx - 140, tertiaryY);
       this.settingsBtn.view.position.set(cx + 5, tertiaryY);
@@ -260,7 +302,7 @@ export class MainMenu {
   /**
    * Re-read the maintenance flag and show or hide the notice. Called by `show()`, and
    * subscribed to the flag store by `gameWiring.ts` so a banner an operator sets while a
-   * player is sitting in this menu appears without them having to navigate away and back —
+   * player is sitting in this lobby appears without them having to navigate away and back —
    * which is exactly the player the banner exists for.
    *
    * Nothing here re-lays anything out; see the field's own comment on why it cannot need to.
@@ -269,13 +311,13 @@ export class MainMenu {
     const text = publicFlag('ui.maintenanceBanner');
     this.banner.text = text;
     // An empty banner is hidden rather than drawn as an empty `Text`: a zero-height node in
-    // the middle of the menu is invisible either way, but a hidden one cannot be measured,
+    // the middle of the lobby is invisible either way, but a hidden one cannot be measured,
     // hit-tested or picked up by a future layout that reads children.
     this.banner.visible = text.length > 0;
   }
 
-  /** Call after a login/register/logout so the button reflects the current session
-   * without needing to re-`show()` the whole menu. */
+  /** Call after a login/register/logout so the chip reflects the current session
+   * without needing to re-`show()` the whole lobby. */
   refreshAccountLabel() {
     const session = getSession();
     const greeting = session ? t('mainMenu.greeting', { username: session.username }) : t('mainMenu.account');
@@ -293,8 +335,7 @@ export class MainMenu {
     this.title.text = t('mainMenu.title');
     this.subtitle.text = t('mainMenu.subtitle');
     this.playBtn.setText(t('mainMenu.play'));
-    this.modesBtn.setText(t('mainMenu.modes'));
-    this.squadBtn.setText(t('mainMenu.squad'));
+    this.routes.retext();
     this.settingsBtn.setText(t('mainMenu.settings'));
     this.dataNotice.text = t('auth.portalDataNotice');
     this.privacyLink.text = t('auth.privacyLink');

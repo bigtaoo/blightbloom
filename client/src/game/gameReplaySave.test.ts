@@ -133,7 +133,7 @@ function newGame(opts: { canDownload?: boolean } = {}) {
     nav: { showForge(): void };
     runs: { beginRun(): void; beginTutorialRun(): void; beginArenaDemoRun(): void; finalizeOnlineRun(session: unknown): void };
     // The other two offline entry points, and the online transition — all private, all
-    // reached here exactly the way a player reaches them (a ModeSelect button / a match
+    // reached here exactly the way a player reaches them (a lobby route / a match
     // starting), because the thing under test is whether each one leaves an exportable
     // stream behind.
   };
@@ -286,7 +286,7 @@ describe('every offline entry point leaves an exportable run behind', () => {
       start: (i: ReturnType<typeof newGame>['inner']) => { i.nav.showForge(); i.runs.beginRun(); },
     },
     {
-      name: 'tutorial (ModeSelect’s TUTORIAL button)',
+      name: 'tutorial (the lobby’s TUTORIAL row)',
       label: 'tutorial',
       start: (i: ReturnType<typeof newGame>['inner']) => i.runs.beginTutorialRun(),
     },

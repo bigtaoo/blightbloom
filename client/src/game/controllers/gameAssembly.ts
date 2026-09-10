@@ -35,7 +35,6 @@ import { StoreScreen } from '../screens/StoreScreen';
 import type { Forge } from '../screens/Forge';
 import type { MainMenu } from '../screens/MainMenu';
 import type { Matchmaking } from '../screens/Matchmaking';
-import type { ModeSelect } from '../screens/ModeSelect';
 import type { PauseMenu } from '../screens/PauseMenu';
 import type { PvpPreview } from '../screens/PvpPreview';
 import type { Screens } from '../screens/Screens';
@@ -109,7 +108,6 @@ export interface AssemblyParts {
   pickupDebugOverlay: PickupDebugOverlay | null;
   settingsBtn: Button;
   mainMenu: MainMenu;
-  modeSelect: ModeSelect;
   pvpPreview: PvpPreview;
   matchmaking: Matchmaking;
   forge: Forge;
@@ -158,14 +156,14 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   p.forge.storeEnabled = storePlatform !== null;
 
   p.layers.menu.mount(
-    [p.mainMenu.view, p.modeSelect.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,
+    [p.mainMenu.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,
       p.screens.view, p.settingsScreen.view, p.pauseMenu.view,
       partyScreen.view, loginScreen.view, storeScreen.view],
     [p.settingsBtn.view], // floats OVER a screen — see MenuLayer.mount for why that matters
   );
 
   const screenFlow = new ScreenFlow({
-    mainMenu: p.mainMenu, modeSelect: p.modeSelect, pvpPreview: p.pvpPreview,
+    mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
     forge: p.forge, storeScreen, screens: p.screens, settingsScreen: p.settingsScreen,
     pauseMenu: p.pauseMenu, settingsBtn: p.settingsBtn, hudView: p.hudView,
@@ -178,13 +176,14 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   const nav = new ScreenNav({
     run: p.run, layers: p.layers, screenFlow, artGate: p.artGate,
     backdrop: p.backdrop, hud: p.hud, portalPrompt: p.portalPrompt, floorCardPrompt: p.floorCardPrompt,
-    mainMenu: p.mainMenu, modeSelect: p.modeSelect, pvpPreview: p.pvpPreview,
+    mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
     forge: p.forge, storeScreen, screens: p.screens, settingsScreen: p.settingsScreen,
     pauseMenu: p.pauseMenu,
     screenSize: () => host.screenSize(),
     settings: () => host.settingsState(),
     connect: (signal) => net.connect(signal),
+    onHubEntered: () => net.flushPendingMetaSync(),
   });
 
   const gameLoop = new GameLoop({
@@ -202,7 +201,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     roomBuilder: p.roomBuilder, gameLoop, screenFlow,
     nav, artGate: p.artGate, recorder: p.recorder,
     tutorialHints: p.tutorialHints, hud: p.hud, hudView: p.hudView,
-    forge: p.forge, mainMenu: p.mainMenu, modeSelect: p.modeSelect, matchmaking: p.matchmaking,
+    forge: p.forge, mainMenu: p.mainMenu, matchmaking: p.matchmaking,
     partyScreen, pauseMenu: p.pauseMenu, screens: p.screens,
     allySkinId: () => host.allySkinId(),
   });

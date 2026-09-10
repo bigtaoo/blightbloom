@@ -43,6 +43,44 @@ The project's whole server side is zero-ops (two bare `node:http` processes, in-
 
 **Same day, later: the third item — expired `sessions` rows are now swept.** `verifySession` already deleted the one expired row it happened to look up, but nothing ever cleared a session nobody logged out of and never came back to check — the table only grew. `issueSession` (the one place a new row gets written, i.e. the one place growth actually happens) now runs `DELETE FROM sessions WHERE expires_at < now` first — an opportunistic sweep, not a background timer, matching this project's "no process the team doesn't need yet" convention; the hot per-request read path (`verifySession`) deliberately still only touches the one row it's already looking at, so an authenticated request stays a single indexed lookup. **144 server tests** (was 142).
 
+## Login is never a gate (locked; restated 2026-09-10 against a proposal to make it one)
+
+The proposal, from the same report that produced design/10's lobby: boot into an **auto-login
+loading** state on the hosts that sign a player in silently, and into a **login screen** on the
+hosts that do not, and only then into the lobby. Half of it shipped — the loading state is real
+(`identityGate.ts`, design/10) — and the other half is refused, for three reasons that are worth
+writing down because the instinct behind it is sound and will recur.
+
+1. **This doc's own locked decision.** Logging in is never required to play (see `LoginScreen` in
+   the Client section above). A guest is a first-class player, not a degraded one: the whole
+   `MetaState` path is local-first and an account only ever *mirrors* it.
+2. **A portal forbids it outright.** `docs.crazygames.com/requirements/account-integration`
+   disallows an external login option, disallows a logout that leads back to one, and disallows a
+   login button as a primary call to action — quoted in full in `client/src/platform/crazygames/
+   portalAuth.ts`. A login screen between boot and the lobby is all three at once.
+3. **The set of hosts that auto-login has exactly one member, and it is not the one people
+   assume.** See the correction below.
+
+What replaces it is the **account chip** in the lobby (design/10): identity is *visible* at the
+front door without being a *gate*, and it opens `LoginScreen` only where `setAccountEntry` says a
+host permits one at all. The instinct the proposal got right was that login state used to be
+invisible AND late — the chip fixes the first half, the identity gate the second.
+
+### Correction: WeChat does not log in at all (2026-09-10)
+
+Worth stating plainly, because "CrazyGames and WeChat both auto-login" is a natural reading of
+what this project ships and it is false. There is no `wx.login` call anywhere in the client and no
+`POST /auth/wechat` route on the server — the route table is `register` / `login` / `logout` /
+`portal` / `me` / `change-password`. **Every WeChat player is a guest**, and `identityGate.ts`
+therefore settles instantly on that target rather than waiting for anything.
+
+What it would take, if it is ever wanted: `wx.login`'s code exchanged server-side for an openid
+(a new `POST /auth/wechat`, shaped like `POST /auth/portal` — a host-vouched token exchange, not
+an OAuth redirect), plus a `SessionStore` over `wx.getStorageSync`/`setStorageSync`, which is the
+same seam volume 51 already built for `IdentityStore` and can be installed the same way. Until
+then, the honest description of that target is "guest-only", and design/04's checklist is where a
+positive check for it would belong.
+
 ## Explicitly not built
 
 - Real third-party OAuth (WeChat/Google) — the `provider`/`provider_id` columns and routing seam are reserved, not implemented. **Partially superseded 2026-09-08**: CrazyGames' user token IS implemented (`POST /auth/portal`), and it is a token exchange rather than an OAuth code flow — there is no redirect, no client secret and no consent screen of ours, because the host page has already authenticated the player and hands the game a signed assertion. WeChat/Google remain unbuilt, and a real OAuth flow would need the redirect handling this one does not.

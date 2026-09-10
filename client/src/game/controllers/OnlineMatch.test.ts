@@ -24,7 +24,7 @@ const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
 function make(over: Partial<OnlineMatchDeps> = {}) {
   const run = new RunState(store);
   const nav = {
-    showSquad: vi.fn(), showModeSelect: vi.fn(), showMatchmaking: vi.fn(),
+    showSquad: vi.fn(), showMenu: vi.fn(), showMatchmaking: vi.fn(),
     showPvpPreview: vi.fn(), refreshForgeIfOpen: vi.fn(),
   };
   const deps: OnlineMatchDeps = {
@@ -72,11 +72,11 @@ describe('beginSoloQueue', () => {
     expect(t.run.partyId).toBeUndefined();
   });
 
-  it('sets the return phase to modeSelect, where the player came from', () => {
+  it('sets the return phase to the lobby, where the player came from', () => {
     const t = make();
     t.run.matchmakingReturnPhase = 'squad';
     t.net.beginSoloQueue(false);
-    expect(t.run.matchmakingReturnPhase).toBe('modeSelect');
+    expect(t.run.matchmakingReturnPhase).toBe('menu');
   });
 });
 
@@ -181,16 +181,16 @@ describe('onCancelled', () => {
 
   it('returns to whichever screen opened the queue', () => {
     const solo = make();
-    solo.run.matchmakingReturnPhase = 'modeSelect';
+    solo.run.matchmakingReturnPhase = 'menu';
     solo.net.onCancelled();
-    expect(solo.nav.showModeSelect).toHaveBeenCalled();
+    expect(solo.nav.showMenu).toHaveBeenCalled();
     expect(solo.nav.showSquad).not.toHaveBeenCalled();
 
     const squad = make();
     squad.run.matchmakingReturnPhase = 'squad';
     squad.net.onCancelled();
     expect(squad.nav.showSquad).toHaveBeenCalled();
-    expect(squad.nav.showModeSelect).not.toHaveBeenCalled();
+    expect(squad.nav.showMenu).not.toHaveBeenCalled();
   });
 });
 
@@ -238,5 +238,98 @@ describe('syncMetaWithSession', () => {
     const before = t.run.meta;
     await expect(t.net.syncMetaWithSession()).resolves.toBeUndefined();
     expect(t.run.meta).toBe(before);
+  });
+});
+
+describe('a session that arrives while a run is in flight (2026-09-10)', () => {
+  // The bug this closes, in full: on a game portal the silent login lands whenever it lands,
+  // and the menu there is in one-click mode — so the first click starts a RUN and the login
+  // can resolve after it. `syncMetaWithSession` then wrote the account's server blob straight
+  // over `run.meta`, with no phase guard anywhere in the path.
+  beforeEach(() => {
+    vi.spyOn(session, 'getSession').mockReturnValue({ token: 'tok', accountId: 'a', username: 'u' } as never);
+  });
+
+  const IN_FLIGHT = ['playing', 'paused', 'matchmaking', 'pvpPreview', 'victory', 'defeat'] as const;
+
+  it.each(IN_FLIGHT)('defers rather than pulling while the phase is %s', async (phase) => {
+    const pull = vi.spyOn(meta, 'pullAccountMeta');
+    const t = make();
+    t.run.phase = phase;
+    await t.net.syncMetaWithSession();
+    expect(pull).not.toHaveBeenCalled();
+    expect(t.run.pendingMetaSync).toBe(true);
+  });
+
+  it('does not hand back a loadout the run has already spent', async () => {
+    // The failure in the shape it would actually take. `beginRun` clears the staged loadout
+    // because the run consumed it; the account's blob still has it staged. Applying that mid
+    // -run is a duplication the player can see: the weapons are in the run AND back in the
+    // forge.
+    const staged = { ...defaultMetaState(), loadout: ['smg' as never] };
+    vi.spyOn(meta, 'pullAccountMeta').mockResolvedValue(staged);
+    const t = make();
+    t.run.setMeta({ ...defaultMetaState(), loadout: [] });
+    const spent = t.run.meta;
+    t.run.phase = 'playing';
+
+    await t.net.syncMetaWithSession();
+    expect(t.run.meta).toBe(spent);
+    expect(t.run.meta.loadout).toEqual([]);
+  });
+
+  it('applies it on the way back into the hub, so nothing is lost — only delayed', async () => {
+    const remote = { ...defaultMetaState(), hasSeenTutorial: true };
+    vi.spyOn(meta, 'pullAccountMeta').mockResolvedValue(remote);
+    const t = make();
+    t.run.phase = 'playing';
+    await t.net.syncMetaWithSession();
+    expect(t.run.meta).not.toEqual(remote);
+
+    t.run.phase = 'menu'; // what `ScreenNav.showMenu` sets, right after calling the hook
+    t.net.flushPendingMetaSync();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(t.run.meta).toEqual(remote);
+    expect(t.run.pendingMetaSync).toBe(false);
+  });
+
+  it('flushing with nothing pending touches the network not at all', async () => {
+    // `ScreenNav` calls the hook on EVERY menu/forge entry, which is many times a session
+    // for a player who never logged in. A flush that pulled unconditionally would turn the
+    // guard into a per-navigation request.
+    const pull = vi.spyOn(meta, 'pullAccountMeta');
+    const t = make();
+    t.net.flushPendingMetaSync();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pull).not.toHaveBeenCalled();
+  });
+
+  it('a second flush while the first pull is still in flight does not pull twice', async () => {
+    // Why the flag is cleared BEFORE the await. The forge is entered twice in a row on the
+    // way out of the settings overlay, and both entries fire the hook.
+    let release: (m: unknown) => void = () => {};
+    const pull = vi.spyOn(meta, 'pullAccountMeta').mockReturnValue(
+      new Promise((res) => { release = res as (m: unknown) => void; }) as never,
+    );
+    const t = make();
+    t.run.phase = 'playing';
+    await t.net.syncMetaWithSession();
+    t.run.phase = 'forge';
+
+    t.net.flushPendingMetaSync();
+    t.net.flushPendingMetaSync();
+    release(null);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pull).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets no pending flag for a guest — there is nothing to sync', async () => {
+    // The early return for a logged-out player is BEFORE the phase check, so a guest whose
+    // run ends does not carry a flush around forever.
+    vi.spyOn(session, 'getSession').mockReturnValue(null);
+    const t = make();
+    t.run.phase = 'playing';
+    await t.net.syncMetaWithSession();
+    expect(t.run.pendingMetaSync).toBe(false);
   });
 });

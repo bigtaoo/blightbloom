@@ -1,7 +1,7 @@
 /**
  * PvpPreview (design/10 open question "PvP preset-pick has no UI yet", 15) — the
- * confirm/preview step ModeSelect's PVP SOLO QUEUE now opens before Matchmaking. Same
- * plain-vitest, no-renderer convention as ModeSelect.test.ts/Settings.test.ts.
+ * confirm/preview step the lobby's PVP SOLO QUEUE now opens before Matchmaking. Same
+ * plain-vitest, no-renderer convention as MainMenu.test.ts/Settings.test.ts.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { buildArenaSpecs, PVP_SCALE_FACTOR, DEFAULT_SKIN_ID, SKIN_DEFS } from '@dd/engine';

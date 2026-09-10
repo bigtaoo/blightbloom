@@ -50,7 +50,7 @@ function make(over: Partial<RunLifecycleDeps> = {}) {
       resetOnlinePrediction: note('gameLoop.resetPrediction'),
     } as never,
     screenFlow: { hideSettingsButton: note('screenFlow.hideSettingsButton') } as never,
-    nav: { showModeSelect: note('nav.showModeSelect'), showForge: note('nav.showForge') } as never,
+    nav: { showMenu: note('nav.showMenu'), showForge: note('nav.showForge') } as never,
     artGate: {
       defer: (retry: () => void) => {
         if (gateOpen) return false;
@@ -74,7 +74,6 @@ function make(over: Partial<RunLifecycleDeps> = {}) {
     hudView: { visible: false } as never,
     forge: { hide: note('forge.hide') } as never,
     mainMenu: { hide: note('mainMenu.hide') },
-    modeSelect: { hide: note('modeSelect.hide') } as never,
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
     pauseMenu: { hide: note('pauseMenu.hide') } as never,
@@ -168,7 +167,7 @@ describe('beginRun — the dungeon path', () => {
 });
 
 describe('the primed entry points', () => {
-  it('the tutorial primes the room and hides ModeSelect, not the forge', () => {
+  it('the tutorial primes the room and hides the lobby, not the forge', () => {
     // Flat mode never fires `room_enter`, so nothing else would ever build the geometry —
     // the run would start on an empty screen.
     const t = make();
@@ -176,7 +175,7 @@ describe('the primed entry points', () => {
     expect(t.run.tutorialActive).toBe(true);
     expect(t.order).toContain('tutorialHints.reset');
     expect(t.order).toContain('roomBuilder.build');
-    expect(t.order).toContain('modeSelect.hide');
+    expect(t.order).toContain('mainMenu.hide');
     expect(t.order).not.toContain('forge.hide');
   });
 
@@ -270,14 +269,14 @@ describe('quitRun', () => {
     expect(t.order).toContain('nav.showForge');
   });
 
-  it('a tutorial SKIP marks it seen and returns to ModeSelect instead', () => {
+  it('a tutorial SKIP marks it seen and returns to the lobby instead', () => {
     // A skip counts the same as a completion for `hasSeenTutorial` (never forced), and a
     // tutorial run never touched the loadout, so the forge is the wrong destination.
     const t = make();
     t.run.tutorialActive = true;
     t.runs.quitRun();
     expect(t.run.meta.hasSeenTutorial).toBe(true);
-    expect(t.order).toContain('nav.showModeSelect');
+    expect(t.order).toContain('nav.showMenu');
     expect(t.order).not.toContain('nav.showForge');
   });
 

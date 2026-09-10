@@ -80,9 +80,9 @@ describe('screen_view', () => {
   });
 
   it('reports the mapped id, not the phase name', () => {
-    reportFrame('modeSelect', null);
     reportFrame('pvpPreview', null);
-    expect(sent.map((e) => e.props?.screen)).toEqual(['mode_select', 'pvp_preview']);
+    reportFrame('store', null);
+    expect(sent.map((e) => e.props?.screen)).toEqual(['pvp_preview', 'store']);
   });
 });
 
@@ -91,7 +91,7 @@ describe('SCREEN_IDS', () => {
     // `Record<Phase, string>` makes this a compile error too; asserted at runtime as well
     // because the compile error is what a new phase HITS, and this is what says why.
     const phases: Phase[] = [
-      'menu', 'modeSelect', 'forge', 'pvpPreview', 'matchmaking', 'playing',
+      'menu', 'forge', 'pvpPreview', 'matchmaking', 'playing',
       'paused', 'victory', 'defeat', 'settings', 'squad', 'account', 'store',
     ];
     for (const p of phases) expect(SCREEN_IDS[p], p).toBeTruthy();
@@ -99,7 +99,7 @@ describe('SCREEN_IDS', () => {
   });
 
   it('every id survives the server id charset', () => {
-    // The quiet failure: `modeSelect` would be refused at the boundary and its funnel step
+    // The quiet failure: `pvpPreview` would be refused at the boundary and its funnel step
     // would never appear. This is the assertion that makes the mapping table load-bearing
     // rather than decorative.
     for (const [phase, id] of Object.entries(SCREEN_IDS)) {
