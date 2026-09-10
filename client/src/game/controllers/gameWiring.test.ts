@@ -100,6 +100,8 @@ function make() {
     beginTutorialRun: track('runs.beginTutorialRun'), beginQuickRun: track('runs.beginQuickRun'),
     finalizeOnlineRun: track('runs.finalizeOnlineRun'),
     quitRun: track('runs.quitRun'), saveReplay: track('runs.saveReplay'),
+    // The v61 pair: keep the run, or throw it away (design/05 "Only the boss floor ends a run").
+    saveAndQuitRun: track('runs.saveAndQuitRun'), resumeSavedRun: track('runs.resumeSavedRun'),
   };
   const net = {
     beginSoloQueue: vi.fn((pvp: boolean) => void called.push(`net.beginSoloQueue(${pvp})`)),
@@ -137,10 +139,11 @@ function make() {
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
     partyScreen: screenStub('onBack', 'onStartMatch') as never,
     loginScreen: screenStub('onBack', 'onSessionChange') as never,
-    forge: screenStub('onBack', 'onCycleCharacter', 'onClear', 'onCraftAt', 'onStart', 'onStore') as never,
+    forge: screenStub('onBack', 'onCycleCharacter', 'onClear', 'onCraftAt', 'onStart', 'onStore',
+      'onContinue') as never,
     storeScreen: screenStub('onBack') as never,
     screens: screenStub('onConfirm', 'onMenu') as never,
-    pauseMenu: screenStub('onResume', 'onSettings', 'onQuit') as never,
+    pauseMenu: screenStub('onResume', 'onSettings', 'onSaveQuit', 'onQuit') as never,
     confirm: vi.fn(() => void called.push('confirm')),
     activeSlot: () => 0,
     ...{},
@@ -189,12 +192,50 @@ describe('wireScreens', () => {
     fire('partyScreen', 'onStartMatch', 'p1');
     fire('pauseMenu', 'onQuit');
     fire('pauseMenu', 'onResume');
+    fire('pauseMenu', 'onSaveQuit');
+    fire('forge', 'onContinue');
     expect(t.called).toEqual([
       'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
       'nav.showSquad', 'runs.beginTutorialRun', 'nav.showAccount',
       'nav.showMatchmaking', 'net.beginSquadMatch',
       'runs.quitRun', 'nav.resume',
+      'runs.saveAndQuitRun', 'runs.resumeSavedRun',
     ]);
+  });
+
+  it('the two run EXITS stay wired to different verbs (ENGINE_VERSION 61)', () => {
+    // The one mis-wiring here that a player pays for: SAVE & QUIT reaching `quitRun` throws
+    // away the run it promised to keep, and nothing about the screen would look wrong. The
+    // sweep above would catch a swap only as an ordering change in one long array; this says
+    // it directly, and it is the assertion to read if that array ever needs re-ordering.
+    const t = make();
+    wireScreens(t.d);
+    const pause = t.d.pauseMenu as unknown as Record<string, () => void>;
+
+    t.called.length = 0;
+    pause.onSaveQuit!();
+    expect(t.called).toEqual(['runs.saveAndQuitRun']);
+
+    t.called.length = 0;
+    pause.onQuit!();
+    expect(t.called).toEqual(['runs.quitRun']);
+  });
+
+  it('CONTINUE RUN resumes, and does NOT go through the confirm router like START RUN', () => {
+    // `onStart` deliberately routes to `confirm()` (the phase router, which from the forge
+    // means "start a fresh run"). Wiring CONTINUE to the same place would silently discard
+    // the save it exists to load — the two buttons sit next to each other and mean opposites.
+    const t = make();
+    wireScreens(t.d);
+    const forge = t.d.forge as unknown as Record<string, () => void>;
+
+    t.called.length = 0;
+    forge.onContinue!();
+    expect(t.called).toEqual(['runs.resumeSavedRun']);
+
+    t.called.length = 0;
+    forge.onStart!();
+    expect(t.called).toEqual(['confirm']);
   });
 
   it('sends every BACK button to the lobby', () => {

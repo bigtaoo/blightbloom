@@ -18,11 +18,12 @@
  *    stream, which would hand a bug report a file of the wrong match entirely.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { LocalInputSource, type EngineConfig, type PlayerCommand } from '@dd/engine';
+import { LocalInputSource, createGameEngine, hashState, type EngineConfig, type PlayerCommand } from '@dd/engine';
 import { makeCommand } from '@dd/engine/state/input';
 import type { Brad } from '@dd/engine/math/trig';
 import { defaultMetaState, type MetaStore } from '../../meta';
 import { buildDungeonRunConfig } from '../match/offlineConfig';
+import { MatchRecorder } from '../match/MatchRecorder';
 import { packRunSave } from '../match/runSave';
 import { clearSavedRun, loadSavedRun, resetRunSaveCacheForTests, writeSavedRun } from '../match/runSaveStore';
 import { RunState } from '../runState';
@@ -411,10 +412,15 @@ const RUN_CONFIG = (seed = 4242): EngineConfig => buildDungeonRunConfig({
   seed, coop: false, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'ally-skin',
 });
 
+/** One tick's command, as a pure function of the tick — so an independently-played reference
+ *  run can reproduce the exact stream a save holds. Varied rather than constant: a stream of
+ *  identical idle commands round-trips through a broken fast-forward just as happily. */
+const STREAM_AT = (tick: number): PlayerCommand => makeCommand({
+  owner: 0, tick, moveBrad: ((tick * 4099) % 65536) as Brad, moveMag: 120 + (tick % 60), buttons: 0,
+});
+
 /** A short, real stream — `resumeSavedRun` replays these through a real engine. */
-const STREAM: PlayerCommand[] = Array.from({ length: 5 }, (_, i) => makeCommand({
-  owner: 0, tick: i + 1, moveBrad: 0 as Brad, moveMag: 200, buttons: 0,
-}));
+const STREAM: PlayerCommand[] = Array.from({ length: 5 }, (_, i) => STREAM_AT(i + 1));
 
 describe('saveAndQuitRun', () => {
   function playing(over: Partial<Parameters<typeof make>[0]> = {}) {
@@ -549,11 +555,24 @@ describe('resumeSavedRun', () => {
 
   it('leaves no stale events for the first rendered frame to replay', () => {
     // The fast-forward's LAST tick leaves its events sitting in `state.events` (step clears
-    // at the top of the next tick, design/08), and `GameLoop` drains whatever is there on
-    // its first frame — which would fire that tick's flashes, sounds and score all over again.
-    writeSavedRun(saveOf({ ticks: 5 }));
+    // at the top of the NEXT tick, design/08), and `GameLoop` drains whatever is there on its
+    // first frame. For this run that means re-firing `room_enter`, which rebuilds the room
+    // geometry — not a cosmetic double-flash.
+    //
+    // **Saved at tick 2 specifically, and the control below is why.** At tick 5 (where every
+    // other case here saves) the run emits nothing at all, so this assertion passed just as
+    // happily with `clearEvents()` deleted — a mutation battery caught it surviving. Tick 2 is
+    // the first tick of this seed that emits anything, and the reference engine proves it
+    // still does rather than leaving that as a comment nobody re-checks.
+    const reference = createGameEngine(RUN_CONFIG(), new LocalInputSource());
+    for (let f = 1; f <= 2; f++) reference.advance(f);
+    expect(reference.state.events.map((e) => e.type), 'tick 2 stopped emitting — pick another tick')
+      .not.toEqual([]);
+
+    writeSavedRun(saveOf({ ticks: 2 }));
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
     t.runs.resumeSavedRun();
+    expect(t.run.engine!.state.tick).toBe(2);
     expect(t.run.engine!.state.events).toEqual([]);
   });
 
@@ -614,5 +633,112 @@ describe('resumeSavedRun', () => {
     t.releaseGate();
     expect(t.run.engine).not.toBeNull();
     expect(t.run.engine!.state.tick).toBe(5);
+  });
+});
+
+/**
+ * The two compound flows, which neither `runSave.test.ts` nor the cases above reach.
+ *
+ * `runSave.test.ts` proves the FORMAT round-trips by hashing hand-driven engines. What it
+ * cannot see is `resumeSavedRun`'s own fast-forward loop, and that loop is where an off-by-one
+ * would live — `frame <= ticks` vs `frame < ticks` differs by exactly one sim tick, which no
+ * assertion on `state.tick` alone would catch if the counter and the loop drifted together.
+ * Hashing against an independently-played engine is the only check that cannot be fooled that
+ * way.
+ */
+describe('resume, end to end through RunLifecycle', () => {
+  /** The same run, played straight through without ever being saved. */
+  function playedStraight(ticks: number) {
+    const config = RUN_CONFIG();
+    const source = new LocalInputSource();
+    const engine = createGameEngine(config, source);
+    for (let f = 1; f <= ticks; f++) {
+      engine.submit(STREAM_AT(f));
+      engine.advance(f);
+    }
+    return engine;
+  }
+
+  it('lands on the byte-identical state a run that was never interrupted would have', () => {
+    const reference = playedStraight(9);
+    writeSavedRun(packRunSave({
+      config: RUN_CONFIG(),
+      commands: Array.from({ length: 9 }, (_, i) => STREAM_AT(i + 1)),
+      ticks: 9, floorIndex: 0, score: 0, nowMs: 1,
+    }));
+
+    const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    t.runs.resumeSavedRun();
+    expect(hashState(t.run.engine!.state)).toBe(hashState(reference.state));
+  });
+
+  it('and stays identical as play continues past the resume', () => {
+    // The half a state comparison at the save tick cannot see: a resume that reconstructed the
+    // right state but left the input source in the wrong place would match above and diverge
+    // on the very next tick.
+    const reference = playedStraight(14);
+    writeSavedRun(packRunSave({
+      config: RUN_CONFIG(),
+      commands: Array.from({ length: 9 }, (_, i) => STREAM_AT(i + 1)),
+      ticks: 9, floorIndex: 0, score: 0, nowMs: 1,
+    }));
+
+    const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    t.runs.resumeSavedRun();
+    const resumed = t.run.engine!;
+    for (let f = 10; f <= 14; f++) {
+      resumed.submit(STREAM_AT(f));
+      resumed.advance(f);
+    }
+    expect(hashState(resumed.state)).toBe(hashState(reference.state));
+  });
+
+  it('a fast-forward one tick short would be caught — the control on both of the above', () => {
+    // Without this, both assertions would also pass against a `resumeSavedRun` that did
+    // nothing at all, if the engine happened to be deterministic on an empty stream.
+    const nine = playedStraight(9);
+    const eight = playedStraight(8);
+    expect(hashState(nine.state)).not.toBe(hashState(eight.state));
+  });
+});
+
+describe('save, resume, save again', () => {
+  it('the second save still replays from tick 1', () => {
+    // The silent failure this exists for: if the resume began a FRESH recording instead of
+    // re-opening the saved one, the second save would hold only the ticks played after the
+    // resume. It would parse, its version would match, its content hash would match — and
+    // replaying it would idle-hold through the run's whole first half into a different world.
+    writeSavedRun(packRunSave({
+      config: RUN_CONFIG(),
+      commands: Array.from({ length: 9 }, (_, i) => STREAM_AT(i + 1)),
+      ticks: 9, floorIndex: 1, score: 40, nowMs: 1,
+    }));
+
+    // Resume with a REAL recorder, not the counting stub — the continuity being tested is
+    // the recorder's, so stubbing it would test the stub.
+    const recorder = new MatchRecorder();
+    const t = make({
+      recorder: recorder as never,
+      recordedConfig: RUN_CONFIG(),
+      recordedStream: STREAM,
+    });
+    t.runs.resumeSavedRun();
+    const engine = t.run.engine!;
+    expect(engine.state.tick).toBe(9);
+
+    // ...play on, then save again.
+    for (let f = 10; f <= 13; f++) {
+      engine.submit(STREAM_AT(f));
+      engine.advance(f);
+    }
+    t.run.score = 75;
+    t.runs.saveAndQuitRun();
+
+    const second = loadSavedRun()!;
+    expect(second.ticks).toBe(13);
+    expect(second.commands).toHaveLength(13);
+    expect(second.commands[0]![0], 'the second save must start at tick 1, not at the resume').toBe(1);
+    expect(second.commands.at(-1)![0]).toBe(13);
+    expect(second.score).toBe(75);
   });
 });

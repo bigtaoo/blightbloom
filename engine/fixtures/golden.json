@@ -113,6 +113,38 @@
       }
     },
     {
+      "name": "extraction-gate",
+      "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
+      "ticks": 400,
+      "hash": 3729865584,
+      "witness": {
+        "tick": 245,
+        "phase": "gameover",
+        "winner": "0",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 2,
+        "pickups": 6,
+        "floorIndex": 1,
+        "hpTotal": 6,
+        "prngCursors": 12984594823,
+        "events": {
+          "bullet_fired": 29,
+          "room_enter": 2,
+          "door_locked": 2,
+          "hit": 17,
+          "death": 6,
+          "melee_swing": 11,
+          "pickup": 1,
+          "door_unlocked": 2,
+          "descend": 1,
+          "clash": 1,
+          "deflect": 1,
+          "win": 1
+        }
+      }
+    },
+    {
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,

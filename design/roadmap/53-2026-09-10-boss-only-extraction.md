@@ -36,12 +36,20 @@ read.
 diverged.** Not a reassurance — a coverage gap, and now a recorded one. No golden scenario
 presses `CONFIRM_EXTRACT` at all, and `ember-dungeon-floor1` *cannot*: its own note says a
 scripted stick does not clear rooms reliably, so it never reaches a checkpoint and pins
-`floorIndex === 0` for all 1500 ticks. Closing that properly needs a purpose-built floor the
-way `WALL_NORTH_BRIM` needed `brimGrinderFloor.ts`. Until then the rule is pinned by
-`systems/extraction.test.ts` in **both** directions, because only the pair pins it: "an interior
-press is ignored" alone would also pass if `confirmExtract` had been deleted outright, and "the
-last floor still wins" alone would also pass if nothing had changed. Same split v60 made for
-`capacitor`'s effect on `rollFloorCardOffer`, for the same reason.
+`floorIndex === 0` for all 1500 ticks. The rule is pinned by `systems/extraction.test.ts` in **both**
+directions, because only the pair pins it: "an interior press is ignored" alone would also pass
+if `confirmExtract` had been deleted outright, and "the last floor still wins" alone would also
+pass if nothing had changed.
+
+**And the golden gap was closed rather than left filed** (`fixtures/extractionGateFloor.ts` +
+the `extraction-gate` scenario) — the same answer `WALL_NORTH_BRIM` needed `brimGrinderFloor.ts`
+for, and for the same structural reason: the fix is geometry and input chosen so the contact is
+guaranteed, never a wider sweep. Two authored one-room floors, the player spawning IN the
+capstone so no door has to be walked through, three point-blank enemies so the clear that opens
+the checkpoint is not luck, and `CONFIRM_EXTRACT` on a 7-tick cadence against `CONFIRM_DESCEND`
+on a 61-tick one so the extract provably lands first. Both mutants die, and each is readable
+straight off the witness: `floorIndex 1 -> 0` for a re-opened interior gate,
+`phase gameover -> playing` for a last floor that stopped ending runs.
 
 ### A save is a seed and an input stream — which is why it cannot go stale against the sim
 
@@ -139,12 +147,25 @@ stream per keypress to answer a yes/no is the kind of cost that only shows up on
 machine. Which then makes the cache the place a stale *yes* would survive a clear, so
 `runSaveStore.test.ts` spends most of its cases there.
 
-**Verification:** engine 1485 tests, client 6155, `tsc --noEmit` clean, all 12 logic-consistency
-gates green, coverage 97.7%/93.2% client and 97.8%/93.5% engine. The load-bearing test is
-`runSave.test.ts`'s state-hash equivalence — a 400-tick run, saved, rebuilt from its own
-descriptor, replayed, and `hashState`-compared against the original, plus 200 further live ticks
-to prove the resume is a run and not a freeze-frame, plus a one-command-short control that
-diverges so the two positive cases cannot pass vacuously.
+**Verification.** `tsc --noEmit` clean, all 12 logic-consistency gates green, coverage
+97.7%/93.2% client and 97.8%/93.5% engine. The load-bearing test is `runSave.test.ts`'s
+state-hash equivalence — a 400-tick run, saved, rebuilt from its own descriptor, replayed, and
+`hashState`-compared against the original, plus 200 further live ticks to prove the resume is a
+run and not a freeze-frame, plus a one-command-short control that diverges so the two positive
+cases cannot pass vacuously. `RunLifecycle.test.ts` repeats that comparison through the real
+`resumeSavedRun`, because the fast-forward LOOP is where an off-by-one would live and an
+assertion on `state.tick` alone cannot see one if the counter and the loop drift together.
+
+**And then a 21-mutant battery, which found one of my own tests was vacuous.** The stale-events
+assertion — `expect(state.events).toEqual([])` after a resume — passed with `clearEvents()`
+deleted, because the tick it saved at emits nothing on that seed. It now saves at the first tick
+that DOES emit and advances a reference engine to prove it still does, so it cannot go quiet
+again without failing. A re-drained `room_enter` rebuilds the room geometry, so the mutant was a
+real bug wearing a green test. The other 20 all died first time: both refusals dropped
+independently, each `savableRun` exclusion one at a time, the parser's brad range check, the
+store cache left stale past a clear, all three save-dropping call sites, the portal's rule in
+both directions, and three LAYOUT mutants that stack two buttons in one slot — the class a human
+never catches reading a diff. Recorded in `runSave.ts`'s header, next to the code it judges.
 
 **Worktree note, for whoever hits it next:** a fresh worktree under `core.autocrlf=true` checks
 out `#!/usr/bin/env node` as `\r\n`, which Node rejects with `SyntaxError: Invalid or unexpected

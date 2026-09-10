@@ -2013,11 +2013,19 @@ until the tick the button is read.
 
 **Measured before the bump (`serializeState` hashes `ENGINE_VERSION` itself, so afterwards
 every fixture hash moves and the witness is gone): zero golden scenarios diverged.** Not a
-reassurance — a coverage gap, and a known one. No golden scenario presses `CONFIRM_EXTRACT` at
-all, and `ember-dungeon-floor1` cannot: its own note records that a scripted stick does not
-clear rooms reliably, so it never reaches a checkpoint and pins `floorIndex === 0` for all 1500
-ticks. Closing it properly needs a purpose-built floor the way `WALL_NORTH_BRIM` needed
-`brimGrinderFloor.ts`. Until then this rule is pinned by `systems/extraction.test.ts` (both
-directions: an interior EXTRACT press is ignored, a last-floor EXTRACT press still wins) —
-the same split v60 made for `capacitor`'s effect on `rollFloorCardOffer`, for the same reason.
-The fixture was still re-recorded, because the version is part of the hash.
+reassurance — a coverage gap. No golden scenario pressed `CONFIRM_EXTRACT` at all, and
+`ember-dungeon-floor1` could not have helped if one did: its own note records that a scripted
+stick does not clear rooms reliably, so it never reaches a checkpoint and pins
+`floorIndex === 0` for all 1500 ticks on purpose.
+
+**Closed the same day** with `fixtures/extractionGateFloor.ts` and the `extraction-gate`
+scenario — a purpose-built two-floor dungeon, one authored room each, the same answer
+`WALL_NORTH_BRIM` needed `brimGrinderFloor.ts` for and for the same structural reason (the fix
+is geometry and input chosen so the contact is guaranteed, never a longer run). The player
+spawns in the capstone, so no door has to be walked through; three point-blank enemies make the
+clear that opens the checkpoint happen by construction; `CONFIRM_EXTRACT` pulses every 7 ticks
+and `CONFIRM_DESCEND` every 61, so the first extract lands long before the first descend. Both
+mutants are now killed and each is diagnosable from the witness alone: re-honouring the
+interior extract shows `floorIndex 1 -> 0` with `descend` gone, and dropping the last floor's
+shows `tick 245 -> 400, phase gameover -> playing`. `systems/extraction.test.ts` still pins the
+rule directly in both directions; the golden gate is what now notices if it is *reverted*.

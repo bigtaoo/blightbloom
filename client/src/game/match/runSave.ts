@@ -31,15 +31,42 @@
  *     (`contentHash`) — a floor's geometry moving under a save is then a refusal, not a
  *     player spawned inside a wall.
  *
+ * ## Mutation battery — what these tests are MEASURED to catch
+ *
+ * Recorded 2026-09-10, 21 mutants across this module, `runSaveStore.ts`, `RunLifecycle`,
+ * `RunOutcome`, `PortalPrompt`, `PauseMenu` and `Forge`, run against the 387 tests in
+ * `src/game/match/**` plus the six affected controller/screen suites. **All 21 killed** — but
+ * one of them only after the test it should have failed was fixed, and that one is the reason
+ * this block exists rather than a claim that the suite is fine:
+ *
+ *   SURVIVED -> KILLED  `resumeSavedRun` stops clearing the fast-forward's stale events
+ *
+ * The assertion was `expect(state.events).toEqual([])` on a save taken at tick 5 — and tick 5
+ * of that seed emits nothing at all, so it passed with `clearEvents()` deleted. It now saves at
+ * tick 2 (the first tick that emits: `room_enter`, `door_locked`) and advances a reference
+ * engine to prove tick 2 still emits, so the test cannot go vacuous again without saying so.
+ * A re-drained `room_enter` rebuilds the room geometry, so the mutant was a real bug wearing a
+ * green test.
+ *
+ * The other 20, grouped: both refusals dropped independently (2 kills each); each `savableRun`
+ * exclusion dropped one at a time; the parser's brad range check; the store cache left stale
+ * past a clear (10 failures — the widest blast radius, which is what a shared memo should
+ * have); all three save-dropping call sites; the portal's one-button rule in both directions
+ * and its carry-out total; and the three LAYOUT mutants that stack two buttons in one slot,
+ * which are the ones a human would never notice reading a diff.
+ *
+ * Re-run it after changing any of this. A gate whose kills are assumed rather than measured is
+ * the failure mode a green suite is best at hiding.
+ *
  * ## Why the commands are tuples rather than objects
  *
  * A `PlayerCommand` serialized as JSON with its keys is ~110 bytes, and the sim runs at
  * 30 Hz, so a ten-minute run is ~2 MB against a `localStorage` budget of about 5 MB for the
  * whole origin — which the account save shares. The fixed-order tuple below is ~22 bytes,
  * which puts the same run at ~400 KB. A quota failure is still possible on a very long run
- * and is reported rather than swallowed (`runSaveStore.ts`'s `writeSavedRun` returns false)
- * because the one
- * unacceptable outcome is telling a player their run was saved when it was not.
+ * and is reported rather than swallowed (`runSaveStore.ts`'s `writeSavedRun` returns false),
+ * because the one unacceptable outcome is telling a player their run was saved when it was
+ * not.
  */
 import { ENGINE_VERSION, type EngineConfig, type PlayerCommand } from '@dd/engine';
 import type { Brad } from '@dd/engine/math/trig';
