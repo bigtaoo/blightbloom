@@ -61,6 +61,7 @@ export const ALLOWLIST = [
   { token: 'net/InputSource.ts', why: "funny's input seam, reused unchanged (design/08 says so in the same sentence)" },
   { token: 'claudedocs/server.md', why: "funny's own docs — CLAUDE.md cites them as the origin of the 500-line convention" },
   { token: 'claudedocs/client-modules.md', why: "funny's own docs — same citation" },
+  { token: 'claudedocs/worktrees.md', why: "funny's own docs — CLAUDE.md cites them as the origin of the daily-branch / PR-only-main workflow" },
 
   // ── Third-party internals. design/04 documents WeChat/Pixi behaviour by pointing at the
   //    exact upstream file that causes it; these live in node_modules.
