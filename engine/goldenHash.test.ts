@@ -43,6 +43,8 @@
  * gate whose kills are assumed rather than measured is the failure mode this whole file exists
  * to prevent.
  *
+ *   KILLED   extraction gate: interior CONFIRM_EXTRACT honoured again .. 3
+ *   KILLED   extraction gate: last floor stops honouring it ........... 2
  *   KILLED   WALL_NORTH_BRIM 23px -> 24px .......................... 1 failing test
  *   KILLED   enemy solidRadius: bp.radius -> bp.footprintRadius ..... 4
  *   KILLED   starter muzzleGrid 0.9375 -> 1.0 ...................... 7
@@ -51,6 +53,12 @@
  *   SURVIVED step order: statusEffect <-> zone
  *   SURVIVED step order: movement <-> projectileStep
  *   SURVIVED step order: deathDrops <-> pickup
+ *
+ * The two extraction-gate rows were added 2026-09-10 with the `extraction-gate` scenario and
+ * are the reason it exists: before it, BOTH of those mutants survived the entire gate. Each
+ * kill is also diagnosable from the witness alone, which is the property the `witness` field is
+ * for — the first shows `floorIndex 1 -> 0` with `descend` gone (the run stopped on floor 0),
+ * the second shows `tick 245 -> 400, phase gameover -> playing` (nothing ever ended it).
  *
  * The three survivors are all reorderings of systems that never interact WITHIN these
  * scenarios — no bullet in the set happens to depend on whether its shooter moved first, and no
@@ -179,6 +187,18 @@ describe('anti-vacuity — every scenario actually exercised the engine', () => 
     // reaches a checkpoint. If a change ever makes it descend, this fails and the scenario's
     // `pins` line needs updating rather than the run silently meaning something new.
     expect(dungeon.floorIndex, 'this scenario is not supposed to descend — see its `pins`').toBe(0);
+
+    // The extraction gate really resolved, on the floor it is supposed to resolve on. Every
+    // number here is a way the scenario could stop meaning what its `pins` line says while
+    // still producing a stable hash: a run that never descends is testing one floor, a run
+    // that never wins is testing a stalemate, and a run that wins on floor 0 is testing the
+    // rule INVERTED — which is precisely the pre-v61 behaviour this exists to catch.
+    const gate = by('extraction-gate');
+    expect(gate.floorIndex, 'the interior CONFIRM_EXTRACT was honoured — the v61 rule is gone').toBe(1);
+    expect(gate.events.descend ?? 0, 'the run never left floor 0').toBe(1);
+    expect(gate.events.win ?? 0, 'the boss floor never honoured CONFIRM_EXTRACT').toBe(1);
+    expect(gate.phase, 'the run did not end').toBe('gameover');
+    expect(gate.events.room_enter ?? 0, 'both floors should have been entered').toBe(2);
 
     // The arena is a genuinely hostile two-seat match, not two allies sharing a map.
     const arena = by('launch-arena-pvp');

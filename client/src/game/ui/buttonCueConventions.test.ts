@@ -24,8 +24,14 @@ import { join } from 'node:path';
 
 const GAME_SRC = fileURLToPath(new URL('../', import.meta.url));
 
-/** A button whose name says it dismisses the screen it is on. */
-const DISMISSES = /^(back|cancel|leave|quit|resume|close|menu)/i;
+/** A button whose name says it dismisses the screen it is on.
+ *
+ * `saveQuit` is here for the same reason `quit` is: `PauseMenu`'s SAVE & QUIT leaves the run
+ * for the forge (ENGINE_VERSION 61) — it keeps the run rather than discarding it, which is a
+ * difference in what happens to the RUN, not in what happens to the screen. A name-prefix
+ * heuristic reads it as "save", so it has to be named explicitly or the button would be held
+ * to the forward-action cue while doing the most backward thing on the panel. */
+const DISMISSES = /^(back|cancel|leave|quit|saveQuit|resume|close|menu)/i;
 
 /**
  * The only buttons allowed to make no sound of their own, each because the TRANSACTION behind

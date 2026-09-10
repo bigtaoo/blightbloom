@@ -164,8 +164,8 @@ export class ScreenFlow {
     this.w.settingsScreen.show(width, height, settings);
   }
 
-  pause(width: number, height: number, skipLabel: string | undefined): void {
-    this.w.pauseMenu.show(width, height, skipLabel);
+  pause(width: number, height: number, skipLabel: string | undefined, savable: boolean): void {
+    this.w.pauseMenu.show(width, height, skipLabel, savable);
   }
 
   resume(): void {
@@ -177,9 +177,9 @@ export class ScreenFlow {
     this.w.settingsScreen.show(width, height, settings);
   }
 
-  openPauseFromSettings(width: number, height: number, skipLabel: string | undefined): void {
+  openPauseFromSettings(width: number, height: number, skipLabel: string | undefined, savable: boolean): void {
     this.w.settingsScreen.hide();
-    this.w.pauseMenu.show(width, height, skipLabel);
+    this.w.pauseMenu.show(width, height, skipLabel, savable);
   }
 
   /** `resetRunRenderState`'s one settings-button touch (Game.ts) — a fresh run always

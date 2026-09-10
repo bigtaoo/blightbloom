@@ -24,6 +24,8 @@ import { buildTutorialConfig } from '../match/tutorialConfig';
 import type { MatchRecorder } from '../match/MatchRecorder';
 import { saveMarkedReplay } from '../match/replayDownload';
 import { loadReplayFile, replayStopTick } from '../match/replayPlayback';
+import { checkResumable, packRunSave, unpackCommands } from '../match/runSave';
+import { clearSavedRun, loadSavedRun, writeSavedRun } from '../match/runSaveStore';
 import type { Layers } from '../scene/layers';
 import type { Scene } from '../scene/Scene';
 import type { RoomBuilder } from '../scene/RoomBuilder';
@@ -104,6 +106,10 @@ export class RunLifecycle {
    */
   beginRun(): void {
     const d = this.deps;
+    // A fresh run replaces any saved one — there is only ever one save slot (`runSave.ts`),
+    // and the Forge's NEW RUN button says so. Dropped here rather than at the button so the
+    // rule holds for every route into a fresh run, including the portal's one-click PLAY.
+    clearSavedRun();
     this.resetRenderState();
     d.run.tutorialActive = false;
     // Teach a player who has never been taught, on their first real run — the beats the
@@ -225,6 +231,70 @@ export class RunLifecycle {
     this.enterPrimedRun(arena);
   }
 
+  /**
+   * CONTINUE RUN (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — resume the
+   * unfinished single-player run `saveAndQuitRun` put away.
+   *
+   * The whole resume is: rebuild the config from the save's seed + loadout, replay the saved
+   * command stream through a fresh engine, and hand the same input source to the live command
+   * builder, which appends to it from the next tick on. There is no restore step, because
+   * there is nothing to restore — see `runSave.ts`'s header for why a seed and an input
+   * stream ARE the run.
+   *
+   * Three things this has to get right that a naive "advance N times" would not:
+   *
+   *  - **The version and content checks come first** (`checkResumable`). A save from another
+   *    `ENGINE_VERSION`, or one whose floor library has been edited since, replays into a
+   *    different world; refusing is the only honest answer, and the save is dropped so the
+   *    Forge stops offering it.
+   *  - **The fast-forward's last tick must not reach the render layer.** `step()` clears
+   *    `state.events` at the top of each tick, so after the loop the final tick's events are
+   *    still sitting there and `GameLoop`'s first real frame would drain them — replaying a
+   *    burst of hit flashes, sounds and score from a tick the player is not watching.
+   *  - **The scene is primed by hand.** A dungeon run normally builds its geometry from tick
+   *    1's `room_enter` event (see `beginRun`), which has just been consumed by the
+   *    fast-forward, so this takes the `enterPrimedRun` path the arena and tutorial use.
+   *
+   * The loadout is deliberately NOT spent again: `beginRun` consumed it when the run first
+   * started, and the weapons the save carries are the ones that run is already holding.
+   */
+  resumeSavedRun(): void {
+    const d = this.deps;
+    if (d.artGate.defer(() => this.resumeSavedRun())) return; // a run, with no screen between
+    const save = loadSavedRun();
+    if (!save) return; // nothing to continue — the button should not have been there
+    const config = buildDungeonRunConfig({
+      seed: save.seed,
+      coop: false, // savableRun() admits single-player runs only, so this is not a choice
+      localSeat: { skinId: save.skinId, loadout: save.loadout },
+      allySkinId: d.allySkinId(),
+    });
+    const refusal = checkResumable(save, config);
+    if (refusal !== null) {
+      clearSavedRun();
+      d.nav.showForge(); // re-render, so the now-impossible CONTINUE button goes away
+      d.hud.toast(
+        t(refusal === 'engine-version' ? 'toast.runSaveOldVersion' : 'toast.runSaveStale'),
+        THEME.colors.enemy,
+      );
+      return;
+    }
+
+    this.resetRenderState();
+    d.run.tutorialActive = false;
+    d.run.firstRunHints = false; // taught already, or never — a resume is not a first run
+    const engine = createGameEngine(config, d.recorder.resume('dungeon', config, unpackCommands(save)));
+    for (let frame = 1; frame <= save.ticks; frame++) {
+      if (engine.advance(frame) === null) break; // a local source never stalls; belt and braces
+      if (engine.state.phase === 'gameover') break;
+    }
+    engine.state.clearEvents(); // see the doc comment: the last replayed tick is not a frame
+    d.run.engine = engine;
+    d.run.runCount++;
+    d.run.score = save.score; // after resetRenderState, which zeroes it for a fresh run
+    this.enterPrimedRun(engine);
+  }
+
   /** `?replay=<url>`: watch a recording instead of playing (match/replayPlayback.ts).
    *  Failures land in a toast, not a throw — a wrong path or a stream from another
    *  ENGINE_VERSION is the normal way this gets used wrong, and a black screen would be the
@@ -315,6 +385,55 @@ export class RunLifecycle {
    * the lobby instead of Forge (a tutorial run never touched the loadout).
    */
   quitRun(): void {
+    // The save goes with the run. There is at most one (`runSave.ts`), so a stale entry left
+    // behind here would be offered as "continue" against a run the player deliberately
+    // abandoned — including the case where the run being abandoned IS a resumed one.
+    clearSavedRun();
+    this.leaveRun();
+  }
+
+  /**
+   * SAVE & QUIT (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — the other
+   * half of removing mid-floor extraction. Banking early used to be how a player stopped for
+   * the evening; it cost them the run's whole carry-out decision to do it. This is the verb
+   * that decision no longer has to double as.
+   *
+   * Order matters: the save is written FIRST and a failure aborts, because the alternative is
+   * telling someone their run was kept and dropping them in the Forge with nothing. On a
+   * refusal the pause menu stays open and the run stays live — they can keep playing, or quit
+   * for real.
+   */
+  saveAndQuitRun(): void {
+    const d = this.deps;
+    const state = d.run.engine?.state;
+    const config = d.recorder.runConfig;
+    const commands = d.recorder.recordedCommands();
+    if (!state || !config || !commands) {
+      d.hud.toast(t('toast.runSaveFailed'), THEME.colors.enemy);
+      return;
+    }
+    const stored = writeSavedRun(packRunSave({
+      config,
+      commands,
+      ticks: state.tick,
+      floorIndex: state.floorIndex,
+      score: d.run.score,
+      nowMs: Date.now(),
+    }));
+    if (!stored) {
+      // A host with no storage at all (WeChat today — see runSave.ts) or a full quota. The
+      // in-memory copy stands for this session, but saying "saved" would be a lie the moment
+      // the tab closes, so this reports the failure and leaves the run alone.
+      d.hud.toast(t('toast.runSaveFailed'), THEME.colors.enemy);
+      return;
+    }
+    d.hud.toast(t('toast.runSaved'), THEME.colors.pickupHeal);
+    this.leaveRun();
+  }
+
+  /** The screen-and-state half both exits share. Split out so `saveAndQuitRun` can reach it
+   *  WITHOUT `quitRun`'s `clearSavedRun` — the one difference between the two. */
+  private leaveRun(): void {
     const d = this.deps;
     d.pauseMenu.hide();
     const { wasTutorial } = d.run.endRun();

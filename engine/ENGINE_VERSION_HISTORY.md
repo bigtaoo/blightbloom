@@ -1977,3 +1977,55 @@ Every PvE fixture still matched, which is the empirical form of the claim that `
 carries the reference pool. No PvE scenario reaches a floor-card checkpoint inside its tick budget,
 so `capacitor`''s effect on `rollFloorCardOffer` is covered by `floorCardCheckpoint.test.ts` rather
 than by the golden fixture.
+
+## v61: only the boss floor can end a run (2026-09-10)
+
+`ExtractionSystem` stops consulting `confirmExtract` on any floor but the last. Reaching an
+interior floor's checkpoint used to open a genuine two-way choice — bank what you have and end
+the run, or descend — and the EXTRACT half of that choice is now gone. The portal on floors
+1..N-1 accepts `CONFIRM_DESCEND` and nothing else; the portal on floor N accepts
+`CONFIRM_EXTRACT` and nothing else. Each system now ignores exactly one button, symmetrically,
+where before only the last floor ignored one.
+
+### Why the option went away rather than being retuned
+
+design/05's push-your-luck pillar was carried entirely by mid-floor extraction: "leave with
+what I have" vs "risk all of it for deeper materials". The problem with it was never the
+tension, it was what the tension was attached to — a player who wanted to STOP PLAYING for the
+evening had to spend the run's whole carry-out decision to do it, because quitting from the
+pause menu forfeits everything (`RunLifecycle.quitRun`, unchanged). So the early bank was
+doing double duty as a save button, and it was the worse of the two things.
+
+Splitting them is what this version is: the run's ONLY exit is the boss, and an unfinished
+single-player run is now **saved and resumed** instead
+(`client/src/game/match/runSave.ts` — seed + command stream + `ENGINE_VERSION`, replayed
+forward on re-entry). "Leave with what I have" became "come back to it". What is no longer
+reachable at all is banking materials without beating the boss, which is the deliberate part:
+the carry-out is now the boss's reward rather than a per-floor withdrawal.
+
+### Why this bumps
+
+A recorded stream that pressed `CONFIRM_EXTRACT` at an interior checkpoint used to end the run
+there; replayed against this build it does not, and the run continues into floors the recording
+has no input for. That is the exact divergence `ENGINE_VERSION` exists for, and it is invisible
+to every other guard — the states before the press are byte-identical, so nothing diverges
+until the tick the button is read.
+
+**Measured before the bump (`serializeState` hashes `ENGINE_VERSION` itself, so afterwards
+every fixture hash moves and the witness is gone): zero golden scenarios diverged.** Not a
+reassurance — a coverage gap. No golden scenario pressed `CONFIRM_EXTRACT` at all, and
+`ember-dungeon-floor1` could not have helped if one did: its own note records that a scripted
+stick does not clear rooms reliably, so it never reaches a checkpoint and pins
+`floorIndex === 0` for all 1500 ticks on purpose.
+
+**Closed the same day** with `fixtures/extractionGateFloor.ts` and the `extraction-gate`
+scenario — a purpose-built two-floor dungeon, one authored room each, the same answer
+`WALL_NORTH_BRIM` needed `brimGrinderFloor.ts` for and for the same structural reason (the fix
+is geometry and input chosen so the contact is guaranteed, never a longer run). The player
+spawns in the capstone, so no door has to be walked through; three point-blank enemies make the
+clear that opens the checkpoint happen by construction; `CONFIRM_EXTRACT` pulses every 7 ticks
+and `CONFIRM_DESCEND` every 61, so the first extract lands long before the first descend. Both
+mutants are now killed and each is diagnosable from the witness alone: re-honouring the
+interior extract shows `floorIndex 1 -> 0` with `descend` gone, and dropping the last floor's
+shows `tick 245 -> 400, phase gameover -> playing`. `systems/extraction.test.ts` still pins the
+rule directly in both directions; the golden gate is what now notices if it is *reverted*.

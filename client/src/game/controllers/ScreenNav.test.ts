@@ -243,7 +243,7 @@ describe('settings and pause', () => {
     const t = make();
     t.nav.pause();
     const normal = t.calls.at(-1)!;
-    expect(normal).toBe('pause(800,600,)'); // no third argument — the default QUIT label
+    expect(normal).toBe('pause(800,600,,false)'); // no label — the default QUIT; and not savable
 
     t.calls.length = 0;
     t.run.tutorialActive = true;
@@ -356,5 +356,107 @@ describe('showOutcome', () => {
     const t = make();
     t.nav.showOutcome(true, 'Extracted', ['a', 'b']);
     expect(t.deps.screens.show).toHaveBeenCalledWith(800, 600, true, 'Extracted', ['a', 'b']);
+  });
+});
+
+/**
+ * Whether the pause menu offers SAVE & QUIT (design/05 "Only the boss floor ends a run",
+ * ENGINE_VERSION 61).
+ *
+ * `savableRun` owns the rule and is asserted exhaustively next to the save format
+ * (`match/runSave.test.ts`). What is tested HERE is the wiring — that the flags this file
+ * feeds it come off the right places, which is the half a test of the predicate cannot see.
+ * Two of them are the ones worth pinning: `dungeon` is read from the LIVE SIM STATE rather
+ * than from any run flag (nothing on `RunState` distinguishes the flat-mode tutorial level
+ * from the real dungeon), and every flag is recomputed per open rather than cached, so the
+ * answer belongs to the run that is actually paused.
+ */
+describe('the pause menu only offers SAVE & QUIT for a savable run', () => {
+  /** A run state whose `activeState()` reports a real dungeon, as `beginRun`'s does. */
+  function dungeonRun(t: ReturnType<typeof make>): void {
+    t.run.phase = 'playing';
+    t.run.engine = { state: { dungeonEnabled: true } } as never;
+  }
+
+  /** The 4th argument `ScreenFlow.pause` is called with, as recorded by the flow proxy. */
+  const savableArg = (call: string): string => call.split(',').at(-1)!.replace(')', '');
+
+  it('offers it for a single-player offline dungeon run', () => {
+    const t = make();
+    dungeonRun(t);
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('true');
+  });
+
+  it('withholds it in a flat-mode level, which the run flags alone cannot tell apart', () => {
+    // The tutorial is the live case: offline, single-player, not flagged `tutorialActive` by
+    // anything this method reads except that flag — but ALSO not a dungeon, and a flat run
+    // has no floors to come back to. Asserted with the tutorial flag DOWN so it is the
+    // dungeon read being tested and not the tutorial one.
+    const t = make();
+    t.run.phase = 'playing';
+    t.run.engine = { state: { dungeonEnabled: false } } as never;
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('false');
+  });
+
+  it('withholds it with no live state at all, rather than assuming a dungeon', () => {
+    const t = make();
+    t.run.phase = 'playing'; // engine still null
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('false');
+  });
+
+  it.each([
+    ['online', (t: ReturnType<typeof make>) => { t.run.online = true; }],
+    ['co-op', (t: ReturnType<typeof make>) => { t.run.coop = true; }],
+    ['the tutorial', (t: ReturnType<typeof make>) => { t.run.tutorialActive = true; }],
+    ['the arena harness', (t: ReturnType<typeof make>) => { t.run.arenaDemo = 'landing_basic'; }],
+    ['replay playback', (t: ReturnType<typeof make>) => { t.run.replayStop = 500; }],
+  ])('withholds it during %s', (_why, spoil) => {
+    const t = make();
+    dungeonRun(t);
+    spoil(t);
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('false');
+  });
+
+  it('online reads the SESSION state, so an online dungeon is still refused', () => {
+    // `activeState()` switches source with the online flag, so this also pins that the
+    // dungeon read follows it rather than looking at the stale offline engine.
+    const t = make();
+    t.run.phase = 'playing';
+    t.run.online = true;
+    t.run.session = { state: { dungeonEnabled: true } } as never;
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('false');
+  });
+
+  it('recomputes per open — the previous run\'s answer never carries over', () => {
+    const t = make();
+    dungeonRun(t);
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('true');
+
+    t.run.online = true;
+    t.nav.pause();
+    expect(savableArg(t.calls.at(-1)!)).toBe('false');
+  });
+
+  it('reaches the pause menu the same way when it is reopened from settings', () => {
+    // A second call site that could easily have been left passing a hardcoded false — the
+    // same shape of bug the SKIP label had (see the label case above).
+    const t = make();
+    dungeonRun(t);
+    t.nav.openPauseFromSettings();
+    expect(savableArg(t.calls.at(-1)!)).toBe('true');
+  });
+
+  it('and on a relayout, which redraws whichever screen is showing', () => {
+    const t = make();
+    dungeonRun(t);
+    t.run.phase = 'paused';
+    t.nav.relayout();
+    expect(t.deps.pauseMenu.show).toHaveBeenCalledWith(800, 600, undefined, true);
   });
 });

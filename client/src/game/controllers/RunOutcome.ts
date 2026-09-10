@@ -2,6 +2,7 @@ import { TICK_RATE, type GameState } from '@dd/engine';
 import { SCORE } from '../score';
 import { t } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
+import { clearSavedRun } from '../match/runSaveStore';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
 import { track } from '../../net/analytics';
@@ -74,6 +75,17 @@ export class RunOutcome {
   constructor(private readonly host: RunOutcomeHost) {}
 
   handle(s: GameState): void {
+    // A run that REACHED an outcome can never be continued, so its save goes now (ENGINE_
+    // VERSION 61, `match/runSave.ts`). This is the third and last of the three exits that
+    // have to drop it — `beginRun` and `quitRun` are the other two — and it is the one that
+    // cannot be folded into either: nothing routes a victory or a defeat through
+    // `RunLifecycle` at all, so without this line closing the tab on a result screen would
+    // leave the Forge offering CONTINUE for a run that was already won.
+    //
+    // Before the branches, not inside them, and before `bankRunMaterials`: all four
+    // outcomes (PvE win/lose, arena win/lose) end the run equally, and a store failure must
+    // not be able to leave a banked-and-finished run resumable.
+    clearSavedRun();
     // WHETHER the local seat won and WHICH screen says so are two separate questions: the
     // first is `localSeatWon` (split out of this file 2026-09-02, once the `win` audio cue
     // needed the same answer and had been guessing), the second is the arena/PvE split

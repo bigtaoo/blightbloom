@@ -20,7 +20,7 @@
  * stream through `NetInputSource`, so the authoritative record is the server's
  * (`FrameBroadcast`), not this one.
  */
-import { LocalInputSource, packReplayFile, type EngineConfig, type ReplayFile, type ReplayMark } from '@dd/engine';
+import { LocalInputSource, packReplayFile, type EngineConfig, type PlayerCommand, type ReplayFile, type ReplayMark } from '@dd/engine';
 
 export class MatchRecorder {
   private config: EngineConfig | null = null;
@@ -39,6 +39,38 @@ export class MatchRecorder {
     this.marks = [];
     this.source = new LocalInputSource();
     return this.source;
+  }
+
+  /**
+   * Re-open a run from its saved command stream (`runSave.ts`, ENGINE_VERSION 61) — same as
+   * `begin`, with the recording pre-loaded so the source holds the WHOLE run rather than
+   * only the part played after the resume.
+   *
+   * That matters twice over. `RunLifecycle.resumeSavedRun` drives the engine forward off this
+   * source to reach the saved tick, so the stream has to be in it before the engine is built;
+   * and because the live builder then keeps submitting into the same source, saving again
+   * later writes one continuous stream rather than a fragment that only replays from the
+   * middle. F9 gets the same benefit for free: a bug hit after a resume exports a repro that
+   * starts at tick 1.
+   */
+  resume(label: string, config: EngineConfig, commands: readonly PlayerCommand[]): LocalInputSource {
+    const source = this.begin(label, config);
+    for (const cmd of commands) source.submit(cmd);
+    return source;
+  }
+
+  /** The config the run being recorded was built from, or null when nothing is. Read by the
+   *  save path, which fingerprints its content half and reads back the loadout the run
+   *  STARTED with — the account's own copy is already spent by then (`beginRun`). */
+  get runConfig(): EngineConfig | null {
+    return this.config;
+  }
+
+  /** The stream so far, in deterministic order, or null when nothing is being recorded.
+   *  `pack` above wraps the same thing in a replay FILE; the save path wants the bare
+   *  stream, since it stores a rebuild descriptor instead of an embedded config. */
+  recordedCommands(): PlayerCommand[] | null {
+    return this.source?.recorded() ?? null;
   }
 
   /** Stop holding the finished run's stream (a new `begin` also drops it). */

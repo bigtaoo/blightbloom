@@ -32,6 +32,7 @@ import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
+import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
 
 /** A stable 32-bit integer hash. Pure, platform-independent, no floating point anywhere. */
 function mix(x: number, salt: number): number {
@@ -56,6 +57,12 @@ function inputFor(tick: number, owner: number, salt: number, opts: ScenarioInput
   if (tick % 37 === 0) buttons |= Button.SWAP_WEAPON;
   if (opts.interact && tick % 53 === 0) buttons |= Button.INTERACT;
   if (opts.descend && tick % 61 === 0) buttons |= Button.CONFIRM_DESCEND;
+  // CONFIRM_EXTRACT on a much tighter cadence than the descend above, and that gap is the
+  // point (ENGINE_VERSION 61, `extractionGateFloor.ts`): the first extract pulse lands long
+  // before the first descend, so a scenario that reaches an INTERIOR checkpoint proves the
+  // press was ignored — if it were ever honoured again the run would end there, at a small
+  // fraction of the tick budget and with `floorIndex` stuck at 0.
+  if (opts.extract && tick % 7 === 0) buttons |= Button.CONFIRM_EXTRACT;
   // A descend needs a floor-card vote to be honoured (design/05, ENGINE_VERSION 58) —
   // without one the portal simply holds, and a scenario that used to change floors
   // would silently stop doing so while still passing its own hash. Varied by beat
@@ -91,6 +98,10 @@ interface ScenarioInput {
   interact: boolean;
   /** Pulse CONFIRM_DESCEND — makes a dungeon run actually change floors. */
   descend: boolean;
+  /** Pulse CONFIRM_EXTRACT — the button whose per-floor gate is v61's whole subject. Only
+   *  meaningful for a scenario that actually reaches a checkpoint, which today means the
+   *  purpose-built `extractionGateFloor.ts` (see its header for why the shipped floors cannot). */
+  extract: boolean;
   /**
    * Replace the pseudo-random stick with long HELD cardinal/diagonal pushes. Use this whenever
    * a scenario has to make CONTACT with specific geometry rather than explore generally — see
@@ -189,7 +200,7 @@ export function runScenario(sc: GoldenScenario): { hash: number; witness: Witnes
   return { hash: hashState(engine.state), witness: witnessOf(engine.state, events) };
 }
 
-const NO_PULSE: ScenarioInput = { interact: false, descend: false, press: false };
+const NO_PULSE: ScenarioInput = { interact: false, descend: false, extract: false, press: false };
 
 export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
   {
@@ -265,7 +276,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 1500,
     seats: 1,
-    input: { interact: true, descend: true, press: false },
+    input: { interact: true, descend: true, extract: false, press: false },
     salt: 0x3333,
   },
   {
@@ -284,8 +295,31 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 800,
     seats: 1,
-    input: { interact: false, descend: false, press: true },
+    input: { interact: false, descend: false, extract: false, press: true },
     salt: 0x5555,
+  },
+  {
+    name: 'extraction-gate',
+    // The scenario that exists because measuring v61 against the other five found ZERO
+    // divergence — see extractionGateFloor.ts for the full account. The short version is that
+    // no other scenario presses CONFIRM_EXTRACT, and the one dungeon scenario cannot reach a
+    // checkpoint to press it at.
+    pins: "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
+    config: {
+      seed: 6101,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: EXTRACT_GATE_DUNGEON, library: EXTRACT_GATE_ROOMS },
+    },
+    // Generous on purpose: the run is EXPECTED to end well inside this, and a budget that
+    // merely happened to be long enough would hide a slower kill later. Reaching the cap
+    // instead means the last floor stopped extracting, which the witness shows as
+    // `phase: 'playing'`.
+    ticks: 400,
+    seats: 1,
+    input: { interact: false, descend: true, extract: true, press: false },
+    salt: 0x6161,
   },
   {
     name: 'launch-arena-pvp',
@@ -305,7 +339,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 900,
     seats: 2,
-    input: { interact: true, descend: false, press: false },
+    input: { interact: true, descend: false, extract: false, press: false },
     salt: 0x4444,
   },
 ];

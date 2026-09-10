@@ -87,6 +87,19 @@ const SCREENS: Array<[string, ScreenBuild]> = [
   // `storeEnabled` on: the STORE button reserves its own 36px row, so a selling build is
   // the TALLER of the two forge layouts and therefore the one the fit has to clear.
   ['Forge', (w, h) => { const s = new Forge(); s.storeEnabled = true; s.render(defaultMetaState(), w, h); return s.view; }],
+  // The Forge with a SAVED RUN (2026-09-10, ENGINE_VERSION 61) — its action bar is two rows
+  // instead of one, plus a fourth info line, so this is the taller of the two forge layouts
+  // and by this sweep's own rule the one the fit has to clear. Its own entry rather than a
+  // flag on the case above, because `savedRun` defaults to "no save": without it the sweep is
+  // structurally blind to the taller bar, which is the trap the store entry at the bottom of
+  // this file records.
+  ['Forge (saved run: two-row action bar)', (w, h) => {
+    const s = new Forge();
+    s.storeEnabled = true;
+    s.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
+    s.render(defaultMetaState(), w, h);
+    return s.view;
+  }],
   ['MainMenu', (w, h) => { const s = new MainMenu(); s.show(w, h); return s.view; }],
   // The menu with a MAXIMUM-LENGTH maintenance banner, which is the taller of its two
   // layouts and therefore the one the fit has to clear — the same reason the Forge entry
@@ -273,9 +286,11 @@ describe.each(VIEWPORTS)('every menu screen fits $name ($w x $h)', ({ w, h }) =>
 describe('Forge — START RUN is reachable, not buried under the blueprint grid', () => {
   /** The exact failure the user saw: the button exists and is on-screen, but a weapon
    *  card is drawn over the same pixels, so there is nothing tappable-looking there. */
-  function startButtonOverlapsACard(w: number, h: number) {
+  function startButtonOverlapsACard(w: number, h: number, saved = false) {
     const f = new Forge();
     f.storeEnabled = true; // the taller layout — see the sweep's note above
+    // `saved` moves START RUN one row UP, toward the grid — see the saved-run cases below.
+    if (saved) f.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
     f.render(defaultMetaState(), w, h);
     const p = f as unknown as {
       rowCards: Array<{ view: { visible: boolean; x: number; y: number } }>;
@@ -292,6 +307,33 @@ describe('Forge — START RUN is reachable, not buried under the blueprint grid'
   it.each(VIEWPORTS)('$name', ({ w, h }) => {
     const design = new MenuLayer().fit({ w, h });
     expect(startButtonOverlapsACard(design.w, design.h)).toBe(false);
+  });
+
+  // With a saved run START RUN is no longer the bottom row — CONTINUE RUN takes that slot and
+  // START RUN moves 52px UP, i.e. toward the blueprint grid. That is strictly closer to the
+  // reported bug this whole block exists for, so it needs its own sweep rather than trusting
+  // the one above: every case there lays out the shape where the button is furthest away.
+  it.each(VIEWPORTS)('$name — with a saved run, START RUN sits a row higher', ({ w, h }) => {
+    const design = new MenuLayer().fit({ w, h });
+    expect(startButtonOverlapsACard(design.w, design.h, true)).toBe(false);
+  });
+
+  it('and the compare card gives way to the taller bar rather than overlapping it', () => {
+    // The other half of the same reservation: `renderCompareCard`'s no-room check measures
+    // against the TOP of the action bar, so with two rows it has to hide 52px sooner. Checking
+    // it here rather than only in Forge.test.ts because this file owns the "on screen but
+    // something is drawn over it" class of failure.
+    const f = new Forge();
+    f.storeEnabled = true;
+    f.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
+    f.render(defaultMetaState(), 1280, MENU_DESIGN_H);
+    const p = f as unknown as {
+      compareCard: { view: { visible: boolean; y: number; height: number } };
+      startBtn: { view: { y: number } };
+    };
+    if (p.compareCard.view.visible) {
+      expect(p.compareCard.view.y + p.compareCard.view.height).toBeLessThanOrEqual(p.startBtn.view.y);
+    }
   });
 
   // Harness check: the assertion above must be able to FAIL. Laying the same screen out
@@ -315,6 +357,14 @@ describe('Forge — START RUN is reachable, not buried under the blueprint grid'
   it('the design height clears the grid the bottom bar has to sit under', () => {
     expect(startButtonOverlapsACard(1280, MENU_DESIGN_H)).toBe(false);
     expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 80)).toBe(true);
+  });
+
+  it('...and still clears it with the taller two-row bar, which can also FAIL', () => {
+    // The saved-run sweep above needs the same harness check every other assertion in this
+    // file has: a passing `false` proves nothing unless `true` is reachable. It is reachable
+    // 52px sooner than for the one-row bar, which is the whole point of measuring it.
+    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H, true)).toBe(false);
+    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 80, true)).toBe(true);
   });
 });
 

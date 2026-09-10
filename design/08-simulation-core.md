@@ -124,8 +124,9 @@ step(tick, commands):
                         (locked = either side in combat) and, only on an actual lock
                         change, rebuild state.walls + the spatial index (05 "Room &
                         door model")   [PvE dungeon only]
- 12. Extraction       — per-floor checkpoint → EXTRACT/DESCEND, banks the floor's
-                        materials (05, ROADMAP 1.4/1.5)   [PvE, floors-mode only]
+ 12. Extraction       — per-floor checkpoint → DESCEND, or EXTRACT on the LAST floor
+                        only (v61); banks the floor's materials either way
+                        (05, ROADMAP 1.4/1.5)   [PvE, floors-mode only]
  13. Revive           — bleedout timer + sustained-INTERACT revive channel for downed
                         players (05, ROADMAP 3.2)   [co-op]
  14. Win condition    — all enemies dead / boss dead / all players down / one PvP seat

@@ -36,14 +36,24 @@ function perimeterWalls(w: number, h: number): readonly (readonly [number, numbe
  * `BASIC_ENEMY` — already fires the shared enemy gun, so it's deflectable with zero
  * special-cased content) positioned across the arena from the player's spawn. This is
  * deliberately NOT the last floor (`floors.length === 1` → 2 floors total), so once it's
- * cleared the checkpoint shows the REAL interactive Portal/PortalPrompt (Bank-and-Extract
- * vs Descend) instead of silently auto-resolving (ROADMAP 1.4's "the last floor
- * auto-resolves as EXTRACT with no gesture" rule only applies to the LAST floor).
+ * cleared the checkpoint shows the REAL interactive Portal/PortalPrompt rather than a
+ * scripted stand-in.
  *
- * Floor 1 (`floors[0]`) — the last floor — is one more trivial enemy: whichever
- * checkpoint choice the player made on floor 0, the run still ends normally through the
- * real result screen once floor 1 clears (Extract-now ends immediately on floor 0
- * instead; Descend reaches floor 1, which then auto-resolves once cleared).
+ * **What that portal offers changed under the level, 2026-09-10 (`ENGINE_VERSION` 61,
+ * design/05 "Only the boss floor ends a run").** This comment used to say floor 0's
+ * checkpoint shows "Bank-and-Extract vs Descend" — a real two-way choice — and that was the
+ * point of putting the lesson on a non-last floor. There is no such choice any more: an
+ * interior checkpoint offers DESCEND alone, and only the last floor offers EXTRACT.
+ *
+ * The level is still right, and arguably teaches better than it did: floor 0 teaches the
+ * descend, floor 1 teaches the extract, which is exactly the shape of a real five-floor run.
+ * What it no longer teaches is a decision, because the game no longer has one there. Keep the
+ * two floors for that reason — a one-floor tutorial would only ever show the Extract button
+ * and would leave a first-time player meeting DESCEND for the first time in a real run.
+ *
+ * Floor 1 (`floors[0]`) — the last floor — is one more trivial enemy: descend from floor 0,
+ * clear it, and the run ends normally through the real result screen on an explicit EXTRACT
+ * press (the last floor has not auto-resolved since 2026-08-12 — see `ExtractionSystem`).
  *
  * No static pickups are placed (PvE `RoomPiece`/flat-mode content has no such field —
  * pickups only ever arrive as enemy drops) — the weapon-swap lesson is taught by the

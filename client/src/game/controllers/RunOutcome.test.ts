@@ -5,7 +5,7 @@
  * helper) and a mock `RunOutcomeHost` that records every call instead of touching
  * Pixi/Game.ts (which this file, by design, never imports).
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { setRewardedAd, type RewardedAd } from '../../platform/rewardedAd';
 import { setPublicFlags } from '../../net/clientFlags';
 import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
@@ -15,6 +15,9 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { ArenaMap } from '@dd/engine/content/arenas';
 import { EMBER_DUNGEON, TICK_RATE } from '@dd/engine';
+import { buildDungeonRunConfig } from '../match/offlineConfig';
+import { packRunSave } from '../match/runSave';
+import { loadSavedRun, resetRunSaveCacheForTests, writeSavedRun } from '../match/runSaveStore';
 import { RunOutcome, type RunOutcomeHost } from './RunOutcome';
 import { SCORE } from '../score';
 
@@ -501,5 +504,83 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
 
     expect(host.shown?.won).toBe(true);
     expect(host.offer).toBeUndefined();
+  });
+});
+
+/**
+ * A finished run is not a resumable one (design/05 "Only the boss floor ends a run",
+ * ENGINE_VERSION 61).
+ *
+ * This is the third of the three places that drop the save slot, and the only one that does
+ * not go through `RunLifecycle` — nothing routes a victory or a defeat there — so without it
+ * a player who closes the tab on a result screen comes back to a Forge offering CONTINUE for
+ * a run that is already over, with its materials already banked.
+ *
+ * All four arms are asserted, because they reach different code and only their SHARED
+ * prologue clears the slot: a clear moved into `win()` alone would leave every death
+ * resumable, which is exactly the wipe rule inverted.
+ */
+describe('RunOutcome — every outcome drops the saved run', () => {
+  const storage = new Map<string, string>();
+
+  beforeEach(() => {
+    storage.clear();
+    resetRunSaveCacheForTests();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => void storage.set(k, v),
+      removeItem: (k: string) => void storage.delete(k),
+    };
+  });
+
+  function withSave() {
+    const config = buildDungeonRunConfig({
+      seed: 3, coop: false, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'skirmisher',
+    });
+    writeSavedRun(packRunSave({ config, commands: [], ticks: 10, floorIndex: 1, score: 0, nowMs: 1 }));
+    expect(loadSavedRun()).not.toBeNull();
+  }
+
+  it('a PvE extraction', () => {
+    withSave();
+    const s = pveState();
+    s.winner = 0;
+    new RunOutcome(mockHost()).handle(s);
+    expect(loadSavedRun()).toBeNull();
+  });
+
+  it('a PvE wipe', () => {
+    withSave();
+    const s = pveState();
+    s.winner = 'enemies';
+    new RunOutcome(mockHost()).handle(s);
+    expect(loadSavedRun()).toBeNull();
+  });
+
+  it('an arena win', () => {
+    withSave();
+    const s = pvpState(2);
+    s.winner = 0;
+    new RunOutcome(mockHost()).handle(s);
+    expect(loadSavedRun()).toBeNull();
+  });
+
+  it('an arena elimination', () => {
+    withSave();
+    const s = pvpState(2);
+    s.winner = 1; // somebody else's seat
+    new RunOutcome(mockHost()).handle(s);
+    expect(loadSavedRun()).toBeNull();
+  });
+
+  it('and it really leaves the store, not only the cache', () => {
+    // Otherwise the run comes back on the next page load, which is the one place a
+    // cache-only clear would look green here and fail for a player.
+    withSave();
+    const s = pveState();
+    s.winner = 0;
+    new RunOutcome(mockHost()).handle(s);
+    resetRunSaveCacheForTests();
+    expect(loadSavedRun()).toBeNull();
   });
 });

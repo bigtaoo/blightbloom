@@ -15,6 +15,7 @@
 // is deliberate: CLAUDE.md names a two-way dependency as a sign the boundary is drawn
 // wrong, and "navigate" and "run a match" genuinely are separable verbs.
 import { t } from '../../i18n';
+import { savableRun } from '../match/runSave';
 import type { SettingsState } from '../../settings';
 import type { Layers } from '../scene/layers';
 import type { Backdrop } from '../scene/Backdrop';
@@ -202,7 +203,7 @@ export class ScreenNav {
   pause(): void {
     this.deps.run.phase = 'paused';
     const { w, h } = this.fit();
-    this.deps.screenFlow.pause(w, h, this.skipLabel());
+    this.deps.screenFlow.pause(w, h, this.skipLabel(), this.savable());
   }
 
   resume(): void {
@@ -220,12 +221,34 @@ export class ScreenNav {
   openPauseFromSettings(): void {
     this.deps.run.phase = 'paused';
     const { w, h } = this.fit();
-    this.deps.screenFlow.openPauseFromSettings(w, h, this.skipLabel());
+    this.deps.screenFlow.openPauseFromSettings(w, h, this.skipLabel(), this.savable());
   }
 
   /** The pause menu's QUIT reads SKIP during the tutorial (design/10 screen-flow gap). */
   private skipLabel(): string | undefined {
     return this.deps.run.tutorialActive ? t('tutorial.skip') : undefined;
+  }
+
+  /**
+   * Whether the pause menu offers SAVE & QUIT (design/05 "Only the boss floor ends a run",
+   * ENGINE_VERSION 61). The RULE lives in `savableRun`, next to the save format it is a rule
+   * about; this only reads the flags off `RunState` and the one fact only the sim knows —
+   * whether this is a real dungeon run rather than a flat-mode level.
+   *
+   * Computed at every open, not cached: `online`/`coop` are per-run and `dungeonEnabled` is
+   * per-config, so a cached answer would be from whichever run opened the menu first.
+   */
+  private savable(): boolean {
+    const d = this.deps;
+    return savableRun({
+      playing: true, // the pause menu only exists over a live run
+      online: d.run.online,
+      coop: d.run.coop,
+      tutorial: d.run.tutorialActive,
+      arenaDemo: d.run.arenaDemo !== null,
+      watchingReplay: d.run.replayStop !== null,
+      dungeon: d.run.activeState()?.dungeonEnabled ?? false,
+    });
   }
 
   /** The win/lose/placement screen (RunOutcome's host call). */
@@ -264,7 +287,7 @@ export class ScreenNav {
       case 'squad': d.partyScreen.show(w, h); break;
       case 'account': d.loginScreen.show(w, h); break;
       case 'store': d.storeScreen.resize(w, h); break; // NOT show() — must not re-list mid-purchase
-      case 'paused': d.pauseMenu.show(w, h, this.skipLabel()); break;
+      case 'paused': d.pauseMenu.show(w, h, this.skipLabel(), this.savable()); break;
       case 'settings': d.settingsScreen.show(w, h, d.settings()); break;
       case 'victory':
       case 'defeat':
