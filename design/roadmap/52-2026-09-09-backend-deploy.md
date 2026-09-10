@@ -282,4 +282,27 @@ in English") is now written down in both repos; only one of them enforces it mec
 
 The one constant that could not be measured in vitest at all is the maintenance banner's headroom: `fakeTextCanvas` charges 0.6em per character, so the worst legal 140-character banner is two lines there and three on a real page. Measured live at 55px, which is what `BANNER_RESERVE` is now derived from — the layout never centres the block so high that an operator's notice would be drawn off the top, and the banner still adds no row, which is the property design/21 §4 depends on.
 
-**Numbers.** 5904 client tests (was 5869), 277 files; `tsc --noEmit` clean; `npm run check`, `check:logic` and `check:filelength` green; coverage 97.59% lines / 93.07% branches on the client, all three packages over the 90/90 gate. Verified in a real browser on the worktree's own dev server (a screenshot of both the default and the portal configuration, and SOLO PvE clicked through to the forge), because the layout half of this is exactly what a green suite is worst at.
+**Follow-up the same day, on the question "are there tests worth adding".** Three, and the
+first one paid for itself immediately. **(a)** The label-fit check above was written for the
+lobby; pointed at every screen (`screens/labelFit.test.ts`, all eight locales) it found **17
+overflowing labels across six screens** — the account chip's greeting in six locales,
+PartyScreen's four buttons in five, Forge's CLEAR/START in four, plus PauseMenu QUIT and
+LoginScreen CHANGE PASSWORD. design/17's 2026-08-14 pass had fixed exactly this on Settings
+and written down that *only* Settings opted in; nothing had checked the other fifty buttons
+since. The fixes split three ways — `autoWidth` where a stacked row can grow (PartyScreen),
+a shorter word where the button sits in a fixed pair or bar (eleven labels), and a structural
+change where the length is not ours at all (the account chip now carries the player's NAME,
+ellipsised, on a box that grows, with the pair centred from measured widths). A second
+`Button` bug fell out: **`autoWidth` never paid for the icon lane**, so an auto-width button
+with an icon sized itself for a centred label and then pushed the text out of its own box.
+**(b)** `phase.test.ts` puts `isHubPhase` behind a `Record<Phase, boolean>` table, which makes
+a new phase a compile error until somebody answers "may the meta be replaced on this screen" —
+restoring, for a different question, the exhaustiveness the repo lost when `confirmEdge.test.ts`
+was deleted. **(c)** `widgets.test.ts` pins the icon offset across `setFill`/`setBorder`/
+auto-width `setText`; reverting the `layoutLabel` fix turns it red, which is the control.
+One more thing the sweep needed before it could be believed: a **per-screen button count**,
+cross-checked against `grep -c 'new Button('` in each screen file, because a reflection that
+silently finds nothing passes every assertion it does not make. It also proves the walk reaches
+a composed widget (MainMenu 3 + LobbyRoutes 5) and an array (StoreScreen 4 + 5 rows).
+
+**Numbers.** 6025 client tests (5869 before the lobby, 5904 after it), 279 files; `tsc --noEmit` clean; `npm run check`, `check:logic` and `check:filelength` green; coverage over the 90/90 gate on all three packages. Verified in a real browser on the worktree's own dev server (a screenshot of both the default and the portal configuration, and SOLO PvE clicked through to the forge), because the layout half of this is exactly what a green suite is worst at.

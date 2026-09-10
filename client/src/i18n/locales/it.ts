@@ -55,7 +55,7 @@ export const it: Translations<typeof en> = {
     title: 'AVAMPOSTO DELLA FUCINA',
     hint: '[↑↓]/[1-9]/[C]/[X]/[Invio] le scorciatoie da tastiera funzionano ancora',
     backButton: '← MENU',
-    clearLoadout: 'SVUOTA EQUIPAGGIAMENTO',
+    clearLoadout: 'SVUOTA',
     startRun: 'INIZIA PARTITA ▸',
     pagePrevButton: '‹ PAGINA',
     pageNextButton: 'PAGINA ›',
@@ -190,7 +190,7 @@ export const it: Translations<typeof en> = {
   party: {
     title: 'SQUADRA',
     create: 'CREA SQUADRA',
-    join: 'UNISCITI CON CODICE',
+    join: 'ENTRA CON CODICE',
     startMatching: 'AVVIA RICERCA',
     leave: 'LASCIA LA SQUADRA',
     back: 'INDIETRO',

@@ -28,7 +28,7 @@ export const es: Translations<typeof en> = {
     title: 'PAUSADO',
     resume: 'REANUDAR',
     settings: 'AJUSTES',
-    quit: 'VOLVER A LA FRAGUA',
+    quit: 'A LA FRAGUA',
   },
   settings: {
     title: 'AJUSTES',
@@ -56,7 +56,7 @@ export const es: Translations<typeof en> = {
     hint: '[↑↓]/[1-9]/[C]/[X]/[Intro] los atajos de teclado siguen funcionando',
     backButton: '← MENÚ',
     clearLoadout: 'VACIAR EQUIPO',
-    startRun: 'INICIAR PARTIDA ▸',
+    startRun: 'EMPEZAR ▸',
     pagePrevButton: '‹ PÁGINA',
     pageNextButton: 'PÁGINA ›',
     charStats: '{skin}  ({hp} PV / {sh} Escudo)',
@@ -190,7 +190,7 @@ export const es: Translations<typeof en> = {
   party: {
     title: 'ESCUADRA',
     create: 'CREAR ESCUADRA',
-    join: 'UNIRSE CON CÓDIGO',
+    join: 'UNIRSE CON CÓD.',
     startMatching: 'BUSCAR PARTIDA',
     leave: 'ABANDONAR ESCUADRA',
     back: 'ATRÁS',

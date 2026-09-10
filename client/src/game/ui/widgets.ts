@@ -267,12 +267,18 @@ export class Button {
    * `Text.width` it needs no real canvas — same convention as StatChip/WeaponCard. */
   private redraw() {
     this.w = this.autoWidth
-      ? Math.max(this.minW, estimateMonoWidth(this.label.text, this.fontSize) + 28)
+      ? Math.max(this.minW, estimateMonoWidth(this.label.text, this.fontSize) + 28 + this.iconLane())
       : this.minW;
     const radius = Math.min(8, this.h / 2);
     this.bg.clear().roundRect(0, 0, this.w, this.h, radius).fill({ color: this.color, alpha: 1 });
     if (this.borderColor !== undefined) this.bg.roundRect(0.5, 0.5, this.w - 1, this.h - 1, radius).stroke({ color: this.borderColor, alpha: this.borderAlpha, width: 1.5 });
     this.layoutLabel();
+  }
+
+  /** Horizontal space an icon takes out of the box: the chip, plus the 8px either side of it
+   *  that `layoutLabel` positions the label against. Zero when there is no icon. */
+  private iconLane(): number {
+    return this.iconSprite ? this.h - 8 + 16 : 0;
   }
 
   /**
@@ -364,7 +370,12 @@ export class Button {
     const fit = Math.min((box - 4) / texture.width, (box - 4) / texture.height);
     this.iconSprite.scale.set(fit);
     this.iconSprite.position.set(cx, cy);
-    this.layoutLabel();
+    // An `autoWidth` box was sized before it had an icon, so it has to be re-measured now
+    // that the label no longer starts at the left edge — otherwise the icon eats the room
+    // the text was given and the label runs off the right edge, which is the same defect
+    // `layoutLabel`'s own comment records from the other direction.
+    if (this.autoWidth) this.redraw();
+    else this.layoutLabel();
   }
 }
 
