@@ -139,7 +139,7 @@ stream per keypress to answer a yes/no is the kind of cost that only shows up on
 machine. Which then makes the cache the place a stale *yes* would survive a clear, so
 `runSaveStore.test.ts` spends most of its cases there.
 
-**Verification:** engine 1485 tests, client 6199, `tsc --noEmit` clean, all 12 logic-consistency
+**Verification:** engine 1485 tests, client 6155, `tsc --noEmit` clean, all 12 logic-consistency
 gates green, coverage 97.7%/93.2% client and 97.8%/93.5% engine. The load-bearing test is
 `runSave.test.ts`'s state-hash equivalence — a 400-tick run, saved, rebuilt from its own
 descriptor, replayed, and `hashState`-compared against the original, plus 200 further live ticks
