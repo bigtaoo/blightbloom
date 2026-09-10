@@ -424,6 +424,12 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     const eng = createGameEngine(STRAND_CFG);
     const s = eng.state;
     runToStrandedCheckpoint(eng);
+    // Since ENGINE_VERSION 61 an EXTRACT press only resolves on the LAST floor, and
+    // `runToStrandedCheckpoint` leaves us on floor 0 of 2. Stamped by hand rather than
+    // driven a floor deeper: what this test is about is which arrays `resolveExtract`
+    // touches, and the stranded-enemy state the helper builds is the same on either
+    // floor. `floorCount: 2`, so index 1 IS the last.
+    s.floorIndex = 1;
 
     eng.step([confirmExtract(11)]);
     expect(s.phase).toBe('gameover');

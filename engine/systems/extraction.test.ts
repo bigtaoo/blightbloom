@@ -113,6 +113,7 @@ describe('ExtractionSystem — DESCEND (explicit confirmDescend press)', () => {
 describe('ExtractionSystem — EXTRACT (explicit confirmExtract press)', () => {
   it('banks the floor buffer and ends the run as a win, without advancing the floor', () => {
     const s = createGameState(FLOORS_CFG);
+    s.floorIndex = 1; // the last floor — the only floor that can end a run (v61)
     s.floorMaterials.mat_ice = 2;
     atCheckpoint(s);
     const p = s.players[0]!;
@@ -121,19 +122,72 @@ describe('ExtractionSystem — EXTRACT (explicit confirmExtract press)', () => {
 
     expect(s.phase).toBe('gameover');
     expect(s.winner).toBe(0);
-    expect(s.floorIndex).toBe(0); // never descended
+    expect(s.floorIndex).toBe(1); // never descended
     expect(s.bankedMaterials.mat_ice).toBe(2);
     expect(s.events.some((e) => e.type === 'win' && e.winner === 0)).toBe(true);
   });
 
-  it('confirmExtract wins out over a simultaneous confirmDescend on the same tick', () => {
+  it('confirmExtract wins out over a simultaneous confirmDescend on the last floor', () => {
     const s = createGameState(FLOORS_CFG);
+    s.floorIndex = 1;
     atCheckpoint(s);
     const p = s.players[0]!;
     p.confirmExtract = true;
     p.confirmDescend = true;
     new ExtractionSystem().tick(s);
     expect(s.phase).toBe('gameover');
+  });
+});
+
+/**
+ * ENGINE_VERSION 61 — the mid-floor extraction option is gone (design/05 "Only the boss
+ * floor ends a run"). This is the half no golden scenario can see: none of them presses
+ * `CONFIRM_EXTRACT`, and `ember-dungeon-floor1` never reaches a checkpoint at all, so this
+ * block IS the gate for the rule (recorded as such in ENGINE_VERSION_HISTORY's v61 entry).
+ *
+ * Both directions are asserted, because only the PAIR pins the rule: "an interior press is
+ * ignored" alone would also pass if `confirmExtract` had been deleted outright, and "the last
+ * floor still wins" alone would also pass if nothing had changed.
+ */
+describe('ExtractionSystem — an interior floor cannot end the run at all (v61)', () => {
+  it('ignores confirmExtract on a non-last floor: no win, no descend, nothing banked', () => {
+    const s = createGameState(FLOORS_CFG);
+    s.floorMaterials.mat_ice = 2;
+    atCheckpoint(s); // floorIndex 0, and extraFloors.length is 1 — not the last floor
+    const p = s.players[0]!;
+    p.confirmExtract = true;
+    new ExtractionSystem().tick(s);
+
+    expect(s.phase).not.toBe('gameover');
+    expect(s.winner).toBe(null);
+    expect(s.floorIndex).toBe(0); // an ignored EXTRACT is NOT quietly turned into a descend
+    expect(s.bankedMaterials.mat_ice).toBeUndefined(); // the buffer is untouched
+    expect(s.floorMaterials.mat_ice).toBe(2);
+  });
+
+  it('an interior confirmExtract does not consume the descend the same tick offers', () => {
+    // The press is dropped, not reinterpreted — so a player who pressed both on one tick
+    // (a stale latch, a double-bound key) still gets the descend they also asked for,
+    // rather than a swallowed tick.
+    const s = createGameState(FLOORS_CFG);
+    atCheckpoint(s);
+    const p = s.players[0]!;
+    p.confirmExtract = true;
+    p.confirmDescend = true;
+    p.cardVote = 1;
+    new ExtractionSystem().tick(s);
+    expect(s.phase).not.toBe('gameover');
+    expect(s.floorIndex).toBe(1); // descended, as CONFIRM_DESCEND asked
+  });
+
+  it('the LAST floor still ends the run on the same press — the rule is per-floor, not global', () => {
+    const s = createGameState(FLOORS_CFG);
+    s.floorIndex = 1;
+    atCheckpoint(s);
+    s.players[0]!.confirmExtract = true;
+    new ExtractionSystem().tick(s);
+    expect(s.phase).toBe('gameover');
+    expect(s.winner).toBe(0);
   });
 });
 
@@ -328,12 +382,25 @@ describe('ExtractionSystem — dungeon mode checks the floor\'s capstone room, n
 });
 
 describe('Integration — full engine step() drives the extraction gesture via real input', () => {
-  it('pressing CONFIRM_EXTRACT at a checkpoint through createGameEngine resolves EXTRACT', () => {
+  it('pressing CONFIRM_EXTRACT at the LAST floor\'s checkpoint through createGameEngine resolves EXTRACT', () => {
     const eng = createGameEngine(FLOORS_CFG);
+    eng.state.floorIndex = 1; // the boss floor — the only one an EXTRACT press resolves on (v61)
     atCheckpoint(eng.state); // shortcut past clearing the actual wave
     eng.step([makeCommand({ owner: 0, tick: 1, moveBrad: 0 as Brad, moveMag: 0, buttons: Button.CONFIRM_EXTRACT })]);
     expect(eng.state.phase).toBe('gameover');
     expect(eng.state.winner).toBe(0);
+  });
+
+  it('the same press on an interior floor goes nowhere through the real input path too', () => {
+    // Not a duplicate of the unit test above: this one goes through ApplyInputSystem's
+    // button latch, so it also pins that the bit still ARRIVES and is dropped by
+    // ExtractionSystem — rather than the rule accidentally living in the input layer.
+    const eng = createGameEngine(FLOORS_CFG);
+    atCheckpoint(eng.state); // floorIndex 0
+    eng.step([makeCommand({ owner: 0, tick: 1, moveBrad: 0 as Brad, moveMag: 0, buttons: Button.CONFIRM_EXTRACT })]);
+    expect(eng.state.players[0]!.confirmExtract).toBe(true); // the press was received
+    expect(eng.state.phase).not.toBe('gameover'); // and ignored
+    expect(eng.state.floorIndex).toBe(0);
   });
 
   it('pressing CONFIRM_DESCEND at a checkpoint resolves DESCEND', () => {

@@ -203,7 +203,7 @@ describe('ScreenFlow', () => {
     const w = buildWidgets();
     const flow = new ScreenFlow(w);
 
-    flow.pause(800, 600, undefined);
+    flow.pause(800, 600, undefined, false);
     expect(w.pauseMenu.view.visible).toBe(true);
 
     flow.resume();
@@ -219,7 +219,7 @@ describe('ScreenFlow', () => {
     expect(w.pauseMenu.view.visible).toBe(false);
     expect(w.settingsScreen.view.visible).toBe(true);
 
-    flow.openPauseFromSettings(800, 600, 'Skip');
+    flow.openPauseFromSettings(800, 600, 'Skip', true);
     expect(w.settingsScreen.view.visible).toBe(false);
     expect(w.pauseMenu.view.visible).toBe(true);
   });

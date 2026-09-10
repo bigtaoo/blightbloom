@@ -155,6 +155,18 @@ const SCREENS: Array<[string, Build]> = [
     return s;
   }],
   ['Forge', (w, h) => { const s = new Forge(); s.storeEnabled = true; s.render(defaultMetaState(), w, h); return s; }],
+  // With a saved run in the slot (ENGINE_VERSION 61) — the state that draws CONTINUE RUN and
+  // moves START RUN up a row. Its own case because a `savedRun` provider is the only way to
+  // reach that layout, and the default is "no save": without this the CONTINUE label would be
+  // constructed, measured once at its constructor default, and never re-measured under a
+  // locale, which is exactly the "counted but not covered" shape the count guard below is for.
+  ['Forge (saved run)', (w, h) => {
+    const s = new Forge();
+    s.storeEnabled = true;
+    s.savedRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+    s.render(defaultMetaState(), w, h);
+    return s;
+  }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s; }],
   ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one']); return s; }],
   ['Screens + ad offer', (w, h) => {
@@ -241,7 +253,8 @@ describe('the sweep measured what it claims to', () => {
     // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 5
     // (a composed widget), and StoreScreen is 4 plus its five row buttons (an array).
     expect([...seen].map(([name, fields]) => `${name}: ${fields.length}`).sort()).toEqual([
-      'Forge: 8',
+      'Forge (saved run): 9',
+      'Forge: 9',
       'LoginScreen: 5',
       'MainMenu (portal): 8',
       'MainMenu (signed in): 8',
@@ -249,7 +262,7 @@ describe('the sweep measured what it claims to', () => {
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
       'PartyScreen: 5',
-      'PauseMenu: 3',
+      'PauseMenu: 4',
       'PvpPreview: 2',
       'Screens + ad offer: 3',
       'Screens: 3',

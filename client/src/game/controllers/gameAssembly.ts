@@ -68,6 +68,7 @@ import { ScreenFlow } from './ScreenFlow';
 import { ScreenNav } from './ScreenNav';
 import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
+import { savedRunSummary } from '../match/runSaveStore';
 import { pullAccountMeta } from '../../meta/accountSync';
 import { getSession } from '../../net/session';
 import type { RunState } from '../runState';
@@ -154,6 +155,12 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   });
   const storeScreen = new StoreScreen(storePurchase);
   p.forge.storeEnabled = storePlatform !== null;
+  // Whether the forge offers CONTINUE RUN, and what its info line says about the save
+  // (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61). A provider, not a
+  // value, so every one of `render()`'s five call sites reads the CURRENT answer — see
+  // `Forge.savedRun`'s own note. `savedRunSummary` reads the parsed save out of the
+  // process-wide slot, so this costs nothing per render.
+  p.forge.savedRun = () => savedRunSummary();
 
   p.layers.menu.mount(
     [p.mainMenu.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,

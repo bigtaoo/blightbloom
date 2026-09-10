@@ -145,3 +145,115 @@ describe('saveMarkedReplay (the save verb, without a host)', () => {
     expect(outcomes.map((o) => (o.ok ? 'ok' : o.reason))).toEqual(['no-run', 'unsupported', 'ok']);
   });
 });
+
+/**
+ * `resume` / `runConfig` / `recordedCommands` — what save-and-continue needs from the
+ * recorder (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61).
+ *
+ * The load-bearing property is that a resumed run keeps recording as ONE stream rather than
+ * a fragment starting at the resume. Two things depend on it: saving again later has to
+ * produce a save that replays from tick 1 (a save that only replays from the middle is not a
+ * save), and F9 after a resume has to export a repro of the whole run.
+ */
+describe('MatchRecorder — resuming a saved run', () => {
+  it('pre-loads the stream, so the source can drive the fast-forward', () => {
+    const first = new MatchRecorder();
+    play(DUNGEON, first, 20);
+    const stream = first.recordedCommands()!;
+
+    const resumed = new MatchRecorder();
+    const source = resumed.resume('dungeon', DUNGEON, stream);
+    // The commands are IN the source before any engine exists — which is what lets
+    // `resumeSavedRun` build an engine on it and advance straight to the saved tick.
+    expect(source.take(1)).toHaveLength(1);
+    expect(source.take(20)).toHaveLength(1);
+    expect(source.take(21)).toEqual([]); // and nothing beyond it
+  });
+
+  it('a resumed engine replayed off that source lands on the original state', () => {
+    const first = new MatchRecorder();
+    const original = play(DUNGEON, first, 30);
+
+    const resumed = new MatchRecorder();
+    const source = resumed.resume('dungeon', DUNGEON, first.recordedCommands()!);
+    const engine = createGameEngine(DUNGEON, source);
+    for (let f = 1; f <= 30; f++) engine.advance(f);
+    expect(hashState(engine.state)).toBe(hashState(original.state));
+  });
+
+  it('keeps recording into the SAME stream, so a second save replays from tick 1', () => {
+    // The failure this prevents: a resume that began a fresh recording would save a stream
+    // starting at tick 31, which replays 30 ticks of idle-hold into a completely different
+    // run. Nothing else would notice — the file would parse, and the version would match.
+    const first = new MatchRecorder();
+    play(DUNGEON, first, 30);
+
+    const resumed = new MatchRecorder();
+    const source = resumed.resume('dungeon', DUNGEON, first.recordedCommands()!);
+    const engine = createGameEngine(DUNGEON, source);
+    for (let f = 1; f <= 30; f++) engine.advance(f);
+    for (let f = 31; f <= 40; f++) {
+      const { moveBrad, moveMag } = quantizeMove(0.5, 0.5);
+      engine.submit(makeCommand({ owner: 0, tick: f, moveBrad, moveMag, buttons: 0 }));
+      engine.advance(f);
+    }
+
+    const combined = resumed.recordedCommands()!;
+    expect(combined).toHaveLength(40);
+    expect(combined[0]!.tick).toBe(1);
+    expect(combined.at(-1)!.tick).toBe(40);
+  });
+
+  it('and F9 after a resume exports a replay of the whole run, not of the tail', () => {
+    const first = new MatchRecorder();
+    play(DUNGEON, first, 12);
+    const resumed = new MatchRecorder();
+    resumed.resume('dungeon', DUNGEON, first.recordedCommands()!);
+    const file = resumed.pack(12, 0)!;
+    expect(file.replay.commands).toHaveLength(12);
+    expect(file.replay.commands[0]!.tick).toBe(1);
+  });
+
+  it('drops whatever was being recorded before, like `begin` does', () => {
+    const recorder = new MatchRecorder();
+    play(DUNGEON, recorder, 25);
+    recorder.resume('dungeon', DUNGEON, []);
+    expect(recorder.recordedCommands()).toEqual([]);
+  });
+});
+
+describe('MatchRecorder — runConfig / recordedCommands', () => {
+  it('answers null for both when nothing is being recorded', () => {
+    const recorder = new MatchRecorder();
+    expect(recorder.runConfig).toBeNull();
+    expect(recorder.recordedCommands()).toBeNull();
+  });
+
+  it('exposes the config the run was BUILT from — the only surviving copy of its loadout', () => {
+    // `beginRun` spends the account's crafted loadout at run start, so this is where the save
+    // path reads back what the run is carrying. A `null` here would silently pack a save
+    // with an empty loadout, and the resumed run would spawn with the starter kit instead.
+    const config = buildDungeonRunConfig({
+      seed: 7, coop: false, localSeat: { skinId: 'juggernaut', loadout: ['cryobolt'] }, allySkinId: 'skirmisher',
+    });
+    const recorder = new MatchRecorder();
+    play(config, recorder, 3);
+    expect(recorder.runConfig).toBe(config);
+    expect(recorder.runConfig!.loadout).toEqual(['cryobolt']);
+  });
+
+  it('goes back to null once the run ends', () => {
+    const recorder = new MatchRecorder();
+    play(DUNGEON, recorder, 5);
+    recorder.end();
+    expect(recorder.runConfig).toBeNull();
+    expect(recorder.recordedCommands()).toBeNull();
+  });
+
+  it('reports the stream in tick order, matching what `pack` embeds', () => {
+    const recorder = new MatchRecorder();
+    play(DUNGEON, recorder, 15);
+    const bare = recorder.recordedCommands()!;
+    expect(bare.map((c) => c.tick)).toEqual(recorder.pack(15, 0)!.replay.commands.map((c) => c.tick));
+  });
+});
