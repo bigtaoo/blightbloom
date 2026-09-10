@@ -692,9 +692,9 @@ it buys "either the run has all its art, or the player is still looking at a spi
 
 Entering the **forge** is the boundary, not START RUN. The forge is where a player *chooses* using
 weapon art, so weapons must be dressed before it paints — and by then the background load has had
-the whole login/menu/mode-select sequence to finish. Gated sites: `showForge`, `showPvpPreview`,
+the whole login/menu sequence to finish. Gated sites: `showForge`, `showPvpPreview`,
 `showMatchmaking`, `beginTutorialRun`, `beginArenaDemoRun`, `beginReplayRun`. Everything left
-ungated (`showMenu`, `showModeSelect`, `showAccount`, `showSquad`, settings) draws from the `lobby`
+ungated (`showMenu`, `showAccount`, `showSquad`, settings) draws from the `lobby`
 pack alone.
 
 `controllers/ArtGate.ts` owns it, and it has two properties worth stating because they are what
