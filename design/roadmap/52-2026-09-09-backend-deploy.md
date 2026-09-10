@@ -247,6 +247,18 @@ One gate fired during the change and was right to: `build/checkDocPaths.mjs` rej
 citation of funny's `claudedocs/worktrees.md`, which is a real file in a repo that is not this
 one. It joins the three sibling-project entries already in that allowlist, with its reason.
 
+**Measured, not assumed.** The change shipped through its own rule: PR
+[#1](https://github.com/bigtaoo/blightbloom/pull/1) — the first pull request this repo has ever
+had — reported `BLOCKED` from the moment it opened and flipped to `CLEAN` only once all four
+gates landed (`logic consistency` 29s, `sims` 54s, `check` 2m32s, `coverage` 2m40s; ~2m40s
+wall-clock, which is what the rule costs per merge). Two things that reading the ruleset JSON
+would not have told you: the admin bypass does **not** pre-empt the gate — the same account that
+holds an always-on bypass still saw `BLOCKED`, because a bypass is something you reach for, not a
+state the PR is evaluated in — and the merge itself is the only place `main` moved, so the
+daily-branch reuse recipe (`git branch -f main origin/main`, then `git merge --ff-only
+origin/main` on the day's branch) is not optional bookkeeping but the thing that keeps the next
+PR's diff to the new work only. Both were walked before this paragraph was written.
+
 What this does **not** do is change the language policy or the hook situation: funny hard-blocks
 CJK in `git commit` / `gh pr create` command lines with `.claude/hooks/no-cjk-vcs.mjs`, and this
 repo has no `.claude/settings.json` at all. The rule ("commit messages, and PR titles and bodies,
