@@ -61,6 +61,15 @@ npm run dev        # client dev server, http://localhost:5173
 | `npm run test:weapon-sim` | The per-weapon sweep — every player-facing weapon plays the shipped level over 8 seeds, reporting kills / ticks-per-kill / damage taken / depth, and gating that no weapon is inert (`client/sim/`, also out of the default glob — ~10s) |
 | `DD_REPLAY=<path> npm run replay:inspect` | Read one recorded run (a `ddreplay-*.json` a player saved with the HUD's ● button or F9) and report every drop's closest approach, swept path, gate and `pickup` event (`client/sim/replay/`) |
 
+### Branching
+
+`main` is push-protected and only advances through a merged pull request — the repository
+ruleset "Only PR" requires one, and requires the four `check.yml` jobs (`logic consistency`,
+`check`, `coverage`, `sims`) to be green and the branch to be up to date first. Work lands
+on a daily integration branch named `DD.MM.YYYY`, which is what opens that PR; task-sized
+work gets its own worktree and `feat/<slug>` branch off the day's branch. Full rules, and
+the commands, in [`CLAUDE.md`](CLAUDE.md#branches-the-daily-branch-and-pull-requests).
+
 ## Deployment
 
 The client is live at **https://b.gamestao.com** — static assets (`client/dist`) served

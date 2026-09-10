@@ -1,5 +1,47 @@
 # Project instructions for Claude Code
 
+## Branches, the daily branch, and pull requests
+
+Adopted 2026-09-10 from the sibling project `funny` (its `CLAUDE.md` "分支与提交" plus
+`claudedocs/worktrees.md`). Three rules, and the first one is the whole point:
+
+1. **Never commit to `main` directly. `main` only ever advances through a merged PR.**
+   Enforced server-side by the repository ruleset **"Only PR"**
+   (github.com/bigtaoo/blightbloom → Settings → Rules): no deletion, no force-push, a PR
+   required (0 approvals — the PR exists for CI and for the diff, not for a reviewer), and
+   the four `check.yml` jobs — `logic consistency`, `check`, `coverage`, `sims` — required
+   and **strict** (the branch must be up to date with `main` before it can merge). Repo
+   admins carry an always-on bypass so the repo can never lock its owner out; treat that as
+   a fire escape, not a door. Using it silently is how the gate becomes decorative.
+2. **Integration goes through a daily branch named `DD.MM.YYYY`** (e.g. `10.09.2026`), never
+   straight from a task branch into `main`. The shared checkout `D:/daydayup` is pinned to
+   the *current daily branch*, not to `main` — a session that finds it on `main` should
+   check out (or create) today's branch off `origin/main` before doing anything else.
+   Task work still gets its own worktree + branch (`.claude/worktrees/<slug>` on
+   `feat/<slug>`, branched off the daily branch) and merges back `--no-ff`; a small
+   doc-level fix can be committed straight onto the daily branch in the shared tree.
+3. **One PR per daily branch, `<DD.MM.YYYY>` → `main`, opened early.** `check.yml` only
+   triggers on `pull_request` and on pushes to `main`, so until the PR exists the daily
+   branch is running no CI at all — open it with the day's first push, not at the end.
+   Title and body in English like everything else here (see "Language policy"). Merge it
+   when the four checks are green; a red check is the answer, not an obstacle to route
+   around. Merging is also what deploys — `client-deploy` / `server-deploy` and friends
+   trigger on push to `main`.
+
+```bash
+git fetch origin && git switch -c 10.09.2026 origin/main   # start the day
+git worktree add -b feat/<slug> .claude/worktrees/<slug> 10.09.2026
+git merge --no-ff feat/<slug>                              # task branch → daily branch
+git push -u origin 10.09.2026
+gh pr create --base main --head 10.09.2026 --title "..." --body "..."
+```
+
+Reusing a daily branch that has already been merged: fast-forward it first with
+`git branch -f <DD.MM.YYYY> origin/main` (from a checkout that is not sitting on it) or
+`git pull --ff-only`, so the next PR's diff is the new work only. Local `main` is a mirror
+of `origin/main` and nothing else — never commit onto it, refresh it with
+`git fetch origin && git branch -f main origin/main`.
+
 ## "结束任务" (end task) command
 
 When the user says **"结束任务"**, run this exact sequence, in this exact order:
@@ -7,20 +49,28 @@ When the user says **"结束任务"**, run this exact sequence, in this exact or
 1. **Update docs and memory first** — design/NN docs, `ROADMAP.md`, README status boxes
    for whatever the task actually shipped, plus the persistent memory system, so both
    describe the final shipped state, not a mid-task snapshot.
-2. **Merge the code to `main`** — if the session's work happened on a branch/worktree,
-   bring it onto `main` now (cherry-pick or merge, whichever is clean; run the full
-   test suite + `tsc --noEmit` after).
+2. **Merge the code to the daily branch `DD.MM.YYYY`** — not to `main`, which is PR-only
+   (see "Branches, the daily branch, and pull requests"). If the session's work happened
+   on a branch/worktree, bring it onto the daily branch now (`git merge --no-ff`, or a
+   cherry-pick where that is cleaner; run the full test suite + `tsc --noEmit` after).
+   Create the daily branch off `origin/main` if the day has none yet.
 3. **Clean up worktree and branch** — once step 2 is confirmed merged (verify with a
-   real content diff against `main`, not just `git log`, since a cherry-pick produces
-   a new commit SHA even after the content is fully merged), remove the now-redundant
-   worktree and delete the branch.
+   real content diff against the daily branch, not just `git log`, since a cherry-pick
+   produces a new commit SHA even after the content is fully merged), remove the
+   now-redundant worktree and delete the branch.
 4. **Commit last** — the final commit should capture the fully-merged, fully-cleaned-up
    state, not an intermediate one.
+5. **Push, and open or update the day's PR into `main`** — `git push` the daily branch,
+   then `gh pr create --base main --head <DD.MM.YYYY>` if the day has no PR yet (English
+   title and body). Report the PR link and the state of the four required checks. Merge it
+   once they are green; if any is red, leave the PR open and say which one, rather than
+   reaching for the admin bypass.
 
-If any step finds nothing to do (e.g. no unmerged branch exists), skip it silently
-rather than asking. Treat "结束任务" as a distinct trigger phrase from an ordinary
-"commit this" or "merge this" request — it means run the full four-step sequence, not
-just whichever single step the wording most resembles.
+If any step finds nothing to do (e.g. no unmerged branch exists, or the day's PR is
+already open and green), skip it silently rather than asking. Treat "结束任务" as a
+distinct trigger phrase from an ordinary "commit this" or "merge this" request — it means
+run the full five-step sequence, not just whichever single step the wording most
+resembles.
 
 ## Code organization: 500-line file convention
 
@@ -118,7 +168,7 @@ reported but deliberately not gated.
 
 - All code, code comments, and documentation in this repository must be written
   in English — no exceptions for design docs, READMEs, or inline comments.
-- Commit messages must be written in English.
+- Commit messages, and PR titles and bodies, must be written in English.
 - The only non-English content allowed anywhere in the repo is translation/localization
   data itself (i18n locale files, e.g. `zh.json`) — content whose entire purpose is to
   hold a non-English translation. English is the source-of-truth locale that all other

@@ -1,4 +1,4 @@
-# Work log — 2026-09-09
+# Work log — 2026-09-09 → 09-10
 
 Volume 52. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
 
@@ -202,3 +202,52 @@ somewhere in the middle.
   deploy; it needs a game id CrazyGames has not assigned.
 - **The off-box backup copy** remains §7's open item. The worker verified its snapshots through
   this deploy, on the same disk as the databases.
+## `main` stops being a place you can commit to (2026-09-10, repo governance + docs, no code change)
+
+*"把 funny 项目的 main 分支保护，每日分支，开 PR 的规则借鉴过来"* — adopt the sibling project's
+branch governance here.
+
+Until today this repo's rule was the opposite one, written into `CLAUDE.md`'s 结束任务 sequence:
+finish a task by merging it **onto `main`** and committing there. That is why the whole log above
+exists as a straight line of commits on `main` — and why nothing in this repo ever ran CI before
+the code was already on the branch that deploys. `check.yml` triggers on `pull_request` and on
+pushes to `main`; with no PRs, only the second half was ever reached, so every run was a
+**post-mortem**: `client-deploy` and `server-deploy` fire on the same push, and the four gates
+(`logic consistency`, `check`, `coverage`, `sims`) were reporting on a commit that had already
+shipped. Volume 52's own first half is what that feels like from the inside.
+
+What `funny` does instead, and what is now in force here:
+
+- A repository ruleset named **"Only PR"** on `bigtaoo/blightbloom` — a straight port of funny's,
+  same name, same shape: no deletion, no force-push, a pull request required (**0** approvals —
+  the PR is there for CI and for a readable diff, not for a reviewer this repo does not have),
+  and the four `check.yml` jobs required with the **strict** policy, so a branch must be current
+  with `main` before it can merge. The one soft edge is deliberate and copied too: repo admins
+  keep an always-on bypass, because a single-owner repo that can lock its owner out is a worse
+  failure than an ungated push. It is a fire escape. Using it quietly is how the gate becomes
+  decorative.
+- **A daily integration branch, `DD.MM.YYYY`.** Task branches (`.claude/worktrees/<slug>` on
+  `feat/<slug>`) merge `--no-ff` into the day's branch; the day's branch is what opens the PR
+  into `main`. The shared checkout `D:/daydayup` is now pinned to the day's branch rather than to
+  `main`, which also removes a hazard this repo has hit repeatedly — the shared tree's branch was
+  the deploy branch, so a stray commit in the wrong checkout was a commit on the thing that ships.
+- **One PR per daily branch, opened with the day's first push.** Not at the end: the daily branch
+  gets no CI at all until the PR exists, so opening it late reproduces exactly the post-mortem
+  above one level down. Merging the PR is what deploys.
+
+Three documents record it. `CLAUDE.md` gains a "Branches, the daily branch, and pull requests"
+section and its 结束任务 sequence grows a fifth step (push, open-or-update the day's PR, report
+the check state, merge when green) with step 2 retargeted from `main` to the daily branch;
+`README.md` gains a short *Branching* note under "Getting started"; and the memory file that had
+been teaching the old habit — *Worktree & concurrency gotchas*, whose §"Merging YOUR branch to
+main…" is the most-followed recipe in it — now opens with the substitution rather than being left
+to contradict the instructions.
+
+One gate fired during the change and was right to: `build/checkDocPaths.mjs` rejected the new
+citation of funny's `claudedocs/worktrees.md`, which is a real file in a repo that is not this
+one. It joins the three sibling-project entries already in that allowlist, with its reason.
+
+What this does **not** do is change the language policy or the hook situation: funny hard-blocks
+CJK in `git commit` / `gh pr create` command lines with `.claude/hooks/no-cjk-vcs.mjs`, and this
+repo has no `.claude/settings.json` at all. The rule ("commit messages, and PR titles and bodies,
+in English") is now written down in both repos; only one of them enforces it mechanically.
