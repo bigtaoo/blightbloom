@@ -167,7 +167,7 @@ describe('endRun', () => {
   });
 
   it('reports whether the abandoned run was the tutorial, and clears the flag', () => {
-    // The caller routes somewhere different for each (ModeSelect vs. Forge), so the answer
+    // The caller routes somewhere different for each (the lobby vs. Forge), so the answer
     // has to survive the clear — hence a return value rather than a second read.
     const s = new RunState(fakeStore().store);
     s.tutorialActive = true;

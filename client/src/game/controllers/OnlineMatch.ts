@@ -23,6 +23,7 @@ import type { MatchmakingSignal, Matchmaking } from '../screens/Matchmaking';
 import type { HudView } from '../ui/HudView';
 import type { ScreenNav } from './ScreenNav';
 import type { RunState } from '../runState';
+import { isHubPhase } from '../phase';
 
 /** The seat count a pre-formed squad match is forced to — 2 squads of `SQUAD_SIZE`, the
  *  shape `teamIdForOwner` actually chunks (design/05/15). */
@@ -80,10 +81,10 @@ export class OnlineMatch {
     d.run.online = false;
     d.run.partyId = undefined;
     if (d.run.matchmakingReturnPhase === 'squad') d.nav.showSquad();
-    else d.nav.showModeSelect();
+    else d.nav.showMenu();
   }
 
-  /** ModeSelect's CO-OP / PVP SOLO QUEUE buttons (design/10 screen-flow gap) — the
+  /** The lobby's CO-OP / PVP SOLO QUEUE rows (design/10 screen-flow gap) — the
    *  menu-driven counterpart to the `?online=1`/`?pvp=1` boot-time URL flags, which were
    *  previously the ONLY way to reach either mode. */
   beginSoloQueue(pvp: boolean): void {
@@ -91,7 +92,7 @@ export class OnlineMatch {
     d.run.online = true;
     d.run.pvp = pvp;
     d.run.partyId = undefined;
-    d.run.matchmakingReturnPhase = 'modeSelect';
+    d.run.matchmakingReturnPhase = 'menu';
     // PvP gets the match-preview confirm step first (design/10 open question); co-op is
     // plain PvE dungeon content and has nothing PvP-scaled to preview.
     if (pvp) d.nav.showPvpPreview();
@@ -120,11 +121,23 @@ export class OnlineMatch {
    * the current (possibly guest-accumulated) local state up instead of overwriting it with
    * nothing. Best-effort: any network failure just keeps using local state, same as every
    * other account-sync call in this project.
+   *
+   * **Only ever applied between runs** (`isHubPhase`, 2026-09-10). A session does not arrive
+   * when the player asks for it: a portal signs them in silently at boot and can sign them
+   * in again mid-session (`portalAuth.ts`'s `addAuthListener`), and this method's `setMeta`
+   * replaces the whole `MetaState`. Landing that during a run gives back a loadout
+   * `RunLifecycle.beginRun` has already spent — see `isHubPhase`'s own comment for the full
+   * shape. Outside the hub the sync is remembered on `RunState.pendingMetaSync` and
+   * `flushPendingMetaSync` runs it on the way back in, so nothing is lost, only delayed.
    */
   async syncMetaWithSession(): Promise<void> {
     const d = this.deps;
     const session = getSession();
     if (!session) return; // logged out — local state keeps being used as-is
+    if (!isHubPhase(d.run.phase)) {
+      d.run.pendingMetaSync = true;
+      return;
+    }
     try {
       const remote = await pullAccountMeta(d.run.matchBaseUrl, session.token);
       // `setMeta` mirrors into localStorage and, when `remote` was null, pushes local state up.
@@ -133,5 +146,22 @@ export class OnlineMatch {
     } catch {
       /* offline/best-effort — keep using local state */
     }
+  }
+
+  /**
+   * Run a sync that was deferred while a run was in flight. Called by `ScreenNav` on the way
+   * into the menu and the forge — the two screens that RENDER the meta, and the two the
+   * player reaches from every run-shaped phase.
+   *
+   * Clearing the flag before the await, not after, is deliberate: `showForge()` can be
+   * called twice in a row (the settings overlay returns through it), and a second call while
+   * the first pull is still in flight would issue a duplicate request whose answer is the
+   * same blob.
+   */
+  flushPendingMetaSync(): void {
+    const d = this.deps;
+    if (!d.run.pendingMetaSync) return;
+    d.run.pendingMetaSync = false;
+    void this.syncMetaWithSession();
   }
 }

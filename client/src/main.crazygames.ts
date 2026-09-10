@@ -15,12 +15,13 @@ import { reportWebBootFailure } from './bootError';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
-import { installClientLog } from './net/clientLogInstall';
+import { installClientLog, clientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
 import { getLocale } from './i18n';
 import { getSession } from './net/session';
 import { PortalAuth } from './platform/crazygames/portalAuth';
+import { settleIdentity } from './platform/identityGate';
 import { PortalRooms } from './platform/crazygames/PortalRooms';
 import { applyPortalBootIntent } from './platform/crazygames/portalBoot';
 
@@ -137,14 +138,9 @@ async function boot() {
   await preloadLobbyArt();
   beginDeferredArt();
 
+  // Constructed but NOT started: the identity gate below runs between assembly and the first
+  // frame, which is the whole point of it (design/10's screen flow).
   const game = new Game(app, input, audio);
-  game.start();
-
-  installPerf(app, {
-    overlay: parseGameQueryParams(location.search).perf,
-    onSnapshot: (s) => game.observePerfWindow(s.window),
-  });
-  document.getElementById('boot-loading')?.remove();
 
   // (3b') Silent login, constructed BEFORE the session so its state can ride in that one
   // diagnostics line, and started AFTER `sdk.init()` (which `portal.start()` performs) since
@@ -154,13 +150,11 @@ async function boot() {
     baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)),
   });
 
-  // (3b) The portal session. Its ticker callback is added AFTER `game.start()` for the same
-  // reason `installPerf`'s brackets are: it then runs outside every listener the game
-  // registered, so what it observes is the phase the frame ended in.
+  // (3b) The portal session.
   //
   // `adSuspension(app.ticker)` is the mute-and-freeze an ad needs. Note that it stops the
-  // very ticker this callback runs on, which is correct and not a deadlock: the release is
-  // driven by the SDK's own `adFinished`/`adError` callback, which is a DOM event and does
+  // very ticker its update callback runs on, which is correct and not a deadlock: the release
+  // is driven by the SDK's own `adFinished`/`adError` callback, which is a DOM event and does
   // not need our clock to arrive.
   // (3b'') The room and invite affordances, driven by the party the game declares
   // (`platform/partyPresence.ts`) rather than by the phase — see `PortalRooms`' header for
@@ -173,18 +167,63 @@ async function boot() {
     auth: portalAuth,
     rooms: portalRooms,
   });
-  app.ticker.add(() => portal.update());
+
   // Everything that needs a live SDK, in one chain after `portal.start()` (which is what
   // performs `sdk.init()`). Sequential rather than parallel on purpose: the boot intent may
   // put the player straight into a party, and it should do that with their account already
   // signed in — otherwise the seat they take is a guest's and their name is missing from
   // everyone else's roster.
-  void portal
-    .start()
-    .then(() => portalAuth.start())
+  const signedIn = portal.start().then(() => portalAuth.start());
+
+  // (3b''') THE IDENTITY GATE (design/10, 2026-09-10). The boot splash stays up until the
+  // silent login has an answer — an account or a guest — or until the budget runs out.
+  //
+  // This is the ordering fix, and it is worth being precise about what was wrong before it:
+  // `game.start()` used to run first, so the menu was interactive while the login was still
+  // in flight. On THIS host that menu is in one-click mode (design/20), so the first click
+  // starts a run, and a session landing mid-run drove `syncMetaWithSession` into replacing a
+  // `MetaState` the run had already spent (`game/phase.ts`'s `isHubPhase` has the shape).
+  // That path is now guarded on its own side too — the gate makes the race unlikely, the
+  // guard makes it impossible, and a player who signs in on the portal page mid-session
+  // still needs the guard.
+  //
+  // If the budget expires, boot continues as a guest and `signedIn` keeps running: the
+  // session arrives late through `platform/sessionEvents.ts` exactly as it did before, and
+  // `PortalSession.start`'s own `previous = null` still re-runs the current phase once the
+  // SDK is up — which is what that line was written for and is now only needed on this path.
+  const identity = await settleIdentity({ login: () => signedIn });
+  if (identity.outcome !== 'settled') {
+    // One line, on the host where the account integration cannot be tested any other way
+    // (`PortalAuth.diagnostics` is the rest of that instrument). A page full of guests is
+    // the symptom of a slow host, a refusing server and a working guest visit alike.
+    const why = identity.error ? `${identity.outcome} (${identity.error})` : identity.outcome;
+    clientLog()?.log('warn', 'portal', `identity gate: ${why}`);
+  }
+
+  game.start();
+
+  installPerf(app, {
+    overlay: parseGameQueryParams(location.search).perf,
+    onSnapshot: (s) => game.observePerfWindow(s.window),
+  });
+  document.getElementById('boot-loading')?.remove();
+
+  // The ticker callback is added AFTER `game.start()` for the same reason `installPerf`'s
+  // brackets are: it then runs outside every listener the game registered, so what it
+  // observes is the phase the frame ended in.
+  app.ticker.add(() => portal.update());
+  // The rest of the SDK chain, which the gate deliberately does NOT wait for: an invite being
+  // walked through moves the player off the menu, and doing that before there is a menu is a
+  // race with no upside. `.catch` rather than a bare `void`, because this is now the only
+  // consumer of a chain that can reject, and an unhandled rejection on a portal page is a
+  // console error a platform reviewer reads.
+  void signedIn
     .then(() => {
       portalRooms.start();
       return applyPortalBootIntent(sdk);
+    })
+    .catch((e: unknown) => {
+      clientLog()?.log('warn', 'portal', `boot intent: ${e instanceof Error ? e.message : String(e)}`);
     });
 
   // (3c) The one thing the portal cannot derive from the phase stream: the rewarded-ad

@@ -92,7 +92,7 @@ export interface GameLoopHost {
    * on the host rather than duplicated here. */
   markTutorialSeen(): void;
   /** Phase-routing on a menu/result-screen confirm (Fire/Enter) — reaches into
-   * run-lifecycle (`beginRun`) and screen-flow (`showForge`/`showModeSelect`), neither
+   * run-lifecycle (`beginRun`) and screen-flow (`showForge`/`showMenu`), neither
    * of which this file owns. */
   confirm(): void;
 }

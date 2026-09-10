@@ -29,7 +29,7 @@ export interface MetaState {
   selectedSkin: string;
   /** Whether this local player has completed or explicitly skipped the tutorial level
    * (design/10 screen-flow gap). Guest-local, account-independent — it only gates the
-   * "recommended" badge ModeSelect shows on the Tutorial option, never blocks play. */
+   * "recommended" badge the lobby shows on its TUTORIAL row, never blocks play. */
   hasSeenTutorial: boolean;
 }
 

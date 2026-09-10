@@ -64,7 +64,7 @@ const IN_RUN_PHASES: ReadonlySet<Phase> = new Set<Phase>(['playing', 'paused', '
 /**
  * The whole decision, as a pure function.
  *
- * Menu-side phases — `menu`, `modeSelect`, `forge`, `pvpPreview`, `matchmaking`, `squad`,
+ * Menu-side phases — `menu`, `forge`, `pvpPreview`, `matchmaking`, `squad`,
  * `account`, and both result screens — take the `menu` bed. The result screens are deliberately
  * in that group: a run ending IS a return to the shell, and the change of bed is the audible
  * part of it.

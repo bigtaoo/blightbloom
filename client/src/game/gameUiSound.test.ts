@@ -50,8 +50,7 @@ function fakeApp() {
 interface Tappable { view: { emit: (event: string) => void } }
 interface PickupItem { id: number; weaponId?: string }
 interface GameScreens {
-  mainMenu: { playBtn: Tappable; settingsBtn: Tappable };
-  modeSelect: { backBtn: Tappable };
+  mainMenu: { playBtn: Tappable; settingsBtn: Tappable; routes: { soloBtn: Tappable } };
   settingsScreen: { muteBtn: Tappable; backBtn: Tappable };
   forge: { backBtn: Tappable; startBtn: Tappable; storeBtn: Tappable; rowCards: Tappable[] };
   pauseMenu: { resumeBtn: Tappable };
@@ -93,9 +92,11 @@ function newGame() {
 const tap = (w: Tappable) => w.view.emit('pointertap');
 
 describe('Game — every screen it builds carries the right UI cue', () => {
-  it('plays ui.tap for the main menu’s primary action', () => {
+  it('plays ui.tap for the lobby’s primary action', () => {
+    // SOLO since the 2026-09-10 merge — and it lives on the composed `LobbyRoutes` widget,
+    // which is the half of the lobby a Game-level test can most easily miss.
     const { cues, screens } = newGame();
-    tap(screens.mainMenu.playBtn);
+    tap(screens.mainMenu.routes.soloBtn);
     expect(cues).toEqual(['ui.tap']);
   });
 
@@ -103,7 +104,7 @@ describe('Game — every screen it builds carries the right UI cue', () => {
     // The distinction is the point of having two cues: forward and back must not sound alike,
     // because on a small screen they are often the same finger in nearly the same place.
     const { cues, screens } = newGame();
-    tap(screens.modeSelect.backBtn);
+    tap(screens.settingsScreen.backBtn);
     tap(screens.forge.backBtn);
     tap(screens.pauseMenu.resumeBtn); // dismissing the pause overlay is also "leaving"
     expect(cues).toEqual(['ui.back', 'ui.back', 'ui.back']);
@@ -178,7 +179,7 @@ describe('Game — every screen it builds carries the right UI cue', () => {
   it('every screen Game builds reaches the sink — none is silently unwired', () => {
     const { cues, screens } = newGame();
     for (const btn of [
-      screens.mainMenu.settingsBtn, screens.modeSelect.backBtn,
+      screens.mainMenu.settingsBtn, screens.mainMenu.routes.soloBtn,
       screens.settingsScreen.muteBtn, screens.forge.startBtn, screens.hud.pauseBtn,
     ]) tap(btn);
     expect(cues).toHaveLength(5);

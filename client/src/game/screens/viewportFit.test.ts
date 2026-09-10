@@ -15,7 +15,8 @@
  *
  * Deliberately a sweep over every screen rather than a Forge-only regression: the Forge
  * was merely the WORST offender (measured minimum heights at the time: Forge 540, Settings
- * 485, LoginScreen 405, PvpPreview/PartyScreen 400, ModeSelect 380, Screens 370, MainMenu
+ * 485, LoginScreen 405, PvpPreview/PartyScreen 400, ModeSelect 380 (merged into MainMenu
+ * on 2026-09-10), Screens 370, MainMenu
  * 330 — all above the 390 the phone gives). A per-screen test would have let the next
  * screen to grow past the design height fail silently on the phone only.
  *
@@ -38,12 +39,11 @@
  * both screens already have for their own tests are what make them buildable with no network.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { Container } from 'pixi.js';
+import { Texture, type Container } from 'pixi.js';
 import { installFakeTextCanvas } from './fakeTextCanvas';
 import { MenuLayer, MENU_DESIGN_W, MENU_DESIGN_H } from '../ui/menuLayer';
 import { Forge } from './Forge';
 import { MainMenu } from './MainMenu';
-import { ModeSelect } from './ModeSelect';
 import { PvpPreview } from './PvpPreview';
 import { Screens } from './Screens';
 import { Settings } from './Settings';
@@ -106,7 +106,30 @@ const SCREENS: Array<[string, ScreenBuild]> = [
       setPublicFlags(null);
     }
   }],
-  ['ModeSelect', (w, h) => { const s = new ModeSelect(); s.show(w, h); return s.view; }],
+  // The lobby in its two TALLER shapes (2026-09-10). The default entry above is the short
+  // one; a portal build adds a quick-play row on top AND a data notice plus a policy link
+  // under the card, and the banner variant reserves room above the title for three wrapped
+  // lines. Without these the sweep would only ever see the configuration that fits easiest,
+  // which is the trap the store entry at the bottom of this file records in full.
+  ['MainMenu (portal: quick play + data notice)', (w, h) => {
+    const s = new MainMenu();
+    s.setQuickPlay(true);
+    s.setAccountEntry(false);
+    s.show(w, h);
+    return s.view;
+  }],
+  ['MainMenu (portal + maintenance banner)', (w, h) => {
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'M'.repeat(BANNER_MAX_LENGTH) });
+    try {
+      const s = new MainMenu();
+      s.setQuickPlay(true);
+      s.setAccountEntry(false);
+      s.show(w, h);
+      return s.view;
+    } finally {
+      setPublicFlags(null);
+    }
+  }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s.view; }],
   ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one', 'line two']); return s.view; }],
   // The rewarded-ad offer makes this screen a row TALLER and, with the longest locale's
@@ -385,4 +408,65 @@ describe('the design space is sized to the content, not picked arbitrarily', () 
   it('is not padded — 200px narrower and the widest screen no longer fits', async () => {
     expect(await widestOverflow(MENU_DESIGN_W - 200)).toBe(true);
   });
+});
+
+interface ButtonLike {
+  setIcon(t: Texture): void;
+  view: { children: Array<{ text?: string; x: number; width: number; anchor: { x: number } }> };
+}
+
+describe('a label that spills out of its own button (2026-09-10)', () => {
+  // The blind spot the sweep above has, found the hard way and closed here for the one
+  // screen it bit. The lobby's first draft put CO-OP and PVP QUEUE side by side at 135px;
+  // `PVP SOLO QUEUE` needs 169 and Polish needs 187, so the label ran out of its button and
+  // across the gap into its neighbour — in seven of the eight locales. Every case above
+  // stayed green, and correctly so: the text was still comfortably inside the design space,
+  // which is the only thing "fits the viewport" can mean. Read that sweep as "nothing is off
+  // screen", never as "nothing collides"; this is the collision half, for buttons.
+  //
+  // The metric is `fakeTextCanvas`'s 0.6em-per-character approximation, so it is not the
+  // real font. It errs the useful way for Latin text — the live measurement of the string
+  // above came out at 0.55em — and it under-measures CJK, where a glyph is about a full em.
+  // A Chinese label that only just fits here is therefore not proof; a Latin one is.
+  afterEach(() => resetLocaleForTests());
+
+  /** Every Button on the lobby, in the order it is drawn, with its own box width. */
+  function lobbyButtons(m: MainMenu) {
+    const p = m as unknown as {
+      playBtn: unknown;
+      routes: Record<string, unknown>;
+      accountBtn: unknown;
+      settingsBtn: unknown;
+    };
+    const r = p.routes;
+    return {
+      PLAY: p.playBtn, SOLO: r.soloBtn, 'CO-OP': r.coopBtn, PVP: r.pvpSoloBtn,
+      SQUAD: r.squadBtn, TUTORIAL: r.tutorialBtn, ACCOUNT: p.accountBtn, SETTINGS: p.settingsBtn,
+    } as Record<string, ButtonLike>;
+  }
+
+  for (const locale of LOCALES) {
+    it(`${locale} — every lobby label stays inside its own button`, () => {
+      setLocale(locale);
+      const m = new MainMenu();
+      m.setQuickPlay(true); // draws PLAY too, so the portal build is covered in the same pass
+      m.show(MENU_DESIGN_W, MENU_DESIGN_H);
+      for (const [name, btn] of Object.entries(lobbyButtons(m))) {
+        // The icon a shipped lobby button HAS. Without it `getUiTexture` answers undefined,
+        // the label centres itself, and this sweep would measure a layout no player ever
+        // sees — the centred one fits in places the real one does not, because the real one
+        // starts after the chip. `Texture.WHITE` needs no GPU and no art pack.
+        btn.setIcon(Texture.WHITE);
+        const kids = btn.view.children;
+        const box = (kids[0] as unknown as Container).getLocalBounds().width;
+        const label = kids.find((c) => typeof c.text === 'string');
+        expect(label, `${name} has no label`).toBeDefined();
+        const left = label!.x - label!.width * label!.anchor.x;
+        expect(left + label!.width, `${locale} ${name}: ${label!.text} runs past its box`)
+          .toBeLessThanOrEqual(box + SLACK);
+        expect(left, `${locale} ${name}: ${label!.text} starts left of its box`)
+          .toBeGreaterThanOrEqual(-SLACK);
+      }
+    });
+  }
 });

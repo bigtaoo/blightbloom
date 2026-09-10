@@ -24,7 +24,7 @@ const REAL_ARENA_ID: ArenaId = 'arena_launch';
 
 /**
  * PvP match preview (design/10 open question "PvP preset-pick has no UI yet", 15) —
- * shown between ModeSelect's PVP SOLO QUEUE button and the Matchmaking screen, so a
+ * shown between the lobby's PVP SOLO QUEUE row and the Matchmaking screen, so a
  * player sees what they're about to enter instead of jumping straight into "Finding a
  * match…" blind. `design/15`'s `ARENA_PRESETS` schema was built to support multiple
  * presets, but only one (`landing_basic`, the loadout preset id — distinct from the

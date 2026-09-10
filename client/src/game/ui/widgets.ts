@@ -190,7 +190,11 @@ export class Button {
   private readonly h: number;
   private readonly minW: number;
   private readonly fontSize: number;
-  private readonly color: number;
+  // Not `readonly`, for the same reason `borderColor` below is not: `setFill` re-colours it
+  // at runtime. Its one caller is `LobbyRoutes.setSoloPrimary` — whether SOLO is the lobby's
+  // primary action depends on the HOST, which is declared after the screens are constructed
+  // (`gameWiring.ts`), so the fill cannot be a constructor argument.
+  private color: number;
   // Not `readonly`: `setBorder` re-colours it at runtime for a SELECTED state
   // (FloorCardPrompt's picked card). Border rather than fill, matching the
   // browse-cursor convention BlueprintCard already uses — a filled highlight on a
@@ -268,6 +272,30 @@ export class Button {
     const radius = Math.min(8, this.h / 2);
     this.bg.clear().roundRect(0, 0, this.w, this.h, radius).fill({ color: this.color, alpha: 1 });
     if (this.borderColor !== undefined) this.bg.roundRect(0.5, 0.5, this.w - 1, this.h - 1, radius).stroke({ color: this.borderColor, alpha: this.borderAlpha, width: 1.5 });
+    this.layoutLabel();
+  }
+
+  /**
+   * Where the label sits: centred, or hard against the right of the icon chip when there is
+   * one.
+   *
+   * Extracted from `setIcon` on 2026-09-10 because `redraw()` was re-centring it and `setIcon`
+   * was the only thing that ever put it back. Any later `redraw` — an `autoWidth` button's
+   * `setText`, and now `setFill`/`setBorder` — therefore dropped an icon button's label back
+   * on top of its own chip, left-anchored, so it ran off the RIGHT edge by however far the
+   * offset had been. Invisible to every existing test, because `getUiTexture` answers
+   * `undefined` with no art loaded, so a unit-test button has no icon and is centred either
+   * way; `viewportFit.test.ts`'s label-fit sweep installs a real texture for exactly this
+   * reason.
+   */
+  private layoutLabel(): void {
+    if (this.iconSprite) {
+      const box = this.h - 8;
+      this.label.anchor.set(0, 0.5);
+      this.label.position.set(8 + box + 8, this.h / 2);
+      return;
+    }
+    this.label.anchor.set(0.5);
     this.label.position.set(this.w / 2, this.h / 2);
   }
 
@@ -287,6 +315,15 @@ export class Button {
   /** Re-colour the box's border, for a selected/unselected state. A no-op on a button
    *  that was constructed without one — a border cannot be added later, only changed,
    *  so a caller that wants this has to opt in with `borderColor` at construction. */
+  /** Re-colour the FILL — the primary/ordinary distinction, not a selected state. Border
+   *  alone cannot carry it: design/10's 2026-08-02 legibility pass settled that a primary
+   *  action on these screens is the filled green one. */
+  setFill(color: number): void {
+    if (this.color === color) return;
+    this.color = color;
+    this.redraw();
+  }
+
   setBorder(color: number): void {
     if (this.borderColor === undefined || this.borderColor === color) return;
     this.borderColor = color;
@@ -305,8 +342,7 @@ export class Button {
       this.iconSprite = null;
       this.iconChip?.destroy();
       this.iconChip = null;
-      this.label.anchor.set(0.5);
-      this.label.position.set(this.w / 2, this.h / 2);
+      this.layoutLabel();
       return;
     }
     const box = this.h - 8;
@@ -328,8 +364,7 @@ export class Button {
     const fit = Math.min((box - 4) / texture.width, (box - 4) / texture.height);
     this.iconSprite.scale.set(fit);
     this.iconSprite.position.set(cx, cy);
-    this.label.anchor.set(0, 0.5);
-    this.label.position.set(8 + box + 8, this.h / 2);
+    this.layoutLabel();
   }
 }
 

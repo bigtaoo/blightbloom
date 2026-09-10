@@ -30,7 +30,6 @@ import type { RoomBuilder } from '../scene/RoomBuilder';
 import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
 import type { Forge } from '../screens/Forge';
-import type { ModeSelect } from '../screens/ModeSelect';
 import type { Matchmaking } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PauseMenu } from '../screens/PauseMenu';
@@ -61,7 +60,6 @@ export interface RunLifecycleDeps {
   /** Only `beginQuickRun` needs it — the one run entry point reached from the main menu
    *  itself, so the one that has to hide the main menu rather than the forge. */
   mainMenu: { hide(): void };
-  modeSelect: ModeSelect;
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
   pauseMenu: PauseMenu;
@@ -101,7 +99,7 @@ export class RunLifecycle {
   /**
    * Fresh OFFLINE run: reset render state and stand up a new engine (design/10 rebuild).
    * Online runs no longer go through here at all (design/10 screen-flow gap) — they route
-   * ModeSelect/PartyScreen → showMatchmaking → `finalizeOnlineRun` instead, so a real
+   * the lobby/PartyScreen → showMatchmaking → `finalizeOnlineRun` instead, so a real
    * connecting/error screen exists instead of a blank `playing` phase.
    */
   beginRun(): void {
@@ -183,7 +181,7 @@ export class RunLifecycle {
   }
 
   /**
-   * ModeSelect's TUTORIAL button (design/10 screen-flow gap) — a fixed, offline,
+   * The lobby's TUTORIAL row (design/10 screen-flow gap) — a fixed, offline,
    * always-skippable standalone level (`tutorialConfig.ts`'s own doc comment has the full
    * account of why it's flat-mode, not the real dungeon). Mirrors `beginArenaDemoRun`'s
    * directness: flat mode never fires `room_enter` (that event is dungeon-only,
@@ -203,7 +201,7 @@ export class RunLifecycle {
       buildTutorialConfig({ skinId: d.run.meta.selectedSkin }),
     );
     d.run.runCount++;
-    this.enterPrimedRun(tutorial, () => d.modeSelect.hide());
+    this.enterPrimedRun(tutorial, () => d.mainMenu.hide());
   }
 
   /** Dev-only (see RunState's `arenaDemo` comment): a catalog ArenaMap + two local seats on
@@ -314,7 +312,7 @@ export class RunLifecycle {
    * screen/score penalty though — this was a choice, not a loss. Doubles as the tutorial's
    * Skip (design/10 screen-flow gap): a skip counts the same as a completion for
    * `hasSeenTutorial` (never forced, same ethos as LoginScreen's guest path), and returns to
-   * ModeSelect instead of Forge (a tutorial run never touched the loadout).
+   * the lobby instead of Forge (a tutorial run never touched the loadout).
    */
   quitRun(): void {
     const d = this.deps;
@@ -322,7 +320,7 @@ export class RunLifecycle {
     const { wasTutorial } = d.run.endRun();
     if (wasTutorial) {
       d.run.markTutorialSeen();
-      d.nav.showModeSelect();
+      d.nav.showMenu();
     } else {
       d.nav.showForge();
     }
