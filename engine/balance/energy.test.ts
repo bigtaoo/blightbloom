@@ -22,6 +22,7 @@ import {
   sustainedDrainPerSec,
 } from './energy';
 import { WEAPON_SPECS } from '../content/weapons';
+import { toTicks } from '../content/convert';
 import { SKIN_DEFS } from '../content/skins';
 import { NON_PLAYER_WEAPON_IDS } from './weaponProfile';
 import type { RangedSpec } from '../content/weaponTypes';
@@ -87,13 +88,14 @@ describe('sustainedDrainPerSec / isSustainable', () => {
 
   it('reports the regen line the whole roster is priced against', () => {
     expect(ENERGY_REGEN_PER_SEC).toBe((ENERGY_REGEN_AMOUNT * 30) / ENERGY_REGEN_INTERVAL);
-    expect(ENERGY_REGEN_PER_SEC).toBe(20);
+    expect(ENERGY_REGEN_PER_SEC).toBe(15);
   });
 
   it('calls a weapon at exactly the regen line sustainable', () => {
-    // The boundary matters: `repeater` is authored to sit exactly ON it, so a strict `<`
-    // would reclassify the game's designated pace weapon as one that runs you dry.
-    expect(isSustainable(2, 0.1)).toBe(true); // 20/s === the line
+    // The boundary matters MORE since v62 than it did before it: the starter `blaster` is
+    // now the weapon authored to sit exactly ON the line, so a strict `<` here would
+    // reclassify the one gun every run begins with as one that runs you dry.
+    expect(isSustainable(3, 0.2)).toBe(true); // 15/s === the line (the blaster)
     expect(isSustainable(3, 0.1)).toBe(false); // 30/s
   });
 
@@ -118,29 +120,65 @@ describe('GATE — the roster is priced the way the design says it is', () => {
     expect(free, 'player weapons priced at nothing').toEqual([]);
   });
 
-  it('exactly the two baseline guns are sustainable on regen alone', () => {
+  it('exactly ONE gun is sustainable on regen alone, and it is the starter', () => {
     // The property that keeps the shipped level's difficulty unmoved for a fresh save
-    // (`balance/energy.ts` records the measurement behind it): a starter loadout never
-    // runs dry, so the ammo economy is something a player meets when they pick up their
-    // FIRST interesting weapon, not something that changes the fight they already know.
+    // (`balance/energy.ts` records the measurement behind it, at 15/s and at 10/s): the
+    // starter loadout, fired flat out and unbuffed, neither drains nor fills — so the
+    // level a new player learns is the level they were always playing.
     //
-    // Named rather than counted: "two are sustainable" would still pass if the two were
-    // `novaburst` and `mortar`.
+    // It was TWO guns through ENGINE_VERSION 61, when the line sat at 20/s and `repeater`
+    // (20/s) sat exactly on it. Dropping the line to 15/s moved `repeater` above it
+    // deliberately: the 2026-09-11 report was that floor-dropped ammo had no value, and a
+    // drop-pool gun that funds itself forever is one more gun the floor's refills are
+    // worthless to. `repeater` is now the CHEAPEST paced weapon rather than a free one.
+    //
+    // Named rather than counted: "one is sustainable" would still pass if the one were
+    // `novaburst`.
     const sustainable = PLAYER_RANGED.filter(([, s]) => isSustainable(s.energyCost, s.cooldownSec)).map(([id]) => id);
-    expect(sustainable.sort()).toEqual(['blaster', 'repeater']);
+    expect(sustainable.sort()).toEqual(['blaster']);
   });
 
-  it('the starter blaster keeps real headroom, not a knife-edge break-even', () => {
-    // `repeater` sits exactly on the line by design, but the STARTER must not: a player
-    // who takes `rof_up` (a floor drop, and the `cadence` card) fires it faster than
-    // authored, and a break-even starter would go negative from a buff that is supposed
-    // to be pure upside.
+  it('the starter blaster sits EXACTLY on the line — free to hold down, and nothing more', () => {
+    // The load-bearing number of the 2026-09-11 pass, and the reason it is asserted as an
+    // equality rather than as a bound in either direction:
+    //
+    //   - BELOW the line (where it was through v61, with 25% spare) the bar sits pinned at
+    //     full on an ordinary run, and `PickupSystem.pickupWouldApply` leaves every energy
+    //     refill on the floor as a no-op. Measured: 12 of 100 refills collected, 2.4% of
+    //     the run's spend. That is the reported bug, and it is a property of the HEADROOM,
+    //     not of `ENERGY_PICKUP_AMOUNT`.
+    //   - ABOVE it, holding the trigger on the gun a fresh save has no alternative to
+    //     drains to empty on its own, which re-tunes the shipped level from underneath
+    //     (measured at 10/s: average floor reached 0.75 -> 0.50).
+    //
+    // So: every point of firerate buff, every burst, and every better gun now comes out of
+    // the pool and has to be bought back — while the floor of the economy stays exactly
+    // where a fresh save can live on it.
     const blaster = WEAPON_SPECS.blaster as RangedSpec;
-    const drain = sustainedDrainPerSec(blaster.energyCost, blaster.cooldownSec);
-    expect(drain).toBeLessThan(ENERGY_REGEN_PER_SEC);
-    // At least 20% of the regen rate spare — enough to absorb the shipped firerate buff
-    // stack (BUFF_CAPS.mult_firerate) rather than a token margin.
-    expect(ENERGY_REGEN_PER_SEC - drain).toBeGreaterThanOrEqual(ENERGY_REGEN_PER_SEC * 0.2);
+    expect(sustainedDrainPerSec(blaster.energyCost, blaster.cooldownSec)).toBe(ENERGY_REGEN_PER_SEC);
+  });
+
+  it('break-even survives the conversion to TICKS, which is the unit energy is actually spent in', () => {
+    // The gate above is an equality in SECONDS; the engine spends energy in whole TICKS, and
+    // `toTicks` rounds. For every other weapon that rounding only nudges it inside its class
+    // — `scattergun`'s 0.55 s is 16.5 ticks and lands on 17, and "above the line" stays above
+    // it either way. For the ONE weapon authored to sit exactly ON the line it is not a nudge
+    // but the difference between the claim holding and not: at 0.22 s the blaster would run
+    // 6.6 -> 7 ticks and quietly become sustainable-with-headroom, i.e. the pre-v62 bug back
+    // again, with this file's equality still green because seconds do not round.
+    //
+    // (`buffedCooldown` rounds a second time, and that one is NOT absorbable — a single
+    // `rof_up` takes 6 ticks to 4, not 4.29, so the buffed drain is 22.5/s rather than the
+    // 21.4/s the per-second arithmetic implies. `systems/energy.test.ts` pins that in the
+    // engine's own units, which is the only place it can be seen.)
+    const blaster = WEAPON_SPECS.blaster as RangedSpec;
+    expect(Number.isInteger(blaster.cooldownSec * 30)).toBe(true);
+    expect(toTicks(blaster.cooldownSec)).toBe(blaster.cooldownSec * 30);
+    // And the cadence divides that cooldown, so one cooldown's regen is a whole number of
+    // points: 6 ticks / 2 = 3 = exactly one pull. A cadence that did not divide it would make
+    // the "break-even" sawtooth drift slowly in one direction or the other.
+    expect(toTicks(blaster.cooldownSec) % ENERGY_REGEN_INTERVAL).toBe(0);
+    expect((toTicks(blaster.cooldownSec) / ENERGY_REGEN_INTERVAL) * ENERGY_REGEN_AMOUNT).toBe(blaster.energyCost);
   });
 
   it('no weapon can be fired even once from a full pool without emptying it twice over', () => {

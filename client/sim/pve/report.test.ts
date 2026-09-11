@@ -56,6 +56,7 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
     checkpointFloors: [],
     dryTicksByFloor: {},
     aliveTicksByFloor: { 0: 1000 },
+    energyRefillsTakenByFloor: {},
     finalMaxEnergy: 100,
     ...over,
   };
@@ -64,7 +65,7 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
 /** A trigger pull; `kind`, `bullets` and `weapon` are what the fire tables turn on.
  *  Defaults to a single-projectile ranged pull, i.e. the starter blaster. */
 function fire(over: Partial<FireRecord> = {}): FireRecord {
-  return { floorIndex: 0, kind: 'ranged', weapon: 'blaster', bullets: 1, tick: 200, ...over };
+  return { floorIndex: 0, kind: 'ranged', weapon: 'blaster', bullets: 1, energySpent: 3, tick: 200, ...over };
 }
 
 /** A drop record; `kind` and `floorIndex` are what every assertion below turns on. */
@@ -295,6 +296,42 @@ describe('floorDropStats — the loot economy per floor (design/09 DROP_TABLE)',
     expect(rows[0]!.avgKills).toBe(0);
   });
 
+  it('prices the pulls, and splits the spend into what the CLOCK funded and what the FLOOR did', () => {
+    // The 2026-09-11 column (ENGINE_VERSION 62). 20 pulls at the blaster's 3 = 60 spent;
+    // one collected refill funded 30 of that and the regen clock funded the other half.
+    const rows = floorFireStats([
+      run({
+        killsByFloor: { 0: 10 },
+        checkpointFloors: [0],
+        fires: Array.from({ length: 20 }, () => fire({ energySpent: 3 })),
+        energyRefillsTakenByFloor: { 0: 1 },
+        drops: [drop({ kind: 'energy' }), drop({ kind: 'energy' }), drop({ kind: 'energy', floorIndex: 1 })],
+      }),
+    ]);
+    expect(rows[0]!.avgSpend).toBe(60);
+    expect(rows[0]!.floorShare).toBe(0.5); // 30 of 60 — ENERGY_PICKUP_AMOUNT is 30
+    // Taken counts COLLECTED refills, spawned counts the ones this floor PRODUCED — the
+    // gap between the two is the whole finding, so a row conflating them would hide it.
+    expect(rows[0]!.refillsTaken).toBe(1);
+    expect(rows[0]!.refillsSpawned).toBe(2); // the floor-1 drop belongs to floor 1
+  });
+
+  it('charges a melee swing nothing, and a swap-tick pull nothing rather than the wrong gun', () => {
+    // `energySpent` is null exactly where `weapon` is: the slot that fired is not the one
+    // standing there once PickupSystem has run. Charging that pull at the NEW gun's price
+    // is the specific wrong answer this guards — it would make a floor that handed out a
+    // cannon read as if the cannon had been firing all along.
+    const rows = floorFireStats([
+      run({
+        killsByFloor: { 0: 2 },
+        checkpointFloors: [0],
+        fires: [fire({ kind: 'melee', weapon: 'saber', energySpent: 0 }), fire({ weapon: null, energySpent: null })],
+      }),
+    ]);
+    expect(rows[0]!.avgSpend).toBe(0);
+    expect(rows[0]!.floorShare).toBe(0); // and not NaN, off a zero spend
+  });
+
   it('renders one table row per floor, headed', () => {
     const rows = floorDropStats([run({ killsByFloor: { 0: 20, 1: 20 }, checkpointFloors: [0, 1], drops: [drop({ kind: 'weapon' })] })]);
     const lines = formatDropTable(rows).split('\n');
@@ -433,6 +470,10 @@ describe('floorFireStats — what a floor COSTS to clear (the ammo-economy denom
     expect(lines).toHaveLength(3); // header + 2 floors
     expect(lines[0]).toContain('triggers(avg/min/max)');
     expect(lines[0]).toContain('dry%'); // the energy column is actually rendered, not just computed
+    expect(lines[0]).toContain('refills(taken/spawned)');
+    // Anchored to the END of the row: the triggers column also contains slashes, so a bare
+    // `toContain('/')` here would pass without the new pair ever being rendered.
+    expect(lines[1]).toMatch(/\d+\/\d+$/);
     expect(lines[1]).toMatch(/^0 /);
   });
 });

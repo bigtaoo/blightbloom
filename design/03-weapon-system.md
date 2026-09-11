@@ -164,9 +164,9 @@ layer has ever had.
 
 ### A shared regenerating pool, not magazines
 
-`balance/energy.ts` holds the numbers and the full rationale. `BASE_MAX_ENERGY` 100, +2
-every 3 ticks (20/s, unconditional), spent per **trigger pull** by every ranged weapon and
-by no melee weapon. A magazine-per-weapon model was considered and rejected on three counts,
+`balance/energy.ts` holds the numbers and the full rationale. `BASE_MAX_ENERGY` 100, +1
+every 2 ticks (15/s, unconditional — 20/s through `ENGINE_VERSION` 61, see "Why the line
+moved" below), spent per **trigger pull** by every ranged weapon and by no melee weapon. A magazine-per-weapon model was considered and rejected on three counts,
 all of them properties of this repo rather than general taste: it needs a RELOAD verb that
 `10`'s button cluster has no room for and that lockstep cannot pause for (`06`); it puts
 state on a weapon, so a weapon lying on the floor has to carry its rounds through
@@ -187,7 +187,7 @@ make the starter strictly best. The price is set against what the pull BUYS inst
 
 | what the pull buys | pays | examples |
 |---|---|---|
-| nothing but a bullet | at or under the regen line — free forever | `blaster` 3, `repeater` 2 |
+| nothing but a bullet | at or on the regen line | `blaster` 3 (exactly on it), `repeater` 2 (just over) |
 | an element / a status layer | just above it | `flamer` 3, `venomspit` 5, `teslagun` 9 |
 | raw per-hit weight | ~1.2× the line | `cannon` 14, `cryobolt` 12 |
 | several bodies from one press | ~1.3-1.6× | `scattergun` 14, `carom` 14, `tomahawk` 16 |
@@ -197,12 +197,55 @@ make the starter strictly best. The price is set against what the pull BUYS inst
 A spread frame pays **once for the pull, never per pellet** — charging `scattergun`'s five
 pellets individually would tax one decision five times over.
 
-**Exactly two guns are sustainable on regen alone**, and `balance/energy.test.ts` pins that
-list by name rather than by count. That is what keeps the shipped level's difficulty
-unmoved for a fresh save: the ammo economy is something a player meets when they pick up
-their first *interesting* weapon, not something that changes the fight they already know.
-The starter also keeps deliberate headroom against a `rof_up` stack, so a buff that is
-meant to be pure upside cannot push it below break-even.
+**Exactly one gun is sustainable on regen alone — the starter, and it sits exactly ON the
+line** (`balance/energy.test.ts` pins that list by name rather than by count). Holding its
+trigger down neither drains nor fills, which is what keeps the shipped level's difficulty
+unmoved for a fresh save; everything *on top of* that — a `rof_up` stack, a burst, the
+first interesting gun the floor hands you — comes out of the pool and has to be bought back.
+
+### Why the line moved 20/s → 15/s (`ENGINE_VERSION` 62, 2026-09-11)
+
+A design call from the game's owner: *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变
+得非常低"* — the auto-refill is so fast that ammo lying on the floor is worth almost nothing.
+Measured first, over 8 careful bot runs of the shipped level (the `clock%` / `floor%` /
+`refills` columns `client/sim/pve/reportFire.ts` grew for the pass):
+
+| loadout | spend funded by the CLOCK | by the FLOOR |
+|---|---|---|
+| `blaster` (fresh save) | 97.6% | 2.4% |
+| `scattergun` | 97.9% | 2.1% |
+| `novaburst` | 98.0% | 2.0% |
+
+**98% of every shot came off the clock**, identically for a fresh save and for the most
+expensive gun in the roster. The clock was not supplementing the floor's refills; it was the
+supply.
+
+What that ratio is made of decides what can move it: `collected × ENERGY_PICKUP_AMOUNT` over a
+floor's spend, and **neither term moves with the regen rate**. A floor drops ~7 refills (~210
+energy) against ~2000 energy of pulls, so ~10% is the ceiling the drop table sets even at
+perfect collection — and the sim still reads 1-2% after this change. Lowering regen does not
+raise the floor's *share* of supply. It changes whether the shortfall is felt at all, which is
+the thing the report was really about. `ENERGY_PICKUP_AMOUNT` stayed 30 for the same reason: at
+2% of supply, the refill's size was never the binding term.
+
+At 20/s the clock covered a continuously-firing starter outright. At 15/s it covers the unbuffed
+starter and nothing else, so a `rof_up` stack, a burst and the first interesting gun the floor
+hands you all run a deficit only the pool and the floor can pay: **22.6% of live ticks now hold
+a gun the pool cannot pay for** (0.9% before), with the average floor reached **unmoved** at
+0.75. 10/s was measured and rejected — the same ~23% dry, but average floor reached fell 0.75 →
+0.50, which is re-tuning the level rather than pacing the player.
+
+> **A claim this section made and the control refuted (same day).** The first version blamed the
+> uncollected refills (12 of 100) on a full bar refusing them, and called them "unpickable".
+> `material` has no usefulness gate, so its collection rate is the pure did-the-bot-walk-over-it
+> baseline — and over the same runs it reads 21.2% against energy's 12.0%. The bot misses ~80% of
+> *everything*. The gate is real but secondary (a gated pickup is collected about half as often
+> as an ungated one; ~21-27% of live ticks sit at a full pool), and at a dozen events over 8
+> seeds the collection rate cannot A/B this change. Reported, never concluded from.
+
+`repeater` (20/s) crossed above the line in the same pass and is now the cheapest *paced*
+gun rather than a free one — deliberate: a drop-pool gun that funds itself forever is one
+more gun the floor's refills are worthless to.
 
 ### Capacity is a character stat; the regen rate is not (`ENGINE_VERSION` 60)
 
