@@ -64,10 +64,61 @@
  * A weapon firing continuously spends `energyCost / cooldownSec` per second against
  * `ENERGY_REGEN_PER_SEC`. Below it, the weapon is sustainable forever and the pool is
  * invisible; above it, the pool drains and the weapon becomes regen-paced once empty.
- * The starter `blaster` is deliberately placed BELOW the line with headroom, which is
- * what keeps the shipped level's difficulty unmoved for a fresh-save loadout — see
- * `content/weaponSpecs/` for each weapon's price and `balance/energy.test.ts` for the
- * assertions that pin the classification.
+ * The starter `blaster` sits EXACTLY ON the line; the next section is why it stopped
+ * sitting below it with headroom. See `content/weaponSpecs/` for each weapon's price
+ * and `balance/energy.test.ts` for the assertions that pin the classification.
+ *
+ * ## Why regen is 15/s and not 20/s (2026-09-11, the owner's second design call here)
+ *
+ * *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变得非常低。"* Measured before it
+ * was changed, over the same 8 careful bot runs of the shipped level the numbers above
+ * came from (`client/sim/pve/reportFire.ts`'s `clock%`/`floor%`/`refills` columns, built for
+ * this pass):
+ *
+ *   | loadout            | supply from the CLOCK | from the FLOOR |
+ *   |--------------------|-----------------------|----------------|
+ *   | blaster (fresh)    | 97.6%                 | 2.4%           |
+ *   | scattergun         | 97.9%                 | 2.1%           |
+ *   | novaburst          | 98.0%                 | 2.0%           |
+ *
+ * **98% of every shot fired came off the clock**, and the same 2% held for the most
+ * expensive gun in the roster as for the starter. That is the whole complaint as a
+ * number: the clock was not a supplement to the floor's refills, it WAS the supply.
+ *
+ * Note what that ratio is and is not made of. It is `collected x ENERGY_PICKUP_AMOUNT`
+ * over a floor's total spend, and neither term moves with the regen rate — a floor
+ * drops ~7 refills (~210 energy) against ~2000 energy of pulls, so ~10% is the ceiling
+ * the DROP TABLE sets even with perfect collection, and the sim still reads 1-2% after
+ * this change. Lowering regen does not raise the floor's share of supply. What it
+ * changes is whether the shortfall is felt at all.
+ *
+ * That is the honest form of the fix: at 20/s the clock covered a continuously-firing
+ * starter outright, so a refill topped up a bar that refilled itself in five seconds.
+ * At 15/s the clock covers the unbuffed starter and NOTHING else — a `rof_up` stack, a
+ * burst, the first interesting gun the floor hands you all run a deficit only the pool
+ * and the floor can pay. Measured over the same 8 runs: **22.6% of live ticks now hold
+ * a gun the pool cannot pay for** (0.9% before), with the average floor reached UNMOVED
+ * at 0.75. A refill also goes from 1.5 to 2 seconds of regen, which is the smaller half.
+ *
+ * 10/s was measured too and rejected: same 23% dry, but average floor reached fell
+ * 0.75 -> 0.50. That is the difference between an economy that paces the player and
+ * one that re-tunes the level from underneath, and only the first was asked for.
+ *
+ * ## What the collection rate does and does not say (a correction, same day)
+ *
+ * The first write-up of this pass blamed the uncollected refills — 12 of 100 — on
+ * `PickupSystem.pickupWouldApply` refusing them at a full bar, and called them
+ * "unpickable". **That was a guess presented as a mechanism, and the control says it is
+ * mostly wrong.** `material` has no usefulness gate at all, so its collection rate is
+ * the pure "did the bot walk over it" baseline, and over the same runs it reads 21.2%
+ * (77 of 364) against energy's 12.0%. The bot misses ~80% of everything: most of the
+ * uncollected refills are a bot that does not path to pickups, not a gate.
+ *
+ * The gate is real but secondary — a gated pickup is collected about half as often as
+ * an identical ungated one, and ~21-27% of live ticks sit at a full pool. And the
+ * collection rate is too small a sample to A/B this change at all (12 -> 5 events over
+ * 8 seeds), so it is reported, never concluded from. The numbers this pass actually
+ * rests on are the supply split and `dry%`.
  */
 
 /**
@@ -98,11 +149,19 @@ export const BASE_MAX_ENERGY = 100;
  *  field and nothing to desync (`06`). Unconditional, unlike the shield's idle timer
  *  (`SHIELD_REGEN_DELAY`): an energy pool that stopped while you were being shot at
  *  would take the baseline gun below break-even in exactly the moments it is the only
- *  thing you have. */
-export const ENERGY_REGEN_INTERVAL = 3;
-export const ENERGY_REGEN_AMOUNT = 2;
+ *  thing you have.
+ *
+ *  The cadence is the FINEST one that produces the rate: +1 every 2 ticks rather than
+ *  +3 every 6. Both average 15/s, but the coarse one makes the wait at an empty bar
+ *  lumpy — a 3-cost pull becomes affordable in one step every sixth tick instead of
+ *  arriving smoothly — and lumpiness is exactly what a player reads as the gun
+ *  stuttering rather than as the gun being paced. */
+export const ENERGY_REGEN_INTERVAL = 2;
+export const ENERGY_REGEN_AMOUNT = 1;
 
-/** 20/s @30Hz. The break-even line every `energyCost` is chosen against. */
+/** 15/s @30Hz (was 20/s through ENGINE_VERSION 61 — see the header's "Why regen is
+ *  15/s" for the measurement that moved it). The break-even line every `energyCost` is
+ *  chosen against, and the starter blaster now sits exactly ON it. */
 export const ENERGY_REGEN_PER_SEC = (ENERGY_REGEN_AMOUNT * 30) / ENERGY_REGEN_INTERVAL;
 
 /**

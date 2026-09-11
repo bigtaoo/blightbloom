@@ -50,9 +50,16 @@
  *   KILLED   starter muzzleGrid 0.9375 -> 1.0 ...................... 7
  *   KILLED   step order: deflect <-> hitResolve ..................... 2
  *   KILLED   step order: weaponFire <-> movement ................... 9
+ *   KILLED   witness energyTotal: p.energy -> p.maxEnergy .......... 3
  *   SURVIVED step order: statusEffect <-> zone
  *   SURVIVED step order: movement <-> projectileStep
  *   SURVIVED step order: deathDrops <-> pickup
+ *
+ * The `energyTotal` row was added 2026-09-11 with the field itself, and it measures the
+ * anti-vacuity assertion rather than a scenario: a witness field that silently becomes a
+ * constant is worse than an absent one, because it looks like coverage. The mutant makes
+ * every seat report a full bar, and the assertion fires with the diagnostic it was written
+ * for ("no scenario ends below a full pool") rather than with a bare hash mismatch.
  *
  * The two extraction-gate rows were added 2026-09-10 with the `extraction-gate` scenario and
  * are the reason it exists: before it, BOTH of those mutants survived the entire gate. Each
@@ -73,6 +80,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ENGINE_VERSION } from './config';
+import { BASE_MAX_ENERGY } from './balance/energy';
 import { GOLDEN_SCENARIOS, runScenario, type GoldenScenario, type Witness } from './fixtures/goldenScenarios';
 import { goldenPath, isRecording, readGolden, writeGolden, type GoldenEntry } from './fixtures/goldenFile.mjs';
 
@@ -187,6 +195,25 @@ describe('anti-vacuity — every scenario actually exercised the engine', () => 
     // reaches a checkpoint. If a change ever makes it descend, this fails and the scenario's
     // `pins` line needs updating rather than the run silently meaning something new.
     expect(dungeon.floorIndex, 'this scenario is not supposed to descend — see its `pins`').toBe(0);
+
+    // The AMMO economy is witnessed by at least one scenario (ENGINE_VERSION 62). Without
+    // this, `energyTotal` can silently become a constant — and a constant is worse than an
+    // absent field, because it looks like coverage. Every scenario but `launch-arena-pvp`
+    // seats the default character, so a full bar is exactly `BASE_MAX_ENERGY`.
+    //
+    // Recorded rather than aspirational, exactly like `dungeon.floorIndex` above: only the
+    // two scenarios whose seats outspend their regen end below the cap, and the other four
+    // are blind to this economy BY CONSTRUCTION — regen is a no-op at the cap, so a seat
+    // that never runs a deficit cannot witness a regen change at all. That is why the v62
+    // bump diverged 2 of 6 hashes with all 6 witnesses identical. If this ever fails,
+    // energy stopped being spent somewhere it used to be.
+    const singleSeat = results.filter((r) => r.sc.seats === 1).map((r) => r.witness.energyTotal);
+    expect(singleSeat.length).toBeGreaterThan(1); // or "some scenario" below is one scenario
+    expect(
+      singleSeat.filter((e) => e < BASE_MAX_ENERGY).length,
+      'no scenario ends below a full pool — `energyTotal` is witnessing nothing',
+    ).toBeGreaterThan(0);
+    expect(Math.max(...singleSeat), 'a pool went over its cap').toBe(BASE_MAX_ENERGY);
 
     // The extraction gate really resolved, on the floor it is supposed to resolve on. Every
     // number here is a way the scenario could stop meaning what its `pins` line says while

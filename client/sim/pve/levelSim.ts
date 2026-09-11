@@ -86,6 +86,11 @@ export interface FireRecord {
   /** Projectiles this pull emitted (1 for a pinpoint gun, `bullets` for a spread or
    *  radial frame). Always 1 for a melee swing. */
   bullets: number;
+  /** What this pull cost the pool (ENGINE_VERSION 62) — 0 for a melee swing, which is
+   *  the free half by design, and null on the same ambiguous swap tick `weapon` is
+   *  null on. Recorded per pull rather than looked up from `weapon` in the report,
+   *  because a run's whole point is that the gun in the slot CHANGES. */
+  energySpent: number | null;
   tick: number;
 }
 
@@ -131,6 +136,12 @@ export interface RunMetrics {
   dryTicksByFloor: Record<number, number>;
   /** Live ticks per floor, the denominator `dryTicksByFloor` is a fraction of. */
   aliveTicksByFloor: Record<number, number>;
+  /** Energy refills per floor the player actually WALKED OVER, as opposed to the ones
+   *  the floor produced (`drops`). The two are very different numbers and the gap is
+   *  the measurement (ENGINE_VERSION 62): a pool sitting at full refuses a refill
+   *  outright (`PickupSystem.pickupWouldApply`), so a sustainable gun reads as
+   *  "ammo drops are worthless" while the drop table is working exactly as authored. */
+  energyRefillsTakenByFloor: Record<number, number>;
   /** The pool this run was played with (`SkinDef.maxEnergy` + any `flat_energy` picked
    *  up), sampled at the end — so a dry-tick count can be read against the capacity it
    *  was produced under rather than against an assumed 100. */
@@ -206,6 +217,7 @@ export function runLevel(opts: RunOptions): RunMetrics {
     checkpointFloors: tracker.checkpointFloors,
     dryTicksByFloor: tracker.dryTicksByFloor,
     aliveTicksByFloor: tracker.aliveTicksByFloor,
+    energyRefillsTakenByFloor: tracker.energyRefillsTakenByFloor,
     finalMaxEnergy: tracker.finalMaxEnergy,
   };
 }
@@ -224,6 +236,7 @@ class EncounterTracker {
   readonly checkpointFloors: number[] = [];
   readonly dryTicksByFloor: Record<number, number> = {};
   readonly aliveTicksByFloor: Record<number, number> = {};
+  readonly energyRefillsTakenByFloor: Record<number, number> = {};
   finalMaxEnergy = 0;
   enemiesKilled = 0;
   damageTaken = 0;
@@ -301,6 +314,9 @@ class EncounterTracker {
       if (ev.type === 'death' && ev.faction === 'enemy') {
         this.enemiesKilled++;
         this.killsByFloor[s.floorIndex] = (this.killsByFloor[s.floorIndex] ?? 0) + 1;
+      }
+      if (ev.type === 'pickup' && ev.kind === 'energy') {
+        this.energyRefillsTakenByFloor[s.floorIndex] = (this.energyRefillsTakenByFloor[s.floorIndex] ?? 0) + 1;
       }
       if (ev.type !== 'hit' || ev.target !== playerId) continue;
       tickDamage += ev.damage;
@@ -418,13 +434,29 @@ class EncounterTracker {
     const swapped = s.events.some((ev) => ev.type === 'pickup' && ev.kind === 'weapon');
     const nameOf = (kind: 'ranged' | 'melee'): string | null =>
       swapped ? null : (p.weapons.find((w) => w.spec.kind === kind)?.spec.name ?? null);
+    const rangedSlot = p.weapons.find((w) => w.spec.kind === 'ranged');
+    const rangedCost = swapped || rangedSlot?.spec.kind !== 'ranged' ? null : rangedSlot.spec.energyCost;
     if (bullets > 0) {
-      this.fires.push({ floorIndex: s.floorIndex, kind: 'ranged', weapon: nameOf('ranged'), bullets, tick: s.tick });
+      this.fires.push({
+        floorIndex: s.floorIndex,
+        kind: 'ranged',
+        weapon: nameOf('ranged'),
+        bullets,
+        energySpent: rangedCost,
+        tick: s.tick,
+      });
     }
     // A swing is one pull that emits one event; `bullets: 1` keeps the two kinds
     // summable in the same column without pretending a swing throws a projectile.
     if (swings > 0) {
-      this.fires.push({ floorIndex: s.floorIndex, kind: 'melee', weapon: nameOf('melee'), bullets: 1, tick: s.tick });
+      this.fires.push({
+        floorIndex: s.floorIndex,
+        kind: 'melee',
+        weapon: nameOf('melee'),
+        bullets: 1,
+        energySpent: 0,
+        tick: s.tick,
+      });
     }
   }
 }

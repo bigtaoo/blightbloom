@@ -37,7 +37,7 @@ Break one of these and two clients desync — silently, minutes into a match.
   iteration order, a rounding rule, or a hashed field.
 
 Any change that moves outcomes — or moves the replay hash at all — bumps `ENGINE_VERSION`
-(`versionHistory.ts`, currently **61**, with the full per-bump history in
+(`versionHistory.ts`, currently **62**, with the full per-bump history in
 `ENGINE_VERSION_HISTORY.md`). `replay.ts` refuses to replay a mismatched version rather than
 produce garbage.
 

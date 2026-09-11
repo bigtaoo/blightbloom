@@ -2029,3 +2029,63 @@ mutants are now killed and each is diagnosable from the witness alone: re-honour
 interior extract shows `floorIndex 1 -> 0` with `descend` gone, and dropping the last floor's
 shows `tick 245 -> 400, phase gameover -> playing`. `systems/extraction.test.ts` still pins the
 rule directly in both directions; the golden gate is what now notices if it is *reverted*.
+
+## v62: the energy regen line drops 20/s -> 15/s (2026-09-11)
+
+`ENERGY_REGEN_INTERVAL`/`ENERGY_REGEN_AMOUNT` go from +2 every 3 ticks to +1 every 2, i.e.
+`ENERGY_REGEN_PER_SEC` 20 -> 15. No price in `content/weaponSpecs/` moved, so the whole roster
+re-classifies against the new line at once: the starter `blaster` (15/s) lands exactly ON it,
+`repeater` (20/s) crosses ABOVE it, and every other gun's regen-paced floor rate drops by a
+quarter.
+
+### Why
+
+The report was *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变得非常低"* — auto-refill
+is too fast, so the ammo lying on the floor is worth almost nothing. Measured before the change
+over 8 careful bot runs of the shipped level (the `clock%`/`floor%`/`taken` columns
+`client/sim/pve/reportFire.ts` grew for this pass): **97.6% of a fresh save's total spend came off
+the clock and 2.4% off the floor, with 12 of 100 spawned refills ever collected** — and the same
+2% split held for a `scattergun` and for a `novaburst` loadout.
+
+Note what that ratio is made of, because it decides what can move it: `collected x
+ENERGY_PICKUP_AMOUNT` over a floor's total spend, and **neither term moves with the regen
+rate**. A floor drops ~7 refills (~210 energy) against ~2000 energy of pulls, so ~10% is the
+ceiling the DROP TABLE sets even at perfect collection, and the sim still reads 1-2% after this
+change. Lowering regen does not raise the floor's share of supply — it changes whether the
+shortfall is felt at all. `ENERGY_PICKUP_AMOUNT` stayed 30 for the same reason: at 2% of supply
+the refill's size was never the binding term.
+
+At 20/s the clock covered a continuously-firing starter outright, so a refill topped up a bar
+that refilled itself in five seconds. At 15/s the clock covers the unbuffed starter and nothing
+else, so a `rof_up` stack, a burst and the first interesting gun the floor hands you all run a
+deficit only the pool and the floor can pay. Measured after: **22.6% of live ticks hold a gun
+the pool cannot pay for** (0.9% before), with average floor reached UNMOVED at 0.75. 10/s was
+measured and rejected — the same 23% dry but average floor reached 0.75 -> 0.50, which is
+re-tuning the level rather than pacing the player.
+
+**Correction, same day.** The first version of this entry blamed the uncollected refills on
+`pickupWouldApply` refusing them at a full bar and called them "unpickable". That was a
+mechanism asserted without a control, and the control refutes most of it: `material` has no
+usefulness gate, so its collection rate is the pure did-the-bot-walk-over-it baseline, and over
+the same runs it reads 21.2% against energy's 12.0%. The bot misses ~80% of EVERYTHING. The gate
+is real but secondary (a gated pickup is collected about half as often as an ungated one, and
+~21-27% of live ticks sit at a full pool), and at 12 events over 8 seeds the collection rate
+cannot A/B this change at all. The numbers this version rests on are the supply split and
+`dry%`.
+
+### Why this bumps
+
+`energy` is serialized state and the regen cadence is read on a global `tick % interval`
+boundary, so every recorded stream's pool diverges from the first boundary tick — and any pull
+that the old pool could afford and the new one cannot changes the tick a shot leaves the muzzle.
+
+**Measured before the bump: 2 of 6 golden scenarios diverged** — `walls-and-pillars` and
+`ember-dungeon-floor1`, the two whose seats actually spend energy. The other four hold a full
+bar for their whole run (regen is a no-op at the cap), so they were structurally blind to this
+by construction rather than by luck.
+
+**Every witness field was identical in both.** That is what a hash-only divergence looks like
+from the outside — "something moved", no direction — and it happened because the witness carried
+`hpTotal` but nothing for the other player-visible pool. `Witness.energyTotal` was added in the
+same pass, so the next change to this economy is diagnosable from the fixture diff instead of
+from a pair of 32-bit numbers.

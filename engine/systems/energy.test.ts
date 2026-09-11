@@ -19,6 +19,7 @@ import {
   BASE_MAX_ENERGY,
 } from '@dd/engine/balance/energy';
 import { buildEnemyActor } from '@dd/engine/content/enemies';
+import { buffedCooldown, sumBuffs } from '@dd/engine/balance/runbuffs';
 import { makeWeapon, WEAPON_SIM_BY_ID } from '@dd/engine/content/weapons';
 import { pxToFp } from '@dd/engine/content/convert';
 import type { PickupItem, RangedSimSpec } from '@dd/engine/state/entities';
@@ -127,23 +128,113 @@ describe('WeaponFireSystem — a ranged pull is charged against the pool', () =>
     expect((e as unknown as { energy: number }).energy).toBe(0); // nothing was deducted either
   });
 
-  it('the starter blaster outruns its own drain over a long hold (the sustainability claim)', () => {
+  it('the starter blaster holds its trigger down forever without drifting (break-even, measured)', () => {
     // The claim `balance/energy.ts` makes as arithmetic, re-measured through the two real
     // systems that implement it — a unit test of `isSustainable` cannot catch a regen
-    // cadence wired to the wrong modulus.
+    // cadence wired to the wrong modulus, and it cannot see the engine's INTEGER cooldown
+    // at all (see `balance/energy.test.ts`'s whole-ticks gate for why that matters).
+    //
+    // Rewritten at ENGINE_VERSION 62, and the old version is the reason this one asserts a
+    // SHAPE rather than an endpoint. It was called "outruns its own drain" and ended on
+    // `energy === BASE_MAX_ENERGY`, which passed identically at the old 20/s line and at
+    // the new 15/s one: sampling the last tick of a sawtooth says nothing about whether
+    // the sawtooth is climbing, flat, or decaying. What break-even actually means is that
+    // the trough does not move.
     const s = createGameState(CFG);
     const p = armed(s, 'blaster');
+    const cost = (p.weapon!.spec as RangedSimSpec).energyCost;
+    const cd = (p.weapon!.spec as RangedSimSpec).fireRateTicks;
     const status = new StatusEffectSystem();
     const fireSys = new WeaponFireSystem();
+    const trace: number[] = [];
+    let shots = 0;
     for (let i = 0; i < 900; i++) {
       // 30 s of holding the trigger
       s.tick++;
       s.clearEvents();
       fireSys.tick(s);
       status.tick(s);
+      if (s.events.some((e) => e.type === 'bullet_fired')) shots++;
+      trace.push(p.energy);
     }
-    expect(p.energy).toBeGreaterThan(0); // never ran dry
-    expect(p.energy).toBe(BASE_MAX_ENERGY); // and in fact sat pinned at full
+
+    // 1. Never paced: every pull the COOLDOWN allowed actually came out. This is the half a
+    //    player feels — the starter's rate of fire is its own cooldown and nothing else.
+    expect(shots).toBe(Math.floor(900 / cd));
+
+    // 2. Stationary, not merely non-zero: the trough of the last third equals the trough of
+    //    the first. A gun ABOVE the line decays (the `rof_up` case below drops to 0 inside
+    //    this same window), one BELOW it climbs until it is pinned at the cap.
+    const troughOf = (from: number, to: number) => Math.min(...trace.slice(from, to));
+    expect(troughOf(0, 300)).toBe(BASE_MAX_ENERGY - cost);
+    expect(troughOf(600, 900)).toBe(troughOf(0, 300));
+
+    // 3. And the bar is genuinely NOT "pinned at full" while firing — it is at the cap for
+    //    exactly one tick in every cooldown, which is the state a refill would be refused
+    //    in. Pinned here because the ENGINE_VERSION 62 write-up originally claimed the
+    //    opposite in prose, and prose is not measured.
+    const atCap = trace.filter((v) => v === BASE_MAX_ENERGY).length;
+    expect(atCap).toBe(Math.floor(900 / cd));
+  });
+
+  it('one rof_up takes the starter OVER the line, and a second one buys nothing', () => {
+    // The sentence design/03 makes about the 15/s line — "everything on top of holding the
+    // trigger comes out of the pool" — as behaviour. Nothing pinned it before v62.
+    //
+    // It is also the seconds-vs-TICKS trap, which is the one a balance table cannot see:
+    // `buffedCooldown` rounds to whole ticks, so the blaster's 6 ticks become 4 (not 4.29),
+    // i.e. the real drain is 22.5/s and not the 21.4/s the per-second arithmetic implies.
+    // A second `rof_up` rounds to 4 as well, so it is pure waste on this weapon — the kind
+    // of thing only a test in the engine's own units can state.
+    const s = createGameState(CFG);
+    const p = armed(s, 'blaster');
+    p.buffs = ['rof_up'];
+    const spec = p.weapon!.spec as RangedSimSpec;
+    expect(buffedCooldown(spec.fireRateTicks, sumBuffs(['rof_up']))).toBe(4);
+    expect(buffedCooldown(spec.fireRateTicks, sumBuffs(['rof_up', 'rof_up']))).toBe(4);
+
+    const status = new StatusEffectSystem();
+    const fireSys = new WeaponFireSystem();
+    const trace: number[] = [];
+    let shots = 0;
+    for (let i = 0; i < 900; i++) {
+      s.tick++;
+      s.clearEvents();
+      fireSys.tick(s);
+      status.tick(s);
+      if (s.events.some((e) => e.type === 'bullet_fired')) shots++;
+      trace.push(p.energy);
+    }
+    // The TROUGH, never the endpoint: a sawtooth sampled on its last tick can read as high
+    // as `max` on a pool that spent the whole run at the floor. (Asserting the endpoint is
+    // exactly what made the pre-v62 version of the test above unable to tell 20/s from 15/s,
+    // and the `repeater` case below reads 2 on its final tick after bottoming out at 0.)
+    expect(Math.min(...trace)).toBe(0); // it really did run out
+    expect(shots).toBeLessThan(Math.floor(900 / 4)); // and is now paced by regen, not by cooldown
+    expect(shots).toBeGreaterThan(0); // paced, never disarmed
+  });
+
+  it('the repeater is paced now, not free — the v62 reclassification, as behaviour', () => {
+    // `balance/energy.test.ts` pins the sustainable list as `['blaster']`; that is a claim
+    // about two numbers. This is the same claim about the engine: `repeater` (20/s) used to
+    // sit exactly ON the 20/s line and fund itself forever, and at 15/s it does not.
+    const s = createGameState(CFG);
+    const p = armed(s, 'repeater');
+    const spec = p.weapon!.spec as RangedSimSpec;
+    const status = new StatusEffectSystem();
+    const fireSys = new WeaponFireSystem();
+    const trace: number[] = [];
+    let shots = 0;
+    for (let i = 0; i < 900; i++) {
+      s.tick++;
+      s.clearEvents();
+      fireSys.tick(s);
+      status.tick(s);
+      if (s.events.some((e) => e.type === 'bullet_fired')) shots++;
+      trace.push(p.energy);
+    }
+    expect(Math.min(...trace)).toBe(0);
+    expect(shots).toBeLessThan(Math.floor(900 / spec.fireRateTicks));
   });
 
   it('an expensive frame drains to empty and then fires at the regen-limited pace', () => {

@@ -1,11 +1,11 @@
 {
-  "engineVersion": 61,
+  "engineVersion": 62,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 1580899829,
+      "hash": 2398171812,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -16,6 +16,7 @@
         "pickups": 3,
         "floorIndex": 0,
         "hpTotal": 6,
+        "energyTotal": 100,
         "prngCursors": 14820905348,
         "events": {
           "bullet_fired": 22,
@@ -32,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 425246737,
+      "hash": 889509333,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -43,6 +44,7 @@
         "pickups": 0,
         "floorIndex": 0,
         "hpTotal": 6,
+        "energyTotal": 98,
         "prngCursors": 7936105667,
         "events": {
           "bullet_fired": 51,
@@ -57,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 1336452678,
+      "hash": 2312721540,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -68,6 +70,7 @@
         "pickups": 11,
         "floorIndex": 0,
         "hpTotal": 2.4000000000000004,
+        "energyTotal": 99,
         "prngCursors": 12825823320,
         "events": {
           "bullet_fired": 170,
@@ -89,7 +92,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 532725869,
+      "hash": 1398846776,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -100,6 +103,7 @@
         "pickups": 5,
         "floorIndex": 0,
         "hpTotal": 6,
+        "energyTotal": 100,
         "prngCursors": 12976166577,
         "events": {
           "bullet_fired": 68,
@@ -116,7 +120,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 3729865584,
+      "hash": 3131665743,
       "witness": {
         "tick": 245,
         "phase": "gameover",
@@ -127,6 +131,7 @@
         "pickups": 6,
         "floorIndex": 1,
         "hpTotal": 6,
+        "energyTotal": 100,
         "prngCursors": 12984594823,
         "events": {
           "bullet_fired": 29,
@@ -148,7 +153,7 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 3765016473,
+      "hash": 3971100792,
       "witness": {
         "tick": 900,
         "phase": "playing",
@@ -159,6 +164,7 @@
         "pickups": 2,
         "floorIndex": 0,
         "hpTotal": -184,
+        "energyTotal": 230,
         "prngCursors": 12909832894,
         "events": {
           "bullet_fired": 117,

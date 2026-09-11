@@ -178,12 +178,21 @@ export const BUFF_DROP_POOL: readonly string[] = ['dmg_up', 'rof_up', 'vit_up', 
  * undroppable.
  *
  * `cell_up` is here because +max energy is CONDITIONAL in a way the other four families
- * are not: the starter blaster is sustainable on regen alone (`balance/energy.ts`), so a
- * fresh save's pool never empties and a capacity buff does literally nothing for it. As a
- * 1-in-5 floor drop that would be a fifth of every buff drop in the run spent on a reward
- * the player often cannot use, taken out of four families that always do something. As a
- * card it is a CHOICE against two alternatives, which is the correct home for a reward
- * whose value depends on what you are currently holding.
+ * are not: its worth depends entirely on what you are currently holding. As a 1-in-5 floor
+ * drop, a run that never empties its bar spends a fifth of every buff drop it gets on a
+ * reward it cannot use, taken out of four families that always do something. As a card it
+ * is a CHOICE against two alternatives, which is the correct home for a reward like that.
+ *
+ * The argument was STRONGER when it was written (ENGINE_VERSION 60) than it is now. It
+ * used to rest on "a fresh save's pool never empties", which was true while the starter
+ * blaster sat below the regen line with headroom; at ENGINE_VERSION 62 the line dropped to
+ * 15/s and the blaster sits exactly ON it, so a fresh save's bar now empties whenever a
+ * `rof_up` or a burst takes it over (measured: 22.6% of live ticks holding a gun the pool
+ * cannot pay for, up from 0.9%). `cell_up` stays card-only because the conditionality
+ * argument survives — it is worth nothing to a player who is not currently over the line —
+ * but this is now a judgement rather than the near-tautology it was, and moving it into
+ * `BUFF_DROP_POOL` is a legitimate thing to reconsider. Doing so changes the buff pool's
+ * indexing and therefore the dropPrng draw sequence, so it is a version bump, not a tweak.
  */
 export const CARD_ONLY_BUFF_IDS: readonly string[] = ['cell_up'];
 

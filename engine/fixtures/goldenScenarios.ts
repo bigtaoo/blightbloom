@@ -141,6 +141,15 @@ export interface Witness {
   floorIndex: number;
   hpTotal: number;
   /**
+   * Every seat's weapon energy, summed — `hpTotal`'s counterpart for the ammo economy,
+   * added at ENGINE_VERSION 62 by the pass that moved the regen line 20/s -> 15/s. That
+   * change diverged two scenarios' hashes with every witness field identical, which is
+   * the shape of a red gate nobody can read: "something moved" with no direction. The
+   * ammo pool is the one player-visible pool the witness did not carry, and a hash is
+   * the wrong instrument for a number a human has to reason about.
+   */
+  energyTotal: number;
+  /**
    * The six PRNG cursors, summed. NOTE this is the summed internal STATE, not a draw count —
    * `Prng.peek()` returns the LCG's current value, which is already ~1e10 on a fresh engine.
    * It is a superb fingerprint (any new draw site anywhere moves it) and a useless activity
@@ -167,6 +176,7 @@ export function witnessOf(s: GameState, events: Record<string, number>): Witness
     pickups: s.pickups.length,
     floorIndex: s.floorIndex,
     hpTotal: s.players.reduce((n, p) => n + p.hp, 0),
+    energyTotal: s.players.reduce((n, p) => n + p.energy, 0),
     prngCursors:
       s.aiPrng.peek() +
       s.combatPrng.peek() +

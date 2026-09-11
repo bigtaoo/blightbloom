@@ -1219,9 +1219,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-10** [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061) — *"把中间层的撤离功能去掉，只有打完boss之后的撤离才能退出。对于单人地图，如果没有打完，可以保存进度，下次继续。其实单纯保存指令和随机种子就行了。重进的时候要比对引擎版本"*. Two asks, and the second is why the first is not a nerf: design/05's push-your-luck pillar rested on the per-floor extract/descend choice, and **that choice was doing two jobs** — a player who wanted to stop playing for the evening had to spend the run's whole carry-out decision to do it, because a pause-menu quit forfeits everything. So the early bank was also the save button, and much the worse of the two. Split: the run's only exit is the boss, and an unfinished single-player run is SAVED and resumed. The engine half is four lines and a replay break (`ExtractionSystem` stops consulting `confirmExtract` off the last floor; an ignored press is **dropped, not reinterpreted as a descend**, which would spend a floor card nobody chose) — and **the measurement before the bump is the interesting part: zero golden scenarios diverged**, because none presses `CONFIRM_EXTRACT` and `ember-dungeon-floor1` *cannot* reach a checkpoint at all, which its own note already said. Recorded as a gap rather than read as reassurance; pinned instead by `extraction.test.ts` in BOTH directions, since only the pair pins it. The save format is the report's own (*"单纯保存指令和随机种子"*) and that is exactly right for a stated reason: it is design/08's replay property, so **a save cannot desync from the sim because there is no second description of the sim to disagree with** — a snapshot would have been that second description, going stale on every version that added a field, silently, since a missing field reads as a default. Two invalidations, both refusals: `ENGINE_VERSION` (the ask's own *"比对引擎版本"*), and **content drift, the half `ENGINE_VERSION` does not cover** — `replayFile.ts` embeds the whole config to dodge it, a `localStorage` save cannot afford to, so the config is rebuilt from today's content and its content half fingerprinted, making an edited floor a refusal instead of a player inside a wall. Three things the fast-forward had to get right, each a bug otherwise: the last replayed tick's events are still in `state.events` and `GameLoop` drains what it finds, replaying a burst of flashes and sounds at nobody; a dungeon's geometry is normally built by tick 1's `room_enter`, which the fast-forward consumes; and the score is render-side state the sim cannot reconstruct, so it is carried and restored AFTER the reset that zeroes it. The stream is stored as 7-tuples on a real budget — ~110 bytes keyed × 30 Hz is ~2 MB for ten minutes against ~5 MB for the whole origin, which the account save shares — and a quota failure ABORTS the quit rather than walking someone to the Forge on a promise that dies with the tab. Scope is single-player offline dungeon only, each exclusion a rule (an online run's stream is the server's; a co-op second seat is generated at submit time and is not in the stream); one slot, dropped by **three** call sites, the third being `RunOutcome.handle`, which cannot be folded into the others because nothing routes a victory through `RunLifecycle` — without it, closing the tab on a result screen leaves CONTINUE offered for a run already won and banked. `PortalPrompt` becomes one button (Descend, or Extract on the boss floor) and its label switches to counting the WHOLE carry-out, since that press is now the only exit and the bag is at risk right up to it; the pause menu grows SAVE & QUIT with plain QUIT kept **beside** it, a full row apart, because one button whose meaning depends on the mode is how a run gets lost. Two boundaries respected rather than routed around: `ScreenNav` is in the pure layer and needs the savability RULE, so the module split the way `replayDownload.ts` splits from `MatchRecorder` (`runSave.ts` pure, `runSaveStore.ts` host); and the slot is cached because the Forge asks on every keystroke, which makes the cache the place a stale yes would survive a clear — where most of `runSaveStore.test.ts` lives. `engine` `client` `ui` `i18n` `test` `docs`
 
+**[2026-09-11 — the clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md)**
+
+- **09-11** [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162) — *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变得非常低。"* One constant: `ENERGY_REGEN_PER_SEC` 20 → 15, with no price in `content/weaponSpecs/` touched, so the whole roster re-classifies at once — the starter `blaster` lands exactly ON the break-even line and `repeater` crosses above it. **Measured first, and the report was understating it: 98% of every shot fired came off the clock**, at every point of the roster — a `novaburst` loadout funded itself out of regen as thoroughly as a fresh save did. **What that ratio is made of decides what can move it**: `collected x ENERGY_PICKUP_AMOUNT` over a floor's spend, and neither term moves with the regen rate — a floor drops ~7 refills (~210 energy) against ~2000 energy of pulls, so ~10% is the ceiling the DROP TABLE sets even at perfect collection, and the sim still reads 1-2% afterwards. Lowering regen does not raise the floor's SHARE of supply; it changes whether the shortfall is felt at all, and `ENERGY_PICKUP_AMOUNT` stayed 30 because at 2% of supply the drop's size was never the binding term. At 20/s the clock covered a continuously-firing starter outright; at 15/s it covers the unbuffed starter and nothing else, so a `rof_up` stack, a burst and the first interesting gun the floor hands you all run a deficit only the pool and the floor can pay. **22.6% of live ticks now hold a gun the pool cannot pay for (0.9% before), with average floor reached UNMOVED at 0.75.** 10/s was measured and rejected — same dry share, but average floor fell to 0.50, which is re-tuning the level rather than pacing the player; and halving regen while halving the starter's price to keep it sustainable reproduced the bug exactly, because **keeping the starter free and fixing this are the same decision**. The instrument had to be built first: the shipped sim's bot never swaps weapons, so 100% of its pulls were the one gun with no ammo economy at all. `reportFire.ts` grew `spend`, `clock%`/`floor%` and `refills(taken/spawned)` — the pair kept SEPARATE on purpose, and **the first thing it did was catch a claim this entry originally made**: the uncollected refills were blamed on the usefulness gate, with no control, when `material` (no gate at all) reads 21.2% collected against energy's 12.0% over the same runs — the bot misses ~80% of EVERYTHING, so most of that gap is pathing, and at a dozen events over 8 seeds the collection rate cannot A/B this change at all. Golden read before the bump: 2 of 6 scenarios, the other four blind by construction (a full bar makes regen a no-op) — and **both divergences were hash-only, every witness field identical**, which is a red gate nobody can read, so `Witness.energyTotal` now sits beside `hpTotal`, with an anti-vacuity assertion and a measured mutation kill. **Writing the tests is what caught the entry's own wrong answer, and one of the tests it caught was an existing one**: `"the starter blaster outruns its own drain"` ended on `energy === BASE_MAX_ENERGY`, which passes identically at both lines — the last tick of a sawtooth cannot tell climbing from flat from decaying — so its name had stopped being true with nothing red. It asserts the SHAPE now (trough of the last third = trough of the first), beside three new ones: a `rof_up` stack crossing the line (also the seconds-vs-TICKS trap — `buffedCooldown` rounds 6 ticks to 4, not 4.29, so a second `rof_up` buys nothing here), `repeater` paced rather than free, and a gate that break-even survives the conversion to ticks at all. Five go red on the old constants; the rewritten starter test deliberately does not, because a fresh save being near-identical either side IS the safety argument. `engine` `test` `tools` `docs`
+
 ## The work log — by theme
 
-The same 148 entries, grouped. An entry with more than one tag appears more than once.
+The same 149 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(59)*
 
@@ -1321,7 +1325,7 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(28)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(29)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1351,6 +1355,7 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
+- 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 
 **`arena`** — the PvP launch map and its audit *(7)*
 
@@ -1374,7 +1379,7 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(71)*
+**`test`** — coverage sweeps, gates, mutation batteries *(72)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1447,6 +1452,8 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-09 [The two globals a mini-game does not have, and the four features waiting on them](roadmap/51-2026-09-09-wechat-network-adapter.md#the-two-globals-a-mini-game-does-not-have-and-the-four-features-waiting-on-them-2026-09-09-client--docs-no-engine-change)
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
+- 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+
 **`audio`** — cues, music, the engine to sound channel *(6)*
 
 - 08-31 [The search and the gate were the same number three times, and never the same ruler](roadmap/12-2026-08-31-audio.md#the-search-and-the-gate-were-the-same-number-three-times-and-never-the-same-ruler-2026-08-31-tools--assets)
@@ -1510,7 +1517,7 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 
-**`tools`** — sims, profilers, editors, build scripts *(18)*
+**`tools`** — sims, profilers, editors, build scripts *(19)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -1530,8 +1537,9 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-05 [A trigger pull costs energy](roadmap/38-2026-09-05-weapon-energy.md#a-trigger-pull-costs-energy-2026-09-05-engine--client-engine_version-59)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
+- 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 
-**`docs`** — design docs and this log itself *(74)*
+**`docs`** — design docs and this log itself *(75)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1608,6 +1616,8 @@ The same 148 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [`main` stops being a place you can commit to](roadmap/52-2026-09-09-backend-deploy.md#main-stops-being-a-place-you-can-commit-to-2026-09-10-repo-governance--docs-no-code-change)
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
+- 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+
 **`net`** — matchmaking, sockets, reconnect *(20)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
