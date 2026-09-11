@@ -44,6 +44,7 @@ import {
   floorArcSpans,
   GLOW_POOL,
   GLOW_POOL_SQUASH,
+  ringAspect,
   ringTravel,
   strokeFloorArc,
   thresholdPlane,
@@ -184,6 +185,51 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
     expect(points).toBeGreaterThan(5_000);
   });
 
+  it('gives EVERY shipped door an ellipse whose long axis is that door own long edge', () => {
+    // The 2026-09-11 rule as a sweep over the real content rather than over the two rects the unit
+    // cases below use. Worth its own case because the rule is about a RELATIONSHIP between two
+    // boxes the content controls: today every passage is 64x128 or 128x64, and a third shape — a
+    // kerb doorway, a wider arch in a new biome — would get its aspect from the same function
+    // without anyone re-checking which way its ellipse then runs. `sign`, not a ratio: the claim is
+    // "long axis follows the long edge", and pinning the ratio here would just restate `ringAspect`.
+    let checked = 0;
+    for (const { index, door, plane } of everyDoor()) {
+      const drawH = drawnLeafH(door.w);
+      const g = new Graphics();
+      drawSpill(g, door.w, drawH, plane);
+      const [, , rx, ry] = poolEllipses(g)[0]!;
+      const where = `floor ${index} door ${door.x},${door.y} ${door.w}x${door.h}: drawn ${door.w}x${drawH.toFixed(1)}, pool ${(2 * rx!).toFixed(1)}x${(2 * ry!).toFixed(1)}`;
+      expect(Math.sign(ry! - rx!), where).toBe(Math.sign(drawH - door.w));
+      checked++;
+    }
+    expect(checked).toBe(24); // 13 sides + 11 south, the whole shipped set
+  });
+
+  it('stays clear of stone at the aspect the drawn door asks for, and says where that ceiling is', () => {
+    // The headroom under the 2026-09-11 aspect, measured rather than assumed. A taller `sides` ring
+    // spends its extra height running ALONG the wall it comes out of, where the hazard is not that
+    // wall (the lobes are drawn clear of its own thickness by `floorArcSpans`) but the PERPENDICULAR
+    // run at the end of it — and the content is what decides how far away that is.
+    //
+    // Measured over the five floors at the widest ring anything strokes (`MAX_RING` x span): the
+    // drawn aspect (1.48) puts not one point of any of the 13 in stone, 1.60 is still clean, and
+    // 1.65 strokes 2.4-4.8% of three of them into a perpendicular run. So the door's own proportion
+    // is not merely the literal reading of the report — it is also inside what these floors allow,
+    // with ~8% to spare. The bound is asserted from both sides so a future "make it taller" lands
+    // on a red test rather than on a ring crossing masonry.
+    const worst = (aspect: number): number => {
+      let max = 0;
+      for (const { floor, door, plane } of everyDoor()) {
+        if (plane.floor !== 'sides') continue;
+        max = Math.max(max, buriedShare(floor, door, { ...plane, aspect }, plane.span * MAX_RING).inWall);
+      }
+      return max;
+    };
+    expect(worst(ringAspect(SIDES.w, drawnLeafH(SIDES.w)))).toBe(0);
+    expect(worst(1.6)).toBe(0);
+    expect(worst(1.65)).toBeGreaterThan(0);
+  });
+
   it('leaves a threshold door ring exactly where it was, ends on the wall line included', () => {
     // The 11 east-west-wall doors always read correctly and every swept constant in `doorLights.ts`
     // came from one, so the fix must not move them by a pixel. What it must also not do is pretend
@@ -257,7 +303,13 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
       const old = thresholdPlane(door.w);
       expect(buriedShare(floor, door, old, door.w).inWall).toBeGreaterThan(0.25);
       expect(buriedShare(floor, door, old, door.w / 2).inWall).toBeGreaterThan(0.8);
-      expect(buriedShare(floor, door, plane, door.w).inWall).toBe(0);
+      // The new plane, at the widest ring a shipped door actually strokes (`MAX_RING` x span =
+      // 58.1 px here) rather than at the raw 64 px opening width this line used to ask about.
+      // Since 2026-09-11 a `sides` ring is as tall as its door instead of foreshortened, and the
+      // lobes of one grown to 64 px reach a perpendicular run on 3 of these 13 doors (2.4-4.8% of
+      // their points) — real geometry, but at a radius nothing draws. `stays clear of stone at the
+      // aspect the drawn door asks for` below is the case that pins that margin.
+      expect(buriedShare(floor, door, plane, plane.span * MAX_RING).inWall).toBe(0);
       broken++;
     }
     expect(broken).toBe(13);
@@ -280,12 +332,14 @@ describe('the plane itself', () => {
       cy: -drawnLeafH(64) / 2,
       floor: 'sides',
       span: doorSpan(64, drawnLeafH(64)),
+      aspect: ringAspect(64, drawnLeafH(64)),
     });
     expect(doorFloorPlane(SOUTH, drawnLeafH(SOUTH.w))).toEqual({
       cx: 64,
       cy: 0,
       floor: 'south',
       span: doorSpan(128, drawnLeafH(128)),
+      aspect: GLOW_POOL_SQUASH,
     });
   });
 
@@ -328,6 +382,48 @@ describe('the plane itself', () => {
     expect(doorSpan(64, 94.5)).toBe(doorSpan(64, 64));
   });
 
+  it('runs a sides door ellipse along the door own long edge, and leaves a south one foreshortened', () => {
+    // The 2026-09-11 report, with a screenshot circling one of the 13: *"这个椭圆的长边要和门的长边
+    // 保持一致"* — the ellipse's long axis has to run the same way the door's does. It did not. At
+    // `GLOW_POOL_SQUASH` a `sides` door's widest pool ring is 95 x 44 px lying ACROSS a 64 x 94.5 px
+    // arch: the long axis of the one shape the eye has to attach to the doorway ran along the
+    // doorway's SHORT edge. The rule is asserted as a relationship between the two boxes, not as a
+    // number, so it cannot drift out of agreement with the leaf-fitting rule that decides `drawH`.
+    const sides = doorFloorPlane(SIDES, drawnLeafH(SIDES.w));
+    const sidesTall = drawnLeafH(SIDES.w) > SIDES.w; // the premise: this door IS taller than wide
+    expect(sidesTall).toBe(true);
+    expect(sides.aspect).toBeGreaterThan(1); // ...and so is its ellipse
+    expect(sides.aspect).toBeCloseTo(drawnLeafH(SIDES.w) / SIDES.w, 6);
+    expect(sides.aspect).toBeCloseTo(1.48, 2);
+    // The pre-2026-09-11 value, so this case fails against the code that shipped the report.
+    expect(sides.aspect).not.toBeCloseTo(GLOW_POOL_SQUASH, 6);
+
+    // The 11 east-west doors already satisfied the rule — their opening is 128 x 104, wider than it
+    // is tall, and so is their 171 x 79 pool — and every swept constant in `doorLights.ts` was
+    // measured on one, so they keep the floor foreshortening exactly.
+    const south = doorFloorPlane(SOUTH, drawnLeafH(SOUTH.w));
+    expect(drawnLeafH(SOUTH.w)).toBeLessThan(SOUTH.w);
+    expect(south.aspect).toBe(GLOW_POOL_SQUASH);
+    expect(south.aspect).toBeLessThan(1);
+
+    // Same claim where it is actually drawn: each door's widest pool ellipse is elongated the way
+    // its own drawn opening is. `poolEllipses` reads the real `drawSpill` geometry back.
+    for (const [door, plane] of [
+      [SIDES, sides],
+      [SOUTH, south],
+    ] as const) {
+      const g = new Graphics();
+      drawSpill(g, door.w, drawnLeafH(door.w), plane);
+      const [, , rx, ry] = poolEllipses(g)[0]!;
+      expect(Math.sign(ry! - rx!)).toBe(Math.sign(drawnLeafH(door.w) - door.w));
+    }
+
+    // The degenerate-art guard: art with a zero dimension gives `doorLeafFrame` a `drawH` of 0, and
+    // an aspect of 0 collapses every ring on the plane into a horizontal line.
+    expect(ringAspect(64, 0)).toBe(GLOW_POOL_SQUASH);
+    expect(ringAspect(0, 94.5)).toBe(GLOW_POOL_SQUASH);
+  });
+
   it('keeps the threshold plane on exactly the southern half, sampled as it always was', () => {
     // The `south` plane is the pre-plane behaviour and has to stay byte-identical: 11 shipped doors
     // use it and every swept number in `doorLights.ts` (the ramp's alpha, the pool's +14.4 luma)
@@ -351,15 +447,17 @@ describe('the plane itself', () => {
     for (const [x] of pts) expect(Math.abs(x - plane.cx)).toBeGreaterThanOrEqual(plane.cx - 1e-9);
     expect(pts.some(([x]) => x > plane.cx)).toBe(true);
     expect(pts.some(([x]) => x < plane.cx)).toBe(true);
-    // ...and it is a ring on the FLOOR, not a hoop standing in the air: the spread is the SQUASHED
-    // radius, centred on the drawn opening rather than on the threshold, and the lobes stop short
-    // of the ellipse's own extreme y — `+-ry` is reached at the top and bottom of the ellipse, which is
-    // exactly where the wall stands.
+    // ...and it is stretched by the plane's own aspect, centred on the drawn opening rather than on
+    // the threshold, with the lobes stopping short of the ellipse's own extreme y — `+-ry` is
+    // reached at the top and bottom of the ellipse, which is exactly where the wall stands.
     const ys = pts.map(([, y]) => y);
-    const reach = 64 * GLOW_POOL_SQUASH * Math.sin(Math.acos(plane.cx / 64));
+    const reach = 64 * plane.aspect * Math.sin(Math.acos(plane.cx / 64));
     expect(Math.min(...ys)).toBeCloseTo(plane.cy - reach, 6);
     expect(Math.max(...ys)).toBeCloseTo(plane.cy + reach, 6);
-    expect(reach).toBeLessThan(64 * GLOW_POOL_SQUASH);
+    expect(reach).toBeLessThan(64 * plane.aspect);
+    // The pre-2026-09-11 shape, for the same ring: the floor foreshortening, which put the lobes
+    // 22 px up and down a 94.5 px door. Without this the case passes against the old code.
+    expect(reach).toBeGreaterThan(2 * 64 * GLOW_POOL_SQUASH * Math.sin(Math.acos(plane.cx / 64)));
   });
 
   it('draws the graduated pool as the plane own ellipse family, and both states share it', () => {
@@ -379,7 +477,7 @@ describe('the plane itself', () => {
       expect(cx).toBeCloseTo(plane.cx, 6);
       expect(cy).toBeCloseTo(plane.cy, 6); // the drawn arch's middle, not the passage's
       expect(rx).toBeCloseTo(plane.span * GLOW_POOL[i]!, 6);
-      expect(ry).toBeCloseTo(rx! * GLOW_POOL_SQUASH, 6); // on the floor, not standing up in the air
+      expect(ry).toBeCloseTo(rx! * plane.aspect, 6); // the plane's own aspect, not a fixed squash
     });
     // Widest first and strictly graduated: nine rings at one radius is one ring with a hard edge,
     // which is what `GLOW_POOL`'s own doc says the first version looked like.

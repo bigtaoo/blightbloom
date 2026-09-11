@@ -1223,11 +1223,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-11** [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162) — *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变得非常低。"* One constant: `ENERGY_REGEN_PER_SEC` 20 → 15, with no price in `content/weaponSpecs/` touched, so the whole roster re-classifies at once — the starter `blaster` lands exactly ON the break-even line and `repeater` crosses above it. **Measured first, and the report was understating it: 98% of every shot fired came off the clock**, at every point of the roster — a `novaburst` loadout funded itself out of regen as thoroughly as a fresh save did. **What that ratio is made of decides what can move it**: `collected x ENERGY_PICKUP_AMOUNT` over a floor's spend, and neither term moves with the regen rate — a floor drops ~7 refills (~210 energy) against ~2000 energy of pulls, so ~10% is the ceiling the DROP TABLE sets even at perfect collection, and the sim still reads 1-2% afterwards. Lowering regen does not raise the floor's SHARE of supply; it changes whether the shortfall is felt at all, and `ENERGY_PICKUP_AMOUNT` stayed 30 because at 2% of supply the drop's size was never the binding term. At 20/s the clock covered a continuously-firing starter outright; at 15/s it covers the unbuffed starter and nothing else, so a `rof_up` stack, a burst and the first interesting gun the floor hands you all run a deficit only the pool and the floor can pay. **22.6% of live ticks now hold a gun the pool cannot pay for (0.9% before), with average floor reached UNMOVED at 0.75.** 10/s was measured and rejected — same dry share, but average floor fell to 0.50, which is re-tuning the level rather than pacing the player; and halving regen while halving the starter's price to keep it sustainable reproduced the bug exactly, because **keeping the starter free and fixing this are the same decision**. The instrument had to be built first: the shipped sim's bot never swaps weapons, so 100% of its pulls were the one gun with no ammo economy at all. `reportFire.ts` grew `spend`, `clock%`/`floor%` and `refills(taken/spawned)` — the pair kept SEPARATE on purpose, and **the first thing it did was catch a claim this entry originally made**: the uncollected refills were blamed on the usefulness gate, with no control, when `material` (no gate at all) reads 21.2% collected against energy's 12.0% over the same runs — the bot misses ~80% of EVERYTHING, so most of that gap is pathing, and at a dozen events over 8 seeds the collection rate cannot A/B this change at all. Golden read before the bump: 2 of 6 scenarios, the other four blind by construction (a full bar makes regen a no-op) — and **both divergences were hash-only, every witness field identical**, which is a red gate nobody can read, so `Witness.energyTotal` now sits beside `hpTotal`, with an anti-vacuity assertion and a measured mutation kill. **Writing the tests is what caught the entry's own wrong answer, and one of the tests it caught was an existing one**: `"the starter blaster outruns its own drain"` ended on `energy === BASE_MAX_ENERGY`, which passes identically at both lines — the last tick of a sawtooth cannot tell climbing from flat from decaying — so its name had stopped being true with nothing red. It asserts the SHAPE now (trough of the last third = trough of the first), beside three new ones: a `rof_up` stack crossing the line (also the seconds-vs-TICKS trap — `buffedCooldown` rounds 6 ticks to 4, not 4.29, so a second `rof_up` buys nothing here), `repeater` paced rather than free, and a gate that break-even survives the conversion to ticks at all. Five go red on the old constants; the rewritten starter test deliberately does not, because a fresh save being near-identical either side IS the safety argument. `engine` `test` `tools` `docs`
 
+**[2026-09-11 — a door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md)**
+
+- **09-11** [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump) — *"这个椭圆的长边要和门的长边保持一致"*. A screenshot of a passable door with its floor halo circled. Every floor decal a door draws was an ellipse squashed by the 0.46 foreshortening every round thing in this view shares — right for the 11 doors in an east-west wall (opening 128 x 104, pool 171 x 79, long axis already along the door's) and wrong for the 13 cut through a north-south one, whose drawn arch is 64 x 94.5 and whose widest pool ring lay ACROSS it at 95 x 44. A `sides` plane now takes its aspect from the drawn opening itself (1.48), giving 95 x 140; `south` keeps the constant exactly, so no number swept on those doors moves. The x semi-axis is untouched on purpose — a ring narrower than the wall's half-thickness draws nothing at all — so the whole aspect is spent on height. **The ceiling was measured**: swept over the five shipped floors at the widest radius anything strokes, 1.48 and 1.60 put not one point in stone and 1.65 strokes 3 of the 13 into a perpendicular run, so the literal reading of the report is also what the content allows, with ~8% to spare, and both sides of that bound are now a test. **A mutation battery found the real gap in the layer the report was pointing at**: the travelling pulse and the lock-change burst handed a plane with the old squash left all 1383 scene tests green — the 2026-09-04 pass pinned how far those rings travel and nobody had asked how TALL they are. They are now held to an equality read back off the stroked geometry, every ring-drawing Graphics rather than the widest, with a `south` fixture as the control so "stretch every ring" fails too; 13 mutants, 0 survivors, including the aspect read off the passage AABB (2, not 1.48) and a constant 1.9 that would look right on this door and wrong on the next size. The battery's own first run was a lie worth recording — `--reporter=basic` does not exist in vitest 4, every run died before any test, and the harness scored all six mutants AND the baseline as survivors. Verified by pulling the real frame out of the running game, not by reading the diff. `doorLights.ts` hit 534 lines on the way and gave up its floor-plane block to `doorFloorPlane.ts` (form 1), re-exporting every moved name. `render` `test` `docs`
+
 ## The work log — by theme
 
-The same 149 entries, grouped. An entry with more than one tag appears more than once.
+The same 150 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(59)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(60)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1288,6 +1292,7 @@ The same 149 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The two mob blades get their own art](roadmap/39-2026-09-06-energy-card-capacity.md#the-third-gap-prompts-then-pixels-same-day)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 - 09-08 [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change)
+- 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
 
 **`art`** — authored assets and the art pipeline *(17)*
 
@@ -1379,7 +1384,7 @@ The same 149 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(72)*
+**`test`** — coverage sweeps, gates, mutation batteries *(73)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1453,6 +1458,7 @@ The same 149 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+- 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
 
 **`audio`** — cues, music, the engine to sound channel *(6)*
 
@@ -1539,7 +1545,7 @@ The same 149 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 
-**`docs`** — design docs and this log itself *(75)*
+**`docs`** — design docs and this log itself *(76)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1617,6 +1623,7 @@ The same 149 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+- 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
 
 **`net`** — matchmaking, sockets, reconnect *(20)*
 

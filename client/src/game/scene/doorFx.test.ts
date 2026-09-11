@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { Container, Graphics, Sprite, TilingSprite } from 'pixi.js';
 import { DoorFx, type DoorFxParts } from './doorFx';
-import { doorFloorPlane, type DoorFloorPlane } from './doorLights';
+import { doorFloorPlane, GLOW_POOL_SQUASH, type DoorFloorPlane } from './doorLights';
 import { MOTE_COUNT, PERIODS_MS } from './doorMotion';
 import { resetActiveQuality, setActiveQuality } from '../../render/quality';
 
@@ -235,6 +235,65 @@ describe('direction — the channel the whole cue rests on', () => {
     }
     expect(widestBurst).toBeGreaterThan(plane.cx);
     expect(widestBurst).toBeLessThanOrEqual(plane.span * 1.65 + 1e-6);
+  });
+
+  it('runs a travelling ring along the door own long edge, on every Graphics that draws one', () => {
+    // The 2026-09-11 report — *"这个椭圆的长边要和门的长边保持一致"* — at the FIXTURE, which is where
+    // the reporter was looking: the two arcs flanking a doorway are this class's pulse and burst,
+    // not the pool. `doorFloorPlaneCoverage` pins the shape `strokeFloorArc` draws; nothing pinned
+    // that these rings carry the plane's aspect INTO it, and a mutation run proved the gap — with
+    // `drawPulse` handed `{ ...this.plane, aspect: GLOW_POOL_SQUASH }`, all 1383 scene tests stayed
+    // green while every travelling ring in the game went back to lying across its door.
+    //
+    // Measured off the drawn geometry, never off the argument. A ring's own `rx` is the widest
+    // `|x - cx|` it strokes; its y-reach is then FIXED by the aspect — `ry * sin(acos(cx / rx))` on
+    // a `sides` plane (the lobes are cut off before the ellipse's own extreme y, which is where the
+    // wall stands) and `ry` itself on a `south` one (the southern half runs through it). Both
+    // extremes are sampled exactly by `ARC_SEGS`, so this is an equality, not a bound.
+    type Reach = { drawn: number; want: number; wantPreFix: number };
+    const yReach = (g: Graphics, plane: DoorFloorPlane): Reach | null => {
+      const pts = pathPoints(g);
+      if (pts.length < 2) return null;
+      const rx = Math.max(...pts.map(([x]) => Math.abs(x! - plane.cx)));
+      const drawn = Math.max(...pts.map(([, y]) => Math.abs(y! - plane.cy)));
+      const cut = plane.floor === 'sides' ? Math.sin(Math.acos(Math.min(1, plane.cx / rx))) : 1;
+      return { drawn, want: rx * plane.aspect * cut, wantPreFix: rx * GLOW_POOL_SQUASH * cut };
+    };
+    const check = (fx: DoorFx, plane: DoorFloorPlane, expectRings: number): void => {
+      const seen = graphicsOf(fx.over)
+        .map((g) => yReach(g, plane))
+        .filter((r): r is Reach => r !== null);
+      expect(seen.length).toBeGreaterThanOrEqual(expectRings);
+      for (const { drawn, want, wantPreFix } of seen) {
+        expect(drawn).toBeCloseTo(want, 6);
+        // ...and NOT what the pre-2026-09-11 foreshortening would have drawn — 3.2x shorter on this
+        // door. Skipped for a `south` plane, whose aspect IS that constant: there the line above is
+        // already the whole claim, and this one would contradict it.
+        if (plane.floor === 'sides') expect(drawn).toBeGreaterThan(wantPreFix * 2);
+      }
+    };
+
+    // A door cut through a north-south wall: taller than wide, so its rings are too.
+    const sides = doorFloorPlane({ x: 0, y: 0, w: OPENING_W, h: 128 }, OPENING_H);
+    expect(sides.aspect).toBeGreaterThan(1);
+    const open = build(false, 0, sides).fx;
+    open.tick(PERIODS_MS.pulse * 0.5, 1); // mid-flight: the pulse is well clear of the wall
+    check(open, sides, 1);
+
+    // ...and with the lock-change burst live as well, so the one-shot ring is covered too — it is a
+    // second Graphics, and `check` asserts every one of them rather than the widest.
+    const flipping = build(true, 0, sides).fx;
+    flipping.setLocked(false, true);
+    flipping.tick(TRANSITION_MS * 0.5, 1);
+    check(flipping, sides, 2);
+
+    // The control: the 11 east-west doors keep the floor foreshortening, and their rings stay
+    // flatter than they are wide. Without this a "just stretch every ring" fix passes.
+    const south = doorFloorPlane({ x: 0, y: 0, w: 128, h: 64 }, 104);
+    expect(south.aspect).toBeLessThan(1);
+    const southFx = build(false, 0, south).fx;
+    southFx.tick(PERIODS_MS.pulse * 0.5, 1);
+    check(southFx, south, 1);
   });
 
   it('carries motes out of the doorway toward the player, growing as they come', () => {
