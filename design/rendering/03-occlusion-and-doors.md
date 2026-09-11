@@ -980,3 +980,67 @@ radius also survived (the reach was pinned in the plane's arithmetic and nowhere
 that ships it), as did `ringTravel`'s end guard and `thresholdPlane`'s defaulted height. 25/25
 after, with two inert controls still surviving. Full account:
 [`../roadmap/24-2026-09-04-door-ring-fit.md`](../roadmap/24-2026-09-04-door-ring-fit.md).
+
+
+## A door's halo runs the way the door does (2026-09-11)
+
+Third report on the same fixture, and the one the previous two made possible — the rings are
+visible, they are at the door's centre, they are the door's size, and now their SHAPE is wrong:
+*"这个椭圆的长边要和门的长边保持一致"* (the ellipse's long axis has to run the same way the door's
+does), over a screenshot of a passable `64x128` door with its halo circled.
+
+Every floor ring on either plane was squashed by `GLOW_POOL_SQUASH` = 0.46 — the foreshortening
+every round thing in this view shares, and the right constant for a circle lying on the ground.
+What it does NOT know is which way the fixture over it runs:
+
+- **`128x64`, 11 doors** — drawn opening 128 x 104, wider than tall; widest pool ring 171 x 79.
+  The rule already held, and every alpha and luma swept on these doors depends on that number, so
+  they are untouched.
+- **`64x128`, 13 doors** — drawn arch 64 x **94.5**, half again as tall as it is wide; widest pool
+  ring **95 x 44**, lying across it. The one shape the eye is asked to attach to a doorway was
+  elongated along that doorway's short edge.
+
+`DoorFloorPlane` now carries an `aspect` — the y semi-axis per unit x semi-axis of every ring on
+the plane. `south` keeps the constant; `sides` takes `ringAspect(openingW, drawH)` = the drawn
+opening's own height over its width, 1.48 on every shipped door of that shape, for a widest pool
+ring of **95 x 140**. Read as a screen-space rule, which is what the rest of this plane already is
+(`cy` is the drawn arch's mid-height, not a ground offset): these decals sit beside a north-south
+wall, where the floor a door's light reaches is a strip ALONG that wall.
+
+**The x semi-axis is untouched on purpose.** A `sides` ring narrower than the wall's own
+half-thickness draws literally nothing, so every px of aspect is spent on height and the reach onto
+the flanking floor — plus `ringTravel`'s clamp, measured against it — is exactly what the ring-fit
+pass left. What it costs is that one of the two plane kinds is no longer foreshortened at all: a
+`sides` ring is not a circle on the ground seen at this tilt, it is a slot of light lying along the
+wall, and its ends run a little past the gap the door is cut into (70 px from a centre 47 px north
+of the threshold, against the passage's own 64).
+
+**How tall it may be is a content question, and it was measured.** A taller ring spends its extra
+height running along the wall, where the hazard is the PERPENDICULAR run at the end of that wall.
+Swept over the five shipped floors at the widest radius anything strokes (`1.65 x span`):
+
+| aspect | `sides` doors stroking into stone |
+| --- | --- |
+| 1.48 — the drawn door's own | none |
+| 1.60 | none |
+| 1.65 | 3 of 13, 2.4-4.8% of their points |
+
+So the literal reading of the report is also inside what the content allows, with ~8% to spare, and
+`doorFloorPlaneCoverage.test.ts` now asserts the bound from both sides.
+
+**The mutation battery found the gap in the layer the report was pointing at.** The two arcs a
+player sees flanking a doorway are `doorFx`'s pulse and burst, not the pool — and handing
+`drawPulse` a plane with the old squash left **all 1383 scene tests green**. The 2026-09-04 pass
+pinned how far those rings travel; nobody had asked how tall they are. `doorFx.test.ts` now reads
+the y-reach back off the stroked geometry and holds it to an equality — a ring's own `rx` is the
+widest `|x - cx|` it draws, and its y-reach is then `ry * sin(acos(cx / rx))` on a `sides` plane
+and `ry` itself on a `south` one — for every Graphics that strokes a ring rather than the widest,
+with a `south` fixture as the control so "stretch every ring" fails too. 13 mutants, 0 survivors,
+including the aspect read off the passage AABB (2, not 1.48) and a constant 1.9 that would look
+right on this door and wrong on the next size.
+
+`doorLights.ts` reached 534 lines with the rule documented, so the whole floor-plane block —
+`DoorFloorPlane`, `doorSpan`, `ringAspect`, `ringTravel`, `strokeFloorArc`, `floorArcSpans`,
+`fillFloorPool` and the two ring constants — moved to **`doorFloorPlane.ts`** (CLAUDE.md form 1),
+with `doorLights.ts` re-exporting every name so no caller or test changed. Full account:
+[`../roadmap/55-2026-09-11-door-ellipse-aspect.md`](../roadmap/55-2026-09-11-door-ellipse-aspect.md).
