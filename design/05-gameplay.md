@@ -610,7 +610,9 @@ stopped. See `roadmap/27-2026-09-04-approach-slots.md`.
 **Difficulty target, chosen 2026-08-17: hard overall.** Floor 1 passable by careful play,
 a full 5-floor extraction uncommon. After the changes the sim's careful bot clears the
 entrance room in 100% of runs, descends off floor 0 in ~37%, and dies spread across
-floors 0-3; the aggressive profile (walks into the mob's face, never rests) dies on floor
+floors 0-3; *(the descent rate was re-measured over 40 seeds on 2026-09-14 and is **15-20%**
+— the ~37% above is 3 of 8 seeds, which is the same number read off a sample too small to
+resolve it. See "the gate that was passing on luck" below.)* the aggressive profile (walks into the mob's face, never rests) dies on floor
 0. Both directions are gated in the sim so a later tuning pass can fail for being too
 lethal *or* for overshooting into a walkover. Read the bot as a LOWER bound on a human —
 it never swaps to the saber (2 damage, hits everything in the arc, parries bullets) and
@@ -1044,6 +1046,19 @@ construction (the two baseline guns are sustainable forever), now confirmed empi
 rather than only asserted. Floor 0: 217 → 189 trigger pulls, 3 of 8 complete visits either
 side, `r4_forge` clearing 38% either side. Average floor reached slips 0.8 → 0.6, which is
 the melee mobs, and stays well inside the "at least 2 of 8 careful runs descend" floor.
+*(That floor has since been restated as a RATE over 40 seeds — see immediately below — so
+"well inside" was a weaker claim at the time than it reads.)*
+
+**The gate that was passing on luck (2026-09-14).** `pveLevelSim`'s descend gate ran 8 seeds
+and demanded 2 descents. The measured descent rate is 15-20%, so that is a Bernoulli(0.17)
+sample of eight against a threshold of two: **it passed with probability ~0.34**. The first
+content change to shift `dropPrng`'s stream re-rolled it — and every content change shifts
+that stream. It was found by a change that made the level slightly EASIER and turned the gate
+red: paired over 40 seeds, 6/40 before and 8/40 after, while the 8-seed gate went 3/8 → 0/8.
+The seed set is now 40 and the threshold is a tenth of them. Nothing about the level moved;
+what moved is whether the gate can tell. The general shape is worth keeping: **a threshold set
+near a measured rate needs a sample that can resolve it**, and a gate nobody has computed the
+power of is a gate that will eventually fail for a reason that is not its own sentence.
 
 **The bot's melee share is still 0%**, so the "melee is the free fallback" half of the
 design is *unmeasured*, not verified — the careful bot never swaps to its blade (the

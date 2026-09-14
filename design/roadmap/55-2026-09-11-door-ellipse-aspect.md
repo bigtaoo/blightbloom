@@ -568,3 +568,29 @@ witness — the committed fixture shows all seven hashes moving only because `se
 walks into a side room, because a scripted stick does not path to a prop.
 
 engine 1586 → **1599**, client 6244 → **6245**.
+
+### CI found the thing the local suite could not: a gate that was passing on luck
+
+`npm run check` was green and the `sims` job went red. `pveLevelSim`'s descend gate — *"at
+least 2 of 8 careful runs descend off floor 0"* — read **0/8** against 3/8 before.
+
+The first read was that this pass had made floor 0 harder, and it is the wrong read. The gate
+is a Bernoulli sample: the careful bot's real descent rate, measured over 40 seeds, is
+**15-20%**, so eight samples against a threshold of two passes with probability **0.34**. It
+had been passing on a coin flip since the day it was written, and the thing that re-rolls that
+flip is any change to `dropPrng`'s stream — which is every content change, because
+`rollShopStock` spends three draws at floor placement and this pass moved the counter off
+floor 0.
+
+Measured properly, paired, same 40 seeds either side of the commit: **6/40 before, 8/40
+after.** The level got very slightly EASIER and the gate went red for it.
+
+So the fix is the sample, not the content and not the bar: `SEEDS` is 40 now and the threshold
+is a tenth of them (4), which sits far enough below the measurement to be stable and far enough
+above zero that a level which became a wall still fails. 40 seeds x 2 profiles runs in **4.4
+seconds** — the eight were never a cost decision, just the number somebody started with.
+
+Worth carrying past this repo: **a threshold set near a measured rate needs a sample that can
+resolve it.** Nobody had computed this gate's power, so it was always going to fail one day for
+a reason that was not its own sentence, and the day it did the obvious explanation was going to
+be wrong.
