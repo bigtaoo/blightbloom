@@ -704,11 +704,12 @@ pillars, doors and drops each went through.
   that hold their garrisons, and the only no-fight room in the level is the extraction room that
   already had no spawns. A dedicated chest-room piece placed into the floor maps is content work,
   not engine work, and it is the obvious next pass.
-- **What a chest contains.** It pays weapons. `ROADMAP` B2 — the run-buff offering flow — is the obvious tenant
-  (both this doc and `14` describe run buffs as found in "chests / rooms / shop", and today they
-  arrive as a 6/84 weight on the kill table, which is not a choice anyone makes). Chests unblock
-  it; they do not answer it. Whether a big chest hands over a **choice of buffs** the way the
-  floor cards do, or simply a fatter roll, is open.
+- **What a chest contains.** It pays weapons. `ROADMAP` B2 — the run-buff offering flow — is the
+  obvious tenant, and **the shop took the first bite of it on 2026-09-14**: a counter stocks a buff
+  as one of its three lines, so a buff is now something you can choose and pay for rather than only
+  something that falls off the kill table. What is still open is the same question this bullet
+  asked, unchanged by that: whether a chest (or a counter) hands over a **choice of buffs** the way
+  the floor cards do, rather than one line at one price.
 - **What separates a solo big chest from a small one.** One player means one mechanism, which
   that player is standing on by walking up to it, and one weapon out — so on COUNT alone the solo
   big chest is a small chest with an extra step. The flat per-capita rule above is deliberate and

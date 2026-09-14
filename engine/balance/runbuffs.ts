@@ -2,7 +2,9 @@
  * Run buffs — the in-run power layer that REPLACES affixes (design/05/09/14). With
  * the affix modifier layer cut (ROADMAP 0.1), the moment-to-moment power fantasy is
  * *finding a better weapon* + these **player-level, run-scoped** buffs: found in-run
- * (chests / rooms / shop — 05/14 to-design; the demo drops them off the DROP_TABLE),
+ * (chests / rooms / shop — 05/14; a 6/84 weight on the kill DROP_TABLE, the floor-card offer at
+ * every checkpoint, and since ENGINE_VERSION 64 one line on every SHOP counter. What is still
+ * open is the pick-one-of-three CHOICE between buffs — ROADMAP B2),
  * applied to the player and ALL held weapons, and wiped at run end (they never carry
  * out, unlike materials). They are NOT attached to a weapon.
  *
