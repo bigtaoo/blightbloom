@@ -42,7 +42,15 @@ import { preloadCoreArt, CHAR_BUNDLES, resetPreloadArt } from './preloadArt';
 import { getRigSkin } from './skinRegistry';
 import { BIOME_TILE_ASSETS, getFloorTexture, getWallTexture, getWallFaceTexture, getPillarTexture } from './biomeTiles';
 import { UI_ASSETS, getUiTexture } from './uiSkins';
-import { ENV_SPRITE_ASSETS, getPickupTexture, getDoorTexture, getPortalArchTexture, getPropTexture } from './environmentSprites';
+import {
+  ENV_SPRITE_ASSETS,
+  getPickupTexture,
+  getDoorTexture,
+  getDoorCurtainTexture,
+  getPortalArchTexture,
+  getPropTexture,
+  getShopkeeperTexture,
+} from './environmentSprites';
 import { WEAPON_DEFS, KIND_DEFAULTS, getWeaponTexture } from './weaponSkins';
 
 // The runtime, the request logs and the disk-path mapping all live in `wechatRuntimeFake.ts`
@@ -168,12 +176,27 @@ describe('WeChat runtime — every sprite loader resolved', () => {
   });
 
   it('loaded every environment sprite', () => {
-    expectRealTexture(ENV_SPRITE_ASSETS.door_locked, getDoorTexture(true));
-    expectRealTexture(ENV_SPRITE_ASSETS.door_open, getDoorTexture(false));
-    expectRealTexture(ENV_SPRITE_ASSETS.portal_arch, getPortalArchTexture());
+    // Exhaustive by construction. This used to name the doors and the arch and then loop the
+    // `pickup_`/`prop_` PREFIXES — which silently covered nothing for a key belonging to
+    // neither family, and 2026-09-14 added exactly one (`npc_shopkeeper`). A sweep that skips
+    // what it does not recognise reports the same green whether the file reached the WeChat
+    // package or not, and a missing asset on that target is invisible until a player finds it.
+    const getters: Record<string, () => unknown> = {
+      door_locked: () => getDoorTexture(true),
+      door_open: () => getDoorTexture(false),
+      door_curtain: () => getDoorCurtainTexture(),
+      portal_arch: () => getPortalArchTexture(),
+      npc_shopkeeper: () => getShopkeeperTexture(),
+    };
     for (const key of Object.keys(ENV_SPRITE_ASSETS)) {
-      if (key.startsWith('pickup_')) expectRealTexture(ENV_SPRITE_ASSETS[key], getPickupTexture(key.slice('pickup_'.length)));
-      if (key.startsWith('prop_')) expectRealTexture(ENV_SPRITE_ASSETS[key], getPropTexture(key.slice('prop_'.length)));
+      if (key.startsWith('pickup_')) getters[key] = () => getPickupTexture(key.slice('pickup_'.length));
+      else if (key.startsWith('prop_')) getters[key] = () => getPropTexture(key.slice('prop_'.length));
+    }
+    // The guard that keeps the loop honest: a key with no getter fails here rather than
+    // being skipped, so this sweep cannot go quiet the way its predecessor did.
+    expect(Object.keys(getters).sort()).toEqual(Object.keys(ENV_SPRITE_ASSETS).sort());
+    for (const [key, get] of Object.entries(getters)) {
+      expectRealTexture(ENV_SPRITE_ASSETS[key], get() as Parameters<typeof expectRealTexture>[1]);
     }
   });
 

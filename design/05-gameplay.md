@@ -903,16 +903,37 @@ line at a fixed price is an offer, not the CHOICE between buffs the floor cards 
 chest or a counter should hand over a pick-one-of-three stays open.
 
 **And a second thing, opened 2026-09-14 by the game's owner describing the shop as something it
-is not yet:** *“商店是通过房间里的 npc 打开的，不是随时可以打开的。”* **There is no shopkeeper.** The
-counter is a prop, and what opens the panel is PROXIMITY — stand inside `SHOP_INTERACT_RANGE_GRID`
+was not yet:** *“商店是通过房间里的 npc 打开的，不是随时可以打开的。”* **There was no shopkeeper.** The
+counter was a prop, and what opened the panel was PROXIMITY — stand inside `SHOP_INTERACT_RANGE_GRID`
 of it and the panel is live (`ui/shopProximity.ts`), which is also the rule `ShopSystem` refuses a
 purchase by. That is the same shape as the ground-weapon panel and it was a deliberate choice (see
 "The gesture is a tap on a row" above), but it is not what the sentence describes: a counter that
-opens because you walked near it is closer to a vending machine than to a person you talk to. What
-an NPC would change is a design question, not a rendering one — whether the shop should need an
-explicit gesture to open at all, and if so which one, given `INTERACT` already has two consumers
-(the revive channel and a chest) and was deliberately not given a third. Filed here rather than
-built, because it is a decision about the VERB and not about art.
+opens because you walked near it is closer to a vending machine than to a person you talk to.
+
+**Split in two and half of it shipped the same day.** The sentence names two separate things, and
+they have nothing to do with each other:
+
+- **"There is a person in the room."** A rendering fact. ✅ **Shipped 2026-09-14** — a shopkeeper
+  sprite (`client/public/environment/npc_shopkeeper.png`, prompt and measurements in
+  `art/npc/prompts.md`) standing one counter-depth north of the counter, in `layers.entities` on
+  its own ground point so it Y-sorts against the actors and the counter's slab crosses the bottom
+  of its silhouette. `scene/ShopLayer.ts` owns it; `render/environmentSprites.ts` loads it in the
+  `run` pack alongside the doors and the props. **Zero engine change** — no `ENGINE_VERSION`, no
+  golden re-record, no replay consequence, because nothing about the purchase rule moved.
+- **"…and that is what opens the shop."** A change to the VERB, and still open. Deliberately not
+  taken in the same pass: the panel opens on proximity today, and making it need an explicit
+  gesture means answering *which* gesture first, given `INTERACT` already carries two consumers
+  (the revive channel and a chest) and "The gesture is a tap on a row" above withheld a third on
+  purpose. Doing the art first costs that decision nothing — a proximity-opened panel and a
+  gesture-opened one both want a merchant standing there — which is exactly why it was split.
+
+The keeper is **art with no Graphics form**, which inverts this file's usual staging (walls,
+pillars, doors, drops, props and chests each shipped a procedural shape first and grew a sprite
+later, and the counter itself still has not). The reason is that the fallback question has a
+different answer for a person: a room with a hole where a wall goes is unplayable, whereas a room
+with no merchant is simply the room this section described before today. So a missing texture
+draws nothing at all, and a procedural stand-in for a CHARACTER — a second authored body plan,
+against `13`'s one — is never built.
 
 ### Floor cards: the reward becomes a choice
 

@@ -1,8 +1,9 @@
 // Standalone environment fixtures (design/05 "Room & door model", 2026-08-04) — the door
-// pair, the five in-run drop sprites and the extraction portal's arch (2026-08-20 pickup/
-// portal art pass). Same non-blocking best-effort preload pattern as biomeTiles.ts/
-// weaponSkins.ts: a missing/not-yet-generated sprite just leaves its caller on the
-// existing Graphics fallback, never blocks boot.
+// pair, the five in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
+// portal art pass), the room props (2026-08-24) and the shop's shopkeeper (2026-09-14, the
+// first PERSON in this registry rather than a fixture). Same non-blocking best-effort
+// preload pattern as biomeTiles.ts/weaponSkins.ts: a missing/not-yet-generated sprite just
+// leaves its caller on the existing Graphics fallback, never blocks boot.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';
 
@@ -36,6 +37,13 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   prop_crate: '/environment/prop_crate.png',
   prop_barrel: '/environment/prop_barrel.png',
   prop_rubble: '/environment/prop_rubble.png',
+  // The shop's shopkeeper (2026-09-14, design/05 "Shops"). Filed under `environment/`
+  // rather than `ui/` where `npc_forger.png` sits, because this one stands IN a room and
+  // is Y-sorted against the actors — the hub Forger is a corner-anchored UI sprite. It is
+  // art ONLY: nothing about the purchase verb changed, the panel still opens on
+  // `SHOP_INTERACT_RANGE_GRID` proximity, so a missing file costs the room a person and
+  // costs the run nothing.
+  npc_shopkeeper: '/environment/npc_shopkeeper.png',
 };
 
 /** Every key the getters below can resolve once preloaded — exposed so tests can assert a
@@ -101,4 +109,16 @@ export function getPortalArchTexture(): Texture | undefined {
  *  nothing else on the render side. */
 export function getPropTexture(kind: string): Texture | undefined {
   return textures.get(`prop_${kind}`);
+}
+
+/** The shop counter's shopkeeper (`scene/ShopLayer.ts`). Undefined until preloaded — and a
+ *  shop whose keeper texture never arrives simply draws no keeper, which is exactly the
+ *  room design/05 described before this art existed. Unlike every other getter here there
+ *  is no Graphics fallback behind it on purpose: a procedural blob standing behind the
+ *  counter would be a SECOND authored form of a character, and the counter's own Graphics
+ *  form is already "the current form" rather than a stand-in (see `ShopLayer.ts`'s header).
+ *  `ShopLayer` re-asks every frame until it resolves, so a late-arriving texture still
+ *  lands on a counter that was built before it. */
+export function getShopkeeperTexture(): Texture | undefined {
+  return textures.get('npc_shopkeeper');
 }

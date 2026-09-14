@@ -594,3 +594,212 @@ Worth carrying past this repo: **a threshold set near a measured rate needs a sa
 resolve it.** Nobody had computed this gate's power, so it was always going to fail one day for
 a reason that was not its own sentence, and the day it did the obvious explanation was going to
 be wrong.
+
+## Somebody is standing behind the counter (2026-09-14, client + art + docs, no engine change)
+
+> *"商店是通过房间里的 npc 打开的，不是随时可以打开的。"*
+
+The last open question the pass above left in `design/05` "Shops", filed the same day it was
+raised because it looked like a design decision. It is two, and separating them is the whole
+of this entry.
+
+### The sentence says two things, and only one of them is a design change
+
+Read as one ask it is a change to the VERB: today the shop panel opens on PROXIMITY — stand
+inside `SHOP_INTERACT_RANGE_GRID` and it is live (`ui/shopProximity.ts`), which is also the
+rule `ShopSystem` refuses a purchase by — and making it open on a gesture instead means
+answering *which* gesture. `INTERACT` already carries the revive channel and a chest, and
+"The gesture is a tap on a row" withheld a third on purpose. That decision has an
+`ENGINE_VERSION` 65→66 and a golden re-record behind it, and it is still open.
+
+But the sentence also says something with no design content at all: **there is a person in
+that room and the game does not draw one.** A counter with nobody behind it is a vending
+machine whatever opens it, and that half is a sprite. Asked which one to build, the owner
+chose the art — and the reason it is worth writing down is that the choice costs the other
+one nothing: a proximity-opened panel and a gesture-opened panel both want a merchant
+standing there. Nothing here touches `@dd/engine`. No version, no re-record, no replay.
+
+### The art is the feature, which inverts this repo's usual staging
+
+Every object in this room shipped a Graphics form first and grew a sprite later — walls,
+pillars, doors, drops, props, chests, and the shop counter itself, which still has not. So
+the default answer to "what does it draw before the art lands" is a procedural shape, and
+`ShopLayer`'s own header says in as many words that its slab and awning are *the current
+form, not a fallback waiting on a file*.
+
+The keeper is the other way round, and the missing-texture path is where that shows:
+**it draws nothing at all.** Not a placeholder body, not a blob. The asymmetry is not
+laziness, it is the fallback question having a different answer for a person — a room with a
+hole where a wall goes is unplayable, a room with no merchant is exactly the room design/05
+described yesterday — and `13` keeps ONE body plan, so a procedural stand-in for a character
+would be a second authored design of one. `npcArt.test.ts` and `ShopLayer.test.ts` both pin
+the empty path rather than leaving it as a claim in a comment, because "the counter is
+untouched" is a stronger statement than "it did not throw", and a half-built keeper container
+satisfies the second.
+
+### Where it stands, and why every number is derived
+
+The keeper is its own `Container` in `layers.entities`, **not a child of the counter**, and
+that is the one structural decision in the file. A child would inherit the counter's `zIndex`,
+and a player walking through the ~9 px gap between the merchant and the slab would sort
+against the wrong one of the two. Its own ground point means its own sort key.
+
+- `KEEPER_BACK_PX = BODY_HALF * BODY_ASPECT` — one counter-depth north. Not picked: it is
+  exactly half the counter's drawn height, which is this projection's reading of how deep the
+  counter is, so the slab crosses the bottom of the silhouette the way a real counter crosses
+  a vendor. Retuning the counter moves the keeper with it instead of leaving it embedded in
+  the furniture or floating off it.
+- `KEEPER_WIDTH_PX = 28` — the art brief's own stated display width, which is what its
+  silhouette and its *no detail finer than one sixth of the width* rule were drawn against.
+  It sits just under a player's 32 px drawn body (`PLAYER_BASE.radius` × 2), so a shopkeeper
+  reads as a person of the same world without out-sizing the player standing at it.
+- Height comes from the art's aspect, never from a constant — the rule every sprite in this
+  scene follows, because aspect is the art's to choose and a number in the code silently
+  re-proportions a replacement file.
+- No tint. A prop takes `propTint(palette)` so it reads as part of *this* room; `13` reserves
+  runtime re-tinting for the neutral-grey critter body and withholds it from anything carrying
+  its own colours, which a character does.
+
+The keeper is also re-asked for every frame until its texture resolves, rather than only at
+`create()`. `preloadEnvironmentSprites()` is awaited at the run gate so in practice a shop is
+never built ahead of it — but a view is rebuilt only when something destroys it, so a
+`create()`-only keeper would have left *that* shop keeperless for its whole floor, invisibly.
+Two lines to make impossible; impossible to notice if it ever happened.
+
+And it takes the same `RoomBuilder.build` guard the mat does, one layer over. That sweep
+destroys every child of `layers.ground`, which is what `ShopLayer` hit loudly and `ChestLayer`
+swallowed for a version (v64's entry above); the keeper lives in `layers.entities` and is no
+more the owner of that container than the mat is of its own.
+
+### The generation arrived with the 2026-08-24 defect, in a prompt written to prevent it
+
+The brief carried both hard-won paragraphs: the anti-checkerboard one (`pillar_neutral_raw.png`
+came back with a transparency checkerboard *painted in* as opaque squares, which no preview can
+tell from an alpha channel) and a no-glow/no-cast-shadow one (the game draws both). Neither
+made the generator produce clean alpha. It came back **a body at 253 inside a veil of alpha
+1-10**, the exact room-prop defect class, and needed `alphaClamp.mjs` exactly as every prop did.
+Asking for clean alpha in the prompt is worth doing and is not a substitute for measuring.
+
+What that veil would have cost, had the clamp not run first: `compress.mjs` trims on
+`alpha !== 0`, so the shipped file would have been **1058x1393, aspect 0.760** instead of
+864x928, **0.931** — 22% wrong — with a band of empty rows underneath that a bottom-anchored
+sprite turns into clearance between the merchant and the floor. The check that proves the
+clamp ran is the one `alphaClamp`'s own header names, and it is not "the audit says clean":
+**the trimmed bbox must equal the bbox measured at `alpha > 25` on the ORIGINAL.** Both 0.931.
+
+```
+alphaClamp: cleared 12866 px (0.818%) at alpha <= 8, solidified 427105 px (27.161%) at alpha >= 250
+compress:   729650 B -> 110070 B (-84.9%),  1080x1456 -> 298x320
+```
+
+### The one place the art disagreed with the brief, and the rule it broke
+
+The prompt asked for 28:38, i.e. aspect **0.737**. It came back **0.931** — squarer and
+stubbier than specified. Recorded rather than regenerated, because the scaling rule absorbs it:
+sized by width, the figure simply stands 30 px rather than 38, still clearing the counter's
+awning apex by ~10 px. What it does mean is that the composition now depends on a property of
+the FILE, so `npcArt.test.ts`'s last block drives the real file's dimensions through the real
+layer and measures where the head lands against the real counter's bounds. A replacement much
+wider than tall files the merchant's head behind the awning — a defect with no failing test
+anywhere else in the repo and none that coverage could ever reach.
+
+### The value band an NPC needs is the opposite of a prop's, on one side
+
+Every tone assertion in `propArt.test.ts` pushes dressing DOWN into the stonework (`p50` 35-60
+against the floor's own 39-49) so that `13`'s *environment desaturated, hazards saturated* keeps
+a crate from reading as loot. Applied unchanged to a character it produces a smudge behind a
+counter. So the keeper is bounded on BOTH sides instead: `p50` **103**, which is 61 above the
+barrel it stands near and 64 below the pickup it must never be mistaken for, with saturation
+carrying the not-a-hazard half on its own (chroma **49.8**, against an elemental body's 151.5
+and the hub Forger's already-accepted 68.7).
+
+**The controls are the part worth copying.** This generation was accepted first time, so unlike
+the rubble there is no `_alt` reject to re-measure — and a band with nothing on the wrong side of
+it is a band nobody has tested. Both rules are therefore written as PREDICATES and run over
+shipped files chosen to fail them: the pickup crate and the stone barrel must both fall outside
+the person band, and a skirmisher shell must fail the chroma bound. Plus one in the other
+direction, which is why the bound is 80 rather than 55 — `npc_forger.png` must PASS it. A rule
+tightened until only one file satisfies it is a rule about that file.
+
+### Gates
+
+All four of the day's required checks green: `npm run check` (typecheck, file length, WeChat
+packages, docpaths, all suites), `npm run check:logic`, `npm run test:sims` — run despite nothing
+touching the engine or content, because it is a required check — and `npm run coverage`, which is
+deliberately NOT part of `check` and is the one that has to be asked for. 12 new tests in
+`scene/npcArt.test.ts` and 11 in `scene/ShopLayer.test.ts` (20 in that file now), plus the loader
+repairs the battery below forced in `render/environmentSprites.test.ts` and
+`render/wechatAssetLoad.test.ts`. The new PNG
+lands in the `run` pack by the no-rule-means-`run` default in `assetPacks.json`, which reads
+**116 files, 2.43 MB / 4.00 MB** after it. `alpha-audit.mjs` calls `client/public/environment/`
+12 clean of 13 — the one flagged file is `door_curtain_raw.png`, which is deliberately additive
+VFX and has been the standing exception since 2026-08-30b.
+
+### The battery, and the five things a green suite was not saying (same day, tests only)
+
+Twenty tests across two files, all green, and the only honest way to find out what they pinned was
+to break the code on purpose. **17 mutants, 16 live** (the seventeenth stopped existing — see M10)
+— green baseline either side, every mutant reverted in a `finally`, and `encoding='utf-8',
+errors='replace'` on the subprocess, because on Windows cp1252 cannot decode the box-drawing
+characters vitest prints on FAILURE and the whole battery then reports as CRASHED.
+
+**First pass: 10/15 killed. All five survivors were real.**
+
+- **`??=` → `=` on the lazy texture attach.** The keeper is re-asked for every frame; written as
+  a plain assignment it rebuilds the container and adds a fresh child to `layers.entities` sixty
+  times a second. Nothing failed, because each new keeper draws exactly where the last one did —
+  a leak with no symptom. The sibling "reuses the same counter across frames" test had been
+  checking `children[0]` only, and the keeper is `children[1]`.
+- **`v.keeper = null` at the end of `dispose`.** Deleting it survived everything, and the mutant
+  was right: every caller discards the view in the same breath (the teardown loop deletes it,
+  `clear()` empties the map, the destroyed-guard sets `v = undefined` before rebuilding), so
+  nothing ever reads the field again. It read as defensive and was unreachable. **Deleted rather
+  than tested** — a line no test can distinguish is a line making a promise nobody checks.
+- **`KEEPER_BACK_PX` doubled.** Every test derived its expectation from the imported constant, so
+  the constant's own VALUE was unpinned in both directions. What makes it right is a relation, not
+  a number: the counter's slab has to cross the keeper's base, or the merchant stops reading as
+  standing *behind* a counter and starts floating above one. That was unstatable while the slab's
+  height was a local `h` inside `create()`, so it is now `COUNTER_HEIGHT_PX`, exported for exactly
+  the reason `propRender` exports its metrics, and `0 < KEEPER_BACK_PX < COUNTER_HEIGHT_PX` is
+  asserted both as arithmetic and against the drawn positions.
+- **`getShopkeeperTexture` pointing at the wrong key**, and **the registry row deleted outright.**
+  Both survived *the entire repo*. `ShopLayer.test.ts` and `npcArt.test.ts` both `vi.mock` the
+  loader module, so nothing anywhere asked the real registry a question, and the shipped symptom
+  is the quietest one this pass has: the getter returns `undefined` forever, `ShopLayer` draws no
+  merchant *by design*, and the room looks exactly like the room did yesterday.
+
+That last pair is the one worth carrying, because **this file had already been burned by it once**
+— `environmentSprites.test.ts`'s own header records that dropping the `prop_` prefix from
+`getPropTexture` survived the whole suite, found by mutation, in August. The fix that time was one
+more line in a hand-written list, and a hand-written list only covers what somebody remembered to
+add. So the fix this time is a structure: a `GETTERS` table pinned **set-equal to
+`ENV_SPRITE_ASSET_KEYS`**, which makes a registry row with no getter behind it a failure rather
+than a skip, and sweeps every key through its own getter after a real preload.
+
+**The same blindness, one layer out.** `wechatAssetLoad.test.ts`'s *"loaded every environment
+sprite"* named the doors and the arch and then looped the `pickup_`/`prop_` **prefixes** — so a
+key in neither family was silently not checked, and this pass added exactly one. On that target
+the consequence is not cosmetic: it is the sweep that proves a file actually reached its WeChat
+package, and it would have reported the same green either way. Rebuilt exhaustive, with the
+key-set equality assertion in front of the loop so it cannot go quiet again.
+
+**And one assertion that could never have failed.** `it('every registered key points at a distinct
+real path under /environment/')` built its `Set` from the KEYS — which come out of `Object.keys`
+and are unique by construction. Its name said paths. Two keys pointing at one file is a real
+copy-paste mistake (duplicate a row, change the key, forget the path) and a silent one: both
+getters return a texture and one of them is the wrong picture. Now checked on the values.
+
+**Second pass: 16/16.** Plus two mutants the new tests made worth writing — `KEEPER_BACK_PX` → 0
+(the merchant standing *inside* the counter) and the registry row pointed at `prop_barrel.png`
+(a duplicate path) — both killed. Per-file coverage on `ShopLayer.ts` and `environmentSprites.ts`
+went 96.42%/92.30% branches to **100%/100%**, which was a side effect rather than the goal: the
+one branch the first battery left uncovered was `dispose` meeting an already-destroyed COUNTER,
+the exact case the mat has had a test for since v64 and the body never did.
+
+### What this does NOT do
+
+It does not answer the verb. The panel still opens because you walked near the counter, and
+`design/05` now carries that as a named open half rather than as the whole question it was this
+morning. Whoever takes it gets to decide whether a third `INTERACT` consumer is finally worth it
+or whether the shop wants a gesture of its own — and gets to do it with a merchant already
+standing there to attach it to.
