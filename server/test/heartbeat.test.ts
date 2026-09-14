@@ -123,7 +123,10 @@ describe('startHeartbeat', () => {
     // Asserted against the compose file's own list of entrypoints rather than a hardcoded
     // four, so a fifth service cannot be added without either beating or failing here.
     const serverRoot = fileURLToPath(new URL('..', import.meta.url));
-    const compose = readFileSync(join(serverRoot, 'docker-compose.yml'), 'utf8');
+    // LF-normalised like the two deploy manifest suites: this file is CRLF in a Windows
+    // worktree and LF in CI (`core.autocrlf=true`, no `.gitattributes`), so a pattern that
+    // grows a line anchor later must not start depending on which machine ran it.
+    const compose = readFileSync(join(serverRoot, 'docker-compose.yml'), 'utf8').replace(/\r\n/g, '\n');
     const bundles = [...compose.matchAll(/command: \["node", "(\w+)\.mjs"\]/g)].map((m) => m[1]!);
     expect(bundles.sort()).toEqual(['adminsvc', 'backup', 'billsvc', 'index', 'matchsvc']);
 

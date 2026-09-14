@@ -176,13 +176,6 @@ export interface DungeonRoomRuntime {
   schedule: { atTick: number; spawnPoint: number; enemyType?: string }[];
   cursor: number;
   hasLiveEnemy: boolean;
-  /** Has this room already handed out a weapon drop? (design/05 per-floor weapon
-   *  allowance, 2026-09-05.) The floor's quota alone bounds the COUNT; this bounds
-   *  the CONCENTRATION — without it a floor legitimately satisfies "2-3 weapons" by
-   *  dropping all of them off the first garrison and leaving the other five rooms
-   *  bare, which is the same problem in a different shape. Reset per floor along with
-   *  the rest of this runtime (SpawnSystem's fresh-floor path). */
-  weaponDropped: boolean;
 }
 
 /**

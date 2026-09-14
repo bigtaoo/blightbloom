@@ -105,11 +105,19 @@ export const pl: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: 'Broń w pobliżu' },
+    shop: {
+      title: 'Sklep  {coins}',
+      price: '{price}',
+      sold: 'SPRZEDANE',
+      heal: 'Mikstura leczenia',
+      energy: 'Ogniwo energii',
+    },
     chips: {
       floor: 'PIĘTRO',
       room: 'POKÓJ',
       enemies: 'WROGOWIE',
       banked: 'ZŁOŻONE',
+      coins: 'MONETY',
       score: 'WYNIK',
       buffs: 'WZMOCNIENIA',
       alive: 'ŻYJE',
@@ -324,7 +332,7 @@ export const pl: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Strumień życia', desc: 'Mikstury wypadają {factor}x częściej' },
-    arsenal: { name: 'Arsenał', desc: '+{bonus} broń na piętro' },
+    windfall: { name: 'Gratka', desc: 'Monety są warte {factor}x' },
     edge: { name: 'Ostrze', desc: '+{value}% obrażeń' },
     cadence: { name: 'Kadencja', desc: '+{value}% szybkości strzału' },
     bulwark: { name: 'Szańc', desc: '+{value} maks. PZ' },

@@ -74,11 +74,13 @@ import { BRAD_FULL } from '@dd/engine/math/trig';
 
 /** Bumped only for a BREAKING change to the shape below; unrelated to `ENGINE_VERSION`. A
  *  save written by a different reader is discarded rather than guessed at. */
-export const RUN_SAVE_VERSION = 1;
+export const RUN_SAVE_VERSION = 2; // 2: `shopBuyId` joined the packed command (design/05 "Shops")
 
-/** `[tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote]` — see the header
- *  for why the stream is stored positionally. */
-type PackedCommand = readonly [number, number, number, number, number, number, number];
+/** `[tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote, shopBuyId]` — see the
+ *  header for why the stream is stored positionally. Appending a field is a BREAKING change to
+ *  a positional format, which is what `RUN_SAVE_VERSION` 2 is for: an old save's 7-tuple is
+ *  refused whole rather than read with one field guessed at. */
+type PackedCommand = readonly [number, number, number, number, number, number, number, number];
 
 /** An unfinished run, as it sits in storage. */
 export interface SavedRun {
@@ -181,7 +183,11 @@ export function packRunSave(opts: {
     skinId: opts.config.skinId ?? '',
     loadout: [...(opts.config.loadout ?? [])],
     commands: opts.commands.map(
-      (c) => [c.tick, c.owner, c.moveBrad as number, c.moveMag, c.buttons, c.pickupTargetId, c.cardVote] as const,
+      (c) =>
+        [
+          c.tick, c.owner, c.moveBrad as number, c.moveMag, c.buttons,
+          c.pickupTargetId, c.cardVote, c.shopBuyId,
+        ] as const,
     ),
     ticks: opts.ticks,
     floorIndex: opts.floorIndex,
@@ -244,7 +250,7 @@ export function checkResumable(save: SavedRun, config: EngineConfig): RunSaveRef
 
 /** The saved stream as real `PlayerCommand`s, in the order it was recorded. */
 export function unpackCommands(save: SavedRun): PlayerCommand[] {
-  return save.commands.map(([tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote]) => ({
+  return save.commands.map(([tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote, shopBuyId]) => ({
     type: 'input' as const,
     owner,
     tick,
@@ -253,6 +259,7 @@ export function unpackCommands(save: SavedRun): PlayerCommand[] {
     buttons,
     pickupTargetId,
     cardVote,
+    shopBuyId,
   }));
 }
 
@@ -261,15 +268,15 @@ function isInt(v: unknown): v is number {
 }
 
 function asPackedCommand(v: unknown): PackedCommand | null {
-  if (!Array.isArray(v) || v.length !== 7) return null;
+  if (!Array.isArray(v) || v.length !== 8) return null;
   for (const n of v) if (!isInt(n)) return null;
-  const [tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote] = v as number[];
+  const [tick, owner, moveBrad, moveMag, buttons, pickupTargetId, cardVote, shopBuyId] = v as number[];
   if (tick! < 1 || owner! < 0) return null;
   // A brad is 0..BRAD_FULL-1 (math/trig). Range-checked here for the same reason
   // `parseReplayFile` checks it: this is where an untrusted number enters the branded world,
   // and an out-of-range angle indexes off the end of the sin/cos table rather than failing.
   if (moveBrad! < 0 || moveBrad! >= BRAD_FULL) return null;
   if (moveMag! < 0 || moveMag! > 255) return null;
-  if (buttons! < 0 || pickupTargetId! < 0 || cardVote! < 0) return null;
-  return [tick!, owner!, moveBrad!, moveMag!, buttons!, pickupTargetId!, cardVote!] as const;
+  if (buttons! < 0 || pickupTargetId! < 0 || cardVote! < 0 || shopBuyId! < 0) return null;
+  return [tick!, owner!, moveBrad!, moveMag!, buttons!, pickupTargetId!, cardVote!, shopBuyId!] as const;
 }

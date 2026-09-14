@@ -194,6 +194,10 @@ export function wireHud(d: WiringDeps): void {
   // ...and the press CARRYING that click is swallowed, instead of fire being gated on the
   // panel being open at all (see CommandBuilder.suppressFireUntilRelease).
   d.hud.weaponPickupPrompt.onPressStart = () => d.builder.suppressFireUntilRelease();
+  // Shop counter (design/05 "Shops", ENGINE_VERSION 64) — the same shape again: a row tap
+  // latches the offer id, and the press carrying it is swallowed so buying never also shoots.
+  d.hud.shopPrompt.onBuy = (id) => d.builder.requestShopBuy(id);
+  d.hud.shopPrompt.onPressStart = () => d.builder.suppressFireUntilRelease();
   // In-run pause button (see HudView.pauseBtn's own doc comment): the same pause() the
   // Escape/P key already calls, guarded by the same `!online` check (pause freezes the local
   // sim loop unconditionally — see ScreenNav's own note on why that is unsafe for a shared

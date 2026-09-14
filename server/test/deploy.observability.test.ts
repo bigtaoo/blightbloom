@@ -18,7 +18,19 @@ import { join } from 'node:path';
 import { createLogger } from '../src/log';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
-const read = (rel: string): string => readFileSync(join(serverRoot, rel), 'utf8');
+/**
+ * LF-normalised, for the reason `deploy.manifests.test.ts`'s own `read()` spells out:
+ * `core.autocrlf=true` with no `.gitattributes` makes every one of these files CRLF in a
+ * Windows worktree and LF in CI.
+ *
+ * Nothing here is known to be broken without it — the patterns below end their lines with
+ * `$` or `\S+`, and a `\r` happens to survive both (JS counts CR as a line terminator, so
+ * multiline `$` matches in front of one). That is a fact about the regex engine, not about
+ * these assertions, and it stops being load-bearing the moment somebody writes the one
+ * pattern that anchors on a literal `\n` instead — which is exactly how the sibling file
+ * broke. Normalised so the property holds by construction rather than by luck.
+ */
+const read = (rel: string): string => readFileSync(join(serverRoot, rel), 'utf8').replace(/\r\n/g, '\n');
 
 const compose = read('docker-compose.yml');
 const alloy = read('monitoring/alloy/config.alloy');

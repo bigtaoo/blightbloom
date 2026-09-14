@@ -684,7 +684,7 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
       dungeon: { config: TINY_DUNGEON, library: EMBER_ROOMS },
     });
     for (let i = 0; i < roomCount; i++) {
-      s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false, weaponDropped: false });
+      s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false });
     }
     return s;
   }

@@ -472,7 +472,7 @@ describe('a swing that cannot finish', () => {
 
     const cmd: PlayerCommand = {
       type: 'input', owner: 0, tick: s.tick, moveBrad: 0 as Brad, moveMag: 0,
-      buttons: Button.SWAP_WEAPON, pickupTargetId: 0, cardVote: 0,
+      buttons: Button.SWAP_WEAPON, pickupTargetId: 0, cardVote: 0, shopBuyId: 0,
     };
     new ApplyInputSystem().tick(s, [cmd]);
 

@@ -10,6 +10,7 @@ export { StatusEffectSystem } from './StatusEffectSystem';
 export { DeathDropsSystem } from './DeathDropsSystem';
 export { PickupSystem, pickupWouldApply } from './PickupSystem';
 export { ChestSystem } from './ChestSystem';
+export { ShopSystem } from './ShopSystem';
 export { SpawnSystem } from './SpawnSystem';
 export { DoorSystem } from './DoorSystem';
 export { ExtractionSystem } from './ExtractionSystem';

@@ -112,6 +112,20 @@ export interface PlayerActor extends Actor {
   energy: number;
   maxEnergy: number;
 
+  /** Coins — the in-run currency a shop room spends (design/05 "Shops", 2026-09-14).
+   *
+   *  **Per-seat, not a shared purse**, on the owner's call. It is the same rule the big
+   *  chest already runs on: what a party shares is the coordination, never the wallet.
+   *  A shared purse would need a deterministic arbitration for "who spent it" the frame
+   *  two seats buy at once, and would let one player spend the squad's floor; per-seat
+   *  needs neither, and a seat's own balance is the one number its own HUD can show
+   *  without asking anyone else.
+   *
+   *  Run-scoped like `buffs` and `energy`: wiped at run end, never banked, never merged
+   *  at a checkpoint, never handed to the meta layer. `bankedMaterials` stays the only
+   *  carry-out (design/05/14) — a coin cannot become account value by any path. */
+  coins: number;
+
   /** Which slot of the open floor-card offer this seat has voted for: 1..3, or 0 for
    *  "has not chosen" (design/05, ENGINE_VERSION 58). Sim state rather than a one-tick
    *  latch, unlike `confirmExtract`/`confirmDescend`, for two reasons: a vote is
@@ -138,6 +152,11 @@ export interface PlayerActor extends Actor {
   // latches then clears it, same convention as confirmExtract/confirmDescend above),
   // so PickupSystem reads it directly with no edge detection of its own.
   pickupTargetId: number;
+  // The ShopOffer.id this tick's command asked to buy (design/05 "Shops", 2026-09-14).
+  // 0 = none. Same one-tick-pulse convention as `pickupTargetId` above and read the same
+  // way by `ShopSystem`; a separate field because the two id SPACES are separate (see
+  // `GameState.nextShopId`).
+  shopBuyId: number;
   // Co-op downed/revive (design/05/07, ROADMAP 3.2). A lethal hit sends a player
   // `downed` (frozen, 0 HP, `alive` stays true) instead of dead; a teammate revives
   // it via a sustained INTERACT channel. `alive` becomes false only on a permanent

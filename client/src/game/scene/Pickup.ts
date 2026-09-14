@@ -21,6 +21,7 @@ const PICKUP_GLOW: Record<PickupKind, number> = {
   material: THEME.colors.pickupMaterial,
   bandage: THEME.colors.pickupHeal, // shares heal's hue on purpose: same "restore" family, own sprite
   energy: THEME.colors.pickupEnergy, // its own hue — see the theme entry for why it is the cool one
+  coin: THEME.colors.pickupCoin, // gold; separated from `material` by shape, not hue (see the theme entry)
 };
 
 // Ambient hover, deliberately in the same band as the scene's other idle loops —
@@ -176,6 +177,17 @@ export class Pickup extends Entity {
       const color = THEME.colors.pickupEnergy;
       gfx.circle(0, 0, 8).stroke({ color, width: 2, alpha: 0.8 });
       gfx.poly([1, -8, -5, 1, -0.5, 1, -1, 8, 5, -1, 0.5, -1]).fill({ color });
+    } else if (kind === 'coin') {
+      // A struck disc with a rim and an off-centre highlight — "money" (design/05 "Shops").
+      // Drawn rather than sprited for the same reason `energy` is: no coin art ships yet,
+      // and the staged rollout walls/pillars/doors/chests each went through starts here. The
+      // rim is what does the work against `material`'s crystal at a glance — same warm band,
+      // different silhouette, which is design/13's dual-channel rule applied the one way
+      // round it can be when the colour genuinely should not move.
+      const color = THEME.colors.pickupCoin;
+      gfx.circle(0, 0, 7).fill({ color });
+      gfx.circle(0, 0, 7).stroke({ color: 0xfff6d5, width: 1.5, alpha: 0.85 });
+      gfx.circle(-2, -2, 2).fill({ color: 0xfffbe6, alpha: 0.75 });
     } else if (kind === 'crate') {
       // A plain square outline — "unknown," contents unresolved (design/15 anti-cheat
       // loot reveal). Flips to one of the shapes above the instant it resolves.

@@ -32,9 +32,11 @@ One run, floor-based push-your-luck:
 Loadout (bring up to 2 weapons; every free slot filled by kind — a run always carries a gun + a melee weapon)
    → enter floor 1 (seeded)
       → work through (some of) its rooms — not all of them are fights:
-         · combat rooms: kill, pick up weapons & materials
+         · combat rooms: kill, pick up materials, coins, buffs and supplies
+           (never a weapon — since 2026-09-14 a kill cannot drop one)
          · chest rooms: open a small chest solo, or a big chest with the
-           whole party standing on its mechanisms  (locked 2026-09-14, NOT BUILT)
+           whole party standing on its mechanisms
+         · a shop counter: spend this run's coins on a weapon, a buff or a supply
       → reach this floor's EXTRACTION ROOM
          → DESCEND (materials so far are locked into the carry-out bag — deeper
            = better; the bag is still forfeited whole by a later death)
@@ -47,8 +49,12 @@ Loadout (bring up to 2 weapons; every free slot filled by kind — a run always 
    → back to loadout
 ```
 
-- **Weapons found this run are the moment-to-moment power fantasy — and all of it is ephemeral.** The kit you build this run — a better weapon (higher rarity, or a frame×element that counters the room, `03`) plus **run-scoped buffs** (the in-run power layer, Soul-Knight style; there are no weapon affixes, `14`) — is wiped at run end. This is `06`'s "in-run resources/drops are engine state, wiped each match."
-- **Materials are the only carry-out**, and the deeper you go the better they get. Weapon *finds* stay random at every depth — depth buys material quality, not guaranteed weapons.
+- **Weapons are FOUND, and all of it is ephemeral.** Since 2026-09-14 a kill never drops one:
+  a run's weapons come from a chest, from the boss, or from a shop counter ("Weapons are found,
+  not dropped", below). The kit you build this run — a better weapon (higher rarity, or a frame×element that counters the room, `03`) plus **run-scoped buffs** (the in-run power layer, Soul-Knight style; there are no weapon affixes, `14`) — is wiped at run end. This is `06`'s "in-run resources/drops are engine state, wiped each match."
+- **Materials are the only carry-out**, and the deeper you go the better they get. Coins are
+  the in-run currency a shop spends and are wiped with everything else (below); nothing turns
+  one into account value. Weapon *finds* stay random at every depth — depth buys material quality, not guaranteed weapons.
 - **Only the boss floor ends a run.** ✅ **Changed 2026-09-10, `ENGINE_VERSION` 61.** A floor's checkpoint used to offer a real two-way choice — **extract** (end the run, keep everything) or **descend** — and the extract half is gone on every floor but the last. An interior checkpoint now offers descend and nothing else; the boss floor offers extract and nothing else. `ExtractionSystem` ignores whichever button the floor does not offer, and `PortalPrompt` draws only the one it does, so the two ends of the decision cannot disagree.
 
   What that costs, stated plainly: **materials can no longer be banked without beating the boss.** Descending still folds this floor's buffer into the run's carry-out bag, and that bag is *still* forfeited whole by a death (the locked wipe rule above) — so the bag is now at risk for the entire run rather than up to the next checkpoint. The carry-out became the boss's reward instead of a per-floor withdrawal.
@@ -629,7 +635,7 @@ Every actor has **two defensive pools**; the character (skin, `02`) contributes 
 
 ## Pickup rules
 
-Three pickup classes, split by **whether the player must make a choice**. Materials and consumables are pure upside → automatic; weapons are a trade-off → click-driven. All pickup/effect logic runs **inside the sim tick off deterministic state** (`06`/`08`) — identical on every client; only the weapon-pickup panel's rendering is render-only (the click itself is a real command, see below).
+Three pickup classes, split by **whether the player must make a choice**. Materials, coins and consumables are pure upside → automatic; weapons are a trade-off → click-driven. All pickup/effect logic runs **inside the sim tick off deterministic state** (`06`/`08`) — identical on every client; only the weapon-pickup panel's rendering is render-only (the click itself is a real command, see below).
 
 - **Materials — auto, into the floor buffer.** Walking within a material's pickup radius auto-collects it into **this floor's un-banked buffer** (a temporary bag). There is no save action to bank it — banking is the **extraction-room checkpoint**: when you **DESCEND or EXTRACT**, the floor buffer merges into the run's carry-out bag (the only thing that leaves a run, above). The carry-out only becomes *account* materials on a successful **EXTRACT**; a run-ending death or team wipe forfeits the **whole un-extracted carry-out** (this floor's buffer plus everything descended-but-not-extracted this run) — that at-risk pile is exactly the "bank now or dive deeper" stake (see the co-op wipe decision in Open questions). The persistent account stash is never at risk. ✅ **Shipped 2026-07-24 (ROADMAP 1.4/1.5, `ENGINE_VERSION` 15, additive):** `PickupSystem` sums a collected material's qty into `state.floorMaterials`; `ExtractionSystem` (new step 12) merges it into `state.bankedMaterials` on either resolution and resets the buffer — a run-ending death simply never reaches that merge, which **is** the forfeit rule, no extra code needed. The EXTRACT/DESCEND choice itself: reaching the per-floor checkpoint (this floor's waves exhausted, no enemies left) opens a window where a **sustained INTERACT hold** (~1 s, mirrors the revive-channel's held-vs-tapped precedent) resolves EXTRACT, and a **tap** (hold released early) resolves DESCEND — first-pass input mapping, `10`'s UI/HUD work may refine the actual button feel. The last floor has no descend option, but still needs the same explicit EXTRACT press as every other floor before the run ends — it does NOT auto-resolve the instant the boss dies (dropped 2026-08-12: an instant, no-gesture resolution ended the run the same tick the boss died, before the player could ever walk over to its own death drops). *Runs today on the demo's single arena/wave-list, not yet a distinct `RoomPiece` per floor — see `09`'s dungeon-assembly note.* **Since `ENGINE_VERSION` 61 there is no EXTRACT/DESCEND choice to make ("Only the boss floor ends a run", above): an interior checkpoint offers only DESCEND, so the buffer still merges into the carry-out bag exactly as described, but the bag now only becomes account materials at the BOSS floor's portal. Every sentence above about the forfeit rule is unchanged and strictly more load-bearing — the at-risk pile no longer has an early exit.**
 - **Consumables — auto-apply, but only when useful.** An instant item (healing pickup = flat **+1 HP**, `07`/`09`) is consumed on contact, no inventory. To avoid overheal waste with **no item bag**, the pickup radius only triggers **when the effect would actually do something** — at full HP the health pickup is left on the floor for you to grab later. Same rule generalizes to any future instant item (shield/temp buff): auto-grab only if it changes state. ✅ **Shipped 2026-09-03 (`ENGINE_VERSION` 54):** `PickupSystem`'s `pickupWouldApply` gate, per-player (so a full-HP teammate standing on a heal cannot deny it to a hurt one). It had been unimplemented since this rule was written — `apply` clamped with `Math.min` and consumed the item regardless, binning the only thing in the game that restores the only pool nothing else restores. A run buff is deliberately NOT gated by it: its cap is applied Σ-then-clamp at *use* time, so "already wasted" is not a question the pickup site can answer, and a buff is a stack entry rather than an instant item.
@@ -667,15 +673,13 @@ pillars, doors and drops each went through.
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
-- **A chest's payout counts against the floor's weapon allowance, and the allowance is a FLOOR
-  rather than a ceiling.** A chest opened mid-floor leaves the capstone's shortfall payment
-  correspondingly smaller ("Loot economy" below), so what chests changed is WHERE a floor's
-  weapons come from. Two cases exceed the quota on purpose. A big chest in a full party pays per
-  seat: the per-capita promise outranks a number written for one player. And the shipped level's
-  big chest sits in the capstone room, whose shortfall is normally already paid by the time
-  anyone stands on a plate — measured in a live solo run, a quota of 3 ended the floor at 4. That
-  second case is the one worth naming, because it is the honest shape of the reward: a find that
-  only re-routed loot the floor already owed would pay nothing for having searched.
+- **A chest's payout IS the floor's weapon supply.** ~~It counts against the floor's weapon
+  allowance, and the allowance is a FLOOR rather than a ceiling.~~ **Superseded 2026-09-14**
+  (`ENGINE_VERSION` 64): the allowance is gone along with the kill-table weapon entry that
+  motivated it ("A floor's weapon ALLOWANCE" below), so there is nothing left to charge a chest
+  against. What used to be a re-routing of loot the floor already owed is now the loot itself,
+  which is what the paragraph this replaced was reaching for: a skipped chest room is a floor
+  with fewer weapons in it.
 
 ### The constraints this inherited, and how each was met
 
@@ -700,11 +704,12 @@ pillars, doors and drops each went through.
   that hold their garrisons, and the only no-fight room in the level is the extraction room that
   already had no spawns. A dedicated chest-room piece placed into the floor maps is content work,
   not engine work, and it is the obvious next pass.
-- **What a chest contains.** It pays weapons. `ROADMAP` B2 — the run-buff offering flow — is the obvious tenant
-  (both this doc and `14` describe run buffs as found in "chests / rooms / shop", and today they
-  arrive as a 6/84 weight on the kill table, which is not a choice anyone makes). Chests unblock
-  it; they do not answer it. Whether a big chest hands over a **choice of buffs** the way the
-  floor cards do, or simply a fatter roll, is open.
+- **What a chest contains.** It pays weapons. `ROADMAP` B2 — the run-buff offering flow — is the
+  obvious tenant, and **the shop took the first bite of it on 2026-09-14**: a counter stocks a buff
+  as one of its three lines, so a buff is now something you can choose and pay for rather than only
+  something that falls off the kill table. What is still open is the same question this bullet
+  asked, unchanged by that: whether a chest (or a counter) hands over a **choice of buffs** the way
+  the floor cards do, rather than one line at one price.
 - **What separates a solo big chest from a small one.** One player means one mechanism, which
   that player is standing on by walking up to it, and one weapon out — so on COUNT alone the solo
   big chest is a small chest with an extra step. The flat per-capita rule above is deliberate and
@@ -746,35 +751,120 @@ What replaces drinking is the shield's idle regen (`07`'s two-pool health), whic
 there and was simply being drowned out. "Clear it without getting hit" cannot be the goal in a
 game that refills you every fifth kill.
 
-### A floor's weapon ALLOWANCE, not a weapon weight
+### A floor's weapon ALLOWANCE — deleted 2026-09-14, and what replaced it
+
+*This whole mechanism is gone (`ENGINE_VERSION` 64). It is described here because it ran for
+nine days and because what replaced it only makes sense against it.*
 
 "2 to 3 per floor" is not something a drop weight can express: at ~60-77 enemies a floor, any
 per-kill probability produces a distribution, and lowering it only widens the spread relative
-to a two-wide target. So the weight keeps setting the PACING and a quota sets the COUNT:
+to a two-wide target. So the weight kept setting the PACING and a quota set the COUNT — rolled
+once per floor (2 or 3), bounded to one weapon per room so a floor could not satisfy the range
+off its first garrison, with the shortfall **paid on the capstone** so 2-3 was a guarantee in
+both directions rather than a ceiling with a bad tail.
 
-- **Rolled once per floor**, 2 or 3, when the floor is placed (`SpawnSystem`'s fresh-floor
-  path — the one place both floor 0's first placement and every descend pass through). A range
-  rather than a constant on purpose: a fixed 2 turns the third weapon's absence into
-  information ("no point clearing that side room"), and the goal is scarce loot, not
-  predictable loot.
-- **One weapon per room** (`DungeonRoomRuntime.weaponDropped`). The quota bounds the count;
-  this bounds the concentration. Without it a floor satisfies "2-3 weapons" by dropping all of
-  them off the first garrison and leaving five rooms bare — the measured baseline already
-  showed a room handing out 3 of a floor's 5.
-- **A rolled-but-disallowed weapon degrades to a material at the same PRNG draw count**, so
-  turning the allowance on or retuning it never shifts where later drops land in the stream
-  (`06`).
-- **The shortfall is paid when the floor finishes**, so 2-3 is a guarantee in both directions
-  rather than a ceiling with a bad tail. On a BOSS floor it drops on the boss's body the tick
-  its garrison falls (the owner's call: the player is already there and already looking, and
-  loot that appears where the fight ended reads as loot rather than as a vending machine). On
-  a floor whose capstone is an empty extraction room — **four of this level's five** — there is
-  no body, so the checkpoint pays it at the room's centre instead. That second path is not an
-  edge case and its absence was visible in the first measured sweep: completed floors read 1
-  weapon against a quota of 2 or 3.
+**It was deleted because its premise was.** A kill no longer drops a weapon at all (below), so
+there is no per-kill weapon rate for an allowance to cap and no distribution for it to smooth.
+Keeping the make-up payment would have been worse than useless: loot that materialises at the
+floor's exit is exactly the thing that makes a search not worth doing.
 
-Dungeon configs only. A flat `waves`/`floors` config has no floor to allocate against and no
-rooms to spread over, so it stays on the plain table.
+What a floor hands you in weapons is now, in full: **what its chests pay, what its boss drops,
+and what you buy.** The first two are found, the third is earned, and a floor with an unopened
+chest room ends with fewer weapons in it than one without — which is the entire point of
+putting them behind a verb.
+
+### Weapons are found, not dropped ✅ (2026-09-14, `ENGINE_VERSION` 64)
+
+A design call from the game's owner, in four sentences:
+
+> 怪物是不掉落武器的。要获得武器，只有 boss 掉落和开箱子。有些房间还会有商店，怪物的掉落里加一个金币。
+>
+> *(Monsters do not drop weapons. The only ways to get one are a boss drop and opening a chest.
+> Some rooms will also have shops, and enemy drops gain a coin.)*
+
+Everything in this section follows from the first sentence; the other three are what had to
+exist for it to be survivable.
+
+- **`weapon` left `DROP_TABLE` structurally**, not as a zero weight. A zero is one edit away
+  from being reachable again by accident, and a zero nobody can see is how a decision quietly
+  un-decides itself.
+- **Three sources remain, and they differ in kind.** A **chest** is a find — its payout is now
+  the floor's weapon supply rather than a share of an allowance (see "Chest rooms" above). A
+  **boss** drops `BOSS_WEAPON_DROPS` (1) on its body: the only guarantee left in the game, on
+  the run's last room, to a player who beat the thing gating the exit. A **shop** sells one,
+  which is the recoverable half — a floor whose chests rolled badly is fixable by buying, and
+  that is a decision rather than a number the floor hands you.
+- **PvP is untouched, deliberately.** The arena's own table keeps its weapon entry, because an
+  arena has no chest, no boss and no shop: its loot pool IS its whole power curve (`15`), so the
+  same deletion there would delete weapons rather than relocate them. `ARENA_DROP_TABLE`
+  excludes `coin` for the mirror-image reason — nothing in an arena could spend one.
+
+### Coins, and what they cost the meta ✅ (2026-09-14, `ENGINE_VERSION` 64)
+
+`coin` took the weapon entry's 5 points plus 15 out of `material`, landing at **20/84 — 23.8%
+of kills** — and the total stayed 84, so `heal`, `buff` and `energy` keep the per-kill odds they
+have had since `ENGINE_VERSION` 59. That is the same discipline the two re-weights before it
+followed, and it is what keeps each pass readable as one change.
+
+**What it costs is named rather than hidden.** The carry-out currency falls from 55/84 (65.5%)
+of kills to 40/84 (47.6%) — roughly a 27% cut in the rate a run banks materials, which slows
+forge progression. That is the trade this design makes: value moves from the META ramp to the
+IN-RUN one, which is where the search verb and the shop now live. It is one number to reverse
+(raise the table's total instead of moving points inside it) if a measured sweep says the forge
+went dry.
+
+A coin is **run-scoped and per-seat**. It goes into the collecting player's own wallet
+(`PlayerActor.coins`), never a shared floor buffer; it is never banked at a checkpoint and
+never seen by the meta layer — **`bankedMaterials` is still the only carry-out**, and no path
+turns a coin into account value. The per-seat half is the rule the big chest already runs on:
+what a party shares is the coordination, never the wallet.
+
+### Shops: the counter a run spends at ✅ (2026-09-14, `ENGINE_VERSION` 64)
+
+A shop is a prop authored into a room (`RoomPiece.shops`), stocked from `dropPrng` when the
+floor is placed, and gone when the floor is. That last part is the economy's only real
+pressure: **coins saved for a deeper shop are a bet that a deeper shop exists**, and you cannot
+walk back.
+
+- **Three lines, and their KINDS are fixed** — a weapon, a buff, and a supply (heal or energy).
+  Not three draws from one pool: the shop's job is to be the recoverable half of taking weapons
+  off the kill table, and a counter that can roll three potions cannot do that job. Fixing the
+  slots is also what lets each line carry one price instead of a price band.
+- **Priced against a measured floor, not a feel.** At 23.8% of kills and `COIN_DROP_QTY` 5, the
+  measured level (34.6 kills on floor 0, 52 on floor 2) yields roughly **40-60 coins a floor**.
+  The first-pass prices — weapon 45, buff 30, supply 12 — mean a floor's whole income buys the
+  gun, OR the buff and two supplies. Being unable to afford everything is the design; these are
+  numbers to retune against `pveLevelSim`'s own coin figure, never against a guess.
+- **The gesture is a tap on a row, not a held INTERACT.** `INTERACT` already has two consumers
+  (the revive channel and a chest) and does not get a third — and buying is not that shape of
+  verb anyway. It is *choosing which line*, and this game already has a vocabulary for "choose
+  one of the things in reach": the ground-weapon panel's click-to-collect (`03`). A shop tap is
+  the same one-shot latch on its own command field, and the panel is non-blocking for the same
+  reason that one is — lockstep cannot stop for one player (`06`).
+- **A bought weapon lands on the floor; a bought buff/heal/energy applies to the buyer.** That
+  split is this doc's own pickup rule, not a new one: a weapon is a *choice* (which slot to
+  overwrite) and stays click-driven, while the other three are pure upside. Dropping those as
+  pickups would have let a teammate walk off with something somebody else paid for.
+- **An instant item that would do nothing is refused before the coins move**, through the same
+  `pickupWouldApply` predicate that leaves a potion on the floor at full HP — so the counter and
+  the floor can never disagree about what "would do something" means. A buff is deliberately
+  exempt, exactly as it is exempt from that rule on the floor: its cap is applied Σ-then-clamp
+  at *use* time, so "already wasted" is not a question the purchase site can answer.
+- **Stock is shared, wallets are per-seat.** First come, first served — a small chest's rule
+  again — so a party cannot each buy the one weapon.
+- **The range gate is drawn.** `ShopSystem` refuses a purchase from outside
+  `SHOP_INTERACT_RANGE_GRID`, and a refusal a player cannot predict reads as a broken button, so
+  the counter's mat is drawn at exactly that radius (`scene/ShopLayer.ts`) and the panel opens on
+  exactly that ring (`ui/shopProximity.ts`). Stand on the mat, the panel is live.
+
+**Shipped placement:** one counter on each of level 1's five floors, authored into
+`ember_l1_forge` (floors 1-2) and `ember_l1_crucible` (floors 3-5) — mid-chain rather than in a
+capstone, so a floor's coins can be spent on the floor that earned them.
+
+**What this does not yet answer** is `ROADMAP` B2's harder half. A shop offers a buff, so the
+in-run power layer is no longer delivered *only* by a 6/84 weight on the kill table — but one
+line at a fixed price is an offer, not the CHOICE between buffs the floor cards are. Whether a
+chest or a counter should hand over a pick-one-of-three stays open.
 
 ### Floor cards: the reward becomes a choice
 
@@ -937,7 +1027,8 @@ next, and changing it mid-pass would have made this A/B unreadable.
 | Axis | Source | Persists past a run? | Affects PvP? |
 |------|--------|-----------|--------------|
 | **Materials** | banked during a PvE run (deeper floors → better) | **Yes** — the only carry-out; the meta-forge currency | **No** — normalized out |
-| **In-run weapons / buffs** | found this run (chests, drops) | **No** — every weapon is wiped at run end | N/A (PvE only) |
+| **In-run weapons / buffs** | found this run: a chest, the boss, or a shop counter — **never a kill** since 2026-09-14 | **No** — every weapon is wiped at run end | N/A (PvE only) |
+| **Coins** | dropped by kills (20/84), into the COLLECTOR's own wallet | **No** — run-scoped, never banked, never seen by the meta layer | **No** — the arena has no shop, so its table rolls none |
 | **Brought-in weapon(s)** | crafted per-run from an unlocked blueprint + materials, equipped into the loadout (0–2); a free slot is filled with the starter weapon of the kind the loadout does not already cover, so a run always spawns carrying one gun and one melee weapon and the SWAP verb always has a second slot (`resolveLoadout`, ENGINE_VERSION 45); the crafted instance = one run (`14`) | **No** *within a run* (wiped like any weapon); the blueprint unlock is permanent/account-level (`14`) | N/A (PvE only) |
 | **Weapon energy** | a shared regenerating pool every ranged trigger pull spends (`03`, `balance/energy.ts`); topped up by the `energy` drop in BOTH modes | **No** — in-run engine state, wiped at run end like any weapon | Yes — the arena carries the drop too, since its loot pool is its whole power curve (`15`) |
 | **Character (skin)** | free roster + purchased; carries `(maxHp,maxShield,maxEnergy)` + break-passive (`14`) | **Yes** — account-level | **Yes** — the *one* meta thing in PvP, but side-grades only (no all-rounder), fairness by balance discipline (`14`) |
@@ -956,7 +1047,7 @@ The pivot mechanic from `03`. Its identity across the game:
 ## Controls & orientation
 
 - **Landscape only.** Dropped portrait (see locked decisions).
-- **Movement-only controls** (`04`, `10` v33): a single stick moves; a fire button/left-click **fires the active weapon** — there is no separate aim input at all. The engine auto-faces the nearest hostile if one exists, else the movement direction, else it holds the last facing (`08`'s `ApplyInputSystem`) — a fired shot and a melee swing's hit-arc both travel along this facing, exactly like an enemy's own AI-computed facing. **Two corner weapon buttons** pick which slot is active — one per slot, labelled weapon-1 / weapon-2 (`10`), with `Digit1`/`Digit2` as their keyboard equivalent; each resolves to the engine's single `SWAP_WEAPON` toggle (`08`) only when the slot it names is not already active, so pressing the slot you are already in does nothing (`controllers/weaponSlotSelect.ts` — until 2026-09-03 both buttons toggled unconditionally, which made "weapon 2" switch you *off* slot 2). A third, **held** `INTERACT` button revives a downed teammate. (design/05 used to say it opens chests too; there are no chests — `ROADMAP` B1.) Switching to an empty slot leaves you unable to fire until you switch back or pick a weapon into it. There is no block or jump button — parry is the melee swing, so *timing the attack* is the deliberate act. (A future dodge, if added, will be a planar blink, not a jump.) (An earlier manual-aim scheme — before that, a briefly-shipped auto-aim-to-nearest override — both preceded this; see `10`'s aim history note.)
+- **Movement-only controls** (`04`, `10` v33): a single stick moves; a fire button/left-click **fires the active weapon** — there is no separate aim input at all. The engine auto-faces the nearest hostile if one exists, else the movement direction, else it holds the last facing (`08`'s `ApplyInputSystem`) — a fired shot and a melee swing's hit-arc both travel along this facing, exactly like an enemy's own AI-computed facing. **Two corner weapon buttons** pick which slot is active — one per slot, labelled weapon-1 / weapon-2 (`10`), with `Digit1`/`Digit2` as their keyboard equivalent; each resolves to the engine's single `SWAP_WEAPON` toggle (`08`) only when the slot it names is not already active, so pressing the slot you are already in does nothing (`controllers/weaponSlotSelect.ts` — until 2026-09-03 both buttons toggled unconditionally, which made "weapon 2" switch you *off* slot 2). A third, **held** `INTERACT` button revives a downed teammate — and, since `ENGINE_VERSION` 63, opens a chest (`ChestSystem` yields to a revive in progress, so the two never race). A shop counter deliberately does NOT use it: buying is a tap on a panel row, see "Shops". Switching to an empty slot leaves you unable to fire until you switch back or pick a weapon into it. There is no block or jump button — parry is the melee swing, so *timing the attack* is the deliberate act. (A future dodge, if added, will be a planar blink, not a jump.) (An earlier manual-aim scheme — before that, a briefly-shipped auto-aim-to-nearest override — both preceded this; see `10`'s aim history note.)
 
 ## Relationship to the other docs
 
@@ -967,7 +1058,7 @@ The pivot mechanic from `03`. Its identity across the game:
 ## To design
 
 - **Difficulty / material curve** across the ~5 floors (biomes? how enemy tier and material quality escalate with depth). Floor count and rooms-per-floor (5–10) are tentative and need play-tuning.
-- **Reward-choice structure** within/between floors (branching paths, shop, curse/blessing), and where the extraction room sits per floor (it gates how many rooms are skippable).
+- **Reward-choice structure** within/between floors (branching paths, curse/blessing), and where the extraction room sits per floor (it gates how many rooms are skippable). *(The shop half of this shipped 2026-09-14 — see "Shops" above. What is still open is whether a counter or a chest hands over a pick-one-of-three CHOICE rather than a fixed line, `ROADMAP` B2.)*
 - **Materials → forging**: the material tiers and what forging produces are **locked in the meta doc** (`14`: blueprint unlock + per-run material craft, five elemental material kinds, intrinsic weapon rarity). Remaining there is recipe/blueprint/run-buff content tuning.
 - **Character roster & `(maxHp, maxShield)` + break-passive set**: the actual defensive stat pairs and break-passives (`02`/`09`/`14`), which are free vs paid, and the side-grade balance-test suite (`14`). (Every skin is a character with stats — there is no cosmetic-only skin, `14`.)
 - **Healing-item drop rate / cap** (flat +1 HP): how common, any stack limit.

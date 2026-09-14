@@ -2160,3 +2160,83 @@ pieces still holds its garrison, and a dedicated chest-room piece placed into th
 content work this pass did not do. The one exception is `ember_l1_extraction`, which has always
 had zero enemy spawns and now carries the big chest — so four of the five floors do end on a
 room where the only thing to do is open something.
+
+## v64: coins in, weapons off the kill table, and a counter to spend at (2026-09-14)
+
+A design call from the game's owner, in four sentences:
+
+> 怪物是不掉落武器的。要获得武器，只有 boss 掉落和开箱子。有些房间还会有商店，怪物的掉落里加一个金币。
+
+Everything below follows from the first sentence. The other three are what had to exist for it
+to be survivable.
+
+### What moved, and why every seeded floor's loot moved with it
+
+- **`weapon` is gone from `DROP_TABLE`** — structurally, not zero-weighted. `coin` takes its
+  5 points plus 15 out of `material`, so the total stays 84 and `heal`/`buff`/`energy` keep the
+  per-kill odds they have had since v59. The cost is named rather than hidden: the carry-out
+  currency falls from 55/84 to 40/84 of kills, roughly a 27% cut in the rate a run banks
+  materials, which slows forge progression. That is the trade — value moves from the META ramp
+  to the in-run one, where the search verb and the shop now live.
+- **The per-floor weapon allowance is deleted** (`FLOOR_WEAPON_QUOTA_MIN`/`_SPAN`,
+  `GameState.floorWeaponQuota`/`floorWeaponsDropped`, `DungeonRoomRuntime.weaponDropped`, the
+  whole of `systems/floorLoot.ts` and its capstone make-up payment in both `DeathDropsSystem`
+  and `ExtractionSystem`). It existed because the table alone produced 0-5 weapons a floor; with
+  the table out of the weapon business there is nothing left for it to smooth, and loot that
+  materialises at the exit is the opposite of making a search mean something. **This is the
+  change that moves every dungeon scenario's witness**, and by a mechanism worth stating: the
+  allowance was one `dropPrng.nextInt` per floor placement, so deleting it shifts that floor's
+  entire later draw sequence. `ember-dungeon-floor1` reads 208 `bullet_fired` against 170 and
+  85 `melee_swing` against 67 — not a combat change, a knock-on: a different sequence of
+  `energy` drops means a different number of shots the pool can pay for, and the rest is the
+  player falling back on melee.
+- **A boss drops `BOSS_WEAPON_DROPS` (1) weapons** on its own body, alongside the v63 blueprint
+  roll. The only guaranteed weapon left, and it is the run's last room by construction.
+- **Coins.** `PickupKind` gains `'coin'`, `PlayerActor` gains `coins`, `PickupSystem` collects
+  into the COLLECTOR's wallet rather than a shared floor buffer. Run-scoped: never banked, never
+  merged at a checkpoint, never seen by the meta layer. `bankedMaterials` is still the only
+  carry-out.
+- **Shops** (step 10.6, `ShopSystem`, `content/shops.ts`, `GameState.shops`,
+  `RoomPiece.shops`). Three fixed lines — weapon / buff / supply — stocked from `dropPrng` at
+  floor placement, bought with a one-shot `PlayerCommand.shopBuyId` tap. Authored into
+  `ember_l1_forge` and `ember_l1_crucible`, which between them put exactly one counter on each
+  of level 1's five floors.
+- **The `arsenal` floor card became `windfall`.** `+1 weapon per floor` had no allowance left to
+  add to. A coin multiplier is its closest honest successor: it buys the same loosening of
+  weapon scarcity by the same route (the shop), except you now have to decide what to spend it
+  on. `FloorCardEffect`'s `weapon_quota` arm became `coin_mult`, which re-orders nothing in
+  `FLOOR_CARDS` and so leaves the card offer's draw sequence alone.
+
+### Two schema changes in the hash, one of them a repair
+
+`floorWeaponQuota`/`floorWeaponsDropped` left the hashed payload and `PlayerActor.coins` joined
+it, which is why `launch-arena-pvp` and `walls-and-pillars` move their state hash while their
+witnesses do not — PvP's own table is untouched (deliberately: an arena has no chest, no boss
+and no shop, so deleting its weapon entry would delete weapons rather than relocate them).
+
+The repair: **`state.chests` was never in the hashed payload**, though
+`fixtures/chestRoomFloor.ts` says in prose that it is. Nothing failed, because a divergence in
+`opened` surfaces one tick later as a weapon pickup that exists on one client and not the other
+— later, and attributed to the wrong system. Both chests and shops are hashed now.
+
+### The golden gate, run BEFORE the bump
+
+Per the v51/v54/v61 rule. Eleven assertions moved across six scenarios and each was read rather
+than re-recorded on sight: `arena-waves` (a flat config, so it rolls the PvE table) shifted its
+`prngCursors` only; the four dungeon scenarios moved their witnesses through the deleted quota
+draw; the two arena-mode hashes moved on schema alone.
+
+**Two blind spots, both declared.** No golden scenario taps a shop counter, for the same reason
+none opened a chest before `chest-room` existed — a scripted stick does not walk to a prop and
+press a row. `ShopSystem` is covered by `systems/shops.test.ts` (19 cases, one per refusal) and
+verified by mutation: 11 injected defects, 11 caught, including the `<=`-for-`<` price
+boundary, a dropped `coinMult`, and a supply slot that stops rolling `energy`. And no golden
+scenario kills a boss, so `BOSS_WEAPON_DROPS` is pinned by `systems/blueprintDrop.test.ts`
+instead — which now also measures the boss's extra weapon as an exact number of `dropPrng`
+draws, since that is what a `peek()` cannot see.
+
+### What this does NOT do
+
+The client half — a counter to look at, a coin readout, a panel to tap — is the pass after this
+one. Until it lands, a shop is real engine state that no player can reach, exactly as a chest
+was between `ChestSystem` arriving and `ChestLayer` being drawn.

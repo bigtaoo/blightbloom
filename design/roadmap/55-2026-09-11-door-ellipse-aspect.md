@@ -315,3 +315,175 @@ mob's body (radius ≈ 0.47 grid) covers the chest. No design doc states a rule 
 spacing, and a threshold reverse-engineered from the content that happens to pass is a test that
 asserts nothing. Whether to move it is a content call, filed here beside the no-fight-rooms item
 above.
+
+## The kill table stops paying in guns (2026-09-14, engine + client + content, `ENGINE_VERSION` 63→64)
+
+A design call from the game's owner, in four sentences:
+
+> 怪物是不掉落武器的。要获得武器，只有 boss 掉落和开箱子。有些房间还会有商店，怪物的掉落里加一个金币。
+
+Everything below follows from the first sentence. The other three are what had to exist for it
+to be survivable, and the second half of the pass is mostly about that.
+
+### What a floor's weapons ARE now
+
+Three sources, and they differ in kind rather than in rate: a **chest** is a find, a **boss**
+drops one guaranteed on its body, and a **shop** sells one. `weapon` left `DROP_TABLE`
+structurally rather than as a zero weight — a zero is one edit from being reachable again by
+accident, and a zero nobody can see is how a decision quietly un-decides itself.
+
+**The per-floor weapon allowance went with it, and that deletion is the interesting half.** It
+existed (v57, nine days) because the table alone produced 0-5 weapons a floor, so a quota set
+the COUNT while the weight set the pacing, with the shortfall paid at the capstone to make 2-3
+a guarantee in both directions. With the table out of the weapon business there is no per-kill
+rate for it to cap — and keeping the make-up payment would have been actively worse than
+useless, because loot that materialises at a floor's exit is exactly what makes a search not
+worth doing. Gone: `FLOOR_WEAPON_QUOTA_MIN`/`_SPAN`, `GameState.floorWeaponQuota` /
+`floorWeaponsDropped`, `DungeonRoomRuntime.weaponDropped`, `DropOpts.weaponAllowed`, the whole
+of `systems/floorLoot.ts`, and both of its trigger sites.
+
+**PvP was deliberately left alone**, and it is worth saying why since "apply it everywhere" is
+the obvious wrong generalisation: an arena has no chest, no boss and no shop, so its loot pool
+IS its whole power curve (design/15). Deleting the weapon entry there would not relocate
+weapons, it would delete them. `ARENA_DROP_TABLE` excludes `coin` for the mirror-image reason —
+nothing in an arena could spend one.
+
+### The number that is a trade, not a side effect
+
+`coin` took the weapon entry's 5 points plus **15 out of `material`**, landing at 20/84 (23.8%
+of kills), with the total held at 84 so `heal`/`buff`/`energy` keep the odds they have had since
+v59 — the discipline both earlier re-weights used, and what keeps each pass readable as one
+change.
+
+That costs the carry-out currency 55/84 → 40/84, i.e. **roughly a 27% cut in the rate a run
+banks materials**, which slows forge progression. Recorded here rather than discovered later:
+it is the trade this design makes (value moves from the meta ramp to the in-run one, where the
+search verb and the shop now live), and it is one number to reverse — raise the table's total
+instead of moving points inside it — if a measured sweep says the forge went dry.
+
+### The shop, and the four decisions inside it
+
+- **The composition is fixed, only the contents roll.** Weapon / buff / supply, in that order,
+  every counter. Three independent draws from one pool was the alternative and it fails the
+  shop's whole job: this is the recoverable half of taking weapons off the kill table, and a
+  counter that can roll three potions cannot recover anything. Fixed slots also give each line
+  one price instead of a band, which is what lets the numbers be set against measurement.
+- **The gesture is a tap on a row, not a held INTERACT.** That button has two consumers already
+  (the revive channel, a chest) and a third would need a third arbitration rule — but the real
+  argument is that buying is not that shape of verb. It is *choosing which line*, and the game
+  already taught "a list of things in reach, tap one" for floor weapons (v32). A shop tap is the
+  same one-shot latch on its own command field (`shopBuyId`), which also means no new
+  arbitration exists to get wrong.
+- **A bought weapon lands on the floor; a bought buff/heal/energy goes straight to the buyer.**
+  Not a new rule — design/05's own pickup split. A weapon is a choice (which slot to overwrite)
+  and stays click-driven; the other three are pure upside, and dropping them as pickups would
+  have let a teammate walk off with something somebody else paid for.
+- **An instant item that would do nothing is refused before the coins move**, through the same
+  `pickupWouldApply` the floor uses, so the counter and the floor cannot disagree about what
+  "would do something" means. A buff is exempt here exactly as it is exempt there.
+
+Prices (weapon 45 / buff 30 / supply 12) are first-pass and sized against the measured floor —
+34.6 kills on floor 0, 52 on floor 2, so ~40-60 coins a floor. A floor's whole income buys the
+gun, OR the buff and two supplies. Not being able to afford everything is the design.
+
+### `arsenal` had nothing left to add to
+
+The floor card `arsenal` was "+1 weapon on every remaining floor", i.e. +1 to an allowance that
+no longer exists. It became **`windfall`** (coins worth ×2) rather than being deleted, because a
+coin multiplier is its closest honest successor: it buys the same loosening of weapon scarcity
+by the same route — through the shop — except the loosening is no longer automatic and you have
+to decide what to spend it on. `FloorCardEffect`'s `weapon_quota` arm became `coin_mult`, which
+re-orders nothing in `FLOOR_CARDS` and so leaves the card offer's own draw sequence alone. One
+behavioural difference, pinned by a test because it is the kind of thing that reads as a bug: a
+count adds and a multiplier multiplies, so two picks are ×4 and not ×3.
+
+The multiplier is applied in `DeathDropsSystem`, **outside** `rollDrop`, which is the one
+structural difference from `potion_flow` next to it: that card changes the table's WEIGHTS and
+has to be inside the draw, this one changes a payload and must stay outside it. A multiplier
+folded into the roll would make the card's presence part of the dropPrng stream for nothing.
+
+### A repair found on the way: `state.chests` was never hashed
+
+`fixtures/chestRoomFloor.ts` says in prose that *"`state.chests` joining the hashed payload"* is
+what reaches the golden gate. It never did — `replay.ts` has no chest field at all, and did not
+when that sentence was written. Nothing failed, and the reason is the familiar one: a divergence
+in `opened` surfaces one tick later as a weapon pickup that exists on one client and not the
+other, so it would have been caught eventually, later, and attributed to the wrong system.
+Chests and shops are both hashed now — `opened`/`sold` and the mechanisms' `occupied` flags,
+which are recomputed every tick and carry real information; the plate POSITIONS stay out,
+because they are derived with integer trig from already-hashed inputs.
+
+### And a second one, in the renderer
+
+`RoomBuilder.build` destroys every child of `layers.ground` on its first line, and a door
+unlocking triggers a build. `ShopLayer` found that immediately and loudly — its mat is a
+`Graphics` on that layer, and a destroyed Pixi object nulls its own `position`, so the first
+room rebuild threw. **`ChestLayer` has had the same exposure since v63 and was failing
+silently**: a destroyed `Container` reports an empty `children`, so its per-mechanism loop found
+nothing and skipped, and a big chest simply lost its plates for the rest of the floor. Only a
+big chest has plates and the shipped level has one per floor, which is why nobody saw it. Both
+layers now rebuild a view whose containers have been destroyed under them, and both have a test
+that asserts the thing is drawn AGAIN — not merely that nothing threw, since a guard that
+swallowed the destroyed view without replacing it would pass a crash test while reproducing the
+defect exactly.
+
+### The golden gate, run BEFORE the bump
+
+Per the v51/v54/v61 rule. Eleven assertions moved across six scenarios, and each was read rather
+than re-recorded on sight:
+
+- **`arena-waves`** moved `prngCursors` and nothing else. It is a flat config, so it rolls the
+  PvE table; the drop KINDS and their draw costs changed, the behaviour did not.
+- **The four dungeon scenarios** moved their witnesses, through the deleted quota draw rather
+  than through combat. `ember-dungeon-floor1` reads 208 `bullet_fired` against 170 and 85
+  `melee_swing` against 67, which looks alarming and is a knock-on: one fewer `dropPrng` draw at
+  floor placement shifts the whole later sequence, so a different set of `energy` drops means a
+  different number of shots the pool can pay for, and the rest is the player falling back on
+  melee. `death: 16` and `pickup: 5` are unchanged.
+- **`launch-arena-pvp` and `walls-and-pillars`** moved their state hash with their witness
+  unchanged — the signature of a payload SCHEMA change (the quota fields leaving, `coins` and
+  the two prop arrays joining) rather than a behavioural one. That PvP's witness did not move is
+  the check that the arena really was left alone.
+
+**Two blind spots, both declared rather than left to be rediscovered.** No golden scenario taps
+a counter, for the same reason none opened a chest before `chest-room` existed — a scripted
+stick does not walk to a prop and press a row. And no golden scenario kills a boss, so
+`BOSS_WEAPON_DROPS` is pinned by `blueprintDrop.test.ts` instead, which now measures the boss's
+extra weapon as an exact number of `dropPrng` draws, since that is precisely what a `peek()`
+cannot see.
+
+### What is pinned, and what the mutants said
+
+19 cases in `systems/shops.test.ts`, one per refusal, each asserting BOTH halves — nothing
+delivered AND nothing charged, because "did not deliver" and "did not charge" are different bugs
+and a test checking only the first passes for a shop that takes your money and hands you
+nothing. Plus `coinDrop.test.ts` (the payload multiplier, which lives outside `rollDrop` and so
+is invisible to both `drops.test.ts` and `floorCards.test.ts`), coin cases in `pickups.test.ts`
+(into the COLLECTOR's wallet, asserted against a teammate on the same tile), and on the client
+`ShopPrompt.test.ts` / `ShopLayer.test.ts` / `shopProximity.test.ts`.
+
+`shopProximity.ts` exists as its own module for the reason `pickupProximity.ts` records about
+itself: **the ring the panel opens on and the ring the sim accepts a tap from are the same
+ring**, and that agreement is a thing neither package's suite can see alone. If they ever
+diverge the symptom is "I tapped it and nothing happened", which is the hardest class of bug to
+get a useful report about.
+
+**11 injected defects, 11 caught** — including the `<=`-for-`<` price boundary, a dropped
+`coinMult`, a supply slot that stops rolling `energy`, and a gutted coin weight. Run with the
+golden gate EXCLUDED, because a red baseline makes every mutant look killed; the first run of
+this battery reported 8/8 against a baseline that was already failing, which is the trap worth
+recording.
+
+engine 1572 → **1586**, client 6216 → **6244**.
+
+### What this does NOT do
+
+The shipped counters sit in `ember_l1_forge` and `ember_l1_crucible` — one per floor, mid-chain
+so a floor's coins can be spent on the floor that earned them. **No new ROOM was authored**, so
+design/05's "a floor mixes combat rooms with chest rooms" is exactly as half-shipped as it was
+this morning: every room with a counter in it still holds its garrison. A dedicated no-fight
+room placed into the floor maps is still content work nobody has done.
+
+And `ROADMAP` B2 is half-answered, not answered. A buff is now something you can choose and pay
+for rather than only something that falls off a table — but one line at one price is an offer,
+not the pick-one-of-three a floor card is.

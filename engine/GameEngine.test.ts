@@ -32,6 +32,7 @@ function cmd(tick: number, o: Partial<PlayerCommand> = {}): PlayerCommand {
     buttons: o.buttons ?? 0,
     pickupTargetId: o.pickupTargetId ?? 0,
     cardVote: o.cardVote ?? 0,
+    shopBuyId: o.shopBuyId ?? 0,
   };
 }
 

@@ -145,7 +145,7 @@ describe('tallyCardVote — "whichever card the most people chose"', () => {
 
 describe('resolveFloorCards — the run-scoped effects', () => {
   it('is the identity for a run that has picked nothing', () => {
-    expect(resolveFloorCards([])).toEqual({ healDropMult: 1, weaponQuotaBonus: 0 });
+    expect(resolveFloorCards([])).toEqual({ healDropMult: 1, coinMult: 1 });
   });
 
   it('doubles the heal multiplier per potion card, multiplicatively', () => {
@@ -162,24 +162,35 @@ describe('resolveFloorCards — the run-scoped effects', () => {
     expect(resolveFloorCards(Array(3).fill('potion_flow')).healDropMult).toBe(HEAL_DROP_MULT_CAP);
   });
 
-  it('adds up weapon-quota cards', () => {
-    expect(resolveFloorCards(['arsenal']).weaponQuotaBonus).toBe(1);
-    expect(resolveFloorCards(['arsenal', 'arsenal']).weaponQuotaBonus).toBe(2);
+  it('COMPOUNDS coin cards rather than adding them', () => {
+    // The one behavioural difference from the `arsenal` card this replaced, and it is the
+    // difference between the two effect kinds rather than a tuning choice: a quota bonus
+    // was a count and added, a multiplier multiplies. Two picks are x4, not x3.
+    expect(resolveFloorCards(['windfall']).coinMult).toBe(2);
+    expect(resolveFloorCards(['windfall', 'windfall']).coinMult).toBe(4);
+  });
+
+  it('leaves the coin multiplier at 1 when no coin card was picked', () => {
+    // The identity matters more than it looks: `DeathDropsSystem` multiplies a coin's qty
+    // by this on EVERY kill, so a 0 here would silently delete the currency from the game
+    // and a test that only ever checks the x2 case would not notice.
+    expect(resolveFloorCards([]).coinMult).toBe(1);
+    expect(resolveFloorCards(['potion_flow', 'edge']).coinMult).toBe(1);
   });
 
   it('leaves buff cards entirely out of the run-scoped derivation', () => {
     // Buff cards are pushed onto each seat's own `buffs` at pick time, so counting them
     // here as well would apply them twice through two different paths.
     const mods = resolveFloorCards(['edge', 'cadence', 'bulwark', 'precision']);
-    expect(mods).toEqual({ healDropMult: 1, weaponQuotaBonus: 0 });
+    expect(mods).toEqual({ healDropMult: 1, coinMult: 1 });
   });
 
   it('skips an unknown id instead of throwing (design/09 forward-compat)', () => {
-    expect(resolveFloorCards(['not_a_card', 'potion_flow'])).toEqual({ healDropMult: 2, weaponQuotaBonus: 0 });
+    expect(resolveFloorCards(['not_a_card', 'potion_flow'])).toEqual({ healDropMult: 2, coinMult: 1 });
   });
 
   it('mixes kinds without either interfering with the other', () => {
-    expect(resolveFloorCards(['potion_flow', 'arsenal', 'edge'])).toEqual({ healDropMult: 2, weaponQuotaBonus: 1 });
+    expect(resolveFloorCards(['potion_flow', 'windfall', 'edge'])).toEqual({ healDropMult: 2, coinMult: 2 });
   });
 });
 
@@ -191,7 +202,7 @@ describe('cardBuffId', () => {
 
   it('reports nothing for a run-scoped card or an unknown id', () => {
     expect(cardBuffId('potion_flow')).toBeUndefined();
-    expect(cardBuffId('arsenal')).toBeUndefined();
+    expect(cardBuffId('windfall')).toBeUndefined();
     expect(cardBuffId('not_a_card')).toBeUndefined();
   });
 });
@@ -217,7 +228,7 @@ describe('floorCardDescVars — the numbers a card description interpolates', ()
 
   it('reports the run-scoped kinds by their own field name', () => {
     expect(floorCardDescVars('potion_flow')).toEqual({ factor: 2 });
-    expect(floorCardDescVars('arsenal')).toEqual({ bonus: 1 });
+    expect(floorCardDescVars('windfall')).toEqual({ factor: 2 });
   });
 
   it('returns nothing for an unknown card, or a card naming an unknown buff', () => {

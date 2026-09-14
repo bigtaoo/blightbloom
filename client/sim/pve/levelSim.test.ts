@@ -112,7 +112,7 @@ describe('runLevel', () => {
     const m = runLevel({ seed: 101, profileName: 'aggressive', maxTicks: 1200 });
     expect(m.drops.length).toBeGreaterThan(0); // the entrance garrison really dropped loot
     for (const d of m.drops) {
-      expect(['material', 'heal', 'weapon', 'buff', 'bandage', 'energy']).toContain(d.kind);
+      expect(['material', 'coin', 'heal', 'weapon', 'buff', 'bandage', 'energy']).toContain(d.kind);
       expect(d.floorIndex).toBe(0); // 1200 ticks never reaches a descend
       expect(d.tick).toBeGreaterThan(0);
     }

@@ -81,6 +81,20 @@ export type GameEvent =
   // A boss kill rolled a blueprint (design/14, ENGINE_VERSION 63). The GRANT happens in the
   // meta layer on a won run, never here — this is the render layer's cue to say so.
   | { type: 'blueprint_drop'; weaponId: string; gx: Fp; gy: Fp }
+  // A shop line was bought (design/05 "Shops", 2026-09-14). `buyer` is the seat's actor id,
+  // so a client can tell "you bought this" from "someone else did" — which is the whole
+  // difference between a confirmation and an explanation of why the row went grey. `price`
+  // rides along rather than being looked back up, because the offer is already marked sold
+  // by the time anything reads this.
+  | {
+      type: 'shop_buy';
+      id: number;
+      buyer: number;
+      kind: 'weapon' | 'buff' | 'heal' | 'energy';
+      price: number;
+      gx: Fp;
+      gy: Fp;
+    }
   | { type: 'wave_clear'; wave: number }
   // A floor's checkpoint resolved to DESCEND (design/05, ROADMAP 1.4) — the floor
   // buffer just banked and the next floor's waves are loading. EXTRACT reuses the

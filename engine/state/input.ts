@@ -43,6 +43,7 @@ export function makeCommand(fields: {
   // that doesn't care about ground-weapon pickup (most golden/net tests) is unaffected.
   cardVote?: number; // omitted = 0 (not voting this tick) — same "every existing caller
   // is unaffected" reasoning as pickupTargetId's.
+  shopBuyId?: number; // omitted = 0 (no shop tap this tick) — same reasoning again.
 }): PlayerCommand {
   return {
     type: 'input',
@@ -53,5 +54,6 @@ export function makeCommand(fields: {
     buttons: fields.buttons,
     pickupTargetId: fields.pickupTargetId ?? 0,
     cardVote: fields.cardVote ?? 0,
+    shopBuyId: fields.shopBuyId ?? 0,
   };
 }

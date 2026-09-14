@@ -24,7 +24,7 @@
  * design/18's consistency gates exist to catch.
  *
  * The other two kinds exist because they are NOT player stats. `heal_drop_mult` changes
- * the drop table, and `weapon_quota` changes how many weapons a floor allocates; neither
+ * the drop table's weights, and `coin_mult` changes what one coin drop is worth; neither
  * has anywhere to live on a `PlayerActor`, and both are properties of the RUN rather
  * than of a person in it. That distinction is also why they are re-derived from the
  * picked-card list on read (`resolveFloorCards`) instead of being copied into a mutable
@@ -43,7 +43,7 @@ import { RUN_BUFFS, type RunBuffId } from './runbuffs';
 export type FloorCardEffect =
   | { kind: 'buff'; buffId: RunBuffId }
   | { kind: 'heal_drop_mult'; factor: number }
-  | { kind: 'weapon_quota'; bonus: number };
+  | { kind: 'coin_mult'; factor: number };
 
 interface FloorCardDef {
   effect: FloorCardEffect;
@@ -66,12 +66,24 @@ export const FLOOR_CARDS: Record<string, FloorCardDef> = {
     nameKey: 'card.potion_flow.name',
     descKey: 'card.potion_flow.desc',
   },
-  // +1 weapon on every remaining floor. The other side of the same trade: spend a pick
-  // to loosen the scarcity the loot pass introduced, rather than to get stronger now.
-  arsenal: {
-    effect: { kind: 'weapon_quota', bonus: 1 },
-    nameKey: 'card.arsenal.name',
-    descKey: 'card.arsenal.desc',
+  // Coins are worth double for the rest of the run (2026-09-14). This slot used to be
+  // `arsenal` — "+1 weapon on every remaining floor" — and it died with the per-floor
+  // weapon allowance it added to: with weapons behind chests, the boss and a shop
+  // counter, there is no allowance for a card to raise.
+  //
+  // A coin multiplier is its closest honest successor rather than a new idea, because it
+  // buys the same thing by the same route: `arsenal` spent a pick to loosen the run's
+  // weapon scarcity, and so does this — through the shop, which is now where a run turns
+  // a bad chest roll back into a gun. What changes is that the loosening is no longer
+  // automatic. The card hands you income, and you still have to find a counter and decide
+  // what to spend it on.
+  //
+  // It multiplies the coin PAYLOAD (`DeathDropsSystem`), not the table weight, which is
+  // the one structural difference from `potion_flow` below it — see `COIN_DROP_QTY`.
+  windfall: {
+    effect: { kind: 'coin_mult', factor: 2 },
+    nameKey: 'card.windfall.name',
+    descKey: 'card.windfall.desc',
   },
   // The stat cards, one per RUN_BUFFS family, so the offer can always fill three slots
   // with something meaningful and the Sigma-clamps in BUFF_CAPS bound cards and floor
@@ -155,8 +167,9 @@ export interface FloorCardMods {
    *  `content/drops.ts`'s own `HEAL_DROP_MULT_CAP` at the point of use, not here —
    *  the cap belongs with the table it bounds. */
   healDropMult: number;
-  /** Extra weapons per floor, on top of the rolled 2-3 allowance. */
-  weaponQuotaBonus: number;
+  /** Product of every `coin_mult` factor. 1 with no such card. Applied to a coin drop's
+   *  `qty` at the point of use (`DeathDropsSystem`), never to a table weight. */
+  coinMult: number;
 }
 
 /**
@@ -168,12 +181,12 @@ export interface FloorCardMods {
  * An unknown id is skipped, matching `sumBuffs`' forward-compatibility rule (design/09).
  */
 export function resolveFloorCards(picked: readonly string[]): FloorCardMods {
-  const mods: FloorCardMods = { healDropMult: 1, weaponQuotaBonus: 0 };
+  const mods: FloorCardMods = { healDropMult: 1, coinMult: 1 };
   for (const id of picked) {
     const def = FLOOR_CARDS[id];
     if (!def) continue;
     if (def.effect.kind === 'heal_drop_mult') mods.healDropMult *= def.effect.factor;
-    else if (def.effect.kind === 'weapon_quota') mods.weaponQuotaBonus += def.effect.bonus;
+    else if (def.effect.kind === 'coin_mult') mods.coinMult *= def.effect.factor;
   }
   return mods;
 }
@@ -195,9 +208,8 @@ export function floorCardDescVars(cardId: string): Record<string, number> {
   if (!def) return {};
   switch (def.effect.kind) {
     case 'heal_drop_mult':
+    case 'coin_mult':
       return { factor: def.effect.factor };
-    case 'weapon_quota':
-      return { bonus: def.effect.bonus };
     default: {
       const buff = RUN_BUFFS[def.effect.buffId];
       if (!buff) return {};

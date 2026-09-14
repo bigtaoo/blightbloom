@@ -105,11 +105,19 @@ export const fr: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: 'Armes à proximité' },
+    shop: {
+      title: 'Boutique  {coins}',
+      price: '{price}',
+      sold: 'VENDU',
+      heal: 'Potion de soin',
+      energy: "Cellule d'énergie",
+    },
     chips: {
       floor: 'ÉTAGE',
       room: 'SALLE',
       enemies: 'ENNEMIS',
       banked: 'STOCKÉ',
+      coins: 'PIÈCES',
       score: 'SCORE',
       buffs: 'BONUS',
       alive: 'VIVANTS',
@@ -324,7 +332,7 @@ export const fr: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Flux vital', desc: 'Potions {factor}x plus fréquentes' },
-    arsenal: { name: 'Arsenal', desc: '+{bonus} arme par étage' },
+    windfall: { name: 'Aubaine', desc: 'Les pièces valent {factor}x' },
     edge: { name: 'Tranchant', desc: '+{value}% de dégâts' },
     cadence: { name: 'Cadence', desc: '+{value}% de cadence de tir' },
     bulwark: { name: 'Rempart', desc: '+{value} PV max' },

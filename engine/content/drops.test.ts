@@ -3,11 +3,13 @@ import { Prng } from '@dd/engine/math/prng';
 import {
   rollDrop,
   DROP_TABLE,
+  ARENA_DROP_TABLE,
   WEAPON_DROP_POOL,
   BUFF_DROP_POOL,
   CARD_ONLY_BUFF_IDS,
   HEAL_DROP_MULT_CAP,
 } from '@dd/engine/content/drops';
+import { COIN_DROP_QTY } from '@dd/engine/config';
 import { WEAPON_SIM_BY_ID } from '@dd/engine/content/weapons';
 import { RUN_BUFFS } from '@dd/engine/balance/runbuffs';
 import { MATERIAL_DEFS, MATERIAL_DROP_POOL } from '@dd/engine/content/materials';
@@ -177,15 +179,22 @@ describe('drop weights — how much loot a kill actually produces', () => {
     expect(rate).toBeLessThan(0.04); // the pre-v57 table sat at 0.214 — nowhere near this
   });
 
-  it('leaves the weapon rate exactly where it was — the allowance changed the COUNT, not the odds', () => {
+  it('produces coins at the rate the shop economy is priced against', () => {
+    // This slot used to pin the WEAPON rate at 5/84, guarding the v57 claim that the
+    // allowance changed the count and not the odds. Weapons left the table entirely on
+    // 2026-09-14 and coins took their place, so the measurement worth keeping is the one
+    // shop prices are set from: 20/84 = 23.8% of kills.
+    //
+    // A rate and not an exact weight, deliberately. Re-weighting this table against a real
+    // sim run is expected work; what must not drift silently is the ORDER of magnitude the
+    // prices in `content/shops.ts` were chosen against, which is what a band catches and an
+    // equality assertion would merely restate.
     const p = new Prng(4242);
     const n = 20_000;
-    let weapons = 0;
-    for (let i = 0; i < n; i++) if (rollDrop(p).kind === 'weapon') weapons++;
-    // 5/84 = 5.95%. If a future pass moves the weapon weight, this fails and the
-    // ENGINE_VERSION_HISTORY claim that v57 left it alone stops being quietly false.
-    expect(weapons / n).toBeGreaterThan(0.05);
-    expect(weapons / n).toBeLessThan(0.07);
+    let coins = 0;
+    for (let i = 0; i < n; i++) if (rollDrop(p).kind === 'coin') coins++;
+    expect(coins / n).toBeGreaterThan(0.21);
+    expect(coins / n).toBeLessThan(0.27);
   });
 
   it('spends the heal multiplier out of MATERIAL, so the table total never moves', () => {
@@ -221,36 +230,55 @@ describe('drop weights — how much loot a kill actually produces', () => {
   });
 });
 
-describe('DropOpts.weaponAllowed — a refused weapon degrades to material', () => {
-  it('turns a rolled weapon into a material when the floor allowance is spent', () => {
-    const r = new RecordingPrng(entryIndex('weapon'));
-    expect(rollDrop(r, 0, { weaponAllowed: false }).kind).toBe('material');
-    const allowed = new RecordingPrng(entryIndex('weapon'));
-    expect(rollDrop(allowed, 0, { weaponAllowed: true }).kind).toBe('weapon');
+describe('coin — the shop economy\u2019s income', () => {
+  it('pays the flat COIN_DROP_QTY, and spends exactly ONE dropPrng draw doing it', () => {
+    // The draw count is the load-bearing half (design/06). A coin that rolled its own amount
+    // would cost two draws where `heal` and `energy` cost one, so re-weighting between the
+    // three \u2014 the most likely next tuning pass \u2014 would move every later drop in the run and
+    // invalidate every recording. Pinned here so that change fails a test rather than a hash.
+    const r = new RecordingPrng(entryIndex('coin'));
+    const drop = rollDrop(r);
+    expect(drop).toEqual({ kind: 'coin', qty: COIN_DROP_QTY });
+    expect(r.draws).toBe(1);
   });
 
-  it('costs the SAME number of dropPrng draws either way — the run stays aligned', () => {
-    // Load-bearing for design/06: if refusing a weapon cost a different number of
-    // draws, turning the per-floor allowance on would shift every later drop in the
-    // run, and the quota could never be retuned without re-recording every replay.
-    const refused = new RecordingPrng(entryIndex('weapon'));
-    rollDrop(refused, 0, { weaponAllowed: false });
-    const granted = new RecordingPrng(entryIndex('weapon'));
-    rollDrop(granted, 0, { weaponAllowed: true });
-    expect(refused.draws).toBe(granted.draws);
-    expect(refused.draws).toBe(2); // one weighted table draw + one payload draw
-  });
-
-  it('defaults to allowing weapons, so every pre-v57 caller is unaffected', () => {
-    const r = new RecordingPrng(entryIndex('weapon'));
-    expect(rollDrop(r).kind).toBe('weapon');
-    expect(rollDrop(new RecordingPrng(entryIndex('weapon')), 0, {}).kind).toBe('weapon');
-  });
-
-  it('never suppresses a kind other than weapon', () => {
-    for (const kind of ['material', 'heal', 'buff']) {
-      const r = new RecordingPrng(entryIndex(kind));
-      expect(rollDrop(r, 0, { weaponAllowed: false }).kind).toBe(kind);
+  it('costs the same number of draws as the other payload-free kinds', () => {
+    const coin = new RecordingPrng(entryIndex('coin'));
+    rollDrop(coin);
+    for (const kind of ['heal', 'energy']) {
+      const other = new RecordingPrng(entryIndex(kind));
+      rollDrop(other);
+      expect(other.draws).toBe(coin.draws);
     }
+  });
+});
+
+describe('a kill cannot drop a weapon (2026-09-14)', () => {
+  it('has no weapon entry on the PvE table at all', () => {
+    // STRUCTURAL, not a zero weight: `weightedIndex` over a 0-weight entry is one
+    // `nextInt` bound away from being reachable again by accident, and a zero that
+    // nobody can see is exactly the shape of a "fix" that silently un-fixes itself.
+    expect(DROP_TABLE.some((e) => e.kind === 'weapon')).toBe(false);
+  });
+
+  it('never returns a weapon for ANY index into the table', () => {
+    // The assertion that survives a re-weight: it walks every entry rather than trusting
+    // the one above to have enumerated them, so adding a weapon entry back fails here even
+    // if someone updates the membership test to match.
+    for (let i = 0; i < DROP_TABLE.length; i++) {
+      expect(rollDrop(new RecordingPrng(i)).kind).not.toBe('weapon');
+    }
+  });
+
+  it('leaves the ARENA table\u2019s weapons alone', () => {
+    // The arena's loot pool IS its whole power curve (design/15) \u2014 it has no chest, no boss
+    // and no shop to move weapons to, so the same deletion there would delete weapons rather
+    // than relocate them. Asserted because "apply the change everywhere" is the obvious wrong
+    // generalisation of this pass.
+    expect(ARENA_DROP_TABLE.some((e) => e.kind === 'weapon')).toBe(true);
+  });
+
+  it('keeps coins OUT of the arena table, for the mirror-image reason', () => {
+    expect(ARENA_DROP_TABLE.some((e) => (e.kind as string) === 'coin')).toBe(false);
   });
 });

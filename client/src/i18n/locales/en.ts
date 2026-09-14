@@ -111,6 +111,13 @@ export const en = {
   },
   hud: {
     pickupPrompt: { title: 'Nearby weapons' },
+    shop: {
+      title: 'Shop  {coins}c',
+      price: '{price}c',
+      sold: 'SOLD',
+      heal: 'Health potion',
+      energy: 'Energy cell',
+    },
     // Stat-chip labels (ui/StatChip.ts) — short by design: each sits under a tinted
     // icon in a pill, so it only has to disambiguate, not describe.
     chips: {
@@ -118,6 +125,7 @@ export const en = {
       room: 'ROOM',
       enemies: 'FOES',
       banked: 'BANKED',
+      coins: 'COINS',
       score: 'SCORE',
       buffs: 'BUFFS',
       alive: 'ALIVE',
@@ -344,7 +352,7 @@ export const en = {
   },
   card: {
     potion_flow: { name: 'Vital Flow', desc: 'Potions drop {factor}x as often' },
-    arsenal: { name: 'Arsenal', desc: '+{bonus} weapon per floor' },
+    windfall: { name: 'Windfall', desc: 'Coins are worth {factor}x' },
     edge: { name: 'Edge', desc: '+{value}% damage' },
     cadence: { name: 'Cadence', desc: '+{value}% fire rate' },
     bulwark: { name: 'Bulwark', desc: '+{value} max HP' },

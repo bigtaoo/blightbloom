@@ -73,6 +73,22 @@ export interface ChestPlacement {
   y: number;
 }
 
+/**
+ * A shop counter authored into a room (design/05 "Shops", 2026-09-14). Position only, for
+ * the same reason a `ChestPlacement` is position only: what is on the counter comes from the
+ * floor's own economy (`content/shops.ts`), not from the piece. A piece that authored its own
+ * stock would be a second drop table with its own balance, maintained by hand, in JSON.
+ *
+ * There is no `kind` here and that is deliberate rather than pending: the composition of a
+ * shop is fixed (weapon / buff / supply), so there is nothing for a piece to choose between.
+ * If a second counter TYPE is ever wanted, it arrives as a field here and a branch in
+ * `rollShopStock` — not as stock authored per room.
+ */
+export interface ShopPlacement {
+  x: number;
+  y: number;
+}
+
 /** A decorative placement (design/01 Y-sortable prop) — render-only, never read by
  * the sim, like an enemy blueprint's `tint`. */
 export interface PropPlacement {
@@ -118,6 +134,10 @@ export interface RoomPiece {
    *  authored before chests existed, which is the whole library up to ENGINE_VERSION 63 —
    *  a piece without this field places no chests and behaves exactly as it always did. */
   chests?: ChestPlacement[];
+  /** Shop counters authored into this piece (design/05 "Shops"). Absent on every piece that
+   *  predates them, exactly like `chests` above — a piece without this field places no shop
+   *  and behaves as it always did. */
+  shops?: ShopPlacement[];
   encounter?: WaveScript;
   role?: RoomRole;
   // Which biome piece-pools (DungeonConfig.pieceTags, world/dungeon.ts, ROADMAP 1.3)

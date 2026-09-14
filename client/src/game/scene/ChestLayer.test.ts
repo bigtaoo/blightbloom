@@ -157,6 +157,30 @@ describe('ChestLayer — teardown', () => {
     expect(entities.children).toHaveLength(1);
     expect(entities.children[0]!.destroyed).toBe(false);
   });
+
+  it('survives the GROUND layer being swept out from under it', () => {
+    // `RoomBuilder.build` destroys every child of `layers.ground` on its first line, and a
+    // door unlocking triggers one — so the plates container is destroyed underneath this map
+    // routinely. Until 2026-09-14 that was SILENT: a destroyed Container reports an empty
+    // `children`, so the per-mechanism loop found nothing and skipped, and a big chest simply
+    // lost its plates for the rest of the floor. Only a big chest has plates and the shipped
+    // level has one per floor, which is why nobody saw it.
+    //
+    // Asserted on a plate being drawn AGAIN afterwards, not merely on "no throw": the bug was
+    // never a crash, and a guard that swallowed the destroyed view without rebuilding would
+    // pass a crash test while reproducing the defect exactly.
+    const big = chest({ kind: 'big', mechanisms: [{ gx: fp(11), gy: fp(12), occupied: false }] });
+    const { ground, layer, state } = harness([big]);
+    layer.update(state);
+    expect(ground.children).toHaveLength(1);
+
+    for (const c of [...ground.children]) c.destroy(); // what RoomBuilder.build does
+    layer.update(state);
+
+    expect(ground.children).toHaveLength(1);
+    expect(ground.children[0]!.destroyed).toBe(false);
+    expect((ground.children[0] as Container).children).toHaveLength(1);
+  });
 });
 
 describe('the drawn forms', () => {

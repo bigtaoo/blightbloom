@@ -105,11 +105,19 @@ export const zh: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: '附近武器' },
+    shop: {
+      title: '商店  {coins}',
+      price: '{price}',
+      sold: '已售出',
+      heal: '治疗药水',
+      energy: '能量电池',
+    },
     chips: {
       floor: '楼层',
       room: '房间',
       enemies: '敌人',
       banked: '已存',
+      coins: '金币',
       score: '分数',
       buffs: '增益',
       alive: '存活',
@@ -324,7 +332,7 @@ export const zh: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: '流泉', desc: '血瓶掉落率 {factor} 倍' },
-    arsenal: { name: '军火库', desc: '每层 +{bonus} 把武器' },
+    windfall: { name: '横财', desc: '金币价值 {factor} 倍' },
     edge: { name: '锋锐', desc: '伤害 +{value}%' },
     cadence: { name: '连射', desc: '攻击速度 +{value}%' },
     bulwark: { name: '壁垒', desc: '生命上限 +{value}' },

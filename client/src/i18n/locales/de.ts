@@ -105,11 +105,19 @@ export const de: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: 'Waffen in der Nähe' },
+    shop: {
+      title: 'Laden  {coins}',
+      price: '{price}',
+      sold: 'VERKAUFT',
+      heal: 'Heiltrank',
+      energy: 'Energiezelle',
+    },
     chips: {
       floor: 'ETAGE',
       room: 'RAUM',
       enemies: 'GEGNER',
       banked: 'GESICHERT',
+      coins: 'MÜNZEN',
       score: 'PUNKTE',
       buffs: 'BUFFS',
       alive: 'ÜBRIG',
@@ -324,7 +332,7 @@ export const de: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Lebensquell', desc: 'Tränke fallen {factor}x so oft' },
-    arsenal: { name: 'Arsenal', desc: '+{bonus} Waffe pro Etage' },
+    windfall: { name: 'Geldsegen', desc: 'Münzen sind {factor}x wert' },
     edge: { name: 'Schärfe', desc: '+{value}% Schaden' },
     cadence: { name: 'Kadenz', desc: '+{value}% Feuerrate' },
     bulwark: { name: 'Bollwerk', desc: '+{value} max. LP' },

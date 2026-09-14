@@ -7,12 +7,15 @@ so the index stays readable. Kept verbatim; it is prose, not a spec.
 > `ENGINE_VERSION_HISTORY.md` is the per-version account. The number in the paragraph below has
 > drifted before. When the two disagree, the code wins.
 >
-> **It is drifting right now: the prose below stops at 51, and the shipped version is 60.**
+> **It is drifting right now: the prose below stops at 51, and the shipped version is 64.**
 > Not corrected in place, deliberately, and the reason has held up over three separate passes
 > since — the missing bumps belong to different pieces of work (52/53 the melee attack and its
 > hit window; 54 the heal-at-full-HP rule; 55/56 mob standing volume and approach slots; 57/58
 > the per-floor loot allowance and the checkpoint floor cards; 59 weapon energy and the roster's
-> first melee mobs; 60 the energy card and energy capacity as a character stat), and rewriting another pass's paragraph from outside it is how this file got
+> first melee mobs; 60 the energy card and energy capacity as a character stat; 61 the boss-only extraction and the
+> run save; 62 the ammo regen line; 63 chest rooms and the boss blueprint drop; 64 coins, shops,
+> and weapons leaving the kill table — which also DELETED 57's per-floor loot allowance, so the
+> line above naming it is history now), and rewriting another pass's paragraph from outside it is how this file got
 > long in the first place. Each has a full account in `ENGINE_VERSION_HISTORY.md` and a work-log
 > entry; read those, not this heading. The number above is the only thing kept current here.
 

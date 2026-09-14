@@ -139,6 +139,11 @@ export function serializeState(s: GameState): unknown {
       // another refused. `maxEnergy` too: a card or character that ever raises the cap
       // must not be able to differ silently while the current value happens to agree.
       p.energy, p.maxEnergy,
+      // Coins (design/05 "Shops", 2026-09-14). A wallet decides whether a shop purchase is
+      // affordable, so two clients that disagree about a balance disagree about what is on
+      // the counter — and the drop that fills it is a table entry, i.e. a dropPrng draw
+      // whose divergence would otherwise only surface much later as a refused buy.
+      p.coins,
       // Run-buff stack (design/14): buffs scale damage/firerate at use time, so a buff
       // divergence would otherwise only surface indirectly — hash the ids directly.
       p.buffs,
@@ -191,6 +196,23 @@ export function serializeState(s: GameState): unknown {
       k.id, k.kind, k.gx, k.gy, k.spawnTick, k.alive,
       k.weaponId ?? '', k.buffId ?? '', k.materialId ?? '', k.qty ?? 0, k.tier ?? 0,
     ]),
+    // Chests (design/05 "Chest rooms", ENGINE_VERSION 63) and shops (design/05 "Shops",
+    // 2026-09-14). `opened` and `sold` are one-way decisions the sim makes off shared state,
+    // which is the definition of a thing this hash exists to catch — `ChestSystem`'s own
+    // header says a chest that opened on one client and not another IS the desync.
+    //
+    // **The chest half was missing until 2026-09-14**, and the way it was missing is worth
+    // recording: `fixtures/chestRoomFloor.ts` says in prose that "`state.chests` joining the
+    // hashed payload" is what reaches the golden gate, and it never did. Nothing failed,
+    // because a divergence in `opened` surfaces one tick later as a weapon pickup that exists
+    // on one client and not the other — later, and attributed to the wrong system.
+    //
+    // A big chest's `mechanisms` are hashed for their `occupied` flags rather than their
+    // positions: the positions are derived with integer trig from already-hashed inputs and
+    // carry no independent information, but `occupied` is recomputed every tick from player
+    // positions and is what the all-plates test reads.
+    chests: s.chests.map((c) => [c.id, c.opened, c.mechanisms.map((m) => m.occupied)]),
+    shops: s.shops.map((sh) => [sh.id, sh.stock.map((o) => [o.id, o.kind, o.price, o.sold])]),
     // Extraction / materials-banking (design/05, ROADMAP 1.4/1.5). floorIndex is a
     // plain number; the two material maps are sorted by key so the hash doesn't depend
     // on Object.entries' (already-deterministic) insertion order matching between two
@@ -198,14 +220,8 @@ export function serializeState(s: GameState): unknown {
     floorIndex: s.floorIndex,
     floorMaterials: sortedEntries(s.floorMaterials),
     bankedMaterials: sortedEntries(s.bankedMaterials),
-    // Per-floor weapon allowance (design/05, ENGINE_VERSION 57). Both are read by
-    // DeathDropsSystem to decide whether a rolled weapon is granted, so a divergence
-    // here changes what the floor hands out — and the quota especially is a dropPrng
-    // draw that would otherwise only surface indirectly, several kills later.
-    floorWeaponQuota: s.floorWeaponQuota,
-    floorWeaponsDropped: s.floorWeaponsDropped,
     // Floor cards (design/05, ENGINE_VERSION 58). The picked list drives the run's
-    // heal-drop multiplier and weapon-quota bonus (`resolveFloorCards`), and the open
+    // heal-drop and coin multipliers (`resolveFloorCards`), and the open
     // offer decides what a descend can even apply — both are read back into sim
     // decisions, so both belong in the hash. Buff cards additionally show up through
     // each player's own `buffs`, already hashed below.
@@ -226,9 +242,6 @@ export function serializeState(s: GameState): unknown {
     dungeonRoomIds: s.dungeonRooms.map((r) => r.id),
     dungeonRoomRuntime: s.dungeonRoomRuntime.map((rt) => [
       rt.activated, rt.roomTick, rt.cursor, rt.hasLiveEnemy,
-      // One-weapon-per-room flag (ENGINE_VERSION 57) — a per-room latch that gates a
-      // real drop, so it belongs in the hash for the same reason `hasLiveEnemy` does.
-      rt.weaponDropped,
     ]),
     dungeonDoorsLocked: s.dungeonDoors.map((d) => d.locked),
     // PvP zone + placement (design/15, ROADMAP 4.2d/4.2e/4.4). undefined/empty for

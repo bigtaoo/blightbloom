@@ -37,6 +37,7 @@ import type {
   PickupItem,
   PlayerActor,
   Projectile,
+  Shop,
   WeaponState,
   Winner,
 } from './entities';
@@ -108,6 +109,26 @@ export class GameState {
     return this._nextChestId++;
   }
 
+  private _nextShopId = 1;
+  /**
+   * A third id space, for shop OFFERS (2026-09-14) — same reason `nextChestId` above exists,
+   * plus one of its own.
+   *
+   * The shared reason: stock is rolled when a floor is PLACED, before that floor's enemies
+   * spawn, so taking offer ids from `nextId()` would shift every later enemy id and
+   * re-stagger the garrison's opening volley (`AIDecideSystem.noticeDelayTicks`). That is the
+   * measured regression chests already paid for once.
+   *
+   * The reason of its own: an offer id is compared against `PlayerCommand.shopBuyId` and a
+   * pickup id against `PlayerCommand.pickupTargetId`, and those are two different fields on
+   * purpose. Were they one field over one id space, a tap meant for a counter would also
+   * match whatever floor weapon happened to share the number — which, with both counters
+   * starting at 1, is not a corner case but the common one.
+   */
+  nextShopId(): number {
+    return this._nextShopId++;
+  }
+
   // Injected PRNG (distinct derived seeds).
   readonly aiPrng: Prng;
   readonly combatPrng: Prng;
@@ -146,6 +167,12 @@ export class GameState {
    *  geometry it stood on is gone. Empty for every config without authored chests, which
    *  is every config that predates them — `ChestSystem` is then a strict no-op. */
   readonly chests: Chest[] = [];
+  /** Shops placed on the current floor (design/05 "Shops", 2026-09-14). Identical lifecycle
+   *  and identical reasoning to `chests` above, including the consequence that matters most
+   *  to the economy: a floor's counter is GONE once you descend, so coins saved for a deeper
+   *  shop are a bet on a deeper shop existing. Empty for every config without authored
+   *  shops, which makes `ShopSystem` a strict no-op there. */
+  readonly shops: Shop[] = [];
 
   // Round solids (design/07). Set once at construction and never mutated for a
   // non-dungeon config; in dungeon mode SpawnSystem.loadRoom repopulates the array
@@ -184,23 +211,6 @@ export class GameState {
   // discarded on a run-ending death (forfeit is just "never merged" — no extra code).
   floorMaterials: Partial<Record<string, number>> = {};
 
-  // ── Per-floor weapon allowance (design/05, 2026-09-05) ──────────────────────
-  // The design target is a floor that hands out 2-3 weapons, and a weight on the
-  // drop table cannot express that: at ~60-77 enemies a floor, 5/84 per kill lands
-  // anywhere from 0 to 6, and lowering the weight only widens that spread relative
-  // to the target. So the WEIGHT sets the pacing (when a weapon shows up) and this
-  // quota sets the COUNT, with `DeathDropsSystem` making up any shortfall on the
-  // capstone kill so the floor can never come in under it.
-  //
-  // Dungeon runs only. A config with no rooms (a flat `waves`/`floors` list — every
-  // golden scenario and most tests) has no floor to allocate against and is left on
-  // the plain table, which is also why `-1` rather than `0` is the unrolled marker:
-  // it distinguishes "this floor has no allowance concept" from "this floor's
-  // allowance is spent".
-  /** This floor's weapon allowance, rolled once when the floor is placed. -1 = never
-   *  rolled (non-dungeon config, or a floor not yet placed). */
-  floorWeaponQuota = -1;
-
   // ── Floor cards (design/05, ENGINE_VERSION 58) ──────────────────────────────
   // The checkpoint's "pick one of three". `floorCardOffer` holds THIS checkpoint's
   // three card ids (empty whenever no offer is open — before the capstone falls, on
@@ -216,8 +226,6 @@ export class GameState {
   floorCardOffer: string[] = [];
   /** Every card this run has picked, in pick order. Run-scoped, never carries out. */
   floorCards: string[] = [];
-  /** Weapons this floor has actually produced, against `floorWeaponQuota`. */
-  floorWeaponsDropped = 0;
   // The run's carry-out bag — the ONLY thing that leaves a run (design/05). Never
   // wiped by death; only ever grows, at an extraction checkpoint.
   bankedMaterials: Partial<Record<string, number>> = {};
@@ -441,11 +449,17 @@ export class GameState {
       // PvP rather than preserve its ratio. See `SkinDef.maxEnergy`.
       energy: skin.maxEnergy,
       maxEnergy: skin.maxEnergy,
+      // Coins start at zero in BOTH modes (design/05 "Shops"). Not a character stat and not
+      // a loadout field: a starting balance would be meta value reaching into a run, which
+      // is the wall `buildArenaSpecs` takes no meta param to hold. Everything a run can spend
+      // it earns inside the run.
+      coins: 0,
       firing: false,
       interacting: false,
       confirmExtract: false,
       confirmDescend: false,
       pickupTargetId: 0,
+      shopBuyId: 0,
       cardVote: 0,
       downed: false, // co-op downed/revive (design/05/07, ROADMAP 3.2)
       bleedoutTicks: 0,

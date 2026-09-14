@@ -47,7 +47,6 @@
  * file needs to change for that; the merge simply is not where the guarantee lives.
  */
 import type { GameState } from '../state/GameState';
-import { capstoneCentre, payFloorWeaponShortfall } from './floorLoot';
 import { cardBuffId, rollFloorCardOffer, tallyCardVote } from '../balance/floorCards';
 
 export class ExtractionSystem {
@@ -66,14 +65,12 @@ export class ExtractionSystem {
     // original floor-wide flag untouched.
     if (state.dungeonEnabled) {
       if (!this.capstoneCleared(state)) return;
-      // The floor is finished. Hand over any weapons its kills did not produce
-      // (design/05 per-floor allowance, ENGINE_VERSION 57) — this is the path for a
-      // capstone with no enemies in it, which is four of the shipped level's five
-      // floors; a BOSS floor has already paid on the body back in DeathDropsSystem,
-      // and this call finds nothing owed. Idempotent, which is what lets it sit in a
-      // block that re-runs every tick the portal stays open.
-      const centre = capstoneCentre(state);
-      if (centre) payFloorWeaponShortfall(state, centre.gx, centre.gy);
+      // A finished floor used to hand over any weapons its kills had not produced here
+      // (the per-floor allowance, ENGINE_VERSION 57) — the path for a capstone with no
+      // enemies in it, which is four of the shipped level's five floors. Removed
+      // 2026-09-14 with the allowance itself: a floor's weapons come from its chests,
+      // its boss and its shop, and a checkpoint that topped that up would be handing
+      // out exactly the loot the search was supposed to be worth.
     } else {
       if (!(state.wavesExhausted && state.enemies.length === 0)) return;
     }

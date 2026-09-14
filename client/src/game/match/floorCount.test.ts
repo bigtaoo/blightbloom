@@ -65,7 +65,7 @@ function dungeonStateWithRooms(roomCount: number) {
   // so the test controls each room's `activated`/`hasLiveEnemy` directly, same as
   // ExtractionSystem.test.ts's own capstoneCleared fixtures.
   for (let i = 0; i < roomCount; i++) {
-    s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false, weaponDropped: false });
+    s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false });
   }
   return s;
 }

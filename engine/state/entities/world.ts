@@ -66,7 +66,20 @@ export interface AABB {
 // instant item like `heal`, collected under the same "only when it would actually do
 // something" rule, and carrying no payload fields (the amount is a constant,
 // `ENERGY_PICKUP_AMOUNT`, not a per-drop roll).
-export type PickupKind = 'heal' | 'material' | 'weapon' | 'buff' | 'crate' | 'bandage' | 'energy';
+// 'coin' (2026-09-14, design/05 "Shops") is the in-run currency a shop room spends. Auto-
+// collected like `material` and for the same reason (pure upside, no choice to make), but
+// into the COLLECTING PLAYER's own wallet rather than a shared floor buffer: a coin is
+// never banked, never carried out and never seen by the meta layer, so there is nothing for
+// `ExtractionSystem` to merge and nothing for a death to forfeit beyond the run itself.
+export type PickupKind =
+  | 'heal'
+  | 'material'
+  | 'coin'
+  | 'weapon'
+  | 'buff'
+  | 'crate'
+  | 'bandage'
+  | 'energy';
 
 /**
  * A chest's kind (design/05 "Chest rooms"). The two differ in WHO can open one and in
@@ -115,6 +128,50 @@ export interface Chest {
   opened: boolean;
 }
 
+/**
+ * One line on a shop's counter (design/05 "Shops", 2026-09-14).
+ *
+ * `kind` is the same vocabulary `PickupKind` uses, minus everything a shop does not sell, so
+ * that a purchase resolves through the machinery a drop already goes through rather than
+ * through a parallel one — `ShopSystem` spawns a weapon pickup and applies the other three
+ * exactly as `PickupSystem` would.
+ *
+ * `sold` rather than removal from the array: the row stays on the counter greyed out, which
+ * is what tells a player who just watched a teammate buy it why it is gone. Stock is SHARED
+ * and wallets are per-seat, so first-come-first-served — the same rule a small chest runs on.
+ */
+export interface ShopOffer {
+  /** From `GameState.nextShopId()`, a separate id space (see there). Compared only against
+   *  `PlayerCommand.shopBuyId`, never against an entity or pickup id. */
+  id: number;
+  kind: 'weapon' | 'buff' | 'heal' | 'energy';
+  weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
+  buffId?: string; // kind 'buff' → id into RUN_BUFFS
+  price: number; // in coins (PlayerActor.coins)
+  sold: boolean;
+}
+
+/**
+ * A shop (design/05 "Shops"). Engine state for the same three reasons a `Chest` is: `sold`
+ * is a decision the sim makes, it has to replay bit-for-bit, and a counter whose stock lived
+ * in the renderer would restock itself on every resumed save.
+ *
+ * Instantiated once per floor placement from each `RoomPiece.shops` entry
+ * (`SpawnSystem.generateAndPlaceFloor`) and cleared with the rest of the floor — an unbought
+ * offer is gone when its geometry is, the same rule uncollected pickups and unopened chests
+ * follow. A run therefore cannot walk back to a previous floor's shop, which is what keeps
+ * "save your coins" a decision about the floors AHEAD.
+ */
+export interface Shop {
+  id: number;
+  /** The `PlacedRoom.id` this shop belongs to — it may only be traded with once that room is
+   *  activated, so a counter cannot be worked from outside through a wall. */
+  roomId: string;
+  gx: Fp;
+  gy: Fp;
+  stock: ShopOffer[];
+}
+
 export interface PickupItem {
   id: number;
   kind: PickupKind;
@@ -126,7 +183,7 @@ export interface PickupItem {
   weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
   buffId?: string; // kind 'buff' → id into RUN_BUFFS (design/14)
   materialId?: string; // kind 'material' → id into MATERIAL_DEFS (design/09)
-  qty?: number; // kind 'material' → amount dropped
+  qty?: number; // kind 'material' → amount dropped; kind 'coin' → coins in this pile
   // kind 'material' → the ROLLED instance tier (design/09 materialTierByDepth,
   // ROADMAP 1.5), distinct from MaterialDef.tier (the catalog's static base — always
   // 0, since there's one id per element regardless of depth). Rises with dungeon

@@ -40,7 +40,7 @@ function addPlayer(s: GameState, xpx: number, ypx: number): PlayerActor {
     knockVx: toFp(0), knockVy: toFp(0),
     facing: 0 as Brad, hp: 6, maxHp: 6, shield: 0, maxShield: 0, ticksSinceHit: 0,
     radius: PLAYER_BASE.radius, footprintRadius: PLAYER_BASE.footprintRadius, solidRadius: PLAYER_BASE.solidRadius,
-    alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [], energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY,
+    alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [], energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY, coins: 0, shopBuyId: 0,
     firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),

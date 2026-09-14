@@ -4,6 +4,9 @@ import type { Layers } from '../scene/layers';
 import { Panel, ToastQueue, Button } from './widgets';
 import { nearbyWeaponPickups, WEAPON_PROMPT_RADIUS_FP } from './pickupProximity';
 import { WeaponPickupPrompt } from './WeaponPickupPrompt';
+import { ShopPrompt } from './ShopPrompt';
+import { nearbyShop, SHOP_PROMPT_RANGE_GRID } from './shopProximity';
+import { toFpGrid } from '@dd/engine';
 import { Minimap, type MinimapPlayer } from './Minimap';
 import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
 import { PlayerCard, AllyRow } from './PlayerCard';
@@ -35,7 +38,7 @@ export interface HudContext {
   canSaveReplay: boolean;
 }
 
-type ChipKey = 'floor' | 'room' | 'enemies' | 'banked' | 'score' | 'buffs' | 'stage' | 'alive';
+type ChipKey = 'floor' | 'room' | 'enemies' | 'banked' | 'coins' | 'score' | 'buffs' | 'stage' | 'alive';
 
 // Each chip's glyph + tint. Tints are pulled from what the stat refers to ON SCREEN, not
 // picked for variety: the foe count takes the enemy faction red, banked materials take
@@ -47,6 +50,7 @@ const CHIP_DEFS: Record<ChipKey, { icon: HudIconId; color: number; label: Transl
   room: { icon: 'room', color: 0x90cdf4, label: 'hud.chips.room' },
   enemies: { icon: 'enemies', color: THEME.colors.enemy, label: 'hud.chips.enemies' },
   banked: { icon: 'banked', color: THEME.colors.pickupMaterial, label: 'hud.chips.banked' },
+  coins: { icon: 'coins', color: THEME.colors.pickupCoin, label: 'hud.chips.coins' },
   score: { icon: 'score', color: 0xffd27f, label: 'hud.chips.score' },
   buffs: { icon: 'buffs', color: THEME.colors.pickupBuff, label: 'hud.chips.buffs' },
   stage: { icon: 'stage', color: 0xf6ad55, label: 'hud.chips.stage' },
@@ -55,7 +59,7 @@ const CHIP_DEFS: Record<ChipKey, { icon: HudIconId; color: number; label: Transl
 
 // Which chips a mode shows, in row order. `buffs` is in both and drops out of the row
 // whenever the run has none — an always-zero chip is noise.
-const PVE_CHIPS: readonly ChipKey[] = ['floor', 'room', 'enemies', 'banked', 'score', 'buffs'];
+const PVE_CHIPS: readonly ChipKey[] = ['floor', 'room', 'enemies', 'banked', 'coins', 'score', 'buffs'];
 const PVP_CHIPS: readonly ChipKey[] = ['stage', 'alive', 'score', 'buffs'];
 
 const PAD = 12; // panel inset, all four sides
@@ -96,6 +100,10 @@ export class HudView {
   // floor weapon (icon + name); tapping one is the collect action itself. Replaces the
   // old single-nearest "ground compare card" + tap-INTERACT gesture.
   readonly weaponPickupPrompt = new WeaponPickupPrompt();
+  // Shop counter panel (design/05 "Shops", ENGINE_VERSION 64) — the same object one row
+  // down the screen: a list of things in reach, tapping one is the action. It is shown only
+  // while the seat stands on a counter's drawn mat, which is why it needs no close button.
+  readonly shopPrompt = new ShopPrompt();
   // Shared PvP/PvE room-graph minimap (design/10, PvE wiring 2026-08-05) — its own
   // visibility is driven independently of the rest of the HUD (zoneEnabled/
   // dungeonRooms, not phase), so it's mounted as a SIBLING of `view` inside
@@ -161,6 +169,7 @@ export class HudView {
       this.seatRoster.view,
       this.toasts.view,
       this.weaponPickupPrompt.view,
+      this.shopPrompt.view,
       this.downedBanner.view,
       this.pauseBtn.view,
       this.replayBtn.view,
@@ -241,6 +250,10 @@ export class HudView {
       this.chips.get('room')!.set(t('hud.chips.room'), `${Math.max(1, roomIndex + 1)}/${rooms}`);
       this.chips.get('enemies')!.set(t('hud.chips.enemies'), `${s.enemies.length}`);
       this.chips.get('banked')!.set(t('hud.chips.banked'), `${totalBanked(s)}`);
+      // Coins are PER-SEAT (design/05 "Shops"), so this reads the LOCAL seat's wallet and
+      // not a sum over the party — a chip showing the squad's total would be a number the
+      // player cannot spend.
+      this.chips.get('coins')!.set(t('hud.chips.coins'), `${p?.coins ?? 0}`);
     }
     this.chips.get('score')!.set(t('hud.chips.score'), `${ctx.score}`);
     this.chips.get('buffs')!.set(t('hud.chips.buffs'), `${buffCount}`);
@@ -266,6 +279,7 @@ export class HudView {
     const showRoster = this.seatRoster.set(ctx.seatNames, ctx.localOwner);
     this.layout(s.zoneEnabled ? PVP_CHIPS : PVE_CHIPS, buffCount > 0, ally !== undefined, showRoster);
     this.updateWeaponPickupPrompt(s, p);
+    this.updateShopPrompt(s, p);
     this.toasts.update(dt);
 
     // Shared room-graph minimap (design/10 "room progress"; PvE wiring 2026-08-05,
@@ -354,6 +368,10 @@ export class HudView {
       // has to track the panel's live width, or a long localized weapon name slides
       // the panel out from under it.
       this.weaponPickupPrompt.view.position.set(w + 12, 40);
+      // Below the weapon panel, not beside it: the two can be open at once (a shop pays a
+      // weapon onto the floor at your feet, so buying one opens the other), and side by side
+      // the second would run off the right edge on a phone.
+      this.shopPrompt.view.position.set(w + 12, 220);
     }
   }
 
@@ -375,6 +393,17 @@ export class HudView {
   private updateWeaponPickupPrompt(s: GameState, p: GameState['players'][number] | undefined): void {
     const nearby = p ? nearbyWeaponPickups(s.pickups, p.gx, p.gy, WEAPON_PROMPT_RADIUS_FP) : [];
     this.weaponPickupPrompt.update(nearby);
+  }
+
+  // Shop counter panel (design/05 "Shops"). The reach test adds the seat's OWN body radius to
+  // the configured range, which is exactly what `ShopSystem.buy` does — so "the panel is open"
+  // and "the sim will accept a tap" are the same condition, computed from the same two numbers
+  // rather than from two rules that could drift.
+  private updateShopPrompt(s: GameState, p: GameState['players'][number] | undefined): void {
+    const shop = p
+      ? nearbyShop(s.shops, p.gx, p.gy, toFpGrid(SHOP_PROMPT_RANGE_GRID) + (p.radius as number))
+      : undefined;
+    this.shopPrompt.update(shop, p?.coins ?? 0);
   }
 }
 

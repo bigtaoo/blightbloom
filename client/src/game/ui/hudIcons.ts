@@ -19,6 +19,7 @@ export type HudIconId =
   | 'room'
   | 'enemies'
   | 'banked'
+  | 'coins'
   | 'score'
   | 'buffs'
   | 'alive'
@@ -86,6 +87,15 @@ export function drawHudIcon(g: Graphics, icon: HudIconId, cx: number, cy: number
       // Crystal — the same silhouette `Pickup` draws for a material drop.
       g.poly([cx, cy - r, cx + r * 0.72, cy, cx, cy + r, cx - r * 0.72, cy]).fill({ color });
       g.poly([cx, cy - r, cx + r * 0.72, cy, cx, cy]).fill({ color: 0xfffbe6, alpha: 0.45 });
+      break;
+    }
+    case 'coins': {
+      // A struck disc with a rim — the same silhouette `Pickup` draws for a coin, which is
+      // the whole point of this file: a player who learned the shape on the floor reads the
+      // chip for free. Separated from `banked`'s crystal by FORM, since both are warm.
+      g.circle(cx, cy, r * 0.92).fill({ color });
+      g.circle(cx, cy, r * 0.92).stroke({ color: 0xfff6d5, width: 1, alpha: 0.8 });
+      g.circle(cx - r * 0.28, cy - r * 0.28, r * 0.24).fill({ color: 0xfffbe6, alpha: 0.7 });
       break;
     }
     case 'score': {

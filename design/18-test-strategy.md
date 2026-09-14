@@ -270,7 +270,22 @@ env block is fed to the real `assertBillingStartupSafety`, with a control assert
 flipped to `NODE_ENV=production` throws. Without the control, the first assertion passes just as
 happily against a guard that never throws at all.
 
-**Cost and evidence.** `deploy.manifests.test.ts` is 15 cases in ~180 ms (it only reads files);
+**Every manifest is read LF-normalised, and a guard test pins that** (2026-09-14). These are the
+only tests in the tree that pattern-match raw file text, which makes them the only ones a line
+ending can break: `core.autocrlf=true` with no `.gitattributes` means each manifest is CRLF in a
+Windows worktree and LF in CI, so a regex anchoring on a literal `\n` mid-pattern matches on one
+machine and not the other. It cost a real bisect — the backup-mount assertion extracted an empty
+block and failed as `expected '' not to be ''`, which reads like a broken deploy manifest rather
+than a checkout artifact. Normalising in the `read()` helper rather than spelling `\r?\n` at each
+use site is the point: the per-site version has to be remembered every time a regex is added, and
+the failure mode of forgetting it is a test that still passes in CI. Worth knowing before trusting
+the green column here — most line-anchored patterns survive CRLF *by accident*, because JS counts
+CR as a line terminator, so multiline `$` matches in front of one; `deploy.observability.test.ts`
+and `heartbeat.test.ts` passed for exactly that reason and are normalised now too, by
+construction rather than by luck.
+
+**Cost and evidence.** `deploy.manifests.test.ts` is 27 cases in ~20 ms of test time (it only
+reads files; ~1.1 s wall clock, nearly all of it transform and import);
 `deploy.bundle.test.ts` is 8 cases in ~1.5 s including the esbuild run, three HTTP boots and the
 worker's own cycle.
 Every assertion was mutation-checked rather than trusted for being green: five separate compose

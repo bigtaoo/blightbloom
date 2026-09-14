@@ -58,7 +58,7 @@ function addPlayer(s: GameState, gx: number, gy: number): PlayerActor {
     radius: PLAYER_BASE.radius, footprintRadius: PLAYER_BASE.footprintRadius,
     solidRadius: PLAYER_BASE.solidRadius,
     alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [],
-    energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY,
+    energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY, coins: 0, shopBuyId: 0,
     firing: false, interacting: false, pickupTargetId: 0, cardVote: 0,
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
@@ -344,7 +344,7 @@ describe('ChestSystem — the rules that are about something other than the ches
     c.roomId = 'r1';
     s.dungeonRoomIndexById.set('r1', 0);
     s.dungeonRoomRuntime.push({
-      activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false, weaponDropped: false,
+      activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false,
     });
     p.interacting = true;
     sys.tick(s);
@@ -354,14 +354,19 @@ describe('ChestSystem — the rules that are about something other than the ches
     expect(c.opened).toBe(true);
   });
 
-  it('counts its payout against the floor allowance', () => {
+  it('pays its weapons onto the floor and charges them against nothing', () => {
+    // The counterpart of the deleted "counts its payout against the floor allowance" test.
+    // A chest used to add to `state.floorWeaponsDropped` so the capstone owed less; both
+    // the counter and the make-up payment are gone (2026-09-14), so a chest's payout IS
+    // the floor's weapon supply. Asserted on the pickups rather than on the absence of a
+    // field, because a field that no longer exists cannot be asserted about — what has to
+    // stay true is that opening one still puts exactly `CHEST_SMALL_WEAPONS` guns down.
     const s = state();
     const p = addPlayer(s, 10, 10);
     addChest(s, 'small', 10, 10);
-    s.floorWeaponsDropped = 0;
     p.interacting = true;
     sys.tick(s);
-    expect(s.floorWeaponsDropped).toBe(CHEST_SMALL_WEAPONS);
+    expect(s.pickups.filter((i) => i.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS);
   });
 
   it('is a strict no-op for a state with no chests', () => {

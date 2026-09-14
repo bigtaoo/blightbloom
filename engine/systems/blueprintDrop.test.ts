@@ -21,7 +21,8 @@ import type { GameState } from '@dd/engine/state/GameState';
 import { ENEMY_TEAM_ID, type EnemyActor } from '@dd/engine/state/entities';
 import { DeathDropsSystem } from '@dd/engine/systems';
 import { EARNABLE_BLUEPRINTS, STARTER_BLUEPRINTS } from '@dd/engine/content/blueprints';
-import { BLUEPRINT_DROP_PERMILLE } from '@dd/engine/config';
+import { BLUEPRINT_DROP_PERMILLE, BOSS_WEAPON_DROPS } from '@dd/engine/config';
+import { WEAPON_DROP_POOL } from '@dd/engine/content/drops';
 
 const sys = new DeathDropsSystem();
 
@@ -142,7 +143,7 @@ describe('what it awards', () => {
 });
 
 describe('the draw itself', () => {
-  it('costs zero draws for a non-boss death', () => {
+  it('costs zero draws for a non-boss death, beyond the boss weapon a boss also pays', () => {
     const s = state(9);
     addCorpse(s, false);
     const before = s.dropPrng.peek();
@@ -155,7 +156,32 @@ describe('the draw itself', () => {
     addCorpse(t, true);
     t.runBlueprint = 'held'; // blocks the blueprint roll without changing anything else
     sys.tick(t);
-    expect(t.dropPrng.peek()).toBe(nonBoss);
+
+    // A boss also drops `BOSS_WEAPON_DROPS` guaranteed weapons (2026-09-14), one `nextInt`
+    // into the weapon pool each — so "the suppressed blueprint roll is free" is now measured
+    // by advancing the non-boss stream by exactly that many draws and demanding the two land
+    // on the same value. Stated as the draws themselves rather than as a count, because the
+    // count is what a peek() cannot see and the equality is what makes it exact: a blueprint
+    // roll that leaked one draw would move this by one and fail.
+    for (let i = 0; i < BOSS_WEAPON_DROPS; i++) s.dropPrng.nextInt(WEAPON_DROP_POOL.length);
+    expect(t.dropPrng.peek()).toBe(s.dropPrng.peek());
     expect(nonBoss).not.toBe(before);
+  });
+
+  it('puts BOSS_WEAPON_DROPS weapons on the ground for a boss and none for anything else', () => {
+    // The guarantee that replaced the per-floor allowance. Asserted against the non-boss
+    // control on the SAME seed, so a table roll that happened to produce a weapon could not
+    // be mistaken for the boss payment — which it cannot today (PvE's table has no weapon
+    // entry), and that is exactly the kind of "true for a reason the test does not check"
+    // this control is for.
+    const boss = state(9);
+    addCorpse(boss, true);
+    sys.tick(boss);
+    expect(boss.pickups.filter((i) => i.kind === 'weapon')).toHaveLength(BOSS_WEAPON_DROPS);
+
+    const mob = state(9);
+    addCorpse(mob, false);
+    sys.tick(mob);
+    expect(mob.pickups.filter((i) => i.kind === 'weapon')).toHaveLength(0);
   });
 });
