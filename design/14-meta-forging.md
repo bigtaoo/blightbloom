@@ -7,8 +7,38 @@ The persistent layer **between runs**: what carries across, what materials buy, 
 ### Forging & blueprints
 
 - **Blueprint = permanent account unlock; a crafted weapon = one run.** Forging has two layers. You first **unlock a blueprint** (the *right* to make a weapon) — permanent, account-level, never lost. Then each run you **craft an instance** from an unlocked blueprint by spending materials, and that instance can enter **exactly one** run: like every weapon it is wiped at run end (`05`). Want it again next run → craft it again.
-- **Blueprint sources: drops / purchase / events.** **2–3 common blueprints drop from runs** (permanent the moment you obtain them). The rest are **bought (RMB) or earned from time-limited events**. A blueprint is *not* a material — it is account-level and never forfeited on death.
-  - ⚠️ **The "drop from runs" half is not built (`ROADMAP` B5).** `Pickup` has no blueprint kind and no drop table can roll one, so nothing in a run ever grants a blueprint. What ships instead is `STARTER_BLUEPRINTS` — *every* `source: 'drop'` entry, **5** of them today (repeater, flamer, scattergun, hammer, spear), unlocked at account creation so the forge has something to craft. `content/blueprints.ts` says as much in its own comment (*"a full build would grant them on the actual in-run drop"*). Two consequences worth naming: the count is 5, not "2–3", and a blueprint is not something a player can *earn by playing* — only bought, or given free at the start.
+- **Blueprint sources: a boss drop / purchase / events.** ✅ **Shipped 2026-09-14** (`ENGINE_VERSION` 63). A blueprint **drops from a boss kill, at a 5% roll** (`BLUEPRINT_DROP_PERMILLE`; 5% is a first-pass number to tune against real clears, not a balanced one). The rest are **bought (RMB) or earned from time-limited events**. A blueprint is *not* a material — it is account-level and never forfeited on death.
+  - **Why the boss, and why that solves `ROADMAP` B5's structural half.** B5's open problem was never the drop table, it was the *route out of the sim*: a blueprint is account-level, so it must bypass the "weapons are ephemeral" rule, and it does not fit materials' `floorMaterials → bankedMaterials` path either. Rolling it on the boss kill makes that problem mostly disappear — since 2026-09-14 the boss kill **is** the extraction (`05`), so the drop happens at the one moment a run is already handing its carry-out to the meta layer, and the blueprint can ride that same handover instead of needing a second one. What still has to exist is the roll itself, a way to show the player they earned one, and the account-side grant.
+  - **The pool it rolls from.** The two sets used to be the same set: `STARTER_BLUEPRINTS` was
+    *computed* as every `source: 'drop'` entry — all five — and granted at account creation, so a
+    roll against `source: 'drop'` would have had nothing left to award. It is now an **explicit
+    list of two openers, one gun and one melee** (repeater + hammer), which is what the forge
+    needs to be demonstrable on day one and no more: a new account already carries `blaster` +
+    `saber` for free without any blueprint at all, so the grant's job is to show what crafting
+    *does*, not to supply the loadout. The **earnable pool is the rest of `source: 'drop'`** —
+    flamer, scattergun and spear — derived, so the two can never overlap again. `09`'s "fail
+    loud, never at use" applies and is enforced: `validateBlueprints` refuses an **empty**
+    earnable pool outright, because the failure mode of getting this wrong is a 5% roll that
+    silently returns nothing forever. Both halves shipped in the same pass, deliberately — the
+    grant cut alone would have taken three blueprints from every new account with no way to earn
+    them back.
+  - **The roll is account-blind, and that has a known cost.** Account state may never enter the
+    sim (`06`), so the roll picks from the whole earnable pool and the meta layer's
+    `unlockBlueprint` is idempotent. A player who already owns all three earnable blueprints can
+    therefore win a 5% roll that grants nothing. Filed rather than fixed: the alternatives are
+    telling the sim about the account or re-rolling outside it, and both are worse than a rare
+    no-op on a pool this small.
+  - **How it leaves the run.** `GameState.runBlueprint` is the carry-out bag's companion — one per
+    run, handed to the meta layer by the same single call the materials go through
+    (`Game.bankRunCarryOut`), which the win path calls and the death path does not. So a death
+    forfeits the blueprint exactly as it forfeits the materials, by the same mechanism and with no
+    code that says so.
+  - **Pool size is a first-pass number too, and widening it is a monetization call this doc does
+    not make.** Three earnable blueprints at 5% per boss kill is ~20 clears each. Whether the
+    earn-by-playing path should be wider — by moving entries off `source: 'purchase'` — trades
+    directly against what is sold, so it belongs with the monetization tuning below rather than
+    here.
+  - **What it is NOT: a pickup.** `Pickup` still has no blueprint kind and no drop table can roll one, on purpose — a blueprint is account-level and a pickup is run-scoped, so routing it through the floor would have meant inventing an exception to the "weapons are ephemeral" rule. The 5% is a roll on the boss's death, and what it writes is the run's carry-out.
 - **A brought-in weapon = a found weapon.** A crafted weapon you bring in is mechanically identical to one found on the floor — no stripped-down baseline, no bring-in bonus. Bringing one just guarantees a known opener; the floor can still hand you something better. (Matches `05`'s economy table.)
 - **Crafting cost = elemental materials, per-weapon recipe.** Materials come in **five elemental kinds** matching the five damage types (`03`/`13`: physical / fire / ice / lightning / poison), each **tiered by depth** (`09` `MaterialDef.tier` — deeper floors roll higher-tier crystal). Every weapon's recipe names which kinds, how much, and a minimum tier; recipes differ per weapon. Materials are the run's only carry-out (`05`) and the **sole** crafting currency — there is no separate soft currency.
 

@@ -74,6 +74,13 @@ export type GameEvent =
   | { type: 'downed'; id: number; gx: Fp; gy: Fp }
   | { type: 'revived'; id: number; gx: Fp; gy: Fp }
   | { type: 'pickup'; kind: PickupKind; gx: Fp; gy: Fp; weaponId?: string; buffId?: string; materialId?: string; qty?: number; tier?: number }
+  // A chest just opened (design/05 "Chest rooms"). `weapons` is how many weapon pickups
+  // it paid, so the render layer can size its burst off the event instead of counting
+  // pickups that appeared the same tick for other reasons.
+  | { type: 'chest_open'; id: number; kind: 'small' | 'big'; gx: Fp; gy: Fp; weapons: number }
+  // A boss kill rolled a blueprint (design/14, ENGINE_VERSION 63). The GRANT happens in the
+  // meta layer on a won run, never here — this is the render layer's cue to say so.
+  | { type: 'blueprint_drop'; weaponId: string; gx: Fp; gy: Fp }
   | { type: 'wave_clear'; wave: number }
   // A floor's checkpoint resolved to DESCEND (design/05, ROADMAP 1.4) — the floor
   // buffer just banked and the next floor's waves are loading. EXTRACT reuses the

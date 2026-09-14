@@ -249,6 +249,7 @@ export const zh: Translations<typeof en> = {
     materialsDoubled: '已存入材料：{count}（广告奖励 x2）',
     adNotFilled: '暂无广告 —— 你的 {count} 个材料已安全存入',
     scoreLine: '分数 {score}',
+    blueprintLine: '获得图纸：{weapon}',
     fellOnFloor: '倒在第 {floor}/{floorCount} 层',
     materialsLost: '携带的 {count} 个材料已全部丢失',
     placeOf: '第一名，共 {total} 名',

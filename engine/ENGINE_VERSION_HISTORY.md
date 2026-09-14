@@ -2089,3 +2089,74 @@ from the outside — "something moved", no direction — and it happened because
 `hpTotal` but nothing for the other player-visible pool. `Witness.energyTotal` was added in the
 same pass, so the next change to this economy is diagnosable from the fixture diff instead of
 from a pair of 32-bit numbers.
+
+## v63: chests, and the search verb the loop has always claimed (2026-09-14)
+
+`ChestSystem` is step 10.5 and `GameState.chests` is new state, both of them design/05
+"Chest rooms". Five of the shipped level-1 pieces now author a chest, which is what actually
+costs the bump — the SYSTEM is inert without content, and the engine addition alone left every
+golden hash unmoved (measured before the bump, as the v51/v54/v61 rule requires).
+
+### What a chest is
+
+A small chest opens for one player holding INTERACT within `CHEST_INTERACT_RANGE_GRID` and pays
+`CHEST_SMALL_WEAPONS` (1) whatever the party size. A big chest is ringed by one MECHANISM per
+seat — positions derived, never authored, by `content/chests.ts mechanismRing` — and opens only
+while every plate has a player standing on it, paying one weapon per seat. So the per-capita
+reward is flat and what scales with the party is the coordination cost.
+
+Three rules that are about something other than chests, each written down because each is a
+branch whose line runs every tick while only one side is normally taken:
+
+- **A chest may only be worked from inside its own ACTIVATED room.** A floor is co-resident, so
+  without this a player could stand against a shared wall and open a chest in the next room
+  through the stone.
+- **A revive out-ranks a chest for the same INTERACT.** A player who is a valid reviver this
+  tick cannot also open a chest (`ChestSystem.isReviving`, mirroring `ReviveSystem.findReviver`
+  from the reviver's side). Ordering the two systems could not express this: the question is
+  what the button MEANT, not which system ran first.
+- **A chest's payout counts against `floorWeaponsDropped`.** The floor still owes its quota and
+  a chest simply pays part of it, so chests move WHERE a floor's weapons come from without
+  inflating the economy design/05's "Loot economy" tuned. A big chest in a full party can
+  overshoot the quota, which is intended — the per-seat rule is a promise to each player.
+
+### A chest id is NOT an entity id, and the PvE sim is what proved it has to be that way
+
+The first version of this took chest ids from `GameState.nextId()`, which read as obviously
+correct: a chest is a thing in the world and that is the world's id allocator.
+
+It shipped a difficulty regression. Chests are built when a floor is PLACED, before any of that
+floor's enemies spawn, so three chests on level 1 shifted every later enemy id by three — and an
+enemy id is **not inert**: `AIDecideSystem.hasNoticed` staggers a freshly-woken garrison's
+opening volley by `noticeDelayTicks(e.id)`. The re-staggered first volley took
+`client/sim/pveLevelSim.sim.ts` from "at least 2 of 8 careful runs descend off floor 0" to
+**8 of 8 dying there**, and its gate failed in CI.
+
+Worth recording HOW it was missed, because the instrument that did notice is not the one anybody
+would have reached for. The golden gate saw it and pointed the wrong way: the witness moved to
+170 shots -> 167, 59 hits -> 56, four shield-breaks -> one, and the player finishing on 4.2 HP
+instead of 2.4, which reads as the floor getting EASIER. It was one 1500-tick scripted run that
+never leaves its spawn room. Eight bot-driven runs of the whole level said the opposite.
+
+The fix is `GameState.nextChestId()` — a separate id space, so a chest can never perturb an actor
+id. Its doc comment carries the rule this cost: **adding a prop to a room must not retune the
+room's difficulty.** With it, `ember-dungeon-floor1`'s witness is byte-identical to the
+pre-chest recording again, and the only thing left moving its hash is `state.chests` being part
+of the hashed payload — which is what an added state field is supposed to do.
+
+The evidence about chests THEMSELVES is the new `chest-room` golden scenario
+(`fixtures/chestRoomFloor.ts`),
+which is the third purpose-built fixture in the `brimGrinderFloor` / `extractionGateFloor`
+lineage and exists for the same structural reason: two seats spawning on their own plates so the
+big chest opens by construction, a small chest one grid from seat 0 with INTERACT pulsed every 3
+ticks, and `chest_open: 2` in the witness. Deleting `ChestSystem.open` outright would have left
+the other six scenarios green.
+
+### What this does NOT do
+
+Nothing here makes a room a no-fight room. design/05's "a floor mixes combat rooms with chest
+rooms" is half-shipped: chests exist and are authored into five pieces, but every one of those
+pieces still holds its garrison, and a dedicated chest-room piece placed into the floor maps is
+content work this pass did not do. The one exception is `ember_l1_extraction`, which has always
+had zero enemy spawns and now carries the big chest — so four of the five floors do end on a
+room where the only thing to do is open something.

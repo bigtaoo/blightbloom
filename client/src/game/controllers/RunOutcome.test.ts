@@ -43,6 +43,8 @@ interface RecordedHost extends RunOutcomeHost {
   readonly phaseSet: ('victory' | 'defeat')[];
   readonly hudHidden: boolean;
   readonly banked: GameState[];
+  /** Blueprint ids handed to the meta layer, in call order. */
+  readonly granted: string[];
   readonly shown: { won: boolean; title: string; lines: readonly string[] } | undefined;
   /** The rewarded-ad offer the last `showOutcomeScreen` was handed. `undefined` when the
    *  call site passed none at all (every arm but the PvE win), `null` when it passed one
@@ -55,6 +57,7 @@ function mockHost(localOwner = 0): RecordedHost {
   let score = 0;
   const phaseSet: ('victory' | 'defeat')[] = [];
   const banked: GameState[] = [];
+  const granted: string[] = [];
   let hudHidden = false;
   let shown: { won: boolean; title: string; lines: readonly string[] } | undefined;
   let offer: ResultOffer | null | undefined;
@@ -65,12 +68,16 @@ function mockHost(localOwner = 0): RecordedHost {
     currentScore: () => score,
     setPhase: (p) => { phaseSet.push(p); },
     hideHud: () => { hudHidden = true; },
-    bankRunMaterials: (s) => { banked.push(s); },
+    bankRunCarryOut: (s) => {
+      banked.push(s);
+      if (s.runBlueprint !== null) granted.push(s.runBlueprint);
+    },
     isOnline() { return this.online; },
     showOutcomeScreen: (won, title, lines, o) => { shown = { won, title, lines }; offer = o; },
     get phaseSet() { return phaseSet; },
     get hudHidden() { return hudHidden; },
     get banked() { return banked; },
+    get granted() { return granted; },
     get shown() { return shown; },
     get offer() { return offer; },
   };
@@ -104,10 +111,42 @@ describe('RunOutcome — PvE extraction/death', () => {
     });
   });
 
+  it('grants the boss blueprint on a win, and shows a line naming the weapon', () => {
+    const s = pveState();
+    s.floorIndex = 4;
+    s.runBlueprint = 'scattergun';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.granted).toEqual(['scattergun']);
+    expect(host.shown!.lines).toContain('Blueprint recovered: Scattergun');
+  });
+
+  it('shows NO blueprint line when the roll missed — a 5% chance must not read as a failure', () => {
+    const s = pveState();
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.granted).toEqual([]);
+    expect(host.shown!.lines.some((l) => l.includes('Blueprint'))).toBe(false);
+  });
+
+  it('FORFEITS the blueprint on a death, exactly as it forfeits the materials', () => {
+    // The rule this pins is structural rather than conditional: the grant lives on the win path
+    // only, so there is no "if died" branch that could be got wrong. A test is still what says
+    // that is deliberate — moving the call up into `handle` would compile and pass everything
+    // else in this file.
+    const s = pveState();
+    s.runBlueprint = 'scattergun';
+    s.winner = 'enemies';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.granted).toEqual([]);
+    expect(host.banked).toEqual([]);
+  });
+
   it('lose (death): no banking, no score, shows floor/loss/time/score', () => {
     const s = pveState();
     s.floorIndex = 0; // floor 1
-    s.bankedMaterials = { fire: 9 }; // forfeited — never reaches bankRunMaterials
+    s.bankedMaterials = { fire: 9 }; // forfeited — never reaches bankRunCarryOut
     s.winner = 'enemies';
     s.tick = 0;
 

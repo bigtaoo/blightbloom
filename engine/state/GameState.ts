@@ -31,6 +31,7 @@ import {
 } from '../content/arenas';
 import type {
   AABB,
+  Chest,
   EnemyActor,
   Obstacle,
   PickupItem,
@@ -86,6 +87,27 @@ export class GameState {
     return this._nextId++;
   }
 
+  private _nextChestId = 1;
+  /**
+   * A SEPARATE id space for chests (ENGINE_VERSION 63), and the reason is a measured
+   * regression rather than tidiness.
+   *
+   * Chests are built when a floor is PLACED, before any of that floor's enemies spawn. Taking
+   * their ids from `nextId()` therefore shifted every later enemy id by the floor's chest
+   * count — and an enemy id is not inert: `AIDecideSystem.hasNoticed` staggers a woken
+   * garrison's opening volley by `noticeDelayTicks(e.id)`. Authoring three chests onto level 1
+   * re-staggered its first volley enough to take the PvE bot sim from "at least 2 of 8 careful
+   * runs descend" to **8 of 8 dying on floor 0** (`client/sim/pveLevelSim.sim.ts`). Adding a
+   * prop to a room must not retune the room's difficulty.
+   *
+   * Safe because nothing looks a chest up in the shared entity maps: `Scene` keys its `views`
+   * by actor/pickup id and chests are drawn by `ChestLayer` out of its own map, so the two
+   * spaces never meet. The `chest_open` event's `id` is in THIS space.
+   */
+  nextChestId(): number {
+    return this._nextChestId++;
+  }
+
   // Injected PRNG (distinct derived seeds).
   readonly aiPrng: Prng;
   readonly combatPrng: Prng;
@@ -118,6 +140,12 @@ export class GameState {
   readonly enemies: EnemyActor[] = [];
   readonly projectiles: Projectile[] = [];
   readonly pickups: PickupItem[] = [];
+  /** Chests placed on the current floor (design/05 "Chest rooms", ENGINE_VERSION 63).
+   *  Same lifecycle as `pickups` in dungeon mode: cleared and repopulated by
+   *  `SpawnSystem.generateAndPlaceFloor`, since an unopened chest is unreachable once the
+   *  geometry it stood on is gone. Empty for every config without authored chests, which
+   *  is every config that predates them — `ChestSystem` is then a strict no-op. */
+  readonly chests: Chest[] = [];
 
   // Round solids (design/07). Set once at construction and never mutated for a
   // non-dungeon config; in dungeon mode SpawnSystem.loadRoom repopulates the array
@@ -193,6 +221,12 @@ export class GameState {
   // The run's carry-out bag — the ONLY thing that leaves a run (design/05). Never
   // wiped by death; only ever grows, at an extraction checkpoint.
   bankedMaterials: Partial<Record<string, number>> = {};
+  /** The blueprint this run's boss kill rolled, or null (design/14, ENGINE_VERSION 63). The
+   *  materials bag's companion and the SECOND thing that can leave a run — carried the same
+   *  way and forfeited the same way, because nothing hands it to the meta layer unless the run
+   *  is won. At most one per run: the roll is skipped once this is set, so a boss with adds
+   *  that re-enters the branch cannot pay twice. */
+  runBlueprint: string | null = null;
 
   // Seeded dungeon mode (design/05/09, ROADMAP 1.3 wired live). All inert unless
   // `dungeonEnabled` (EngineConfig.dungeon was provided) — see SpawnSystem's dungeon

@@ -13,6 +13,7 @@ import type { Fp } from '../math/fixed';
 import { SIM } from '../sim.config';
 import { FLOOR_WEAPON_QUOTA_MIN, FLOOR_WEAPON_QUOTA_SPAN } from '../config';
 import { resolveFloorCards } from '../balance/floorCards';
+import { mechanismRing } from '../content/chests';
 import { pxToFp, toFpGrid } from '../content/convert';
 import { buildEnemyActor } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
@@ -265,6 +266,39 @@ export class SpawnSystem {
     // Same rule as every floor/room transition before this one (design/05/09): an
     // uncollected drop can never be reached again once the geometry it sat on is gone.
     state.pickups.length = 0;
+
+    // This floor's chests (design/05 "Chest rooms", ENGINE_VERSION 63). Same lifecycle and
+    // same reason as the pickups cleared above: an unopened chest is unreachable the moment
+    // its room stops existing. Built AFTER `walls`/`obstacles`/`worldW`/`worldH` are in
+    // place, because `mechanismRing`'s points are clamped against this floor's geometry --
+    // doing it earlier would clamp a plate against the PREVIOUS floor's stone.
+    state.chests.length = 0;
+    for (const room of placed) {
+      for (const c of room.piece.chests ?? []) {
+        const gx = toFpGrid(c.x + room.offsetXGrid);
+        const gy = toFpGrid(c.y + room.offsetYGrid);
+        const at = clampToWalkable(gx, gy, dropClearance(), state);
+        state.chests.push({
+          // `nextChestId`, never `nextId` — see its doc comment: a chest taking an entity id
+          // shifts every later enemy id, and an enemy id sets its opening-volley delay.
+          id: state.nextChestId(),
+          roomId: room.id,
+          kind: c.kind,
+          gx: at.gx,
+          gy: at.gy,
+          // A plate a player cannot stand on is a chest that can never open, so every
+          // mechanism goes through the same walkable clamp the chest itself just did.
+          mechanisms:
+            c.kind === 'big'
+              ? mechanismRing(at.gx, at.gy, state.players.length).map((m) => {
+                  const mp = clampToWalkable(m.gx, m.gy, dropClearance(), state);
+                  return { gx: mp.gx, gy: mp.gy, occupied: false };
+                })
+              : [],
+          opened: false,
+        });
+      }
+    }
 
     const first = placed[0];
     if (first) {

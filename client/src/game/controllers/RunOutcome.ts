@@ -1,6 +1,6 @@
-import { TICK_RATE, type GameState } from '@dd/engine';
+import { TICK_RATE, WEAPON_SPECS, type GameState } from '@dd/engine';
 import { SCORE } from '../score';
-import { t } from '../../i18n';
+import { t, tName } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
 import { clearSavedRun } from '../match/runSaveStore';
 import { localSeatWon } from './localOutcome';
@@ -18,9 +18,14 @@ export interface RunOutcomeHost {
   currentScore(): number;
   setPhase(phase: 'victory' | 'defeat'): void;
   hideHud(): void;
-  /** Bank the run's carry-out into the persistent account (design/05/14). Called a SECOND
-   *  time, with the same state, to pay the rewarded-ad bonus — see `doubleOffer`. */
-  bankRunMaterials(s: GameState): void;
+  /** Hand the run's whole carry-out to the persistent account (design/05/14): the banked
+   *  materials, AND the blueprint a boss kill rolled (design/14, ENGINE_VERSION 63). One
+   *  method rather than two, because there is exactly one moment either may leave a run and
+   *  the rules governing them are identical — a death forfeits both by never calling this.
+   *  Called a SECOND time, with the same state, to pay the rewarded-ad bonus (see
+   *  `doubleOffer`); the blueprint grant is idempotent, so the repeat pays materials twice
+   *  and the blueprint once, which is what both designs ask for. */
+  bankRunCarryOut(s: GameState): void;
   /** Whether this run is a networked match. Read only to suppress the ad offer: an ad
    *  freezes this client, which a lockstep session cannot survive (design/06), so
    *  `AdController` refuses one outright and a button that cannot work must not be drawn. */
@@ -41,7 +46,7 @@ function totalBanked(s: GameState): number {
 /**
  * Everything a run-ending death costs (design/05's locked wipe rule): BOTH tiers — this
  * floor's un-banked buffer AND the carry-out bag descending folded it into. The bag is not
- * the safe half: it only ever leaves the sim when `bankRunMaterials` hands it to the meta
+ * the safe half: it only ever leaves the sim when `bankRunCarryOut` hands it to the meta
  * layer, and `lose()` below deliberately never calls that.
  *
  * Worth a named function rather than reusing `totalBanked`: the defeat line used to read
@@ -82,7 +87,7 @@ export class RunOutcome {
     // `RunLifecycle` at all, so without this line closing the tab on a result screen would
     // leave the Forge offering CONTINUE for a run that was already won.
     //
-    // Before the branches, not inside them, and before `bankRunMaterials`: all four
+    // Before the branches, not inside them, and before `bankRunCarryOut`: all four
     // outcomes (PvE win/lose, arena win/lose) end the run equally, and a store failure must
     // not be able to leave a banked-and-finished run resumable.
     clearSavedRun();
@@ -116,16 +121,23 @@ export class RunOutcome {
     const carried = totalBanked(s);
     // A death (lose) never reaches here, so its floor buffer is simply forfeited, no
     // extra code — banking the carry-out is the only thing that leaves a run.
-    this.host.bankRunMaterials(s);
+    this.host.bankRunCarryOut(s);
     this.host.setPhase('victory');
     this.host.hideHud();
     this.host.addScore(SCORE.victory);
     // The stat block as a function of its materials row, because the ad bonus rewrites
     // that one row and has to leave the other three exactly as they were — re-deriving
     // them later would re-read `currentScore()` after some other screen had moved it.
+    // The blueprint row only exists when one dropped — a permanently-present "no blueprint"
+    // line would make the 5% look like a failure every run instead of like a rare win.
+    const blueprint =
+      s.runBlueprint === null
+        ? []
+        : [t('results.blueprintLine', { weapon: tName(WEAPON_SPECS[s.runBlueprint]?.nameKey ?? s.runBlueprint) })];
     const lines = (materials: string): readonly string[] => [
       t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
       materials,
+      ...blueprint,
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
     ];
@@ -183,7 +195,7 @@ export class RunOutcome {
         // pressed, which is the only version of the number worth having.
         if (!(await ad.show())) return lines(t('results.adNotFilled', { count: carried }));
         track('ad_completed');
-        this.host.bankRunMaterials(s);
+        this.host.bankRunCarryOut(s);
         return lines(t('results.materialsDoubled', { count: carried * 2 }));
       },
     };

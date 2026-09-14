@@ -1,4 +1,4 @@
-# Work log — 2026-09-11
+# Work log — 2026-09-11 → 09-14
 
 Volume 55. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
 
@@ -91,3 +91,159 @@ decals lie and what shape they are, with `doorLights.ts` down to 299 lines and r
 moved name, so `doorFx.ts`, `doorRender.ts` and the four door test files see no change at all.
 
 `render` `test` `docs`
+
+## Chests, and the id that retuned a floor (2026-09-14, engine + client + content, `ENGINE_VERSION` 62→63)
+
+> *"并不是所有房间都是有怪物的，有些房间会有一个小宝箱，一个人即可打开。有些房间有大宝箱，宝箱周围根据地图进入的玩家人数有对应的机关，需要每个机关上站一个玩家才能打开"* — and, separately, *"图纸在打完boss之后有概率掉落。概率先定位5%"*.
+
+Both of `ROADMAP`'s two oldest backlog items, decided and built in one pass, because they are
+the two halves of the same question: the loop had no reason to look into a room, and no reason
+to run it again.
+
+### The search verb
+
+design/05 has said **search**-fight-extract since it was written. The game did not have the
+first verb — every room held enemies, every drop came off a corpse, so a room was a thing to
+survive rather than a thing to look into (`B1`, filed 2026-09-03).
+
+A **small chest** opens for one player holding INTERACT in reach and pays one weapon whatever
+the party size. Deliberately not a proximity trigger: a chest that opened by being walked past
+spends the floor's loot without the player ever choosing to spend it, and the whole point of the
+verb is that finding something is a decision. A **big chest** is ringed by one MECHANISM per
+seat and opens only while EVERY plate has a player on it, paying **one weapon per seat** — so
+the per-capita reward is flat and what scales with the party is the coordination cost. That
+property is the one worth naming: a big chest is never a reason to bring more players or to
+play alone, which keeps it out of the party-size balancing problem entirely.
+
+Plate positions are **derived, never authored** (`content/chests.ts mechanismRing`). The count
+is the run's seat count, which no room piece can know at authoring time, so authoring the
+positions would be authoring a number that is wrong for every party size but one. Integer trig,
+evaluated per index, and **zero PRNG draws** — a chest's plates are geometry, not a roll, and
+drawing them would have put chest placement into `dropPrng`'s stream, where how many chests a
+floor holds would silently shift every later loot roll on that floor.
+
+Three rules that are about something other than chests, each one a branch whose line runs every
+tick while only one side is normally taken, and each pinned in `systems/chests.test.ts`:
+
+- **A chest may only be worked from inside its own ACTIVATED room.** A floor is co-resident, so
+  without this a player could stand against a shared wall and work a chest in the room next door
+  through the stone.
+- **A revive out-ranks a chest for the same INTERACT.** `INTERACT` already drives the revive
+  channel, so a chest beside a downed teammate would otherwise be opened by the very hold trying
+  to rescue them. `ChestSystem.isReviving` mirrors `ReviveSystem.findReviver` from the reviver's
+  side; reordering the two systems could not express this, because the question is what the
+  BUTTON meant, not which system ran first.
+- **A chest's payout counts against `floorWeaponsDropped`**, so a chest opened mid-floor leaves
+  the capstone's shortfall payment correspondingly smaller.
+
+Content: five shipped level-1 pieces carry a chest — a big one in `ember_l1_extraction` (the only
+room in the level with no enemy spawns, and the capstone of four of the five floors) and a small
+one in `alcove`/`court`/`rampart`/`gallery`, which works out at roughly two small and one big per
+floor. `ChestLayer` draws bodies into the Y-sorted entity layer and plates into the ground layer,
+owned by `Scene` rather than plumbed through `GameLoop` — `Scene` is already the class whose job
+is "mirror `GameState` into the display list", and a chest is the one object that draws into two
+layers at once, which `views`/`spawn` cannot express. Procedural Graphics, no art yet: the same
+staged rollout walls, pillars, doors, drops and props each went through.
+
+**Writing its test found a real bug**, and it is the render-layer bug this repo keeps shipping:
+the per-plate redraw cache was seeded with a boolean, so a plate that STARTS occupied was never
+drawn until somebody stepped off it. Both sentinels are values the real state cannot equal now.
+
+### The reward for finishing, and the pool it was blocked on
+
+A boss kill rolls a blueprint at `BLUEPRINT_DROP_PERMILLE` (50 = 5%, a first-pass number). It
+lands on the **carry-out bag**, not the floor: a blueprint is account-level, so it must bypass
+the "weapons are ephemeral" rule, and it is not a material either — but since 2026-09-10 the
+boss kill IS the extraction, so the roll happens at the one moment a run already hands its
+carry-out to the meta layer. `state.runBlueprint` rides that same handover, and is forfeited by
+a death by the same mechanism the materials are: nothing hands it over unless the run is won.
+`Game.bankRunMaterials` became `bankRunCarryOut` and does both, because there is exactly one
+moment either may leave a run and the rules governing them are identical.
+
+**The content call it was blocked on shipped with it.** `STARTER_BLUEPRINTS` was *computed* as
+every `source: 'drop'` entry — all five — and granted at account creation, which made the
+free-at-signup set and the earnable set **the same set by construction**: a 5% roll against it
+would have had nothing to award, forever, with no error. It is an explicit two-opener list now
+(one gun, one melee: a fresh account already carries `blaster` + `saber` for free, so the
+grant's job is to show what crafting DOES, not to supply a loadout), leaving
+flamer/scattergun/spear as the derived earnable pool, and `validateBlueprints` refuses an empty
+pool outright. One known dud recorded rather than fixed: the roll is account-blind — account
+state may never enter the sim — so a player who owns all three earnable blueprints can win a
+roll that grants nothing.
+
+`EnemyActor.boss` stopped being render-only in the same change, and its doc comment says so:
+setting it on a blueprint is now a content decision with a gameplay consequence.
+
+### A chest id is not an entity id, and the golden witness pointed the WRONG WAY
+
+The first version took chest ids from `GameState.nextId()`. That reads as obviously correct — a
+chest is a thing in the world and that is the world's allocator — and it shipped a difficulty
+regression.
+
+Chests are built when a floor is PLACED, before any of that floor's enemies spawn, so three
+chests on level 1 shifted every later enemy id by three. **An enemy id is not inert**:
+`AIDecideSystem.hasNoticed` staggers a woken garrison's opening volley by
+`noticeDelayTicks(e.id)`. The re-staggered first volley took `client/sim/pveLevelSim.sim.ts`
+from *"at least 2 of 8 careful runs descend off floor 0"* to **8 of 8 dying there**. CI's `sims`
+job is what failed; `check`, `coverage` and `logic consistency` were all green.
+
+**How it was nearly missed is worth as much as the fix.** The golden gate DID see it, and read
+it backwards: `ember-dungeon-floor1`'s witness moved to 170 shots → 167, 59 hits → 56, four
+shield-breaks → one, and the player finishing on 4.2 HP instead of 2.4 — i.e. it looked EASIER —
+and the version entry was first written from exactly that, calling the shift a "pure bookkeeping
+ripple". It is ONE 1500-tick scripted run that never leaves its spawn room. Eight bot-driven
+runs of the whole level said the opposite and were right.
+
+Fixed with `GameState.nextChestId()`, a separate id space, so a chest can never perturb an actor
+id. Safe because nothing looks a chest up in the shared entity maps — `Scene` keys `views` by
+actor/pickup id, and chests are drawn out of `ChestLayer`'s own map. The rule its doc comment
+now carries: **adding a prop to a room must not retune the room's difficulty.** With it,
+`ember-dungeon-floor1`'s witness is byte-identical to the pre-chest recording again, and the
+only thing still moving its hash is `state.chests` joining the hashed payload — which is what an
+added state field is supposed to do.
+
+Two method notes out of the bisect, both general. The suspect files were copied into a
+**detached worktree at the last-good commit** and reverted group by group there; the live
+checkout gave a false negative first (reverting the content JSON appeared not to help, because a
+stale vite cache was still serving the old import), and the isolated tree answered it in one
+run. And the confirmation that the mechanism really was the id shift was a one-line patch
+allocating chest ids from a local counter — cheaper and more conclusive than reasoning about it.
+
+### The golden gate, and the two blind spots it was told about
+
+Run BEFORE the bump, per the v51/v54/v61 rule: the engine addition alone moved nothing, because
+`ChestSystem` is a strict no-op with no authored chest.
+
+`chest-room` (`fixtures/chestRoomFloor.ts`) is the third purpose-built fixture in the
+`brimGrinderFloor`/`extractionGateFloor` lineage, and exists for the same structural reason — no
+shipped scenario opens a chest. Two seats spawning **on their own plates** (with the chest at
+the room's centre, two seats put the ring due east and west, so the open happens by construction
+rather than by wandering), a small chest one grid from seat 0, a new `chest` input flag pulsing
+INTERACT every 3 ticks against the ordinary flag's 53, and `chest_open: 2` in the witness.
+Deleting `ChestSystem.open` outright would have left the other six scenarios green.
+
+The blueprint roll got the OTHER treatment, also deliberately: **no golden scenario kills a
+boss**, and a 5% roll is a poor thing to pin with one recorded run — a fixture would record "no
+drop" and stay green with the roll deleted. It is covered by `systems/blueprintDrop.test.ts`
+instead, including the rate itself over 2000 seeds, and the blindness is recorded in the version
+entry rather than left to be rediscovered.
+
+### What the live run corrected, and what is still open
+
+Verified in a real browser against the shipped level: floor 1 instantiates two small chests and
+one big one at the authored points with a correctly derived plate, the small chest renders, and
+the big chest opens by standing on its plate and pays out. That run also **measured a claim in
+this pass's own docs wrong**: both `ChestSystem`'s header and design/05 said a chest's payout
+counting against the allowance keeps chests from inflating the floor's loot. True for a chest
+opened mid-floor; false for the shipped big chest, which sits in the CAPSTONE room, whose
+shortfall is normally already paid by the time anyone stands on a plate — the floor ended at 4
+weapons against a quota of 3. Recorded as intended rather than fixed: the quota is a FLOOR, not
+a ceiling, because a find that only re-routed loot the floor already owed would pay nothing for
+having searched.
+
+Still open, and filed rather than implied: **rooms that are not fights**. Chests are authored
+into pieces that still hold their garrisons, so design/05's "a floor mixes combat rooms with
+chest rooms" is half-shipped — the one no-fight chest room in the level is the extraction room
+that already had no spawns. A dedicated chest-room piece placed into the floor maps is content
+work, not engine work. `B2` (what a chest OFFERS — the run-buff choice) is unblocked by this and
+still unanswered.

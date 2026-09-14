@@ -254,6 +254,7 @@ export const ru: Translations<typeof en> = {
     materialsDoubled: 'Сохранено материалов: {count} (бонус за рекламу x2)',
     adNotFilled: 'Реклама недоступна — ваши материалы сохранены: {count}',
     scoreLine: 'Очки {score}',
+    blueprintLine: 'Чертёж получен: {weapon}',
     fellOnFloor: 'Пал на этаже {floor}/{floorCount}',
     materialsLost: 'Все переносимые материалы потеряны: {count}',
     placeOf: '1-е место из {total}',

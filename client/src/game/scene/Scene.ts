@@ -11,6 +11,7 @@ import { Actor } from './Actor';
 import { Enemy } from './Enemy';
 import { Bullet } from './Bullet';
 import { Pickup } from './Pickup';
+import { ChestLayer } from './ChestLayer';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
 
@@ -32,6 +33,16 @@ export class Scene {
   private readonly enemiesScratch: Actor[] = [];
   // Same pattern again, for `pickups` below.
   private readonly pickupsScratch: Pickup[] = [];
+
+  /**
+   * Chests (design/05 "Chest rooms", ENGINE_VERSION 63). Owned HERE rather than plumbed
+   * through `GameLoop` like `PickupDebugOverlay` is, because this class is already the one
+   * thing whose job is "mirror `GameState` into the display list" — and because a chest draws
+   * into two layers at once (`entities` for the Y-sorted body, `ground` for its mechanism
+   * plates), which is the one thing `views`/`spawn` cannot express. It is reconciled below and
+   * torn down by `clear()`, so it inherits this class's whole lifecycle for free.
+   */
+  private readonly chests = new ChestLayer(this.layers.entities, this.layers.ground);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -105,6 +116,7 @@ export class Scene {
 
   /** Drop every view — called on a fresh run before a new engine is created. */
   clear(): void {
+    this.chests.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -245,6 +257,8 @@ export class Scene {
       }
       seen.add(it.id);
     }
+
+    this.chests.update(state);
 
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;

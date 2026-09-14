@@ -151,7 +151,7 @@ The art-first setting still makes each locked mechanic diegetic:
 | Only materials carry out | Materials = **stabilised, purified** crystal — the one thing safe to extract (what your belly banks) |
 | A brought weapon is single-use, costs materials | You **refine one unstable weapon** from materials for the dive; it survives one run, like any in-zone weapon (`05`/`14`) |
 | Deeper floors → better materials | Deeper = **closer to the Blight source** → purer, more valuable crystal (and more dangerous) |
-| Extraction rooms are checkpoints | **Decontamination gates** — passing one locks in what you have refined |
+| Only the boss floor ends a run; interior capstones only descend | Interior gates are **airlocks, not decontamination** — they seal the level behind you and let you go deeper; nothing is purified until the **source** at the bottom is put down |
 | Meta sells breadth, not power (`14`: blueprints + side-grade characters) | A safe **outpost / workshop** forges materials into loadout gear and takes in new **core models** (characters) |
 | Elemental enemy variants + boss | Wild crystal-blooms corrupted by each element; the boss is a **failed / overgrown core** |
 

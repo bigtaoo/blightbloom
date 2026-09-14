@@ -52,15 +52,15 @@ describe('step numbering is consistent across code and docs', () => {
   });
 
   // Guards the guard: if the scope regex or the fixture walk ever silently matched nothing, the
-  // assertion above would pass vacuously. 17 systems, 17 labelled calls.
+  // assertion above would pass vacuously. 18 systems, 18 labelled calls.
   it('the gate has a non-empty scope', () => {
     const systems = systemSources();
-    expect(systems.size).toBe(17);
+    expect(systems.size).toBe(18);
     const { calls, problems } = parseStepOrder(gameEngineSrc);
     expect(problems).toEqual([]);
-    expect(calls).toHaveLength(17);
+    expect(calls).toHaveLength(18);
     expect(calls.map(c => c.label)).toEqual([
-      '1', '2', '3', '4', '5', '6', '7', '8', '8a', '8b', '9', '10', '11', '11.5', '12', '13', '14',
+      '1', '2', '3', '4', '5', '6', '7', '8', '8a', '8b', '9', '10', '10.5', '11', '11.5', '12', '13', '14',
     ]);
   });
 

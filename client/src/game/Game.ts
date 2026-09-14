@@ -373,8 +373,9 @@ export class Game {
     this.hudView.visible = false;
   }
 
-  bankRunMaterials(s: GameState): void {
+  bankRunCarryOut(s: GameState): void {
     this.run.meta = bankMaterials(this.run.meta, s.bankedMaterials);
+    if (s.runBlueprint !== null) this.run.meta = unlockBlueprint(this.run.meta, s.runBlueprint);
     this.store.save(this.run.meta);
   }
 
