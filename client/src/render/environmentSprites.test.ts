@@ -14,8 +14,38 @@ import {
   getPickupTexture,
   getPortalArchTexture,
   getPropTexture,
+  getShopkeeperTexture,
+  ENV_SPRITE_ASSETS,
   ENV_SPRITE_ASSET_KEYS,
 } from './environmentSprites';
+
+/**
+ * Every registered key, mapped to the getter that can actually resolve it — and asserted
+ * EXHAUSTIVE below, which is the point of the table existing at all.
+ *
+ * Before this table, the registration block and the getter block were each a hand-written list,
+ * so a new asset was covered only if whoever added it remembered to extend both. The shopkeeper
+ * (2026-09-14) did not: a mutation battery deleted its registry row outright, and pointed its
+ * getter at the wrong key, and **both survived the entire repo** — `ShopLayer` and `npcArt` mock
+ * this module, so nothing anywhere asked the real registry a question. That is the same failure
+ * this file's own header already records for `getPropTexture`'s `prop_` prefix, recurring because
+ * the fix last time was one more line in a list rather than a structure.
+ */
+const GETTERS: Readonly<Record<string, () => { source: { label: string } } | undefined>> = {
+  door_locked: () => getDoorTexture(true),
+  door_open: () => getDoorTexture(false),
+  door_curtain: () => getDoorCurtainTexture(),
+  portal_arch: () => getPortalArchTexture(),
+  npc_shopkeeper: () => getShopkeeperTexture(),
+  pickup_material: () => getPickupTexture('material'),
+  pickup_heal: () => getPickupTexture('heal'),
+  pickup_buff: () => getPickupTexture('buff'),
+  pickup_crate: () => getPickupTexture('crate'),
+  pickup_bandage: () => getPickupTexture('bandage'),
+  prop_crate: () => getPropTexture('crate'),
+  prop_barrel: () => getPropTexture('barrel'),
+  prop_rubble: () => getPropTexture('rubble'),
+} as Readonly<Record<string, () => { source: { label: string } } | undefined>>;
 
 describe('environmentSprites — getDoorTexture before any preload', () => {
   it('returns undefined for both lock states (RoomBuilder falls back to a flat tint)', () => {
@@ -54,15 +84,35 @@ describe('environmentSprites — every key a caller can ask for is actually regi
     }
   });
 
+  it('registers the shop counter\'s shopkeeper', () => {
+    // The first PERSON in this registry, and the only entry whose caller has no Graphics
+    // fallback: `ShopLayer` draws no keeper at all without it (design/05). So a typo here is
+    // not "the art looks unfinished", it is a room with nobody in it and nothing red anywhere.
+    expect(ENV_SPRITE_ASSET_KEYS).toContain('npc_shopkeeper');
+  });
+
+  it('has a getter for every registered key, and a registered key for every getter', () => {
+    // The anti-vacuity guard over the two lists above, and the reason `GETTERS` exists. Every
+    // `toContain` in this block only fires for a name somebody thought to write down; this one
+    // fails for a row nobody wired up, which is the case that actually happens. An asset the
+    // loader fetches and no getter can return is a file shipped into the bundle for nothing.
+    expect(Object.keys(GETTERS).sort()).toEqual([...ENV_SPRITE_ASSET_KEYS].sort());
+  });
+
   it('deliberately has NO pickup_weapon', () => {
     // A weapon drop draws that weapon's own business-end art (render/weaponSkins.ts) so it
     // reads as "that specific gun". A generic file here would quietly shadow it.
     expect(ENV_SPRITE_ASSET_KEYS).not.toContain('pickup_weapon');
   });
 
-  it('every registered key points at a distinct real path under /environment/', () => {
-    const paths = new Set(ENV_SPRITE_ASSET_KEYS);
-    expect(paths.size).toBe(ENV_SPRITE_ASSET_KEYS.length);
+  it('every registered key points at a distinct path, and no two share a file', () => {
+    // This used to build its Set from the KEYS, which come out of `Object.keys` and are
+    // therefore unique by construction — the assertion could not fail, and its own name said
+    // it was checking something else. Two keys pointing at one file is a real copy-paste
+    // mistake (the row below a duplicated one keeps the path above it), and it is silent: both
+    // getters return a texture, one of them the wrong picture.
+    const paths = Object.values(ENV_SPRITE_ASSETS);
+    expect(new Set(paths).size).toBe(paths.length);
   });
 });
 
@@ -73,6 +123,9 @@ describe('environmentSprites — the getters before any preload', () => {
     }
     expect(getDoorCurtainTexture()).toBeUndefined();
     expect(getPortalArchTexture()).toBeUndefined();
+    // The keeper's undefined path is the one with a visible consequence rather than a fallback:
+    // `ShopLayer` draws no merchant at all, deliberately (design/05).
+    expect(getShopkeeperTexture()).toBeUndefined();
   });
 });
 
@@ -115,6 +168,23 @@ describe('environmentSprites — each getter resolves the key it registered, aft
       }
       for (const kind of ['crate', 'barrel', 'rubble']) {
         expect(at(getPropTexture(kind))).toBe(`/environment/prop_${kind}.png`);
+      }
+      expect(at(getShopkeeperTexture())).toBe('/environment/npc_shopkeeper.png');
+    } finally {
+      restore();
+    }
+  });
+
+  it('resolves EVERY registered key through its own getter, not just the ones listed above', async () => {
+    // The literal paths above are the point of that test — they pin the actual filenames, which
+    // a comparison against the registry could never do. This one is the other half: it sweeps
+    // `GETTERS`, which is pinned exhaustive against the registry, so a key added later is
+    // covered whether or not anyone extends the list above. Mutation says both are needed —
+    // pointing `getShopkeeperTexture` at the wrong key survived everything until this ran.
+    const restore = await preloadWithStubs();
+    try {
+      for (const [key, get] of Object.entries(GETTERS)) {
+        expect(get()?.source.label, key).toBe(ENV_SPRITE_ASSETS[key]);
       }
     } finally {
       restore();

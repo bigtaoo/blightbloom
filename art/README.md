@@ -47,6 +47,24 @@
 > **The `door_open_raw.png` haze flagged below was fixed in 2026-08-21's props/follow-ups pass** and
 > the whole `environment/` directory now audits clean (11/11).
 >
+> **Update (2026-09-14):** the **shopkeeper** (`npc/npc_shopkeeper_raw.png` →
+> `client/public/environment/npc_shopkeeper.png`, see `npc/prompts.md`) — the first NPC that stands in a
+> ROOM rather than on a menu screen, which is why it ships to `environment/` beside the doors and props
+> rather than to `ui/` where `npc_forger.png` lives. `client/public/` now holds **99 PNGs**.
+>
+> **It arrived with the 2026-08-24 veil defect, inside a prompt written specifically to prevent it.** The
+> brief carried the anti-checkerboard paragraph this box has been recommending since 2026-08-20 AND a
+> no-baked-glow/no-cast-shadow one, and the generation still came back with its body at 253 wrapped in a
+> veil of alpha 1-10 — exactly the room-prop class. Measured either side: bbox at `alpha > 0` was
+> 1058x1393 (aspect **0.760**), bbox at `alpha > 25` was 864x928 (**0.931**). Since `trimAlphaBoundingBox`
+> keeps any pixel with `alpha !== 0`, shipping it unclamped would have put the sprite **22% wrong in
+> aspect** and left empty rows under a bottom-anchored figure. `alphaClamp.mjs` then `compress.mjs`, in
+> that order, as this directory's convention already says; the trimmed file measures 298x320 = **0.931**,
+> which is the check that proves the clamp ran — *the trimmed bbox must equal the bbox measured at
+> `alpha > 25` on the original*, not merely "the audit says clean". The lesson for the next batch is the
+> direction, not the fix: **prompting for clean alpha is worth doing and is not a substitute for
+> measuring it.** No generator instruction has yet produced a file that skipped this step.
+
 > **Update (2026-08-30b):** one more shipped file, `door_curtain_raw.png` — the open door's own
 > illustrated additive light effect (see the new row below) — bringing `client/public/` to
 > **96 PNGs**. `alpha-audit.mjs` flags it HAZE (15% fully transparent, 40% midtone), which for
@@ -75,7 +93,7 @@
 | `environment/` | Standalone fixtures that stand IN a room rather than surfacing it: the door pair (2026-08-04), the five in-run drop sprites (`pickup_material`/`heal`/`buff`/`crate`/`bandage`), the extraction portal's masonry arch (`portal_arch`, 2026-08-20), and the open door's illustrated curtain-of-light (`door_curtain_raw.png`, 2026-08-30b — additive VFX, not a masked prop; see the update above) + `prompts.md`. Three rejected drop generations kept as `pickup_*_alt.png` — and re-read every test run as negative fixtures, see `client/src/game/scene/environmentArt.test.ts` | `client/public/environment/` |
 | `props/` | Room dressing for `RoomPiece.props` (2026-08-24): the crate/barrel/rubble trio (`prop_<kind>_raw.png`) + `prompts.md`. One rejected rubble generation kept as `prop_rubble_alt.png`, re-measured every test run by `client/src/game/scene/propArt.test.ts` on all three axes it failed (aspect, value band, blue lean) | `client/public/environment/prop_*.png` |
 | `ui/` | Hub background, button icons, result badges + `prompts.md` | `client/public/ui/` |
-| `npc/` | Outpost NPCs (the Forger) + `prompts.md` | `client/public/ui/npc_forger.png` |
+| `npc/` | Both NPCs + `prompts.md`: the hub's Forger (2026-08-02) and the shop's **Shopkeeper** (2026-09-14). They ship to different directories, which is the point of the distinction — the Forger is a corner-anchored sprite on a menu screen, the Shopkeeper stands IN a dungeon room and Y-sorts against the actors | `client/public/ui/npc_forger.png`, `client/public/environment/npc_shopkeeper.png` |
 | `map/` | The rejected painterly-isometric room backgrounds (`room_*_painterly_rejected`) — kept only as a record of the approach that did not work; the biome look that shipped is the tile art in `biome/` | — (nothing bound) |
 
 Animation data is **not** here: it lives with the rigs (`tools/animator/projects/*.editortao`
