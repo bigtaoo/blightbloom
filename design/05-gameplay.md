@@ -648,10 +648,14 @@ The decision below closes it. **None of it is built**; this section is the spec,
   choice rather than a rule, so the mix is tunable in the editor without an engine change.
 - **A small chest opens solo.** One player, one `INTERACT`, no gate. This is the find that has
   to work in the mode most runs are actually played in.
-- **A big chest is opened by the whole party at once.** It is ringed by **mechanisms**, one per
-  player who entered the map, and it opens only while **every** mechanism has a player standing
-  on it simultaneously. The count scales with the party instead of locking the chest away from a
-  smaller one.
+- **A big chest is opened by the whole party at once, and pays one weapon per head.** It is
+  ringed by **mechanisms**, one per player who entered the map, and it opens only while **every**
+  mechanism has a player standing on it simultaneously. **Its reward scales the same way**: one
+  player opens one weapon, four players open four (locked 2026-09-14). So the per-capita reward
+  is FLAT and what actually scales is the coordination cost — a big chest is never the reason to
+  bring more players or to play alone, which is the property that keeps it out of the party-size
+  balancing problem entirely. A smaller party is not locked out of the content and a larger one
+  is not farming it.
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
@@ -678,12 +682,15 @@ The decision below closes it. **None of it is built**; this section is the spec,
   arrive as a 6/84 weight on the kill table, which is not a choice anyone makes). Chests unblock
   it; they do not answer it. Whether a big chest hands over a **choice of buffs** the way the
   floor cards do, or simply a fatter roll, is open.
-- **Whether a solo big chest is a gate at all.** One player means one mechanism, which that
-  player is standing on by walking up to it — so in single-player the big chest degenerates into
-  a small chest with an extra step, and the coordination this mechanic exists for only ever bites
-  in co-op. That is a consequence of the rule as locked, not an objection to it, but it is worth
-  measuring rather than discovering: if solo is the mode most runs are played in, the big chest's
-  design cost is being paid in the mode where it returns nothing.
+- **What separates a solo big chest from a small one.** One player means one mechanism, which
+  that player is standing on by walking up to it, and one weapon out — so on COUNT alone the solo
+  big chest is a small chest with an extra step. The flat per-capita rule above is deliberate and
+  settles fairness; what it leaves open is whether the two chest kinds differ on **quality** (a
+  rarity floor, a better pool, a guaranteed element) rather than on quantity. That knob is
+  unset on purpose: it is cheap to turn later and it is exactly the kind of number that should be
+  set against real play instead of guessed now. The one thing to avoid is discovering the answer
+  by accident — if the two chests end up indistinguishable in solo, the big chest's whole design
+  cost is being paid in the mode most runs are played in.
 
 ## Loot economy: what a floor hands you ✅ (2026-09-05, `ENGINE_VERSION` 57/58)
 

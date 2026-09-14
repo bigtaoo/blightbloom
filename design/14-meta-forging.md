@@ -9,7 +9,26 @@ The persistent layer **between runs**: what carries across, what materials buy, 
 - **Blueprint = permanent account unlock; a crafted weapon = one run.** Forging has two layers. You first **unlock a blueprint** (the *right* to make a weapon) — permanent, account-level, never lost. Then each run you **craft an instance** from an unlocked blueprint by spending materials, and that instance can enter **exactly one** run: like every weapon it is wiped at run end (`05`). Want it again next run → craft it again.
 - **Blueprint sources: a boss drop / purchase / events.** A blueprint **drops from a boss kill, at a 5% roll** (locked 2026-09-14; 5% is a first-pass number to tune against real clears, not a balanced one). The rest are **bought (RMB) or earned from time-limited events**. A blueprint is *not* a material — it is account-level and never forfeited on death.
   - **Why the boss, and why that solves `ROADMAP` B5's structural half.** B5's open problem was never the drop table, it was the *route out of the sim*: a blueprint is account-level, so it must bypass the "weapons are ephemeral" rule, and it does not fit materials' `floorMaterials → bankedMaterials` path either. Rolling it on the boss kill makes that problem mostly disappear — since 2026-09-14 the boss kill **is** the extraction (`05`), so the drop happens at the one moment a run is already handing its carry-out to the meta layer, and the blueprint can ride that same handover instead of needing a second one. What still has to exist is the roll itself, a way to show the player they earned one, and the account-side grant.
-  - ⚠️ **The one thing this decision still needs: a pool to roll from.** `STARTER_BLUEPRINTS` is *computed* as every `source: 'drop'` entry — today all **5** of them (repeater, flamer, scattergun, hammer, spear) — and hands them over at account creation. So a 5% boss roll against `source: 'drop'` would have **nothing left to award**: the earnable set and the free-at-signup set are the same set, by construction. Closing this needs one of two calls, and neither is made yet: cut the signup grant back to the 2–3 openers a new player actually needs and leave the rest earnable, or keep the grant and move other weapons onto `source: 'drop'`. Until one is made, the feature would ship inert — which is the exact failure mode `09`'s "fail loud" rule exists for, so the catalog validator should refuse an empty earnable pool rather than let a 5% roll return nothing forever.
+  - **The pool it rolls from, decided 2026-09-14.** The two sets have to stop being the same set.
+    `STARTER_BLUEPRINTS` is *computed* today as every `source: 'drop'` entry — all **5** of them
+    (repeater, flamer, scattergun, hammer, spear) — and granted at account creation, so a roll
+    against `source: 'drop'` would have nothing left to award. It becomes an **explicit list of
+    two openers, one gun and one melee** (repeater + hammer), which is what the forge needs to be
+    demonstrable on day one and no more: a new account already carries `blaster` + `saber` for
+    free without any blueprint at all, so the grant's job is to show what crafting *does*, not to
+    supply the loadout. The **earnable pool is the rest of `source: 'drop'`** — flamer, scattergun
+    and spear today. `09`'s "fail loud, never at use" applies: the catalog validator must refuse
+    an **empty** earnable pool outright, because the failure mode of getting this wrong is a 5%
+    roll that silently returns nothing forever.
+  - **Ship the two halves together, never the grant cut first.** On its own, cutting the signup
+    grant from 5 to 2 takes three blueprints away from every new account and offers no way to get
+    them back — a strict downgrade for as long as the drop does not exist. The grant change is
+    part of the drop's own pass, not a preparatory commit.
+  - **Pool size is a first-pass number too, and widening it is a monetization call this doc does
+    not make.** Three earnable blueprints at 5% per boss kill is ~20 clears each. Whether the
+    earn-by-playing path should be wider — by moving entries off `source: 'purchase'` — trades
+    directly against what is sold, so it belongs with the monetization tuning below rather than
+    here.
   - ⚠️ **Not built yet.** `Pickup` has no blueprint kind, no drop table can roll one, and nothing in a run grants one. `content/blueprints.ts` still says as much in its own comment (*"a full build would grant them on the actual in-run drop"*). Until the above ships, a blueprint is still only "free at signup" or "bought" — the earn-by-playing path the monetization model leans on (*"sell breadth, not power"* only reads as fair if breadth is also earnable) does not exist.
 - **A brought-in weapon = a found weapon.** A crafted weapon you bring in is mechanically identical to one found on the floor — no stripped-down baseline, no bring-in bonus. Bringing one just guarantees a known opener; the floor can still hand you something better. (Matches `05`'s economy table.)
 - **Crafting cost = elemental materials, per-weapon recipe.** Materials come in **five elemental kinds** matching the five damage types (`03`/`13`: physical / fire / ice / lightning / poison), each **tiered by depth** (`09` `MaterialDef.tier` — deeper floors roll higher-tier crystal). Every weapon's recipe names which kinds, how much, and a minimum tier; recipes differ per weapon. Materials are the run's only carry-out (`05`) and the **sole** crafting currency — there is no separate soft currency.

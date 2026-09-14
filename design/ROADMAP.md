@@ -833,14 +833,15 @@ are decided and unbuilt; the last two are not engineering work at all.
    the largest hole in the loop as written. Doing it after Stage 2 starts means polishing a loop
    that is missing a verb.
 2. **A reason to run it again.** Decided 2026-09-14 — a blueprint drops from the boss at 5%
-   (`design/14`). This is **B5**, and it needs one content call first: every `source: 'drop'`
-   blueprint is currently granted free at signup, so the earnable pool is empty by construction.
+   (`design/14`). This is **B5**. The content call it needed was made the same day: the signup
+   grant shrinks to two openers and the remaining `source: 'drop'` entries become the earnable
+   pool, both shipping in one pass so no account loses a blueprint it cannot re-earn.
 3. **A real device.** WeChat is verified in the simulator only; the render quality ladder's
    `low` tier has never been seen on a handset, and the portal build's ads and banner have never
    run under a registered domain. All three are silent when wrong.
 4. **A player who is not the developer.** Every gameplay report so far comes from one person.
-   The big chest in particular **cannot be validated solo** — one seat means one mechanism, so
-   the coordination it exists for never fires. That makes a small closed multiplayer test the
+   The big chest in particular **cannot be validated solo** — one seat means one mechanism and
+   one weapon, so the coordination it exists for never fires. That makes a small closed multiplayer test the
    only instrument that can measure it, and it is worth keeping *closed*: an open portal launch
    this thin would return "not enough content", which is already known, at the cost of a
    first-impression that only happens once.
@@ -870,8 +871,9 @@ between the loop as designed and the loop as shipped.
   in it to *find*, only things to kill. This is the largest single hole in the PvE loop as
   written, and it is the natural home for B2. **The spec now exists**: `design/05` "Chest rooms"
   — a floor mixes combat rooms with chest rooms; a small chest opens solo; a big chest is ringed
-  by one mechanism per seat and opens only while every one is occupied; further chest-room types
-  are deferred on purpose. That section also records the three constraints the build inherits
+  by one mechanism per seat, opens only while every one is occupied, and pays **one weapon per
+  seat** so the per-capita reward is flat and only the coordination cost scales; further
+  chest-room types are deferred on purpose. That section also records the three constraints the build inherits
   (seat-count-at-start, `INTERACT` arbitration against the revive channel, and chest state being
   replay/netcode state).
 - **B2 🔴 A real run-buff offering flow — unblocked by B1's decision, still unanswered.** design/05 and design/14 both describe run buffs as
@@ -907,9 +909,10 @@ between the loop as designed and the loop as shipped.
   now *a boss kill rolls a blueprint at 5%* (first-pass number, `design/14`). Since 2026-09-14 the
   boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
   to the meta layer — which is most of what made this item structural rather than a table entry.
-  **One content call still blocks it**: `STARTER_BLUEPRINTS` is computed as every `source: 'drop'`
-  entry and granted at signup, so the earnable pool is empty by construction; either the signup
-  grant shrinks to 2-3 openers or other weapons move onto `source: 'drop'`. The original filing
+  **The content call it was blocked on was made 2026-09-14**: `STARTER_BLUEPRINTS` stops being
+  *computed* as every `source: 'drop'` entry and becomes an explicit two-opener list (repeater +
+  hammer), leaving flamer/scattergun/spear as the earnable pool; the catalog validator must refuse
+  an empty pool, and the grant cut ships in the drop's own pass rather than before it. The original filing
   follows. design/14: *"**2–3 common blueprints drop from runs** (permanent the moment you obtain
   them)"*. `Pickup` has no blueprint kind and no drop
   table can roll one — nothing in a run grants a blueprint. `STARTER_BLUEPRINTS` hands over
