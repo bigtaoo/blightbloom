@@ -44,6 +44,12 @@ describe('BLUEPRINT_CATALOG', () => {
   it('leaves a NON-EMPTY earnable pool, which is the thing the 5% boss roll stands on', () => {
     // A 5% roll against an empty pool awards nothing forever, silently. `validateBlueprints`
     // refuses it; this asserts the shipped catalog does not need that refusal.
+    //
+    // That refusal is the one branch in this file no test can DRIVE: it is gated on the
+    // catalog being the real `BLUEPRINT_CATALOG` by identity, so an injected catalog cannot
+    // reach it and only a module mock of the very module under test could. What actually
+    // stands behind it is the recomputation in the partition test above — the two sets are
+    // derived from each other, so an edit that empties the pool moves that assertion too.
     expect(EARNABLE_BLUEPRINTS.length).toBeGreaterThan(0);
     expect(() => validateBlueprints()).not.toThrow();
   });
@@ -65,6 +71,24 @@ describe('BLUEPRINT_CATALOG', () => {
     expect(() =>
       validateBlueprints({ bad: { weaponId: 'repeater', nameKey: 'x', source: 'drop', cost: [{ element: 'plasma' as never, qty: 1 }] } }),
     ).toThrow(/element/);
+  });
+
+  it("fails loud on a signup grant that is not source:'drop'", () => {
+    // The fourth fail-loud case, and the only one about a RELATIONSHIP rather than a field:
+    // `STARTER_BLUEPRINTS` names weapons by id, so nothing stops a later edit from changing
+    // one of those entries' `source` to 'event' or 'shop'. That would hand a fresh account a
+    // blueprint the earnable pool never covered, and the partition test above would still
+    // pass — both sets would simply shrink. The catalog itself is checked by the very first
+    // test in this file; this one drives the branch with a hand-built entry.
+    const granted = STARTER_BLUEPRINTS[0]!;
+    expect(() =>
+      validateBlueprints({ [granted]: { weaponId: granted, nameKey: 'x', source: 'event', cost: [{ element: 'fire', qty: 1 }] } }),
+    ).toThrow(/signup/);
+    // The control: the same entry with the right source passes, so the throw is about
+    // `source` and not about the hand-built catalog being rejected wholesale.
+    expect(() =>
+      validateBlueprints({ [granted]: { weaponId: granted, nameKey: 'x', source: 'drop', cost: [{ element: 'fire', qty: 1 }] } }),
+    ).not.toThrow();
   });
 
   it('fails loud on a negative / non-integer minTier (design/14 gate)', () => {

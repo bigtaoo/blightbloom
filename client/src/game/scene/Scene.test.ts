@@ -1113,3 +1113,56 @@ describe('Scene.spawnedActors — the spawn cue has no event behind it', () => {
     expect(scene.spawnedActors).toBe(2);
   });
 });
+
+/**
+ * Chests (design/05 "Chest rooms", ENGINE_VERSION 63) are drawn by `ChestLayer`, which
+ * `ChestLayer.test.ts` covers in isolation. What that file cannot cover is the WIRING: the
+ * layer is owned here rather than plumbed through `GameLoop`, so if `reconcile` stopped
+ * calling it, or `clear()` stopped tearing it down, every one of those tests would stay green
+ * while a live run drew no chests at all — or drew the previous run's.
+ */
+describe('Scene.reconcile — chests are mirrored, and swept by clear()', () => {
+  const addChest = (s: GameState, kind: 'small' | 'big', plates: number) => {
+    s.chests.push({
+      id: s.nextChestId(),
+      roomId: 'r1',
+      kind,
+      gx: pxToFp(200),
+      gy: pxToFp(150),
+      mechanisms: Array.from({ length: plates }, (_, i) => ({ gx: pxToFp(200 + 32 * i), gy: pxToFp(150), occupied: false })),
+      opened: false,
+    });
+  };
+
+  it('draws a chest body into the Y-sorted entity layer and its plates into the ground layer', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const layers = new Layers();
+    const scene = new Scene(layers);
+
+    scene.reconcile(s, s.players[0]!.id);
+    const entitiesBefore = layers.entities.children.length;
+    const groundBefore = layers.ground.children.length;
+
+    addChest(s, 'big', 2);
+    scene.reconcile(s, s.players[0]!.id);
+
+    expect(layers.entities.children.length).toBe(entitiesBefore + 1);
+    expect(layers.ground.children.length).toBe(groundBefore + 1);
+  });
+
+  it('drops the chest views on clear(), which is what a new run relies on', () => {
+    // `clear()` runs before a new engine is created. The two layers a chest draws into are not
+    // swept by anything else, so a chest left mounted here would hang over the next run.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    addChest(s, 'big', 2);
+    scene.reconcile(s, s.players[0]!.id);
+    expect(layers.entities.children.length).toBeGreaterThan(0);
+    expect(layers.ground.children.length).toBeGreaterThan(0); // the premise for the sweep below
+
+    scene.clear();
+    expect(layers.entities.children.length).toBe(0);
+    expect(layers.ground.children.length).toBe(0);
+  });
+});

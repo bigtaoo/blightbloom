@@ -24,6 +24,9 @@ import type { GameState } from '@dd/engine/state/GameState';
 import type { Chest, PlayerActor } from '@dd/engine/state/entities';
 import { ChestSystem } from '@dd/engine/systems';
 import { chestWeaponCount, mechanismRing } from '@dd/engine/content/chests';
+import { WEAPON_DROP_POOL } from '@dd/engine/content/drops';
+import { dropClearance } from '@dd/engine/state/actorRadius';
+import { clampToWalkable } from '@dd/engine/systems/geom';
 import {
   CHEST_MECHANISM_RADIUS_GRID,
   CHEST_MECHANISM_RING_GRID,
@@ -371,5 +374,183 @@ describe('ChestSystem — the rules that are about something other than the ches
     // The cursor matters more than the two above: a system that drew even once for a config
     // with no chests would shift every later roll in every pre-chest replay.
     expect(s.dropPrng.peek()).toBe(before);
+  });
+});
+
+/**
+ * What a chest actually PAYS. Everything above counts the payout (`toHaveLength`) and never
+ * looks at it, which leaves the pile itself unpinned: a chest could hand out a weapon nobody
+ * can pick up, a weapon that is not in the drop pool, or one that lands inside the stone the
+ * chest was authored against, and every assertion in this file would still be green.
+ */
+describe('ChestSystem — the pile a chest leaves behind', () => {
+  it('pays weapons from the shared drop pool, alive and ready to be collected', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    addChest(s, 'small', 10, 10);
+    p.interacting = true;
+    sys.tick(s);
+
+    const pile = s.pickups;
+    expect(pile).toHaveLength(CHEST_SMALL_WEAPONS);
+    for (const q of pile) {
+      expect(q.kind).toBe('weapon');
+      expect(WEAPON_DROP_POOL).toContain(q.weaponId);
+      expect(q.alive).toBe(true);
+      // `PickupSystem` skips anything whose `spawnTick` is the current tick, which is the
+      // one-tick gap that keeps a chest from being hoovered by the same frame that opened it.
+      // Stamping this wrong is invisible until a player walks away with the payout early.
+      expect(q.spawnTick).toBe(s.tick);
+      expect(q.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives every weapon in one payout its own id', () => {
+    const s = state();
+    addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
+    const c = addChest(s, 'big', 10, 10, 3);
+    for (const m of c.mechanisms) {
+      m.gx = toFpGrid(10);
+      m.gy = toFpGrid(10);
+    }
+    sys.tick(s);
+    expect(s.pickups).toHaveLength(3);
+    expect(new Set(s.pickups.map((q) => q.id)).size).toBe(3);
+  });
+
+  it('draws exactly one weapon per payout from dropPrng, and no more', () => {
+    // The stream is a shared resource (design/06): a chest that drew twice per weapon, or drew
+    // for a chest that stayed shut, would move every later loot roll on the floor.
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    addChest(s, 'small', 10, 10);
+    const reference = createGameState(CFG);
+    p.interacting = true;
+    sys.tick(s);
+    reference.dropPrng.nextInt(WEAPON_DROP_POOL.length);
+    expect(s.dropPrng.peek()).toBe(reference.dropPrng.peek());
+  });
+
+  it('pays the same weapons for the same seed — a chest is not a second source of divergence', () => {
+    const payout = () => {
+      const s = state();
+      const p = addPlayer(s, 10, 10);
+      addChest(s, 'small', 10, 10);
+      p.interacting = true;
+      sys.tick(s);
+      return s.pickups.map((q) => q.weaponId);
+    };
+    expect(payout()).toEqual(payout());
+  });
+
+  it('drops the pile clear of the stone a chest was authored against', () => {
+    // A chest may legitimately sit flush against a wall, and the pile is clamped by the
+    // PLAYER's clearance rather than the pickup's — the thing that has to reach it is a body.
+    const s = state();
+    s.walls.push({ x: toFpGrid(10), y: toFpGrid(8), w: toFpGrid(2), h: toFpGrid(4) });
+    s.rebuildSpatialIndex();
+    const p = addPlayer(s, 9, 10);
+    addChest(s, 'small', 10.5, 10); // inside the wall above
+    p.interacting = true;
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(CHEST_SMALL_WEAPONS);
+    const at = s.pickups[0]!;
+    const again = clampToWalkable(at.gx, at.gy, dropClearance(), s);
+    // The clamp is a fixed point on the result: the pile is already somewhere a player can
+    // stand, so re-clamping it may not move it. Asserting that rather than a literal position
+    // keeps this from re-deriving the clamp's own arithmetic.
+    expect({ gx: again.gx, gy: again.gy }).toEqual({ gx: at.gx, gy: at.gy });
+    expect(at.gx).not.toBe(toFpGrid(10.5)); // and it really did have to move
+  });
+
+  it('piles every weapon of one payout on the same point', () => {
+    // One pile, where the players are already standing and already looking — not a scatter.
+    const s = state();
+    addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
+    const c = addChest(s, 'big', 10, 10, 2);
+    for (const m of c.mechanisms) {
+      m.gx = toFpGrid(10);
+      m.gy = toFpGrid(10);
+    }
+    sys.tick(s);
+    expect(s.pickups).toHaveLength(2);
+    expect(new Set(s.pickups.map((q) => `${q.gx},${q.gy}`)).size).toBe(1);
+  });
+});
+
+/**
+ * The remaining arms of the two "about something other than the chest" rules. Each is a side
+ * of a branch whose other side is already covered above, and each would be taken by a real
+ * run — the first in every PvP match, the second on any floor whose room runtime has not
+ * caught up with its room list.
+ */
+describe('ChestSystem — the arbitration branches nothing else reaches', () => {
+  it('ignores a downed ENEMY beside you — a revive you could not perform blocks nothing', () => {
+    const s = state();
+    const rescuer = addPlayer(s, 10, 10);
+    const enemy = addPlayer(s, 10, 10);
+    enemy.teamId = rescuer.teamId + 1;
+    enemy.downed = true;
+    const c = addChest(s, 'small', 10, 10);
+    rescuer.interacting = true;
+    sys.tick(s);
+    // `ReviveSystem.findReviver` only ever matches a downed player on the SAME team, so this
+    // player's INTERACT is not spoken for and the chest is the honest thing for it to mean.
+    expect(c.opened).toBe(true);
+  });
+
+  it('still lets the revive win in PvP when the rescuer IS carrying a bandage', () => {
+    // The control for "a PvP player with no bandage opens the chest instead" above. Without
+    // it, "arena mode ignores the revive rule entirely" would pass that test just as well.
+    const s = state();
+    Object.defineProperty(s, 'zoneEnabled', { value: true });
+    const rescuer = addPlayer(s, 10, 10);
+    const downed = addPlayer(s, 10, 10);
+    downed.downed = true;
+    rescuer.bandages = 1;
+    const c = addChest(s, 'small', 10, 10);
+    rescuer.interacting = true;
+    sys.tick(s);
+    expect(c.opened).toBe(false);
+  });
+
+  it('refuses a chest whose room is known but has no runtime row yet', () => {
+    // `dungeonRoomIndexById` and `dungeonRoomRuntime` are two arrays kept in step by
+    // `SpawnSystem`; a chest that read an index past the end of the runtime list would open
+    // through a wall on the strength of an `undefined`.
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    const c = addChest(s, 'small', 10, 10);
+    c.roomId = 'r_ghost';
+    s.dungeonRoomIndexById.set('r_ghost', 3); // no runtime row at 3
+    p.interacting = true;
+    sys.tick(s);
+    expect(c.opened).toBe(false);
+  });
+
+  it('ignores a DEAD player holding the button, not only a downed one', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    const c = addChest(s, 'small', 10, 10);
+    p.alive = false;
+    p.interacting = true;
+    sys.tick(s);
+    expect(c.opened).toBe(false);
+  });
+
+  it('ignores a DEAD player lying on a big chest’s plate', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    const c = addChest(s, 'big', 10, 10, 1);
+    p.gx = c.mechanisms[0]!.gx;
+    p.gy = c.mechanisms[0]!.gy;
+    p.alive = false;
+    sys.tick(s);
+    expect(c.mechanisms[0]!.occupied).toBe(false);
+    expect(c.opened).toBe(false);
   });
 });

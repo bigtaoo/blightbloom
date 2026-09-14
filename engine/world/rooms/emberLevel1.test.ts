@@ -25,6 +25,9 @@ import { EMBER_DUNGEON } from './ember';
 import { buildFloorGeometry, placeAuthoredFloor, type DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
 import { FP_SCALE } from '../../math/fixed';
+import { toFpGrid } from '../../content/convert';
+import { mechanismRing } from '../../content/chests';
+import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RING_GRID } from '../../config';
 
 const FLOOR_INDICES = [0, 1, 2, 3, 4] as const;
 const EXPECTED_ROOM_COUNTS = [5, 6, 7, 6, 5];
@@ -158,6 +161,91 @@ describe('level 1 room pieces', () => {
   });
 });
 
+/**
+ * The chests level 1 authors (design/05 "Chest rooms", ENGINE_VERSION 63). The suite above
+ * has held every other authored placement to a rule since the level shipped; these arrived
+ * afterwards and were held to none, which is the whole reason this block exists — a chest is
+ * a placement like any other, and the one thing that makes it *less* safe than a spawn point
+ * is that `SpawnSystem` clamps it rather than failing on it (see `traversability`).
+ */
+describe('level 1 chests', () => {
+  const withChests = EMBER_L1_ROOMS.filter((p) => (p.chests?.length ?? 0) > 0);
+  const everyChest = EMBER_L1_ROOMS.flatMap((p) => (p.chests ?? []).map((c) => ({ piece: p, c })));
+
+  it('five pieces carry one, and the only BIG one is the extraction capstone', () => {
+    // The shipped content decision, stated so a sixth chest cannot arrive unnoticed: the big
+    // chest lives in the one room on the floor with no enemy spawns, because its rule is a
+    // coordination gate and not a fight. A second big chest somewhere would also be the first
+    // place two plate rings could overlap.
+    expect(withChests.map((p) => p.id).sort()).toEqual([
+      'ember_l1_alcove', 'ember_l1_court', 'ember_l1_extraction', 'ember_l1_gallery', 'ember_l1_rampart',
+    ]);
+    expect(everyChest.filter(({ c }) => c.kind === 'big').map(({ piece }) => piece.id)).toEqual(['ember_l1_extraction']);
+    expect(everyChest.filter(({ c }) => c.kind === 'small')).toHaveLength(4);
+  });
+
+  it('puts every chest inside its own piece, clear of the perimeter wall', () => {
+    // A piece's outermost ring of cells is its wall (`buildFloorGeometry` stitches it), so a
+    // chest authored at x=0 is inside stone. Piece-local, so this catches the authoring
+    // mistake in the editor's own coordinates rather than in the stitched floor.
+    for (const { piece, c } of everyChest) {
+      expect(c.x, `${piece.id} chest x`).toBeGreaterThanOrEqual(1);
+      expect(c.y, `${piece.id} chest y`).toBeGreaterThanOrEqual(1);
+      expect(c.x, `${piece.id} chest x`).toBeLessThanOrEqual(piece.sizeGrid.w - 1);
+      expect(c.y, `${piece.id} chest y`).toBeLessThanOrEqual(piece.sizeGrid.h - 1);
+    }
+  });
+
+  it('never puts one within reach of a player spawn — opening it has to be a walk', () => {
+    // `ChestSystem` opens a small chest for any player holding INTERACT within
+    // CHEST_INTERACT_RANGE_GRID. A chest authored on top of a spawn point would therefore pay
+    // out to a player who has not moved, which is the opposite of the verb chests exist for
+    // ("search"-fight-extract). Closest today: ember_l1_alcove at 2.69 grid.
+    for (const { piece, c } of everyChest) {
+      for (const p of piece.spawns.player) {
+        const d = Math.hypot(c.x - p.x, c.y - p.y);
+        expect(d, `${piece.id}: chest (${c.x},${c.y}) vs player spawn (${p.x},${p.y})`).toBeGreaterThan(CHEST_INTERACT_RANGE_GRID);
+      }
+    }
+  });
+
+  it('leaves a big chest’s whole plate ring inside its own room, at every seat count', () => {
+    // The ring is derived from the run's SEAT count, so the room has to hold the widest one a
+    // party can ask for — plus the radius a player has to stand within. The capstone is 16x16
+    // and the ring is CHEST_MECHANISM_RING_GRID (3) from centre, so this has real margin; the
+    // test is here for the next big chest, authored into a room that may not.
+    for (const { piece, c } of everyChest.filter((e) => e.c.kind === 'big')) {
+      for (const seats of [1, 2, 3, 4]) {
+        for (const m of mechanismRing(toFpGrid(c.x), toFpGrid(c.y), seats)) {
+          const gx = (m.gx as number) / FP_SCALE;
+          const gy = (m.gy as number) / FP_SCALE;
+          expect(gx, `${piece.id} plate x @ ${seats} seats`).toBeGreaterThanOrEqual(1);
+          expect(gy, `${piece.id} plate y @ ${seats} seats`).toBeGreaterThanOrEqual(1);
+          expect(gx, `${piece.id} plate x @ ${seats} seats`).toBeLessThanOrEqual(piece.sizeGrid.w - 1);
+          expect(gy, `${piece.id} plate y @ ${seats} seats`).toBeLessThanOrEqual(piece.sizeGrid.h - 1);
+        }
+      }
+    }
+    // Anti-vacuity: the loop above is over a filtered list, and an empty one passes it.
+    expect(everyChest.filter((e) => e.c.kind === 'big')).toHaveLength(1);
+    expect(CHEST_MECHANISM_RING_GRID).toBeGreaterThan(0);
+  });
+
+  it('gives every floor something to search, and only the boss floor no big chest', () => {
+    // Measured, not aspirational: floors 0-2 carry 2 small + 1 big, floor 3 carries 1 small +
+    // 1 big, and floor 4 carries 2 small and no big one — the boss room replaces the
+    // extraction capstone, and with it the only big chest in the library. The invariant worth
+    // holding is the shape rather than the exact tally: every floor is searchable, and the
+    // big chest rides the capstone.
+    for (const i of FLOOR_INDICES) {
+      const chests = floorAt(i).rooms.flatMap((r) => pieceFor(r.pieceId).chests ?? []);
+      expect(chests.filter((c) => c.kind === 'small').length, `floor ${i} small`).toBeGreaterThanOrEqual(1);
+      expect(chests.filter((c) => c.kind === 'big').length, `floor ${i} big`).toBe(i === 4 ? 0 : 1);
+      expect(chests.length, `floor ${i} total`).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
 // ── Door passability ────────────────────────────────────────────────────────────
 
 /** Rooms may share a wall but must never overlap — every downstream room-membership
@@ -255,6 +343,38 @@ function traversability(map: DungeonFloorMap) {
     room.piece.spawns.enemy.forEach((p, i) => check(`${room.id} enemy spawn ${i}`, room.offsetXGrid + p.x, room.offsetYGrid + p.y));
   }
 
+  /**
+   * The same question for this floor's CHESTS (design/05 "Chest rooms", ENGINE_VERSION 63),
+   * kept in its own list so the suite above keeps meaning exactly what it meant.
+   *
+   * A chest gets a second chance that a spawn point does not: `SpawnSystem` clamps every
+   * chest AND every derived plate to walkable ground, so one authored into a pillar does not
+   * crash or vanish — it silently slides somewhere else, possibly out of the room it was
+   * authored for. That makes the clamp a safety net that HIDES an authoring mistake, which is
+   * exactly the kind of thing a content gate has to say out loud.
+   *
+   * Plates are checked at one through four seats because the ring is derived from the run's
+   * seat count, not from the piece: a big chest that fits at two seats can still put a plate
+   * in the stone at four, and no test that only ever seats two would see it.
+   */
+  const chestsUnreachable: string[] = [];
+  const chestCheck = (label: string, x: number, y: number) => {
+    if (!seen[at(Math.floor(x), Math.floor(y))]) chestsUnreachable.push(`${label} @ (${x}, ${y})`);
+  };
+  for (const room of placed) {
+    for (const c of room.piece.chests ?? []) {
+      const gx = room.offsetXGrid + c.x;
+      const gy = room.offsetYGrid + c.y;
+      chestCheck(`${room.id} ${c.kind} chest`, gx, gy);
+      if (c.kind !== 'big') continue;
+      for (const seats of [1, 2, 3, 4]) {
+        mechanismRing(toFpGrid(gx), toFpGrid(gy), seats).forEach((m, i) =>
+          chestCheck(`${room.id} big chest plate ${i}/${seats}`, (m.gx as number) / FP_SCALE, (m.gy as number) / FP_SCALE),
+        );
+      }
+    }
+  }
+
   // Which rooms the flood fill actually walked into — a door that is topologically
   // declared but physically sealed shows up as a room with zero reached cells.
   const roomsEntered = placed.filter((room) =>
@@ -265,7 +385,7 @@ function traversability(map: DungeonFloorMap) {
       .some(Boolean),
   ).length;
 
-  return { unreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
+  return { unreachable, chestsUnreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
 }
 
 describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
@@ -362,6 +482,13 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
   it('every entrance and every spawn point is physically walkable from the spawn room', () => {
     const { unreachable } = traversability(map);
     expect(unreachable).toEqual([]);
+  });
+
+  it('every chest and every derived plate stands on walkable ground the run can reach', () => {
+    // The clamp in `SpawnSystem` means a chest authored into stone never fails loudly — it
+    // just moves. This is where it fails loudly instead.
+    const { chestsUnreachable } = traversability(map);
+    expect(chestsUnreachable).toEqual([]);
   });
 
   it('the flood fill physically walks into every room — no door is declared but sealed', () => {
