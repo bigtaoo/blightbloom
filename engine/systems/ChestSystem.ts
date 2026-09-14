@@ -36,16 +36,19 @@
  * ## The payout counts against the floor's allowance
  *
  * A chest pays `chestWeaponCount` weapons (design/05: one for a small chest, one per seat
- * for a big one) and adds them to `state.floorWeaponsDropped`. That is what keeps chests
- * from inflating the loot economy design/05's "Loot economy" section tuned: the floor still
- * owes its quota, and a chest paying part of it simply means `payFloorWeaponShortfall` has
- * less left to hand over at the capstone. What a chest changes is WHERE a floor's weapons
- * come from — a thing found rather than a thing dropped by a corpse — which was the point.
+ * for a big one) and adds them to `state.floorWeaponsDropped`, so a chest opened DURING a
+ * floor leaves `payFloorWeaponShortfall` correspondingly less to hand over at the capstone.
+ * What a chest changes is then WHERE a floor's weapons come from — a thing found rather than
+ * a thing dropped by a corpse — which was the point.
  *
- * A big chest in a full party can push the total PAST the quota, and that is intended rather
- * than an oversight: the per-seat rule is a promise to each player, and a quota written for
- * one player cannot be allowed to silently break it. `payFloorWeaponShortfall` already
- * treats a negative shortfall as "nothing owed", so the overshoot needs no special case.
+ * **The quota is a FLOOR, not a ceiling, and two cases prove it rather than break it.** A big
+ * chest in a full party pays per seat and can exceed the quota outright; and the shipped
+ * level's big chest sits in the capstone room, whose shortfall is normally already paid by
+ * the time a player walks onto a plate — measured in a live run, a quota of 3 ended the floor
+ * at 4. Both are intended. The per-seat rule is a promise to each player that a quota written
+ * for one player must not silently break, and a reward for searching that only re-routed loot
+ * the floor already owed would pay nothing for the search. `payFloorWeaponShortfall` treats a
+ * negative shortfall as "nothing owed", so neither case needs a special case here.
  */
 import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RADIUS_GRID, REVIVE_RANGE_GRID } from '../config';
 import { chestWeaponCount } from '../content/chests';

@@ -667,11 +667,15 @@ pillars, doors and drops each went through.
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
-- **A chest's payout counts against the floor's weapon allowance.** The floor still owes its
-  quota ("Loot economy" below) and a chest simply pays part of it, so chests changed WHERE a
-  floor's weapons come from without inflating what it hands out. A big chest in a full party can
-  overshoot the quota, and that is intended: the per-seat rule is a promise to each player, and a
-  quota written for one player must not silently break it.
+- **A chest's payout counts against the floor's weapon allowance, and the allowance is a FLOOR
+  rather than a ceiling.** A chest opened mid-floor leaves the capstone's shortfall payment
+  correspondingly smaller ("Loot economy" below), so what chests changed is WHERE a floor's
+  weapons come from. Two cases exceed the quota on purpose. A big chest in a full party pays per
+  seat: the per-capita promise outranks a number written for one player. And the shipped level's
+  big chest sits in the capstone room, whose shortfall is normally already paid by the time
+  anyone stands on a plate — measured in a live solo run, a quota of 3 ended the floor at 4. That
+  second case is the one worth naming, because it is the honest shape of the reward: a find that
+  only re-routed loot the floor already owed would pay nothing for having searched.
 
 ### The constraints this inherited, and how each was met
 
