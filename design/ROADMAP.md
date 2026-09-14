@@ -1297,11 +1297,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-11** [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump) — *"这个椭圆的长边要和门的长边保持一致"*. A screenshot of a passable door with its floor halo circled. Every floor decal a door draws was an ellipse squashed by the 0.46 foreshortening every round thing in this view shares — right for the 11 doors in an east-west wall (opening 128 x 104, pool 171 x 79, long axis already along the door's) and wrong for the 13 cut through a north-south one, whose drawn arch is 64 x 94.5 and whose widest pool ring lay ACROSS it at 95 x 44. A `sides` plane now takes its aspect from the drawn opening itself (1.48), giving 95 x 140; `south` keeps the constant exactly, so no number swept on those doors moves. The x semi-axis is untouched on purpose — a ring narrower than the wall's half-thickness draws nothing at all — so the whole aspect is spent on height. **The ceiling was measured**: swept over the five shipped floors at the widest radius anything strokes, 1.48 and 1.60 put not one point in stone and 1.65 strokes 3 of the 13 into a perpendicular run, so the literal reading of the report is also what the content allows, with ~8% to spare, and both sides of that bound are now a test. **A mutation battery found the real gap in the layer the report was pointing at**: the travelling pulse and the lock-change burst handed a plane with the old squash left all 1383 scene tests green — the 2026-09-04 pass pinned how far those rings travel and nobody had asked how TALL they are. They are now held to an equality read back off the stroked geometry, every ring-drawing Graphics rather than the widest, with a `south` fixture as the control so "stretch every ring" fails too; 13 mutants, 0 survivors, including the aspect read off the passage AABB (2, not 1.48) and a constant 1.9 that would look right on this door and wrong on the next size. The battery's own first run was a lie worth recording — `--reporter=basic` does not exist in vitest 4, every run died before any test, and the harness scored all six mutants AND the baseline as survivors. Verified by pulling the real frame out of the running game, not by reading the diff. `doorLights.ts` hit 534 lines on the way and gave up its floor-plane block to `doorFloorPlane.ts` (form 1), re-exporting every moved name. `render` `test` `docs`
 
+**[2026-09-14 — chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md)**
+
+- **09-14** [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263) — *"并不是所有房间都是有怪物的…需要每个机关上站一个玩家才能打开"* and *"图纸在打完boss之后有概率掉落"* — `ROADMAP`'s two oldest backlog items (`B1`, `B5`, and `B2`'s blocker), built together because they are the two halves of one question: the loop had no reason to look INTO a room and no reason to run it again. A **small chest** opens for one player on INTERACT and pays one weapon; a **big chest** is ringed by one mechanism per SEAT, opens only while every plate is occupied, and pays **one weapon per seat** — per-capita flat, so the only thing that scales with the party is the coordination cost, which is what keeps it out of the party-size balancing problem. Plate positions are DERIVED, never authored (a piece cannot know the seat count), with integer trig and **zero PRNG draws**, because drawing them would have put chest placement into `dropPrng` where the number of chests on a floor silently shifts every later loot roll. Three rules that are about something else, each pinned: a chest is workable only from inside its own ACTIVATED room (else you work the next room’s chest through the wall), a **revive out-ranks a chest for the same INTERACT** (ordering the systems cannot express what the BUTTON meant), and the payout counts against the floor allowance. The blueprint half rolls at 5‰×10 on a boss kill onto the CARRY-OUT bag rather than the floor — account-level loot cannot ride the ephemeral-weapon rule, and since the boss kill IS the extraction the roll lands where a run already hands over; a death forfeits it by the same mechanism the materials use. Its blocker shipped with it: `STARTER_BLUEPRINTS` was COMPUTED as every `source:'drop'` entry, making the free-at-signup set and the earnable set **the same set by construction**, so the roll would have awarded nothing forever with no error — now two explicit openers, a derived earnable pool, and a validator that refuses an empty one. **The pass’s real lesson is a regression CI caught and the golden gate mis-read**: chest ids came from `nextId()`, chests are built before a floor’s enemies spawn, and `noticeDelayTicks(e.id)` staggers a woken garrison’s opening volley — so three chests re-tuned level 1 from "≥2 of 8 careful bot runs descend off floor 0" to **8 of 8 dying there**. The golden witness moved and pointed the WRONG WAY (170 shots → 167, 59 hits → 56, player finishing on 4.2 HP instead of 2.4, i.e. EASIER) and this entry’s first draft called it "pure bookkeeping" on that evidence; it is one scripted run that never leaves its spawn room. Fixed by `nextChestId()`, a separate id space, with the rule in its doc comment: **adding a prop to a room must not retune the room’s difficulty.** Bisected in a DETACHED worktree at the last-good commit after the live checkout gave a false negative (a stale vite cache still serving the old JSON import). Third purpose-built golden fixture in the `brimGrinderFloor`/`extractionGateFloor` lineage (`chest-room`: two seats spawning ON their plates so the open is construction, not luck); the blueprint roll got unit coverage instead and its blindness recorded, because a rare roll pinned by one recorded run would stay green with the roll deleted. A live browser run then corrected this pass’s OWN doc claim — the capstone chest opens after the shortfall is paid, so the floor ends at quota+1, and the quota is a FLOOR not a ceiling. Still open: rooms that are not fights at all. `engine` `content` `render` `test` `docs`
+
 ## The work log — by theme
 
-The same 150 entries, grouped. An entry with more than one tag appears more than once.
+The same 151 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(60)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(61)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1363,6 +1367,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 - 09-08 [A middle rung on the ladder, and a frame rate the player picks](roadmap/46-2026-09-08-power-budget.md#a-middle-rung-on-the-ladder-and-a-frame-rate-the-player-picks-2026-09-08-client--i18n-no-engine-change)
 - 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
+- 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 
 **`art`** — authored assets and the art pipeline *(17)*
 
@@ -1400,7 +1405,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(29)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(30)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1431,6 +1436,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+- 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 
 **`arena`** — the PvP launch map and its audit *(7)*
 
@@ -1442,7 +1448,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The arena in front of a camera, and the audit becomes a gate](roadmap/08-2026-08-26-arena.md#the-arena-in-front-of-a-camera-and-the-audit-becomes-a-gate-2026-08-26-client--engine)
 - 08-26 [The arena finally has a frame time, and it was not the walls](roadmap/08-2026-08-26-arena.md#the-arena-finally-has-a-frame-time-and-it-was-not-the-walls-2026-08-26-client-only)
 
-**`content`** — authored rooms, pieces, props, loot *(9)*
+**`content`** — authored rooms, pieces, props, loot *(10)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1453,8 +1459,9 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-05 [The roster gets its first melee mobs](roadmap/38-2026-09-05-weapon-energy.md#the-roster-gets-its-first-melee-mobs-same-version)
 - 09-06 [The energy card, and the first buff a floor can never drop](roadmap/39-2026-09-06-energy-card-capacity.md#the-energy-card-and-the-first-buff-a-floor-can-never-drop-2026-09-06-engine--client-engine_version-60)
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
+- 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(73)*
+**`test`** — coverage sweeps, gates, mutation batteries *(74)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1529,6 +1536,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
+- 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 
 **`audio`** — cues, music, the engine to sound channel *(6)*
 
@@ -1615,7 +1623,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 
-**`docs`** — design docs and this log itself *(76)*
+**`docs`** — design docs and this log itself *(77)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1694,6 +1702,7 @@ The same 150 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
+- 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 
 **`net`** — matchmaking, sockets, reconnect *(20)*
 
