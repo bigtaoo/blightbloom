@@ -26,7 +26,21 @@ import { ADMIN_HEALTH_PATH } from '../src/adminsvc/routes';
 import { entries, external, target } from '../scripts/build.mjs';
 
 const serverRoot = fileURLToPath(new URL('..', import.meta.url));
-const read = (rel: string): string => readFileSync(join(serverRoot, rel), 'utf8');
+/**
+ * Every manifest is read through here, and every one of them arrives LF-only.
+ *
+ * `core.autocrlf=true` with no `.gitattributes` in this repo means each of these files is
+ * CRLF in a Windows worktree and LF in CI, so any anchor written as a bare `\n` matches on
+ * one machine and not on the other for no reason of its own. That is not theoretical: the
+ * backup-worker mount assertion below extracted an empty block and failed, on Windows only,
+ * reading exactly like a real regression in the deploy manifests.
+ *
+ * Normalised at the door rather than by spelling `\r?\n` at each use site, because the
+ * per-site version has to be remembered every time a regex is added — and the failure mode
+ * of forgetting is a test that still passes in CI. It also covers a manifest that a Windows
+ * editor rewrote in place, which a `.gitattributes` rule would not.
+ */
+const read = (rel: string): string => readFileSync(join(serverRoot, rel), 'utf8').replace(/\r\n/g, '\n');
 
 const compose = read('docker-compose.yml');
 const dockerfile = read('Dockerfile');
@@ -179,6 +193,19 @@ const OBS_PORT: Record<string, string> = {
 };
 
 describe('the compose reader actually read something', () => {
+  it('every manifest reached the assertions LF-only', () => {
+    // Pins `read()`'s normalisation, because the thing it protects against is invisible on
+    // the machine that runs CI. A manifest that still carries CRLF makes every literal `\n`
+    // anchor below match nothing, and the resulting failure names the deploy manifests
+    // rather than the line endings — which is what it cost the first time (2026-09-14: the
+    // backup-mount block came back empty in a Windows worktree and read like a real
+    // regression). A raw `readFileSync` added here later fails THIS test first, on Windows,
+    // where the person adding it can see why.
+    for (const [name, text] of Object.entries({ compose, dockerfile, ciDeploy, workflow })) {
+      expect(text, `${name} still has CRLF; read it through read()`).not.toContain('\r');
+    }
+  });
+
   it('found all nine services, each fully populated', () => {
     // Every other test in this file is vacuous if this one is wrong: an empty `env` makes
     // "no unknown env var" trivially true, an empty `command` makes the bundle-name check
@@ -310,15 +337,14 @@ describe('the compose reader actually read something', () => {
     // Asserted as a SHAPE — no unguarded mkdir, and a container-side fallback — rather than
     // by matching the exact command, because a revert to the bare `mkdir -p` passes every
     // other assertion in this file. That is the whole reason this one exists.
-    // `\r?\n` throughout, not `\n`: `core.autocrlf=true` with no `.gitattributes` means this
-    // shell script is CRLF in a Windows worktree and LF in CI, so a line anchor that assumes
-    // either one passes on one machine and fails on the other for no reason of its own.
-    const body = /for dir in .+; do\r?\n([\s\S]*?)\r?\ndone/.exec(ciDeploy)?.[1];
+    // Plain `\n` anchors here and throughout: `read()` normalises every manifest to LF, so
+    // a Windows worktree's CRLF never reaches a regex in this file.
+    const body = /for dir in .+; do\n([\s\S]*?)\ndone/.exec(ciDeploy)?.[1];
     expect(body, 'the ownership loop moved or changed shape').toBeTruthy();
 
     // A `mkdir` on the deploy user's own side is allowed only as an attempt whose failure is
     // handled (`if ! mkdir …`), never as the single creation path.
-    const bare = /^[ \t]*mkdir\b[^\r\n]*$/m.exec(body!);
+    const bare = /^[ \t]*mkdir\b[^\n]*$/m.exec(body!);
     expect(
       bare?.[0],
       'an unguarded mkdir is the deploy user creating a dir it has no permission to create',
@@ -489,7 +515,7 @@ describe('compose env vars', () => {
     const required = [...compose.matchAll(/\$\{([A-Z_]+):\?/g)].map((m) => m[1]!);
     expect(required.length, 'no `:?` variables found — did compose change shape?').toBeGreaterThan(0);
 
-    const checked = /for var in ([^\r\n]+); do/.exec(ciDeploy)?.[1];
+    const checked = /for var in ([^\n]+); do/.exec(ciDeploy)?.[1];
     expect(checked, "the deploy script's required-variable loop moved or changed shape").toBeTruthy();
 
     expect([...new Set(checked!.trim().split(/\s+/))].sort()).toEqual([...new Set(required)].sort());
