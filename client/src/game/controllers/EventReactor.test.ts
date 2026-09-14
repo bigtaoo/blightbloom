@@ -5,6 +5,7 @@
  * doesn't throw, same "construct real Pixi widgets under plain vitest" convention as
  * HudView.test.ts.
  */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   pxToFp, WEAPON_SIM_BY_ID,
@@ -1238,5 +1239,70 @@ describe('EventReactor — the melee swing carries the weapon that swung', () =>
       { type: 'melee_swing', ownerId: 7, gx: pxToFp(0), gy: pxToFp(0), facing: 0 } as GameEvent,
     ]);
     expect(fx.slashArc).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The events nothing on the client reacts to yet.
+ *
+ * `ChestSystem` and `DeathDropsSystem` both push an event the render layer never reads
+ * (`chest_open`, `blueprint_drop`, ENGINE_VERSION 63) — a chest pays out in silence, and the
+ * one earn-by-playing blueprint in the meta lands with no cue at all. The shrinking zone's
+ * three events have been in the same position for longer, and `EventReactor.ts`'s own comment
+ * on `zone_damage` says so ("this reactor has never handled [it], and wiring that up is its
+ * own decision").
+ *
+ * Those comments are the problem this block replaces: a per-event note, written where the
+ * decision was taken, that nobody reads when adding the NEXT event. The list below is one
+ * place, and it is derived from the union rather than restated, so a new engine event lands
+ * here as a red test with two honest ways out — wire it up, or add it and say why.
+ */
+describe('engine events the client deliberately does not react to', () => {
+  const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const declared = [...read('../../../../engine/state/events.ts').matchAll(/\{ type: '([a-z_]+)'/g)].map((m) => m[1]!);
+  const reacted = new Set([...read('./EventReactor.ts').matchAll(/case '([a-z_]+)':/g)].map((m) => m[1]!));
+
+  /** Every engine event with no `case` in the reactor, and the reason each one is here. */
+  const UNWIRED: Record<string, string> = {
+    chest_open: 'no chest cue yet — art and audio for chests are both unstarted (design/05)',
+    blueprint_drop: 'the drop is reported on the results screen (RunOutcome), not in-run',
+    zone_warn: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
+    zone_close: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
+    zone_damage: 'the hurt cue fires on `hit`; zone ticks arrive here instead and are their own decision',
+  };
+
+  it('has an up-to-date list of them — a new engine event has to be classified', () => {
+    expect(declared.length).toBeGreaterThan(15); // anti-vacuity: the regex really found the union
+    expect(declared.filter((t) => !reacted.has(t)).sort()).toEqual(Object.keys(UNWIRED).sort());
+  });
+
+  it('every `case` in the reactor is a real engine event or a real pickup kind', () => {
+    // The other direction: a `case` for an event the engine stopped emitting is dead code the
+    // list above would never notice. `consume` also switches on a `pickup`'s own `kind` in the
+    // same file, so those labels are legitimate — resolved against the engine's `PickupKind`
+    // union rather than excused by name, or this test would wave through a typo'd event too.
+    const kinds = /export type PickupKind =([^;]+);/.exec(read('../../../../engine/state/entities/world.ts'))![1]!;
+    const pickupKinds = [...kinds.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+    expect(pickupKinds).toContain('weapon'); // anti-vacuity: the union really was found
+    expect([...reacted].filter((t) => !declared.includes(t) && !pickupKinds.includes(t))).toEqual([]);
+  });
+
+  it('drains a chest payout and a blueprint drop without a cue, a toast or a crash', () => {
+    // What "unwired" means at runtime, so the list above is not the only thing saying it.
+    const fx = fakeFx();
+    const audio = fakeAudio();
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const toast = vi.spyOn(hud, 'toast');
+    const reactor = new EventReactor(fx, hud, audio, fakeHost());
+
+    reactor.consume([
+      { type: 'chest_open', id: 1, kind: 'big', gx: pxToFp(100), gy: pxToFp(100), weapons: 2 } as GameEvent,
+      { type: 'blueprint_drop', weaponId: 'scattergun', gx: pxToFp(100), gy: pxToFp(100) } as GameEvent,
+    ]);
+
+    expect(toast).not.toHaveBeenCalled();
+    expect(audio.play).not.toHaveBeenCalled();
+    expect(fx.flash).not.toHaveBeenCalled();
   });
 });
