@@ -30,18 +30,21 @@ function state(seed: number): GameState {
   return createGameState({ seed, worldW: 1600, worldH: 1600, waves: [] });
 }
 
+/** A dead `basic` at a fixed spot. Same shape as `blueprintDrop.test.ts`'s own helper next
+ *  door, deliberately — two hand-built corpses that disagree about a field are two different
+ *  tests pretending to be the same one. */
 function addCorpse(s: GameState): EnemyActor {
   const e: EnemyActor = {
     id: s.nextId(), faction: 'enemy', teamId: ENEMY_TEAM_ID,
     gx: toFpGrid(20), gy: toFpGrid(20), z: toFp(0), vx: toFp(0), vy: toFp(0),
-    knockVx: toFp(0), knockVy: toFp(0), facing: 0 as Brad,
-    hp: 0, maxHp: BASIC_ENEMY.maxHp, shield: 0, maxShield: 0, ticksSinceHit: 0,
+    knockVx: toFp(0), knockVy: toFp(0),
+    facing: 0 as Brad, hp: 0, maxHp: BASIC_ENEMY.maxHp,
+    shield: 0, maxShield: 0, ticksSinceHit: 0,
     radius: BASIC_ENEMY.radius, footprintRadius: BASIC_ENEMY.footprintRadius,
-    solidRadius: BASIC_ENEMY.solidRadius,
-    alive: true, kind: BASIC_ENEMY.id, speed: BASIC_ENEMY.speed,
-    contactDamage: BASIC_ENEMY.contactDamage, contactCooldown: 0,
-    status: freshStatus(),
-  };
+    solidRadius: BASIC_ENEMY.radius,
+    alive: true, weapon: null, firing: false, status: freshStatus(),
+    enraged: false, aggroed: false, holding: false,
+  } as EnemyActor;
   s.enemies.push(e);
   return e;
 }

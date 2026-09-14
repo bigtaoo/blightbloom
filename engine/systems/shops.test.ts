@@ -148,12 +148,12 @@ describe('ShopSystem — what a tap buys', () => {
     const p = addPlayer(s, 10, 10, 100);
     const shop = addShop(s, 10, 10, [{ kind: 'weapon', weaponId: 'repeater', price: 45 }]);
     p.shopBuyId = shop.stock[0]!.id;
-    const slotsBefore = p.weapons.map((w) => w.spec.id);
+    const slotsBefore = p.weapons.map((w) => w.spec.name);
     sys.tick(s);
     expect(p.coins).toBe(55);
     expect(shop.stock[0]!.sold).toBe(true);
     expect(s.pickups.filter((i) => i.kind === 'weapon' && i.weaponId === 'repeater')).toHaveLength(1);
-    expect(p.weapons.map((w) => w.spec.id)).toEqual(slotsBefore);
+    expect(p.weapons.map((w) => w.spec.name)).toEqual(slotsBefore);
   });
 
   it('applies a bought BUFF to the buyer directly, never as a pickup anyone could take', () => {
