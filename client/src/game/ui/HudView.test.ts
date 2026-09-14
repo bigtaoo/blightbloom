@@ -80,7 +80,7 @@ describe('HudView — stat cluster backing panel', () => {
     hud.update(s, 16, CTX);
     const narrowWidth = statsPanelOf(hud).width;
 
-    hud.update(s, 16, { ...CTX, selectedSkin: 'a-very-long-character-skin-name-indeed' });
+    hud.update(s, 16, { ...CTX, selectedSkin: 'a-character-skin-name-so-long-it-outruns-the-seven-chip-stat-row-below-it' });
 
     expect(statsPanelOf(hud).width).toBeGreaterThan(narrowWidth);
   });
@@ -341,7 +341,7 @@ describe('HudView — weapon-pickup panel placement (design/03)', () => {
     hud.update(s, 16, CTX);
     const near = hud.weaponPickupPrompt.view.x;
 
-    hud.update(s, 16, { ...CTX, selectedSkin: 'a-very-long-character-skin-name-indeed' });
+    hud.update(s, 16, { ...CTX, selectedSkin: 'a-character-skin-name-so-long-it-outruns-the-seven-chip-stat-row-below-it' });
 
     expect(hud.weaponPickupPrompt.view.x).toBeGreaterThan(near);
     expect(hud.weaponPickupPrompt.view.x).toBeGreaterThan(statsPanelOf(hud).width);
@@ -789,7 +789,13 @@ describe('HudView — the seat roster (design/20)', () => {
     const hud = newHud();
     hud.update(pveState(), 16, CTX);
     const narrow = (hud as unknown as { panelW: number }).panelW;
-    hud.update(pveState(), 16, { ...CTX, seatNames: ['a-rather-long-portal-username', 'another-long-one'] });
+    hud.update(pveState(), 16, {
+      ...CTX,
+      // Long enough to outrun the chip row, which is what the panel is otherwise sized by
+      // — since the `coins` chip joined it (design/05 "Shops") the row is ~418px wide, and
+      // a roster that merely looks long no longer moves the number this test reads.
+      seatNames: ['a-rather-long-portal-username-here', 'another-long-one-of-those-too'],
+    });
     expect((hud as unknown as { panelW: number }).panelW).toBeGreaterThan(narrow);
   });
 

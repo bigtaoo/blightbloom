@@ -80,6 +80,17 @@ export class ChestLayer {
     for (const chest of state.chests) {
       seen.add(chest.id);
       let v = this.views.get(chest.id);
+      // **`RoomBuilder.build` destroys every child of `layers.ground`** (its own first line),
+      // so `plates` is torn out from under this map on every room rebuild — and a door
+      // unlocking triggers one. Until 2026-09-14 this was silent rather than loud: a destroyed
+      // Container reports an empty `children`, so `sync`'s per-mechanism loop found nothing and
+      // skipped, and a big chest simply lost its plates for the rest of the floor. Nothing
+      // failed, because only a BIG chest has plates and the shipped level has one per floor.
+      // Rebuilt rather than reattached: a destroyed Pixi object nulls its own `position`.
+      if (v && (v.plates.destroyed || v.body.destroyed)) {
+        this.dispose(v);
+        v = undefined;
+      }
       if (!v) {
         v = this.create(chest);
         this.views.set(chest.id, v);
@@ -88,8 +99,7 @@ export class ChestLayer {
     }
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;
-      v.body.destroy({ children: true });
-      v.plates.destroy({ children: true });
+      this.dispose(v);
       this.views.delete(id);
     }
   }
@@ -97,11 +107,15 @@ export class ChestLayer {
   /** Drop every view. Called when a match ends — the containers belong to layers this class
    *  does not own, so leaving children behind would leak a floor's chests into the next run. */
   clear(): void {
-    for (const v of this.views.values()) {
-      v.body.destroy({ children: true });
-      v.plates.destroy({ children: true });
-    }
+    for (const v of this.views.values()) this.dispose(v);
     this.views.clear();
+  }
+
+  /** Destroy one view's two containers, each only if something else has not already done it —
+   *  which `RoomBuilder.build` routinely has, for the plates (see `update`). */
+  private dispose(v: ChestView): void {
+    if (!v.body.destroyed) v.body.destroy({ children: true });
+    if (!v.plates.destroyed) v.plates.destroy({ children: true });
   }
 
   private create(chest: Chest): ChestView {

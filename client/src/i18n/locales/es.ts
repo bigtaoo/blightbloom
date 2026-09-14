@@ -105,11 +105,19 @@ export const es: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: 'Armas cercanas' },
+    shop: {
+      title: 'Tienda  {coins}',
+      price: '{price}',
+      sold: 'VENDIDO',
+      heal: 'Poción de vida',
+      energy: 'Celda de energía',
+    },
     chips: {
       floor: 'PISO',
       room: 'SALA',
       enemies: 'ENEMIGOS',
       banked: 'GUARDADO',
+      coins: 'MONEDAS',
       score: 'PUNTOS',
       buffs: 'MEJORAS',
       alive: 'VIVOS',

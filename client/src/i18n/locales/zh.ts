@@ -105,11 +105,19 @@ export const zh: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: '附近武器' },
+    shop: {
+      title: '商店  {coins}',
+      price: '{price}',
+      sold: '已售出',
+      heal: '治疗药水',
+      energy: '能量电池',
+    },
     chips: {
       floor: '楼层',
       room: '房间',
       enemies: '敌人',
       banked: '已存',
+      coins: '金币',
       score: '分数',
       buffs: '增益',
       alive: '存活',

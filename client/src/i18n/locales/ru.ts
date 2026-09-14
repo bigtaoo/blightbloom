@@ -110,11 +110,19 @@ export const ru: Translations<typeof en> = {
   },
   hud: {
     pickupPrompt: { title: 'Оружие рядом' },
+    shop: {
+      title: 'Лавка  {coins}',
+      price: '{price}',
+      sold: 'ПРОДАНО',
+      heal: 'Зелье лечения',
+      energy: 'Энергоячейка',
+    },
     chips: {
       floor: 'ЭТАЖ',
       room: 'КОМНАТА',
       enemies: 'ВРАГИ',
       banked: 'СОХРАНЕНО',
+      coins: 'МОНЕТЫ',
       score: 'ОЧКИ',
       buffs: 'БАФФЫ',
       alive: 'ЖИВЫ',

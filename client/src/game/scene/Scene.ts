@@ -12,6 +12,7 @@ import { Enemy } from './Enemy';
 import { Bullet } from './Bullet';
 import { Pickup } from './Pickup';
 import { ChestLayer } from './ChestLayer';
+import { ShopLayer } from './ShopLayer';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
 
@@ -43,6 +44,7 @@ export class Scene {
    * torn down by `clear()`, so it inherits this class's whole lifecycle for free.
    */
   private readonly chests = new ChestLayer(this.layers.entities, this.layers.ground);
+  private readonly shops = new ShopLayer(this.layers.entities, this.layers.ground);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -117,6 +119,7 @@ export class Scene {
   /** Drop every view — called on a fresh run before a new engine is created. */
   clear(): void {
     this.chests.clear();
+    this.shops.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -259,6 +262,7 @@ export class Scene {
     }
 
     this.chests.update(state);
+    this.shops.update(state);
 
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;

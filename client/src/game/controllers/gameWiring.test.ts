@@ -128,6 +128,7 @@ function make() {
     input: { onSwitchWeapon: null } as never,
     hud: {
       weaponPickupPrompt: screenStub('onPick', 'onPressStart'),
+      shopPrompt: screenStub('onBuy', 'onPressStart'),
       onPause: null, onSwapWeapon: null, onSaveReplay: null,
     } as never,
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
@@ -275,6 +276,11 @@ describe('wireHud', () => {
     const prompt = hud.weaponPickupPrompt as Record<string, unknown>;
     expect(prompt.onPick).toBeTypeOf('function');
     expect(prompt.onPressStart).toBeTypeOf('function');
+    // The shop counter is the same panel one row down (design/05 "Shops"): both slots wired,
+    // including `onPressStart` — without it, buying a line also fires the active weapon.
+    const shop = hud.shopPrompt as Record<string, unknown>;
+    expect(shop.onBuy).toBeTypeOf('function');
+    expect(shop.onPressStart).toBeTypeOf('function');
     const portal = t.d.portalPrompt as unknown as Record<string, unknown>;
     expect(portal.onExtract).toBeTypeOf('function');
     expect(portal.onDescend).toBeTypeOf('function');
