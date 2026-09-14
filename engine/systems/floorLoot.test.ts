@@ -22,7 +22,9 @@ import { makeCommand } from '@dd/engine/state/input';
 import type { Brad } from '@dd/engine/math/trig';
 import { toFpGrid } from '@dd/engine/content/convert';
 import { buildEnemyActor } from '@dd/engine/content/enemies';
-import { FLOOR_WEAPON_QUOTA_MIN, FLOOR_WEAPON_QUOTA_SPAN } from '@dd/engine/config';
+import { CHEST_SMALL_WEAPONS, FLOOR_WEAPON_QUOTA_MIN, FLOOR_WEAPON_QUOTA_SPAN } from '@dd/engine/config';
+import { Button } from '@dd/engine/state/commands';
+import { mechanismRing } from '@dd/engine/content/chests';
 import type { RoomPiece } from '@dd/engine/content/rooms';
 import type { DungeonConfig } from '@dd/engine/world/dungeon';
 
@@ -80,12 +82,15 @@ const TEST_DUN: DungeonConfig = {
 
 const idle = (tick: number) => makeCommand({ owner: 0, tick, moveBrad: 0 as Brad, moveMag: 0, buttons: 0 });
 
-function dungeonEngine(seed: number) {
+/** `seats` > 1 builds a co-op party — ABSENT `players` is the single-seat path every test
+ *  below this one uses, and stays byte-identical to what it was before chests needed a party. */
+function dungeonEngine(seed: number, seats = 1) {
   const cfg: EngineConfig = {
     seed,
     worldW: 640,
     worldH: 640,
     waves: [],
+    ...(seats > 1 ? { players: Array.from({ length: seats }, () => ({})) } : {}),
     dungeon: { config: TEST_DUN, library: TEST_LIB },
   };
   const eng = createGameEngine(cfg);
@@ -354,5 +359,113 @@ describe('per-floor weapon allowance — scope', () => {
     // fail it, but it is high enough that a broken weapon branch cannot slip under it.
     expect(weaponsOn(s).length).toBeGreaterThan(15);
     expect(s.floorWeaponsDropped).toBe(0);
+  });
+});
+
+/**
+ * Chests spend the same allowance (design/05, ENGINE_VERSION 63). `ChestSystem` adds its
+ * payout to `floorWeaponsDropped`, which is this module's own input — so the two features meet
+ * here and nowhere else, and until now neither side's suite knew the other existed.
+ *
+ * The two directions are different claims, and both are load-bearing:
+ *
+ *   - a chest opened DURING a floor leaves the capstone correspondingly less to hand over, so
+ *     chests move WHERE a floor's weapons come from without inflating the economy design/05
+ *     tuned;
+ *   - the quota is a FLOOR, not a ceiling. A big chest pays one per SEAT and a full party can
+ *     take the floor past its quota outright. `payFloorWeaponShortfall` treats a negative
+ *     shortfall as "nothing owed", which is why that case needs no special case anywhere —
+ *     and an assertion here rather than only a sentence in a doc comment.
+ */
+describe('per-floor weapon allowance — and the chests that spend it', () => {
+  /** Drop a chest onto player 0's feet, in the room they are standing in. */
+  function chestUnderfoot(eng: ReturnType<typeof createGameEngine>, kind: 'small' | 'big') {
+    const s = eng.state;
+    const p = s.players[0]!;
+    const room = s.dungeonRooms[0]!;
+    const chest = {
+      id: s.nextChestId(),
+      roomId: room.id,
+      kind,
+      gx: p.gx,
+      gy: p.gy,
+      mechanisms: kind === 'big' ? mechanismRing(p.gx, p.gy, s.players.length) : [],
+      opened: false,
+    };
+    // Every plate under a player's feet, so a big chest opens by construction — the plate
+    // geometry is `chests.test.ts`'s subject, not this file's.
+    for (const m of chest.mechanisms) {
+      m.gx = p.gx;
+      m.gy = p.gy;
+    }
+    s.chests.push(chest);
+    return chest;
+  }
+
+  /**
+   * One tick with INTERACT held by every seat, preceded by an idle one.
+   *
+   * The idle tick is not padding. A room activates in `SpawnSystem` (step 11), which runs
+   * AFTER `ChestSystem` (step 10.5), so on the tick a room first activates its chests are
+   * still refused by `roomActive` — the chest becomes workable on the tick after. Holding the
+   * button through both is what a player does anyway.
+   */
+  const interactTick = (eng: ReturnType<typeof createGameEngine>) => {
+    for (let i = 0; i < 2; i++) {
+      eng.step(
+        eng.state.players.map((_, owner) =>
+          makeCommand({ owner, tick: eng.state.tick + 1, moveBrad: 0 as Brad, moveMag: 0, buttons: Button.INTERACT }),
+        ),
+      );
+    }
+  };
+
+  it('leaves the capstone less to hand over — a chest re-routes the floor’s weapons, it does not add to them', () => {
+    const eng = dungeonEngine(5);
+    const s = eng.state;
+    const quota = s.floorWeaponQuota;
+
+    const chest = chestUnderfoot(eng, 'small');
+    interactTick(eng);
+    expect(chest.opened).toBe(true); // the premise: the chest really did pay
+    expect(s.floorWeaponsDropped).toBe(CHEST_SMALL_WEAPONS);
+
+    killCapstone(eng);
+    // The floor still ends on exactly its quota — the chest paid part of it, the capstone
+    // paid the rest. A chest that forgot to count itself would end the floor one weapon over.
+    expect(s.floorWeaponsDropped).toBe(quota);
+    expect(weaponsOn(s).length).toBe(quota);
+  });
+
+  it('lets a big chest in a full party take the floor PAST its quota, and asks the capstone for nothing', () => {
+    const eng = dungeonEngine(5, 4);
+    const s = eng.state;
+    const quota = s.floorWeaponQuota;
+    expect(quota).toBeLessThan(4); // the premise: four seats really can outpay it
+
+    const chest = chestUnderfoot(eng, 'big');
+    interactTick(eng);
+    expect(chest.opened).toBe(true);
+    expect(s.floorWeaponsDropped).toBe(4); // one per seat, whatever the floor owed
+
+    const before = s.pickups.length;
+    killCapstone(eng);
+    // A negative shortfall is "nothing owed", not a debt to claw back: the capstone hands
+    // over nothing but the boss's own rolled drop, and the floor is allowed to end rich.
+    expect(s.pickups.length).toBe(before + 1);
+    expect(s.floorWeaponsDropped).toBe(4);
+    expect(s.floorWeaponsDropped).toBeGreaterThan(quota);
+  });
+
+  it('still pays the whole quota on a floor whose chest was never opened', () => {
+    // The control. Without it, "chests break the guarantee" would pass the first test above
+    // just as well as "chests feed it".
+    const eng = dungeonEngine(5);
+    const s = eng.state;
+    chestUnderfoot(eng, 'small');
+    for (let i = 0; i < 2; i++) eng.step([idle(s.tick + 1)]); // no button — the chest stays shut
+    expect(s.floorWeaponsDropped).toBe(0);
+    killCapstone(eng);
+    expect(s.floorWeaponsDropped).toBe(s.floorWeaponQuota);
   });
 });
