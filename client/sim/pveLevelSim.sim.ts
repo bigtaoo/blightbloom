@@ -34,7 +34,21 @@ import {
   weaponFireStats,
 } from './pve/report';
 
-const SEEDS = [101, 202, 303, 404, 505, 606, 707, 808];
+/**
+ * 40 seeds, not the 8 this started with — widened 2026-09-14 after the descend gate below
+ * failed on a change that made the level EASIER.
+ *
+ * The gate asks how often a careful bot gets off floor 0. Measured over 40 seeds, that rate is
+ * **15-20%**, so eight samples against a threshold of two is a coin flip: at p = 0.15 the old
+ * gate passed with probability 0.34. It had been passing on luck, and the first content change
+ * to shift `dropPrng`'s stream — which is every content change — re-rolled it. Paired 40-seed
+ * measurement of that change: 6/40 before, 8/40 after, i.e. the level's real difficulty did not
+ * move at all while the 8-seed gate went from 3/8 to 0/8.
+ *
+ * Widening is the only fix that makes the gate mean its own sentence. A threshold this close to
+ * the measured rate needs a sample that can resolve it, and 40 x 2 profiles is still seconds.
+ */
+const SEEDS = Array.from({ length: 40 }, (_, i) => 101 + i * 101);
 const PROFILES = ['careful', 'aggressive'] as const;
 
 function sweep(profileName: (typeof PROFILES)[number]): RunMetrics[] {
@@ -136,8 +150,14 @@ describe('PvE level 1 balance sim (bot-driven real runs — first-signal data, n
     // means a tuning pass overshot into a walkover. Read the bot as a LOWER bound on
     // a human — it never swaps to the saber (2 damage, hits everything in the arc,
     // parries bullets) and never dodges a shot on purpose.
+    // Stated as a RATE over `SEEDS` rather than a count over eight, for the reason `SEEDS`'
+    // own comment gives. Measured 2026-09-14: 8/40 (20%) on the shipped content, 6/40 (15%) on
+    // the content before the side rooms. The floor is a tenth of the seeds — far enough below
+    // the measurement to be stable, far enough above zero that a level which became a wall
+    // still fails.
     const descended = rows.filter((r) => r.floorReached >= 1).length;
-    expect(descended, `${descended}/${rows.length} careful runs descended off floor 0`).toBeGreaterThanOrEqual(2);
+    const floorDescents = Math.max(1, Math.round(rows.length * 0.1));
+    expect(descended, `${descended}/${rows.length} careful runs descended off floor 0`).toBeGreaterThanOrEqual(floorDescents);
     const extracted = rows.filter((r) => r.outcome === 'extracted').length;
     expect(extracted, `${extracted}/${rows.length} careful runs extracted`).toBeLessThanOrEqual(Math.floor(rows.length * 0.5));
   }, 600_000);

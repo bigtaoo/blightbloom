@@ -2240,3 +2240,89 @@ draws, since that is what a `peek()` cannot see.
 The client half — a counter to look at, a coin readout, a panel to tap — is the pass after this
 one. Until it lands, a shop is real engine state that no player can reach, exactly as a chest
 was between `ChestSystem` arriving and `ChestLayer` being drawn.
+
+## v65: chests and the counter move into rooms of their own (2026-09-14)
+
+A content pass, decided by the game's owner the day after v63/v64 shipped the mechanics:
+
+> 商店放到第四层，多人一起开的宝箱放到第三层。其他每层一个小宝箱。不需要放在必经之路上。
+> 具体的房间布局我后期调整玩法的时候会微调，你给房间加几个类型即可。
+
+No system changed, no step moved, no PRNG draw site was added or removed. What changed is
+`world/dungeons/ember/` — and that is enough to break a v64 stream, which is the whole reason
+this file exists.
+
+### What moved
+
+v63 and v64 authored their new content onto the pieces that already existed: a small chest on
+`alcove` / `court` / `gallery` / `rampart`, the big one on the `extraction` capstone, a shop
+counter on `forge` and `crucible`. A piece is reused across floors, so **which floor got which
+reward was decided by which pieces that floor happened to draw** — floors 0-2 came out with two
+small chests, a big one and a counter each, and the boss floor with no big chest at all, none of
+it stated anywhere as a decision.
+
+Three new enemy-free piece types now carry all of it, and each floor map says what it holds:
+
+- `ember_l1_cache` (15x15) — one small chest. Floors 0, 1, 3, 4.
+- `ember_l1_vault` (17x17) — the big, per-seat-mechanism chest. Floor 2 only.
+- `ember_l1_market` (16x16) — the shop counter. Floor 3 only.
+
+Every one of them is hung off its floor's chain as a **dead end**, so the capstone is never behind
+a chest: walking in is a detour, and it is the first room in this level a player may simply not
+enter. That is NOT `ROADMAP` B3 — B3 wants rooms left *unfought* on the way down, which needs a
+route that goes around a garrison; a dead-end room with no garrison in it goes around nothing, and
+every chain room between the entrance and the capstone still has to be cleared. What it does close
+is the other one: this is the first time the level has had a room that is not a fight at all, which
+is design/05 "Chest rooms"' own *"a floor mixes combat rooms with chest rooms"* and `ROADMAP` B1's
+remaining content half.
+
+Floor room counts therefore go 5/6/7/6/5 → **6/7/8/8/6**, and the seven pieces that used to carry
+a chest or a counter carry none.
+
+### Why a v64 stream diverges
+
+Two independent mechanisms, either of which would suffice:
+
+1. **The floor's `dropPrng` sequence shifts.** `rollShopStock` spends exactly three draws when a
+   floor is PLACED (`SpawnSystem`, v64). Floor 0 used to place `forge`'s counter and now places
+   none, so every later loot roll on that floor draws from three positions earlier in the stream.
+   This is the same knock-on v64 recorded for the deleted weapon allowance, and it dominates the
+   witness: `ember-dungeon-floor1` reads 208 `bullet_fired` against 170 and 85 `melee_swing`
+   against 67, because a different sequence of `energy` drops means a different number of shots
+   the pool can pay for and the rest is the player falling back on melee.
+2. **The floor's geometry is different content.** An extra room means a different stitched wall
+   list, a different world extent, different `dungeonRoomRuntime` indices, and a different set of
+   positions `clampToWalkable` resolves to.
+
+### The golden gate, run BEFORE the bump
+
+Per the v51/v54/v61 rule — measured against the fixture BEFORE the bump, which is the only
+moment the measurement means anything. **Exactly one scenario moved**: `ember-dungeon-floor1`,
+the only one built on `EMBER_DUNGEON`/`EMBER_L1_ROOMS`, and both of its assertions did, witness
+first. The other six were read and are byte-identical, which is the reading this pass wanted —
+the fixture-built dungeon scenarios (`chest-room`, `brim-grinder`, `extraction-gate`) author
+their own pieces and so are blind to level-1 content by construction, and the arena scenarios
+never touch it at all.
+
+The COMMITTED diff nevertheless shows all seven hashes moving, and that is not a contradiction:
+`serializeState` puts `version: ENGINE_VERSION` in the hashed payload, so the re-record after a
+bump moves every hash mechanically. The witnesses are the column to read in a fixture diff —
+exactly one of those moved.
+
+**The blind spot is unchanged and still declared.** No golden scenario walks into a side room, for
+the same reason none taps a counter: a scripted stick does not path to a prop. `chest-room`'s
+fixture floor is what covers chest mechanics; what covers this pass is
+`world/rooms/emberLevel1.test.ts`, which now holds the per-floor distribution, the dead-end
+topology and the "a chest room has no garrison" rule as content gates, plus the first content gate
+shops have ever had (`describe('level 1 shops')` — placement, the mat's walkability, and the
+counter's own reachability through the real stitched geometry).
+
+### What this does NOT do
+
+It does not retune the loot. A run's weapon supply falls from roughly three chests a floor to one
+— four small chests, one big one, one counter and the boss drop across the whole descent — and
+that number was not measured against `pveLevelSim` before shipping, because the placement was a
+design call rather than a balance one. `SHOP_PRICE_*` and `COIN_DROP_QTY` are untouched, so the
+run's whole coin income now meets a single counter on floor 3; whether 87 coins for all three
+lines is the right ask against a five-floor purse is the first thing to measure when this is
+played.

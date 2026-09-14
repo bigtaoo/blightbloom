@@ -831,7 +831,12 @@ turns on.
 
 1. **The search verb.** ✅ **Shipped 2026-09-14** (`ENGINE_VERSION` 63) — chest rooms, small (solo)
    and big (one mechanism per seat, all occupied at once, paying one weapon per seat). **B1.**
-   What remains is content, not engine: a floor that actually MIXES fights with no-fight rooms.
+   ~~What remains is content, not engine: a floor that actually MIXES fights with no-fight rooms.~~
+   **That content landed the same day** (`ENGINE_VERSION` 65): three enemy-free side rooms
+   (`cache` / `vault` / `market`), one hung off each floor's chain as a dead end, carrying the
+   whole distribution the owner asked for — a small chest on floors 1/2/4/5, the big chest on
+   floor 3, the run's one shop counter on floor 4. So level 1 now mixes fights with rooms that are
+   a search, and a chest is the first room in it a player may choose not to enter.
    **Sharpened the same day** (`ENGINE_VERSION` 64): a kill no longer drops a weapon at all, so a
    chest's payout IS the floor's weapon supply rather than a re-routing of loot the floor already
    owed — which is what makes skipping a chest room cost something. Shops joined it as the third
@@ -879,10 +884,14 @@ between the loop as designed and the loop as shipped.
   seat** so the per-capita reward is flat and only the coordination cost scales; further
   chest-room types are deferred on purpose. That section also records the three constraints the build inherited
   (seat-count-at-start, `INTERACT` arbitration against the revive channel, and chest state being
-  replay/netcode state). **What is still open is the room COMPOSITION half**: chests are authored
-  into five shipped pieces, but four of those five still hold their garrison, so "a floor mixes
-  combat rooms with chest rooms" is content work nobody has done — the one no-fight chest room in
-  the level is `ember_l1_extraction`, which already had no spawns.
+  replay/netcode state). ~~**What is still open is the room COMPOSITION half**: chests are authored
+  into five shipped pieces, but four of those five still hold their garrison.~~ **Closed
+  2026-09-14** (`ENGINE_VERSION` 65): the chests and the counter moved off the combat pieces onto
+  three dedicated enemy-free side rooms — `ember_l1_cache` (a small chest, floors 1/2/4/5),
+  `ember_l1_vault` (the big one, floor 3) and `ember_l1_market` (the run's one shop, floor 4) —
+  each a dead-end branch off its floor's chain. Level 1 mixes fights with searches, and which
+  floor holds what is a floor-map decision rather than a consequence of the piece draw. Note what
+  this is NOT: a dead end routes around no garrison, so **B3 below is untouched**.
 - **B2 🟡 A real run-buff offering flow — HALF SHIPPED 2026-09-14 (`ENGINE_VERSION` 64).** The
   third of design/05's *"chests / rooms / shop"* routes now exists: every shop counter stocks a
   buff as one of its three fixed lines, so a buff can be **chosen and paid for** rather than
@@ -1316,9 +1325,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-14** [The kill table stops paying in guns](roadmap/55-2026-09-11-door-ellipse-aspect.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364) — *"怪物是不掉落武器的。要获得武器，只有 boss 掉落和开箱子。有些房间还会有商店，怪物的掉落里加一个金币。"* — `weapon` leaves `DROP_TABLE` STRUCTURALLY (not as a zero weight), and the per-floor weapon allowance goes with it: `FLOOR_WEAPON_QUOTA_*`, `floorWeaponQuota`/`floorWeaponsDropped`, `DungeonRoomRuntime.weaponDropped`, `DropOpts.weaponAllowed` and the whole of `systems/floorLoot.ts` with both of its trigger sites. It existed because the table produced 0-5 weapons a floor; with the table out of that business there is no rate to cap, and a make-up payment at the exit is exactly what makes a search not worth doing. A floor’s weapons are now its **chests**, its **boss** (`BOSS_WEAPON_DROPS` 1, on the body) and its **shop**. **PvP was left alone deliberately** — an arena has no chest, no boss and no shop, so its loot pool IS its power curve and the same deletion would delete weapons rather than relocate them; `ARENA_DROP_TABLE` excludes `coin` for the mirror-image reason. `coin` takes the weapon entry’s 5 points **plus 15 out of `material`** at a held total of 84, so heal/buff/energy keep their odds — and the cost is named rather than found later: the carry-out currency falls 55/84 → 40/84, **~27% off the rate a run banks materials**, which is the trade (value moves from the meta ramp to the in-run one) and one number to reverse. Coins are run-scoped and **per-seat**, into the collector’s own wallet; `bankedMaterials` is still the only carry-out. **Shops** (step 10.6) stock three FIXED kinds — weapon / buff / supply — because three draws from one pool can roll three potions and this counter exists to be the recoverable half of the first sentence; priced against the measured floor (~40-60 coins) so a floor’s income buys the gun OR the buff and two supplies. The gesture is a **tap on a row, not a held INTERACT**: that button has two consumers already, and buying is *choosing which line*, which the game already taught with the v32 weapon panel — so `shopBuyId` is its own one-shot latch and no new arbitration exists to get wrong. A bought weapon lands on the FLOOR (which slot to overwrite is still a choice); a bought buff/heal/energy applies to the buyer, because a paid reward a teammate can walk off with is not one. An instant item that would do nothing is refused **before** the coins move, through the same `pickupWouldApply` the floor uses. `arsenal` (+1 weapon/floor) had nothing left to add to and became **`windfall`** (coins ×2), applied to the payload in `DeathDropsSystem` rather than inside `rollDrop` — the one structural difference from `potion_flow`, which changes WEIGHTS and must be inside the draw. **Two repairs found on the way.** `state.chests` was never in the hashed payload although `fixtures/chestRoomFloor.ts` says in prose that it is — silent, because an `opened` divergence surfaces a tick later as a pickup one client has, attributed to the wrong system. And `RoomBuilder.build` destroys every child of `layers.ground`: `ShopLayer` hit that loudly (a destroyed Pixi object nulls its `position`) where **`ChestLayer` had been failing silently since v63** — a destroyed Container reports empty `children`, so a big chest just lost its plates for the rest of the floor. Golden read before the bump: eleven assertions across six scenarios, each read rather than re-recorded — `arena-waves` moved `prngCursors` only, the four dungeon witnesses moved through the DELETED QUOTA DRAW (208 `bullet_fired` against 170 is a knock-on: a shifted stream means different `energy` drops means different shots the pool can pay for), and the two arena-mode hashes moved on SCHEMA with witnesses identical, which is the check that PvP really was untouched. Two blind spots declared: no golden run taps a counter and none kills a boss. 19 shop cases (one per refusal, each asserting nothing delivered AND nothing charged), plus `coinDrop`/`shopProximity`/`ShopPrompt`/`ShopLayer`; **11 injected defects, 11 caught**, run with the golden gate EXCLUDED because a red baseline scores every mutant as killed — the first run of this battery reported 8/8 against exactly that. engine 1572 → **1586**, client 6216 → **6244**. Still open: no new ROOM was authored, so "a floor mixes combat rooms with chest rooms" is as half-shipped as it was, and `ROADMAP` B2 is half-answered — one line at one price is an offer, not a pick-one-of-three. `engine` `content` `render` `test` `docs`
 
+**[2026-09-14 — rooms that are a search, not a fight](roadmap/55-2026-09-11-door-ellipse-aspect.md)**
+
+- **09-14** [Rooms that are a search, not a fight](roadmap/55-2026-09-11-door-ellipse-aspect.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465) — *“商店放到第四层，多人一起开的宝箱放到第三层。其他每层一个小宝箱。不需要放在必经之路上。”* — the content half the two passes above kept deferring. v63/v64 authored their chests and counters onto the pieces that already existed, and a piece is reused across floors — so **the reward distribution was a side effect of the piece draw**: floors 1-3 got two small chests, a big one and a counter each, the boss floor got no big chest at all (the only big one rode `ember_l1_extraction`, and floor 5 ends at the boss room). Nobody decided any of that. A distribution stated as a decision — one small chest a floor, the co-op chest on floor 3, the run's one shop on floor 4 — is something a per-piece placement structurally cannot express, so the chests and the counter moved OFF the combat pieces onto three new enemy-free types: **`cache`** (a small chest, floors 1/2/4/5), **`vault`** (the per-seat mechanism chest, floor 3) and **`market`** (the shop, floor 4). Each is a **dead end** hung off its floor's chain — *“不需要放在必经之路上”* — so rooms go 5/6/7/6/5 → **6/7/8/8/6** and level 1 finally has a room that is a SEARCH rather than a fight, which design/05's "Chest rooms" header has claimed since the day it was written (`ROADMAP` B1's content half, closed). **It is NOT B3**, and the distinction is the whole reason B3 stays open: an OPTIONAL room now exists, a SKIPPABLE one does not — a dead end routes around no garrison, and every chain room before the capstone still has to be cleared. **The loot number is stated rather than discovered later**: a run's weapon supply falls from ~3 chests a floor to four small chests, one big chest, one counter line and the boss drop for the whole descent, and a single deep counter means a run's entire purse is spendable exactly once against prices set for 40-60 coins a floor spent five times — neither measured against `pveLevelSim` first, because the placement was a design call and not a balance proposal. **The content gates took the interesting damage.** Shops got one for the first time (they shipped a version after the chests, and the chest block was written for chests alone): placement, the counter's reachability through the real stitched geometry, and the walkability of the whole mat the panel opens on. The enemy-ramp exemption became an ALLOWLIST cross-checked against "pieces with no enemy spawns", so a combat room that loses its garrison in an editor drag fails the ramp instead of joining the exempt set. And **a 2.7 px rubble speck read as a 33-luma clip failure**: cutting the first door into `ember_l1_court`'s west wall put one on the threshold, where `floorClipCoverage` samples 1 px either side against a bound derived from the MOTTLE — but `drawFloorDecals` says in its own comment that a speck is *dropped rather than clipped*, so it is not the clip's step at all; filtered by size, with a test pinning that the filter takes specks and nothing larger. Six new doors and six new free-standing blocks moved eleven anti-vacuity population pins across five client sweeps (24 doors → 30, 34 brimmed rects → 46, 11 kerb doorways → 14), each read and updated rather than relaxed. Golden read before the bump: **exactly one scenario moved** (`ember-dungeon-floor1`, witness first, through the three `dropPrng` draws `rollShopStock` no longer spends when floor 1 places); the committed fixture shows all seven hashes moving only because `serializeState` puts `ENGINE_VERSION` in the hashed payload. **Then CI found what a green local `check` could not: a balance gate that had been passing on LUCK.** `pveLevelSim`'s *"at least 2 of 8 careful runs descend off floor 0"* read 0/8 against 3/8 before — which looks exactly like "this pass made floor 0 harder", and is not. The careful bot's real descent rate, measured over 40 seeds, is **15-20%**, so eight samples against a threshold of two passes with probability **0.34**; the thing that re-rolls that coin flip is any shift in `dropPrng`'s stream, i.e. every content change, since `rollShopStock` spends three draws at floor placement. Measured paired over the same 40 seeds either side of the commit: **6/40 before, 8/40 after** — the level got slightly EASIER and the gate went red for it. Fixed in the SAMPLE, not in the content and not in the bar: `SEEDS` is 40 and the threshold is a tenth of them, which runs in 4.4 s for both profiles — the eight were never a cost decision. The shape worth carrying: **a threshold set near a measured rate needs a sample that can resolve it**, and a gate nobody has computed the power of will one day fail for a reason that is not its own sentence. engine 1586 → **1599**, client 6244 → **6245**. `content` `test` `docs`
+
 ## The work log — by theme
 
-The same 151 entries, grouped. An entry with more than one tag appears more than once.
+The same 152 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(61)*
 
@@ -1465,7 +1478,7 @@ The same 151 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The arena in front of a camera, and the audit becomes a gate](roadmap/08-2026-08-26-arena.md#the-arena-in-front-of-a-camera-and-the-audit-becomes-a-gate-2026-08-26-client--engine)
 - 08-26 [The arena finally has a frame time, and it was not the walls](roadmap/08-2026-08-26-arena.md#the-arena-finally-has-a-frame-time-and-it-was-not-the-walls-2026-08-26-client-only)
 
-**`content`** — authored rooms, pieces, props, loot *(10)*
+**`content`** — authored rooms, pieces, props, loot *(11)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1478,8 +1491,9 @@ The same 151 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 - 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/55-2026-09-11-door-ellipse-aspect.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
+- 09-14 [Rooms that are a search, not a fight](roadmap/55-2026-09-11-door-ellipse-aspect.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(74)*
+**`test`** — coverage sweeps, gates, mutation batteries *(75)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1556,6 +1570,7 @@ The same 151 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
 - 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/55-2026-09-11-door-ellipse-aspect.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
+- 09-14 [Rooms that are a search, not a fight](roadmap/55-2026-09-11-door-ellipse-aspect.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
 **`audio`** — cues, music, the engine to sound channel *(6)*
 
@@ -1642,7 +1657,7 @@ The same 151 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 
-**`docs`** — design docs and this log itself *(77)*
+**`docs`** — design docs and this log itself *(78)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1723,6 +1738,7 @@ The same 151 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [A door's halo runs the way the door does](roadmap/55-2026-09-11-door-ellipse-aspect.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11-client-only-no-engine-bump)
 - 09-14 [Chests, and the id that retuned a floor](roadmap/55-2026-09-11-door-ellipse-aspect.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/55-2026-09-11-door-ellipse-aspect.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
+- 09-14 [Rooms that are a search, not a fight](roadmap/55-2026-09-11-door-ellipse-aspect.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
 **`net`** — matchmaking, sockets, reconnect *(20)*
 

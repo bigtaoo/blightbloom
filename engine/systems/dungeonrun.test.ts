@@ -953,10 +953,13 @@ describe('Dungeon mode — the real Ember biome runs end-to-end', () => {
     const s = eng.state;
     eng.step([idle(1)]); // first Ember floor places
     // Level 1's floor 0 is hand-authored (world/dungeons/ember/ember_l1_floor_1.json):
-    // exactly 5 rooms, not a `roomsPerFloor` draw. The room/door SHAPE of every floor
-    // is `world/rooms/emberLevel1.test.ts`'s job — this asserts the live engine walks
-    // the authored path and stitches it into one stable world.
-    expect(s.dungeonRooms.length).toBe(5);
+    // exactly 6 rooms, not a `roomsPerFloor` draw — five on the chain plus the enemy-free
+    // `cache` side room hung off it (2026-09-14). The room/door SHAPE of every floor is
+    // `world/rooms/emberLevel1.test.ts`'s job — this asserts the live engine walks the
+    // authored path and stitches it into one stable world.
+    expect(s.dungeonRooms.length).toBe(6);
+    // A tree, not a chain, since the side room branches off it: still one door per room past
+    // the entrance, which is what stitching a floor with no loop in it costs.
     expect(s.dungeonDoors.length).toBe(s.dungeonRooms.length - 1);
     const worldWAtPlacement = s.worldW;
     const worldHAtPlacement = s.worldH;

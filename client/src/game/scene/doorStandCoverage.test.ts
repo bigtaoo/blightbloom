@@ -127,14 +127,14 @@ describe('every door presents the same — on the real shipped floors', () => {
         expect(shortest).toBeLessThanOrEqual(DOOR_H);
       }
     }
-    expect(doors).toBe(24);
+    expect(doors).toBe(30);
     // Every passage is a hole in stone — a door hanging in nothing would make the comparison
     // above vacuous rather than false.
     expect(unflanked).toBe(0);
     // ...and the content really does still produce both shapes, including the one the old rule
     // shrank: 11 doors in a 22 px kerb, which now stand at DOOR_H like the other 13.
-    expect(shapes.get(`128x64 in ${wallHeight('kerb')}px stone`)).toBe(11);
-    expect(shapes.get(`64x128 in ${WALL_H_PERIMETER}px stone`)).toBe(13);
+    expect(shapes.get(`128x64 in ${wallHeight('kerb')}px stone`)).toBe(14);
+    expect(shapes.get(`64x128 in ${WALL_H_PERIMETER}px stone`)).toBe(16);
   });
 
   it('shows over half of the real leaf art on every shipped door — the reported defect itself', () => {
@@ -168,7 +168,7 @@ describe('every door presents the same — on the real shipped floors', () => {
         }
       }
     }
-    expect(shown).toHaveLength(48); // 24 doors x 2 states, or the sweep skipped something
+    expect(shown).toHaveLength(60); // 30 doors x 2 states, or the sweep skipped something
     // The bound is not slack in one direction and vacuous in the other: the WIDE passages really
     // are the ones near it (0.55), and the narrow ones really do show the whole leaf.
     expect(Math.min(...shown)).toBeLessThan(0.6);
@@ -251,6 +251,6 @@ describe('every door presents the same — on the real shipped floors', () => {
         if (run.rect.w > run.rect.h) expect(joins[i]!.tuckNorth).toBe(false);
       }
     }
-    expect([capless, capped]).toEqual([11, 13]);
+    expect([capless, capped]).toEqual([14, 16]);
   });
 });

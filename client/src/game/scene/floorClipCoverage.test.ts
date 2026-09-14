@@ -116,6 +116,27 @@ function covers(sh: Shape, x: number, y: number): boolean {
   return false;
 }
 
+/**
+ * A rubble SPECK, or its key-light highlight (`floorRender.drawFloorDecals`). Excluded from the
+ * doorway-step sweep below, and from nothing else.
+ *
+ * The reason is the decal pass's own: *"A speck is DROPPED rather than clipped, body and highlight
+ * together: at alpha 0.46/0.13 a cut through one is a hard step no ramp can hide, and at 2-4 px
+ * across there is nothing to ramp over."* So a speck is never a step the CLIP made — it is drawn
+ * whole, inside one room, or not at all — and the bound this sweep measures against (`bandStep`)
+ * is derived from the mottle, which is the only thing the clip ramps. Left in, one speck landing in
+ * a doorway reads as a 33-luma clip failure: that is exactly what happened the first time a door
+ * was cut into `ember_l1_court`'s west wall (2026-09-14), on a 2.7 px white dot.
+ *
+ * Separated by SIZE, with an order of magnitude of headroom on both sides: a speck is 1.8-4.4 px
+ * (`RUBBLE_R_MIN`/`_SPAN`), the next-smallest thing the ground layer draws is a stain blob at 16,
+ * and the ramp being distinguished from is `CLIP_FEATHER_PX` (32) wide. The test below pins that
+ * nothing this filter actually removes comes near the 8 px line.
+ */
+const SPECK_MAX_R = 8;
+const isSpeck = (sh: Shape): boolean =>
+  sh.action === 'ellipse' && Math.max(sh.nums[2] ?? 0, sh.nums[3] ?? 0) <= SPECK_MAX_R;
+
 /** What one room's overlay stack composites to at a point: its multiply half times the base, plus
  *  what its additive half adds. Plain alpha blending over `FLOOR_BASE`, no renderer involved. */
 function lumaAt(dark: readonly Shape[], light: readonly Shape[], x: number, y: number): number {
@@ -529,7 +550,13 @@ describe('the cut ramps across one grid cell, so a doorway never gets an edge', 
   function doorwaySteps(geo: MapGeometry): { steps: number[]; matched: number } {
     const stacks = new Map<number, { dark: Shape[]; light: Shape[] }>();
     const stackOf = (i: number): { dark: Shape[]; light: Shape[] } => {
-      if (!stacks.has(i)) stacks.set(i, roomStack(geo.rooms[i]!, geo.walls));
+      if (!stacks.has(i)) {
+        // Specks dropped here rather than in `lumaAt`, which every other section still reads
+        // unfiltered — see `isSpeck`: they are not the clip's doing, and this is the one sweep
+        // that asks what the clip did.
+        const st = roomStack(geo.rooms[i]!, geo.walls);
+        stacks.set(i, { dark: st.dark.filter((sh) => !isSpeck(sh)), light: st.light.filter((sh) => !isSpeck(sh)) });
+      }
       return stacks.get(i)!;
     };
     const steps: number[] = [];
@@ -564,6 +591,19 @@ describe('the cut ramps across one grid cell, so a doorway never gets an edge', 
     return { steps, matched };
   }
 
+  it('the speck filter removes specks, and nothing that could be a clip step', () => {
+    // Two failure modes, both guarded: a filter that removes nothing is a comment pretending to be
+    // code, and one that grows to swallow a mottle band would silently disarm the gate below.
+    const all = [...PVE_FLOORS.map(pveGeometry), arenaGeometry('arena_launch')]
+      .flatMap((g) => g.rooms.map((r) => roomStack(r, g.walls)))
+      .flatMap((st) => [...st.dark, ...st.light]);
+    const removed = all.filter(isSpeck);
+    expect(removed.length, 'the shipped floors really are speckled').toBeGreaterThan(100);
+    // 4.4 px is `RUBBLE_R_MIN + RUBBLE_R_SPAN`, a speck's own largest body; the highlight is
+    // smaller still. Nothing the filter takes comes within 3 px of its own 8 px line.
+    expect(Math.max(...removed.map((sh) => Math.max(sh.nums[2] ?? 0, sh.nums[3] ?? 0)))).toBeLessThanOrEqual(4.4);
+  });
+
   it('the derived bound is a real bound, not a vacuous one', () => {
     // If one band's own step were below the threshold this repo calls visible, "under one band" would
     // be a stronger claim than it sounds and the assertions below would be measuring the wrong thing.
@@ -588,8 +628,10 @@ describe('the cut ramps across one grid cell, so a doorway never gets an edge', 
       expect(steps).toHaveLength(expectedPassages * 9);
       const worst = Math.max(...steps);
       const median = [...steps].sort((a, b) => a - b)[steps.length >> 1]!;
-      // THE GATE. Measured worsts: arena 2.59, PvE floors 1.14 / 1.17 / 3.04 / 2.76 / 2.73, against a
-      // 4.90 bound. A hard clip at the room rect reads 29.98 on the arena.
+      // THE GATE. Measured worsts: arena 2.59, PvE floors 2.76 / 1.67 / 3.04 / 2.76 / 2.73, against a
+      // 4.90 bound. (Floors 0 and 1 read 1.14 / 1.17 before the 2026-09-14 side rooms added a door
+      // apiece; every floor's worst still sits under two thirds of one band.) A hard clip at the
+      // room rect reads 29.98 on the arena.
       expect(worst, `${name} worst doorway step ${worst.toFixed(2)} luma`).toBeLessThan(bandStep);
       // ...and the TYPICAL doorway is below what this repo calls a visible difference at all. Stated
       // distributionally on purpose: the worst case is legitimately allowed to reach one band, and

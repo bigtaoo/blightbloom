@@ -241,7 +241,7 @@ buildArenaSpecs(presetId: ArenaPresetId, skinId: SkinId): ResolvedSpecs
 
 ### Collision geometry — `RoomState` (deferred from `07`) ✅ schema shipped 2026-07-24 (ROADMAP 1.2)
 
-A room's static solids and markers, all on the `gx/gy` grid (`01`). `content/rooms.ts` implements this shape (`RoomPiece`/`Point`/`SpawnPoint`/`AabbGrid`/`PillarGrid`/`ExitDef`/`PropPlacement`/`WaveScript`/`WaveEntry`/`RoomRole`) plus the pure `roomGeometry(piece, offsetXGrid?, offsetYGrid?)` converter to sim `{ walls: AABB[]; obstacles: Obstacle[] }`. `GameState` gained a `walls: AABB[]` array (sourced from `EngineConfig.walls`, parallel to the existing `obstacles`) and `MovementSystem`/`ProjectileStepSystem` resolve against it (`07`) — additive, no `ENGINE_VERSION` bump (every existing config omits `walls`, so it stays empty). ~~**Remaining:** no `RoomPiece` content is authored yet, and nothing places a piece into a live `GameState`.~~ **Both closed long since** (1.3, then the hand-authored level of 2026-08-15): 14 `RoomPiece` files under `world/dungeons/ember/pieces/` plus the seven original `EMBER_ROOMS` fixtures, and `placeAuthoredFloor`/`placeFloor`/`placeFloorGraph2d` all stitch them into a live floor through `buildFloorGeometry`. Struck 2026-09-03 — see the superseded note below, which this line sat two paragraphs above.
+A room's static solids and markers, all on the `gx/gy` grid (`01`). `content/rooms.ts` implements this shape (`RoomPiece`/`Point`/`SpawnPoint`/`AabbGrid`/`PillarGrid`/`ExitDef`/`PropPlacement`/`WaveScript`/`WaveEntry`/`RoomRole`) plus the pure `roomGeometry(piece, offsetXGrid?, offsetYGrid?)` converter to sim `{ walls: AABB[]; obstacles: Obstacle[] }`. `GameState` gained a `walls: AABB[]` array (sourced from `EngineConfig.walls`, parallel to the existing `obstacles`) and `MovementSystem`/`ProjectileStepSystem` resolve against it (`07`) — additive, no `ENGINE_VERSION` bump (every existing config omits `walls`, so it stays empty). ~~**Remaining:** no `RoomPiece` content is authored yet, and nothing places a piece into a live `GameState`.~~ **Both closed long since** (1.3, then the hand-authored level of 2026-08-15): 17 `RoomPiece` files under `world/dungeons/ember/pieces/` (14 until the three enemy-free side rooms of 2026-09-14, `05` "Chest rooms") plus the seven original `EMBER_ROOMS` fixtures, and `placeAuthoredFloor`/`placeFloor`/`placeFloorGraph2d` all stitch them into a live floor through `buildFloorGeometry`. Struck 2026-09-03 — see the superseded note below, which this line sat two paragraphs above.
 
 ```
 RoomPiece = {
@@ -366,7 +366,7 @@ There is no separate `PICKUP_TABLE` — loot is per-room `LootMarker`s resolved 
 
 ### Drops, pickups & materials (`05`)
 
-A `Pickup` on the ground is one of these kinds; `DropTable` rolls which drops from a slain enemy (or, in the arena, a loot marker — chests are `ROADMAP` B1, not built):
+A `Pickup` on the ground is one of these kinds; `DropTable` rolls which drops from a slain enemy (or, in the arena, a loot marker; a PvE chest pays weapons rather than rolling this table — `content/chests.ts`, `ENGINE_VERSION` 63, which closed `ROADMAP` B1's engine half):
 
 ```
 Pickup =

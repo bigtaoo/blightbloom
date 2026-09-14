@@ -487,3 +487,110 @@ room placed into the floor maps is still content work nobody has done.
 And `ROADMAP` B2 is half-answered, not answered. A buff is now something you can choose and pay
 for rather than only something that falls off a table — but one line at one price is an offer,
 not the pick-one-of-three a floor card is.
+
+## Rooms that are a search, not a fight (2026-09-14, content + docs, `ENGINE_VERSION` 64→65)
+
+The content half the two passes above kept deferring, asked for as a level-design change:
+
+> 商店放到第四层，多人一起开的宝箱放到第三层。其他每层一个小宝箱。不需要放在必经之路上。
+> 具体的房间布局我后期调整玩法的时候会微调，你给房间加几个类型即可。
+
+### The thing that was actually wrong
+
+v63 and v64 authored their new content onto the pieces that already existed. That is the cheap
+move when a mechanic lands, and it has a consequence nobody stated at the time: **a piece is
+reused across floors, so the reward distribution was a side effect of the piece draw.** Floors
+1-3 came out with two small chests, a big one and a counter each; the boss floor came out with
+no big chest at all, because the only big chest in the library rode `ember_l1_extraction` and
+floor 5 ends at the boss room instead. Neither of those was a decision anyone made.
+
+The ask above is a distribution — one small chest a floor, the co-op chest on floor 3, the run's
+shop on floor 4 — and a per-piece placement structurally cannot express it. So the fix is not
+"move the chests", it is **move them off the combat pieces entirely**:
+
+| floor | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| side room | `cache` | `cache` | **`vault`** | `cache` + **`market`** | `cache` |
+| holds | 1 small chest | 1 small chest | the big chest | 1 small chest, the shop | 1 small chest |
+
+Three new enemy-free piece types, 15x15 / 17x17 / 16x16, each hung off its floor's chain as a
+**dead end** — *"不需要放在必经之路上"*. `alcove` / `court` / `gallery` / `rampart` /
+`extraction` / `forge` / `crucible` carry nothing now. Room counts 5/6/7/6/5 → **6/7/8/8/6**.
+
+### What that buys, and what it deliberately does not
+
+design/05's "Chest rooms" header has said *"a floor mixes combat rooms with chest rooms"* since
+the day it was written, and until now the only ungarrisoned room in the level was the extraction
+capstone — which is empty because it is the checkpoint, not because it is a search. That is
+closed (`ROADMAP` B1's content half), and with it comes the first room in this level a player may
+simply decline to enter.
+
+**It is not `ROADMAP` B3.** B3 wants rooms left *unfought* on the way down, which needs a route
+around a garrison; a dead-end room with nothing in it routes around nothing, and every chain room
+between the entrance and the capstone still has to be cleared to walk through it. Two things that
+look alike: an OPTIONAL room, which now exists, and a SKIPPABLE one, which still does not.
+
+### The loot number this moves, stated rather than discovered later
+
+A run's weapon supply falls from roughly three chests a floor to **four small chests, one big
+chest, one counter line and the boss drop for the whole descent**. That is a real balance change
+riding on a placement decision, and it was not measured against `pveLevelSim` first because the
+placement was the owner's call, not a balance proposal. The same goes for the counter: coins are
+run-scoped and never banked, so a single shop on floor 4 means a run's entire purse is spendable
+exactly once — 87 coins buys all three lines against a five-floor income that was priced for
+40-60 a floor spent five times. Both are first things to measure once this has been played.
+
+### What the content gates learned
+
+- `world/rooms/emberLevel1.test.ts` grew the per-floor distribution, the dead-end topology
+  (a chest room has exactly one door and is never the capstone), a garrison-free assertion, and
+  a cross-check that the enemy-ramp EXEMPTION list is exactly the pieces with no enemy spawns —
+  an allowlist, so a combat room that loses its garrison in an editor drag fails the ramp instead
+  of quietly joining the exempt set. Shops got a content gate **for the first time**: they
+  shipped a version after the chests and the chest block was written for chests alone.
+- **A speck in a doorway read as a 33-luma clip failure.** `floorClipCoverage.test.ts` measures
+  the step the floor clip leaves across every shipped passage, 1 px either side, against a bound
+  derived from the mottle. Cutting the first door into `ember_l1_court`'s west wall put a 2.7 px
+  rubble speck on the threshold, and `drawFloorDecals` says in its own comment that a speck is
+  *dropped rather than clipped* — it is not the clip's step, and the bound was never derived to
+  cover it. Filtered out by size (a speck is ≤4.4 px, the next-smallest thing drawn is a 16 px
+  stain), with its own test pinning that the filter removes specks and nothing larger.
+- Six new doors and six new free-standing blocks moved eleven anti-vacuity population pins across
+  five client sweeps (24 doors → 30, 34 brimmed rects → 46, 11 kerb doorways → 14). Each was read
+  and updated rather than relaxed.
+
+### The golden gate, read before the bump
+
+Exactly one scenario moved: `ember-dungeon-floor1`, witness first, through the three `dropPrng`
+draws `rollShopStock` no longer spends when floor 1 places. The other six are byte-identical in
+witness — the committed fixture shows all seven hashes moving only because `serializeState` puts
+`ENGINE_VERSION` in the hashed payload. Blind spot unchanged and declared: no golden scenario
+walks into a side room, because a scripted stick does not path to a prop.
+
+engine 1586 → **1599**, client 6244 → **6245**.
+
+### CI found the thing the local suite could not: a gate that was passing on luck
+
+`npm run check` was green and the `sims` job went red. `pveLevelSim`'s descend gate — *"at
+least 2 of 8 careful runs descend off floor 0"* — read **0/8** against 3/8 before.
+
+The first read was that this pass had made floor 0 harder, and it is the wrong read. The gate
+is a Bernoulli sample: the careful bot's real descent rate, measured over 40 seeds, is
+**15-20%**, so eight samples against a threshold of two passes with probability **0.34**. It
+had been passing on a coin flip since the day it was written, and the thing that re-rolls that
+flip is any change to `dropPrng`'s stream — which is every content change, because
+`rollShopStock` spends three draws at floor placement and this pass moved the counter off
+floor 0.
+
+Measured properly, paired, same 40 seeds either side of the commit: **6/40 before, 8/40
+after.** The level got very slightly EASIER and the gate went red for it.
+
+So the fix is the sample, not the content and not the bar: `SEEDS` is 40 now and the threshold
+is a tenth of them (4), which sits far enough below the measurement to be stable and far enough
+above zero that a level which became a wall still fails. 40 seeds x 2 profiles runs in **4.4
+seconds** — the eight were never a cost decision, just the number somebody started with.
+
+Worth carrying past this repo: **a threshold set near a measured rate needs a sample that can
+resolve it.** Nobody had computed this gate's power, so it was always going to fail one day for
+a reason that was not its own sentence, and the day it did the obvious explanation was going to
+be wrong.

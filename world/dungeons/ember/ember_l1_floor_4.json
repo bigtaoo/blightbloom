@@ -32,6 +32,18 @@
       "offsetYGrid": 0
     },
     {
+      "id": "b1_cache",
+      "pieceId": "ember_l1_cache",
+      "offsetXGrid": 22,
+      "offsetYGrid": 19
+    },
+    {
+      "id": "b2_market",
+      "pieceId": "ember_l1_market",
+      "offsetXGrid": 59,
+      "offsetYGrid": 0
+    },
+    {
       "id": "r6_extraction",
       "pieceId": "ember_l1_extraction",
       "offsetXGrid": 2,
@@ -87,6 +99,26 @@
         "y": 19,
         "w": 4,
         "h": 2
+      }
+    },
+    {
+      "roomA": "r4_rampart",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 26,
+        "y": 18,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_crucible",
+      "roomB": "b2_market",
+      "passageGrid": {
+        "x": 58,
+        "y": 6,
+        "w": 2,
+        "h": 4
       }
     }
   ]
