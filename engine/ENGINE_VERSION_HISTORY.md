@@ -2120,20 +2120,32 @@ branch whose line runs every tick while only one side is normally taken:
   inflating the economy design/05's "Loot economy" tuned. A big chest in a full party can
   overshoot the quota, which is intended — the per-seat rule is a promise to each player.
 
-### The part of the bump that is pure bookkeeping, and is worth knowing
+### A chest id is NOT an entity id, and the PvE sim is what proved it has to be that way
 
-`ember-dungeon-floor1`'s hash moved, and **not because it opens a chest — it never does.** Its
-own note records that a scripted stick does not clear rooms, so the run stays in the spawn room,
-which has no chest. What moved it is that instantiating a floor's chests calls
-`GameState.nextId()` once each, before that floor's enemies are built, so every enemy id shifts
-by the chest count — and `AIDecideSystem.hasNoticed` staggers a freshly-woken garrison's opening
-volley by `noticeDelayTicks(e.id)`. Three chests on floor 1 therefore re-stagger the first
-volley: 170 shots became 167, 59 hits became 56, and the player finished with 4.2 HP instead of
-2.4.
+The first version of this took chest ids from `GameState.nextId()`, which read as obviously
+correct: a chest is a thing in the world and that is the world's id allocator.
 
-That is a real divergence for an old recording and the bump covers it, but it is not evidence
-about chests, and reading it as such is exactly the mistake the witness exists to prevent. The
-evidence about chests is the new `chest-room` golden scenario (`fixtures/chestRoomFloor.ts`),
+It shipped a difficulty regression. Chests are built when a floor is PLACED, before any of that
+floor's enemies spawn, so three chests on level 1 shifted every later enemy id by three — and an
+enemy id is **not inert**: `AIDecideSystem.hasNoticed` staggers a freshly-woken garrison's
+opening volley by `noticeDelayTicks(e.id)`. The re-staggered first volley took
+`client/sim/pveLevelSim.sim.ts` from "at least 2 of 8 careful runs descend off floor 0" to
+**8 of 8 dying there**, and its gate failed in CI.
+
+Worth recording HOW it was missed, because the instrument that did notice is not the one anybody
+would have reached for. The golden gate saw it and pointed the wrong way: the witness moved to
+170 shots -> 167, 59 hits -> 56, four shield-breaks -> one, and the player finishing on 4.2 HP
+instead of 2.4, which reads as the floor getting EASIER. It was one 1500-tick scripted run that
+never leaves its spawn room. Eight bot-driven runs of the whole level said the opposite.
+
+The fix is `GameState.nextChestId()` — a separate id space, so a chest can never perturb an actor
+id. Its doc comment carries the rule this cost: **adding a prop to a room must not retune the
+room's difficulty.** With it, `ember-dungeon-floor1`'s witness is byte-identical to the
+pre-chest recording again, and the only thing left moving its hash is `state.chests` being part
+of the hashed payload — which is what an added state field is supposed to do.
+
+The evidence about chests THEMSELVES is the new `chest-room` golden scenario
+(`fixtures/chestRoomFloor.ts`),
 which is the third purpose-built fixture in the `brimGrinderFloor` / `extractionGateFloor`
 lineage and exists for the same structural reason: two seats spawning on their own plates so the
 big chest opens by construction, a small chest one grid from seat 0 with INTERACT pulsed every 3

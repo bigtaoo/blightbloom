@@ -6,18 +6,15 @@
  *
  * Third instance of the same hole `brimGrinderFloor.ts` and `extractionGateFloor.ts` were
  * written for, and the memory of the previous two is what made it cheap to spot this time.
- * The shipped level DOES author chests now (five pieces carry one), so `ember-dungeon-floor1`
- * moved when they landed — but it moved for the wrong reason and pins nothing about the
- * feature:
+ * The shipped level DOES author chests now (five pieces carry one), and `ember-dungeon-floor1`
+ * still pins nothing about the feature:
  *
- *   - that scenario's hash shifted because instantiating three chests advances
- *     `GameState.nextId()` three times before the floor's enemies are built, and
- *     `noticeDelayTicks(e.id)` staggers the opening volley off the enemy id. A pure
- *     bookkeeping ripple.
  *   - **no chest in it is ever opened.** Its own note says a scripted stick does not clear
  *     rooms, so the run never leaves the spawn room; the spawn room has no chest; and even if
  *     it did, a big chest needs every plate occupied at once, which one seat wandering at
  *     random will not arrange.
+ *   - what DOES reach it is `state.chests` joining the hashed payload, which is a statement
+ *     about the state schema and not about chests working.
  *
  * So deleting the whole of `ChestSystem.open` would have left the gate green. The fix, as
  * both times before, is geometry and an input script chosen so the contact is guaranteed

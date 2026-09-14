@@ -59,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 2118314543,
+      "hash": 1501355059,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -69,20 +69,20 @@
         "projectiles": 0,
         "pickups": 11,
         "floorIndex": 0,
-        "hpTotal": 4.2,
+        "hpTotal": 2.4000000000000004,
         "energyTotal": 99,
         "prngCursors": 12825823320,
         "events": {
-          "bullet_fired": 167,
+          "bullet_fired": 170,
           "room_enter": 2,
           "door_locked": 2,
-          "hit": 56,
+          "hit": 59,
           "melee_swing": 67,
           "deflect": 5,
           "death": 16,
-          "clash": 8,
+          "clash": 7,
           "pickup": 5,
-          "shield_break": 1,
+          "shield_break": 4,
           "door_unlocked": 1,
           "force_regroup": 1
         }
@@ -185,7 +185,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 4048222800,
+      "hash": 76466783,
       "witness": {
         "tick": 400,
         "phase": "playing",

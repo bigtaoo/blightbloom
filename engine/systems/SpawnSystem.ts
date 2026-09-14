@@ -279,7 +279,9 @@ export class SpawnSystem {
         const gy = toFpGrid(c.y + room.offsetYGrid);
         const at = clampToWalkable(gx, gy, dropClearance(), state);
         state.chests.push({
-          id: state.nextId(),
+          // `nextChestId`, never `nextId` — see its doc comment: a chest taking an entity id
+          // shifts every later enemy id, and an enemy id sets its opening-volley delay.
+          id: state.nextChestId(),
           roomId: room.id,
           kind: c.kind,
           gx: at.gx,

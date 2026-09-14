@@ -87,6 +87,27 @@ export class GameState {
     return this._nextId++;
   }
 
+  private _nextChestId = 1;
+  /**
+   * A SEPARATE id space for chests (ENGINE_VERSION 63), and the reason is a measured
+   * regression rather than tidiness.
+   *
+   * Chests are built when a floor is PLACED, before any of that floor's enemies spawn. Taking
+   * their ids from `nextId()` therefore shifted every later enemy id by the floor's chest
+   * count — and an enemy id is not inert: `AIDecideSystem.hasNoticed` staggers a woken
+   * garrison's opening volley by `noticeDelayTicks(e.id)`. Authoring three chests onto level 1
+   * re-staggered its first volley enough to take the PvE bot sim from "at least 2 of 8 careful
+   * runs descend" to **8 of 8 dying on floor 0** (`client/sim/pveLevelSim.sim.ts`). Adding a
+   * prop to a room must not retune the room's difficulty.
+   *
+   * Safe because nothing looks a chest up in the shared entity maps: `Scene` keys its `views`
+   * by actor/pickup id and chests are drawn by `ChestLayer` out of its own map, so the two
+   * spaces never meet. The `chest_open` event's `id` is in THIS space.
+   */
+  nextChestId(): number {
+    return this._nextChestId++;
+  }
+
   // Injected PRNG (distinct derived seeds).
   readonly aiPrng: Prng;
   readonly combatPrng: Prng;
