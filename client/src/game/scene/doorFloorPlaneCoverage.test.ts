@@ -181,7 +181,7 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
       }
       doorsChecked++;
     }
-    expect(doorsChecked).toBe(13); // every north-south-wall door on every shipped floor
+    expect(doorsChecked).toBe(16); // every north-south-wall door on every shipped floor
     expect(points).toBeGreaterThan(5_000);
   });
 
@@ -202,7 +202,7 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
       expect(Math.sign(ry! - rx!), where).toBe(Math.sign(drawH - door.w));
       checked++;
     }
-    expect(checked).toBe(24); // 13 sides + 11 south, the whole shipped set
+    expect(checked).toBe(30); // 16 sides + 14 south, the whole shipped set
   });
 
   it('stays clear of stone at the aspect the drawn door asks for, and says where that ceiling is', () => {
@@ -253,7 +253,7 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
       }
       doorsChecked++;
     }
-    expect(doorsChecked).toBe(11);
+    expect(doorsChecked).toBe(14);
   });
 
   it('lands the graduated pool on real room floor, not only on the fixture own stone', () => {
@@ -286,8 +286,8 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
     const kinds = FLOOR_INDICES.flatMap((index) =>
       floorPx(index).doors.map((d) => doorFloorPlane(d, drawnLeafH(d.w)).floor),
     );
-    expect(kinds.filter((k) => k === 'sides')).toHaveLength(13); // the 64x128 passages
-    expect(kinds.filter((k) => k === 'south')).toHaveLength(11); // the 128x64 ones
+    expect(kinds.filter((k) => k === 'sides')).toHaveLength(16); // the 64x128 passages
+    expect(kinds.filter((k) => k === 'south')).toHaveLength(14); // the 128x64 ones
   });
 
   it('measures the pre-plane geometry FAILING on those doors, so this fix is not a no-op', () => {
@@ -306,13 +306,13 @@ describe('a door floor plane puts its decals on floor, on every shipped door', (
       // The new plane, at the widest ring a shipped door actually strokes (`MAX_RING` x span =
       // 58.1 px here) rather than at the raw 64 px opening width this line used to ask about.
       // Since 2026-09-11 a `sides` ring is as tall as its door instead of foreshortened, and the
-      // lobes of one grown to 64 px reach a perpendicular run on 3 of these 13 doors (2.4-4.8% of
+      // lobes of one grown to 64 px reach a perpendicular run on 3 of these 16 doors (2.4-4.8% of
       // their points) — real geometry, but at a radius nothing draws. `stays clear of stone at the
       // aspect the drawn door asks for` below is the case that pins that margin.
       expect(buriedShare(floor, door, plane, plane.span * MAX_RING).inWall).toBe(0);
       broken++;
     }
-    expect(broken).toBe(13);
+    expect(broken).toBe(16);
   });
 });
 

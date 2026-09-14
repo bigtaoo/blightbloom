@@ -1,11 +1,27 @@
 {
-  "id": "ember_l1_extraction",
-  "role": "extraction",
+  "id": "ember_l1_market",
+  "tags": [
+    "ember_l1"
+  ],
   "sizeGrid": {
     "w": 16,
     "h": 16
   },
   "solids": [
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 10,
+      "y": 10,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
     {
       "x": 0,
       "y": 0,
@@ -35,11 +51,11 @@
     "player": [
       {
         "x": 2.5,
-        "y": 6
+        "y": 8
       },
       {
         "x": 2.5,
-        "y": 10
+        "y": 11
       }
     ],
     "enemy": []
@@ -60,19 +76,25 @@
   ],
   "props": [
     {
-      "id": "barrel",
-      "x": 2.5,
-      "y": 3
+      "id": "crate",
+      "x": 5.5,
+      "y": 7.5
     },
     {
-      "id": "crate",
-      "x": 13,
-      "y": 2.5
+      "id": "barrel",
+      "x": 10.5,
+      "y": 7.5
     },
     {
       "id": "rubble",
-      "x": 13.5,
+      "x": 3.5,
       "y": 13.5
+    }
+  ],
+  "shops": [
+    {
+      "x": 8,
+      "y": 8
     }
   ]
 }

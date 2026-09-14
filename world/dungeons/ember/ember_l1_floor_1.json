@@ -26,6 +26,12 @@
       "offsetYGrid": 1
     },
     {
+      "id": "b1_cache",
+      "pieceId": "ember_l1_cache",
+      "offsetXGrid": 17,
+      "offsetYGrid": 18
+    },
+    {
       "id": "r5_extraction",
       "pieceId": "ember_l1_extraction",
       "offsetXGrid": 1,
@@ -69,6 +75,16 @@
       "passageGrid": {
         "x": 3,
         "y": 16,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_gallery",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 23,
+        "y": 17,
         "w": 4,
         "h": 2
       }

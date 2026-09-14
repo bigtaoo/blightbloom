@@ -1,6 +1,6 @@
 /**
  * Level 1's content gate — holds `world/dungeons/ember/`'s JSON to the level spec
- * (5 floors of 5/6/7/6/5 rooms, every room 15x15..20x20, enemy count ramping with
+ * (5 floors of 6/7/8/8/6 rooms, every room 15x15..20x20, enemy count ramping with
  * cell count from 8 to 14) and, most importantly, proves every door is PHYSICALLY
  * PASSABLE.
  *
@@ -27,10 +27,21 @@ import type { RoomPiece } from '../../content/rooms';
 import { FP_SCALE } from '../../math/fixed';
 import { toFpGrid } from '../../content/convert';
 import { mechanismRing } from '../../content/chests';
-import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RING_GRID } from '../../config';
+import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RING_GRID, SHOP_INTERACT_RANGE_GRID } from '../../config';
 
 const FLOOR_INDICES = [0, 1, 2, 3, 4] as const;
-const EXPECTED_ROOM_COUNTS = [5, 6, 7, 6, 5];
+const EXPECTED_ROOM_COUNTS = [6, 7, 8, 8, 6];
+
+/**
+ * The enemy-free SIDE rooms (design/05 "Chest rooms": *"a floor mixes combat rooms with chest
+ * rooms. Not every room has enemies in it"*, 2026-09-14). Named here rather than derived from
+ * `spawns.enemy.length === 0`, because a derived list would swallow exactly the mistake this
+ * suite exists to catch — a combat piece that loses its garrison in an editor drag would join
+ * the exempt set instead of failing the ramp below. The two halves are cross-checked: the
+ * roster has to be exactly the pieces with no enemy spawns, capstone aside.
+ */
+const SIDE_PIECES = new Set(['ember_l1_cache', 'ember_l1_vault', 'ember_l1_market']);
+const isFight = (p: RoomPiece): boolean => p.role !== 'extraction' && !SIDE_PIECES.has(p.id);
 const MIN_SIDE = 15;
 const MAX_SIDE = 20;
 const MIN_ENEMIES = 8;
@@ -69,7 +80,7 @@ describe('EMBER_DUNGEON is the authored 5-floor level 1', () => {
 });
 
 describe('level 1 floor shape', () => {
-  it('has 5 / 6 / 7 / 6 / 5 rooms', () => {
+  it('has 6 / 7 / 8 / 8 / 6 rooms', () => {
     expect(FLOOR_INDICES.map((i) => floorAt(i).rooms.length)).toEqual(EXPECTED_ROOM_COUNTS);
   });
 
@@ -110,7 +121,7 @@ describe('level 1 room pieces', () => {
 
   it('enemy count scales with cell count, 8 at 15x15 up to 14 at 20x20', () => {
     for (const piece of EMBER_L1_ROOMS) {
-      if (piece.role === 'extraction') continue; // the checkpoint room is deliberately empty
+      if (!isFight(piece)) continue; // the checkpoint room and the three side rooms are deliberately empty
       const area = piece.sizeGrid.w * piece.sizeGrid.h;
       const expected = Math.max(MIN_ENEMIES, Math.min(MAX_ENEMIES, Math.round(8 + (6 * (area - 225)) / 175)));
       expect(piece.spawns.enemy.length, piece.id).toBe(expected);
@@ -118,7 +129,7 @@ describe('level 1 room pieces', () => {
   });
 
   it('the enemy count is monotonic in cell count — a bigger room is never a lighter fight', () => {
-    const fights = EMBER_L1_ROOMS.filter((p) => p.role !== 'extraction')
+    const fights = EMBER_L1_ROOMS.filter(isFight)
       .map((p) => ({ area: p.sizeGrid.w * p.sizeGrid.h, n: p.spawns.enemy.length }))
       .sort((a, b) => a.area - b.area);
     for (let i = 1; i < fights.length; i++) expect(fights[i]!.n).toBeGreaterThanOrEqual(fights[i - 1]!.n);
@@ -143,6 +154,15 @@ describe('level 1 room pieces', () => {
 
   it('the extraction capstone stays enemy-free — it is the checkpoint, not a second boss fight', () => {
     expect(pieceFor('ember_l1_extraction').spawns.enemy).toEqual([]);
+  });
+
+  it('the enemy-free pieces are exactly the capstone and the three named side rooms', () => {
+    // The other half of `SIDE_PIECES`' own comment: the exemption above is an allowlist, so
+    // this is what stops it being a place to quietly park a combat room that stopped spawning.
+    expect(EMBER_L1_ROOMS.filter((p) => p.spawns.enemy.length === 0).map((p) => p.id).sort()).toEqual([
+      'ember_l1_cache', 'ember_l1_extraction', 'ember_l1_market', 'ember_l1_vault',
+    ]);
+    for (const id of SIDE_PIECES) expect(pieceFor(id).role, id).toBeUndefined(); // a side room is a NORMAL room
   });
 
   it('the boss room opens with the blightlord at spawn point 0', () => {
@@ -172,16 +192,15 @@ describe('level 1 chests', () => {
   const withChests = EMBER_L1_ROOMS.filter((p) => (p.chests?.length ?? 0) > 0);
   const everyChest = EMBER_L1_ROOMS.flatMap((p) => (p.chests ?? []).map((c) => ({ piece: p, c })));
 
-  it('five pieces carry one, and the only BIG one is the extraction capstone', () => {
-    // The shipped content decision, stated so a sixth chest cannot arrive unnoticed: the big
-    // chest lives in the one room on the floor with no enemy spawns, because its rule is a
-    // coordination gate and not a fight. A second big chest somewhere would also be the first
-    // place two plate rings could overlap.
-    expect(withChests.map((p) => p.id).sort()).toEqual([
-      'ember_l1_alcove', 'ember_l1_court', 'ember_l1_extraction', 'ember_l1_gallery', 'ember_l1_rampart',
-    ]);
-    expect(everyChest.filter(({ c }) => c.kind === 'big').map(({ piece }) => piece.id)).toEqual(['ember_l1_extraction']);
-    expect(everyChest.filter(({ c }) => c.kind === 'small')).toHaveLength(4);
+  it('exactly two pieces carry one — the cache its small chest, the vault the big one', () => {
+    // The shipped content decision, stated so a third chest piece cannot arrive unnoticed.
+    // Until 2026-09-14 the chests rode the COMBAT pieces (alcove/court/gallery/rampart, plus
+    // the big one on the extraction capstone), which meant a floor's rewards were decided by
+    // which pieces it happened to draw. They now ride two dedicated enemy-free side rooms, so
+    // a floor's chest budget is a floor-map decision — see `emberLevel1.ts`'s own header.
+    expect(withChests.map((p) => p.id).sort()).toEqual(['ember_l1_cache', 'ember_l1_vault']);
+    expect(everyChest.filter(({ c }) => c.kind === 'big').map(({ piece }) => piece.id)).toEqual(['ember_l1_vault']);
+    expect(everyChest.filter(({ c }) => c.kind === 'small').map(({ piece }) => piece.id)).toEqual(['ember_l1_cache']);
   });
 
   it('puts every chest inside its own piece, clear of the perimeter wall', () => {
@@ -211,8 +230,8 @@ describe('level 1 chests', () => {
 
   it('leaves a big chest’s whole plate ring inside its own room, at every seat count', () => {
     // The ring is derived from the run's SEAT count, so the room has to hold the widest one a
-    // party can ask for — plus the radius a player has to stand within. The capstone is 16x16
-    // and the ring is CHEST_MECHANISM_RING_GRID (3) from centre, so this has real margin; the
+    // party can ask for — plus the radius a player has to stand within. The vault is 17x17 and
+    // the ring is CHEST_MECHANISM_RING_GRID (3) from its centre, so this has real margin; the
     // test is here for the next big chest, authored into a room that may not.
     for (const { piece, c } of everyChest.filter((e) => e.c.kind === 'big')) {
       for (const seats of [1, 2, 3, 4]) {
@@ -231,17 +250,106 @@ describe('level 1 chests', () => {
     expect(CHEST_MECHANISM_RING_GRID).toBeGreaterThan(0);
   });
 
-  it('gives every floor something to search, and only the boss floor no big chest', () => {
-    // Measured, not aspirational: floors 0-2 carry 2 small + 1 big, floor 3 carries 1 small +
-    // 1 big, and floor 4 carries 2 small and no big one — the boss room replaces the
-    // extraction capstone, and with it the only big chest in the library. The invariant worth
-    // holding is the shape rather than the exact tally: every floor is searchable, and the
-    // big chest rides the capstone.
+  it('spreads the chests one per floor — a small one on four floors, the big one on floor 2', () => {
+    // The 2026-09-14 distribution, decided by the game's owner: the co-op chest sits on ONE
+    // floor (2), every other floor carries a single small chest, and no floor carries two.
+    // Measured per floor rather than per piece, because that is the thing a player meets.
+    const kindsOn = (i: number): string[] =>
+      floorAt(i).rooms.flatMap((r) => (pieceFor(r.pieceId).chests ?? []).map((c) => c.kind)).sort();
+    expect(FLOOR_INDICES.map(kindsOn)).toEqual([['small'], ['small'], ['big'], ['small'], ['small']]);
+  });
+
+  it('puts every chest in a room that is a SEARCH, not a fight — and off the chain to the capstone', () => {
+    // design/05 "Chest rooms": *"a floor mixes combat rooms with chest rooms. Not every room
+    // has enemies in it."* Two halves, and the second is the one a topology test can see: a
+    // chest room is a DEAD END (exactly one door), so reaching the capstone never requires
+    // walking through it — opening a chest is a detour the player chooses to take.
     for (const i of FLOOR_INDICES) {
-      const chests = floorAt(i).rooms.flatMap((r) => pieceFor(r.pieceId).chests ?? []);
-      expect(chests.filter((c) => c.kind === 'small').length, `floor ${i} small`).toBeGreaterThanOrEqual(1);
-      expect(chests.filter((c) => c.kind === 'big').length, `floor ${i} big`).toBe(i === 4 ? 0 : 1);
-      expect(chests.length, `floor ${i} total`).toBeGreaterThanOrEqual(2);
+      const map = floorAt(i);
+      for (const room of map.rooms) {
+        if ((pieceFor(room.pieceId).chests?.length ?? 0) === 0) continue;
+        expect(pieceFor(room.pieceId).spawns.enemy, `floor ${i} ${room.id}`).toEqual([]);
+        const doors = map.doors.filter((d) => d.roomA === room.id || d.roomB === room.id);
+        expect(doors.length, `floor ${i} ${room.id} door count`).toBe(1);
+        expect(room.id, `floor ${i} chest room is not the capstone`).not.toBe(map.rooms[map.rooms.length - 1]!.id);
+      }
+    }
+  });
+});
+
+/**
+ * The shop counters level 1 authors (design/05 "Shops", ENGINE_VERSION 64). Shops shipped a
+ * version after the chests and were held to no content rule at all — the block above was
+ * written for chests alone — so this is the same gate, for the same reason: `SpawnSystem`
+ * CLAMPS a counter to walkable ground rather than failing on one authored into stone, which
+ * makes a placement mistake silent everywhere except here.
+ */
+describe('level 1 shops', () => {
+  const withShops = EMBER_L1_ROOMS.filter((p) => (p.shops?.length ?? 0) > 0);
+  const everyShop = EMBER_L1_ROOMS.flatMap((p) => (p.shops ?? []).map((sh) => ({ piece: p, sh })));
+
+  it('one piece carries one counter — the market side room', () => {
+    // Until 2026-09-14 the counter rode `forge` (floors 0-1) and `crucible` (floors 2-4), so
+    // every floor had one because every floor drew one of those two pieces. The owner's call
+    // that day put the run's shop on ONE floor, which a per-piece placement cannot express.
+    expect(withShops.map((p) => p.id)).toEqual(['ember_l1_market']);
+    expect(everyShop).toHaveLength(1);
+  });
+
+  it('stocks exactly one floor — floor 3, the floor before the boss', () => {
+    // Coins are run-scoped and never banked (design/05 "Coins"), so a single counter this
+    // deep is the whole economy's pressure: everything a run has saved is spendable once,
+    // one floor before the run's only exit.
+    const shopsOn = (i: number): number =>
+      floorAt(i).rooms.reduce((n, r) => n + (pieceFor(r.pieceId).shops?.length ?? 0), 0);
+    expect(FLOOR_INDICES.map(shopsOn)).toEqual([0, 0, 0, 1, 0]);
+  });
+
+  it('puts the counter inside its own piece, clear of the perimeter wall', () => {
+    for (const { piece, sh } of everyShop) {
+      expect(sh.x, `${piece.id} shop x`).toBeGreaterThanOrEqual(1);
+      expect(sh.y, `${piece.id} shop y`).toBeGreaterThanOrEqual(1);
+      expect(sh.x, `${piece.id} shop x`).toBeLessThanOrEqual(piece.sizeGrid.w - 1);
+      expect(sh.y, `${piece.id} shop y`).toBeLessThanOrEqual(piece.sizeGrid.h - 1);
+    }
+  });
+
+  it('never puts one within reach of a player spawn — the panel has to be walked to', () => {
+    // `ShopSystem` refuses a purchase from outside SHOP_INTERACT_RANGE_GRID and the panel
+    // opens on exactly that ring (`ui/shopProximity.ts`). A counter on top of a spawn point
+    // would open the shop panel on the tick the room is entered.
+    for (const { piece, sh } of everyShop) {
+      for (const pl of piece.spawns.player) {
+        const d = Math.hypot(sh.x - pl.x, sh.y - pl.y);
+        expect(d, `${piece.id}: shop (${sh.x},${sh.y}) vs player spawn (${pl.x},${pl.y})`).toBeGreaterThan(SHOP_INTERACT_RANGE_GRID);
+      }
+    }
+  });
+
+  it('leaves the whole mat walkable — a refusal the player cannot predict reads as a broken button', () => {
+    // The mat is drawn at exactly SHOP_INTERACT_RANGE_GRID (design/05 "The range gate is
+    // drawn"), so every cell of it has to be standable inside the piece's own geometry. A
+    // free-standing block authored across the mat would draw a ring a player cannot reach
+    // half of — checked piece-locally against `solids`, since the stitched floor cannot say
+    // which block was the author's mistake.
+    for (const { piece, sh } of everyShop) {
+      for (const solid of piece.solids) {
+        const nx = Math.max(solid.x, Math.min(sh.x, solid.x + solid.w));
+        const ny = Math.max(solid.y, Math.min(sh.y, solid.y + solid.h));
+        const d = Math.hypot(sh.x - nx, sh.y - ny);
+        expect(d, `${piece.id}: solid (${solid.x},${solid.y},${solid.w}x${solid.h}) vs shop mat`).toBeGreaterThan(SHOP_INTERACT_RANGE_GRID);
+      }
+    }
+  });
+
+  it('puts the counter in a dead-end side room, like the chests — shopping is a detour, not a toll', () => {
+    for (const i of FLOOR_INDICES) {
+      const map = floorAt(i);
+      for (const room of map.rooms) {
+        if ((pieceFor(room.pieceId).shops?.length ?? 0) === 0) continue;
+        expect(pieceFor(room.pieceId).spawns.enemy, `floor ${i} ${room.id}`).toEqual([]);
+        expect(map.doors.filter((d) => d.roomA === room.id || d.roomB === room.id).length, `floor ${i} ${room.id}`).toBe(1);
+      }
     }
   });
 });
@@ -385,7 +493,27 @@ function traversability(map: DungeonFloorMap) {
       .some(Boolean),
   ).length;
 
-  return { unreachable, chestsUnreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
+  /** The same question again for this floor's SHOP counters (design/05 "Shops"), and for the
+   *  identical reason: `SpawnSystem` clamps a counter to walkable ground, so one authored into
+   *  a pillar slides silently rather than failing. The mat is checked too, not just the centre
+   *  point — the panel opens on that ring, so a counter whose mat is half inside stone is a
+   *  shop a player can see and only sometimes trade with. */
+  const shopsUnreachable: string[] = [];
+  for (const room of placed) {
+    for (const sh of room.piece.shops ?? []) {
+      const gx = room.offsetXGrid + sh.x;
+      const gy = room.offsetYGrid + sh.y;
+      const probes: [string, number, number][] = [[`${room.id} shop`, gx, gy]];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        probes.push([`${room.id} shop mat ${dx},${dy}`, gx + dx * SHOP_INTERACT_RANGE_GRID, gy + dy * SHOP_INTERACT_RANGE_GRID]);
+      }
+      for (const [label, x, y] of probes) {
+        if (!seen[at(Math.floor(x), Math.floor(y))]) shopsUnreachable.push(`${label} @ (${x}, ${y})`);
+      }
+    }
+  }
+
+  return { unreachable, chestsUnreachable, shopsUnreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
 }
 
 describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
@@ -489,6 +617,11 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
     // just moves. This is where it fails loudly instead.
     const { chestsUnreachable } = traversability(map);
     expect(chestsUnreachable).toEqual([]);
+  });
+
+  it('every shop counter, and the whole ring its panel opens on, stands on reachable ground', () => {
+    const { shopsUnreachable } = traversability(map);
+    expect(shopsUnreachable).toEqual([]);
   });
 
   it('the flood fill physically walks into every room — no door is declared but sealed', () => {

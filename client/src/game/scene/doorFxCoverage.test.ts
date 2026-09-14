@@ -87,7 +87,7 @@ describe('the flame band, on all 24 shipped doors', () => {
   it('sweeps a real content set — 24 doors, and both passage shapes present', () => {
     // The guard every sweep in this directory carries: a zero is only evidence if the case arose.
     const rects = shippedDoorRects();
-    expect(rects).toHaveLength(24);
+    expect(rects).toHaveLength(30);
     const shapes = new Set(rects.map((r) => `${r.w}x${r.h}`));
     expect(shapes).toEqual(new Set(['64x128', '128x64']));
   });
@@ -120,8 +120,8 @@ describe('the flame band, on all 24 shipped doors', () => {
     const bands = shippedBands();
     const uncropped = bands.filter((b) => b.srcY === 0);
     const cropped = bands.filter((b) => b.srcY > 0);
-    expect(uncropped).toHaveLength(13);
-    expect(cropped).toHaveLength(11);
+    expect(uncropped).toHaveLength(16);
+    expect(cropped).toHaveLength(14);
     for (const b of cropped) expect(b.band.y).toBeCloseTo(-b.drawH, 3); // clamped to the top
     for (const b of uncropped) expect(b.band.y).toBeGreaterThan(-b.drawH); // room for lintel above
   });

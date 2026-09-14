@@ -389,7 +389,7 @@ describe('shipped level-1 walls — nothing tall stands on the floor of the room
     // from the ROOMS: 11 stacked pairs across the five floors (1 / 3 / 4 / 2 / 1), and every one
     // of them has stone along it. If a room moves, this number moving is the notification.
     // Zero would mean the pipeline broke, not that the level got better.
-    expect(FLOORS.flatMap(boundaries).length, 'stacked-room boundaries in the content').toBe(11);
+    expect(FLOORS.flatMap(boundaries).length, 'stacked-room boundaries in the content').toBe(16);
     expect(checked, 'blocks checked along them').toBeGreaterThan(15);
   });
 

@@ -15,7 +15,9 @@ so the index stays readable. Kept verbatim; it is prose, not a spec.
 > first melee mobs; 60 the energy card and energy capacity as a character stat; 61 the boss-only extraction and the
 > run save; 62 the ammo regen line; 63 chest rooms and the boss blueprint drop; 64 coins, shops,
 > and weapons leaving the kill table — which also DELETED 57's per-floor loot allowance, so the
-> line above naming it is history now), and rewriting another pass's paragraph from outside it is how this file got
+> line above naming it is history now; 65 the chests and the counter moving onto three dedicated
+> enemy-free SIDE rooms, one dead-end branch per floor, which takes level 1 to 6/7/8/8/6 rooms and
+> makes the "5/6/7/6/5" line below history too), and rewriting another pass's paragraph from outside it is how this file got
 > long in the first place. Each has a full account in `ENGINE_VERSION_HISTORY.md` and a work-log
 > entry; read those, not this heading. The number above is the only thing kept current here.
 

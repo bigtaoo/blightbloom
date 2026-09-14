@@ -38,6 +38,12 @@
       "offsetYGrid": 53
     },
     {
+      "id": "b1_vault",
+      "pieceId": "ember_l1_vault",
+      "offsetXGrid": 3,
+      "offsetYGrid": 18
+    },
+    {
       "id": "r7_extraction",
       "pieceId": "ember_l1_extraction",
       "offsetXGrid": 2,
@@ -103,6 +109,16 @@
         "y": 71,
         "w": 4,
         "h": 2
+      }
+    },
+    {
+      "roomA": "r3_court",
+      "roomB": "b1_vault",
+      "passageGrid": {
+        "x": 19,
+        "y": 24,
+        "w": 2,
+        "h": 4
       }
     }
   ]

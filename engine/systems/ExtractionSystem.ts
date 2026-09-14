@@ -171,7 +171,7 @@ export class ExtractionSystem {
       // down — they'd surface embedded in the newly stitched floor's walls. Exactly the
       // reasoning behind clearing the room/door arrays above and `pickups` below: the
       // geometry it stood on is gone. Narrow back when a floor was 2-3 rooms of 1-2
-      // enemies; v38's hand-authored level 1 (5 floors of 5/6/7/6/5 rooms at 15-30
+      // enemies; v38's hand-authored level 1 (5 floors of 6/7/8/8/6 rooms at 15-30
       // enemies each, `world/rooms/emberLevel1.ts`) is what makes it ~100 stranded
       // enemies per floor for a player who beelines the capstone.
       //

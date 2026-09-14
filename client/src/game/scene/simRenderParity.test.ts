@@ -254,7 +254,7 @@ describe('sim/render parity — freeStanding vs wallTier over the shipped floors
     // v49 authored the flag onto the 18 piece-local solids that resolve to these 34 placements.
     // Keeping the count here is what stops the file sliding back to a vacuous pass.
     const brimmed = ALL.filter((w) => w.freeStanding);
-    expect(brimmed.length, 'level 1 lost its freeStanding flags — the brim is inert again').toBe(34);
+    expect(brimmed.length, 'level 1 lost its freeStanding flags — the brim is inert again').toBe(46);
   });
 
   it('every interior-tier rect IS brimmed — the other half of the ⟺, closed in v49', () => {
@@ -267,7 +267,7 @@ describe('sim/render parity — freeStanding vs wallTier over the shipped floors
     const unbrimmed = ALL.filter((w) => w.tier === 'interior' && !w.freeStanding);
     expect(unbrimmed.map(where).slice(0, 8)).toEqual([]);
     const perFloor = FLOORS.map((f) => f.walls.filter((w) => w.tier === 'interior').length);
-    expect(perFloor).toEqual([4, 10, 10, 8, 2]);
+    expect(perFloor).toEqual([6, 12, 12, 12, 4]);
 
     // ...and they are all genuinely INTERIOR blocks rather than an edge-tolerance accident: every
     // one sits at least a full clearance clear of all four bounds of the room that contains it.
@@ -300,7 +300,7 @@ describe('sim/render parity — freeStanding vs wallTier over the shipped floors
       }
     }
     expect(notReallyInside.slice(0, 8)).toEqual([]);
-    expect(checked).toBe(34);
+    expect(checked).toBe(46);
 
     // How much headroom `EDGE_TOLERANCE` actually has on this content, recorded because it
     // explains one of the two SURVIVORS in this file's battery: the tightest interior block on
@@ -435,8 +435,8 @@ describe('sim/render parity — a DOORWAY in the kerb band, which is what the un
   const KERB_SHAPED = ALL_DOORS.filter((d) => d.w > d.h); // a gap in an east-west wall: travel N-S
 
   it('is a real population — 11 of the 24 shipped doors, the ones that changed', () => {
-    expect(KERB_SHAPED).toHaveLength(11);
-    expect(ALL_DOORS).toHaveLength(24);
+    expect(KERB_SHAPED).toHaveLength(14);
+    expect(ALL_DOORS).toHaveLength(30);
   });
 
   it('DOES cover the player at the closest legal approach, at every body height', () => {
@@ -507,7 +507,7 @@ describe('sim/render parity — the brim band is drawn over, not walkable', () =
       if (box.top > w.y - BRIM) exposed.push(`${where(w)} art top ${box.top} vs brim ${w.y - BRIM}`);
     }
     expect(exposed.slice(0, 8)).toEqual([]);
-    expect(blocks).toBe(34);
+    expect(blocks).toBe(46);
   });
 
   it('the brim is exactly what keeps the THINNEST free-standing block in the cap-only fade', () => {

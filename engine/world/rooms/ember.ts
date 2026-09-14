@@ -199,7 +199,8 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  *
  * Floors 0-3 are capped by `ember_l1_extraction` (the checkpoint), floor 4 by
  * `ember_l1_boss` (the blightlord finale, which doubles as its own extraction).
- * Room counts run 5 / 6 / 7 / 6 / 5 — a shape `roomsPerFloor`'s min/max range
+ * Room counts run 6 / 7 / 8 / 8 / 6 (5 / 6 / 7 / 6 / 5 until the 2026-09-14 side rooms,
+ * `ENGINE_VERSION` 65 — see `emberLevel1.ts`) — a shape `roomsPerFloor`'s min/max range
  * structurally cannot express, which is exactly why the floors are authored rather
  * than drawn; the range below describes only the procedural FALLBACK a floor would
  * take if its authored map were ever removed.
@@ -224,7 +225,7 @@ export const EMBER_DUNGEON: DungeonConfig = {
   biomeId: 'ember',
   nameKey: 'biome.ember',
   floorCount: 5,
-  roomsPerFloor: { min: 5, max: 7 }, // fallback-only — the authored floors are 5/6/7/6/5
+  roomsPerFloor: { min: 5, max: 7 }, // fallback-only — the authored floors are 6/7/8/8/6
   pieceTags: ['ember_l1'],
   layout: 'graph2d',
   extractionPieceId: 'ember_l1_extraction',

@@ -1,0 +1,101 @@
+{
+  "id": "ember_l1_cache",
+  "tags": [
+    "ember_l1"
+  ],
+  "sizeGrid": {
+    "w": 15,
+    "h": 15
+  },
+  "solids": [
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 9,
+      "y": 9,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 15,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 14,
+      "w": 15,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 13
+    },
+    {
+      "x": 14,
+      "y": 1,
+      "w": 1,
+      "h": 13
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 2.5,
+        "y": 5
+      },
+      {
+        "x": 2.5,
+        "y": 9
+      }
+    ],
+    "enemy": []
+  },
+  "exits": [
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "south"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 2.5,
+      "y": 2.5
+    },
+    {
+      "id": "rubble",
+      "x": 12,
+      "y": 2.5
+    },
+    {
+      "id": "barrel",
+      "x": 12,
+      "y": 12
+    }
+  ],
+  "chests": [
+    {
+      "kind": "small",
+      "x": 7.5,
+      "y": 7.5
+    }
+  ]
+}

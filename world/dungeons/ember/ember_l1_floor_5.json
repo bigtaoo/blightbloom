@@ -26,6 +26,12 @@
       "offsetYGrid": 20
     },
     {
+      "id": "b1_cache",
+      "pieceId": "ember_l1_cache",
+      "offsetXGrid": 22,
+      "offsetYGrid": 5
+    },
+    {
       "id": "r5_boss",
       "pieceId": "ember_l1_boss",
       "offsetXGrid": 0,
@@ -68,6 +74,16 @@
       "roomB": "r5_boss",
       "passageGrid": {
         "x": 14,
+        "y": 19,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "b1_cache",
+      "roomB": "r3_rampart",
+      "passageGrid": {
+        "x": 26,
         "y": 19,
         "w": 4,
         "h": 2
