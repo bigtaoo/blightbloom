@@ -324,7 +324,7 @@ export const pl: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Strumień życia', desc: 'Mikstury wypadają {factor}x częściej' },
-    arsenal: { name: 'Arsenał', desc: '+{bonus} broń na piętro' },
+    windfall: { name: 'Gratka', desc: 'Monety są warte {factor}x' },
     edge: { name: 'Ostrze', desc: '+{value}% obrażeń' },
     cadence: { name: 'Kadencja', desc: '+{value}% szybkości strzału' },
     bulwark: { name: 'Szańc', desc: '+{value} maks. PZ' },

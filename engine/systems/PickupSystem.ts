@@ -44,7 +44,7 @@ import { bankKey } from '../content/materials';
 import { WEAPON_SIM_BY_ID, makeWeapon } from '../content/weapons';
 import { PLAYER_BASE } from '../content/players';
 import { PVP_SCALE_FACTOR, scaleWeaponDamage } from '../balance/build';
-import { RUN_BUFFS, sumBuffs } from '../balance/runbuffs';
+import { applyRunBuff } from './runBuffApply';
 import { toFp } from '../math/fixed';
 import type { GameState } from '../state/GameState';
 import type { PickupItem, PlayerActor, WeaponSimSpec } from '../state/entities';
@@ -165,11 +165,18 @@ export class PickupSystem {
           state.floorMaterials[key] = (state.floorMaterials[key] ?? 0) + (item.qty ?? 0);
         }
         break;
+      case 'coin':
+        // In-run currency (design/05 "Shops"). Into the COLLECTOR's own wallet, not a
+        // shared floor buffer like `material` two cases up — that difference is the whole
+        // per-seat-purse decision, and it is why a coin needs no checkpoint merge and no
+        // forfeit path: nothing outside the run ever sees one. Uncapped, like `bandages`.
+        p.coins += item.qty ?? 0;
+        break;
       case 'weapon':
         if (item.weaponId) this.applyWeapon(state, p, item.weaponId);
         break;
       case 'buff':
-        if (item.buffId) this.applyBuff(p, item.buffId);
+        if (item.buffId) applyRunBuff(p, item.buffId);
         break;
       case 'bandage':
         // PvP squad revive currency (design/05/15) — no cap; ReviveSystem is the only
@@ -182,37 +189,6 @@ export class PickupSystem {
         // clamp here only ever trims a partial top-up.
         p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT);
         break;
-    }
-  }
-
-  /**
-   * Add a run buff to the player's stack (design/14). mult_* buffs take effect at use
-   * time (WeaponFire / HitResolve read the summed stack); the two `flat_*` families are
-   * cumulative actor state, so they are applied HERE — but Σ-then-clamp still holds: we
-   * add only the *delta* each new buff contributes to its clamped total (0 once that
-   * cap is reached), and grow both the ceiling and the current value by it. Unknown id →
-   * no-op (forward-compat).
-   *
-   * `flat_energy` (ENGINE_VERSION 60) follows `flat_hp` exactly, INCLUDING the "+2 max HP
-   * also heals +2" half: a capacity buff that raised the ceiling without filling it would
-   * hand a player who took it mid-fight nothing at all until regen caught up, which is
-   * the one moment they picked it for. Both are read back off the same `sumBuffs` call so
-   * the two deltas cannot disagree about which stack they were computed from.
-   */
-  private applyBuff(p: PlayerActor, buffId: string): void {
-    if (!RUN_BUFFS[buffId]) return;
-    const before = sumBuffs(p.buffs);
-    p.buffs.push(buffId);
-    const after = sumBuffs(p.buffs);
-    const hpDelta = after.flat_hp - before.flat_hp;
-    if (hpDelta > 0) {
-      p.maxHp += hpDelta;
-      p.hp += hpDelta;
-    }
-    const energyDelta = after.flat_energy - before.flat_energy;
-    if (energyDelta > 0) {
-      p.maxEnergy += energyDelta;
-      p.energy += energyDelta;
     }
   }
 

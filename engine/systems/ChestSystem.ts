@@ -33,22 +33,15 @@
  * thing"). The asymmetry is deliberate: the revive is the time-critical one, and the chest
  * is not going anywhere.
  *
- * ## The payout counts against the floor's allowance
+ * ## The payout is the floor's weapon supply, not a share of it
  *
- * A chest pays `chestWeaponCount` weapons (design/05: one for a small chest, one per seat
- * for a big one) and adds them to `state.floorWeaponsDropped`, so a chest opened DURING a
- * floor leaves `payFloorWeaponShortfall` correspondingly less to hand over at the capstone.
- * What a chest changes is then WHERE a floor's weapons come from — a thing found rather than
- * a thing dropped by a corpse — which was the point.
- *
- * **The quota is a FLOOR, not a ceiling, and two cases prove it rather than break it.** A big
- * chest in a full party pays per seat and can exceed the quota outright; and the shipped
- * level's big chest sits in the capstone room, whose shortfall is normally already paid by
- * the time a player walks onto a plate — measured in a live run, a quota of 3 ended the floor
- * at 4. Both are intended. The per-seat rule is a promise to each player that a quota written
- * for one player must not silently break, and a reward for searching that only re-routed loot
- * the floor already owed would pay nothing for the search. `payFloorWeaponShortfall` treats a
- * negative shortfall as "nothing owed", so neither case needs a special case here.
+ * A chest pays `chestWeaponCount` weapons (design/05: one for a small chest, one per seat for
+ * a big one) and that is now simply how many weapons exist — there is nothing to charge it
+ * against. Until 2026-09-14 this added to `state.floorWeaponsDropped` so that a chest opened
+ * mid-floor left the capstone's make-up payment correspondingly smaller; that allowance is
+ * gone along with the kill-table weapon entry that motivated it, so what used to be a
+ * re-routing of loot a floor already owed is now the loot itself. A skipped chest room is a
+ * floor with fewer weapons in it, which is the whole point of putting them behind a search.
  */
 import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RADIUS_GRID, REVIVE_RANGE_GRID } from '../config';
 import { chestWeaponCount } from '../content/chests';
@@ -159,7 +152,6 @@ export class ChestSystem {
         alive: true,
       });
     }
-    state.floorWeaponsDropped += count;
     state.events.push({
       type: 'chest_open',
       id: chest.id,

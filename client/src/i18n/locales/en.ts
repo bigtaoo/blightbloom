@@ -344,7 +344,7 @@ export const en = {
   },
   card: {
     potion_flow: { name: 'Vital Flow', desc: 'Potions drop {factor}x as often' },
-    arsenal: { name: 'Arsenal', desc: '+{bonus} weapon per floor' },
+    windfall: { name: 'Windfall', desc: 'Coins are worth {factor}x' },
     edge: { name: 'Edge', desc: '+{value}% damage' },
     cadence: { name: 'Cadence', desc: '+{value}% fire rate' },
     bulwark: { name: 'Bulwark', desc: '+{value} max HP' },

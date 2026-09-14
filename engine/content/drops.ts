@@ -2,9 +2,19 @@
  * Drop tables (design/05/09) — what a dead enemy leaves behind, rolled from the
  * injected dropPrng so every client / headless re-judge produces the same drops
  * from seed + input stream (design/06). This is the content that turns kills into
- * the roguelite power ramp: materials, health, weapons and run buffs (design/05). (This line
- * said "coins (score)" until 2026-09-03 — the coin kind was replaced by `material` at ROADMAP
- * 0.6's pickup-vocabulary sync, and score comes off kills, not off a drop.)
+ * the roguelite power ramp: materials, coins, health, energy and run buffs (design/05).
+ *
+ * **A kill does not drop a weapon** (2026-09-14). Weapons come from a chest, from the boss, or
+ * from a shop counter, and nothing else — the `weapon` entry that sat on this table from Stage E
+ * until then is gone, along with the per-floor allowance built to smooth it. `DropResult` still
+ * has a `weapon` arm because the arena table below rolls one and because chests/boss/shop build
+ * their pickups through the same vocabulary.
+ *
+ * `coin` is the replacement, and it is the SECOND time this file has had a coin kind: the
+ * original was a score counter renamed to `material` at ROADMAP 0.6's pickup-vocabulary sync.
+ * This one is a different thing wearing the same word — an in-run currency with exactly one
+ * sink (a shop room), never banked, never carried out, never seen by the meta layer. Materials
+ * remain the only carry-out (design/05/14).
  *
  * Plain data + one roll function; no Pixi, no closures (design/09 "content is plain
  * data"). All weights are integers → weightedIndex is a single deterministic draw.
@@ -21,15 +31,24 @@ export interface DropPrng {
   weightedIndex(weights: readonly number[]): number;
   nextInt(max: number): number;
 }
+import { COIN_DROP_QTY } from '../config';
 import { MATERIAL_DROP_POOL } from './materials';
 
-/** What one enemy death yields (design/09 vocabulary). weapon/buff/material carry payload.
+/** What one enemy death yields (design/09 vocabulary). weapon/buff/material/coin carry payload.
  * `tier` (material only) is the ROLLED instance quality, distinct from the static
  * `MaterialDef.tier` catalog base — see rollDrop's `tier` param (ROADMAP 1.5). */
 export type DropResult =
   | { kind: 'material'; materialId: string; qty: number; tier: number }
   | { kind: 'heal' }
+  // Never rolled by PvE's `rollDrop` since 2026-09-14 — only `rollArenaDrop`, and the three
+  // PvE sources that build a pickup directly (ChestSystem, the boss kill, a shop purchase).
   | { kind: 'weapon'; weaponId: string }
+  // In-run currency (design/05 "Shops", 2026-09-14). `qty` is COIN_DROP_QTY, flat rather than
+  // rolled, so a coin costs the same single table draw `heal` and `energy` do. The `windfall`
+  // floor card multiplies it at the point of USE (`DeathDropsSystem`), never here — a card
+  // that scaled a payload through this function would be a card that changed nothing about
+  // the draw and everything about its signature.
+  | { kind: 'coin'; qty: number }
   | { kind: 'buff'; buffId: string }
   // Weapon-energy refill (design/03/05, ENGINE_VERSION 59) — the ammo economy's drop.
   // Payload-free: the amount is the constant ENERGY_PICKUP_AMOUNT, not a per-drop roll,
@@ -46,9 +65,10 @@ export const HEAL_PICKUP_AMOUNT = 1;
 /** Material quantity per drop (design/09; depth-scaled amounts are 1.5 to-come). */
 export const MATERIAL_DROP_QTY = 1;
 
-// ── The table ─────────────────────────────────────────────────────────────────
-// Frequent materials keep the carry-out economy ticking; weapons are the "swap your
-// gun" moment; health is deliberately SCARCE.
+// ── The table ────────────────────────────────────────────────────────────────
+// Frequent materials keep the carry-out economy ticking; coins fund the shop rooms;
+// health is deliberately SCARCE. Weapons are NOT on this table (2026-09-14) — see the
+// module header.
 //
 // Re-weighted 2026-09-05, on a design call from the game's owner: a health potion
 // should be RARE, because the core loop this game wants is "clear the floor without
@@ -59,12 +79,21 @@ export const MATERIAL_DROP_QTY = 1;
 // asserted: `client/sim/pveLevelSim.sim.ts`'s loot table read 0.21 potions per kill,
 // 7-10 per floor, over 16 real bot runs of the shipped level.
 //
-// The 16 points came OUT of `material`, not off the total: the total stays 84, so
-// `weapon` and `buff` keep the exact per-kill odds they had before this pass. That is
-// deliberate — weapon COUNT is governed by the per-floor allowance
-// (`GameState.floorWeaponQuota`, design/05), and mixing a weight change into the same
-// pass would have made the two impossible to read apart. `effectiveWeights` keeps the
-// same invariant when a floor card multiplies the heal weight.
+// Re-weighted again 2026-09-14, on the design call that put weapons behind chests and
+// shops: *"怪物是不掉落武器的。要获得武器，只有 boss 掉落和开箱子。有些房间还会有商店，
+// 怪物的掉落里加一个金币"*. `weapon` (5) is deleted outright and `coin` arrives at 20,
+// funded 5 from that deletion and 15 out of `material`.
+//
+// **The total stays 84 on purpose, and the 15 points come from `material` rather than
+// off the top**, for the same reason the two re-weights before this one did: `heal`,
+// `buff` and `energy` keep the exact per-kill odds they had, so this pass is readable
+// as one change (weapons out, coins in) instead of as a quiet dilution of everything
+// else. What it does cost is real and should be named: the carry-out currency falls
+// from 55/84 (65.5%) of kills to 40/84 (47.6%), i.e. roughly a 27% cut in the rate a
+// run banks materials, which slows forge progression. That is the trade this design
+// makes — value moves from the META ramp to the IN-RUN one, which is where the search
+// verb and the shop now live — and it is one number to reverse if the sim says the
+// forge went too dry.
 
 type DropTableEntry = { kind: DropResult['kind']; weight: number };
 
@@ -73,47 +102,39 @@ const MATERIAL_ENTRY = 0;
 const HEAL_ENTRY = 1;
 
 export const DROP_TABLE: readonly DropTableEntry[] = [
-  { kind: 'material', weight: 55 }, // the run's carry-out currency (design/05/14)
+  { kind: 'material', weight: 40 }, // the run's carry-out currency (design/05/14)
   { kind: 'heal', weight: 2 },
-  { kind: 'weapon', weight: 5 },
+  // The shop economy's income (design/05 "Shops", 2026-09-14). 20/84 = 23.8% of kills,
+  // which against the measured floor (34.6 kills on floor 0, 52 on floor 2) is ~8-12
+  // drops a floor — at COIN_DROP_QTY 5 that is ~40-60 coins per floor, and shop prices
+  // are set against that measurement rather than the other way round.
+  { kind: 'coin', weight: 20 },
   { kind: 'buff', weight: 6 }, // run-scoped power buffs (design/14) — the affix replacement
   // Weapon-energy refill (ENGINE_VERSION 59) — the second design call of the ammo pass:
-  // *"能解决怪物掉落的问题。毕竟降低了掉率之后打完地图空空如也也不好"*. The 16 points come
+  // *"能解决怪物掉落的问题。毕竟降低了掉率之后打完地图空空如也也不好"*. The 16 points came
   // out of `material` and NOT off the total, exactly as the 2026-09-05 heal re-weight
-  // did and for the same reason: `weapon` and `buff` keep the per-kill odds they have,
-  // so the weapon allowance and the buff ramp stay readable independently of this pass.
+  // did, and the 2026-09-14 coin pass kept the same discipline.
   //
   // 16/84 = 19% of kills. Sized off the measured floor: the sweep reads 34.6 kills on
   // floor 0 and 52 on floor 2, so a floor produces roughly 6-10 of these — enough to
   // read as loot rather than as a rounding error, and (at ENERGY_PICKUP_AMOUNT 30) worth
   // ~200-300 energy a floor on top of regen, i.e. real fuel for an expensive frame
-  // without funding one outright. It replaces material COUNT, not material value: the
-  // carry-out that actually leaves a run is unchanged in kind, only rarer per kill.
+  // without funding one outright.
   { kind: 'energy', weight: 16 },
 ];
 
-/**
- * Ceiling on the heal-weight multiplier a stack of `heal_drop_x2` floor cards can
- * reach (design/05, 2026-09-05). Each card doubles, so this is three picks. The
- * number is chosen for what it lands ON rather than for its own sake: 2×8 = 16 of 84
- * is 19%, just under the 21.4% this table shipped with before the same pass made
- * potions scarce — so a fully-stacked run gets back roughly the old flood, and it
- * takes spending three of the run's floor picks to do it.
- */
 export const HEAL_DROP_MULT_CAP = 8;
 
-/** Options a caller layers onto one roll. Both default to "the plain table". */
+/** Options a caller layers onto one roll. Defaults to "the plain table".
+ *
+ * `weaponAllowed` lived here until 2026-09-14 and is gone with the weapon entry it gated:
+ * the floor allowance it served (`GameState.floorWeaponQuota`) no longer exists, because a
+ * kill cannot produce a weapon for an allowance to cap. */
 export interface DropOpts {
   /** Multiplier on the heal weight (the `heal_drop_x2` floor card). Clamped to
    *  [1, HEAL_DROP_MULT_CAP] and rounded — an integer keeps `weightedIndex`'s draw a
    *  single deterministic integer comparison (design/06). */
   healMult?: number;
-  /** May this kill yield a weapon at all? `false` once the floor's allowance is spent
-   *  or this room already handed one out (design/05, `DeathDropsSystem.weaponAllowed`).
-   *  A rolled-but-disallowed weapon becomes a `material` — at the SAME dropPrng draw
-   *  count as the weapon would have cost, so every later drop in the run lands
-   *  identically whether the allowance was open or not. */
-  weaponAllowed?: boolean;
 }
 
 /**
@@ -198,23 +219,23 @@ export const CARD_ONLY_BUFF_IDS: readonly string[] = ['cell_up'];
 
 /**
  * Roll one drop from the dropPrng (design/05/09). Draw count varies by branch
- * (table → 1, +1 for weapon / buff / material to pick the payload) — deterministic
- * given the stream, and deliberately IDENTICAL for a weapon and for the material it
- * degrades to when `opts.weaponAllowed` is false. `tier` (default 0, ROADMAP 1.5 materialTierByDepth) is the
- * depth signal a material drop rolls at — DeathDropsSystem passes `state.floorIndex`
- * (0 for every config without floors, so the default keeps old callers identical).
+ * (table → 1, +1 for buff / material to pick the payload) — deterministic given the
+ * stream. `tier` (default 0, ROADMAP 1.5 materialTierByDepth) is the depth signal a
+ * material drop rolls at — DeathDropsSystem passes `state.floorIndex` (0 for every config
+ * without floors, so the default keeps old callers identical).
+ *
+ * `coin` costs ONE draw, like `heal` and `energy`: its amount is the flat `COIN_DROP_QTY`
+ * rather than a roll. The one place that matters is the sim's own accounting — a coin and a
+ * potion are interchangeable in the stream, so re-weighting between them moves no later
+ * drop in the run.
  */
 export function rollDrop(prng: DropPrng, tier = 0, opts: DropOpts = {}): DropResult {
   const entry = DROP_TABLE[prng.weightedIndex(effectiveWeights(opts.healMult ?? 1))]!;
-  // A weapon the floor's allowance won't cover falls through to the material branch,
-  // which costs the same one extra `nextInt` the weapon branch would have — see
-  // DropOpts.weaponAllowed for why the draw count has to match.
-  const kind = entry.kind === 'weapon' && !(opts.weaponAllowed ?? true) ? 'material' : entry.kind;
-  switch (kind) {
-    case 'weapon':
-      return { kind: 'weapon', weaponId: WEAPON_DROP_POOL[prng.nextInt(WEAPON_DROP_POOL.length)]! };
+  switch (entry.kind) {
     case 'buff':
       return { kind: 'buff', buffId: BUFF_DROP_POOL[prng.nextInt(BUFF_DROP_POOL.length)]! };
+    case 'coin':
+      return { kind: 'coin', qty: COIN_DROP_QTY };
     case 'material':
       return {
         kind: 'material',
@@ -223,7 +244,7 @@ export function rollDrop(prng: DropPrng, tier = 0, opts: DropOpts = {}): DropRes
         tier,
       };
     // Payload-free, like `heal` — but named explicitly rather than left to the default
-    // arm, so that adding a sixth kind cannot silently start returning heals.
+    // arm, so that adding another kind cannot silently start returning heals.
     case 'energy':
       return { kind: 'energy' };
     default:
@@ -240,8 +261,16 @@ export function rollDrop(prng: DropPrng, tier = 0, opts: DropOpts = {}): DropRes
 // `buildArenaSpecs` taking no meta param). Weights are a first-pass placeholder
 // (design/15's loot-marker/DropTable weighting is explicitly still "to design") —
 // re-weight freely; this only needs to exercise the mechanism honestly today.
+//
+// **`coin` is excluded the same structural way, and `weapon` deliberately is NOT.** The
+// 2026-09-14 pass that took weapons off the PvE table left this one alone on purpose: an
+// arena has no chests, no boss and no shop, so its loot pool IS its entire power curve
+// (design/15) — deleting the weapon entry here would not move where weapons come from, it
+// would delete weapons. Coins have the opposite problem: the only thing that spends one is
+// a shop room, which is PvE floor content, so an arena coin would be a pickup that can
+// never be used.
 
-type ArenaDropTableEntry = { kind: Exclude<DropResult['kind'], 'material'>; weight: number };
+type ArenaDropTableEntry = { kind: Exclude<DropResult['kind'], 'material' | 'coin'>; weight: number };
 
 export const ARENA_DROP_TABLE: readonly ArenaDropTableEntry[] = [
   { kind: 'heal', weight: 35 },

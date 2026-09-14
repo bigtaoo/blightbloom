@@ -189,7 +189,7 @@ describe('dungeonToArenaMap (design/05 "fully-realized branching" follow-up, 202
 
 describe('dungeonRoomStatus (design/05 "fully-realized branching" follow-up, 2026-08-05)', () => {
   const runtime = (activated: boolean, hasLiveEnemy: boolean): DungeonRoomRuntime => ({
-    activated, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy, weaponDropped: false,
+    activated, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy,
   });
 
   it('is "unvisited" when the room has never activated', () => {

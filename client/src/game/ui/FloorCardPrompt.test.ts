@@ -76,10 +76,10 @@ describe('visibility follows the offer, not just the checkpoint', () => {
 describe('what the cards say', () => {
   it('shows each card’s translated name and description', () => {
     const p = new FloorCardPrompt();
-    p.update(state(['potion_flow', 'arsenal', 'edge'], [0]), true, 0);
+    p.update(state(['potion_flow', 'windfall', 'edge'], [0]), true, 0);
     const text = labels(p).join('|');
     expect(text).toContain(t(FLOOR_CARDS.potion_flow!.nameKey as never));
-    expect(text).toContain(t(FLOOR_CARDS.arsenal!.nameKey as never));
+    expect(text).toContain(t(FLOOR_CARDS.windfall!.nameKey as never));
   });
 
   it('interpolates the REAL catalogue numbers, not hardcoded copies of them', () => {

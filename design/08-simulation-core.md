@@ -110,15 +110,22 @@ step(tick, commands):
                         phased) (15)   [BOTH co-resident modes — it no-ops only when neither
                         zoneEnabled nor dungeonEnabled; the roomId half is what DoorSystem
                         (11.5) reads, the hazard half is arena-only]
-  9. Death & drops    — hp<=0 → enemy death + roll dropPrng → Pickup (weapon/heal/material);
+  9. Death & drops    — hp<=0 → enemy death + roll dropPrng → Pickup (coin/heal/material/
+                        buff/energy — never a weapon since 2026-09-14); a BOSS also drops
+                        BOSS_WEAPON_DROPS weapons and rolls a blueprint;
                         player → downed (revive via INTERACT channel), not removed (05, 07)
  10. Pickup           — player–pickup overlap → apply (weapon→active slot / heal / floor-buffer
                         material) (05); in arena mode also resolves an unrolled 'crate' via
                         rollArenaDrop and scales a picked-up weapon by PVP_SCALE_FACTOR (15)
 10.5 Chests          — a small chest opens for one player holding INTERACT in reach; a big one
                         opens only while every mechanism it was ringed with has a player
-                        standing on it. Pays weapons onto its own tile and counts them against
-                        the floor's allowance (05 "Chest rooms") [no-op with no authored chest]
+                        standing on it. Pays weapons onto its own tile — which since
+                        2026-09-14 IS the floor's weapon supply rather than a share of an
+                        allowance (05 "Chest rooms") [no-op with no authored chest]
+10.6 Shops           — resolve each seat's one-shot shopBuyId tap against its shop's stock:
+                        in range, room active, not sold, affordable → deduct coins, mark
+                        sold, deliver (a weapon onto the floor; buff/heal/energy straight
+                        onto the buyer) (05 "Shops") [no-op with no authored shop]
  11. Spawns           — expand a room's WaveScript into a timed schedule and dispatch it (05)
                         [both modes — one shared WaveScript vocabulary, two spawn-point
                         sources: dungeon rooms, and arena rooms on lazy activation (15),

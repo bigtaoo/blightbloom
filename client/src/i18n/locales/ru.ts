@@ -329,7 +329,7 @@ export const ru: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Живительный поток', desc: 'Зелья выпадают в {factor} раза чаще' },
-    arsenal: { name: 'Арсенал', desc: '+{bonus} оружие на этаж' },
+    windfall: { name: 'Находка', desc: 'Монеты стоят {factor}x' },
     edge: { name: 'Острота', desc: '+{value}% урона' },
     cadence: { name: 'Темп', desc: '+{value}% скорости стрельбы' },
     bulwark: { name: 'Бастион', desc: '+{value} к макс. ЗД' },

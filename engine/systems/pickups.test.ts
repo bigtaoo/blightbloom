@@ -108,6 +108,43 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.floorMaterials.mat_fire).toBe(1);
   });
 
+  it('a coin goes into the COLLECTOR\u2019s wallet, not a shared floor buffer', () => {
+    // The difference from `material` one test up, and the whole per-seat-purse decision:
+    // a material lands in `state.floorMaterials` (the run's, banked at a checkpoint), a coin
+    // lands on the player who walked over it and is never seen again by anything outside the
+    // run. Asserted against a teammate standing on the same tile, because "went to the right
+    // wallet" and "went to A wallet" are different claims.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    b.gx = a.gx;
+    b.gy = a.gy;
+    dropOnPlayer(s, { kind: 'coin', qty: 5 });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(a.coins).toBe(5);
+    expect(b.coins).toBe(0);
+    expect(s.floorMaterials).toEqual({});
+    expect(s.bankedMaterials).toEqual({});
+  });
+
+  it('a coin is collected at full HP and full energy \u2014 it is not an instant item', () => {
+    // The `pickupWouldApply` gate is for things with a ceiling. A wallet has none, so a coin
+    // must never be left on the floor; a stray clause adding it to that gate would strand
+    // currency next to a healthy player.
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.hp = p.maxHp;
+    p.energy = p.maxEnergy;
+    dropOnPlayer(s, { kind: 'coin', qty: 5 });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(p.coins).toBe(5);
+  });
+
   it('a weapon drop is NOT collected on overlap alone (design/03: click-driven, not auto)', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;

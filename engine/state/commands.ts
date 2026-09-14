@@ -47,6 +47,12 @@ export interface PlayerCommand {
   // checkpoint consumes it. 0 therefore means "I am not changing my vote this tick",
   // never "I withdraw it".
   cardVote: number;
+  // The ShopOffer.id this tick's tap asked to buy (design/05 "Shops", 2026-09-14). 0 = none.
+  // A one-shot latch like `pickupTargetId`, and a SEPARATE field from it rather than a shared
+  // "what did I click" channel: offers and pickups are minted from different id spaces
+  // (`GameState.nextShopId` vs `nextId`), so one field over both would make a tap on a
+  // counter also collect whichever floor weapon happened to hold the same number.
+  shopBuyId: number;
 }
 
 /**

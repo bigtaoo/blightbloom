@@ -228,12 +228,17 @@ export class NetInputSource implements InputSource {
  * `pickupTargetId` (ENGINE_VERSION 32) is a one-shot click latch, not a held button —
  * a click can land on a tick where every other field happens to be unchanged (e.g.
  * standing still, already firing), so it must factor in here too or the click is
- * silently swallowed as a duplicate and never reaches the server. */
+ * silently swallowed as a duplicate and never reaches the server; `shopBuyId` (2026-09-14)
+ * is the same latch for a shop counter. */
 function changed(a: PlayerCommand, b: PlayerCommand): boolean {
   return (
     a.moveBrad !== b.moveBrad ||
     a.moveMag !== b.moveMag ||
     a.buttons !== b.buttons ||
-    a.pickupTargetId !== b.pickupTargetId
+    a.pickupTargetId !== b.pickupTargetId ||
+    // Same reasoning as `pickupTargetId` above, one verb along: a shop tap can land on a
+    // tick where nothing else moved, and a swallowed tap is a purchase the server never
+    // hears about.
+    a.shopBuyId !== b.shopBuyId
   );
 }

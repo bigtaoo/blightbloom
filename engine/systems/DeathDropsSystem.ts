@@ -9,16 +9,15 @@
  * fix), float px → fp. Score is not tracked in the engine; render derives it from
  * the death/pickup/wave_clear events (design/08 "events are the only channel").
  */
-import { rollDrop, rollArenaDrop } from '../content/drops';
+import { rollDrop, rollArenaDrop, WEAPON_DROP_POOL } from '../content/drops';
 import { buildEnemyActor } from '../content/enemies';
-import { DOWNED_BLEEDOUT_TICKS } from '../config';
+import { BOSS_WEAPON_DROPS, DOWNED_BLEEDOUT_TICKS } from '../config';
 import { toFp, addFp, mulFp } from '../math/fixed';
 import { cosFp, sinFp, BRAD_FULL } from '../math/trig';
 import type { GameState } from '../state/GameState';
 import type { EnemyActor, PickupItem } from '../state/entities';
 import { blockingRadius, dropClearance } from '../state/actorRadius';
 import { clampToWalkable, retainAlive } from './geom';
-import { payFloorWeaponShortfall } from './floorLoot';
 import { resolveFloorCards } from '../balance/floorCards';
 import { EARNABLE_BLUEPRINTS } from '../content/blueprints';
 import { BLUEPRINT_DROP_PERMILLE } from '../config';
@@ -72,15 +71,15 @@ export class DeathDropsSystem {
       // PvE material tier (design/09 materialTierByDepth, ROADMAP 1.5): state.floorIndex
       // is 0 for every config without floors, so this is identical to the old no-arg
       // call for every existing config.
+      const cards = state.zoneEnabled ? undefined : resolveFloorCards(state.floorCards);
       const drop = state.zoneEnabled
         ? rollArenaDrop(state.dropPrng)
         : rollDrop(state.dropPrng, state.floorIndex, {
-            weaponAllowed: this.weaponAllowed(state, e),
             // The `potion_flow` floor card, re-derived from the run's picked cards
             // rather than mirrored into a counter (design/05, ENGINE_VERSION 58).
             // `effectiveWeights` clamps it to HEAL_DROP_MULT_CAP and pays for it out
-            // of `material`, so stacking the card never changes the weapon odds.
-            healMult: resolveFloorCards(state.floorCards).healDropMult,
+            // of `material`, so stacking the card never changes the other odds.
+            healMult: cards!.healDropMult,
           });
       // Clamp off the dying enemy's own position — a knockback or a large
       // footprint can leave that position on/behind a wall, which would otherwise
@@ -99,18 +98,22 @@ export class DeathDropsSystem {
         spawnTick: state.tick,
         alive: true,
       };
-      if (drop.kind === 'weapon') {
-        item.weaponId = drop.weaponId;
-        this.noteWeaponDropped(state, e.roomId);
-      }
+      // Arena only — PvE's table has had no weapon entry since 2026-09-14.
+      if (drop.kind === 'weapon') item.weaponId = drop.weaponId;
       if (drop.kind === 'buff') item.buffId = drop.buffId;
       if (drop.kind === 'material') {
         item.materialId = drop.materialId;
         item.qty = drop.qty;
         item.tier = drop.tier;
       }
+      // The `windfall` floor card is applied HERE rather than inside `rollDrop`, which is
+      // the one structural difference between it and `potion_flow` above: that card changes
+      // the table's WEIGHTS and so has to be inside the draw, while this one changes a
+      // payload and must stay outside it. A multiplier folded into the roll would make the
+      // card's presence part of the dropPrng stream for no reason at all.
+      if (drop.kind === 'coin') item.qty = drop.qty * (cards?.coinMult ?? 1);
       state.pickups.push(item);
-      this.payFloorShortfall(state, e);
+      this.dropBossWeapons(state, e);
     }
 
     // A player at 0 HP goes DOWNED, not dead (design/05/07, ROADMAP 3.2): frozen and
@@ -132,65 +135,6 @@ export class DeathDropsSystem {
     retainAlive(state.enemies);
   }
 
-  // ── Per-floor weapon allowance (design/05, 2026-09-05) ──────────────────────
-  //
-  // The drop table decides WHEN a weapon shows up; these three decide HOW MANY a
-  // floor ends up with. The target is 2-3, and a weight alone cannot hold it: at
-  // ~60-77 enemies per floor, 5/84 per kill produced 0 to 5 weapons across the 16
-  // measured bot runs in `client/sim/pveLevelSim.sim.ts`.
-  //
-  // Dungeon configs only. A flat `waves`/`floors` config has no floor to allocate
-  // against and no rooms to spread across, so it stays on the plain table — which is
-  // also what keeps every golden scenario's weapon odds untouched by this pass.
-
-  /**
-   * May this kill yield a weapon? Two independent gates, both of which have to be
-   * open: the floor's remaining quota (the COUNT) and this room's own flag (the
-   * CONCENTRATION — one weapon per room, so a floor's whole allowance cannot land on
-   * the first garrison and leave five rooms bare).
-   *
-   * An enemy with no `roomId` (a flat config, or one that died before
-   * EnvironmentSystem placed it) is quota-gated but not room-gated: there is no room
-   * to charge it to, and refusing the drop outright would silently make the allowance
-   * unfillable.
-   */
-  private weaponAllowed(state: GameState, e: EnemyActor): boolean {
-    if (!state.dungeonEnabled || state.floorWeaponQuota < 0) return true;
-    if (state.floorWeaponsDropped >= state.floorWeaponQuota) return false;
-    if (e.roomId === undefined) return true;
-    const rt = state.dungeonRoomRuntime[state.dungeonRoomIndexById.get(e.roomId) ?? -1];
-    return rt === undefined || !rt.weaponDropped;
-  }
-
-  /** Charge a granted weapon against the floor's quota and its room's flag. */
-  private noteWeaponDropped(state: GameState, roomId: string | undefined): void {
-    if (!state.dungeonEnabled || state.floorWeaponQuota < 0) return;
-    state.floorWeaponsDropped++;
-    if (roomId === undefined) return;
-    const rt = state.dungeonRoomRuntime[state.dungeonRoomIndexById.get(roomId) ?? -1];
-    if (rt) rt.weaponDropped = true;
-  }
-
-  /**
-   * Pay an under-filled floor on the capstone kill, so 2-3 is a guarantee and not a
-   * ceiling with a bad tail. Fires the tick the capstone (boss / extraction) room's
-   * last live enemy dies, dropping the remainder on the body — the owner's call over
-   * stacking them at the portal.
-   *
-   * This is only ONE of the two ways a floor gets finished; a capstone with no enemy
-   * spawns at all (four of the shipped level's five floors end in one) never reaches
-   * here, and `ExtractionSystem` pays those at the checkpoint instead. Both go through
-   * `payFloorWeaponShortfall`.
-   *
-   * "Last live enemy" is measured as no OTHER enemy in the room with `hp > 0`, not as
-   * `!rt.hasLiveEnemy` — that flag is DoorSystem's, recomputed at step 11.5, two steps
-   * after this one, so it still describes the room as it was before this tick's deaths.
-   * The `hp > 0` test is exact regardless of iteration order: an enemy already processed
-   * this tick is `alive === false`, and one not yet reached is at `hp <= 0` and will die
-   * on its own iteration. A boss's `onDeathSpawn` minions are pushed with full HP before
-   * this runs, so a boss that splits into adds correctly does NOT count as the room's
-   * last enemy — the make-up drop waits for the adds.
-   */
   /**
    * A boss kill rolls a blueprint at `BLUEPRINT_DROP_PERMILLE` (design/14, 2026-09-14) — the
    * earn-by-playing half of the meta, and `ROADMAP` B5's answer.
@@ -226,14 +170,38 @@ export class DeathDropsSystem {
     state.events.push({ type: 'blueprint_drop', weaponId: state.runBlueprint, gx: e.gx, gy: e.gy });
   }
 
-  private payFloorShortfall(state: GameState, e: EnemyActor): void {
-    if (!state.dungeonEnabled || state.floorWeaponQuota < 0) return;
-    if (state.floorWeaponsDropped >= state.floorWeaponQuota) return;
-    // The capstone is always the LAST placed room (generateFloor/placeAuthoredFloor
-    // both append it last) — the same room ExtractionSystem opens the portal on.
-    const capstone = state.dungeonRooms[state.dungeonRooms.length - 1];
-    if (capstone === undefined || e.roomId !== capstone.id) return;
-    if (state.enemies.some((o) => o.alive && o.hp > 0 && o.roomId === capstone.id)) return;
-    payFloorWeaponShortfall(state, e.gx, e.gy);
+  /**
+   * A boss kill puts `BOSS_WEAPON_DROPS` weapons on the ground, over and above whatever its
+   * ordinary table roll produced (design/05, 2026-09-14).
+   *
+   * This is the guarantee that replaced the per-floor allowance, and it is deliberately a
+   * much smaller one. The allowance paid every floor, at the capstone, whether or not the
+   * player had done anything to earn it; this pays once, on the run's last room, to a player
+   * who beat the thing gating the exit. Same reasoning as the shortfall payment it replaces
+   * for WHERE it lands — on the body, because the player is already standing there and
+   * already looking, and loot that appears where the fight ended reads as loot rather than as
+   * a vending machine.
+   *
+   * Gated on `e.boss` like the blueprint roll above, and it runs in BOTH modes on purpose: an
+   * arena has no boss actor, so the flag is simply never set there and this costs a field
+   * read. It spends `dropPrng` (one draw per weapon) — the same stream and the same pool a
+   * chest pays from, so a boss and a chest cannot disagree about what a weapon find is.
+   */
+  private dropBossWeapons(state: GameState, e: EnemyActor): void {
+    if (e.boss !== true) return;
+    for (let i = 0; i < BOSS_WEAPON_DROPS; i++) {
+      // Clamped by the PLAYER's clearance, like every other drop — a boss can die flush
+      // against a wall (see `state/actorRadius.ts`).
+      const pos = clampToWalkable(e.gx, e.gy, dropClearance(), state);
+      state.pickups.push({
+        id: state.nextId(),
+        kind: 'weapon',
+        weaponId: WEAPON_DROP_POOL[state.dropPrng.nextInt(WEAPON_DROP_POOL.length)]!,
+        gx: pos.gx,
+        gy: pos.gy,
+        spawnTick: state.tick,
+        alive: true,
+      });
+    }
   }
 }

@@ -272,7 +272,7 @@ describe('packRunSave', () => {
     const commands = Array.from({ length: 200 }, (_, i) => scriptedCommand(i + 1));
     const save = packRunSave({ config, commands, ticks: 200, floorIndex: 0, score: 0, nowMs: 0 });
     expect(Array.isArray(save.commands[0])).toBe(true);
-    expect(save.commands[0]).toHaveLength(7);
+    expect(save.commands[0]).toHaveLength(8); // 8 since `shopBuyId` joined (RUN_SAVE_VERSION 2)
     expect(JSON.stringify(save.commands).length / commands.length).toBeLessThan(30);
   });
 });

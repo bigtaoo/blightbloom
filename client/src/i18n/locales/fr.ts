@@ -324,7 +324,7 @@ export const fr: Translations<typeof en> = {
   },
   card: {
     potion_flow: { name: 'Flux vital', desc: 'Potions {factor}x plus fréquentes' },
-    arsenal: { name: 'Arsenal', desc: '+{bonus} arme par étage' },
+    windfall: { name: 'Aubaine', desc: 'Les pièces valent {factor}x' },
     edge: { name: 'Tranchant', desc: '+{value}% de dégâts' },
     cadence: { name: 'Cadence', desc: '+{value}% de cadence de tir' },
     bulwark: { name: 'Rempart', desc: '+{value} PV max' },

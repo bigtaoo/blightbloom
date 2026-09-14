@@ -49,16 +49,35 @@ export const KNOCKBACK_SNAP_FP = 5; // below this magnitude (either axis), snap 
 // — convert.ts itself imports WORLD from this file.
 export const RICOCHET_RANGE_FP = Math.round(6 * FP_SCALE) as Fp;
 
-// ── Per-floor weapon allowance (design/05, 2026-09-05) ────────────────────────
-// How many weapon drops one dungeon floor may produce: `MIN` to `MIN + SPAN - 1`,
-// i.e. 2 or 3, rolled once per floor from `dropPrng` (SpawnSystem's fresh-floor path)
-// and enforced by `DeathDropsSystem` — including a make-up drop on the capstone kill,
-// so the range is a guarantee in both directions rather than a cap with a bad tail.
-// A range and not a constant on purpose: a fixed 2 makes the third weapon's absence
-// information ("no point clearing that side room"), and the point of the allowance is
-// to make loot scarce, not to make it predictable.
-export const FLOOR_WEAPON_QUOTA_MIN = 2;
-export const FLOOR_WEAPON_QUOTA_SPAN = 2; // nextInt(2) -> +0 or +1
+// ── Coins, and where a weapon comes from (design/05, 2026-09-14) ───────────────────
+//
+// The per-floor weapon allowance (`FLOOR_WEAPON_QUOTA_MIN`/`_SPAN`, 2026-09-05) lived
+// here until this pass and is GONE, along with the capstone make-up payment that made it
+// a guarantee. An enemy no longer drops weapons at all: a run's weapons come from a chest,
+// from the boss, or from a shop counter, and a floor ends with what you actually found or
+// bought. The allowance existed because the kill table alone produced anywhere from 0 to 5
+// weapons a floor; with the table out of the weapon business there is nothing left for it
+// to smooth, and loot that materialises at the exit is the opposite of making a search mean
+// something.
+//
+// What replaces it as the run's flex is the COIN: enemies drop currency, shop rooms spend
+// it. A floor that finds no chest is recoverable by BUYING, which is a decision the player
+// makes rather than a number the floor hands them.
+
+// What one `coin` drop is worth. Flat, not a roll: the drop's FREQUENCY is already the
+// random variable (a table weight), and rolling the amount on top would spend a second
+// `dropPrng` draw to blur a number the player is trying to add up in their head. The
+// `windfall` floor card multiplies this at the point of use, so picking it changes the
+// payout and never the draw sequence.
+export const COIN_DROP_QTY = 5;
+
+// How many weapons a boss kill puts on the ground, over and above its ordinary table roll.
+// The only guaranteed weapon left in the game, and it is the run's last room by
+// construction: the boss floor's capstone IS the boss room and the boss is the run's only
+// exit (design/05), so a player who gets there has earned a certainty. One and not two
+// because chests are meant to stay the primary source — this is the climax's reward, not a
+// supply line.
+export const BOSS_WEAPON_DROPS = 1;
 
 // ── Blueprint drop (design/14, ENGINE_VERSION 63) ────────────────────────────
 // The chance a BOSS kill rolls a blueprint out of `EARNABLE_BLUEPRINTS`, per mille. 50 = 5%,
@@ -91,6 +110,30 @@ export const CHEST_MECHANISM_RADIUS_GRID = 1;
 // What a small chest pays, regardless of party size (design/05: the big chest is the one whose
 // reward scales, and it is the coordination that earns the scaling).
 export const CHEST_SMALL_WEAPONS = 1;
+
+// ── Shops (design/05 "Shops", 2026-09-14) ─────────────────────────────────────
+// The counter a run spends its coins at, and the recoverable half of taking weapons off the
+// kill table: a floor whose chests rolled badly can be fixed by BUYING, which is a decision
+// the player makes rather than a number the floor hands them.
+
+// How close a player must stand for a shop's counter to be workable. Matches
+// `CHEST_INTERACT_RANGE_GRID` and therefore `REVIVE_RANGE_GRID`, and for the same reason
+// those two match each other: a player should learn "arm's length" once, not once per prop.
+export const SHOP_INTERACT_RANGE_GRID = 1.5;
+
+// How many lines a shop stocks. Three, and their KINDS are fixed (weapon / buff / supply) —
+// see `content/shops.ts` for why the composition is not rolled.
+export const SHOP_STOCK_SIZE = 3;
+
+// The prices. **First-pass numbers, and the measurement they are set against is the point:**
+// at 20/84 coins per kill and `COIN_DROP_QTY` 5, the measured floor (34.6 kills on floor 0,
+// 52 on floor 2) yields roughly 40-60 coins. So a floor's whole income buys the weapon, OR
+// the buff and two supplies — which is what makes the counter a choice rather than a
+// shopping list. Retune these against `client/sim/pveLevelSim.sim.ts`'s per-floor coin
+// figure, never against a guess about how rich a run feels.
+export const SHOP_PRICE_WEAPON = 45;
+export const SHOP_PRICE_BUFF = 30;
+export const SHOP_PRICE_SUPPLY = 12;
 
 // ── Co-op downed / revive (design/05/07, ROADMAP 3.2). Whole ticks @30Hz. A lethal
 // hit sends a player `downed`; a teammate revives via a sustained INTERACT channel.

@@ -11,9 +11,8 @@
  */
 import type { Fp } from '../math/fixed';
 import { SIM } from '../sim.config';
-import { FLOOR_WEAPON_QUOTA_MIN, FLOOR_WEAPON_QUOTA_SPAN } from '../config';
-import { resolveFloorCards } from '../balance/floorCards';
 import { mechanismRing } from '../content/chests';
+import { rollShopStock } from '../content/shops';
 import { pxToFp, toFpGrid } from '../content/convert';
 import { buildEnemyActor } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
@@ -221,24 +220,14 @@ export class SpawnSystem {
     for (let i = 0; i < placed.length; i++) {
       state.dungeonRoomRuntime.push({
         activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false,
-        weaponDropped: false,
       });
     }
 
-    // This floor's weapon allowance (design/05, 2026-09-05). Rolled HERE because this
-    // is the one place a fresh floor begins for both entry paths — floor 0's first
-    // placement and every descend land on it — so floor 0 and floor 4 are allocated by
-    // the same line rather than by a constructor and a descend handler that have to be
-    // kept in step. One `dropPrng` draw per floor: it is a drop-economy decision, and
-    // `roomgenPrng` stays about geometry.
-    // The `arsenal` floor card adds to every LATER floor's allowance (design/05,
-    // ENGINE_VERSION 58) — added after the draw, never folded into `nextInt`'s bound,
-    // so picking the card cannot change the shape of the roll itself.
-    state.floorWeaponQuota =
-      FLOOR_WEAPON_QUOTA_MIN +
-      state.dropPrng.nextInt(FLOOR_WEAPON_QUOTA_SPAN) +
-      resolveFloorCards(state.floorCards).weaponQuotaBonus;
-    state.floorWeaponsDropped = 0;
+    // A floor used to roll a weapon ALLOWANCE here (2 or 3, one `dropPrng.nextInt` per
+    // floor) and `DeathDropsSystem` enforced it. Both are gone as of 2026-09-14: an enemy
+    // does not drop weapons, so there is no per-kill weapon rate for an allowance to cap
+    // and no shortfall for a capstone to make up. Removing the draw is why this pass moves
+    // every seeded floor's later loot — see `versionHistory.ts`.
 
     state.dungeonRoomRects.length = 0;
     for (const r of placed) {
@@ -273,6 +262,7 @@ export class SpawnSystem {
     // place, because `mechanismRing`'s points are clamped against this floor's geometry --
     // doing it earlier would clamp a plate against the PREVIOUS floor's stone.
     state.chests.length = 0;
+    state.shops.length = 0;
     for (const room of placed) {
       for (const c of room.piece.chests ?? []) {
         const gx = toFpGrid(c.x + room.offsetXGrid);
@@ -296,6 +286,25 @@ export class SpawnSystem {
                 })
               : [],
           opened: false,
+        });
+      }
+      // This floor's shop counters (design/05 "Shops", 2026-09-14). Same placement rules as
+      // the chests above — clamped walkable, tied to the room, cleared with the floor — and
+      // stocked from `dropPrng` HERE rather than on first approach, so a shop's contents are
+      // decided by the floor's seed and not by which player walked in first.
+      for (const sh of room.piece.shops ?? []) {
+        const at = clampToWalkable(
+          toFpGrid(sh.x + room.offsetXGrid),
+          toFpGrid(sh.y + room.offsetYGrid),
+          dropClearance(),
+          state,
+        );
+        state.shops.push({
+          id: state.nextShopId(),
+          roomId: room.id,
+          gx: at.gx,
+          gy: at.gy,
+          stock: rollShopStock(state.dropPrng, () => state.nextShopId()),
         });
       }
     }

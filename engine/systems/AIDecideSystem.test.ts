@@ -84,7 +84,6 @@ function activateRoom(s: GameState, roomId: string): DungeonRoomRuntime {
     schedule: [],
     cursor: 0,
     hasLiveEnemy: false,
-    weaponDropped: false,
   };
   s.dungeonRoomIndexById.set(roomId, s.dungeonRoomRuntime.length);
   s.dungeonRoomRuntime.push(rt);
@@ -382,7 +381,7 @@ describe('AIDecideSystem.tick — dungeon room-activation gate (design/05, 2026-
   it('in dungeon mode, a real room that has not activated yet is inert', () => {
     const s = dungeonState();
     s.dungeonRoomIndexById.set('r0', 0);
-    s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false, weaponDropped: false });
+    s.dungeonRoomRuntime.push({ activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false });
     const e = addEnemy(s, 400, 400, 'r0');
     e.firing = true;
     const facingBefore = e.facing;

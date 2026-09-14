@@ -41,6 +41,13 @@ export const THEME = {
     // established "restore"/"power" hues (green heal, violet buff), and a fifth warm
     // colour on a floor full of loot would read as another material at a glance.
     pickupEnergy: 0x4fd1c5,
+    // Coins (design/05 "Shops", 2026-09-14) — the in-run currency. Warm gold, and yes that
+    // puts it in the same family as `pickupMaterial`'s yellow crystal, which is why the two
+    // are separated by FORM rather than by hue (design/13's dual-channel rule): a coin is
+    // drawn as a struck disc with a rim, a material as a faceted crystal. Making it a sixth
+    // distinct hue was the alternative and it is the worse one — a currency that does not
+    // look like money is a tutorial nobody gets.
+    pickupCoin: 0xffc94a,
     // Elemental status fx (design/03/07) — flashed on the 'status' event, and now
     // also the bullet-trail + lingering-aura colours (per-element render polish).
     statusBurn: 0xff7043, // fire — orange flame

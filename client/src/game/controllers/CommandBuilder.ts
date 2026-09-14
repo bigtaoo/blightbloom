@@ -20,6 +20,10 @@ export class CommandBuilder {
   // tick. Same one-shot-latch shape as the confirm latches above, set from
   // WeaponPickupPrompt's onPick via Game.ts.
   private pickupLatchId = 0;
+  // Shop counter tap (design/05 "Shops", 2026-09-14) — 0 = no tap this tick. Its own latch
+  // and its own command field rather than sharing `pickupLatchId`: offer ids and pickup ids
+  // come from different id spaces, so one channel for both would make a buy also collect.
+  private shopLatchId = 0;
   // Set while the portal popup is open (PortalPrompt.isOpen) so a click on one of its
   // buttons doesn't also register as a shot — WebInput's `leftDown` is set from a raw
   // `canvas.addEventListener('mousedown', ...)`, independent of Pixi's own event
@@ -61,6 +65,14 @@ export class CommandBuilder {
    *  click) — same one-shot-latch shape as requestSwap()/requestConfirmExtract(). */
   requestPickup(itemId: number): void {
     this.pickupLatchId = itemId;
+  }
+
+  /** One-shot shop purchase, set from ShopPrompt's onBuy (a row tap) — same one-shot-latch
+   *  shape as requestPickup() above, and refused or honoured entirely by `ShopSystem`. The
+   *  client deliberately does no affordability check of its own before sending: the sim owns
+   *  the wallet, and a client that pre-refused would be a second rule to keep in step. */
+  requestShopBuy(offerId: number): void {
+    this.shopLatchId = offerId;
   }
 
   /** Vote for a floor-card slot (1..3), set from FloorCardPrompt's card taps
@@ -131,9 +143,11 @@ export class CommandBuilder {
     this.pickupLatchId = 0;
     const cardVote = this.cardVoteLatch;
     this.cardVoteLatch = 0;
+    const shopBuyId = this.shopLatchId;
+    this.shopLatchId = 0;
 
     this.lastMove.rad = bradToRad(moveBrad);
     this.lastMove.mag = moveMag;
-    return makeCommand({ owner, tick, moveBrad, moveMag, buttons, pickupTargetId, cardVote });
+    return makeCommand({ owner, tick, moveBrad, moveMag, buttons, pickupTargetId, cardVote, shopBuyId });
   }
 }
