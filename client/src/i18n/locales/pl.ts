@@ -249,6 +249,7 @@ export const pl: Translations<typeof en> = {
     materialsDoubled: 'Złożone surowce: {count} (bonus z reklamy x2)',
     adNotFilled: 'Brak dostępnej reklamy — twoje surowce są bezpieczne: {count}',
     scoreLine: 'Wynik {score}',
+    blueprintLine: 'Odzyskany schemat: {weapon}',
     fellOnFloor: 'Poległ na piętrze {floor}/{floorCount}',
     materialsLost: 'Utracono wszystkie przenoszone surowce: {count}',
     placeOf: '1. miejsce z {total}',

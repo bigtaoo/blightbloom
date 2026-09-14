@@ -826,16 +826,14 @@ accounts, i18n, the billing scaffold, telemetry and ops — all shipped, all tes
 coverage, zero files over the 500-line convention).
 
 **What Stage 1 has not answered yet.** Four items, in the order they should close. The first two
-are decided and unbuilt; the last two are not engineering work at all.
+shipped on 2026-09-14; the last two are not engineering work at all, and are what Stage 1 now
+turns on.
 
-1. **The search verb.** Decided 2026-09-14 — chest rooms, small (solo) and big (one mechanism
-   per seat, all occupied at once). Spec in `design/05` "Chest rooms"; this is **B1**, and it is
-   the largest hole in the loop as written. Doing it after Stage 2 starts means polishing a loop
-   that is missing a verb.
-2. **A reason to run it again.** Decided 2026-09-14 — a blueprint drops from the boss at 5%
-   (`design/14`). This is **B5**. The content call it needed was made the same day: the signup
-   grant shrinks to two openers and the remaining `source: 'drop'` entries become the earnable
-   pool, both shipping in one pass so no account loses a blueprint it cannot re-earn.
+1. **The search verb.** ✅ **Shipped 2026-09-14** (`ENGINE_VERSION` 63) — chest rooms, small (solo)
+   and big (one mechanism per seat, all occupied at once, paying one weapon per seat). **B1.**
+   What remains is content, not engine: a floor that actually MIXES fights with no-fight rooms.
+2. **A reason to run it again.** ✅ **Shipped 2026-09-14** (same version) — a blueprint drops from
+   the boss at 5%, out of an earnable pool the signup grant no longer covers. **B5.**
 3. **A real device.** WeChat is verified in the simulator only; the render quality ladder's
    `low` tier has never been seen on a handset, and the portal build's ads and banner have never
    run under a registered domain. All three are silent when wrong.
@@ -863,7 +861,7 @@ four survived this long. Each doc sentence was corrected in the same pass to poi
 None is a bug: nothing regressed, and the loop is playable without them. They are the gap
 between the loop as designed and the loop as shipped.
 
-- **B1 🔴 Chests — DESIGN LOCKED 2026-09-14, still unbuilt.** design/05's core-loop diagram says
+- **B1 ✅ Chests — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** design/05's core-loop diagram says
   the player *opens chests*, its controls section says *"an `INTERACT` button opens chests"*, and
   design/07 step 9 says a chest rolls the drop table. There is no chest entity anywhere in the
   repo — `INTERACT` drives the revive channel and nothing else, and every drop in the game comes
@@ -873,9 +871,12 @@ between the loop as designed and the loop as shipped.
   — a floor mixes combat rooms with chest rooms; a small chest opens solo; a big chest is ringed
   by one mechanism per seat, opens only while every one is occupied, and pays **one weapon per
   seat** so the per-capita reward is flat and only the coordination cost scales; further
-  chest-room types are deferred on purpose. That section also records the three constraints the build inherits
+  chest-room types are deferred on purpose. That section also records the three constraints the build inherited
   (seat-count-at-start, `INTERACT` arbitration against the revive channel, and chest state being
-  replay/netcode state).
+  replay/netcode state). **What is still open is the room COMPOSITION half**: chests are authored
+  into five shipped pieces, but four of those five still hold their garrison, so "a floor mixes
+  combat rooms with chest rooms" is content work nobody has done — the one no-fight chest room in
+  the level is `ember_l1_extraction`, which already had no spawns.
 - **B2 🔴 A real run-buff offering flow — unblocked by B1's decision, still unanswered.** design/05 and design/14 both describe run buffs as
   found in *"chests / rooms / shop"*; `balance/runbuffs.ts`'s own module doc concedes the
   shipped reality (*"the demo drops them off the DROP_TABLE"*). So the in-run power layer that
@@ -905,14 +906,16 @@ between the loop as designed and the loop as shipped.
   `rollDrop`, which is enough to make `minTier` recipes demand deeper floors; the missing half is
   a configurable curve and a per-depth drop POOL (better weapons/buffs deeper, not just better
   materials).
-- **B5 🟡 Blueprints that drop from runs — DESIGN LOCKED 2026-09-14, still unbuilt.** The rule is
-  now *a boss kill rolls a blueprint at 5%* (first-pass number, `design/14`). Since 2026-09-14 the
+- **B5 ✅ Blueprints that drop from runs — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** A boss kill
+  rolls a blueprint at 5% (`BLUEPRINT_DROP_PERMILLE`, a first-pass number, `design/14`). Since 2026-09-14 the
   boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
   to the meta layer — which is most of what made this item structural rather than a table entry.
-  **The content call it was blocked on was made 2026-09-14**: `STARTER_BLUEPRINTS` stops being
-  *computed* as every `source: 'drop'` entry and becomes an explicit two-opener list (repeater +
-  hammer), leaving flamer/scattergun/spear as the earnable pool; the catalog validator must refuse
-  an empty pool, and the grant cut ships in the drop's own pass rather than before it. The original filing
+  The content call it was blocked on shipped in the same pass: `STARTER_BLUEPRINTS` stopped being
+  *computed* as every `source: 'drop'` entry and is an explicit two-opener list (repeater +
+  hammer), leaving flamer/scattergun/spear as the derived earnable pool, with `validateBlueprints`
+  refusing an empty one. One known dud recorded rather than fixed: the roll is account-blind (it
+  must be — `06`), so a player who owns all three earnable blueprints can win a roll that grants
+  nothing. The original filing
   follows. design/14: *"**2–3 common blueprints drop from runs** (permanent the moment you obtain
   them)"*. `Pickup` has no blueprint kind and no drop
   table can roll one — nothing in a run grants a blueprint. `STARTER_BLUEPRINTS` hands over

@@ -1,13 +1,15 @@
 /**
- * GameEngine — the single orchestrator (design/08). Owns a GameState and the 17
+ * GameEngine — the single orchestrator (design/08). Owns a GameState and the 18
  * systems, instantiated once and run in the frozen step() order. That order IS the
  * determinism contract; reordering it (or changing how a system iterates a
  * collection) bumps ENGINE_VERSION. ExtractionSystem (12, ROADMAP 1.4/1.5),
- * ZoneSystem/EnvironmentSystem (8a/8b, ROADMAP 4.2d), and DoorSystem (11.5,
- * design/05 "Room & door model") are the exceptions to "adding a step bumps the
- * version": each is a strict no-op for any config that doesn't opt into
- * `floors`/`arena`/`dungeon` respectively, so their presence changes nothing for an
- * older config or replay.
+ * ZoneSystem/EnvironmentSystem (8a/8b, ROADMAP 4.2d), DoorSystem (11.5,
+ * design/05 "Room & door model") and ChestSystem (10.5, design/05 "Chest rooms")
+ * are the exceptions to "adding a step bumps the version": each is a strict no-op
+ * for any config that doesn't opt into `floors`/`arena`/`dungeon`/an authored chest
+ * respectively, so their presence changes nothing for an older config or replay.
+ * (ChestSystem's ARRIVAL was therefore free; what costs ENGINE_VERSION 63 is the
+ * shipped level authoring chests, which moves the drop stream on a floor with one.)
  *
  * step(commands) is the direct entry (headless/tests). The InputSource seam
  * (advance/submit) pulls confirmed frames from the source; runHeadless() (replay.ts)
@@ -21,6 +23,7 @@ import type { GameEvent } from './state/events';
 import {
   AIDecideSystem,
   ApplyInputSystem,
+  ChestSystem,
   DeathDropsSystem,
   DeflectSystem,
   DoorSystem,
@@ -54,6 +57,7 @@ export class GameEngine {
   private readonly environment = new EnvironmentSystem();
   private readonly deathDrops = new DeathDropsSystem();
   private readonly pickup = new PickupSystem();
+  private readonly chests = new ChestSystem();
   private readonly spawns = new SpawnSystem();
   private readonly doors = new DoorSystem();
   private readonly extraction = new ExtractionSystem();
@@ -94,6 +98,7 @@ export class GameEngine {
     this.environment.tick(s); //          8b (PvP, arena-mode only — ROADMAP 4.2d)
     this.deathDrops.tick(s); //           9
     this.pickup.tick(s); //              10
+    this.chests.tick(s); //            10.5 (design/05 "Chest rooms" — no-op with no authored chest)
     this.spawns.tick(s); //              11  (PvE)
     this.doors.tick(s); //              11.5 (PvE dungeon only — design/05 "Room & door model")
     this.extraction.tick(s); //          12  (PvE, floors-mode only — ROADMAP 1.4/1.5)

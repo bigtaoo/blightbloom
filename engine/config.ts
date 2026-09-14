@@ -60,6 +60,38 @@ export const RICOCHET_RANGE_FP = Math.round(6 * FP_SCALE) as Fp;
 export const FLOOR_WEAPON_QUOTA_MIN = 2;
 export const FLOOR_WEAPON_QUOTA_SPAN = 2; // nextInt(2) -> +0 or +1
 
+// ── Blueprint drop (design/14, ENGINE_VERSION 63) ────────────────────────────
+// The chance a BOSS kill rolls a blueprint out of `EARNABLE_BLUEPRINTS`, per mille. 50 = 5%,
+// a first-pass number to tune against real clears: at three earnable blueprints it is about
+// twenty boss kills per blueprint, which is a long tail by design (this is the earn-by-playing
+// path, not a reliable one). Per-mille rather than a float because every probability in this
+// engine is an integer against an integer draw (design/06 — a float would be the one place a
+// platform could disagree).
+export const BLUEPRINT_DROP_PERMILLE = 50;
+
+// ── Chest rooms (design/05 "Chest rooms", ENGINE_VERSION 63) ──────────────────
+// How close a player must stand to work a chest, and how far out its mechanisms sit.
+//
+// `CHEST_INTERACT_RANGE_GRID` matches `REVIVE_RANGE_GRID` exactly, and that is a decision
+// rather than a coincidence: INTERACT drives both, so a player standing where they can reach
+// a downed teammate can also reach a chest, and the arbitration between the two (ChestSystem
+// yields to a revive in progress) is about intent, never about a geometry the player has to
+// learn twice.
+export const CHEST_INTERACT_RANGE_GRID = 1.5;
+// The ring radius a big chest's mechanisms are derived onto. Wide enough that standing on one
+// plate is visibly NOT standing on the chest (so the coordination reads), narrow enough that
+// the whole ring fits inside the smallest authored room (15x15) with its perimeter ring and a
+// body radius of clearance on either side: 15 - 2 (walls) - 1 (bodies) leaves 12, so a
+// diameter of 6 sits comfortably inside even after `clampToWalkable` has its say.
+export const CHEST_MECHANISM_RING_GRID = 3;
+// How close a player's centre must be to a mechanism's centre to count as standing on it.
+// Deliberately larger than a body radius: a plate a player has to find the exact centre of is
+// a precision task, and nothing about this mechanic is meant to be one.
+export const CHEST_MECHANISM_RADIUS_GRID = 1;
+// What a small chest pays, regardless of party size (design/05: the big chest is the one whose
+// reward scales, and it is the coordination that earns the scaling).
+export const CHEST_SMALL_WEAPONS = 1;
+
 // ── Co-op downed / revive (design/05/07, ROADMAP 3.2). Whole ticks @30Hz. A lethal
 // hit sends a player `downed`; a teammate revives via a sustained INTERACT channel.
 export const DOWNED_BLEEDOUT_TICKS = 900; // ~30 s downed before permanent death (paused while being revived)

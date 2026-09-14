@@ -33,6 +33,7 @@ import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
 import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
+import { CHEST_ROOM_DUNGEON, CHEST_ROOM_ROOMS } from './chestRoomFloor';
 
 /** A stable 32-bit integer hash. Pure, platform-independent, no floating point anywhere. */
 function mix(x: number, salt: number): number {
@@ -56,6 +57,10 @@ function inputFor(tick: number, owner: number, salt: number, opts: ScenarioInput
   let buttons = beat % 16 === 0 ? 0 : Button.FIRE; // mostly firing, with gaps for cooldown edges
   if (tick % 37 === 0) buttons |= Button.SWAP_WEAPON;
   if (opts.interact && tick % 53 === 0) buttons |= Button.INTERACT;
+  // A much tighter INTERACT cadence than `interact`'s 53, and the gap is the point
+  // (`chestRoomFloor.ts`): the first pulse has to land while the player is provably still
+  // within reach of the chest it spawned beside, which tick 53 cannot promise.
+  if (opts.chest && tick % 3 === 0) buttons |= Button.INTERACT;
   if (opts.descend && tick % 61 === 0) buttons |= Button.CONFIRM_DESCEND;
   // CONFIRM_EXTRACT on a much tighter cadence than the descend above, and that gap is the
   // point (ENGINE_VERSION 61, `extractionGateFloor.ts`): the first extract pulse lands long
@@ -96,6 +101,10 @@ function inputFor(tick: number, owner: number, salt: number, opts: ScenarioInput
 interface ScenarioInput {
   /** Pulse INTERACT — reaches revive/portal paths. */
   interact: boolean;
+  /** Pulse INTERACT on a 3-tick cadence — the small-chest open (design/05 "Chest rooms",
+   *  ENGINE_VERSION 63). Separate from `interact` because the cadence, not the button, is
+   *  what makes the contact provable; see `chestRoomFloor.ts`. */
+  chest: boolean;
   /** Pulse CONFIRM_DESCEND — makes a dungeon run actually change floors. */
   descend: boolean;
   /** Pulse CONFIRM_EXTRACT — the button whose per-floor gate is v61's whole subject. Only
@@ -210,7 +219,13 @@ export function runScenario(sc: GoldenScenario): { hash: number; witness: Witnes
   return { hash: hashState(engine.state), witness: witnessOf(engine.state, events) };
 }
 
-const NO_PULSE: ScenarioInput = { interact: false, descend: false, extract: false, press: false };
+const NO_PULSE: ScenarioInput = {
+  interact: false,
+  chest: false,
+  descend: false,
+  extract: false,
+  press: false,
+};
 
 export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
   {
@@ -286,7 +301,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 1500,
     seats: 1,
-    input: { interact: true, descend: true, extract: false, press: false },
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
     salt: 0x3333,
   },
   {
@@ -305,7 +320,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 800,
     seats: 1,
-    input: { interact: false, descend: false, extract: false, press: true },
+    input: { interact: false, chest: false, descend: false, extract: false, press: true },
     salt: 0x5555,
   },
   {
@@ -328,7 +343,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     // `phase: 'playing'`.
     ticks: 400,
     seats: 1,
-    input: { interact: false, descend: true, extract: true, press: false },
+    input: { interact: false, chest: false, descend: true, extract: true, press: false },
     salt: 0x6161,
   },
   {
@@ -349,7 +364,28 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 900,
     seats: 2,
-    input: { interact: true, descend: false, extract: false, press: false },
+    input: { interact: true, chest: false, descend: false, extract: false, press: false },
     salt: 0x4444,
+  },
+  {
+    name: 'chest-room',
+    // The scenario that exists because the other six cannot see `ChestSystem` at all — the
+    // shipped level authors chests, but no golden run ever opens one. See
+    // `chestRoomFloor.ts` for the full account.
+    pins: 'both chest kinds opening: the big one gated on every plate, the small one on INTERACT',
+    config: {
+      seed: 62062,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      // TWO seats, and that is the subject rather than a co-op flourish: `mechanismRing`
+      // derives one plate per seat, so a one-seat big chest is not a coordination gate.
+      players: [{}, {}],
+      dungeon: { config: CHEST_ROOM_DUNGEON, library: CHEST_ROOM_ROOMS },
+    },
+    ticks: 400,
+    seats: 2,
+    input: { interact: false, chest: true, descend: false, extract: false, press: false },
+    salt: 0x6262,
   },
 ];

@@ -263,6 +263,7 @@ export const en = {
     materialsDoubled: 'Materials banked: {count} (ad bonus x2)',
     adNotFilled: 'No ad available - your {count} materials are safe',
     scoreLine: 'Score {score}',
+    blueprintLine: 'Blueprint recovered: {weapon}',
     fellOnFloor: 'Fell on floor {floor}/{floorCount}',
     materialsLost: 'All {count} carried materials were lost',
     placeOf: '1st place of {total}',

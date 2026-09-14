@@ -249,6 +249,7 @@ export const de: Translations<typeof en> = {
     materialsDoubled: 'Materialien gesichert: {count} (Werbebonus x2)',
     adNotFilled: 'Keine Werbung verfügbar – deine {count} Materialien sind sicher',
     scoreLine: 'Punkte {score}',
+    blueprintLine: 'Blaupause erbeutet: {weapon}',
     fellOnFloor: 'Gefallen auf Etage {floor}/{floorCount}',
     materialsLost: 'Alle {count} mitgeführten Materialien sind verloren',
     placeOf: '1. Platz von {total}',

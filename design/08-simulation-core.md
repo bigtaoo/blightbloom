@@ -115,6 +115,10 @@ step(tick, commands):
  10. Pickup           — player–pickup overlap → apply (weapon→active slot / heal / floor-buffer
                         material) (05); in arena mode also resolves an unrolled 'crate' via
                         rollArenaDrop and scales a picked-up weapon by PVP_SCALE_FACTOR (15)
+10.5 Chests          — a small chest opens for one player holding INTERACT in reach; a big one
+                        opens only while every mechanism it was ringed with has a player
+                        standing on it. Pays weapons onto its own tile and counts them against
+                        the floor's allowance (05 "Chest rooms") [no-op with no authored chest]
  11. Spawns           — expand a room's WaveScript into a timed schedule and dispatch it (05)
                         [both modes — one shared WaveScript vocabulary, two spawn-point
                         sources: dungeon rooms, and arena rooms on lazy activation (15),
