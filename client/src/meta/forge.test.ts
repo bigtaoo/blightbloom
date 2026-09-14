@@ -103,6 +103,13 @@ describe('craft — one gun and one melee weapon (design/03/05 invariant)', () =
   function stagedWith(id: string): MetaState {
     let m = defaultMetaState();
     m = bankMaterials(m, { mat_physical: 20, mat_fire: 20 });
+    // Unlock the SECOND weapon each case reaches for as well. Since 2026-09-14 a fresh
+    // account is granted two openers rather than every `source: 'drop'` blueprint (design/14 —
+    // the rest are the boss drop's earnable pool), so `scattergun`/`spear` are locked by
+    // default and every assertion below would come back `'locked'`: a green-for-the-wrong-
+    // reason pass, since 'locked' is checked before 'kind-taken'. The subject here is the
+    // KIND gate, so the unlock is part of the premise.
+    for (const extra of ['scattergun', 'spear']) m = unlockBlueprint(m, extra);
     const r = craft(m, id);
     expect(r.ok).toBe(true); // the premise, not the assertion
     return r.ok ? r.meta : m;

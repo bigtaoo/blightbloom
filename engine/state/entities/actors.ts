@@ -173,8 +173,12 @@ export interface EnemyActor extends Actor {
   // copied from the blueprint like `tint`/`boss`; the sim never reads it. Undefined =
   // the shared 'critter-core' body (Actor.ts's existing fallback).
   bodyRig?: string;
-  // Render-only boss marker (design/01); the sim never reads it. The view draws a
-  // health bar so a durable boss's HP ramp-down (poison melt) is legible.
+  // The boss marker (design/01/14). Render-only until ENGINE_VERSION 63 — the view draws a
+  // health bar for one, so a durable boss's HP ramp-down (poison melt) stays legible — and
+  // now ALSO read by the sim: `DeathDropsSystem.rollBlueprint` rolls the blueprint drop on a
+  // boss's death. So this is no longer a cosmetic flag like `tint`; setting it on a blueprint
+  // changes what that enemy's death is worth, and changing it is a content decision with a
+  // gameplay consequence.
   boss?: boolean;
   // Boss AI depth (design/09 aspirational `traits`, ENGINE_VERSION 27). Config, copied
   // from the blueprint at spawn (SpawnSystem/DeathDropsSystem, same convention as

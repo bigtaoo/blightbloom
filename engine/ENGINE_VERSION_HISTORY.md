@@ -2089,3 +2089,62 @@ from the outside — "something moved", no direction — and it happened because
 `hpTotal` but nothing for the other player-visible pool. `Witness.energyTotal` was added in the
 same pass, so the next change to this economy is diagnosable from the fixture diff instead of
 from a pair of 32-bit numbers.
+
+## v63: chests, and the search verb the loop has always claimed (2026-09-14)
+
+`ChestSystem` is step 10.5 and `GameState.chests` is new state, both of them design/05
+"Chest rooms". Five of the shipped level-1 pieces now author a chest, which is what actually
+costs the bump — the SYSTEM is inert without content, and the engine addition alone left every
+golden hash unmoved (measured before the bump, as the v51/v54/v61 rule requires).
+
+### What a chest is
+
+A small chest opens for one player holding INTERACT within `CHEST_INTERACT_RANGE_GRID` and pays
+`CHEST_SMALL_WEAPONS` (1) whatever the party size. A big chest is ringed by one MECHANISM per
+seat — positions derived, never authored, by `content/chests.ts mechanismRing` — and opens only
+while every plate has a player standing on it, paying one weapon per seat. So the per-capita
+reward is flat and what scales with the party is the coordination cost.
+
+Three rules that are about something other than chests, each written down because each is a
+branch whose line runs every tick while only one side is normally taken:
+
+- **A chest may only be worked from inside its own ACTIVATED room.** A floor is co-resident, so
+  without this a player could stand against a shared wall and open a chest in the next room
+  through the stone.
+- **A revive out-ranks a chest for the same INTERACT.** A player who is a valid reviver this
+  tick cannot also open a chest (`ChestSystem.isReviving`, mirroring `ReviveSystem.findReviver`
+  from the reviver's side). Ordering the two systems could not express this: the question is
+  what the button MEANT, not which system ran first.
+- **A chest's payout counts against `floorWeaponsDropped`.** The floor still owes its quota and
+  a chest simply pays part of it, so chests move WHERE a floor's weapons come from without
+  inflating the economy design/05's "Loot economy" tuned. A big chest in a full party can
+  overshoot the quota, which is intended — the per-seat rule is a promise to each player.
+
+### The part of the bump that is pure bookkeeping, and is worth knowing
+
+`ember-dungeon-floor1`'s hash moved, and **not because it opens a chest — it never does.** Its
+own note records that a scripted stick does not clear rooms, so the run stays in the spawn room,
+which has no chest. What moved it is that instantiating a floor's chests calls
+`GameState.nextId()` once each, before that floor's enemies are built, so every enemy id shifts
+by the chest count — and `AIDecideSystem.hasNoticed` staggers a freshly-woken garrison's opening
+volley by `noticeDelayTicks(e.id)`. Three chests on floor 1 therefore re-stagger the first
+volley: 170 shots became 167, 59 hits became 56, and the player finished with 4.2 HP instead of
+2.4.
+
+That is a real divergence for an old recording and the bump covers it, but it is not evidence
+about chests, and reading it as such is exactly the mistake the witness exists to prevent. The
+evidence about chests is the new `chest-room` golden scenario (`fixtures/chestRoomFloor.ts`),
+which is the third purpose-built fixture in the `brimGrinderFloor` / `extractionGateFloor`
+lineage and exists for the same structural reason: two seats spawning on their own plates so the
+big chest opens by construction, a small chest one grid from seat 0 with INTERACT pulsed every 3
+ticks, and `chest_open: 2` in the witness. Deleting `ChestSystem.open` outright would have left
+the other six scenarios green.
+
+### What this does NOT do
+
+Nothing here makes a room a no-fight room. design/05's "a floor mixes combat rooms with chest
+rooms" is half-shipped: chests exist and are authored into five pieces, but every one of those
+pieces still holds its garrison, and a dedicated chest-room piece placed into the floor maps is
+content work this pass did not do. The one exception is `ember_l1_extraction`, which has always
+had zero enemy spawns and now carries the big chest — so four of the five floors do end on a
+room where the only thing to do is open something.

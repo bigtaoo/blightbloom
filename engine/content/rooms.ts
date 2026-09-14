@@ -58,6 +58,21 @@ export interface ExitDef {
   toTag?: string;
 }
 
+/**
+ * A chest authored into a room (design/05 "Chest rooms"). Position in human grid units,
+ * local to the piece, exactly like every other placement here.
+ *
+ * Note what is NOT here: a big chest's mechanism positions, and what the chest contains.
+ * The mechanism COUNT is the run's seat count, which a piece cannot know (see
+ * `content/chests.ts`), and the contents come from the floor's own loot economy rather
+ * than from the piece — a chest is a delivery site, not a second drop table.
+ */
+export interface ChestPlacement {
+  kind: 'small' | 'big';
+  x: number;
+  y: number;
+}
+
 /** A decorative placement (design/01 Y-sortable prop) — render-only, never read by
  * the sim, like an enemy blueprint's `tint`. */
 export interface PropPlacement {
@@ -99,6 +114,10 @@ export interface RoomPiece {
   spawns: { player: Point[]; enemy: SpawnPoint[] };
   exits: ExitDef[];
   props?: PropPlacement[];
+  /** Chests authored into this piece (design/05 "Chest rooms"). Absent on every piece
+   *  authored before chests existed, which is the whole library up to ENGINE_VERSION 63 —
+   *  a piece without this field places no chests and behaves exactly as it always did. */
+  chests?: ChestPlacement[];
   encounter?: WaveScript;
   role?: RoomRole;
   // Which biome piece-pools (DungeonConfig.pieceTags, world/dungeon.ts, ROADMAP 1.3)

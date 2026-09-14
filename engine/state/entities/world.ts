@@ -68,6 +68,53 @@ export interface AABB {
 // `ENERGY_PICKUP_AMOUNT`, not a per-drop roll).
 export type PickupKind = 'heal' | 'material' | 'weapon' | 'buff' | 'crate' | 'bandage' | 'energy';
 
+/**
+ * A chest's kind (design/05 "Chest rooms"). The two differ in WHO can open one and in
+ * how much it pays, never in where it may be authored:
+ *   - `small` — one player, one INTERACT, no gate. Pays one weapon to the party.
+ *   - `big`   — ringed by one MECHANISM per seat; opens only while every mechanism has
+ *               a player standing on it, and pays one weapon PER SEAT so the per-capita
+ *               reward is flat and only the coordination cost scales.
+ */
+export type ChestKind = 'small' | 'big';
+
+/**
+ * One of a big chest's pressure plates. Position is derived, never authored — see
+ * `content/chests.ts mechanismRing`: the COUNT depends on the run's seat count, which no
+ * room piece can know, so authoring it would be authoring a number that is wrong for every
+ * party size but one. `occupied` is recomputed from scratch every tick by `ChestSystem`;
+ * it is stored rather than local so the render layer can light a plate the player is on
+ * without re-deriving the test (design/10 "UI reads state+events").
+ */
+export interface ChestMechanism {
+  gx: Fp;
+  gy: Fp;
+  occupied: boolean;
+}
+
+/**
+ * A chest (design/05 "Chest rooms"). Engine state, deliberately — `opened` is hashed,
+ * replicated and replayed like any other decision the sim makes, because a chest that
+ * opened on one client and not another is a desync, and a chest whose openness lived in
+ * the renderer would re-open on every resumed save.
+ *
+ * Instantiated once per floor placement from each `RoomPiece.chests` entry
+ * (`SpawnSystem.generateAndPlaceFloor`), and cleared with the rest of the floor — an
+ * unopened chest is gone when its geometry is, the same rule uncollected pickups follow.
+ */
+export interface Chest {
+  id: number;
+  /** The `PlacedRoom.id` this chest belongs to — it may only be opened once that room is
+   *  activated, so a chest cannot be worked from outside through a wall. */
+  roomId: string;
+  kind: ChestKind;
+  gx: Fp;
+  gy: Fp;
+  /** Empty for `small`; one entry per seat for `big`. */
+  mechanisms: ChestMechanism[];
+  opened: boolean;
+}
+
 export interface PickupItem {
   id: number;
   kind: PickupKind;

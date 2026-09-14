@@ -122,7 +122,7 @@ function outcomeHost(localOwner: number): RunOutcomeHost & { won(): boolean | un
     currentScore: () => 0,
     setPhase: () => {},
     hideHud: () => {},
-    bankRunMaterials: () => {},
+    bankRunCarryOut: () => {},
     isOnline: () => false,
     showOutcomeScreen: (w) => { won = w; },
     won: () => won,

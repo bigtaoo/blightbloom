@@ -636,12 +636,20 @@ Three pickup classes, split by **whether the player must make a choice**. Materi
 - **Weapon energy — auto, under the same usefulness gate as a consumable** (`ENGINE_VERSION` 59, `03`). Restores `ENERGY_PICKUP_AMOUNT` to the player's shared ammo pool; at a full pool it is left on the floor, exactly like the health pickup, and for the same reason (no item bag, so collecting one at full destroys it for nothing). It is the second instant item, and the first added since `pickupWouldApply` was implemented — the rule's own note said *"if a shield/temp-buff instant item is ever added, this is the one place it needs a clause"*, and this is that clause.
 - **Weapons — click-driven, drop-on-replace.** Not auto (swapping is a choice). A non-blocking **weapon-pickup panel** (`10`, ENGINE_VERSION 32) lists every floor weapon within reach (real icon + name); tapping a row IS the pickup — no modal, no pause, lockstep can't stop for one player. `PickupSystem` swaps it into the active slot and **the replaced weapon drops back onto the floor** (`02`/`03`). The switch button picks which of the two slots to overwrite. (Superseded the original single-nearest "ground compare card" + tap-`INTERACT` gesture — see `03`'s "Pickup & switch" section for the full history.)
 
-## Chest rooms: not every room is a fight 🔴 (locked 2026-09-14, NOT BUILT)
+## Chest rooms: not every room is a fight ✅ (locked AND shipped 2026-09-14, `ENGINE_VERSION` 63)
 
-This doc's core loop has said **search**-fight-extract since it was written, and the game has
-never had the first verb. Every room held enemies, every drop came off a corpse, and a room was
-therefore a thing to survive rather than a thing to look into — `ROADMAP` B1, filed 2026-09-03.
-The decision below closes it. **None of it is built**; this section is the spec, not a status.
+This doc's core loop had said **search**-fight-extract since it was written, and the game did not
+have the first verb. Every room held enemies, every drop came off a corpse, and a room was
+therefore a thing to survive rather than a thing to look into — `ROADMAP` B1, filed 2026-09-03,
+decided and built 2026-09-14.
+
+**What shipped:** `ChestSystem` (step 10.5), `GameState.chests`, `content/chests.ts`'s two pure
+rules, and chests authored into five of the shipped level-1 pieces — a big one in
+`ember_l1_extraction` (four of the five floors end there, and it is the one room in the level
+with no enemy spawns at all) and a small one in `alcove` / `court` / `rampart` / `gallery`, which
+works out at roughly two small and one big per floor. The drawn form is procedural
+(`client/src/game/scene/ChestLayer.ts`): no chest art exists yet, the same staged rollout walls,
+pillars, doors and drops each went through.
 
 - **A floor mixes combat rooms with chest rooms.** Not every room has enemies in it. A chest
   room's content *is* the chest; whether one also holds a fight stays a per-piece authoring
@@ -659,8 +667,13 @@ The decision below closes it. **None of it is built**; this section is the spec,
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
+- **A chest's payout counts against the floor's weapon allowance.** The floor still owes its
+  quota ("Loot economy" below) and a chest simply pays part of it, so chests changed WHERE a
+  floor's weapons come from without inflating what it hands out. A big chest in a full party can
+  overshoot the quota, and that is intended: the per-seat rule is a promise to each player, and a
+  quota written for one player must not silently break it.
 
-### The constraints this inherits, stated before anything is written
+### The constraints this inherited, and how each was met
 
 - **The mechanism count is the run's SEAT count, fixed at run start** (`EngineConfig.players`),
   not "how many players are currently alive, connected, or in the room". Both are engine state
@@ -671,13 +684,19 @@ The decision below closes it. **None of it is built**; this section is the spec,
 - **`INTERACT` already has an owner.** It drives the revive channel and nothing else (`07`/`08`).
   A chest is the second consumer, which makes button arbitration a real question the first time
   a chest sits next to a downed player rather than a detail to settle in the renderer.
-- **A chest is engine state, so it is replay and netcode state.** Opened-ness must live in
-  `GameState` and roll its contents off `dropPrng` like every other drop (`06`/`09`), or a
-  co-op run desyncs on the first chest and every recorded run stops reproducing.
+- **A chest is engine state, so it is replay and netcode state.** Opened-ness lives in
+  `GameState` and the contents roll off `dropPrng` like every other drop (`06`/`09`); anything
+  else desyncs a co-op run on the first chest and stops every recorded run reproducing. The
+  mechanism ring is derived with integer trig and NO draw at all (`content/chests.ts`), so how
+  many chests a floor holds cannot shift that floor's later loot rolls.
 
-### What this does *not* decide
+### What this still does *not* decide
 
-- **What a chest contains.** `ROADMAP` B2 — the run-buff offering flow — is the obvious tenant
+- **Rooms that are not fights.** The header is still half-true: chests are authored into rooms
+  that hold their garrisons, and the only no-fight room in the level is the extraction room that
+  already had no spawns. A dedicated chest-room piece placed into the floor maps is content work,
+  not engine work, and it is the obvious next pass.
+- **What a chest contains.** It pays weapons. `ROADMAP` B2 — the run-buff offering flow — is the obvious tenant
   (both this doc and `14` describe run buffs as found in "chests / rooms / shop", and today they
   arrive as a 6/84 weight on the kill table, which is not a choice anyone makes). Chests unblock
   it; they do not answer it. Whether a big chest hands over a **choice of buffs** the way the

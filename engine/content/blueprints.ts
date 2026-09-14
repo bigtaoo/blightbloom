@@ -83,18 +83,43 @@ export const BLUEPRINT_CATALOG: Record<string, WeaponBlueprint> = {
   frostseeker: { weaponId: 'frostseeker', nameKey: 'blueprint.frostseeker', source: 'event', cost: [{ element: 'ice', qty: 2, minTier: 1 }, { element: 'physical', qty: 2 }] },
 };
 
-/** Blueprints unlocked from the start (the 'drop' commons, design/14 "2–3 common
- * blueprints drop from runs"). The demo hands these over so the forge has something to
- * craft immediately; a full build would grant them on the actual in-run drop. */
-export const STARTER_BLUEPRINTS: readonly string[] = Object.values(BLUEPRINT_CATALOG)
-  .filter((b) => b.source === 'drop')
+/**
+ * Blueprints a fresh account is handed at creation (design/14, decided 2026-09-14).
+ *
+ * **An explicit list, and it used to be computed.** It was `every source: 'drop' entry` — all
+ * five of them — which made the free-at-signup set and the EARNABLE set the same set by
+ * construction, so the boss drop below would have had nothing left to award. Two openers, one
+ * gun and one melee: a new account already carries `blaster` + `saber` for free without any
+ * blueprint at all, so this grant's job is to show what crafting DOES, not to supply a loadout.
+ */
+export const STARTER_BLUEPRINTS: readonly string[] = ['repeater', 'hammer'];
+
+/**
+ * The pool a boss kill rolls from (design/14, `DeathDropsSystem`) — every `source: 'drop'`
+ * blueprint that is not already handed over at signup.
+ *
+ * Derived rather than listed so the two sets can never overlap: adding a weapon to
+ * `STARTER_BLUEPRINTS` removes it from the earnable pool in the same edit, which is the
+ * relationship that broke when both were "all the drop entries".
+ */
+export const EARNABLE_BLUEPRINTS: readonly string[] = Object.values(BLUEPRINT_CATALOG)
+  .filter((b) => b.source === 'drop' && !STARTER_BLUEPRINTS.includes(b.weaponId))
   .map((b) => b.weaponId);
 
 /** Validate the catalog at load (design/09 "fail loud, never at use"): every blueprint
  * must name a real weapon and real elemental materials. Called by the catalog test; also
  * safe to call at boot. Returns the catalog so it can wrap a const initializer. */
 export function validateBlueprints(catalog: Record<string, WeaponBlueprint> = BLUEPRINT_CATALOG): void {
+  // The earnable pool must not be EMPTY, and this is the one check here that is about a
+  // relationship rather than about a field. It exists because the failure it catches is
+  // silent in every other way: a 5% boss roll against an empty pool awards nothing, forever,
+  // with no error and no red test — which is exactly what shipping `STARTER_BLUEPRINTS` as
+  // "every drop entry" alongside the drop would have done (design/14, 2026-09-14).
+  if (catalog === BLUEPRINT_CATALOG && EARNABLE_BLUEPRINTS.length === 0)
+    throw new Error("No earnable blueprints: STARTER_BLUEPRINTS covers every source:'drop' entry");
   for (const [id, bp] of Object.entries(catalog)) {
+    if (STARTER_BLUEPRINTS.includes(bp.weaponId) && bp.source !== 'drop')
+      throw new Error(`Blueprint '${id}': granted at signup but not source:'drop'`);
     if (!WEAPON_SPECS[bp.weaponId]) throw new Error(`Blueprint '${id}': unknown weaponId '${bp.weaponId}'`);
     for (const c of bp.cost) {
       if (!DAMAGE_TYPES.includes(c.element)) throw new Error(`Blueprint '${id}': unknown material element '${c.element}'`);
