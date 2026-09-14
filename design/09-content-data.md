@@ -311,9 +311,13 @@ DungeonConfig = {
   layout: 'linear'|'branching'|'graph2d'  // 05 reward-choice structure. 'graph2d' (2026-08-05)
                                  //   places a generated floor in real 2D instead of a west→east
                                  //   spine, and is what the shipped EMBER_DUNGEON uses.
-  extractionPieceId: RoomPieceId // the per-floor extraction room (descend vs leave, 05)
-  bossPieceId: RoomPieceId       // the deepest floor's room; its portal opens post-kill and
-                                 //   doubles as that floor's extraction (05)
+  extractionPieceId: RoomPieceId // the per-floor CHECKPOINT room. Its portal offers DESCEND
+                                 //   and nothing else since 2026-09-14 (05 "the boss is the
+                                 //   only exit"); the field keeps its name because the room
+                                 //   piece and its id are shipped content. Its POSITION is
+                                 //   what gates how many rooms are skippable (05)
+  bossPieceId: RoomPieceId       // the deepest floor's room; its portal opens post-kill and is
+                                 //   the ONLY portal in the game that offers EXTRACT (05)
   branchFactor?: number          // 'branching' only: sibling rooms per fork stage (default 2)
   floorMaps?: Partial<Record<number, DungeonFloorMap>>   // per-floor hand-authored override
                                  //   (05 "Hand-authored PvE floors"); level 1 sets all five
@@ -330,7 +334,7 @@ RoomPiece.role?: 'normal' | 'extraction' | 'boss'   // extends the RoomPiece sch
                  // exactly one non-normal room per floor carries the extract/descend portal
 ```
 
-- **Floors, not one flat room list.** Each floor is `roomsPerFloor` pieces with exactly one **extraction room** placed among them; its position gates how many rooms are skippable (`05`). The deepest floor's extraction *is* the boss room.
+- **Floors, not one flat room list.** Each floor is `roomsPerFloor` pieces with exactly one **capstone** placed among them — a checkpoint room on every floor but the last, whose portal only descends, and the boss room on the last, whose portal is the run's only exit (`05`, 2026-09-14). Its position gates how many rooms are skippable (`05`). Chest rooms (`05`, locked 2026-09-14, not built) are a normal-role piece, not a second capstone.
 - Generation is driven by the injected **`roomgenPrng` seeded per run** (`06`/`08`), so a run is reproducible from `seed + input stream` — required for co-op determinism and headless re-judge (`06`). Layout/selection reuses funny's PRNG roomgen approach (`05`).
 - **Encounter quality stays curated**: pieces are hand-authored; only their *arrangement* and *which enemies/tier* are procedural (`05`).
 
@@ -386,7 +390,7 @@ MaterialDef = { id: MaterialId; nameKey; element: DamageType; tier }
               // 5 elemental kinds (03/14) × tier by depth; feeds forge recipes (14)
 ```
 
-- **Materials are the run's only carry-out** and the meta-forge input. They are **banked at extraction rooms** (reaching one = a checkpoint, `05`); a run-ending death forfeits the **entire un-extracted carry-out** — this floor's buffer *and* everything banked-but-not-extracted earlier in the run (`05`'s locked wipe rule; this line claimed "only the current floor's" until 2026-09-03). ✅ **Shipped 2026-07-24 (ROADMAP 1.4/1.5, `ENGINE_VERSION` 15, additive):** `state.floorMaterials` (buffer) → `state.bankedMaterials` (carry-out), merged by the new `ExtractionSystem` on EXTRACT/DESCEND; forfeit-on-death is free at both tiers (the buffer is never merged, and the merged bag is never handed to the meta layer — `RunOutcome.lose()` skips `bankRunMaterials`). Gated entirely behind `EngineConfig.floors?` — every config that omits it is untouched.
+- **Materials are the run's only carry-out** and the meta-forge input. A floor's buffer is **folded into the carry-out bag at each capstone** on descend — which is bookkeeping, not safety: since 2026-09-14 nothing takes that bag off the table before the boss dies (`05`'s "the boss is the only exit"; this line said "banked at extraction rooms (reaching one = a checkpoint)" until then, which read as insurance the checkpoint no longer sells); a run-ending death forfeits the **entire un-extracted carry-out** — this floor's buffer *and* everything banked-but-not-extracted earlier in the run (`05`'s locked wipe rule; this line claimed "only the current floor's" until 2026-09-03). ✅ **Shipped 2026-07-24 (ROADMAP 1.4/1.5, `ENGINE_VERSION` 15, additive):** `state.floorMaterials` (buffer) → `state.bankedMaterials` (carry-out), merged by the new `ExtractionSystem` on EXTRACT/DESCEND; forfeit-on-death is free at both tiers (the buffer is never merged, and the merged bag is never handed to the meta layer — `RunOutcome.lose()` skips `bankRunMaterials`). Gated entirely behind `EngineConfig.floors?` — every config that omits it is untouched.
 - **Deeper floors roll better materials** — `dropTableByDepth` / `materialTierByDepth` (below) shift the pools by floor; weapon *finds* stay random at every depth (`05`). ✅ First-pass shipped: `rollDrop(prng, tier)` tags a material drop with a depth signal (`DeathDropsSystem` passes `state.floorIndex` — a straight identity curve). The configurable `materialTierByDepth` array, and `dropTableByDepth` entirely, are **`ROADMAP` B4**: neither is an unwired field, neither was ever added to the real `DungeonConfig`. So depth buys material TIER today and nothing else — a deeper floor rolls from the same drop pool as floor 1.
 - Rolled from `dropPrng`; rewards are recomputed/validated server-side, never trusted from the client (funny ADR-006, `06`).
 

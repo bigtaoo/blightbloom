@@ -5,7 +5,7 @@ What the player actually does. This is the single source of truth for the **core
 ## The decisions (locked)
 
 - **Two separate modes, not one blended activity.** PvE is a **co-op search-fight-extract run** (threat is AI only); PvP is an **independent PvPvE arena** (threat is other players **and** AI). They do **not** share a map, and PvP players **never intrude on a PvE run** — the two are entirely different activities.
-- **PvE adopts an extraction loot loop — but a softened, PvE-only form.** You search for loot, push deeper for better rewards, and carry materials out. *(Through `ENGINE_VERSION` 60 the loop also let you bank and leave at ANY floor's checkpoint; since 61 only the boss floor ends a run, and an unfinished run is saved and resumed instead — see "Only the boss floor ends a run" below.)* What makes this *not* the rejected extraction-shooter (below): **weapons never persist regardless** (they vanish at run end no matter what — there is nothing to "lose"), **only materials extract**, the threat is **AI only** (no rival players hunting you), and **nothing persistent is ever at risk** — the account stash and every blueprint are untouchable by a run, so the worst a death can cost is *this run's own winnings*. It keeps extraction's push-your-luck tension without its casual-hostile "lose your hard-won gear to a stranger" sting.
+- **PvE adopts an extraction loot loop — but a softened, PvE-only form.** You search for loot, push deeper for better rewards, and carry materials out. **The boss is the only exit (locked 2026-09-14, shipped `ENGINE_VERSION` 61).** No interior checkpoint ends a run; a floor's portal offers DESCEND and nothing else, and the carry-out bag is handed over only by killing the last floor's boss. A player who wants to stop mid-run SAVES instead — see "Only the boss floor ends a run" below for the decision and its cost, and "An unfinished single-player run can be saved and continued" for the half that makes it not a nerf. *(Through `ENGINE_VERSION` 60 the loop also let you bank and leave at any floor's checkpoint; that half is gone.)* What makes this *not* the rejected extraction-shooter (below): **weapons never persist regardless** (they vanish at run end no matter what — there is nothing to "lose"), **only materials extract**, the threat is **AI only** (no rival players hunting you), and **nothing persistent is ever at risk** — the account stash and every blueprint are untouchable by a run, so the worst a death can cost is *this run's own winnings*. It keeps extraction's push-your-luck tension without its casual-hostile "lose your hard-won gear to a stranger" sting.
 
   **What a death actually costs, stated once (corrected 2026-09-03 — this bullet used to claim "only this floor's un-banked materials").** A run-ending death or team wipe forfeits the **entire un-extracted carry-out**: this floor's buffer *and* everything banked-but-not-extracted earlier in the run. That is the rule "Co-op revive & team-wipe" locked under Open questions below, and it is the rule the code implements — `client/src/game/controllers/RunOutcome.ts`'s `lose()` simply never calls `bankRunMaterials()`, so `state.bankedMaterials` dies with the run. The softening this mode offers is therefore **"nothing persistent is lost"**, not "a checkpoint caps the loss"; the checkpoint's job is to let you *stop* (EXTRACT) before the pile gets bigger, not to insure the pile you already have. Consequence worth naming, because it is easy to read the two-tier buffer as implying otherwise: `floorMaterials` → `bankedMaterials` is per-floor bookkeeping the HUD reads, not a risk boundary — both pools are lost together.
 - **Weapons are ephemeral; materials are the only carry-out.** Every weapon — brought in or found — is wiped at run end. The single thing that leaves a run is **materials**, the meta-forge currency (`meta` doc, later). This *is* `06`'s "in-run resources are engine state, wiped each match," made literal.
@@ -31,8 +31,10 @@ One run, floor-based push-your-luck:
 ```
 Loadout (bring up to 2 weapons; every free slot filled by kind — a run always carries a gun + a melee weapon)
    → enter floor 1 (seeded)
-      → clear (some of) its rooms: fight, open chests [NOT BUILT — ROADMAP B1],
-                                   pick up weapons & materials
+      → work through (some of) its rooms — not all of them are fights:
+         · combat rooms: kill, pick up weapons & materials
+         · chest rooms: open a small chest solo, or a big chest with the
+           whole party standing on its mechanisms  (locked 2026-09-14, NOT BUILT)
       → reach this floor's EXTRACTION ROOM
          → DESCEND (materials so far are locked into the carry-out bag — deeper
            = better; the bag is still forfeited whole by a later death)
@@ -634,6 +636,55 @@ Three pickup classes, split by **whether the player must make a choice**. Materi
 - **Weapon energy — auto, under the same usefulness gate as a consumable** (`ENGINE_VERSION` 59, `03`). Restores `ENERGY_PICKUP_AMOUNT` to the player's shared ammo pool; at a full pool it is left on the floor, exactly like the health pickup, and for the same reason (no item bag, so collecting one at full destroys it for nothing). It is the second instant item, and the first added since `pickupWouldApply` was implemented — the rule's own note said *"if a shield/temp-buff instant item is ever added, this is the one place it needs a clause"*, and this is that clause.
 - **Weapons — click-driven, drop-on-replace.** Not auto (swapping is a choice). A non-blocking **weapon-pickup panel** (`10`, ENGINE_VERSION 32) lists every floor weapon within reach (real icon + name); tapping a row IS the pickup — no modal, no pause, lockstep can't stop for one player. `PickupSystem` swaps it into the active slot and **the replaced weapon drops back onto the floor** (`02`/`03`). The switch button picks which of the two slots to overwrite. (Superseded the original single-nearest "ground compare card" + tap-`INTERACT` gesture — see `03`'s "Pickup & switch" section for the full history.)
 
+## Chest rooms: not every room is a fight 🔴 (locked 2026-09-14, NOT BUILT)
+
+This doc's core loop has said **search**-fight-extract since it was written, and the game has
+never had the first verb. Every room held enemies, every drop came off a corpse, and a room was
+therefore a thing to survive rather than a thing to look into — `ROADMAP` B1, filed 2026-09-03.
+The decision below closes it. **None of it is built**; this section is the spec, not a status.
+
+- **A floor mixes combat rooms with chest rooms.** Not every room has enemies in it. A chest
+  room's content *is* the chest; whether one also holds a fight stays a per-piece authoring
+  choice rather than a rule, so the mix is tunable in the editor without an engine change.
+- **A small chest opens solo.** One player, one `INTERACT`, no gate. This is the find that has
+  to work in the mode most runs are actually played in.
+- **A big chest is opened by the whole party at once.** It is ringed by **mechanisms**, one per
+  player who entered the map, and it opens only while **every** mechanism has a player standing
+  on it simultaneously. The count scales with the party instead of locking the chest away from a
+  smaller one.
+- **More chest-room types come later.** Deliberately deferred. These two are the slice worth
+  building and validating first, and a third kind that arrives before they have been played is
+  a guess stacked on a guess.
+
+### The constraints this inherits, stated before anything is written
+
+- **The mechanism count is the run's SEAT count, fixed at run start** (`EngineConfig.players`),
+  not "how many players are currently alive, connected, or in the room". Both are engine state
+  and both are deterministic, but only the first is stable: a count that tracks the living turns
+  a teammate bleeding out into a chest that silently re-gates itself, and a count that tracks
+  presence makes the puzzle re-solve every time someone steps off. Fixed at start is also the
+  only version a downed teammate cannot soft-lock.
+- **`INTERACT` already has an owner.** It drives the revive channel and nothing else (`07`/`08`).
+  A chest is the second consumer, which makes button arbitration a real question the first time
+  a chest sits next to a downed player rather than a detail to settle in the renderer.
+- **A chest is engine state, so it is replay and netcode state.** Opened-ness must live in
+  `GameState` and roll its contents off `dropPrng` like every other drop (`06`/`09`), or a
+  co-op run desyncs on the first chest and every recorded run stops reproducing.
+
+### What this does *not* decide
+
+- **What a chest contains.** `ROADMAP` B2 — the run-buff offering flow — is the obvious tenant
+  (both this doc and `14` describe run buffs as found in "chests / rooms / shop", and today they
+  arrive as a 6/84 weight on the kill table, which is not a choice anyone makes). Chests unblock
+  it; they do not answer it. Whether a big chest hands over a **choice of buffs** the way the
+  floor cards do, or simply a fatter roll, is open.
+- **Whether a solo big chest is a gate at all.** One player means one mechanism, which that
+  player is standing on by walking up to it — so in single-player the big chest degenerates into
+  a small chest with an extra step, and the coordination this mechanic exists for only ever bites
+  in co-op. That is a consequence of the rule as locked, not an objection to it, but it is worth
+  measuring rather than discovering: if solo is the mode most runs are played in, the big chest's
+  design cost is being paid in the mode where it returns nothing.
+
 ## Loot economy: what a floor hands you ✅ (2026-09-05, `ENGINE_VERSION` 57/58)
 
 Two design calls from the game's owner, made together because they are one question — how
@@ -897,7 +948,7 @@ The pivot mechanic from `03`. Its identity across the game:
 - ~~**Co-op revive & team-wipe**~~ **(DECIDED + shipped, ROADMAP 3.2, `ENGINE_VERSION` 16→17):** the model, resolving the three sub-questions:
   - **How many revives?** *Unlimited* — there is no per-run or per-player revive counter. A lethal hit sends a player **`downed`** (not dead) with a **bleedout timer** (`DOWNED_BLEEDOUT_TICKS`, ~30 s); the natural limiter is that timer plus the long channel plus the reviver's exposure, not a hard cap. This keeps the rule stateless and replay-clean, and avoids a "last-revive" cliff that punishes the group that keeps trying.
   - **Is the downed player vulnerable?** *No — a downed player is invulnerable to further damage* (they are already at 0 HP; bullets/AoE/DoT skip them). Only two things end a downed player: the **bleedout timer expiring** (→ permanently `dead`, unrevivable) or a **total team wipe**. The revive channel **pauses bleedout while it is actively running**, so a committed, uninterrupted revive always succeeds — the tension is *reaching* the teammate and *staying* on the channel (it cancels/resets if the reviver moves out of range, stops holding INTERACT, or is themselves downed), not racing a clock the rescuer can't see.
-  - **What ends a run on a total wipe?** The run ends (enemies win) **the moment no player is "up"** — i.e. every player is simultaneously `downed`-or-`dead`, so no one remains to revive. A wipe forfeits the **entire un-extracted run carry-out** (this floor's buffer *and* everything banked-this-run since the last extraction), *not* just the current floor — this is what preserves the core "bank now [EXTRACT] or dive deeper [risk it all]" push-your-luck tension (the locked "PvE adopts an extraction loot loop" decision). The **account stash is never touched by a run**, so nothing *persistent* is ever lost (that same decision's promise); only the current run's winnings are at stake. *(This superseded the looser "lose only that floor's un-banked buffer" phrasing the locked-decisions and "Extraction rooms" bullets used to carry — it understated the risk and contradicted the push-your-luck pillar. Those two bullets were finally corrected 2026-09-03, having disagreed with this decision for a month; `09`'s materials bullet and `ROADMAP`'s 1.4 entry carried the same stale claim and were corrected in the same pass.)*
+  - **What ends a run on a total wipe?** The run ends (enemies win) **the moment no player is "up"** — i.e. every player is simultaneously `downed`-or-`dead`, so no one remains to revive. A wipe forfeits the **entire un-extracted run carry-out** (this floor's buffer *and* everything banked-this-run since the last extraction), *not* just the current floor — and since the boss became the only exit (2026-09-14) the bag is at risk for the WHOLE run rather than up to the next checkpoint, because no checkpoint takes it off the table any more. What push-your-luck survives is "descend again or save and come back", not "bank now or dive deeper". The **account stash is never touched by a run**, so nothing *persistent* is ever lost (that same decision's promise); only the current run's winnings are at stake. *(This superseded the looser "lose only that floor's un-banked buffer" phrasing the locked-decisions and "Extraction rooms" bullets used to carry — it understated the risk and contradicted the push-your-luck pillar. Those two bullets were finally corrected 2026-09-03, having disagreed with this decision for a month; `09`'s materials bullet and `ROADMAP`'s 1.4 entry carried the same stale claim and were corrected in the same pass.)*
   - In **single-player** this all collapses correctly with zero special-casing: the sole player going `downed` means "no player up" → the run ends that same tick (no teammate can ever revive), exactly the old death behaviour — the bleedout/revive machinery is simply inert without a second player.
 - Is co-op PvE **matchmade** or **friends/party only** at launch? (Affects `06` room/relay transport.)
 - ~~**Descend vs extract UI/commitment**~~ **(first-pass shipped, ROADMAP 1.4):** forward-only, as assumed — descending reloads the next floor's waves, no backtrack. The input mapping (hold=extract, tap=descend) is a first-pass engine-side convention, not a final UI decision; `10`'s HUD work may change the actual control feel (e.g. an explicit two-choice prompt instead of a hold gesture).

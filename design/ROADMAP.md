@@ -806,10 +806,55 @@ reconciliation cost, and it lost to a tax-and-compliance argument.
 
 ---
 
+## Product stages, and what closes Stage 1 (2026-09-14)
+
+The phases above are the **engineering** spine — dependency order, not calendar order. The
+project also has a three-stage **product** plan, and the two are different axes; this section is
+the map between them, added because "are we done with validation?" is not a question the phase
+spine can answer.
+
+| Stage | What it is for | State |
+| --- | --- | --- |
+| **1 — Validation** | Prove the gameplay and the art actually work. Content stays deliberately thin. | **Nearly closed** — see below |
+| **2 — Polish** | Tune the core experience and the systems around it, on a loop that has been proven. | Not started |
+| **3 — Launch** | Ship it. Payments go live (Phase 9), store pages, real acquisition. | Not started |
+
+**What Stage 1 has answered.** Map and character presentation (one 5-floor hand-authored PvE
+level, one 60-room hand-authored arena, three rigged orb-core characters, real art on everything
+but bullets). The PvE loop and the PvP battle royale, both playable end to end. Audio, netcode,
+accounts, i18n, the billing scaffold, telemetry and ops — all shipped, all tested (90/90
+coverage, zero files over the 500-line convention).
+
+**What Stage 1 has not answered yet.** Four items, in the order they should close. The first two
+are decided and unbuilt; the last two are not engineering work at all.
+
+1. **The search verb.** Decided 2026-09-14 — chest rooms, small (solo) and big (one mechanism
+   per seat, all occupied at once). Spec in `design/05` "Chest rooms"; this is **B1**, and it is
+   the largest hole in the loop as written. Doing it after Stage 2 starts means polishing a loop
+   that is missing a verb.
+2. **A reason to run it again.** Decided 2026-09-14 — a blueprint drops from the boss at 5%
+   (`design/14`). This is **B5**, and it needs one content call first: every `source: 'drop'`
+   blueprint is currently granted free at signup, so the earnable pool is empty by construction.
+3. **A real device.** WeChat is verified in the simulator only; the render quality ladder's
+   `low` tier has never been seen on a handset, and the portal build's ads and banner have never
+   run under a registered domain. All three are silent when wrong.
+4. **A player who is not the developer.** Every gameplay report so far comes from one person.
+   The big chest in particular **cannot be validated solo** — one seat means one mechanism, so
+   the coordination it exists for never fires. That makes a small closed multiplayer test the
+   only instrument that can measure it, and it is worth keeping *closed*: an open portal launch
+   this thin would return "not enough content", which is already known, at the cost of a
+   first-impression that only happens once.
+
+Deliberately **not** Stage 1 blockers: Phase 9 payments (Stage 3 by definition), **B3**
+(skippable rooms), **B4** (the depth-curve fields), and **B2** (what a chest actually offers —
+unblocked by item 1, but a question to answer once chests can be played).
+
 ## Backlog — designed in prose, never built (filed 2026-09-03)
 
 Five mechanics the design docs describe in the present tense, as if they were part of the
-shipped loop, and which have **no implementation at all**. They are filed here rather than
+shipped loop, and which have **no implementation at all**. **Two of them were DECIDED on
+2026-09-14** (B1 and B5 — see the stage section above); a decision is not an implementation, so
+they stay filed here, now with a spec to build against rather than a hole. They are filed here rather than
 left in the docs' running text because the docs' own rule is that status lives in exactly one
 place — and a mechanic described in a "core loop" diagram reads as built, which is how all
 four survived this long. Each doc sentence was corrected in the same pass to point here.
@@ -817,20 +862,30 @@ four survived this long. Each doc sentence was corrected in the same pass to poi
 None is a bug: nothing regressed, and the loop is playable without them. They are the gap
 between the loop as designed and the loop as shipped.
 
-- **B1 🔴 Chests.** design/05's core-loop diagram says *"clear (some of) its rooms: fight,
-  **open chests**, pick up weapons & materials"*, its controls section says *"an `INTERACT`
-  button opens chests"*, and design/07 step 9 says a chest rolls the drop table. There is no
-  chest entity anywhere in the repo — `INTERACT` drives the revive channel and nothing else,
-  and every drop in the game comes from an enemy death (`DeathDropsSystem`) or an arena loot
-  marker. A room therefore has nothing in it to *find*, only things to kill. This is the
-  largest single hole in the PvE loop as written, and it is the natural home for B2.
-- **B2 🔴 A real run-buff offering flow.** design/05 and design/14 both describe run buffs as
+- **B1 🔴 Chests — DESIGN LOCKED 2026-09-14, still unbuilt.** design/05's core-loop diagram says
+  the player *opens chests*, its controls section says *"an `INTERACT` button opens chests"*, and
+  design/07 step 9 says a chest rolls the drop table. There is no chest entity anywhere in the
+  repo — `INTERACT` drives the revive channel and nothing else, and every drop in the game comes
+  from an enemy death (`DeathDropsSystem`) or an arena loot marker. A room therefore has nothing
+  in it to *find*, only things to kill. This is the largest single hole in the PvE loop as
+  written, and it is the natural home for B2. **The spec now exists**: `design/05` "Chest rooms"
+  — a floor mixes combat rooms with chest rooms; a small chest opens solo; a big chest is ringed
+  by one mechanism per seat and opens only while every one is occupied; further chest-room types
+  are deferred on purpose. That section also records the three constraints the build inherits
+  (seat-count-at-start, `INTERACT` arbitration against the revive channel, and chest state being
+  replay/netcode state).
+- **B2 🔴 A real run-buff offering flow — unblocked by B1's decision, still unanswered.** design/05 and design/14 both describe run buffs as
   found in *"chests / rooms / shop"*; `balance/runbuffs.ts`'s own module doc concedes the
   shipped reality (*"the demo drops them off the DROP_TABLE"*). So the in-run power layer that
   replaced the affix system is delivered entirely by a 6/84 weight on the kill table — never
   chosen, never offered, never a decision. Blocked behind B1 for the chest route; a
-  room-clear-reward or a shop room are the alternatives design/05 names.
-- **B3 🟡 An extraction room that is not always last.** design/05: *"You need not clear a
+  room-clear-reward or a shop room are the alternatives design/05 names. *(2026-09-14: B1's chest
+  route is now a locked design, so the blocker is gone — what is still open is whether a chest
+  hands over a CHOICE of buffs the way the floor cards do, or just a fatter roll.)*
+- **B3 🟡 A capstone that is not always last.** *(Filed as "an extraction room that is not always
+  last"; since 2026-09-14 an interior capstone only descends, so what a mid-floor one buys is
+  rooms left unfought on the way down — never leaving the RUN early, which no floor offers any
+  more.)* design/05: *"You need not clear a
   floor. How many rooms you can skip depends on where that floor's extraction room sits — an
   extraction room mid-floor lets you leave one or two rooms unfought, a natural 'greed for the
   last chest vs. leave safe' micro-decision."* Zero rooms are skippable today, for two
@@ -848,8 +903,15 @@ between the loop as designed and the loop as shipped.
   `rollDrop`, which is enough to make `minTier` recipes demand deeper floors; the missing half is
   a configurable curve and a per-depth drop POOL (better weapons/buffs deeper, not just better
   materials).
-- **B5 🟡 Blueprints that drop from runs.** design/14: *"**2–3 common blueprints drop from
-  runs** (permanent the moment you obtain them)"*. `Pickup` has no blueprint kind and no drop
+- **B5 🟡 Blueprints that drop from runs — DESIGN LOCKED 2026-09-14, still unbuilt.** The rule is
+  now *a boss kill rolls a blueprint at 5%* (first-pass number, `design/14`). Since 2026-09-14 the
+  boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
+  to the meta layer — which is most of what made this item structural rather than a table entry.
+  **One content call still blocks it**: `STARTER_BLUEPRINTS` is computed as every `source: 'drop'`
+  entry and granted at signup, so the earnable pool is empty by construction; either the signup
+  grant shrinks to 2-3 openers or other weapons move onto `source: 'drop'`. The original filing
+  follows. design/14: *"**2–3 common blueprints drop from runs** (permanent the moment you obtain
+  them)"*. `Pickup` has no blueprint kind and no drop
   table can roll one — nothing in a run grants a blueprint. `STARTER_BLUEPRINTS` hands over
   every `source: 'drop'` entry (**5** of them) at account creation instead, which
   `content/blueprints.ts` describes as a demo stand-in for exactly this. So the only ways to
@@ -863,9 +925,11 @@ between the loop as designed and the loop as shipped.
 
 ```
 Backlog (B1-B5)  designed in prose, never built — chests, the run-buff offering flow, a
-                 mid-floor extraction room (nothing is skippable today), the two depth-curve
+                 mid-floor checkpoint (nothing is skippable today), the two depth-curve
                  DungeonConfig fields that were never actually added, and blueprints dropping
-                 from runs. See the Backlog section above; each is filed, none is a regression.
+                 from runs. B1 and B5 were DECIDED 2026-09-14 (chest rooms; a 5% boss drop) and
+                 are the two Stage 1 closeout items — see "Product stages" above. See the
+                 Backlog section; each is filed, none is a regression.
 Phase 0 (sync)  ─┬─ 0.1 affix removal ──┬─ 0.2 rarity
                  │                       └─ 0.3 run-buffs ── 0.6 pickup names
                  └─ 0.4 shield ── 0.5 characters
