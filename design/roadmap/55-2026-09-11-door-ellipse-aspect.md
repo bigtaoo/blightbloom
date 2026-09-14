@@ -247,3 +247,71 @@ chest rooms" is half-shipped — the one no-fight chest room in the level is the
 that already had no spawns. A dedicated chest-room piece placed into the floor maps is content
 work, not engine work. `B2` (what a chest OFFERS — the run-buff choice) is unblocked by this and
 still unanswered.
+
+### The nine claims that shipped unpinned (2026-09-14, same day, tests only)
+
+An audit of the week's work, asked for directly (*"看看上周做的内容有没有测试可以加"*). Everything
+else the week shipped came with its own suite — `runSave` even with a measured 21-mutant battery —
+and the gaps were all in the pass above, all of the same shape: **a line that runs on every call
+with only one side of it exercised**, which is the column CLAUDE.md already says is the one that
+bites. Nine of them, fixed in order.
+
+**The id-space fix had no test at all, and that is the one worth reading.** `nextChestId` exists
+because of the regression three sections up, and nothing in the repo could have failed if it were
+reverted:
+
+- **coverage** was green over it — the line runs on every floor placement, so the first test that
+  placed a chest floor covered it;
+- **the golden gate** moved and pointed the wrong way, which is the account already recorded above;
+- **`systems/chests.test.ts`** hand-builds its chests with `s.nextId()` in a helper, deliberately,
+  because it is a test about the system and not about the placement. It could never have noticed.
+
+Only the PvE bot sim disagreed. A sim is not a gate — minutes, and a distribution rather than a
+pass — so the rule it discovered is now `engine/systems/chestPlacement.test.ts`, and the form is
+the point: **a twin.** The same floor, the same seed, placed once with chests and once without,
+asserting the enemy id sequence and the `noticeDelayTicks` values are identical. That pins the
+property (*adding a prop to a room must not retune the room's difficulty*) rather than today's id
+numbers, which any legitimate spawn-order change is allowed to move. Reverting the fix now fails
+three tests.
+
+**The shipped level's five chests were checked by nothing.** `world/rooms/emberLevel1.test.ts`
+holds every other authored placement to a rule — spawn clearance, room size, door passability by
+flood fill — and chests arrived after it. What makes a chest *less* safe than a spawn point is
+that `SpawnSystem` CLAMPS it instead of failing on it: one authored into a pillar slides somewhere
+else, possibly out of its own room, silently. Now: the content decision itself (five pieces, one
+big, in the capstone), piece bounds, distance from a player spawn, the plate ring at one through
+four seats, per-floor counts, and — through the existing flood fill — every chest and every
+derived plate on reachable, walkable ground. Moving one chest into a wall in the JSON fails three
+of these; pushing the big chest against one so a plate lands in stone fails five.
+
+The other seven, briefly: `chests.test.ts` counted the payout and never looked at it (pool
+membership, `spawnTick` — the one-tick gap `PickupSystem`'s guard stands on — one `dropPrng` draw
+per weapon, same-seed determinism, the clamp off a wall, one pile), and was missing three
+arbitration arms (a downed **enemy** not blocking the INTERACT, a PvP reviver *with* a bandage
+still blocking it, a known room id with no runtime row). `floorLoot.test.ts` did not know chests
+exist although they spend the same allowance — both directions are now pinned, including the
+**quota-is-a-floor** case this volume recorded three paragraphs up as prose only.
+`blueprints.test.ts` gained the fourth fail-loud case and a note on why the empty-pool refusal
+cannot be driven by a test at all (it is gated on the real catalog by identity). `Scene.test.ts`
+covers the chest *wiring*, since `ChestLayer` is owned by `Scene` and its own suite stays green if
+`reconcile`/`clear` stop calling it. And `EventReactor.test.ts` turns five scattered "not wired up
+yet" comments — `chest_open`, `blueprint_drop` and the zone's three — into **one list derived from
+the event union**, so a new engine event lands as a red test with two honest ways out. That last
+one meets `build/logicConsistency.mjs`'s own criterion (two halves maintained in different
+packages that drift in silence) and is deliberately NOT in that manifest yet: every entry there is
+a dedicated file, and promoting this one means splitting it out and moving the "12 named gates"
+count in CLAUDE.md with it. Filed as the cheap follow-up it is, not done at the end of a pass.
+
+Every gate was verified by mutation rather than assumed, which is the discipline this repo already
+paid for twice: reverting `nextChestId`, dropping the chest's `floorWeaponsDropped` line, the
+`teamId` term, the walkable clamp, the `spawnTick` stamp and the room-runtime guard; commenting
+out `Scene`'s two calls; moving a chest and a plate into stone; and adding a fake engine event —
+each fails exactly the tests that name it, and nothing else. engine 1534 → **1572**, client
+6211 → **6216**.
+
+**One finding was left as a report rather than a gate**, and the reason is the assertion craft and
+not the finding: `ember_l1_court`'s small chest sits **0.71 grid** from an enemy spawn point, so a
+mob's body (radius ≈ 0.47 grid) covers the chest. No design doc states a rule for chest-vs-mob
+spacing, and a threshold reverse-engineered from the content that happens to pass is a test that
+asserts nothing. Whether to move it is a content call, filed here beside the no-fight-rooms item
+above.
