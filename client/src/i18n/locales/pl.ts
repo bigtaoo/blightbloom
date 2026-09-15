@@ -113,9 +113,6 @@ export const pl: Translations<typeof en> = {
       energy: 'Ogniwo energii',
     },
     chest: {
-      title: 'Skrzynia',
-      openKeys: 'Naciśnij E, aby otworzyć',
-      openTouch: 'Naciśnij +, aby otworzyć',
       bigTitle: 'Duża skrzynia',
       plates: 'Zajęte płyty {on}/{total}',
     },

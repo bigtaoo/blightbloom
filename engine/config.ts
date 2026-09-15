@@ -89,14 +89,15 @@ export const BOSS_WEAPON_DROPS = 1;
 export const BLUEPRINT_DROP_PERMILLE = 50;
 
 // ── Chest rooms (design/05 "Chest rooms", ENGINE_VERSION 63) ──────────────────
-// How close a player must stand to work a chest, and how far out its mechanisms sit.
+// How close a player must be for a small chest to open, and how far out a big chest's
+// mechanisms sit.
 //
-// `CHEST_INTERACT_RANGE_GRID` matches `REVIVE_RANGE_GRID` exactly, and that is a decision
-// rather than a coincidence: INTERACT drives both, so a player standing where they can reach
-// a downed teammate can also reach a chest, and the arbitration between the two (ChestSystem
-// yields to a revive in progress) is about intent, never about a geometry the player has to
-// learn twice.
-export const CHEST_INTERACT_RANGE_GRID = 1.5;
+// **Renamed from `CHEST_INTERACT_RANGE_GRID` on 2026-09-15** (`ENGINE_VERSION` 66), when the
+// owner made a small chest open on APPROACH instead of on a held INTERACT: the number did not
+// move, but "interact" stopped describing what it gates. The value still matches
+// `REVIVE_RANGE_GRID` exactly, which is now a smaller claim than it was — one arm's length,
+// learned once — rather than the button-arbitration argument the old comment made here.
+export const CHEST_OPEN_RANGE_GRID = 1.5;
 // The ring radius a big chest's mechanisms are derived onto. Wide enough that standing on one
 // plate is visibly NOT standing on the chest (so the coordination reads), narrow enough that
 // the whole ring fits inside the smallest authored room (15x15) with its perimeter ring and a
@@ -117,8 +118,10 @@ export const CHEST_SMALL_WEAPONS = 1;
 // the player makes rather than a number the floor hands them.
 
 // How close a player must stand for a shop's counter to be workable. Matches
-// `CHEST_INTERACT_RANGE_GRID` and therefore `REVIVE_RANGE_GRID`, and for the same reason
-// those two match each other: a player should learn "arm's length" once, not once per prop.
+// `CHEST_OPEN_RANGE_GRID` and therefore `REVIVE_RANGE_GRID`, and for the same reason those two
+// match each other: a player should learn "arm's length" once, not once per prop. (A counter
+// still needs a TAP — a shop spends coins, so it stays a choice; only the small chest, which
+// costs nothing, was moved to open on approach.)
 export const SHOP_INTERACT_RANGE_GRID = 1.5;
 
 // How many lines a shop stocks. Three, and their KINDS are fixed (weapon / buff / supply) —

@@ -99,6 +99,12 @@ const PURE_FILES = [
   // here is what keeps it that way: money logic that can only be exercised through a live
   // fetch is money logic nobody exercises.
   'controllers/StorePurchase.ts',
+  // The HUD context mapping, carved out of GameLoop.updateHud on 2026-09-15. It answers a
+  // handful of per-frame questions on the HUD's behalf (which seat, can this run be recorded,
+  // who else is here) from two narrow structural interfaces, so every arm of it is decidable
+  // with two plain objects and no page — which is the whole reason the extraction was worth
+  // doing rather than shaving a comment off a 500-line file.
+  'controllers/hudContext.ts',
 ] as const;
 
 /**

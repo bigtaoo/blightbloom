@@ -31,7 +31,11 @@ const PICKUP_GLOW: Record<PickupKind, number> = {
 // with the display's refresh rate instead of reading as a float.
 const BOB_PERIOD_MS = 2000; // one unhurried hover cycle every 2s (0.5 Hz)
 const BOB_RATE = (Math.PI * 2) / BOB_PERIOD_MS; // rad/ms
-const BOB_REST_Z = 9; // hover height the bob oscillates around (px)
+/** Hover height the bob oscillates around (px). Exported because a COLLECTED drop's flight
+ *  (`scene/pickupFlight.ts`) starts from a fresh view rather than from the one that was on the
+ *  floor, and has to launch from the height that one was drawn at — the two numbers being the
+ *  same is what makes the flight continuous with the drop it replaces. */
+export const BOB_REST_Z = 9;
 const BOB_AMPLITUDE = 4; // px either side of rest — bigger than before; slow travel needs the reach to read
 
 // Golden angle: spacing successive drops' start phase by it keeps a whole floor's worth

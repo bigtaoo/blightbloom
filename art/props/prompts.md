@@ -273,15 +273,62 @@ no dome. Slightly worn, never rusted or broken.
 [the two-other-boxes constraint]
 ```
 
+## What came back — all four accepted first time (2026-09-15)
+
+Measured before any of it was called usable, because the things that matter most here are
+invisible by eye. Every number below is after `alphaClamp.mjs` + trim, which is the only state in
+which they mean anything:
+
+| file | trimmed | aspect | footprint share | median luma |
+| --- | --- | --- | --- | --- |
+| `chest_small_raw.png` | 874 x 629 | 1.39 | 0.919 | **107** |
+| `chest_small_open_raw.png` | 794 x 845 | 0.94 | 0.935 | 41 |
+| `chest_big_raw.png` | 966 x 667 | 1.45 | 0.934 | **49** |
+| `chest_big_open_raw.png` | 638 x 783 | 0.82 | 0.945 | 30 |
+| (`prop_crate.png`, for reference) | 144 x 128 | 1.13 | — | 53 |
+
+**Footprint share is the number that decided the pair could ship.** It is the widest opaque run
+in the bottom tenth of the file over the file width — "how much of this picture is the box
+standing on the floor". The two sprites of a pair swap in place on one ground point and are
+scaled by WIDTH, so if the open file gave its box a smaller share of the frame, the chest would
+visibly shrink at the moment it paid out. The four land within 0.026 of each other;
+`client/src/game/scene/chestArt.test.ts` holds the pairs to 0.05.
+
+**The aspects are accepted rather than rerolled.** `propRender.ts`'s rule is that the art's own
+aspect sets the drawn height, so 1.39 draws the small chest 18 x 12.9 world px instead of the
+18 x 14.4 the prompt asked for, and the open files — taller than wide, because the lid is thrown
+back — draw 18 x 19.1 and 28 x 34.4. That is the lid standing up, which is what it should do.
+
+**The alpha plateau arrived on all four, exactly as the props batch predicted** — a body at
+250-254 rather than 255, wrapped in a veil of alpha 1-8 reaching well past the object.
+`alpha-audit.mjs` calls every one of them *clean* (haze fractions of 0.3-0.8%), which is the audit
+being narrower than the problem: it was the raw TRIM that lied, reading the small chest's bounding
+box at 1.17 against the real 1.39 — a chest that would have stood 19% too short. Run
+`alphaClamp.mjs` first, always, and re-measure after it rather than before.
+
+**The one thing to watch is the big chest's value.** At median luma 49 it is essentially the
+scenery crate (53) — the very comparison the small chest's prompt spends a paragraph forbidding.
+It ships anyway because SIZE and FORM carry the distinction here (28 px wide against 18, a domed
+iron-banded lid against a flat brass-bound one), which is design/13's dual-channel rule satisfied
+in the two channels that survive greyscale. If it ever reads wrong in play, the fix is a brighter
+timber on a reroll, not a tint in the renderer.
+
 ## small, open — `chest_small_open_raw.png`
+
+**Pass `chest_small_raw.png` as a reference/input image if the tool takes one.** This variant is
+the one place in the batch where matching an existing file beats describing one: the two sprites
+swap in place on the same footprint, so a lid that arrives on a differently-proportioned box
+reads as the chest jumping rather than opening.
 
 ```
 [shared style paragraph]
 
-Subject: the SAME closed wooden treasure chest, now empty with its lid thrown fully
-back, seen from the same angle.
+Subject: the SAME closed wooden treasure chest as the reference image, now empty with
+its lid thrown fully back, seen from the same angle.
 Proportions and footprint IDENTICAL to the closed version — same width, same ground
-line, same timber, same brass bands and lock plate. Only the lid has moved.
+line, same timber, same brass bands, same brass corner caps and lock plate. Only the
+lid has moved. The open lid may rise above the box; the box itself must not grow,
+shrink or shift sideways.
 The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no
 gold, no glow, no contents of any kind — this is drawn AFTER the reward has been taken.
 
@@ -309,11 +356,14 @@ a player who cannot tell them apart in greyscale cannot tell them apart at all.
 
 ## big, open — `chest_big_open_raw.png`
 
+Same rule as the small open variant: pass the accepted `chest_big_raw.png` as the reference image
+once it exists, and generate this one last.
+
 ```
 [shared style paragraph]
 
-Subject: the SAME reinforced vault strongbox, now empty with its domed lid thrown
-fully back, seen from the same angle.
+Subject: the SAME reinforced vault strongbox as the reference image, now empty with
+its domed lid thrown fully back, seen from the same angle.
 Proportions and footprint IDENTICAL to the closed version — same width, same ground
 line, same timber, same iron brackets and bands. Only the lid has moved.
 The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no
@@ -322,22 +372,29 @@ gold, no glow, no contents of any kind.
 [the two-other-boxes constraint]
 ```
 
-## The import chain
+## The import chain, as it was actually run
 
-Same three steps and the same non-optional clamp as the props above — a generation that arrives
-with the 252-253 alpha plateau and its invisible veil will otherwise trim to the wrong aspect,
-and a chest is scaled by width with the art's own aspect setting its height:
+Same three steps and the same non-optional clamp as the props above. **The long axis is not the
+same for all four**: it is 8x the drawn LONG axis, and for the two open files that is the height,
+not the width — the lid is up. Getting this wrong ships the open states at a lower resolution
+than the closed ones they sit beside.
 
 ```bash
 node tools/png-pipeline/alphaClamp.mjs client/public/environment/chest_*.png
 node tools/png-pipeline/compress.mjs --long-axis=144 client/public/environment/chest_small.png
-node tools/png-pipeline/compress.mjs --long-axis=144 client/public/environment/chest_small_open.png
+node tools/png-pipeline/compress.mjs --long-axis=153 client/public/environment/chest_small_open.png
 node tools/png-pipeline/compress.mjs --long-axis=224 client/public/environment/chest_big.png
-node tools/png-pipeline/compress.mjs --long-axis=224 client/public/environment/chest_big_open.png
+node tools/png-pipeline/compress.mjs --long-axis=275 client/public/environment/chest_big_open.png
 node tools/png-pipeline/alpha-audit.mjs client/public/environment
 ```
 
-Wiring the files into `ChestLayer` is a separate pass: its `drawBody` is a Graphics factory
-today, and the sprite path wants the same bottom-anchored, scale-by-width treatment
-`propRender.ts` already has, plus a test that re-derives the aspect from the shipped PNG rather
-than trusting the table above.
+Shipped: 144x104, 144x153, 224x155, 224x275 — note that each pair came out the SAME WIDTH, which
+is what makes the in-place swap stable, and it fell out of the long-axis arithmetic rather than
+being forced.
+
+**Wired the same day.** `ENV_SPRITE_ASSETS` gained four rows and `getChestTexture(kind, opened)`,
+`ChestLayer` gained `buildChestBody` (bottom-anchored, scaled by width, the art's aspect setting
+the height — `propRender.ts`'s exact treatment) plus a ground shadow, and its Graphics form
+stayed as the fallback, re-anchored to the feet so the two stand in the same box. The measurements
+above are re-derived from the shipped PNGs by `chestArt.test.ts` rather than trusted from this
+table.

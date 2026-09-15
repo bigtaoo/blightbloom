@@ -4,7 +4,7 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState, EngineConfig } from '@dd/engine/state/GameState';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { Fp } from '@dd/engine/math/fixed';
-import { CHEST_INTERACT_RANGE_GRID, toFpGrid } from '@dd/engine';
+import { CHEST_MECHANISM_RING_GRID, toFpGrid } from '@dd/engine';
 import { WEAPON_PROMPT_RADIUS_FP } from './pickupProximity';
 import { Layers } from '../scene/layers';
 import { HudView, type HudContext } from './HudView';
@@ -27,7 +27,6 @@ const CTX: HudContext = {
   showAlly: false,
   allySkinId: '',
   canSaveReplay: true,
-  touch: false,
 };
 
 const PVE_CFG: EngineConfig = { seed: 1, worldW: 800, worldH: 600, waves: [] };
@@ -439,30 +438,48 @@ describe('HudView — weapon-pickup panel placement (design/03)', () => {
 });
 
 /**
- * The chest caption's WIRING (design/05 "Chest rooms", 2026-09-15) — what `updateChestPrompt`
- * feeds `nearbyChest`, which is the half neither `chestProximity.test.ts` nor
- * `ChestPrompt.test.ts` can see. The reach it passes is the sim's own range PLUS the seat's
- * body radius, exactly as `ChestSystem.openWanted` sums them; a caption fed the bare constant
- * would go dark a body-radius early, while the sim was still accepting the button.
+ * The big-chest caption's WIRING (design/05 "Chest rooms", 2026-09-15) — what
+ * `updateChestPrompt` feeds `nearbyBigChest`, which is the half neither
+ * `chestProximity.test.ts` nor `ChestPrompt.test.ts` can see. The range it passes has to reach
+ * a player standing OUT ON A PLATE, one mechanism ring from the chest: that is where the rule
+ * the caption explains is actually being worked, and a caption that went dark there would go
+ * dark at the only moment it mattered.
  */
-describe('HudView — chest caption (design/05 "Chest rooms")', () => {
-  const chestAt = (s: GameState, gx: Fp, gy: Fp, kind: 'small' | 'big' = 'small') => {
-    s.chests.push({ id: s.nextChestId(), roomId: 'r1', kind, gx, gy, mechanisms: [], opened: false });
+describe('HudView — big-chest caption (design/05 "Chest rooms")', () => {
+  const chestAt = (s: GameState, gx: Fp, gy: Fp, kind: 'small' | 'big' = 'big') => {
+    s.chests.push({
+      id: s.nextChestId(),
+      roomId: 'r1',
+      kind,
+      gx,
+      gy,
+      mechanisms: kind === 'big' ? [{ gx, gy, occupied: false }] : [],
+      opened: false,
+    });
   };
 
-  it('stays hidden with no chest in reach', () => {
+  it('stays hidden with no chest in range', () => {
     const hud = newHud();
     hud.update(pveState(), 16, CTX);
     expect(hud.chestPrompt.isOpen).toBe(false);
   });
 
-  it('opens for an unopened chest at the seat position', () => {
+  it('opens for an unopened big chest at the seat position', () => {
     const hud = newHud();
     const s = pveState();
     const p = s.players[0]!;
     chestAt(s, p.gx, p.gy);
     hud.update(s, 16, CTX);
     expect(hud.chestPrompt.isOpen).toBe(true);
+  });
+
+  it('stays hidden for a SMALL chest underfoot — that one opens on approach', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy, 'small');
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
   });
 
   it('closes the moment the chest is opened, with nobody having moved', () => {
@@ -476,14 +493,12 @@ describe('HudView — chest caption (design/05 "Chest rooms")', () => {
     expect(hud.chestPrompt.isOpen).toBe(false);
   });
 
-  it('adds the seat body radius to the reach, exactly as ChestSystem does', () => {
-    // A chest placed just past the bare constant but inside constant+radius: the sim opens
-    // here, so the caption has to be up here.
+  it('still shows for a seat standing a full mechanism ring away', () => {
     const hud = newHud();
     const s = pveState();
     const p = s.players[0]!;
-    const justPastTheConstant = ((p.gx as number) + (toFpGrid(CHEST_INTERACT_RANGE_GRID) as number) + 1) as Fp;
-    chestAt(s, justPastTheConstant, p.gy);
+    const aRingAway = ((p.gx as number) + (toFpGrid(CHEST_MECHANISM_RING_GRID) as number)) as Fp;
+    chestAt(s, aRingAway, p.gy);
     hud.update(s, 16, CTX);
     expect(hud.chestPrompt.isOpen).toBe(true);
   });

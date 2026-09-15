@@ -30,6 +30,7 @@ import { clampToWalkable } from '@dd/engine/systems/geom';
 import {
   CHEST_MECHANISM_RADIUS_GRID,
   CHEST_MECHANISM_RING_GRID,
+  CHEST_OPEN_RANGE_GRID,
   CHEST_SMALL_WEAPONS,
 } from '@dd/engine/config';
 
@@ -147,12 +148,20 @@ describe('chestWeaponCount — flat per capita', () => {
   });
 });
 
-describe('ChestSystem — a small chest', () => {
-  it('opens for a player holding INTERACT in reach, and pays exactly one weapon', () => {
+/**
+ * A small chest opens on APPROACH as of 2026-09-15 (`ENGINE_VERSION` 66) — no button, no hold.
+ * Every case below was written against the old held-INTERACT rule and is inverted rather than
+ * deleted: the one that used to prove "standing on it with no button does nothing" is exactly
+ * the one that now has to prove the opposite, and keeping the pair visible is what stops the
+ * new rule from being read as the old one with a test missing. The reach boundary matters more
+ * than it did, not less — nothing is pressed any more, so the radius IS the whole gate.
+ */
+describe('ChestSystem — a small chest opens on approach', () => {
+  it('opens for a player who walks into reach pressing nothing, and pays exactly one weapon', () => {
     const s = state();
     const p = addPlayer(s, 10, 10);
     const c = addChest(s, 'small', 10.5, 10);
-    p.interacting = true;
+    expect(p.interacting).toBe(false); // the point of the case, stated rather than assumed
     sys.tick(s);
     expect(c.opened).toBe(true);
     expect(s.pickups.filter((q) => q.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS);
@@ -161,39 +170,71 @@ describe('ChestSystem — a small chest', () => {
     ]);
   });
 
-  it('stays shut for a player standing on it with no button', () => {
+  it('opens for a player holding INTERACT too — the button is ignored, not forbidden', () => {
+    // A player who is mid-revive, or who holds the key out of v65 habit, must not be the one
+    // player a chest refuses.
+    const s = state();
+    const p = addPlayer(s, 10, 10);
+    const c = addChest(s, 'small', 10, 10);
+    p.interacting = true;
+    sys.tick(s);
+    expect(c.opened).toBe(true);
+  });
+
+  it('stays shut with nobody in reach', () => {
     const s = state();
     addPlayer(s, 10, 10);
-    const c = addChest(s, 'small', 10, 10);
+    const c = addChest(s, 'small', 20, 10);
     sys.tick(s);
     expect(c.opened).toBe(false);
     expect(s.pickups).toHaveLength(0);
   });
 
-  it('stays shut for a player pressing INTERACT out of reach', () => {
-    const s = state();
-    const p = addPlayer(s, 10, 10);
-    const c = addChest(s, 'small', 20, 10);
-    p.interacting = true;
-    sys.tick(s);
-    expect(c.opened).toBe(false);
+  it('opens AT the reach boundary and not one unit past it', () => {
+    // The radius is the sim's entire gate now, and `client/src/game/ui/chestProximity.ts`
+    // restates this same number to decide what the HUD may claim. `<=`, matching every other
+    // reach test in this engine.
+    const reach = (toFpGrid(CHEST_OPEN_RANGE_GRID) as number) + (PLAYER_BASE.radius as number);
+
+    const far = state();
+    const pf = addPlayer(far, 10, 10);
+    const cf = addChest(far, 'small', 10, 10);
+    cf.gx = ((pf.gx as number) + reach + 1) as Fp;
+    sys.tick(far);
+    expect(cf.opened).toBe(false);
+
+    const near = state();
+    const pn = addPlayer(near, 10, 10);
+    const cn = addChest(near, 'small', 10, 10);
+    cn.gx = ((pn.gx as number) + reach) as Fp;
+    sys.tick(near);
+    expect(cn.opened).toBe(true);
   });
 
-  it('stays shut for a DOWNED player pressing INTERACT on top of it', () => {
+  it('stays shut for a DOWNED player lying on top of it', () => {
+    // The one condition the approach rule kept. A downed body is carried into reach by where
+    // it fell rather than by a decision, and `ChestSystem` runs before `ReviveSystem`.
     const s = state();
     const p = addPlayer(s, 10, 10);
     const c = addChest(s, 'small', 10, 10);
-    p.interacting = true;
     p.downed = true;
     sys.tick(s);
     expect(c.opened).toBe(false);
   });
 
-  it('pays once and only once, however long the button is held', () => {
+  it('stays shut for a DEAD player lying on top of it', () => {
     const s = state();
     const p = addPlayer(s, 10, 10);
+    const c = addChest(s, 'small', 10, 10);
+    p.alive = false;
+    sys.tick(s);
+    expect(c.opened).toBe(false);
+  });
+
+  it('pays once and only once, however long the player stands there', () => {
+    const s = state();
+    addPlayer(s, 10, 10);
     addChest(s, 'small', 10, 10);
-    p.interacting = true;
     for (let i = 0; i < 20; i++) sys.tick(s);
     expect(s.pickups).toHaveLength(1);
   });
@@ -298,39 +339,16 @@ describe('ChestSystem — a big chest', () => {
 });
 
 describe('ChestSystem — the rules that are about something other than the chest', () => {
-  it('lets a revive win the INTERACT: a valid reviver cannot also open a chest', () => {
+  it('opens beside a downed teammate — the revive arbitration is GONE, deliberately', () => {
+    // Until v66 this exact state was the one case a small chest refused: the rescuer's held
+    // INTERACT belonged to the revive channel, so `ChestSystem` mirrored
+    // `ReviveSystem.findReviver` and yielded. With the chest reading no button at all there is
+    // nothing to arbitrate, and this case is what stops that mirror from being reintroduced as
+    // a "fix" — the behaviour it produced is now wrong, not missing.
     const s = state();
     const rescuer = addPlayer(s, 10, 10);
     const downed = addPlayer(s, 10, 10);
     downed.downed = true;
-    const c = addChest(s, 'small', 10, 10);
-    rescuer.interacting = true;
-    sys.tick(s);
-    expect(c.opened).toBe(false);
-  });
-
-  it('does open the chest once the teammate is back up — the block is the revive, not the teammate', () => {
-    // The control for the case above. Without it, "a chest beside a second player never
-    // opens" would pass it just as well, and that is a different (wrong) rule.
-    const s = state();
-    const rescuer = addPlayer(s, 10, 10);
-    const mate = addPlayer(s, 10, 10);
-    mate.downed = false;
-    const c = addChest(s, 'small', 10, 10);
-    rescuer.interacting = true;
-    sys.tick(s);
-    expect(c.opened).toBe(true);
-  });
-
-  it('lets a PvP player with no bandage open the chest instead — they are not a valid reviver', () => {
-    // `ReviveSystem` refuses a bandage-less reviver in arena mode, so their INTERACT is NOT
-    // spoken for and the chest is the honest thing for it to mean.
-    const s = state();
-    Object.defineProperty(s, 'zoneEnabled', { value: true });
-    const rescuer = addPlayer(s, 10, 10);
-    const downed = addPlayer(s, 10, 10);
-    downed.downed = true;
-    rescuer.bandages = 0;
     const c = addChest(s, 'small', 10, 10);
     rescuer.interacting = true;
     sys.tick(s);
@@ -339,14 +357,13 @@ describe('ChestSystem — the rules that are about something other than the ches
 
   it('refuses a chest in a room that has not been entered', () => {
     const s = state();
-    const p = addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
     const c = addChest(s, 'small', 10, 10);
     c.roomId = 'r1';
     s.dungeonRoomIndexById.set('r1', 0);
     s.dungeonRoomRuntime.push({
       activated: false, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false,
     });
-    p.interacting = true;
     sys.tick(s);
     expect(c.opened).toBe(false);
     s.dungeonRoomRuntime[0]!.activated = true;
@@ -362,16 +379,15 @@ describe('ChestSystem — the rules that are about something other than the ches
     // field, because a field that no longer exists cannot be asserted about — what has to
     // stay true is that opening one still puts exactly `CHEST_SMALL_WEAPONS` guns down.
     const s = state();
-    const p = addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
     addChest(s, 'small', 10, 10);
-    p.interacting = true;
     sys.tick(s);
     expect(s.pickups.filter((i) => i.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS);
   });
 
   it('is a strict no-op for a state with no chests', () => {
     const s = state();
-    addPlayer(s, 10, 10).interacting = true;
+    addPlayer(s, 10, 10);
     const before = s.dropPrng.peek();
     sys.tick(s);
     expect(s.events).toHaveLength(0);
@@ -391,9 +407,8 @@ describe('ChestSystem — the rules that are about something other than the ches
 describe('ChestSystem — the pile a chest leaves behind', () => {
   it('pays weapons from the shared drop pool, alive and ready to be collected', () => {
     const s = state();
-    const p = addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
     addChest(s, 'small', 10, 10);
-    p.interacting = true;
     sys.tick(s);
 
     const pile = s.pickups;
@@ -429,10 +444,9 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
     // The stream is a shared resource (design/06): a chest that drew twice per weapon, or drew
     // for a chest that stayed shut, would move every later loot roll on the floor.
     const s = state();
-    const p = addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
     addChest(s, 'small', 10, 10);
     const reference = createGameState(CFG);
-    p.interacting = true;
     sys.tick(s);
     reference.dropPrng.nextInt(WEAPON_DROP_POOL.length);
     expect(s.dropPrng.peek()).toBe(reference.dropPrng.peek());
@@ -441,9 +455,8 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
   it('pays the same weapons for the same seed — a chest is not a second source of divergence', () => {
     const payout = () => {
       const s = state();
-      const p = addPlayer(s, 10, 10);
+      addPlayer(s, 10, 10);
       addChest(s, 'small', 10, 10);
-      p.interacting = true;
       sys.tick(s);
       return s.pickups.map((q) => q.weaponId);
     };
@@ -456,9 +469,8 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
     const s = state();
     s.walls.push({ x: toFpGrid(10), y: toFpGrid(8), w: toFpGrid(2), h: toFpGrid(4) });
     s.rebuildSpatialIndex();
-    const p = addPlayer(s, 9, 10);
+    addPlayer(s, 9, 10);
     addChest(s, 'small', 10.5, 10); // inside the wall above
-    p.interacting = true;
     sys.tick(s);
 
     expect(s.pickups).toHaveLength(CHEST_SMALL_WEAPONS);
@@ -488,61 +500,21 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
 });
 
 /**
- * The remaining arms of the two "about something other than the chest" rules. Each is a side
- * of a branch whose other side is already covered above, and each would be taken by a real
- * run — the first in every PvP match, the second on any floor whose room runtime has not
- * caught up with its room list.
+ * The branches nothing else reaches. The three PvP/revive-arbitration cases that used to live
+ * here went with the arbitration itself (`ENGINE_VERSION` 66) — a chest reads no button now, so
+ * "whose INTERACT is it" has no arm left to take. What remains is the room-runtime edge, which
+ * any floor whose runtime list has not caught up with its room list would take.
  */
-describe('ChestSystem — the arbitration branches nothing else reaches', () => {
-  it('ignores a downed ENEMY beside you — a revive you could not perform blocks nothing', () => {
-    const s = state();
-    const rescuer = addPlayer(s, 10, 10);
-    const enemy = addPlayer(s, 10, 10);
-    enemy.teamId = rescuer.teamId + 1;
-    enemy.downed = true;
-    const c = addChest(s, 'small', 10, 10);
-    rescuer.interacting = true;
-    sys.tick(s);
-    // `ReviveSystem.findReviver` only ever matches a downed player on the SAME team, so this
-    // player's INTERACT is not spoken for and the chest is the honest thing for it to mean.
-    expect(c.opened).toBe(true);
-  });
-
-  it('still lets the revive win in PvP when the rescuer IS carrying a bandage', () => {
-    // The control for "a PvP player with no bandage opens the chest instead" above. Without
-    // it, "arena mode ignores the revive rule entirely" would pass that test just as well.
-    const s = state();
-    Object.defineProperty(s, 'zoneEnabled', { value: true });
-    const rescuer = addPlayer(s, 10, 10);
-    const downed = addPlayer(s, 10, 10);
-    downed.downed = true;
-    rescuer.bandages = 1;
-    const c = addChest(s, 'small', 10, 10);
-    rescuer.interacting = true;
-    sys.tick(s);
-    expect(c.opened).toBe(false);
-  });
-
+describe('ChestSystem — the branches nothing else reaches', () => {
   it('refuses a chest whose room is known but has no runtime row yet', () => {
     // `dungeonRoomIndexById` and `dungeonRoomRuntime` are two arrays kept in step by
     // `SpawnSystem`; a chest that read an index past the end of the runtime list would open
     // through a wall on the strength of an `undefined`.
     const s = state();
-    const p = addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
     const c = addChest(s, 'small', 10, 10);
     c.roomId = 'r_ghost';
     s.dungeonRoomIndexById.set('r_ghost', 3); // no runtime row at 3
-    p.interacting = true;
-    sys.tick(s);
-    expect(c.opened).toBe(false);
-  });
-
-  it('ignores a DEAD player holding the button, not only a downed one', () => {
-    const s = state();
-    const p = addPlayer(s, 10, 10);
-    const c = addChest(s, 'small', 10, 10);
-    p.alive = false;
-    p.interacting = true;
     sys.tick(s);
     expect(c.opened).toBe(false);
   });
