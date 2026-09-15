@@ -14,11 +14,11 @@
  *     webhook → delivered. design/19 §5 calls that the reason the stub exists, and this
  *     is the test that proves it still works.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, inject } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
-import type { Db } from 'mongodb';
+import { MongoClient, type Db } from 'mongodb';
 import { billingStore, ensureBillingIndexes } from '../src/billingDb';
 import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { createBillsvcServer, type BillsvcServerOptions } from '../src/billsvc/server';
@@ -698,5 +698,71 @@ describe('createBillsvcServer wiring', () => {
     await call('POST', '/webhook/dev', { key: null, body: params });
     expect(granted).toHaveLength(1);
     expect(await pendingDeliveries(db, 10)).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// When the STORE is the thing that fails
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Every route body became a promise in the MongoDB port, and a lost promise is the one
+ * failure mode that is not a wrong answer but NO answer: the caller's request hangs until its
+ * own timeout, which tells a platform nothing and tells Prometheus the process is gone. These
+ * four cases drive the arms that turn a store failure into a 500 instead.
+ *
+ * Reached through the `billing` injection seam and through a CLOSED client, because `settle`
+ * and the store reads are written to be total — which is exactly why the arms below cannot be
+ * produced by any ordinary bad input, and exactly why they need driving deliberately.
+ */
+describe('billsvc HTTP — a store that cannot answer', () => {
+  it('500s GET /order/:id rather than hanging', async () => {
+    await start({ billing: { listSkus: () => [], getOrder: () => Promise.reject(new Error('no primary')) } as never });
+    const { status, body } = await call('GET', '/order/whatever');
+    expect(status).toBe(500);
+    expect(body.error).toBe('no primary');
+  });
+
+  it('500s POST /order/create rather than hanging', async () => {
+    await start({
+      billing: { listSkus: () => [], createOrder: () => Promise.reject(new Error('no primary')) } as never,
+    });
+    const { status, body } = await call('POST', '/order/create', { body: { accountId: 'a1' } });
+    expect(status).toBe(500);
+    expect(body).toEqual({ error: 'no primary', code: 'internal' });
+  });
+
+  it('500s a route handler that throws SYNCHRONOUSLY too', async () => {
+    // The other half of `readJson`'s net. A rejected promise and a synchronous throw reach it
+    // by different paths, and only one of them is what an `await` produces.
+    await start({
+      billing: {
+        listSkus: () => [],
+        createOrder: () => {
+          throw new Error('thrown, not rejected');
+        },
+      } as never,
+    });
+    const { status, body } = await call('POST', '/order/create', { body: { accountId: 'a1' } });
+    expect(status).toBe(500);
+    expect(body).toEqual({ error: 'thrown, not rejected', code: 'internal' });
+  });
+
+  it('500s the /metrics scrape when the store is unreachable', async () => {
+    // A real disconnection rather than a stub: the server is built over its own client, that
+    // client is closed, and the scrape then cannot read the outbox. A scrape that hangs looks
+    // identical to a process that has died, so it has to fail loudly and quickly.
+    const own = await MongoClient.connect(inject('mongoUri'));
+    const { server } = createBillsvcServer({ db: own.db(db.databaseName), env: DEV_ENV });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await own.close();
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/metrics`);
+      expect(res.status).toBe(500);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

@@ -770,6 +770,26 @@ describe('ledgerFor', () => {
     expect((await svc.ledgerFor('a2')).map((l) => l.sku)).toEqual([THIRD_SKU]);
   });
 
+  it('maps a hand-written entry with no order or receipt to nulls, not to undefined', async () => {
+    // The shape design/19 §7 explicitly plans for: an operator hand-grants a purchase at a
+    // prompt, so the ledger entry names no order and no receipt. `orderId`/`receiptId` are
+    // ABSENT on that document rather than stored null (see `billing/collections.ts` on why
+    // absence is the port's default), and the read has to put the `null` back — a view where
+    // the field is missing entirely would make `l.orderId === null` false for the one entry
+    // class it is asked about.
+    const svc = service();
+    await billingStore(db).ledger.insertOne({
+      _id: 'purchase:dev:HAND',
+      accountId: 'a1',
+      sku: SKU,
+      kind: 'purchase',
+      ts: 7,
+    });
+    expect(await svc.ledgerFor('a1')).toEqual([
+      { id: 'purchase:dev:HAND', accountId: 'a1', sku: SKU, orderId: null, receiptId: null, kind: 'purchase', ts: 7 },
+    ]);
+  });
+
   it('is append-only — nothing in the service ever updates or deletes a ledger row', async () => {
     // Asserted structurally rather than by inspecting SQL strings: settle a purchase, then
     // drive every other mutating method and confirm the original row is byte-identical.
