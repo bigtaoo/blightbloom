@@ -315,7 +315,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     }
 
     // Prometheus scrapes this over the compose network. matchsvc is the ONE service Caddy
-    // proxies wholesale (`reverse_proxy wnet-test-matchsvc:8788` — server/deploy/README.md
+    // proxies wholesale (`reverse_proxy matchsvc:8788` — server/deploy/README.md
     // §2), so unlike gameserver's and billsvc's it would otherwise be public: a free
     // readout of how many players are queued and how many accounts exist. Caddy stamps
     // `x-forwarded-for` on everything it proxies, so its presence is what "came from

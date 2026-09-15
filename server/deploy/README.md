@@ -10,15 +10,15 @@
 >
 > **What the move changed, in one list:** the reverse proxy is `caddy/Caddyfile` in this repo
 > instead of one appended block in a Caddyfile belonging to somebody else; the compose network
-> is ours instead of the host's `docker_default`; containers are `bb-*` instead of the
-> `wnet-test` disguise; Prometheus runs its own two exporters instead of borrowing the host's;
+> is ours instead of the host's shared external one; containers are `bb-*` instead of a
+> neutral disguise; Prometheus runs its own two exporters instead of borrowing the host's;
 > and the deploy account is `deploy` (uid 1000, matching the container's `node`) instead of
 > `tao` (1001), which makes the ownership dance in §1 a no-op instead of a rite. The
 > `authorized_keys` step that used to need a human with somebody else's `sudo` password is
 > just a step now.
 >
 > **Status (2026-09-07): fully live, including CI.** Every container was up and
-> healthy on `wnet-server` at `~/wnet-test/`, the Caddy site block appended and
+> healthy on the borrowed box, the Caddy site block appended and
 > reloaded, DNS in place, and `curl https://bb.gamestao.com/health` returned
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
 > certificate (§0–§2). The client now points at it by default on a deployed build (§3).
@@ -39,7 +39,7 @@
 >
 > **Three hand steps preceded that deploy, not two** (§2). `BB_ADMIN_PASSWORD` and the
 > `/admin*` Caddy block were the two this file already named. The third is
-> re-installing `~/wnet-test-ci-deploy.sh`, and skipping it is not cosmetic: the live copy
+> re-installing the live copy of `ci-deploy.sh`, and skipping it is not cosmetic: that copy
 > had no `dist/adminsvc.mjs` in its payload check, no `data/adminsvc` in its ownership loop
 > and no adminsvc health probe, so the deploy would have created that bind-mount source
 > `root:root` and reproduced 2026-09-08's silent-backup failure exactly. See §6.
@@ -55,17 +55,16 @@ Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on **its o
 **`bb.gamestao.com`**. Nothing else runs on that machine.
 
 **It did not start out that way, and the difference is worth stating once.** From 2026-09-07
-to 2026-09-15 this backend was a guest on `wnet-server` (`92.205.18.79`, Debian 13) — the
-company's box, which `deutsch`'s sync backend also uses, borrowed for its idle spare
-capacity. Everything visible there was named generically (`wnet-test`) rather than after this
-project, the entire footprint was one appended line in a Caddyfile we did not own, and
+to 2026-09-15 this backend was a guest on a Debian box belonging to somebody else, shared
+with other tenants and borrowed for its idle spare capacity. Everything visible there was
+named generically rather than after this project, the entire footprint was one appended line in a Caddyfile we did not own, and
 several decisions recorded below exist because of that guest status rather than because of
 anything the services need. Those are called out where they appear — a constraint whose
 reason has expired is exactly the kind that gets copied forward forever.
 
 **On naming, now:** the containers are `bb-*`, the directory is `~/blightbloom`, the image is
 `blightbloom:latest`. The disguise cost nothing while it was true and would be actively
-misleading here — `wnet-test-matchsvc` on a machine with no wnet on it reads like somebody
+misleading here — a neutral container name on a machine that is ours reads like somebody
 else's container, which is the opposite of what the name was for.
 
 Four processes from one image (`server/Dockerfile`, `server/docker-compose.yml`):
@@ -80,7 +79,7 @@ deliberately left off `production` for that one container — its
 It is reachable only from `matchsvc` over the internal docker network, never through
 Caddy, so no real money can move through it in this state.
 
-Unlike deutsch (Node 26 runs `.ts` directly), this server pulls live TypeScript from
+Unlike a plain service that lets Node 26 run `.ts` directly, this server pulls live TypeScript from
 sibling workspaces via path aliases (`@dd/engine`, `@dd/game/*`, `@dd/net/*` —
 `../tsconfig.base.json`), so it can't just rsync `src/` and run it in place without
 shipping (and `npm ci`-ing) the whole monorepo on the VPS. Instead: **build locally
@@ -101,13 +100,13 @@ Cloudflare, `gamestao.com` zone:
 | --- | --- | --- | --- |
 | A | `bb` | `62.238.1.182` | **DNS only (grey cloud)** |
 
-(It pointed at `92.205.18.79` until 2026-09-15. That one record *is* the cutover: the new box
+(It pointed at the borrowed box until 2026-09-15. That one record *is* the cutover: the new box
 was brought up and verified service by service from the inside, with its own Caddy
 deliberately not started, and only then was the record moved — see "Moving the box", §2.)
 
 **Must be grey-clouded.** An orange-clouded (proxied) record means Caddy's ACME
 challenge never reaches Let's Encrypt — the cert never signs, and the symptom is a
-browser `ERR_SSL_...` with nothing useful in the server logs (deutsch hit this first).
+browser `ERR_SSL_...` with nothing useful in the server logs (a sibling project hit this first).
 
 ### Secrets
 
@@ -137,13 +136,13 @@ prefixes is read correctly by both the old code and the new, which is what makes
 zero-downtime step instead of a window:
 
 ```bash
-ssh wnet-server "cd ~/wnet-test && sed -n 's/^DDU_/BB_/p' .env >> .env && grep -c '^BB_' .env"
+ssh <deploy-host> "cd <deploy-dir> && sed -n 's/^DDU_/BB_/p' .env >> .env && grep -c '^BB_' .env"
 ```
 
 Then merge, let the deploy land, confirm `/health`, and only then drop the old lines:
 
 ```bash
-ssh wnet-server "cd ~/wnet-test && sed -i '/^DDU_/d' .env && docker compose up -d"
+ssh <deploy-host> "cd <deploy-dir> && sed -i '/^DDU_/d' .env && docker compose up -d"
 ```
 
 ---
@@ -187,7 +186,7 @@ docker compose logs -f          # all three should log "on http://0.0.0.0:..." /
 ```
 
 **If matchsvc or billsvc fail on first boot with `unable to open database file`**: same
-cause as deutsch — `./data/matchsvc` / `./data/billsvc` are created root-owned by Docker's
+cause as its neighbour — `./data/matchsvc` / `./data/billsvc` are created root-owned by Docker's
 first bind-mount, and the image runs as the non-root `node` user (uid 1000).
 
 This is much less likely to bite since 2026-09-15, because the deploy account on this box is
@@ -225,8 +224,8 @@ Editing it is editing a tracked file and redeploying; there is no box-side step 
 
 That is the whole difference the dedicated hardware made here, and it deleted a page of this
 section. What used to live in this spot: the site block was **appended by hand** to
-`~/wnet/docker/Caddyfile` — the company's Caddy, fronting `wnet-mock.elk.de`, an IP/hostname
-device block and `sync.gamestao.com` as well as us — then validated and reloaded, with a
+the host's own Caddyfile — somebody else's Caddy, fronting three other site blocks as well
+as us — then validated and reloaded, with a
 neighbour check afterwards because a reload replaces the WHOLE config and a mistake took
 their sites down with ours.
 
@@ -309,7 +308,7 @@ This cost a full diagnosis on 2026-09-09 and it looks like success the whole way
 is recorded here rather than deleted with the borrowed box, because the mechanism is Docker's
 and the next config file this project bind-mounts will have it too.
 
-`docker inspect` showed the mount as `/home/tao/wnet/docker/Caddyfile -> /etc/caddy/Caddyfile`:
+`docker inspect` showed the mount as `<host-caddyfile> -> /etc/caddy/Caddyfile`:
 a single **file**, so the mount is bound to that file's **inode**. Any editor that writes a
 new file and renames it over the old one — `mv new Caddyfile`, and `sed -i`, which does
 exactly that internally — leaves the host path pointing at a NEW inode while the container
@@ -579,7 +578,7 @@ back.
 > 1. **A bind mount hides the image's `chown`.** The Dockerfile does
 >    `mkdir -p /data /backups && chown -R node:node`, but Docker creates a MISSING bind-mount
 >    source as `root:root` on the host, and the mount then replaces the image's directory —
->    ownership included. So `~/wnet-test/backups`, created by the very deploy that introduced
+>    ownership included. So the deploy directory's `backups/`, created by the very deploy that introduced
 >    this service, was root-owned, the container user (uid 1000 = `node`) could not write to
 >    it, and every cycle failed `EACCES`. The container sat in a restart loop for 18 hours,
 >    which is `--health`'s staleness arm working exactly as designed — nobody was looking.
@@ -605,7 +604,7 @@ back.
 ## 6. CI-based deploy — DONE (2026-09-07)
 
 `.github/workflows/server-deploy.yml` + `server/deploy/ci-deploy.sh`, same shape as
-deutsch's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
+a sibling project's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
 `server/**`/`engine/**`/`client/src/**` (or manual dispatch) → builds the bundles → ships
 them over SSH with a key that can do exactly one thing on the VPS.
 
@@ -632,7 +631,7 @@ rather than moved.
   doing anything with it — and `ssh -tt` over the key is refused with `PTY allocation request
   failed`, so `restrict` is doing its half too.
 - **Proven twice**: once manually (`tar czf - dist Dockerfile docker-compose.yml
-  deploy/package.json | ssh -i ... tao@92.205.18.79`, all three containers rebuilt and
+  deploy/package.json | ssh -i ... <user>@<old-host>`, all three containers rebuilt and
   came back healthy), then for real via `gh workflow run server-deploy` — a genuine CI
   run that went green end to end (build → SSH deploy → public `/health` check). Re-proven
   against the new box after the 2026-09-15 move, the same way.
@@ -677,11 +676,18 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
   turning on as a floor under this, but they are a whole-disk snapshot rather than a
   verified database copy, so they do not close the item.
-- **The retired deploy key on the old box** is the box owner's to remove:
-  `~/.ssh/authorized_keys` there is root-owned, so the `wnet-test-deploy` line could not be
-  deleted from this side when the project moved out on 2026-09-15. It is inert — its forced
-  command names a script that no longer exists — but inert is not revoked. Owner-confirmed as
-  theirs to clean up.
+- **The retired deploy key on the old box** needs one root run there:
+  `~/.ssh/authorized_keys` is root-owned, so the line could not be deleted from this side when
+  the project moved out on 2026-09-15. It is inert — its forced command names a script that
+  no longer exists — but inert is not revoked. A script that removes it (and scrubs it from
+  the `authorized_keys` backups beside it) is staged on that box as `~/finish-rename.sh`,
+  waiting on a `sudo` run by whoever holds the password.
+
+  Everything else this project left behind there was swept on 2026-09-15: two SQLite
+  snapshots of live account and billing data in a home directory, four observability probe
+  scripts, four version-pinned images no other tenant used, the buildx refs naming this
+  project's build paths, and the build cache holding its source layers. A `compose down`
+  removes the deployment; it does not remove the project from the machine.
 
 ## 8. Observability — Loki + Alloy + Prometheus + Grafana (2026-09-09)
 
@@ -777,7 +783,7 @@ guard, and saying so is the point of this section. A rule whose reason has quiet
 one nobody can evaluate later.
 
 **The `obs-` prefix was a collision guard, and is now a role marker.** The compose project
-used to join the host's shared `docker_default` network, where compose publishes each service
+used to join the host's shared external network, where compose publishes each service
 NAME as a network alias — and the owner's stack already answered to `loki`, `grafana`,
 `prometheus` and `promtail` there. A service called `loki` would have put two containers
 behind one DNS name, with their collector's pushes landing in our store or ours in theirs,
@@ -792,15 +798,15 @@ deliberately, so that dropping it is a decision and not a drift.
 an unfiltered collector on that box would have copied another team's logs into our store (in
 the other direction their promtail scraped the same socket unfiltered, and this file could
 never close that half — every line our containers wrote between 2026-09-07 and the move is
-still in their Loki, labelled `wnet-test-*`, along with some `blightbloom-*` streams from a
-short-lived naming on 2026-09-07, because log CONTENT carries the name regardless of what the
-container is called). Here there are no neighbours. What the filter still prevents is duller
+still in their Loki under the neutral container names, along with some `blightbloom-*`
+streams from a short-lived naming on 2026-09-07, because log CONTENT carries the name
+regardless of what the container is called). Here there are no neighbours. What the filter still prevents is duller
 and real: any container run on this host outside the compose project — a five-minute
 debugging shell, a `docker run` from some future runbook — would otherwise be collected and
 kept for Loki's full 14 days, and the first symptom of that is storage, not an error.
 
 **Prometheus stopped borrowing, which removed the one dependency this stack could not fix.**
-It scraped `docker-cadvisor-1` and `docker-node-exporter-1` — the host owner's exporters,
+It scraped the host owner's own cAdvisor and node-exporter containers —
 measuring the whole machine, ours included. The right trade at the time: a second privileged
 cAdvisor mounting `/`, `/sys` and `/dev/kmsg` on hardware we did not own, to recompute numbers
 that already existed one DNS name away, would have been rude and pointless. But it meant that

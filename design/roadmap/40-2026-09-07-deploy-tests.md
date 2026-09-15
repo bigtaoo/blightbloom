@@ -32,7 +32,7 @@ file instead, resolving those aliases at build time; `ws` and `node:sqlite` stay
 the image installs `ws` from a nine-line `server/deploy/package.json` of its own.
 
 CI deploys it: `.github/workflows/server-deploy.yml` builds the bundles and pipes a tarball over
-SSH to a key registered with a **forced command** (`command="…/wnet-test-ci-deploy.sh",restrict`),
+SSH to a key registered with a **forced command** (`command="…/ci-deploy.sh",restrict`),
 so whatever that key asks sshd to run, sshd runs only the deploy script. The live copy of that
 script sits OUTSIDE the deploy target on purpose — installed inside it, a deploy could replace
 the script and the constraint would be gone — and it moves five things, never
@@ -48,9 +48,9 @@ the script and the constraint would be gone — and it moves five things, never
 > the wrong sentence was about a security boundary and a reader would have relied on it. Success is defined as each container answering its
 own `/health`, not as the command returning 0.
 
-Everything on the box is named `wnet-test` rather than after this game: it is company hardware
-borrowed for idle capacity, and the whole footprint tears down with
-`docker compose down && rm -rf ~/wnet-test`. **billsvc runs in dev-stub mode** — no Paddle
+Nothing on the box is named after this game: the hardware is borrowed for idle capacity, and
+the whole footprint tears down with `docker compose down` plus one `rm -rf` of the deploy
+directory. **billsvc runs in dev-stub mode** — no Paddle
 credential exists yet, and `startupGuard.ts` refuses that flag under `NODE_ENV=production`
 outright, so the compose block runs it as `development` and reaches nothing but matchsvc.
 

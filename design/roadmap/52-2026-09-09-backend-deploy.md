@@ -16,14 +16,14 @@ predicted one of the three, named the right symptom, and pointed at the wrong ca
 
 ### The two hand steps were right, and there was a third nobody had written down
 
-§2's two hand steps — `BB_ADMIN_PASSWORD` into `~/wnet-test/.env` (compose's `:?` refuses
-*every* service without it), then a `handle /admin*` block ahead of the catch-all — were
-correct and sufficient as written. Reading `~/wnet/docker/Caddyfile` first was also right:
+§2's two hand steps — `BB_ADMIN_PASSWORD` into the deploy target's `.env` (compose's `:?`
+refuses *every* service without it), then a `handle /admin*` block ahead of the catch-all —
+were correct and sufficient as written. Reading the host's Caddyfile first was also right:
 a `bb.gamestao.com` block was already there from volume 47, so the snippet's append would
 have produced a duplicate.
 
 The third step is the one that matters, because skipping it is silent in the direction that
-costs data. `ci-deploy.sh`'s live copy at `~/wnet-test-ci-deploy.sh` is **hand-installed by
+costs data. `ci-deploy.sh`'s live copy, outside the deploy directory, is **hand-installed by
 design** — the CI key must not be able to rewrite its own forced command — so editing the repo
 copy does nothing, and CI going green is not evidence the new check ran. The live copy predated
 adminsvc entirely: no `dist/adminsvc.mjs` in the payload check, no `data/adminsvc` in the
@@ -36,7 +36,7 @@ and it recurred nine days later on the same file. The standing `diff` check is t
 defence:
 
 ```bash
-ssh wnet-server 'cat ~/wnet-test-ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
+ssh <deploy-host> 'cat ~/ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
 ```
 
 Install with `tr -d '\r'`. `core.autocrlf=true` and no `.gitattributes` means every shell
@@ -45,9 +45,10 @@ box with `$'\r': command not found`.
 
 ### Failure 1 — the ownership loop could fix a state dir but not create one
 
-The first deploy died at `mkdir: cannot create directory '/home/tao/wnet-test/data/adminsvc':
-Permission denied`. `~/wnet-test/data` is uid-1000-owned — container `node` (1000) equals host
-`elkadmin` (1000) on this box — while the account CI logs in as is 1001. So the deploy user
+The first deploy died at `mkdir: cannot create directory '<deploy-dir>/data/adminsvc':
+Permission denied`. The deploy directory's `data/` is uid-1000-owned — container `node`
+(1000) collides with a host account (1000) on that box — while the account CI logs in as is
+1001. So the deploy user
 cannot create anything under `data/` at all.
 
 It had never shown up because **`mkdir -p` is a silent no-op for a directory that already
@@ -61,7 +62,7 @@ adminsvc is what turned a silent `root:root` mount into a failed deploy.
 
 ### Failure 2 — a failed backup cycle was a 24-hour decision
 
-The second deploy died at `wnet-test-backup: no healthy backup cycle within 15s`. The worker's
+The second deploy died at the backup worker's `no healthy backup cycle within 15s`. The worker's
 first cycle runs immediately at boot, which is what gives a fresh deploy a verified snapshot in
 seconds. It also **races the services that create the databases it reads**: it ran 0.6s before
 matchsvc created `analytics.db` — a *new* third backup source, from volume 48's retention
@@ -88,8 +89,8 @@ which is precisely the trap §3.4 of [design/21](../21-ops-analytics.md) names a
 404 handler, a blank page with a 200.* The ordering was right. The block was in the file,
 ahead of the catch-all, and the file was validated and reloaded.
 
-`docker inspect docker-caddy-1` says why: the mount is
-`/home/tao/wnet/docker/Caddyfile -> /etc/caddy/Caddyfile`, a single **file**, so it is bound to
+`docker inspect` on the host's Caddy container says why: the mount is
+`<host-caddyfile> -> /etc/caddy/Caddyfile`, a single **file**, so it is bound to
 that file's **inode** and not to its path. The edit had gone in with `awk … > new && mv new
 Caddyfile`, and `sed -i` for a follow-up fix — both of which write a new file and rename it over
 the old name. The host path then pointed at a new inode while the container kept the old one.
@@ -104,8 +105,8 @@ Every command reported success and the config never changed. The only check that
 proves a Caddyfile edit reached Caddy is comparing the two inodes:
 
 ```bash
-ssh wnet-server 'stat -c "host %i" ~/wnet/docker/Caddyfile
-  docker exec docker-caddy-1 stat -c "container %i" /etc/caddy/Caddyfile'
+ssh <deploy-host> 'stat -c "host %i" <host-caddyfile>
+  docker exec <host-caddy> stat -c "container %i" /etc/caddy/Caddyfile'
 ```
 
 So **edit in place and keep the inode** — `cat >>` (which is what §2's own snippet does, and
@@ -116,10 +117,10 @@ write back through it, and the replaced inode has no name left on the host — t
 to repair. Routing was restored with zero downtime by `docker cp`-ing the good file to a
 writable path in the container and `caddy reload --config /tmp/… --adapter caddyfile`. That
 leaves the in-container path stale, so the next person reloading from it silently reverts the
-block; `docker restart docker-caddy-1` re-resolves the bind mount to the host path and collapses
-the split. That restart is the box owner's shared proxy fronting `wnet-mock.elk.de`, the
-IP/hostname device block and `sync.gamestao.com`, so it was asked for rather than assumed, then
-done and verified — both inodes equal, all four site blocks answering.
+block; restarting the host's Caddy container re-resolves the bind mount to the host path and
+collapses the split. That restart is the box owner's shared proxy, fronting three other site
+blocks besides ours, so it was asked for rather than assumed, then done and verified — both
+inodes equal, all four site blocks answering.
 
 **After any reload, curl the neighbours, not just your own site.** A reload replaces the whole
 config, and three of the four blocks in it are not ours.

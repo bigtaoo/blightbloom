@@ -980,7 +980,7 @@ the shapes they left behind are still in the code, and a reader who finds a rule
 surviving reason has no way to tell a deliberate keep from a fossil.
 
 - **Service names were `obs-`prefixed because the network was shared.** The compose project
-  joined the host's `docker_default`, and compose publishes each service NAME as a network
+  joined the host's shared external network, and compose publishes each service NAME as a network
   alias on it. The box's owner ran their own Loki, Grafana, Prometheus and Promtail there
   under exactly those names. A service called `loki` would have put two containers behind one
   DNS name — their collector's pushes landing in our store, or ours in theirs, intermittently,
@@ -990,7 +990,8 @@ surviving reason has no way to tell a deliberate keep from a fossil.
   that enforces it says so in its own comment, so keeping it stays a decision.
 - **Their collector read our containers, and this stack could not change that.** Their
   promtail scraped the Docker socket unfiltered, so every line ours wrote between 2026-09-07
-  and the move is in their store, permanently, labelled `wnet-test-*`. *Now:* nothing outside
+  and the move is in their store, permanently, under the neutral container names this
+  project used while it was a guest. *Now:* nothing outside
   this project reads this box's socket. The one-way leak is a closed set rather than an
   ongoing one — worth remembering if anything sensitive was ever logged in that window, since
   removing it is not this project's to do.

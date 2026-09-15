@@ -5,11 +5,11 @@
 //
 // **It discovers by container NAME, filtered to `bb-*`.** funny's version scrapes every
 // container on its host, which is correct there because the host runs nothing else. This
-// filter was written when that was emphatically not true here: the box was the company's,
-// borrowed for its spare capacity, and ran their wnet stack, their own
-// Loki/Promtail/Grafana and `deutsch-sync` alongside us — an unfiltered collector would
-// have copied another team's logs into our store. (Their promtail scraped the same socket
-// unfiltered in the other direction, and this file could never close that half.)
+// filter was written when that was emphatically not true here: the box was borrowed for
+// its spare capacity and ran several unrelated stacks, their own log collection included,
+// alongside us — an unfiltered collector would have copied somebody else's logs into our
+// store. (A collector on the other side scraped the same socket unfiltered in the other
+// direction, and this file could never close that half.)
 //
 // Since 2026-09-15 the box is ours and runs nothing else, so the filter guards nothing that
 // exists today. It stays because what it prevents did not move out with the neighbours: the
@@ -106,7 +106,7 @@ loki.process "parse" {
 loki.write "default" {
 	endpoint {
 		// `obs-loki`, not `loki`. The prefix was a collision guard while this project sat on
-		// the host's shared `docker_default` network, where the box owner's own Loki already
+		// the host's shared external network, where the box owner's own Loki already
 		// held the alias `loki` — two containers behind one DNS name, pushes landing in the
 		// wrong store intermittently, nothing failing anywhere. The network is this
 		// project's own now and that collision is gone; the name stays as a role marker (see

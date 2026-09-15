@@ -2,22 +2,21 @@
 # (`blightbloom`, 62.238.1.182, Helsinki), living at `~/blightbloom`. Nothing else runs on
 # this box. Full runbook: server/deploy/README.md.
 #
-# **This file used to describe a box this project only borrowed** — the company's
-# `wnet-server`, shared with their wnet stack and with `deutsch-sync` — and three things
-# here were shaped by that rather than by what the services need. All three changed when
-# the project moved onto its own hardware, 2026-09-15:
+# **This file used to describe a box this project only borrowed**, and three things here
+# were shaped by that rather than by what the services need. All three changed when the
+# project moved onto its own hardware, 2026-09-15:
 #
-#  - It joined the host's existing `docker_default` network, because the host's Caddy had
-#    to resolve our containers by name. There is no host stack to join now: the network is
-#    ours (`bb`, at the bottom) and so is the proxy — the `caddy` service, the only one in
-#    this file that publishes a host port.
-#  - Everything visible on the box was named `wnet-test` instead of after this project, to
-#    keep a low profile on somebody else's hardware. The box is ours; the containers are
-#    `bb-*`. The disguise cost nothing while it was true and is actively misleading now.
+#  - It joined an existing external network, because the reverse proxy was not ours and had
+#    to resolve our containers by name. There is no foreign stack to join now: the network
+#    is ours (`bb`, at the bottom) and so is the proxy — the `caddy` service, the only one
+#    in this file that publishes a host port.
+#  - Nothing visible on the box was named after this project, to keep a low profile on
+#    hardware belonging to somebody else. The box is ours; the containers are `bb-*`. The
+#    disguise cost nothing while it was true and is actively misleading now.
 #  - Prometheus scraped the HOST's cAdvisor and node-exporter rather than standing up a
 #    second privileged copy on borrowed hardware. There is nothing to borrow any more, so
 #    this file runs its own (`obs-cadvisor`, `obs-node-exporter`) and the infra dashboard
-#    stops depending on containers another team can rename.
+#    stops depending on containers this project does not control.
 #
 # One image (server/Dockerfile, built from the ALREADY-BUILT server/dist/*.mjs —
 # `npm run build -w server` first), FIVE processes selected by `command:` — four HTTP
@@ -521,8 +520,8 @@ services:
 
   # ── The two exporters this project used to BORROW ─────────────────────────────────────
   #
-  # `monitoring/prometheus/prometheus.yml` scraped the box owner's `docker-cadvisor-1` and
-  # `docker-node-exporter-1` — the right trade on hardware we did not own (a second
+  # `monitoring/prometheus/prometheus.yml` scraped the box owner's own cAdvisor and
+  # node-exporter containers — the right trade on hardware we did not own (a second
   # privileged cAdvisor mounting `/`, `/sys` and `/dev/kmsg` on somebody else's machine, to
   # recompute numbers that already existed one DNS name away), and a trade with a stated
   # cost: if that team stopped or renamed either container, every infra panel emptied.
@@ -613,9 +612,9 @@ volumes:
   caddy-config:
 
 networks:
-  # Ours, created by this project. It was `external: true, name: docker_default` for as
-  # long as the reverse proxy belonged to somebody else and we had to be reachable on their
-  # network to be proxied at all. Both halves of that are gone: `caddy` above is in this
-  # file, on this network, and no container outside this project can resolve any name here.
+  # Ours, created by this project. It was an `external: true` network for as long as the
+  # reverse proxy belonged to somebody else and we had to be reachable on their network to
+  # be proxied at all. Both halves of that are gone: `caddy` above is in this file, on this
+  # network, and no container outside this project can resolve any name here.
   bb:
     driver: bridge

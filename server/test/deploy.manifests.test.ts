@@ -193,8 +193,8 @@ const OBS_SERVICES = [
 /**
  * The public edge, and its own category for one reason: it is the only service in the file
  * that publishes a host port, and therefore the only one whose misconfiguration is reachable
- * from the internet. It arrived with the move to dedicated hardware (2026-09-15) — on the
- * borrowed box this role belonged to the host owner's Caddy and there was nothing here to
+ * from the internet. It arrived with the move to dedicated hardware (2026-09-15) — before
+ * that the public edge was not this project's to configure and there was nothing here to
  * assert. Not an OBS service: those are watched and this one is in the request path.
  */
 const EDGE_SERVICES = ['caddy'] as const;
@@ -328,7 +328,7 @@ describe('the compose reader actually read something', () => {
     const block = /\n  backup:\n([\s\S]*?)\n(?:  [\w-]+:|networks:)/.exec(compose)?.[1] ?? '';
     expect(block).not.toBe('');
     // Only the `volumes:` list — `networks:` is a bullet list too, and matching every
-    // bullet in the block swept `- wnet` in as a fourth "mount" (caught by the length
+    // bullet in the block swept `- bb` in as a fourth "mount" (caught by the length
     // assertion below, which is why it is an exact count and not `>= 2`).
     const volumes = /\n    volumes:\n([\s\S]*?)\n    [a-z_]+:/.exec(block)?.[1] ?? '';
     // `host:container[:mode]`, split on the colons rather than matched with two greedy
@@ -395,9 +395,10 @@ describe('the compose reader actually read something', () => {
 
   it('CREATING a state dir does not depend on the deploy user owning its parent', () => {
     // The test above pins WHICH dirs get normalised. This one pins that the script can
-    // actually make one, which is a different property and was false: `~/wnet-test/data` is
-    // uid-1000-owned (container `node` == host `elkadmin`) while the deploy account is 1001,
-    // so a plain `mkdir -p "$TARGET/$dir"` cannot create anything under it. It had never
+    // actually make one, which is a different property and was false back when the deploy
+    // account's uid did not match the container's: `$TARGET/data` was uid-1000-owned
+    // (container `node`) while the deploy account was 1001, so a plain
+    // `mkdir -p "$TARGET/$dir"` cannot create anything under it. It had never
     // shown up because it is a silent no-op for a dir that already exists — every dir did,
     // until `data/adminsvc` on 2026-09-09, which failed `Permission denied` and aborted the
     // deploy before compose ran.
@@ -489,7 +490,7 @@ describe('externals and the runtime package.json', () => {
   it('declares exactly the non-builtin externals, no more', () => {
     // Under-declaring is the boot failure `deploy.bundle.test.ts` reproduces. Over-declaring
     // is quieter and still wrong: an unused dependency in the image is one more thing
-    // `npm install` can fail on, on a box this project only borrows.
+    // `npm install` can fail on.
     const needed = (external as string[]).filter((m) => !m.startsWith('node:'));
     expect(Object.keys(deployPkg.dependencies).sort()).toEqual([...needed].sort());
   });
