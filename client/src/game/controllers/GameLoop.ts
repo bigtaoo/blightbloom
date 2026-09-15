@@ -261,7 +261,7 @@ export class GameLoop {
     }
     const events = engine.advance(frame) ?? [];
 
-    this.deps.scene.reconcile(s, p?.id ?? -1); // camera follows the LOCAL seat
+    this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL seat; `events` carries the collected-drop flights
     this.spawnBulletTrails(s);
     this.consumeEvents(events);
     // Tutorial-only teaching-beat toasts (design/10 screen-flow gap) — render-only,
@@ -320,7 +320,7 @@ export class GameLoop {
       this.predictor.deactivate();
     }
 
-    this.deps.scene.reconcile(s, p?.id ?? -1); // camera follows the LOCAL (ticket-assigned) seat
+    this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL (ticket-assigned) seat
     // Draw the local seat from the predictor (camera follows it too); remote seats confirmed.
     if (predicting && p && this.predictor.isActive) {
       const pose = this.predictor.pose;

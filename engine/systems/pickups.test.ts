@@ -129,6 +129,37 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.bankedMaterials).toEqual({});
   });
 
+  it('the event names the COLLECTOR, not the item and not the first seat (render reads `by`)', () => {
+    // `by` exists so the render layer can fly the drop to the body that took it
+    // (`client/src/game/scene/pickupFlight.ts`). Two failures it has to tell apart, and neither
+    // is visible from a one-player state: handing back the ITEM's id (ids come from one
+    // `nextId()` space, so both are small integers and both "work"), and handing back
+    // `players[0]` (right in single-player, wrong for every teammate in co-op/PvP). The SECOND
+    // seat collects here, and the item id is asserted against as well, so both failures survive
+    // only by being right.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    // Well out of a's reach, so the player loop cannot pick a by standing in the same place.
+    b.gx = (a.gx + toFpGrid(12)) as Fp;
+    b.gy = a.gy;
+    const item: PickupItem = {
+      id: s.nextId(), kind: 'material', materialId: 'mat_fire', qty: 1,
+      gx: b.gx, gy: b.gy, spawnTick: -1, alive: true,
+    };
+    s.pickups.push(item);
+
+    sys.tick(s);
+
+    const ev = s.events.find((e) => e.type === 'pickup');
+    expect(ev).toBeDefined();
+    expect(ev && 'by' in ev && ev.by).toBe(b.id);
+    expect(ev && 'by' in ev && ev.by).not.toBe(a.id);
+    expect(ev && 'by' in ev && ev.by).not.toBe(item.id);
+    // The premise the three assertions above rest on: these really are three different numbers,
+    // so none of them can pass by collision.
+    expect(new Set([a.id, b.id, item.id]).size).toBe(3);
+  });
+
   it('a coin is collected at full HP and full energy \u2014 it is not an instant item', () => {
     // The `pickupWouldApply` gate is for things with a ceiling. A wallet has none, so a coin
     // must never be left on the floor; a stray clause adding it to that gate would strand
