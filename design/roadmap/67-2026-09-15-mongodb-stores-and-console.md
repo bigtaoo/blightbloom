@@ -274,7 +274,23 @@ deployed.
 ### Not done
 
 **Stage 7 has not been RUN.** The runbook is in `server/deploy/README.md` §5 ("The MongoDB
-cutover"), and it needs two new `.env` values and a window with the services stopped. Until it
-runs, merging this to `main` deploys a server pointed at an empty cluster. As of 2026-09-15 the
-box's `.env` holds the placeholder described above in both variables — it must be corrected before
-anything restarts those containers, because presence is all the deploy path checks.
+cutover"), and it needs a window with the services stopped. Until it runs, merging this to `main`
+deploys a server pointed at an empty cluster.
+
+The `.env` half is **done and verified** — that part of this line is no longer true. Both
+variables on the box hold real, tested credentials, mirrored into the `secrets` repo
+(`secrets/blightbloom/prod.yaml`, SOPS+age, `push-env.py` reports no drift). The cluster, both
+users' role matrices, the IP allowlist and decision B1's refusal were all probed against the live
+cluster; §5's "verified 2026-09-15" list records what not to re-derive.
+
+**What actually blocks the cutover now is the migration's PACKAGING.** §5 steps 3 and 4 invoke
+`node --import tsx/esm scripts/migrateFromSqlite.ts` inside `blightbloom:latest`, and no image
+this tree builds contains `scripts/`, TypeScript or `tsx` — the Dockerfile copies `dist/*.mjs` and
+nothing else, and `build.mjs` declares five bundle entries with the migration not among them. The
+suite is green because the migration is covered against a real cluster while the way it reaches a
+production box is covered by nothing; `deploy.bundle.test.ts`, which boots each bundle as a bare
+node process, is exactly the test that would have caught it had there been a sixth bundle to boot.
+
+The fix is that sixth entry (`dist/migrate.mjs`, run as `node migrate.mjs --dir=/data`), plus a
+`docker compose build` step between §5's 2 and 3 — the image on the box is still the pre-Mongo one
+and the new one must exist before the migration runs without the services starting first.

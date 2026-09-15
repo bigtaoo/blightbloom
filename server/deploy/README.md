@@ -556,6 +556,30 @@ the box; do not paste a one-liner out of this file:
   write to each player-data database and refusing to start unless the server refuses. Give it
   the same string as `BB_MONGO_URI` and adminsvc will not come up — which is the point.
 
+> #### ⛔ Steps 3 and 4 below DO NOT RUN as written (found 2026-09-15, not yet fixed)
+>
+> `node --import tsx/esm scripts/migrateFromSqlite.ts` cannot work in any image this tree
+> builds. The Dockerfile does `COPY dist/*.mjs ./` and nothing else — there is no `scripts/`
+> directory in the image, no TypeScript, and no `tsx`. `scripts/build.mjs` declares five
+> bundle entries (index, matchsvc, billsvc, backup, adminsvc) and the migration is not one of
+> them. Nothing asserts this command, which is why it survived a fully green suite: the
+> migration is covered by unit tests against a real cluster, and the way it reaches a
+> production box is covered by nothing.
+>
+> **The fix** is a sixth entry in `scripts/build.mjs` — `src/migrate/…` or the script itself
+> out to `dist/migrate.mjs` — so the command becomes `node migrate.mjs --dir=/data`, the same
+> shape as every other process here, and `test/deploy.bundle.test.ts` boots it like the rest.
+> `node:sqlite` is a builtin and needs no packaging; `mongodb` is already `external` and
+> already in `deploy/package.json`.
+>
+> **It also reorders this runbook.** The image on the box is the pre-Mongo one (its
+> `node_modules` holds only `ws`), so a new image has to exist BEFORE the migration runs and
+> the services must NOT start before it — insert `docker compose build` (build only, no `up`)
+> between steps 2 and 3, after `rsync`ing `dist/`, `Dockerfile` and `deploy/package.json`.
+>
+> Everything ABOVE this box is verified against the live cluster and is good: see the
+> "verified 2026-09-15" note under step 5.
+
 ```bash
 ssh blightbloom
 cd /home/deploy/blightbloom
@@ -582,6 +606,31 @@ docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:late
 docker compose up -d --force-recreate
 docker compose ps
 ```
+
+#### What is already verified against the live cluster (2026-09-15)
+
+Everything the cutover needs except the image. Re-deriving any of it is wasted time:
+
+- **Cluster** `blightbloom`, `IDLE`, `mongodb+srv://blightbloom.emecoyp.mongodb.net`. It is in
+  a DIFFERENT Atlas project from `funny`'s — the API key in the `secrets` repo's
+  `infra/atlas.yaml` cannot see it, and a key that can is in `secrets/blightbloom/prod.yaml`.
+- **`bb-app`** (`BB_MONGO_URI`): `readWrite` on all four databases plus `dbAdmin` on
+  `accounts` and `billing`. The `dbAdmin` half is not optional — `ensureValidator` issues
+  `db.command({ collMod })` for a collection that already exists, `collMod` is a `dbAdmin`
+  action, and the migration's own upserts create those collections. Without it the FIRST boot
+  after the cutover fails, not the second.
+- **`bb-admin`** (`BB_ADMIN_MONGO_URI`): `read` on `accounts`/`billing`/`analytics`,
+  `readWrite` on `ops`. Probed for real: a write to `accounts` came back refused and a write
+  to `ops` succeeded, so decision B1 holds on the live cluster and not only in a test.
+- **Network access** holds `62.238.1.182`. The four databases do not exist yet
+  (`listDatabases` is empty), which is what a pre-migration cluster should look like.
+- **`.env` on the box is correct and is mirrored in the `secrets` repo** —
+  `secrets/blightbloom/prod.yaml`, all six values, `push-env.py` reports "no change".
+
+> `ssh blightbloom` lands as **root**, so `~` is `/root` and not `/home/deploy`. Any tool
+> given `~/blightbloom/.env` writes to a path that does not exist. Always pass
+> `/home/deploy/blightbloom/.env` in full (and `MSYS_NO_PATHCONV=1` from Git Bash, or the
+> leading slash is rewritten into a Windows path).
 
 Then the acceptance checklist in §4, plus one extra: sign in to the console at
 `/admin/` and confirm the Players tab shows the accounts that were on the box. An empty
