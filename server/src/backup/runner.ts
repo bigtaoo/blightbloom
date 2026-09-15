@@ -7,19 +7,22 @@
  * directory listing somebody would have to think to look at. `status.json` turns "are the
  * backups running" into a question `docker ps` answers — see `main.ts --health`.
  *
- * A cycle NEVER throws for a per-source failure: with two databases, one unreadable file
- * must not cost the other its backup. It records the failure, keeps going, and reports the
- * cycle as not-ok, which is what turns the container unhealthy.
+ * A cycle NEVER throws for a per-source failure: with three databases, one unreadable one
+ * must not cost the others their backup. It records the failure, keeps going, and reports
+ * the cycle as not-ok, which is what turns the container unhealthy. That mattered when a
+ * source was a file and one of them could be missing; it matters more now that a source is
+ * a network read, where a transient failure of one is ordinary.
  */
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { StoreName } from '../mongo';
 import type { BackupConfig } from './config';
 import { prunable } from './prune';
-import { snapshotDatabase } from './snapshot';
+import { snapshotStore } from './snapshot';
 
 /** What one source did this cycle. */
 export interface SourceResult {
-  source: string;
+  source: StoreName;
   ok: boolean;
   /** Basename of the snapshot written, when `ok`. */
   file?: string;
@@ -28,6 +31,8 @@ export interface SourceResult {
   /** The failure's message, when not `ok`. Message only — a stack in a status file is
    *  noise, and the log line beside it carries the full error. */
   error?: string;
+  /** How many documents the snapshot holds. Absent when the source failed. */
+  documents?: number;
   /** Snapshots deleted after this source's cycle, by name. */
   pruned?: string[];
 }
@@ -45,14 +50,14 @@ export const STATUS_FILE = 'status.json';
 
 /** Injected by the tests; the real thing is the two functions this module would import. */
 export interface CycleIo {
-  snapshot: typeof snapshotDatabase;
+  snapshot: typeof snapshotStore;
   list: (dir: string) => string[];
   remove: (file: string) => void;
   log: (line: string) => void;
 }
 
 const realIo: CycleIo = {
-  snapshot: snapshotDatabase,
+  snapshot: snapshotStore,
   list: (dir) => readdirSync(dir),
   remove: (file) => rmSync(file, { force: true }),
   log: (line) => console.log(line),
@@ -66,22 +71,37 @@ const realIo: CycleIo = {
  * good snapshots instead of ageing them out on schedule. That ordering is the difference
  * between a retention policy and a countdown to having nothing.
  */
-export function runCycle(cfg: BackupConfig, at: Date, io: CycleIo = realIo): CycleResult {
+export async function runCycle(cfg: BackupConfig, at: Date, io: CycleIo = realIo): Promise<CycleResult> {
   mkdirSync(cfg.destDir, { recursive: true });
   const sources: SourceResult[] = [];
+  // Sequential, not `Promise.all`, and that is a decision rather than the shape it happened
+  // to have when the reads were synchronous. Three concurrent full-collection scans against
+  // a live cluster is exactly the load a backup worker exists to not be, and the cycle has
+  // hours of budget: the whole point of the interval is that nothing waits on this.
   for (const source of cfg.sources) {
     try {
-      const snap = io.snapshot(source, cfg.destDir, at);
+      const snap = await io.snapshot(source, cfg.destDir, at);
       const pruned: string[] = [];
       for (const name of prunable(io.list(cfg.destDir), cfg.keep)) {
         // `prunable` groups by source itself; this loop only deletes names belonging to
         // the source just snapshotted, so one source's cycle never touches another's set.
-        if (!name.startsWith(`${stemOf(source)}-`)) continue;
+        if (!name.startsWith(`${source}-`)) continue;
         io.remove(join(cfg.destDir, name));
         pruned.push(name);
       }
-      io.log(`backup ok ${source} -> ${snap.file} (${snap.bytes} B gz, ${snap.rawBytes} B raw)${pruned.length ? `, pruned ${pruned.length}` : ''}`);
-      sources.push({ source, ok: true, file: baseOf(snap.file), bytes: snap.bytes, rawBytes: snap.rawBytes, pruned });
+      io.log(
+        `backup ok ${source} -> ${snap.file} (${snap.documents} doc, ${snap.bytes} B gz, ${snap.rawBytes} B raw)` +
+          `${pruned.length ? `, pruned ${pruned.length}` : ''}`,
+      );
+      sources.push({
+        source,
+        ok: true,
+        file: baseOf(snap.file),
+        bytes: snap.bytes,
+        rawBytes: snap.rawBytes,
+        documents: snap.documents,
+        pruned,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       io.log(`backup FAILED ${source}: ${message}`);
@@ -89,10 +109,6 @@ export function runCycle(cfg: BackupConfig, at: Date, io: CycleIo = realIo): Cyc
     }
   }
   return { at: at.toISOString(), ok: sources.every((s) => s.ok), sources };
-}
-
-function stemOf(source: string): string {
-  return baseOf(source).replace(/\.[^.]*$/, '');
 }
 
 function baseOf(path: string): string {

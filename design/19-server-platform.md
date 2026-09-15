@@ -252,6 +252,11 @@ One store for both halves: the backend's logs and the browser's.
   parameter the moment a player's client can reach it. See §4's own note on what the proxy settled.
 - Refund handling is specified only to the extent of "the ledger is append-only and a reversal is
   a new row". What a revoked character does to a ladder history is unanswered.
-- SQLite stays the answer until there are two control-plane processes. That, not revenue, is the
+- ~~SQLite stays the answer until there are two control-plane processes.~~ **Reversed
+  2026-09-15** (`design/16-accounts.md`, volumes 66–67): the owner's call moved all four stores
+  to a MongoDB Atlas cluster. The argument below was never refuted — its PREMISE was replaced,
+  which is a different thing, and 16 records both rather than overwriting one with the other.
+  The original text, kept because the next person to propose a storage change should read what
+  this one cost: SQLite stays the answer until there are two control-plane processes. That, not revenue, is the
   signal to revisit.
 

@@ -1,15 +1,31 @@
 /**
  * Username/password accounts (design/16-accounts.md) — the first real identity layer
  * this project has ever had (see `PartyService.ts`/`rating.ts`'s own notes on the
- * previous total absence of one). Pure class over an injected `DatabaseSync` (same
+ * previous total absence of one). Pure class over an injected `AccountsStore` (same
  * dependency-injection shape as `PartyService`/`Matchmaker`), so tests run against a
- * `:memory:` DB with no disk I/O.
+ * throwaway database on the shared mongod rather than a fake.
  *
  * Sessions are opaque bearer tokens stored server-side (not JWT) — revocable via a
- * plain `DELETE`, matching this codebase's existing preference for a few extra bytes
+ * plain delete, matching this codebase's existing preference for a few extra bytes
  * over a new dependency (`ticket.ts` uses raw HMAC rather than a JWT library too).
  *
- * `accounts.provider`/`provider_id` (default `'local'`/`NULL`) were reserved for
+ * ## `register` claims a name; it no longer asks for one
+ *
+ * Until the 2026-09-15 move to MongoDB this method read `WHERE username = ? COLLATE
+ * NOCASE` and inserted if it found nothing. That was a look-before-write, and it was
+ * sound only by accident: `node:sqlite` is synchronous, so nothing could interleave
+ * between the two statements. The underlying `UNIQUE` was case-SENSITIVE and never
+ * enforced the rule the check existed for.
+ *
+ * Every read here is a promise now, so the accident is gone and the race is real —
+ * concurrent registrations of 'Alice' and 'alice' would both find nothing and both
+ * insert. `db.ts`'s `accounts_username_ci` index carries the collation, so the DATABASE
+ * enforces case-insensitive uniqueness, and this method inserts first and reads E11000
+ * as "taken". That is the shape design/19 §4's AMENDMENT 2 requires of billing and
+ * `rating.ts` requires of ladder settlement; registration was the one identity path
+ * still doing it the other way.
+ *
+ * `accounts.provider`/`providerId` (default `'local'`/absent) were reserved for
  * third-party login and, since 2026-09-08, are used: `loginWithProvider` is the
  * federated half of this class, and CrazyGames is its first caller (design/20 "account
  * integration", `routes/auth.ts`'s `/auth/portal`). What that reservation predicted
@@ -18,9 +34,18 @@
  * arrives with a name chosen under someone else's rules, and it cannot be forced through
  * ours (see `loginWithProvider`).
  */
-import type { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { isBlockedUsername } from './usernameFilter';
+import { CI_COLLATION, type AccountsStore } from './db';
+
+/** MongoDB's duplicate-key error. The only driver error code this class interprets rather
+ *  than propagates: it is how both `register` and `loginWithProvider` learn they lost a
+ *  race, and it is the mechanism those two rely on instead of asking first. */
+const DUPLICATE_KEY = 11000;
+
+function isDuplicateKey(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === DUPLICATE_KEY;
+}
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60_000; // 30 days
 const SCRYPT_KEYLEN = 64;
@@ -114,7 +139,7 @@ export class AuthService {
   private readonly loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly store: AccountsStore,
     deps: AuthServiceDeps = {},
   ) {
     this.nowMs = deps.nowMs ?? (() => Date.now());
@@ -122,30 +147,39 @@ export class AuthService {
     this.newToken = deps.newToken ?? (() => randomBytes(32).toString('hex'));
   }
 
-  register(username: unknown, password: unknown): AuthResult {
+  async register(username: unknown, password: unknown): Promise<AuthResult> {
     const usernameError = validateUsername(username);
     if (usernameError) return { error: usernameError };
     const passwordError = validatePassword(password);
     if (passwordError) return { error: passwordError };
     const name = username as string;
 
-    // COLLATE NOCASE: usernames are case-insensitively unique — 'Alice' and 'alice'
-    // being two distinct accounts is a real impersonation/confusion footgun, not a
-    // useful feature. Applied consistently with login's own lookup below.
-    const existing = this.db.prepare('SELECT id FROM accounts WHERE username = ? COLLATE NOCASE').get(name);
-    if (existing) return { error: 'username already taken' };
-
+    // Usernames are case-insensitively unique — 'Alice' and 'alice' being two distinct
+    // accounts is a real impersonation/confusion footgun, not a useful feature. That rule
+    // is `accounts_username_ci`'s to enforce, not this method's to check: see the class
+    // header on why the old look-before-write could not survive becoming asynchronous.
     const accountId = this.newAccountId();
-    this.db
-      .prepare('INSERT INTO accounts (id, username, password_hash, provider, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(accountId, name, hashPassword(password as string), 'local', this.nowMs());
+    try {
+      await this.store.accounts.insertOne({
+        _id: accountId,
+        username: name,
+        passwordHash: hashPassword(password as string),
+        provider: 'local',
+        createdAt: this.nowMs(),
+      });
+    } catch (e) {
+      // The name was taken — either long ago, or by a request still in flight. Both answer
+      // the caller the same way, which is the point of not distinguishing them.
+      if (isDuplicateKey(e)) return { error: 'username already taken' };
+      throw e;
+    }
 
     return this.issueSession(accountId, name);
   }
 
-  login(username: unknown, password: unknown): AuthResult {
+  async login(username: unknown, password: unknown): Promise<AuthResult> {
     if (typeof username !== 'string' || typeof password !== 'string') return { error: 'invalid username or password' };
-    // COLLATE NOCASE means 'Alice'/'alice' are one account for login purposes, so the
+    // The case-folding index means 'Alice'/'alice' are one account for login purposes, so the
     // lockout key must fold case the same way or the two spellings would get separate
     // attempt budgets — normalized once here, reused for every read/write below.
     const key = username.toLowerCase();
@@ -155,20 +189,17 @@ export class AuthService {
       return { error: 'too many failed login attempts — try again later' };
     }
 
-    // `provider` is selected and checked below rather than filtered in the WHERE clause on
-    // purpose: a federated account must be indistinguishable, from the outside, from a
-    // username that does not exist — filtering it out here and letting the generic "invalid
-    // username or password" answer cover it is what makes the two identical. `displayName`
-    // COALESCEs to `username` for a local row, which is every row this path can reach.
-    const row = this.db
-      .prepare(
-        `SELECT id, username, password_hash, provider, COALESCE(display_name, username) AS displayName
-         FROM accounts WHERE username = ? COLLATE NOCASE`,
-      )
-      .get(username) as
-      | { id: string; username: string; password_hash: string; provider: string; displayName: string }
-      | undefined;
-    if (!row || row.provider !== 'local' || !verifyPassword(password, row.password_hash)) {
+    // `provider` is read and checked below rather than folded into the filter on purpose: a
+    // federated account must be indistinguishable, from the outside, from a username that
+    // does not exist — filtering it out here and letting the generic "invalid username or
+    // password" answer cover it is what makes the two identical. `displayName` falls back to
+    // `username` for a local row, which is every row this path can reach.
+    //
+    // CI_COLLATION is not optional decoration: without it this query silently stops folding
+    // case AND stops using `accounts_username_ci`, so a player who registered as 'Alice'
+    // could never log in as 'alice'. See its doc comment in db.ts.
+    const row = await this.store.accounts.findOne({ username }, { collation: CI_COLLATION });
+    if (!row || row.provider !== 'local' || !verifyPassword(password, row.passwordHash)) {
       // Reaching here means any prior lockout already expired (a still-active one
       // returned above), so the streak simply continues from wherever it left off.
       const count = (attempt?.count ?? 0) + 1;
@@ -178,7 +209,7 @@ export class AuthService {
     }
 
     this.loginAttempts.delete(key);
-    return this.issueSession(row.id, row.displayName);
+    return this.issueSession(row._id, row.displayName ?? row.username);
   }
 
   /**
@@ -210,89 +241,117 @@ export class AuthService {
    * concurrency: two simultaneous first logins race, one INSERT loses, and the loser
    * re-reads the winner's row instead of creating a second account.
    */
-  loginWithProvider(opts: { provider: string; providerId: string; displayName: string }): AuthSuccess {
+  async loginWithProvider(opts: { provider: string; providerId: string; displayName: string }): Promise<AuthSuccess> {
     const { provider, providerId } = opts;
     const displayName = opts.displayName.slice(0, MAX_DISPLAY_NAME);
-    const existing = this.findProviderAccount(provider, providerId);
+    const existing = await this.findProviderAccount(provider, providerId);
     if (existing) {
       // The provider is authoritative over the name, every time — a player who renames on
       // the portal must not still be shown to other players under their old name.
       if (existing.displayName !== displayName) {
-        this.db.prepare('UPDATE accounts SET display_name = ? WHERE id = ?').run(displayName, existing.id);
+        await this.store.accounts.updateOne({ _id: existing.id }, { $set: { displayName } });
       }
       return this.issueSession(existing.id, displayName);
     }
 
     const accountId = this.newAccountId();
     try {
-      this.db
-        .prepare(
-          `INSERT INTO accounts (id, username, password_hash, provider, provider_id, created_at, display_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(accountId, `${provider}:${providerId}`, NO_PASSWORD, provider, providerId, this.nowMs(), displayName);
-    } catch {
-      // Lost the race on `accounts_provider_id` (or on `username`, which is derived from the
-      // same two values). The winner's row is the account; ours was never created.
-      const winner = this.findProviderAccount(provider, providerId);
+      await this.store.accounts.insertOne({
+        _id: accountId,
+        username: `${provider}:${providerId}`,
+        passwordHash: NO_PASSWORD,
+        provider,
+        providerId,
+        createdAt: this.nowMs(),
+        displayName,
+      });
+    } catch (e) {
+      // Lost the race on `accounts_provider_id` (or on `accounts_username_ci`, since the
+      // handle is derived from the same two values). The winner's document is the account;
+      // ours was never created. Anything that is NOT a lost race propagates — swallowing a
+      // write error here would report a session for an account that does not exist.
+      if (!isDuplicateKey(e)) throw e;
+      const winner = await this.findProviderAccount(provider, providerId);
       if (!winner) throw new Error('provider account insert failed');
       return this.issueSession(winner.id, winner.displayName);
     }
     return this.issueSession(accountId, displayName);
   }
 
-  private findProviderAccount(provider: string, providerId: string): { id: string; displayName: string } | undefined {
-    return this.db
-      .prepare(
-        `SELECT id, COALESCE(display_name, username) AS displayName
-         FROM accounts WHERE provider = ? AND provider_id = ?`,
-      )
-      .get(provider, providerId) as { id: string; displayName: string } | undefined;
+  private async findProviderAccount(
+    provider: string,
+    providerId: string,
+  ): Promise<{ id: string; displayName: string } | undefined> {
+    const row = await this.store.accounts.findOne({ provider, providerId });
+    if (!row) return undefined;
+    return { id: row._id, displayName: row.displayName ?? row.username };
   }
 
-  logout(token: string): void {
-    this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  async logout(token: string): Promise<void> {
+    await this.store.sessions.deleteOne({ _id: token });
   }
 
   /** `null` on an unknown, expired, or malformed token — the caller maps that to a 401. */
-  verifySession(token: unknown): { accountId: string; username: string } | null {
+  async verifySession(token: unknown): Promise<{ accountId: string; username: string } | null> {
     if (typeof token !== 'string' || !token) return null;
-    const row = this.db
-      .prepare(
-        `SELECT s.account_id as accountId, s.expires_at as expiresAt,
-                COALESCE(a.display_name, a.username) as username
-         FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token = ?`,
-      )
-      .get(token) as { accountId: string; expiresAt: number; username: string } | undefined;
+    // One round trip, not two. The SQL this replaces was a JOIN, and the note on
+    // `issueSession` about keeping an authenticated request to a single indexed lookup is
+    // the reason this is a `$lookup` rather than the two `findOne`s that read more easily:
+    // this runs on every authenticated request. The account is looked up by `_id`, so the
+    // join side is a primary-key hit.
+    //
+    // The name is resolved LIVE rather than copied onto the session at issue time, which is
+    // what the JOIN bought: a portal player who renames must not keep appearing to others
+    // under the old name for the 30 days their session lasts.
+    const [row] = await this.store.sessions
+      .aggregate<{ accountId: string; expiresAt: number; username?: string; displayName?: string }>([
+        { $match: { _id: token } },
+        { $lookup: { from: 'accounts', localField: 'accountId', foreignField: '_id', as: 'account' } },
+        { $unwind: '$account' },
+        {
+          $project: {
+            accountId: 1,
+            expiresAt: 1,
+            username: '$account.username',
+            displayName: '$account.displayName',
+          },
+        },
+      ])
+      .toArray();
     if (!row) return null;
     if (row.expiresAt < this.nowMs()) {
-      this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+      await this.store.sessions.deleteOne({ _id: token });
       return null;
     }
-    return { accountId: row.accountId, username: row.username };
+    return { accountId: row.accountId, username: row.displayName ?? row.username ?? '' };
   }
 
-  changePassword(accountId: string, oldPassword: unknown, newPassword: unknown): { ok: true } | AuthFailure {
-    const row = this.db.prepare('SELECT password_hash FROM accounts WHERE id = ?').get(accountId) as
-      | { password_hash: string }
-      | undefined;
+  async changePassword(
+    accountId: string,
+    oldPassword: unknown,
+    newPassword: unknown,
+  ): Promise<{ ok: true } | AuthFailure> {
+    const row = await this.store.accounts.findOne({ _id: accountId }, { projection: { passwordHash: 1 } });
     // A federated account has no password to change, and no way to acquire one — saying so
     // is safe (the caller already proved they hold this account's session) and is the only
     // answer that is not a lie. `verifyPassword` would refuse it anyway; this is the
     // difference between refusing and refusing for a reason the caller can act on.
-    if (row?.password_hash === NO_PASSWORD) {
+    if (row?.passwordHash === NO_PASSWORD) {
       return { error: 'this account signs in through its platform and has no password' };
     }
-    if (!row || typeof oldPassword !== 'string' || !verifyPassword(oldPassword, row.password_hash)) {
+    if (!row || typeof oldPassword !== 'string' || !verifyPassword(oldPassword, row.passwordHash)) {
       return { error: 'invalid current password' };
     }
     const passwordError = validatePassword(newPassword);
     if (passwordError) return { error: passwordError };
-    this.db.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword as string), accountId);
+    await this.store.accounts.updateOne(
+      { _id: accountId },
+      { $set: { passwordHash: hashPassword(newPassword as string) } },
+    );
     return { ok: true };
   }
 
-  private issueSession(accountId: string, username: string): AuthSuccess {
+  private async issueSession(accountId: string, username: string): Promise<AuthSuccess> {
     // Opportunistic sweep, not a background timer: this project's "no process the
     // team doesn't need yet" convention (see rating.ts/AuthService's own doc notes) —
     // a login/register is exactly as frequent as new rows get added, so sweeping here
@@ -300,14 +359,14 @@ export class AuthService {
     // otherwise be the only thing owning. verifySession (the hot per-request read
     // path) deliberately does NOT sweep here — only the one expired row it already
     // looks at, to keep every authenticated request to a single indexed lookup.
-    this.sweepExpiredSessions();
+    await this.sweepExpiredSessions();
     const token = this.newToken();
     const expiresAt = this.nowMs() + SESSION_TTL_MS;
-    this.db.prepare('INSERT INTO sessions (token, account_id, expires_at) VALUES (?, ?, ?)').run(token, accountId, expiresAt);
+    await this.store.sessions.insertOne({ _id: token, accountId, expiresAt });
     return { accountId, username, token };
   }
 
-  private sweepExpiredSessions(): void {
-    this.db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(this.nowMs());
+  private async sweepExpiredSessions(): Promise<void> {
+    await this.store.sessions.deleteMany({ expiresAt: { $lt: this.nowMs() } });
   }
 }

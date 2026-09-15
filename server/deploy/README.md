@@ -115,7 +115,38 @@ Generate once, keep in a local `server/.env` (never committed — see `.env.exam
 ```bash
 openssl rand -hex 32   # BB_TICKET_SECRET
 openssl rand -hex 32   # BB_INTERNAL_KEY
+openssl rand -hex 16   # BB_ADMIN_PASSWORD  (the ops console's login, design/21 §3.3)
+openssl rand -hex 16   # BB_GRAFANA_ADMIN_PASSWORD
 ```
+
+Two more are not generated but copied out of Atlas, and `compose up` refuses EVERY service
+until both are PRESENT (`ci-deploy.sh` checks each by name first, so the deploy log says
+which). **Present, not valid** — that distinction is the whole of the next paragraph:
+
+- `BB_MONGO_URI` — the cluster's connection string. matchsvc, billsvc and the backup worker
+  use it.
+- `BB_ADMIN_MONGO_URI` — a SECOND database user, for the ops console alone: `read` on
+  `accounts`, `billing` and `analytics`, `readWrite` on `ops`, and nothing else. It is what
+  is left of decision B1 now that the console has no `:ro` mounts and no `readOnly: true`
+  handles, and the console proves it at boot — see "The MongoDB cutover" in §5.
+
+**Paste the real strings, not this file's placeholders.** Every gate between an operator and
+the cluster used to be a presence check — compose's `${VAR:?}`, the `grep` in `ci-deploy.sh`,
+`mongo.ts`'s `if (!raw)` — and a `.env` line reading `BB_MONGO_URI=mongodb+srv://…` passed all
+three, as does `new MongoClient()`: the driver's parser accepts `…` as a hostname. It died at
+SRV resolution instead, as a DNS error in five containers naming neither the variable nor the
+cause. `mongoUriProblem()` in `src/mongo.ts` now refuses a non-ASCII or wrong-scheme URI at
+config time in both paths that read the variable (every service, and the backup worker's own
+`readBackupConfig`). Two things it still cannot see: a well-formed string for the WRONG
+cluster, and correct credentials — §5's Players-tab check is what catches the first.
+
+Editing `.env` over `ssh` is best done with an editor on the box rather than a one-liner:
+a pasted placeholder survives a copy, and PowerShell expands `$` inside double quotes, which
+silently truncates an Atlas password containing one.
+
+`BB_MONGO_DB_PREFIX` is optional and unset in production. Setting it (`staging`, say) moves
+the four databases to `staging_accounts` and friends, so one cluster can host a second
+environment without a second bill.
 
 #### Renaming an existing box's `.env` (`DDU_*` → `BB_*`, 2026-09-08) — DONE
 
@@ -503,27 +534,152 @@ rsync -av blightbloom:~/blightbloom/backups/ ./backups/
 ssh blightbloom 'cd /home/deploy/blightbloom && docker compose down && rm -rf /home/deploy/blightbloom'
 ```
 
-### Backups — automated 2026-09-07
+### The MongoDB cutover — ONE TIME, and the order is the procedure
 
-Until this landed, "the backup procedure" was the two `scp` lines that used to sit in the
-block above: a procedure exactly as reliable as somebody remembering it, protecting the two
-things this project cannot regenerate — `accounts.db` (who somebody is) and `billing.db`
-(what they paid for).
+The four `node:sqlite` files became four logical databases on an Atlas cluster on
+2026-09-15. Everything below happens **once**, on the box, with the services **stopped**, and
+the order is not a suggestion: the migration reads a snapshot, and anything written to the
+files after it reads them stays behind.
 
-Now the compose project runs a fourth process, `bb-backup` (`src/backup/`), and there
-is nothing to remember:
+Before starting, `~/blightbloom/.env` needs two new values, both of which `compose up` will
+refuse to start without — and which, since 2026-09-15, are also checked for SHAPE rather than
+mere presence, because the first attempt at this step wrote the placeholder below to the live
+box and every gate accepted it (§0 "Secrets" has the account). Edit `.env` with an editor on
+the box; do not paste a one-liner out of this file:
 
-- **Daily**, and once immediately at start, it snapshots both databases with SQLite's
-  `VACUUM INTO` — a point-in-time consistent copy taken while the services keep running.
-  `cp` of a live database is what this deliberately is not: it captures a torn page set that
-  opens fine and fails on the page that mattered.
-- **It cannot write to either database.** The two data directories are mounted `:ro`, and
-  the SQLite handle is opened read-only (`VACUUM INTO` works that way — verified, see
-  `src/backup/snapshot.ts`). Its only writable mount is `~/blightbloom/backups`.
-- **Each snapshot is verified before it is published**: `PRAGMA integrity_check` on the copy,
-  then gzip, then an atomic rename. Nothing in that directory is ever a file that merely
-  looks like a backup — an interrupted run leaves a `.part`, which the pruner neither counts
-  nor deletes.
+- `BB_MONGO_URI` — the cluster's connection string, for matchsvc, billsvc and the backup
+  worker.
+- `BB_ADMIN_MONGO_URI` — the ops console's own, for a database user with **`read` on
+  `accounts`, `billing` and `analytics` and `readWrite` on `ops` only**. This is what is left
+  of decision B1 ("the console cannot write player data") now that there are no `:ro` mounts
+  and no `readOnly: true` handles: the console PROBES the role at boot, by attempting a real
+  write to each player-data database and refusing to start unless the server refuses. Give it
+  the same string as `BB_MONGO_URI` and adminsvc will not come up — which is the point.
+
+> #### ⛔ Steps 3 and 4 below DO NOT RUN as written (found 2026-09-15, not yet fixed)
+>
+> `node --import tsx/esm scripts/migrateFromSqlite.ts` cannot work in any image this tree
+> builds. The Dockerfile does `COPY dist/*.mjs ./` and nothing else — there is no `scripts/`
+> directory in the image, no TypeScript, and no `tsx`. `scripts/build.mjs` declares five
+> bundle entries (index, matchsvc, billsvc, backup, adminsvc) and the migration is not one of
+> them. Nothing asserts this command, which is why it survived a fully green suite: the
+> migration is covered by unit tests against a real cluster, and the way it reaches a
+> production box is covered by nothing.
+>
+> **The fix** is a sixth entry in `scripts/build.mjs` — `src/migrate/…` or the script itself
+> out to `dist/migrate.mjs` — so the command becomes `node migrate.mjs --dir=/data`, the same
+> shape as every other process here, and `test/deploy.bundle.test.ts` boots it like the rest.
+> `node:sqlite` is a builtin and needs no packaging; `mongodb` is already `external` and
+> already in `deploy/package.json`.
+>
+> **It also reorders this runbook.** The image on the box is the pre-Mongo one (its
+> `node_modules` holds only `ws`), so a new image has to exist BEFORE the migration runs and
+> the services must NOT start before it — insert `docker compose build` (build only, no `up`)
+> between steps 2 and 3, after `rsync`ing `dist/`, `Dockerfile` and `deploy/package.json`.
+>
+> Everything ABOVE this box is verified against the live cluster and is good: see the
+> "verified 2026-09-15" note under step 5.
+
+```bash
+ssh blightbloom
+cd /home/deploy/blightbloom
+
+# 1. Stop everything that writes. The proxy and the observability stack can stay up.
+docker compose stop gameserver matchsvc billsvc adminsvc backup
+
+# 2. Take a last SQLite snapshot by hand, because the worker no longer reads these files.
+#    Keep it until the cluster has served players for a day.
+tar czf ~/pre-mongo-$(date -u +%Y%m%dT%H%M%SZ).tar.gz data/
+
+# 3. DRY RUN first. It reads, maps every row and counts, and writes nothing — so a row that
+#    cannot be mapped is found here rather than half-way through the real thing.
+docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
+  node --import tsx/esm scripts/migrateFromSqlite.ts --dir=/data --dry-run
+
+# 4. The real run. Idempotent: if it is interrupted, run it again — every write is an upsert
+#    on a key derived from the source row, and the completion marker is written only by a run
+#    that finished.
+docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
+  node --import tsx/esm scripts/migrateFromSqlite.ts --dir=/data
+
+# 5. Bring everything up on the new compose file (no more ./data mounts for the services).
+docker compose up -d --force-recreate
+docker compose ps
+```
+
+#### What is already verified against the live cluster (2026-09-15)
+
+Everything the cutover needs except the image. Re-deriving any of it is wasted time:
+
+- **Cluster** `blightbloom`, `IDLE`, `mongodb+srv://blightbloom.emecoyp.mongodb.net`. It is in
+  a DIFFERENT Atlas project from `funny`'s — the API key in the `secrets` repo's
+  `infra/atlas.yaml` cannot see it, and a key that can is in `secrets/blightbloom/prod.yaml`.
+- **`bb-app`** (`BB_MONGO_URI`): `readWrite` on all four databases plus `dbAdmin` on
+  `accounts` and `billing`. The `dbAdmin` half is not optional — `ensureValidator` issues
+  `db.command({ collMod })` for a collection that already exists, `collMod` is a `dbAdmin`
+  action, and the migration's own upserts create those collections. Without it the FIRST boot
+  after the cutover fails, not the second.
+- **`bb-admin`** (`BB_ADMIN_MONGO_URI`): `read` on `accounts`/`billing`/`analytics`,
+  `readWrite` on `ops`. Probed for real: a write to `accounts` came back refused and a write
+  to `ops` succeeded, so decision B1 holds on the live cluster and not only in a test.
+- **Network access** holds `62.238.1.182`. The four databases do not exist yet
+  (`listDatabases` is empty), which is what a pre-migration cluster should look like.
+- **`.env` on the box is correct and is mirrored in the `secrets` repo** —
+  `secrets/blightbloom/prod.yaml`, all six values, `push-env.py` reports "no change".
+
+> `ssh blightbloom` lands as **root**, so `~` is `/root` and not `/home/deploy`. Any tool
+> given `~/blightbloom/.env` writes to a path that does not exist. Always pass
+> `/home/deploy/blightbloom/.env` in full (and `MSYS_NO_PATHCONV=1` from Git Bash, or the
+> leading slash is rewritten into a Windows path).
+
+Then the acceptance checklist in §4, plus one extra: sign in to the console at
+`/admin/` and confirm the Players tab shows the accounts that were on the box. An empty
+Players tab after a migration that reported success means the services are pointed at a
+different database from the one the migration wrote — check `BB_MONGO_DB_PREFIX` on both
+sides before doing anything else.
+
+**Running it a second time is REFUSED**, and that is the guard worth understanding. A
+completed run leaves a marker in the `ops` store; a later run sees it and stops, because
+every upsert would overwrite a live document with what the `.db` file still says — every
+player's progress since the cutover. `--force` goes past it and should be a decision somebody
+writes down, not a flag somebody reaches for because the command failed.
+
+**Keep `data/` on the box.** Nothing reads it any more, and it is the only copy of the
+pre-migration state until the cluster has been serving for long enough to trust. The backup
+worker deliberately cannot see the `.db.gz` snapshots from before the port either — its
+pruner does not recognise that name — so a retention policy cannot age them out during
+exactly the window they matter.
+
+### Backups — automated 2026-09-07, on the cluster since 2026-09-15
+
+Until the worker landed, "the backup procedure" was two `scp` lines: a procedure exactly as
+reliable as somebody remembering it, protecting the things this project cannot regenerate —
+who somebody is, what they paid for, and what was measured.
+
+`bb-backup` (`src/backup/`) runs daily, and once immediately at start:
+
+- **It dumps three of the four logical databases** — `accounts`, `billing` and `analytics` —
+  as gzipped NDJSON, one document per line in Extended JSON. `ops` is deliberately left out:
+  every document in it is a value an operator typed over a default that is in git.
+- **The format is readable without this repository.** `zcat` shows you the documents and
+  `mongoimport` restores them, which is what decides whether a backup is usable by whoever is
+  holding it at 3am. Extended JSON rather than plain JSON because `entitlements._id` is an
+  ObjectId whose embedded time IS the "oldest grant first" ordering.
+- **It is NOT point-in-time consistent across collections.** `VACUUM INTO` was, because it
+  ran inside a read transaction over one file; a cursor per collection is consistent per
+  document and not across them, so a settlement landing between the `orders` read and the
+  `ledger` read appears in one and not the other. Written down rather than glossed, because
+  the alternative — a transaction with `snapshot` read concern held open across every
+  collection — is a long-running transaction against the live cluster, which is a worse trade
+  for a worker whose job is to be invisible.
+- **What keeps it from writing is a ROLE, not a mount.** Give its `BB_MONGO_URI` a read-only
+  database user. Unlike the console it does not probe that at boot, because a backup worker
+  that refused to start over a too-generous role is a worker that stops taking backups over a
+  permission it never uses.
+- **Each snapshot is verified before it is published**: the written file is read back, its
+  lines counted against what was dumped and every one of them parsed, then an atomic rename.
+  Nothing in that directory is ever a file that merely looks like a backup — an interrupted
+  run leaves a `.part`, which the pruner neither counts nor deletes.
 - **14 per database are kept**, pruned per source, and only after that source's own
   snapshot succeeded — so a database that has been failing for a week keeps its last good
   snapshots instead of ageing them out on schedule.
@@ -539,21 +695,34 @@ docker ps --filter name=bb-backup   # STATUS shows (healthy)/(unhealthy)
 ssh blightbloom 'cd /home/deploy/blightbloom && docker compose restart backup'
 ```
 
-**Restoring.** A snapshot is an ordinary gzipped SQLite file, so a restore needs no tooling
-from this repo:
+**Restoring.** A snapshot is gzipped NDJSON, so a restore needs no tooling from this repo —
+and it is a different shape from the old file-swap, because a document store is restored
+collection by collection rather than by replacing a file:
 
 ```bash
 ssh blightbloom
 cd /home/deploy/blightbloom
-docker compose stop matchsvc                      # nothing may hold the file open
-cp data/matchsvc/accounts.db data/matchsvc/accounts.db.before-restore
-gunzip -c backups/accounts-2026-09-07T02-00-00Z.db.gz > data/matchsvc/accounts.db
-docker compose start matchsvc
+docker compose stop matchsvc billsvc adminsvc     # nothing may be writing
+
+# Look at it first. Every line carries the collection it came from, so this is also how you
+# find out what is in a snapshot without restoring it.
+zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz | head -3
+zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz | wc -l
+
+# Split by collection and load. `--mode=upsert` so a partial restore can be repeated, and
+# `--jsonArray` is NOT used: this is one document per line.
+zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz \
+  | jq -c 'select(.c=="accounts") | .d' > /tmp/accounts.ndjson
+mongoimport --uri "$BB_MONGO_URI" --db accounts --collection accounts \
+  --mode=upsert --upsertFields=_id --file /tmp/accounts.ndjson
+
+docker compose start matchsvc billsvc adminsvc
 curl -fsS http://127.0.0.1:8788/health            # or the Caddy route from §2
 ```
 
-Same for `billing.db` with `billsvc`. Keep the `.before-restore` copy until the restore is
-confirmed — a restore is the one operation here that can lose data that still existed.
+Restore into a SCRATCH database first (`--db restore_check`) whenever there is any doubt
+about what the snapshot holds — the cluster makes that cheap in a way the single-file layout
+never did, and it is the one operation here that can lose data that still existed.
 
 **What it deliberately does NOT do: it does not copy anything off the box.** A snapshot beside
 the database survives every failure this project has actually had (a bad migration, a
@@ -564,11 +733,11 @@ worse than one whose limit is written down. "The host is gone" is a real
 scenario.
 
 **Its verification is part of the deploy.** `ci-deploy.sh` asks the worker for a healthy
-cycle after `docker compose up`, alongside the three `/health` polls, so a deploy that
+cycle after `docker compose up`, alongside the four `/health` polls, so a deploy that
 silently stops backing up fails in CI. `test/backup.*.test.ts` covers the config refusals,
-the retention rules and the health verdict; `test/deploy.bundle.test.ts` builds the real
-bundle, runs it against a real SQLite file, decompresses what it wrote and reads the row
-back.
+the retention rules, the verification step and the health verdict; `test/deploy.bundle.test.ts`
+builds the real bundle, runs it against a real cluster, decompresses what it wrote and reads
+the document back.
 
 > #### It took ZERO backups for its first 18 hours (2026-09-08)
 >

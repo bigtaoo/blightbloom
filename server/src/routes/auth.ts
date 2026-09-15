@@ -9,7 +9,7 @@ import type { IncomingMessage } from 'node:http';
 import type { AuthService } from '../AuthService';
 import type { PortalKeyStore } from '../portalKeys';
 import { verifyPortalToken } from '../portalToken';
-import { readJson, send, type RouteHandler } from './http';
+import { readJsonBody, send, type RouteHandler } from './http';
 
 /** The provider name written to `accounts.provider` for a CrazyGames identity, and the
  *  prefix of the derived login handle. One constant so the row, the handle and any future
@@ -33,38 +33,38 @@ export interface AuthRouteDeps {
 }
 
 /** Parses `Authorization: Bearer <token>` and resolves it to a live session, or `null`. */
-export function requireAuth(req: IncomingMessage, auth: AuthService): { accountId: string; username: string } | null {
+export function requireAuth(
+  req: IncomingMessage,
+  auth: AuthService,
+): Promise<{ accountId: string; username: string } | null> {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) return null;
+  if (!header || !header.startsWith('Bearer ')) return Promise.resolve(null);
   return auth.verifySession(header.slice('Bearer '.length));
 }
 
-export const postRegister: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
-    const { username, password } = (body as { username?: unknown; password?: unknown }) ?? {};
-    const result = deps.auth.register(username, password);
-    send(res, 'error' in result ? 400 : 200, result);
-  });
+export const postRegister: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  const body = await readJsonBody(req);
+  const { username, password } = (body as { username?: unknown; password?: unknown }) ?? {};
+  const result = await deps.auth.register(username, password);
+  send(res, 'error' in result ? 400 : 200, result);
 };
 
-export const postLogin: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
-    const { username, password } = (body as { username?: unknown; password?: unknown }) ?? {};
-    const result = deps.auth.login(username, password);
-    send(res, 'error' in result ? 401 : 200, result);
-  });
+export const postLogin: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  const body = await readJsonBody(req);
+  const { username, password } = (body as { username?: unknown; password?: unknown }) ?? {};
+  const result = await deps.auth.login(username, password);
+  send(res, 'error' in result ? 401 : 200, result);
 };
 
-export const postLogout: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
-    const token = (body as { token?: unknown })?.token;
-    if (typeof token === 'string') deps.auth.logout(token);
-    send(res, 200, { ok: true });
-  });
+export const postLogout: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  const body = await readJsonBody(req);
+  const token = (body as { token?: unknown })?.token;
+  if (typeof token === 'string') await deps.auth.logout(token);
+  send(res, 200, { ok: true });
 };
 
-export const getMe: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const getMe: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   send(res, 200, session);
 };
@@ -84,37 +84,36 @@ export const getMe: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
  * the response is OURS (opaque, 30 days, `sessions` table). They are never interchangeable
  * and only one of them is ever a bearer credential for this server.
  */
-export const postPortalLogin: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
-    void (async () => {
-      const portal = deps.portal;
-      if (!portal) return send(res, 503, { error: 'portal login is not configured on this server' });
-      const token = (body as { token?: unknown })?.token;
-      const pem = await portal.keys.key();
-      // No key means we cannot verify, and cannot verify means refuse. 503 rather than 401
-      // because the failure is ours, not the player's — an adblock-style silent guest
-      // fallback on the client is the right response to it, and a 401 would tell the client
-      // the player's token was bad.
-      if (!pem) return send(res, 503, { error: 'portal verification key unavailable' });
-      const claims = verifyPortalToken(token, pem, (portal.nowMs ?? Date.now)(), { gameId: portal.gameId });
-      if (!claims) return send(res, 401, { error: 'invalid portal token' });
-      const result = deps.auth.loginWithProvider({
-        provider: PROVIDER_CRAZYGAMES,
-        providerId: claims.userId,
-        displayName: claims.username,
-      });
-      send(res, 200, result);
-    })();
+export const postPortalLogin: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  // Was a `void (async () => { ... })()` inside `readJson`'s callback — a detached promise
+  // whose rejection reached nothing. It is a plain `await` now, so a failure here becomes
+  // matchsvc's 500 instead of an unhandled rejection.
+  const body = await readJsonBody(req);
+  const portal = deps.portal;
+  if (!portal) return send(res, 503, { error: 'portal login is not configured on this server' });
+  const token = (body as { token?: unknown })?.token;
+  const pem = await portal.keys.key();
+  // No key means we cannot verify, and cannot verify means refuse. 503 rather than 401
+  // because the failure is ours, not the player's — an adblock-style silent guest
+  // fallback on the client is the right response to it, and a 401 would tell the client
+  // the player's token was bad.
+  if (!pem) return send(res, 503, { error: 'portal verification key unavailable' });
+  const claims = verifyPortalToken(token, pem, (portal.nowMs ?? Date.now)(), { gameId: portal.gameId });
+  if (!claims) return send(res, 401, { error: 'invalid portal token' });
+  const result = await deps.auth.loginWithProvider({
+    provider: PROVIDER_CRAZYGAMES,
+    providerId: claims.userId,
+    displayName: claims.username,
   });
+  send(res, 200, result);
 };
 
-export const postChangePassword: RouteHandler<AuthRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
-    const { token, oldPassword, newPassword } =
-      (body as { token?: unknown; oldPassword?: unknown; newPassword?: unknown }) ?? {};
-    const session = deps.auth.verifySession(token);
-    if (!session) return send(res, 401, { error: 'invalid or expired session' });
-    const result = deps.auth.changePassword(session.accountId, oldPassword, newPassword);
-    send(res, 'error' in result ? 400 : 200, result);
-  });
+export const postChangePassword: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+  const body = await readJsonBody(req);
+  const { token, oldPassword, newPassword } =
+    (body as { token?: unknown; oldPassword?: unknown; newPassword?: unknown }) ?? {};
+  const session = await deps.auth.verifySession(token);
+  if (!session) return send(res, 401, { error: 'invalid or expired session' });
+  const result = await deps.auth.changePassword(session.accountId, oldPassword, newPassword);
+  send(res, 'error' in result ? 400 : 200, result);
 };

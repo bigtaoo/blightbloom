@@ -19,8 +19,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { AddressInfo } from 'node:net';
-import type { DatabaseSync } from 'node:sqlite';
-import { openBillingDb } from '../src/billingDb';
+import type { Db } from 'mongodb';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { createBillsvcServer } from '../src/billsvc/server';
 import { createInternalVerifier } from '../src/internalAuth';
 import { recentWebhookEvents, webhookEventsForOrder } from '../src/billsvc/webhookLog';
@@ -30,13 +31,16 @@ const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 const SKU = 'bp.cannon';
 
 let baseUrl: string;
-let db: DatabaseSync;
+let ctx: MongoTestContext;
+let db: Db;
 let close: () => Promise<void> = async () => {};
 let clock = 10_000;
 
 beforeEach(async () => {
   clock = 10_000;
-  db = openBillingDb(':memory:');
+  ctx = await openTestMongo();
+  db = ctx.db('billing');
+  await ensureBillingIndexes(db);
   const { server, pump } = createBillsvcServer({
     db,
     env: DEV_ENV,
@@ -55,16 +59,14 @@ beforeEach(async () => {
       shutDown = true;
       void pump.stop().then(() => {
         server.closeAllConnections();
-        server.close(() => {
-          db.close();
-          resolve();
-        });
+        server.close(() => resolve());
       });
     });
 });
 
 afterEach(async () => {
   await close();
+  await ctx.dispose();
 });
 
 /** POSTs a RAW string body, so a payload that is not JSON can be sent at all. */
@@ -98,7 +100,7 @@ describe('every webhook event is recorded', () => {
     expect(res.status).toBe(200);
     expect(res.body.delivered).toBe(true);
 
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe('txn-a:purchase');
     expect(rows[0]!.outcome).toBe('settled');
@@ -117,7 +119,7 @@ describe('every webhook event is recorded', () => {
     expect(second.body.delivered).toBe(false);
     expect(second.body.note).toBe('already-delivered');
 
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.seenCount).toBe(2);
     expect(rows[0]!.outcome).toBe('already-delivered');
@@ -133,7 +135,7 @@ describe('every webhook event is recorded', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('product-mismatch');
 
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.outcome).toBe('rejected');
     expect(rows[0]!.detail).toContain('product-mismatch');
@@ -146,7 +148,7 @@ describe('every webhook event is recorded', () => {
     // Recorded against the order id the CALLBACK named, even though no such order exists —
     // that is precisely the case support needs to see, because the alternative explanation is
     // that the callback was never received at all.
-    const rows = webhookEventsForOrder(db, 'ghost');
+    const rows = await webhookEventsForOrder(db, 'ghost');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.outcome).toBe('rejected');
     expect(rows[0]!.detail).toContain('unknown-order');
@@ -157,7 +159,7 @@ describe('every webhook event is recorded', () => {
     const res = await postJson('/webhook/dev', { orderId, receipt: 'not-a-stub-receipt', txnId: 'txn-e' });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('verification-failed');
-    expect(webhookEventsForOrder(db, orderId)[0]!.detail).toContain('verification-failed');
+    expect((await webhookEventsForOrder(db, orderId))[0]!.detail).toContain('verification-failed');
   });
 });
 
@@ -168,7 +170,7 @@ describe('the non-settling branches', () => {
     expect(res.status).toBe(200);
     expect(res.body.changed).toBe(true);
 
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe('txn-f:cancelled');
     expect(rows[0]!.eventType).toBe('cancelled');
@@ -181,7 +183,7 @@ describe('the non-settling branches', () => {
     const orderId = await newOrder();
     await postJson('/webhook/dev', { orderId, txnId: 'txn-g', event: 'failed' });
     await postJson('/webhook/dev', { orderId, txnId: 'txn-g', event: 'failed' });
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.seenCount).toBe(2);
     expect(rows[0]!.outcome).toBe('no-change');
@@ -190,7 +192,7 @@ describe('the non-settling branches', () => {
   it('records a cancel that named no order at all', async () => {
     const res = await postJson('/webhook/dev', { txnId: 'txn-h', event: 'cancelled' });
     expect(res.status).toBe(400);
-    const rows = recentWebhookEvents(db, 10);
+    const rows = await recentWebhookEvents(db, 10);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.orderId).toBeNull();
     expect(rows[0]!.outcome).toBe('rejected');
@@ -211,7 +213,7 @@ describe('the non-settling branches', () => {
     expect(res.body.ignored).toBe(true);
     expect(res.body.event).toBe('refunded');
 
-    const rows = webhookEventsForOrder(db, orderId);
+    const rows = await webhookEventsForOrder(db, orderId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.eventType).toBe('unknown');
     expect(rows[0]!.outcome).toBe('ignored');
@@ -220,14 +222,14 @@ describe('the non-settling branches', () => {
     // And, the half that matters: nothing was delivered and the order is still open.
     const order = await fetch(`${baseUrl}/order/${orderId}`, { headers: { 'x-internal-key': KEY } });
     expect(((await order.json()) as { order: { state: string } }).order.state).toBe('created');
-    expect(db.prepare('SELECT COUNT(*) AS n FROM ledger').get()).toEqual({ n: 0 });
+    expect(await billingStore(db).ledger.countDocuments()).toBe(0);
   });
 
   it('an unknown event type that is not even a string is recorded, not crashed on', async () => {
     const orderId = await newOrder();
     const res = await postJson('/webhook/dev', { orderId, txnId: 'txn-j', event: { nested: true } });
     expect(res.status).toBe(200);
-    expect(webhookEventsForOrder(db, orderId)[0]!.eventType).toBe('unknown');
+    expect((await webhookEventsForOrder(db, orderId))[0]!.eventType).toBe('unknown');
   });
 });
 
@@ -239,7 +241,7 @@ describe('payloads that never parsed', () => {
     const res = await postRaw('/webhook/wechat', raw);
     expect(res.status).toBe(400);
 
-    const rows = recentWebhookEvents(db, 10);
+    const rows = await recentWebhookEvents(db, 10);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.raw).toBe(raw);
     expect(rows[0]!.platform).toBe('wechat');
@@ -254,7 +256,7 @@ describe('payloads that never parsed', () => {
     await postRaw('/webhook/dev', 'garbage-a');
     await postRaw('/webhook/dev', 'garbage-b');
     await postRaw('/webhook/dev', 'garbage-a');
-    const rows = recentWebhookEvents(db, 10);
+    const rows = await recentWebhookEvents(db, 10);
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.raw === 'garbage-a')!.seenCount).toBe(2);
     expect(rows.find((r) => r.raw === 'garbage-b')!.seenCount).toBe(1);
@@ -266,7 +268,7 @@ describe('payloads that never parsed', () => {
     const raw = `{"orderId":"o","pad":"${'x'.repeat(300 * 1024)}"}`;
     const res = await postRaw('/webhook/dev', raw);
     expect(res.status).toBe(400);
-    const rows = recentWebhookEvents(db, 10);
+    const rows = await recentWebhookEvents(db, 10);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.raw).toMatch(/^<oversized body discarded: >\d+ bytes>$/);
     expect(rows[0]!.raw.length).toBeLessThan(100);
@@ -277,6 +279,6 @@ describe('payloads that never parsed', () => {
     // would let anyone with the public URL append to an evidence table.
     const res = await postJson('/webhook/nonsense', { orderId: 'o', txnId: 't' });
     expect(res.status).toBe(404);
-    expect(recentWebhookEvents(db, 10)).toEqual([]);
+    expect(await recentWebhookEvents(db, 10)).toEqual([]);
   });
 });

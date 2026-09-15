@@ -22,6 +22,7 @@ import type { Server } from 'node:http';
 import { createMatchsvcServer, type MatchsvcServerOptions } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
 import type { BotClientOptions } from '../src/BotClient';
+import { freshAccounts } from './mongoHarness';
 
 const SECRET = 'queue-test-secret';
 
@@ -31,10 +32,10 @@ interface Ctx {
   close: () => Promise<void>;
 }
 
-async function start(opts: Omit<MatchsvcServerOptions, 'dbPath' | 'secret'> = {}): Promise<Ctx> {
+async function start(opts: Partial<Omit<MatchsvcServerOptions, 'store' | 'secret'>> = {}): Promise<Ctx> {
   const bots: BotClientOptions[] = [];
   const server: Server = createMatchsvcServer({
-    dbPath: ':memory:',
+    store: await freshAccounts(),
     secret: SECRET,
     spawnBot: (o) => void bots.push(o),
     ...opts,

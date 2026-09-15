@@ -23,41 +23,41 @@
  *
  * A guest never reaches either route — no session, no row, byte-identical to today.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { AccountsStore } from '../db';
 import type { AuthService } from '../AuthService';
-import { readJson, send, type RouteHandler } from './http';
+import { readJsonBody, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
 import { EntitlementService, applyOwnership, stripOwnership } from '../EntitlementService';
 
 export interface AccountRouteDeps {
   auth: AuthService;
-  db: DatabaseSync;
+  store: AccountsStore;
 }
 
 /**
- * `EntitlementService` is built per request from `deps.db` rather than wired into
- * matchsvc's shared `deps` bundle. It holds nothing but the connection, and every other
- * handler in this directory already reaches for `deps.db.prepare(...)` inline, so the
- * shared bundle would buy a coupling to the assembly shell and no measurable anything.
+ * `EntitlementService` is built per request from `deps.store` rather than wired into
+ * matchsvc's shared `deps` bundle. It holds nothing but the collections, and every other
+ * handler in this directory already reaches into `deps.store` inline, so the shared bundle
+ * would buy a coupling to the assembly shell and no measurable anything.
  */
 function entitlementsOf(deps: AccountRouteDeps): EntitlementService {
-  return new EntitlementService(deps.db);
+  return new EntitlementService(deps.store);
 }
 
-export const getMeta: RouteHandler<AccountRouteDeps> = (req, res, _url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const getMeta: RouteHandler<AccountRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   const entitlements = entitlementsOf(deps);
-  const rows = entitlements.list(session.accountId);
-  const row = deps.db.prepare('SELECT data FROM meta_state WHERE account_id = ?').get(session.accountId) as
-    | { data: string }
-    | undefined;
+  const rows = await entitlements.list(session.accountId);
+  const row = await deps.store.metaState.findOne({ _id: session.accountId });
   // `data: null` still means "this account has never saved meta state" — unchanged, and
   // load-bearing: the client answers it by pushing its own (possibly guest-accumulated)
   // local state up rather than overwriting it with nothing. Entitlements ride alongside
   // rather than inside so that case can still deliver a purchase made before the first
   // save (see `pullAccountMeta`).
-  const data = row ? applyOwnership(JSON.parse(row.data) as unknown, entitlements.ownership(session.accountId)) : null;
+  const data = row
+    ? applyOwnership(JSON.parse(row.data) as unknown, await entitlements.ownership(session.accountId))
+    : null;
   send(res, 200, {
     data,
     // `orderId` is deliberately not exposed: it addresses a row in billsvc's private
@@ -66,17 +66,16 @@ export const getMeta: RouteHandler<AccountRouteDeps> = (req, res, _url, deps) =>
   });
 };
 
-export const postMeta: RouteHandler<AccountRouteDeps> = (req, res, _url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const postMeta: RouteHandler<AccountRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
-  readJson(req, (body) => {
-    const data = (body as { data?: unknown })?.data;
-    if (data === undefined) return send(res, 400, { error: 'data required' });
-    deps.db
-      .prepare(
-        'INSERT INTO meta_state (account_id, data) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET data = excluded.data',
-      )
-      .run(session.accountId, JSON.stringify(stripOwnership(data)));
-    send(res, 200, { ok: true });
-  });
+  const body = await readJsonBody(req);
+  const data = (body as { data?: unknown })?.data;
+  if (data === undefined) return send(res, 400, { error: 'data required' });
+  await deps.store.metaState.updateOne(
+    { _id: session.accountId },
+    { $set: { data: JSON.stringify(stripOwnership(data)) } },
+    { upsert: true },
+  );
+  send(res, 200, { ok: true });
 };

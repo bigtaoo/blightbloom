@@ -1,12 +1,12 @@
 /**
  * Daily reconciliation (design/19-server-platform.md §7, ROADMAP 8.5) — a sibling module of
  * free functions, CLAUDE.md's first split form, deliberately not a `BillingService` method:
- * this reads the same tables but answers a different question, and it must be drivable from
- * a cron script with no HTTP server in the process.
+ * this reads the same collections but answers a different question, and it must be drivable
+ * from a cron script with no HTTP server in the process.
  *
  * WHAT TEAR THIS COVERS. design/19 §4 argues that funny's verify-and-heal CAS saga is
- * unnecessary here because `orders`, `receipts` and `ledger` are three tables in one SQLite
- * file and one `BEGIN IMMEDIATE` makes a tear between them impossible; §4's closing paragraph
+ * unnecessary here because `orders`, `receipts` and `ledger` are three collections in one
+ * store and one transaction makes a tear between them impossible; §4's closing paragraph
  * then names the tear that is still real — between the PLATFORM and the local transaction —
  * and hands it to this file. A payment that succeeded on the platform's side and whose
  * callback never arrived (or arrived and was refused) leaves NO local row at all, so nothing
@@ -49,7 +49,8 @@
  * applies here too: with no evidence, skip — never convict. Reconciliation's job is to make
  * the tear visible to a human, not to guess which side is right.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
+import { billingStore } from '../billing/collections';
 import { asIapPlatform, type IapPlatform, type PlatformOrder, type PlatformOrderLister } from './iap/types';
 
 /** The local side of the join: one SETTLED order, which is the only kind that can match. */
@@ -117,48 +118,41 @@ export interface ReconcileReport {
 /**
  * Read the local side: settled orders in `[sinceMs, untilMs)` for one platform.
  *
- * `settled_at` rather than `created_at`, because the platform's list is keyed on when it
+ * `settledAt` rather than `createdAt`, because the platform's list is keyed on when it
  * charged, not on when this server booked an intent — an order created at 23:59 and settled
  * at 00:01 belongs to the second day on both sides or to neither.
  *
- * `platform_txn_id IS NOT NULL` is not defensive: `settle` writes the state and the
- * transaction id in one statement, so a settled row always has one. It is here because the
- * column is the join key, and a NULL sneaking through (a hand-edited row — the posture
- * design/19 §8 plans for) would otherwise join every such order to every other.
+ * `platformTxnId: { $type: 'string' }` is not defensive: `settle` writes the state and the
+ * transaction id in one update, so a settled document always has one. It is here because the
+ * field is the join key, and one missing (a hand-edited document — the posture design/19 §8
+ * plans for) would otherwise join every such order to every other. It is also the exact
+ * predicate the partial unique index in `billing/schema.ts` is filtered on, which is not a
+ * coincidence: both mean "this order has actually claimed a platform payment".
  */
-export function localSettledOrders(
-  db: DatabaseSync,
+export async function localSettledOrders(
+  db: Db,
   platform: IapPlatform,
   sinceMs: number,
   untilMs: number,
-): LocalSettledOrder[] {
-  const rows = db
-    .prepare(
-      `SELECT id, account_id, sku, platform, amount_cents, currency, platform_txn_id, settled_at
-         FROM orders
-        WHERE state = 'settled' AND platform = ? AND platform_txn_id IS NOT NULL
-          AND settled_at >= ? AND settled_at < ?
-        ORDER BY settled_at ASC, id ASC`,
-    )
-    .all(platform, sinceMs, untilMs) as unknown as {
-    id: string;
-    account_id: string;
-    sku: string;
-    platform: string;
-    amount_cents: number;
-    currency: string;
-    platform_txn_id: string;
-    settled_at: number;
-  }[];
-  return rows.map((r) => ({
-    orderId: r.id,
-    accountId: r.account_id,
-    sku: r.sku,
-    platform: r.platform as IapPlatform,
-    amountCents: r.amount_cents,
-    currency: r.currency,
-    platformTxnId: r.platform_txn_id,
-    settledAt: r.settled_at,
+): Promise<LocalSettledOrder[]> {
+  const docs = await billingStore(db)
+    .orders.find({
+      state: 'settled',
+      platform,
+      platformTxnId: { $type: 'string' },
+      settledAt: { $gte: sinceMs, $lt: untilMs },
+    })
+    .sort({ settledAt: 1, _id: 1 })
+    .toArray();
+  return docs.map((d) => ({
+    orderId: d._id,
+    accountId: d.accountId,
+    sku: d.sku,
+    platform: d.platform as IapPlatform,
+    amountCents: d.amountCents,
+    currency: d.currency,
+    platformTxnId: d.platformTxnId as string,
+    settledAt: d.settledAt as number,
   }));
 }
 
@@ -247,7 +241,7 @@ export function diffOrders(
 }
 
 export interface ReconcileDeps {
-  db: DatabaseSync;
+  db: Db;
   listOrders: PlatformOrderLister;
   /** Which platforms to reconcile. Defaults to every platform the dispatch knows. */
   platforms?: readonly IapPlatform[];
@@ -282,7 +276,9 @@ export async function reconcileWindow(deps: ReconcileDeps, sinceMs: number, unti
       unreconciled.push({ platform, reason: listing.reason });
       continue;
     }
-    reports.push(diffOrders(platform, localSettledOrders(deps.db, platform, sinceMs, untilMs), listing.orders));
+    reports.push(
+      diffOrders(platform, await localSettledOrders(deps.db, platform, sinceMs, untilMs), listing.orders),
+    );
   }
 
   return {

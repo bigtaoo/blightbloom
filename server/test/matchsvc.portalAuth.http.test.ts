@@ -15,6 +15,7 @@ import type { AddressInfo } from 'node:net';
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createMatchsvcServer } from '../src/matchsvc';
 import type { PortalKeyStore } from '../src/portalKeys';
+import { freshAccounts } from './mongoHarness';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const PEM = publicKey.export({ type: 'pkcs1', format: 'pem' }).toString();
@@ -44,7 +45,7 @@ let close: () => Promise<void>;
 
 beforeAll(async () => {
   const server = createMatchsvcServer({
-    dbPath: ':memory:',
+    store: await freshAccounts(),
     secret: 'test-secret',
     portal: { keys, gameId: 'the-game', nowMs: () => NOW_MS },
   });
@@ -173,7 +174,7 @@ describe('POST /auth/portal — the real clock', () => {
   it('works with no injected clock, which is how the deployment runs', async () => {
     // Every case above pins the clock so a fixed `exp` stays valid. The shipped wiring
     // injects none, and a default nothing exercises is a default nobody has checked.
-    const server = createMatchsvcServer({ dbPath: ':memory:', secret: 'test-secret', portal: { keys, gameId: 'the-game' } });
+    const server = createMatchsvcServer({ store: await freshAccounts(), secret: 'test-secret', portal: { keys, gameId: 'the-game' } });
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const { port } = server.address() as AddressInfo;
     try {

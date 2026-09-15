@@ -30,16 +30,16 @@
  * carries a CHECK for each, and this route is written to satisfy them rather than to work
  * around them — an unauditable paid entitlement is the thing they exist to make impossible.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { AccountsStore } from '../db';
 import { internalKeys } from '../config';
 import { createInternalVerifier, describeInternalAuthFailure, type InternalVerifier } from '../internalAuth';
 import { EntitlementService, blueprintSku, characterSku } from '../EntitlementService';
-import { readJson, send, type RouteHandler } from './http';
+import { readJsonBody, send, type RouteHandler } from './http';
 
 export const INTERNAL_GRANT_PATH = '/internal/entitlements/grant';
 
 export interface InternalEntitlementRouteDeps {
-  db: DatabaseSync;
+  store: AccountsStore;
   /**
    * Internal-key verifier override. OPTIONAL, and the default is not "no auth" — it is the
    * same env-derived registry `routes/rating.ts` falls back to, so the route is guarded even
@@ -72,7 +72,7 @@ function entitlementSkuFor(grant: unknown): string | null {
  * operator reading a log needs to tell it apart from a first delivery. Both are a 200: the
  * pump must mark the row delivered either way.
  */
-export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = (req, res, _url, deps) => {
+export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = async (req, res, _url, deps) => {
   const verifier = deps.internalAuth ?? createInternalVerifier(internalKeys().registry);
   const auth = verifier.verify(req.headers);
   if (!auth.ok) {
@@ -82,7 +82,8 @@ export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = (req, res, 
     return send(res, 401, { error: 'unauthorized' });
   }
 
-  readJson(req, (body) => {
+  const body = await readJsonBody(req);
+  {
     const b = (body ?? {}) as { accountId?: unknown; orderId?: unknown; grants?: unknown; deliveryId?: unknown };
     const accountId = typeof b.accountId === 'string' ? b.accountId.trim() : '';
     const orderId = typeof b.orderId === 'string' ? b.orderId.trim() : '';
@@ -103,33 +104,42 @@ export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = (req, res, 
       skus.push(sku);
     }
 
-    // Checked rather than caught. `entitlements.account_id` is a real foreign key, so a
-    // grant for an account that does not exist throws out of `node:sqlite` — and telling
-    // "no such account" (permanent: the pump should stop and shout) apart from "the write
-    // failed" (transient: it must retry) by parsing a driver's error string is the thing
-    // `BillingService` already refuses to do on its own claims.
-    const known = deps.db.prepare('SELECT 1 AS one FROM accounts WHERE id = ?').get(accountId);
-    if (known === undefined) return send(res, 404, { error: `no account '${accountId}'` });
+    // Checked rather than caught, and since the 2026-09-15 move to MongoDB this check is
+    // the ONLY thing standing where a foreign key used to. `entitlements.account_id`
+    // REFERENCED `accounts(id)`, so a grant for an account that does not exist used to
+    // throw out of `node:sqlite`; the cluster has no such constraint and would accept the
+    // orphan silently. The check was always here for a better reason than the FK anyway —
+    // telling "no such account" (permanent: the pump should stop and shout) apart from "the
+    // write failed" (transient: it must retry) by parsing a driver's error string is the
+    // thing `BillingService` already refuses to do on its own claims.
+    const known = await deps.store.accounts.findOne({ _id: accountId }, { projection: { _id: 1 } });
+    if (known === null) return send(res, 404, { error: `no account '${accountId}'` });
 
-    const entitlements = new EntitlementService(deps.db);
-    const granted: string[] = [];
-    const alreadyOwned: string[] = [];
-    deps.db.exec('BEGIN IMMEDIATE');
+    const entitlements = new EntitlementService(deps.store);
+    let granted: string[] = [];
+    let alreadyOwned: string[] = [];
+    const session = deps.store.client.startSession();
     try {
-      for (const sku of skus) {
-        if (entitlements.grant(accountId, sku, 'purchase', { orderId })) granted.push(sku);
-        else alreadyOwned.push(sku);
-      }
-      deps.db.exec('COMMIT');
+      await session.withTransaction(async () => {
+        // Reset per attempt: `withTransaction` re-runs its callback on a transient
+        // transaction error, and arrays that accumulated across attempts would report a SKU
+        // twice — as granted on the retry and as already-owned from the attempt that was
+        // rolled back.
+        granted = [];
+        alreadyOwned = [];
+        for (const sku of skus) {
+          if (await entitlements.grant(accountId, sku, 'purchase', { orderId, session })) granted.push(sku);
+          else alreadyOwned.push(sku);
+        }
+      });
     } catch (e) {
-      deps.db.exec('ROLLBACK');
-      // A 500, deliberately, and NOT a rethrow. A throw from inside `readJson`'s `end`
-      // handler is an uncaughtException with no response ever sent, so the pump would hang
-      // to its own timeout and then retry anyway — and the 5xx is what tells it to retry
-      // rather than to write the purchase off. Whatever failed here (a locked database, a
-      // disk error) may well succeed on the next sweep.
+      // A 500, deliberately, and NOT a rethrow. The 5xx is what tells the pump to retry
+      // rather than to write the purchase off, and whatever failed here (a failover, a pool
+      // timeout) may well succeed on the next sweep.
       console.error(`[blightbloom] entitlements: grant for account '${accountId}' order '${orderId}' failed — ${(e as Error).message}`);
       return send(res, 500, { error: 'grant failed' });
+    } finally {
+      await session.endSession();
     }
 
     const deliveryId = typeof b.deliveryId === 'string' ? b.deliveryId : '(none)';
@@ -138,5 +148,5 @@ export const postGrant: RouteHandler<InternalEntitlementRouteDeps> = (req, res, 
         `granted [${granted.join(', ')}], already owned [${alreadyOwned.join(', ')}]`,
     );
     send(res, 200, { ok: true, granted, alreadyOwned });
-  });
+  }
 };

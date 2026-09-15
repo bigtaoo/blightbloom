@@ -2,11 +2,18 @@
  * The backup worker's entry point — the fourth process in `docker-compose.yml`, and the
  * first one that is not an HTTP server.
  *
- * It exists because `accounts.db` and `billing.db` hold the two things this project cannot
- * regenerate: who somebody is, and what they paid for. Both live as single SQLite files on
- * a box this project only borrows, and `server/deploy/README.md` documented a MANUAL `scp`
- * as the backup procedure — which is a procedure in the sense that a note saying "remember
- * to breathe" is a procedure.
+ * It exists because the `accounts` and `billing` databases hold the two things this project
+ * cannot regenerate: who somebody is, and what they paid for. They were single SQLite files
+ * on a borrowed box when this was written, and `server/deploy/README.md` documented a MANUAL
+ * `scp` as the backup procedure — which is a procedure in the sense that a note saying
+ * "remember to breathe" is a procedure.
+ *
+ * They are logical databases on an Atlas cluster since 2026-09-15, and the reason this
+ * process SURVIVED that move rather than being retired into the provider's own backups is
+ * worth stating: a managed snapshot is a restore path that belongs to the provider, needs
+ * their console, and on the smaller tiers does not exist at all. This writes a gzipped
+ * NDJSON file a person can read with `zcat` — the same property the `.db.gz` had, which is
+ * what decides whether a backup is usable by whoever is holding it at 3am.
  *
  * ## Two modes, one bundle
  *
@@ -20,13 +27,17 @@
  *
  * ## What it deliberately does not do
  *
- * No off-box copy. A snapshot beside the database survives every failure this project has
- * actually had (a bad migration, a hand-edited row, a `rm` in the wrong directory) and
- * none of the ones that take the host with it. Getting the `./backups` directory off the
- * machine is a human step, documented in `server/deploy/README.md`, and it is honest to
- * leave it visible there rather than pretend a container solved it.
+ * No off-box copy. A snapshot on the application host survives every failure this project
+ * has actually had (a bad migration, a hand-edited document, a `deleteMany` with the wrong
+ * filter) and none of the ones that take the host with it. Getting the `./backups` directory
+ * off the machine is a human step, documented in `server/deploy/README.md`, and it is honest
+ * to leave it visible there rather than pretend a container solved it.
+ *
+ * No point-in-time consistency ACROSS collections either, which the SQLite version had for
+ * free — `snapshot.ts` says what that cost and why the alternative was worse.
  */
 import { fileURLToPath } from 'node:url';
+import { connectMongo } from '../mongo';
 import { readBackupConfig, BackupConfigError, type BackupConfig } from './config';
 import { isHealthy, readStatus, runCycle, writeStatus, type CycleIo } from './runner';
 import { createLogger } from '../log';
@@ -96,7 +107,7 @@ export async function runForever(cfg: BackupConfig, deps: LoopDeps = {}): Promis
   const wait = deps.sleep ?? sleep;
   let failures = 0;
   for (;;) {
-    const result = runCycle(cfg, now(), deps.io);
+    const result = await runCycle(cfg, now(), deps.io);
     writeStatus(cfg.destDir, result);
     failures = result.ok ? 0 : failures + 1;
     await wait(result.ok ? cfg.intervalMs : retryDelayMs(failures, cfg.intervalMs));
@@ -120,8 +131,17 @@ export function loadOrExit(env: NodeJS.ProcessEnv): BackupConfig {
 export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
   const cfg = loadOrExit(env);
   if (argv.includes('--health')) {
+    // BEFORE the connection. The healthcheck reads `status.json` and nothing else, and a
+    // probe that had to reach the cluster would report a network blip as a broken backup —
+    // turning a container unhealthy over a condition its own last cycle already recorded
+    // correctly.
     process.exit(healthExitCode(cfg, new Date()));
   }
+  // Connect before the first cycle rather than inside it, for the reason every `main.ts`
+  // here now does: a bad URI or an unreachable cluster is a boot failure with a line an
+  // operator can read, not three recorded source failures that look like the databases are
+  // the problem.
+  await connectMongo();
   const log = createLogger('backup');
   log.info('snapshotter starting', {
     sources: cfg.sources.length,

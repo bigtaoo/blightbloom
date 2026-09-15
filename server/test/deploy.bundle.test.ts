@@ -18,12 +18,12 @@
  * WRONG service name is the failure a smoke test that only checks `ok: true` would wave
  * through, and it is one typo in `build.mjs`'s `entries` away.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, inject } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, symlinkSync } from 'node:fs';
+import { MongoClient } from 'mongodb';
 import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -167,26 +167,34 @@ describe('the built bundles are self-contained', () => {
 
   it('kept exactly the declared externals external', () => {
     // `ws` must survive as a real import (bundling it breaks its runtime `require` of the
-    // native/WASM fallback); `node:sqlite` is a builtin. Both are then satisfied by
-    // deploy/package.json + Node itself. Asserted per-bundle rather than in aggregate,
-    // because only the two DB-backed processes should be reaching for sqlite at all.
-    expect(external).toEqual(['ws', 'node:sqlite']);
+    // native/WASM fallback); `mongodb` must survive for the same reason and for a sharper
+    // one — bundled, its `require('timers/promises')` becomes a dynamic require in ESM
+    // output and every service dies at boot, which is exactly what the boot cases below
+    // caught. Both are then satisfied by deploy/package.json. Asserted per-bundle rather
+    // than in aggregate, because only the processes that actually hold a store should be
+    // reaching for one.
+    //
+    // `node:sqlite` was the third entry until 2026-09-15. Its ABSENCE from every bundle is
+    // now the sharpest evidence available that the port is complete rather than half-done:
+    // one surviving `openBillingDb`-shaped import anywhere under `src/` would put the
+    // builtin straight back into whichever bundle reached it, and this list is exact.
+    expect(external).toEqual(['ws', 'mongodb']);
     const src = Object.fromEntries(built.map((f) => [f, readFileSync(f, 'utf8')]));
     const byName = (name: string) => src[built.find((f) => f.endsWith(`${name}.mjs`))!]!;
     expect(byName('index')).toMatch(/from\s*["']ws["']/);
-    expect(byName('matchsvc')).toMatch(/from\s*["']node:sqlite["']/);
-    expect(byName('billsvc')).toMatch(/from\s*["']node:sqlite["']/);
-    // The backup worker reads both databases through the same builtin — and must NOT drag
-    // `ws` in, since bundling a websocket library into a process that opens no socket is
-    // the tell that an entrypoint is pointed at the wrong source file.
-    expect(byName('backup')).toMatch(/from\s*["']node:sqlite["']/);
+    for (const name of ['matchsvc', 'billsvc', 'backup', 'adminsvc']) {
+      expect(byName(name), name).toMatch(/from\s*["']mongodb["']/);
+    }
+    for (const name of ['index', 'matchsvc', 'billsvc', 'backup', 'adminsvc']) {
+      expect(byName(name), name).not.toMatch(/from\s*["']node:sqlite["']/);
+    }
+    // The two processes that open no socket must NOT drag `ws` in. For the worker that is
+    // the tell that an entrypoint is pointed at the wrong source file; for adminsvc it is
+    // sharper, since its whole reason to exist is that it is NOT matchsvc — a `ws` import
+    // here would mean the entrypoint had dragged the control plane in behind it, which is
+    // the one import that would put a writable `AuthService` in the same process as the
+    // read-only console.
     expect(byName('backup')).not.toMatch(/from\s*["']ws["']/);
-    // The ops console (design/21 §3) reads all three databases and serves one page. Same
-    // `ws` argument as the worker's, and a sharper one: adminsvc's whole reason to exist is
-    // that it is NOT matchsvc, so a `ws` import here would mean the entrypoint had dragged
-    // the control plane in behind it — the one import that would put a writable
-    // `AuthService` in the same process as the read-only console.
-    expect(byName('adminsvc')).toMatch(/from\s*["']node:sqlite["']/);
     expect(byName('adminsvc')).not.toMatch(/from\s*["']ws["']/);
   });
 });
@@ -199,19 +207,32 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   it('matchsvc (matchsvc.mjs)', async () => {
+    // `BB_MONGO_URI` points the bundle at the suite's own mongod, and that is the whole
+    // value of this case now: matchsvc CONNECTS before it binds a port, so a bundle that
+    // could not load the driver never answers `/health` at all. It is the layer that caught
+    // the driver being bundled — esbuild inlined `mongodb`, its `require('timers/promises')`
+    // became a dynamic require in ESM output, and every build passed while every deploy
+    // died at boot. `scripts/build.mjs` keeps it external for that reason.
     const port = await freePort();
     const body = await boot(join(outdir, 'matchsvc.mjs'), port, {
       MATCH_PORT: String(port),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: 'deploybundle',
       BB_DB_PATH: join(outdir, 'accounts.db'),
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-matchsvc' });
   }, 30_000);
 
   it('billsvc (billsvc.mjs)', async () => {
+    // Pointed at the suite's own mongod, under a database prefix nothing else uses. The
+    // bundle connects at boot and refuses to start without `BB_MONGO_URI` (src/mongo.ts), so
+    // this case is also the only place the SHIPPED billing artifact is shown to reach a real
+    // cluster rather than only the source being shown to.
     const port = await freePort();
     const body = await boot(join(outdir, 'billsvc.mjs'), port, {
       BILL_PORT: String(port),
-      BB_BILLING_DB_PATH: join(outdir, 'billing.db'),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: `bundle${process.pid}`,
       BB_BILLING_DEV_STUB: '1',
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });
@@ -253,15 +274,32 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   /**
-   * The same bundle with a REAL accounts database, so the read-only open is exercised
-   * against a file rather than only its failure. Built with matchsvc's own bundle, not with
-   * a hand-written schema: a console that can read a database this repo's own writer did not
-   * create proves nothing about the deployed pair.
+   * INVERTED BY THE MONGODB MIGRATION, and left in place saying so.
+   *
+   * This used to boot matchsvc against a real file and then prove adminsvc could open it
+   * read-only — deliberately using matchsvc's own bundle rather than a hand-written schema,
+   * because "a console that can read a database this repo's own writer did not create proves
+   * nothing about the deployed pair". That argument still holds, and it is exactly why this
+   * case cannot be rescued with a fixture: matchsvc writes NO accounts file any more, so
+   * there is no longer a pair to prove anything about.
+   *
+   * What it pins instead is the real, visible consequence of a staged migration: until
+   * Stage 4 moves adminsvc onto the cluster, the console's accounts tab is DARK on a live
+   * deployment. Writing that down as an assertion is the point — an operator opening the
+   * console during the rollout will see it, and this is where it is explained.
+   *
+   * Stage 4 rewrites this case to boot adminsvc against the cluster and expects
+   * `accounts: true` again. If it is still here afterwards, the console is still blind.
    */
-  it('adminsvc reads a database matchsvc created, read-only', async () => {
+  it('adminsvc finds NO accounts database, because matchsvc no longer writes one', async () => {
     const dbPath = join(outdir, 'admin-real-accounts.db');
     const matchPort = await freePort();
-    await boot(join(outdir, 'matchsvc.mjs'), matchPort, { MATCH_PORT: String(matchPort), BB_DB_PATH: dbPath });
+    await boot(join(outdir, 'matchsvc.mjs'), matchPort, {
+      MATCH_PORT: String(matchPort),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: 'deployadmin',
+      BB_DB_PATH: dbPath,
+    });
 
     const port = await freePort();
     const body = (await boot(
@@ -276,7 +314,7 @@ describe('each bundle boots as a bare node process and answers /health', () => {
       },
       '/admin/health',
     )) as { databases: Record<string, boolean> };
-    expect(body.databases).toEqual({ accounts: true, billing: false, analytics: false, ops: false });
+    expect(body.databases).toEqual({ accounts: false, billing: false, analytics: false, ops: false });
   }, 40_000);
 
   /**
@@ -312,21 +350,28 @@ describe('each bundle boots as a bare node process and answers /health', () => {
  * i.e. the only place the backup path is proven to work where it actually runs.
  */
 describe('the backup worker bundle snapshots a real database', () => {
-  /** A real SQLite file with a row in it, written by the same builtin the server uses. */
-  function seedDatabase(file: string): void {
-    const db = new DatabaseSync(file);
-    db.exec(`CREATE TABLE accounts (id TEXT PRIMARY KEY); INSERT INTO accounts VALUES ('a1');`);
-    db.close();
+  /** A real account document on the suite's own mongod, under this case's own prefix. */
+  async function seedCluster(prefix: string): Promise<void> {
+    const client = await MongoClient.connect(inject('mongoUri'));
+    try {
+      await client.db(`${prefix}_accounts`).collection('accounts').insertOne({ _id: 'a1' } as never);
+    } finally {
+      await client.close();
+    }
   }
 
   it('writes a verified snapshot, then reports itself healthy', async () => {
-    const sourceDir = mkdtempSync(join(tmpdir(), 'bb-backup-src-'));
     const destDir = mkdtempSync(join(tmpdir(), 'bb-backup-dest-'));
-    const source = join(sourceDir, 'accounts.db');
-    seedDatabase(source);
+    const prefix = `bundlebackup${process.pid}`;
+    await seedCluster(prefix);
 
     const env = {
-      BB_DB_PATH: source,
+      // The SHIPPED artifact against a real cluster. It connects before its first cycle, so
+      // a bundle that could not load the driver never writes a status file at all — which is
+      // the same thing the matchsvc boot case above catches, at the one layer where "the
+      // build passed" and "the service runs" are different questions.
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: prefix,
       BB_BACKUP_DIR: destDir,
       // Long enough that the loop sleeps after its first cycle instead of racing the
       // assertions below — the cycle this checks is the one it runs immediately at start.
@@ -354,38 +399,44 @@ describe('the backup worker bundle snapshots a real database', () => {
     expect(status, `no status.json in 10s:\n${output}`).toBeDefined();
     expect(status!.ok).toBe(true);
 
-    // The snapshot is a real gzipped SQLite file: decompress it, open it, read the row
-    // back. Asserting on the status file alone would pass on a worker that writes a
-    // plausible report and an empty archive.
+    // The snapshot is a real gzipped NDJSON dump: decompress it, parse it, find the
+    // document. Asserting on the status file alone would pass on a worker that writes a
+    // plausible report and an empty archive — which, since the format became text, is now
+    // also a file that LOOKS fine to `ls`.
     const file = join(destDir, status!.sources[0]!.file!);
-    const restored = join(destDir, 'restored.db');
-    writeFileSync(restored, gunzipSync(readFileSync(file)));
-    const db = new DatabaseSync(restored, { readOnly: true });
-    expect(db.prepare('SELECT id FROM accounts').all()).toEqual([{ id: 'a1' }]);
-    db.close();
+    const lines = gunzipSync(readFileSync(file)).toString('utf8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const line = JSON.parse(lines[0]!) as { c: string; d: { _id: string } };
+    expect(line.c).toBe('accounts');
+    expect(line.d._id).toBe('a1');
 
-    // ...and the health mode of the same bundle agrees, which is what compose runs.
+    // ...and the health mode of the same bundle agrees, which is what compose runs. It is
+    // given a URI that answers nothing, on purpose: `--health` must return before it
+    // connects, or a network blip turns a container red over a condition its own last cycle
+    // already recorded correctly.
     const health = spawnSync(process.execPath, [join(outdir, 'backup.mjs'), '--health'], {
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, BB_MONGO_URI: 'mongodb://127.0.0.1:1/' },
       encoding: 'utf8',
+      timeout: 10_000,
     });
     expect(health.status, health.stderr).toBe(0);
 
     child.kill();
-    rmSync(sourceDir, { recursive: true, force: true });
     rmSync(destDir, { recursive: true, force: true });
   }, 30_000);
 
-  it('REFUSES to start with no source configured, instead of idling green', () => {
+  it('REFUSES to start with no cluster configured, instead of idling green', () => {
     // The silent-no-op failure `src/backup/config.ts` is written against, asserted against
     // the built artifact: exit code 2 and a message, not a container that comes up and
-    // backs up nothing.
+    // backs up nothing. The reachable shape of it changed with the port — it was three
+    // unset source PATHS, and it is an unset connection string now — and the contract
+    // compose sees did not.
     const run = spawnSync(process.execPath, [join(outdir, 'backup.mjs')], {
-      env: { ...process.env, BB_DB_PATH: '', BB_BILLING_DB_PATH: '', BB_BACKUP_DIR: outdir },
+      env: { ...process.env, BB_MONGO_URI: '', BB_BACKUP_DIR: outdir },
       encoding: 'utf8',
       timeout: 10_000,
     });
     expect(run.status).toBe(2);
-    expect(run.stderr).toContain('no databases to back up');
+    expect(run.stderr).toContain('BB_MONGO_URI is not set');
   });
 });

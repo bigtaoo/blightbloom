@@ -91,9 +91,15 @@ form), not a method.
 
   > **SUPERSEDED 2026-09-09 by `design/21-ops-analytics.md`** — and NOT by the trigger this
   > bullet named. No refund has arrived; what arrived is a need to measure retention and to look
-  > at a player without an SSH session. A console is designed (§3 there) as a fifth process with
-  > `readOnly: true` handles, and **built on 2026-09-09** (`server/src/adminsvc/`) — refused
-  > twice over, by SQLite and by `:ro` bind mounts.
+  > at a player without an SSH session. A console is designed (§3 there) as a fifth process that
+  > cannot write player data, and **built on 2026-09-09** (`server/src/adminsvc/`) — refused
+  > twice over, by SQLite's `readOnly: true` and by `:ro` bind mounts.
+  >
+  > **Both of those enforcement layers were deleted on 2026-09-15** with the files they applied
+  > to. What holds decision B1 now is an Atlas ROLE on the console's own database user, which
+  > lives in the cluster's configuration rather than in this repository — so the process
+  > attempts a real write to each player-data database at boot and refuses to start unless the
+  > server refuses. A check at one instant rather than a capability; see design/21's B1 row.
   >
   > **The requirement above survives intact, and design/21 leans on it rather than replacing
   > it.** Its decision B2 — the publicly exposed console is read-only over player data, and every
@@ -183,6 +189,16 @@ would be a manual install nobody re-does — the same class of failure as §9's 
 into an env file is not a value the process can see".
 
 Four properties worth locking down, each with a test that fails if it is dropped:
+
+> **AMENDED 2026-09-15 — the worker dumps COLLECTIONS now, and two of the properties below
+> went with the files.** It writes gzipped NDJSON in Extended JSON (readable by `zcat` and
+> restorable by `mongoimport`, which is what decides whether a backup is usable by whoever is
+> holding it) for three of the four logical databases; `ops` is still excluded for the reason
+> given below. What was lost, stated rather than glossed: **point-in-time consistency ACROSS
+> collections** — a cursor per collection is consistent per document and not across them, where
+> `VACUUM INTO` was one instant of a whole file — and **the capability**, since what keeps the
+> worker from writing is now a role rather than a mode flag plus a mount. `deploy/README.md`'s
+> Backups section has the restore procedure and the reasoning.
 
 - **`VACUUM INTO`, not `cp`.** A copy of a live database captures a torn page set that opens
   fine and fails on the page that mattered. `VACUUM INTO` runs in a read transaction, so the

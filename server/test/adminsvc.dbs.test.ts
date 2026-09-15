@@ -2,247 +2,334 @@
  * Decision B1, asserted rather than asserted-about (design/21 §3.1): **the console cannot
  * write player data.**
  *
- * The weak version of this test would check that `openAdminDbs` passed `readOnly: true`.
- * That is a test of a call site, and it passes against a handle whose option was ignored.
- * What is checked here instead is the capability: a write is ATTEMPTED through each of the
- * three handles, against real tables created by this repo's own openers, and each one has
- * to throw. That is the form the sentence has to take to survive a bug in adminsvc — it is
- * SQLite refusing, not our code declining.
+ * ## What this file used to be able to prove, and what it can prove now
  *
- * The other half of the file is the three nullable arms, which are normal states with three
- * normal causes (see `dbs.ts`'s header) and not defensive code: `readOnly` mode does not
- * create a missing file, and all three files belong to other processes.
+ * Until 2026-09-15 it proved a CAPABILITY. `openAdminDbs` returned three handles opened
+ * `readOnly: true`, so a write attempted through one of them threw — SQLite refusing, not
+ * our code declining — and the three cases here attempted an INSERT, a DELETE, an UPDATE and
+ * a DROP and required a throw from each.
+ *
+ * That capability is gone. There is one pooled client, it cannot hold half a handle, and
+ * what stands in its place is an Atlas ROLE living in the cluster's configuration, where no
+ * test in this repository can see it. So B1 is now bought by a PROBE — `probeWriteAccess`
+ * attempts a real write at boot and `assertReadOnlyAccess` refuses to start the process
+ * unless every player-data database said no — and what this file proves is that the probe
+ * works: that it performs a genuine write rather than asking about permissions, that it
+ * reports an acceptance as an acceptance, that an acceptance stops the process, and that a
+ * refusal is what lets it through.
+ *
+ * **The weaker half is stated rather than hidden.** The suite's mongod has no roles, so a
+ * real role refusal cannot be staged here; the refusal arm is bought with a collection
+ * VALIDATOR that makes the server reject every document. That is a genuine server-side
+ * refusal of a genuine write — the same shape of `MongoServerError` arriving from the same
+ * place — but it is not an authorization refusal, and no test here can be. What is
+ * untestable in this repository is exactly the thing that moved out of it.
+ *
+ * The rest of the file is the nullable arms, which are normal states and not defensive code:
+ * one connection means one failure that takes all three, and analytics is opt-in.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { openDb } from '../src/db';
-import { openBillingDb } from '../src/billingDb';
-import { openAnalyticsDb } from '../src/analytics/db';
-import { analyticsPathFromEnv, openAdminDbs, openReadOnly, type AdminDbs } from '../src/adminsvc/dbs';
-// matchsvc's own reader for the same variable — imported so the last case in this file can
-// compare the two implementations instead of trusting that they agree.
-import { analyticsDbPathFromEnv } from '../src/matchsvc';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  WRITE_PROBE_COLLECTION,
+  WRITE_PROBE_ID,
+  openAdminDbs,
+  openedDbs,
+  probeWriteAccess,
+  type AdminDbs,
+} from '../src/adminsvc/dbs';
+import { ALLOW_WRITABLE_VAR, AdminWritableError, assertReadOnlyAccess } from '../src/adminsvc/server';
+import { closeMongo } from '../src/mongo';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
-const dirs: string[] = [];
-const bundles: AdminDbs[] = [];
+/**
+ * A cluster that cannot be reached, for the two cases about that.
+ *
+ * Port 1 answers nothing, and the two timeouts are what turn the driver's 30-second default
+ * server selection into a test rather than a wait. It is a real connection attempt against a
+ * real socket — the failure being asserted is the driver's, not a thrown stub's.
+ */
+const UNREACHABLE = 'mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=200&connectTimeoutMS=200';
 
-function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'bb-adminsvc-dbs-'));
-  dirs.push(dir);
-  return dir;
-}
+let ctx: MongoTestContext;
 
-/** A directory holding all three real databases, each created by its OWN opener. Not a
- *  hand-written schema: a console that can read a file this repo's writer did not create
- *  proves nothing about the deployed pair. */
-function threeDatabases(): { dir: string; accounts: string; billing: string; analytics: string } {
-  const dir = scratch();
-  const paths = {
-    dir,
-    accounts: join(dir, 'accounts.db'),
-    billing: join(dir, 'billing.db'),
-    analytics: join(dir, 'analytics.db'),
-  };
-  for (const [open, path] of [
-    [openDb, paths.accounts],
-    [openBillingDb, paths.billing],
-    [openAnalyticsDb, paths.analytics],
-  ] as const) {
-    const db = open(path);
-    db.close(); // Windows keeps a lock on an open file, and the dir removal below would EPERM.
-  }
-  return paths;
-}
-
-afterEach(() => {
-  while (bundles.length) bundles.pop()!.close();
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+beforeEach(async () => {
+  ctx = await openTestMongo();
+});
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await ctx.dispose();
+  // `mongo.ts`'s client is process-wide and a vitest worker runs many files in one process.
+  // Any case here that went through `connectMongo()` has to leave that slot empty, or the
+  // next file's first `store()` call silently gets this file's connection.
+  await closeMongo();
 });
 
-describe('B1 — the console holds no write capability', () => {
-  it('REFUSES an INSERT through every one of the three handles', () => {
-    const paths = threeDatabases();
-    const dbs = openAdminDbs(paths);
-    bundles.push(dbs);
+/** A logger that records, so a case can assert on the line an operator would search for. */
+function recorder(): { lines: { level: string; msg: string; fields?: Record<string, unknown> }[]; log: never } {
+  const lines: { level: string; msg: string; fields?: Record<string, unknown> }[] = [];
+  const push = (level: string) => (msg: string, fields?: Record<string, unknown>) => {
+    lines.push({ level, msg, fields });
+  };
+  const log = {
+    error: push('error'),
+    warn: push('warn'),
+    info: push('info'),
+    debug: push('debug'),
+    child: () => log,
+  };
+  return { lines, log: log as never };
+}
 
-    expect(dbs.accounts).not.toBeNull();
-    expect(dbs.billing).not.toBeNull();
-    expect(dbs.analytics).not.toBeNull();
+/**
+ * The error a promise rejected with.
+ *
+ * `.catch((e) => e as Error)` on its own widens to `boolean | Error` — the resolved type
+ * leaks into the union — and every assertion on `.message` then needs a cast that would also
+ * silently accept a promise that RESOLVED. This throws in that case instead, so a case
+ * asserting on a refusal cannot pass against a boot that went through.
+ */
+async function rejection(p: Promise<unknown>): Promise<Error> {
+  try {
+    await p;
+  } catch (e) {
+    return e as Error;
+  }
+  throw new Error('expected a rejection, got a resolved promise');
+}
 
-    // One write per database, each against a table that really exists — a statement against
-    // a missing table would throw for the wrong reason and this test would pass on nothing.
-    expect(() =>
-      dbs.accounts!.prepare('INSERT INTO accounts (id, username, password_hash, provider, created_at) VALUES (?,?,?,?,?)').run(
-        'a1',
-        'someone',
-        'h',
-        'local',
-        1,
-      ),
-    ).toThrow(/readonly|read-only/i);
-    expect(() =>
-      dbs.billing!.prepare(
-        `INSERT INTO review_queue (id, kind, account_id, summary, evidence_json, state, created_at)
-         VALUES (?,?,?,?,?,?,?)`,
-      ).run('r1', 'grant-anomaly', 'a1', 's', '{}', 'open', 1),
-    ).toThrow(/readonly|read-only/i);
-    expect(() =>
-      dbs.analytics!.prepare('INSERT INTO daily_active (day, install, host) VALUES (?,?,?)').run('2026-09-01', 'i', 'web'),
-    ).toThrow(/readonly|read-only/i);
+/** The three-handle bundle over this context's own databases, with no connection of its
+ *  own — `open` is the injection point that keeps every case off the process-wide client. */
+async function bundle(opts: { analyticsEnabled?: boolean } = {}): Promise<AdminDbs> {
+  return openAdminDbs({ analyticsEnabled: opts.analyticsEnabled ?? true, open: (name) => ctx.db(name) });
+}
+
+describe('probeWriteAccess — a real write, not a permissions question', () => {
+  it('reports an ACCEPTED write, and leaves the evidence of it', async () => {
+    // The local mongod has no roles, so it accepts. That is the honest answer here and it is
+    // also what makes this case worth having: a probe that reported "refused" against a
+    // server that in fact accepts would be a probe that always passes.
+    const db = ctx.db('accounts');
+    expect(await probeWriteAccess(db, 1_757_000_000_000)).toEqual({ refused: false });
+    // A write really reached the server. A probe that quietly did nothing would report
+    // `refused: false` forever without ever asking it anything, and this is the difference —
+    // the document is not a side effect, it is the proof.
+    expect(await db.collection(WRITE_PROBE_COLLECTION).findOne({})).toEqual({
+      _id: WRITE_PROBE_ID,
+      at: 1_757_000_000_000,
+    });
   });
 
-  it('REFUSES a DELETE, an UPDATE and a DROP too', () => {
-    // Three more verbs, because "cannot INSERT" is a weaker claim than the sentence B1
-    // makes. A DROP in particular is the one a read-only posture has to cover: an attacker
-    // with SQL on this handle would not add a row, they would remove a table.
-    const paths = threeDatabases();
-    const dbs = openAdminDbs(paths);
-    bundles.push(dbs);
-    expect(() => dbs.accounts!.prepare('DELETE FROM accounts').run()).toThrow(/readonly|read-only/i);
-    expect(() => dbs.accounts!.prepare('UPDATE ratings SET rating = 9999').run()).toThrow(/readonly|read-only/i);
-    expect(() => dbs.accounts!.exec('DROP TABLE entitlements')).toThrow(/readonly|read-only/i);
+  it('leaves ONE document however many times it runs', async () => {
+    // Why the id is fixed and the write is an upsert. A correctly-scoped cluster never gets
+    // this document at all; one that does is a console booting with `BB_ADMIN_ALLOW_WRITABLE`,
+    // restarting on a schedule, and it must not accumulate a document per restart in the
+    // database it was not supposed to touch.
+    const db = ctx.db('accounts');
+    for (const at of [1, 2, 3]) await probeWriteAccess(db, at);
+    expect(await db.collection(WRITE_PROBE_COLLECTION).countDocuments({})).toBe(1);
+    // ...and it carries the LAST probe's time, so the document answers "when was B1 last
+    // observed to be false" rather than "when did this first happen".
+    expect((await db.collection(WRITE_PROBE_COLLECTION).findOne({}))?.at).toBe(3);
   });
 
-  it('still SELECTS through the same handles', () => {
-    // The control. Every refusal above would also be satisfied by a handle that cannot do
-    // anything at all, which is a broken console rather than a safe one.
-    const paths = threeDatabases();
-    const dbs = openAdminDbs(paths);
-    bundles.push(dbs);
-    expect(dbs.accounts!.prepare('SELECT COUNT(*) AS n FROM accounts').get()).toEqual({ n: 0 });
-    expect(dbs.billing!.prepare('SELECT COUNT(*) AS n FROM webhook_events').get()).toEqual({ n: 0 });
-    expect(dbs.analytics!.prepare('SELECT COUNT(*) AS n FROM daily_rollup').get()).toEqual({ n: 0 });
+  it('reports a REFUSED write, with the server\'s own reason', async () => {
+    // The refusal arm, bought with a validator — see the file header on what this does and
+    // does not stand in for. It is a real refusal, by the server, of a real write.
+    const db = ctx.db('accounts');
+    await db.createCollection(WRITE_PROBE_COLLECTION, { validator: { $expr: false } });
+    const probe = await probeWriteAccess(db);
+    expect(probe.refused).toBe(true);
+    // The reason is carried, not swallowed. It is the only thing an operator staring at a
+    // refused boot has to go on, and "some write failed" is not a diagnosis.
+    expect(probe.refused && probe.reason.length > 0).toBe(true);
+  });
+});
+
+describe('assertReadOnlyAccess — B1 as a boot condition', () => {
+  it('REFUSES to start when a player-data database accepts a write', async () => {
+    const { log } = recorder();
+    await expect(assertReadOnlyAccess(await bundle(), {}, log)).rejects.toThrow(AdminWritableError);
   });
 
-  it('does not CREATE a missing database, so a typo cannot become an empty console', () => {
-    // The whole reason each handle is nullable. A writable open would have created three
-    // empty files and every section would have rendered a working, empty page — which is
-    // indistinguishable from "nobody has ever played" and is how a wrong env var survives.
-    const dir = scratch();
-    const missing = join(dir, 'not-there.db');
-    const result = openReadOnly(missing);
-    expect('error' in result).toBe(true);
-    // ...whereas the WRITABLE opener creates it. Closed immediately: on Windows an open
-    // SQLite handle locks the file and this suite's own `rmSync` would EPERM.
-    const created = openDb(missing);
-    expect(created.prepare('SELECT COUNT(*) AS n FROM accounts').get()).toEqual({ n: 0 });
-    created.close();
+  it('names every writable database, and the variable that would let it run anyway', async () => {
+    // The message is the whole remedy path. An operator who reads it has to learn which
+    // databases the credential can write and what the two ways out are — fix the role, or
+    // decide to run without B1 on purpose.
+    const { log } = recorder();
+    const err = await rejection(assertReadOnlyAccess(await bundle(), {}, log));
+    expect(err.message).toContain('accounts');
+    expect(err.message).toContain('billing');
+    expect(err.message).toContain('analytics');
+    expect(err.message).toContain(ALLOW_WRITABLE_VAR);
+  });
+
+  it('is an AdminStartupError, so runMain already turns it into exit 1', async () => {
+    // Not a decorative hierarchy: `main.ts`'s `runMain` catches `AdminStartupError` and
+    // turns it into a readable line plus exit 1, and rethrows anything else as a stack
+    // trace starting in `node:internal`. A plain `Error` here would make a misconfigured
+    // role look like a crash rather than a configuration refusal.
+    const { AdminStartupError } = await import('../src/adminsvc/credentials');
+    const { log } = recorder();
+    const err = await rejection(assertReadOnlyAccess(await bundle(), {}, log));
+    expect(err).toBeInstanceOf(AdminStartupError);
+  });
+
+  it('PASSES when every database refuses, and says so per database', async () => {
+    const { lines, log } = recorder();
+    const dbs = await bundle();
+    for (const { db } of openedDbs(dbs)) {
+      await db.createCollection(WRITE_PROBE_COLLECTION, { validator: { $expr: false } });
+    }
+    await expect(assertReadOnlyAccess(dbs, {}, log)).resolves.toBe(true);
+    expect(lines.filter((l) => l.msg === 'write probe refused').map((l) => l.fields?.db)).toEqual([
+      'accounts',
+      'billing',
+      'analytics',
+    ]);
+  });
+
+  it('requires ALL of them — one writable handle out of three still refuses', async () => {
+    // B1 is not a rate. A console that can write one of the three player-data databases is
+    // a console that can write player data, and the sentence design/21 makes is about the
+    // process rather than about a majority of its handles.
+    const { log } = recorder();
+    const dbs = await bundle();
+    for (const { name, db } of openedDbs(dbs)) {
+      if (name === 'billing') continue;
+      await db.createCollection(WRITE_PROBE_COLLECTION, { validator: { $expr: false } });
+    }
+    const err = await rejection(assertReadOnlyAccess(dbs, {}, log));
+    expect(err).toBeInstanceOf(AdminWritableError);
+    expect(err.message).toContain('billing');
+    expect(err.message).not.toContain('accounts');
+  });
+
+  it('runs anyway under BB_ADMIN_ALLOW_WRITABLE, and WARNS that B1 does not hold', async () => {
+    // The escape hatch exists because a local mongod has no roles. What makes it acceptable
+    // is that it is loud: the boot is a WARN naming the databases and the variable, and
+    // `main.ts` prints `readOnly: false` on the startup line — so a box running without B1
+    // never looks like one that holds it.
+    const { lines, log } = recorder();
+    await expect(assertReadOnlyAccess(await bundle(), { [ALLOW_WRITABLE_VAR]: '1' } as never, log)).resolves.toBe(
+      false,
+    );
+    const warn = lines.find((l) => l.level === 'warn');
+    expect(warn?.msg).toContain('B1 does not hold');
+    expect(warn?.fields?.dbs).toBe('accounts,billing,analytics');
+  });
+
+  it('accepts only 1 and true — an empty or arbitrary value does not open the hatch', async () => {
+    // The `""`-beats-`??` trap from the other side (design/19 §9): a compose file with a
+    // trailing `BB_ADMIN_ALLOW_WRITABLE:` must not disable the one check standing behind B1.
+    const { log } = recorder();
+    for (const value of ['', '   ', '0', 'false', 'yes']) {
+      await expect(assertReadOnlyAccess(await bundle(), { [ALLOW_WRITABLE_VAR]: value } as never, log)).rejects.toThrow(
+        AdminWritableError,
+      );
+    }
+    await expect(assertReadOnlyAccess(await bundle(), { [ALLOW_WRITABLE_VAR]: 'true' } as never, log)).resolves.toBe(
+      false,
+    );
+  });
+
+  it('probes nothing when nothing opened, and lets a dead console boot', async () => {
+    // The state a cluster outage produces: three nulls, so there is nothing to probe and
+    // no writable handle to refuse over. A console that would not start here is a console
+    // that cannot be used to find out why it cannot reach the cluster — which is the same
+    // argument `openAdminDbs` never throwing rests on.
+    const { lines, log } = recorder();
+    const dead: AdminDbs = { accounts: null, billing: null, analytics: null, errors: { accounts: 'x', billing: 'x', analytics: 'x' } };
+    await expect(assertReadOnlyAccess(dead, {}, log)).resolves.toBe(true);
+    expect(lines).toEqual([]);
   });
 });
 
 describe('openAdminDbs — the absent arms', () => {
-  it('reports each missing file on its own, with a reason, and keeps the others', () => {
-    // One missing database must not take the other two with it: a console that will not
-    // open is a console that cannot be used to find out why it will not open.
-    const paths = threeDatabases();
-    const dbs = openAdminDbs({ ...paths, billing: join(paths.dir, 'no-billing.db') });
-    bundles.push(dbs);
-    expect(dbs.accounts).not.toBeNull();
-    expect(dbs.analytics).not.toBeNull();
-    expect(dbs.billing).toBeNull();
-    expect(dbs.errors.billing).toBeTruthy();
+  it('opens all three when analytics is switched on', async () => {
+    const dbs = await bundle();
+    expect([dbs.accounts, dbs.billing, dbs.analytics].every((d) => d !== null)).toBe(true);
     // An OPENED handle records the empty string, not `undefined` — the record is total on
     // purpose, so no call site needs a `?? ''` fallback that no input could reach.
-    expect(dbs.errors.accounts).toBe('');
-    expect(dbs.errors.analytics).toBe('');
+    expect(dbs.errors).toEqual({ accounts: '', billing: '', analytics: '' });
   });
 
-  it('treats analytics: null as "not configured" rather than as an error', () => {
-    // The opt-in state (design/21 §2.4): `BB_ANALYTICS_DB_PATH` unset means this deployment
-    // collects nothing, which is a supported deployment and not a misconfiguration. The
-    // page says so in those words, so the reason string has to be the one a person reads.
-    const paths = threeDatabases();
-    const dbs = openAdminDbs({ ...paths, analytics: null });
-    bundles.push(dbs);
+  it('treats analytics off as "not configured" rather than as an error', async () => {
+    // The opt-in state (design/21 §2.4): collection off means this deployment collects
+    // nothing, which is a supported deployment and not a misconfiguration. The page says so
+    // in those words, so the reason string has to be the one a person reads — and it has to
+    // name the variable they would set, which is no longer a path.
+    const dbs = await bundle({ analyticsEnabled: false });
     expect(dbs.analytics).toBeNull();
-    expect(dbs.errors.analytics).toContain('BB_ANALYTICS_DB_PATH');
+    expect(dbs.errors.analytics).toContain('BB_ANALYTICS_ENABLED');
+    expect(dbs.errors.accounts).toBe('');
   });
 
-  it('never throws, even with all three absent', () => {
-    const dir = scratch();
-    const dbs = openAdminDbs({
-      accounts: join(dir, 'a.db'),
-      billing: join(dir, 'b.db'),
-      analytics: join(dir, 'c.db'),
-    });
-    bundles.push(dbs);
+  it('defaults analytics OFF when nothing says otherwise', async () => {
+    // The direction that matters for the one subsystem with a privacy policy attached: a
+    // caller that forgets to pass the switch collects nothing rather than everything.
+    const dbs = await openAdminDbs({ open: (name) => ctx.db(name) });
+    expect(dbs.analytics).toBeNull();
+  });
+
+  it('takes all three down together when the CLUSTER is unreachable, with the driver\'s reason', async () => {
+    // One connection, so one failure. This is the arm that replaces three independent
+    // missing files: there is no longer a state where billing is absent and accounts is
+    // fine, and pretending otherwise would be a page that cannot happen.
+    const { lines, log } = recorder();
+    vi.stubEnv('BB_MONGO_URI', UNREACHABLE);
+    // No `open`, so it goes through `connectMongo()` — at a port nothing answers.
+    const dbs = await openAdminDbs({ analyticsEnabled: true }, log);
     expect([dbs.accounts, dbs.billing, dbs.analytics]).toEqual([null, null, null]);
-    expect(Object.keys(dbs.errors).sort()).toEqual(['accounts', 'analytics', 'billing']);
     for (const [name, reason] of Object.entries(dbs.errors)) expect(reason, name).not.toBe('');
+    // One reason, not three different ones: they are the same failure and the page should
+    // not suggest three investigations.
+    expect(new Set(Object.values(dbs.errors)).size).toBe(1);
+    // "The commerce tab says unavailable" and "the cluster is unreachable" are the same
+    // fact, and only one of them is searchable in the log store.
+    expect(lines.filter((l) => l.msg === 'cluster unavailable')).toHaveLength(1);
   });
 
-  it('logs a WARN per unavailable database when a logger is passed', () => {
-    // "The commerce tab says unavailable" and "the file is not where the env var points"
-    // are the same fact, and only one of them is searchable in the log store.
-    const dir = scratch();
-    const warnings: { msg: string; fields?: Record<string, unknown> }[] = [];
-    const log = {
-      error: () => {},
-      warn: (msg: string, fields?: Record<string, unknown>) => warnings.push({ msg, fields }),
-      info: () => {},
-      debug: () => {},
-      child: () => log,
+  it('never throws when the cluster is unreachable', async () => {
+    // Stated separately from the case above because it is the load-bearing half: a console
+    // that cannot start is a console that cannot be used to diagnose the reason it cannot
+    // start, and every section renders its own "unavailable" rather than one global error.
+    vi.stubEnv('BB_MONGO_URI', UNREACHABLE);
+    await expect(openAdminDbs({ analyticsEnabled: true })).resolves.toBeDefined();
+  });
+});
+
+describe('openedDbs', () => {
+  it('lists only what actually opened, in a fixed order', async () => {
+    // The helper the probe iterates. A version that walked the three fields blindly would
+    // hand a `null` to `probeWriteAccess` and turn a switched-off analytics store into a
+    // crash at boot.
+    const dbs = await bundle({ analyticsEnabled: false });
+    expect(openedDbs(dbs).map((e) => e.name)).toEqual(['accounts', 'billing']);
+    expect(openedDbs(await bundle()).map((e) => e.name)).toEqual(['accounts', 'billing', 'analytics']);
+  });
+
+  it('is empty for a bundle that opened nothing', () => {
+    const dead: AdminDbs = {
+      accounts: null,
+      billing: null,
+      analytics: null,
+      errors: { accounts: 'x', billing: 'x', analytics: 'x' },
     };
-    const dbs = openAdminDbs(
-      { accounts: join(dir, 'a.db'), billing: join(dir, 'b.db'), analytics: null },
-      log as never,
-    );
-    bundles.push(dbs);
-    // Two, not three: `analytics: null` is a configuration state, not a failed open, so it
-    // has a reason on the page and no log line.
-    expect(warnings).toHaveLength(2);
-    expect(warnings.map((w) => w.fields?.db).sort()).toEqual(['accounts', 'billing']);
-  });
-
-  it('closes only the handles it actually opened', () => {
-    // `close()` iterates the opened map, not the three fields — closing a `null` would
-    // throw and take a shutdown with it.
-    const paths = threeDatabases();
-    const dbs = openAdminDbs({ ...paths, analytics: null });
-    expect(() => dbs.close()).not.toThrow();
-  });
-
-  it('rejects a file that is not a database at all', () => {
-    // The near miss worth covering: `BB_DB_PATH` pointed at a directory, or at a text file
-    // somebody left behind. SQLite opens it and fails on the first read; the error belongs
-    // on the page rather than as a crash at boot.
-    const dir = scratch();
-    const notADb = join(dir, 'notes.txt');
-    writeFileSync(notADb, 'this is not a sqlite file\n');
-    const dbs = openAdminDbs({ accounts: notADb, billing: join(dir, 'b.db'), analytics: null });
-    bundles.push(dbs);
-    // Either the open throws or the first query does — both are acceptable and both must
-    // leave the process standing, so this asserts the survivable outcome rather than which.
-    if (dbs.accounts !== null) {
-      expect(() => dbs.accounts!.prepare('SELECT 1 FROM accounts').get()).toThrow();
-    } else {
-      expect(dbs.errors.accounts).toBeTruthy();
-    }
+    expect(openedDbs(dead)).toEqual([]);
   });
 });
 
-describe('analyticsPathFromEnv', () => {
-  it('reads the variable, and treats an EMPTY value as unset', () => {
-    // The same empty-string-is-unset rule matchsvc applies to the same variable, and the
-    // same reason design/19 §9 records: a trailing `BB_ANALYTICS_DB_PATH:` with no value in
-    // a compose file produces `""`, which beats a `??` fallback. Here that would be
-    // `new DatabaseSync('', {readOnly:true})`.
-    expect(analyticsPathFromEnv({ BB_ANALYTICS_DB_PATH: '/data/analytics.db' })).toBe('/data/analytics.db');
-    expect(analyticsPathFromEnv({ BB_ANALYTICS_DB_PATH: '' })).toBeNull();
-    expect(analyticsPathFromEnv({ BB_ANALYTICS_DB_PATH: '   ' })).toBeNull();
-    expect(analyticsPathFromEnv({})).toBeNull();
-  });
-
-  it('agrees with matchsvc\'s reader on every one of those inputs', () => {
-    // The two are deliberately separate two-line functions (importing `matchsvc.ts` would
-    // pull `ws` and every route group into the console's bundle), so nothing but a test
-    // keeps them from drifting. A drift here is silent: the console would look at a
-    // different file from the one being written.
-    const cases = [{ BB_ANALYTICS_DB_PATH: '/x.db' }, { BB_ANALYTICS_DB_PATH: '' }, {}, { BB_ANALYTICS_DB_PATH: ' ' }];
-    for (const env of cases) {
-      expect(analyticsPathFromEnv(env)).toBe(analyticsDbPathFromEnv(env));
-    }
+describe('the three handles are three different logical databases', () => {
+  it('a write to one is invisible to the others', async () => {
+    // design/19 §4's "money gets its own database" survives the move as a separate DATABASE
+    // rather than a collection prefix, and this is what would notice if a later refactor
+    // served all three from one handle: the four-store separation would still typecheck,
+    // still pass every view test, and be gone.
+    const dbs = await bundle();
+    await dbs.billing!.collection('marker').insertOne({ _id: 'only-billing' } as never);
+    expect(await dbs.accounts!.collection('marker').countDocuments({})).toBe(0);
+    expect(await dbs.analytics!.collection('marker').countDocuments({})).toBe(0);
+    expect(await dbs.billing!.collection('marker').countDocuments({})).toBe(1);
   });
 });
+

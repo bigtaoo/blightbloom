@@ -118,7 +118,13 @@ cd "$TARGET"
 #
 # Idempotent by construction: neither container runs for a dir that already exists and is
 # already owned correctly, so the steady state costs one `stat` per dir and starts nothing.
-for dir in data/matchsvc data/billsvc data/adminsvc backups; do
+# Since 2026-09-15 there is exactly ONE writable bind mount left. The three `data/*`
+# directories were the four SQLite files; the services own logical databases on the Atlas
+# cluster now and write nothing to disk, so their entries are gone from compose and from
+# here together. `data/` itself is deliberately NOT cleaned up by this script: it still holds
+# the pre-migration `.db` files, which are the only copy of that data until the one-time
+# migration has run and been verified.
+for dir in backups; do
   if [ ! -d "$TARGET/$dir" ]; then
     echo "creating $dir"
     if ! mkdir -p "$TARGET/$dir" 2>/dev/null; then
@@ -133,15 +139,17 @@ for dir in data/matchsvc data/billsvc data/adminsvc backups; do
   fi
 done
 
-# ── The two values this script cannot supply ──
-# docker-compose.yml declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?}`
-# and `BB_ADMIN_PASSWORD: ${BB_ADMIN_PASSWORD:?}` (the ops console, design/21 §3.3),
-# and `.env` is the file this key deliberately cannot write. So a box whose `.env` predates
-# the Grafana service fails `compose up` for EVERY service, not just Grafana — a loud stop
-# rather than a public admin/admin, but one whose real cause ("compose refused to
+# ── The values this script cannot supply ──
+# docker-compose.yml declares four `${VAR:?}` interpolations — the two login passwords
+# (Grafana's and the ops console's, design/21 §3.3) and the two cluster connection strings
+# (design/16-accounts.md; `BB_ADMIN_MONGO_URI` is the console's READ-ONLY database user and
+# is deliberately a different value from the one every other service uses) — and `.env` is
+# the file this key deliberately cannot write. So a box whose `.env` predates any of them
+# fails `compose up` for EVERY service, not just the one — a loud stop rather than a public
+# admin/admin or a service pointed at nothing, but one whose real cause ("compose refused to
 # interpolate") reads like a broken compose file. Named here so the deploy log says which
 # it is. server/deploy/README.md §2 has the one-liner that fixes it.
-for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD; do
+for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD BB_MONGO_URI BB_ADMIN_MONGO_URI; do
   if ! grep -q "^$var=..*" .env; then
     echo "$var is missing or empty in ~/blightbloom/.env." >&2
     echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2

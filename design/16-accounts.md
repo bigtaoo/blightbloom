@@ -2,9 +2,28 @@
 
 Real username/password login, replacing every "no account system exists" scaffold noted in `05`/`15`/`server/src/rating.ts`/`server/src/PartyService.ts`/`client/src/net/identity.ts`. Shipped 2026-07-29.
 
-## Storage: SQLite (`node:sqlite`), not MongoDB
+## Storage: MongoDB Atlas since 2026-09-15 — and what it replaced
 
-The project's whole server side is zero-ops (two bare `node:http` processes, in-memory `Map`s, no Express, no DB). Accounts need one real relational fact (a unique username → a login) plus two 1:1 side tables (rating, meta blueprint state) — exactly what SQLite's schema/constraints are for, and MongoDB's schema-flexibility advantage buys nothing here (`MetaState`'s shape is already fixed and versioned via `meta/store.ts`'s `migrate()`). Chosen: Node's **built-in `node:sqlite`** (`DatabaseSync`), not the `better-sqlite3` npm package — this dev box has no C++ build toolchain (no Visual Studio "Desktop development with C++" workload), so `better-sqlite3`'s native `node-gyp rebuild` failed outright; `node:sqlite` needs nothing beyond the Node runtime already required to run this server at all, and is API-equivalent (`.exec()`, `.prepare().run()/.get()/.all()`) for this project's needs. Single file, `BB_DB_PATH` env override, `:memory:` for tests.
+**Current:** the control plane lives on a MongoDB Atlas cluster, reached through `server/src/mongo.ts` (`BB_MONGO_URI`, plus an optional `BB_MONGO_DB_PREFIX` so one cluster can host more than one environment). Six collections on the `accounts` logical database; shapes, constraints and the reasoning for each are in `server/src/db.ts`'s header, which is the authority. Work log: [volume 66](roadmap/66-2026-09-15-mongodb-control-plane.md).
+
+**This section used to be headed "Storage: SQLite (`node:sqlite`), not MongoDB", and the reversal is recorded rather than quietly overwritten** — a design doc that flips a decision without saying so teaches the next reader that its reasons were never load-bearing. The original argument, verbatim in substance: the server side is zero-ops (two bare `node:http` processes, in-memory `Map`s, no Express, no DB); accounts need one real relational fact (a unique username → a login) plus two 1:1 side tables, which is exactly what SQLite's schema and constraints are for, and MongoDB's schema-flexibility advantage buys nothing here since `MetaState`'s shape is already fixed and versioned via `meta/store.ts`'s `migrate()`. `node:sqlite`'s `DatabaseSync` was chosen over `better-sqlite3` because this dev box has no C++ build toolchain and the native `node-gyp rebuild` failed outright.
+
+That argument was true and, on its own terms, still is. It was not refuted; its premise was replaced — the project owner chose a managed cluster over a file. What the move actually costs is therefore worth stating as plainly as the original claim:
+
+- **Foreign keys are gone**, with no equivalent. `entitlements.account_id REFERENCES accounts(id)` made a hand-issued row for a typo'd account fail loudly at the prompt; an orphan is now accepted by the cluster and refused only by `routes/internalEntitlements.ts`'s explicit lookup. The CHECK constraints *did* survive, as `$jsonSchema` + `$expr` collection validators, so they still bind a `mongosh` prompt.
+- **Uniqueness semantics differ where it matters.** MongoDB's unique index treats a MISSING field as one `null` and admits exactly one such document, where SQLite treats every NULL as distinct. Every index over a formerly-nullable column is therefore PARTIAL. `server/test/mongo.semantics.test.ts` pins this and three other server behaviours the port depends on.
+- **Reads are asynchronous**, which removed an accident registration was relying on — see `db.ts` and volume 66 on the case-insensitive unique index, and on the request error boundary `matchsvc.ts` grew at the same time.
+
+**MIGRATION: the code has moved, the DATA has not.** As of 2026-09-15 all four stores —
+`accounts`, `billing`, `analytics`, `ops` — are logical databases on the cluster, adminsvc and the
+backup worker read them through the driver, and `node:sqlite` is imported by exactly one file in
+this repository (`scripts/migrateFromSqlite.ts`, which carries its own deletion date).
+
+**What has NOT happened is the one-time migration of live player data off the deployed box.**
+Until it runs, a deployed matchsvc reads an EMPTY cluster. The runbook is in
+`server/deploy/README.md` §5 ("The MongoDB cutover"); it needs two new `.env` values and a window
+with the services stopped, and running it a second time afterwards is refused by a completion
+marker rather than by an operator remembering. Volumes 66 and 67 have the full account.
 
 ## Server (`matchsvc.ts`, port 8788 — same control-plane process as matchmaking/party/rating)
 

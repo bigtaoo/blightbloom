@@ -1,63 +1,97 @@
 /**
- * `ops.db` (design/21 §4) — the override table, and the two properties that make it safe.
+ * The `ops` database (design/21 §4) — the override collection, and the two properties that
+ * make it safe.
  *
- * 1. **A row means "overridden"; absence means "as shipped".** So clearing DELETES rather
- *    than writing the default in, and a test here proves the deletion rather than the
- *    value — because a stored copy of the default goes stale the day a deploy changes it,
- *    with the table looking perfectly consistent.
- * 2. **C1 is enforced on both sides of the table.** `setFlag` refuses a name outside the
- *    allowlist, and `readOverrides` refuses one too, so a row written by hand at a
- *    `sqlite3` prompt cannot become a live flag either.
+ * 1. **A document means "overridden"; absence means "as shipped".** So clearing DELETES
+ *    rather than writing the default in, and a test here proves the deletion rather than
+ *    the value — because a stored copy of the default goes stale the day a deploy changes
+ *    it, with the collection looking perfectly consistent.
+ * 2. **C1 is enforced on both sides of the collection.** `setFlag` refuses a name outside
+ *    the allowlist, and `readOverrides` refuses one too, so a document written by hand at a
+ *    `mongosh` prompt cannot become a live flag either.
  *
- * Real files rather than `:memory:`, because a `:memory:` database is per-connection and
- * these functions are about what a SECOND process reads back — the same reason
- * `daydayup-testing-conventions` records for the cross-connection dedupe case.
+ * Against a real mongod, like every other store test here. It matters for one case in
+ * particular: the flag name is the `_id`, so "a second `setFlag` replaces rather than adds"
+ * is a statement about a uniqueness the server enforces, not about a branch in this code.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import { describe, it, expect, beforeEach, afterEach, inject } from 'vitest';
+import { MongoClient, type Db } from 'mongodb';
 import { FLAG_DEFS, FLAG_NAMES } from '../src/flags/defs';
 import {
   clearFlag,
   effectiveFlags,
+  ensureOpsIndexes,
+  flagsOf,
   listOverrides,
-  openOpsDb,
   readOverrides,
   setFlag,
 } from '../src/flags/store';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
-const dirs: string[] = [];
-const open: DatabaseSync[] = [];
 const T0 = 1_757_000_000_000;
 
-function scratchDb(): DatabaseSync {
-  const dir = mkdtempSync(join(tmpdir(), 'bb-flags-store-'));
-  dirs.push(dir);
-  const db = openOpsDb(join(dir, 'ops.db'));
-  open.push(db);
-  return db;
+let ctx: MongoTestContext;
+let db: Db;
+beforeEach(async () => {
+  ctx = await openTestMongo();
+  db = ctx.db('ops');
+  await ensureOpsIndexes(db);
+});
+afterEach(async () => {
+  await ctx.dispose();
+});
+
+const count = (): Promise<number> => flagsOf(db).countDocuments();
+
+/** A document written straight into the collection, bypassing `setFlag` — which is what a
+ *  human at a `mongosh` prompt does, and the only way to produce the skip cases below. */
+async function handWrite(name: string, valueJson: string): Promise<void> {
+  await flagsOf(db).replaceOne(
+    { _id: name },
+    { value: valueJson, updatedAt: T0, setBy: 'mongosh' },
+    { upsert: true },
+  );
 }
 
-afterEach(() => {
-  while (open.length) open.pop()!.close();
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+describe('ensureOpsIndexes', () => {
+  it('declares the sort index the console reads, and nothing it does not need', async () => {
+    const indexes = await flagsOf(db).listIndexes().toArray();
+    expect(indexes.map((i) => i.name).sort()).toEqual(['_id_', 'flags_updated_at']);
+    expect(indexes.find((i) => i.name === 'flags_updated_at')?.key).toEqual({ updatedAt: -1 });
+    // Deliberately NOT unique: two flags set in the same millisecond is two clicks, and a
+    // unique index here would refuse the second write.
+    expect(indexes.every((i) => i.unique !== true)).toBe(true);
+  });
+
+  it('is idempotent, so every boot may call it', async () => {
+    await ensureOpsIndexes(db);
+    expect((await flagsOf(db).listIndexes().toArray()).length).toBe(2);
+  });
+});
+
+describe('the flag NAME is the identity', () => {
+  it('lets the SERVER refuse a second document for one flag', async () => {
+    // Why `_id` rather than a `name` field with a unique index beside it: there is no
+    // second index to create, to forget, or to create without `unique`.
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    await expect(
+      flagsOf(db).insertOne({ _id: 'match.queueTimeoutMs', value: '1', updatedAt: T0, setBy: 'x' }),
+    ).rejects.toMatchObject({ code: 11000 });
+    expect(await count()).toBe(1);
+  });
 });
 
 describe('setFlag', () => {
-  it('stores a legitimate override and reads it back through a fresh statement', () => {
-    const db = scratchDb();
-    expect(setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin')).toBe(true);
-    expect(readOverrides(db).values['match.queueTimeoutMs']).toBe(45_000);
+  it('stores a legitimate override and reads it back through a fresh query', async () => {
+    expect(await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin')).toBe(true);
+    expect((await readOverrides(db)).values['match.queueTimeoutMs']).toBe(45_000);
   });
 
-  it('stores each of the three value shapes', () => {
-    const db = scratchDb();
-    expect(setFlag(db, 'ads.rewardedOfferEnabled', false, T0, 'admin')).toBe(true);
-    expect(setFlag(db, 'ui.maintenanceBanner', 'back at 14:00 UTC', T0, 'admin')).toBe(true);
-    expect(setFlag(db, 'match.pvpBotBackfillDelayMs', 0, T0, 'admin')).toBe(true);
-    const { values } = readOverrides(db);
+  it('stores each of the three value shapes', async () => {
+    expect(await setFlag(db, 'ads.rewardedOfferEnabled', false, T0, 'admin')).toBe(true);
+    expect(await setFlag(db, 'ui.maintenanceBanner', 'back at 14:00 UTC', T0, 'admin')).toBe(true);
+    expect(await setFlag(db, 'match.pvpBotBackfillDelayMs', 0, T0, 'admin')).toBe(true);
+    const { values } = await readOverrides(db);
     // All three falsy, and all three legitimate. A truthiness check anywhere in this path
     // would drop every one of them.
     expect(values['ads.rewardedOfferEnabled']).toBe(false);
@@ -65,33 +99,30 @@ describe('setFlag', () => {
     expect(values['ui.maintenanceBanner']).toBe('back at 14:00 UTC');
   });
 
-  it('REFUSES a name outside the allowlist and writes NOTHING', () => {
-    // C1's line at the write path. The row count is what is asserted, not just the return
-    // value: a function that answered `false` and stored the row anyway would pass a
-    // return-value-only test, and `readOverrides` would then be the only thing between that
-    // row and a live flag.
-    const db = scratchDb();
-    expect(setFlag(db, 'billing.devStub', true, T0, 'admin')).toBe(false);
-    expect(setFlag(db, 'auth.skipPasswordCheck', true, T0, 'admin')).toBe(false);
-    expect(setFlag(db, '__proto__', true, T0, 'admin')).toBe(false);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 0 });
+  it('REFUSES a name outside the allowlist and writes NOTHING', async () => {
+    // C1's line at the write path. The document count is what is asserted, not just the
+    // return value: a function that answered `false` and stored the document anyway would
+    // pass a return-value-only test, and `readOverrides` would then be the only thing
+    // between that document and a live flag.
+    expect(await setFlag(db, 'billing.devStub', true, T0, 'admin')).toBe(false);
+    expect(await setFlag(db, 'auth.skipPasswordCheck', true, T0, 'admin')).toBe(false);
+    expect(await setFlag(db, '__proto__', true, T0, 'admin')).toBe(false);
+    expect(await count()).toBe(0);
   });
 
-  it('REFUSES a value its definition rejects, and writes nothing', () => {
-    const db = scratchDb();
-    expect(setFlag(db, 'match.queueTimeoutMs', 1e9, T0, 'admin')).toBe(false);
-    expect(setFlag(db, 'match.queueTimeoutMs', 'soon', T0, 'admin')).toBe(false);
-    expect(setFlag(db, 'ads.rewardedOfferEnabled', 'true', T0, 'admin')).toBe(false);
-    expect(setFlag(db, 'ui.maintenanceBanner', 'x'.repeat(500), T0, 'admin')).toBe(false);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 0 });
+  it('REFUSES a value its definition rejects, and writes nothing', async () => {
+    expect(await setFlag(db, 'match.queueTimeoutMs', 1e9, T0, 'admin')).toBe(false);
+    expect(await setFlag(db, 'match.queueTimeoutMs', 'soon', T0, 'admin')).toBe(false);
+    expect(await setFlag(db, 'ads.rewardedOfferEnabled', 'true', T0, 'admin')).toBe(false);
+    expect(await setFlag(db, 'ui.maintenanceBanner', 'x'.repeat(500), T0, 'admin')).toBe(false);
+    expect(await count()).toBe(0);
   });
 
-  it('UPSERTS: a second set replaces the value and the metadata, not adds a row', () => {
-    const db = scratchDb();
-    setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    setFlag(db, 'match.queueTimeoutMs', 90_000, T0 + 5000, 'ops2');
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 1 });
-    const row = listOverrides(db).rows[0]!;
+  it('UPSERTS: a second set replaces the value and the metadata, not adds a document', async () => {
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    await setFlag(db, 'match.queueTimeoutMs', 90_000, T0 + 5000, 'ops2');
+    expect(await count()).toBe(1);
+    const row = (await listOverrides(db)).rows[0]!;
     expect(row.value).toBe(90_000);
     expect(row.updatedAtMs).toBe(T0 + 5000);
     expect(row.setBy).toBe('ops2');
@@ -99,160 +130,148 @@ describe('setFlag', () => {
 });
 
 describe('clearFlag', () => {
-  it('DELETES the row rather than writing the default into it', () => {
-    // The property, asserted as a row count. A "clear" that stored the current default
+  it('DELETES the document rather than writing the default into it', async () => {
+    // The property, asserted as a document count. A "clear" that stored the current default
     // would read identically today and silently stop following the default the day a deploy
-    // changed it — with the table looking perfectly consistent, which is what makes that
-    // failure survive.
-    const db = scratchDb();
-    setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    expect(clearFlag(db, 'match.queueTimeoutMs')).toBe(true);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 0 });
-    expect(readOverrides(db).values['match.queueTimeoutMs']).toBeUndefined();
-    expect(effectiveFlags(db)['match.queueTimeoutMs']).toBe(FLAG_DEFS['match.queueTimeoutMs'].default);
+    // changed it — with the collection looking perfectly consistent, which is what makes
+    // that failure survive.
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    expect(await clearFlag(db, 'match.queueTimeoutMs')).toBe(true);
+    expect(await count()).toBe(0);
+    expect((await readOverrides(db)).values['match.queueTimeoutMs']).toBeUndefined();
+    expect((await effectiveFlags(db))['match.queueTimeoutMs']).toBe(FLAG_DEFS['match.queueTimeoutMs'].default);
   });
 
-  it('answers false for a flag that was not overridden', () => {
+  it('answers false for a flag that was not overridden', async () => {
     // So the console can say "cleared" rather than "cleared (there was nothing there)".
-    expect(clearFlag(scratchDb(), 'match.queueTimeoutMs')).toBe(false);
+    expect(await clearFlag(db, 'match.queueTimeoutMs')).toBe(false);
   });
 
-  it('CLEARS a stale row whose name is no longer in the allowlist', () => {
+  it('answers true EXACTLY ONCE when two operators clear the same flag at once', async () => {
+    // The look-before-write this function used to be — count, then delete, then report the
+    // count — could answer `true` to both. `deleteOne`'s `deletedCount` is the server's
+    // answer, so only one caller gets to say it removed anything.
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    const results = await Promise.all([
+      clearFlag(db, 'match.queueTimeoutMs'),
+      clearFlag(db, 'match.queueTimeoutMs'),
+      clearFlag(db, 'match.queueTimeoutMs'),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await count()).toBe(0);
+  });
+
+  it('CLEARS a stale document whose name is no longer in the allowlist', async () => {
     // The one operation that has to work on a name outside the allowlist: a flag REMOVED in
-    // a deploy leaves a row behind, and if clearing were gated on `isFlagName` the only way
-    // to remove it would be an SSH session — for a row the console is already showing as a
-    // problem.
-    const db = scratchDb();
-    db.prepare('INSERT INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      'removed.oldFlag',
-      'true',
-      T0,
-      'admin',
-    );
-    expect(clearFlag(db, 'removed.oldFlag')).toBe(true);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 0 });
+    // a deploy leaves a document behind, and if clearing were gated on `isFlagName` the only
+    // way to remove it would be a shell session — for a document the console is already
+    // showing as a problem.
+    await handWrite('removed.oldFlag', 'true');
+    expect(await clearFlag(db, 'removed.oldFlag')).toBe(true);
+    expect(await count()).toBe(0);
   });
 });
 
 describe('readOverrides', () => {
-  /** A row written straight into the table, bypassing `setFlag` — which is what a human at
-   *  a `sqlite3` prompt does, and the only way to produce the cases below. */
-  function handWrite(db: DatabaseSync, name: string, valueJson: string): void {
-    db.prepare('INSERT OR REPLACE INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      name,
-      valueJson,
-      T0,
-      'sqlite3',
-    );
-  }
-
-  it('SKIPS a row whose name is not in the allowlist, and reports it', () => {
+  it('SKIPS a document whose name is not in the allowlist, and reports it', async () => {
     // C1's second enforcement point. The two are edited by different people at different
-    // times, so both matter: a row that got in some other way must still not become a flag.
-    const db = scratchDb();
-    handWrite(db, 'billing.devStub', 'true');
-    const { values, skipped } = readOverrides(db);
+    // times, so both matter: a document that got in some other way must still not become a
+    // flag.
+    await handWrite('billing.devStub', 'true');
+    const { values, skipped } = await readOverrides(db);
     expect(values).toEqual({});
     expect(skipped).toEqual(['billing.devStub']);
-    // ...and the row is LEFT in place. Deleting somebody's data on a read is not a read's
-    // business, and the console needs the row in order to show it as a problem.
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 1 });
+    // ...and the document is LEFT in place. Deleting somebody's data on a read is not a
+    // read's business, and the console needs it in order to show it as a problem.
+    expect(await count()).toBe(1);
   });
 
-  it('SKIPS a row whose value its definition refuses, and reports it', () => {
-    const db = scratchDb();
-    handWrite(db, 'match.queueTimeoutMs', '999999999');
-    handWrite(db, 'ads.rewardedOfferEnabled', '"true"');
-    const { values, skipped } = readOverrides(db);
+  it('SKIPS a document whose value its definition refuses, and reports it', async () => {
+    await handWrite('match.queueTimeoutMs', '999999999');
+    await handWrite('ads.rewardedOfferEnabled', '"true"');
+    const { values, skipped } = await readOverrides(db);
     expect(values).toEqual({});
     expect(skipped.sort()).toEqual(['ads.rewardedOfferEnabled', 'match.queueTimeoutMs']);
   });
 
-  it('SKIPS a row whose value is not JSON at all', () => {
-    const db = scratchDb();
-    handWrite(db, 'ui.maintenanceBanner', 'not json');
-    expect(readOverrides(db).skipped).toEqual(['ui.maintenanceBanner']);
+  it('SKIPS a document whose value is not JSON at all', async () => {
+    await handWrite('ui.maintenanceBanner', 'not json');
+    expect((await readOverrides(db)).skipped).toEqual(['ui.maintenanceBanner']);
   });
 
-  it('keeps the GOOD rows when a bad one is beside them', () => {
-    // The control for all three cases above: a reader that gave up on the first bad row
-    // would pass every one of them and silently drop a legitimate override.
-    const db = scratchDb();
-    setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    handWrite(db, 'billing.devStub', 'true');
-    const { values, skipped } = readOverrides(db);
+  it('keeps the GOOD documents when a bad one is beside them', async () => {
+    // The control for all three cases above: a reader that gave up on the first bad
+    // document would pass every one of them and silently drop a legitimate override.
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    await handWrite('billing.devStub', 'true');
+    const { values, skipped } = await readOverrides(db);
     expect(values['match.queueTimeoutMs']).toBe(45_000);
     expect(skipped).toEqual(['billing.devStub']);
   });
 });
 
 describe('listOverrides', () => {
-  it('returns validated rows newest first, and names the invalid ones separately', () => {
-    const db = scratchDb();
-    setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    setFlag(db, 'ads.rewardedOfferEnabled', false, T0 + 1000, 'admin');
-    db.prepare('INSERT INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      'removed.oldFlag',
-      'true',
-      T0 + 2000,
-      'sqlite3',
-    );
-    const { rows, invalid } = listOverrides(db);
+  it('returns validated rows newest first, and names the invalid ones separately', async () => {
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    await setFlag(db, 'ads.rewardedOfferEnabled', false, T0 + 1000, 'admin');
+    await flagsOf(db).insertOne({ _id: 'removed.oldFlag', value: 'true', updatedAt: T0 + 2000, setBy: 'mongosh' });
+    const { rows, invalid } = await listOverrides(db);
     expect(rows.map((r) => r.name)).toEqual(['ads.rewardedOfferEnabled', 'match.queueTimeoutMs']);
-    // The state worth being loud about: the table says the flag is set and every service is
-    // ignoring it.
+    // The state worth being loud about: the collection says the flag is set and every
+    // service is ignoring it.
     expect(invalid).toEqual(['removed.oldFlag']);
   });
 
-  it('is empty on a fresh database', () => {
-    expect(listOverrides(scratchDb())).toEqual({ rows: [], invalid: [] });
+  it('reports a document whose value is not JSON as invalid rather than throwing', async () => {
+    // A legitimate name with a value nothing can parse — the state a hand-edit produces, and
+    // the one the console most needs shown: the collection says the flag is set, every
+    // service is on the default, and only this row says why. `readOverrides` skips it
+    // silently; this is the reader whose job is to be loud about it.
+    await handWrite('ui.maintenanceBanner', 'not json');
+    expect(await listOverrides(db)).toEqual({ rows: [], invalid: ['ui.maintenanceBanner'] });
+  });
+
+  it('is empty on a fresh database', async () => {
+    expect(await listOverrides(db)).toEqual({ rows: [], invalid: [] });
   });
 });
 
 describe('effectiveFlags', () => {
-  it('is TOTAL — every name, defaults where there is no override', () => {
+  it('is TOTAL — every name, defaults where there is no override', async () => {
     // The wire shape `flags/client.ts` requires: it treats a response missing any name as
     // unusable, so a partial payload here would make every poll fail while the endpoint
     // answered 200.
-    const db = scratchDb();
-    const flags = effectiveFlags(db);
+    const flags = await effectiveFlags(db);
     expect(Object.keys(flags).sort()).toEqual([...FLAG_NAMES].sort());
     for (const name of FLAG_NAMES) expect(flags[name], name).toBe(FLAG_DEFS[name].default);
   });
 
-  it('merges an override over the default and leaves the rest alone', () => {
-    const db = scratchDb();
-    setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    const flags = effectiveFlags(db);
+  it('merges an override over the default and leaves the rest alone', async () => {
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    const flags = await effectiveFlags(db);
     expect(flags['match.queueTimeoutMs']).toBe(45_000);
     expect(flags['match.pvpBotBackfillDelayMs']).toBe(FLAG_DEFS['match.pvpBotBackfillDelayMs'].default);
   });
 
-  it('ignores an override that failed validation, and stays total', () => {
-    const db = scratchDb();
-    db.prepare('INSERT INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      'match.queueTimeoutMs',
-      '999999999',
-      T0,
-      'sqlite3',
-    );
-    const flags = effectiveFlags(db);
+  it('ignores an override that failed validation, and stays total', async () => {
+    await handWrite('match.queueTimeoutMs', '999999999');
+    const flags = await effectiveFlags(db);
     expect(Object.keys(flags).sort()).toEqual([...FLAG_NAMES].sort());
     expect(flags['match.queueTimeoutMs']).toBe(FLAG_DEFS['match.queueTimeoutMs'].default);
   });
 
-  it('survives a second connection to the same file', () => {
-    // The reason these cases use a real file. `ops.db` is written by adminsvc and read by
-    // adminsvc, but the flag an operator sets has to survive a restart — and `:memory:`
-    // would make that pass without proving it.
-    const dir = mkdtempSync(join(tmpdir(), 'bb-flags-reopen-'));
-    dirs.push(dir);
-    const path = join(dir, 'ops.db');
-    const first = openOpsDb(path);
-    setFlag(first, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    first.close();
-    const second = openOpsDb(path);
-    open.push(second);
-    expect(effectiveFlags(second)['match.queueTimeoutMs']).toBe(45_000);
+  it('survives a second CLIENT reading the same database', async () => {
+    // `ops.db` was written and read by one process, but the flag an operator sets has to
+    // survive a restart. The SQLite version of this case used a real file because
+    // `:memory:` is per-connection; the cluster has no such trap, so the case is kept in
+    // the only form that still means something — a second connection, not a second handle
+    // off the same pooled client.
+    await setFlag(db, 'match.queueTimeoutMs', 45_000, T0, 'admin');
+    const second = await MongoClient.connect(inject('mongoUri'));
+    try {
+      expect((await effectiveFlags(second.db(db.databaseName)))['match.queueTimeoutMs']).toBe(45_000);
+    } finally {
+      await second.close();
+    }
   });
 });

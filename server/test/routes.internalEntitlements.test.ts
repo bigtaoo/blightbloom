@@ -18,7 +18,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createMatchsvcServer } from '../src/matchsvc';
-import { openDb } from '../src/db';
+import type { AccountsStore } from '../src/db';
+import { freshAccounts } from './mongoHarness';
 import { EntitlementService } from '../src/EntitlementService';
 import { createInternalVerifier, INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { postGrant, INTERNAL_GRANT_PATH } from '../src/routes/internalEntitlements';
@@ -44,7 +45,7 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  server = createMatchsvcServer({ dbPath: ':memory:', secret: 'test-secret' });
+  server = createMatchsvcServer({ store: await freshAccounts(), secret: 'test-secret' });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
@@ -99,16 +100,19 @@ function validBody(over: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 /**
- * Drives `postGrant` directly over a database this file owns, with the internal-key check
- * satisfied by `REGISTRY`. Two cases need it: one asserts a COLUMN matchsvc's private
- * connection does not expose, and one needs a database that refuses the write — a branch no
- * real server can be made to take from outside. Synchronous because `readJson`'s events are
- * driven by hand here, which is also what makes the assertions immediate.
+ * Drives `postGrant` directly over a store this file owns, with the internal-key check
+ * satisfied by `REGISTRY`. Two cases need it: one asserts a FIELD matchsvc's own store does
+ * not expose, and one needs a store that refuses the write — a branch no real server can be
+ * made to take from outside.
+ *
+ * The handler is asynchronous now, so its promise is awaited and the request stream is fed
+ * on a later tick. Feeding it first and reading the response immediately, as the synchronous
+ * version did, would read the recorder before the route had written to it.
  */
-function callGrant(
-  db: Pick<ReturnType<typeof openDb>, 'prepare' | 'exec'>,
+async function callGrant(
+  store: AccountsStore,
   body: unknown,
-): { status: number; body: Record<string, unknown> } {
+): Promise<{ status: number; body: Record<string, unknown> }> {
   const handlers: Record<string, ((c?: Buffer) => void)[]> = {};
   const req = {
     headers: { [INTERNAL_KEY_HEADER]: KEY },
@@ -128,17 +132,19 @@ function callGrant(
     },
   } as unknown as Parameters<typeof postGrant>[1];
 
-  postGrant(req, res, new URL(`http://x${INTERNAL_GRANT_PATH}`), {
-    db: db as ReturnType<typeof openDb>,
+  const done = postGrant(req, res, new URL(`http://x${INTERNAL_GRANT_PATH}`), {
+    store,
     internalAuth: createInternalVerifier(REGISTRY),
   });
+  await Promise.resolve();
   handlers.data?.forEach((h) => h(Buffer.from(JSON.stringify(body))));
   handlers.end?.forEach((h) => h());
+  await done;
   return { status, body: (payload ? JSON.parse(payload) : {}) as Record<string, unknown> };
 }
 
 describe('POST /internal/entitlements/grant', () => {
-  it('agrees with the pump about where it lives', () => {
+  it('agrees with the pump about where it lives', async () => {
     // Two files name this path — the dispatch chain and the caller — and a rename that
     // touched one would produce a 404 the pump would read as a TERMINAL refusal and write a
     // paid purchase off with. Cheap to pin; expensive to discover in production.
@@ -180,24 +186,23 @@ describe('POST /internal/entitlements/grant', () => {
     expect(third.status).toBe(200);
   });
 
-  it('does not let a redelivery rewrite the order the first grant recorded', () => {
+  it('does not let a redelivery rewrite the order the first grant recorded', async () => {
     // `EntitlementService.grant`'s own rule, from the route's side: the FIRST grant's
     // `order_id` is the audit record of the payment, and a retry that overwrote it would
     // break design/19 §7's reconciliation against the platform. Driven against the handler
     // over an owned database, because the property is a COLUMN and `matchsvc.ts` keeps its
     // connection private (`/account/meta` deliberately does not expose `orderId`).
-    const own = openDb(':memory:');
-    own.prepare("INSERT INTO accounts (id, username, password_hash, created_at) VALUES ('acc', 'u', 'h', 1)").run();
+    const own = await freshAccounts();
+    await own.accounts.insertOne({ _id: 'acc', username: 'u', passwordHash: 'h', provider: 'local', createdAt: 1 });
     const rows = new EntitlementService(own);
 
-    expect(callGrant(own, { ...validBody({ accountId: 'acc' }), orderId: 'the-real-order' }).status).toBe(200);
-    const second = callGrant(own, { ...validBody({ accountId: 'acc' }), orderId: 'a-later-mistake' });
+    expect((await callGrant(own, { ...validBody({ accountId: 'acc' }), orderId: 'the-real-order' })).status).toBe(200);
+    const second = await callGrant(own, { ...validBody({ accountId: 'acc' }), orderId: 'a-later-mistake' });
 
     expect(second).toMatchObject({ status: 200, body: { granted: [], alreadyOwned: ['blueprint:cannon'] } });
-    expect(rows.list('acc')).toEqual([
+    expect(await rows.list('acc')).toEqual([
       expect.objectContaining({ sku: 'blueprint:cannon', source: 'purchase', orderId: 'the-real-order' }),
     ]);
-    own.close();
   });
 
   it('grants every pair of a multi-grant SKU', async () => {
@@ -304,23 +309,25 @@ describe('POST /internal/entitlements/grant', () => {
     expect(res.body.error).toMatch(/no account 'no-such-account'/);
   });
 
-  it('answers 5xx (not 4xx) when the write itself fails, so the purchase is retried', () => {
+  it('answers 5xx (not 4xx) when the write itself fails, so the purchase is retried', async () => {
     // The one branch a real matchsvc cannot be made to take from outside, and the DIRECTION
     // of it is the whole point: a 400 here would let the pump write a recoverable failure
     // off as a lost purchase, which is the exact outcome the outbox exists to prevent.
-    const failing = {
-      prepare: (sql: string) => {
-        if (sql.startsWith('SELECT 1 AS one FROM accounts')) return { get: () => ({ one: 1 }) };
-        return {
-          run: () => {
-            throw new Error('database is locked');
-          },
-        };
-      },
-      exec: () => {},
-    } as unknown as ReturnType<typeof openDb>;
+    // The account lookup must SUCCEED (so the 404 branch is not the one taken) and the
+    // write must then fail — the "transient, tell the pump to retry" path.
+    const failing = await freshAccounts();
+    // The account must EXIST, so the 404 branch is not the one taken and the 500 really does
+    // come from the write. `accountId` is the one the shared fixture body names.
+    await failing.accounts.insertOne({
+      _id: accountId,
+      username: 'u',
+      passwordHash: 'h',
+      provider: 'local',
+      createdAt: 1,
+    });
+    failing.entitlements.updateOne = () => Promise.reject(new Error('database is locked'));
 
-    expect(callGrant(failing, validBody()).status).toBe(500);
+    expect((await callGrant(failing, validBody())).status).toBe(500);
     expect(vi.mocked(console.error).mock.calls[0]![0]).toMatch(/database is locked/);
   });
 

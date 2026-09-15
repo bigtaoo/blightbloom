@@ -63,9 +63,10 @@
  * is chosen per response by `GameRegistry` (ROADMAP 8.6, design/19 §6) and never enters
  * the ticket payload — the ticket is a seat authorization and knows no topology.
  */
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import type { Db } from 'mongodb';
 import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
 import { PartyService } from './PartyService';
@@ -79,29 +80,21 @@ import {
   INTERNAL_CALLER_MATCHSVC,
 } from './config';
 import { createFlagClient, type FlagClient } from './flags/client';
-import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
-import { openDb } from './db';
-import { openAnalyticsDb } from './analytics/db';
+import { accountsStore, ensureAccountsIndexes, type AccountsStore } from './db';
+import { connectMongo, store as mongoStore } from './mongo';
+import { analyticsEnabledFromEnv, ensureAnalyticsIndexes } from './analytics/db';
 import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
+import { dispatch, type DispatchContext } from './matchsvcDispatch';
 import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
-import { renderMetrics, METRICS_CONTENT_TYPE } from './metrics';
-import { matchsvcMetrics } from './matchsvcMetrics';
-import * as matchRoutes from './routes/match';
-import * as ratingRoutes from './routes/rating';
 import * as partyRoutes from './routes/party';
-import * as authRoutes from './routes/auth';
 import type { PortalAuthDeps } from './routes/auth';
-import * as accountRoutes from './routes/account';
-import * as internalEntitlementRoutes from './routes/internalEntitlements';
-import * as storeRoutes from './routes/store';
-import * as telemetryRoutes from './routes/telemetry';
 import { RateLimiter, RATE_LIMIT } from './routes/telemetry';
 import type { BillingPlaneConfig } from './routes/store';
 
@@ -118,24 +111,30 @@ export interface MatchsvcServerOptions {
    * care passes nothing and gets the compiled-in defaults.
    */
   flags?: FlagClient;
-  /** DB path override (design/16-accounts.md) — tests pass `':memory:'` for isolation;
-   * defaults to `openDb`'s own real-file default. */
-  dbPath?: string;
+  /**
+   * The control plane's collections (design/16-accounts.md). INJECTED rather than opened
+   * here, which is what keeps this builder synchronous: connecting to the cluster is
+   * asynchronous, and making the builder async would ripple into every test that constructs
+   * a server. `main` connects once and hands the result in; a test passes a throwaway
+   * database from `test/mongoHarness.ts`.
+   */
+  store: AccountsStore;
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
   /**
-   * Where `analytics.db` lives (design/21 §2.4), or `null` for "collect nothing".
+   * The `analytics` database (design/21 §2.4), or `null`/absent for "collect nothing".
    *
-   * Unlike `dbPath` this has **no default path**, and the asymmetry is deliberate. Identity
-   * has to persist wherever this process runs, so `openDb` falls back to a real file.
-   * Analytics is optional, and an implicit default would make it collect into a file that
-   * the backup worker — which discovers its sources by env var (`backup/config.ts`'s
-   * `SOURCE_VARS`) — does not know about. Tying both to the same explicit
-   * `BB_ANALYTICS_DB_PATH` keeps "is it collected" and "is it backed up" a single condition
-   * rather than two that can disagree. It also means nothing is collected by accident,
-   * which is the right default for the one subsystem with a privacy policy attached.
+   * A `Db` rather than the `analyticsDbPath` this took until the MongoDB port, because
+   * there is no file to open any more: the handle comes from the process-wide pooled client
+   * (`mongo.ts`'s `store('analytics')`), which only exists after `connectMongo()` has been
+   * awaited at boot. Whoever supplies it must also have awaited `ensureAnalyticsIndexes` —
+   * the cohort table's exactly-once claim IS its unique index.
+   *
+   * Absent still means OFF, and that asymmetry with `dbPath` is deliberate and unchanged.
+   * Identity has to persist wherever this process runs; analytics is optional, and nothing
+   * should be collected by accident in the one subsystem with a privacy policy attached.
    */
-  analyticsDbPath?: string | null;
+  analyticsDb?: Db | null;
   /**
    * Matchmaker timing overrides. The only reason this exists is `pvpBotFillMs`: PvP bot
    * backfill is a 30-SECOND wait by default, so `onBotFill` below — the block that mints a
@@ -194,7 +193,7 @@ export interface MatchsvcServerOptions {
  * be asserted without a network stub — the exact layer that let design/16-accounts.md's
  * missing-`authorization`-header CORS bug slip past every other test.
  */
-export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
+export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   const secret = opts.secret ?? ticketSecret().secret;
   // Seeds only need to differ per room (the engine derives all determinism from seed +
   // inputs); a counter off the start time avoids Math.random and cross-restart collision.
@@ -257,14 +256,14 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   // which may legitimately be nothing (see `GameRegistry.pick`). The route group asks for
   // the instance and does the stamping, so it can refuse BEFORE consuming a queue entry.
   const pickGameserver = () => registry.pick();
-  const db = openDb(opts.dbPath);
-  const ratings = new RatingStore(db);
+  const store = opts.store;
+  const ratings = new RatingStore(store);
   const parties = new PartyService({
     nowMs: () => Date.now(),
     newPartyId: () => randomUUID(),
     newCode: partyRoutes.randomCode,
   });
-  const auth = new AuthService(db);
+  const auth = new AuthService(store);
   // Portal login (design/20 "account integration"). The key store is constructed eagerly but
   // fetches lazily — nothing leaves this process until the first `/auth/portal` call, so a
   // deployment that never serves a portal build makes no outbound request at all.
@@ -279,12 +278,14 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
   const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
 
-  // Analytics (design/21 §2.4). Resolved once, like `lokiUrl` and for the same reason.
-  const analyticsPath = opts.analyticsDbPath !== undefined ? opts.analyticsDbPath : analyticsDbPathFromEnv();
-  const analyticsDb = analyticsPath === null ? null : openAnalyticsDb(analyticsPath);
-  // The job runs one cycle synchronously here, so a restarted process serves real gauges at
-  // once. Its interval is `unref`ed, and it is stopped on the server's own close event —
-  // which is what keeps a test file that builds a dozen servers from leaving a dozen timers.
+  // Analytics (design/21 §2.4). Injected rather than opened here since the MongoDB port —
+  // see `MatchsvcServerOptions.analyticsDb`. Until this process's own boot path awaits
+  // `connectMongo()`, an absent option means this deployment collects nothing.
+  const analyticsDb = opts.analyticsDb ?? null;
+  // The job kicks off one cycle here, so a restarted process serves real gauges as soon as
+  // the cluster answers. Its interval is `unref`ed, and it is stopped on the server's own
+  // close event — which is what keeps a test file that builds a dozen servers from leaving
+  // a dozen timers.
   const rollup: RollupJob | null = analyticsDb === null ? null : startRollupJob({ db: analyticsDb, log });
 
   const deps = {
@@ -294,7 +295,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     ratings,
     parties,
     auth,
-    db,
+    store,
     portal,
     billing: opts.billing,
     log,
@@ -305,88 +306,40 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     fetchImpl: opts.fetchImpl,
   };
 
+  const ctx: DispatchContext = { deps, matchmaker, registry, rollup };
+
+  /**
+   * The ERROR BOUNDARY, and it is new with the MongoDB port rather than tidiness.
+   *
+   * Until 2026-09-15 every handler was synchronous over a local SQLite file: a throw was a
+   * programming bug, it was rare, and there was no boundary here at all. Handlers now await a
+   * network database, so a transient failure — a failover, a pool timeout, a dropped
+   * connection to Atlas — arrives as a REJECTED PROMISE on an ordinary request. With no
+   * boundary Node treats that as an unhandled rejection and takes the whole process down,
+   * turning a blip that should have been one 500 into an outage for every player connected to
+   * this service.
+   *
+   * `headersSent` is checked because a handler that already started a response cannot be given
+   * a status code; there the connection is simply destroyed, which is the only honest ending.
+   */
   const server = createServer((req, res) => {
-    if (req.method === 'OPTIONS') return send(res, 204, {});
-    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-    const path = url.pathname;
-
-    if (req.method === 'GET' && path === '/health') {
-      return send(res, 200, { ok: true, service: 'daydayup-matchsvc' });
+    let result: void | Promise<void>;
+    try {
+      result = dispatch(req, res, ctx);
+    } catch (e) {
+      return failRequest(res, e);
     }
-
-    // Prometheus scrapes this over the compose network. matchsvc is the ONE service Caddy
-    // proxies wholesale (`reverse_proxy matchsvc:8788` — server/deploy/README.md
-    // §2), so unlike gameserver's and billsvc's it would otherwise be public: a free
-    // readout of how many players are queued and how many accounts exist. Caddy stamps
-    // `x-forwarded-for` on everything it proxies, so its presence is what "came from
-    // outside" means here, and the answer is a plain 404 rather than a 403 — a 403 confirms
-    // the route exists.
-    if (req.method === 'GET' && path === '/metrics') {
-      if (req.headers['x-forwarded-for'] !== undefined) return send(res, 404, { error: 'not found' });
-      res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
-      return res.end(renderMetrics(matchsvcMetrics(matchmaker, registry, rollup)));
-    }
-
-    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_LOG_PATH) {
-      return telemetryRoutes.postClientLog(req, res, url, deps);
-    }
-    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_EVENTS_PATH) {
-      return telemetryRoutes.postClientEvents(req, res, url, deps);
-    }
-    // design/21 §9's client flag delivery path: the one PUBLIC flag readout, answered from
-    // the values this process already polls. See routes/clientFlags.ts for why it is its own
-    // route, and why it is neither rate-limited nor hidden from proxied requests.
-    if (req.method === 'GET' && path === PUBLIC_FLAGS_PATH) return getClientFlags(res, deps);
-
-    if (req.method === 'POST' && path === '/find') return matchRoutes.postFind(req, res, url, deps);
-    if (req.method === 'GET' && matchRoutes.FIND_POLL_PATH.test(path)) {
-      return matchRoutes.getFindPoll(req, res, url, deps);
-    }
-    if (req.method === 'POST' && path === '/resume') return matchRoutes.postResume(req, res, url, deps);
-
-    if (req.method === 'POST' && path === '/rating/report') return ratingRoutes.postReport(req, res, url, deps);
-    if (req.method === 'GET' && ratingRoutes.RATING_LOOKUP_PATH.test(path)) {
-      return ratingRoutes.getRating(req, res, url, deps);
-    }
-
-    if (req.method === 'POST' && path === '/party/create') return partyRoutes.postCreate(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/join') return partyRoutes.postJoin(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/leave') return partyRoutes.postLeave(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/start') return partyRoutes.postStart(req, res, url, deps);
-    if (req.method === 'GET' && partyRoutes.PARTY_LOOKUP_PATH.test(path)) {
-      return partyRoutes.getParty(req, res, url, deps);
-    }
-
-    if (req.method === 'POST' && path === '/auth/register') return authRoutes.postRegister(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/login') return authRoutes.postLogin(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/logout') return authRoutes.postLogout(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/portal') return authRoutes.postPortalLogin(req, res, url, deps);
-    if (req.method === 'GET' && path === '/auth/me') return authRoutes.getMe(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/change-password') {
-      return authRoutes.postChangePassword(req, res, url, deps);
-    }
-
-    if (req.method === 'GET' && path === '/account/meta') return accountRoutes.getMeta(req, res, url, deps);
-    if (req.method === 'POST' && path === '/account/meta') return accountRoutes.postMeta(req, res, url, deps);
-
-    // The store proxy (ROADMAP 8.8). Three player-facing routes that answer nothing here —
-    // every one of them verifies the bearer session and then forwards to billsvc over 8.1's
-    // internal seam. The `:id` GET is last because its pattern would also match a literal
-    // `/store/order/` segment the POST above owns under a different method.
-    if (req.method === 'GET' && path === '/store/skus') return storeRoutes.getSkus(req, res, url, deps);
-    if (req.method === 'POST' && path === '/store/order') return storeRoutes.postOrder(req, res, url, deps);
-    if (req.method === 'GET' && storeRoutes.STORE_ORDER_PATH.test(path)) {
-      return storeRoutes.getOrder(req, res, url, deps);
-    }
-
-    // The one route no player ever calls (design/19 §4's closed delivery loop): billsvc's
-    // outbox pump POSTs a settled purchase here over ROADMAP 8.1's internal key.
-    if (req.method === 'POST' && path === internalEntitlementRoutes.INTERNAL_GRANT_PATH) {
-      return internalEntitlementRoutes.postGrant(req, res, url, deps);
-    }
-
-    send(res, 404, { error: 'not found' });
+    if (result) void result.catch((e: unknown) => failRequest(res, e));
   });
+
+  function failRequest(res: ServerResponse, e: unknown): void {
+    log.error('matchsvc: request failed', { error: e instanceof Error ? e.message : String(e) });
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    send(res, 500, { error: 'internal error' });
+  }
 
   // Stopping both background things here rather than exposing them: the builder's return
   // type is a plain `Server` and every caller already knows how to close one. The flag
@@ -437,19 +390,6 @@ export function startFlagPolling(server: Server): FlagClient | undefined {
   return client;
 }
 
-/**
- * `BB_ANALYTICS_DB_PATH`, or `null` when it is unset or empty.
- *
- * An empty value is treated as unset, which design/19 §9 records as a mistake this project
- * has already paid for once: an env var set to `""` beats a `??` fallback, and a compose
- * file with a trailing `BB_ANALYTICS_DB_PATH:` and no value produces exactly that. Here the
- * consequence would be `openAnalyticsDb('')` — a path SQLite reads as a temporary
- * database, so collection would appear to work and vanish on restart.
- */
-export function analyticsDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
-  const raw = env.BB_ANALYTICS_DB_PATH?.trim();
-  return raw !== undefined && raw.length > 0 ? raw : null;
-}
 
 /**
  * matchsvc's own gauges live in `matchsvcMetrics.ts` since 2026-09-09 (Phase C's flag
@@ -468,10 +408,27 @@ export function startupTarget(registry: GameRegistry): string {
   return registry.pick()?.wsUrl ?? '(no gameserver — /find will answer 503)';
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const log = createLogger('matchsvc');
   const registry = new GameRegistry();
-  const server = createMatchsvcServer({ registry, log });
+  // Connect BEFORE binding a port. A bad URI, a firewalled cluster or a wrong password is a
+  // boot failure here rather than a 500 on some player's first request — the same posture
+  // `billsvc/startupGuard.ts` takes toward its own configuration. `ensureAccountsIndexes` is
+  // idempotent and runs on every boot, which is what keeps a freshly created Atlas database
+  // correct without a separate migration step.
+  await connectMongo();
+  const accountsDb = mongoStore('accounts');
+  await ensureAccountsIndexes(accountsDb);
+  // Analytics is the one store this process opens conditionally — see
+  // `analyticsEnabledFromEnv`. `null` is "collect nothing", and it is the default.
+  // `ensureAnalyticsIndexes` runs only on the opted-in path, so a deployment that collects
+  // nothing also creates nothing: an operator looking at the cluster can tell the two apart.
+  let analyticsDb: Db | null = null;
+  if (analyticsEnabledFromEnv()) {
+    analyticsDb = mongoStore('analytics');
+    await ensureAnalyticsIndexes(analyticsDb);
+  }
+  const server = createMatchsvcServer({ registry, log, store: accountsStore(accountsDb), analyticsDb });
   server.listen(PORT, HOST, () => {
     log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
     // Arms the flag poll, and does one immediate cycle — so a restarted process is on the
@@ -487,5 +444,11 @@ function main(): void {
 // imported by a test — the ESM equivalent of `require.main === module`, needed now that
 // `createMatchsvcServer` is a real importable export (design/16-accounts.md).
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  // `main` awaits the cluster now, so its rejection has to be handled here or it becomes an
+  // unhandled rejection with no log line at all — which is precisely the boot failure an
+  // operator most needs to read.
+  main().catch((e: unknown) => {
+    console.error(`[blightbloom] matchsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+  });
 }
