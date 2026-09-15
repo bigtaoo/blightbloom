@@ -183,6 +183,10 @@ const EVENTS: Record<string, GameEvent> = {
   'pickup.weapon': { type: 'pickup', by: 1, kind: 'weapon', weaponId: 'repeater', gx: 0, gy: 0 } as GameEvent,
   'pickup.material': { type: 'pickup', by: 1, kind: 'material', materialId: 'mat_fire', qty: 1, gx: 0, gy: 0 } as GameEvent,
   'pickup.buff': { type: 'pickup', by: 1, kind: 'buff', buffId: 'dmg_up', gx: 0, gy: 0 } as GameEvent,
+  // Both chest kinds play the same cue, so one fixture covers it; `kind` is here only because
+  // the event carries it (design/05 — what differs between a small and a big chest is a thing
+  // you SEE, not a thing you hear).
+  'chest.open': { type: 'chest_open', id: 4, kind: 'small', gx: 0, gy: 0, weapons: 1 } as GameEvent,
   'wave-clear': { type: 'wave_clear' } as GameEvent,
   // `winner` is not decoration: `EventReactor` plays the jingle only for a win the LOCAL
   // seat's side took, and the run-ending fall otherwise (2026-09-02). This host's state has
@@ -353,8 +357,17 @@ describe('the audio pipeline — a frame that asks for more than the voice cap',
     expect(stolen.has('muzzle')).toBe(true); // fires on every shot — the first to go
     expect(stolen.has('clash')).toBe(true);
     expect(stolen.has('swing')).toBe(true);  // the melee `muzzle`, and just as expendable
-    for (const cue of ENGINE_CUES) {
-      if (CUE_CATALOGUE[cue].priority > 50 && CUE_CATALOGUE[cue].variants > 0) {
+
+    // And nothing ABOVE the cut survives by luck: everything that outranks the weakest kept
+    // slot is kept. The boundary is derived rather than written down, which is the same repair
+    // the paragraph above records for the literal `3` — this loop used to read "priority > 50"
+    // and stopped being true the moment `chest.open` (85) joined the set and pushed `impact`
+    // (60) over the edge. `>` rather than `>=` so a tie AT the boundary, where which voice is
+    // stolen is the mixer's business, cannot make this flaky.
+    const ladder = [...sampledCues].sort((a, b) => CUE_CATALOGUE[b].priority - CUE_CATALOGUE[a].priority);
+    const boundary = CUE_CATALOGUE[ladder[DEFAULT_CAP - 1]!].priority;
+    for (const cue of sampledCues) {
+      if (CUE_CATALOGUE[cue].priority > boundary) {
         expect(kept.has(cue), `${cue} (priority ${CUE_CATALOGUE[cue].priority}) lost its slot`).toBe(true);
       }
     }

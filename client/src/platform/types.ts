@@ -114,6 +114,12 @@ export type AudioCue =
   | 'pickup.weapon'
   | 'pickup.material'
   | 'pickup.buff'
+  // A chest paying out (design/05 "Chest rooms", 2026-09-15). The cue is the LID, not the
+  // reward: the payout gets its own `pickup.weapon` a tick later when somebody collects it,
+  // so a second reward sting here would only double that. Fires for both kinds — a small
+  // chest opening on approach and a big one opening on its plates are the same event to a
+  // listener, and the difference between them is a thing you SEE.
+  | 'chest.open'
   | 'wave-clear'
   | 'win'
   // UI cues. Unlike everything above, these are NOT driven by engine events — they come

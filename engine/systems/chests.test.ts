@@ -20,6 +20,9 @@ import { PLAYER_BASE } from '@dd/engine/content/players';
 import { BASE_MAX_ENERGY } from '@dd/engine/balance/energy';
 import { makeWeapon, BLASTER_SIM } from '@dd/engine/content/weapons';
 import { createGameState } from '@dd/engine/state/GameState';
+import { GameEngine } from '@dd/engine/GameEngine';
+import { LocalInputSource, type PlayerCommand } from '@dd/engine/state/commands';
+import { CHEST_ROOM_DUNGEON, CHEST_ROOM_ROOMS } from '@dd/engine/fixtures/chestRoomFloor';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { Chest, PlayerActor } from '@dd/engine/state/entities';
 import { ChestSystem } from '@dd/engine/systems';
@@ -395,6 +398,98 @@ describe('ChestSystem — the rules that are about something other than the ches
     // The cursor matters more than the two above: a system that drew even once for a config
     // with no chests would shift every later roll in every pre-chest replay.
     expect(s.dropPrng.peek()).toBe(before);
+  });
+});
+
+/**
+ * The ONE-TICK GAP, through the real engine rather than through this system alone.
+ *
+ * `ChestSystem`'s header has claimed since v63 that it runs after `PickupSystem` "so a chest's
+ * payout is always collectable on a LATER tick than the one it opened on", and nothing checked
+ * it: every case above drives `ChestSystem.tick` directly, where step order does not exist.
+ * The claim acquired a second consumer on 2026-09-15 — the `chest.open` cue is the LID, and the
+ * client's reason for not also playing a reward sting is that `pickup.weapon` fires for the
+ * payout on a later frame. If the two ever landed on the same tick, that cue would double and
+ * the comment in `EventReactor` would be wrong rather than merely stale.
+ *
+ * Driven through `GameEngine` on the golden chest fixture, because the step ORDER is the thing
+ * under test — a test that called two systems in the order it believed in would pin its own
+ * belief.
+ */
+describe('ChestSystem — the payout is never collectable on the tick that opened it', () => {
+  /** One run of the golden chest fixture, with `pickupTargetId` standing on every tick. */
+  function run(want: number) {
+    const eng = new GameEngine(
+      {
+        seed: 4242,
+        worldW: 800,
+        worldH: 800,
+        waves: [],
+        players: [{}, {}],
+        dungeon: { config: CHEST_ROOM_DUNGEON, library: CHEST_ROOM_ROOMS },
+      },
+      new LocalInputSource(),
+    );
+    let openedAt = -1;
+    let pickedAt = -1;
+    let payoutId = 0;
+    for (let i = 0; i < 120; i++) {
+      // A ground weapon is collected by REQUEST, not by walking over it (ENGINE_VERSION 32).
+      const cmd = {
+        type: 'input', tick: eng.state.tick + 1, owner: 0,
+        moveBrad: 0, moveMag: 0, buttons: 0,
+        pickupTargetId: want, cardVote: 0, shopBuyId: 0,
+      } as unknown as PlayerCommand;
+      const events = eng.step([cmd]);
+      if (openedAt < 0 && events.some((e) => e.type === 'chest_open')) {
+        openedAt = eng.state.tick;
+        payoutId = eng.state.pickups.find((p) => p.kind === 'weapon')?.id ?? 0;
+      }
+      if (pickedAt < 0 && events.some((e) => e.type === 'pickup')) pickedAt = eng.state.tick;
+    }
+    return { openedAt, pickedAt, payoutId };
+  }
+
+  it('refuses a request that is ALREADY STANDING on the tick the chest pays', () => {
+    // `ChestSystem`'s header has claimed since v63 that it runs after `PickupSystem` "so a
+    // chest's payout is always collectable on a LATER tick than the one it opened on", and
+    // nothing checked it. The claim gained a second consumer on 2026-09-15: the `chest.open`
+    // cue is the LID, and the client's reason for not also playing a reward sting is that
+    // `pickup.weapon` fires for the payout on a LATER frame. If the two landed together that
+    // cue would double.
+    //
+    // The request has to be in flight BEFORE the chest opens or the test proves nothing — the
+    // first version asked for the id only once it existed, which is a tick late by
+    // construction, and deleting `PickupSystem`'s `spawnTick` guard did not make it fail.
+    // Hence the two runs: the first learns the payout's id (the engine is deterministic, so
+    // the second run produces the same one), the second stands on that id from tick 1.
+    //
+    // **What this watches, checked by breaking it.** The gap is defended TWICE — the step
+    // order (10 before 10.5) and `PickupSystem`'s `spawnTick === state.tick` guard — so either
+    // mutation alone leaves this green, and both together turn it red ("expected 3 to be
+    // greater than 3"). That is the property being pinned rather than either line, and it is
+    // worth knowing before reading a surviving single mutant here as a gap in the test.
+    const probe = run(0);
+    expect(probe.openedAt, 'no chest opened in 120 ticks').toBeGreaterThan(0);
+    expect(probe.payoutId, 'the chest paid nothing').toBeGreaterThan(0);
+
+    const standing = run(probe.payoutId);
+    expect(standing.openedAt, 'the second run diverged from the first').toBe(probe.openedAt);
+    expect(standing.pickedAt, 'the standing request was never honoured at all').toBeGreaterThan(0);
+    expect(standing.pickedAt).toBeGreaterThan(standing.openedAt);
+  });
+
+  it('leaves the payout stamped with the opening tick, which is what makes the gap', () => {
+    // The mechanism behind the case above, stated where a reader can find it: `PickupSystem`
+    // skips any item whose `spawnTick === state.tick`. Asserted on the stamp rather than on the
+    // collection, so it stays true for a payout nobody asks for.
+    const s = state();
+    addPlayer(s, 10, 10);
+    const c = addChest(s, 'small', 10, 10);
+    s.tick = 77;
+    sys.tick(s);
+    expect(c.opened).toBe(true);
+    expect(s.pickups.map((p) => p.spawnTick)).toEqual([77]);
   });
 });
 

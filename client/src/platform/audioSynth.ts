@@ -108,6 +108,14 @@ const VOICES: Record<AudioCue, (ctx: AudioContext, bus: GainNode) => void> = {
   'pickup.weapon': (c, b) => tone(c, b, 520, 'triangle', 0.14, 0.13, 780),
   'pickup.material': (c, b) => tone(c, b, 880, 'square', 0.08, 0.1, 1320),
   'pickup.buff': (c, b) => { tone(c, b, 587, 'triangle', 0.12, 0.12); chordNote(c, b, 880, 0.12, 0.1); },
+  // The chest lid (2026-09-15), written the sample-first way the four above and the four UI
+  // voices were: the file was picked on measurements and this imitates it. A falling sawtooth
+  // groan, 600 ms against the shipped pair's 563/723, and 900 -> 500 Hz because a sawtooth's
+  // harmonic stack puts the CENTROID of that glide at 3235 Hz — the pair measures 2993/3253.
+  // (Rendered and measured offline rather than guessed; a triangle at the same centroid would
+  // have to sit at 3.1 kHz, which is a whistle, not a creak.) Single `tone()`, so its peak is
+  // exactly 0.14 and `process_reaction.py` can peak-match the samples to it with no re-render.
+  'chest.open': (c, b) => tone(c, b, 900, 'sawtooth', 0.6, 0.14, 500),
   'wave-clear': (c, b) => { tone(c, b, 523, 'triangle', 0.12, 0.14); chordNote(c, b, 784, 0.12, 0.09); },
   win: (c, b) => { tone(c, b, 523, 'triangle', 0.16, 0.15); chordNote(c, b, 659, 0.16, 0.12); chordNote(c, b, 784, 0.2, 0.12); },
 

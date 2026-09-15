@@ -33,10 +33,10 @@ describe('cue catalogue', () => {
     // Cheap, but it is the guarantee the whole module rests on: `CUE_CATALOGUE` is a
     // `Record<AudioCue, ...>`, so this passing means no cue can reach the mixer without a
     // decision. (`ALL_CUES` is derived from it, so the real assertion is the count.)
-    // 20 engine cues + the 4 `ui.*` screen cues added 2026-08-30. The engine count went
-    // 16 -> 20 on 2026-09-02: `swing`, `hurt` and `spawn` are new, and `death` became the
-    // pair `death.enemy`/`death.player`.
-    expect(ALL_CUES).toHaveLength(24);
+    // 21 engine cues + the 4 `ui.*` screen cues added 2026-08-30. The engine count went
+    // 16 -> 20 on 2026-09-02 (`swing`, `hurt` and `spawn` are new, and `death` became the
+    // pair `death.enemy`/`death.player`) and 20 -> 21 on 2026-09-15 with `chest.open`.
+    expect(ALL_CUES).toHaveLength(25);
     expect(new Set(ALL_CUES).size).toBe(ALL_CUES.length);
     for (const cue of ALL_CUES) expect(CUE_CATALOGUE[cue]).toBeDefined();
   });

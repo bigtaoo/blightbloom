@@ -221,8 +221,8 @@ describe('playCue()', () => {
  */
 describe('the voices whose peak IS their gain (the audio pipeline reads these numbers)', () => {
   const CLOSED_FORM: Record<string, number> = {
-    // From process_reaction.py's VOICE_GAIN (2026-09-02).
-    swing: 0.11, hurt: 0.16, 'death.player': 0.2, spawn: 0.12,
+    // From process_reaction.py's VOICE_GAIN (2026-09-02, plus `chest.open` 2026-09-15).
+    swing: 0.11, hurt: 0.16, 'death.player': 0.2, spawn: 0.12, 'chest.open': 0.14,
     // From process_ui.py's VOICE_GAIN (2026-08-30).
     'ui.tap': 0.09, 'ui.back': 0.09, 'ui.toggle': 0.08, 'ui.denied': 0.1,
   };
@@ -241,7 +241,7 @@ describe('the voices whose peak IS their gain (the audio pipeline reads these nu
     // A cue added to `process_reaction.py`/`process_ui.py` without an entry above would be
     // peak-matched against an unasserted number — the table has to be complete, not a sample.
     const stems = Object.keys(CLOSED_FORM);
-    expect(stems).toHaveLength(8);
+    expect(stems).toHaveLength(9);
     for (const cue of stems) expect(ALL_CUES as readonly string[]).toContain(cue);
   });
 });
