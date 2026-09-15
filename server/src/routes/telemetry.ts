@@ -1,7 +1,7 @@
 /**
  * The two routes a browser may POST to without a session: `POST /client/log` (log lines, on
  * their way to the same store the four backend containers write to) and `POST /client/events`
- * (analytics, on its way to `analytics.db` — design/21 §2.3).
+ * (analytics, on its way to the `analytics` database — design/21 §2.3).
  *
  * These are the only routes in this directory that accept a body from anybody at all: no
  * session required, deliberately, and for the same reason twice. The errors most worth
@@ -41,7 +41,7 @@
  */
 import type { AuthService } from '../AuthService';
 import type { Logger } from '../log';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import { buildLokiPayload, parseBatch, LIMITS } from '../clientLog';
 import { pushToLoki } from '../lokiPush';
 import { parseAnalyticsBatch } from '../analytics/ingest';
@@ -90,12 +90,16 @@ export interface TelemetryRouteDeps {
    *
    * Nullable rather than required, and the null arm is reachable rather than defensive: a
    * test that only exercises the log route does not need one, and — the case that matters —
-   * a deployment that has not set `BB_ANALYTICS_DB_PATH` should keep serving the game while
+   * a deployment that has not opted into analytics should keep serving the game while
    * quietly collecting nothing, not fail to boot. `postClientEvents` answers
    * `accepted: 0` in that state, exactly as it does for a refused batch, because from the
    * client's side those two are the same fact.
+   *
+   * Its indexes are the caller's business, not this route's: whoever supplies the handle
+   * must have awaited `ensureAnalyticsIndexes` first, because the cohort upsert's
+   * exactly-once claim is the unique index and nothing here can check for it per request.
    */
-  analyticsDb?: DatabaseSync | null;
+  analyticsDb?: Db | null;
 }
 
 /**
@@ -146,10 +150,16 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = async (req, res, 
  *
  * Structurally the same as the route above and deliberately so: same limiter, same IP key,
  * same "every outcome is 200 with a count" contract. What differs is only where the rows
- * go, and one thing worth stating: the write is SYNCHRONOUS, unlike the Loki push, because
- * `node:sqlite` is synchronous and there is nothing to await. That makes the write part of
- * the request, so it is wrapped — a database error must answer `accepted: 0` and be logged,
- * never surface to the player and never take the process down.
+ * go, and one thing worth stating: the write is AWAITED, unlike the Loki push. It used to be
+ * synchronous — `node:sqlite` had nothing to await — and the move to a cluster makes the
+ * distinction a choice rather than a fact, so here is the choice. The Loki push is
+ * fire-and-forget because a log store that is down must not cost a millisecond of this
+ * response; the analytics write is not, because `accepted: N` is a claim that N events were
+ * STORED, and answering before the cluster has said so would make that claim a guess.
+ *
+ * Either way the failure path is the same one it always was: a write that rejects answers
+ * `accepted: 0` and is logged, never surfacing to the player and never taking the process
+ * down.
  */
 export const postClientEvents: RouteHandler<TelemetryRouteDeps> = async (req, res, _url, deps) => {
   const now = deps.now ?? Date.now;
@@ -166,15 +176,18 @@ export const postClientEvents: RouteHandler<TelemetryRouteDeps> = async (req, re
     const batch = parseAnalyticsBatch(body, now());
     if (!batch) return send(res, 200, { ok: true, accepted: 0 });
 
-    try {
-      const written = writeBatch(db, batch, session?.accountId ?? null);
-      send(res, 200, { ok: true, accepted: written.events });
-    } catch (e) {
-      // A failed write is worth a line in the log store, because the alternative is a
-      // dashboard that goes flat with nothing anywhere saying why.
-      deps.log.warn('analytics write failed', { err: (e as Error).message });
-      send(res, 200, { ok: true, accepted: 0 });
-    }
+    // `void` plus a two-armed `then`, rather than an async callback: `readJsonUpTo` takes a
+    // synchronous one and would not await a promise returned to it, so an `async` callback
+    // here would be a floating promise whose rejection nothing caught.
+    void writeBatch(db, batch, session?.accountId ?? null).then(
+      (written) => send(res, 200, { ok: true, accepted: written.events }),
+      (e: unknown) => {
+        // A failed write is worth a line in the log store, because the alternative is a
+        // dashboard that goes flat with nothing anywhere saying why.
+        deps.log.warn('analytics write failed', { err: (e as Error).message });
+        send(res, 200, { ok: true, accepted: 0 });
+      },
+    );
   });
 };
 
