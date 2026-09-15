@@ -12,26 +12,32 @@
  *
  * ## The two open rules, and what each one refuses
  *
- * **A small chest wants one player holding INTERACT within `CHEST_INTERACT_RANGE_GRID`.**
- * Not a proximity trigger: a chest that opened by being walked past would spend the floor's
- * loot without the player ever choosing to spend it, and the whole point of the search verb
- * is that finding something is a decision.
+ * **A small chest opens for any live player within `CHEST_OPEN_RANGE_GRID`** — no button, no
+ * hold, nothing to press. **Changed 2026-09-15** (`ENGINE_VERSION` 66) on the owner's call:
+ * *"opening an ordinary chest should take no extra action — it opens when the player comes
+ * near"*. What it replaced, and the argument that was made for it, is worth keeping visible: a
+ * held INTERACT was chosen so that spending a floor's loot was *a decision*, on the reasoning
+ * that a chest opened by being walked past is not a search. That argument lost to a simpler measurement — the button was undiscoverable. A chest
+ * has no art and no sound, INTERACT is taught by no tutorial hint, and the first report from
+ * real play was a chest that *"cannot be opened"* by a player standing on it (2026-09-15,
+ * `client/src/game/ui/ChestPrompt.ts`'s own header). The decision a small chest still carries
+ * is whether to walk into its dead-end room at all (design/05: the side rooms are optional),
+ * which is the choice that was actually costing something.
  *
- * **A big chest wants every one of its mechanisms occupied on the SAME tick**, and wants no
- * button at all. Requiring INTERACT as well would mean four players pressing a button
- * simultaneously, a coordination task of a completely different (and worse) kind than
- * standing in the right place. A mechanism is occupied by any player who is alive, not
- * downed, and within `CHEST_MECHANISM_RADIUS_GRID` of its centre.
+ * **A big chest wants every one of its mechanisms occupied on the SAME tick**, and wanted no
+ * button even when the small one did. Requiring INTERACT as well would mean four players
+ * pressing a button simultaneously, a coordination task of a completely different (and worse)
+ * kind than standing in the right place. A mechanism is occupied by any player who is alive,
+ * not downed, and within `CHEST_MECHANISM_RADIUS_GRID` of its centre.
  *
- * ## INTERACT arbitration: a revive always wins
+ * ## No INTERACT, and therefore no arbitration
  *
- * INTERACT already drives the revive channel (ReviveSystem, step 13), and a chest beside a
- * downed teammate would otherwise be opened by the very hold that is trying to revive them.
- * The rule is that a player who is a VALID REVIVER this tick cannot also work a chest —
- * checked here against the same conditions `ReviveSystem.findReviver` applies, rather than
- * by reordering the two systems (ordering cannot express "the same button meant the other
- * thing"). The asymmetry is deliberate: the revive is the time-critical one, and the chest
- * is not going anywhere.
+ * Until v66 this system mirrored `ReviveSystem.findReviver` so that a player who was a valid
+ * REVIVER could not also work a chest with the same held button — the revive being the
+ * time-critical one. Neither chest kind reads a button now, so there is nothing left to
+ * arbitrate and that mirror is gone rather than kept "in case": a rule that cannot fire is a
+ * rule nobody can test. The one behaviour it used to buy is now simply different, and
+ * deliberately so — a small chest beside a downed teammate opens while you revive them.
  *
  * ## The payout is the floor's weapon supply, not a share of it
  *
@@ -43,7 +49,7 @@
  * re-routing of loot a floor already owed is now the loot itself. A skipped chest room is a
  * floor with fewer weapons in it, which is the whole point of putting them behind a search.
  */
-import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RADIUS_GRID, REVIVE_RANGE_GRID } from '../config';
+import { CHEST_MECHANISM_RADIUS_GRID, CHEST_OPEN_RANGE_GRID } from '../config';
 import { chestWeaponCount } from '../content/chests';
 import { WEAPON_DROP_POOL } from '../content/drops';
 import { toFpGrid } from '../content/convert';
@@ -52,9 +58,8 @@ import type { GameState } from '../state/GameState';
 import type { Chest, PlayerActor } from '../state/entities';
 import { clampToWalkable } from './geom';
 
-const INTERACT_RANGE_FP = toFpGrid(CHEST_INTERACT_RANGE_GRID) as number;
+const OPEN_RANGE_FP = toFpGrid(CHEST_OPEN_RANGE_GRID) as number;
 const MECHANISM_RADIUS_FP = toFpGrid(CHEST_MECHANISM_RADIUS_GRID) as number;
-const REVIVE_RANGE_FP = toFpGrid(REVIVE_RANGE_GRID) as number;
 
 export class ChestSystem {
   tick(state: GameState): void {
@@ -97,6 +102,13 @@ export class ChestSystem {
     return state.dungeonRoomRuntime[idx]?.activated === true;
   }
 
+  /**
+   * A DOWNED player still does not open a small chest, and that is the one condition left on
+   * the approach rule worth stating: a downed body is carried into reach by wherever it fell,
+   * not by a decision, and `ChestSystem` running before `ReviveSystem` would otherwise let a
+   * teammate's collapse spend the room. Dead players are excluded for the same reason
+   * everything else in this engine excludes them.
+   */
   private openWanted(state: GameState, chest: Chest): boolean {
     if (chest.kind === 'big') {
       return chest.mechanisms.length > 0 && chest.mechanisms.every((m) => m.occupied);
@@ -105,28 +117,7 @@ export class ChestSystem {
       (p) =>
         p.alive &&
         !p.downed &&
-        p.interacting &&
-        !this.isReviving(state, p) &&
-        within(p, chest.gx as number, chest.gy as number, INTERACT_RANGE_FP + (p.radius as number)),
-    );
-  }
-
-  /**
-   * Is this player's INTERACT already spoken for by a revive? Mirrors
-   * `ReviveSystem.findReviver` from the reviver's side — same squad, downed, in reach, and
-   * (PvP only) carrying a bandage. Kept as a private mirror rather than shared with that
-   * system on purpose: this asks a question about INPUT, and folding it into the revive
-   * system would put a chest rule inside a rescue rule.
-   */
-  private isReviving(state: GameState, p: PlayerActor): boolean {
-    if (state.zoneEnabled && p.bandages <= 0) return false;
-    return state.players.some(
-      (d) =>
-        d.id !== p.id &&
-        d.alive &&
-        d.downed &&
-        d.teamId === p.teamId &&
-        within(p, d.gx as number, d.gy as number, REVIVE_RANGE_FP + (p.radius as number) + (d.radius as number)),
+        within(p, chest.gx as number, chest.gy as number, OPEN_RANGE_FP + (p.radius as number)),
     );
   }
 

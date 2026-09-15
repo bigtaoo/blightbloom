@@ -37,6 +37,17 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   prop_crate: '/environment/prop_crate.png',
   prop_barrel: '/environment/prop_barrel.png',
   prop_rubble: '/environment/prop_rubble.png',
+  // Chests (design/05 "Chest rooms"), 2026-09-15 — four files, because a chest has two kinds
+  // and each kind has two states and `ChestLayer` swaps the sprite in place. Keyed
+  // `chest_<kind>[_open]` to match `getChestTexture`, the same "add a row, nothing else
+  // changes on the render side" shape `prop_<kind>` already has. Sized off `ChestLayer`'s own
+  // drawn widths at the 8x rule the props batch set (`art/props/prompts.md`), which is why the
+  // two OPEN files are taller than wide: the lid is thrown back and the art's own aspect sets
+  // the drawn height.
+  chest_small: '/environment/chest_small.png',
+  chest_small_open: '/environment/chest_small_open.png',
+  chest_big: '/environment/chest_big.png',
+  chest_big_open: '/environment/chest_big_open.png',
   // The shop's shopkeeper (2026-09-14, design/05 "Shops"). Filed under `environment/`
   // rather than `ui/` where `npc_forger.png` sits, because this one stands IN a room and
   // is Y-sorted against the actors — the hub Forger is a corner-anchored UI sprite. It is
@@ -109,6 +120,15 @@ export function getPortalArchTexture(): Texture | undefined {
  *  nothing else on the render side. */
 export function getPropTexture(kind: string): Texture | undefined {
   return textures.get(`prop_${kind}`);
+}
+
+/** A chest's sprite, by kind and open state (`scene/ChestLayer.ts`). Undefined until
+ *  preloaded — `buildChestBody` falls back to the Graphics form the chest shipped with, which
+ *  is still the only form for any state whose file has not arrived. Re-asked every frame until
+ *  it resolves (`ChestLayer.sync`), so a floor built while `preloadEnvironmentSprites()` was in
+ *  flight still picks the art up. */
+export function getChestTexture(kind: string, opened: boolean): Texture | undefined {
+  return textures.get(`chest_${kind}${opened ? '_open' : ''}`);
 }
 
 /** The shop counter's shopkeeper (`scene/ShopLayer.ts`). Undefined until preloaded — and a

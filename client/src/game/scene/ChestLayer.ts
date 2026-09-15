@@ -8,14 +8,20 @@
 // mechanisms are flat ground decals that every actor must draw over (`layers.ground`), and a
 // single `Entity` has exactly one position and one layer.
 //
-// ## No art yet, deliberately
+// ## Art landed 2026-09-15; the Graphics form stayed
 //
 // Every object in this room shipped a Graphics form first and grew a sprite later — walls,
-// pillars, doors, drops, props (see `propRender.ts`'s own note). A chest is the newest object
-// in the game and has no art at all, so the shapes below are the drawn form for now, not a
-// fallback waiting on a file. They follow design/13's dual-channel rule — the two kinds differ
-// in SIZE and FORM, not only in hue, so they stay apart for a colourblind player — and they are
-// sized against `Pickup`'s own 18 px so a chest reads as furniture rather than as loot.
+// pillars, doors, drops, props (see `propRender.ts`'s own note). A chest took that path too:
+// four files (two kinds x closed/open), and the shapes below are now the FALLBACK rather than
+// the drawn form. They are kept rather than deleted for the reason `propRender` keeps its own:
+// a state whose file has not loaded still has to draw something, and a stand-in that is a
+// different size than the art it stands in for is a worse bug than no art at all — so both
+// paths are anchored at the feet, scaled to the same `BODY_HALF` width, and swept against each
+// other in `ChestLayer.test.ts`.
+//
+// They also still carry design/13's dual-channel rule, which the art had to inherit: the two
+// kinds differ in SIZE and FORM — 18 px flat-lidded brass-bound coffer against a 28 px
+// domed-lid iron strongbox — not only in hue, so they stay apart for a colourblind player.
 //
 // ## What the plates have to communicate, and what they must not
 //
@@ -24,8 +30,9 @@
 // the drawing has to respect is that an OPENED chest's plates keep updating: `ChestSystem`
 // refreshes `occupied` for an opened chest too, precisely so a plate does not stay lit forever
 // after the party walks away, and a renderer that stopped reading them would put that bug back.
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { Chest, GameState } from '@dd/engine';
+import { getChestTexture } from '../../render/environmentSprites';
 import { fpToPx } from '../coords';
 import { THEME } from '../theme';
 import { SHADOW_SQUASH } from './Entity';
@@ -54,6 +61,12 @@ interface ChestView {
   /** What the body was last drawn as. A chest's body only ever changes once (closed → open),
    *  so redrawing it every frame would be pure churn; this is the edge that avoids it. */
   drawnOpen: boolean;
+  /** Whether the body on screen is the SPRITE rather than the Graphics fallback. A floor built
+   *  while `preloadEnvironmentSprites()` is still in flight draws the fallback, and without
+   *  this it would keep it for the rest of the run — the same late-texture case
+   *  `ShopLayer.createKeeper` handles by re-asking, stated here as a flag because a chest has
+   *  a body either way and "is there one" cannot answer it. */
+  drawnWithArt: boolean;
   /** Per-plate occupancy as last drawn, index-aligned with `Chest.mechanisms`. Same reason.
    *  `null` means "never drawn", and it has to be a third value rather than a `false` default:
    *  seeding it with a boolean makes the first frame a no-op for every plate that happens to
@@ -121,12 +134,26 @@ export class ChestLayer {
   private create(chest: Chest): ChestView {
     const body = new Container();
     this.entities.addChild(body);
+    // The ground shadow, added once and never redrawn — it belongs to the chest's FOOTPRINT,
+    // which does not change when the lid opens. Same ellipse, same squash and same alpha the
+    // counter next door uses (`ShopLayer.create`), because both are furniture standing on the
+    // same floor and a chest that cast a different shadow would read as a different world.
+    const shadow = new Graphics();
+    const half = BODY_HALF[chest.kind];
+    shadow.ellipse(0, 0, half, half * SHADOW_SQUASH).fill({ color: 0x000000, alpha: 0.28 });
+    body.addChild(shadow);
     const plates = new Container();
     this.ground.addChild(plates);
     for (let i = 0; i < chest.mechanisms.length; i++) plates.addChild(new Graphics());
     // Both sentinels are deliberately values the real state can never equal, so the first
     // `sync` always draws: `drawnOpen` inverted, `drawnOccupied` null.
-    return { body, plates, drawnOpen: !chest.opened, drawnOccupied: chest.mechanisms.map(() => null) };
+    return {
+      body,
+      plates,
+      drawnOpen: !chest.opened,
+      drawnWithArt: false,
+      drawnOccupied: chest.mechanisms.map(() => null),
+    };
   }
 
   private sync(chest: Chest, v: ChestView): void {
@@ -136,10 +163,15 @@ export class ChestLayer {
     // The GROUND coordinate, exactly as `Entity` does it — a chest sits on the floor, so its
     // sort key is where it stands, never where its lid is drawn.
     v.body.zIndex = y;
-    if (v.drawnOpen !== chest.opened) {
-      v.body.removeChildren().forEach((c) => c.destroy());
-      v.body.addChild(drawBody(chest.kind, chest.opened));
+    // Two reasons to rebuild the body, and the second is the one a test has to hold: the chest
+    // opened, or the art finished loading under a body that had fallen back to Graphics.
+    const tex = getChestTexture(chest.kind, chest.opened);
+    if (v.drawnOpen !== chest.opened || (tex !== undefined && !v.drawnWithArt)) {
+      // The shadow is child 0 and outlives every rebuild — it is the footprint, not the body.
+      while (v.body.children.length > 1) v.body.removeChildAt(1).destroy();
+      v.body.addChild(buildChestBody(chest.kind, chest.opened, tex));
       v.drawnOpen = chest.opened;
+      v.drawnWithArt = tex !== undefined;
     }
     for (let i = 0; i < chest.mechanisms.length; i++) {
       const m = chest.mechanisms[i]!;
@@ -153,27 +185,64 @@ export class ChestLayer {
   }
 }
 
-/** The chest body itself. Exported for `ChestLayer.test.ts`, which measures the drawn extents
- *  rather than trusting the constants above — the same rule `propRender.test.ts` follows. */
+/** The drawn width of a chest of `kind`, world px — what both the sprite and the Graphics
+ *  fallback are fitted to. Exported for the reason `propFootprintWidth` is: so a test derives
+ *  the geometry instead of restating it, and so the two paths can be checked against each
+ *  other at all. */
+export function chestFootprintWidth(kind: 'small' | 'big'): number {
+  return BODY_HALF[kind] * 2;
+}
+
+/**
+ * One chest body, art if it has loaded and the Graphics form if it has not.
+ *
+ * The sprite is **anchored at the feet** (`0.5, 1`) and scaled by WIDTH, with the art's own
+ * aspect setting its height — the rule every sprite in this scene follows (`buildPropBody`,
+ * `ShopLayer`'s keeper), because the aspect belongs to the art: the two OPEN files are taller
+ * than they are wide (the lid is thrown back), and a height stated here would silently
+ * re-proportion a replacement file. No tint, unlike a prop's `propTint`: design/13 withholds
+ * runtime re-tinting from anything carrying its own real colours, and the whole point of a
+ * chest's warm timber and brass is that it does not read as part of the wall behind it.
+ */
+export function buildChestBody(kind: 'small' | 'big', opened: boolean, tex?: Texture): Container {
+  const c = new Container();
+  if (tex) {
+    const w = chestFootprintWidth(kind);
+    const sprite = new Sprite(tex);
+    sprite.anchor.set(0.5, 1);
+    sprite.setSize(w, w * (tex.height / tex.width));
+    c.addChild(sprite);
+    return c;
+  }
+  c.addChild(drawBody(kind, opened));
+  return c;
+}
+
+/** The Graphics fallback. Exported for `ChestLayer.test.ts`, which measures the drawn extents
+ *  rather than trusting the constants above — the same rule `propRender.test.ts` follows.
+ *  Drawn from the ground point UPWARD since 2026-09-15, so it stands where the sprite does. */
 export function drawBody(kind: 'small' | 'big', opened: boolean): Graphics {
   const g = new Graphics();
   const half = BODY_HALF[kind];
-  const h = half * BODY_ASPECT;
+  // The full drawn height, measured UP from the ground point — the sprite is anchored at the
+  // feet and the fallback has to stand in the same box, or the chest would jump the frame its
+  // texture arrived.
+  const h = half * BODY_ASPECT * 2;
   if (opened) {
     // An emptied chest: the box is still there (it is a landmark — a player crossing the room
     // again should be able to see they have already been here) but the lid is thrown back and
     // the inside is a hole rather than a surface.
-    g.roundRect(-half, -h * 0.2, half * 2, h * 1.2, 3).fill({ color: OPEN_FILL });
-    g.roundRect(-half, -h * 1.3, half * 2, h * 0.5, 2).fill({ color: CLOSED_FILL, alpha: 0.75 });
-    g.roundRect(-half, -h * 0.2, half * 2, h * 1.2, 3).stroke({ color: CLOSED_BAND, width: 1, alpha: 0.5 });
+    g.roundRect(-half, -h * 0.6, half * 2, h * 0.6, 3).fill({ color: OPEN_FILL });
+    g.roundRect(-half, -h * 1.05, half * 2, h * 0.25, 2).fill({ color: CLOSED_FILL, alpha: 0.75 });
+    g.roundRect(-half, -h * 0.6, half * 2, h * 0.6, 3).stroke({ color: CLOSED_BAND, width: 1, alpha: 0.5 });
     return g;
   }
-  g.roundRect(-half, -h, half * 2, h * 2, 3).fill({ color: CLOSED_FILL });
+  g.roundRect(-half, -h, half * 2, h, 3).fill({ color: CLOSED_FILL });
   // The strap across the lid line, and the lock under it: two marks, because one horizontal
   // band alone reads as a crate (which this room already has three of).
-  g.rect(-half, -h * 0.15, half * 2, h * 0.3).fill({ color: CLOSED_BAND });
-  g.rect(-2, -h * 0.35, 4, h * 0.7).fill({ color: CLOSED_BAND });
-  g.roundRect(-half, -h, half * 2, h * 2, 3).stroke({ color: 0x000000, width: 1, alpha: 0.35 });
+  g.rect(-half, -h * 0.575, half * 2, h * 0.15).fill({ color: CLOSED_BAND });
+  g.rect(-2, -h * 0.675, 4, h * 0.35).fill({ color: CLOSED_BAND });
+  g.roundRect(-half, -h, half * 2, h, 3).stroke({ color: 0x000000, width: 1, alpha: 0.35 });
   return g;
 }
 

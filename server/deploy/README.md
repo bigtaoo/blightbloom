@@ -1,8 +1,25 @@
 # Deploying the backend
 
-> **Status (2026-09-07): fully live, including CI.** Every container is up and
-> healthy on `wnet-server` at `~/wnet-test/`, the Caddy site block is appended and
-> reloaded, DNS is in place, and `curl https://bb.gamestao.com/health` returns
+> **Status (2026-09-15): moved to dedicated hardware.** The backend now runs on a
+> Hetzner CX23 of its own — `blightbloom`, `62.238.1.182`, Helsinki, 2 vCPU / 4 GB / 40 GB —
+> at `~/blightbloom/` under a non-root `deploy` user, with its own Caddy, its own network and
+> its own cAdvisor/node-exporter. Twelve containers. Everything below that read as a property
+> of the box rather than of the services was rewritten in that pass; the history is kept
+> wherever it explains a shape, because most of what this file knows was learned the expensive
+> way and none of it stopped being true about how Docker, Caddy and SQLite behave.
+>
+> **What the move changed, in one list:** the reverse proxy is `caddy/Caddyfile` in this repo
+> instead of one appended block in a Caddyfile belonging to somebody else; the compose network
+> is ours instead of the host's `docker_default`; containers are `bb-*` instead of the
+> `wnet-test` disguise; Prometheus runs its own two exporters instead of borrowing the host's;
+> and the deploy account is `deploy` (uid 1000, matching the container's `node`) instead of
+> `tao` (1001), which makes the ownership dance in §1 a no-op instead of a rite. The
+> `authorized_keys` step that used to need a human with somebody else's `sudo` password is
+> just a step now.
+>
+> **Status (2026-09-07): fully live, including CI.** Every container was up and
+> healthy on `wnet-server` at `~/wnet-test/`, the Caddy site block appended and
+> reloaded, DNS in place, and `curl https://bb.gamestao.com/health` returned
 > `{"ok":true,"service":"daydayup-matchsvc"}` behind a real Let's Encrypt (production)
 > certificate (§0–§2). The client now points at it by default on a deployed build (§3).
 > CI-based deploy (§6) is fully wired end to end: the forced-command key is installed,
@@ -33,24 +50,23 @@
 > which is what actually succeeded once DNS had propagated. Add the DNS record FIRST,
 > confirm it resolves, only then append/reload the Caddy block, and this wait disappears.
 
-Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on the **same VPS
-`deutsch` already uses** (`wnet-server` = `92.205.18.79`, Debian 13; see `deutsch`'s own
-`deploy/README.md` for how that box got set up in the first place), domain
-**`bb.gamestao.com`**.
+Client is on Cloudflare (`b.gamestao.com`, static). This backend runs on **its own VPS**
+(`blightbloom` = `62.238.1.182`, Ubuntu 26.04 LTS, a Hetzner CX23 in Helsinki), domain
+**`bb.gamestao.com`**. Nothing else runs on that machine.
 
-That machine also runs the company's wnet mock stack (frontend / webapi / mssql / grafana
-/ caddy) *and* `deutsch-sync`. This project's footprint on it is the same shape deutsch's
-is: **one line added to `~/wnet/docker/Caddyfile`**, everything else self-contained under
-`~/wnet-test/`, removable in one command.
+**It did not start out that way, and the difference is worth stating once.** From 2026-09-07
+to 2026-09-15 this backend was a guest on `wnet-server` (`92.205.18.79`, Debian 13) — the
+company's box, which `deutsch`'s sync backend also uses, borrowed for its idle spare
+capacity. Everything visible there was named generically (`wnet-test`) rather than after this
+project, the entire footprint was one appended line in a Caddyfile we did not own, and
+several decisions recorded below exist because of that guest status rather than because of
+anything the services need. Those are called out where they appear — a constraint whose
+reason has expired is exactly the kind that gets copied forward forever.
 
-**On naming (2026-09-07):** the box is the company's, borrowed for its idle spare
-capacity rather than provisioned for this project — so everything visible on the VPS
-itself (the directory, the containers, the CI script, the Caddyfile comment) is named
-generically (`wnet-test`) instead of after this project. Nothing about the game or its
-name appears anywhere on that shared machine on purpose; this repo's own naming
-(`blightbloom`/`daydayup`) stays exactly where it always was — in this private repo, and
-in the GitHub Actions secrets/variables, neither of which anyone with shell access to the
-VPS can see.
+**On naming, now:** the containers are `bb-*`, the directory is `~/blightbloom`, the image is
+`blightbloom:latest`. The disguise cost nothing while it was true and would be actively
+misleading here — `wnet-test-matchsvc` on a machine with no wnet on it reads like somebody
+else's container, which is the opposite of what the name was for.
 
 Four processes from one image (`server/Dockerfile`, `server/docker-compose.yml`):
 `gameserver` (WS data plane, design/06), `matchsvc` (control plane — matchmaking,
@@ -83,7 +99,11 @@ Cloudflare, `gamestao.com` zone:
 
 | Type | Name | Content | Proxy |
 | --- | --- | --- | --- |
-| A | `bb` | `92.205.18.79` | **DNS only (grey cloud)** |
+| A | `bb` | `62.238.1.182` | **DNS only (grey cloud)** |
+
+(It pointed at `92.205.18.79` until 2026-09-15. That one record *is* the cutover: the new box
+was brought up and verified service by service from the inside, with its own Caddy
+deliberately not started, and only then was the record moved — see "Moving the box", §2.)
 
 **Must be grey-clouded.** An orange-clouded (proxied) record means Caddy's ACME
 challenge never reaches Let's Encrypt — the cert never signs, and the symptom is a
@@ -98,7 +118,12 @@ openssl rand -hex 32   # BB_TICKET_SECRET
 openssl rand -hex 32   # BB_INTERNAL_KEY
 ```
 
-#### Renaming an existing box's `.env` (`DDU_*` → `BB_*`, 2026-09-08)
+#### Renaming an existing box's `.env` (`DDU_*` → `BB_*`, 2026-09-08) — DONE
+
+> Kept as a record, not an instruction: the commands below name a box this project no longer
+> uses, and the `.env` that moved to the dedicated server in 2026-09-15 carries `BB_*` only.
+> The shape is what is worth keeping — an `.env` is the one file no deploy can fix, so a
+> rename of anything in it is a hand step, done ADDITIVELY and before the code that needs it.
 
 The env prefix moved with the game's name, and `.env` is the ONE file CI never ships (see
 `ci-deploy.sh`) — so a box provisioned before this rename still holds `DDU_TICKET_SECRET` /
@@ -133,13 +158,13 @@ npm run build -w server        # → server/dist/{index,matchsvc,billsvc}.mjs
 ```
 
 Then ship the small built output — NOT the monorepo — from `server/`. `deploy/package.json`
-has to land at `~/wnet-test/deploy/package.json` (the Dockerfile's
+has to land at `~/blightbloom/deploy/package.json` (the Dockerfile's
 `COPY deploy/package.json ./package.json` expects it there), which is why it's passed as
 its own top-level arg rather than flattened:
 
 ```bash
 cd server
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring .env wnet-server:~/wnet-test/
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy .env blightbloom:~/blightbloom/
 ```
 
 **No `rsync` on Windows Git Bash** (this is how the first deploy actually happened,
@@ -147,16 +172,16 @@ rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring .env
 `deploy/package.json` as its own copy so it lands at the right path:
 
 ```bash
-ssh wnet-server 'mkdir -p ~/wnet-test/deploy'
-scp -rq dist Dockerfile docker-compose.yml monitoring .env wnet-server:~/wnet-test/
-scp -q deploy/package.json wnet-server:~/wnet-test/deploy/package.json
+ssh blightbloom 'mkdir -p ~/blightbloom/deploy'
+scp -rq dist Dockerfile docker-compose.yml monitoring caddy .env blightbloom:~/blightbloom/
+scp -q deploy/package.json blightbloom:~/blightbloom/deploy/package.json
 ```
 
 Then on the server:
 
 ```bash
-ssh wnet-server
-cd ~/wnet-test
+ssh blightbloom
+cd ~/blightbloom
 docker compose up -d --build
 docker compose logs -f          # all three should log "on http://0.0.0.0:..." / "on ws://0.0.0.0:8787/ws"
 ```
@@ -164,6 +189,13 @@ docker compose logs -f          # all three should log "on http://0.0.0.0:..." /
 **If matchsvc or billsvc fail on first boot with `unable to open database file`**: same
 cause as deutsch — `./data/matchsvc` / `./data/billsvc` are created root-owned by Docker's
 first bind-mount, and the image runs as the non-root `node` user (uid 1000).
+
+This is much less likely to bite since 2026-09-15, because the deploy account on this box is
+`deploy` with **uid 1000 on purpose** — the same uid the container's `node` user has — so a
+directory the deploy itself creates is already owned correctly. That reduces how often the
+trap springs; it does not remove the trap. A directory Docker creates because nobody created
+it first is still `root:root`, which is why `ci-deploy.sh` still normalises ownership and why
+the fix below still works.
 
 ```bash
 docker run --rm -v "$PWD/data:/data" busybox chown -R 1000:1000 /data
@@ -173,10 +205,10 @@ docker compose restart matchsvc billsvc
 Self-check (bypassing Caddy, straight to each container):
 
 ```bash
-docker exec wnet-test-gameserver node -e "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log)"
-docker exec wnet-test-matchsvc  node -e "fetch('http://127.0.0.1:8788/health').then(r=>r.json()).then(console.log)"
-docker exec wnet-test-billsvc   node -e "fetch('http://127.0.0.1:8789/health').then(r=>r.json()).then(console.log)"
-docker exec wnet-test-adminsvc  node -e "fetch('http://127.0.0.1:8790/admin/health').then(r=>r.json()).then(console.log)"
+docker exec bb-gameserver node -e "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(console.log)"
+docker exec bb-matchsvc   node -e "fetch('http://127.0.0.1:8788/health').then(r=>r.json()).then(console.log)"
+docker exec bb-billsvc    node -e "fetch('http://127.0.0.1:8789/health').then(r=>r.json()).then(console.log)"
+docker exec bb-adminsvc   node -e "fetch('http://127.0.0.1:8790/admin/health').then(r=>r.json()).then(console.log)"
 ```
 
 The console's probe is `/admin/health`, not `/health`: every path adminsvc answers lives
@@ -185,66 +217,51 @@ request carrying `x-forwarded-for` — i.e. anything that came through Caddy —
 matchsvc's `/metrics` does, so `curl https://bb.gamestao.com/admin/health` is a 404 by
 design and this `docker exec` is the only way to read it.
 
-## 2. Wire up Caddy
+## 2. Caddy
 
-matchsvc answers everything except the WS upgrade, which is path-pinned to `/ws`
-(`server/src/index.ts`'s `WebSocketServer({ path: '/ws' })`), and — since 2026-09-09 —
-except `/grafana*` and `/admin*`. So the site block is a FOUR-way path split, not a
-whole-host proxy the way deutsch's single-service one is:
+**Since 2026-09-15 there is nothing to "wire up".** The reverse proxy is `server/caddy/Caddyfile`
+in this repo, shipped with every deploy and bind-mounted read-only into the `caddy` service.
+Editing it is editing a tracked file and redeploying; there is no box-side step at all.
 
-```caddyfile
-bb.gamestao.com {
-	handle /ws* {
-		reverse_proxy wnet-test-gameserver:8787
-	}
-	handle /grafana* {
-		reverse_proxy wnet-test-grafana:3000
-	}
-	handle /admin* {
-		reverse_proxy wnet-test-adminsvc:8790
-	}
-	handle {
-		reverse_proxy wnet-test-matchsvc:8788
-	}
-}
+That is the whole difference the dedicated hardware made here, and it deleted a page of this
+section. What used to live in this spot: the site block was **appended by hand** to
+`~/wnet/docker/Caddyfile` — the company's Caddy, fronting `wnet-mock.elk.de`, an IP/hostname
+device block and `sync.gamestao.com` as well as us — then validated and reloaded, with a
+neighbour check afterwards because a reload replaces the WHOLE config and a mistake took
+their sites down with ours.
+
+The routing itself did not change, and the three things that make it correct are worth
+having here as well as in the file:
+
+- **`handle` blocks, not bare `reverse_proxy` lines with matchers.** With more than two
+  paths, "which directive wins" stops being obvious from reading the file, and the failure is
+  not an error — it is Grafana's assets answered by matchsvc's 404 handler, i.e. a blank page
+  with a 200. `handle` is mutually exclusive and first-match, so the order written is the
+  order that runs.
+- **Neither `/grafana*` nor `/admin*` is stripped**, for two different reasons. Grafana runs
+  with `GF_SERVER_SERVE_FROM_SUB_PATH=true` and expects to receive its prefix; strip it and
+  every asset 404s. adminsvc's own route table *is* `/admin/...` — the prefix is part of every
+  path it knows, not a mount point — which is also what lets its session cookie be scoped
+  `Path=/admin` so it never rides along on a player's `POST /client/events`.
+- **The catch-all `handle { }` must stay last.** Anything after it is unreachable, and the
+  symptom is the console's login page answered by matchsvc's 404 (design/21 §3.4).
+
+```bash
+# See what the running Caddy is actually serving — not what the file says
+ssh blightbloom "docker exec bb-caddy wget -qO- http://127.0.0.1:2019/config/ | head -c 400"
 ```
 
-**`handle` blocks, not three bare `reverse_proxy` lines with matchers.** With more than
-two paths, "which directive wins" stops being obvious from reading the file, and the
-failure is not an error — it is Grafana's assets being answered by matchsvc's 404 handler,
-i.e. a blank page with a 200. `handle` is mutually exclusive and first-match, so the file
-says what it does.
-
-**The Grafana prefix is NOT stripped.** `handle_path` would remove it, and Grafana is
-configured with `GF_SERVER_SERVE_FROM_SUB_PATH=true`, meaning it expects to receive the
-prefix and generates its own links with it. Strip it and every asset 404s.
-
-**The `/admin*` prefix is not stripped either, and for a different reason.** adminsvc's own
-route table IS `/admin/...` — `/admin/`, `/admin/login`, `/admin/logout`, `/admin/health`
-(`server/src/adminsvc/routes.ts`) — so the prefix is not a mount point it is served under,
-it is part of every path it knows. That is deliberate: the session cookie is scoped
-`Path=/admin` so it never rides along on a player's `POST /client/events`, and one `handle`
-block covers the console because there is nothing outside the prefix to cover.
-`handle_path` here would deliver `/login` to a server that 404s it.
-
-**`/admin*` must come BEFORE the catch-all**, which is what `handle` guarantees: the blocks
-are mutually exclusive and first-match, so the ordering in the file is the ordering that
-runs. This is design/21 §3.4's named trap, and the reason it is worth naming is that
-getting it wrong is not an error — it is the console's page being answered by matchsvc's
-404 handler, i.e. a blank page with a 200.
-
-#### Before that deploy: the Grafana password must already be in `.env`
+#### The Grafana password must already be in `.env`
 
 `docker-compose.yml` declares `GF_SECURITY_ADMIN_PASSWORD: ${BB_GRAFANA_ADMIN_PASSWORD:?…}`,
 and `.env` is the one file CI never ships (`ci-deploy.sh`). The `:?` is deliberate —
 Grafana's own default is `admin`/`admin` and this login page is on the public internet —
 but it means a box whose `.env` predates the Grafana service fails `docker compose up` for
-**every** service, not just Grafana. Same shape as the `DDU_*`→`BB_*` rename above: do it
-first, on the box, by hand.
+**every** service, not just Grafana. Do it first, on the box, by hand.
 
 ```bash
-ssh wnet-server "cd ~/wnet-test && printf 'BB_GRAFANA_ADMIN_PASSWORD=%s\n' \"\$(openssl rand -hex 16)\" >> .env && grep -c BB_GRAFANA .env"
-ssh wnet-server "grep '^BB_GRAFANA_ADMIN_PASSWORD=' ~/wnet-test/.env"   # note it down — this is the only copy
+ssh blightbloom "cd /home/deploy/blightbloom && printf 'BB_GRAFANA_ADMIN_PASSWORD=%s\n' \"\$(openssl rand -hex 16)\" >> .env"
+ssh blightbloom "grep '^BB_GRAFANA_ADMIN_PASSWORD=' /home/deploy/blightbloom/.env"   # the only copy — note it down
 ```
 
 #### ...and so must the ops console's, for exactly the same reason
@@ -265,141 +282,86 @@ not a secret, and the password is the whole credential.
 `ci-deploy.sh` checks for BOTH by name and fails the deploy with that explanation rather
 than letting compose's own "required variable is not set" be the only clue.
 
-#### ...and the THIRD hand step: re-install `~/wnet-test-ci-deploy.sh`
+#### ...and the other hand step: re-install `~/blightbloom-ci-deploy.sh`
 
 The live script is hand-installed by design (§6 — the CI key must not be able to rewrite
 its own forced command), so **editing the repo copy does nothing and CI going green is not
 evidence the new check ran**. That is not a general caution: on 2026-09-09 the live copy
-predated adminsvc entirely — no `dist/adminsvc.mjs` in the payload check, no
-`data/adminsvc` in the ownership loop, no `adminsvc:8790:/admin/health` in the health loop
-— so the deploy would have let compose create that bind-mount source `root:root` and
-reproduced 2026-09-08's 18 hours of silent EACCES, with CI reporting success. Same failure
-class as the backup guard that shipped only to the repo.
+predated adminsvc entirely — no `dist/adminsvc.mjs` in the payload check, no `data/adminsvc`
+in the ownership loop, no `adminsvc:8790:/admin/health` in the health loop — so the deploy
+would have let compose create that bind-mount source `root:root` and reproduced 2026-09-08's
+18 hours of silent EACCES, with CI reporting success. Same failure class as the backup guard
+that shipped only to the repo.
 
 ```bash
-# install (LF only — the worktree holds CRLF under core.autocrlf, and a CRLF shell script
-# dies on the box with `$'': command not found`)
-tr -d '' < server/deploy/ci-deploy.sh | ssh wnet-server   "cat > ~/wnet-test-ci-deploy.sh && chmod 700 ~/wnet-test-ci-deploy.sh && bash -n ~/wnet-test-ci-deploy.sh"
+# install (LF only — the worktree holds CRLF under core.autocrlf on Windows, and a CRLF
+# shell script dies on the box with `$'\r': command not found`. `server/.gitattributes`
+# pins this file to LF for exactly that reason, so the `tr` is now belt to that braces.)
+tr -d '\r' < server/deploy/ci-deploy.sh |
+  ssh blightbloom "install -m 700 -o deploy -g deploy /dev/stdin /home/deploy/blightbloom-ci-deploy.sh"
 # then prove it, which is the standing check before believing anything about a deploy step
-ssh wnet-server 'cat ~/wnet-test-ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
+ssh blightbloom 'cat /home/deploy/blightbloom-ci-deploy.sh' | diff - <(tr -d '\r' < server/deploy/ci-deploy.sh) && echo IN-SYNC
 ```
 
-**And a NEW state dir under `data/` cannot be created by the deploy user at all.**
-`~/wnet-test/data` is uid-1000-owned (container `node` == host `elkadmin`) while the deploy
-account `tao` is 1001, so the script's own `mkdir -p` — a silent no-op for the dirs that
-already existed — failed hard on `data/adminsvc` with `Permission denied` and aborted the
-deploy before compose ran. Fixed in `ci-deploy.sh`: creation falls back to a root container
-mounting the parent, and only on that path. Nothing to do by hand, but if a future service
-adds a state dir and the deploy dies there, this is why.
+#### A bind-mounted CONFIG FILE binds to an inode, not to a path
 
-**First read the file, because this snippet APPENDS a whole site block.** It is written for
-the first-time setup, and it has been edited in place twice since (Grafana, then `/admin*`) —
-so if a `bb.gamestao.com { … }` block is already there, running it verbatim adds a SECOND
-one. That failure is loud (`caddy validate` rejects a duplicate site address, and the
-`validate &&` in the chain means nothing is reloaded), but it wastes a round trip and reads
-like a broken snippet rather than a wrong instruction. So:
+This cost a full diagnosis on 2026-09-09 and it looks like success the whole way through. It
+is recorded here rather than deleted with the borrowed box, because the mechanism is Docker's
+and the next config file this project bind-mounts will have it too.
+
+`docker inspect` showed the mount as `/home/tao/wnet/docker/Caddyfile -> /etc/caddy/Caddyfile`:
+a single **file**, so the mount is bound to that file's **inode**. Any editor that writes a
+new file and renames it over the old one — `mv new Caddyfile`, and `sed -i`, which does
+exactly that internally — leaves the host path pointing at a NEW inode while the container
+keeps the OLD one. The host file is then correct, and:
+
+- `caddy validate --config /etc/caddy/Caddyfile` reads the OLD inode and says **Valid configuration**,
+- `caddy reload --config /etc/caddy/Caddyfile` reloads the OLD config and logs `adapted config to JSON`,
+- and `/admin/` is answered by matchsvc's 404 handler — byte-identical to the catch-all's own
+  404, which is the `handle`-ordering trap above wearing a different hat.
+
+Every command reports success and the config never changed. Comparing the two inodes is the
+only check that actually proves a bind-mounted config edit reached the container:
 
 ```bash
-ssh wnet-server 'grep -n "bb.gamestao.com" -A 20 ~/wnet/docker/Caddyfile'
+ssh blightbloom 'stat -c "host %i" /home/deploy/blightbloom/caddy/Caddyfile; docker exec bb-caddy stat -c "container %i" /etc/caddy/Caddyfile'
 ```
 
-- **No block** → append, with the snippet below exactly as it stands.
-- **A block already there** → edit it in place instead, adding only the `handle` blocks it
-  is missing. `/admin*` must land **before** the final bare `handle { }`; that trailing block
-  is the catch-all, and `handle` is first-match, so anything after it is unreachable. This is
-  design/21 §3.4's named trap, and getting it wrong is not an error — it is the console's page
-  answered by matchsvc's 404 handler, i.e. a blank page with a 200.
+**What this deployment does about it now**: `caddy/` is mounted as a DIRECTORY, and
+`ci-deploy.sh` replaces it with `rm -rf` + `cp -R` — which changes the inode every time, on
+purpose rather than by accident. That is safe only because the deploy also carries
+`--force-recreate`, which rebuilds the container and re-resolves every mount against the
+current path. So nothing in the deploy ever reloads Caddy by hand, and the stale-inode state
+is not reachable. If you ever edit the Caddyfile ON the box, either `cp` over it (same inode)
+or `docker compose up -d --force-recreate caddy` — never `mv`, never `sed -i`, never a plain
+`caddy reload`.
 
-#### The Caddyfile is a FILE bind mount, so HOW you edit it decides whether it lands
+### Moving the box
 
-This cost a full diagnosis on 2026-09-09 and it looks like success the whole way through.
-`docker inspect docker-caddy-1` shows the mount as
-`/home/tao/wnet/docker/Caddyfile -> /etc/caddy/Caddyfile`: a single **file**, so the mount
-is bound to that file's **inode**, not to its path. Any editor that writes a new file and
-renames it over the old one — `mv new Caddyfile`, and `sed -i`, which does exactly that
-internally — leaves the host path pointing at a NEW inode while the container keeps the
-OLD one. The host file is then correct, and:
+Recorded because it is the procedure, not an anecdote: the same shape works for the next
+move. The trap it routes around is the one 2026-09-07 hit — Caddy attempts the ACME challenge
+the INSTANT its config loads, so a proxy started before DNS resolves fails with NXDOMAIN and
+backs off ~10 minutes before retrying.
 
-- `docker exec docker-caddy-1 caddy validate --config /etc/caddy/Caddyfile` reads the OLD
-  inode and says **Valid configuration**,
-- `caddy reload --config /etc/caddy/Caddyfile` reloads the OLD config and logs
-  `adapted config to JSON`,
-- and `/admin/` is answered by matchsvc's 404 handler — `{"error":"not found"}`,
-  byte-identical to the catch-all's own 404, which is the trap two sections up wearing a
-  different hat.
+1. Ship the build and the configs to the new box, and copy `.env` and `data/` across. The
+   databases are the only irreplaceable part and they are small; take them with a root
+   container (`docker run --rm -v …:ro alpine tar czf -`) rather than `sudo`, since the deploy
+   account cannot read a uid-1000 tree it does not own.
+2. Bring up **everything except `caddy`** — `docker compose up -d --build gameserver matchsvc
+   billsvc adminsvc backup obs-*`. No proxy means no ACME attempt, so there is no failed
+   challenge and no backoff to wait out.
+3. Verify from the inside: each `/health` over `docker exec`, `up == 1` for every Prometheus
+   target, and Loki's own `label/svc/values` to prove collection works with the new container
+   names. Nothing in this step needs the hostname, which is the point.
+4. Re-copy `data/` with the old stack stopped, so the final state is not a snapshot taken
+   mid-write.
+5. **Then** move the DNS A record, confirm it resolves to the new address, and only then
+   `docker compose up -d caddy`. The certificate signs within seconds because the challenge
+   succeeds on the first attempt.
+6. Decommission the old box: `docker compose down`, remove the directory, remove its site
+   block from the host's Caddyfile, and revoke its deploy key from `authorized_keys`.
 
-Every command reports success and the config never changed. Compare the two inodes to see
-it, which is also the only check that actually proves a Caddyfile edit reached Caddy:
-
-```bash
-ssh wnet-server 'stat -c "host %i" ~/wnet/docker/Caddyfile; docker exec docker-caddy-1 stat -c "container %i" /etc/caddy/Caddyfile'
-```
-
-**So edit IN PLACE and keep the inode**: `cat >> Caddyfile` (what the snippet below does,
-which is why the Grafana pass worked), or `cp new Caddyfile` — never `mv` over it, never
-`sed -i`. `cp` and `>>` both truncate/append through the existing inode.
-
-**If you already replaced it**, the container's mount is read-only so you cannot write
-back through it, and the old inode has no name left on the host — there is nothing to
-repair. Two ways out:
-
-```bash
-# Zero downtime: load the correct file through the admin API from a path you CAN write.
-ssh wnet-server 'docker cp ~/wnet/docker/Caddyfile docker-caddy-1:/tmp/Caddyfile.new   && docker exec docker-caddy-1 caddy validate --config /tmp/Caddyfile.new --adapter caddyfile   && docker exec docker-caddy-1 caddy reload --config /tmp/Caddyfile.new --adapter caddyfile'
-```
-
-That fixes routing immediately, but it leaves ONE landmine: the container's
-`/etc/caddy/Caddyfile` is still the stale inode, so the next person who reloads from that
-path silently reverts whatever the file gained since. `docker restart docker-caddy-1`
-re-resolves the bind mount to the host path and collapses the split permanently — correct,
-but it is the company's shared proxy fronting `wnet-mock.elk.de`, the IP/hostname device
-block and `sync.gamestao.com`, so it costs all of them a second of downtime. Prefer it at a
-moment somebody has agreed to.
-
-Both were done on 2026-09-09, in that order — the admin-API load to get `/admin*` serving,
-then the restart once it was agreed. **The split is collapsed**: both inodes read the same,
-the container's own copy carries the `/admin*` block, all four site blocks answer, and a
-reload from `/etc/caddy/Caddyfile` is safe again.
-
-After any reload, check the neighbours rather than just your own site — a reload replaces
-the WHOLE config, so a mistake takes their sites with it, from inside the box so the
-self-signed device cert does not confuse the result:
-
-```bash
-ssh wnet-server 'for h in wnet-mock.elk.de wnet-server sync.gamestao.com bb.gamestao.com; do
-  printf "%s " "$h"; curl -sk -o /dev/null -w "%{http_code}
-" --resolve "$h:443:127.0.0.1" "https://$h/"; done'
-```
-
-Same backup-append-validate-reload sequence deutsch's README uses (`reload`, not
-`restart` — the wnet stack's own connections stay up):
-
-```bash
-ssh wnet-server 'cd ~/wnet/docker && cp Caddyfile Caddyfile.bak-$(date +%Y%m%d-%H%M%S) \
-  && cat >> Caddyfile <<EOF
-
-bb.gamestao.com {
-	handle /ws* {
-		reverse_proxy wnet-test-gameserver:8787
-	}
-	handle /grafana* {
-		reverse_proxy wnet-test-grafana:3000
-	}
-	handle /admin* {
-		reverse_proxy wnet-test-adminsvc:8790
-	}
-	handle {
-		reverse_proxy wnet-test-matchsvc:8788
-	}
-}
-EOF
-  && docker exec docker-caddy-1 caddy validate --config /etc/caddy/Caddyfile \
-  && docker exec docker-caddy-1 caddy reload --config /etc/caddy/Caddyfile'
-```
-
-To undo: restore the `.bak` file and reload again.
-
-Once DNS has propagated, Caddy signs the cert automatically:
+Once DNS has propagated and Caddy has its certificate:
 
 ```bash
 curl https://bb.gamestao.com/health
@@ -433,7 +395,7 @@ the stale file and reported success), and the `cache-control` sub-row below aske
       banner until the structured logger landed 2026-09-09; it is a logfmt FIELD now, which
       is the point — a marker buried in prose cannot be queried, and "was the store real on
       the day of that order?" is asked months after the log line has rotated away.)
-- [x] `docker inspect wnet-test-billsvc --format '{{.Config.Env}}'` does **not** show
+- [x] `docker inspect bb-billsvc --format '{{.Config.Env}}'` does **not** show
       `NODE_ENV=production` (that combination is refused at the process level, but the
       compose file should never even attempt it)
 - [x] A `/store/skus` request through matchsvc returns the SKU table (proves the
@@ -459,7 +421,22 @@ the stale file and reported success), and the `cache-control` sub-row below aske
       `accounts=true billing=true analytics=true readOnly=true`. Any `false` is a path that
       does not exist, and that tab reads "Unavailable" with the reason on it
 - [x] In Grafana, **Backend — logs** shows a heartbeat line for all five services within
-      five minutes, and **Server status** shows every scrape target `up`
+      five minutes, and **Server status** shows every scrape target `up` — **eight of them**
+      since 2026-09-15, the two exporters having moved from the host owner's stack into this
+      one. `up == 1` for `containers` (obs-cadvisor) and `host` (obs-node-exporter) is the row
+      that proves the move actually happened rather than leaving two panels quietly empty:
+      ```bash
+      ssh blightbloom 'docker exec bb-prometheus wget -qO- "http://127.0.0.1:9090/api/v1/query?query=up"'
+      ```
+- [x] `docker compose ps` shows **twelve** containers, eleven of them `(healthy)` and
+      `bb-alloy` with no health column at all — that last one is correct and is explained in
+      `docker-compose.yml` beside the service. A twelfth healthy container would mean somebody
+      gave Alloy a healthcheck it cannot pass
+- [x] `ss -tlnp` on the box shows only **:22, :80 and :443** bound on a public address.
+      Everything else is `expose`, reachable on the compose network and nowhere else. Worth
+      checking by hand rather than trusting `ufw status`, because Docker publishes a port by
+      writing its own iptables rules AHEAD of ufw's chain: a stray `ports:` entry is reachable
+      from the internet while the firewall still reports the port closed
 - [x] Open the game, force an error in its console, and it appears in **Client — browser
       logs** within ~30 seconds (§8 has the one-liner)
 - [x] `curl -s https://bb.gamestao.com/metrics` returns a **404** — the metrics endpoint
@@ -510,20 +487,21 @@ instead of on the box. Neither runs Docker.
 
 ```bash
 # Logs (or, since 2026-09-09, the Backend dashboard at https://bb.gamestao.com/grafana/ — see section 8)
-docker compose -f ~/wnet-test/docker-compose.yml logs -f
+ssh blightbloom 'docker compose -f /home/deploy/blightbloom/docker-compose.yml logs -f'
 
 # Redeploy after a code change (build locally, then re-ship + rebuild)
 cd server && npm run build
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring wnet-server:~/wnet-test/
-ssh wnet-server 'cd ~/wnet-test && docker compose up -d --build'
+rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy blightbloom:~/blightbloom/
+ssh blightbloom 'cd /home/deploy/blightbloom && docker compose up -d --build'
 
 # Pull the automated backups off the box (see the Backups section below — the snapshots
 # themselves are taken on the box, daily, by the `backup` service; this is the off-box copy)
-rsync -av wnet-server:~/wnet-test/backups/ ./backups/
+rsync -av blightbloom:~/blightbloom/backups/ ./backups/
 
-# Tear down entirely (zero effect on wnet or deutsch-sync — remember to also remove the
-# Caddyfile block above)
-ssh wnet-server 'cd ~/wnet-test && docker compose down && rm -rf ~/wnet-test'
+# Tear down entirely. Unlike on the borrowed box there is no neighbour to be careful of and
+# no foreign Caddyfile block to remember — but this now takes the PROXY down too, so it is a
+# total outage rather than one service disappearing from somebody else's reverse proxy.
+ssh blightbloom 'cd /home/deploy/blightbloom && docker compose down && rm -rf /home/deploy/blightbloom'
 ```
 
 ### Backups — automated 2026-09-07
@@ -533,7 +511,7 @@ block above: a procedure exactly as reliable as somebody remembering it, protect
 things this project cannot regenerate — `accounts.db` (who somebody is) and `billing.db`
 (what they paid for).
 
-Now the compose project runs a fourth process, `wnet-test-backup` (`src/backup/`), and there
+Now the compose project runs a fourth process, `bb-backup` (`src/backup/`), and there
 is nothing to remember:
 
 - **Daily**, and once immediately at start, it snapshots both databases with SQLite's
@@ -542,7 +520,7 @@ is nothing to remember:
   opens fine and fails on the page that mattered.
 - **It cannot write to either database.** The two data directories are mounted `:ro`, and
   the SQLite handle is opened read-only (`VACUUM INTO` works that way — verified, see
-  `src/backup/snapshot.ts`). Its only writable mount is `~/wnet-test/backups`.
+  `src/backup/snapshot.ts`). Its only writable mount is `~/blightbloom/backups`.
 - **Each snapshot is verified before it is published**: `PRAGMA integrity_check` on the copy,
   then gzip, then an atomic rename. Nothing in that directory is ever a file that merely
   looks like a backup — an interrupted run leaves a `.part`, which the pruner neither counts
@@ -553,21 +531,21 @@ is nothing to remember:
 
 ```bash
 # Is it working? (this is what the container's own healthcheck runs)
-ssh wnet-server 'docker exec wnet-test-backup node backup.mjs --health && echo HEALTHY'
-ssh wnet-server 'cat ~/wnet-test/backups/status.json'
-ssh wnet-server 'ls -lh ~/wnet-test/backups'
-docker ps --filter name=wnet-test-backup   # STATUS shows (healthy)/(unhealthy)
+ssh blightbloom 'docker exec bb-backup node backup.mjs --health && echo HEALTHY'
+ssh blightbloom 'cat /home/deploy/blightbloom/backups/status.json'
+ssh blightbloom 'ls -lh /home/deploy/blightbloom/backups'
+docker ps --filter name=bb-backup   # STATUS shows (healthy)/(unhealthy)
 
 # Force a cycle now (it runs one at start, so a restart is a manual backup)
-ssh wnet-server 'cd ~/wnet-test && docker compose restart backup'
+ssh blightbloom 'cd /home/deploy/blightbloom && docker compose restart backup'
 ```
 
 **Restoring.** A snapshot is an ordinary gzipped SQLite file, so a restore needs no tooling
 from this repo:
 
 ```bash
-ssh wnet-server
-cd ~/wnet-test
+ssh blightbloom
+cd /home/deploy/blightbloom
 docker compose stop matchsvc                      # nothing may hold the file open
 cp data/matchsvc/accounts.db data/matchsvc/accounts.db.before-restore
 gunzip -c backups/accounts-2026-09-07T02-00-00Z.db.gz > data/matchsvc/accounts.db
@@ -583,7 +561,7 @@ the database survives every failure this project has actually had (a bad migrati
 hand-edited row, an `rm` in the wrong directory) and none of the ones that take the host with
 it. The off-box copy is the `rsync` line in §5 and it is a human step — stated here rather
 than papered over, because a backup system that quietly protects less than it appears to is
-worse than one whose limit is written down. On a borrowed box, "the host is gone" is a real
+worse than one whose limit is written down. "The host is gone" is a real
 scenario.
 
 **Its verification is part of the deploy.** `ci-deploy.sh` asks the worker for a healthy
@@ -621,7 +599,7 @@ back.
 > change does nothing.** Diff the two before believing otherwise:
 >
 > ```bash
-> ssh wnet-server 'cat ~/wnet-test-ci-deploy.sh' | diff - server/deploy/ci-deploy.sh && echo IN-SYNC
+> ssh blightbloom 'cat /home/deploy/blightbloom-ci-deploy.sh' | diff - <(tr -d '\r' < server/deploy/ci-deploy.sh) && echo IN-SYNC
 > ```
 
 ## 6. CI-based deploy — DONE (2026-09-07)
@@ -632,23 +610,32 @@ deutsch's own `deploy.yml`/`deploy/ci-deploy.sh`: push to `main` touching
 them over SSH with a key that can do exactly one thing on the VPS.
 
 Everything is wired and verified:
-- Dedicated keypair (`D:\cloud\wnet_test_ci_ed25519` — the only readable copy, since a
+**Re-pointed at the dedicated box on 2026-09-15**, with a new key — the old one is a
+credential for a machine this project no longer has any business on, so it was replaced
+rather than moved.
+
+- Dedicated keypair (`D:\cloud\blightbloom_ci_ed25519` — the only readable copy, since a
   GitHub Secret is write-only), private half in the repo Secret `SERVER_DEPLOY_KEY`.
-- `server/deploy/ci-deploy.sh` installed at `~/wnet-test-ci-deploy.sh` (outside the deploy
-  target on purpose — see its own header), `chmod 700`.
-- Repo Variables: `SERVER_SSH_HOST=92.205.18.79`, `SERVER_SSH_USER=tao`,
-  `SERVER_SSH_KNOWN_HOSTS` (pinned, fingerprint cross-checked against the VPS's own
-  `/etc/ssh/ssh_host_ed25519_key.pub` — never `StrictHostKeyChecking=no`),
-  `SERVER_API_BASE=https://bb.gamestao.com`, `SERVER_DEPLOY_ENABLED=true`.
-- The forced-command `authorized_keys` line — the one step that needed a human with the
-  VPS's `sudo` password, since that file is root-owned — is installed. **Verified it
-  actually restricts**: sending an arbitrary command (`whoami`) over this key does not run
-  it; the forced command runs `ci-deploy.sh` regardless, which then correctly rejects
-  non-tar.gz stdin rather than doing anything with it.
+- `server/deploy/ci-deploy.sh` installed at `/home/deploy/blightbloom-ci-deploy.sh` (outside
+  the deploy target on purpose — see its own header), `chmod 700`, owned by `deploy`.
+- Repo Variables: `SERVER_SSH_HOST=62.238.1.182`, `SERVER_SSH_USER=deploy`,
+  `SERVER_SSH_KNOWN_HOSTS` (pinned, fingerprint cross-checked three ways — the scanned line,
+  the local `known_hosts` entry from first contact, and the box's own
+  `/etc/ssh/ssh_host_ed25519_key.pub` read back over the trusted channel — never
+  `StrictHostKeyChecking=no`), `SERVER_API_BASE=https://bb.gamestao.com`,
+  `SERVER_DEPLOY_ENABLED=true`.
+- The forced-command `authorized_keys` line is installed. On the borrowed box this was the
+  one step that needed a human, because the file was root-owned and `sudo` wanted an
+  interactive password; here it is just a step. **Verified it actually restricts**: asking
+  the key to run `cat /etc/shadow; id` does not run it — the forced command runs
+  `ci-deploy.sh` regardless, which then correctly rejects the non-tar.gz stdin rather than
+  doing anything with it — and `ssh -tt` over the key is refused with `PTY allocation request
+  failed`, so `restrict` is doing its half too.
 - **Proven twice**: once manually (`tar czf - dist Dockerfile docker-compose.yml
   deploy/package.json | ssh -i ... tao@92.205.18.79`, all three containers rebuilt and
   came back healthy), then for real via `gh workflow run server-deploy` — a genuine CI
-  run that went green end to end (build → SSH deploy → public `/health` check).
+  run that went green end to end (build → SSH deploy → public `/health` check). Re-proven
+  against the new box after the 2026-09-15 move, the same way.
 
 Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**`/
 `client/src/**`.
@@ -666,10 +653,20 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
 - **The OFF-BOX copy of the backups.** The `backup` service (§5, "Backups") takes and
   verifies a daily snapshot of both databases and keeps 14 of each, on the same disk as the
   databases. Getting them somewhere else is still the `rsync` line in §5, run by a person.
-  What would close it: a scheduled pull from a machine that is not this VPS (the box is
-  borrowed, so a push credential stored ON it is the thing not to add), or an object-store
-  bucket the worker uploads to. Deliberately not guessed at here — it needs a destination
-  somebody owns.
+  What would close it: a scheduled pull from a machine that is not this VPS, or an
+  object-store bucket the worker uploads to. A PULL is still the better shape even now that
+  the box is ours — a push credential stored on the server is a credential an attacker who
+  reaches the server also gets, and "the backups were deleted along with the originals" is
+  the failure that makes having them pointless. Deliberately not guessed at here: it needs a
+  destination somebody owns.
+
+  The move to dedicated hardware made this **more** urgent, not less. On the borrowed box
+  the machine itself was somebody else's to keep alive, with their snapshots and their
+  monitoring around it; now a single Hetzner VM holds the only copy of `accounts.db` and
+  `billing.db`, and nothing outside it would notice their loss. Hetzner's own backups are one
+  checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
+  turning on as a floor under this, but they are a whole-disk snapshot rather than a
+  verified database copy, so they do not close the item.
 
 ## 8. Observability — Loki + Alloy + Prometheus + Grafana (2026-09-09)
 
@@ -681,7 +678,7 @@ no-ops, the CORS preflight that failed as a bare `Failed to fetch`) was found by
 happening to have devtools open at the time.
 
 **Where it lives.** Four containers in the same compose project, `obs-`prefixed
-(`wnet-test-loki` / `-alloy` / `-prometheus` / `-grafana`), configured from
+(`bb-loki` / `-alloy` / `-prometheus` / `-grafana`), configured from
 `server/monitoring/`. They run no code from this repo. Nothing the game serves depends on
 them: a dead Grafana cannot affect a match, and `docker compose down` still removes the
 whole footprint in one command.
@@ -740,47 +737,63 @@ In this order, because each step rules out everything below it:
 
 ```bash
 # 1. Is the stack even up?
-ssh wnet-server 'cd ~/wnet-test && docker compose ps'
+ssh blightbloom 'cd /home/deploy/blightbloom && docker compose ps'
 
 # 2. Is Loki accepting? (`ready` = yes)
-ssh wnet-server 'docker exec wnet-test-loki wget -qO- http://127.0.0.1:3100/ready'
+ssh blightbloom 'docker exec bb-loki wget -qO- http://127.0.0.1:3100/ready'
 
 # 3. Is anything in it? (should list backend + client)
-ssh wnet-server 'docker exec wnet-test-grafana wget -qO- "http://obs-loki:3100/loki/api/v1/label/source/values"'
+ssh blightbloom 'docker exec bb-grafana wget -qO- "http://obs-loki:3100/loki/api/v1/label/source/values"'
 
 # 4. Is the collector attached, and to OUR containers only?
-ssh wnet-server 'docker logs --tail 50 wnet-test-alloy'
+ssh blightbloom 'docker logs --tail 50 bb-alloy'
 
 # 5. For the client half specifically — the variable that silently drops everything
-ssh wnet-server 'docker exec wnet-test-matchsvc printenv BB_LOKI_PUSH_URL'
+ssh blightbloom 'docker exec bb-matchsvc printenv BB_LOKI_PUSH_URL'
 
-# 6. Are the metrics targets up? (two of them are the BOX OWNER's exporters — see below)
-ssh wnet-server 'docker exec wnet-test-prometheus wget -qO- "http://127.0.0.1:9090/api/v1/targets?state=any" | head -c 2000'
+# 6. Are the metrics targets up? (all eight are ours since 2026-09-15 — see below)
+ssh blightbloom 'docker exec bb-prometheus wget -qO- "http://127.0.0.1:9090/api/v1/query?query=up"'
 ```
 
-### Two things about running this on a borrowed box
+### Three things this stack inherited from the borrowed box
 
-**The box's own monitoring already sees us, and this stack cannot change that.** The
-machine runs its owner's wnet stack, which includes their own Loki/Promtail/Grafana — and
-their promtail scrapes the Docker socket **unfiltered**, so every line our containers have
-ever written is already in their store, labelled `wnet-test-*`. (Confirmed 2026-09-09 by
-querying it; it also still holds `blightbloom-gameserver` / `-matchsvc` / `-billsvc`
-streams from a short-lived container naming on 2026-09-07, i.e. the game's name did reach
-that box despite the naming policy above, and log CONTENT carries it regardless.) Closing
-that would mean editing *their* promtail config, which is not this project's to change
-unilaterally — raise it with the box's owner if it matters.
+All three are still in the code; two of them no longer guard what they were written to
+guard, and saying so is the point of this section. A rule whose reason has quietly expired is
+one nobody can evaluate later.
 
-Our own Alloy does the opposite, deliberately: `monitoring/alloy/config.alloy` filters
-discovery to `wnet-test-*` twice over (a Docker-side filter and an Alloy-side `keep`), so
-we do not collect their containers' logs into our store.
+**The `obs-` prefix was a collision guard, and is now a role marker.** The compose project
+used to join the host's shared `docker_default` network, where compose publishes each service
+NAME as a network alias — and the owner's stack already answered to `loki`, `grafana`,
+`prometheus` and `promtail` there. A service called `loki` would have put two containers
+behind one DNS name, with their collector's pushes landing in our store or ours in theirs,
+intermittently, and nothing failing anywhere. The network is ours since 2026-09-15 and that
+cannot happen; the prefix stays because `prometheus.yml`, `datasources.yml`, every dashboard
+and `ci-deploy.sh` all spell it out, and because it is what makes `docker compose ps` say at a
+glance which half of the stack a container belongs to.
+`server/test/deploy.observability.test.ts` still fails the build on a name that drops it —
+deliberately, so that dropping it is a decision and not a drift.
 
-**Every service name here is `obs-`prefixed, and that is not cosmetic.** This compose
-project joins the host's shared `docker_default` network, and compose publishes each
-service NAME as a network alias on it. The owner's stack already answers to `loki`,
-`grafana`, `prometheus` and `promtail` there. A service called `loki` would put two
-containers behind one DNS name on a shared network — their collector's pushes could start
-landing in our store and ours in theirs, intermittently, with nothing failing anywhere.
-`server/test/deploy.observability.test.ts` fails the build on a colliding name.
+**Alloy's `bb-` discovery filter was a boundary, and is now hygiene.** It was written because
+an unfiltered collector on that box would have copied another team's logs into our store (in
+the other direction their promtail scraped the same socket unfiltered, and this file could
+never close that half — every line our containers wrote between 2026-09-07 and the move is
+still in their Loki, labelled `wnet-test-*`, along with some `blightbloom-*` streams from a
+short-lived naming on 2026-09-07, because log CONTENT carries the name regardless of what the
+container is called). Here there are no neighbours. What the filter still prevents is duller
+and real: any container run on this host outside the compose project — a five-minute
+debugging shell, a `docker run` from some future runbook — would otherwise be collected and
+kept for Loki's full 14 days, and the first symptom of that is storage, not an error.
+
+**Prometheus stopped borrowing, which removed the one dependency this stack could not fix.**
+It scraped `docker-cadvisor-1` and `docker-node-exporter-1` — the host owner's exporters,
+measuring the whole machine, ours included. The right trade at the time: a second privileged
+cAdvisor mounting `/`, `/sys` and `/dev/kmsg` on hardware we did not own, to recompute numbers
+that already existed one DNS name away, would have been rude and pointless. But it meant that
+if that team ever stopped or renamed either container, every infra panel emptied for reasons
+nobody here could see. `docker-compose.yml` now runs `obs-cadvisor` and `obs-node-exporter`
+itself; `infra.json`'s queries are unchanged, because `--path.rootfs=/rootfs` was carried over
+deliberately (it strips the prefix from the `mountpoint` label, which is what makes the disk
+panel's `mountpoint="/"` selector match anything at all).
 
 ### Before touching any of it
 

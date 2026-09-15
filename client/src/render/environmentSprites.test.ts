@@ -14,6 +14,7 @@ import {
   getPickupTexture,
   getPortalArchTexture,
   getPropTexture,
+  getChestTexture,
   getShopkeeperTexture,
   ENV_SPRITE_ASSETS,
   ENV_SPRITE_ASSET_KEYS,
@@ -45,6 +46,13 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   prop_crate: () => getPropTexture('crate'),
   prop_barrel: () => getPropTexture('barrel'),
   prop_rubble: () => getPropTexture('rubble'),
+  // Both kinds x both states (2026-09-15) — spelled out rather than derived, like every other
+  // row here: the point of this table is to be a SECOND statement of the wiring, and a loop
+  // over the same key list would just restate the registry to itself.
+  chest_small: () => getChestTexture('small', false),
+  chest_small_open: () => getChestTexture('small', true),
+  chest_big: () => getChestTexture('big', false),
+  chest_big_open: () => getChestTexture('big', true),
 } as Readonly<Record<string, () => { source: { label: string } } | undefined>>;
 
 describe('environmentSprites — getDoorTexture before any preload', () => {

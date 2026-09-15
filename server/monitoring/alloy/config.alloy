@@ -3,16 +3,18 @@
 // Ported from `funny`'s server/observability/alloy/config.alloy. Two things about it are
 // load-bearing and worth reading before changing anything here.
 //
-// **It discovers by container NAME, filtered to this project.** funny's version scrapes
-// every container on its host, which is correct there because the host runs nothing else.
-// This box does: it is the company's, borrowed for spare capacity, and already runs their
-// wnet stack, their own Loki/Promtail/Grafana, and `deutsch-sync`. Scraping all of it
-// would copy another team's logs into our store — so the `filter` below, plus the `keep`
-// rule that re-states it, restricts collection to `wnet-test-*`.
+// **It discovers by container NAME, filtered to `bb-*`.** funny's version scrapes every
+// container on its host, which is correct there because the host runs nothing else. This
+// filter was written when that was emphatically not true here: the box was the company's,
+// borrowed for its spare capacity, and ran their wnet stack, their own
+// Loki/Promtail/Grafana and `deutsch-sync` alongside us — an unfiltered collector would
+// have copied another team's logs into our store. (Their promtail scraped the same socket
+// unfiltered in the other direction, and this file could never close that half.)
 //
-// (The reverse leak already exists and this file cannot close it: THEIR promtail scrapes
-// the same socket unfiltered, so our containers' stdout is in their Loki too. See
-// server/deploy/README.md "What the box's own monitoring already sees".)
+// Since 2026-09-15 the box is ours and runs nothing else, so the filter guards nothing that
+// exists today. It stays because what it prevents did not move out with the neighbours: the
+// next container somebody runs here for five minutes of debugging would otherwise be
+// collected and retained, and the first symptom of that is storage, not an error.
 //
 // **Labels stay low-cardinality, always.** Only `source`, `svc`, `level` and `container`.
 // Everything identifying — an account id, a room id, an order id — stays in the line body
@@ -20,32 +22,33 @@
 // make a stream per match, which is the standard way to make Loki unusable.
 
 // ── Discovery: this project's containers only ───────────────────────────────────────────
-discovery.docker "wnet_test" {
+discovery.docker "bb" {
 	host             = "unix:///var/run/docker.sock"
 	refresh_interval = "10s"
 
-	// Docker's own name filter is a substring match, so this catches every container the
-	// compose project creates (`wnet-test-gameserver`, `wnet-test-obs-loki`, ...) and
-	// nothing the host owns.
+	// Docker's own name filter is a substring match, so this catches every container this
+	// compose project creates (`bb-gameserver`, `bb-loki`, ...) and nothing else.
 	filter {
 		name   = "name"
-		values = ["wnet-test-"]
+		values = ["bb-"]
 	}
 }
 
-discovery.relabel "wnet_test" {
-	targets = discovery.docker.wnet_test.targets
+discovery.relabel "bb" {
+	targets = discovery.docker.bb.targets
 
 	// Belt and braces: the filter above is applied by the Docker daemon, this one by
 	// Alloy. A daemon that ignores or loosens the filter (it is documented as a substring
 	// match, not an anchored one) would otherwise silently start collecting the whole box.
+	// Anchored at the start, unlike Docker's substring match, so a stray `my-bb-scratch`
+	// is not swept in by the looser filter above.
 	rule {
 		source_labels = ["__meta_docker_container_name"]
-		regex         = "/wnet-test-.*"
+		regex         = "/bb-.*"
 		action        = "keep"
 	}
 
-	// `/wnet-test-matchsvc` -> container="wnet-test-matchsvc", svc="matchsvc".
+	// `/bb-matchsvc` -> container="bb-matchsvc", svc="matchsvc".
 	rule {
 		source_labels = ["__meta_docker_container_name"]
 		regex         = "/(.*)"
@@ -53,7 +56,7 @@ discovery.relabel "wnet_test" {
 	}
 	rule {
 		source_labels = ["__meta_docker_container_name"]
-		regex         = "/wnet-test-(.*)"
+		regex         = "/bb-(.*)"
 		target_label  = "svc"
 	}
 
@@ -67,10 +70,10 @@ discovery.relabel "wnet_test" {
 }
 
 // ── Collection ──────────────────────────────────────────────────────────────────────────
-loki.source.docker "wnet_test" {
+loki.source.docker "bb" {
 	host          = "unix:///var/run/docker.sock"
-	targets       = discovery.relabel.wnet_test.output
-	relabel_rules = discovery.relabel.wnet_test.rules
+	targets       = discovery.relabel.bb.output
+	relabel_rules = discovery.relabel.bb.rules
 	forward_to    = [loki.process.parse.receiver]
 }
 
@@ -102,12 +105,13 @@ loki.process "parse" {
 
 loki.write "default" {
 	endpoint {
-		// `obs-loki`, not `loki`: this compose project joins the host's shared
-		// `docker_default` network, where the box owner's own Loki already answers to the
-		// alias `loki`. A service named `loki` here would put two containers behind one
-		// DNS name on a shared network — their promtail's pushes could land in our store
-		// and ours in theirs, intermittently, with nothing failing. Every service this
-		// project adds to that network is prefixed for the same reason.
+		// `obs-loki`, not `loki`. The prefix was a collision guard while this project sat on
+		// the host's shared `docker_default` network, where the box owner's own Loki already
+		// held the alias `loki` — two containers behind one DNS name, pushes landing in the
+		// wrong store intermittently, nothing failing anywhere. The network is this
+		// project's own now and that collision is gone; the name stays as a role marker (see
+		// ../../docker-compose.yml's header), and because renaming it would rewrite every
+		// datasource, scrape target and dashboard to buy nothing.
 		url = "http://obs-loki:3100/loki/api/v1/push"
 	}
 }

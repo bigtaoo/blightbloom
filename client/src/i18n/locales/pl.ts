@@ -112,6 +112,10 @@ export const pl: Translations<typeof en> = {
       heal: 'Mikstura leczenia',
       energy: 'Ogniwo energii',
     },
+    chest: {
+      bigTitle: 'Duża skrzynia',
+      plates: 'Zajęte płyty {on}/{total}',
+    },
     chips: {
       floor: 'PIĘTRO',
       room: 'POKÓJ',

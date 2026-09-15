@@ -84,6 +84,7 @@ The things standing on the ground rather than the ground itself.
 
 - **[Grounding the character (2026-08-18)](rendering/05-character-and-objects.md#grounding-the-character-2026-08-18)** — A 360° facing continuum, and still nothing saying the body was a volume in a space.
 - **[The drops and the gate get real art (2026-08-20)](rendering/05-character-and-objects.md#the-drops-and-the-gate-get-real-art-2026-08-20)** — The scene queue closed for surfaces; this closes it for the objects standing on them.
+- **[A collected drop flies to whoever took it (2026-09-15)](rendering/05-character-and-objects.md#a-collected-drop-flies-to-whoever-took-it-2026-09-15)** — the loot stopped existing the tick it was taken; now it arcs into the collector's body, and the bow lives in the one axis this view's shear leaves free.
 
 
 ## Fidelity roadmap (by priority)

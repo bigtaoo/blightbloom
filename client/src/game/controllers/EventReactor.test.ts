@@ -84,7 +84,7 @@ function newReactor() {
   return { reactor, toast };
 }
 
-const PICKUP_BASE = { type: 'pickup' as const, gx: 0, gy: 0 };
+const PICKUP_BASE = { type: 'pickup' as const, by: 1, gx: 0, gy: 0 };
 
 /** The smallest map that makes `createGameState` build an ARENA state (`zoneEnabled`, seats
  *  with `teamId`s) — the `win` cue's whole question is which win model applies, and only a

@@ -656,9 +656,12 @@ therefore a thing to survive rather than a thing to look into — `ROADMAP` B1, 
 decided and built 2026-09-14.
 
 **What shipped:** `ChestSystem` (step 10.5), `GameState.chests`, `content/chests.ts`'s two pure
-rules, and chests authored into the shipped level. The drawn form is procedural
-(`client/src/game/scene/ChestLayer.ts`): no chest art exists yet, the same staged rollout walls,
-pillars, doors and drops each went through.
+rules, and chests authored into the shipped level. ~~The drawn form is procedural: no chest art
+exists yet.~~ **Art landed 2026-09-15** — four files (`chest_small`, `chest_small_open`,
+`chest_big`, `chest_big_open`), the same staged rollout walls, pillars, doors and drops each went
+through. `client/src/game/scene/ChestLayer.ts` keeps its Graphics form as the fallback, anchored
+at the feet in the same box the sprite occupies, so a state whose file has not loaded still draws
+something the right size. Audio is still unstarted: a chest opens in silence.
 
 **Where they actually sit — rewritten 2026-09-14 the same day** (`ENGINE_VERSION` 65). The first
 pass put the chests on the pieces that already existed (a big one in `ember_l1_extraction`, a small
@@ -686,7 +689,10 @@ to be cleared.)
 - **A floor mixes combat rooms with chest rooms.** Not every room has enemies in it. A chest
   room's content *is* the chest; whether one also holds a fight stays a per-piece authoring
   choice rather than a rule, so the mix is tunable in the editor without an engine change.
-- **A small chest opens solo.** One player, one `INTERACT`, no gate. This is the find that has
+- **A small chest opens solo, and since 2026-09-15 it opens on APPROACH** (`ENGINE_VERSION` 66).
+  One player, no button, no gate — walking into `CHEST_OPEN_RANGE_GRID` is the whole gesture.
+  ~~One player, one `INTERACT`, no gate.~~ The owner's call, and the reason it overturned an
+  argument this doc had made deliberately is in the next bullet. This is still the find that has
   to work in the mode most runs are actually played in.
 - **A big chest is opened by the whole party at once, and pays one weapon per head.** It is
   ringed by **mechanisms**, one per player who entered the map, and it opens only while **every**
@@ -696,6 +702,24 @@ to be cleared.)
   bring more players or to play alone, which is the property that keeps it out of the party-size
   balancing problem entirely. A smaller party is not locked out of the content and a larger one
   is not farming it.
+- **The button a chest needed had to be findable, was not, and is now gone** (2026-09-15, two
+  passes the same day). A chest shipped with no art, no sound and no prompt, and `INTERACT` is
+  taught nowhere: the tutorial's hint list covers move, attack, swap and deflect and stops. The
+  report was *"the chest cannot be opened"* — about a chest the player was standing on — and the
+  mechanic turned out to be fine: the sim opens it in a headless run, and the shipped client
+  opens it on the first frame a `KeyE` reaches `WebInput`, both verified before anything was
+  changed. **The missing piece was never the mechanic, only any way to find out the mechanic was
+  there**, which is a failure a green engine suite structurally cannot see. The first fix was a
+  caption naming the key; the owner's answer, hours later, was to **delete the step instead**
+  (`ENGINE_VERSION` 66). Both halves are worth keeping in mind, because they are different
+  lessons: a mechanic nobody can discover is indistinguishable from a broken one, AND the
+  cheapest way to make a step discoverable is often not to need it. What survives of the caption
+  is the BIG chest's (`client/src/game/ui/ChestPrompt.ts`, `10`'s HUD table): a live
+  `{on}/{total}` plate count, shown from the mechanism ring outward so it stays up while the
+  player walks out to a plate. That rule — every plate at once — is the one no player can infer
+  from a ring of discs, and it is still gated on nothing a player can press. Art and an
+  open/close sound are still unstarted, and would each say the same thing in a channel this
+  caption cannot reach. (Art landed hours later, the same day; the open/close sound has not.)
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
@@ -715,9 +739,14 @@ to be cleared.)
   a teammate bleeding out into a chest that silently re-gates itself, and a count that tracks
   presence makes the puzzle re-solve every time someone steps off. Fixed at start is also the
   only version a downed teammate cannot soft-lock.
-- **`INTERACT` already has an owner.** It drives the revive channel and nothing else (`07`/`08`).
-  A chest is the second consumer, which makes button arbitration a real question the first time
-  a chest sits next to a downed player rather than a detail to settle in the renderer.
+- ~~**`INTERACT` already has an owner.**~~ **Moot since 2026-09-15** (`ENGINE_VERSION` 66). It
+  drives the revive channel and nothing else (`07`/`08`), and a chest was briefly the second
+  consumer — which made button arbitration a real question the first time a chest sat next to a
+  downed player. `ChestSystem` answered it by mirroring `ReviveSystem.findReviver` and yielding.
+  With a small chest opening on approach and a big one never having read a button, no chest reads
+  input at all, so the mirror is deleted rather than kept: a rule that cannot fire is a rule
+  nobody can test. The visible consequence is intended — a small chest beside a downed teammate
+  now opens while you revive them.
 - **A chest is engine state, so it is replay and netcode state.** Opened-ness lives in
   `GameState` and the contents roll off `dropPrng` like every other drop (`06`/`09`); anything
   else desyncs a co-op run on the first chest and stops every recorded run reproducing. The

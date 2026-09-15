@@ -4,6 +4,7 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState, EngineConfig } from '@dd/engine/state/GameState';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { Fp } from '@dd/engine/math/fixed';
+import { CHEST_MECHANISM_RING_GRID, toFpGrid } from '@dd/engine';
 import { WEAPON_PROMPT_RADIUS_FP } from './pickupProximity';
 import { Layers } from '../scene/layers';
 import { HudView, type HudContext } from './HudView';
@@ -433,6 +434,73 @@ describe('HudView — weapon-pickup panel placement (design/03)', () => {
     hud.update(s, 16, CTX);
 
     expect(offeredIds(hud)).toEqual([far.id, near.id]); // nearest first
+  });
+});
+
+/**
+ * The big-chest caption's WIRING (design/05 "Chest rooms", 2026-09-15) — what
+ * `updateChestPrompt` feeds `nearbyBigChest`, which is the half neither
+ * `chestProximity.test.ts` nor `ChestPrompt.test.ts` can see. The range it passes has to reach
+ * a player standing OUT ON A PLATE, one mechanism ring from the chest: that is where the rule
+ * the caption explains is actually being worked, and a caption that went dark there would go
+ * dark at the only moment it mattered.
+ */
+describe('HudView — big-chest caption (design/05 "Chest rooms")', () => {
+  const chestAt = (s: GameState, gx: Fp, gy: Fp, kind: 'small' | 'big' = 'big') => {
+    s.chests.push({
+      id: s.nextChestId(),
+      roomId: 'r1',
+      kind,
+      gx,
+      gy,
+      mechanisms: kind === 'big' ? [{ gx, gy, occupied: false }] : [],
+      opened: false,
+    });
+  };
+
+  it('stays hidden with no chest in range', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
+  });
+
+  it('opens for an unopened big chest at the seat position', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy);
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(true);
+  });
+
+  it('stays hidden for a SMALL chest underfoot — that one opens on approach', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy, 'small');
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
+  });
+
+  it('closes the moment the chest is opened, with nobody having moved', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy);
+    hud.update(s, 16, CTX);
+    s.chests[0]!.opened = true;
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
+  });
+
+  it('still shows for a seat standing a full mechanism ring away', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    const aRingAway = ((p.gx as number) + (toFpGrid(CHEST_MECHANISM_RING_GRID) as number)) as Fp;
+    chestAt(s, aRingAway, p.gy);
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(true);
   });
 });
 

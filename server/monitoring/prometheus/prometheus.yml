@@ -1,24 +1,27 @@
 # Metrics for the "server status" half of the dashboards. Logs answer *what happened*;
 # this answers *how the box and the containers are doing while it happens*.
 #
-# **It runs no exporters of its own, on purpose.** The box already runs cAdvisor (container
-# CPU/memory/restarts) and node-exporter (host CPU/RAM/disk/load) for its owner's stack,
-# both on the shared `docker_default` network, and both measure the WHOLE machine — our
-# containers included. A second privileged cAdvisor here would mount `/`, `/sys`,
-# `/var/run` and `/dev/kmsg` a second time on hardware this project only borrows, to
-# recompute numbers that already exist one DNS name away. So we scrape theirs and add
-# nothing.
+# **It used to run no exporters of its own, and that was the right call at the time.** The
+# borrowed box already ran cAdvisor (container CPU/memory/restarts) and node-exporter (host
+# CPU/RAM/disk/load) for its owner's stack, both on the shared `docker_default` network, and
+# both measuring the WHOLE machine — our containers included. Standing up a second
+# privileged cAdvisor there, mounting `/`, `/sys`, `/var/run` and `/dev/kmsg` a second time
+# on hardware this project did not own, to recompute numbers that already existed one DNS
+# name away, would have been a bad trade.
 #
-# The cost of that trade, stated rather than discovered later: if the box's owner stops or
-# renames those two containers, the `host` and `containers` jobs go DOWN and every infra
-# panel empties, while the log half keeps working. That is visible in Grafana as a target
-# that is down — not as a panel that quietly shows zero. `dashboards/infra.json` graphs
-# `up` for exactly this reason.
+# It came with a stated cost: if that team stopped or renamed either container, the `host`
+# and `containers` jobs went DOWN and every infra panel emptied while the log half kept
+# working. Since 2026-09-15 the box is this project's own (server/deploy/README.md), so
+# there is nothing to borrow, nobody else to depend on, and `docker-compose.yml` runs both
+# exporters itself. The two jobs below now point at our own containers.
+#
+# `dashboards/infra.json` still graphs `up` for every target, which is what keeps a dead
+# exporter visible as a target that is down rather than as a panel that quietly shows zero.
 global:
   scrape_interval: 30s
   scrape_timeout: 10s
   external_labels:
-    project: wnet-test
+    project: blightbloom
 
 scrape_configs:
   # ── This project's own processes ──────────────────────────────────────────────────────
@@ -36,13 +39,16 @@ scrape_configs:
       - targets: [billsvc:8789]
         labels: { svc: billsvc }
 
-  # ── Borrowed from the host's stack (see the header) ───────────────────────────────────
+  # ── Ours since the move to dedicated hardware (see the header) ────────────────────────
+  # The job names are unchanged on purpose: every panel in `dashboards/infra.json` selects
+  # on them, and the series are the same ones cAdvisor and node-exporter always produced.
+  # Only the address moved.
   - job_name: containers
     static_configs:
-      - targets: [docker-cadvisor-1:8080]
+      - targets: [obs-cadvisor:8080]
   - job_name: host
     static_configs:
-      - targets: [docker-node-exporter-1:9100]
+      - targets: [obs-node-exporter:9100]
 
   # ── The observability stack watching itself ───────────────────────────────────────────
   # Without this, "Loki stopped ingesting" is indistinguishable from "nothing happened",

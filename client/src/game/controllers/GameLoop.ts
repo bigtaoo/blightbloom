@@ -22,6 +22,7 @@ import type { TouchControlsView } from '../ui/TouchControlsView';
 import type { PortalPrompt } from '../ui/PortalPrompt';
 import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import { updateCheckpointOverlays } from './checkpointOverlays';
+import { buildHudContext } from './hudContext';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
 import { applyPowerBudget, type FrameRateLike, type WorldLayerLike } from '../powerBudget';
@@ -260,7 +261,7 @@ export class GameLoop {
     }
     const events = engine.advance(frame) ?? [];
 
-    this.deps.scene.reconcile(s, p?.id ?? -1); // camera follows the LOCAL seat
+    this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL seat; `events` carries the collected-drop flights
     this.spawnBulletTrails(s);
     this.consumeEvents(events);
     // Tutorial-only teaching-beat toasts (design/10 screen-flow gap) — render-only,
@@ -319,7 +320,7 @@ export class GameLoop {
       this.predictor.deactivate();
     }
 
-    this.deps.scene.reconcile(s, p?.id ?? -1); // camera follows the LOCAL (ticket-assigned) seat
+    this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL (ticket-assigned) seat
     // Draw the local seat from the predictor (camera follows it too); remote seats confirmed.
     if (predicting && p && this.predictor.isActive) {
       const pose = this.predictor.pose;
@@ -472,19 +473,7 @@ export class GameLoop {
   private updateHud(dt: number): void {
     const s = this.host.activeState();
     if (!s) return;
-    this.deps.hud.update(s, dt, {
-      localOwner: this.host.localOwner,
-      score: this.host.currentScore(),
-      selectedSkin: this.host.selectedSkinId(),
-      showAlly: this.host.isCoop() || this.host.isArenaDemo(),
-      allySkinId: this.host.allySkinId(),
-      // Read off the live session rather than through a new host method: `getSession()` is
-      // already on this interface, and `Game.ts` sits at exactly its 500-line limit.
-      seatNames: this.host.getSession()?.seatNames,
-      // Offline only: an online match's record is the server's confirmed stream, and a
-      // replay-driven session is already replaying somebody else's file.
-      canSaveReplay: !this.host.isOnline() && this.host.replayStopTick() === null,
-    });
+    this.deps.hud.update(s, dt, buildHudContext(this.host));
     this.deps.pickupDebugOverlay?.update(s);
 
     // Everything that appears once a floor is finished — the portal, its popup, the

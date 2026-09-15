@@ -114,6 +114,7 @@ export class PickupSystem {
         state.events.push({
           type: 'pickup',
           kind: item.kind,
+          by: p.id, // the collector — render-only, see the event's own doc comment
           gx: item.gx,
           gy: item.gy,
           weaponId: item.weaponId,

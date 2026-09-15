@@ -182,7 +182,22 @@ const WORKER_SERVICES = ['backup'] as const;
  * a decision about which kind it is, and deriving the category from "has no `build:`" would
  * silently reclassify one of ours the day somebody pins it to a published image.
  */
-const OBS_SERVICES = ['obs-alloy', 'obs-grafana', 'obs-loki', 'obs-prometheus'] as const;
+const OBS_SERVICES = [
+  'obs-alloy',
+  'obs-cadvisor',
+  'obs-grafana',
+  'obs-loki',
+  'obs-node-exporter',
+  'obs-prometheus',
+] as const;
+/**
+ * The public edge, and its own category for one reason: it is the only service in the file
+ * that publishes a host port, and therefore the only one whose misconfiguration is reachable
+ * from the internet. It arrived with the move to dedicated hardware (2026-09-15) — on the
+ * borrowed box this role belonged to the host owner's Caddy and there was nothing here to
+ * assert. Not an OBS service: those are watched and this one is in the request path.
+ */
+const EDGE_SERVICES = ['caddy'] as const;
 const APP_SERVICES = [...HTTP_SERVICES, ...WORKER_SERVICES] as const;
 /** The port each observability service listens on, cross-checked against `expose` below. */
 const OBS_PORT: Record<string, string> = {
@@ -190,7 +205,17 @@ const OBS_PORT: Record<string, string> = {
   'obs-alloy': '12345',
   'obs-prometheus': '9090',
   'obs-grafana': '3000',
+  'obs-cadvisor': '8080',
+  'obs-node-exporter': '9100',
 };
+/**
+ * What `caddy` publishes to the host, and the only `ports:` in the file. 80 is in this list
+ * as a REQUIREMENT, though not for the reason it looks like: the observed issuance solved
+ * `tls-alpn-01` on 443 and never used 80. Port 80 carries the HTTP->HTTPS redirect and the
+ * `http-01` fallback, so dropping it breaks nothing on the day it is dropped and removes the
+ * spare tyre from a renewal two months later. See docker-compose.yml's `caddy` block.
+ */
+const EDGE_PORTS = ['80:80', '443:443', '443:443/udp'];
 
 describe('the compose reader actually read something', () => {
   it('every manifest reached the assertions LF-only', () => {
@@ -206,11 +231,13 @@ describe('the compose reader actually read something', () => {
     }
   });
 
-  it('found all nine services, each fully populated', () => {
+  it('found all twelve services, each fully populated', () => {
     // Every other test in this file is vacuous if this one is wrong: an empty `env` makes
     // "no unknown env var" trivially true, an empty `command` makes the bundle-name check
     // an assertion about nothing. Pinned to the exact shape rather than "at least one".
-    expect(Object.keys(services).sort()).toEqual([...APP_SERVICES, ...OBS_SERVICES].sort());
+    expect(Object.keys(services).sort()).toEqual(
+      [...APP_SERVICES, ...OBS_SERVICES, ...EDGE_SERVICES].sort(),
+    );
     for (const name of APP_SERVICES) {
       const svc = services[name]!;
       expect(svc.command, name).toHaveLength(2);
@@ -241,6 +268,42 @@ describe('the compose reader actually read something', () => {
         expect(ciDeploy, `${name} has no healthcheck and no deploy-time check either`).toContain(name);
       }
     }
+    for (const name of EDGE_SERVICES) {
+      const svc = services[name]!;
+      expect(svc.image, `${name} is unpinned`).not.toMatch(/(:latest$|^[^:]+$)/);
+      expect(svc.healthcheck, name).not.toBe('');
+      // No `env_file`. Every other long-running service here reads `.env`, and this is the
+      // one process facing the internet — so "it holds no secret" is worth being a rule
+      // rather than a fact about today's Caddyfile.
+      expect(svc.envFile, `${name} should need no secrets`).toBeNull();
+      // Its config is bind-mounted read-only, like the observability stack's. Caddy DOES
+      // write — certificates, the ACME account key — but to named volumes, never back into
+      // the tree a deploy replaces wholesale.
+      for (const v of svc.volumes) {
+        expect(v.readonly, `${name} mounts ${v.host} writable`).toBe(true);
+      }
+    }
+  });
+
+  it('the edge publishes exactly three ports, and 80 is one of them', () => {
+    // The only `ports:` in the file — everything else is `expose`, reachable on the compose
+    // network and nowhere else. Asserted as an exact set, because what this catches is not a
+    // missing line but an extra one: `"9090:9090"` added to obs-prometheus during a debug
+    // session puts an unauthenticated metrics browser on the public internet, and `ufw` does
+    // NOT stop it — Docker publishes a port by writing its own iptables rules ahead of ufw's
+    // chain, so the box's firewall says the port is closed while the container answers.
+    // Nothing turns red when that happens.
+    // Sliced out of the raw file rather than read off `services`, because the parser above
+    // deliberately does not model `ports:` — nothing else in the file has one, and the point
+    // of this test is that that stays true.
+    const edgeBlock = /\n {2}caddy:\n([\s\S]*?)(?=\n {2}[a-z][\w-]*:\n)/.exec(compose)?.[1] ?? '';
+    expect(edgeBlock, 'could not find the caddy service block').not.toBe('');
+    const ports = [...edgeBlock.matchAll(/^ {6}- "([^"]+)"$/gm)].map((m) => m[1]!);
+    expect(ports).toEqual(EDGE_PORTS);
+    expect(
+      [...compose.matchAll(/^ {4}ports:$/gm)],
+      'a service other than the edge publishes a host port',
+    ).toHaveLength(1);
   });
 
   it('the worker exposes no port and healthchecks itself', () => {
@@ -294,9 +357,10 @@ describe('the compose reader actually read something', () => {
     // compose alone reintroduces precisely the original bug.
     // Two kinds of bind mount now, and only one of them needs an ownership rule:
     // WRITABLE state (`./data/*`, `./backups`) which a container writes as uid 1000, and
-    // READ-ONLY config (`./monitoring/*`) which it only reads. Splitting them here rather
-    // than listing both is what keeps the rule stated as a rule — a new writable mount is
-    // caught, and a new config file is not made to look like one.
+    // READ-ONLY config (`./monitoring/*`, and `./caddy` since 2026-09-15) which it only
+    // reads. Splitting them here rather than listing both is what keeps the rule stated as
+    // a rule — a new writable mount is caught, and a new config file is not made to look
+    // like one.
     // Grouped by HOST path, not by mount, because the same directory is mounted twice with
     // different modes on purpose: `./data/matchsvc` is writable for matchsvc and `:ro` for
     // the backup worker. What decides whether it needs an ownership rule is whether ANY
@@ -308,7 +372,11 @@ describe('the compose reader actually read something', () => {
     const ro = hosts.filter((h) => mountsOf(h).every((v) => v.readonly));
     expect(rw.sort()).toEqual(['./backups', './data/adminsvc', './data/billsvc', './data/matchsvc']);
     expect(ro.length).toBeGreaterThan(0);
-    for (const host of ro) expect(host, 'a never-written mount is config, and config lives here').toMatch(/^\.\/monitoring\//);
+    for (const host of ro) {
+      expect(host, 'a never-written mount is config, and config lives in one of two places').toMatch(
+        /^\.\/(monitoring\/|caddy$)/,
+      );
+    }
     const fixed = /for dir in (.+); do/.exec(ciDeploy)?.[1]?.split(' ') ?? [];
     for (const host of rw) {
       expect(fixed, `${host} is bind-mounted writable but never made writable`).toContain(host.slice('./'.length));
@@ -400,9 +468,16 @@ describe('the bundle filenames', () => {
     // so its list and the workflow's `tar` list have to agree — a file added to one and not
     // the other either never arrives or aborts every deploy.
     const shipped = /tar czf - -C server (.+?)\s*\|/.exec(workflow)?.[1]?.split(/\s+/) ?? [];
-    expect(shipped).toEqual(['dist', 'Dockerfile', 'docker-compose.yml', 'deploy/package.json', 'monitoring']);
+    expect(shipped).toEqual([
+      'dist',
+      'Dockerfile',
+      'docker-compose.yml',
+      'deploy/package.json',
+      'monitoring',
+      'caddy',
+    ]);
     const required = /for path in ([^\n]+); do/.exec(ciDeploy)?.[1]?.split(/\s+/) ?? [];
-    expect(required).toHaveLength(bundleNames.length + 4);
+    expect(required).toHaveLength(bundleNames.length + 5);
     for (const path of required) {
       const top = path.split('/')[0]!;
       expect(shipped.some((s) => s === path || s === top), `${path} is checked for but never sent`).toBe(true);

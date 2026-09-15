@@ -117,6 +117,10 @@ export const ru: Translations<typeof en> = {
       heal: 'Зелье лечения',
       energy: 'Энергоячейка',
     },
+    chest: {
+      bigTitle: 'Большой сундук',
+      plates: 'Плиты заняты {on}/{total}',
+    },
     chips: {
       floor: 'ЭТАЖ',
       room: 'КОМНАТА',

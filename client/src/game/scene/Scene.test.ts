@@ -18,7 +18,10 @@ import { BASIC_ENEMY } from '@dd/engine/content/enemies';
 import { toFp } from '@dd/engine/math/fixed';
 import type { Brad } from '@dd/engine/math/trig';
 import { ENEMY_TEAM_ID, type EnemyActor, type Projectile, type PickupItem } from '@dd/engine/state/entities';
+import type { GameEvent } from '@dd/engine/state/events';
 import { Scene } from './Scene';
+import { Pickup } from './Pickup';
+import { FLIGHT_MS } from './pickupFlight';
 import { Layers } from './layers';
 import { bradToRad } from '../coords';
 import { BODY_TURN_PER_TICK } from '../../render/facing';
@@ -1164,5 +1167,165 @@ describe('Scene.reconcile — chests are mirrored, and swept by clear()', () => 
     scene.clear();
     expect(layers.entities.children.length).toBe(0);
     expect(layers.ground.children.length).toBe(0);
+  });
+});
+
+/**
+ * The collected-drop flight (`scene/pickupFlight.ts`), from this class's side: WHICH removals
+ * become a flight, and what the arc is aimed at. The curve itself is `pickupFlight.test.ts`.
+ *
+ * The load-bearing test here is the one that asserts an ABSENCE — a floor teardown removes
+ * every uncollected drop with no `pickup` event behind it, and a flight launched off the state
+ * diff alone would fling a whole floor's loot at the player on every descend.
+ */
+describe('Scene.reconcile — a collected drop flies to whoever took it', () => {
+  function collected(byId: number, xpx = 300, ypx = 300): GameEvent {
+    return { type: 'pickup', kind: 'material', by: byId, gx: pxToFp(xpx), gy: pxToFp(ypx), materialId: 'fire', qty: 1 };
+  }
+
+  /** Flights are mounted into `layers.entities` but deliberately kept out of `Scene.views`
+   *  (they mirror no engine entity any more), so the difference between the two counts is
+   *  exactly what is in the air. */
+  function inFlight(scene: Scene, layers: Layers): Pickup[] {
+    const views = new Set((scene as unknown as { views: Map<number, Entity> }).views.values());
+    return layers.entities.children.filter((c) => c instanceof Pickup && !views.has(c)) as Pickup[];
+  }
+
+  it('launches one flight for the collected drop, carrying the same kind', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    const item = addPickup(s, 300, 300);
+    scene.reconcile(s, p.id);
+    expect(inFlight(scene, layers).length).toBe(0); // on the floor, not in the air
+
+    item.alive = false;
+    scene.reconcile(s, p.id, [collected(p.id)]);
+    const flying = inFlight(scene, layers);
+    expect(flying.length).toBe(1);
+    expect(flying[0]!.kind).toBe('material');
+  });
+
+  it('launches NOTHING when a drop leaves state with no pickup event — a floor teardown is not a collection', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    const item = addPickup(s, 300, 300);
+    scene.reconcile(s, p.id);
+
+    item.alive = false;
+    scene.reconcile(s, p.id); // the descend/room-change path: view gone, no event
+    expect(inFlight(scene, layers).length).toBe(0);
+  });
+
+  it('launches nothing when the collector has no view — an arc with no body on the end says nothing', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    addPickup(s, 300, 300);
+    scene.reconcile(s, s.players[0]!.id);
+
+    scene.reconcile(s, s.players[0]!.id, [collected(9999)]); // an id this scene never mirrored
+    expect(inFlight(scene, layers).length).toBe(0);
+  });
+
+  it('ARRIVES on the collector\'s body: it ends over their ground point, above their feet', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [collected(p.id, 300, 300)]);
+    const drop = inFlight(scene, layers)[0]!;
+    // It starts where the loot lay (300, 300) — a long way from the player at (100, 100), which
+    // is what makes the arrival below an arc across the room rather than a nudge.
+    expect(drop.x).toBeCloseTo(300, 3);
+    expect(Math.hypot(drop.x - scene.player!.x, drop.y - scene.player!.y)).toBeGreaterThan(50);
+
+    scene.interpolate(1, FLIGHT_MS * 0.99);
+    const body = scene.player!;
+    expect(Math.abs(drop.x - body.x)).toBeLessThan(6);
+    // Up at the BODY, not at the ground point — loot flying into a character's feet reads as
+    // dropping in front of them. Measured as a fraction of the drawn body rather than in px,
+    // because the same 10 px that is a chest on a mob is an ankle on a boss. A bare "higher than
+    // the feet" bound is NOT enough and this is measured, not assumed: with the target moved to
+    // the feet the drop is still on its way down out of the hop when it arrives, so the old
+    // assertion passed and the mutant lived.
+    const bodyH = body.bodySilhouette.bodyH;
+    expect(body.y - drop.y).toBeGreaterThan(bodyH * 0.3);
+    expect(body.y - drop.y).toBeLessThan(bodyH); // and not sailing over their head
+  });
+
+  it('carries the WEAPON it is of — a flown gun is that gun, not a generic loot icon', () => {
+    // `Pickup` resolves `weaponId` into the weapon's own art plus design/13's two channels (the
+    // rarity pips and the element badge). Dropping the id on the way into the flight leaves the
+    // chevron fallback, which is the same silhouette for every gun in the game. Compared against
+    // a reference view rather than against a child count spelled out here, so the assertion
+    // cannot drift away from whatever the constructor actually builds.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [{
+      type: 'pickup', kind: 'weapon', by: p.id, weaponId: 'repeater', gx: pxToFp(300), gy: pxToFp(300),
+    }]);
+
+    const flown = inFlight(scene, layers)[0]!;
+    const withId = new Pickup('weapon', 'repeater');
+    const withoutId = new Pickup('weapon');
+    // The premise: those two really are different objects, so the match below cannot pass
+    // vacuously if `Pickup` ever stops caring about the id.
+    expect(withId.children.length).not.toBe(withoutId.children.length);
+    expect(flown.children.length).toBe(withId.children.length);
+  });
+
+  it('flies to the COLLECTOR in co-op, not to the seat this client is playing', () => {
+    // The entire reason `pickup.by` was added. In single-player every wrong answer coincides with
+    // the right one, so this is the only shape that tells them apart: two seats far apart, the
+    // LOCAL one is seat A, and seat B takes the drop.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }, { start: [500, 420] }] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, a.id, [collected(b.id, 300, 300)]);
+
+    scene.interpolate(1, FLIGHT_MS * 0.99);
+    const drop = inFlight(scene, layers)[0]!;
+    const mate = scene.actorAt(b.id)!;
+    const me = scene.actorAt(a.id)!;
+    expect(Math.hypot(drop.x - mate.x, drop.y - mate.y)).toBeLessThan(20);
+    expect(Math.hypot(drop.x - me.x, drop.y - me.y)).toBeGreaterThan(100);
+  });
+
+  it('bows two simultaneous drops to OPPOSITE sides — a chest payout is not one stack of arcs', () => {
+    // `Scene` derives the bow's side from the drop's own position, because a `pickup` event
+    // carries no item id to spread it by. Two drops one px apart in x therefore land on opposite
+    // parities, and the tilt is where that reads whichever way either one is travelling.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [collected(p.id, 300, 300), collected(p.id, 301, 300)]);
+
+    scene.interpolate(1, FLIGHT_MS * 0.5);
+    const [one, two] = inFlight(scene, layers);
+    expect(one!.rotation * two!.rotation).toBeLessThan(0); // opposite signs, and neither is 0
+  });
+
+  it('is destroyed on arrival, and swept by clear() if a run ends mid-flight', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [collected(p.id)]);
+    expect(inFlight(scene, layers).length).toBe(1);
+    scene.interpolate(1, FLIGHT_MS);
+    expect(inFlight(scene, layers).length).toBe(0);
+
+    scene.reconcile(s, p.id, [collected(p.id)]);
+    expect(inFlight(scene, layers).length).toBe(1);
+    scene.clear();
+    expect(layers.entities.children.length).toBe(0);
   });
 });

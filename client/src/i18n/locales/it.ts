@@ -112,6 +112,10 @@ export const it: Translations<typeof en> = {
       heal: 'Pozione curativa',
       energy: 'Cella energetica',
     },
+    chest: {
+      bigTitle: 'Forziere grande',
+      plates: 'Piastre occupate {on}/{total}',
+    },
     chips: {
       floor: 'PIANO',
       room: 'STANZA',

@@ -83,25 +83,38 @@ describe('the config files compose mounts', () => {
   });
 });
 
-describe('nothing here can collide with the box owner\'s own stack', () => {
+describe('the obs- prefix, and the filter that used to depend on it', () => {
   it('every observability service is prefixed obs-', () => {
-    // The single most consequential line in this file. This compose project joins the
-    // host's SHARED `docker_default` network, and compose publishes each service NAME as a
-    // network alias on it — while the box's owner already runs Loki, Grafana, Prometheus
-    // and Promtail there under exactly those names. A service called `loki` would put two
-    // containers behind one DNS name, and their collector's pushes could start landing in
-    // our store, or ours in theirs, intermittently, with nothing failing anywhere.
+    // This was the single most consequential line in the file while the project lived on a
+    // SHARED `docker_default` network: compose publishes each service NAME as a network
+    // alias, and the box's owner ran Loki, Grafana, Prometheus and Promtail under exactly
+    // those names. A service called `loki` would have put two containers behind one DNS
+    // name, with their collector's pushes landing in our store or ours in theirs,
+    // intermittently, and nothing failing anywhere.
+    //
+    // The network has been this project's own since 2026-09-15, so the collision this
+    // prevents cannot happen today. The assertion stays for what it now protects, which is
+    // smaller and still real: the prefix is what `dashboards/*.json`, `prometheus.yml` and
+    // `ci-deploy.sh` all spell out, and what makes `docker compose ps` say which half of
+    // the stack a container belongs to. Dropping it is a rename across five files, and this
+    // line is what makes that a decision rather than a drift.
     const names = [...compose.matchAll(/^ {2}([a-z][\w-]*):$/gm)].map((m) => m[1]!);
     const theirs = ['loki', 'grafana', 'prometheus', 'promtail', 'alloy', 'cadvisor', 'node-exporter'];
     for (const n of names) expect(theirs, `service '${n}' collides with a host stack service name`).not.toContain(n);
   });
 
   it('Alloy collects only this project\'s containers', () => {
-    // The mirror of the above: their collector sees ours, and this is what stops ours from
-    // seeing theirs. Both the Docker-side filter and the Alloy-side `keep` are asserted,
-    // because the daemon's name filter is a SUBSTRING match rather than an anchored one.
-    expect(alloy).toMatch(/values\s*=\s*\["wnet-test-"\]/);
-    expect(alloy).toMatch(/regex\s*=\s*"\/wnet-test-\.\*"[\s\S]{0,80}action\s*=\s*"keep"/);
+    // This was the mirror of the above — their collector saw ours, and this is what stopped
+    // ours seeing theirs. With the box dedicated it guards against something duller and
+    // still worth guarding: any container run on this host outside the compose project (a
+    // five-minute debugging shell, a `docker run` from a future runbook) is otherwise
+    // collected and retained at Loki's full 14 days, and the first symptom is storage
+    // rather than an error.
+    //
+    // Both the Docker-side filter and the Alloy-side `keep` are asserted, because the
+    // daemon's name filter is a SUBSTRING match rather than an anchored one.
+    expect(alloy).toMatch(/values\s*=\s*\["bb-"\]/);
+    expect(alloy).toMatch(/regex\s*=\s*"\/bb-\.\*"[\s\S]{0,80}action\s*=\s*"keep"/);
   });
 });
 
@@ -121,8 +134,10 @@ describe('the addresses in each config resolve to a real service and port', () =
       'gameserver',
       'matchsvc',
       'obs-alloy',
+      'obs-cadvisor',
       'obs-grafana',
       'obs-loki',
+      'obs-node-exporter',
       'obs-prometheus',
     ]);
   });
@@ -304,11 +319,13 @@ describe('retention is bounded, on a disk this project does not own', () => {
   });
 
   it('every container has a bounded json-file log, including the new ones', () => {
-    // The observability stack writes to the same disk it reads from; an unbounded container
-    // log on a borrowed box is the one failure here that reaches the box's owner.
+    // The observability stack writes to the same disk it reads from. On the borrowed box an
+    // unbounded container log was the one failure here that reached somebody else; on 40 GB
+    // of our own it is the one that takes the game down with it, since a full disk stops
+    // SQLite writes and the backup worker at the same moment.
     const blocks = compose.split(/^ {2}(?=[a-z][\w-]*:$)/m).filter((b) => /^[\w-]+:/.test(b));
     const services = blocks.filter((b) => /container_name:/.test(b));
-    expect(services.length).toBe(9);
+    expect(services.length).toBe(12);
     for (const b of services) {
       const name = /^([\w-]+):/.exec(b)![1];
       expect(b, `${name} has no log size limit`).toMatch(/max-size:\s*"\d+m"/);

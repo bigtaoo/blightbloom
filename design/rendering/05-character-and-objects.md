@@ -368,3 +368,93 @@ with transparent corners, no baked halo, trimmed to content, resolution headroom
 the arch in the wall face's tonal family with its shards untouched by the curve) — and runs the same
 assertions over the three `_alt` rejects, so a check that stops telling accepted from rejected art
 fails instead of passing vacuously.
+
+## A collected drop flies to whoever took it (2026-09-15)
+
+> *"给拾取物品加一个曲线飞行特效…大概 0.6 秒飞到玩家身上，就是其他游戏里普遍有的那种拾取效果。"*
+
+`PickupSystem` collects on overlap and compacts the item out of `state.pickups` **the same
+tick**, so until now the drop's view simply stopped existing on the next reconcile. The
+`fx.flash()` `EventReactor` leaves behind is drawn at the loot, not at the collector, so nothing
+on screen answered the question the flash is standing in for: *did that go to me?* In co-op and
+in PvP that is a real question, and the arc is the answer — it ends on a body.
+
+`scene/pickupFlight.ts` owns it: `flightPose(t, from, to, sign)` is the whole curve as one pure
+function, and `PickupFlightLayer` mounts, drives and destroys the flown views. `Scene` owns the
+layer (like `ChestLayer`/`ShopLayer`) and steps it from `interpolate`, so a flight runs on the
+RENDER clock and keeps moving through a pause, the same rule fx on a frozen frame already follow.
+
+### Three things decided the shape, and two of them are this view's geometry
+
+**The engine had to say WHO, and nothing else.** `GameEvent`'s `pickup` gained one field, `by`,
+the collecting player's actor id — the same field for the same reason as `bullet_fired`'s
+`ownerId`: the render layer needs the collector's own view, and `gx/gy` is where the drop *lay*,
+which the animation already has. It cannot be answered from state (the item is gone by the time a
+frame's events are read) and "whoever is nearest" guesses wrong exactly when two players overlap,
+which is when the flight is most worth watching. Additive and inert — events never enter
+`serializeState`/`hashState` — so no `ENGINE_VERSION` bump.
+
+**The flight is driven by the EVENT, never by the state diff.** A floor teardown removes every
+uncollected drop with no `pickup` event behind it, and a flight launched off the diff alone would
+fling a whole floor's loot at the player on every descend. It also builds a FRESH view rather than
+adopting the one on the floor: under online catch-up (`GameLoop.advanceOnline`) a drop can spawn
+and be collected inside one drained batch, so the view being replaced may never have existed —
+while the event always arrives. The launch is the LAST thing `reconcile` does, because the arc is
+aimed at the collector's view and that same call is what mirrors it.
+
+**The bow is applied to the ground perpendicular's X COMPONENT ONLY**, and that is this view's
+projection talking. The renderer shears `(x, y, z) → (x, y − z)`, so a bow in ground Y and a rise
+in Z are *the same screen axis pointing opposite ways*. The first cut bowed the full perpendicular
+and the two cancelled: measured on a live 28 px pickup, the drawn path deviated from a straight
+screen line by **0.5 px** — a "curve" the player would have read as a slide, with a green test
+behind it that measured the bow in the ground plane, where it was real. Bowing in X only leaves
+the two free of each other: an east–west flight curves purely as a thrown arc, a north–south one
+swings sideways as well, and neither can flatten the other (13.8 / 18.8 / 8.5 / 18 px of screen
+deviation for the 28 px and 75 px cases in each direction). `pickupFlight.test.ts` measures in
+SCREEN space for both directions now, because the ground plane is not where the player is looking.
+
+### Why the arc has floors as well as fractions
+
+Every offset is sized as a fraction of the distance flown, and then floored: `POP_BACK_MIN` 8 px,
+`BULGE_MIN` 16 px, and a `HOP_BASE` of 14 px. The floors are the load-bearing half, because of a
+number outside the render layer entirely — everything but a weapon is auto-collected on overlap
+(`SIM.pickupRadius`, 15 px of padding past the player's own ~16 px body), so **the typical flight
+is barely 28 px long**. Sized purely proportionally the arc collapses to a few px, and 600 ms of
+that reads as a drop sliding in slow motion. A weapon claimed from across the reveal ring
+(`SIM.lootRevealRadius`, 80 px) is the case the fractions are for.
+
+The rest of the pose: `t` is fed to the cubic bézier raw (the control-point spacing *is* the speed
+curve — a pop away from the collector in the first third, a fast swoop in the last), height
+interpolates on `t²` under a hop that peaks at ~0.31 and then dives, scale swells to 1.2 and ends
+at 0.5 so the drop enters the body rather than landing on it, alpha holds until 0.78, and the tilt
+is a ±0.5 rad wobble that returns to 0 — never a tumble, because a weapon drop's rarity pips and
+element badge (design/13's two channels) have to stay the right way up. The shadow's own alpha is
+multiplied by the pose's *after* `place()` rewrites it from the height falloff, or a dissolving
+drop leaves its shadow sliding under the collector for the last 130 ms.
+
+### The chase has one exception, and the step order is what names it
+
+Re-asking the target every frame is what makes a flight follow a running player. It is also what
+would drag a drop across the whole floor when the collector does not RUN anywhere but is
+TELEPORTED — and the sim can do that in the same tick it collects, twice over: `PickupSystem` is
+step 10, `DoorSystem`'s force-regroup is 11.5 and `ExtractionSystem`'s descend is 12
+(`GameEngine.step`). Taking a heal on the tick you tap DESCEND is an ordinary thing to do, and the
+drop would then streak from the old floor's geometry to the new floor's spawn point.
+
+A target that moves more than `TARGET_TELEPORT_PX` (120) between two frames therefore ENDS the
+flight rather than being chased. The number cannot be reached honestly — `PLAYER_BASE.speedPerTick`
+is 6.4 px/tick (192 px/s), so a legitimate 120 px step needs a 625 ms render frame, and nobody is
+watching a 600 ms arc through a stall that long. Ending rather than re-anchoring is the point: the
+item is already collected, and there is no arc that could honestly connect the two points.
+
+Two details that guard has to get right, both found by the test that pins it. The layer stores a
+**copy** of each resolved target, not the reference: a resolver is free to hand back a live object
+it keeps mutating, and holding it by reference makes "the last point I saw" silently mean "the
+current point" — which is also the reading that makes this whole check a no-op. And the target is
+resolved on the first `update`, never at launch: `Scene.spawn` pushes state and snaps but only
+`interpolate` writes the transform, so a collector view created on the same reconcile still reads
+(0, 0), and resolving then would hand the guard a jump it must not act on.
+
+**What this does NOT change: when a drop is collected.** The flight starts the tick the sim
+already took the item. It is after-the-fact feedback, interruptible and droppable — 600 ms of
+travel is not 600 ms of the pickup being in doubt.

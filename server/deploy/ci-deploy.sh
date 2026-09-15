@@ -4,20 +4,34 @@
 # ── Why it has this shape ──
 # The deploy key is registered in the server's `~/.ssh/authorized_keys` as:
 #
-#   command="/home/tao/wnet-test-ci-deploy.sh",restrict ssh-ed25519 AAAA...
+#   command="/home/deploy/blightbloom-ci-deploy.sh",restrict ssh-ed25519 AAAA...
 #
 # `command=` is OpenSSH's FORCED COMMAND: whoever holds this private key, whatever they
 # ask sshd to run, sshd runs only this script. That pins this key's capability down to
-# "deploy the backend once" instead of "log into this box" — a shared box borrowed for
-# spare capacity, not owned by this project. `restrict` turns off port/agent forwarding,
-# pty and X11 (otherwise those could be used to route around the forced command).
+# "deploy the backend once" instead of "log into this box". `restrict` turns off port/agent
+# forwarding, pty and X11 (otherwise those could be used to route around the forced
+# command).
 #
-# ── Why it lives OUTSIDE ~/wnet-test ──
+# **The original reason for this was that the box was borrowed** — somebody else's machine,
+# on which a key that could open a shell was their liability and not only ours. The box has
+# been this project's own since 2026-09-15 and the restriction stayed, for the reason that
+# was always the better one: this private key lives in a GitHub Secret, so it is exactly as
+# exposed as the CI system holding it, and a workflow-injection bug in some third-party
+# action is a root shell on the game server if this line is a plain `ssh-ed25519`. Owning
+# the hardware does not make that cheaper.
+#
+# It also runs as `deploy` (uid 1000), never root. Nothing here needs root, and uid 1000 is
+# deliberately the same uid the container's `node` user has — which is what makes the
+# ownership loop below a no-op in the steady state rather than a rite.
+#
+# ── Why it lives OUTSIDE ~/blightbloom ──
 # Because it must not be deployable content itself — installed inside the deploy target,
 # a deploy could replace this script and the forced-command constraint would be gone at
-# that point. So the LIVE copy is `~/wnet-test-ci-deploy.sh`; this file in the repo is only
+# that point. So the LIVE copy is `~/blightbloom-ci-deploy.sh`; this file in the repo is only
 # a copy — editing it here does nothing until it's re-installed by hand
-# (deploy/README.md's CI section has the command).
+# (deploy/README.md's CI section has the command). CI going green is therefore NOT evidence
+# that a check added here is running: on 2026-09-09 the live copy predated adminsvc
+# entirely and would have deployed it wrong, with a green tick.
 #
 # ── What it moves, and the one capability that comes with it ──
 # `.env` is never touched: the ticket secret, the internal key and (eventually) the Paddle
@@ -25,19 +39,19 @@
 #
 # `docker-compose.yml` IS replaced, and that is a deliberate capability rather than an
 # oversight — it is what lets a deploy add or change a SERVICE (the `backup` worker landed
-# that way, 2026-09-07) instead of needing a hand-edit on a box nobody logs into. Be clear
+# that way on 2026-09-07, and `caddy` on 2026-09-15) instead of needing a hand-edit on a box nobody logs into. Be clear
 # about what it costs, because an earlier version of this comment claimed the opposite and
 # was wrong for long enough to be worth naming: whoever holds this key can ship a compose
-# file that bind-mounts the host's `/` into a container, i.e. can reach host root on a box
-# this project only borrows. The bounding facts are that the compose file is tracked in
-# git and reviewed like code, and that the key already ships `dist/*.mjs` and the
-# Dockerfile — arbitrary code inside the containers either way. If the box's owner ever
-# wants that capability gone, the change is to drop `docker-compose.yml` from BOTH this
-# script's copy list and the workflow's `tar`, and to hand-install compose changes again
-# (server/deploy/README.md §5).
+# file that bind-mounts `/` into a container, i.e. can reach host root. Owning the box did
+# not shrink that — it changed whose root it is, which is a different sentence and not a
+# smaller number. The bounding facts are that the compose file is tracked in git and
+# reviewed like code, and that the key already ships `dist/*.mjs` and the Dockerfile, so it
+# is arbitrary code inside the containers either way. To give the capability up, drop
+# `docker-compose.yml` from BOTH this script's copy list and the workflow's `tar`, and
+# hand-install compose changes again (server/deploy/README.md §5).
 set -eu
 
-TARGET="$HOME/wnet-test"
+TARGET="$HOME/blightbloom"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -45,7 +59,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # | ssh ...`, so the payload arrives on stdin.
 tar xzf - -C "$STAGE"
 
-for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs dist/adminsvc.mjs Dockerfile docker-compose.yml deploy/package.json monitoring; do
+for path in dist/index.mjs dist/matchsvc.mjs dist/billsvc.mjs dist/backup.mjs dist/adminsvc.mjs Dockerfile docker-compose.yml deploy/package.json monitoring caddy; do
   if [ ! -e "$STAGE/$path" ]; then
     echo "payload is missing $path, aborting (no half-finished deploy)" >&2
     exit 1
@@ -66,6 +80,15 @@ cp -R "$STAGE/dist" "$TARGET/dist"
 # deploy carries the same flag for the same reason.
 rm -rf "$TARGET/monitoring"
 cp -R "$STAGE/monitoring" "$TARGET/monitoring"
+# Same treatment, and `--force-recreate` below is what makes it land. `caddy/` is
+# bind-mounted read-only at /etc/caddy, and `rm -rf` + `cp -R` gives that directory a NEW
+# inode — a bind mount resolves to an inode, not to a path, so a running container would go
+# on serving the OLD directory while the host copy looked correct, and `caddy validate` and
+# `caddy reload` would both read the stale one and report success. That cost a full
+# diagnosis on 2026-09-09 (server/deploy/README.md §2). Recreating the container
+# re-resolves the mount, which is why nothing in this script reloads Caddy by hand.
+rm -rf "$TARGET/caddy"
+cp -R "$STAGE/caddy" "$TARGET/caddy"
 cp "$STAGE/Dockerfile" "$STAGE/docker-compose.yml" "$TARGET/"
 mkdir -p "$TARGET/deploy"
 cp "$STAGE/deploy/package.json" "$TARGET/deploy/package.json"
@@ -85,7 +108,8 @@ cd "$TARGET"
 # backup check at the bottom of it. Zero snapshots were taken in that window.
 #
 # A NEW state dir under `data/` cannot be created by the deploy user at all: `data/` is
-# itself uid-1000-owned (mode 755) and the deploy account is 1001. `mkdir -p` is a silent
+# itself uid-1000-owned (mode 755) and the deploy account was 1001 on the borrowed box (it
+# is 1000 here, deliberately, which is why this branch stopped firing). `mkdir -p` is a silent
 # no-op for the dirs that already exist and a hard `Permission denied` for the first new
 # one — which is exactly how adding `data/adminsvc` failed on 2026-09-09. So creation
 # falls back to a root container, and only on that path, mounting the PARENT because that
@@ -119,7 +143,7 @@ done
 # it is. server/deploy/README.md §2 has the one-liner that fixes it.
 for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD; do
   if ! grep -q "^$var=..*" .env; then
-    echo "$var is missing or empty in ~/wnet-test/.env." >&2
+    echo "$var is missing or empty in ~/blightbloom/.env." >&2
     echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2
     exit 1
   fi
@@ -140,7 +164,7 @@ for svc in gameserver:8787:/health matchsvc:8788:/health billsvc:8789:/health ad
   rest="${svc#*:}"
   port="${rest%%:*}"
   path="${rest#*:}"
-  container="wnet-test-$name"
+  container="bb-$name"
   docker exec "$container" node -e "
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     (async () => {
@@ -180,7 +204,7 @@ for probe in obs-loki:3100:/ready obs-prometheus:9090:/-/healthy obs-grafana:300
   rest="${probe#*:}"
   port="${rest%%:*}"
   path="${rest#*:}"
-  container="wnet-test-${name#obs-}"
+  container="bb-${name#obs-}"
   ok=""
   for _ in $(seq 1 20); do
     if docker exec "$container" wget --spider -q "http://127.0.0.1:$port$path" 2>/dev/null; then
@@ -210,36 +234,36 @@ done
 # answer at all, hence the wait rather than a single shot.
 alloy_ok=""
 for _ in $(seq 1 25); do
-  if docker exec wnet-test-prometheus wget -qO- \
+  if docker exec bb-prometheus wget -qO- \
       'http://127.0.0.1:9090/api/v1/query?query=up{svc="alloy"}' 2>/dev/null |
       grep -q '"value":\[[0-9.]*,"1"\]'; then
-    echo "wnet-test-alloy ok (up{svc=\"alloy\"} == 1)"
+    echo "bb-alloy ok (up{svc=\"alloy\"} == 1)"
     alloy_ok=1
     break
   fi
   sleep 2
 done
 if [ -z "$alloy_ok" ]; then
-  echo "wnet-test-alloy: prometheus does not see it up within 50s, deploy counts as failed" >&2
+  echo "bb-alloy: prometheus does not see it up within 50s, deploy counts as failed" >&2
   echo "  (logs are still being written; they are just not being COLLECTED)" >&2
   exit 1
 fi
 
-docker exec wnet-test-backup node -e "
+docker exec bb-backup node -e "
   const { execFileSync } = require('node:child_process');
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   (async () => {
     for (let i = 0; i < 15; i += 1) {
       try {
         execFileSync(process.execPath, ['backup.mjs', '--health'], { stdio: 'pipe' });
-        console.log('wnet-test-backup health ok');
+        console.log('bb-backup health ok');
         process.exit(0);
       } catch {
         /* no verified cycle yet */
       }
       await wait(1000);
     }
-    console.error('wnet-test-backup: no healthy backup cycle within 15s, deploy counts as failed');
+    console.error('bb-backup: no healthy backup cycle within 15s, deploy counts as failed');
     process.exit(1);
   })();
 "

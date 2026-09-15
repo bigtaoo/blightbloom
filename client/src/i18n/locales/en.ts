@@ -118,6 +118,14 @@ export const en = {
       heal: 'Health potion',
       energy: 'Energy cell',
     },
+    // Big-chest caption (ui/ChestPrompt.ts, design/05 "Chest rooms"). The only place the game
+    // says that a big chest wants every mechanism plate covered at once — a rule a player
+    // standing on one plate in an empty room cannot infer. (The small chest's own three
+    // strings were deleted with its button: it opens on approach, `ENGINE_VERSION` 66.)
+    chest: {
+      bigTitle: 'Big chest',
+      plates: 'Plates held {on}/{total}',
+    },
     // Stat-chip labels (ui/StatChip.ts) — short by design: each sits under a tinted
     // icon in a pill, so it only has to disambiguate, not describe.
     chips: {

@@ -6,6 +6,8 @@ import { nearbyWeaponPickups, WEAPON_PROMPT_RADIUS_FP } from './pickupProximity'
 import { WeaponPickupPrompt } from './WeaponPickupPrompt';
 import { ShopPrompt } from './ShopPrompt';
 import { nearbyShop, SHOP_PROMPT_RANGE_GRID } from './shopProximity';
+import { ChestPrompt } from './ChestPrompt';
+import { nearbyBigChest, CHEST_PLATE_PROMPT_RANGE_GRID } from './chestProximity';
 import { toFpGrid } from '@dd/engine';
 import { Minimap, type MinimapPlayer } from './Minimap';
 import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
@@ -104,6 +106,12 @@ export class HudView {
   // down the screen: a list of things in reach, tapping one is the action. It is shown only
   // while the seat stands on a counter's drawn mat, which is why it needs no close button.
   readonly shopPrompt = new ShopPrompt();
+  // Big-chest caption (design/05 "Chest rooms", 2026-09-15) — bottom-centre, informational,
+  // and the only thing that says a big chest wants every plate covered at once. Not part of the
+  // right-hand prompt column and not tappable: no chest reads a button at all (`ENGINE_VERSION`
+  // 66 — a small chest opens on approach, which is why it has no caption here). See
+  // `ChestPrompt` for the full account.
+  readonly chestPrompt = new ChestPrompt();
   // Shared PvP/PvE room-graph minimap (design/10, PvE wiring 2026-08-05) — its own
   // visibility is driven independently of the rest of the HUD (zoneEnabled/
   // dungeonRooms, not phase), so it's mounted as a SIBLING of `view` inside
@@ -170,6 +178,7 @@ export class HudView {
       this.toasts.view,
       this.weaponPickupPrompt.view,
       this.shopPrompt.view,
+      this.chestPrompt.view,
       this.downedBanner.view,
       this.pauseBtn.view,
       this.replayBtn.view,
@@ -198,6 +207,7 @@ export class HudView {
     // right edge, so a second row would land on top of it.
     this.replayBtn.view.position.set(screenPx.w - 20 - 36 - 42, 12);
     this.downedBanner.reposition(screenPx);
+    this.chestPrompt.reposition(screenPx);
   }
 
   update(s: GameState, dt: number, ctx: HudContext): void {
@@ -280,6 +290,7 @@ export class HudView {
     this.layout(s.zoneEnabled ? PVP_CHIPS : PVE_CHIPS, buffCount > 0, ally !== undefined, showRoster);
     this.updateWeaponPickupPrompt(s, p);
     this.updateShopPrompt(s, p);
+    this.updateChestPrompt(s, p);
     this.toasts.update(dt);
 
     // Shared room-graph minimap (design/10 "room progress"; PvE wiring 2026-08-05,
@@ -393,6 +404,14 @@ export class HudView {
   private updateWeaponPickupPrompt(s: GameState, p: GameState['players'][number] | undefined): void {
     const nearby = p ? nearbyWeaponPickups(s.pickups, p.gx, p.gy, WEAPON_PROMPT_RADIUS_FP) : [];
     this.weaponPickupPrompt.update(nearby);
+  }
+
+  // Big-chest caption (design/05 "Chest rooms"). The range is the mechanism ring plus a plate
+  // radius rather than a reach to the chest itself: the caption has to survive the player
+  // walking out to a plate to do the very thing it asked for (`chestProximity.ts`).
+  private updateChestPrompt(s: GameState, p: GameState['players'][number] | undefined): void {
+    const chest = p ? nearbyBigChest(s.chests, p.gx, p.gy, toFpGrid(CHEST_PLATE_PROMPT_RANGE_GRID)) : undefined;
+    this.chestPrompt.update(chest);
   }
 
   // Shop counter panel (design/05 "Shops"). The reach test adds the seat's OWN body radius to
