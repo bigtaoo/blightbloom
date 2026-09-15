@@ -1,45 +1,59 @@
-# Independent compose project, deployed at ~/wnet-test on a shared box that isn't ours —
-# borrowed spare capacity, kept to a minimal, low-profile footprint on purpose (naming
-# included — see server/deploy/README.md's own note on this). Touches nothing of the
-# host's own stack except one reverse-proxy config block, and can be torn down entirely on
-# its own (`docker compose down && rm -rf ~/wnet-test`).
+# The backend's whole deployment: one compose project on a DEDICATED Hetzner CX23
+# (`blightbloom`, 62.238.1.182, Helsinki), living at `~/blightbloom`. Nothing else runs on
+# this box. Full runbook: server/deploy/README.md.
 #
-# Network: joins the host's existing `docker_default` so the reverse proxy can reach
-# `gameserver` and `matchsvc` by container name, and so the services here can reach
-# each other the same way. Ports are `expose`d, never `ports`-published — everything comes
-# in through the proxy's :443, nothing binds a host port directly.
+# **This file used to describe a box this project only borrowed** — the company's
+# `wnet-server`, shared with their wnet stack and with `deutsch-sync` — and three things
+# here were shaped by that rather than by what the services need. All three changed when
+# the project moved onto its own hardware, 2026-09-15:
+#
+#  - It joined the host's existing `docker_default` network, because the host's Caddy had
+#    to resolve our containers by name. There is no host stack to join now: the network is
+#    ours (`bb`, at the bottom) and so is the proxy — the `caddy` service, the only one in
+#    this file that publishes a host port.
+#  - Everything visible on the box was named `wnet-test` instead of after this project, to
+#    keep a low profile on somebody else's hardware. The box is ours; the containers are
+#    `bb-*`. The disguise cost nothing while it was true and is actively misleading now.
+#  - Prometheus scraped the HOST's cAdvisor and node-exporter rather than standing up a
+#    second privileged copy on borrowed hardware. There is nothing to borrow any more, so
+#    this file runs its own (`obs-cadvisor`, `obs-node-exporter`) and the infra dashboard
+#    stops depending on containers another team can rename.
 #
 # One image (server/Dockerfile, built from the ALREADY-BUILT server/dist/*.mjs —
 # `npm run build -w server` first), FIVE processes selected by `command:` — four HTTP
 # services and one worker (`backup`), which has no port and whose healthcheck therefore
 # asks its own bundle rather than a `/health` route.
 #
-# ── ...plus four OFF-THE-SHELF images: the observability stack (design/19 §10) ──
-# `obs-loki` / `obs-alloy` / `obs-prometheus` / `obs-grafana`. They run no code from this
-# repo, take no part in serving a player, and nothing above depends on them — a dead
-# Grafana cannot affect a match. Three things about them are load-bearing:
+# ── ...plus the off-the-shelf images ──
+# `caddy` — the public edge, TLS and the four-way path split (server/deploy/README.md §2) —
+# and the observability stack (design/19 §10): `obs-loki` / `obs-alloy` / `obs-prometheus` /
+# `obs-grafana` / `obs-cadvisor` / `obs-node-exporter`. None of them runs code from this
+# repo. Caddy is listed apart from the rest because the sentence that covers them does not
+# cover it: a dead Grafana cannot affect a match, and a dead Caddy is a total outage.
 #
-#  - **Every one of their service names is prefixed `obs-`.** This project joins the host's
-#    SHARED `docker_default` network, and compose publishes each service NAME as a network
-#    alias on it. The box's owner already runs their own Loki, Grafana, Prometheus and
-#    Promtail there under exactly those names — so a service called `loki` would put two
-#    containers behind one DNS name, and their collector's pushes could start landing in
-#    our store, or ours in theirs, intermittently, with nothing failing anywhere. The
-#    prefix is what makes a second stack on a shared network safe.
+# Three things about this half are load-bearing:
+#
+#  - **The `obs-` prefix stays, now as a role marker rather than a collision guard.** It
+#    existed because a service called `loki` on the SHARED network would have put two
+#    containers behind the box owner's own `loki` alias, with pushes landing in the wrong
+#    store intermittently and nothing failing anywhere. That hazard left with the box. The
+#    prefix stays because it is what makes `docker compose ps` legible at a glance — which
+#    half serves players, which half watches them — and dropping it would rewrite every
+#    scrape target, datasource and dashboard to buy nothing.
 #  - **All observability state lives in NAMED volumes, never a bind mount.** Docker creates
 #    a missing bind-mount source `root:root` and the mount then hides the image's own
 #    `chown` — which is what cost this deployment 18 hours of silently failing backups on
 #    2026-09-08. These images run as their own uids (Loki 10001, Grafana 472), so a
 #    bind-mounted data dir would need a third ownership rule in `ci-deploy.sh`. A named
 #    volume is owned by whoever writes it first. Only read-only CONFIG is bind-mounted.
-#  - **Grafana is one of the two things here a human logs into** (`adminsvc` above is the
+#  - **Grafana is one of the two things here a human logs into** (`adminsvc` below is the
 #    other), and Caddy exposes it at `/grafana*` — server/deploy/README.md §2. Its admin
 #    password comes from `.env`, which CI never ships, and self-registration is off.
 services:
   gameserver:
     build: .
-    image: wnet-test:latest
-    container_name: wnet-test-gameserver
+    image: blightbloom:latest
+    container_name: bb-gameserver
     command: ["node", "index.mjs"]
     restart: unless-stopped
     env_file: .env
@@ -51,7 +65,7 @@ services:
     expose:
       - "8787"
     networks:
-      - wnet
+      - bb
     mem_limit: 256m
     logging:
       driver: json-file
@@ -67,8 +81,8 @@ services:
 
   matchsvc:
     build: .
-    image: wnet-test:latest
-    container_name: wnet-test-matchsvc
+    image: blightbloom:latest
+    container_name: bb-matchsvc
     command: ["node", "matchsvc.mjs"]
     restart: unless-stopped
     env_file: .env
@@ -105,7 +119,7 @@ services:
     expose:
       - "8788"
     networks:
-      - wnet
+      - bb
     mem_limit: 512m
     logging:
       driver: json-file
@@ -121,8 +135,8 @@ services:
 
   billsvc:
     build: .
-    image: wnet-test:latest
-    container_name: wnet-test-billsvc
+    image: blightbloom:latest
+    container_name: bb-billsvc
     command: ["node", "billsvc.mjs"]
     restart: unless-stopped
     env_file: .env
@@ -141,7 +155,7 @@ services:
     expose:
       - "8789"
     networks:
-      - wnet
+      - bb
     mem_limit: 256m
     logging:
       driver: json-file
@@ -178,8 +192,8 @@ services:
   # friends are deliberately absent — the console reads databases, not APIs.
   adminsvc:
     build: .
-    image: wnet-test:latest
-    container_name: wnet-test-adminsvc
+    image: blightbloom:latest
+    container_name: bb-adminsvc
     command: ["node", "adminsvc.mjs"]
     restart: unless-stopped
     env_file: .env
@@ -216,7 +230,7 @@ services:
     expose:
       - "8790"
     networks:
-      - wnet
+      - bb
     mem_limit: 256m
     logging:
       driver: json-file
@@ -252,8 +266,8 @@ services:
   #    green forever on a stale success.
   backup:
     build: .
-    image: wnet-test:latest
-    container_name: wnet-test-backup
+    image: blightbloom:latest
+    container_name: bb-backup
     command: ["node", "backup.mjs"]
     restart: unless-stopped
     env_file: .env
@@ -283,7 +297,7 @@ services:
       - ./data/billsvc:/sources/billsvc:ro
       - ./backups:/backups
     networks:
-      - wnet
+      - bb
     mem_limit: 128m
     logging:
       driver: json-file
@@ -304,7 +318,7 @@ services:
   # published port — Grafana reaches it over this network and nothing else can.
   obs-loki:
     image: grafana/loki:3.4.2
-    container_name: wnet-test-loki
+    container_name: bb-loki
     command: ["-config.file=/etc/loki/config.yml"]
     restart: unless-stopped
     volumes:
@@ -313,7 +327,7 @@ services:
     expose:
       - "3100"
     networks:
-      - wnet
+      - bb
     mem_limit: 512m
     logging:
       driver: json-file
@@ -328,11 +342,15 @@ services:
       start_period: 60s
 
   # Reads container stdout off the Docker socket and pushes it to obs-loki. The socket is
-  # mounted READ-ONLY, and monitoring/alloy/config.alloy filters discovery to `wnet-test-*`
-  # — this box is not ours, and the other containers on it are not ours to collect.
+  # mounted READ-ONLY, and monitoring/alloy/config.alloy still filters discovery to a name
+  # prefix — `bb-` now. On the borrowed box that filter was a boundary: the other
+  # containers on it belonged to another team and were not ours to collect. Here it is
+  # merely tidy, and it is kept because the failure it prevents did not go away with the
+  # box — an unfiltered collector picks up whatever a future `docker run` leaves on this
+  # host, and the first symptom is a Loki bill, not an error.
   obs-alloy:
     image: grafana/alloy:v1.7.5
-    container_name: wnet-test-alloy
+    container_name: bb-alloy
     command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data", "--server.http.listen-addr=0.0.0.0:12345"]
     restart: unless-stopped
     volumes:
@@ -342,7 +360,7 @@ services:
     expose:
       - "12345"
     networks:
-      - wnet
+      - bb
     mem_limit: 256m
     logging:
       driver: json-file
@@ -370,7 +388,7 @@ services:
   # for why standing up a second privileged cAdvisor on borrowed hardware is the wrong trade.
   obs-prometheus:
     image: prom/prometheus:v3.13.3
-    container_name: wnet-test-prometheus
+    container_name: bb-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -383,7 +401,7 @@ services:
     expose:
       - "9090"
     networks:
-      - wnet
+      - bb
     mem_limit: 512m
     logging:
       driver: json-file
@@ -403,7 +421,7 @@ services:
   # a reviewed file rather than something somebody clicked into existence on a live box.
   obs-grafana:
     image: grafana/grafana:11.5.2
-    container_name: wnet-test-grafana
+    container_name: bb-grafana
     restart: unless-stopped
     env_file: .env
     environment:
@@ -429,7 +447,7 @@ services:
     expose:
       - "3000"
     networks:
-      - wnet
+      - bb
     mem_limit: 384m
     logging:
       driver: json-file
@@ -443,14 +461,154 @@ services:
       retries: 5
       start_period: 40s
 
+  # ──────────────────────────────── the public edge ────────────────────────────────────
+  #
+  # The ONLY container in this file that publishes a host port, and the only one whose
+  # death is a total outage. It arrived with the move to dedicated hardware, 2026-09-15 —
+  # on the borrowed box this role was played by the host owner's Caddy, and this project's
+  # entire footprint on it was one appended site block in a Caddyfile we did not own.
+  #
+  # Three things worth reading off this block:
+  #
+  #  - **`./caddy` is mounted as a DIRECTORY, not as `./caddy/Caddyfile` as a file.** A
+  #    single-file bind mount binds to that file's INODE, and `deploy/ci-deploy.sh` replaces
+  #    shipped config by `rm -rf` + `cp -R`, which produces a new inode every time. The host
+  #    file would then be correct while the container kept serving the old one, and — this
+  #    is the part that cost a full diagnosis on 2026-09-09 — `caddy validate` and
+  #    `caddy reload` would both read the stale inode and report success. A directory mount
+  #    has the same hazard, which is why the deploy carries `--force-recreate`: recreating
+  #    the container re-resolves the mount against the current path. Belt and braces.
+  #  - **No `:ro` on the data volumes, `:ro` on the config.** `caddy-data` holds the ACME
+  #    account key and every issued certificate; losing it means re-issuing on next boot and
+  #    burning Let's Encrypt rate limit for nothing, so it is a named volume rather than
+  #    something a redeploy can clear.
+  #  - **Port 80 is published and must stay that way.** It is not a redirect convenience:
+  #    it is the HTTP-01 challenge path. Closing it (in `ufw`, or here) makes certificate
+  #    RENEWAL fail silently ~60 days later, which is the most expensive way to discover it.
+  caddy:
+    image: caddy:2-alpine
+    container_name: bb-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - bb
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── The two exporters this project used to BORROW ─────────────────────────────────────
+  #
+  # `monitoring/prometheus/prometheus.yml` scraped the box owner's `docker-cadvisor-1` and
+  # `docker-node-exporter-1` — the right trade on hardware we did not own (a second
+  # privileged cAdvisor mounting `/`, `/sys` and `/dev/kmsg` on somebody else's machine, to
+  # recompute numbers that already existed one DNS name away), and a trade with a stated
+  # cost: if that team stopped or renamed either container, every infra panel emptied.
+  # Nothing to borrow here, so the cost is gone and so is the dependency.
+  obs-cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: bb-cadvisor
+    restart: unless-stopped
+    # Not defaults. cAdvisor's out-of-the-box housekeeping is once per second over every
+    # cgroup on the machine, which on a 2-vCPU box is a monitoring agent as the largest
+    # single CPU consumer — measurement changing what it measures. 30s is well inside
+    # Prometheus's own 30s scrape interval, `--docker_only` drops the raw-cgroup series
+    # nothing here graphs, and container LABELS as metric labels is the standard way to
+    # give a time series unbounded cardinality.
+    command:
+      - --housekeeping_interval=30s
+      - --docker_only=true
+      - --store_container_labels=false
+    # cAdvisor reads cgroup and container state straight off the host. Same mount set the
+    # borrowed box's own copy ran with, which is also what keeps `dashboards/infra.json`'s
+    # queries working unchanged across the move.
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+    networks:
+      - bb
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # `--path.rootfs=/rootfs` STRIPS that prefix from the `mountpoint` label, so the root
+  # filesystem reports as `/` and not `/rootfs`. That is not cosmetic: `infra.json`'s disk
+  # panel selects `mountpoint="/"`, and the borrowed node-exporter ran with the same flag —
+  # so this line is what keeps that panel showing a series instead of silently nothing.
+  obs-node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: bb-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/rootfs
+      - --web.listen-address=0.0.0.0:9100
+    pid: host
+    volumes:
+      - /:/rootfs:ro,rslave
+    expose:
+      - "9100"
+    networks:
+      - bb
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 # Named rather than bind-mounted, deliberately — see the second bullet of the file header.
 volumes:
   loki-data:
   alloy-data:
   prometheus-data:
   grafana-data:
+  # Caddy's ACME account key and issued certificates. Clearing this is not free — it means
+  # re-issuing every certificate on the next boot against Let's Encrypt's rate limit.
+  caddy-data:
+  caddy-config:
 
 networks:
-  wnet:
-    external: true
-    name: docker_default
+  # Ours, created by this project. It was `external: true, name: docker_default` for as
+  # long as the reverse proxy belonged to somebody else and we had to be reachable on their
+  # network to be proxied at all. Both halves of that are gone: `caddy` above is in this
+  # file, on this network, and no container outside this project can resolve any name here.
+  bb:
+    driver: bridge

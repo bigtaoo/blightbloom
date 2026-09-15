@@ -1,0 +1,18 @@
+# Everything in this workspace that is SHIPPED TO THE BOX must be LF, whatever the
+# checkout's `core.autocrlf` would otherwise do on Windows. This is not tidiness:
+#
+#  - `deploy/ci-deploy.sh` is the forced command sshd runs. A CRLF copy dies on the box
+#    with `$'\r': command not found`, which is why deploy/README.md's install one-liner
+#    pipes it through `tr -d '\r'` — a step that is easy to forget and whose failure looks
+#    like a broken script rather than a broken checkout.
+#  - `caddy/Caddyfile`, `docker-compose.yml`, `Dockerfile` and everything under
+#    `monitoring/` are read by containers, where a stray `\r` lands inside a value rather
+#    than being ignored (a scrape target of "matchsvc:8788\r" resolves to nothing).
+#
+# Declaring it here means the working tree itself holds LF, so shipping by scp/rsync is as
+# correct as shipping through CI's Linux checkout.
+deploy/ci-deploy.sh text eol=lf
+caddy/Caddyfile     text eol=lf
+docker-compose.yml  text eol=lf
+Dockerfile          text eol=lf
+monitoring/**       text eol=lf

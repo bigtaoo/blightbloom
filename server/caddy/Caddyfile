@@ -1,0 +1,59 @@
+# The public edge. Mounted read-only at /etc/caddy by the `caddy` service in
+# ../docker-compose.yml, which is the only container on this box that publishes a port.
+#
+# Until 2026-09-15 there was no such file in this repo: the backend lived on a borrowed box
+# whose owner ran Caddy, and this project's whole footprint on it was ONE site block
+# appended to a Caddyfile belonging to somebody else. Moving to dedicated hardware turned
+# that appended block into this file. It is the same four-way split, with the upstreams
+# renamed from container names to compose SERVICE names — our Caddy is now inside the
+# project, so `matchsvc` resolves without the `bb-` prefix and without depending on
+# container_name at all.
+#
+# ONE site block, matched on host. A request arriving with any other Host — a scanner on the
+# bare IP, a stale DNS entry for the old box — does not fall into it: Caddy matches on host
+# and answers an unmatched one itself. Deliberately NOT a `:80, :443` catch-all site, which
+# would also take over the port-80 server that automatic HTTPS puts the ACME redirect on.
+{
+	# The admin API, bound to loopback INSIDE the container. It is what `docker-compose.yml`'s
+	# healthcheck probes, and it is the only way to ask a running Caddy what config it is
+	# actually serving — the question that mattered on 2026-09-09, when a stale bind-mount
+	# inode meant `caddy validate` was reading a different file from the one Caddy was
+	# running. Never publish this port.
+	admin 127.0.0.1:2019
+}
+
+bb.gamestao.com {
+	# `handle` blocks, NOT bare `reverse_proxy` lines with matchers. With more than two
+	# paths, "which directive wins" stops being obvious from reading the file, and the
+	# failure is not an error — it is Grafana's assets being answered by matchsvc's 404
+	# handler, i.e. a blank page with a 200. `handle` is mutually exclusive and first-match,
+	# so the order written here is the order that runs.
+
+	# The WS data plane. Path-pinned in the server too (`WebSocketServer({ path: '/ws' })`,
+	# src/index.ts), so this is not the only thing keeping the two planes apart.
+	handle /ws* {
+		reverse_proxy gameserver:8787
+	}
+
+	# The prefix is NOT stripped. Grafana runs with GF_SERVER_SERVE_FROM_SUB_PATH=true and
+	# therefore expects to receive `/grafana/...` and generates its own links with it.
+	# `handle_path` would remove it and every asset would 404.
+	handle /grafana* {
+		reverse_proxy obs-grafana:3000
+	}
+
+	# Not stripped either, for a different reason: adminsvc's own route table IS
+	# `/admin/...` (src/adminsvc/routes.ts). The prefix is part of every path it knows, not
+	# a mount point it sits under — which is also what lets its session cookie be scoped
+	# `Path=/admin` so it never rides along on a player's `POST /client/events`.
+	handle /admin* {
+		reverse_proxy adminsvc:8790
+	}
+
+	# Everything else. Must stay LAST: `handle` is first-match, so any block written after
+	# this one is unreachable, and the symptom is not an error — it is the console's login
+	# page answered by matchsvc's 404 handler (design/21 §3.4).
+	handle {
+		reverse_proxy matchsvc:8788
+	}
+}

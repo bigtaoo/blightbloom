@@ -8,9 +8,8 @@ datasources:
     type: loki
     uid: loki
     access: proxy
-    # `obs-loki`, not `loki` — this compose project shares the host's `docker_default`
-    # network with the box owner's own Loki, which already holds that alias. See
-    # ../../alloy/config.alloy's `loki.write` block for the full account.
+    # `obs-loki`, not `loki` — a name kept from the days this project shared a network
+    # with the box owner's own Loki. See ../../alloy/config.alloy's `loki.write` block.
     url: http://obs-loki:3100
     isDefault: true
     jsonData:

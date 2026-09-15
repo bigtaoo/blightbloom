@@ -135,7 +135,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "container_memory_working_set_bytes{name=~\"wnet-test-.*\"}",
+          "expr": "container_memory_working_set_bytes{name=~\"bb-.*\"}",
           "legendFormat": "{{name}}"
         }
       ]
@@ -182,7 +182,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"wnet-test-.*\"}[5m]))",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"bb-.*\"}[5m]))",
           "legendFormat": "{{name}}"
         }
       ]
@@ -238,7 +238,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Host — CPU busy, memory used, root disk used",
-      "description": "The whole VM, not this project: the box is shared with its owner stack, so a saturation here may well be somebody else. The disk query filters on mountpoint=\"/\" and not \"/rootfs\" — their node-exporter runs with --path.rootfs, which STRIPS that prefix from the mountpoint label, so the obvious selector matches nothing and the series is silently absent rather than wrong.",
+      "description": "The whole VM. Until 2026-09-15 this box was shared with its owner stack and a saturation here could well have been somebody else; it is dedicated now, so these numbers are this project and nothing but. The disk query filters on mountpoint=\"/\" and not \"/rootfs\" — node-exporter runs with --path.rootfs, which STRIPS that prefix from the mountpoint label, so the obvious selector matches nothing and the series is silently absent rather than wrong. That flag is set in docker-compose.yml now rather than by another team, which is the one thing about this panel the move made safer.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

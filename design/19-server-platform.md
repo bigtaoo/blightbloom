@@ -971,29 +971,49 @@ a device-context envelope and a localStorage crash sentinel. Neither is ported w
   at `info` — deliberately not `debug`, so a deployment quieting things to `warn` cannot
   silence the one line that proves the pipeline works.
 
-### Two facts about the host that shaped the deployment
+### Two facts about the host that shaped the deployment — BOTH EXPIRED 2026-09-15
 
-Neither is about observability; both would have been bugs if ignored.
+Neither was about observability; both would have been bugs if ignored. Both were true of a
+BORROWED box, and the backend moved onto dedicated hardware on 2026-09-15
+(server/deploy/README.md), so both are now history. They are kept rather than deleted because
+the shapes they left behind are still in the code, and a reader who finds a rule with no
+surviving reason has no way to tell a deliberate keep from a fossil.
 
-- **Service names are `obs-`prefixed because the network is shared.** This compose project
-  joins the host's `docker_default`, and compose publishes each service NAME as a network
-  alias on it. The box's owner already runs their own Loki, Grafana, Prometheus and Promtail
-  there under exactly those names. A service called `loki` would put two containers behind
-  one DNS name — their collector's pushes landing in our store, or ours in theirs,
-  intermittently, with nothing failing anywhere.
-- **Their collector already reads our containers, and this stack cannot change that.**
-  Their promtail scrapes the Docker socket unfiltered, so every line ours have written is
-  already in their store. Ours does the opposite deliberately — discovery is filtered to
-  `wnet-test-*` twice over — but the asymmetry is theirs to fix, not ours.
-  server/deploy/README.md §8 records it rather than leaving it to be discovered.
+- **Service names were `obs-`prefixed because the network was shared.** The compose project
+  joined the host's `docker_default`, and compose publishes each service NAME as a network
+  alias on it. The box's owner ran their own Loki, Grafana, Prometheus and Promtail there
+  under exactly those names. A service called `loki` would have put two containers behind one
+  DNS name — their collector's pushes landing in our store, or ours in theirs, intermittently,
+  with nothing failing anywhere. *Now:* the network is this project's own, the collision is
+  impossible, and the prefix is **kept as a role marker** — it is what every scrape target,
+  datasource and dashboard spells out, and what makes `docker compose ps` legible. The test
+  that enforces it says so in its own comment, so keeping it stays a decision.
+- **Their collector read our containers, and this stack could not change that.** Their
+  promtail scraped the Docker socket unfiltered, so every line ours wrote between 2026-09-07
+  and the move is in their store, permanently, labelled `wnet-test-*`. *Now:* nothing outside
+  this project reads this box's socket. The one-way leak is a closed set rather than an
+  ongoing one — worth remembering if anything sensitive was ever logged in that window, since
+  removing it is not this project's to do.
+- **What the move ADDED to this section:** Prometheus stopped borrowing the host's cAdvisor
+  and node-exporter and runs its own (`obs-cadvisor`, `obs-node-exporter`). That removes the
+  stated failure mode where another team stopping a container emptied every infra panel here
+  — and it removes the reason the `up` alert below had to name their exporters.
 
 ### Still open
 
 - **No alerting.** Everything here is pull: somebody has to open a dashboard. The gap that
-  matters is `bb_billsvc_outbox_pending` — a count that stops falling means players have
-  paid for things they do not own, with every container green — and `up` on the two scrape
-  targets that are the box owner's exporters. Deliberately not guessed at: an alert needs a
-  destination somebody actually reads, and this project has none yet.
+  matters is `bb_billsvc_outbox_pending` — a count that stops falling means players have paid
+  for things they do not own, with every container green. Deliberately not guessed at: an
+  alert needs a destination somebody actually reads, and this project has none yet.
+
+  **The move to dedicated hardware made this worse in one specific way, and it is worth
+  stating rather than discovering.** On the borrowed box the machine had an owner who watched
+  it — their monitoring, their uptime, their problem if it died. A single Hetzner VM has
+  nobody watching it but this project, and this project's watching is a person opening
+  Grafana. "The whole box is gone" is now a state that produces **no signal at all**: the
+  dashboards that would report it are ON it. Whatever closes this item has to run somewhere
+  else, which is the same requirement the off-box backup copy has (server/deploy/README.md
+  §7) — so they are one problem with one answer, not two.
 - **No trace correlation.** funny threads a `roomId` across its services so one match can be
   reconstructed with `| logfmt | roomId="…"`. The fields exist here in some lines and not
   others; making it a rule is a pass through every call site, and worth doing the first time
