@@ -158,8 +158,15 @@ describe('recordWebhookEvent', () => {
     // Two different rules on purpose. The body is evidence of what the platform sent, so a
     // later call must not be able to erase it; the outcome is what the account state now
     // reflects, so a stale one would mislead in exactly the situation this row is read in.
+    //
+    // The second body DIFFERS, and that is the half a 2026-09-15 mutation battery found
+    // missing: with both arrivals carrying identical bytes, overwriting `raw` on every
+    // redelivery is invisible, so this case's name claimed something it did not check.
     const id = await recordWebhookEvent(db, event({ raw: '{"first":true}', outcome: 'settled', detail: null }));
-    await recordWebhookEvent(db, event({ raw: '{"first":true}', outcome: 'already-delivered', detail: 'already-delivered' }));
+    await recordWebhookEvent(
+      db,
+      event({ raw: '{"forged":true}', outcome: 'already-delivered', detail: 'already-delivered' }),
+    );
     const row = (await webhookEventById(db, id))!;
     expect(row.raw).toBe('{"first":true}');
     expect(row.outcome).toBe('already-delivered');
