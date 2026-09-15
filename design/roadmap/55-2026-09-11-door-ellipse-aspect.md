@@ -803,3 +803,81 @@ It does not answer the verb. The panel still opens because you walked near the c
 morning. Whoever takes it gets to decide whether a third `INTERACT` consumer is finally worth it
 or whether the shop wants a gesture of its own — and gets to do it with a merchant already
 standing there to attach it to.
+
+## Loot that arrives on you (2026-09-15, engine + client + docs, no ENGINE_VERSION bump)
+
+> *"你可以在 worktree 里给拾取物品加一个曲线飞行特效吗？大概 0.6 秒飞到玩家身上。就是其他游戏里普遍有的那种拾取效果。"*
+
+A drop was collected by ceasing to exist. `PickupSystem` takes it on overlap and compacts it out
+of `state.pickups` the same tick, so the next `Scene.reconcile` destroyed the view and that was
+the whole event on screen — plus an `fx.flash()` drawn **at the loot**, which is the one place
+that cannot answer the question a pickup actually raises in co-op or in PvP: *did that go to me?*
+An arc that ends on a body answers it by construction.
+
+### The engine says WHO, in one inert field
+
+`GameEvent`'s `pickup` gained `by`, the collecting player's actor id. Same field, same reasoning,
+as `bullet_fired`'s `ownerId`: the render layer has to find the COLLECTOR'S OWN VIEW, and `gx/gy`
+is where the drop lay, which the animation already has. It genuinely cannot be answered from
+state — the item is compacted out the same tick the event is pushed, so by the time a frame's
+events are consumed there is nothing left to read — and the render-side alternative, "whoever is
+standing nearest", guesses wrong exactly when two players overlap one drop, which is the case the
+flight is most visible in. Additive and inert: events are never read back by a later system and
+never enter `serializeState`/`hashState`, so **no `ENGINE_VERSION` bump**, and the golden gate
+stayed green (1,599 engine tests, unchanged fixture).
+
+### Everything else is render-only, and two decisions carry it
+
+**Driven by the EVENT, never by the state diff.** The diff cannot tell "this id left `GameState`
+because someone took it" from "this id left because its floor did" — and a flight launched off the
+diff alone would fling a whole floor's uncollected loot at the player on every descend. That
+absence is the load-bearing test in `Scene.test.ts`'s new block, not the presence. The flight also
+builds a FRESH `Pickup` view rather than adopting the one on the floor, because under online
+catch-up (`GameLoop.advanceOnline`) a drop can spawn and be collected inside one drained batch, so
+the view being replaced may never have existed — while the event always arrives. It is launched
+LAST in `reconcile`, since the arc is aimed at the collector's view and that same call is what
+mirrors it; launching first meant a drop taken on the first frame a seat existed found no body.
+
+**The bow belongs in the one screen axis the shear leaves free — and this is what a green test
+got wrong.** `flightPose` bowed the full ground perpendicular and hopped in Z, and
+`Entity.applyTransform` draws `(x, y, z)` as `(x, y − z)`: a bow in ground Y and a rise in Z are
+the SAME screen axis pointing opposite ways. On a live 28 px pickup, traced out of the running
+game, the drawn path left a straight screen line by **0.5 px**. The tests were green the whole
+time, because they measured the deviation in the ground plane, where it was a real 12 px — the
+plane the player is not looking at. Bowing only the perpendicular's X component decouples them:
+an east–west flight curves purely as a thrown arc (its bow is 0), a north–south one swings
+sideways as well, and neither can cancel the other. Re-measured off the shipped module: **13.8 px
+(28 px east–west), 18.8 (75 px east–west), 8.5 (28 px north–south), 18.0 (75 px north–south)** of
+screen deviation, and every bow assertion now runs in screen space, in both directions.
+
+### The number that shapes the whole curve is not in the render layer
+
+Everything but a weapon is auto-collected on overlap — `SIM.pickupRadius`, 15 px of padding past
+the player's own ~16 px body — so **the flight the player sees most is about 28 px long**. Sized
+purely as a fraction of the distance flown, the arc collapses to a few px and 600 ms of it reads
+as a drop sliding in slow motion. So every offset is floored as well as scaled (`POP_BACK_MIN` 8,
+`BULGE_MIN` 16, `HOP_BASE` 14): the motion carries the duration instead of the distance having to.
+The fractions are for the other case — a weapon claimed by clicking from across
+`SIM.lootRevealRadius`, 80 px, which is the only collection in the game that happens at range.
+
+**This is worth saying plainly, because it is the gap between what was asked for and what the
+game can currently show:** in the games this effect is borrowed from, loot is MAGNETISED from a
+hundred px or more and the flight is the pickup. Here the sim has already taken the item at
+touching distance, so the arc is after-the-fact feedback over one body-width. Widening
+`SIM.pickupRadius` would give the effect the room it is built for, and it is a sim change with a
+balance argument attached (a contested `energy` or `heal` in PvP is decided by who reaches it) —
+filed, not taken.
+
+### Verification
+
+`client/src/game/scene/pickupFlight.ts` (232 lines) and `PickupFlightLayer` are asserted as
+SHAPES, not as restated constants — every one of the bow, the pop, the hop and the shrink can be
+zeroed on its own without moving either endpoint, so the tests measure screen deviation, "further
+from the collector 50 ms in than at rest", "peaks by mid-flight and falls through the last third",
+and a moving target the layer must keep re-asking. **+28 tests** (22 in `pickupFlight.test.ts`, 6
+in `Scene.test.ts`), client 6,270 → 6,298 green, engine 1,599 green, server 1,743 green, `tsc --noEmit` clean, file
+length and doc paths clean, and coverage 96.87% lines / 93.17% branches against the 90/90 gate
+with the new file at 100% / 95.45% before the last branch was closed. Verified in the running
+game as well as in vitest, which is where the screen-space bug was found: the pane starves rAF
+~300×, so the ticker was stopped and driven by hand, a `weapon` drop claimed through the real
+`CommandBuilder.requestPickup` path from 75 px, and the pose traced frame by frame.

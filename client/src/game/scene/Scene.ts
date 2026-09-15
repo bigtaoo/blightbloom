@@ -4,17 +4,24 @@
 // position pushed (for interpolation), and ids that vanished (compacted out, dead)
 // have their views removed. Nothing here decides gameplay — it only draws what the
 // engine already computed (design/08 "render/server only read").
-import type { GameState } from '@dd/engine';
+import type { GameEvent, GameState } from '@dd/engine';
 import type { Layers } from './layers';
 import { Entity } from './Entity';
 import { Actor } from './Actor';
 import { Enemy } from './Enemy';
 import { Bullet } from './Bullet';
-import { Pickup } from './Pickup';
+import { Pickup, BOB_REST_Z } from './Pickup';
+import { PickupFlightLayer, type FlightPoint } from './pickupFlight';
 import { ChestLayer } from './ChestLayer';
 import { ShopLayer } from './ShopLayer';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
+
+/** Where a flown drop aims on the collector, as a fraction of that actor's DRAWN body height
+ *  (`Actor.bodySilhouette`) above its ground point — a fraction rather than a pixel count for
+ *  the reason the death burst's own lift is one: the same number that reads as "chest" on a
+ *  15 px mob is an ankle on a 30 px boss. */
+const TARGET_BODY_R = 0.5;
 
 export class Scene {
   private views = new Map<number, Entity>();
@@ -45,6 +52,11 @@ export class Scene {
    */
   private readonly chests = new ChestLayer(this.layers.entities, this.layers.ground);
   private readonly shops = new ShopLayer(this.layers.entities, this.layers.ground);
+
+  /** Drops currently flying to whoever collected them (`scene/pickupFlight.ts`). Owned here for
+   *  the same reason `chests`/`shops` are: this class is the one thing whose job is the display
+   *  list's lifecycle, and a flight is exactly a view that outlives the entity it mirrored. */
+  private readonly flights = new PickupFlightLayer(this.layers.entities, this.layers.shadow);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -120,6 +132,7 @@ export class Scene {
   clear(): void {
     this.chests.clear();
     this.shops.clear();
+    this.flights.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -131,7 +144,16 @@ export class Scene {
   // camera follows ITS view, not "whichever player is last in the array". Default -1 (the
   // single-player caller passes the sole player's id, or omits it → the first player wins,
   // matching the old behaviour exactly).
-  reconcile(state: GameState, localPlayerId = -1): void {
+  //
+  // `events` is this frame's engine→render batch, and this class reads exactly ONE kind out of
+  // it: `pickup`, whose `by` names the collector a flown drop has to curve toward. That is a
+  // view-LIFECYCLE fact, not a reaction — "this id left `GameState` because someone took it"
+  // is the one thing the state diff below cannot tell apart from "this id left because its
+  // floor did", and getting it wrong sends a whole floor's uncollected loot flying at the
+  // player on a descend. `EventReactor` still owns every REACTION to the same event (fx, cue,
+  // toast, score); this is the diff it has no view of. Defaulted, so every existing caller —
+  // and every test that reconciles a hand-built state — is untouched.
+  reconcile(state: GameState, localPlayerId = -1, events: readonly GameEvent[] = []): void {
     const seen = this.seenScratch;
     seen.clear();
     this.spawnedActors = 0;
@@ -279,10 +301,53 @@ export class Scene {
         v.destroy();
       }
     }
+
+    // The collected drop's view has just been destroyed by the sweep above — replace it with a
+    // flight. LAST in this method, not first, because the arc is aimed at the collector's view
+    // and this same call is what mirrors it: a drop collected on the first frame a seat exists
+    // would otherwise find no body to fly to. A flight is a fresh view rather than the one that
+    // was on the floor, because under online catch-up (`GameLoop.advanceOnline`) a drop can
+    // spawn and be collected inside one drained batch, so the view it replaces may never have
+    // existed — while the event always arrives.
+    for (const e of events) if (e.type === 'pickup') this.launchPickupFlight(e);
+  }
+
+  /**
+   * A drop was just collected — send a copy of it curving into the collector's body over
+   * `FLIGHT_MS` (`scene/pickupFlight.ts` owns the curve and the reasoning).
+   *
+   * No collector view, no flight: the drop simply disappears the way it always did. That is a
+   * real case rather than a defensive one — a bot seat in `?arenaDemo=1`, or a remote player
+   * whose actor has not been mirrored yet — and an arc with nothing on the end of it would say
+   * something false about where the loot went.
+   */
+  private launchPickupFlight(e: Extract<GameEvent, { type: 'pickup' }>): void {
+    if (!this.actorAt(e.by)) return;
+    const from: FlightPoint = { x: fpToPx(e.gx), y: fpToPx(e.gy), z: BOB_REST_Z };
+    // Which side the arc bows to, alternating by the drop's own position. The engine id would
+    // be the natural key (it is what `Pickup`'s hover-phase spread uses) but a `pickup` event
+    // deliberately carries no item id — it carries where the item WAS, which separates two
+    // drops just as well and costs the engine nothing. Deterministic either way: this render
+    // layer draws no random numbers.
+    const sign = (Math.round(from.x + from.y) & 1) === 0 ? 1 : -1;
+    this.flights.launch(new Pickup(e.kind, e.weaponId), from, () => {
+      // Re-resolved every frame, not captured: the collector is still running, and the view
+      // may be gone by the time the drop gets there (see `FlightTarget`).
+      const a = this.actorAt(e.by);
+      if (!a) return null;
+      // `a.x/a.y` is the container's SCREEN position, so the ground point it sorts by is the
+      // drawn lift added back on (`Entity.applyTransform`) — and the drop aims at the middle of
+      // the drawn body rather than at that ground point, because loot flying into a character's
+      // feet reads as dropping in front of them.
+      return { x: a.x, y: a.y + a.drawnLift, z: a.drawnLift + a.bodySilhouette.bodyH * TARGET_BODY_R };
+    }, sign);
   }
 
   interpolate(alpha: number, frameDt: number): void {
     for (const v of this.views.values()) v.interpolate(alpha, frameDt);
+    // Flights run on the RENDER clock, like the death dissolve below — they are already
+    // detached from any engine entity, so there is nothing left to interpolate them against.
+    this.flights.update(frameDt);
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const v = this.dying[i];
       v.interpolate(alpha, frameDt);

@@ -73,7 +73,17 @@ export type GameEvent =
   // (revivable, not dead) / brought back up by a teammate's revive channel. fx-only.
   | { type: 'downed'; id: number; gx: Fp; gy: Fp }
   | { type: 'revived'; id: number; gx: Fp; gy: Fp }
-  | { type: 'pickup'; kind: PickupKind; gx: Fp; gy: Fp; weaponId?: string; buffId?: string; materialId?: string; qty?: number; tier?: number }
+  // `by` is the actor id of the player that collected it — the same field, for the same
+  // reason, as `bullet_fired`'s `ownerId`: the render layer has to find the COLLECTOR'S OWN
+  // VIEW, because the drop flies to their body over ~0.6 s rather than blinking out where it
+  // lay (`scene/pickupFlight.ts`), and `gx/gy` is where it lay, which is the one point the
+  // animation already has. It cannot be answered from state the way a `bullet_fired` field
+  // could: `PickupSystem` compacts the item out of `state.pickups` the same tick it pushes
+  // this, and "whoever is standing nearest the drop" is a guess that goes wrong exactly when
+  // two players overlap — which is when the flight is most visible. Additive and inert for the
+  // sim (events are never read back by a later system and never enter `serializeState`/
+  // `hashState`), so no ENGINE_VERSION bump — see the header above.
+  | { type: 'pickup'; kind: PickupKind; by: number; gx: Fp; gy: Fp; weaponId?: string; buffId?: string; materialId?: string; qty?: number; tier?: number }
   // A chest just opened (design/05 "Chest rooms"). `weapons` is how many weapon pickups
   // it paid, so the render layer can size its burst off the event instead of counting
   // pickups that appeared the same tick for other reasons.

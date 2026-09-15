@@ -179,10 +179,10 @@ const EVENTS: Record<string, GameEvent> = {
   hurt: { type: 'hit', target: 1, faction: 'enemy', gx: 0, gy: 0, damage: 1, damageType: 'physical' } as GameEvent,
   'death.enemy': { type: 'death', id: 9, faction: 'enemy', gx: 0, gy: 0, r: 480 } as GameEvent,
   'death.player': { type: 'death', id: 1, faction: 'player', gx: 0, gy: 0, r: 480 } as GameEvent,
-  'pickup.heal': { type: 'pickup', kind: 'heal', gx: 0, gy: 0 } as GameEvent,
-  'pickup.weapon': { type: 'pickup', kind: 'weapon', weaponId: 'repeater', gx: 0, gy: 0 } as GameEvent,
-  'pickup.material': { type: 'pickup', kind: 'material', materialId: 'mat_fire', qty: 1, gx: 0, gy: 0 } as GameEvent,
-  'pickup.buff': { type: 'pickup', kind: 'buff', buffId: 'dmg_up', gx: 0, gy: 0 } as GameEvent,
+  'pickup.heal': { type: 'pickup', by: 1, kind: 'heal', gx: 0, gy: 0 } as GameEvent,
+  'pickup.weapon': { type: 'pickup', by: 1, kind: 'weapon', weaponId: 'repeater', gx: 0, gy: 0 } as GameEvent,
+  'pickup.material': { type: 'pickup', by: 1, kind: 'material', materialId: 'mat_fire', qty: 1, gx: 0, gy: 0 } as GameEvent,
+  'pickup.buff': { type: 'pickup', by: 1, kind: 'buff', buffId: 'dmg_up', gx: 0, gy: 0 } as GameEvent,
   'wave-clear': { type: 'wave_clear' } as GameEvent,
   // `winner` is not decoration: `EventReactor` plays the jingle only for a win the LOCAL
   // seat's side took, and the run-ending fall otherwise (2026-09-02). This host's state has
