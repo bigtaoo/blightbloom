@@ -157,13 +157,15 @@ workflow deploys until that's turned on. Once live they'd serve at
 
 The backend (`gameserver`/`matchsvc`/`billsvc`, design/19) is live at
 **https://bb.gamestao.com**, and the client above points at it by default
-(`VITE_MATCHSVC_URL`, injected from repo variable `MATCHSVC_URL`). It runs as **nine**
-Docker containers on a VPS borrowed from another project (not Cloudflare — a WebSocket
-frame relay needs a real process, which Workers cannot host), behind a shared Caddy
-instance doing automatic Let's Encrypt: the three planes, a backup worker, the read-only
-ops console at **`/admin/`** (`adminsvc`, design/21 — deployed 2026-09-09), and four
-off-the-shelf observability images (Loki/Alloy/Prometheus/Grafana, design/19 §10) with
-Grafana at **`/grafana/`**. Both consoles are login pages on the public internet, so
+(`VITE_MATCHSVC_URL`, injected from repo variable `MATCHSVC_URL`). It runs as **twelve**
+Docker containers on a **dedicated** Hetzner CX23 (not Cloudflare — a WebSocket frame relay
+needs a real process, which Workers cannot host), behind its own Caddy doing automatic
+Let's Encrypt: the three planes, a backup worker, the read-only ops console at **`/admin/`**
+(`adminsvc`, design/21 — deployed 2026-09-09), and six off-the-shelf observability images
+(Loki/Alloy/Prometheus/Grafana plus cAdvisor and node-exporter, design/19 §10) with Grafana
+at **`/grafana/`**. It was a guest on a VPS borrowed from another project until 2026-09-15;
+the proxy, the network and the two exporters all used to be that host's and are now this
+project's own. Both consoles are login pages on the public internet, so
 compose refuses to start *any* service without their passwords in the untracked `.env`.
 The count is spelled out here because it has been wrong three times: the deployed set grows
 by service, and this paragraph is the first thing anybody reads. `.github/workflows/server-deploy.yml` +

@@ -239,8 +239,11 @@ existed and describes the engine/content state it was written for. Per-item deta
   Capacitor shells, and a game portal (`npm run build:crazygames -w client`). The portal target
   loads **`crazygames-sdk-v3.js`** — the shipped v2 script has no `updateRoom`/`leftRoom`/
   `isInstantMultiplayer`, which is the whole of that platform's room requirement.
-- **The backend is deployed** — `gameserver`/`matchsvc`/`billsvc` plus a backup worker on the
-  borrowed VPS at `bb.gamestao.com`, and the portal build points at it by default.
+- **The backend is deployed, on hardware of its own since 2026-09-15** —
+  `gameserver`/`matchsvc`/`billsvc` plus a backup worker, the ops console and the observability
+  stack: twelve containers on a dedicated Hetzner CX23 at `bb.gamestao.com`, with its own Caddy,
+  its own network and its own cAdvisor/node-exporter. The portal build points at it by default.
+  It was a guest on a borrowed VPS from 2026-09-07 to 2026-09-15.
 - **Accounts have a second provider.** Username/password is unchanged and still never required to
   play; a game portal additionally signs a player in silently through its own user token
   (`POST /auth/portal`), and on that host our credential screen is unreachable because the

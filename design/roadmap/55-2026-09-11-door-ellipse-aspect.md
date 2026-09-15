@@ -1047,10 +1047,14 @@ so the retired deploy key's line has to be removed by whoever has its `sudo` pas
 already inert — its forced command names a script that no longer exists — but inert is not
 revoked.
 
-Still open, and the move made the first of these **worse** rather than better: the off-box copy
-of the backups, and alerting. A borrowed box had an owner watching it; a single Hetzner VM has
-nobody but this project, and "the whole box is gone" now produces no signal at all, because the
-dashboards that would report it are on it. Those are one problem with one answer — something
-that runs somewhere else — not two. Hetzner's own backups are one checkbox and worth turning on
-as a floor under it, but a whole-disk snapshot is not a verified database copy. `platform`
-`test` `docs`
+Two things were left open at the end of the move and both were decided the same day, by the
+person who has to act on them — recorded because one of the decisions **reshapes the item rather
+than closing it**. The off-box copy of the backups was going to want a scheduled pull from
+somewhere that is not this VM; the answer instead is that **player data moves off SQLite onto a
+database**, which makes "a verified copy that survives the box" a property of that store rather
+than something to build here. Good answer to that problem — and not to its twin, which this pass
+had paired it with: alerting. A managed database survives the VM; nothing in it notices that the
+game stopped answering, and "the whole box is gone" still produces no signal at all, because the
+dashboards that would report it are on it. So they stop being one problem with one answer. The
+retired deploy key on the old box (root-owned `authorized_keys`, inert but not revoked) is the
+box owner's to remove, confirmed. `platform` `test` `docs`
