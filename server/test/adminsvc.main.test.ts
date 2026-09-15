@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { openDb } from '../src/db';
+import { openLegacyAccountsDb as openDb } from './legacyAccountsDb';
 import { DEFAULT_ADMIN_PORT, OTHER_PLANE_PORTS, adminHost, adminPort, main, runMain } from '../src/adminsvc/main';
 import { AdminStartupError } from '../src/adminsvc/credentials';
 import type { AdminsvcServer } from '../src/adminsvc/server';

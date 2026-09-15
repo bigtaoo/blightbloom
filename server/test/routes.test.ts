@@ -75,7 +75,7 @@ const parsed = (sent: Recorded) => JSON.parse(sent.body) as Record<string, unkno
 // --- routes/http.ts --------------------------------------------------------------------
 
 describe('routes/http send', () => {
-  it('writes JSON with the CORS block and a content type', () => {
+  it('writes JSON with the CORS block and a content type', async () => {
     const { res, sent } = fakeRes();
     send(res, 200, { ok: true });
     expect(sent.status).toBe(200);
@@ -84,7 +84,7 @@ describe('routes/http send', () => {
     expect(sent.headers['access-control-allow-origin']).toBe('*');
   });
 
-  it('keeps `authorization` in access-control-allow-headers (design/16 regression guard)', () => {
+  it('keeps `authorization` in access-control-allow-headers (design/16 regression guard)', async () => {
     // Not a style preference: without it a browser preflight rejects every /auth/me and
     // /account/* call before it is sent, and the failure surfaces client-side as a bare
     // "Failed to fetch" with no server log at all. Asserted on the constant AND on a
@@ -98,7 +98,7 @@ describe('routes/http send', () => {
     }
   });
 
-  it('sends 204 with a genuinely empty body, not the string "{}"', () => {
+  it('sends 204 with a genuinely empty body, not the string "{}"', async () => {
     const { res, sent } = fakeRes();
     send(res, 204, { ignored: true });
     expect(sent.status).toBe(204);
@@ -167,6 +167,11 @@ describe('routes/http readJson', () => {
     const seen: unknown[] = [];
     readJson(req, (body) => seen.push(body));
     req.emit('error', new Error('socket reset'));
+    // `readJson` resolves through a promise now, so its callback lands on a microtask
+    // rather than inside `emit`. Nothing in production notices; a test that reads on the
+    // next line does. The "never twice" half of this case is the one that matters and is
+    // unchanged — `seen` must hold exactly one entry.
+    await Promise.resolve();
     expect(seen).toEqual([{}]);
   });
 });
@@ -182,59 +187,63 @@ function fakeAuth(overrides: Partial<AuthService> = {}): AuthService {
 }
 
 describe('routes/auth requireAuth', () => {
-  it('refuses a request with no Authorization header', () => {
+  it('refuses a request with no Authorization header', async () => {
     const verifySession = vi.fn();
-    expect(requireAuth(fakeReq(), fakeAuth({ verifySession }))).toBeNull();
+    expect(await requireAuth(fakeReq(), fakeAuth({ verifySession }))).toBeNull();
     // Not merely "returns null": an absent header must not reach the session store at all.
     expect(verifySession).not.toHaveBeenCalled();
   });
 
-  it('refuses a non-Bearer scheme without consulting the session store', () => {
+  it('refuses a non-Bearer scheme without consulting the session store', async () => {
     const verifySession = vi.fn();
     const req = fakeReq({ authorization: 'Basic dXNlcjpwYXNz' });
-    expect(requireAuth(req, fakeAuth({ verifySession }))).toBeNull();
+    expect(await requireAuth(req, fakeAuth({ verifySession }))).toBeNull();
     expect(verifySession).not.toHaveBeenCalled();
   });
 
-  it('hands the store the token only, not the whole header value', () => {
+  it('hands the store the token only, not the whole header value', async () => {
     const session = { accountId: 'a1', username: 'ada' };
-    const verifySession = vi.fn(() => session);
+    const verifySession = vi.fn(() => Promise.resolve(session));
     const req = fakeReq({ authorization: 'Bearer tok-123' });
-    expect(requireAuth(req, fakeAuth({ verifySession }))).toBe(session);
+    expect(await requireAuth(req, fakeAuth({ verifySession }))).toBe(session);
     expect(verifySession).toHaveBeenCalledWith('tok-123');
   });
 });
 
 describe('routes/auth handlers', () => {
-  it('GET /auth/me answers 401 for an unauthenticated request', () => {
+  it('GET /auth/me answers 401 for an unauthenticated request', async () => {
     const { res, sent } = fakeRes();
-    getMe(fakeReq(), res, url('/auth/me'), { auth: fakeAuth() });
+    await getMe(fakeReq(), res, url('/auth/me'), { auth: fakeAuth() });
     expect(sent.status).toBe(401);
     expect(parsed(sent)).toEqual({ error: 'invalid or expired session' });
   });
 
-  it('POST /auth/logout ignores a non-string token but still answers ok', () => {
+  it('POST /auth/logout ignores a non-string token but still answers ok', async () => {
     // The fallback arm of this handler's only `if`. A logout is deliberately not an
     // authenticated route and must never 4xx — a client whose token is already gone (or
     // garbage) is exactly the client trying hardest to log out.
     const logout = vi.fn();
     const req = fakeReq();
     const { res, sent } = fakeRes();
-    postLogout(req, res, url('/auth/logout'), { auth: fakeAuth({ logout }) });
+    const done = postLogout(req, res, url('/auth/logout'), { auth: fakeAuth({ logout }) });
+    await Promise.resolve();
     req.emit('data', Buffer.from('{"token":12345}'));
     req.emit('end');
+    await done;
     expect(sent.status).toBe(200);
     expect(parsed(sent)).toEqual({ ok: true });
     expect(logout).not.toHaveBeenCalled();
   });
 
-  it('POST /auth/logout forwards a string token to the session store', () => {
+  it('POST /auth/logout forwards a string token to the session store', async () => {
     const logout = vi.fn();
     const req = fakeReq();
     const { res, sent } = fakeRes();
-    postLogout(req, res, url('/auth/logout'), { auth: fakeAuth({ logout }) });
+    const done = postLogout(req, res, url('/auth/logout'), { auth: fakeAuth({ logout }) });
+    await Promise.resolve();
     req.emit('data', Buffer.from('{"token":"tok-9"}'));
     req.emit('end');
+    await done;
     expect(sent.status).toBe(200);
     expect(logout).toHaveBeenCalledWith('tok-9');
   });
@@ -254,7 +263,7 @@ describe('routes/match getFindPoll', () => {
     secret: 'unused-here',
   });
 
-  it('percent-decodes the queue id before polling', () => {
+  it('percent-decodes the queue id before polling', async () => {
     const poll = vi.fn(() => ({ status: 'queued' as const }));
     const { res, sent } = fakeRes();
     getFindPoll(fakeReq(), res, url('/find/q%20one'), deps(poll as unknown as Matchmaker['poll']));
@@ -263,7 +272,7 @@ describe('routes/match getFindPoll', () => {
     expect(parsed(sent)).toEqual({ status: 'queued' });
   });
 
-  it('stamps the gameserver URL onto a matched ticket, and only onto that shape', () => {
+  it('stamps the gameserver URL onto a matched ticket, and only onto that shape', async () => {
     const ticket: MatchTicket = {
       roomId: 'r1',
       owner: 0,
@@ -283,7 +292,7 @@ describe('routes/match getFindPoll', () => {
     expect(parsed(sent)).toEqual({ status: 'matched', match: { ...ticket, wsUrl: 'ws://gs.test/ws' } });
   });
 
-  it('passes a non-matched poll result through verbatim', () => {
+  it('passes a non-matched poll result through verbatim', async () => {
     const { res, sent } = fakeRes();
     getFindPoll(
       fakeReq(),
@@ -294,7 +303,7 @@ describe('routes/match getFindPoll', () => {
     expect(parsed(sent)).toEqual({ status: 'expired' });
   });
 
-  it('matches a one-segment id and nothing deeper', () => {
+  it('matches a one-segment id and nothing deeper', async () => {
     expect(FIND_POLL_PATH.test('/find/q1')).toBe(true);
     expect(FIND_POLL_PATH.test('/find')).toBe(false);
     expect(FIND_POLL_PATH.test('/find/q1/extra')).toBe(false);
@@ -302,7 +311,7 @@ describe('routes/match getFindPoll', () => {
 });
 
 describe('routes/party getParty', () => {
-  it('percent-decodes the party id before the lookup', () => {
+  it('percent-decodes the party id before the lookup', async () => {
     const get = vi.fn(() => undefined);
     const { res, sent } = fakeRes();
     getParty(fakeReq(), res, url('/party/p%2F1'), { parties: { get } as unknown as PartyService });
@@ -311,7 +320,7 @@ describe('routes/party getParty', () => {
     expect(parsed(sent)).toEqual({ error: 'party not found' });
   });
 
-  it('answers 200 with the party when one exists', () => {
+  it('answers 200 with the party when one exists', async () => {
     const info = { partyId: 'p1', leaderId: 'ada', members: ['ada'], code: 'ABCDE', state: 'idle' };
     const { res, sent } = fakeRes();
     getParty(fakeReq(), res, url('/party/p1'), {
@@ -321,7 +330,7 @@ describe('routes/party getParty', () => {
     expect(parsed(sent)).toEqual(info);
   });
 
-  it('would also match the POST party paths, which is why the shell checks those first', () => {
+  it('would also match the POST party paths, which is why the shell checks those first', async () => {
     expect(PARTY_LOOKUP_PATH.test('/party/p1')).toBe(true);
     expect(PARTY_LOOKUP_PATH.test('/party/create')).toBe(true);
     expect(PARTY_LOOKUP_PATH.test('/party')).toBe(false);
@@ -329,19 +338,19 @@ describe('routes/party getParty', () => {
 });
 
 describe('routes/rating getRating', () => {
-  it('percent-decodes the account id, including a guest seat scaffold', () => {
+  it('percent-decodes the account id, including a guest seat scaffold', async () => {
     // `seat:{roomId}:{seatIdx}` (ladderReport.ts) is a real rating key for a guest/bot, and
     // its colons arrive percent-encoded from any conforming client.
-    const get = vi.fn(() => 1234);
+    const get = vi.fn(() => Promise.resolve(1234));
     const { res, sent } = fakeRes();
-    getRating(fakeReq(), res, url('/rating/seat%3Ar1%3A0'), {
+    await getRating(fakeReq(), res, url('/rating/seat%3Ar1%3A0'), {
       ratings: { get } as unknown as RatingStore,
     });
     expect(get).toHaveBeenCalledWith('seat:r1:0');
     expect(parsed(sent)).toEqual({ accountId: 'seat:r1:0', rating: 1234 });
   });
 
-  it('would also match /rating/report, which is why the shell checks that POST first', () => {
+  it('would also match /rating/report, which is why the shell checks that POST first', async () => {
     expect(RATING_LOOKUP_PATH.test('/rating/a1')).toBe(true);
     expect(RATING_LOOKUP_PATH.test('/rating/report')).toBe(true);
     expect(RATING_LOOKUP_PATH.test('/rating')).toBe(false);
@@ -351,7 +360,7 @@ describe('routes/rating getRating', () => {
 // --- routes/party.ts randomCode --------------------------------------------------------
 
 describe('routes/party randomCode', () => {
-  it('emits 5 characters from an alphabet with no 0/O/1/I, over many draws', () => {
+  it('emits 5 characters from an alphabet with no 0/O/1/I, over many draws', async () => {
     // The alphabet's whole point is that a player reads this code out to a friend, so the
     // visually ambiguous glyphs are excluded. Nothing pinned that before.
     const seen = new Set<string>();

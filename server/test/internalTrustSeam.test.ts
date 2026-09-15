@@ -32,6 +32,7 @@ import { CORS } from '../src/routes/http';
 import { INTERNAL_CALLER_HEADER, INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { postReport } from '../src/routes/rating';
 import type { RatingStore } from '../src/rating';
+import { freshAccounts } from './mongoHarness';
 
 /** `config.ts`'s dev fallback, which is what an unset `BB_INTERNAL_KEY` yields under test. */
 const DEV_INTERNAL_KEY = 'dev-insecure-internal-key-do-not-use-in-prod';
@@ -40,7 +41,7 @@ let baseUrl: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const server = createMatchsvcServer({ dbPath: ':memory:', secret: 'trust-seam-test-secret' });
+  const server = createMatchsvcServer({ store: await freshAccounts(), secret: 'trust-seam-test-secret' });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;

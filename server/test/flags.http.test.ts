@@ -23,7 +23,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { openDb } from '../src/db';
+import { openLegacyAccountsDb as openDb } from './legacyAccountsDb';
 import { openBillingDb } from '../src/billingDb';
 import { openAnalyticsDb } from '../src/analytics/db';
 import { createAdminsvcServer, type AdminsvcServer } from '../src/adminsvc/server';

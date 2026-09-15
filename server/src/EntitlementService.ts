@@ -24,7 +24,8 @@
  * afterwards. This project has no admin service and will not have one soon, so the schema
  * is deliberately shaped to be queried and corrected by a human at a `sqlite3` prompt.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { ClientSession } from 'mongodb';
+import type { AccountsStore, EntitlementDoc } from './db';
 
 /**
  * Where an entitlement came from (design/19 §2). `purchase` is the only one that implies
@@ -37,13 +38,16 @@ export type EntitlementSource = (typeof ENTITLEMENT_SOURCES)[number];
 
 /** One row of `entitlements`, in this codebase's camelCase rather than SQL's snake_case. */
 export interface EntitlementRow {
-  id: number;
+  /** The ObjectId as a hex string. Was an INTEGER PRIMARY KEY; nothing outside this module
+   *  ever read it as a number, and what callers actually depend on is the ORDER `list()`
+   *  returns, which an ObjectId preserves. */
+  id: string;
   accountId: string;
   sku: string;
   source: EntitlementSource;
-  /** billsvc's `orders.id` (design/19 §4). Lives in a DIFFERENT database file, so this is
-   * deliberately a plain string with no foreign key — the join is done by a human, or by
-   * reconciliation, not by SQLite. */
+  /** billsvc's `orders._id` (design/19 §4). Lives in a DIFFERENT logical database, so this
+   * is deliberately a plain string with no reference — the join is done by a human, or by
+   * reconciliation, never by the cluster. */
   orderId: string | null;
   grantedAt: number;
 }
@@ -133,23 +137,17 @@ export function applyOwnership(data: unknown, own: Ownership): unknown {
   return { ...data, unlockedBlueprints: [...own.unlockedBlueprints], ownedCharacters: [...own.ownedCharacters] };
 }
 
-interface EntitlementSqlRow {
-  id: number;
-  account_id: string;
-  sku: string;
-  source: string;
-  order_id: string | null;
-  granted_at: number;
-}
-
-function toRow(r: EntitlementSqlRow): EntitlementRow {
+function toRow(d: EntitlementDoc): EntitlementRow {
   return {
-    id: r.id,
-    accountId: r.account_id,
-    sku: r.sku,
-    source: r.source as EntitlementSource,
-    orderId: r.order_id,
-    grantedAt: r.granted_at,
+    id: d._id.toHexString(),
+    accountId: d.accountId,
+    sku: d.sku,
+    source: d.source,
+    // `null` rather than `undefined`, because absent is how a non-purchase grant is STORED
+    // (MongoDB's partial index and the old NULL column mean the same thing here) and every
+    // existing caller reads this field as nullable.
+    orderId: d.orderId ?? null,
+    grantedAt: d.grantedAt,
   };
 }
 
@@ -160,40 +158,66 @@ export interface GrantOptions {
   orderId?: string;
   /** Injected clock, the same seam `Matchmaker`/`PartyService` already take. */
   nowMs?: number;
+  /** The transaction this grant belongs to, when a caller has one open
+   *  (`routes/internalEntitlements.ts` grants every SKU of an order together). Omitting it
+   *  inside a transaction is silent and wrong: the write lands OUTSIDE the transaction and
+   *  survives a rollback, so a partially-delivered order would keep the entitlements it
+   *  was supposed to give back. */
+  session?: ClientSession;
 }
 
 /**
- * Reads and writes `entitlements` (schema in `db.ts`). A thin, synchronous wrapper over
- * one `DatabaseSync` — the same injected-`DatabaseSync` shape `AuthService`/`RatingStore`
- * already use, so it composes into matchsvc with no new process and no network hop.
+ * Reads and writes `entitlements` (shape in `db.ts`). A thin wrapper over one
+ * `AccountsStore` — the same injected shape `AuthService`/`RatingStore` already take, so it
+ * composes into matchsvc with no new process.
  */
 export class EntitlementService {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly store: AccountsStore) {}
 
   /**
    * Grant one SKU. Returns `true` when a row actually landed, `false` when the account
    * already owned it.
    *
-   * `INSERT ... ON CONFLICT DO NOTHING` + `changes`, never SELECT-then-INSERT: delivery is
-   * driven by at-least-once platform callbacks (design/19 §4), so the UNIQUE constraint —
-   * not a prior read — has to be the idempotency key. A re-grant is a no-op rather than an
-   * update: the FIRST grant's `source` and `order_id` are the audit record, and letting a
-   * later `grant` overwrite them would let a free hand-issue erase the paid order that
-   * preceded it.
+   * An upsert read through `upsertedCount`, never find-then-insert: delivery is driven by
+   * at-least-once platform callbacks (design/19 §4), so the unique index — not a prior read
+   * — has to be the idempotency key. `$setOnInsert` is what makes a re-grant a no-op rather
+   * than an update: the FIRST grant's `source` and `orderId` are the audit record, and
+   * letting a later `grant` overwrite them would let a free hand-issue erase the paid order
+   * that preceded it.
    *
-   * Throws if `accountId` names no account (the foreign key) or if `source` is
-   * `'purchase'` without an `orderId` — both are caller bugs, and failing loud is what
-   * keeps a typo'd hand-issue from becoming an orphan row that silently never delivers.
+   * Throws if `source` is `'purchase'` without an `orderId` — the collection validator
+   * rejects it, because a paid entitlement with no order is unauditable.
+   *
+   * WHAT NO LONGER THROWS: an `accountId` naming no account. The SQLite table declared a
+   * FOREIGN KEY and the old comment counted on it ("failing loud is what keeps a typo'd
+   * hand-issue from becoming an orphan row that silently never delivers"). MongoDB has no
+   * such constraint and this method does not add a lookup to fake one — a read here would be
+   * a look-before-write on the hot delivery path, and it would still not bind the `mongosh`
+   * prompt the FK was protecting against. The orphan is now caught by design/19 §7's
+   * reconciliation instead of at write time. See `db.ts`'s header.
    */
-  grant(accountId: string, sku: string, source: EntitlementSource, opts: GrantOptions = {}): boolean {
-    const result = this.db
-      .prepare(
-        `INSERT INTO entitlements (account_id, sku, source, order_id, granted_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(account_id, sku) DO NOTHING`,
-      )
-      .run(accountId, sku, source, opts.orderId ?? null, opts.nowMs ?? Date.now());
-    return Number(result.changes) > 0;
+  async grant(
+    accountId: string,
+    sku: string,
+    source: EntitlementSource,
+    opts: GrantOptions = {},
+  ): Promise<boolean> {
+    const setOnInsert: Record<string, unknown> = {
+      accountId,
+      sku,
+      source,
+      grantedAt: opts.nowMs ?? Date.now(),
+    };
+    // ABSENT, never null: `orderId: null` would be stored as a real null, and the
+    // `entitlements_order` index plus every `$type: 'string'` test would then see a field
+    // that is present and wrong rather than missing.
+    if (opts.orderId !== undefined) setOnInsert.orderId = opts.orderId;
+    const result = await this.store.entitlements.updateOne(
+      { accountId, sku },
+      { $setOnInsert: setOnInsert },
+      { upsert: true, session: opts.session },
+    );
+    return result.upsertedCount > 0;
   }
 
   /**
@@ -203,30 +227,27 @@ export class EntitlementService {
    * skip — never convict"), so nothing in this server calls this on its own. It exists so
    * that a support correction is a supported operation rather than a hand-written DELETE.
    */
-  revoke(accountId: string, sku: string): boolean {
-    const result = this.db.prepare('DELETE FROM entitlements WHERE account_id = ? AND sku = ?').run(accountId, sku);
-    return Number(result.changes) > 0;
+  async revoke(accountId: string, sku: string): Promise<boolean> {
+    const result = await this.store.entitlements.deleteOne({ accountId, sku });
+    return result.deletedCount > 0;
   }
 
-  /** Every entitlement this account holds, oldest grant first (`id` is monotonic). */
-  list(accountId: string): EntitlementRow[] {
-    const rows = this.db
-      .prepare(
-        'SELECT id, account_id, sku, source, order_id, granted_at FROM entitlements WHERE account_id = ? ORDER BY id',
-      )
-      .all(accountId) as unknown as EntitlementSqlRow[];
-    return rows.map(toRow);
+  /** Every entitlement this account holds, oldest grant first — `_id` is an ObjectId, which
+   *  is creation-ordered, so this is the same ordering the monotonic INTEGER key gave. */
+  async list(accountId: string): Promise<EntitlementRow[]> {
+    const docs = await this.store.entitlements.find({ accountId }).sort({ _id: 1 }).toArray();
+    return docs.map(toRow);
   }
 
   /** Whether this account owns one specific SKU — the check a future PvP character gate
    * (design/14's "the one meta axis that reaches PvP") wants, without loading the list. */
-  owns(accountId: string, sku: string): boolean {
-    const row = this.db.prepare('SELECT 1 AS one FROM entitlements WHERE account_id = ? AND sku = ?').get(accountId, sku);
-    return row !== undefined;
+  async owns(accountId: string, sku: string): Promise<boolean> {
+    const doc = await this.store.entitlements.findOne({ accountId, sku }, { projection: { _id: 1 } });
+    return doc !== null;
   }
 
   /** The ownership arrays `GET /account/meta` writes over the stored blob with. */
-  ownership(accountId: string): Ownership {
-    return skusToOwnership(this.list(accountId).map((r) => r.sku));
+  async ownership(accountId: string): Promise<Ownership> {
+    return skusToOwnership((await this.list(accountId)).map((r) => r.sku));
   }
 }

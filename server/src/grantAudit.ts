@@ -37,6 +37,7 @@
  *     server — deliberately, and this module is the closest thing to a caller it will have.
  */
 import type { DatabaseSync } from 'node:sqlite';
+import type { AccountsStore } from './db';
 import { fileReview, grantAnomalyId } from './billsvc/reviewQueue';
 
 /**
@@ -158,26 +159,32 @@ export function auditGrants(rows: readonly GrantRow[], opts: GrantAuditOptions =
 }
 
 /**
- * Read the account plane's `entitlements` rows in `[sinceMs, untilMs)`.
+ * Read the account plane's `entitlements` documents in `[sinceMs, untilMs)`.
  *
- * Takes a `DatabaseSync` rather than a path so the caller decides how the file is opened —
- * and the caller that matters (`server/scripts/grantAudit.ts`) opens it READ-ONLY. That is
- * not a nicety: the audit's whole posture is that it observes and files, so it should not
- * hold a connection that could write to the table it is judging.
+ * Takes the store rather than opening one, so the caller decides how the connection is made.
+ * The caller that matters (`server/scripts/grantAudit.ts`) used to open the SQLite file
+ * READ-ONLY, and that was not a nicety: the audit's whole posture is that it observes and
+ * files, so it should not hold a handle that could write to the table it is judging.
+ *
+ * THAT GUARANTEE IS WEAKER NOW. `readOnly: true` was enforced by SQLite itself — a
+ * capability the process did not hold. Its replacement is an Atlas ROLE on a separate
+ * database user, which lives in the cluster's configuration rather than in this repository,
+ * so nothing a code review can see keeps this script from writing. Run it as a user with
+ * `read` on the `accounts` database; see `mongo.ts`'s header.
+ *
+ * Sorted by `grantedAt` then `_id` — the ObjectId tiebreak stands in for the old `id ASC`,
+ * which mattered because a settled multi-SKU order mints several grants in one millisecond.
  */
-export function readGrantsInWindow(db: DatabaseSync, sinceMs: number, untilMs: number): GrantRow[] {
-  const rows = db
-    .prepare(
-      `SELECT account_id, sku, source, granted_at FROM entitlements
-        WHERE granted_at >= ? AND granted_at < ? ORDER BY granted_at ASC, id ASC`,
-    )
-    .all(sinceMs, untilMs) as unknown as {
-    account_id: string;
-    sku: string;
-    source: string;
-    granted_at: number;
-  }[];
-  return rows.map((r) => ({ accountId: r.account_id, sku: r.sku, source: r.source, grantedAt: r.granted_at }));
+export async function readGrantsInWindow(
+  store: AccountsStore,
+  sinceMs: number,
+  untilMs: number,
+): Promise<GrantRow[]> {
+  const docs = await store.entitlements
+    .find({ grantedAt: { $gte: sinceMs, $lt: untilMs } })
+    .sort({ grantedAt: 1, _id: 1 })
+    .toArray();
+  return docs.map((d) => ({ accountId: d.accountId, sku: d.sku, source: d.source, grantedAt: d.grantedAt }));
 }
 
 /** One line per finding, for the cron log. */

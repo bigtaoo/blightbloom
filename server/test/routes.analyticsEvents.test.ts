@@ -33,6 +33,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { openAnalyticsDb, openAnalyticsDbReadOnly } from '../src/analytics/db';
 import { CLIENT_EVENTS_BODY_LIMIT, RATE_LIMIT } from '../src/routes/telemetry';
+import { freshAccounts } from './mongoHarness';
 
 const NOW = 1_800_000_000_000;
 const servers: Server[] = [];
@@ -56,7 +57,7 @@ async function start(opts: { analytics?: boolean } = {}): Promise<Harness> {
   const analyticsPath = opts.analytics === false ? null : join(dir, 'analytics.db');
 
   const server = createMatchsvcServer({
-    dbPath: ':memory:',
+    store: await freshAccounts(),
     analyticsDbPath: analyticsPath,
     lokiUrl: null,
     log: silentLog,

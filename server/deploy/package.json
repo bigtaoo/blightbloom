@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Runtime package.json for the built server bundles (server/dist/*.mjs). Ships alongside them — see server/scripts/build.mjs for what gets bundled vs. left external.",
   "dependencies": {
+    "mongodb": "7.6.0",
     "ws": "8.21.1"
   }
 }

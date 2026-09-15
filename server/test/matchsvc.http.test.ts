@@ -14,6 +14,7 @@ import type { AddressInfo } from 'node:net';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { signTicket, verifyTicket, type TicketPayload } from '../src/ticket';
+import { freshAccounts } from './mongoHarness';
 
 let baseUrl: string;
 let close: () => Promise<void>;
@@ -31,7 +32,7 @@ const INTERNAL: Record<string, string> = {
 };
 
 beforeAll(async () => {
-  const server = createMatchsvcServer({ dbPath: ':memory:', secret: 'test-secret' });
+  const server = createMatchsvcServer({ store: await freshAccounts(), secret: 'test-secret' });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;

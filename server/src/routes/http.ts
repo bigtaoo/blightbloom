@@ -18,7 +18,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  * Handlers are free functions, not methods — the whole point of the split. `matchsvc.ts`
  * keeps the dispatch chain that decides which one runs.
  */
-export type RouteHandler<D> = (req: IncomingMessage, res: ServerResponse, url: URL, deps: D) => void;
+export type RouteHandler<D> = (req: IncomingMessage, res: ServerResponse, url: URL, deps: D) => void | Promise<void>;
 
 export const CORS = {
   'access-control-allow-origin': '*',
@@ -79,19 +79,46 @@ export function readJson(req: IncomingMessage, done: (body: unknown) => void): v
  * against a partially-parsed body.
  */
 export function readJsonUpTo(req: IncomingMessage, limit: number, done: (body: unknown) => void): void {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  req.on('data', (c: Buffer) => {
-    size += c.length;
-    if (size > limit) return; // ignore the overflow tail
-    chunks.push(c);
+  void readJsonBodyUpTo(req, limit).then(done);
+}
+
+/**
+ * The promise form, and the one every handler that awaits anything must use.
+ *
+ * `readJson`'s callback shape does not survive an async handler. Two ways, both silent:
+ * a rejected promise returned by the callback escapes into an unhandled rejection that
+ * `matchsvc.ts`'s error boundary never sees (the handler has already returned by then), and
+ * a callback that throws SYNCHRONOUSLY used to be caught by the `try` that also wrapped
+ * `JSON.parse` — which then called the callback a SECOND time with `{}`, running the
+ * handler twice and answering one request with two responses.
+ *
+ * Parsing is therefore separated from dispatch here: the try/catch covers `JSON.parse` and
+ * nothing else, and the caller's own failure is the caller's to handle.
+ */
+export function readJsonBodyUpTo(req: IncomingMessage, limit: number): Promise<unknown> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > limit) return; // ignore the overflow tail
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      // The tail past `limit` was dropped, so what reaches `JSON.parse` may be truncated
+      // JSON, which throws, which yields `{}` — "nothing usable" rather than a
+      // half-parsed object, which is why no route has to defend against one.
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
   });
-  req.on('end', () => {
-    try {
-      done(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
-    } catch {
-      done({});
-    }
-  });
-  req.on('error', () => done({}));
+}
+
+/** `readJsonBodyUpTo` at the default limit. */
+export function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return readJsonBodyUpTo(req, DEFAULT_BODY_LIMIT);
 }

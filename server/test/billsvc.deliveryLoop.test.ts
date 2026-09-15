@@ -32,6 +32,7 @@ import { createMatchsvcServer } from '../src/matchsvc';
 import { createBillsvcServer, type BillsvcServer } from '../src/billsvc/server';
 import { openBillingDb } from '../src/billingDb';
 import { deliveryById, pendingDeliveries } from '../src/billsvc/outbox';
+import { freshAccounts } from './mongoHarness';
 
 const KEY = 'loop-internal-key';
 const SKU = 'bp.cannon';
@@ -53,7 +54,7 @@ beforeEach(async () => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 
-  matchsvc = createMatchsvcServer({ dbPath: ':memory:', secret: 'loop-secret' });
+  matchsvc = createMatchsvcServer({ store: await freshAccounts(), secret: 'loop-secret' });
   await new Promise<void>((resolve) => matchsvc.listen(0, '127.0.0.1', resolve));
   matchUrl = `http://127.0.0.1:${(matchsvc.address() as AddressInfo).port}`;
   vi.stubEnv('BB_MATCHSVC_URL', matchUrl);
@@ -168,7 +169,7 @@ describe('the entitlement delivery loop', () => {
     // The control plane comes back on the same port, and the backstop sweep finishes the job
     // with no second webhook and nothing else re-triggering it.
     const port = Number(new URL(matchUrl).port);
-    matchsvc = createMatchsvcServer({ dbPath: ':memory:', secret: 'loop-secret' });
+    matchsvc = createMatchsvcServer({ store: await freshAccounts(), secret: 'loop-secret' });
     await new Promise<void>((resolve) => matchsvc.listen(port, '127.0.0.1', resolve));
     const again = await fetch(`${matchUrl}/auth/register`, {
       method: 'POST',

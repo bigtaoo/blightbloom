@@ -33,7 +33,27 @@
  * Adding a write would mean adding an opener, which is a diff a reviewer sees.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { defaultDbPath } from '../db';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * MID-MIGRATION, and this function is the marker.
+ *
+ * `db.ts` moved the control plane to MongoDB on 2026-09-15 and no longer computes a file
+ * path, so this module — which still opens all three player-data stores as read-only SQLite
+ * FILES — keeps its own copy of the old default. It is deliberately local rather than
+ * re-exported from `db.ts`: nothing new should be able to reach for a SQLite path, and a
+ * copy here is a thing a reader trips over rather than an API that looks supported.
+ *
+ * The whole module is replaced in Stage 4 of the migration, which turns adminsvc's three
+ * views into aggregation pipelines and replaces `readOnly: true` file handles with an Atlas
+ * role. Until then this console reads databases that the services have stopped writing.
+ */
+function legacyAccountsDbPath(): string {
+  const env = process.env.BB_DB_PATH;
+  if (env && env.length > 0) return env;
+  return join(dirname(fileURLToPath(import.meta.url)), '../../data/daydayup.db');
+}
 import { defaultBillingDbPath } from '../billingDb';
 import type { Logger } from '../log';
 
@@ -93,7 +113,7 @@ export function openReadOnly(path: string): { db: DatabaseSync } | { error: stri
  * searchable.
  */
 export function openAdminDbs(paths: AdminDbPaths = {}, log?: Logger): AdminDbs {
-  const accountsPath = paths.accounts ?? defaultDbPath();
+  const accountsPath = paths.accounts ?? legacyAccountsDbPath();
   const billingPath = paths.billing ?? defaultBillingDbPath();
   const analyticsPath = paths.analytics === undefined ? analyticsPathFromEnv() : paths.analytics;
 

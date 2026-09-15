@@ -22,7 +22,8 @@
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb } from '../src/db';
+import { accountsStore, ensureAccountsIndexes } from '../src/db';
+import { closeMongo, connectMongo, store as mongoStore } from '../src/mongo';
 import { openBillingDb } from '../src/billingDb';
 import { openAnalyticsDb } from '../src/analytics/db';
 import { addDays, persistRollup } from '../src/analytics/rollup';
@@ -38,24 +39,53 @@ mkdirSync(dir, { recursive: true });
 const NOW = Date.UTC(2026, 8, 9, 12, 0, 0);
 const DAY0 = '2026-09-01';
 
-// ── accounts.db: two local players, one portal account, ratings and entitlements ──
-const accounts = openDb(join(dir, 'accounts.db'));
-const addAccount = accounts.prepare(
-  `INSERT OR REPLACE INTO accounts (id, username, password_hash, provider, provider_id, created_at, display_name)
-   VALUES (?,?,?,?,?,?,?)`,
+// ── the `accounts` store: two local players, one portal account, ratings, entitlements ──
+// Writes into whatever cluster BB_MONGO_URI names, under BB_MONGO_DB_PREFIX — point both at
+// a scratch database, never at production. Unlike the three files below there is no path to
+// sandbox it with.
+await connectMongo();
+const accountsDb = mongoStore('accounts');
+await ensureAccountsIndexes(accountsDb);
+const accounts = accountsStore(accountsDb);
+// `providerId` and `displayName` are OMITTED rather than set to null for the two local
+// accounts: the partial unique index is filtered on `{$type: 'string'}`, and an explicit
+// null is a present-and-wrong field rather than an absent one.
+await accounts.accounts.replaceOne(
+  { _id: 'acc_zoe' },
+  { username: 'zoe', passwordHash: 'x', provider: 'local', createdAt: Date.UTC(2026, 7, 20) },
+  { upsert: true },
 );
-addAccount.run('acc_zoe', 'zoe', 'x', 'local', null, Date.UTC(2026, 7, 20), null);
-addAccount.run('acc_quiet', 'quiet_one', 'x', 'local', null, Date.UTC(2026, 8, 1), null);
-addAccount.run('acc_cg', 'cg:11223344', 'x', 'cg', '11223344', Date.UTC(2026, 8, 7), 'Zoë from the portal');
-const addRating = accounts.prepare('INSERT OR REPLACE INTO ratings (account_id, rating) VALUES (?,?)');
-addRating.run('acc_zoe', 1184);
-addRating.run('acc_cg', 998);
-const addEnt = accounts.prepare(
-  `INSERT OR REPLACE INTO entitlements (account_id, sku, source, order_id, granted_at) VALUES (?,?,?,?,?)`,
+await accounts.accounts.replaceOne(
+  { _id: 'acc_quiet' },
+  { username: 'quiet_one', passwordHash: 'x', provider: 'local', createdAt: Date.UTC(2026, 8, 1) },
+  { upsert: true },
 );
-addEnt.run('acc_zoe', 'blueprint:cannon', 'purchase', 'ord_1', Date.UTC(2026, 8, 5));
-addEnt.run('acc_zoe', 'character:scout', 'grant', null, Date.UTC(2026, 8, 6));
-accounts.close();
+await accounts.accounts.replaceOne(
+  { _id: 'acc_cg' },
+  {
+    username: 'cg:11223344',
+    passwordHash: 'x',
+    provider: 'cg',
+    providerId: '11223344',
+    createdAt: Date.UTC(2026, 8, 7),
+    displayName: 'Zoë from the portal',
+  },
+  { upsert: true },
+);
+for (const [id, rating] of [['acc_zoe', 1184] as const, ['acc_cg', 998] as const]) {
+  await accounts.ratings.replaceOne({ _id: id }, { rating }, { upsert: true });
+}
+await accounts.entitlements.updateOne(
+  { accountId: 'acc_zoe', sku: 'blueprint:cannon' },
+  { $set: { accountId: 'acc_zoe', sku: 'blueprint:cannon', source: 'purchase', orderId: 'ord_1', grantedAt: Date.UTC(2026, 8, 5) } },
+  { upsert: true },
+);
+await accounts.entitlements.updateOne(
+  { accountId: 'acc_zoe', sku: 'character:scout' },
+  { $set: { accountId: 'acc_zoe', sku: 'character:scout', source: 'grant', grantedAt: Date.UTC(2026, 8, 6) } },
+  { upsert: true },
+);
+await closeMongo();
 
 // ── billing.db: an open finding, a reviewed one, and three callbacks incl. a divergent one ──
 const billing = openBillingDb(join(dir, 'billing.db'));
@@ -174,4 +204,4 @@ ops.prepare('INSERT OR REPLACE INTO flags (name, value, updated_at, set_by) VALU
 );
 ops.close();
 
-console.log(`seeded ${dir}: accounts.db billing.db analytics.db ops.db`);
+console.log(`seeded ${dir}: billing.db analytics.db ops.db, plus the \`accounts\` store on the cluster`);

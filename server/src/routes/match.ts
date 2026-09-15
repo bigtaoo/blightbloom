@@ -15,7 +15,7 @@
  */
 import type { Matchmaker, MatchTicket } from '../Matchmaker';
 import { signTicket, verifyTicket, type MatchMode, type TicketPayload } from '../ticket';
-import { readJson, send, type RouteHandler } from './http';
+import { readJsonBody, send, type RouteHandler } from './http';
 
 export interface MatchRouteDeps {
   matchmaker: Matchmaker;
@@ -38,7 +38,7 @@ export interface MatchRouteDeps {
    * builds this deps bundle by hand) omits it, and a `/find` with no auth behind it behaves
    * exactly as it always did.
    */
-  auth?: { verifySession(token: unknown): { accountId: string; username: string } | null };
+  auth?: { verifySession(token: unknown): Promise<{ accountId: string; username: string } | null> };
 }
 
 /**
@@ -72,8 +72,9 @@ function bearerToken(header: string | undefined): string | undefined {
   return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
 }
 
-export const postFind: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
+export const postFind: RouteHandler<MatchRouteDeps> = async (req, res, _url, deps) => {
+  {
+    const body = await readJsonBody(req);
     const playerCount = Number((body as { playerCount?: unknown })?.playerCount);
     // 'pvp' opts into the battle-royale queue (design/15); anything else (absent,
     // 'coop', a typo) is the pre-existing co-op shape — never silently 400s a client
@@ -99,7 +100,7 @@ export const postFind: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => 
     // it: the account layer's boundary is `/auth/*`/`/account/*`, and a guest's id only ever
     // reaches `ladderReport.ts`, which falls back to its own `seat:{roomId}:{seatIdx}`
     // scaffold anyway.
-    const session = deps.auth?.verifySession(bearerToken(req.headers.authorization)) ?? null;
+    const session = (await deps.auth?.verifySession(bearerToken(req.headers.authorization))) ?? null;
     const rawAccountId = (body as { accountId?: unknown })?.accountId;
     const bodyAccountId = typeof rawAccountId === 'string' && rawAccountId ? rawAccountId : undefined;
     const accountId = session?.accountId ?? bodyAccountId;
@@ -115,7 +116,7 @@ export const postFind: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => 
     } catch (e) {
       send(res, 400, { error: (e as Error).message });
     }
-  });
+  }
 };
 
 export const getFindPoll: RouteHandler<MatchRouteDeps> = (_req, res, url, deps) => {
@@ -140,8 +141,9 @@ export const getFindPoll: RouteHandler<MatchRouteDeps> = (_req, res, url, deps) 
  * Whether the room itself is still alive/in-match is the gameserver's call (`resume`
  * there fails cleanly if it isn't); matchsvc has no visibility into live room state.
  */
-export const postResume: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) => {
-  readJson(req, (body) => {
+export const postResume: RouteHandler<MatchRouteDeps> = async (req, res, _url, deps) => {
+  {
+    const body = await readJsonBody(req);
     const token = (body as { token?: unknown })?.token;
     if (typeof token !== 'string' || !token) return send(res, 400, { error: 'token required' });
     const payload = verifyTicket(token, deps.secret, Date.now(), { ignoreExpiry: true });
@@ -162,5 +164,5 @@ export const postResume: RouteHandler<MatchRouteDeps> = (req, res, _url, deps) =
       token: signTicket(fresh, deps.secret),
     };
     send(res, 200, { match: withUrl(ticket, gs.wsUrl) });
-  });
+  }
 };

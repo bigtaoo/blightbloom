@@ -21,9 +21,9 @@
  * because `(accountId, dayKey)` is the queue's idempotency key — an audit an operator is
  * afraid to re-run is an audit that stops being run.
  */
-import { DatabaseSync } from 'node:sqlite';
 import { openBillingDb } from '../src/billingDb';
-import { defaultDbPath } from '../src/db';
+import { accountsStore } from '../src/db';
+import { closeMongo, connectMongo, store as mongoStore } from '../src/mongo';
 import {
   DEFAULT_GRANT_THRESHOLD,
   auditGrants,
@@ -59,10 +59,11 @@ const first = args.day ?? dayKeyOf(dayWindow(endDayKey).sinceMs - (days - 1) * 8
 const sinceMs = dayWindow(first).sinceMs;
 const untilMs = args.day ? dayWindow(args.day).untilMs : dayWindow(endDayKey).untilMs;
 
-const accounts = new DatabaseSync(process.env.BB_DB_PATH ?? defaultDbPath(), { readOnly: true });
+await connectMongo();
+const accounts = accountsStore(mongoStore('accounts'));
 const billing = openBillingDb();
 try {
-  const rows = readGrantsInWindow(accounts, sinceMs, untilMs);
+  const rows = await readGrantsInWindow(accounts, sinceMs, untilMs);
   const findings = auditGrants(rows, { threshold });
   console.log(
     `grant audit ${new Date(sinceMs).toISOString().slice(0, 10)} .. ${new Date(untilMs - 1).toISOString().slice(0, 10)}: ` +
@@ -76,6 +77,6 @@ try {
     console.log(`  filed ${filed} new review entr(y|ies); ${findings.length - filed} already on the queue`);
   }
 } finally {
-  accounts.close();
+  await closeMongo();
   billing.close();
 }

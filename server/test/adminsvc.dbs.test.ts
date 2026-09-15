@@ -17,7 +17,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDb } from '../src/db';
+import { openLegacyAccountsDb as openDb } from './legacyAccountsDb';
 import { openBillingDb } from '../src/billingDb';
 import { openAnalyticsDb } from '../src/analytics/db';
 import { analyticsPathFromEnv, openAdminDbs, openReadOnly, type AdminDbs } from '../src/adminsvc/dbs';

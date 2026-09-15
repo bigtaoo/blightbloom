@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openBillingDb, defaultBillingDbPath } from '../src/billingDb';
-import { openDb, defaultDbPath } from '../src/db';
+import { openLegacyAccountsDb } from './legacyAccountsDb';
 
 const tmpDirs: string[] = [];
 function tmpPath(name: string): string {
@@ -62,7 +62,7 @@ describe('openBillingDb', () => {
   });
 
   it('and the account DB carries none of the billing tables', () => {
-    const accounts = openDb(':memory:');
+    const accounts = openLegacyAccountsDb(':memory:');
     const names = tableNames(accounts);
     for (const billingTable of ['orders', 'receipts', 'ledger', 'deliveries']) {
       expect(names).not.toContain(billingTable);
@@ -204,9 +204,15 @@ describe('defaultBillingDbPath', () => {
     // able to point both planes at one file.
     vi.stubEnv('BB_BILLING_DB_PATH', '');
     vi.stubEnv('BB_DB_PATH', '');
-    expect(defaultBillingDbPath()).not.toBe(defaultDbPath());
+    // Was compared against `defaultDbPath()`. The control plane has no file path any more
+    // (it is on the cluster), so what this pins now is that the billing default is its own
+    // explicit env var and not a sibling nobody set.
+    expect(defaultBillingDbPath()).toContain('billing.db');
 
     vi.stubEnv('BB_DB_PATH', 'C:/tmp/accounts.db');
-    expect(defaultBillingDbPath()).not.toBe(defaultDbPath());
+    // Was compared against `defaultDbPath()`. The control plane has no file path any more
+    // (it is on the cluster), so what this pins now is that the billing default is its own
+    // explicit env var and not a sibling nobody set.
+    expect(defaultBillingDbPath()).toContain('billing.db');
   });
 });

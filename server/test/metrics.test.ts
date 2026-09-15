@@ -21,6 +21,7 @@ import { Matchmaker } from '../src/Matchmaker';
 import { GameRegistry } from '../src/GameRegistry';
 import { createBillsvcServer, billsvcMetrics } from '../src/billsvc/server';
 import { openBillingDb } from '../src/billingDb';
+import { freshAccounts } from './mongoHarness';
 
 const servers: Array<{ close(): void }> = [];
 afterEach(() => {
@@ -178,7 +179,7 @@ describe('the /metrics routes', () => {
   });
 
   it('matchsvc serves it to a DIRECT request', async () => {
-    const base = await listen(createMatchsvcServer({ dbPath: ':memory:' }));
+    const base = await listen(createMatchsvcServer({ store: await freshAccounts() }));
     const res = await fetch(`${base}/metrics`);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('bb_matchsvc_queue_waiting');
@@ -188,7 +189,7 @@ describe('the /metrics routes', () => {
     // It is the one service Caddy proxies wholesale, so without this the queue depth and
     // account gauges are readable by anybody on the internet. Caddy stamps
     // `x-forwarded-for` on everything it proxies, which is what "from outside" means here.
-    const base = await listen(createMatchsvcServer({ dbPath: ':memory:' }));
+    const base = await listen(createMatchsvcServer({ store: await freshAccounts() }));
     const res = await fetch(`${base}/metrics`, { headers: { 'x-forwarded-for': '203.0.113.9' } });
     // A 404, not a 403: a 403 confirms the route is there.
     expect(res.status).toBe(404);
@@ -198,7 +199,7 @@ describe('the /metrics routes', () => {
   it('the refusal is by the header alone, not by its value looking public', async () => {
     // A private-range forwarded-for is still a proxied request — an allowlist of "external
     // looking" addresses would be a gate anybody can walk around.
-    const base = await listen(createMatchsvcServer({ dbPath: ':memory:' }));
+    const base = await listen(createMatchsvcServer({ store: await freshAccounts() }));
     const res = await fetch(`${base}/metrics`, { headers: { 'x-forwarded-for': '127.0.0.1' } });
     expect(res.status).toBe(404);
   });
