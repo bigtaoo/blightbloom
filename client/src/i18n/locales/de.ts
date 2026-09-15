@@ -113,9 +113,6 @@ export const de: Translations<typeof en> = {
       energy: 'Energiezelle',
     },
     chest: {
-      title: 'Truhe',
-      openKeys: 'E drücken zum Öffnen',
-      openTouch: '+ drücken zum Öffnen',
       bigTitle: 'Große Truhe',
       plates: 'Platten besetzt {on}/{total}',
     },

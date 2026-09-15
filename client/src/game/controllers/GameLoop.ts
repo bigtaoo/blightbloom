@@ -473,7 +473,7 @@ export class GameLoop {
   private updateHud(dt: number): void {
     const s = this.host.activeState();
     if (!s) return;
-    this.deps.hud.update(s, dt, buildHudContext(this.host, this.deps.input));
+    this.deps.hud.update(s, dt, buildHudContext(this.host));
     this.deps.pickupDebugOverlay?.update(s);
 
     // Everything that appears once a floor is finished — the portal, its popup, the

@@ -118,13 +118,11 @@ export const en = {
       heal: 'Health potion',
       energy: 'Energy cell',
     },
-    // Chest prompt (ui/ChestPrompt.ts, design/05 "Chest rooms"). A chest teaches nothing on
-    // its own — it has no art and no sound, and INTERACT is taught by no tutorial hint — so
-    // these five strings are the only place the game says how a chest opens.
+    // Big-chest caption (ui/ChestPrompt.ts, design/05 "Chest rooms"). The only place the game
+    // says that a big chest wants every mechanism plate covered at once — a rule a player
+    // standing on one plate in an empty room cannot infer. (The small chest's own three
+    // strings were deleted with its button: it opens on approach, `ENGINE_VERSION` 66.)
     chest: {
-      title: 'Chest',
-      openKeys: 'Press E to open',
-      openTouch: 'Press + to open',
       bigTitle: 'Big chest',
       plates: 'Plates held {on}/{total}',
     },

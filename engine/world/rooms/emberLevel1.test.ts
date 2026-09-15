@@ -27,7 +27,7 @@ import type { RoomPiece } from '../../content/rooms';
 import { FP_SCALE } from '../../math/fixed';
 import { toFpGrid } from '../../content/convert';
 import { mechanismRing } from '../../content/chests';
-import { CHEST_INTERACT_RANGE_GRID, CHEST_MECHANISM_RING_GRID, SHOP_INTERACT_RANGE_GRID } from '../../config';
+import { CHEST_MECHANISM_RING_GRID, CHEST_OPEN_RANGE_GRID, SHOP_INTERACT_RANGE_GRID } from '../../config';
 
 const FLOOR_INDICES = [0, 1, 2, 3, 4] as const;
 const EXPECTED_ROOM_COUNTS = [6, 7, 8, 8, 6];
@@ -216,14 +216,15 @@ describe('level 1 chests', () => {
   });
 
   it('never puts one within reach of a player spawn — opening it has to be a walk', () => {
-    // `ChestSystem` opens a small chest for any player holding INTERACT within
-    // CHEST_INTERACT_RANGE_GRID. A chest authored on top of a spawn point would therefore pay
-    // out to a player who has not moved, which is the opposite of the verb chests exist for
-    // ("search"-fight-extract). Closest today: ember_l1_alcove at 2.69 grid.
+    // `ChestSystem` opens a small chest for any live player within CHEST_OPEN_RANGE_GRID, with
+    // no button at all since `ENGINE_VERSION` 66 — so this authoring rule stopped being a nicety
+    // and became the only thing between a chest and a payout on TICK 1, to a player who has not
+    // moved. That is the opposite of the verb chests exist for ("search"-fight-extract).
+    // Closest today: ember_l1_alcove at 2.69 grid.
     for (const { piece, c } of everyChest) {
       for (const p of piece.spawns.player) {
         const d = Math.hypot(c.x - p.x, c.y - p.y);
-        expect(d, `${piece.id}: chest (${c.x},${c.y}) vs player spawn (${p.x},${p.y})`).toBeGreaterThan(CHEST_INTERACT_RANGE_GRID);
+        expect(d, `${piece.id}: chest (${c.x},${c.y}) vs player spawn (${p.x},${p.y})`).toBeGreaterThan(CHEST_OPEN_RANGE_GRID);
       }
     }
   });

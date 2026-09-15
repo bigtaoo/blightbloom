@@ -57,10 +57,12 @@ function inputFor(tick: number, owner: number, salt: number, opts: ScenarioInput
   let buttons = beat % 16 === 0 ? 0 : Button.FIRE; // mostly firing, with gaps for cooldown edges
   if (tick % 37 === 0) buttons |= Button.SWAP_WEAPON;
   if (opts.interact && tick % 53 === 0) buttons |= Button.INTERACT;
-  // A much tighter INTERACT cadence than `interact`'s 53, and the gap is the point
-  // (`chestRoomFloor.ts`): the first pulse has to land while the player is provably still
-  // within reach of the chest it spawned beside, which tick 53 cannot promise.
-  if (opts.chest && tick % 3 === 0) buttons |= Button.INTERACT;
+  // Kept, unused by every shipped scenario as of `ENGINE_VERSION` 66 (`chestRoomFloor.ts`).
+  // It existed for the chest run, whose small chest needed a held INTERACT that landed while
+  // the player was provably still in reach — a rule the owner replaced with "open on
+  // approach". The flag stays because the NEXT scenario that needs a tight button cadence
+  // should not have to rediscover why 53 is too slow; `chest-room` now sets it false on
+  // purpose, so that run proves both chests open with no button anywhere in its stream.
   if (opts.descend && tick % 61 === 0) buttons |= Button.CONFIRM_DESCEND;
   // CONFIRM_EXTRACT on a much tighter cadence than the descend above, and that gap is the
   // point (ENGINE_VERSION 61, `extractionGateFloor.ts`): the first extract pulse lands long
@@ -385,7 +387,13 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     },
     ticks: 400,
     seats: 2,
-    input: { interact: false, chest: true, descend: false, extract: false, press: false },
+    // NOTHING is pressed by this run (`ENGINE_VERSION` 66). Until then it pulsed INTERACT
+    // every 3 ticks for the small chest, and that pulse landed on tick 0 — so when the open
+    // rule became "approach", the hash did not move and this gate said nothing about the
+    // change it was the only witness to. Turning the flag off is what makes it a witness
+    // again: a small chest that still required a button would now never open here, and
+    // `chest_open` would fall from 2 to 1.
+    input: { interact: false, chest: false, descend: false, extract: false, press: false },
     salt: 0x6262,
   },
 ];

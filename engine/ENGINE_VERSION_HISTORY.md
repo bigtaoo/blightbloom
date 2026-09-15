@@ -2326,3 +2326,52 @@ design call rather than a balance one. `SHOP_PRICE_*` and `COIN_DROP_QTY` are un
 run's whole coin income now meets a single counter on floor 3; whether 87 coins for all three
 lines is the right ask against a five-floor purse is the first thing to measure when this is
 played.
+
+## v66: a small chest opens on approach (2026-09-15)
+
+The game's owner, after the first real play session that reached a chest room:
+
+> Opening an ordinary chest should take no extra action — it opens when the player comes near.
+
+`ChestSystem.openWanted` drops the `interacting` term for a `small` chest: any player who is
+alive, not downed, and within `CHEST_OPEN_RANGE_GRID` (renamed from `CHEST_INTERACT_RANGE_GRID`
+— same 1.5, the word stopped being true) opens it. A big chest is untouched: it never read a
+button, and every one of its mechanism plates must still be occupied on the same tick.
+
+### Why a rule that was argued for lost
+
+v63 chose a held INTERACT deliberately, and wrote the reason into the system: *"Not a proximity
+trigger: a chest that opened by being walked past would spend the floor's loot without the
+player ever choosing to spend it."* That argument assumed the player knew the button existed.
+They did not, and could not: a chest has no art and no sound, no tutorial hint names INTERACT,
+and the first report from real play was a chest that **"cannot be opened"** by a player standing
+on it. The decision a small chest still carries is whether to walk into its dead-end side room
+at all (design/05: the side rooms are optional, off the critical path), which is the choice that
+was actually costing something.
+
+### What went with it
+
+**The revive arbitration is gone.** v63 mirrored `ReviveSystem.findReviver` inside this system
+so that a player whose held INTERACT was rescuing a teammate could not also spend a chest with
+it. Neither chest kind reads a button now, so there is nothing to arbitrate; the mirror and its
+`REVIVE_RANGE_GRID` import are deleted rather than kept. **The behaviour this changes is real
+and intended**: a small chest beside a downed teammate now opens while you revive them.
+
+### The gate said nothing, and that is the part worth remembering
+
+`goldenHash.test.ts` was green across this change, before and after, with no re-record — and it
+should not have been. The `chest-room` scenario pulsed INTERACT every 3 ticks, and `tick % 3`
+includes **tick 0**, so its small chest opened on the first tick under the old rule and opens on
+the first tick under the new one. The only scenario that can see `ChestSystem` at all could not
+distinguish the two rules it exists to pin.
+
+The fix is the scenario, not the hash: `chest-room` now presses **nothing** (`chest: false`), so
+both chests open with no button anywhere in its input stream — a run the old rule would have
+finished with `chest_open: 1` instead of 2. The recorded hashes are unchanged because the
+simulation genuinely is unchanged for this fixture; what changed is that the fixture can now
+fail if the rule goes back. The fixture is re-recorded only to stamp v66.
+
+**A v65 stream replayed at v66 still diverges**, which is what the bump is for: the same
+recorded buttons open a small chest earlier (or open one the recording never opened), and every
+`dropPrng` draw after that point shifts with it.
+

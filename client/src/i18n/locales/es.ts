@@ -113,9 +113,6 @@ export const es: Translations<typeof en> = {
       energy: 'Celda de energía',
     },
     chest: {
-      title: 'Cofre',
-      openKeys: 'Pulsa E para abrir',
-      openTouch: 'Pulsa + para abrir',
       bigTitle: 'Cofre grande',
       plates: 'Placas ocupadas {on}/{total}',
     },

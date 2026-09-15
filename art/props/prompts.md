@@ -273,15 +273,48 @@ no dome. Slightly worn, never rusted or broken.
 [the two-other-boxes constraint]
 ```
 
+## What came back for the small closed chest (accepted first time, 2026-09-15)
+
+Measured before it was called usable, because two of the three things that matter here are
+invisible by eye:
+
+| | asked | came back | verdict |
+| --- | --- | --- | --- |
+| source size | — | 1402 x 1122, body trims to **874 x 629** | fine, well over the 144 px ship size |
+| aspect | 1.25 (18:14.4) | **1.39** | accepted — see below |
+| alpha | real transparency, body opaque | 67.5% at 0, **0.1% at 255**, 32.4% partial | the plateau; `alphaClamp` is mandatory |
+| median luma | brighter than the scenery crate's 53 | **107** | the separation the prompt asked for, twice over |
+
+**The aspect is accepted rather than rerolled**, and the rule is `propRender.ts`'s: a prop is
+scaled by WIDTH and the art's own aspect sets its height, so 1.39 simply draws the chest 18 x 12.9
+world px instead of 18 x 14.4 — an inch shorter, still unmistakably a chest, and one fewer
+generation to pay for. What this costs is that the OPEN variant now has a number to match: it has
+to come back at the same aspect or the lid will appear to change the box's footprint when it
+swaps. That is why the open prompts below say "same width and same ground line" rather than
+restating the 1.25 ratio, which this generation already declined to honour.
+
+**The alpha plateau arrived exactly as the props batch predicted** — a body at 250-254 rather
+than 255, wrapped in a veil of alpha 1-8 reaching well past the object. `alpha-audit.mjs` calls
+the file *clean* (its haze fraction is only 0.38%), which is the audit being narrower than the
+problem: it was the raw TRIM that lied, reading the bounding box 1.17 wide against the real 1.39.
+Run `alphaClamp.mjs` first, always, and re-measure after it rather than before.
+
 ## small, open — `chest_small_open_raw.png`
+
+**Pass `chest_small_raw.png` as a reference/input image if the tool takes one.** This variant is
+the one place in the batch where matching an existing file beats describing one: the two sprites
+swap in place on the same footprint, so a lid that arrives on a differently-proportioned box
+reads as the chest jumping rather than opening.
 
 ```
 [shared style paragraph]
 
-Subject: the SAME closed wooden treasure chest, now empty with its lid thrown fully
-back, seen from the same angle.
+Subject: the SAME closed wooden treasure chest as the reference image, now empty with
+its lid thrown fully back, seen from the same angle.
 Proportions and footprint IDENTICAL to the closed version — same width, same ground
-line, same timber, same brass bands and lock plate. Only the lid has moved.
+line, same timber, same brass bands, same brass corner caps and lock plate. Only the
+lid has moved. The open lid may rise above the box; the box itself must not grow,
+shrink or shift sideways.
 The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no
 gold, no glow, no contents of any kind — this is drawn AFTER the reward has been taken.
 
@@ -309,11 +342,14 @@ a player who cannot tell them apart in greyscale cannot tell them apart at all.
 
 ## big, open — `chest_big_open_raw.png`
 
+Same rule as the small open variant: pass the accepted `chest_big_raw.png` as the reference image
+once it exists, and generate this one last.
+
 ```
 [shared style paragraph]
 
-Subject: the SAME reinforced vault strongbox, now empty with its domed lid thrown
-fully back, seen from the same angle.
+Subject: the SAME reinforced vault strongbox as the reference image, now empty with
+its domed lid thrown fully back, seen from the same angle.
 Proportions and footprint IDENTICAL to the closed version — same width, same ground
 line, same timber, same iron brackets and bands. Only the lid has moved.
 The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no

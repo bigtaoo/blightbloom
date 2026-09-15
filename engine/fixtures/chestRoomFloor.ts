@@ -36,11 +36,13 @@
  * of by wandering is the entire reason the spawns are where they are; do not "tidy" them to
  * the room centre.
  *
- * **A small chest one grid from seat 0's spawn**, plus the `chest` input flag pulsing INTERACT
- * every 3 ticks (against the ordinary `interact` flag's 53). Same reasoning as
- * `extractionGateFloor.ts`'s 7-vs-61 extract cadence: the pulse has to land while the player
- * is provably still in reach, and tick 3 is early enough that no plausible stick has carried
- * them out of a 1.5-grid radius.
+ * **A small chest one grid from seat 0's spawn**, and since `ENGINE_VERSION` 66 that distance
+ * is the whole mechanism: a small chest opens on APPROACH, so the seat standing beside it is
+ * the entire gesture and this run presses nothing at all. It used to pulse INTERACT every 3
+ * ticks (against the ordinary `interact` flag's 53), and that pulse landed on tick 0 — which is
+ * why the golden gate stayed green through the rule change and said nothing: both rules opened
+ * this chest on the same tick. The scenario's `chest` input flag is false now precisely so the
+ * two rules disagree here. Under the old rule this run would open ONE chest instead of two.
  *
  * **Three enemies, ringed close.** The golden gate's anti-vacuity guard wants a run that
  * really fired and really hit (`bullet_fired > 20`, `hit > 0`), and a room with two players
@@ -95,8 +97,8 @@ export const CHEST_ROOM: RoomPiece = {
   chests: [
     // The big one at the centre of the plate ring.
     { kind: 'big', x: CX, y: CY },
-    // The small one one grid north of seat 0's spawn — inside `CHEST_INTERACT_RANGE_GRID`
-    // plus a body radius, so the tick-3 INTERACT pulse provably reaches it.
+    // The small one one grid north of seat 0's spawn — inside `CHEST_OPEN_RANGE_GRID` plus a
+    // body radius, so the seat opens it by standing where it spawned.
     { kind: 'small', x: CX + R, y: CY - 1 },
   ],
   // One room, no doors: nothing is ever locked, and the run plays inside it.
