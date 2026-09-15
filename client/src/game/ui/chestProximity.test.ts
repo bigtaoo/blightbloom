@@ -71,6 +71,15 @@ describe('nearbyBigChest', () => {
     expect(nearbyBigChest([chest(1, 10, 10, 'big', true)], p.gx, p.gy, R)).toBeUndefined();
   });
 
+  it('never returns a big chest with no plates at all', () => {
+    // `ChestSystem` cannot open one (its `every` over an empty ring is vacuously true, which is
+    // why the length check exists there too), so a caption would be counting toward a gate that
+    // never opens: "Plates held 0/0" forever.
+    const p = at(10, 10);
+    const plateless = { ...chest(1, 10, 10), mechanisms: [] };
+    expect(nearbyBigChest([plateless], p.gx, p.gy, R)).toBeUndefined();
+  });
+
   it('picks the NEAREST when two overlap, not the first in the array', () => {
     const p = at(10, 10);
     const far = chest(1, 13, 10);

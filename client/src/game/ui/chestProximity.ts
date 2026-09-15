@@ -31,6 +31,11 @@ export const CHEST_PLATE_PROMPT_RANGE_GRID = CHEST_MECHANISM_RING_GRID + CHEST_M
  * draws it as an emptied box) and there is nothing left to coordinate about it. Small chests
  * are skipped for the reason in the module note — nothing about one is worth a caption.
  *
+ * Neither is a big chest with NO plates. `mechanismRing` returns an empty ring for a
+ * zero-seat state and `ChestSystem` refuses to open a chest with no mechanisms at all, so a
+ * caption there would read "Plates held 0/0" over a gate that can never be satisfied — a
+ * degenerate config's chest is silent rather than confusing (found by injecting one, 2026-09-15).
+ *
  * Nearest rather than first: two chests could in principle overlap range, and a panel that
  * picked by array order would flicker between them as the player walked.
  */
@@ -39,7 +44,7 @@ export function nearbyBigChest(chests: readonly Chest[], px: Fp, py: Fp, rangeFp
   let best: Chest | undefined;
   let bestD2 = Infinity;
   for (const chest of chests) {
-    if (chest.opened || chest.kind !== 'big') continue;
+    if (chest.opened || chest.kind !== 'big' || chest.mechanisms.length === 0) continue;
     const dx = (chest.gx as number) - (px as number);
     const dy = (chest.gy as number) - (py as number);
     const d2 = dx * dx + dy * dy;

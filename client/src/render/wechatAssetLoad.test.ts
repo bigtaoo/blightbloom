@@ -49,6 +49,7 @@ import {
   getDoorCurtainTexture,
   getPortalArchTexture,
   getPropTexture,
+  getChestTexture,
   getShopkeeperTexture,
 } from './environmentSprites';
 import { WEAPON_DEFS, KIND_DEFAULTS, getWeaponTexture } from './weaponSkins';
@@ -191,6 +192,14 @@ describe('WeChat runtime — every sprite loader resolved', () => {
     for (const key of Object.keys(ENV_SPRITE_ASSETS)) {
       if (key.startsWith('pickup_')) getters[key] = () => getPickupTexture(key.slice('pickup_'.length));
       else if (key.startsWith('prop_')) getters[key] = () => getPropTexture(key.slice('prop_'.length));
+      // `chest_<kind>` and `chest_<kind>_open` (2026-09-15) — the open state is a suffix rather
+      // than a family of its own, so the split is on the LAST segment, not the first.
+      else if (key.startsWith('chest_')) {
+        const rest = key.slice('chest_'.length);
+        const opened = rest.endsWith('_open');
+        const kind = opened ? rest.slice(0, -'_open'.length) : rest;
+        getters[key] = () => getChestTexture(kind, opened);
+      }
     }
     // The guard that keeps the loop honest: a key with no getter fails here rather than
     // being skipped, so this sweep cannot go quiet the way its predecessor did.

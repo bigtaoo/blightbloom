@@ -656,9 +656,12 @@ therefore a thing to survive rather than a thing to look into — `ROADMAP` B1, 
 decided and built 2026-09-14.
 
 **What shipped:** `ChestSystem` (step 10.5), `GameState.chests`, `content/chests.ts`'s two pure
-rules, and chests authored into the shipped level. The drawn form is procedural
-(`client/src/game/scene/ChestLayer.ts`): no chest art exists yet, the same staged rollout walls,
-pillars, doors and drops each went through.
+rules, and chests authored into the shipped level. ~~The drawn form is procedural: no chest art
+exists yet.~~ **Art landed 2026-09-15** — four files (`chest_small`, `chest_small_open`,
+`chest_big`, `chest_big_open`), the same staged rollout walls, pillars, doors and drops each went
+through. `client/src/game/scene/ChestLayer.ts` keeps its Graphics form as the fallback, anchored
+at the feet in the same box the sprite occupies, so a state whose file has not loaded still draws
+something the right size. Audio is still unstarted: a chest opens in silence.
 
 **Where they actually sit — rewritten 2026-09-14 the same day** (`ENGINE_VERSION` 65). The first
 pass put the chests on the pieces that already existed (a big one in `ember_l1_extraction`, a small
@@ -716,7 +719,7 @@ to be cleared.)
   player walks out to a plate. That rule — every plate at once — is the one no player can infer
   from a ring of discs, and it is still gated on nothing a player can press. Art and an
   open/close sound are still unstarted, and would each say the same thing in a channel this
-  caption cannot reach.
+  caption cannot reach. (Art landed hours later, the same day; the open/close sound has not.)
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.
