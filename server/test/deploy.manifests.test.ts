@@ -210,8 +210,10 @@ const OBS_PORT: Record<string, string> = {
 };
 /**
  * What `caddy` publishes to the host, and the only `ports:` in the file. 80 is in this list
- * as a REQUIREMENT, not as a convenience redirect: it is the HTTP-01 challenge path, and
- * closing it makes certificate renewal fail silently about sixty days later.
+ * as a REQUIREMENT, though not for the reason it looks like: the observed issuance solved
+ * `tls-alpn-01` on 443 and never used 80. Port 80 carries the HTTP->HTTPS redirect and the
+ * `http-01` fallback, so dropping it breaks nothing on the day it is dropped and removes the
+ * spare tyre from a renewal two months later. See docker-compose.yml's `caddy` block.
  */
 const EDGE_PORTS = ['80:80', '443:443', '443:443/udp'];
 

@@ -803,3 +803,109 @@ It does not answer the verb. The panel still opens because you walked near the c
 morning. Whoever takes it gets to decide whether a third `INTERACT` consumer is finally worth it
 or whether the shop wants a gesture of its own — and gets to do it with a merchant already
 standing there to attach it to.
+
+## The backend gets hardware of its own (2026-09-15, deploy + infra + docs, no engine change)
+
+*"我去给这个游戏买一个专属服务器"* — and the interesting part of this pass is not the move. It
+is how much of `server/docker-compose.yml`, `prometheus.yml`, `config.alloy` and
+`deploy/ci-deploy.sh` turned out to be describing **the landlord rather than the services**.
+Since 2026-09-07 the three planes had run as a guest on `wnet-server`, the company's box,
+borrowed for its idle spare capacity. Four things in the deployment existed only because of
+that, and every one of them had a comment explaining itself, which is the only reason they
+could be told apart from decisions with live reasons:
+
+- **The reverse proxy was somebody else's.** This project's entire footprint on that machine
+  was ONE site block appended by hand to `~/wnet/docker/Caddyfile`, a file fronting
+  `wnet-mock.elk.de`, `sync.gamestao.com` and `pata-api.gamestao.com` as well as us. It is now
+  `server/caddy/Caddyfile`, a tracked file shipped with every deploy — same four-way `handle`
+  split, upstreams named by compose SERVICE (`matchsvc:8788`) rather than by container
+  (`wnet-test-matchsvc:8788`), because our Caddy is inside the project now.
+- **The network was theirs.** `external: true, name: docker_default` existed so that THEIR
+  Caddy could resolve OUR container names. Both halves of that arrangement left with the box.
+- **Prometheus scraped their exporters.** `docker-cadvisor-1` and `docker-node-exporter-1` —
+  the right trade on hardware we did not own (a second privileged cAdvisor mounting `/`,
+  `/sys` and `/dev/kmsg` to recompute numbers that already existed one DNS name away), and a
+  trade whose stated cost was that another team renaming a container emptied every infra panel
+  here. `obs-cadvisor` and `obs-node-exporter` are ours now.
+- **Everything was named `wnet-test`** so that nothing about the game appeared on a machine
+  belonging to someone else. Containers are `bb-*` and the image is `blightbloom:latest`; the
+  disguise cost nothing while it was true and reads as somebody else's container on a box with
+  no wnet on it.
+
+**What did NOT change is the more useful half.** The `obs-` prefix stays, the Alloy discovery
+filter stays, and both now guard something smaller than they were written for — so both say so
+in their own comments and in the test that enforces them. A rule whose reason has quietly
+expired is one nobody can evaluate later, and `deploy.observability.test.ts` now names which of
+the two states it is asserting: the prefix has stopped preventing a DNS collision on a shared
+network and started being what makes `docker compose ps` legible and what five other files
+spell out. design/19 §10's *"two facts about the host that shaped the deployment"* are both
+marked **EXPIRED** in place rather than deleted, for the same reason.
+
+**The cutover was shaped by one fact about Caddy**: it attempts the ACME challenge the instant
+its config loads, which on 2026-09-07 cost a ~10 minute backoff when the site block was
+reloaded before the DNS record existed. So the order was — ship and start **everything except
+`caddy`**, verify from the inside where no hostname is involved (each `/health` over
+`docker exec`, `up == 1` on all eight scrape targets, and Loki's own `label/svc/values` to
+prove collection works under the new container names), stop the old stack, re-copy the
+databases with nothing writing either side, move the A record, and only then start the proxy.
+The certificate signed on the first attempt. **It also corrected a claim this pass had written
+into three files**: the comments said port 80 must stay open because it is the HTTP-01
+challenge path — but the watched issuance solved `tls-alpn-01` on 443 and never touched 80.
+Port 80 carries the HTTP→HTTPS redirect and the `http-01` **fallback**, which is worse to get
+wrong than it sounds: closing it breaks nothing on the day it is closed and removes the spare
+tyre from a renewal two months later.
+
+**A uid, chosen rather than inherited.** The deploy account is `deploy` with **uid 1000** — the
+same uid the container's `node` user has — where the borrowed box's `tao` was 1001. That one
+number is why `ci-deploy.sh`'s ownership normalisation is a no-op in the steady state instead
+of the rite it became on 2026-09-09, when `mkdir data/adminsvc` failed with `Permission denied`
+and aborted a deploy. The normalisation stays, because a directory **Docker** creates because
+nobody created it first is still `root:root`, and that is the actual 2026-09-08 bug (18 hours of
+silently failing backups, CI green throughout).
+
+**The pass's own expensive lesson was line endings.** Three separate edits to
+`monitoring/alloy/config.alloy` reported success and changed nothing: the file is CRLF under
+Windows `core.autocrlf`, the patterns were LF, and a `str.replace` that matches nothing is not
+an error. `server/.gitattributes` now pins every file shipped to the box to LF — not tidiness,
+since a CRLF `ci-deploy.sh` dies on the far end as `$'\r': command not found` (the reason
+README §2's install line has always piped through `tr -d '\r'`), and a stray `\r` inside a
+scrape target resolves to nothing at all.
+
+**New assertions rather than renamed ones.** `EDGE_SERVICES` is its own category in
+`deploy.manifests.test.ts` because `caddy` is the first service here to publish a host port and
+therefore the first whose misconfiguration is reachable from the internet: exactly three ports,
+80 among them, and **no other service publishing anything**. That last clause is the one worth
+having — `ufw` cannot catch it, because Docker publishes a port by writing its own iptables
+rules ahead of ufw's chain, so a `"9090:9090"` added to `obs-prometheus` during a debug session
+puts an unauthenticated metrics browser on the public internet while the firewall still reports
+the port closed. cAdvisor also got explicit flags (`--housekeeping_interval=30s`,
+`--docker_only`, `--store_container_labels=false`): its defaults housekeep every cgroup once a
+second, which on 2 vCPUs makes the monitoring the largest single CPU consumer on the box.
+
+Walked, not assumed: twelve containers (eleven healthy, `bb-alloy` with no health column by
+design), every public acceptance row from §4 including `/metrics` and `/admin/health` answering
+404 while `/admin/` serves the console, `/client/flags` returning exactly two keys with
+`cache-control: no-store` read off the GET, `ss -tlnp` showing only 22/80/443 bound publicly,
+a verified backup cycle of all three databases on the new box before the old one was touched,
+and a real payload pushed over the forced-command key — which was first proven to restrict by
+asking it to run `cat /etc/shadow; id` (it ran the deploy script instead) and by `ssh -tt`
+being refused a PTY. A full `--force-recreate` afterwards produced **zero** ACME lines, which
+is the check that `caddy-data` is a named volume rather than something a deploy can clear.
+
+The borrowed box is clean: block removed from its Caddyfile with `cp` rather than `mv` (that
+file is a single-FILE bind mount, so a rename changes the inode and leaves `validate` and
+`reload` both reporting success against the stale one — 2026-09-09's full-day diagnosis), its
+four neighbours confirmed still routed by reading Caddy's own loaded config rather than by
+guessing at a 404, and `~/wnet-test` with its volumes, image and script backups all gone. **One
+thing could not be finished from here**: `~/.ssh/authorized_keys` on that machine is root-owned,
+so the retired deploy key's line has to be removed by whoever has its `sudo` password. It is
+already inert — its forced command names a script that no longer exists — but inert is not
+revoked.
+
+Still open, and the move made the first of these **worse** rather than better: the off-box copy
+of the backups, and alerting. A borrowed box had an owner watching it; a single Hetzner VM has
+nobody but this project, and "the whole box is gone" now produces no signal at all, because the
+dashboards that would report it are on it. Those are one problem with one answer — something
+that runs somewhere else — not two. Hetzner's own backups are one checkbox and worth turning on
+as a floor under it, but a whole-disk snapshot is not a verified database copy. `platform`
+`test` `docs`

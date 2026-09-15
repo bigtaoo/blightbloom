@@ -482,9 +482,16 @@ services:
   #    account key and every issued certificate; losing it means re-issuing on next boot and
   #    burning Let's Encrypt rate limit for nothing, so it is a named volume rather than
   #    something a redeploy can clear.
-  #  - **Port 80 is published and must stay that way.** It is not a redirect convenience:
-  #    it is the HTTP-01 challenge path. Closing it (in `ufw`, or here) makes certificate
-  #    RENEWAL fail silently ~60 days later, which is the most expensive way to discover it.
+  #  - **Port 80 is published and must stay that way, and NOT for the reason it first looks
+  #    like.** The 2026-09-15 issuance was watched: Caddy solved `tls-alpn-01` on 443 and
+  #    never touched 80, so "port 80 is how the certificate is obtained" is false as written.
+  #    What 80 actually carries is the automatic HTTP->HTTPS redirect (a real 308, verified)
+  #    and the `http-01` FALLBACK — the path Caddy takes when tls-alpn-01 is unavailable,
+  #    which is a condition that arrives without warning (a CA disabling the challenge type,
+  #    a middlebox, a future Caddy default). Closing 80 therefore breaks nothing visible on
+  #    the day it is closed, and removes the spare tyre from a renewal ~60 days later. That
+  #    is the most expensive shape a config mistake can have, so it is written down here
+  #    rather than inferred from the fact that everything still worked.
   caddy:
     image: caddy:2-alpine
     container_name: bb-caddy
