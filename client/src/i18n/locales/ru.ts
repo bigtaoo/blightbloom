@@ -117,6 +117,13 @@ export const ru: Translations<typeof en> = {
       heal: 'Зелье лечения',
       energy: 'Энергоячейка',
     },
+    chest: {
+      title: 'Сундук',
+      openKeys: 'Нажмите E, чтобы открыть',
+      openTouch: 'Нажмите +, чтобы открыть',
+      bigTitle: 'Большой сундук',
+      plates: 'Плиты заняты {on}/{total}',
+    },
     chips: {
       floor: 'ЭТАЖ',
       room: 'КОМНАТА',

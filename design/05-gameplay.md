@@ -696,6 +696,18 @@ to be cleared.)
   bring more players or to play alone, which is the property that keeps it out of the party-size
   balancing problem entirely. A smaller party is not locked out of the content and a larger one
   is not farming it.
+- **The button a chest needs had to be findable, and was not** (2026-09-15). A chest shipped
+  with no art, no sound and no prompt, and `INTERACT` is taught nowhere: the tutorial's hint list
+  covers move, attack, swap and deflect and stops. The report was *"宝箱无法打开"* — a chest the
+  player was standing on — and the mechanic turned out to be fine: the sim opens it in a headless
+  run, and the shipped client opens it on the first frame a `KeyE` reaches `WebInput`, both
+  verified before anything was changed. **The missing piece was never the mechanic, only any way
+  to find out the mechanic was there**, which is a failure a green engine suite structurally
+  cannot see. The fix is a bottom-centre caption (`client/src/game/ui/ChestPrompt.ts`, `10`'s HUD
+  table): the control this device actually has for a small chest, the live plate count for a big
+  one, and both ranges read off the sim's own constants so a caption cannot promise a reach the
+  sim refuses. Art and an open/close sound are still unstarted, and would each say the same thing
+  in a channel this caption cannot reach.
 - **More chest-room types come later.** Deliberately deferred. These two are the slice worth
   building and validating first, and a third kind that arrives before they have been played is
   a guess stacked on a guess.

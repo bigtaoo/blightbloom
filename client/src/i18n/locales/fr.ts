@@ -112,6 +112,13 @@ export const fr: Translations<typeof en> = {
       heal: 'Potion de soin',
       energy: "Cellule d'énergie",
     },
+    chest: {
+      title: 'Coffre',
+      openKeys: 'Appuyez sur E pour ouvrir',
+      openTouch: 'Appuyez sur + pour ouvrir',
+      bigTitle: 'Grand coffre',
+      plates: 'Plaques occupées {on}/{total}',
+    },
     chips: {
       floor: 'ÉTAGE',
       room: 'SALLE',

@@ -4,6 +4,7 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState, EngineConfig } from '@dd/engine/state/GameState';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { Fp } from '@dd/engine/math/fixed';
+import { CHEST_INTERACT_RANGE_GRID, toFpGrid } from '@dd/engine';
 import { WEAPON_PROMPT_RADIUS_FP } from './pickupProximity';
 import { Layers } from '../scene/layers';
 import { HudView, type HudContext } from './HudView';
@@ -26,6 +27,7 @@ const CTX: HudContext = {
   showAlly: false,
   allySkinId: '',
   canSaveReplay: true,
+  touch: false,
 };
 
 const PVE_CFG: EngineConfig = { seed: 1, worldW: 800, worldH: 600, waves: [] };
@@ -433,6 +435,57 @@ describe('HudView — weapon-pickup panel placement (design/03)', () => {
     hud.update(s, 16, CTX);
 
     expect(offeredIds(hud)).toEqual([far.id, near.id]); // nearest first
+  });
+});
+
+/**
+ * The chest caption's WIRING (design/05 "Chest rooms", 2026-09-15) — what `updateChestPrompt`
+ * feeds `nearbyChest`, which is the half neither `chestProximity.test.ts` nor
+ * `ChestPrompt.test.ts` can see. The reach it passes is the sim's own range PLUS the seat's
+ * body radius, exactly as `ChestSystem.openWanted` sums them; a caption fed the bare constant
+ * would go dark a body-radius early, while the sim was still accepting the button.
+ */
+describe('HudView — chest caption (design/05 "Chest rooms")', () => {
+  const chestAt = (s: GameState, gx: Fp, gy: Fp, kind: 'small' | 'big' = 'small') => {
+    s.chests.push({ id: s.nextChestId(), roomId: 'r1', kind, gx, gy, mechanisms: [], opened: false });
+  };
+
+  it('stays hidden with no chest in reach', () => {
+    const hud = newHud();
+    hud.update(pveState(), 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
+  });
+
+  it('opens for an unopened chest at the seat position', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy);
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(true);
+  });
+
+  it('closes the moment the chest is opened, with nobody having moved', () => {
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    chestAt(s, p.gx, p.gy);
+    hud.update(s, 16, CTX);
+    s.chests[0]!.opened = true;
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(false);
+  });
+
+  it('adds the seat body radius to the reach, exactly as ChestSystem does', () => {
+    // A chest placed just past the bare constant but inside constant+radius: the sim opens
+    // here, so the caption has to be up here.
+    const hud = newHud();
+    const s = pveState();
+    const p = s.players[0]!;
+    const justPastTheConstant = ((p.gx as number) + (toFpGrid(CHEST_INTERACT_RANGE_GRID) as number) + 1) as Fp;
+    chestAt(s, justPastTheConstant, p.gy);
+    hud.update(s, 16, CTX);
+    expect(hud.chestPrompt.isOpen).toBe(true);
   });
 });
 

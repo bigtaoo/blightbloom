@@ -112,6 +112,13 @@ export const zh: Translations<typeof en> = {
       heal: '治疗药水',
       energy: '能量电池',
     },
+    chest: {
+      title: '宝箱',
+      openKeys: '按 E 开启',
+      openTouch: '按 + 开启',
+      bigTitle: '大宝箱',
+      plates: '踏板 {on}/{total}',
+    },
     chips: {
       floor: '楼层',
       room: '房间',

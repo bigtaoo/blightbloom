@@ -112,6 +112,13 @@ export const de: Translations<typeof en> = {
       heal: 'Heiltrank',
       energy: 'Energiezelle',
     },
+    chest: {
+      title: 'Truhe',
+      openKeys: 'E drücken zum Öffnen',
+      openTouch: '+ drücken zum Öffnen',
+      bigTitle: 'Große Truhe',
+      plates: 'Platten besetzt {on}/{total}',
+    },
     chips: {
       floor: 'ETAGE',
       room: 'RAUM',

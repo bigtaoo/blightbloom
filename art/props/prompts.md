@@ -190,3 +190,154 @@ were all keyed or thresholded on import, so `trimAlphaBoundingBox`'s `alpha !== 
 been handed a file where it mattered. `propArt.test.ts` decodes the shipped copies and asserts
 the trim is tight and the body genuinely opaque, so nothing records "was the step run" by
 memory.
+
+# Chest prompts (2026-09-15)
+
+The other wooden box in these rooms, and the one the crate prompt above spends a paragraph
+telling the model NOT to draw. A chest is `GameState.chests` — a real mechanic (design/05
+"Chest rooms", ENGINE_VERSION 63), not dressing — and it has shipped with no art at all:
+`client/src/game/scene/ChestLayer.ts` draws a Graphics box, and its own header says the shapes
+are "the drawn form for now, not a fallback waiting on a file". These prompts are that file.
+
+Sizes are derived from `ChestLayer`, not chosen by eye — `BODY_HALF` (9 small / 14 big) is a
+HALF-width and `BODY_ASPECT` is 0.8, and the same 8x rule the props above were shipped at
+(`MAX_ZOOM` 4.5 x `resolution` 2) sets the source long axis:
+
+| kind | state | drawn (world px) | aspect | shipped long axis |
+| --- | --- | --- | --- | --- |
+| small | closed | 18 x 14.4 | 1.25 | `chest_small.png` 144 wide |
+| small | open | 18 x 14.4 | 1.25 | `chest_small_open.png` 144 wide |
+| big | closed | 28 x 22.4 | 1.25 | `chest_big.png` 224 wide |
+| big | open | 28 x 22.4 | 1.25 | `chest_big_open.png` 224 wide |
+
+Four files, because `ChestLayer` already draws two states per kind and a chest that stays shut
+after it has paid out is a landmark that lies. The OPEN pair must sit on the same footprint and
+the same ground line as its closed twin — the sprite is swapped in place, so a lid that grows
+the silhouette upward is fine, one that shifts the box sideways is a defect.
+
+## The shared style paragraph
+
+Repeated **in full** in every one of the four prompts, for the reason the props batch records:
+stating it once in a preamble does not hold, and later prompts in a batch drift back toward a
+scene rendering.
+
+```
+Flat-cel game art asset for a top-down-tilted 2D dungeon crawler. Orthographic
+projection, fixed camera looking down at roughly 60 degrees from horizontal, so the
+object shows a large top surface and a small front face. Key light from the UPPER
+LEFT; the right and lower-right sides fall into shadow.
+
+The background must be REAL transparency (alpha = 0). Do NOT draw a grey-and-white
+checkerboard or any other pattern to represent transparency — a painted checkerboard
+is a defect. No drop shadow, no ground plane, no cast shadow: the game draws the
+shadow itself. NO outer glow, bloom, or halo of any kind — the game draws all glow
+itself.
+
+A single object, centred, with at least 8% transparent margin on every side. Nothing
+else in the frame: no floor, no wall, no room, no scene, no second object.
+
+This is displayed in game at only about 18 to 28 pixels wide, so the SILHOUETTE has to
+carry it: bold simple shape, strong value contrast between the top surface and the
+front face. Do not rely on any detail finer than one sixth of the object's width —
+thin lines vanish completely at display size.
+```
+
+## The constraint every chest prompt carries (the crate rule, inverted)
+
+The crate prompt above had to say "nothing that reads as openable or worth approaching". A
+chest is the object that sentence was protecting, so its prompts state the opposite explicitly,
+and against BOTH of the game's existing boxes:
+
+```
+CRITICAL: this game already contains two other wooden boxes. One is a battered, dark,
+desaturated SCENERY crate that does nothing (median luma about 53). The other is a
+small bright blue-grey LOOT crate the player walks over to collect. This chest must be
+unmistakably neither: it is a reward the player walks TO and opens on purpose, so it
+is warmer, cleaner and brighter than the scenery crate — polished timber, intact
+bands, a real lock plate — while staying an object that SITS on the floor, not a
+collectible that floats above it.
+```
+
+## small, closed — `chest_small_raw.png`
+
+```
+[shared style paragraph]
+
+Subject: a closed wooden treasure chest, sitting flat on the ground, lid down and
+latched.
+Proportions: WIDER THAN TALL, width:height = 18:14.4 (1.25:1).
+Warm honey-brown timber planks with two horizontal brass bands running the full width,
+a brass lock plate centred on the front face, and simple brass corner caps. Flat lid,
+no dome. Slightly worn, never rusted or broken.
+
+[the two-other-boxes constraint]
+```
+
+## small, open — `chest_small_open_raw.png`
+
+```
+[shared style paragraph]
+
+Subject: the SAME closed wooden treasure chest, now empty with its lid thrown fully
+back, seen from the same angle.
+Proportions and footprint IDENTICAL to the closed version — same width, same ground
+line, same timber, same brass bands and lock plate. Only the lid has moved.
+The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no
+gold, no glow, no contents of any kind — this is drawn AFTER the reward has been taken.
+
+[the two-other-boxes constraint]
+```
+
+## big, closed — `chest_big_raw.png`
+
+```
+[shared style paragraph]
+
+Subject: a closed reinforced vault strongbox, a heavy version of a treasure chest,
+sitting flat on the ground.
+Proportions: WIDER THAN TALL, width:height = 28:22.4 (1.25:1).
+DOMED, barrel-curved lid (this is the shape that separates it from the smaller
+flat-lidded chest), four heavy iron corner brackets, three thick bands across the lid,
+and one large central mechanism plate instead of a simple keyhole. Darker, harder
+timber than a small chest, iron rather than brass fittings.
+
+CRITICAL: the big and small chests must differ in SHAPE and SIZE, not only in colour —
+a player who cannot tell them apart in greyscale cannot tell them apart at all.
+
+[the two-other-boxes constraint]
+```
+
+## big, open — `chest_big_open_raw.png`
+
+```
+[shared style paragraph]
+
+Subject: the SAME reinforced vault strongbox, now empty with its domed lid thrown
+fully back, seen from the same angle.
+Proportions and footprint IDENTICAL to the closed version — same width, same ground
+line, same timber, same iron brackets and bands. Only the lid has moved.
+The interior is a dark empty cavity: nearly black with a warm brown tint, no coins, no
+gold, no glow, no contents of any kind.
+
+[the two-other-boxes constraint]
+```
+
+## The import chain
+
+Same three steps and the same non-optional clamp as the props above — a generation that arrives
+with the 252-253 alpha plateau and its invisible veil will otherwise trim to the wrong aspect,
+and a chest is scaled by width with the art's own aspect setting its height:
+
+```bash
+node tools/png-pipeline/alphaClamp.mjs client/public/environment/chest_*.png
+node tools/png-pipeline/compress.mjs --long-axis=144 client/public/environment/chest_small.png
+node tools/png-pipeline/compress.mjs --long-axis=144 client/public/environment/chest_small_open.png
+node tools/png-pipeline/compress.mjs --long-axis=224 client/public/environment/chest_big.png
+node tools/png-pipeline/compress.mjs --long-axis=224 client/public/environment/chest_big_open.png
+node tools/png-pipeline/alpha-audit.mjs client/public/environment
+```
+
+Wiring the files into `ChestLayer` is a separate pass: its `drawBody` is a Graphics factory
+today, and the sprite path wants the same bottom-anchored, scale-by-width treatment
+`propRender.ts` already has, plus a test that re-derives the aspect from the shipped PNG rather
+than trusting the table above.

@@ -6,6 +6,8 @@ import { nearbyWeaponPickups, WEAPON_PROMPT_RADIUS_FP } from './pickupProximity'
 import { WeaponPickupPrompt } from './WeaponPickupPrompt';
 import { ShopPrompt } from './ShopPrompt';
 import { nearbyShop, SHOP_PROMPT_RANGE_GRID } from './shopProximity';
+import { ChestPrompt } from './ChestPrompt';
+import { nearbyChest, CHEST_BIG_PROMPT_RANGE_GRID, CHEST_PROMPT_RANGE_GRID } from './chestProximity';
 import { toFpGrid } from '@dd/engine';
 import { Minimap, type MinimapPlayer } from './Minimap';
 import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
@@ -36,6 +38,10 @@ export interface HudContext {
    *  online match, whose record is the server's confirmed stream, not ours. A control
    *  that cannot work should not be on screen. */
   canSaveReplay: boolean;
+  /** Whether this session is being played with touch controls (`InputSource.getTouchVisual()
+   *  .active`) — only the chest prompt reads it, to name the control that actually exists on
+   *  this device. Same source and same reason as `TutorialHintController`'s own flag. */
+  touch: boolean;
 }
 
 type ChipKey = 'floor' | 'room' | 'enemies' | 'banked' | 'coins' | 'score' | 'buffs' | 'stage' | 'alive';
@@ -104,6 +110,11 @@ export class HudView {
   // down the screen: a list of things in reach, tapping one is the action. It is shown only
   // while the seat stands on a counter's drawn mat, which is why it needs no close button.
   readonly shopPrompt = new ShopPrompt();
+  // Chest caption (design/05 "Chest rooms", 2026-09-15) — bottom-centre, informational, and
+  // the only thing in the game that says how a chest opens. Not part of the right-hand prompt
+  // column and not tappable: a chest has no command of its own, only the INTERACT hold. See
+  // `ChestPrompt` for the full account.
+  readonly chestPrompt = new ChestPrompt();
   // Shared PvP/PvE room-graph minimap (design/10, PvE wiring 2026-08-05) — its own
   // visibility is driven independently of the rest of the HUD (zoneEnabled/
   // dungeonRooms, not phase), so it's mounted as a SIBLING of `view` inside
@@ -170,6 +181,7 @@ export class HudView {
       this.toasts.view,
       this.weaponPickupPrompt.view,
       this.shopPrompt.view,
+      this.chestPrompt.view,
       this.downedBanner.view,
       this.pauseBtn.view,
       this.replayBtn.view,
@@ -198,6 +210,7 @@ export class HudView {
     // right edge, so a second row would land on top of it.
     this.replayBtn.view.position.set(screenPx.w - 20 - 36 - 42, 12);
     this.downedBanner.reposition(screenPx);
+    this.chestPrompt.reposition(screenPx);
   }
 
   update(s: GameState, dt: number, ctx: HudContext): void {
@@ -280,6 +293,7 @@ export class HudView {
     this.layout(s.zoneEnabled ? PVP_CHIPS : PVE_CHIPS, buffCount > 0, ally !== undefined, showRoster);
     this.updateWeaponPickupPrompt(s, p);
     this.updateShopPrompt(s, p);
+    this.updateChestPrompt(s, p, ctx.touch);
     this.toasts.update(dt);
 
     // Shared room-graph minimap (design/10 "room progress"; PvE wiring 2026-08-05,
@@ -393,6 +407,24 @@ export class HudView {
   private updateWeaponPickupPrompt(s: GameState, p: GameState['players'][number] | undefined): void {
     const nearby = p ? nearbyWeaponPickups(s.pickups, p.gx, p.gy, WEAPON_PROMPT_RADIUS_FP) : [];
     this.weaponPickupPrompt.update(nearby);
+  }
+
+  // Chest caption (design/05 "Chest rooms"). Reach is computed the same way the shop panel's
+  // is, and for the same reason: the small chest's range is `ChestSystem.openWanted`'s own
+  // gate plus the seat's body radius, so "the caption is up" and "the sim will accept the
+  // button" cannot drift apart. The big chest's wider range is about its plates, not a reach
+  // — see `chestProximity.ts`.
+  private updateChestPrompt(s: GameState, p: GameState['players'][number] | undefined, touch: boolean): void {
+    const chest = p
+      ? nearbyChest(
+          s.chests,
+          p.gx,
+          p.gy,
+          toFpGrid(CHEST_PROMPT_RANGE_GRID) + (p.radius as number),
+          toFpGrid(CHEST_BIG_PROMPT_RANGE_GRID),
+        )
+      : undefined;
+    this.chestPrompt.update(chest, touch);
   }
 
   // Shop counter panel (design/05 "Shops"). The reach test adds the seat's OWN body radius to

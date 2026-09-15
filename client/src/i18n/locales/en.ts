@@ -118,6 +118,16 @@ export const en = {
       heal: 'Health potion',
       energy: 'Energy cell',
     },
+    // Chest prompt (ui/ChestPrompt.ts, design/05 "Chest rooms"). A chest teaches nothing on
+    // its own — it has no art and no sound, and INTERACT is taught by no tutorial hint — so
+    // these five strings are the only place the game says how a chest opens.
+    chest: {
+      title: 'Chest',
+      openKeys: 'Press E to open',
+      openTouch: 'Press + to open',
+      bigTitle: 'Big chest',
+      plates: 'Plates held {on}/{total}',
+    },
     // Stat-chip labels (ui/StatChip.ts) — short by design: each sits under a tinted
     // icon in a pill, so it only has to disambiguate, not describe.
     chips: {
