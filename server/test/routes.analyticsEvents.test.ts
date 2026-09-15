@@ -2,11 +2,11 @@
  * `POST /client/events`, DRIVEN OVER REAL HTTP (src/routes/telemetry.ts).
  *
  * `analyticsIngest.test.ts` covers the pure validation and `analyticsStore.test.ts` covers
- * the rows. This file covers what only a real request can show:
+ * the documents. This file covers what only a real request can show:
  *
  *   - **The account id comes from the bearer token, never from the body.** Asserted by
- *     reading the stored row back — the one field that says whose visit this was is also
- *     the one field a client must not be able to write, and a handler-level test that
+ *     reading the stored document back — the one field that says whose visit this was is
+ *     also the one field a client must not be able to write, and a handler-level test that
  *     inspects the parsed batch cannot see the difference.
  *   - **Every outcome is `200 {ok, accepted}`.** A refused batch, a rate-limited request, a
  *     body over the limit and a process with analytics switched off all answer the same
@@ -15,72 +15,72 @@
  *   - **Analytics being OFF is a supported state, not a broken one.** With no database the
  *     route still answers, and nothing about the game changes.
  *
- * Unlike `routes.telemetry.test.ts` this needs a real FILE rather than `:memory:`, because
- * the assertions are about rows that the server process wrote and this process has to read.
- * That is also why cleanup is best-effort: `createMatchsvcServer` holds its SQLite handles
- * for the life of the process with no way to close them, so on Windows the file stays
- * locked and removing the directory throws EPERM. The directory is in the OS temp area and
- * the failure is not about anything under test, so it is swallowed rather than allowed to
- * fail every case in the file.
+ * Two things changed with the MongoDB port. The server is handed a `Db` rather than a file
+ * path, so this file no longer needs a scratch directory or the best-effort Windows cleanup
+ * that went with it — the harness drops the databases. And the write is AWAITED rather than
+ * synchronous, so the `/metrics` case waits for the first rollup cycle to land instead of
+ * assuming it finished before `createMatchsvcServer` returned.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import { createMatchsvcServer } from '../src/matchsvc';
-import { openAnalyticsDb, openAnalyticsDbReadOnly } from '../src/analytics/db';
+import { dailyActiveOf, ensureAnalyticsIndexes, eventsOf } from '../src/analytics/db';
 import { CLIENT_EVENTS_BODY_LIMIT, RATE_LIMIT } from '../src/routes/telemetry';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
 const NOW = 1_800_000_000_000;
 const servers: Server[] = [];
-const dirs: string[] = [];
-const readers: DatabaseSync[] = [];
+const contexts: MongoTestContext[] = [];
 
 const silentLog = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, child: () => ({}) as never };
 
 interface Harness {
   base: string;
-  /** The file the server is writing, so a test can open its own connection to it. */
-  path: string | null;
-  /** A second, READ-ONLY connection to the same file the server is writing. */
-  rows: () => { name: string; install: string; account_id: string | null; day: string }[];
-  active: () => { day: string; install: string; host: string }[];
+  /** The analytics database the server is writing, so a test can read it back — or null
+   *  when this deployment collects nothing. */
+  db: Db | null;
+  rows: () => Promise<{ name: string; install: string; accountId: string | null; day: string }[]>;
+  active: () => Promise<{ day: string; install: string; host: string }[]>;
 }
 
 async function start(opts: { analytics?: boolean } = {}): Promise<Harness> {
-  const dir = mkdtempSync(join(tmpdir(), 'bb-events-'));
-  dirs.push(dir);
-  const analyticsPath = opts.analytics === false ? null : join(dir, 'analytics.db');
+  let db: Db | null = null;
+  if (opts.analytics !== false) {
+    const ctx = await openTestMongo();
+    contexts.push(ctx);
+    db = ctx.db('analytics');
+    // The caller's obligation, stated in `MatchsvcServerOptions.analyticsDb`: the cohort
+    // collection's exactly-once claim IS its unique index, and nothing in the route can
+    // check for it per request.
+    await ensureAnalyticsIndexes(db);
+  }
 
   const server = createMatchsvcServer({
     dbPath: ':memory:',
-    analyticsDbPath: analyticsPath,
+    analyticsDb: db,
     lokiUrl: null,
     log: silentLog,
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-  const reader = (): DatabaseSync => {
-    const db = openAnalyticsDbReadOnly(analyticsPath!);
-    readers.push(db);
-    return db;
-  };
   return {
-    base,
-    path: analyticsPath,
-    rows: () => {
-      const db = reader();
-      return db.prepare('SELECT name, install, account_id, day FROM events ORDER BY id').all() as never;
-    },
-    active: () => {
-      const db = reader();
-      return db.prepare('SELECT day, install, host FROM daily_active ORDER BY day').all() as never;
-    },
+    base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    db,
+    rows: async () =>
+      (await eventsOf(db!)
+        .find({}, { projection: { _id: 0, name: 1, install: 1, accountId: 1, day: 1 } })
+        // `_id` is an ObjectId now, not an autoincrementing integer — it still sorts in
+        // creation order, which is all the old `ORDER BY id` ever meant here.
+        .sort({ _id: 1 })
+        .toArray()) as never,
+    active: async () =>
+      (await dailyActiveOf(db!)
+        .find({}, { projection: { _id: 0, day: 1, install: 1, host: 1 } })
+        .sort({ day: 1 })
+        .toArray()) as never,
   };
 }
 
@@ -114,20 +114,13 @@ async function register(base: string, username: string): Promise<string> {
   return body.token;
 }
 
-afterEach(() => {
-  for (const db of readers.splice(0)) db.close();
+afterEach(async () => {
   for (const s of servers.splice(0)) s.close();
-  for (const d of dirs.splice(0)) {
-    try {
-      rmSync(d, { recursive: true, force: true });
-    } catch {
-      /* Windows keeps the server's handle open — see the file header */
-    }
-  }
+  for (const c of contexts.splice(0)) await c.dispose();
 });
 
 describe('POST /client/events', () => {
-  it('stores a batch and reports how many rows it accepted', async () => {
+  it('stores a batch and reports how many documents it accepted', async () => {
     const h = await start();
     const res = await post(
       h.base,
@@ -140,28 +133,28 @@ describe('POST /client/events', () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, accepted: 2 });
-    expect(h.rows().map((r) => r.name)).toEqual(['session_start', 'run_end']);
+    expect((await h.rows()).map((r) => r.name)).toEqual(['session_start', 'run_end']);
   });
 
-  it('records the cohort row that retention is computed from', async () => {
+  it('records the cohort document that retention is computed from', async () => {
     const h = await start();
     await post(h.base, batch());
-    expect(h.active()).toEqual([{ day: expect.any(String), install: 'i-abc', host: 'web' }]);
+    expect(await h.active()).toEqual([{ day: expect.any(String), install: 'i-abc', host: 'web' }]);
   });
 
   it('stores no account id for a guest', async () => {
     const h = await start();
     await post(h.base, batch());
-    expect(h.rows()[0]!.account_id).toBeNull();
+    expect((await h.rows())[0]!.accountId).toBeNull();
   });
 
   it('takes the account id from the BEARER TOKEN', async () => {
     const h = await start();
     const token = await register(h.base, 'analytics_user');
     await post(h.base, batch(), { authorization: `Bearer ${token}` });
-    const row = h.rows()[0]!;
-    expect(row.account_id).toBeTruthy();
-    expect(row.account_id).not.toBe('i-abc');
+    const row = (await h.rows())[0]!;
+    expect(row.accountId).toBeTruthy();
+    expect(row.accountId).not.toBe('i-abc');
   });
 
   it('IGNORES an account id in the body', async () => {
@@ -169,13 +162,13 @@ describe('POST /client/events', () => {
     // events against somebody else's account.
     const h = await start();
     await post(h.base, batch({ account_id: 'acct-victim', accountId: 'acct-victim', user_id: 'acct-victim' }));
-    expect(h.rows()[0]!.account_id).toBeNull();
+    expect((await h.rows())[0]!.accountId).toBeNull();
   });
 
   it('ignores a bearer token that is not a session', async () => {
     const h = await start();
     await post(h.base, batch(), { authorization: 'Bearer not-a-real-token' });
-    expect(h.rows()[0]!.account_id).toBeNull();
+    expect((await h.rows())[0]!.accountId).toBeNull();
   });
 
   it('answers 200 with accepted: 0 for a body that is not a batch', async () => {
@@ -185,7 +178,7 @@ describe('POST /client/events', () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true, accepted: 0 });
     }
-    expect(h.rows()).toHaveLength(0);
+    expect(await h.rows()).toHaveLength(0);
   });
 
   it('drops the events it cannot parse and keeps the rest of the batch', async () => {
@@ -200,11 +193,10 @@ describe('POST /client/events', () => {
   it('refuses a body over the limit without storing half of it', async () => {
     // The overflow tail is dropped, so what reaches JSON.parse is truncated and throws.
     const h = await start();
-    const fat = batch({ locale: 'x'.repeat(CLIENT_EVENTS_BODY_LIMIT) });
-    const res = await post(h.base, fat);
+    const res = await post(h.base, batch({ locale: 'x'.repeat(CLIENT_EVENTS_BODY_LIMIT) }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, accepted: 0 });
-    expect(h.rows()).toHaveLength(0);
+    expect(await h.rows()).toHaveLength(0);
   });
 
   it('rate-limits per IP, and still answers 200', async () => {
@@ -222,23 +214,18 @@ describe('POST /client/events', () => {
   });
 
   it('answers 200 with accepted: 0 when the WRITE fails', async () => {
-    // Reached through a real failing write rather than a stub: a trigger installed from a
-    // second connection makes SQLite abort the insert inside the route's own transaction.
-    // What must not happen is a 500 — a database problem is ours, and the client's only
-    // correct behaviour either way is to carry on and drop the batch.
+    // Reached through a real refusal rather than a stub: a collection validator makes mongod
+    // reject the insert inside the route's own transaction. What must not happen is a 500 —
+    // a database problem is ours, and the client's only correct behaviour either way is to
+    // carry on and drop the batch. It is also the one case that proves the rejected promise
+    // is HANDLED: an unhandled one would take the process down instead of answering.
     const h = await start();
-    const writer = openAnalyticsDb(h.path!);
-    try {
-      writer.exec(`CREATE TRIGGER no_events BEFORE INSERT ON events
-                   BEGIN SELECT RAISE(ABORT, 'disk full'); END`);
-      const res = await post(h.base, batch());
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: true, accepted: 0 });
-      expect(h.rows()).toHaveLength(0);
-    } finally {
-      writer.exec('DROP TRIGGER IF EXISTS no_events');
-      writer.close();
-    }
+    await h.db!.command({ collMod: 'events', validator: { name: { $eq: '__nothing_matches__' } } });
+    const res = await post(h.base, batch());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, accepted: 0 });
+    await h.db!.command({ collMod: 'events', validator: {} });
+    expect(await h.rows()).toHaveLength(0);
   });
 
   it('answers a CORS preflight, since the client is on another origin', async () => {
@@ -268,9 +255,8 @@ describe('POST /client/events', () => {
 
 describe('POST /client/events with analytics switched off', () => {
   it('still answers, and collects nothing', async () => {
-    // `BB_ANALYTICS_DB_PATH` unset. A deployment in this state must serve the game
-    // normally — the route exists, answers the shape the client expects, and stores
-    // nothing.
+    // No `analyticsDb`. A deployment in this state must serve the game normally — the route
+    // exists, answers the shape the client expects, and stores nothing.
     const h = await start({ analytics: false });
     const res = await post(h.base, batch());
     expect(res.status).toBe(200);
@@ -279,8 +265,7 @@ describe('POST /client/events with analytics switched off', () => {
 
   it('serves /metrics with no analytics gauges rather than zeroed ones', async () => {
     const h = await start({ analytics: false });
-    const res = await fetch(`${h.base}/metrics`);
-    const text = await res.text();
+    const text = await (await fetch(`${h.base}/metrics`)).text();
     expect(text).toContain('bb_matchsvc_queue_waiting');
     expect(text).not.toContain('bb_dau');
     expect(text).not.toContain('bb_retention_ratio');
@@ -291,10 +276,16 @@ describe('/metrics with analytics on', () => {
   it('reports DAU for the last complete day, and no retention it cannot answer', async () => {
     // A fresh database: DAU is a real zero (nobody played yesterday) and retention is
     // genuinely unknown, so one appears and the other must not.
+    //
+    // Waited for rather than read once: the first rollup cycle is a round trip to the
+    // cluster now, so the gauge appears a moment after the server binds. "No gauges yet" is
+    // the correct answer during that window (`analytics/job.ts`), which is exactly why this
+    // has to poll rather than assume.
     const h = await start();
-    const res = await fetch(`${h.base}/metrics`);
-    const text = await res.text();
-    expect(text).toContain('bb_dau{host="all"} 0');
-    expect(text).not.toContain('bb_retention_ratio');
+    await vi.waitFor(async () => {
+      const text = await (await fetch(`${h.base}/metrics`)).text();
+      expect(text).toContain('bb_dau{host="all"} 0');
+      expect(text).not.toContain('bb_retention_ratio');
+    });
   });
 });

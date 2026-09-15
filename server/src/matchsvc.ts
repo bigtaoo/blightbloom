@@ -66,6 +66,7 @@
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import type { Db } from 'mongodb';
 import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
 import { PartyService } from './PartyService';
@@ -83,7 +84,6 @@ import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { openDb } from './db';
-import { openAnalyticsDb } from './analytics/db';
 import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
@@ -124,18 +124,19 @@ export interface MatchsvcServerOptions {
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
   /**
-   * Where `analytics.db` lives (design/21 §2.4), or `null` for "collect nothing".
+   * The `analytics` database (design/21 §2.4), or `null`/absent for "collect nothing".
    *
-   * Unlike `dbPath` this has **no default path**, and the asymmetry is deliberate. Identity
-   * has to persist wherever this process runs, so `openDb` falls back to a real file.
-   * Analytics is optional, and an implicit default would make it collect into a file that
-   * the backup worker — which discovers its sources by env var (`backup/config.ts`'s
-   * `SOURCE_VARS`) — does not know about. Tying both to the same explicit
-   * `BB_ANALYTICS_DB_PATH` keeps "is it collected" and "is it backed up" a single condition
-   * rather than two that can disagree. It also means nothing is collected by accident,
-   * which is the right default for the one subsystem with a privacy policy attached.
+   * A `Db` rather than the `analyticsDbPath` this took until the MongoDB port, because
+   * there is no file to open any more: the handle comes from the process-wide pooled client
+   * (`mongo.ts`'s `store('analytics')`), which only exists after `connectMongo()` has been
+   * awaited at boot. Whoever supplies it must also have awaited `ensureAnalyticsIndexes` —
+   * the cohort table's exactly-once claim IS its unique index.
+   *
+   * Absent still means OFF, and that asymmetry with `dbPath` is deliberate and unchanged.
+   * Identity has to persist wherever this process runs; analytics is optional, and nothing
+   * should be collected by accident in the one subsystem with a privacy policy attached.
    */
-  analyticsDbPath?: string | null;
+  analyticsDb?: Db | null;
   /**
    * Matchmaker timing overrides. The only reason this exists is `pvpBotFillMs`: PvP bot
    * backfill is a 30-SECOND wait by default, so `onBotFill` below — the block that mints a
@@ -279,12 +280,14 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
   const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
 
-  // Analytics (design/21 §2.4). Resolved once, like `lokiUrl` and for the same reason.
-  const analyticsPath = opts.analyticsDbPath !== undefined ? opts.analyticsDbPath : analyticsDbPathFromEnv();
-  const analyticsDb = analyticsPath === null ? null : openAnalyticsDb(analyticsPath);
-  // The job runs one cycle synchronously here, so a restarted process serves real gauges at
-  // once. Its interval is `unref`ed, and it is stopped on the server's own close event —
-  // which is what keeps a test file that builds a dozen servers from leaving a dozen timers.
+  // Analytics (design/21 §2.4). Injected rather than opened here since the MongoDB port —
+  // see `MatchsvcServerOptions.analyticsDb`. Until this process's own boot path awaits
+  // `connectMongo()`, an absent option means this deployment collects nothing.
+  const analyticsDb = opts.analyticsDb ?? null;
+  // The job kicks off one cycle here, so a restarted process serves real gauges as soon as
+  // the cluster answers. Its interval is `unref`ed, and it is stopped on the server's own
+  // close event — which is what keeps a test file that builds a dozen servers from leaving
+  // a dozen timers.
   const rollup: RollupJob | null = analyticsDb === null ? null : startRollupJob({ db: analyticsDb, log });
 
   const deps = {
@@ -442,9 +445,13 @@ export function startFlagPolling(server: Server): FlagClient | undefined {
  *
  * An empty value is treated as unset, which design/19 §9 records as a mistake this project
  * has already paid for once: an env var set to `""` beats a `??` fallback, and a compose
- * file with a trailing `BB_ANALYTICS_DB_PATH:` and no value produces exactly that. Here the
- * consequence would be `openAnalyticsDb('')` — a path SQLite reads as a temporary
+ * file with a trailing `BB_ANALYTICS_DB_PATH:` and no value produces exactly that. The
+ * consequence used to be `openAnalyticsDb('')` — a path SQLite reads as a temporary
  * database, so collection would appear to work and vanish on restart.
+ *
+ * This process no longer opens a file, so nothing here calls it any more; `adminsvc/dbs.ts`
+ * still resolves the same variable the same way and `adminsvc.dbs.test.ts` pins the two
+ * answers to each other. It stays until adminsvc is ported off the file too.
  */
 export function analyticsDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
   const raw = env.BB_ANALYTICS_DB_PATH?.trim();
