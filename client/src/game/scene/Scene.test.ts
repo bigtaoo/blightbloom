@@ -1246,9 +1246,71 @@ describe('Scene.reconcile — a collected drop flies to whoever took it', () => 
     scene.interpolate(1, FLIGHT_MS * 0.99);
     const body = scene.player!;
     expect(Math.abs(drop.x - body.x)).toBeLessThan(6);
-    // Above the ground point by a real amount — loot flying into the feet reads as dropping
-    // in front of the character, which is the thing this aims off.
-    expect(drop.y).toBeLessThan(body.y + body.drawnLift - 4);
+    // Up at the BODY, not at the ground point — loot flying into a character's feet reads as
+    // dropping in front of them. Measured as a fraction of the drawn body rather than in px,
+    // because the same 10 px that is a chest on a mob is an ankle on a boss. A bare "higher than
+    // the feet" bound is NOT enough and this is measured, not assumed: with the target moved to
+    // the feet the drop is still on its way down out of the hop when it arrives, so the old
+    // assertion passed and the mutant lived.
+    const bodyH = body.bodySilhouette.bodyH;
+    expect(body.y - drop.y).toBeGreaterThan(bodyH * 0.3);
+    expect(body.y - drop.y).toBeLessThan(bodyH); // and not sailing over their head
+  });
+
+  it('carries the WEAPON it is of — a flown gun is that gun, not a generic loot icon', () => {
+    // `Pickup` resolves `weaponId` into the weapon's own art plus design/13's two channels (the
+    // rarity pips and the element badge). Dropping the id on the way into the flight leaves the
+    // chevron fallback, which is the same silhouette for every gun in the game. Compared against
+    // a reference view rather than against a child count spelled out here, so the assertion
+    // cannot drift away from whatever the constructor actually builds.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [{
+      type: 'pickup', kind: 'weapon', by: p.id, weaponId: 'repeater', gx: pxToFp(300), gy: pxToFp(300),
+    }]);
+
+    const flown = inFlight(scene, layers)[0]!;
+    const withId = new Pickup('weapon', 'repeater');
+    const withoutId = new Pickup('weapon');
+    // The premise: those two really are different objects, so the match below cannot pass
+    // vacuously if `Pickup` ever stops caring about the id.
+    expect(withId.children.length).not.toBe(withoutId.children.length);
+    expect(flown.children.length).toBe(withId.children.length);
+  });
+
+  it('flies to the COLLECTOR in co-op, not to the seat this client is playing', () => {
+    // The entire reason `pickup.by` was added. In single-player every wrong answer coincides with
+    // the right one, so this is the only shape that tells them apart: two seats far apart, the
+    // LOCAL one is seat A, and seat B takes the drop.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }, { start: [500, 420] }] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, a.id, [collected(b.id, 300, 300)]);
+
+    scene.interpolate(1, FLIGHT_MS * 0.99);
+    const drop = inFlight(scene, layers)[0]!;
+    const mate = scene.actorAt(b.id)!;
+    const me = scene.actorAt(a.id)!;
+    expect(Math.hypot(drop.x - mate.x, drop.y - mate.y)).toBeLessThan(20);
+    expect(Math.hypot(drop.x - me.x, drop.y - me.y)).toBeGreaterThan(100);
+  });
+
+  it('bows two simultaneous drops to OPPOSITE sides — a chest payout is not one stack of arcs', () => {
+    // `Scene` derives the bow's side from the drop's own position, because a `pickup` event
+    // carries no item id to spread it by. Two drops one px apart in x therefore land on opposite
+    // parities, and the tilt is where that reads whichever way either one is travelling.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id, [collected(p.id, 300, 300), collected(p.id, 301, 300)]);
+
+    scene.interpolate(1, FLIGHT_MS * 0.5);
+    const [one, two] = inFlight(scene, layers);
+    expect(one!.rotation * two!.rotation).toBeLessThan(0); // opposite signs, and neither is 0
   });
 
   it('is destroyed on arrival, and swept by clear() if a run ends mid-flight', () => {

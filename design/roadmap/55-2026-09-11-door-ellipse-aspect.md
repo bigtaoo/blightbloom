@@ -895,10 +895,55 @@ copied on every one.
 SHAPES, not as restated constants — every one of the bow, the pop, the hop and the shrink can be
 zeroed on its own without moving either endpoint, so the tests measure screen deviation, "further
 from the collector 50 ms in than at rest", "peaks by mid-flight and falls through the last third",
-and a moving target the layer must keep re-asking. **+30 tests** (24 in `pickupFlight.test.ts`, 6
-in `Scene.test.ts`), client 6,270 → 6,300 green, engine 1,599 green, server 1,743 green, `tsc --noEmit` clean, file
+and a moving target the layer must keep re-asking. **+36 tests** (24 in `pickupFlight.test.ts`, 9
+in `Scene.test.ts`, 2 in `GameLoop.test.ts`, 1 in `engine/systems/pickups.test.ts`), client
+6,270 → 6,305 green, engine 1,599 → 1,600 green, server 1,743 green, `tsc --noEmit` clean, file
 length and doc paths clean, and coverage 96.87% lines / 93.17% branches against the 90/90 gate
 with the new file at 100% lines / 100% branches. Verified in the running
 game as well as in vitest, which is where the screen-space bug was found: the pane starves rAF
 ~300×, so the ticker was stopped and driven by hand, a `weapon` drop claimed through the real
 `CommandBuilder.requestPickup` path from 75 px, and the pose traced frame by frame.
+
+**The mutation battery, because a percentage said nothing about the seams.** Asked whether more
+tests were worth adding, the honest way to answer was to measure rather than guess — and the first
+pass killed 2 of 8. Six survivors, every one of them a claim this work rests on:
+
+```
+  KILLED   pickup.by: the COLLECTOR -> the item id ................ 1  (was SURVIVED)
+  KILLED   pickup.by: the COLLECTOR -> the first seat ............. 1  (new mutant)
+  KILLED   the flown view loses the weapon it is of ............... 1  (was SURVIVED)
+  KILLED   the arc aims at the LOCAL seat, not the collector ...... 1  (was SURVIVED)
+  KILLED   GameLoop drops reconcile's events, offline ............. 1  (was SURVIVED)
+  KILLED   GameLoop drops reconcile's events, online .............. 1  (was SURVIVED)
+  KILLED   every arc bows the same way ........................... 1  (was SURVIVED)
+  KILLED   the arc aims at the feet ............................. 2  (was SURVIVED)
+  KILLED   the arc aims over their head ......................... 2  (new mutant)
+  KILLED   flights never advance ................................ 2
+  KILLED   a flight is never given up on a teleport ............. 1
+  KILLED   the target is stored by REFERENCE again .............. 1
+  KILLED   off the DIFF: every vanishing drop flies ............. 2
+```
+
+Three things the survivors say, beyond "add a test":
+
+- **`by` had no test at all, in either package.** The client's Scene cases hand-build their own
+  events, so nothing anywhere checked that the engine puts the COLLECTOR in that field — and both
+  plausible wrong answers (the item's id, `players[0]`) are indistinguishable from the right one in
+  a one-player state, which is every other pickup test in that file. The new engine case uses two
+  seats, has the SECOND one collect, and asserts against the item id and the first seat by name,
+  with an anti-vacuity assertion that those three ids really are three different numbers.
+- **The wiring was the most fragile part and the least tested.** `events` reaches `Scene` as a
+  third argument on a call that already existed, and every existing assertion about `reconcile` is
+  about whether and when it was CALLED. Dropping that argument deletes the whole feature with
+  nothing red, at either of the two call sites. Both are pinned now by identity against the batch
+  the reactor receives — "the scene and the reactor see the same tick", not "an array was passed".
+- **One survivor was an assertion written as a control and believed.** "the arc aims at the feet"
+  passed `expect(drop.y).toBeLessThan(body.y + body.drawnLift - 4)`, because the drop is still
+  coming down out of its hop when it arrives and clears the ground point either way. It is a
+  fraction of the drawn body now (more than 0.3 of it, less than 1.0), which also catches the
+  mutant in the other direction — a drop sailing over the collector's head.
+
+A thirteenth mutant is worth recording as a NON-result: wrapping the launch loop in a condition
+that is always true survived, and says nothing at all, because it changes no behaviour. The honest
+version — launching a flight for every pickup view the diff destroys, which is the rejected design
+in miniature — is killed by the absence test, which is exactly what that test is for.

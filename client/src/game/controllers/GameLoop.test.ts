@@ -9,7 +9,7 @@
  * convention as controllers/ally.test.ts), never against Game.ts, which this file,
  * by design, never imports.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, type Mock } from 'vitest';
 import { createGameEngine, createGameState, buildEnemyActor, makeCommand, quantizeMove, ReplayInputSource, toFp, toReplay, EMBER_DUNGEON, EMBER_ROOMS, type DungeonConfig, type GameState } from '@dd/engine';
 import type { CoopSession } from '../../net/CoopSession';
 import type { InputSource, InputState, TouchVisual } from '../../platform/types';
@@ -623,6 +623,42 @@ describe('GameLoop — the scene is reconciled BEFORE the tick\'s events are con
     expect(scene.reconcile).toHaveBeenCalledTimes(1);
     expect(events.consume).toHaveBeenCalledTimes(1);
     expect(orderOf(scene.reconcile)).toBeLessThan(orderOf(events.consume));
+  });
+
+  it('offline: reconcile is handed the SAME event batch the reactor gets', () => {
+    // `Scene` reads exactly one event kind out of that batch — `pickup`, whose `by` names the
+    // body a collected drop has to fly to (`scene/pickupFlight.ts`). It arrives as a third
+    // argument to a call that already existed, which is precisely the kind of wiring that can be
+    // dropped without a single test going red: every assertion about `reconcile` above is about
+    // whether and when it was CALLED. Asserted by identity against what the reactor receives, so
+    // "the scene and the reactor see the same tick" is the claim, not "some array was passed".
+    const { deps, scene, events } = buildDeps();
+    const engine = createGameEngine(CFG);
+    const loop = new GameLoop(deps, buildHost({ getEngine: () => engine }));
+
+    loop.update(SIM_DT_MS_FOR_TESTS);
+
+    const passed = (scene.reconcile as Mock).mock.calls[0]![2];
+    expect(passed).toBeDefined();
+    expect(passed).toBe((events.consume as Mock).mock.calls[0]![0]);
+  });
+
+  it('online: the second call site is handed it too — the drained batch, not an empty array', () => {
+    // Online is where a flight is most load-bearing (a teammate's pickup is the case `by`
+    // exists for) and it is a separate call site, the same reason the order test below is
+    // written twice.
+    const { deps, scene, events } = buildDeps();
+    const drained = [{ type: 'pickup', kind: 'material', by: 1, gx: 0, gy: 0 }];
+    const session = {
+      started: true, frame: 5, state: createGameEngine(CFG).state,
+      submit: vi.fn(), drive: vi.fn().mockReturnValue(drained), reportResult: vi.fn(),
+    } as unknown as CoopSession;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+
+    loop.update(16);
+
+    expect((scene.reconcile as Mock).mock.calls[0]![2]).toBe(drained);
+    expect((events.consume as Mock).mock.calls[0]![0]).toBe(drained);
   });
 
   it('online (advanceOnline) — the same order, which is not automatic: it is a second call site', () => {
