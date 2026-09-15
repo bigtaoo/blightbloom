@@ -866,7 +866,8 @@ hundred px or more and the flight is the pickup. Here the sim has already taken 
 touching distance, so the arc is after-the-fact feedback over one body-width. Widening
 `SIM.pickupRadius` would give the effect the room it is built for, and it is a sim change with a
 balance argument attached (a contested `energy` or `heal` in PvP is decided by who reaches it) —
-filed, not taken.
+filed, not taken. Parked deliberately rather than dropped: the reporter asked to play the arc as
+shipped first and decide afterwards whether the pickup itself should reach further.
 
 ### The chase needed one exception, and reviewing the claim above is what found it
 
