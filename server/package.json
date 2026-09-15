@@ -20,12 +20,14 @@
     "build": "node scripts/build.mjs"
   },
   "dependencies": {
+    "mongodb": "^7.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
     "esbuild": "^0.25.12",
+    "mongodb-memory-server": "^11.2.0",
     "tsx": "^4.19.2"
   }
 }
