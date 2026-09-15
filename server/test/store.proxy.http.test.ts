@@ -26,6 +26,8 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { createBillsvcServer } from '../src/billsvc/server';
+import { ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { listStoreSkus, createStoreOrder, fetchStoreOrder, formatSkuPrice } from '@dd/net/billing';
 
@@ -37,6 +39,8 @@ let matchsvc: Server;
 let billsvc: Server;
 let ada: string;
 let bob: string;
+let billCtx: MongoTestContext;
+let billPump: { stop: () => Promise<void> };
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -68,8 +72,14 @@ beforeAll(async () => {
   // AGREE on a key rather than that they share a published default.
   vi.stubEnv('BB_INTERNAL_KEY', KEY);
 
-  ({ server: billsvc } = createBillsvcServer({
-    dbPath: ':memory:',
+  // billsvc reads MongoDB since 2026-09-15 while matchsvc is still a SQLite file; this file
+  // is one of the places the staged migration is visible, and it changes nothing it asserts.
+  billCtx = await openTestMongo();
+  const billDb = billCtx.db('billing');
+  await ensureBillingIndexes(billDb);
+
+  ({ server: billsvc, pump: billPump } = createBillsvcServer({
+    db: billDb,
     env: { BB_BILLING_DEV_STUB: '1' },
     pump: { fetchImpl: (async () => new Response('{"ok":true}', { status: 200 })) as unknown as typeof fetch },
   }));
@@ -85,6 +95,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await shutdown(matchsvc);
   await shutdown(billsvc);
+  // Before the client goes: the webhook case triggers an opportunistic sweep it deliberately
+  // does not await, and a sweep still reading when the connection closes is an unhandled
+  // rejection rather than a failed assertion — the kind of red that names the wrong file.
+  await billPump.stop();
+  await billCtx.dispose();
   vi.unstubAllEnvs();
 });
 

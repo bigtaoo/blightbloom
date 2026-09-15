@@ -21,8 +21,9 @@
  * file invented.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openBillingDb } from '../src/billingDb';
+import type { Db } from 'mongodb';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { BillingService } from '../src/billsvc/BillingService';
 import { createPlatformOrderLister, createBillingAdapters, createReceiptVerifier } from '../src/billsvc/iap/factory';
 import { DevStubOrderBook } from '../src/billsvc/iap/devStub';
@@ -43,17 +44,20 @@ const SKU = 'bp.cannon';
 const SKU_PRICE = 1800;
 const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 
-let db: DatabaseSync;
+let ctx: MongoTestContext;
+let db: Db;
 let clock = 1_000;
 let ids = 0;
 
-beforeEach(() => {
-  db = openBillingDb(':memory:');
+beforeEach(async () => {
+  ctx = await openTestMongo();
+  db = ctx.db('billing');
+  await ensureBillingIndexes(db);
   clock = 1_000;
   ids = 0;
 });
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await ctx.dispose();
 });
 
 function service(): BillingService {
@@ -69,7 +73,7 @@ function service(): BillingService {
 async function settled(txnId: string, at: number, sku = SKU): Promise<string> {
   const svc = service();
   clock = at;
-  const created = svc.createOrder({ accountId: 'acc-1', sku, platform: 'dev' });
+  const created = await svc.createOrder({ accountId: 'acc-1', sku, platform: 'dev' });
   if (!created.ok) throw new Error(created.error);
   const res = await svc.settle({ platform: 'dev', orderId: created.order.id, receipt: `product:${sku}`, txnId });
   if (!res.ok) throw new Error(res.reason);
@@ -204,9 +208,9 @@ describe('localSettledOrders', () => {
     const orderId = await settled('txn-real', 5_000);
     // An order that was created and never settled must not appear: it has no platform txn id,
     // so it cannot be joined, and reporting it would make every abandoned checkout a finding.
-    service().createOrder({ accountId: 'acc-1', sku: SKU, platform: 'dev' });
+    await service().createOrder({ accountId: 'acc-1', sku: SKU, platform: 'dev' });
 
-    const rows = localSettledOrders(db, 'dev', 0, 10_000);
+    const rows = await localSettledOrders(db, 'dev', 0, 10_000);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.orderId).toBe(orderId);
     expect(rows[0]!.platformTxnId).toBe('txn-real');
@@ -218,22 +222,24 @@ describe('localSettledOrders', () => {
     await settled('txn-in', 5_000);
     // Exactly on `until` is EXCLUDED, exactly on `since` is INCLUDED — so two consecutive daily
     // windows never both claim one order, and never both miss it.
-    expect(localSettledOrders(db, 'dev', 5_000, 5_001)).toHaveLength(1);
-    expect(localSettledOrders(db, 'dev', 4_000, 5_000)).toHaveLength(0);
-    expect(localSettledOrders(db, 'dev', 5_001, 9_000)).toHaveLength(0);
+    expect(await localSettledOrders(db, 'dev', 5_000, 5_001)).toHaveLength(1);
+    expect(await localSettledOrders(db, 'dev', 4_000, 5_000)).toHaveLength(0);
+    expect(await localSettledOrders(db, 'dev', 5_001, 9_000)).toHaveLength(0);
   });
 
   it('filters by platform', async () => {
     await settled('txn-dev', 5_000);
-    expect(localSettledOrders(db, 'stripe', 0, 10_000)).toEqual([]);
+    expect(await localSettledOrders(db, 'stripe', 0, 10_000)).toEqual([]);
   });
 
-  it('skips a hand-edited settled row whose platform_txn_id is NULL', async () => {
-    // The join key. A NULL sneaking through — the sqlite3-prompt posture design/19 §8 plans
-    // for — would otherwise be compared against every platform row at once.
+  it('skips a hand-edited settled order whose platformTxnId is gone', async () => {
+    // The join key. One missing — the hand-correction posture design/19 §8 plans for — would
+    // otherwise be compared against every platform row at once. `$unset` rather than a stored
+    // `null`, because that is the shape the partial unique index leaves the field in for an
+    // order that has claimed nothing, and the filter has to skip both.
     await settled('txn-real', 5_000);
-    db.exec(`UPDATE orders SET platform_txn_id = NULL`);
-    expect(localSettledOrders(db, 'dev', 0, 10_000)).toEqual([]);
+    await billingStore(db).orders.updateMany({}, { $unset: { platformTxnId: '' } });
+    expect(await localSettledOrders(db, 'dev', 0, 10_000)).toEqual([]);
   });
 });
 

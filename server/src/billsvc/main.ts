@@ -1,13 +1,20 @@
 /**
  * billsvc's process entry point (design/19-server-platform.md §4). Third process, own
- * port, own SQLite file. Kept separate from `server.ts` for the same reason `matchsvc.ts`
- * keeps `main()` beside `createMatchsvcServer` but only calls it when run directly: the
- * builder has to be importable by a test without binding a port.
+ * port, own logical database. Kept separate from `server.ts` for the same reason
+ * `matchsvc.ts` keeps `main()` beside `createMatchsvcServer` but only calls it when run
+ * directly: the builder has to be importable by a test without binding a port.
  *
  * The first thing `main` does is `assertBillingStartupSafety`, which THROWS rather than
  * warns (`startupGuard.ts`). That is deliberate and it is the second of design/19 §5's two
  * fail-closed defences: a billing process whose dev receipt stub is reachable in
- * production must not come up at all.
+ * production must not come up at all. It runs before `connectMongo()`, so a misconfigured
+ * deploy does not even open a connection, let alone bind a port.
+ *
+ * `main` is ASYNC since the MongoDB port: the cluster connection is awaited at boot rather
+ * than made lazily on the first request (`mongo.ts` argues that one), and
+ * `ensureBillingIndexes` runs immediately after it — which is what makes a freshly created
+ * database correct with no separate migration step, and what puts the partial unique index
+ * on `orders.platformTxnId` in place BEFORE the first callback can settle anything.
  *
  * The last thing it does is `pump.start()`, and that ordering is the whole reason the
  * delivery outbox exists. A process that died between a settlement's COMMIT and its
@@ -23,7 +30,8 @@ import { startHeartbeat } from '../heartbeat';
 import { createBillsvcServer, type BillsvcServer } from './server';
 import { assertBillingStartupSafety, type StartupEnv } from './startupGuard';
 import { devStubEnabled } from './iap/factory';
-import { defaultBillingDbPath } from '../billingDb';
+import { ensureBillingIndexes } from '../billing/schema';
+import { connectMongo, dbName, store } from '../mongo';
 
 /**
  * design/19-server-platform.md's three-plane table: data plane 8787 (`index.ts`), control
@@ -43,17 +51,21 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 /**
  * Starts the billing plane. Throws `BillingStartupError` before opening anything at all if
- * the environment is a production one with a dev-only flag set — no port bound, no
- * database file created, nothing to clean up.
+ * the environment is a production one with a dev-only flag set — no cluster connection, no
+ * port bound, nothing to clean up.
  *
- * Returns the whole handle rather than just the `Server`: the SQLite connection stays open
- * for the life of the process, so anything that shuts this down (a test, and eventually a
- * SIGTERM handler) needs the database as well as the socket. On Windows an unclosed
- * connection also keeps a lock on the file, which is how the test suite found this.
+ * Returns the whole handle rather than just the `Server`: the `Db` is what a caller needs to
+ * read the outbox, and the pooled client stays open for the life of the process (a test that
+ * shuts this down closes it with `closeMongo()`).
  */
-export function main(env: StartupEnv = process.env, port = PORT, host = HOST): BillsvcServer {
+export async function main(env: StartupEnv = process.env, port = PORT, host = HOST): Promise<BillsvcServer> {
   assertBillingStartupSafety(env);
-  const handle = createBillsvcServer({ env });
+  await connectMongo();
+  const db = store('billing');
+  // Idempotent, and before the listener: an index or validator that lands after the first
+  // webhook is one the first webhook did not have.
+  await ensureBillingIndexes(db);
+  const handle = createBillsvcServer({ env, db });
   const log = createLogger('billsvc');
   handle.server.listen(port, host, () => {
     // `devStub` stays in the line as a FIELD rather than the old inline
@@ -63,7 +75,7 @@ export function main(env: StartupEnv = process.env, port = PORT, host = HOST): B
     // checklist in server/deploy/README.md §4 greps for it either way.
     log.info('billing plane listening', {
       addr: `http://${host}:${port}`,
-      db: defaultBillingDbPath(),
+      db: dbName('billing'),
       devStub: devStubEnabled(env),
     });
     startHeartbeat({ log });
@@ -80,5 +92,11 @@ export function main(env: StartupEnv = process.env, port = PORT, host = HOST): B
 // imported by a test — the ESM equivalent of `require.main === module`, same guard
 // `matchsvc.ts` and `index.ts` use.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  // A rejected boot must kill the process rather than becoming an unhandled rejection: a
+  // billsvc that logged a connection failure and kept running would serve a webhook it
+  // cannot record.
+  void main().catch((e: unknown) => {
+    console.error(e);
+    process.exitCode = 1;
+  });
 }

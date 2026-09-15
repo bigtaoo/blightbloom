@@ -12,10 +12,14 @@
  * entrypoint, so a deploy target needs nothing but Node + the `ws` runtime dependency
  * (kept external — see below) and three flat .mjs files.
  *
- * `ws` and `node:sqlite` are deliberately left EXTERNAL rather than bundled: `ws` ships
- * optional native/WASM fallback bindings resolved by a runtime `require()` esbuild can't
- * see through, and `node:sqlite` is a Node built-in, not something to inline. Both are
- * satisfied by the deploy image's own minimal `package.json` (`server/deploy/package.json`).
+ * `ws`, `mongodb` and `node:sqlite` are deliberately left EXTERNAL rather than bundled: `ws`
+ * ships optional native/WASM fallback bindings resolved by a runtime `require()` esbuild
+ * can't see through, `mongodb` is CommonJS that reaches for built-ins through a dynamic
+ * `require()` the same way (an inlined copy boots as far as the first operation and then
+ * dies on `Dynamic require of "timers/promises" is not supported`, which
+ * `deploy.bundle.test.ts` catches), and `node:sqlite` is a Node built-in, not something to
+ * inline. All are satisfied by the deploy image's own minimal `package.json`
+ * (`server/deploy/package.json`).
  *
  * The build parameters below are EXPORTED, and `buildAll` takes its output directory as an
  * argument, so `test/deploy.manifests.test.ts` can assert the Dockerfile / compose file /
@@ -32,7 +36,7 @@ export const serverRoot = join(here, '..');
 export const defaultOutdir = join(serverRoot, 'dist');
 
 /** Left out of the bundles; supplied by the deploy image (`ws`) or by Node itself. */
-export const external = ['ws', 'node:sqlite'];
+export const external = ['ws', 'mongodb', 'node:sqlite'];
 
 /** Matches the Dockerfile's base image — `node:sqlite` is what sets the floor. */
 export const target = 'node22';

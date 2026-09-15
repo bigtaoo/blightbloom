@@ -10,7 +10,11 @@
  *                                         observes and files — so it must not hold a
  *                                         connection that could change what it is looking at.
  *                                         SQLite enforces that; a comment would not.
- *   the BILLING file (`BB_BILLING_DB_PATH`) opened read-write, for `review_queue` alone.
+ *   the BILLING store (`BB_MONGO_URI`)   the `billing` logical database on the cluster,
+ *                                         read-write, for `reviewQueue` alone. Since
+ *                                         2026-09-15 this half is MongoDB while the account
+ *                                         half is still a file — the migration is staged, and
+ *                                         the billing plane went first.
  *
  * design/19 §7 rules out an admin service, so this is a script rather than a route — and it is
  * deliberately NOT mounted on matchsvc, which is a parallel workstream's file. All the logic is
@@ -22,7 +26,8 @@
  * afraid to re-run is an audit that stops being run.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { openBillingDb } from '../src/billingDb';
+import { ensureBillingIndexes } from '../src/billing/schema';
+import { closeMongo, connectMongo, store } from '../src/mongo';
 import { defaultDbPath } from '../src/db';
 import {
   DEFAULT_GRANT_THRESHOLD,
@@ -60,7 +65,9 @@ const sinceMs = dayWindow(first).sinceMs;
 const untilMs = args.day ? dayWindow(args.day).untilMs : dayWindow(endDayKey).untilMs;
 
 const accounts = new DatabaseSync(process.env.BB_DB_PATH ?? defaultDbPath(), { readOnly: true });
-const billing = openBillingDb();
+await connectMongo();
+const billing = store('billing');
+await ensureBillingIndexes(billing);
 try {
   const rows = readGrantsInWindow(accounts, sinceMs, untilMs);
   const findings = auditGrants(rows, { threshold });
@@ -72,10 +79,10 @@ try {
   if (args['dry-run'] === 'true') {
     console.log('  --dry-run: nothing filed');
   } else {
-    const filed = fileGrantAnomalies(billing, findings, Date.now());
+    const filed = await fileGrantAnomalies(billing, findings, Date.now());
     console.log(`  filed ${filed} new review entr(y|ies); ${findings.length - filed} already on the queue`);
   }
 } finally {
   accounts.close();
-  billing.close();
+  await closeMongo();
 }

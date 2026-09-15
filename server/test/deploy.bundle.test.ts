@@ -18,7 +18,7 @@
  * WRONG service name is the failure a smoke test that only checks `ok: true` would wave
  * through, and it is one typo in `build.mjs`'s `entries` away.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, inject } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
@@ -167,15 +167,22 @@ describe('the built bundles are self-contained', () => {
 
   it('kept exactly the declared externals external', () => {
     // `ws` must survive as a real import (bundling it breaks its runtime `require` of the
-    // native/WASM fallback); `node:sqlite` is a builtin. Both are then satisfied by
-    // deploy/package.json + Node itself. Asserted per-bundle rather than in aggregate,
-    // because only the two DB-backed processes should be reaching for sqlite at all.
-    expect(external).toEqual(['ws', 'node:sqlite']);
+    // native/WASM fallback); `mongodb` must too, for the same class of reason (it is CJS and
+    // reaches for built-ins through a dynamic `require()` an inlined copy cannot perform —
+    // the boot cases below are what caught that); `node:sqlite` is a builtin. All are then
+    // satisfied by deploy/package.json + Node itself. Asserted per-bundle rather than in
+    // aggregate, because which store a process reaches for is a design fact, not a detail.
+    expect(external).toEqual(['ws', 'mongodb', 'node:sqlite']);
     const src = Object.fromEntries(built.map((f) => [f, readFileSync(f, 'utf8')]));
     const byName = (name: string) => src[built.find((f) => f.endsWith(`${name}.mjs`))!]!;
     expect(byName('index')).toMatch(/from\s*["']ws["']/);
     expect(byName('matchsvc')).toMatch(/from\s*["']node:sqlite["']/);
-    expect(byName('billsvc')).toMatch(/from\s*["']node:sqlite["']/);
+    // The billing plane moved to MongoDB on 2026-09-15 and carries NO sqlite at all — the
+    // sharpest available evidence that the port is complete rather than half-done, since a
+    // single surviving `openBillingDb` import anywhere under `src/billsvc/` would put the
+    // builtin back in this bundle.
+    expect(byName('billsvc')).toMatch(/from\s*["']mongodb["']/);
+    expect(byName('billsvc')).not.toMatch(/from\s*["']node:sqlite["']/);
     // The backup worker reads both databases through the same builtin — and must NOT drag
     // `ws` in, since bundling a websocket library into a process that opens no socket is
     // the tell that an entrypoint is pointed at the wrong source file.
@@ -208,10 +215,15 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   it('billsvc (billsvc.mjs)', async () => {
+    // Pointed at the suite's own mongod, under a database prefix nothing else uses. The
+    // bundle connects at boot and refuses to start without `BB_MONGO_URI` (src/mongo.ts), so
+    // this case is also the only place the SHIPPED artifact is shown to reach a real cluster
+    // rather than only the source being shown to.
     const port = await freePort();
     const body = await boot(join(outdir, 'billsvc.mjs'), port, {
       BILL_PORT: String(port),
-      BB_BILLING_DB_PATH: join(outdir, 'billing.db'),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: `bundle${process.pid}`,
       BB_BILLING_DEV_STUB: '1',
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });
