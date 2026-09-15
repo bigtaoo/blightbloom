@@ -9,7 +9,7 @@ This directory records **decisions** and **architecture**. It is the single sour
 | [02-entity-model.md](02-entity-model.md) | Entity model: Actor / Skin / Weapon three-layer split |
 | [03-weapon-system.md](03-weapon-system.md) | Weapon system: ranged, melee, block/deflect, extensibility |
 | [04-wechat.md](04-wechat.md) | WeChat mini-game adaptation, base-library version notes, verification checklist |
-| [05-gameplay.md](05-gameplay.md) | Gameplay: core loop, PvE search-fight-extract (floors + extraction checkpoints) / PvPvE arena, HP+shield survivability, material economy, parry positioning, landscape controls |
+| [05-gameplay.md](05-gameplay.md) | Gameplay — **index + the locked decisions + the cross-mode summaries** (PvP, the economy table, parry, controls). The mechanisms are in [gameplay/](gameplay/): [the run and its rooms](gameplay/01-the-run-and-its-rooms.md), [what a floor hands you](gameplay/02-what-a-floor-hands-you.md), [weapon energy and the melee mobs](gameplay/03-weapon-energy-and-melee-mobs.md). `design/05 "Section title"` in a code comment lands via the index's map. |
 | [06-netcode-determinism.md](06-netcode-determinism.md) | Netcode & determinism: server frame-broadcast lockstep + client prediction, deterministic `@dd/engine` core, migration plan (mirrors sibling project `funny`) |
 | [07-collision-combat.md](07-collision-combat.md) | Collision & combat: circle/wall collision, uniform-grid broad phase, swept directional bullets, block/deflect & melee arcs (brad/fp-trig), damage pipeline, death & drops — bodies of `08`'s step 4–9 |
 | [08-simulation-core.md](08-simulation-core.md) | Simulation core: `GameState` schema, fixed `step()` system order, per-tick twin-stick `PlayerCommand`, `InputSource`/replay/headless (concrete form of `06`'s principles) |
@@ -23,7 +23,7 @@ This directory records **decisions** and **architecture**. It is the single sour
 | [16-accounts.md](16-accounts.md) | Accounts: username/password login (SQLite + scrypt + opaque bearer sessions), never required to play, and the two things bound to an account — PvP ladder rating and forge blueprints/materials/loadout |
 | [17-i18n.md](17-i18n.md) | Internationalization: English-canonical `t()` with compile-time key checking, the locale files, what is deliberately left untranslated, and the repo's English-only rule for code/comments/docs |
 | [18-test-strategy.md](18-test-strategy.md) | Test strategy: the two meanings of "out of sync" — replay divergence, and systems disagreeing inside one build — the six gaps that were measured, and the four layers that closed them (contract gates incl. the committed golden hash, unit tests, parity sweeps, invariant smoke runs) |
-| [19-server-platform.md](19-server-platform.md) | Server platform: the three planes (control / data / billing), the internal-key trust seam and the two defects it closes, entitlements moving server-side out of the client-authored meta blob, the billing order/receipt/ledger model and its idempotency rules, IAP adapters + the fail-closed dev stub, and the gameserver registry that keeps topology out of the ticket |
+| [19-server-platform.md](19-server-platform.md) | Server platform — **index + the path convention + the locked decisions + §8–§9**. The ten numbered sections are in [serverplatform/](serverplatform/): [§1–§3 planes, entitlements, trust seam](serverplatform/01-the-planes-and-the-trust-seam.md), [§4–§5 billing](serverplatform/02-billing.md), [§6–§7 topology and operations](serverplatform/03-topology-and-operations.md), [§10 observability](serverplatform/04-observability.md). `design/19 §4` in a code comment lands via the index's map; **section numbers are the address — do not renumber one.** |
 | [20-game-portals.md](20-game-portals.md) | Game portals (CrazyGames): why a portal is the first target that constrains what the client MAY do rather than what it CAN do, the declared-host seam that replaced feature detection, the requirement-by-requirement record of what changed, the one-input phase derivation the game does not know about, three live findings the SDK docs do not contain, and what still needs a registered domain or a product decision |
 | [21-ops-analytics.md](21-ops-analytics.md) | Ops and analytics: the two things already in place that shrink the problem (the log store answers monitoring; Grafana is the ops frontend), first-party retention instrumentation and the closed event vocabulary that rides the existing client-log trust boundary, a fifth process holding no write handle to player data, why a publicly exposed console is read-only and every player-data write stays a CLI on the box, feature flags and the allowlist that keeps a security switch out of them, and the live privacy-policy sentence that stops being true |
 
@@ -39,9 +39,12 @@ sections with the plan and the log interleaved in no particular order:
 
 - **[ROADMAP.md](ROADMAP.md)** — the phase spine (Phases 0–7, what `ROADMAP 3.1` in a code
   comment refers to), the dependency summary, and the log index by date and by theme.
-- **[roadmap/](roadmap/)** — the work log itself, one volume per stretch of dates, each
-  under 1000 lines. New passes append to the highest-numbered volume; the rules are in
-  ROADMAP.md's *Appending to the log*.
+- **[roadmap/](roadmap/)** — the work log itself, **one pass per volume**, each under 1000
+  lines. A new pass takes the next free number and writes its own file; appending to the
+  volume that happens to be open is what produced volume 55's nine passes in 1,346 lines
+  (split apart 2026-09-15). Both index halves get a line in the same edit —
+  `npm run check:roadmapindex` fails a dated pass that is not in the by-date log, a counter
+  that was incremented rather than derived, and a by-theme entry carrying a summary.
 - **[roadmap/current-state.md](roadmap/current-state.md)** — the running "what is built
   right now" note. Not the authority on `ENGINE_VERSION`; `engine/versionHistory.ts` is.
 

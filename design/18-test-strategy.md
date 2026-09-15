@@ -28,7 +28,7 @@
 | Layer | Files | State |
 |---|---|---|
 | **−1** one boundary, one function | `engine/systems/solidBounds.ts`, `engine/state/actorRadius.ts` | ✅ G3 closed; three copies of the brim rule became one |
-| **0** contract gates | `goldenHash.test.ts` + `fixtures/golden.json` + `scripts/recordGolden.mjs`, `versionContract.test.ts`, `determinismLint.test.ts`, `stepOrder.test.ts` + `build/checkDocPaths.mjs` (both 2026-09-03) | ✅ G1, G2 closed; the last two close the two mechanically-checkable gaps the `roadmap/16` doc audit found, outside this doc's own six |
+| **0** contract gates | `goldenHash.test.ts` + `fixtures/golden.json` + `scripts/recordGolden.mjs`, `versionContract.test.ts`, `determinismLint.test.ts`, `stepOrder.test.ts` + `build/checkDocPaths.mjs` (both 2026-09-03), `build/checkRoadmapIndex.mjs` (2026-09-15) | ✅ G1, G2 closed; the last two close the two mechanically-checkable gaps the `roadmap/16` doc audit found, outside this doc's own six |
 | **1** unit tests | `solidBounds.test.ts`, `MovementSystem.test.ts`, `WeaponFireSystem.test.ts`, `ProjectileStepSystem.test.ts` | ✅ the last three had **no test file at all** before this |
 | **2** parity sweeps | `boundaryParity.test.ts`, `clearanceParity.test.ts`, `client/.../simRenderParity.test.ts`, `client/src/render/muzzleParity.test.ts`, `client/.../pickupProximity.test.ts` (v50) | ✅ G4, G5, G6 closed; v50 adds the panel-offers-vs-sim-accepts pair, the one gap that straddles the sim boundary |
 | **3** smoke + CI | `engine/smoke.test.ts`, root `npm run check:full`, `.github/workflows/check.yml` | ✅ 5 real runs, 7 invariants, every tick (v50 added the two loot/monster placement rules) |
@@ -773,6 +773,28 @@ exemption carries a reason and the list is asserted **minimal**: an entry that s
 or starts resolving, fails. **What it cannot do:** the exemption is on a token, not a sentence, so
 rewording one of the five "cited as deleted" references back into a present-tense claim would pass
 — it catches a *new* dangling reference, which is the direction the drift travels.
+
+**`build/checkRoadmapIndex.mjs`** + `build/checkRoadmapIndex.test.mjs` (2026-09-15, `npm run
+check:roadmapindex`, folded into `npm run check`) — the fourth Layer 0 doc gate, and the one that
+covers the corpus `checkDocPaths` deliberately gave up on. `design/ROADMAP.md` indexes the work log
+**twice** (by date, by theme) and nothing cross-checked the two halves: volume 36 landed all six of
+its by-theme entries and neither of its by-date ones, and stood that way for ten days. A link sweep
+is actively misleading there — that volume was linked from six places, so every reference to it
+resolved. The check that sees it runs the other way round, **from the volume to the index**: for
+every `## ` heading in a numbered volume that carries a date, is there a by-date bullet whose link
+anchor is that heading's slug? The date filter keeps a volume's structural sections (`Numbers`,
+`After`, `Still open`) out of the rule **exactly**, with no allowlist at all — which is what made
+it gateable where `checkDocPaths` needed a 26-entry exemption list. Five more rules ride along,
+each a drift this log has actually suffered: every roadmap link names a real volume and a real
+heading; the *"same N entries"* total equals the by-date bullet count; each `*(N)*` tag counter
+equals the bullets under it; a by-theme entry is a **bare link** (volumes 47–49 had pasted ~40 KB
+of by-date paragraphs into it); and a **blank line precedes every tag header**, since an append
+that eats that separator is what makes the *next* one land in the wrong tag section. **The evidence
+it works** is not the green run: over the tree at `563d25b`, the commit before the 2026-09-15 tidy,
+it reports **14** violations, every one of which had been found by hand. **What it cannot do:** it
+is arithmetic and anchors, so it cannot tell whether an entry is filed under the RIGHT tag (volume
+43 filed two into `audio` and `tools` with every counter it touched correct), nor whether a summary
+is true.
 
 ### Layer 1 — unit tests of the logic itself
 
