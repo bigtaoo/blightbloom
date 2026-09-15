@@ -203,11 +203,50 @@ describe('PickupFlightLayer', () => {
     const moving = { x: TO.x, y: TO.y, z: TO.z };
     layer.launch(view, FROM, () => moving, 1);
     layer.update(FLIGHT_MS * 0.3);
-    moving.x += 300; // the collector ran off mid-flight
-    layer.update(FLIGHT_MS * 0.69);
+    // The collector runs off mid-flight — in real steps, not a jump, so this stays clear of the
+    // teleport guard below (which is what tells running apart from being moved by the sim).
+    for (let i = 0; i < 30; i++) {
+      moving.x += 10;
+      layer.update((FLIGHT_MS * 0.69) / 30);
+    }
     // Within a few px of where they are NOW (t = 0.99), not of where they were at launch.
     expect(Math.abs(view.x - moving.x)).toBeLessThan(6);
     expect(Math.abs(view.x - TO.x)).toBeGreaterThan(200);
+  });
+
+  it('GIVES UP when the collector is TELEPORTED — a descend/force-regroup must not drag the drop', () => {
+    // `PickupSystem` is step 10 and `ExtractionSystem`'s descend is step 12, so taking a heal on
+    // the tick you tap DESCEND collects the drop and then moves the collector to the next floor's
+    // spawn point. Chasing that would streak the item across the whole map.
+    //
+    // It doubles as the regression test for an aliasing trap: the resolver here hands back the
+    // SAME object every frame and mutates it, so a layer that stored `to` by reference would be
+    // comparing the new point against itself and would never see any jump at all.
+    const { layer, entities } = makeLayer();
+    const view = makeView();
+    const moving = { x: TO.x, y: TO.y, z: TO.z };
+    layer.launch(view, FROM, () => moving, 1);
+    layer.update(FLIGHT_MS * 0.3);
+    expect(layer.count).toBe(1);
+    moving.x += 900; // the next floor's spawn point
+    layer.update(16);
+    expect(layer.count).toBe(0);
+    expect(view.destroyed).toBe(true);
+    expect(entities.children.length).toBe(0);
+  });
+
+  it('does NOT give up on a collector who is merely running — the chase is the point', () => {
+    const { layer } = makeLayer();
+    const view = makeView();
+    const moving = { x: TO.x, y: TO.y, z: TO.z };
+    layer.launch(view, FROM, () => moving, 1);
+    // `PLAYER_BASE.speedPerTick` is 6.4 px/tick (192 px/s): ~3.2 px in a 60 fps frame, and this
+    // is a whole 30 Hz sim tick's worth per frame, i.e. faster than anyone can actually move.
+    for (let i = 0; i < 30; i++) {
+      moving.x += 6.4;
+      layer.update(16);
+    }
+    expect(layer.count).toBe(1);
   });
 
   it('keeps flying at the last point it saw when the collector\'s view disappears mid-flight', () => {

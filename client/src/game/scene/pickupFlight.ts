@@ -21,6 +21,22 @@ import type { Entity } from './Entity';
  *  cleared the screen before the player has walked out of the room. */
 export const FLIGHT_MS = 600;
 
+/** How far the collector may move between two render frames before the flight gives up on them
+ *  (world px). Re-asking the target every frame is what makes a flight follow a running player;
+ *  it is also what would drag a drop across the whole floor when the player does not RUN there
+ *  but is TELEPORTED — and the sim can do exactly that in the same tick it collects, twice over:
+ *  `PickupSystem` is step 10, `DoorSystem`'s force-regroup is 11.5 and `ExtractionSystem`'s
+ *  descend is 12 (`GameEngine.step`). Taking a heal on the tick you tap DESCEND is an ordinary
+ *  thing to do, and the drop would then streak from the old floor's geometry to the new floor's
+ *  spawn point.
+ *
+ *  120 px cannot be reached honestly: `PLAYER_BASE.speedPerTick` is 6.4 px/tick (192 px/s), so a
+ *  legitimate 120 px step would need a 625 ms render frame — and during a stall that long nobody
+ *  is watching a 600 ms arc anyway. A flight that trips this is FINISHED, not re-anchored: the
+ *  item is already collected, and the player is somewhere else with no arc that could honestly
+ *  connect the two points. */
+const TARGET_TELEPORT_PX = 120;
+
 /** Ceiling on simultaneous flights. A big chest pays a handful at once and a PvP scramble can
  *  stack a few more on top, so this is generous — it exists to bound a pathological frame
  *  (a room-clear payout landing on one tick), not to shape the normal case. The OLDEST flight
@@ -180,9 +196,17 @@ export function flightPose(t: number, from: FlightPoint, to: FlightPoint, sign: 
 interface Flight {
   view: Entity;
   from: FlightPoint;
-  /** The last point `target` resolved to — see `FlightTarget` for why a flight keeps flying at
-   *  a remembered point rather than ending the instant its collector's view disappears. */
-  to: FlightPoint;
+  /** A COPY of the last point `target` resolved to — see `FlightTarget` for why a flight keeps
+   *  flying at a remembered point rather than ending the instant its collector's view
+   *  disappears. Copied rather than held by reference because a resolver is free to hand back a
+   *  live object it keeps mutating, and then "the last point I saw" would silently be "the
+   *  current point", which is also the reading that makes the teleport guard below a no-op.
+   *
+   *  `null` until the first `update`, never after: at LAUNCH time the collector's view may not
+   *  have been drawn yet (`Scene.spawn` pushes state and snaps, but only `interpolate` writes
+   *  the transform), so a view created on the same reconcile still reads (0, 0) — and resolving
+   *  then would hand the teleport guard a jump it must not act on. */
+  to: FlightPoint | null;
   target: FlightTarget;
   sign: number;
   elapsed: number;
@@ -224,7 +248,7 @@ export class PickupFlightLayer {
     this.entities.addChild(view);
     if (view.shadow) this.shadows.addChild(view.shadow);
     view.place(from.x, from.y, from.z);
-    this.flights.push({ view, from, to: target() ?? from, target, sign, elapsed: 0 });
+    this.flights.push({ view, from, to: null, target, sign, elapsed: 0 });
   }
 
   /** Advance every flight by one RENDER frame (`dtMs` real ms, not a sim tick). */
@@ -236,8 +260,16 @@ export class PickupFlightLayer {
         this.finish(i);
         continue;
       }
-      f.to = f.target() ?? f.to;
-      const pose = flightPose(f.elapsed / FLIGHT_MS, f.from, f.to, f.sign);
+      const next = f.target();
+      if (next && f.to && Math.hypot(next.x - f.to.x, next.y - f.to.y) > TARGET_TELEPORT_PX) {
+        this.finish(i); // the collector was teleported out from under it — see TARGET_TELEPORT_PX
+        continue;
+      }
+      if (next) f.to = { x: next.x, y: next.y, z: next.z };
+      // No target has ever resolved (the collector's view was gone before the first frame): the
+      // drop flies its own arc in place and still lifts, fades and goes, which is the one honest
+      // thing left to draw — there is nothing to aim at.
+      const pose = flightPose(f.elapsed / FLIGHT_MS, f.from, f.to ?? f.from, f.sign);
       f.view.place(pose.x, pose.y, pose.z);
       f.view.scale.set(pose.scale);
       f.view.alpha = pose.alpha;

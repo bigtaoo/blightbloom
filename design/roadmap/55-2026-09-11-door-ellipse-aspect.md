@@ -868,16 +868,37 @@ touching distance, so the arc is after-the-fact feedback over one body-width. Wi
 balance argument attached (a contested `energy` or `heal` in PvP is decided by who reaches it) —
 filed, not taken.
 
+### The chase needed one exception, and reviewing the claim above is what found it
+
+Checking the descend path against the code (`ExtractionSystem` line 198, `state.pickups.length = 0`,
+and `SpawnSystem`'s room build doing the same — both silent, no event, exactly as design/05's
+"uncollected drops don't carry to the next floor" says) turned up a case the first cut got wrong in
+the other direction. The flight re-asks its target every frame so it follows a running player; the
+sim can also TELEPORT that player in the same tick it collects, because `PickupSystem` is step 10
+while `DoorSystem`'s force-regroup is 11.5 and `ExtractionSystem`'s descend is 12. Taking a heal on
+the tick you tap DESCEND would have streaked the drop from the old floor's geometry to the new
+floor's spawn point.
+
+A target that jumps more than `TARGET_TELEPORT_PX` (120 px) in one frame now ends the flight
+instead of being chased — unreachable honestly at `PLAYER_BASE.speedPerTick` = 6.4 px/tick, which
+would need a 625 ms frame. Writing its test found two more defects in the same five lines: the
+layer was storing the resolved target **by reference**, so a resolver handing back a live mutated
+object made "the last point I saw" mean "the current point" and the guard a permanent no-op; and
+resolving the target at LAUNCH reads (0, 0) for a collector view created on the same reconcile
+(`Scene.spawn` snaps state, only `interpolate` writes the transform), which tripped the guard on
+the first frame of a legitimate flight. The target is resolved on the first `update` now, and
+copied on every one.
+
 ### Verification
 
 `client/src/game/scene/pickupFlight.ts` (232 lines) and `PickupFlightLayer` are asserted as
 SHAPES, not as restated constants — every one of the bow, the pop, the hop and the shrink can be
 zeroed on its own without moving either endpoint, so the tests measure screen deviation, "further
 from the collector 50 ms in than at rest", "peaks by mid-flight and falls through the last third",
-and a moving target the layer must keep re-asking. **+28 tests** (22 in `pickupFlight.test.ts`, 6
-in `Scene.test.ts`), client 6,270 → 6,298 green, engine 1,599 green, server 1,743 green, `tsc --noEmit` clean, file
+and a moving target the layer must keep re-asking. **+30 tests** (24 in `pickupFlight.test.ts`, 6
+in `Scene.test.ts`), client 6,270 → 6,300 green, engine 1,599 green, server 1,743 green, `tsc --noEmit` clean, file
 length and doc paths clean, and coverage 96.87% lines / 93.17% branches against the 90/90 gate
-with the new file at 100% / 95.45% before the last branch was closed. Verified in the running
+with the new file at 100% lines / 100% branches. Verified in the running
 game as well as in vitest, which is where the screen-space bug was found: the pane starves rAF
 ~300×, so the ticker was stopped and driven by hand, a `weapon` drop claimed through the real
 `CommandBuilder.requestPickup` path from 75 px, and the pose traced frame by frame.

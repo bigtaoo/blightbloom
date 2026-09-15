@@ -432,6 +432,29 @@ element badge (design/13's two channels) have to stay the right way up. The shad
 multiplied by the pose's *after* `place()` rewrites it from the height falloff, or a dissolving
 drop leaves its shadow sliding under the collector for the last 130 ms.
 
+### The chase has one exception, and the step order is what names it
+
+Re-asking the target every frame is what makes a flight follow a running player. It is also what
+would drag a drop across the whole floor when the collector does not RUN anywhere but is
+TELEPORTED — and the sim can do that in the same tick it collects, twice over: `PickupSystem` is
+step 10, `DoorSystem`'s force-regroup is 11.5 and `ExtractionSystem`'s descend is 12
+(`GameEngine.step`). Taking a heal on the tick you tap DESCEND is an ordinary thing to do, and the
+drop would then streak from the old floor's geometry to the new floor's spawn point.
+
+A target that moves more than `TARGET_TELEPORT_PX` (120) between two frames therefore ENDS the
+flight rather than being chased. The number cannot be reached honestly — `PLAYER_BASE.speedPerTick`
+is 6.4 px/tick (192 px/s), so a legitimate 120 px step needs a 625 ms render frame, and nobody is
+watching a 600 ms arc through a stall that long. Ending rather than re-anchoring is the point: the
+item is already collected, and there is no arc that could honestly connect the two points.
+
+Two details that guard has to get right, both found by the test that pins it. The layer stores a
+**copy** of each resolved target, not the reference: a resolver is free to hand back a live object
+it keeps mutating, and holding it by reference makes "the last point I saw" silently mean "the
+current point" — which is also the reading that makes this whole check a no-op. And the target is
+resolved on the first `update`, never at launch: `Scene.spawn` pushes state and snaps but only
+`interpolate` writes the transform, so a collector view created on the same reconcile still reads
+(0, 0), and resolving then would hand the guard a jump it must not act on.
+
 **What this does NOT change: when a drop is collected.** The flight starts the tick the sim
 already took the item. It is after-the-fact feedback, interruptible and droppable — 600 ms of
 travel is not 600 ms of the pickup being in doubt.
