@@ -18,7 +18,7 @@
  * WRONG service name is the failure a smoke test that only checks `ok: true` would wave
  * through, and it is one typo in `build.mjs`'s `entries` away.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, inject } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
@@ -167,13 +167,18 @@ describe('the built bundles are self-contained', () => {
 
   it('kept exactly the declared externals external', () => {
     // `ws` must survive as a real import (bundling it breaks its runtime `require` of the
-    // native/WASM fallback); `node:sqlite` is a builtin. Both are then satisfied by
-    // deploy/package.json + Node itself. Asserted per-bundle rather than in aggregate,
-    // because only the two DB-backed processes should be reaching for sqlite at all.
-    expect(external).toEqual(['ws', 'node:sqlite']);
+    // native/WASM fallback); `mongodb` must survive for the same reason and for a sharper
+    // one — bundled, its `require('timers/promises')` becomes a dynamic require in ESM
+    // output and matchsvc dies at boot, which is exactly what the boot cases below caught;
+    // `node:sqlite` is a builtin. All three are then satisfied by deploy/package.json +
+    // Node itself. Asserted per-bundle rather than in aggregate, because only the processes
+    // that actually hold a store should be reaching for one.
+    expect(external).toEqual(['ws', 'mongodb', 'node:sqlite']);
     const src = Object.fromEntries(built.map((f) => [f, readFileSync(f, 'utf8')]));
     const byName = (name: string) => src[built.find((f) => f.endsWith(`${name}.mjs`))!]!;
     expect(byName('index')).toMatch(/from\s*["']ws["']/);
+    // matchsvc is the control plane, and the one process on the cluster so far.
+    expect(byName('matchsvc')).toMatch(/from\s*["']mongodb["']/);
     expect(byName('matchsvc')).toMatch(/from\s*["']node:sqlite["']/);
     expect(byName('billsvc')).toMatch(/from\s*["']node:sqlite["']/);
     // The backup worker reads both databases through the same builtin — and must NOT drag
@@ -199,9 +204,17 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   it('matchsvc (matchsvc.mjs)', async () => {
+    // `BB_MONGO_URI` points the bundle at the suite's own mongod, and that is the whole
+    // value of this case now: matchsvc CONNECTS before it binds a port, so a bundle that
+    // could not load the driver never answers `/health` at all. It is the layer that caught
+    // the driver being bundled — esbuild inlined `mongodb`, its `require('timers/promises')`
+    // became a dynamic require in ESM output, and every build passed while every deploy
+    // died at boot. `scripts/build.mjs` keeps it external for that reason.
     const port = await freePort();
     const body = await boot(join(outdir, 'matchsvc.mjs'), port, {
       MATCH_PORT: String(port),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: 'deploybundle',
       BB_DB_PATH: join(outdir, 'accounts.db'),
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-matchsvc' });
@@ -253,15 +266,32 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   /**
-   * The same bundle with a REAL accounts database, so the read-only open is exercised
-   * against a file rather than only its failure. Built with matchsvc's own bundle, not with
-   * a hand-written schema: a console that can read a database this repo's own writer did not
-   * create proves nothing about the deployed pair.
+   * INVERTED BY THE MONGODB MIGRATION, and left in place saying so.
+   *
+   * This used to boot matchsvc against a real file and then prove adminsvc could open it
+   * read-only — deliberately using matchsvc's own bundle rather than a hand-written schema,
+   * because "a console that can read a database this repo's own writer did not create proves
+   * nothing about the deployed pair". That argument still holds, and it is exactly why this
+   * case cannot be rescued with a fixture: matchsvc writes NO accounts file any more, so
+   * there is no longer a pair to prove anything about.
+   *
+   * What it pins instead is the real, visible consequence of a staged migration: until
+   * Stage 4 moves adminsvc onto the cluster, the console's accounts tab is DARK on a live
+   * deployment. Writing that down as an assertion is the point — an operator opening the
+   * console during the rollout will see it, and this is where it is explained.
+   *
+   * Stage 4 rewrites this case to boot adminsvc against the cluster and expects
+   * `accounts: true` again. If it is still here afterwards, the console is still blind.
    */
-  it('adminsvc reads a database matchsvc created, read-only', async () => {
+  it('adminsvc finds NO accounts database, because matchsvc no longer writes one', async () => {
     const dbPath = join(outdir, 'admin-real-accounts.db');
     const matchPort = await freePort();
-    await boot(join(outdir, 'matchsvc.mjs'), matchPort, { MATCH_PORT: String(matchPort), BB_DB_PATH: dbPath });
+    await boot(join(outdir, 'matchsvc.mjs'), matchPort, {
+      MATCH_PORT: String(matchPort),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: 'deployadmin',
+      BB_DB_PATH: dbPath,
+    });
 
     const port = await freePort();
     const body = (await boot(
@@ -276,7 +306,7 @@ describe('each bundle boots as a bare node process and answers /health', () => {
       },
       '/admin/health',
     )) as { databases: Record<string, boolean> };
-    expect(body.databases).toEqual({ accounts: true, billing: false, analytics: false, ops: false });
+    expect(body.databases).toEqual({ accounts: false, billing: false, analytics: false, ops: false });
   }, 40_000);
 
   /**

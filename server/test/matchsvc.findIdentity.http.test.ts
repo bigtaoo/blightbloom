@@ -14,6 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
+import { freshAccounts } from './mongoHarness';
 
 const SECRET = 'test-secret';
 
@@ -21,7 +22,7 @@ let baseUrl: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const server = createMatchsvcServer({ dbPath: ':memory:', secret: SECRET });
+  const server = createMatchsvcServer({ store: await freshAccounts(), secret: SECRET });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;

@@ -15,6 +15,7 @@ import type { Server, IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { RateLimiter, clientKey, CLIENT_LOG_BODY_LIMIT, RATE_LIMIT } from '../src/routes/telemetry';
+import { freshAccounts } from './mongoHarness';
 
 const NOW = 1_800_000_000_000;
 const servers: Server[] = [];
@@ -27,8 +28,6 @@ const servers: Server[] = [];
  * `afterEach` throws EPERM and fails every test in the file for a reason unrelated to any
  * of them. Same choice `matchsvc.http.test.ts` already makes, for the same reason.
  */
-const IN_MEMORY_DB = ':memory:';
-
 interface Harness {
   base: string;
   pushes: unknown[];
@@ -47,7 +46,7 @@ async function start(opts: { lokiUrl?: string | null; failPush?: boolean; slowPu
   }) as unknown as typeof fetch;
 
   const server = createMatchsvcServer({
-    dbPath: IN_MEMORY_DB,
+    store: await freshAccounts(),
     lokiUrl: opts.lokiUrl === undefined ? 'http://loki/push' : opts.lokiUrl,
     fetchImpl,
     log: { error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, child: () => ({}) as never },

@@ -28,6 +28,7 @@ import { createMatchsvcServer } from '../src/matchsvc';
 import { createBillsvcServer } from '../src/billsvc/server';
 import { INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { listStoreSkus, createStoreOrder, fetchStoreOrder, formatSkuPrice } from '@dd/net/billing';
+import { freshAccounts } from './mongoHarness';
 
 const KEY = 'e2e-internal-key';
 
@@ -75,7 +76,7 @@ beforeAll(async () => {
   }));
   billBase = await listen(billsvc);
 
-  matchsvc = createMatchsvcServer({ dbPath: ':memory:', billing: { url: billBase } });
+  matchsvc = createMatchsvcServer({ store: await freshAccounts(), billing: { url: billBase } });
   matchBase = await listen(matchsvc);
 
   ada = await register('ada');

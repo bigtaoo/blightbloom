@@ -199,6 +199,13 @@ const ENTITLEMENT_VALIDATOR: Record<string, unknown> = {
 export async function ensureAccountsIndexes(db: Db): Promise<void> {
   const s = accountsStore(db);
 
+  // The validator goes on BEFORE the indexes, and the order is not cosmetic: `createIndex`
+  // creates its collection implicitly, so installing the validator afterwards would mean
+  // `entitlements` always already exists and the `createCollection` branch below could
+  // never run — dead code that looks like a handled case. Installing it first also means no
+  // write can reach the collection before the rule that constrains it.
+  await ensureValidator(db, 'entitlements', ENTITLEMENT_VALIDATOR);
+
   // Case-insensitive AND unique: the constraint the old schema described in a comment but
   // did not enforce. See the file header.
   await s.accounts.createIndex(
@@ -222,8 +229,6 @@ export async function ensureAccountsIndexes(db: Db): Promise<void> {
   // `WHERE sku LIKE 'character:%'` covered both namespaces out of one table at a `sqlite3`
   // prompt; design/19 §7's daily audit groups by this one.
   await s.entitlements.createIndex({ grantedAt: 1 }, { name: 'entitlements_granted_at' });
-
-  await ensureValidator(db, 'entitlements', ENTITLEMENT_VALIDATOR);
 }
 
 /** Installs a collection validator whether or not the collection exists yet. `createCollection`

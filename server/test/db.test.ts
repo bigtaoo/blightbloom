@@ -14,8 +14,8 @@
  * from nothing else.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Db } from 'mongodb';
-import { accountsStore, ensureAccountsIndexes, CI_COLLATION, type AccountsStore } from '../src/db';
+import type { Db, OptionalUnlessRequiredId } from 'mongodb';
+import { accountsStore, ensureAccountsIndexes, CI_COLLATION, type AccountsStore, type EntitlementDoc } from '../src/db';
 import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
 let ctx: MongoTestContext;
@@ -102,24 +102,26 @@ describe('the provider index is partial', () => {
 });
 
 describe('entitlements', () => {
-  const ent = (extra: Record<string, unknown> = {}) => ({
-    _id: `e${Math.random()}`,
-    accountId: 'a1',
-    sku: 'blueprint:cannon',
-    source: 'grant' as const,
-    grantedAt: 1,
-    ...extra,
-  });
+  // No `_id`: it is an ObjectId the driver mints, and its creation ordering is what
+  // `EntitlementService.list` sorts on.
+  const ent = (extra: Record<string, unknown> = {}): OptionalUnlessRequiredId<EntitlementDoc> =>
+    ({
+      accountId: 'a1',
+      sku: 'blueprint:cannon',
+      source: 'grant',
+      grantedAt: 1,
+      ...extra,
+    }) as OptionalUnlessRequiredId<EntitlementDoc>;
 
   it('refuses a second entitlement for the same account and sku', async () => {
     // A SKU is own-or-not, never stacked, so this index is also the idempotency key an
     // at-least-once platform callback is delivered through.
-    await s.entitlements.insertOne(ent());
-    await expect(s.entitlements.insertOne(ent())).rejects.toMatchObject({ code: 11000 });
+    await s.entitlements.insertOne(ent() );
+    await expect(s.entitlements.insertOne(ent() )).rejects.toMatchObject({ code: 11000 });
   });
 
   it('refuses a source outside the enum', async () => {
-    await expect(s.entitlements.insertOne(ent({ source: 'freebie' as never }))).rejects.toThrow(
+    await expect(s.entitlements.insertOne(ent({ source: 'freebie' as never }) )).rejects.toThrow(
       /validation/i,
     );
   });
@@ -128,14 +130,14 @@ describe('entitlements', () => {
     // The CHECK constraint the SQLite table carried. It survives as a server-side validator
     // rather than as a rule this code follows, which is the point: it binds a `mongosh`
     // prompt too.
-    await expect(s.entitlements.insertOne(ent({ source: 'purchase' }))).rejects.toThrow(/validation/i);
+    await expect(s.entitlements.insertOne(ent({ source: 'purchase' }) )).rejects.toThrow(/validation/i);
     await expect(
       s.entitlements.insertOne(ent({ source: 'purchase', orderId: 'ord-1' })),
     ).resolves.toMatchObject({ acknowledged: true });
   });
 
   it('accepts a non-purchase entitlement with no order, which is every grant', async () => {
-    await expect(s.entitlements.insertOne(ent({ source: 'starter' }))).resolves.toMatchObject({
+    await expect(s.entitlements.insertOne(ent({ source: 'starter' }) )).resolves.toMatchObject({
       acknowledged: true,
     });
   });

@@ -14,13 +14,14 @@
  *   'files, never acts' — asserted against the real `entitlements` table: the rows are still
  *   there afterwards.
  *
- * The reads run against a real `openDb(':memory:')` and a real `openBillingDb(':memory:')`,
+ * The reads run against real collections and a real `openBillingDb(':memory:')`,
  * because the two-file split is half of what this pass ships: the audit reads the CONTROL
  * PLANE's table and files into the BILLING plane's queue.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDb } from '../src/db';
+import type { AccountsStore } from '../src/db';
+import { freshAccounts } from './mongoHarness';
 import { openBillingDb } from '../src/billingDb';
 import { EntitlementService, type EntitlementSource } from '../src/EntitlementService';
 import { openReviews, reviewById, grantAnomalyId, markReviewed } from '../src/billsvc/reviewQueue';
@@ -40,15 +41,14 @@ const DAY = 86_400_000;
 const D1 = Date.parse('2026-09-04T00:00:00.000Z');
 const D2 = D1 + DAY;
 
-let accounts: DatabaseSync;
+let accounts: AccountsStore;
 let billing: DatabaseSync;
 
-beforeEach(() => {
-  accounts = openDb(':memory:');
+beforeEach(async () => {
+  accounts = await freshAccounts();
   billing = openBillingDb(':memory:');
 });
 afterEach(() => {
-  accounts.close();
   billing.close();
 });
 
@@ -62,13 +62,13 @@ function grants(n: number, over: Partial<GrantRow> = {}): GrantRow[] {
 }
 
 describe('dayKeyOf / dayWindow', () => {
-  it('is a UTC YYYY-MM-DD', () => {
+  it('is a UTC YYYY-MM-DD', async () => {
     expect(dayKeyOf(D1)).toBe('2026-09-04');
     expect(dayKeyOf(D1 + DAY - 1)).toBe('2026-09-04');
     expect(dayKeyOf(D2)).toBe('2026-09-05');
   });
 
-  it('is UTC and not local time, because the KEY has to be machine-independent', () => {
+  it('is UTC and not local time, because the KEY has to be machine-independent', async () => {
     // `(accountId, dayKey)` is the review queue's idempotency key. A local-time boundary would
     // file a second row for the same grants the first time the job ran from a box in another
     // zone — which is a duplicate finding produced by nothing but where cron happened to run.
@@ -76,7 +76,7 @@ describe('dayKeyOf / dayWindow', () => {
     expect(dayKeyOf(Date.parse('2026-09-05T00:30:00.000Z'))).toBe('2026-09-05');
   });
 
-  it('dayWindow is the half-open day, and round-trips through dayKeyOf', () => {
+  it('dayWindow is the half-open day, and round-trips through dayKeyOf', async () => {
     const { sinceMs, untilMs } = dayWindow('2026-09-04');
     expect(sinceMs).toBe(D1);
     expect(untilMs).toBe(D2);
@@ -84,31 +84,31 @@ describe('dayKeyOf / dayWindow', () => {
     expect(dayKeyOf(untilMs)).toBe('2026-09-05'); // exclusive
   });
 
-  it('refuses a day key that is not a date', () => {
+  it('refuses a day key that is not a date', async () => {
     expect(() => dayWindow('yesterday')).toThrow(/not a YYYY-MM-DD day key/);
   });
 });
 
 describe('auditGrants — the threshold', () => {
-  it('exactly AT the threshold is NOT an anomaly', () => {
+  it('exactly AT the threshold is NOT an anomaly', async () => {
     // The decision, not an off-by-one: the threshold is the largest count anyone has said is
     // fine, so a count equal to it is a case somebody already accepted.
     expect(auditGrants(grants(DEFAULT_GRANT_THRESHOLD))).toEqual([]);
   });
 
-  it('one over the threshold IS', () => {
+  it('one over the threshold IS', async () => {
     const findings = auditGrants(grants(DEFAULT_GRANT_THRESHOLD + 1));
     expect(findings).toHaveLength(1);
     expect(findings[0]!.count).toBe(DEFAULT_GRANT_THRESHOLD + 1);
     expect(findings[0]!.threshold).toBe(DEFAULT_GRANT_THRESHOLD);
   });
 
-  it('respects an overridden threshold on both sides of the boundary', () => {
+  it('respects an overridden threshold on both sides of the boundary', async () => {
     expect(auditGrants(grants(1), { threshold: 1 })).toEqual([]);
     expect(auditGrants(grants(2), { threshold: 1 })).toHaveLength(1);
   });
 
-  it('a threshold of zero files any counted grant at all', () => {
+  it('a threshold of zero files any counted grant at all', async () => {
     // The knob's extreme, and it must still be `>`: zero counted grants is still not a finding.
     expect(auditGrants([], { threshold: 0 })).toEqual([]);
     expect(auditGrants(grants(1), { threshold: 0 })).toHaveLength(1);
@@ -116,12 +116,12 @@ describe('auditGrants — the threshold', () => {
 });
 
 describe('auditGrants — with no evidence, skip', () => {
-  it('skips `purchase`, because the money IS the evidence', () => {
+  it('skips `purchase`, because the money IS the evidence', async () => {
     const rows = [...grants(10, { source: 'purchase' })];
     expect(auditGrants(rows)).toEqual([]);
   });
 
-  it('counts every source the audit WAS told to count', () => {
+  it('counts every source the audit WAS told to count', async () => {
     // One of each: four sources, threshold 3, so the boundary is crossed only by counting all
     // four — which pins that no default source is quietly dropped.
     const rows = DEFAULT_COUNTED_SOURCES.map((source, i) => grant({ source, sku: `blueprint:w${i}` }));
@@ -130,7 +130,7 @@ describe('auditGrants — with no evidence, skip', () => {
     expect(findings[0]!.bySource).toEqual({ grant: 1, event: 1, starter: 1, drop: 1 });
   });
 
-  it('skips a source it was not told to count, rather than convicting on it', () => {
+  it('skips a source it was not told to count, rather than convicting on it', async () => {
     // A source added to `db.ts`'s CHECK by a later migration arrives UNCOUNTED, and whoever
     // adds it decides. The alternative — "anything that is not a purchase" — silently changes
     // what this audit convicts on the day someone edits an unrelated file.
@@ -138,24 +138,24 @@ describe('auditGrants — with no evidence, skip', () => {
     expect(auditGrants(rows)).toEqual([]);
   });
 
-  it('honours an explicit countedSources — the starter-pack knob', () => {
+  it('honours an explicit countedSources — the starter-pack knob', async () => {
     const rows = [...grants(5, { source: 'starter' }), ...grants(1, { source: 'grant' })];
     expect(auditGrants(rows, { countedSources: ['grant', 'event', 'drop'] })).toEqual([]);
     expect(auditGrants(rows)).toHaveLength(1);
   });
 
-  it('finds nothing in an empty window', () => {
+  it('finds nothing in an empty window', async () => {
     expect(auditGrants([])).toEqual([]);
   });
 
-  it('a mixed account crosses the threshold only on its counted rows', () => {
+  it('a mixed account crosses the threshold only on its counted rows', async () => {
     const rows = [...grants(3), ...grants(20, { source: 'purchase' })];
     expect(auditGrants(rows)).toEqual([]);
   });
 });
 
 describe('auditGrants — grouping', () => {
-  it('groups per account per DAY, never across days', () => {
+  it('groups per account per DAY, never across days', async () => {
     // Four on Friday and four on Saturday is two findings; eight in one day is one. The
     // distinction is the whole reason the key carries a day.
     const rows = [...grants(4), ...grants(4, { grantedAt: D2 + 60_000 })];
@@ -164,7 +164,7 @@ describe('auditGrants — grouping', () => {
     expect(findings.map((f) => f.count)).toEqual([4, 4]);
   });
 
-  it('does not pool two accounts into one finding', () => {
+  it('does not pool two accounts into one finding', async () => {
     const rows = [...grants(3), ...grants(3, { accountId: 'acc-2' })];
     expect(auditGrants(rows)).toEqual([]);
   });
@@ -182,7 +182,7 @@ describe('auditGrants — grouping', () => {
     ]);
   });
 
-  it('records first/last even when the rows arrive out of order', () => {
+  it('records first/last even when the rows arrive out of order', async () => {
     // The function is pure and its contract must not depend on a caller it cannot see —
     // `readGrantsInWindow` happens to sort, and that is not something this can rely on.
     const rows = [
@@ -198,60 +198,64 @@ describe('auditGrants — grouping', () => {
     expect(f.skus).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  it('a grant at the last millisecond of a day belongs to that day', () => {
+  it('a grant at the last millisecond of a day belongs to that day', async () => {
     const rows = grants(4, { grantedAt: D2 - 1 });
     expect(auditGrants(rows)[0]!.dayKey).toBe('2026-09-04');
   });
 });
 
 describe('readGrantsInWindow — against the real entitlements table', () => {
-  function account(id: string): string {
-    accounts
-      .prepare('INSERT INTO accounts (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)')
-      .run(id, `user-${id}`, 'hash', D1);
+  async function account(id: string): Promise<string> {
+    await accounts.accounts.insertOne({
+      _id: id,
+      username: `user-${id}`,
+      passwordHash: 'hash',
+      provider: 'local',
+      createdAt: D1,
+    });
     return id;
   }
 
-  it('reads what EntitlementService actually wrote, windowed half-open on granted_at', () => {
+  it('reads what EntitlementService actually wrote, windowed half-open on granted_at', async () => {
     const ents = new EntitlementService(accounts);
-    account('acc-1');
-    ents.grant('acc-1', 'blueprint:a', 'grant', { nowMs: D1 });
-    ents.grant('acc-1', 'blueprint:b', 'event', { nowMs: D2 - 1 });
-    ents.grant('acc-1', 'blueprint:c', 'grant', { nowMs: D2 });
+    await account('acc-1');
+    await ents.grant('acc-1', 'blueprint:a', 'grant', { nowMs: D1 });
+    await ents.grant('acc-1', 'blueprint:b', 'event', { nowMs: D2 - 1 });
+    await ents.grant('acc-1', 'blueprint:c', 'grant', { nowMs: D2 });
 
-    const rows = readGrantsInWindow(accounts, D1, D2);
+    const rows = await readGrantsInWindow(accounts, D1, D2);
     expect(rows.map((r) => r.sku)).toEqual(['blueprint:a', 'blueprint:b']);
     expect(rows.map((r) => r.source)).toEqual(['grant', 'event']);
     expect(rows[0]!.accountId).toBe('acc-1');
   });
 
-  it('reads purchases too — the SKIP is the audit\'s decision, not the query\'s', () => {
+  it('reads purchases too — the SKIP is the audit\'s decision, not the query\'s', async () => {
     // Deliberate: the reader is dumb so the rule lives in one place, where the tests above can
-    // see it. A query that filtered `source <> 'purchase'` would move the policy into SQL and
+    // see it. A query that filtered purchases out would move the policy into the store and
     // out of `countedSources`.
     const ents = new EntitlementService(accounts);
-    account('acc-1');
-    ents.grant('acc-1', 'blueprint:paid', 'purchase', { orderId: 'o-1', nowMs: D1 });
-    expect(readGrantsInWindow(accounts, D1, D2).map((r) => r.source)).toEqual(['purchase']);
-    expect(auditGrants(readGrantsInWindow(accounts, D1, D2), { threshold: 0 })).toEqual([]);
+    await account('acc-1');
+    await ents.grant('acc-1', 'blueprint:paid', 'purchase', { orderId: 'o-1', nowMs: D1 });
+    expect((await readGrantsInWindow(accounts, D1, D2)).map((r) => r.source)).toEqual(['purchase']);
+    expect(auditGrants(await readGrantsInWindow(accounts, D1, D2), { threshold: 0 })).toEqual([]);
   });
 
-  it('spans accounts and is ordered oldest first', () => {
+  it('spans accounts and is ordered oldest first', async () => {
     const ents = new EntitlementService(accounts);
-    account('acc-1');
-    account('acc-2');
-    ents.grant('acc-2', 'blueprint:b', 'grant', { nowMs: D1 + 200 });
-    ents.grant('acc-1', 'blueprint:a', 'grant', { nowMs: D1 + 100 });
-    expect(readGrantsInWindow(accounts, D1, D2).map((r) => r.accountId)).toEqual(['acc-1', 'acc-2']);
+    await account('acc-1');
+    await account('acc-2');
+    await ents.grant('acc-2', 'blueprint:b', 'grant', { nowMs: D1 + 200 });
+    await ents.grant('acc-1', 'blueprint:a', 'grant', { nowMs: D1 + 100 });
+    expect((await readGrantsInWindow(accounts, D1, D2)).map((r) => r.accountId)).toEqual(['acc-1', 'acc-2']);
   });
 
-  it('is empty for a window with nothing in it', () => {
-    expect(readGrantsInWindow(accounts, D1, D2)).toEqual([]);
+  it('is empty for a window with nothing in it', async () => {
+    expect(await readGrantsInWindow(accounts, D1, D2)).toEqual([]);
   });
 });
 
 describe('fileGrantAnomalies — files, never acts', () => {
-  it('files one review entry per finding, keyed on (account, day)', () => {
+  it('files one review entry per finding, keyed on (account, day)', async () => {
     const findings = auditGrants([...grants(4), ...grants(4, { accountId: 'acc-2' })]);
     expect(fileGrantAnomalies(billing, findings, 7_000)).toBe(2);
 
@@ -267,7 +271,7 @@ describe('fileGrantAnomalies — files, never acts', () => {
     expect((entry.evidence as { bySource: Record<string, number> }).bySource).toEqual({ grant: 4 });
   });
 
-  it('re-running the audit over the same day files NOTHING the second time', () => {
+  it('re-running the audit over the same day files NOTHING the second time', async () => {
     // The property that makes the job safe to re-run, and therefore the property that makes it
     // get run at all. `(accountId, dayKey)` is the key; a second pass finds it taken.
     const findings = auditGrants(grants(4));
@@ -277,7 +281,7 @@ describe('fileGrantAnomalies — files, never acts', () => {
     expect(reviewById(billing, grantAnomalyId('acc-1', '2026-09-04'))!.createdAt).toBe(7_000);
   });
 
-  it('a re-run does not reopen a finding a human already closed', () => {
+  it('a re-run does not reopen a finding a human already closed', async () => {
     const findings = auditGrants(grants(4));
     fileGrantAnomalies(billing, findings, 7_000);
     markReviewed(billing, grantAnomalyId('acc-1', '2026-09-04'), 8_000, 'campaign, expected');
@@ -285,38 +289,42 @@ describe('fileGrantAnomalies — files, never acts', () => {
     expect(openReviews(billing)).toEqual([]);
   });
 
-  it('counts only the NEW rows when some of the batch was already filed', () => {
+  it('counts only the NEW rows when some of the batch was already filed', async () => {
     fileGrantAnomalies(billing, auditGrants(grants(4)), 7_000);
     const both = auditGrants([...grants(4), ...grants(4, { accountId: 'acc-2' })]);
     expect(fileGrantAnomalies(billing, both, 9_000)).toBe(1);
     expect(openReviews(billing)).toHaveLength(2);
   });
 
-  it('REVOKES NOTHING — the entitlements are all still there afterwards', () => {
-    // design/19 §7: "No automatic revocation." Asserted against the real table rather than
+  it('REVOKES NOTHING — the entitlements are all still there afterwards', async () => {
+    // design/19 §7: "No automatic revocation." Asserted against the real collection rather than
     // trusted to a comment, because it is the one property whose violation is unrecoverable.
     const ents = new EntitlementService(accounts);
-    accounts
-      .prepare('INSERT INTO accounts (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)')
-      .run('acc-1', 'user', 'hash', D1);
-    for (const n of [1, 2, 3, 4, 5]) ents.grant('acc-1', `blueprint:w${n}`, 'grant', { nowMs: D1 + n });
+    await accounts.accounts.insertOne({
+      _id: 'acc-1',
+      username: 'user',
+      passwordHash: 'hash',
+      provider: 'local',
+      createdAt: D1,
+    });
+    for (const n of [1, 2, 3, 4, 5]) await ents.grant('acc-1', `blueprint:w${n}`, 'grant', { nowMs: D1 + n });
 
-    const findings = auditGrants(readGrantsInWindow(accounts, D1, D2));
+    const findings = auditGrants(await readGrantsInWindow(accounts, D1, D2));
     expect(findings).toHaveLength(1);
     fileGrantAnomalies(billing, findings, 7_000);
 
-    expect(ents.list('acc-1')).toHaveLength(5);
-    expect(ents.owns('acc-1', 'blueprint:w1')).toBe(true);
+    expect(await ents.list('acc-1')).toHaveLength(5);
+    expect(await ents.owns('acc-1', 'blueprint:w1')).toBe(true);
   });
 
-  it('files nothing for an empty finding list', () => {
+  it('files nothing for an empty finding list', async () => {
     expect(fileGrantAnomalies(billing, [], 1_000)).toBe(0);
     expect(openReviews(billing)).toEqual([]);
   });
 });
 
 describe('formatFinding', () => {
-  it('names the count, the day, the threshold, the source breakdown and the inaction', () => {
+  it('names the count, the day, the threshold, the source breakdown and the inaction', async () => {
     const finding = auditGrants([...grants(3), ...grants(2, { source: 'event' })])[0]!;
     const line = formatFinding(finding);
     expect(line).toContain("account 'acc-1'");
@@ -329,7 +337,7 @@ describe('formatFinding', () => {
     expect(line).toContain('nothing revoked');
   });
 
-  it('orders the source breakdown deterministically', () => {
+  it('orders the source breakdown deterministically', async () => {
     const rows = [...grants(1, { source: 'starter' }), ...grants(1, { source: 'drop' }), ...grants(2)];
     const line = formatFinding(auditGrants(rows, { threshold: 0 })[0]!);
     expect(line).toContain('drop×1, grant×2, starter×1');

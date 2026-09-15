@@ -14,6 +14,9 @@ export default defineConfig({
     // real server rather than a fake, which is what catches the places MongoDB's semantics
     // differ from the node:sqlite ones this server was built on.
     globalSetup: ['./test/mongoGlobalSetup.ts'],
+    // Per-file: closes the client `freshAccounts()` shares, so a worker cannot hang on an
+    // open socket. See test/mongoSetup.ts.
+    setupFiles: ['./test/mongoSetup.ts'],
     // The replica set comes up once, but a cold CI machine downloads the binary first.
     testTimeout: 20_000,
     hookTimeout: 30_000,

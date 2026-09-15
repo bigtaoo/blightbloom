@@ -24,6 +24,7 @@
 import { inject } from 'vitest';
 import { MongoClient, type Db } from 'mongodb';
 import type { StoreName } from '../src/mongo';
+import { accountsStore, ensureAccountsIndexes, type AccountsStore } from '../src/db';
 
 let counter = 0;
 
@@ -51,4 +52,67 @@ export async function openTestMongo(): Promise<MongoTestContext> {
       await client.close();
     },
   };
+}
+
+/** An isolated control plane with its indexes and validators already installed. */
+export interface AccountsTestContext {
+  store: AccountsStore;
+  db: Db;
+  dispose: () => Promise<void>;
+}
+
+/**
+ * The shortcut nearly every control-plane test wants: a throwaway `accounts` database with
+ * `ensureAccountsIndexes` already run.
+ *
+ * Running it here rather than leaving it to each test is deliberate. The old suite got its
+ * constraints for free — `openDb(':memory:')` executed the whole `CREATE TABLE` schema, so
+ * a test could not accidentally run against a database with no UNIQUE on it. Indexes are a
+ * separate call now, and a test that skipped it would pass while asserting nothing about
+ * the constraint it names. Making it part of "open a store" restores the old property.
+ */
+export async function openTestAccounts(): Promise<AccountsTestContext> {
+  const ctx = await openTestMongo();
+  const db = ctx.db('accounts');
+  await ensureAccountsIndexes(db);
+  return { store: accountsStore(db), db, dispose: ctx.dispose };
+}
+
+/**
+ * One client per worker process, shared by `freshAccounts()` and closed by `mongoSetup.ts`
+ * after each test file. Lazily created, so a file that never touches the cluster never
+ * connects to it.
+ */
+let sharedClient: MongoClient | undefined;
+
+/**
+ * A fresh, isolated control plane with NO teardown for the caller to remember.
+ *
+ * The HTTP suites build a matchsvc server in `beforeAll` and only ever needed a scratch
+ * database to hand it; making each of them own a context, thread it through, and dispose it
+ * would be a dozen copies of the same bookkeeping and a dozen chances to forget the
+ * `afterAll`. Two properties make the bookkeeping unnecessary here:
+ *
+ *  - the database name carries a counter nobody else can compute, so nothing leaks BETWEEN
+ *    tests even though nothing is dropped;
+ *  - `mongoGlobalSetup.ts` destroys the entire mongod when the run ends, so nothing leaks
+ *    AFTER it either.
+ *
+ * What still has to be closed is the SOCKET, because an open client keeps the worker alive
+ * and vitest would hang rather than fail — `mongoSetup.ts` does that in a file-scoped
+ * `afterAll`. Tests that want to assert on a dropped database, or to see the `Db` itself,
+ * use `openTestAccounts` instead.
+ */
+export async function freshAccounts(): Promise<AccountsStore> {
+  sharedClient ??= await MongoClient.connect(inject('mongoUri'));
+  const db = sharedClient.db(`f${process.pid}x${++counter}_accounts`);
+  await ensureAccountsIndexes(db);
+  return accountsStore(db);
+}
+
+/** Closes the shared client. Called by `mongoSetup.ts`, not by tests. */
+export async function closeSharedTestClient(): Promise<void> {
+  const c = sharedClient;
+  sharedClient = undefined;
+  if (c) await c.close();
 }

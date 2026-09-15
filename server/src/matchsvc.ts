@@ -63,7 +63,7 @@
  * is chosen per response by `GameRegistry` (ROADMAP 8.6, design/19 §6) and never enters
  * the ticket payload — the ticket is a seat authorization and knows no topology.
  */
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Matchmaker } from './Matchmaker';
@@ -79,7 +79,6 @@ import {
   INTERNAL_CALLER_MATCHSVC,
 } from './config';
 import { createFlagClient, type FlagClient } from './flags/client';
-import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { accountsStore, ensureAccountsIndexes, type AccountsStore } from './db';
@@ -89,20 +88,12 @@ import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
+import { dispatch, type DispatchContext } from './matchsvcDispatch';
 import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
-import { renderMetrics, METRICS_CONTENT_TYPE } from './metrics';
-import { matchsvcMetrics } from './matchsvcMetrics';
-import * as matchRoutes from './routes/match';
-import * as ratingRoutes from './routes/rating';
 import * as partyRoutes from './routes/party';
-import * as authRoutes from './routes/auth';
 import type { PortalAuthDeps } from './routes/auth';
-import * as accountRoutes from './routes/account';
-import * as internalEntitlementRoutes from './routes/internalEntitlements';
-import * as storeRoutes from './routes/store';
-import * as telemetryRoutes from './routes/telemetry';
 import { RateLimiter, RATE_LIMIT } from './routes/telemetry';
 import type { BillingPlaneConfig } from './routes/store';
 
@@ -311,92 +302,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     fetchImpl: opts.fetchImpl,
   };
 
-  /**
-   * The dispatch chain. Returns whatever the matched handler returns, which since the 2026-09-15
-   * move to MongoDB may be a promise — see `route`'s caller for why that has to be caught.
-   */
-  const dispatch = (req: IncomingMessage, res: ServerResponse): void | Promise<void> => {
-    if (req.method === 'OPTIONS') return void send(res, 204, {});
-    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-    const path = url.pathname;
-
-    if (req.method === 'GET' && path === '/health') {
-      return void send(res, 200, { ok: true, service: 'daydayup-matchsvc' });
-    }
-
-    // Prometheus scrapes this over the compose network. matchsvc is the ONE service Caddy
-    // proxies wholesale (`reverse_proxy matchsvc:8788` — server/deploy/README.md
-    // §2), so unlike gameserver's and billsvc's it would otherwise be public: a free
-    // readout of how many players are queued and how many accounts exist. Caddy stamps
-    // `x-forwarded-for` on everything it proxies, so its presence is what "came from
-    // outside" means here, and the answer is a plain 404 rather than a 403 — a 403 confirms
-    // the route exists.
-    if (req.method === 'GET' && path === '/metrics') {
-      if (req.headers['x-forwarded-for'] !== undefined) return void send(res, 404, { error: 'not found' });
-      res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
-      return void res.end(renderMetrics(matchsvcMetrics(matchmaker, registry, rollup)));
-    }
-
-    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_LOG_PATH) {
-      return telemetryRoutes.postClientLog(req, res, url, deps);
-    }
-    if (req.method === 'POST' && path === telemetryRoutes.CLIENT_EVENTS_PATH) {
-      return telemetryRoutes.postClientEvents(req, res, url, deps);
-    }
-    // design/21 §9's client flag delivery path: the one PUBLIC flag readout, answered from
-    // the values this process already polls. See routes/clientFlags.ts for why it is its own
-    // route, and why it is neither rate-limited nor hidden from proxied requests.
-    if (req.method === 'GET' && path === PUBLIC_FLAGS_PATH) return getClientFlags(res, deps);
-
-    if (req.method === 'POST' && path === '/find') return matchRoutes.postFind(req, res, url, deps);
-    if (req.method === 'GET' && matchRoutes.FIND_POLL_PATH.test(path)) {
-      return matchRoutes.getFindPoll(req, res, url, deps);
-    }
-    if (req.method === 'POST' && path === '/resume') return matchRoutes.postResume(req, res, url, deps);
-
-    if (req.method === 'POST' && path === '/rating/report') return ratingRoutes.postReport(req, res, url, deps);
-    if (req.method === 'GET' && ratingRoutes.RATING_LOOKUP_PATH.test(path)) {
-      return ratingRoutes.getRating(req, res, url, deps);
-    }
-
-    if (req.method === 'POST' && path === '/party/create') return partyRoutes.postCreate(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/join') return partyRoutes.postJoin(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/leave') return partyRoutes.postLeave(req, res, url, deps);
-    if (req.method === 'POST' && path === '/party/start') return partyRoutes.postStart(req, res, url, deps);
-    if (req.method === 'GET' && partyRoutes.PARTY_LOOKUP_PATH.test(path)) {
-      return partyRoutes.getParty(req, res, url, deps);
-    }
-
-    if (req.method === 'POST' && path === '/auth/register') return authRoutes.postRegister(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/login') return authRoutes.postLogin(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/logout') return authRoutes.postLogout(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/portal') return authRoutes.postPortalLogin(req, res, url, deps);
-    if (req.method === 'GET' && path === '/auth/me') return authRoutes.getMe(req, res, url, deps);
-    if (req.method === 'POST' && path === '/auth/change-password') {
-      return authRoutes.postChangePassword(req, res, url, deps);
-    }
-
-    if (req.method === 'GET' && path === '/account/meta') return accountRoutes.getMeta(req, res, url, deps);
-    if (req.method === 'POST' && path === '/account/meta') return accountRoutes.postMeta(req, res, url, deps);
-
-    // The store proxy (ROADMAP 8.8). Three player-facing routes that answer nothing here —
-    // every one of them verifies the bearer session and then forwards to billsvc over 8.1's
-    // internal seam. The `:id` GET is last because its pattern would also match a literal
-    // `/store/order/` segment the POST above owns under a different method.
-    if (req.method === 'GET' && path === '/store/skus') return storeRoutes.getSkus(req, res, url, deps);
-    if (req.method === 'POST' && path === '/store/order') return storeRoutes.postOrder(req, res, url, deps);
-    if (req.method === 'GET' && storeRoutes.STORE_ORDER_PATH.test(path)) {
-      return storeRoutes.getOrder(req, res, url, deps);
-    }
-
-    // The one route no player ever calls (design/19 §4's closed delivery loop): billsvc's
-    // outbox pump POSTs a settled purchase here over ROADMAP 8.1's internal key.
-    if (req.method === 'POST' && path === internalEntitlementRoutes.INTERNAL_GRANT_PATH) {
-      return internalEntitlementRoutes.postGrant(req, res, url, deps);
-    }
-
-    send(res, 404, { error: 'not found' });
-  };
+  const ctx: DispatchContext = { deps, matchmaker, registry, rollup };
 
   /**
    * The ERROR BOUNDARY, and it is new with the MongoDB port rather than tidiness.
@@ -415,7 +321,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   const server = createServer((req, res) => {
     let result: void | Promise<void>;
     try {
-      result = dispatch(req, res);
+      result = dispatch(req, res, ctx);
     } catch (e) {
       return failRequest(res, e);
     }
