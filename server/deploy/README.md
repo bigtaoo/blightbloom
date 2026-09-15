@@ -676,12 +676,14 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
   turning on as a floor under this, but they are a whole-disk snapshot rather than a
   verified database copy, so they do not close the item.
-- **The retired deploy key on the old box** needs one root run there:
-  `~/.ssh/authorized_keys` is root-owned, so the line could not be deleted from this side when
-  the project moved out on 2026-09-15. It is inert — its forced command names a script that
-  no longer exists — but inert is not revoked. A script that removes it (and scrubs it from
-  the `authorized_keys` backups beside it) is staged on that box as `~/finish-rename.sh`,
-  waiting on a `sudo` run by whoever holds the password.
+- ~~**The retired deploy key on the old box**~~ **— revoked 2026-09-15.** `~/.ssh/authorized_keys`
+  there is root-owned, so the line could not be deleted from this side; the owner ran two
+  prepared scripts instead. The live file is three lines and none of them is this project's, and
+  the key material appears in no `authorized_keys.bak-*` beside it either. Verified by searching
+  for the KEY, not for its label — which is the part worth keeping: that key line was labelled
+  with the box's neutral naming and never contained the word `blightbloom`, so the first script's
+  own residue check (a grep for the project name) reported clean on the one line it existed to
+  find.
 
   Everything else this project left behind there was swept on 2026-09-15: two SQLite
   snapshots of live account and billing data in a home directory, four observability probe
