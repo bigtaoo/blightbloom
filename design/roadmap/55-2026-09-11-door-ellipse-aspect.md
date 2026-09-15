@@ -1044,7 +1044,8 @@ guessing at a 404, and the deploy directory with its volumes, image and script b
 gone. **One thing could not be finished from here**: `~/.ssh/authorized_keys` on that machine
 is root-owned, so the retired deploy key's line has to be removed by whoever has its `sudo`
 password. It is already inert — its forced command names a script that no longer exists — but
-inert is not revoked.
+inert is not revoked. *(Revoked the same day, by the owner running two prepared scripts — see
+"Leaving a borrowed box is a second job" below.)*
 
 > **"Clean" meant the stack.** A sweep of the box later the same day found what a
 > `compose down` does not touch — see "Leaving a borrowed box is a second job" below.
@@ -1059,7 +1060,7 @@ had paired it with: alerting. A managed database survives the VM; nothing in it 
 game stopped answering, and "the whole box is gone" still produces no signal at all, because the
 dashboards that would report it are on it. So they stop being one problem with one answer. The
 retired deploy key on the old box (root-owned `authorized_keys`, inert but not revoked) is the
-box owner's to remove, confirmed. `platform` `test` `docs`
+box owner's to remove — done later the same day. `platform` `test` `docs`
 
 ## The chest nobody could open (2026-09-15, engine + client + art + audio + docs, `ENGINE_VERSION` 65→66)
 
@@ -1306,12 +1307,38 @@ should not be done with a regex:
   clean up"*, which had quietly become a way of never doing it. It names the staged script and
   the one command now.
 
+### The cleanup script's own three bugs, and the one that generalises
+
+The root run happened the same day and the key is revoked — the live `authorized_keys` is three
+lines, none of them this project's, and the key material is in none of the backups beside it
+either. It took two scripts, and the reason is worth more than the outcome.
+
+**The one that generalises.** The first script ended with a residue check — a `grep` alternation of
+the two project names — over `authorized_keys` and its backups, and it printed **clean** for the
+retired key's own line. That
+line reads `command="…",restrict ssh-ed25519 AAAA… <neutral>-deploy` — it is labelled with the box's
+neutral naming and by construction never contains this project's name, which was the entire point of
+the naming. **A residue check that greps for a name cannot find what was deliberately named not to
+say it.** It only caught the co-tenant's line at all because the other half of the pattern happened to
+match. The replacement matches on KEY MATERIAL, and that is the form to reach for: verify by the thing
+itself, not by what it is called.
+
+**An off-by-one over a date range.** The same script scrubbed the retired key from backups matching
+`authorized_keys.bak-2026091[0-4]*` — every backup made on the 15th was outside the glob, including
+the snapshot the script takes itself one line earlier. It faithfully removed the key from the live
+file and left a copy of it in the backup it had just written.
+
+**A quoting bug that never reached the box intact.** The follow-up was first built inside a
+double-quoted `ssh "…"` wrapping a quoted heredoc, so the local shell ate `$WT` before transmission
+and what landed was `sed -i "// s|…`. `set -eu` caught it at the first backup, so nothing was
+modified — the only damage was one stray `.tmp`. The fix is to ship a script as a FILE over stdin
+(`tr -d '' < f | ssh host 'cat > f'`) and `sh -n` it on the far side before running it. The `tr` is
+not optional: `core.autocrlf` makes every shell script in this repo CRLF in a Windows worktree, and a
+CRLF `sh` script dies with `$'': command not found` — the failure `../../server/deploy/README.md`
+already records for `ci-deploy.sh`.
+
 ### Still open
 
-- **One root run on the old box**, `sudo sh ~/finish-rename.sh`: it deletes this project's retired
-  deploy key, scrubs that key line from the `authorized_keys.bak-*` files beside it, repoints the
-  co-tenant's forced command, and removes the shim. Everything else is done; this one needs a
-  password no session here has.
 - **The other repo has not caught up.** `bigtaoo/e.gamestao` still holds its own copies of the
   deploy script and compose file under the old names. They are inert copies — the live ones on the
   box are what run — but a re-install from that repo would undo half of this.
