@@ -1,9 +1,17 @@
-"""Produce the four cues a CHARACTER makes about itself: swing, hurt, death.player, spawn.
+"""Produce the cues whose peak reference is a single `tone()`: swing, hurt, death.player,
+spawn -- the four a CHARACTER makes about itself -- and, since 2026-09-15, `chest.open`.
 
 The counterpart to `process_all.py` (the cues an engine EVENT makes at a world position) and
-`process_ui.py` (the cues a SCREEN makes). These four are the audio half of the rig's own six
-authored clips -- `attack`, `hurt`, `death`, `spawn` all animate a body since 2026-09-02 and
+`process_ui.py` (the cues a SCREEN makes). The original four are the audio half of the rig's own
+six authored clips -- `attack`, `hurt`, `death`, `spawn` all animate a body since 2026-09-02 and
 none of them made a sound. `idle`/`move` are the two that never should.
+
+**Why a chest cue lives in the character driver.** It is not a character, and the alternative
+was a fifth driver that would have been this file with two rows changed. What actually decides
+which driver a cue belongs to is where its peak-match reference comes from (point 1 below), and
+`chest.open`'s voice is a single `tone()` like these four -- so it belongs here on the only axis
+that has ever mattered. The docstring's first line was rewritten to say that rather than leaving
+the file named after a category it had outgrown.
 
 It imports `process_all`'s measurement and encoding helpers unchanged -- mono, trim, cap,
 bandwidth-driven rate search, smallest-MP3 encode -- and differs in exactly two steps, which
@@ -104,6 +112,34 @@ PICKS = {
     # Fires when an actor VIEW is built -- the render-side diff `Scene` already computes, not
     # an engine event. Bursts: a room's wave materialises up to nine actors on one frame, which
     # the mixer coalesces into one voice at higher gain.
+    # The chest lid (design/05 "Chest rooms", 2026-09-15). A chest had no sound at all: the
+    # only feedback for opening one was the box changing shape and the weapons appearing, which
+    # is why the mechanic was reported as broken twice in one day.
+    #
+    # **What the cue is deliberately NOT.** Not a coin rattle and not a fanfare -- the REWARD
+    # already has a sound (`pickup.weapon`, when the payout is collected a tick later), so a
+    # second reward sting here would double it. This cue is the mechanical event: a wooden lid
+    # swinging open.
+    #
+    # Two takes of one action, which is what a variant set wants. Of the fourteen candidates
+    # measured out of this pack (creaks, latches, doors, coins, leather, book), `creak1`/`creak2`
+    # are the pair that measure as the same sound twice: centroid 3230/3486 Hz and a 500-4000 Hz
+    # RMS 17.1/17.3 dB under their own peak, against 12.9 for the shorter `creak3` (dropped for
+    # exactly that -- a third of the length and an octave darker reads as a different object) and
+    # 24-29 for the latch/door/leather families, which put most of their energy where a phone
+    # cannot reproduce it. That band-vs-peak figure puts the pair level with the shipped
+    # `pickup.weapon_01` (17.5) and `spawn` (17.6).
+    #
+    # Capped at 780 ms like `death.player`, for the same reason: the feedback gate is 800 ms and
+    # `creak2` trims to 723, close enough that an encode rounding up would fail its own class.
+    'chest.open': ([('rpg-audio/creak1.ogg', None),
+                    ('rpg-audio/creak2.ogg', None)], 780,
+                   'A wooden lid swinging open -- the mechanical event, not the reward, which '
+                   '`pickup.weapon` already announces a tick later. The most homogeneous pair in '
+                   'the pack: centroid 3230/3486 Hz, 500-4000 Hz RMS 17.1/17.3 dB below peak '
+                   '(level with the shipped `pickup.weapon`/`spawn`), where the latch and door '
+                   'families sit 24-29 dB down in the one band a phone speaker reproduces.'),
+
     'spawn': ([('sci-fi-sounds/forceField_000.ogg', None),
                ('sci-fi-sounds/forceField_002.ogg', None),
                ('sci-fi-sounds/forceField_004.ogg', None)], 400,
@@ -124,7 +160,10 @@ PICKS = {
 #   death.player 0.20  the loudest single voice in the table, and the only cue besides `win`
 #                      that ends a run. Still under `win`'s stacked chord.
 #   spawn        0.12  level with `muzzle`. It can arrive nine at a time.
-VOICE_GAIN = {'swing': 0.11, 'hurt': 0.16, 'death.player': 0.20, 'spawn': 0.12}
+#   chest.open   0.14  level with `wave-clear`, the game's other "this room is finished"
+#                      moment, and above every `pickup.*` (0.10-0.13): the chest is the rarer
+#                      event and the one the player walked into a dead-end room for.
+VOICE_GAIN = {'swing': 0.11, 'hurt': 0.16, 'death.player': 0.20, 'spawn': 0.12, 'chest.open': 0.14}
 
 
 def read_source(rel: str, region: tuple[float, float] | None) -> tuple[np.ndarray, int, int]:

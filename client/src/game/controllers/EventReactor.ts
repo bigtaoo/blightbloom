@@ -328,6 +328,14 @@ export class EventReactor {
           this.host.addScore(SCORE.waveClear);
           cue('wave-clear');
           break;
+        case 'chest_open':
+          // The one feedback a chest had was visual and easy to miss: the box changes shape and
+          // the weapons appear a tick later (design/05 — the payout lands on the NEXT tick, so
+          // its own `pickup.weapon` cue cannot double as this one). Sound only, deliberately:
+          // no toast, because the weapon panel that opens over the payout already says what
+          // came out, and no flash, because `ChestLayer` redraws the body on the same frame.
+          cue('chest.open');
+          break;
         case 'room_enter': {
           // A new dungeon room went live (ROADMAP 1.3) — mirror its geometry: ground,
           // AABB walls, pillars, and the resized world bounds (design/08 render-only).

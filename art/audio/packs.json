@@ -116,6 +116,8 @@
    "license": "CC0-1.0",
    "license_text": "art/audio/licenses/rpg-audio-LICENSE.txt",
    "files_used": [
+    "creak1.ogg",
+    "creak2.ogg",
     "drawKnife2.ogg",
     "drawKnife3.ogg",
     "handleCoins2.ogg"

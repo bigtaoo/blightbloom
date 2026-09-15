@@ -960,6 +960,39 @@
      "bytes": 2341
     }
    ]
+  },
+  {
+   "cue": "chest.open",
+   "variants": 2,
+   "total_bytes": 8744,
+   "gate_class": "feedback",
+   "rationale": "A wooden lid swinging open -- the mechanical event, not the reward, which `pickup.weapon` already announces a tick later. The most homogeneous pair in the pack: centroid 3230/3486 Hz, 500-4000 Hz RMS 17.1/17.3 dB below peak (level with the shipped `pickup.weapon`/`spawn`), where the latch and door families sit 24-29 dB down in the one band a phone speaker reproduces.",
+   "files": [
+    {
+     "file": "audio/chest-open_00.mp3",
+     "source": "rpg-audio/creak1.ogg",
+     "source_pack": "rpg-audio",
+     "source_channels": 2,
+     "sample_rate": 22050,
+     "duration_ms": 563.2,
+     "trimmed_ms": 97.9,
+     "capped_ms": 0.0,
+     "gain_applied_db": -7.96,
+     "bytes": 3824
+    },
+    {
+     "file": "audio/chest-open_01.mp3",
+     "source": "rpg-audio/creak2.ogg",
+     "source_pack": "rpg-audio",
+     "source_channels": 2,
+     "sample_rate": 22050,
+     "duration_ms": 722.8,
+     "trimmed_ms": 107.4,
+     "capped_ms": 0.0,
+     "gain_applied_db": -8.46,
+     "bytes": 4920
+    }
+   ]
   }
  ],
  "kept_on_synth": {

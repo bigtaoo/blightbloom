@@ -1243,14 +1243,75 @@ describe('EventReactor — the melee swing carries the weapon that swung', () =>
 });
 
 /**
+ * The chest cue (design/05 "Chest rooms", 2026-09-15).
+ *
+ * A chest had no sound at all for its first day, and the silence was reported from real play as
+ * the mechanic being broken — twice, by two different routes. So what these cases hold is the
+ * two decisions that silence cost: that a chest makes ONE noise, and that BOTH kinds make it.
+ */
+describe('a chest opening', () => {
+  const chestEvent = (kind: 'small' | 'big', id: number): GameEvent =>
+    ({ type: 'chest_open', id, kind, gx: pxToFp(100), gy: pxToFp(100), weapons: 1 }) as GameEvent;
+
+  function reactorWithAudio() {
+    const audio = fakeAudio();
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    return { audio, hud, reactor: new EventReactor(fakeFx(), hud, audio, fakeHost()) };
+  }
+
+  it('plays the lid cue for a SMALL chest', () => {
+    const { audio, reactor } = reactorWithAudio();
+    reactor.consume([chestEvent('small', 1)]);
+    expect(audio.play).toHaveBeenCalledWith('chest.open', 1);
+  });
+
+  it('plays the SAME cue for a big one — the difference between them is a thing you see', () => {
+    // A big chest's ceremony is its ring of plates and the caption counting them
+    // (`ui/ChestPrompt.ts`); giving it a second sound would be a vocabulary nobody asked for.
+    const { audio, reactor } = reactorWithAudio();
+    reactor.consume([chestEvent('big', 2)]);
+    expect(audio.play).toHaveBeenCalledWith('chest.open', 1);
+  });
+
+  it('coalesces two chests opening in one frame into ONE cue at count 2', () => {
+    // design/11's rule, and the reason `consume` keeps a COUNT rather than a set: ten hits in a
+    // frame become one `impact` at higher gain, not ten voices. Two chests on one frame is
+    // rare but reachable — a big chest's last plate can be stepped on at the moment a teammate
+    // walks into a small one.
+    const { audio, reactor } = reactorWithAudio();
+    reactor.consume([chestEvent('small', 1), chestEvent('big', 2)]);
+    expect(audio.play).toHaveBeenCalledTimes(1);
+    expect(audio.play).toHaveBeenCalledWith('chest.open', 2);
+  });
+
+  it('says nothing else: no toast, no flash', () => {
+    // The payout announces itself when it is COLLECTED (`pickup.weapon`, a tick later — pinned
+    // in `engine/systems/chests.test.ts`), and the weapon panel that opens over the pile says
+    // what came out. A toast here would be a third statement of one event.
+    const fx = fakeFx();
+    const audio = fakeAudio();
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const toast = vi.spyOn(hud, 'toast');
+    new EventReactor(fx, hud, audio, fakeHost()).consume([chestEvent('small', 1)]);
+    expect(toast).not.toHaveBeenCalled();
+    expect(fx.flash).not.toHaveBeenCalled();
+    expect(audio.play).toHaveBeenCalledTimes(1); // the sound, and only the sound
+  });
+});
+
+/**
  * The events nothing on the client reacts to yet.
  *
- * `ChestSystem` and `DeathDropsSystem` both push an event the render layer never reads
- * (`chest_open`, `blueprint_drop`, ENGINE_VERSION 63) — a chest pays out in silence, and the
- * one earn-by-playing blueprint in the meta lands with no cue at all. The shrinking zone's
- * three events have been in the same position for longer, and `EventReactor.ts`'s own comment
- * on `zone_damage` says so ("this reactor has never handled [it], and wiring that up is its
- * own decision").
+ * `DeathDropsSystem` pushes an event the render layer never reads (`blueprint_drop`,
+ * ENGINE_VERSION 63) — the one earn-by-playing blueprint in the meta lands with no cue at all.
+ * `chest_open` was on this list beside it until 2026-09-15 and is the example of the list
+ * working: it sat here for a day as "a chest pays out in silence", the silence was then
+ * reported from real play as the mechanic being broken, and it is now wired to `chest.open`.
+ * The shrinking zone's three events have been in the same position for longer, and
+ * `EventReactor.ts`'s own comment on `zone_damage` says so ("this reactor has never handled
+ * [it], and wiring that up is its own decision").
  *
  * Those comments are the problem this block replaces: a per-event note, written where the
  * decision was taken, that nobody reads when adding the NEXT event. The list below is one
@@ -1264,7 +1325,6 @@ describe('engine events the client deliberately does not react to', () => {
 
   /** Every engine event with no `case` in the reactor, and the reason each one is here. */
   const UNWIRED: Record<string, string> = {
-    chest_open: 'no chest cue yet — art and audio for chests are both unstarted (design/05)',
     blueprint_drop: 'the drop is reported on the results screen (RunOutcome), not in-run',
     zone_warn: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
     zone_close: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
@@ -1287,7 +1347,7 @@ describe('engine events the client deliberately does not react to', () => {
     expect([...reacted].filter((t) => !declared.includes(t) && !pickupKinds.includes(t))).toEqual([]);
   });
 
-  it('drains a chest payout and a blueprint drop without a cue, a toast or a crash', () => {
+  it('drains a blueprint drop without a cue, a toast or a crash', () => {
     // What "unwired" means at runtime, so the list above is not the only thing saying it.
     const fx = fakeFx();
     const audio = fakeAudio();
@@ -1297,7 +1357,6 @@ describe('engine events the client deliberately does not react to', () => {
     const reactor = new EventReactor(fx, hud, audio, fakeHost());
 
     reactor.consume([
-      { type: 'chest_open', id: 1, kind: 'big', gx: pxToFp(100), gy: pxToFp(100), weapons: 2 } as GameEvent,
       { type: 'blueprint_drop', weaponId: 'scattergun', gx: pxToFp(100), gy: pxToFp(100) } as GameEvent,
     ]);
 

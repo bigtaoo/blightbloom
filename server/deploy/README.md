@@ -650,7 +650,17 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   (§9 already documents that funny was rejected twice on exactly that). No agent should
   do this part — it needs a human with the authority to accept a Merchant of Record
   agreement and hand over real financial/business information.
-- **The OFF-BOX copy of the backups.** The `backup` service (§5, "Backups") takes and
+- **The OFF-BOX copy of the backups — SUPERSEDED 2026-09-15, not closed.** Everything below
+  described the problem correctly and proposed the wrong fix, and the difference is worth
+  keeping: the owner's answer is that **player data moves off SQLite onto a database**, at
+  which point "get a verified copy of `accounts.db` somewhere else" stops being this
+  project's problem to solve and becomes a property of whatever that database is. So no
+  scheduled pull and no object-store upload is being built here. What does NOT go away with
+  the move is the requirement — identity and money need a copy that survives the box — so
+  this item stays open until the new store actually has one, rather than being ticked off by
+  a decision. The old text, for whoever does that migration:
+
+  The `backup` service (§5, "Backups") takes and
   verifies a daily snapshot of both databases and keeps 14 of each, on the same disk as the
   databases. Getting them somewhere else is still the `rsync` line in §5, run by a person.
   What would close it: a scheduled pull from a machine that is not this VPS, or an
@@ -667,6 +677,11 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
   turning on as a floor under this, but they are a whole-disk snapshot rather than a
   verified database copy, so they do not close the item.
+- **The retired deploy key on the old box** is the box owner's to remove:
+  `~/.ssh/authorized_keys` there is root-owned, so the `wnet-test-deploy` line could not be
+  deleted from this side when the project moved out on 2026-09-15. It is inert — its forced
+  command names a script that no longer exists — but inert is not revoked. Owner-confirmed as
+  theirs to clean up.
 
 ## 8. Observability — Loki + Alloy + Prometheus + Grafana (2026-09-09)
 

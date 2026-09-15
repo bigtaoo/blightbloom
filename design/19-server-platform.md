@@ -1012,8 +1012,15 @@ surviving reason has no way to tell a deliberate keep from a fossil.
   nobody watching it but this project, and this project's watching is a person opening
   Grafana. "The whole box is gone" is now a state that produces **no signal at all**: the
   dashboards that would report it are ON it. Whatever closes this item has to run somewhere
-  else, which is the same requirement the off-box backup copy has (server/deploy/README.md
-  §7) — so they are one problem with one answer, not two.
+  else.
+
+  **Its twin has since been decided differently (2026-09-15), and that changes what is left
+  here.** The off-box backup copy (server/deploy/README.md §7) was the other half of "run
+  something that is not this box", and the owner's answer to it is to move player data off
+  SQLite onto a database rather than to build a copier. That is a good answer to THAT problem
+  and not to this one: a managed store survives the VM, but nothing in it notices that the
+  game stopped answering. So the two stopped being one problem with one answer — this one is
+  now on its own, and still wants a destination somebody actually reads.
 - **No trace correlation.** funny threads a `roomId` across its services so one match can be
   reconstructed with `| logfmt | roomId="…"`. The fields exist here in some lines and not
   others; making it a rule is a pass through every call site, and worth doing the first time

@@ -99,6 +99,14 @@ export const CUE_CATALOGUE: Record<AudioCue, CueDef> = {
   'pickup.weapon': { variants: 2, gain: 1.0, priority: 80 },
   'pickup.material': { variants: 2, gain: 0.9, priority: 75 },
   'pickup.buff': { variants: 2, gain: 1.0, priority: 80 },
+  // Two variants for ~5 openings a run (a small chest on four of five floors, the big one on
+  // the third): enough that the second one in a run is not the same take, not so many that a
+  // cue nobody hears twice in a minute carries five files. Priority above every `pickup.*`
+  // (75-80) and under `shield.break` (90): a chest is the rarer event and the one a player
+  // walked into a dead-end room for, but it must never steal the cue that says your shell
+  // just failed. Gain 1.0 — the level decision is in the voice table (0.14, level with
+  // `wave-clear`), which the shipped files were peak-matched to.
+  'chest.open': { variants: 2, gain: 1.0, priority: 85 },
   'wave-clear': { variants: 1, gain: 0.95, priority: 100 },
   // Once per run. Nothing may steal it.
   win: { variants: 1, gain: 1.0, priority: 120 },
