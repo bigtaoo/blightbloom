@@ -71,9 +71,9 @@ a row per player — and that is all §3 builds.
 | A1 | Analytics ingest **reuses the `POST /client/log` trust boundary** — a sibling route beside `server/src/routes/telemetry.ts`, not a new endpoint with its own rules | That boundary is already built out of refusals (bounded body, per-IP limit, caps and allowlists on every client value, account id resolved server-side from the bearer and never read from the body). A second public write endpoint written from scratch is a second chance to get all of that wrong |
 | A2 | Identity for retention is a **first-party install id** — random, browser-local, clearable by the player. **It is the id the game already stores** (`daydayup.playerId.v1`), so analytics adds no new stored identifier at all. Nothing else new about a person is collected | D1–D7 retention is *by definition* a question about repeat visits, so it needs an id that survives one. This is the smallest thing that answers it: no email (none is collected anywhere), no fingerprinting, no third party, no cross-site value — and, once the existing id is reused, no new storage either (see §2.1) |
 | A3 | The event vocabulary is a **closed enum in shared code**, refused server-side | An open `track(name, props)` surface is an open write to our own log store from the internet. `funny`'s audit found an uncapped id field amplifying ~200× into its store; a closed vocabulary is the version of that lesson that cannot be forgotten by the next call site |
-| A4 | **One writer to `analytics.db`** — matchsvc. Everything else opens it read-only | SQLite's happy path, and the reason the console in §3 can be a total statement rather than a careful one |
+| A4 | **One writer to the `analytics` store** — matchsvc. Everything else reads | Was SQLite's happy path; since the 2026-09-15 MongoDB port it is the reason the console in §3 can be a total statement rather than a careful one, and the thing an Atlas role now has to express. **The word "opens" was load-bearing and is gone**: a `readOnly: true` handle was a capability the reader did not hold, and a role is configuration this repository cannot see — which is why B1 below is PROBED at boot rather than asserted |
 | A5 | The **daily rollup table is the record; Prometheus is a 15-day view** | `--storage.tsdb.retention.time=15d`, and a gauge cannot be backfilled. A D7 cohort chart that silently starts at "two weeks ago" is the kind of instrument that lies quietly. The rollup can always re-derive |
-| B1 | The console is a **fifth process** (`server/src/adminsvc/`), and it holds **no write handle to player data at all** | Blast radius. An auth bug in the thing every player talks to is worse than an auth bug in the thing one operator talks to. The backup worker already proved `readOnly: true` `node:sqlite` handles work on this box. **As built it is refused twice** — `readOnly: true` in `adminsvc/dbs.ts` and `:ro` bind mounts in compose — and `adminsvc.dbs.test.ts` asserts it by ATTEMPTING an INSERT/UPDATE/DELETE/DROP through each handle rather than by checking the option was passed |
+| B1 | The console is a **fifth process** (`server/src/adminsvc/`), and it holds **no write access to player data at all** | Blast radius. An auth bug in the thing every player talks to is worse than an auth bug in the thing one operator talks to. **AMENDED 2026-09-15 — the enforcement moved out of this repository.** As built (09-09) it was refused twice: `readOnly: true` SQLite handles in `adminsvc/dbs.ts` and `:ro` bind mounts in compose, and `adminsvc.dbs.test.ts` asserted it by ATTEMPTING an INSERT/UPDATE/DELETE/DROP through each handle rather than by checking an option was passed. The MongoDB port deleted both layers — one pooled client cannot hold half a handle, and there are no files to mount — leaving an **Atlas role on a second database user (`BB_ADMIN_MONGO_URI`)**, which lives in the cluster's configuration where no diff and no test here can see it. So the process PROVES it at boot: `probeWriteAccess` attempts a real write to each player-data database and `assertReadOnlyAccess` refuses to start unless every one is refused. **That is a check at one instant rather than a capability**, which is weaker, and `BB_ADMIN_ALLOW_WRITABLE` (for a roleless local mongod) makes `readOnly: false` print on every boot so a deployment without B1 never looks like one that holds it. See volume 67 |
 | B2 | The public console is **read-only over player data**. Every player-data mutation — password reset, ban, entitlement grant — stays a **CLI script run on the box** | This is the decision that makes a *publicly exposed* console proportionate. SSH access is the second factor, and it is one we already have and already protect. It also deletes RBAC, the approval workflow and the audit-visibility matrix from scope in one move: there are no writes to gate |
 | B3 | **One operator, one credential, no roles** | A role matrix with one subject is ceremony. `funny`'s four roles exist because it has a support team; when a second operator appears, revisit |
 | C1 | Feature flags are an **allowlist of names and types in code**; nothing security-relevant is ever a flag | A flag that could re-enable billsvc's dev stub is a remote "mint me free entitlements" button. The allowlist is what stops the flag table from growing one. **As built, `flags.defs.test.ts` pins the EXACT set of names** — adding one fails the suite, so the question gets answered in a review — plus a pattern test refusing any name containing `auth`/`stub`/`verif`/`secret`/`key`/`password`/`admin`, because a list of forbidden names is a list somebody has to have thought of |
@@ -274,10 +274,19 @@ same testability reason. Call sites are
   the boundary and their funnel steps would silently never appear. Exhaustiveness makes a new
   phase a compile error, which forces the question "is this a funnel step, and what is it
   called?".
-- **Collection is opt-in by env var, with no default path.** `BB_ANALYTICS_DB_PATH` unset
-  means `POST /client/events` still answers 200 and stores nothing, and `/metrics` carries no
-  analytics gauges at all. The same name is what the backup worker discovers the file by, so
-  "collected" and "backed up" are one condition rather than two that can disagree.
+- **Collection is opt-in by env var.** Unset means `POST /client/events` still answers 200 and
+  stores nothing, and `/metrics` carries no analytics gauges at all.
+
+  > **AMENDED 2026-09-15.** This read *"opt-in by env var, with no default path"*, and the
+  > second half was doing all the work: the variable was `BB_ANALYTICS_DB_PATH`, there was no
+  > default path, so unset meant there was nothing to collect INTO. `store('analytics')`
+  > always resolves, so the MongoDB port would have turned collection on for every deployment
+  > that upgraded — silently, by omission, in the one subsystem with a privacy policy attached.
+  > The switch is `BB_ANALYTICS_ENABLED` now, off for both unset and empty, and it lives in
+  > `analytics/db.ts` — the leaf module BOTH matchsvc and adminsvc import, so the collector and
+  > the console cannot disagree about whether a deployment collects. The old variable also
+  > doubled as the backup worker's source discovery, which is why "collected" and "backed up"
+  > were one condition; that is `BACKUP_STORES` now, compiled in and type-constrained.
 - **A new gate, `deploy.dashboardMetrics.test.ts`**: every `bb_*` metric a Prometheus panel
   queries must be one the server actually emits. A dashboard is the one artefact whose broken
   state looks exactly like its working state, and this project had already paid for that once
@@ -332,13 +341,19 @@ and branches on every new module except the entry point's `require.main` guard.
   from `events.account_id`, which the server attaches from the bearer. The consequence is on
   the page rather than hidden: `events` is pruned at 90 days, so a blank cell means *no event
   in the window* and never *never played*.
-- **Every database handle is nullable, and none of the nulls is defensive.** `readOnly` mode
-  does not create a missing file, it throws, and all three files belong to other processes —
-  `analytics.db` does not exist until collection is switched on, `billing.db` until billsvc
-  has booted once, `accounts.db` until somebody registers. So each section has its own
-  "unavailable" card carrying the reason, and a `deploy.bundle.test.ts` case boots the real
-  bundle with none of the three present. A console that refused to start could not be used to
-  find out why the file is not there.
+- **Every database handle is nullable, and none of the nulls is defensive.** So each section
+  has its own "unavailable" card carrying the reason, rather than one global error. A console
+  that refused to start could not be used to find out why it cannot reach its data.
+
+  > **AMENDED 2026-09-15 — three reasons became two, and the remaining one is bigger.** The
+  > nulls were three normal states of a filesystem: `readOnly` mode throws on a missing file,
+  > and all three belonged to other processes — `analytics.db` absent until collection was
+  > switched on, `billing.db` until billsvc had booted once, `accounts.db` until somebody
+  > registered. Two of those cannot happen on a cluster: a database nobody has written answers
+  > every query with nothing, which is the correct answer and not an error. What remains is
+  > **the connection failing, which takes all three together** (there is one connection, so one
+  > reason, and the page must not suggest three investigations), and **analytics switched
+  > off**, which is still a supported deployment.
 - **The XSS surface is real and it is `webhook_events.raw`** — a verbatim copy of bytes an
   outside party POSTed to the billing plane, rendered in the browser of the one account that
   can read every player's row. The rule is structural: the view modules deliberately do NOT
@@ -400,10 +415,16 @@ many players are online. Building an admin surface on that same server means eve
 admin route inherits "public unless it remembers not to be", which is the wrong default for
 this specific thing.
 
-A separate process inverts it, and buys the property in B1: **adminsvc opens `accounts.db` and
-`billing.db` with `readOnly: true`, and `analytics.db` read-only too.** It is not that the
-console *does not* write player data; it is that it *cannot*, and that is a sentence that
-survives a bug in it.
+A separate process inverts it, and buys the property in B1: **it is not that the console
+*does not* write player data; it is that it *cannot*, and that is a sentence that survives a
+bug in it.**
+
+As built (2026-09-09) that was `readOnly: true` on three SQLite handles behind `:ro` bind
+mounts — two enforcement layers, neither of them our code. Since the MongoDB port it is an
+Atlas role on the console's own database user, which this repository cannot inspect, so the
+process attempts a real write to each player-data database at boot and refuses to start unless
+the server refuses. B1's row in the decision table above has the full account of what that
+trade cost.
 
 ### 3.2 What it shows
 

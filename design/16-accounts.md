@@ -14,7 +14,16 @@ That argument was true and, on its own terms, still is. It was not refuted; its 
 - **Uniqueness semantics differ where it matters.** MongoDB's unique index treats a MISSING field as one `null` and admits exactly one such document, where SQLite treats every NULL as distinct. Every index over a formerly-nullable column is therefore PARTIAL. `server/test/mongo.semantics.test.ts` pins this and three other server behaviours the port depends on.
 - **Reads are asynchronous**, which removed an accident registration was relying on — see `db.ts` and volume 66 on the case-insensitive unique index, and on the request error boundary `matchsvc.ts` grew at the same time.
 
-**MIGRATION IN PROGRESS.** Only the control plane has moved. `billing.db`, `analytics.db` and `ops.db` are still `node:sqlite` files, adminsvc still opens all three read-only, and the live cluster holds no player data until the one-time migration off the deployed box has run.
+**MIGRATION: the code has moved, the DATA has not.** As of 2026-09-15 all four stores —
+`accounts`, `billing`, `analytics`, `ops` — are logical databases on the cluster, adminsvc and the
+backup worker read them through the driver, and `node:sqlite` is imported by exactly one file in
+this repository (`scripts/migrateFromSqlite.ts`, which carries its own deletion date).
+
+**What has NOT happened is the one-time migration of live player data off the deployed box.**
+Until it runs, a deployed matchsvc reads an EMPTY cluster. The runbook is in
+`server/deploy/README.md` §5 ("The MongoDB cutover"); it needs two new `.env` values and a window
+with the services stopped, and running it a second time afterwards is refused by a completion
+marker rather than by an operator remembering. Volumes 66 and 67 have the full account.
 
 ## Server (`matchsvc.ts`, port 8788 — same control-plane process as matchmaking/party/rating)
 

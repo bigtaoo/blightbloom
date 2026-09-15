@@ -1381,9 +1381,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-15** [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change) — *"现在将数据直接保存到db吧"* over a screenshot of a new Atlas cluster, then *"四个库全部替换掉 SQLite"*: **stage 1 of four stores, and only stage 1** — the control plane is on the cluster, billing/analytics/flags are not, and adminsvc still opens all three as files. The decision reverses `design/16`'s own heading and the reversal is RECORDED there rather than overwritten, because a doc that quietly flips a decision teaches the next reader its reasons were never load-bearing. `node:sqlite` is synchronous and the driver is not, so this is an async conversion first and a schema translation second — and that ordering produced both findings, **neither of which was a bug on 09-14 and both of which the conversion would have SHIPPED**. (1) `register` read `COLLATE NOCASE` and inserted, while the `UNIQUE` behind it was case-SENSITIVE — the index never enforced the rule its own comment named (*"'Alice' and 'alice' … a real impersonation/confusion footgun"*), and only the synchronous store made the look-before-write atomic. `rating.ts` already forbids this exact shape in four paragraphs and `design/19` §4 AMENDMENT 2 says it again for billing; **registration was the one identity path still doing it the other way and nothing noticed**. Now a collation-carrying unique index plus insert-and-read-E11000; five simultaneous spellings, one survives. (2) dispatch had **no try/catch at all** — survivable over a local file, an outage over a network database, where a failover arrives as a rejected promise and Node answers by killing the process. Deleting the new `.catch` does not fail the boundary tests, it HANGS three of them, which is what the missing boundary looked like from outside. `readJson`'s callback form could not survive either (a rejected callback escapes the boundary; a throwing one was caught by the `try` that also wrapped `JSON.parse`, which then answered one request TWICE). **MongoDB's unique index admits exactly ONE document with a missing field** where SQLite treats every NULL as distinct — `billingDb.ts` relied on the latter in writing, so the naive translation rejects the second concurrent unsettled order on the payment path; partial indexes throughout, and `mongo.semantics.test.ts` pins that plus the exactly-once claim, rollback, and cross-database transactions against a REAL mongod (a hand-written fake would have blessed the trap). **Foreign keys do not survive and have no equivalent** — said in `db.ts`'s header, and the "refuses a grant to an account that does not exist" case is INVERTED rather than deleted so the lost capability is visible in the suite; the CHECKs do survive as `$jsonSchema`/`$expr` validators. adminsvc's `readOnly: true` capability becomes an Atlas ROLE — still true, no longer confirmable by code review. **`mongodb` must be EXTERNAL**: bundled, its `require('timers/promises')` is a dynamic require in ESM, the build passes and every service dies at boot — caught only by `deploy.bundle.test.ts` booting each bundle as a bare process. First coverage read 97.59/97.31 over the 90/90 gate **with `src/mongo.ts` at 0% branches**, the module every service calls before it binds a port: `design/18` Layer 4's failure met in the wild. Final 98.59/98.05 over 1,770 tests; chasing the last branch found DEAD CODE (`createCollection` unreachable because `createIndex` creates the collection first). Open and load-bearing: **until the one-time data migration runs, a deployed matchsvc reads an EMPTY cluster** — this must not reach `main` as a deploy. `net` `test` `docs` `platform`
 
+**[2026-09-15 — the other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md)**
+
+- **09-15** [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change) — volume 66 listed six stages it had not done; this is all six. Billing and analytics merged, the ops console and the backup worker ported, compose and `ci-deploy.sh` rewritten, the one-time migration written, and **`node:sqlite` gone from every bundle** — one file in the repo still imports it and carries a deletion date. **The switch that was a file path's ABSENCE, three times over**: `store(name)` always resolves, so a port that simply dropped `BB_ANALYTICS_DB_PATH`, `BB_OPS_DB_PATH` and the backup worker's three source vars would have turned collection, a writable flag store and a backup worker ON for every deployment that upgraded, silently and by omission — `BB_ANALYTICS_ENABLED` (in `analytics/db.ts`, the leaf BOTH matchsvc and adminsvc import, so collector and console cannot disagree), `BB_OPS_FLAGS_ENABLED`, and a compiled-in `BACKUP_STORES` whose drift is a compile error. **Decision B1 lost BOTH its enforcement layers** — `readOnly: true` (SQLite's) behind `:ro` mounts (Docker's) — so the console PROBES its Atlas role at boot: a real write, not `connectionStatus` (the roles a credential claims is a different question from what it may do), an idempotent upsert rather than insert-then-delete (whose `catch` was load-bearing AND unreachable: a delete that threw would report a credential just proven WRITABLE as read-only), and a loud hatch for a roleless local mongod so `readOnly: false` prints on every boot. **The refusal arm cannot be an authorization refusal in any test here** — a collection validator stands in — and the file says so rather than letting green imply the old guarantee survived. The console grew matchsvc's error boundary and lost `readForm`'s callback form (every form handler now reads the cluster, which is where a callback has nowhere to deliver a failure). **The LIKE's injection shape got bigger, not smaller**: SQL needed a quote to escape, a document store needs neither — an operator term (`{$ne:null}`) matches everything and a regex term (`.*`, `(a+)+$`) is a table scan or a ReDoS the SERVER runs. The backup worker's `VACUUM INTO` became gzipped NDJSON in Extended JSON (`zcat` and `mongoimport` restore it; `_id` ObjectIds survive `JSON.stringify` would flatten), losing point-in-time consistency ACROSS collections — written down, not glossed — and its pruner deliberately cannot see the retired `.db.gz` names, which are the ONLY copy of pre-migration data until the cutover. **The migration's three quiet failures**: absent-vs-null in the direction that stops a run half-way (a stored `null` under a partial unique index refuses the second local account and the second unsettled order), `ObjectId.createFromTime` colliding two entitlements minted in one second into one document, and a re-run after the cutover putting every live document back — guarded by a completion MARKER (the only signal that works for a string-keyed collection) plus a driver-minted `_id` backstop. Four uncovered branches in new code were REMOVED rather than covered; `src/migrate/` reached 100%/98.33% by asserting each whole document with `toEqual`, because a dropped column ships as `undefined` weeks later on the only copy of the data. 1,844 tests, 98.61/97.75. **Stage 7 is written but has NOT been RUN** — until it is, merging this deploys a server pointed at an empty cluster. `net` `test` `docs` `platform`
+
 ## The work log — by theme
 
-The same 164 entries, grouped. An entry with more than one tag appears more than once.
+The same 165 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1551,7 +1555,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(82)*
+**`test`** — coverage sweeps, gates, mutation batteries *(83)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1635,6 +1639,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
+- 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1646,7 +1651,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(28)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(29)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -1676,6 +1681,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The backend gets hardware of its own](roadmap/61-2026-09-15-dedicated-box.md#the-backend-gets-hardware-of-its-own-2026-09-15-deploy--infra--docs-no-engine-change)
 - 09-15 [Leaving a borrowed box is a second job](roadmap/63-2026-09-15-borrowed-box-cleanup.md#leaving-a-borrowed-box-is-a-second-job-2026-09-15-infra--docs-no-engine-change)
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
+- 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 
 **`ui`** — HUD, screens, widgets *(24)*
 
@@ -1727,7 +1733,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(87)*
+**`docs`** — design docs and this log itself *(88)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1816,8 +1822,9 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The work log stopped being one volume per pass](roadmap/64-2026-09-15-worklog-tidy.md#the-work-log-stopped-being-one-volume-per-pass-2026-09-15-docs-only-no-engine-change)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
+- 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(21)*
+**`net`** — matchmaking, sockets, reconnect *(22)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -1840,6 +1847,7 @@ The same 164 entries, grouped. An entry with more than one tag appears more than
 - 09-09 [One store for both halves — the backend's logs and the browser's](roadmap/47-2026-09-09-observability.md#one-store-for-both-halves-the-backends-logs-and-the-browsers-2026-09-09-server--client--deploy--docs-no-engine-change)
 - 09-09 [The two globals a mini-game does not have, and the four features waiting on them](roadmap/51-2026-09-09-wechat-network-adapter.md#the-two-globals-a-mini-game-does-not-have-and-the-four-features-waiting-on-them-2026-09-09-client--docs-no-engine-change)
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
+- 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 
 **`i18n`** — locales and text layout *(12)*
 

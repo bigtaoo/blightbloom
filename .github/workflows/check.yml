@@ -10,7 +10,9 @@
 #              BEHAVIOUR moved, which is a different conversation from a broken build.
 #   check    — typecheck, the 500-line drift gate, the WeChat package-size gate, the doc-path
 #              gate, and the full unit suite across every workspace. Seconds, so it runs on
-#              everything.
+#              everything — plus one cold-machine cost since 2026-09-15: the server suite runs
+#              against a real mongod (design/18 "Layer 4"), whose ~64MB binary is cached below
+#              rather than downloaded twice per push.
 #   coverage — the same suites again under v8 instrumentation, then the 90% line / 90% branch
 #              gate over client, engine and server (build/checkCoverageThreshold.mjs).
 #              Minutes; see that job's own comment for why it runs on every event anyway.
@@ -66,6 +68,21 @@ jobs:
       # (electron's binary download, esbuild's platform binary). The allow list lives in the
       # root package.json, so a plain `npm ci` is enough.
       - run: npm ci
+      # The suite's mongod, cached. `mongodb-memory-server` downloads ~64MB the first time a
+      # machine runs a test that touches a store (server/test/mongoGlobalSetup.ts), which is
+      # every run of this job — so without this the download is a minute on the critical path
+      # of two of the four gates, every push, forever.
+      #
+      # Keyed on the PINNED version rather than on a lockfile hash: the binary is chosen by
+      # `mongoGlobalSetup.ts`'s `binary: { version }` and by nothing else, so a dependency
+      # bump must not invalidate it and a version bump must. Keeping the two in step is what
+      # the literal below is for — `npm run check` fails loudly on a missing binary, not
+      # silently on a stale one, so the worst case of a mismatch is a slow job.
+      - name: cache the mongod binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongod-${{ runner.os }}-7.0.14
       - run: npm run check
 
   # Coverage on EVERY event, including pull requests — deliberately, and it is the expensive
@@ -83,6 +100,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The suite's mongod, cached. `mongodb-memory-server` downloads ~64MB the first time a
+      # machine runs a test that touches a store (server/test/mongoGlobalSetup.ts), which is
+      # every run of this job — so without this the download is a minute on the critical path
+      # of two of the four gates, every push, forever.
+      #
+      # Keyed on the PINNED version rather than on a lockfile hash: the binary is chosen by
+      # `mongoGlobalSetup.ts`'s `binary: { version }` and by nothing else, so a dependency
+      # bump must not invalidate it and a version bump must. Keeping the two in step is what
+      # the literal below is for — `npm run check` fails loudly on a missing binary, not
+      # silently on a stale one, so the worst case of a mismatch is a slow job.
+      - name: cache the mongod binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongod-${{ runner.os }}-7.0.14
       - name: run every suite under v8 instrumentation
         id: measure
         run: npm run test:coverage
