@@ -108,7 +108,8 @@ cd "$TARGET"
 # backup check at the bottom of it. Zero snapshots were taken in that window.
 #
 # A NEW state dir under `data/` cannot be created by the deploy user at all: `data/` is
-# itself uid-1000-owned (mode 755) and the deploy account is 1001. `mkdir -p` is a silent
+# itself uid-1000-owned (mode 755) and the deploy account was 1001 on the borrowed box (it
+# is 1000 here, deliberately, which is why this branch stopped firing). `mkdir -p` is a silent
 # no-op for the dirs that already exist and a hard `Permission denied` for the first new
 # one — which is exactly how adding `data/adminsvc` failed on 2026-09-09. So creation
 # falls back to a root container, and only on that path, mounting the PARENT because that
