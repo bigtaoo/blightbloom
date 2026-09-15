@@ -22,13 +22,26 @@ no particular order — and now live in `design/roadmap/`, one volume per stretc
 The rule is meant to need no judgement, because the old layout needed one every time and got it
 wrong often enough to be worth this restructure:
 
-1. **A new pass goes at the end of the highest-numbered volume**, under its own `## ` heading
-   with the date in the title. Never into a phase section, never into a middle volume.
-2. **When that volume passes ~1000 lines, start the next number.** Name it for the dates it
-   covers. Splitting a single busy day across two volumes is fine — `07`/`08` already do it —
-   and the theme goes in the filename.
+1. **A new pass gets its own volume** — the next free number, `NN-YYYY-MM-DD-<theme>.md`, one
+   `## ` heading with the date in its title. Never into a phase section, and **never appended to
+   whichever volume happens to be open**: that is how volume 55 quietly became nine passes across
+   five days in 1,346 lines, under a title naming the first of them (split apart 2026-09-15).
+   Volumes before 25 cover a stretch of dates and a few after it carry two halves of one day;
+   that is history, not a licence to add a third.
+2. **Take the next free number across every BRANCH, not just this working tree** —
+   `git log --oneline --all --name-only -- design/roadmap/ | grep -oE 'roadmap/[0-9]+' | sort -u`.
+   A peer on their own worktree is invisible to `ls`, and two different filenames at the same
+   number never conflict in git: both land. First to land keeps it. Keep a volume under 1000
+   lines.
 3. **Add one line to [the date index](#the-work-log--by-date) and one to
-   [the theme index](#the-work-log--by-theme).** Both link into the volume by heading anchor.
+   [the theme index](#the-work-log--by-theme)**, in the same edit. Both link into the volume by
+   heading anchor; the **summary lives in the by-date entry** and a theme entry is a bare link.
+   **Re-derive every counter from its list rather than incrementing it** — the `*(N)*` on each
+   tag header and the *"same N entries"* total — which is the same edit and self-heals a count
+   somebody else left behind. `npm run check:roadmapindex` (in `npm run check`) fails a dated
+   pass missing from the by-date log, a link whose anchor is not a heading, a counter that
+   disagrees with its list, a theme entry carrying a summary, and a tag header whose blank line
+   above it an append has eaten.
 4. **Status lives in exactly one place.** A phase item's status belongs in the phase spine here;
    the log entry describes what happened. When a log entry closes something the spine promises,
    edit the spine in the same pass — an entry that says "shipped" under a spine line that still
@@ -1356,11 +1369,17 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 **[2026-09-15 — the work log stopped being one volume per pass](roadmap/64-2026-09-15-worklog-tidy.md)**
 
-- **09-15** [The work log stopped being one volume per pass](roadmap/64-2026-09-15-worklog-tidy.md#the-work-log-stopped-being-one-volume-per-pass-2026-09-15-docs-only-no-engine-change) — *"整理文档"* with nothing attached, so it was built as the mechanical checks first, and the result shape is the finding again: every defect was in the INDEX and in the volume boundaries, none in a description of what the code does. Volume 55 had absorbed **nine passes over five days** into 1,346 lines under a title naming one of them — the one-pass-per-volume form has no gate, so each pass appended to the file that was already open — and is now **55–63**, 93–227 lines each, with 53 `ROADMAP.md` links rewritten by mapping each one's ANCHOR to the volume that now owns that heading, so nothing moved but the file name. The part no split can mechanise is the prose that counts sections: four sentences (*"the two passes above"*, *"four sections up in this same volume"*) now name volumes 56/57/58/61, and they are invisible to a link checker because they are not links. **Volume 36 had landed all six of its by-THEME entries and neither of its by-DATE ones** — the (k) drift inverted, standing ten days, and unreachable by every check there is (`check:docpaths` skips ROADMAP as history, a link sweep sees a file referenced six times); both restored from the volume's own text, total 159 → **161**. Nine by-theme entries (volumes 47–49) carrying their whole by-date paragraph were trimmed to bare links, ~40 KB of the index pasted into the index. Smaller: the stated total was one behind and is re-derived rather than incremented; all fourteen per-tag counters were already correct; two tag headers had lost the blank line above them (the append artifact that makes the NEXT append land in the wrong section); one broken anchor in 365+, `design/01` citing a heading suffix that was never in the slug. **And the split corrupted two bytes, which only the control caught**: volume 55 held two lone `` bytes inside code spans in a pass that is *about* CRLF damage, and Python's universal-newline text mode turns a bare CR into a line break on read — so "strip `` on read", which this doc set's own memory prescribes, is what destroyed the byte the sentence was about. Read prose as BYTES when the script writes the file back, and run a whole-corpus control (same non-blank line count, every differing line printed) over any read-modify-write pass; a link checker calls that file perfect. Named gap: `design/05` (1,190 lines) and `design/19` (1,039) are over this doc set's 1,000-line ceiling, and the per-volume "is every `##` heading indexed by date" check is the one worth making a gate. `docs`
+- **09-15** [The work log stopped being one volume per pass](roadmap/64-2026-09-15-worklog-tidy.md#the-work-log-stopped-being-one-volume-per-pass-2026-09-15-docs-only-no-engine-change) — *"整理文档"* with nothing attached, so it was built as the mechanical checks first, and the result shape is the finding again: every defect was in the INDEX and in the volume boundaries, none in a description of what the code does. Volume 55 had absorbed **nine passes over five days** into 1,346 lines under a title naming one of them — the one-pass-per-volume form has no gate, so each pass appended to the file that was already open — and is now **55–63**, 93–227 lines each, with 53 `ROADMAP.md` links rewritten by mapping each one's ANCHOR to the volume that now owns that heading, so nothing moved but the file name. The part no split can mechanise is the prose that counts sections: four sentences (*"the two passes above"*, *"four sections up in this same volume"*) now name volumes 56/57/58/61, and they are invisible to a link checker because they are not links. **Volume 36 had landed all six of its by-THEME entries and neither of its by-DATE ones** — the (k) drift inverted, standing ten days, and unreachable by every check there is (`check:docpaths` skips ROADMAP as history, a link sweep sees a file referenced six times); both restored from the volume's own text, total 159 → **161**. Nine by-theme entries (volumes 47–49) carrying their whole by-date paragraph were trimmed to bare links, ~40 KB of the index pasted into the index. Smaller: the stated total was one behind and is re-derived rather than incremented; all fourteen per-tag counters were already correct; two tag headers had lost the blank line above them (the append artifact that makes the NEXT append land in the wrong section); one broken anchor in 365+, `design/01` citing a heading suffix that was never in the slug. **And the split corrupted two bytes, which only the control caught**: volume 55 held two lone `
+` bytes inside code spans in a pass that is *about* CRLF damage, and Python's universal-newline text mode turns a bare CR into a line break on read — so "strip `
+` on read", which this doc set's own memory prescribes, is what destroyed the byte the sentence was about. Read prose as BYTES when the script writes the file back, and run a whole-corpus control (same non-blank line count, every differing line printed) over any read-modify-write pass; a link checker calls that file perfect. Named gap: `design/05` (1,190 lines) and `design/19` (1,039) are over this doc set's 1,000-line ceiling, and the per-volume "is every `##` heading indexed by date" check is the one worth making a gate. `docs`
+
+**[2026-09-15 — the two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md)**
+
+- **09-15** [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change) — *"两个没做的也都做了"*: volume 64's two named gaps, closed. **`design/05` (1,190 lines) → a 158-line index and three parts** and **`design/19` (1,039) → a 257-line index and four**, both thematic on `01-rendering.md`'s precedent. The interesting half of each split is what STAYS in the index — 05 keeps its locked decisions and the six cross-mode summaries whose full form lives in `15`/`03`/`10` (filing a pointer under a part puts a pointer inside a pointer); 19 keeps §8/§9, 150 lines of live scheduling surface, which is why §10 sits in a part below two sections that are not. **A heading map would not have been enough for 05**: the single most-cited title, `design/05 "Only the boss floor ends a run"` (~20 comments across 192 citing files), is a BOLD BULLET inside `## Core loop`, not a heading — so grep how the code actually cites a doc before splitting it, because the citation vocabulary is not the heading vocabulary. Ten prose cross-references (*"Chest rooms" below*, *("Only the boss floor ends a run", above)*) became wrong the moment one file was three and are invisible to every checker here, being prose and not links; the whole-corpus control said **1,033/1,033 and 905/905** non-blank lines with 0 and 1 intended differences. **`build/checkRoadmapIndex.mjs` + its 16-test suite** is the gate volume 64 named: six rules, and `indexed` is the one volume 36 needed — for every dated `##` in a numbered volume, a by-date bullet whose anchor is its slug. **Requiring `(20NN-NN-NN` in the heading is what made it gateable with ZERO allowlist** where `checkDocPaths` needed 26 entries: it separates a pass from a volume's `Numbers`/`After`/`Still open` sections exactly. The evidence is not the green run — over the tree at `563d25b` it reports **14 violations**, every one of which had been found by hand the day before. Wired into `npm run check` and the root `test`; `ROADMAP`'s *Appending to the log* rule 1 ("a new pass goes at the end of the highest-numbered volume" — precisely the instruction that produced volume 55) and `design/README.md` rewritten to match. Named gaps: `rendering/03-occlusion-and-doors.md` at 1,046 lines needs a renumber of 04→05 and 05→06 to split honestly, `ROADMAP.md` itself grows two index lines a pass, and the gate is arithmetic and anchors — it cannot tell whether an entry is under the RIGHT tag. `docs` `tools` `test`
 
 ## The work log — by theme
 
-The same 162 entries, grouped. An entry with more than one tag appears more than once.
+The same 163 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1528,7 +1547,7 @@ The same 162 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(80)*
+**`test`** — coverage sweeps, gates, mutation batteries *(81)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1610,6 +1629,7 @@ The same 162 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [Loot that arrives on you](roadmap/60-2026-09-15-pickup-flight.md#loot-that-arrives-on-you-2026-09-15-engine--client--docs-no-engine_version-bump)
 - 09-15 [The backend gets hardware of its own](roadmap/61-2026-09-15-dedicated-box.md#the-backend-gets-hardware-of-its-own-2026-09-15-deploy--infra--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
+- 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1678,7 +1698,7 @@ The same 162 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 
-**`tools`** — sims, profilers, editors, build scripts *(19)*
+**`tools`** — sims, profilers, editors, build scripts *(20)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -1699,8 +1719,9 @@ The same 162 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [`MAX_ENERGY` becomes a character stat](roadmap/39-2026-09-06-energy-card-capacity.md#max_energy-becomes-a-character-stat-same-version)
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
+- 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(85)*
+**`docs`** — design docs and this log itself *(86)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1787,6 +1808,7 @@ The same 162 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The backend gets hardware of its own](roadmap/61-2026-09-15-dedicated-box.md#the-backend-gets-hardware-of-its-own-2026-09-15-deploy--infra--docs-no-engine-change)
 - 09-15 [Leaving a borrowed box is a second job](roadmap/63-2026-09-15-borrowed-box-cleanup.md#leaving-a-borrowed-box-is-a-second-job-2026-09-15-infra--docs-no-engine-change)
 - 09-15 [The work log stopped being one volume per pass](roadmap/64-2026-09-15-worklog-tidy.md#the-work-log-stopped-being-one-volume-per-pass-2026-09-15-docs-only-no-engine-change)
+- 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(20)*
 
