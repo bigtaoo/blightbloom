@@ -133,6 +133,35 @@ export const dailyRollupOf = (db: Db): Collection<DailyRollupDoc> =>
   db.collection<DailyRollupDoc>(DAILY_ROLLUP_COLLECTION);
 
 /**
+ * Whether this deployment collects analytics at all — `BB_ANALYTICS_ENABLED` set to `1` or
+ * `true`, and nothing else.
+ *
+ * design/21 §2.4's rule is *"collection is opt-in by env var, with no default path"*, and the
+ * no-default half of that was carried entirely by the path: an unset `BB_ANALYTICS_DB_PATH`
+ * had nothing to fall back to, so it collected nothing. The cluster removes the path and
+ * would have removed the switch with it — `store('analytics')` always resolves, so a naive
+ * port turns the one subsystem with a privacy policy attached ON for every deployment that
+ * upgrades, silently and by omission. This is that switch, made explicit rather than
+ * inherited from a filename.
+ *
+ * Defaulting to OFF also keeps the `""` trap design/19 §9 records closed from the other side:
+ * a compose file with a trailing `BB_ANALYTICS_ENABLED:` and no value collects nothing,
+ * which is the safe answer for this subsystem rather than merely the surprising one.
+ *
+ * It lives HERE, in the leaf module that owns the collections, rather than in either of its
+ * two callers. matchsvc decides whether to collect and adminsvc decides whether to show a
+ * retention tab, and those two must never be able to disagree — which is exactly what the
+ * old arrangement risked: `matchsvc.ts` and `adminsvc/dbs.ts` each carried their own
+ * two-line copy of the path reader (importing `matchsvc.ts` into the console would drag
+ * `ws`, the matchmaker and every route group into its bundle), with a test pinning the two
+ * answers to each other because nothing else could. One home needs no such test.
+ */
+export function analyticsEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.BB_ANALYTICS_ENABLED?.trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+/**
  * How long raw `events` documents are kept. The privacy policy states this number, so the
  * two have to be changed together — a policy that says 90 days over a prune that keeps
  * forever is the failure this comment exists to prevent.

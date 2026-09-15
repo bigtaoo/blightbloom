@@ -57,6 +57,12 @@ export interface AdminEnv {
   BB_ADMIN_USER?: string;
   BB_ADMIN_PASSWORD?: string;
   BB_ADMIN_INSECURE_COOKIE?: string;
+  /** Whether this deployment has a flag store (design/21 §4) — `server.ts`'s
+   *  `opsFlagsEnabledFromEnv`. Declared here rather than read off a cast so the whole of
+   *  what this process takes from its environment is one readable list. */
+  BB_OPS_FLAGS_ENABLED?: string;
+  /** The escape hatch for `server.ts`'s write probe, never set on a real deployment. */
+  BB_ADMIN_ALLOW_WRITABLE?: string;
   NODE_ENV?: string;
 }
 

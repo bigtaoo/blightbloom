@@ -1,45 +1,52 @@
 /**
- * The commerce view (design/21 §3.2, second section) — `review_queue` and `webhook_events`,
- * the two tables billsvc has been writing since 2026-09-05 with nothing to read them
+ * The commerce view (design/21 §3.2, second section) — `reviewQueue` and `webhookEvents`,
+ * the two collections billsvc has been writing since 2026-09-05 with nothing to read them
  * through.
  *
- * This section is the one that adds no collection and no schema: it is a window over rows
- * that already exist. `billingDb.ts`'s own header says what each is for and why it is
- * shaped for a human with SQL (design/19 §7 ruled out an admin service; this document
+ * This section is the one that adds no collection and no schema: it is a window over
+ * documents that already exist. `billing/collections.ts` says what each is for and why it
+ * is shaped for a human at a prompt (design/19 §7 ruled out an admin service; design/21
  * supersedes that, and §8 records why). What was missing was not the data, it was the fact
- * that reading it required somebody to be at a `sqlite3` prompt on the box at the moment
- * they wanted to know.
+ * that reading it required somebody to be on the box at the moment they wanted to know.
  *
  * ## Open items first, and never a total ordering by time
  *
- * `review_queue` is a work list, so `state='open'` rows come first and the closed ones are
- * a separate query rather than sorted below them. A single time-ordered list buries the two
- * open items under three hundred reviewed ones the day this table has any history at all,
- * and "the queue looks empty" then means "the queue is long".
+ * `reviewQueue` is a work list, so `state: 'open'` documents come first and the closed ones
+ * are a separate query rather than sorted below them. A single time-ordered list buries the
+ * two open items under three hundred reviewed ones the day this collection has any history
+ * at all, and "the queue looks empty" then means "the queue is long".
  *
  * ## `raw` is truncated here, deliberately
  *
- * `webhook_events.raw` holds the original callback bytes verbatim, and that is the column
- * the table exists for — but it is also an untrusted blob of arbitrary size that a platform
+ * `webhookEvents.raw` holds the original callback bytes verbatim, and that is the field the
+ * collection exists for — but it is also an untrusted blob of arbitrary size that a platform
  * (or anybody who can reach the webhook endpoint) chose. It is cut to
  * {@link RAW_PREVIEW_CHARS} for the list, and the cut is REPORTED (`rawTruncated`) rather
  * than silent, because a truncated payload that looks complete is worse than no payload:
- * the whole reason to read this column is to see exactly what arrived. The full bytes stay
- * one `sqlite3` query away, which is the right place for them — B2 keeps the deep-dive
- * tools on the box.
+ * the whole reason to read this field is to see exactly what arrived. The full bytes stay
+ * one `mongosh` query away, which is the right place for them — B2 keeps the deep-dive
+ * tools off the console.
  *
- * Nothing in this file escapes anything for HTML. That is `page/layout.ts`'s `esc` and it does it in
- * one place, on every value, on the way out — a view module that pre-escaped some strings
- * would make "is this value safe?" a question with a different answer per field.
+ * The cut happens HERE rather than in a `$substrBytes` projection, deliberately: `raw` is
+ * arbitrary UTF-8 a stranger chose, and a byte-wise cut of it can split a multi-byte
+ * character into an invalid sequence. `String.prototype.slice` cuts by code unit, which
+ * cannot. The cost is that the whole document crosses the wire before being trimmed, on a
+ * page that reads fifty of them.
+ *
+ * Nothing in this file escapes anything for HTML. That is `page/layout.ts`'s `esc` and it
+ * does it in one place, on every value, on the way out — a view module that pre-escaped
+ * some strings would make "is this value safe?" a question with a different answer per
+ * field.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
+import { billingStore, type ReviewDoc } from '../../billingDb';
 
-/** Rows per query. The commerce tables are small by construction (one row per callback,
- *  one per finding) and this is a page, not an export. */
+/** Documents per query. The commerce collections are small by construction (one document
+ *  per callback, one per finding) and this is a page, not an export. */
 export const COMMERCE_PAGE_SIZE = 50;
 
-/** How much of `webhook_events.raw` the list carries. Enough to see the event type, the
- *  ids and the amount in a real Paddle payload; far short of what a hostile one could be. */
+/** How much of `webhookEvents.raw` the list carries. Enough to see the event type, the ids
+ *  and the amount in a real Paddle payload; far short of what a hostile one could be. */
 export const RAW_PREVIEW_CHARS = 2000;
 
 export interface ReviewRow {
@@ -69,8 +76,8 @@ export interface WebhookRow {
   lastSeenAtMs: number;
   seenCount: number;
   /** Redeliveries under this key that arrived with a DIFFERENT body. Non-zero is the
-   *  forgery shape `billingDb.ts` calls out, so the page shows it as a flag, not a number
-   *  in a row of numbers. */
+   *  forgery shape `billing/collections.ts` calls out, so the page shows it as a flag, not
+   *  a number in a row of numbers. */
   divergences: number;
 }
 
@@ -81,116 +88,97 @@ export interface CommerceSnapshot {
   openTotal: number;
   webhooks: WebhookRow[];
   webhookTotal: number;
-  /** Webhook rows with `divergences > 0`, counted over the WHOLE table rather than over
-   *  the page. This is the one number here worth being unable to miss, and a count that
-   *  only covered the visible page would read as zero on the day the divergent row is
-   *  row 51. */
+  /** Webhook documents with `divergences > 0`, counted over the WHOLE collection rather
+   *  than over the page. This is the one number here worth being unable to miss, and a
+   *  count that only covered the visible page would read as zero on the day the divergent
+   *  document is number 51. */
   divergentTotal: number;
 }
 
-const REVIEW_COLUMNS = `id, kind, account_id, day_key, summary, evidence_json, state, created_at, reviewed_at, note`;
-
-interface RawReview {
-  id: string;
-  kind: string;
-  account_id: string;
-  day_key: string | null;
-  summary: string;
-  evidence_json: string;
-  state: string;
-  created_at: number;
-  reviewed_at: number | null;
-  note: string | null;
-}
-
-function toReview(r: RawReview): ReviewRow {
+function toReview(d: ReviewDoc): ReviewRow {
   return {
-    id: String(r.id),
-    kind: String(r.kind),
-    accountId: String(r.account_id),
-    dayKey: r.day_key === null ? null : String(r.day_key),
-    summary: String(r.summary),
-    evidenceJson: String(r.evidence_json),
-    state: String(r.state),
-    createdAtMs: Number(r.created_at),
-    reviewedAtMs: r.reviewed_at === null ? null : Number(r.reviewed_at),
-    note: r.note === null ? null : String(r.note),
+    id: d._id,
+    kind: d.kind,
+    accountId: d.accountId,
+    dayKey: d.dayKey,
+    summary: d.summary,
+    evidenceJson: d.evidenceJson,
+    state: d.state,
+    createdAtMs: d.createdAt,
+    reviewedAtMs: d.reviewedAt,
+    note: d.note,
   };
 }
 
 /** Open review-queue items, oldest first — a work list is read from the top and the oldest
  *  unlooked-at finding is the one that has been ignored longest. */
-export function openReviews(billing: DatabaseSync, limit = COMMERCE_PAGE_SIZE): ReviewRow[] {
-  const rows = billing
-    .prepare(`SELECT ${REVIEW_COLUMNS} FROM review_queue WHERE state = 'open' ORDER BY created_at ASC LIMIT ?`)
-    .all(limit) as unknown as RawReview[];
-  return rows.map(toReview);
+export async function openReviews(billing: Db, limit = COMMERCE_PAGE_SIZE): Promise<ReviewRow[]> {
+  const docs = await billingStore(billing)
+    .reviewQueue.find({ state: 'open' })
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .toArray();
+  return docs.map(toReview);
 }
 
 /** Reviewed items, newest first — history is read from the bottom. */
-export function closedReviews(billing: DatabaseSync, limit = COMMERCE_PAGE_SIZE): ReviewRow[] {
-  const rows = billing
-    .prepare(`SELECT ${REVIEW_COLUMNS} FROM review_queue WHERE state <> 'open' ORDER BY created_at DESC LIMIT ?`)
-    .all(limit) as unknown as RawReview[];
-  return rows.map(toReview);
+export async function closedReviews(billing: Db, limit = COMMERCE_PAGE_SIZE): Promise<ReviewRow[]> {
+  const docs = await billingStore(billing)
+    .reviewQueue.find({ state: { $ne: 'open' } })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .toArray();
+  return docs.map(toReview);
 }
 
-/** Webhook events, most recently seen first. `last_seen_at` rather than `first_seen_at`:
- *  the row is UPSERTed on redelivery, so a callback the platform is still retrying right
- *  now is the one worth being at the top. */
-export function recentWebhooks(billing: DatabaseSync, limit = COMMERCE_PAGE_SIZE): WebhookRow[] {
-  const rows = billing
-    .prepare(
-      `SELECT id, platform, order_id, txn_id, event_type, outcome, detail, raw,
-              first_seen_at, last_seen_at, seen_count, divergences
-       FROM webhook_events ORDER BY last_seen_at DESC LIMIT ?`,
-    )
-    .all(limit) as {
-    id: string;
-    platform: string;
-    order_id: string | null;
-    txn_id: string | null;
-    event_type: string;
-    outcome: string;
-    detail: string | null;
-    raw: string;
-    first_seen_at: number;
-    last_seen_at: number;
-    seen_count: number;
-    divergences: number;
-  }[];
-  return rows.map((r) => {
-    const raw = String(r.raw);
-    return {
-      id: String(r.id),
-      platform: String(r.platform),
-      orderId: r.order_id === null ? null : String(r.order_id),
-      txnId: r.txn_id === null ? null : String(r.txn_id),
-      eventType: String(r.event_type),
-      outcome: String(r.outcome),
-      detail: r.detail === null ? null : String(r.detail),
-      raw: raw.slice(0, RAW_PREVIEW_CHARS),
-      rawTruncated: raw.length > RAW_PREVIEW_CHARS,
-      firstSeenAtMs: Number(r.first_seen_at),
-      lastSeenAtMs: Number(r.last_seen_at),
-      seenCount: Number(r.seen_count),
-      divergences: Number(r.divergences),
-    };
-  });
+/**
+ * Webhook events, most recently seen first. `lastSeenAt` rather than `firstSeenAt`: the
+ * document is upserted on redelivery, so a callback the platform is still retrying right
+ * now is the one worth being at the top.
+ */
+export async function recentWebhooks(billing: Db, limit = COMMERCE_PAGE_SIZE): Promise<WebhookRow[]> {
+  const docs = await billingStore(billing)
+    .webhookEvents.find({})
+    .sort({ lastSeenAt: -1 })
+    .limit(limit)
+    .toArray();
+  return docs.map((d) => ({
+    id: d._id,
+    platform: d.platform,
+    orderId: d.orderId,
+    txnId: d.txnId,
+    eventType: d.eventType,
+    outcome: d.outcome,
+    detail: d.detail,
+    raw: d.raw.slice(0, RAW_PREVIEW_CHARS),
+    rawTruncated: d.raw.length > RAW_PREVIEW_CHARS,
+    firstSeenAtMs: d.firstSeenAt,
+    lastSeenAtMs: d.lastSeenAt,
+    seenCount: d.seenCount,
+    divergences: d.divergences,
+  }));
 }
 
-function count(billing: DatabaseSync, sql: string): number {
-  return Number((billing.prepare(sql).get() as { n: number }).n);
-}
-
-/** Everything the commerce section renders, in one call. */
-export function commerceSnapshot(billing: DatabaseSync, limit = COMMERCE_PAGE_SIZE): CommerceSnapshot {
-  return {
-    openReviews: openReviews(billing, limit),
-    closedReviews: closedReviews(billing, limit),
-    openTotal: count(billing, `SELECT COUNT(*) AS n FROM review_queue WHERE state = 'open'`),
-    webhooks: recentWebhooks(billing, limit),
-    webhookTotal: count(billing, `SELECT COUNT(*) AS n FROM webhook_events`),
-    divergentTotal: count(billing, `SELECT COUNT(*) AS n FROM webhook_events WHERE divergences > 0`),
-  };
+/**
+ * Everything the commerce section renders, in one call.
+ *
+ * The six reads run CONCURRENTLY rather than in sequence. Over a local file they were six
+ * synchronous statements costing microseconds; over a cluster they are six round trips, and
+ * serialised that is six times the page's latency for six queries that share no state and
+ * constrain each other in no way. The counts are deliberately not folded into the finds
+ * with a `$facet`: the page-limited list and the unlimited total are different questions,
+ * and a facet that computed both would make the "of 40" number quietly a function of the
+ * page size the day somebody changes one.
+ */
+export async function commerceSnapshot(billing: Db, limit = COMMERCE_PAGE_SIZE): Promise<CommerceSnapshot> {
+  const store = billingStore(billing);
+  const [open, closed, openTotal, webhooks, webhookTotal, divergentTotal] = await Promise.all([
+    openReviews(billing, limit),
+    closedReviews(billing, limit),
+    store.reviewQueue.countDocuments({ state: 'open' }),
+    recentWebhooks(billing, limit),
+    store.webhookEvents.countDocuments({}),
+    store.webhookEvents.countDocuments({ divergences: { $gt: 0 } }),
+  ]);
+  return { openReviews: open, closedReviews: closed, openTotal, webhooks, webhookTotal, divergentTotal };
 }

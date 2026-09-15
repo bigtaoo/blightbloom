@@ -38,7 +38,11 @@ const HOUR = 3_600_000;
 
 function cfg(over: Partial<BackupConfig> = {}): BackupConfig {
   return {
-    sources: ['/sources/matchsvc/accounts.db', '/sources/billsvc/billing.db'],
+    // Two of the three, so "the second source still ran after the first one threw" is a
+    // property with something to be a property OF. The sources are logical database names
+    // since 2026-09-15, not file paths — which is what makes the prune grouping below an
+    // exact prefix match instead of a basename-with-the-extension-stripped.
+    sources: ['accounts', 'billing'],
     destDir: tmp(),
     intervalMs: 24 * HOUR,
     keep: 3,
@@ -61,14 +65,19 @@ function scriptedIo(opts: {
     lines,
     snapshot: (source, destDir, at) => {
       const scripted = opts.snapshots?.[source];
-      if (scripted instanceof Error) throw scripted;
-      return (
+      // REJECTS rather than throws synchronously, which is what a real failure now looks
+      // like: every source is a network read. A `throw` here would be caught by `runCycle`'s
+      // try/catch even if the `await` were missing, so the rejection is what makes the
+      // per-source catch a real assertion rather than one that passes either way.
+      if (scripted instanceof Error) return Promise.reject(scripted);
+      return Promise.resolve(
         scripted ?? {
           source,
-          file: join(destDir, `${source.split('/').pop()!.replace('.db', '')}-${at.toISOString()}.db.gz`),
+          file: join(destDir, `${source}-${at.toISOString()}.ndjson.gz`),
           bytes: 100,
           rawBytes: 1000,
-        }
+          documents: 5,
+        },
       );
     },
     list: () => opts.listing ?? [],
@@ -78,10 +87,10 @@ function scriptedIo(opts: {
 }
 
 describe('runCycle', () => {
-  it('snapshots every source and reports ok', () => {
+  it('snapshots every source and reports ok', async () => {
     const c = cfg();
     const io = scriptedIo();
-    const result = runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
+    const result = await runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
 
     expect(result.ok).toBe(true);
     expect(result.at).toBe('2026-09-07T01:00:00.000Z');
@@ -90,20 +99,53 @@ describe('runCycle', () => {
     expect(io.lines.every((l) => l.startsWith('backup ok'))).toBe(true);
   });
 
-  it('creates the destination directory rather than failing on a fresh volume', () => {
+  it('creates the destination directory rather than failing on a fresh volume', async () => {
     const c = cfg({ destDir: join(tmp(), 'nested', 'backups') });
-    expect(runCycle(c, new Date(), scriptedIo()).ok).toBe(true);
+    expect((await runCycle(c, new Date(), scriptedIo())).ok).toBe(true);
     expect(readdirSync(c.destDir)).toEqual([]);
   });
 
-  it('keeps going after ONE source fails, and reports the cycle as not ok', () => {
-    // The reason a cycle catches per source: with two databases, an unreadable accounts.db
-    // must not cost billing.db its backup — and the day that matters is the day one of them
-    // is broken.
+  it('reports the DOCUMENT COUNT per source', async () => {
+    // New with the port, and the one number that makes a small snapshot diagnosable: a
+    // 40-byte file from an empty database and a 40-byte file from a broken read look
+    // identical on disk, and `status.json` is where an operator sees the difference.
+    const result = await runCycle(cfg(), new Date('2026-09-07T01:00:00Z'), scriptedIo());
+    expect(result.sources.map((s) => s.documents)).toEqual([5, 5]);
+  });
+
+  it('snapshots the sources SEQUENTIALLY, not all at once', async () => {
+    // A decision rather than the shape it happened to have when the reads were synchronous.
+    // Three concurrent full-collection scans against a live cluster is exactly the load a
+    // backup worker exists not to be, and the cycle has hours of budget. Asserted by
+    // counting overlap: a `Promise.all` would have all three in flight together.
+    const c = cfg();
+    let inFlight = 0;
+    let peak = 0;
+    const io = scriptedIo();
+    const base = io.snapshot;
+    io.snapshot = async (source, destDir, at) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      try {
+        await new Promise((r) => setTimeout(r, 1));
+        return await base(source, destDir, at);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    await runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
+    expect(peak).toBe(1);
+  });
+
+  it('keeps going after ONE source fails, and reports the cycle as not ok', async () => {
+    // The reason a cycle catches per source: with three databases, an unreadable `accounts`
+    // must not cost `billing` its backup — and the day that matters is the day one of them
+    // is broken. It matters MORE since the port, where a source is a network read and a
+    // transient failure of one is ordinary rather than a disk fault.
     const c = cfg();
     const io = scriptedIo({ snapshots: { [c.sources[0]!]: new Error('disk on fire') } });
 
-    const result = runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
+    const result = await runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
 
     expect(result.ok).toBe(false);
     expect(result.sources[0]).toMatchObject({ ok: false, error: 'disk on fire' });
@@ -112,47 +154,53 @@ describe('runCycle', () => {
     expect(io.lines[1]).toContain('backup ok');
   });
 
-  it('never throws out of a cycle, so the loop cannot die on a bad source', () => {
+  it('never REJECTS out of a cycle, so the loop cannot die on a bad source', () => {
+    // Stronger than "never throws" was, and it has to be: an unhandled rejection is what
+    // Node kills the process over, and this loop has no boundary above it.
     const c = cfg();
     const io = scriptedIo({
       snapshots: { [c.sources[0]!]: new Error('a'), [c.sources[1]!]: new Error('b') },
     });
-    expect(() => runCycle(c, new Date(), io)).not.toThrow();
-    expect(runCycle(c, new Date(), io).ok).toBe(false);
+    return expect(runCycle(c, new Date(), io)).resolves.toMatchObject({ ok: false });
   });
 
-  it('prunes only the source it just snapshotted, and only past `keep`', () => {
-    const c = cfg({ keep: 1, sources: ['/s/accounts.db'] });
+  it('prunes only the source it just snapshotted, and only past `keep`', async () => {
+    const c = cfg({ keep: 1, sources: ['accounts'] });
     const io = scriptedIo({
       listing: [
-        'accounts-2026-09-05T01-00-00Z.db.gz',
-        'accounts-2026-09-06T01-00-00Z.db.gz',
-        'accounts-2026-09-07T01-00-00Z.db.gz',
-        'billing-2026-09-01T01-00-00Z.db.gz', // another source's set, not this cycle's business
+        'accounts-2026-09-05T01-00-00Z.ndjson.gz',
+        'accounts-2026-09-06T01-00-00Z.ndjson.gz',
+        'accounts-2026-09-07T01-00-00Z.ndjson.gz',
+        'billing-2026-09-01T01-00-00Z.ndjson.gz', // another source's set, not this cycle's business
+        // The SQLite era's snapshots, which a box upgraded in place still holds. They are
+        // the only copy of the pre-migration data until the one-time migration has run and
+        // been verified — so a pruner that recognised them would delete exactly the files
+        // nothing else can reproduce, on schedule, in that window.
+        'accounts-2026-09-04T01-00-00Z.db.gz',
         'status.json',
       ],
     });
 
-    const result = runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
+    const result = await runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
 
     expect(io.removed).toEqual([
-      join(c.destDir, 'accounts-2026-09-05T01-00-00Z.db.gz'),
-      join(c.destDir, 'accounts-2026-09-06T01-00-00Z.db.gz'),
+      join(c.destDir, 'accounts-2026-09-05T01-00-00Z.ndjson.gz'),
+      join(c.destDir, 'accounts-2026-09-06T01-00-00Z.ndjson.gz'),
     ]);
     expect(result.sources[0]!.pruned).toHaveLength(2);
   });
 
-  it('does NOT prune a source whose snapshot just failed', () => {
+  it('does NOT prune a source whose snapshot just failed', async () => {
     // The difference between a retention policy and a countdown to having nothing: a
     // source failing for two weeks would otherwise age its last good snapshots out on
     // schedule and leave the directory empty.
-    const c = cfg({ keep: 1, sources: ['/s/accounts.db'] });
+    const c = cfg({ keep: 1, sources: ['accounts'] });
     const io = scriptedIo({
-      snapshots: { '/s/accounts.db': new Error('unreadable') },
-      listing: ['accounts-2026-09-05T01-00-00Z.db.gz', 'accounts-2026-09-06T01-00-00Z.db.gz'],
+      snapshots: { accounts: new Error('unreadable') },
+      listing: ['accounts-2026-09-05T01-00-00Z.ndjson.gz', 'accounts-2026-09-06T01-00-00Z.ndjson.gz'],
     });
 
-    runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
+    await runCycle(c, new Date('2026-09-07T01:00:00Z'), io);
 
     expect(io.removed).toEqual([]);
   });
@@ -162,7 +210,9 @@ describe('writeStatus / readStatus', () => {
   const result: CycleResult = {
     at: '2026-09-07T01:00:00.000Z',
     ok: true,
-    sources: [{ source: '/s/accounts.db', ok: true, file: 'accounts-2026-09-07T01-00-00Z.db.gz', bytes: 10 }],
+    sources: [
+      { source: 'accounts', ok: true, file: 'accounts-2026-09-07T01-00-00Z.ndjson.gz', bytes: 10, documents: 7 },
+    ],
   };
 
   it('round-trips a cycle result', () => {

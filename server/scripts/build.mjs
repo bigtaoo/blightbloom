@@ -12,16 +12,20 @@
  * entrypoint, so a deploy target needs nothing but Node + the `ws` runtime dependency
  * (kept external — see below) and three flat .mjs files.
  *
- * `ws`, `mongodb` and `node:sqlite` are deliberately left EXTERNAL rather than bundled.
- * `ws` ships optional native/WASM fallback bindings resolved by a runtime `require()`
- * esbuild can't see through; `mongodb` is the same failure for the same reason, and it is
- * not a theoretical one — bundled, the driver's `require('timers/promises')` becomes a
- * DYNAMIC require in ESM output and every service dies at boot with "Dynamic require of
+ * `ws` and `mongodb` are deliberately left EXTERNAL rather than bundled. `ws` ships
+ * optional native/WASM fallback bindings resolved by a runtime `require()` esbuild can't
+ * see through; `mongodb` is the same failure for the same reason, and it is not a
+ * theoretical one — bundled, the driver's `require('timers/promises')` becomes a DYNAMIC
+ * require in ESM output and every service dies at boot with "Dynamic require of
  * 'timers/promises' is not supported", after the build has succeeded. It carries optional
  * native dependencies (`kerberos`, `mongodb-client-encryption`, `@mongodb-js/zstd`,
- * `snappy`) resolved the same unseeable way. `node:sqlite` is a Node built-in, not
- * something to inline. All three are satisfied by the deploy image's own minimal
- * `package.json` (`server/deploy/package.json`).
+ * `snappy`) resolved the same unseeable way. Both are satisfied by the deploy image's own
+ * minimal `package.json` (`server/deploy/package.json`).
+ *
+ * `node:sqlite` was here until 2026-09-15 and is not any more, because no source file
+ * imports it: the four stores are logical databases on the cluster. It was only ever listed
+ * to keep a Node BUILT-IN from being inlined, so removing it is the fact that the port is
+ * complete rather than a change in policy.
  *
  * `test/deploy.bundle.test.ts` is what caught the mongodb case: it BOOTS each bundle as a
  * bare node process, which is the only layer where "the build passed" and "the service
@@ -41,10 +45,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const serverRoot = join(here, '..');
 export const defaultOutdir = join(serverRoot, 'dist');
 
-/** Left out of the bundles; supplied by the deploy image (`ws`) or by Node itself. */
-export const external = ['ws', 'mongodb', 'node:sqlite'];
+/** Left out of the bundles; supplied by the deploy image. */
+export const external = ['ws', 'mongodb'];
 
-/** Matches the Dockerfile's base image — `node:sqlite` is what sets the floor. */
+/** Matches the Dockerfile's base image. `node:sqlite` used to set this floor; the driver
+ *  and `node:test`-free tooling both run comfortably below it, so it is now just the image
+ *  the Dockerfile pins and the two are asserted against each other rather than derived. */
 export const target = 'node22';
 
 /** One bundle per process. `out` is the bare basename docker-compose.yml's `command:` runs.

@@ -1,7 +1,7 @@
 /**
  * Split of `billingDb.ts` (2026-09-15, the MongoDB port): the billing plane's DOCUMENT
  * SHAPES and the typed handles onto them. `schema.ts` owns the indexes and validators that
- * enforce them; `sqliteLegacy.ts` owns the file the un-ported consumers still read.
+ * enforce them.
  *
  * Six collections on the `billing` logical database (`mongo.ts`), one per table of the
  * `node:sqlite` file this plane owned until 2026-09-15 — four for the money, two for the
