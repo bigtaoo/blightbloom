@@ -14,15 +14,18 @@
  *   'files, never acts' — asserted against the real `entitlements` table: the rows are still
  *   there afterwards.
  *
- * The reads run against real collections and a real `openBillingDb(':memory:')`,
- * because the two-file split is half of what this pass ships: the audit reads the CONTROL
- * PLANE's table and files into the BILLING plane's queue.
+ * The reads run against real collections on the suite's own mongod, because the two-STORE
+ * split is half of what this pass ships: the audit reads the CONTROL PLANE's collection and
+ * files into the BILLING plane's queue. Both planes are MongoDB since 2026-09-15, but they
+ * are two separate logical DATABASES on the cluster, and this file is where that seam is
+ * exercised — a refactor that quietly served both from one handle would still pass every
+ * other billing test.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import type { AccountsStore } from '../src/db';
-import { freshAccounts } from './mongoHarness';
-import { openBillingDb } from '../src/billingDb';
+import { freshAccounts, openTestMongo, type MongoTestContext } from './mongoHarness';
+import { ensureBillingIndexes } from '../src/billingDb';
 import { EntitlementService, type EntitlementSource } from '../src/EntitlementService';
 import { openReviews, reviewById, grantAnomalyId, markReviewed } from '../src/billsvc/reviewQueue';
 import {
@@ -42,14 +45,17 @@ const D1 = Date.parse('2026-09-04T00:00:00.000Z');
 const D2 = D1 + DAY;
 
 let accounts: AccountsStore;
-let billing: DatabaseSync;
+let ctx: MongoTestContext;
+let billing: Db;
 
 beforeEach(async () => {
   accounts = await freshAccounts();
-  billing = openBillingDb(':memory:');
+  ctx = await openTestMongo();
+  billing = ctx.db('billing');
+  await ensureBillingIndexes(billing);
 });
-afterEach(() => {
-  billing.close();
+afterEach(async () => {
+  await ctx.dispose();
 });
 
 function grant(over: Partial<GrantRow> = {}): GrantRow {
@@ -169,7 +175,7 @@ describe('auditGrants — grouping', () => {
     expect(auditGrants(rows)).toEqual([]);
   });
 
-  it('orders findings by day then account, so a re-run\'s log is diffable', () => {
+  it('orders findings by day then account, so a re-run\'s log is diffable', async () => {
     const rows = [
       ...grants(4, { accountId: 'zed', grantedAt: D2 + 1 }),
       ...grants(4, { accountId: 'bob', grantedAt: D2 + 1 }),
@@ -257,9 +263,9 @@ describe('readGrantsInWindow — against the real entitlements table', () => {
 describe('fileGrantAnomalies — files, never acts', () => {
   it('files one review entry per finding, keyed on (account, day)', async () => {
     const findings = auditGrants([...grants(4), ...grants(4, { accountId: 'acc-2' })]);
-    expect(fileGrantAnomalies(billing, findings, 7_000)).toBe(2);
+    expect(await fileGrantAnomalies(billing, findings, 7_000)).toBe(2);
 
-    const entry = reviewById(billing, grantAnomalyId('acc-1', '2026-09-04'))!;
+    const entry = (await reviewById(billing, grantAnomalyId('acc-1', '2026-09-04')))!;
     expect(entry.kind).toBe('grant-anomaly');
     expect(entry.state).toBe('open');
     expect(entry.dayKey).toBe('2026-09-04');
@@ -275,25 +281,25 @@ describe('fileGrantAnomalies — files, never acts', () => {
     // The property that makes the job safe to re-run, and therefore the property that makes it
     // get run at all. `(accountId, dayKey)` is the key; a second pass finds it taken.
     const findings = auditGrants(grants(4));
-    expect(fileGrantAnomalies(billing, findings, 7_000)).toBe(1);
-    expect(fileGrantAnomalies(billing, findings, 9_000)).toBe(0);
-    expect(openReviews(billing)).toHaveLength(1);
-    expect(reviewById(billing, grantAnomalyId('acc-1', '2026-09-04'))!.createdAt).toBe(7_000);
+    expect(await fileGrantAnomalies(billing, findings, 7_000)).toBe(1);
+    expect(await fileGrantAnomalies(billing, findings, 9_000)).toBe(0);
+    expect(await openReviews(billing)).toHaveLength(1);
+    expect((await reviewById(billing, grantAnomalyId('acc-1', '2026-09-04')))!.createdAt).toBe(7_000);
   });
 
   it('a re-run does not reopen a finding a human already closed', async () => {
     const findings = auditGrants(grants(4));
-    fileGrantAnomalies(billing, findings, 7_000);
-    markReviewed(billing, grantAnomalyId('acc-1', '2026-09-04'), 8_000, 'campaign, expected');
-    expect(fileGrantAnomalies(billing, findings, 9_000)).toBe(0);
-    expect(openReviews(billing)).toEqual([]);
+    await fileGrantAnomalies(billing, findings, 7_000);
+    await markReviewed(billing, grantAnomalyId('acc-1', '2026-09-04'), 8_000, 'campaign, expected');
+    expect(await fileGrantAnomalies(billing, findings, 9_000)).toBe(0);
+    expect(await openReviews(billing)).toEqual([]);
   });
 
   it('counts only the NEW rows when some of the batch was already filed', async () => {
-    fileGrantAnomalies(billing, auditGrants(grants(4)), 7_000);
+    await fileGrantAnomalies(billing, auditGrants(grants(4)), 7_000);
     const both = auditGrants([...grants(4), ...grants(4, { accountId: 'acc-2' })]);
-    expect(fileGrantAnomalies(billing, both, 9_000)).toBe(1);
-    expect(openReviews(billing)).toHaveLength(2);
+    expect(await fileGrantAnomalies(billing, both, 9_000)).toBe(1);
+    expect(await openReviews(billing)).toHaveLength(2);
   });
 
   it('REVOKES NOTHING — the entitlements are all still there afterwards', async () => {
@@ -311,15 +317,15 @@ describe('fileGrantAnomalies — files, never acts', () => {
 
     const findings = auditGrants(await readGrantsInWindow(accounts, D1, D2));
     expect(findings).toHaveLength(1);
-    fileGrantAnomalies(billing, findings, 7_000);
+    await fileGrantAnomalies(billing, findings, 7_000);
 
     expect(await ents.list('acc-1')).toHaveLength(5);
     expect(await ents.owns('acc-1', 'blueprint:w1')).toBe(true);
   });
 
   it('files nothing for an empty finding list', async () => {
-    expect(fileGrantAnomalies(billing, [], 1_000)).toBe(0);
-    expect(openReviews(billing)).toEqual([]);
+    expect(await fileGrantAnomalies(billing, [], 1_000)).toBe(0);
+    expect(await openReviews(billing)).toEqual([]);
   });
 });
 

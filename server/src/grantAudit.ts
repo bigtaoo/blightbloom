@@ -36,7 +36,7 @@
  *     that a HUMAN's correction is a supported operation, and is called by nothing in this
  *     server — deliberately, and this module is the closest thing to a caller it will have.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import type { AccountsStore } from './db';
 import { fileReview, grantAnomalyId } from './billsvc/reviewQueue';
 
@@ -208,15 +208,24 @@ export function formatFinding(f: GrantAnomalyFinding): string {
  * account database would mean a human has to know which of two places to look
  * (`billingDb.ts` says the same from the other side).
  *
+ * The two stores are no longer the same KIND of store: the grants are read from the control
+ * plane's `node:sqlite` file (its own stage of the MongoDB migration has not landed) and the
+ * findings are written to the billing plane's MongoDB collections. That is why this takes two
+ * handles of two different types, and why it is async.
+ *
  * `(accountId, dayKey)` is the key, via `grantAnomalyId`, so re-running the audit over a day
  * that was already filed produces NOTHING — not a duplicate, not a reopened row, not a
  * refreshed timestamp. An audit an operator is afraid to re-run is an audit that stops being
  * run.
  */
-export function fileGrantAnomalies(reviewDb: DatabaseSync, findings: readonly GrantAnomalyFinding[], ts: number): number {
+export async function fileGrantAnomalies(
+  reviewDb: Db,
+  findings: readonly GrantAnomalyFinding[],
+  ts: number,
+): Promise<number> {
   let filed = 0;
   for (const f of findings) {
-    const isNew = fileReview(reviewDb, grantAnomalyId(f.accountId, f.dayKey), {
+    const isNew = await fileReview(reviewDb, grantAnomalyId(f.accountId, f.dayKey), {
       kind: 'grant-anomaly',
       accountId: f.accountId,
       dayKey: f.dayKey,

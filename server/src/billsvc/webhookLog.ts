@@ -1,6 +1,6 @@
 /**
  * The webhook event log (design/19-server-platform.md §7, ROADMAP 8.5). A sibling module of
- * free functions over the billing `DatabaseSync` — CLAUDE.md's first split form, and
+ * free functions over the billing `Db` — CLAUDE.md's first split form, and
  * deliberately not a method on `BillingService`: recording what a callback SAID is a
  * different concern from deciding what it MEANS, and it has to happen for callbacks that
  * never reach `settle` at all.
@@ -38,9 +38,22 @@
  *   outcome       OVERWRITTEN with the latest. The account's state reflects the last
  *                 decision, so a log whose outcome said something else would be misleading
  *                 in exactly the situation it is read in.
+ *
+ * HOW THAT UPSERT SURVIVED THE MONGODB PORT (2026-09-15). The SQLite version did the body
+ * comparison inside the statement — `divergences = divergences + (raw <> excluded.raw)`,
+ * relying on `<>` yielding 1/0 — precisely so that the webhook path never performs a
+ * read-then-write. That property had to survive, because it is the one shape design/19 §4's
+ * AMENDMENT 2 forbids everywhere else in this plane. The replacement is an UPDATE PIPELINE:
+ * `updateOne` with an aggregation stage, which can read the stored document's own fields
+ * (`$raw`, `$seenCount`) while writing them, in one atomic operation. Every expression in a
+ * `$set` stage evaluates against the INPUT document, so `raw`'s own reassignment cannot
+ * affect the `divergences` comparison sitting beside it, and on an upsert the pipeline runs
+ * against a document that holds only `_id` — which is why each field is guarded by
+ * `$ifNull` and the divergence test asks whether `$raw` is `missing` before comparing.
  */
 import { createHash } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
+import { billingStore, type WebhookEventDoc } from '../billing/collections';
 
 /**
  * The event types this plane recognises. `purchase` is also what an ABSENT `event` field
@@ -100,7 +113,7 @@ export interface WebhookEventInput {
   ts: number;
 }
 
-/** One `webhook_events` row, in this codebase's camelCase rather than SQL's snake_case. */
+/** One `webhookEvents` document, narrowed to this module's unions. */
 export interface WebhookEventRecord {
   id: string;
   platform: string;
@@ -116,40 +129,22 @@ export interface WebhookEventRecord {
   divergences: number;
 }
 
-interface WebhookEventSqlRow {
-  id: string;
-  platform: string;
-  order_id: string | null;
-  txn_id: string | null;
-  event_type: string;
-  outcome: string;
-  detail: string | null;
-  raw: string;
-  first_seen_at: number;
-  last_seen_at: number;
-  seen_count: number;
-  divergences: number;
-}
-
-function toRecord(r: WebhookEventSqlRow): WebhookEventRecord {
+function toRecord(d: WebhookEventDoc): WebhookEventRecord {
   return {
-    id: r.id,
-    platform: r.platform,
-    orderId: r.order_id,
-    txnId: r.txn_id,
-    eventType: r.event_type as WebhookEventType,
-    outcome: r.outcome as WebhookOutcome,
-    detail: r.detail,
-    raw: r.raw,
-    firstSeenAt: r.first_seen_at,
-    lastSeenAt: r.last_seen_at,
-    seenCount: r.seen_count,
-    divergences: r.divergences,
+    id: d._id,
+    platform: d.platform,
+    orderId: d.orderId,
+    txnId: d.txnId,
+    eventType: d.eventType as WebhookEventType,
+    outcome: d.outcome as WebhookOutcome,
+    detail: d.detail,
+    raw: d.raw,
+    firstSeenAt: d.firstSeenAt,
+    lastSeenAt: d.lastSeenAt,
+    seenCount: d.seenCount,
+    divergences: d.divergences,
   };
 }
-
-const COLUMNS =
-  'id, platform, order_id, txn_id, event_type, outcome, detail, raw, first_seen_at, last_seen_at, seen_count, divergences';
 
 /** Prefix of the order-id fallback key, so an operator can tell the three key shapes apart. */
 export const ORDER_KEY_PREFIX = 'order:';
@@ -176,47 +171,57 @@ export function webhookEventKey(input: { txnId?: string | null; orderId?: string
 
 /**
  * Record one callback. Returns the key it was written under, so a caller that wants to log
- * the id (or a test that wants to read the row back) does not have to re-derive it.
+ * the id (or a test that wants to read the document back) does not have to re-derive it.
  *
- * `divergences = divergences + (raw <> excluded.raw)` does the body comparison in SQL rather
- * than as a read-then-write: this runs on the webhook path, and a look-before-write there
- * would be the one shape the rest of this plane deliberately avoids everywhere else.
- * SQLite's `<>` yields 1/0, so the arithmetic is the comparison.
+ * One atomic update-pipeline upsert, never a read followed by a write — see the file header
+ * for why the divergence count in particular had to stay inside the statement.
  *
- * NEVER THROWS ON A LOST RACE, because there is nothing to lose: the UPSERT resolves both
- * orders of arrival to the same row.
+ * NEVER THROWS ON A LOST RACE, because there is nothing to lose: the upsert resolves both
+ * orders of arrival to the same document.
  */
-export function recordWebhookEvent(db: DatabaseSync, input: WebhookEventInput): string {
+export async function recordWebhookEvent(db: Db, input: WebhookEventInput): Promise<string> {
   const id = webhookEventKey({
     txnId: input.txnId,
     orderId: input.orderId,
     raw: input.raw,
     eventType: input.eventType,
   });
-  db.prepare(
-    `INSERT INTO webhook_events
-       (id, platform, order_id, txn_id, event_type, outcome, detail, raw,
-        first_seen_at, last_seen_at, seen_count, divergences)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
-     ON CONFLICT(id) DO UPDATE SET
-       last_seen_at = excluded.last_seen_at,
-       seen_count   = seen_count + 1,
-       -- The LATEST decision. See the file header: the account state reflects it.
-       outcome      = excluded.outcome,
-       detail       = excluded.detail,
-       -- 'raw' is deliberately absent from this SET. First body wins.
-       divergences  = divergences + (raw <> excluded.raw)`,
-  ).run(
-    id,
-    input.platform,
-    emptyToNull(input.orderId),
-    emptyToNull(input.txnId),
-    input.eventType,
-    input.outcome,
-    input.detail ?? null,
-    input.raw,
-    input.ts,
-    input.ts,
+  await billingStore(db).webhookEvents.updateOne(
+    { _id: id },
+    [
+      {
+        $set: {
+          platform: input.platform,
+          orderId: emptyToNull(input.orderId),
+          txnId: emptyToNull(input.txnId),
+          eventType: input.eventType,
+          // The LATEST decision. See the file header: the account state reflects it.
+          outcome: input.outcome,
+          detail: input.detail ?? null,
+          // FIRST body wins. `$ifNull` is what makes this an insert-only field inside an
+          // upsert that otherwise overwrites.
+          raw: { $ifNull: ['$raw', input.raw] },
+          firstSeenAt: { $ifNull: ['$firstSeenAt', input.ts] },
+          lastSeenAt: input.ts,
+          seenCount: { $add: [{ $ifNull: ['$seenCount', 0] }, 1] },
+          divergences: {
+            $add: [
+              { $ifNull: ['$divergences', 0] },
+              {
+                $cond: [
+                  // On the insert pass `$raw` is missing, which is not a divergence — it is
+                  // the first arrival. Only a STORED body that differs counts.
+                  { $and: [{ $ne: [{ $type: '$raw' }, 'missing'] }, { $ne: ['$raw', input.raw] }] },
+                  1,
+                  0,
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ],
+    { upsert: true },
   );
   return id;
 }
@@ -228,11 +233,9 @@ function emptyToNull(value: string | null | undefined): string | null {
 }
 
 /** One event by key — the audit read, and how a test asks what was recorded. */
-export function webhookEventById(db: DatabaseSync, id: string): WebhookEventRecord | null {
-  const row = db.prepare(`SELECT ${COLUMNS} FROM webhook_events WHERE id = ?`).get(id) as
-    | WebhookEventSqlRow
-    | undefined;
-  return row ? toRecord(row) : null;
+export async function webhookEventById(db: Db, id: string): Promise<WebhookEventRecord | null> {
+  const doc = await billingStore(db).webhookEvents.findOne({ _id: id });
+  return doc ? toRecord(doc) : null;
 }
 
 /**
@@ -243,17 +246,20 @@ export function webhookEventById(db: DatabaseSync, id: string): WebhookEventReco
  * A callback that named no order is not here, by construction — it could not be attributed
  * to one. `recentWebhookEvents` is what finds those.
  */
-export function webhookEventsForOrder(db: DatabaseSync, orderId: string): WebhookEventRecord[] {
-  const rows = db
-    .prepare(`SELECT ${COLUMNS} FROM webhook_events WHERE order_id = ? ORDER BY first_seen_at ASC, id ASC`)
-    .all(orderId) as unknown as WebhookEventSqlRow[];
-  return rows.map(toRecord);
+export async function webhookEventsForOrder(db: Db, orderId: string): Promise<WebhookEventRecord[]> {
+  const docs = await billingStore(db)
+    .webhookEvents.find({ orderId })
+    .sort({ firstSeenAt: 1, _id: 1 })
+    .toArray();
+  return docs.map(toRecord);
 }
 
 /** The operator sweep: most recently seen first, bounded. */
-export function recentWebhookEvents(db: DatabaseSync, limit: number): WebhookEventRecord[] {
-  const rows = db
-    .prepare(`SELECT ${COLUMNS} FROM webhook_events ORDER BY last_seen_at DESC, id ASC LIMIT ?`)
-    .all(limit) as unknown as WebhookEventSqlRow[];
-  return rows.map(toRecord);
+export async function recentWebhookEvents(db: Db, limit: number): Promise<WebhookEventRecord[]> {
+  const docs = await billingStore(db)
+    .webhookEvents.find({})
+    .sort({ lastSeenAt: -1, _id: 1 })
+    .limit(limit)
+    .toArray();
+  return docs.map(toRecord);
 }

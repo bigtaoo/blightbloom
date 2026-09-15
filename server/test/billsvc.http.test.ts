@@ -1,7 +1,8 @@
 /**
- * billsvc's HTTP surface, driven with real `fetch` over an ephemeral port on `:memory:`
- * SQLite — the same shape as `matchsvc.http.test.ts`, and for the same reason its header
- * gives: the thin HTTP shell is exactly where a bug hides from every pure-logic test.
+ * billsvc's HTTP surface, driven with real `fetch` over an ephemeral port against an
+ * isolated database on the suite's own mongod — the same shape as `matchsvc.http.test.ts`,
+ * and for the same reason its header gives: the thin HTTP shell is exactly where a bug hides
+ * from every pure-logic test.
  *
  * Three things only exist at this layer, so they can only be asserted here:
  *
@@ -13,12 +14,13 @@
  *     webhook → delivered. design/19 §5 calls that the reason the stub exists, and this
  *     is the test that proves it still works.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, inject } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
-import type { DatabaseSync } from 'node:sqlite';
-import { openBillingDb } from '../src/billingDb';
+import { MongoClient, type Db } from 'mongodb';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { createBillsvcServer, type BillsvcServerOptions } from '../src/billsvc/server';
 import { createInternalVerifier } from '../src/internalAuth';
 import type { EntitlementGrantRequest } from '../src/billsvc/delivery';
@@ -36,21 +38,20 @@ const DEV_ENV = { BB_BILLING_DEV_STUB: '1' };
 const REGISTRY = [{ caller: 'matchsvc', key: KEY }];
 
 let baseUrl: string;
-let db: DatabaseSync;
+let ctx: MongoTestContext;
+let db: Db;
 let granted: EntitlementGrantRequest[];
 let close: () => Promise<void> = async () => {};
 
-async function start(over: BillsvcServerOptions = {}): Promise<void> {
+async function start(over: Partial<BillsvcServerOptions> = {}): Promise<void> {
   await close();
   granted = [];
-  const ownDb = openBillingDb(':memory:');
-  db = ownDb;
   const { server } = createBillsvcServer({
-    db: ownDb,
+    db,
     env: DEV_ENV,
     internalAuth: createInternalVerifier(REGISTRY),
     deliver: {
-      grant(g) {
+      async grant(g) {
         granted.push(g);
       },
     },
@@ -60,12 +61,12 @@ async function start(over: BillsvcServerOptions = {}): Promise<void> {
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
 
-  // Idempotent, and it closes THIS server and THIS database rather than whatever the
-  // module-level bindings happen to point at. Both matter: a test that restarts the
-  // harness mid-case leaves `afterEach` holding a shutdown that has already run, and
-  // `server.close()` on an already-closed server still fires its callback — which then
-  // called `db.close()` a second time and took the worker down with an uncaught
-  // ERR_INVALID_STATE rather than failing a test.
+  // Idempotent, and it closes THIS server rather than whatever the module-level binding
+  // happens to point at: a test that restarts the harness mid-case leaves `afterEach` holding
+  // a shutdown that has already run, and `server.close()` on an already-closed server still
+  // fires its callback. The DATABASE is not closed here any more — one context spans the case
+  // and `afterEach` disposes it, so a restart keeps the documents the first server wrote,
+  // which is what every `start()`-mid-case assertion is about anyway.
   let shutDown = false;
   close = () =>
     new Promise<void>((resolve) => {
@@ -75,10 +76,7 @@ async function start(over: BillsvcServerOptions = {}): Promise<void> {
       // keep-alive, and `server.close()` waits for every connection to drain — so without
       // this the callback never fires and the suite hangs instead of finishing.
       server.closeAllConnections();
-      server.close(() => {
-        ownDb.close();
-        resolve();
-      });
+      server.close(() => resolve());
     });
 }
 
@@ -103,12 +101,18 @@ async function call(
 
 const createOrder = (body: unknown) => call('POST', '/order/create', { body });
 
+const count = (collection: 'orders' | 'ledger'): Promise<number> => billingStore(db)[collection].countDocuments();
+
 beforeEach(async () => {
+  ctx = await openTestMongo();
+  db = ctx.db('billing');
+  await ensureBillingIndexes(db);
   await start();
 });
 
 afterEach(async () => {
   await close();
+  await ctx.dispose();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,7 +162,7 @@ describe('billsvc HTTP — the internal-key boundary', () => {
 
   it('401s POST /order/create with a wrong key, and books nothing', async () => {
     expect((await call('POST', '/order/create', { body: { accountId: 'a1', sku: 'bp.cannon', platform: 'dev' }, key: 'wrong' })).status).toBe(401);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM orders').get()).toEqual({ n: 0 });
+    expect(await count('orders')).toBe(0);
   });
 
   it('401s GET /order/:id with no key — an order id must not be a public read', async () => {
@@ -259,7 +263,7 @@ describe('billsvc HTTP — POST /order/create', () => {
       price: 1,
     });
     expect(body.order).toMatchObject({ amountCents: 1800 });
-    expect(db.prepare('SELECT amount_cents FROM orders').get()).toEqual({ amount_cents: 1800 });
+    expect((await billingStore(db).orders.findOne({}))?.amountCents).toBe(1800);
   });
 
   it('400s an unknown SKU, an unknown platform and a missing accountId', async () => {
@@ -306,7 +310,7 @@ describe('billsvc HTTP — POST /order/create', () => {
       body: JSON.stringify({ accountId: 'a1', sku: 'bp.cannon', platform: 'dev', pad: 'x'.repeat(300 * 1024) }),
     });
     expect(res.status).toBe(400);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM orders').get()).toEqual({ n: 0 });
+    expect(await count('orders')).toBe(0);
   });
 
   it('rejects an oversized body whose KEPT PREFIX is already valid JSON', async () => {
@@ -361,7 +365,7 @@ describe('billsvc HTTP — POST /order/create', () => {
     });
 
     expect(status).toBe(400);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM orders').get()).toEqual({ n: 0 });
+    expect(await count('orders')).toBe(0);
   });
 
   it('survives a client that disconnects mid-upload', async () => {
@@ -399,7 +403,7 @@ describe('billsvc HTTP — POST /order/create', () => {
 
     // The process is still serving, and the half-sent request booked nothing.
     expect((await call('GET', '/health', { key: null })).status).toBe(200);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM orders').get()).toEqual({ n: 0 });
+    expect(await count('orders')).toBe(0);
   });
 
   it('accepts a body large enough to be a real Apple receipt', async () => {
@@ -445,7 +449,7 @@ describe('billsvc HTTP — GET /order/:id', () => {
     const id = (created.body.order as unknown as { id: string }).id;
     for (let i = 0; i < 3; i++) await call('GET', `/order/${id}`);
     expect(granted).toEqual([]);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM ledger').get()).toEqual({ n: 0 });
+    expect(await count('ledger')).toBe(0);
   });
 });
 
@@ -536,7 +540,7 @@ describe('billsvc HTTP — the webhook', () => {
     expect(status).toBe(200);
     expect(body).toMatchObject({ ok: true, state: 'failed', changed: true });
     expect(granted).toEqual([]);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM ledger').get()).toEqual({ n: 0 });
+    expect(await count('ledger')).toBe(0);
   });
 
   it("a 'cancelled' event does the same", async () => {
@@ -589,8 +593,8 @@ describe('billsvc HTTP — the webhook', () => {
     // request that hangs until its own timeout.
     const rejecting = {
       listSkus: () => [],
-      getOrder: () => null,
-      markFailed: () => ({ ok: false, changed: false }),
+      getOrder: () => Promise.resolve(null),
+      markFailed: () => Promise.resolve({ ok: false, changed: false }),
       settle: () => Promise.reject(new Error('lost the promise')),
     };
     await start({ billing: rejecting as never });
@@ -608,27 +612,29 @@ describe('billsvc HTTP — the webhook', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('createBillsvcServer wiring', () => {
-  it('opens its own DB from dbPath when no db is handed in', async () => {
+  it('hands back the STORE it was given, and never opens one of its own', async () => {
+    // The builder took a `dbPath` before the MongoDB port and would open a `:memory:` file
+    // when handed neither. That option is gone on purpose: a builder that can open its own
+    // connection is a second place the four-store split is decided, and there is no in-memory
+    // fallback to open. `db` is now required, and it is the one the routes write through.
     const { server, db: own, billing } = createBillsvcServer({
-      dbPath: ':memory:',
+      db,
       env: DEV_ENV,
       internalAuth: createInternalVerifier(REGISTRY),
     });
     expect(billing.listSkus().length).toBeGreaterThan(0);
-    expect(own.prepare('SELECT COUNT(*) AS n FROM orders').get()).toEqual({ n: 0 });
-    own.close();
+    expect(own).toBe(db);
+    expect(await count('orders')).toBe(0);
     server.close();
   });
 
-  it('reads process.env when no env is passed at all', () => {
+  it('reads process.env when no env is passed at all', async () => {
     // vitest runs with NODE_ENV=test and no billing variables, so the default must land on
     // a stub-disabled verifier rather than throwing.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const own = openBillingDb(':memory:');
-    const { server, billing } = createBillsvcServer({ db: own });
-    expect(billing.createOrder({ accountId: 'a1', sku: 'bp.cannon', platform: 'dev' }).ok).toBe(true);
+    const { server, billing } = createBillsvcServer({ db });
+    expect((await billing.createOrder({ accountId: 'a1', sku: 'bp.cannon', platform: 'dev' })).ok).toBe(true);
     server.close();
-    own.close();
     warn.mockRestore();
   });
 
@@ -656,11 +662,11 @@ describe('createBillsvcServer wiring', () => {
     // it is `outbox.ts`'s (design/19 §4's closed loop, 2026-09-05). A settlement therefore
     // leaves a ledger row AND a durable delivery obligation, in one transaction.
     const { server, db: own, billing, pump } = createBillsvcServer({
-      dbPath: ':memory:',
+      db,
       env: DEV_ENV,
       internalAuth: createInternalVerifier(REGISTRY),
     });
-    const created = billing.createOrder({ accountId: 'a1', sku: 'bp.cannon', platform: 'dev' });
+    const created = await billing.createOrder({ accountId: 'a1', sku: 'bp.cannon', platform: 'dev' });
     expect(created.ok).toBe(true);
     if (created.ok) {
       const r = await billing.settle({
@@ -670,16 +676,15 @@ describe('createBillsvcServer wiring', () => {
         txnId: 'T1',
       });
       expect(r).toMatchObject({ ok: true, delivered: true });
-      expect(billing.ledgerFor('a1')).toHaveLength(1);
-      // Keyed on the ledger row's own id, so the two are one fact in two tables.
-      expect(deliveryById(own, 'purchase:dev:T1')).toMatchObject({
+      expect(await billing.ledgerFor('a1')).toHaveLength(1);
+      // Keyed on the ledger document's own id, so the two are one fact in two collections.
+      expect(await deliveryById(own, 'purchase:dev:T1')).toMatchObject({
         accountId: 'a1',
         sku: 'bp.cannon',
         state: 'pending',
       });
     }
     await pump.stop();
-    own.close();
     server.close();
   });
 
@@ -692,6 +697,72 @@ describe('createBillsvcServer wiring', () => {
     const params = (created.body.payment as unknown as { params: Record<string, string> }).params;
     await call('POST', '/webhook/dev', { key: null, body: params });
     expect(granted).toHaveLength(1);
-    expect(pendingDeliveries(db, 10)).toHaveLength(0);
+    expect(await pendingDeliveries(db, 10)).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// When the STORE is the thing that fails
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Every route body became a promise in the MongoDB port, and a lost promise is the one
+ * failure mode that is not a wrong answer but NO answer: the caller's request hangs until its
+ * own timeout, which tells a platform nothing and tells Prometheus the process is gone. These
+ * four cases drive the arms that turn a store failure into a 500 instead.
+ *
+ * Reached through the `billing` injection seam and through a CLOSED client, because `settle`
+ * and the store reads are written to be total — which is exactly why the arms below cannot be
+ * produced by any ordinary bad input, and exactly why they need driving deliberately.
+ */
+describe('billsvc HTTP — a store that cannot answer', () => {
+  it('500s GET /order/:id rather than hanging', async () => {
+    await start({ billing: { listSkus: () => [], getOrder: () => Promise.reject(new Error('no primary')) } as never });
+    const { status, body } = await call('GET', '/order/whatever');
+    expect(status).toBe(500);
+    expect(body.error).toBe('no primary');
+  });
+
+  it('500s POST /order/create rather than hanging', async () => {
+    await start({
+      billing: { listSkus: () => [], createOrder: () => Promise.reject(new Error('no primary')) } as never,
+    });
+    const { status, body } = await call('POST', '/order/create', { body: { accountId: 'a1' } });
+    expect(status).toBe(500);
+    expect(body).toEqual({ error: 'no primary', code: 'internal' });
+  });
+
+  it('500s a route handler that throws SYNCHRONOUSLY too', async () => {
+    // The other half of `readJson`'s net. A rejected promise and a synchronous throw reach it
+    // by different paths, and only one of them is what an `await` produces.
+    await start({
+      billing: {
+        listSkus: () => [],
+        createOrder: () => {
+          throw new Error('thrown, not rejected');
+        },
+      } as never,
+    });
+    const { status, body } = await call('POST', '/order/create', { body: { accountId: 'a1' } });
+    expect(status).toBe(500);
+    expect(body).toEqual({ error: 'thrown, not rejected', code: 'internal' });
+  });
+
+  it('500s the /metrics scrape when the store is unreachable', async () => {
+    // A real disconnection rather than a stub: the server is built over its own client, that
+    // client is closed, and the scrape then cannot read the outbox. A scrape that hangs looks
+    // identical to a process that has died, so it has to fail loudly and quickly.
+    const own = await MongoClient.connect(inject('mongoUri'));
+    const { server } = createBillsvcServer({ db: own.db(db.databaseName), env: DEV_ENV });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await own.close();
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/metrics`);
+      expect(res.status).toBe(500);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

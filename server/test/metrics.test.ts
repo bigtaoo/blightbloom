@@ -11,7 +11,7 @@
  *  - matchsvc is the one service Caddy proxies wholesale, so its `/metrics` is the one that
  *    would otherwise be a public readout of how many players are queued.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { renderMetrics, processMetrics, gauge, METRICS_CONTENT_TYPE, type Metric } from '../src/metrics';
@@ -19,9 +19,10 @@ import { createMatchsvcServer, matchsvcMetrics } from '../src/matchsvc';
 import { createGameserver, gameserverMetrics } from '../src/index';
 import { Matchmaker } from '../src/Matchmaker';
 import { GameRegistry } from '../src/GameRegistry';
+import type { Db } from 'mongodb';
 import { createBillsvcServer, billsvcMetrics } from '../src/billsvc/server';
-import { openBillingDb } from '../src/billingDb';
-import { freshAccounts } from './mongoHarness';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { freshAccounts, openTestMongo, type MongoTestContext } from './mongoHarness';
 
 const servers: Array<{ close(): void }> = [];
 afterEach(() => {
@@ -206,39 +207,57 @@ describe('the /metrics routes', () => {
 });
 
 describe('billsvc — the two gauges nothing else can see', () => {
-  it('counts the undelivered purchases in the outbox, and the count MOVES', () => {
+  let billCtx: MongoTestContext;
+  let billDb: Db;
+
+  beforeEach(async () => {
+    billCtx = await openTestMongo();
+    billDb = billCtx.db('billing');
+    await ensureBillingIndexes(billDb);
+  });
+  afterEach(async () => {
+    await billCtx.dispose();
+  });
+
+  it('counts the undelivered purchases in the outbox, and the count MOVES', async () => {
     // The number that matters here: a purchase settles in billsvc and is delivered to the
     // control plane asynchronously, so a pending count that stops falling means players have
     // paid for things they do not own — with every container green and nothing failing.
-    const db = openBillingDb(':memory:');
-    const pending = (): number =>
-      billsvcMetrics(db, false).find((m) => m.name === 'bb_billsvc_outbox_pending')!.value;
-    expect(pending()).toBe(0);
-    db.prepare(
-      `INSERT INTO deliveries (id, account_id, sku, grants_json, order_id, receipt_id, state, attempts, created_at, delivered_at)
-       VALUES ('d1', 'a1', 'bp.cannon', '[]', 'o1', 'r1', 'pending', 0, 1, NULL)`,
-    ).run();
-    expect(pending()).toBe(1);
-    // ...and a DELIVERED row stops counting, which is the half that makes it a drain gauge
-    // rather than a total.
-    db.prepare("UPDATE deliveries SET state = 'delivered', delivered_at = 2 WHERE id = 'd1'").run();
-    expect(pending()).toBe(0);
-    db.close();
+    const pending = async (): Promise<number> =>
+      (await billsvcMetrics(billDb, false)).find((m) => m.name === 'bb_billsvc_outbox_pending')!.value;
+    expect(await pending()).toBe(0);
+    await billingStore(billDb).deliveries.insertOne({
+      _id: 'd1',
+      accountId: 'a1',
+      sku: 'bp.cannon',
+      grantsJson: '[]',
+      orderId: 'o1',
+      receiptId: 'r1',
+      state: 'pending',
+      attempts: 0,
+      createdAt: 1,
+    });
+    expect(await pending()).toBe(1);
+    // ...and a DELIVERED document stops counting, which is the half that makes it a drain
+    // gauge rather than a total.
+    await billingStore(billDb).deliveries.updateOne(
+      { _id: 'd1' },
+      { $set: { state: 'delivered', deliveredAt: 2 } },
+    );
+    expect(await pending()).toBe(0);
   });
 
-  it('reports the dev-stub posture as 0/1, both ways round', () => {
+  it('reports the dev-stub posture as 0/1, both ways round', async () => {
     // "Was the store real on the day of that order?" is a question asked months after the
     // startup log that answered it has rotated away.
-    const db = openBillingDb(':memory:');
-    const stub = (on: boolean): number =>
-      billsvcMetrics(db, on).find((m) => m.name === 'bb_billsvc_dev_stub')!.value;
-    expect(stub(true)).toBe(1);
-    expect(stub(false)).toBe(0);
-    db.close();
+    const stub = async (on: boolean): Promise<number> =>
+      (await billsvcMetrics(billDb, on)).find((m) => m.name === 'bb_billsvc_dev_stub')!.value;
+    expect(await stub(true)).toBe(1);
+    expect(await stub(false)).toBe(0);
   });
 
   it('serves /metrics on its own port', async () => {
-    const { server, db } = createBillsvcServer({ db: openBillingDb(':memory:'), env: { NODE_ENV: 'test' } });
+    const { server } = createBillsvcServer({ db: billDb, env: { NODE_ENV: 'test' } });
     const base = await listen(server);
     const res = await fetch(`${base}/metrics`);
     expect(res.status).toBe(200);
@@ -246,6 +265,5 @@ describe('billsvc — the two gauges nothing else can see', () => {
     const body = await res.text();
     expect(body).toContain('bb_billsvc_outbox_pending');
     expect(body).toContain('bb_billsvc_dev_stub');
-    db.close();
   });
 });

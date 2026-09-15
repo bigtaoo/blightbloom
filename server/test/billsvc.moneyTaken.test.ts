@@ -15,8 +15,9 @@
  * a purchase the next sweep is about to deliver).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openBillingDb } from '../src/billingDb';
+import type { Db } from 'mongodb';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { BillingService } from '../src/billsvc/BillingService';
 import { createReceiptVerifier } from '../src/billsvc/iap/factory';
 import { createOutboxDelivery, deliveryById } from '../src/billsvc/outbox';
@@ -26,20 +27,23 @@ import { moneyTakenId, openReviews, reviewById } from '../src/billsvc/reviewQueu
 const SKU = 'bp.cannon';
 const STUB = createReceiptVerifier({ BB_BILLING_DEV_STUB: '1' });
 
-let db: DatabaseSync;
+let ctx: MongoTestContext;
+let db: Db;
 let clock = 1_000;
 let ids = 0;
 
-beforeEach(() => {
-  db = openBillingDb(':memory:');
+beforeEach(async () => {
+  ctx = await openTestMongo();
+  db = ctx.db('billing');
+  await ensureBillingIndexes(db);
   clock = 1_000;
   ids = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  db.close();
+  await ctx.dispose();
 });
 
 /** Settle one purchase through the real path, leaving a pending outbox row. Returns its id. */
@@ -51,7 +55,7 @@ async function purchase(sku = SKU, accountId = 'acc-1'): Promise<{ deliveryId: s
     nowMs: () => clock,
     newOrderId: () => `o-${++ids}`,
   });
-  const created = svc.createOrder({ accountId, sku, platform: 'dev' });
+  const created = await svc.createOrder({ accountId, sku, platform: 'dev' });
   if (!created.ok) throw new Error(created.error);
   const res = await svc.settle({
     platform: 'dev',
@@ -80,9 +84,9 @@ describe('a control-plane 4xx files the account for review', () => {
     clock = 5_000;
     const result = await pump(400).pumpOnce();
     expect(result.failed).toBe(1);
-    expect(deliveryById(db, deliveryId)!.state).toBe('failed');
+    expect((await deliveryById(db, deliveryId))!.state).toBe('failed');
 
-    const entry = reviewById(db, moneyTakenId(deliveryId))!;
+    const entry = (await reviewById(db, moneyTakenId(deliveryId)))!;
     expect(entry.kind).toBe('money-taken-nothing-granted');
     expect(entry.accountId).toBe('acc-1');
     // No day key: this is an event, not a day's worth of behaviour.
@@ -107,11 +111,14 @@ describe('a control-plane 4xx files the account for review', () => {
     // delivery is about to go terminal, and the queue is where that becomes visible as a list
     // of affected accounts rather than a wall of identical log lines.
     for (const status of [401, 404, 422]) {
-      db.exec('DELETE FROM review_queue; DELETE FROM deliveries; DELETE FROM ledger; DELETE FROM receipts; DELETE FROM orders');
+      const store = billingStore(db);
+      for (const c of [store.reviewQueue, store.deliveries, store.ledger, store.receipts, store.orders]) {
+        await c.deleteMany({});
+      }
       ids = 0;
       const { deliveryId } = await purchase();
       await pump(status).pumpOnce();
-      expect(reviewById(db, moneyTakenId(deliveryId))?.evidence).toMatchObject({ status });
+      expect((await reviewById(db, moneyTakenId(deliveryId)))?.evidence).toMatchObject({ status });
     }
   });
 
@@ -123,8 +130,8 @@ describe('a control-plane 4xx files the account for review', () => {
     const result = await pump(503).pumpOnce();
     expect(result.deferred).toBe(1);
     expect(result.failed).toBe(0);
-    expect(deliveryById(db, deliveryId)!.state).toBe('pending');
-    expect(openReviews(db)).toEqual([]);
+    expect((await deliveryById(db, deliveryId))!.state).toBe('pending');
+    expect(await openReviews(db)).toEqual([]);
   });
 
   it('a refused connection files nothing either', async () => {
@@ -139,8 +146,8 @@ describe('a control-plane 4xx files the account for review', () => {
       },
     });
     expect((await p.pumpOnce()).deferred).toBe(1);
-    expect(deliveryById(db, deliveryId)!.state).toBe('pending');
-    expect(openReviews(db)).toEqual([]);
+    expect((await deliveryById(db, deliveryId))!.state).toBe('pending');
+    expect(await openReviews(db)).toEqual([]);
   });
 
   it('a SUCCESSFUL delivery files nothing', async () => {
@@ -152,8 +159,8 @@ describe('a control-plane 4xx files the account for review', () => {
       fetchImpl: async () => new Response('{}', { status: 200 }),
     });
     expect((await p.pumpOnce()).delivered).toBe(1);
-    expect(deliveryById(db, deliveryId)!.state).toBe('delivered');
-    expect(openReviews(db)).toEqual([]);
+    expect((await deliveryById(db, deliveryId))!.state).toBe('delivered');
+    expect(await openReviews(db)).toEqual([]);
   });
 });
 
@@ -163,13 +170,13 @@ describe('an unreadable outbox row files the account for review', () => {
     // money moved, the row can never be delivered, and it is terminal for the same reason the
     // 4xx is: re-reading the same bytes cannot make them parse.
     const { deliveryId } = await purchase();
-    db.prepare('UPDATE deliveries SET grants_json = ? WHERE id = ?').run('{not json', deliveryId);
+    await billingStore(db).deliveries.updateOne({ _id: deliveryId }, { $set: { grantsJson: '{not json' } });
     clock = 6_000;
     const result = await pump(200).pumpOnce();
 
     expect(result.failed).toBe(1);
-    expect(deliveryById(db, deliveryId)!.state).toBe('failed');
-    const entry = reviewById(db, moneyTakenId(deliveryId))!;
+    expect((await deliveryById(db, deliveryId))!.state).toBe('failed');
+    const entry = (await reviewById(db, moneyTakenId(deliveryId)))!;
     expect(entry.kind).toBe('money-taken-nothing-granted');
     expect((entry.evidence as { cause: string }).cause).toBe('unreadable-grants');
     // The unreadable bytes themselves, so a human can reconstruct what was owed.
@@ -179,7 +186,7 @@ describe('an unreadable outbox row files the account for review', () => {
 
   it('never made the HTTP call at all', async () => {
     const { deliveryId } = await purchase();
-    db.prepare('UPDATE deliveries SET grants_json = ? WHERE id = ?').run('"not an array"', deliveryId);
+    await billingStore(db).deliveries.updateOne({ _id: deliveryId }, { $set: { grantsJson: '"not an array"' } });
     let calls = 0;
     const p = new DeliveryPump({
       db,
@@ -192,7 +199,7 @@ describe('an unreadable outbox row files the account for review', () => {
     });
     await p.pumpOnce();
     expect(calls).toBe(0);
-    expect(reviewById(db, moneyTakenId(deliveryId))).not.toBeNull();
+    expect(await reviewById(db, moneyTakenId(deliveryId))).not.toBeNull();
   });
 });
 
@@ -203,14 +210,16 @@ describe('the properties that make the queue worth having', () => {
     // filing throw: if the two were separate statements, the row would already be `failed`.
     const { deliveryId } = await purchase();
     const p = pump(400);
-    // A row already claiming the review id makes the second INSERT... no — `fileReview` is
-    // `ON CONFLICT DO NOTHING` and cannot throw on a duplicate. Break the CHECK instead, by
-    // dropping the table the filing needs.
-    db.exec('DROP TABLE review_queue');
+    // A document already claiming the review id would not do it — `fileReview` is an upsert
+    // whose payload is all `$setOnInsert`, so a duplicate is a silent no-op by design. The
+    // forcing function is a VALIDATOR that refuses everything, which is the MongoDB shape of
+    // what the old version did by dropping the table: the filing half of the pair fails while
+    // the state change has already been written inside the same transaction.
+    await db.command({ collMod: 'reviewQueue', validator: { $expr: { $eq: [1, 2] } } });
     await expect(p.pumpOnce()).rejects.toThrow();
     // Rolled back together: the delivery is still owed, so the next sweep (against a repaired
     // database) retries it rather than leaving it terminal and unreported.
-    expect(deliveryById(db, deliveryId)!.state).toBe('pending');
+    expect((await deliveryById(db, deliveryId))!.state).toBe('pending');
   });
 
   it('re-sweeping an already-terminal row cannot file a second entry', async () => {
@@ -220,12 +229,12 @@ describe('the properties that make the queue worth having', () => {
     const { deliveryId } = await purchase();
     await pump(400).pumpOnce();
     // Put it back to pending, as an operator retrying by hand would, and refuse it again.
-    db.prepare(`UPDATE deliveries SET state = 'pending' WHERE id = ?`).run(deliveryId);
+    await billingStore(db).deliveries.updateOne({ _id: deliveryId }, { $set: { state: 'pending' } });
     clock = 9_000;
     await pump(400).pumpOnce();
 
-    expect(openReviews(db)).toHaveLength(1);
-    expect(reviewById(db, moneyTakenId(deliveryId))!.createdAt).toBe(1_000);
+    expect(await openReviews(db)).toHaveLength(1);
+    expect((await reviewById(db, moneyTakenId(deliveryId)))!.createdAt).toBe(1_000);
   });
 
   it('two refused accounts are two entries, each naming its own account', async () => {
@@ -233,7 +242,7 @@ describe('the properties that make the queue worth having', () => {
     await purchase('bp.seeker', 'acc-2');
     const result = await pump(400).pumpOnce();
     expect(result.failed).toBe(2);
-    const entries = openReviews(db);
+    const entries = await openReviews(db);
     expect(entries.map((e) => e.accountId).sort()).toEqual(['acc-1', 'acc-2']);
     expect(entries.every((e) => e.kind === 'money-taken-nothing-granted')).toBe(true);
   });

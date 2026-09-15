@@ -1,42 +1,42 @@
 /**
  * Split of the delivery seam (2026-09-05): the DURABLE half of the closed entitlement loop
- * — the `deliveries` table's reader and writer. `deliveryPump.ts` is the async half that
- * drains it; `delivery.ts` still owns the interface and the ledger-only opt-out.
+ * — the `deliveries` collection's reader and writer. `deliveryPump.ts` is the async half
+ * that drains it; `delivery.ts` still owns the interface and the ledger-only opt-out.
  *
- * Everything here is synchronous, and that is the point rather than an implementation
- * detail. `EntitlementDelivery.grant` is called from inside `BillingService`'s
- * `BEGIN IMMEDIATE` and is `void`: it may not await, because an implementation that
- * returned before its work landed would break the exact guarantee design/19 §4 rests on.
- * So the grant this file provides does one `INSERT` into a fourth table in the SAME
- * database file — same transaction, same lock, same commit — and the HTTP call that
- * actually reaches `entitlements` happens strictly afterwards, from outside.
+ * `EntitlementDelivery.grant` is called from inside `BillingService`'s settlement
+ * transaction, so the grant this file provides does one upsert into a collection in the
+ * SAME logical database, carrying the caller's session — same transaction, same commit —
+ * and the HTTP call that actually reaches `entitlements` happens strictly afterwards, from
+ * outside.
  *
- * WHAT THE ROW MEANS. Not "an entitlement was granted"; "an entitlement is OWED, and this
- * obligation survives a crash". After the COMMIT that promise is on disk, so the two
+ * WHAT THE DOCUMENT MEANS. Not "an entitlement was granted"; "an entitlement is OWED, and
+ * this obligation survives a crash". After the commit that promise is durable, so the two
  * failures an outbox exists to rule out are ruled out: the process dying between the
- * payment and the grant (the row is still `pending` on restart) and the grant failing
- * after the money was taken (the row is still `pending`, and the pump keeps trying).
+ * payment and the grant (the document is still `pending` on restart) and the grant failing
+ * after the money was taken (the document is still `pending`, and the pump keeps trying).
  *
  * WHY THIS AND NOT A TWO-PHASE COMMIT. Because the receiving side is already idempotent:
- * `entitlements` carries UNIQUE(account_id, sku) (design/19 §2, `db.ts`), so re-delivering
+ * `entitlements` carries UNIQUE(accountId, sku) (design/19 §2, `db.ts`), so re-delivering
  * is a no-op rather than a double grant. At-least-once is therefore safe, and once
  * at-least-once is safe a coordinator buys nothing and costs a distributed protocol.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { ClientSession, Db } from 'mongodb';
+import { billingStore, type DeliveryDoc } from '../billing/collections';
 import type { EntitlementDelivery } from './delivery';
 
 /** `pending` → `delivered` on a 2xx, or `pending` → `failed` on a deliberate refusal. */
 export type DeliveryState = 'pending' | 'delivered' | 'failed';
 
-/** One `deliveries` row, in this codebase's camelCase rather than SQL's snake_case. */
+/** One `deliveries` document, with the absent fields mapped back to the `null` every caller
+ *  has read since this module shipped. */
 export interface DeliveryRecord {
-  /** The ledger row's id — see the column comment in `billingDb.ts`. */
+  /** The ledger document's id — see the comment in `billing/collections.ts`. */
   id: string;
   accountId: string;
   /** The billsvc SKU (`bp.cannon`), not the namespaced entitlement sku. */
   sku: string;
-  /** Raw, unparsed. Parsing is the PUMP's job so a corrupt row fails one delivery loudly
-   * rather than throwing out of a plain table read (see `deliveryPump.ts`). */
+  /** Raw, unparsed. Parsing is the PUMP's job so a corrupt document fails one delivery
+   *  loudly rather than throwing out of a plain collection read (see `deliveryPump.ts`). */
   grantsJson: string;
   orderId: string;
   receiptId: string;
@@ -46,128 +46,124 @@ export interface DeliveryRecord {
   deliveredAt: number | null;
 }
 
-interface DeliverySqlRow {
-  id: string;
-  account_id: string;
-  sku: string;
-  grants_json: string;
-  order_id: string;
-  receipt_id: string;
-  state: string;
-  attempts: number;
-  created_at: number;
-  delivered_at: number | null;
-}
-
-function toRecord(r: DeliverySqlRow): DeliveryRecord {
+function toRecord(d: DeliveryDoc): DeliveryRecord {
   return {
-    id: r.id,
-    accountId: r.account_id,
-    sku: r.sku,
-    grantsJson: r.grants_json,
-    orderId: r.order_id,
-    receiptId: r.receipt_id,
-    state: r.state as DeliveryState,
-    attempts: r.attempts,
-    createdAt: r.created_at,
-    deliveredAt: r.delivered_at,
+    id: d._id,
+    accountId: d.accountId,
+    sku: d.sku,
+    grantsJson: d.grantsJson,
+    orderId: d.orderId,
+    receiptId: d.receiptId,
+    state: d.state as DeliveryState,
+    attempts: d.attempts,
+    createdAt: d.createdAt,
+    deliveredAt: d.deliveredAt ?? null,
   };
 }
 
-const COLUMNS =
-  'id, account_id, sku, grants_json, order_id, receipt_id, state, attempts, created_at, delivered_at';
-
 /**
- * The shipped `EntitlementDelivery`: one synchronous insert, inside the caller's
- * transaction, over the caller's own connection.
+ * The shipped `EntitlementDelivery`: one upsert, inside the caller's transaction, on the
+ * caller's own session.
  *
- * `ON CONFLICT DO NOTHING` rather than a bare INSERT. Through `settle` a conflict is
- * unreachable — the ledger claim on this exact id was won two statements earlier, so a
- * duplicate would have been refused there first — but this seam is a public interface and
- * an implementation that throws on a redelivery would turn a harmless at-least-once retry
- * into a rolled-back settlement. Silently keeping the FIRST row is also the correct answer
- * on its own terms: it is the one the money was taken against, and a second row would
- * deliver the same SKU twice for one payment.
+ * `$setOnInsert` rather than a bare insert, and the difference is the same one
+ * `ON CONFLICT DO NOTHING` used to make. Through `settle` a conflict is unreachable — the
+ * ledger claim on this exact id was won two statements earlier, so a duplicate would have
+ * been refused there first — but this seam is a public interface and an implementation that
+ * threw on a redelivery would turn a harmless at-least-once retry into a rolled-back
+ * settlement. Silently keeping the FIRST document is also the correct answer on its own
+ * terms: it is the one the money was taken against, and a second would deliver the same SKU
+ * twice for one payment.
+ *
+ * It is also what makes this safe under a transaction the driver may RETRY: re-running the
+ * whole callback re-issues this upsert, and re-issuing it changes nothing.
  *
  * A throw from here still rolls the whole settlement back, which is the contract
  * `delivery.ts` documents; nothing is caught.
  */
-export function createOutboxDelivery(db: DatabaseSync): EntitlementDelivery {
+export function createOutboxDelivery(db: Db): EntitlementDelivery {
+  const deliveries = billingStore(db).deliveries;
   return {
-    grant(request) {
-      db.prepare(
-        `INSERT INTO deliveries
-           (id, account_id, sku, grants_json, order_id, receipt_id, state, attempts, created_at, delivered_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, NULL)
-         ON CONFLICT(id) DO NOTHING`,
-      ).run(
-        request.ledgerId,
-        request.accountId,
-        request.sku,
-        JSON.stringify(request.grants),
-        request.orderId,
-        request.receiptId,
-        request.ts,
+    async grant(request) {
+      await deliveries.updateOne(
+        { _id: request.ledgerId },
+        {
+          $setOnInsert: {
+            accountId: request.accountId,
+            sku: request.sku,
+            grantsJson: JSON.stringify(request.grants),
+            orderId: request.orderId,
+            receiptId: request.receiptId,
+            state: 'pending',
+            attempts: 0,
+            createdAt: request.ts,
+          },
+        },
+        { upsert: true, session: request.session },
       );
     },
   };
 }
 
 /**
- * The pump's only read: oldest owed delivery first. Ordered by `created_at` then `id` so a
+ * The pump's only read: oldest owed delivery first. Ordered by `createdAt` then `_id` so a
  * batch is deterministic even when two settlements share a millisecond — the pump reports
- * per-row outcomes and a test that could not name which row it just saw would be pinning
- * the clock rather than the behaviour.
+ * per-document outcomes and a test that could not name which one it just saw would be
+ * pinning the clock rather than the behaviour.
  *
- * Deliberately NOT filtered by `attempts`. A row that keeps failing retryably is retried
- * forever: the money moved, so abandoning it loses a purchase, and a peer that comes back
- * heals every stuck row on the next sweep. `attempts` is the operator's signal, not a
+ * Deliberately NOT filtered by `attempts`. A document that keeps failing retryably is
+ * retried forever: the money moved, so abandoning it loses a purchase, and a peer that comes
+ * back heals every stuck row on the next sweep. `attempts` is the operator's signal, not a
  * budget.
  */
-export function pendingDeliveries(db: DatabaseSync, limit: number): DeliveryRecord[] {
-  const rows = db
-    .prepare(`SELECT ${COLUMNS} FROM deliveries WHERE state = 'pending' ORDER BY created_at ASC, id ASC LIMIT ?`)
-    .all(limit) as unknown as DeliverySqlRow[];
-  return rows.map(toRecord);
+export async function pendingDeliveries(db: Db, limit: number): Promise<DeliveryRecord[]> {
+  const docs = await billingStore(db)
+    .deliveries.find({ state: 'pending' })
+    .sort({ createdAt: 1, _id: 1 })
+    .limit(limit)
+    .toArray();
+  return docs.map(toRecord);
 }
 
 /** One delivery by id — the audit read, and how a test asks what the pump did. */
-export function deliveryById(db: DatabaseSync, id: string): DeliveryRecord | null {
-  const row = db.prepare(`SELECT ${COLUMNS} FROM deliveries WHERE id = ?`).get(id) as DeliverySqlRow | undefined;
-  return row ? toRecord(row) : null;
+export async function deliveryById(db: Db, id: string): Promise<DeliveryRecord | null> {
+  const doc = await billingStore(db).deliveries.findOne({ _id: id });
+  return doc ? toRecord(doc) : null;
 }
 
 /**
  * Count one attempt, BEFORE it is made rather than after it fails. A crash mid-attempt then
- * still leaves a trace, which is the case where the count is worth the most: a row whose
- * `attempts` climbs while nothing is ever logged is a peer that accepts the connection and
- * never answers.
+ * still leaves a trace, which is the case where the count is worth the most: a document
+ * whose `attempts` climbs while nothing is ever logged is a peer that accepts the connection
+ * and never answers.
  */
-export function countAttempt(db: DatabaseSync, id: string): void {
-  db.prepare('UPDATE deliveries SET attempts = attempts + 1 WHERE id = ?').run(id);
+export async function countAttempt(db: Db, id: string): Promise<void> {
+  await billingStore(db).deliveries.updateOne({ _id: id }, { $inc: { attempts: 1 } });
 }
 
 /**
- * Terminal success. Guarded on `state = 'pending'` so a delivery that raced (two pumps, or
- * a pump overlapping an operator's manual fix) cannot rewrite a settled row's timestamp —
+ * Terminal success. Guarded on `state: 'pending'` so a delivery that raced (two pumps, or a
+ * pump overlapping an operator's manual fix) cannot rewrite a settled document's timestamp —
  * the same claim-shape the rest of this plane uses instead of a look-before-write.
  */
-export function markDelivered(db: DatabaseSync, id: string, ts: number): void {
-  db.prepare(`UPDATE deliveries SET state = 'delivered', delivered_at = ? WHERE id = ? AND state = 'pending'`).run(
-    ts,
-    id,
+export async function markDelivered(db: Db, id: string, ts: number): Promise<void> {
+  await billingStore(db).deliveries.updateOne(
+    { _id: id, state: 'pending' },
+    { $set: { state: 'delivered', deliveredAt: ts } },
   );
 }
 
 /**
  * Terminal refusal — the control plane said no on purpose (a 4xx), so repeating the call
- * verbatim cannot change the answer. `delivered_at` stays NULL: nothing was delivered, and
- * a column that means "when this landed" must not be used to mean "when we gave up".
+ * verbatim cannot change the answer. `deliveredAt` stays absent: nothing was delivered, and
+ * a field that means "when this landed" must not be used to mean "when we gave up".
  *
- * This state is the loud one. A `failed` row is money taken with nothing granted, and the
- * only way out of it is a human — which is exactly what design/19 §7's reconciliation
+ * This state is the loud one. A `failed` document is money taken with nothing granted, and
+ * the only way out of it is a human — which is exactly what design/19 §7's reconciliation
  * sweep is for, and why the pump logs an error rather than a warning when it writes one.
+ *
+ * Takes the pump's session: making a delivery terminal and filing it for review is one
+ * transaction (`deliveryPump.ts`'s `retire`).
  */
-export function markFailed(db: DatabaseSync, id: string): void {
-  db.prepare(`UPDATE deliveries SET state = 'failed' WHERE id = ? AND state = 'pending'`).run(id);
+export async function markFailed(db: Db, id: string, session?: ClientSession): Promise<void> {
+  await billingStore(db).deliveries.updateOne({ _id: id, state: 'pending' }, { $set: { state: 'failed' } }, { session });
 }

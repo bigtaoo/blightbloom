@@ -5,10 +5,11 @@
  *
  * This is the only place in the billing plane that makes an outbound network call, and it
  * sits strictly OUTSIDE the settlement transaction. That placement is the whole design:
- * an HTTP call from inside `BEGIN IMMEDIATE` would hold SQLite's write lock across a round
- * trip (serialising every settlement behind the slowest control-plane response) and would
- * still not be atomic with the remote write, so it would buy the cost of the tear without
- * removing it.
+ * an HTTP call from inside the settlement transaction would hold a lock across a round trip
+ * (serialising every settlement behind the slowest control-plane response) and would still
+ * not be atomic with the remote write, so it would buy the cost of the tear without removing
+ * it. That argument never depended on the store, which is why the outbox survives a
+ * MongoDB transaction being able to span the two logical databases.
  *
  * Pure of env and globals, the same way `internalAuth.ts` and `ticket.ts` are: the URL, the
  * key, the clock, `fetch` and `sleep` all arrive through `deps`, so every branch below runs
@@ -58,7 +59,7 @@
  * error line stays: a queue row is for the person who works the queue, a log line is for the
  * person watching the deploy.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import { internalFetch, type InternalFetchResult, type RetryPolicy } from '../internalFetch';
 import type { SkuGrant } from './skus';
 import { countAttempt, markDelivered, markFailed, pendingDeliveries, type DeliveryRecord } from './outbox';
@@ -80,7 +81,7 @@ export interface PumpResult {
 }
 
 export interface DeliveryPumpDeps {
-  db: DatabaseSync;
+  db: Db;
   /** Control-plane base URL, e.g. `http://localhost:8788`. `GRANT_PATH` is appended. */
   matchsvcUrl: string;
   /** The `x-internal-key` this process presents. `undefined` sends no header, and the peer
@@ -125,7 +126,7 @@ export interface GrantDeliveryBody {
  * Parse the frozen grant list off a row. Returns `null` for anything that is not an array
  * of objects, which is unreachable through `createOutboxDelivery` and reachable through an
  * operator editing the table by hand — the posture design/19 §7 explicitly plans for, since
- * this project has no admin service and corrections happen at a `sqlite3` prompt.
+ * this project has no admin service and corrections happen at a `mongosh` prompt.
  *
  * A corrupt row is TERMINAL rather than retried: re-reading the same bytes cannot make them
  * parse, and a row that fails forever in silence is worse than one an operator is told
@@ -147,7 +148,7 @@ export function parseGrants(grantsJson: string): SkuGrant[] | null {
  * stopped.
  */
 export class DeliveryPump {
-  private readonly db: DatabaseSync;
+  private readonly db: Db;
   private readonly url: string;
   private readonly now: () => number;
   private readonly batchSize: number;
@@ -174,13 +175,13 @@ export class DeliveryPump {
    * time instead of a batch-sized burst from a peer that is, by construction, retrying.
    */
   async pumpOnce(): Promise<PumpResult> {
-    const rows = pendingDeliveries(this.db, this.batchSize);
+    const rows = await pendingDeliveries(this.db, this.batchSize);
     const result: PumpResult = { attempted: 0, delivered: 0, failed: 0, deferred: 0 };
     for (const row of rows) {
       result.attempted += 1;
       const grants = parseGrants(row.grantsJson);
       if (grants === null) {
-        this.retire(
+        await this.retire(
           row,
           `delivery '${row.id}' has unreadable grants_json and can never be delivered`,
           { cause: 'unreadable-grants', grantsJson: row.grantsJson, attempts: row.attempts },
@@ -194,10 +195,10 @@ export class DeliveryPump {
         continue;
       }
       // Before the call, not after it: a crash mid-attempt still leaves the count behind.
-      countAttempt(this.db, row.id);
+      await countAttempt(this.db, row.id);
       const outcome = await this.post(row, grants);
       if (outcome.ok) {
-        markDelivered(this.db, row.id, this.now());
+        await markDelivered(this.db, row.id, this.now());
         result.delivered += 1;
         continue;
       }
@@ -205,7 +206,7 @@ export class DeliveryPump {
       // not retryable and stopped its own ladder; repeating it from here would only be
       // slower about reaching the same answer.
       if (outcome.failure === 'http' && outcome.status !== undefined && outcome.status < 500) {
-        this.retire(row, `the control plane REFUSED delivery '${row.id}' with ${outcome.status}`, {
+        await this.retire(row, `the control plane REFUSED delivery '${row.id}' with ${outcome.status}`, {
           cause: 'control-plane-refused',
           status: outcome.status,
           error: outcome.error ?? null,
@@ -232,45 +233,55 @@ export class DeliveryPump {
   /**
    * Make one row terminal AND file it for review, atomically.
    *
-   * One `BEGIN IMMEDIATE` around both, because the pair is the whole point: a `failed` row is
-   * money taken with nothing granted, and the only way out of it is a human. A crash between
+   * One transaction around both, because the pair is the whole point: a `failed` row is money
+   * taken with nothing granted, and the only way out of it is a human. A crash between
    * `markFailed` and `fileReview` would leave a terminal row that no sweep will ever look at
    * again and that nobody was told about — the one outcome worse than either failure alone.
-   * They are two tables in the SAME file (`billingDb.ts`), so one transaction covers them,
-   * which is the same argument design/19 §4 makes for the settlement path.
+   * They are two collections in the SAME logical store, so one transaction covers them, which
+   * is the same argument design/19 §4 makes for the settlement path.
    *
    * The review id is `money-taken-nothing-granted:<deliveryId>`, and the delivery id is
-   * already the ledger row's own claimed id — so re-filing is impossible without a second
-   * idempotency mechanism, exactly as the outbox row itself is. `fileReview`'s
-   * `ON CONFLICT DO NOTHING` then makes a re-run of an already-terminal row a no-op rather
-   * than a duplicate.
+   * already the ledger document's own claimed id — so re-filing is impossible without a
+   * second idempotency mechanism, exactly as the outbox document itself is. `fileReview`'s
+   * `$setOnInsert` then makes a re-run over an already-terminal row a no-op rather than a
+   * duplicate.
+   *
+   * `ts` is read ONCE, before the transaction opens: `withTransaction` may re-run its
+   * callback after a transient error, and a `createdAt` that differed between attempts would
+   * make "how long has this been waiting" depend on a retry nobody can see.
    */
-  private retire(row: DeliveryRecord, summary: string, evidence: Record<string, unknown>): void {
-    this.db.exec('BEGIN IMMEDIATE');
+  private async retire(row: DeliveryRecord, summary: string, evidence: Record<string, unknown>): Promise<void> {
+    const ts = this.now();
+    const session = this.db.client.startSession();
     try {
-      markFailed(this.db, row.id);
-      fileReview(this.db, moneyTakenId(row.id), {
-        kind: 'money-taken-nothing-granted',
-        accountId: row.accountId,
-        // No day key: this is an event, not a day's worth of behaviour.
-        dayKey: null,
-        summary:
-          `${summary} — account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING`,
-        evidence: {
-          deliveryId: row.id,
-          accountId: row.accountId,
-          sku: row.sku,
-          orderId: row.orderId,
-          receiptId: row.receiptId,
-          createdAt: row.createdAt,
-          ...evidence,
-        },
-        ts: this.now(),
+      await session.withTransaction(async () => {
+        await markFailed(this.db, row.id, session);
+        await fileReview(
+          this.db,
+          moneyTakenId(row.id),
+          {
+            kind: 'money-taken-nothing-granted',
+            accountId: row.accountId,
+            // No day key: this is an event, not a day's worth of behaviour.
+            dayKey: null,
+            summary:
+              `${summary} — account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING`,
+            evidence: {
+              deliveryId: row.id,
+              accountId: row.accountId,
+              sku: row.sku,
+              orderId: row.orderId,
+              receiptId: row.receiptId,
+              createdAt: row.createdAt,
+              ...evidence,
+            },
+            ts,
+          },
+          session,
+        );
       });
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
+    } finally {
+      await session.endSession();
     }
   }
 

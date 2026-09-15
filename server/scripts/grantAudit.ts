@@ -3,14 +3,22 @@
  *
  *   npm run audit:grants -w server -- [--day=2026-09-04] [--days=1] [--threshold=3] [--dry-run]
  *
- * TWO DATABASES, OPENED DIFFERENTLY ON PURPOSE:
+ * TWO LOGICAL DATABASES, ONE CLUSTER, AND ONE POSTURE THAT LOST ITS ENFORCEMENT:
  *
- *   the ACCOUNT file (`BB_DB_PATH`)      opened READ-ONLY. `entitlements` is the table this
- *                                         audit is judging, and the whole posture is that it
- *                                         observes and files — so it must not hold a
- *                                         connection that could change what it is looking at.
- *                                         SQLite enforces that; a comment would not.
- *   the BILLING file (`BB_BILLING_DB_PATH`) opened read-write, for `review_queue` alone.
+ *   the ACCOUNTS store   `entitlements` is the collection this audit is JUDGING, and the whole
+ *                        posture is that it observes and files — it must not change what it is
+ *                        looking at. That used to be a capability the process did not hold
+ *                        (`new DatabaseSync(path, { readOnly: true })`, enforced by SQLite).
+ *                        One client reaching one cluster cannot hold half a handle, so it is a
+ *                        convention here now: nothing below writes to `accounts`, and the
+ *                        enforcement that remains is the Atlas role this script's credential
+ *                        carries. Stated rather than assumed, because the difference between
+ *                        "SQLite refuses the write" and "this file does not attempt one" is
+ *                        the whole distance between a guarantee and a habit.
+ *   the BILLING store    the `billing` logical database, read-write, for `reviewQueue` alone.
+ *                        Money keeps its own database (design/19 §4) — a separate database on
+ *                        the cluster, not a separate cluster, which is what makes it one
+ *                        connection.
  *
  * design/19 §7 rules out an admin service, so this is a script rather than a route — and it is
  * deliberately NOT mounted on matchsvc, which is a parallel workstream's file. All the logic is
@@ -21,9 +29,9 @@
  * because `(accountId, dayKey)` is the queue's idempotency key — an audit an operator is
  * afraid to re-run is an audit that stops being run.
  */
-import { openBillingDb } from '../src/billingDb';
+import { ensureBillingIndexes } from '../src/billingDb';
 import { accountsStore } from '../src/db';
-import { closeMongo, connectMongo, store as mongoStore } from '../src/mongo';
+import { closeMongo, connectMongo, store } from '../src/mongo';
 import {
   DEFAULT_GRANT_THRESHOLD,
   auditGrants,
@@ -60,8 +68,9 @@ const sinceMs = dayWindow(first).sinceMs;
 const untilMs = args.day ? dayWindow(args.day).untilMs : dayWindow(endDayKey).untilMs;
 
 await connectMongo();
-const accounts = accountsStore(mongoStore('accounts'));
-const billing = openBillingDb();
+const accounts = accountsStore(store('accounts'));
+const billing = store('billing');
+await ensureBillingIndexes(billing);
 try {
   const rows = await readGrantsInWindow(accounts, sinceMs, untilMs);
   const findings = auditGrants(rows, { threshold });
@@ -73,10 +82,9 @@ try {
   if (args['dry-run'] === 'true') {
     console.log('  --dry-run: nothing filed');
   } else {
-    const filed = fileGrantAnomalies(billing, findings, Date.now());
+    const filed = await fileGrantAnomalies(billing, findings, Date.now());
     console.log(`  filed ${filed} new review entr(y|ies); ${findings.length - filed} already on the queue`);
   }
 } finally {
   await closeMongo();
-  billing.close();
 }

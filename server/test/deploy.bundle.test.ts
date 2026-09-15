@@ -180,7 +180,12 @@ describe('the built bundles are self-contained', () => {
     // matchsvc is the control plane, and the one process on the cluster so far.
     expect(byName('matchsvc')).toMatch(/from\s*["']mongodb["']/);
     expect(byName('matchsvc')).toMatch(/from\s*["']node:sqlite["']/);
-    expect(byName('billsvc')).toMatch(/from\s*["']node:sqlite["']/);
+    // The billing plane moved to MongoDB on 2026-09-15 and carries NO sqlite at all — the
+    // sharpest available evidence that the port is complete rather than half-done, since a
+    // single surviving `openBillingDb` import anywhere under `src/billsvc/` would put the
+    // builtin back in this bundle.
+    expect(byName('billsvc')).toMatch(/from\s*["']mongodb["']/);
+    expect(byName('billsvc')).not.toMatch(/from\s*["']node:sqlite["']/);
     // The backup worker reads both databases through the same builtin — and must NOT drag
     // `ws` in, since bundling a websocket library into a process that opens no socket is
     // the tell that an entrypoint is pointed at the wrong source file.
@@ -221,10 +226,15 @@ describe('each bundle boots as a bare node process and answers /health', () => {
   }, 30_000);
 
   it('billsvc (billsvc.mjs)', async () => {
+    // Pointed at the suite's own mongod, under a database prefix nothing else uses. The
+    // bundle connects at boot and refuses to start without `BB_MONGO_URI` (src/mongo.ts), so
+    // this case is also the only place the SHIPPED billing artifact is shown to reach a real
+    // cluster rather than only the source being shown to.
     const port = await freePort();
     const body = await boot(join(outdir, 'billsvc.mjs'), port, {
       BILL_PORT: String(port),
-      BB_BILLING_DB_PATH: join(outdir, 'billing.db'),
+      BB_MONGO_URI: inject('mongoUri'),
+      BB_MONGO_DB_PREFIX: `bundle${process.pid}`,
       BB_BILLING_DEV_STUB: '1',
     });
     expect(body).toEqual({ ok: true, service: 'daydayup-billsvc' });

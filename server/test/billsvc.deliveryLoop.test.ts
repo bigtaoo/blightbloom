@@ -1,7 +1,9 @@
 /**
  * The CLOSED LOOP, end to end (design/19 §4, 2026-09-05): two real processes on two
- * ephemeral ports over two separate SQLite files, a real dev-stub purchase, a real internal
- * call between them, and a real `GET /account/meta` at the far end.
+ * ephemeral ports over two separate STORES — matchsvc's `node:sqlite` file and billsvc's
+ * MongoDB database, which is what the staged migration looks like from between the planes —
+ * a real dev-stub purchase, a real internal call between them, and a real `GET /account/meta`
+ * at the far end.
  *
  * Nothing here is stubbed but the receipt, and that one is `iap/factory.ts`'s own shipped
  * dev stub rather than a test double — design/19 §5 says the stub exists precisely so this
@@ -11,7 +13,7 @@
  * Every layer below has its own unit tests. This file exists for the things that only exist
  * BETWEEN them, and that a green suite on both sides would not catch:
  *
- *   - The two database FILES really are separate, and the entitlement really does cross.
+ *   - The two stores really are separate, and the entitlement really does cross.
  *   - billsvc's outbound key is accepted by matchsvc's inbound verifier (they are derived
  *     by different functions from one env var, and a mismatch is invisible in either half).
  *   - The billsvc SKU (`bp.cannon`) becomes the ENTITLEMENT sku (`blueprint:cannon`). Two
@@ -21,16 +23,14 @@
  *   - That obligation survives the billsvc PROCESS, which is the only reason the outbox
  *     exists and the one thing no in-process test can show.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, inject } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import { MongoClient, type Db } from 'mongodb';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { createBillsvcServer, type BillsvcServer } from '../src/billsvc/server';
-import { openBillingDb } from '../src/billingDb';
+import { billingStore, ensureBillingIndexes } from '../src/billingDb';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 import { deliveryById, pendingDeliveries } from '../src/billsvc/outbox';
 import { freshAccounts } from './mongoHarness';
 
@@ -43,9 +43,13 @@ let matchUrl: string;
 let bill: BillsvcServer | null = null;
 let token: string;
 let accountId: string;
-const tmpDirs: string[] = [];
+let ctx: MongoTestContext;
+let db: Db;
 
 beforeEach(async () => {
+  ctx = await openTestMongo();
+  db = ctx.db('billing');
+  await ensureBillingIndexes(db);
   // Both halves read the SAME env var through DIFFERENT functions — matchsvc's inbound
   // registry via `internalKeys()`, billsvc's outbound key via `sharedInternalKey()`. Pinning
   // the env rather than injecting a verifier is what makes that agreement part of the test.
@@ -70,19 +74,18 @@ beforeEach(async () => {
 afterEach(async () => {
   if (bill) {
     await bill.pump.stop();
-    bill.db.close();
     bill = null;
   }
   await new Promise<void>((resolve) => matchsvc.close(() => resolve()));
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  while (tmpDirs.length) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+  await ctx.dispose();
 });
 
 /** billsvc with everything defaulted from the env — the wiring `main.ts` gets. */
-function startBillsvc(over: { db?: DatabaseSync; retryOnce?: boolean } = {}): BillsvcServer {
+function startBillsvc(over: { db?: Db; retryOnce?: boolean } = {}): BillsvcServer {
   return createBillsvcServer({
-    db: over.db ?? openBillingDb(':memory:'),
+    db: over.db ?? db,
     env: DEV_ENV,
     // Only the retry LADDER is pinned, and only where a case needs a failure to be quick:
     // the URL, the key and the caller label all come from `config.ts` as they do in
@@ -145,7 +148,7 @@ describe('the entitlement delivery loop', () => {
     ]);
     // The billsvc SKU and the entitlement sku are DIFFERENT namespaces, and this hop is the
     // only place they meet.
-    expect(deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ sku: SKU, state: 'delivered' });
+    expect(await deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ sku: SKU, state: 'delivered' });
   });
 
   it('keeps the money and the obligation when the control plane is DOWN, and delivers later', async () => {
@@ -162,9 +165,9 @@ describe('the entitlement delivery loop', () => {
 
     // The settlement STILL committed: the money moved and the ledger says so. What is
     // outstanding is the delivery, and it is outstanding durably rather than lost.
-    expect(bill.billing.ledgerFor(accountId)).toHaveLength(1);
-    expect(bill.billing.getOrder(orderId)).toMatchObject({ state: 'settled' });
-    expect(deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'pending' });
+    expect(await bill.billing.ledgerFor(accountId)).toHaveLength(1);
+    expect(await bill.billing.getOrder(orderId)).toMatchObject({ state: 'settled' });
+    expect(await deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'pending' });
 
     // The control plane comes back on the same port, and the backstop sweep finishes the job
     // with no second webhook and nothing else re-triggering it.
@@ -177,9 +180,9 @@ describe('the entitlement delivery loop', () => {
       body: JSON.stringify({ username: 'buyer', password: 'correct horse battery' }),
     });
     ({ accountId, token } = (await again.json()) as { accountId: string; token: string });
-    // A fresh account id, so re-point the pending row at it the way a real restart never
-    // would need to — the ROW is what is being tested, not the account.
-    bill.db.prepare('UPDATE deliveries SET account_id = ?').run(accountId);
+    // A fresh account id, so re-point the pending delivery at it the way a real restart never
+    // would need to — the DOCUMENT is what is being tested, not the account.
+    await billingStore(bill.db).deliveries.updateMany({}, { $set: { accountId } });
 
     expect(await bill.pump.pumpOnce()).toMatchObject({ attempted: 1, delivered: 1 });
     expect(await ownedSkus()).toEqual([
@@ -188,12 +191,14 @@ describe('the entitlement delivery loop', () => {
   });
 
   it('resumes an owed delivery after the BILLSVC PROCESS restarts — the outbox\'s whole reason', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bb-loop-'));
-    tmpDirs.push(dir);
-    const path = join(dir, 'billing.db');
+    // Two `MongoClient`s over one database, not two handles onto one connection: the property
+    // under test is that the obligation outlives the PROCESS that took the money, and a
+    // second process is a second connection. The first client is closed before the second is
+    // asked anything.
+    const firstClient = await MongoClient.connect(inject('mongoUri'));
+    const firstDb = firstClient.db(db.databaseName);
 
     // First process: takes the money with the control plane unreachable, then dies.
-    const firstDb = openBillingDb(path);
     const first = createBillsvcServer({
       db: firstDb,
       env: DEV_ENV,
@@ -203,21 +208,21 @@ describe('the entitlement delivery loop', () => {
     const { orderId, receipt } = await createOrder(firstUrl);
     await payWebhook(firstUrl, orderId, receipt, 'TXN-1');
     await first.pump.stop();
-    expect(deliveryById(firstDb, 'purchase:dev:TXN-1')).toMatchObject({ state: 'pending' });
+    expect(await deliveryById(firstDb, 'purchase:dev:TXN-1')).toMatchObject({ state: 'pending' });
     await new Promise<void>((resolve) => first.server.close(() => resolve()));
-    firstDb.close();
+    await firstClient.close();
 
-    // Second process, same file, control plane back. Nothing re-sends the webhook and the
+    // Second process, same database, control plane back. Nothing re-sends the webhook and the
     // platform considers the payment done, so the STARTUP sweep is the only thing that can
     // deliver this — which is exactly what `main.ts` arms.
-    bill = createBillsvcServer({ db: openBillingDb(path), env: DEV_ENV });
-    expect(pendingDeliveries(bill.db, 10)).toHaveLength(1);
+    bill = createBillsvcServer({ db, env: DEV_ENV });
+    expect(await pendingDeliveries(bill.db, 10)).toHaveLength(1);
     expect(await bill.pump.pumpOnce()).toMatchObject({ attempted: 1, delivered: 1 });
 
     expect(await ownedSkus()).toEqual([
       expect.objectContaining({ sku: 'blueprint:cannon', source: 'purchase' }),
     ]);
-    expect(deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'delivered' });
+    expect(await deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'delivered' });
   });
 
   it('delivers ONCE across a redelivered webhook and a re-run sweep', async () => {
@@ -230,15 +235,15 @@ describe('the entitlement delivery loop', () => {
 
     for (let i = 0; i < 3; i++) await payWebhook(billUrl, orderId, receipt, 'TXN-1');
     await bill.pump.stop();
-    // Force the row back to pending, which is precisely what a lost ack looks like from
+    // Force the delivery back to pending, which is precisely what a lost ack looks like from
     // billsvc's side: the grant landed, the answer did not.
-    bill.db.prepare("UPDATE deliveries SET state = 'pending'").run();
+    await billingStore(bill.db).deliveries.updateMany({}, { $set: { state: 'pending' } });
     expect(await bill.pump.pumpOnce()).toMatchObject({ delivered: 1 });
 
     expect(await ownedSkus()).toEqual([
       expect.objectContaining({ sku: 'blueprint:cannon', source: 'purchase' }),
     ]);
-    expect(bill.billing.ledgerFor(accountId)).toHaveLength(1);
+    expect(await bill.billing.ledgerFor(accountId)).toHaveLength(1);
   });
 
   it('writes a purchase off loudly when the control plane refuses it for good', async () => {
@@ -256,8 +261,8 @@ describe('the entitlement delivery loop', () => {
     await payWebhook(billUrl, created.order.id, created.payment.params.receipt, 'TXN-1');
     await bill.pump.stop();
 
-    expect(deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'failed', deliveredAt: null });
-    expect(bill.billing.ledgerFor('ghost-account')).toHaveLength(1);
+    expect(await deliveryById(bill.db, 'purchase:dev:TXN-1')).toMatchObject({ state: 'failed', deliveredAt: null });
+    expect(await bill.billing.ledgerFor('ghost-account')).toHaveLength(1);
     const errors = vi.mocked(console.error).mock.calls.map((c) => String(c[0])).join('\n');
     expect(errors).toMatch(/REFUSED delivery 'purchase:dev:TXN-1' with 404/);
     expect(errors).toMatch(/Needs a manual grant/);
@@ -276,7 +281,7 @@ describe('the entitlement delivery loop', () => {
     const replay = await payWebhook(billUrl, orderId, receipt, 'TXN-1');
     expect(replay).toMatchObject({ delivered: false, note: 'already-delivered' });
     await bill.pump.stop();
-    expect(pendingDeliveries(bill.db, 10)).toHaveLength(0);
+    expect(await pendingDeliveries(bill.db, 10)).toHaveLength(0);
     expect(await ownedSkus()).toHaveLength(1);
   });
 });
