@@ -44,16 +44,68 @@ let client: MongoClient | null = null;
 let connecting: Promise<MongoClient> | null = null;
 
 /**
+ * Why a value that is merely PRESENT is not good enough (2026-09-15).
+ *
+ * Every gate this deployment has between an operator and the cluster is a presence check:
+ * `docker-compose.yml`'s `${BB_MONGO_URI:?}`, `ci-deploy.sh`'s `grep -q "^$var=..*"`, and
+ * the `if (!raw)` below. A `.env` line holding the literal placeholder out of a runbook —
+ * `BB_MONGO_URI=mongodb+srv://…` — passes all three, and so does `new MongoClient()`: the
+ * driver's URI parser accepts `…` as a hostname. The first thing that objects is the SRV
+ * lookup inside `connectMongo`, which surfaces as a DNS error in five containers during a
+ * cutover window, naming neither the variable nor the cause. That is how this function got
+ * a shape check, and it happened rather than being imagined.
+ *
+ * Two rules, both narrow on purpose — this rejects a placeholder, not a cluster somebody
+ * configured differently from the way this project happens to:
+ *
+ *  - **ASCII only.** A connection string is ASCII by construction; a password that is not
+ *    has to be percent-encoded before it is legal. So a non-ASCII byte is never a valid
+ *    URI, and it is the signature of exactly the failures that get this far: a pasted `…`,
+ *    a smart quote out of a document, a full-width character from an IME.
+ *  - **A scheme this driver speaks**, and for `mongodb+srv` a host of at least three
+ *    labels. The second half restates the driver's own SRV rule ("hostname, domain name,
+ *    and tld") deliberately: the same refusal, moved from a connect-time DNS error to a
+ *    config-time message that names the variable.
+ *
+ * What is NOT checked: credentials, reachability, or that the cluster is the right one. A
+ * well-formed URI for the wrong cluster is a real failure mode and this cannot see it —
+ * `server/deploy/README.md` §5 catches it with the Players tab instead.
+ */
+export function mongoUriProblem(uri: string): string | null {
+  // eslint-disable-next-line no-control-regex -- the point is to name every non-ASCII byte
+  if (/[^\x00-\x7F]/.test(uri)) {
+    return 'contains a non-ASCII character, so it is not a connection string (a pasted placeholder or a smart quote — a real password is percent-encoded)';
+  }
+  const srv = uri.startsWith('mongodb+srv://');
+  if (!srv && !uri.startsWith('mongodb://')) {
+    return 'does not begin with mongodb:// or mongodb+srv://';
+  }
+  if (srv) {
+    const host = uri.slice('mongodb+srv://'.length).split('@').pop()?.split(/[/?]/)[0] ?? '';
+    if (host.split('.').filter(Boolean).length < 3) {
+      return `mongodb+srv:// needs a host with a hostname, domain and tld (got ${JSON.stringify(host)})`;
+    }
+  }
+  return null;
+}
+
+/**
  * `BB_MONGO_URI`, or a thrown error naming the variable.
  *
  * No default and no fallback to a localhost cluster, deliberately. Every other connection
  * string in this project has a sensible local default; this one must not, because the
  * failure mode of a wrong default here is a service that comes up healthy against an EMPTY
  * database and starts writing accounts into it. A missing variable has to be loud.
+ *
+ * adminsvc reads its own user through this same function — `docker-compose.yml` passes
+ * `BB_ADMIN_MONGO_URI` INTO the container as `BB_MONGO_URI` — so one guard covers both
+ * strings the cutover asks an operator for.
  */
 export function mongoUri(): string {
   const raw = process.env.BB_MONGO_URI?.trim();
   if (!raw) throw new Error('BB_MONGO_URI is not set — no cluster to connect to (see design/16-accounts.md)');
+  const problem = mongoUriProblem(raw);
+  if (problem) throw new Error(`BB_MONGO_URI ${problem} (see server/deploy/README.md section 5)`);
   return raw;
 }
 
