@@ -84,7 +84,7 @@ import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
 import { accountsStore, ensureAccountsIndexes, type AccountsStore } from './db';
 import { connectMongo, store as mongoStore } from './mongo';
-import { ensureAnalyticsIndexes } from './analytics/db';
+import { analyticsEnabledFromEnv, ensureAnalyticsIndexes } from './analytics/db';
 import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
 import { createPortalKeyStore } from './portalKeys';
@@ -390,44 +390,6 @@ export function startFlagPolling(server: Server): FlagClient | undefined {
   return client;
 }
 
-/**
- * `BB_ANALYTICS_DB_PATH`, or `null` when it is unset or empty.
- *
- * An empty value is treated as unset, which design/19 §9 records as a mistake this project
- * has already paid for once: an env var set to `""` beats a `??` fallback, and a compose
- * file with a trailing `BB_ANALYTICS_DB_PATH:` and no value produces exactly that. The
- * consequence used to be `openAnalyticsDb('')` — a path SQLite reads as a temporary
- * database, so collection would appear to work and vanish on restart.
- *
- * This process no longer opens a file, so nothing here calls it any more; `adminsvc/dbs.ts`
- * still resolves the same variable the same way and `adminsvc.dbs.test.ts` pins the two
- * answers to each other. It stays until adminsvc is ported off the file too.
- */
-export function analyticsDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
-  const raw = env.BB_ANALYTICS_DB_PATH?.trim();
-  return raw !== undefined && raw.length > 0 ? raw : null;
-}
-
-/**
- * Whether this deployment collects analytics at all — `BB_ANALYTICS_ENABLED` set to `1` or
- * `true`, and nothing else.
- *
- * design/21 §2.4's rule is *"collection is opt-in by env var, with no default path"*, and the
- * no-default half of that was carried entirely by the path: an unset `BB_ANALYTICS_DB_PATH`
- * had nothing to fall back to, so it collected nothing. The cluster removes the path and
- * would have removed the switch with it — `store('analytics')` always resolves, so a naive
- * port turns the one subsystem with a privacy policy attached ON for every deployment that
- * upgrades, silently and by omission. This is that switch, made explicit rather than
- * inherited from a filename.
- *
- * Defaulting to OFF also keeps the `""` trap design/19 §9 records closed from the other side:
- * a compose file with a trailing `BB_ANALYTICS_ENABLED:` and no value collects nothing,
- * which is the safe answer for this subsystem rather than merely the surprising one.
- */
-export function analyticsEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.BB_ANALYTICS_ENABLED?.trim().toLowerCase();
-  return raw === '1' || raw === 'true';
-}
 
 /**
  * matchsvc's own gauges live in `matchsvcMetrics.ts` since 2026-09-09 (Phase C's flag

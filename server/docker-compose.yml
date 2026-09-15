@@ -99,22 +99,26 @@ services:
       # gameserver:8787 hop, this is what the browser itself opens a WebSocket to.
       BB_GAMESERVER_URL: wss://bb.gamestao.com/ws
       BB_BILLSVC_URL: http://billsvc:8789
-      BB_DB_PATH: /data/accounts.db
-      # Analytics (design/21 §2.4). SETTING this is what switches collection on: matchsvc
-      # has no default path for it, deliberately, because an implicit default would collect
-      # into a file the backup service below does not know about — and "collected" and
-      # "backed up" would then be two conditions that can quietly disagree. Beside
-      # accounts.db on the same mount, so one volume covers both and a snapshot of the box
-      # holds a consistent pair.
-      BB_ANALYTICS_DB_PATH: /data/analytics.db
+      # The cluster (design/16-accounts.md). `:?` for the same reason the two passwords
+      # below have it: there is no safe default, and a service that came up against the
+      # wrong cluster would be a service writing accounts into the wrong database. The four
+      # logical databases live on it under their bare names; set BB_MONGO_DB_PREFIX in .env
+      # to run a second environment off one cluster.
+      BB_MONGO_URI: ${BB_MONGO_URI:?set BB_MONGO_URI in .env (the Atlas connection string)}
+      # Analytics (design/21 §2.4). SETTING this is what switches collection on. It used to
+      # be a file PATH whose absence was the switch; `store('analytics')` always resolves, so
+      # the switch had to be said out loud or it would have turned collection on for every
+      # deployment that upgraded — in the one subsystem with a privacy policy attached.
+      BB_ANALYTICS_ENABLED: "1"
       # Where to poll for feature flags (design/21 §4, src/flags/client.ts). Unset would be
       # a complete and supported state — every value then comes from `flags/defs.ts` — so
       # this line is the opt-in, not a requirement. The poll carries `x-internal-key`, so it
       # is the same trust seam design/19 §3 already built, and a 401/timeout/garbled body
       # all leave the compiled-in defaults in place.
       BB_ADMINSVC_URL: http://adminsvc:8790
-    volumes:
-      - ./data/matchsvc:/data
+    # No volume. Until 2026-09-15 this service owned `/data/accounts.db` and
+    # `/data/analytics.db`; both are collections on the cluster now, and this process writes
+    # nothing to disk at all.
     expose:
       - "8788"
     networks:
@@ -148,9 +152,13 @@ services:
       # reachable ONLY from matchsvc over the internal network — never through Caddy.
       NODE_ENV: development
       BB_BILLING_DEV_STUB: "1"
-      BB_BILLING_DB_PATH: /data/billing.db
-    volumes:
-      - ./data/billsvc:/data
+      # The same cluster, a DIFFERENT logical database (`billing`). design/19 §4's "money
+      # gets its own process and its own database" survives the move as a separate database
+      # rather than a collection prefix, because a shared handle is how a later refactor
+      # quietly re-merges the planes.
+      BB_MONGO_URI: ${BB_MONGO_URI:?set BB_MONGO_URI in .env (the Atlas connection string)}
+    # No volume, for the same reason matchsvc has none: `/data/billing.db` is six
+    # collections on the cluster now.
     expose:
       - "8789"
     networks:
@@ -174,12 +182,17 @@ services:
   # Two properties are worth reading straight off this block, because they are the whole
   # security argument and neither is visible in the code:
   #
-  #  - **Every mount is `:ro`, and there is no writable mount at all.** The process also
-  #    opens all three files with `readOnly: true` (src/adminsvc/dbs.ts), so it is refused
-  #    twice over — by SQLite and by the kernel. That is what lets B1 be stated as "it
-  #    cannot write player data" rather than "it does not". Mounted under `/sources/` for
-  #    the same reason the backup worker's are: the role is then visible in every path in
-  #    the logs.
+  #  - **It connects with its OWN credential, which has no write role.** Until 2026-09-15
+  #    this was two enforcement layers neither of which was our code: `readOnly: true`
+  #    handles (SQLite's) behind `:ro` bind mounts (Docker's). Both are gone with the files.
+  #    What replaces them is `BB_ADMIN_MONGO_URI` — an Atlas database user with `read` on
+  #    the three player-data databases and nothing else — and the fact that the variable is
+  #    SEPARATE from every other service's `BB_MONGO_URI` is the whole of B1 as this file
+  #    can express it. Pointing it at the same string the other services use would silently
+  #    turn the console into a writer, so the process PROVES the role at boot instead: it
+  #    attempts a real write to each database and refuses to start unless the server refuses
+  #    (src/adminsvc/dbs.ts). A check at one instant rather than a capability, which is
+  #    weaker than what was here before and is why it is spelled out at this length.
   #  - **It has no `.env`-independent default credential.** `BB_ADMIN_PASSWORD` uses the
   #    same `:?` form Grafana's does, so a box whose `.env` predates this service fails
   #    `compose up` rather than booting a login page with a compiled-in password on the
@@ -205,27 +218,27 @@ services:
       # without it, because this process is run from `npm` and from a test as well as from
       # compose and one guard per entry point is one guard that can be bypassed.
       BB_ADMIN_PASSWORD: ${BB_ADMIN_PASSWORD:?set BB_ADMIN_PASSWORD in .env (openssl rand -hex 16)}
-      # The three files, at the read-only paths below. Same variable names their OWNING
-      # services use (the reason src/backup/config.ts gives): "which file is this" must be
-      # one fact with one name, not one per reader.
-      BB_DB_PATH: /sources/matchsvc/accounts.db
-      BB_BILLING_DB_PATH: /sources/billsvc/billing.db
-      BB_ANALYTICS_DB_PATH: /sources/matchsvc/analytics.db
+      # The console's own credential — see the block comment above. A DIFFERENT variable
+      # from every other service's `BB_MONGO_URI`, holding a connection string for an Atlas
+      # user with `read` on the player-data databases and `readWrite` on `ops` alone.
+      BB_MONGO_URI: ${BB_ADMIN_MONGO_URI:?set BB_ADMIN_MONGO_URI in .env (the READ-ONLY Atlas user, see design/21 B1)}
+      # Must AGREE with matchsvc's. The console decides whether to show a retention tab from
+      # the same variable the collector decides whether to collect from, so a disagreement
+      # here is a "not configured" card on a deployment that is collecting — which reads as
+      # a bug in the data rather than as two services answering different questions.
+      BB_ANALYTICS_ENABLED: "1"
       # The FOURTH database and the only one this process can write (design/21 §4,
-      # src/flags/store.ts). Its own directory, its own mount, NOT `:ro`, and deliberately
-      # not under `/sources/`: the path itself is what says which handles are read-only and
-      # which one is not. Nothing about a player is in it — one row per feature flag,
-      # holding a name this repo declared and a value this repo validated — so B1's sentence
-      # ("cannot write player data") stays exactly true.
+      # src/flags/store.ts). Nothing about a player is in it — one document per feature
+      # flag, holding a name this repo declared and a value this repo validated — so B1's
+      # sentence ("cannot write player data") stays exactly true, and the write probe above
+      # deliberately does not cover it.
       #
-      # SETTING this is what switches flags on, the same way BB_ANALYTICS_DB_PATH switches
+      # SETTING this is what switches flags on, the same way BB_ANALYTICS_ENABLED switches
       # collection on: unset means the flags tab says so, /internal/flags answers 503, and
       # every service runs on its compiled-in defaults, which is the shipped behaviour.
-      BB_OPS_DB_PATH: /data/ops.db
-    volumes:
-      - ./data/matchsvc:/sources/matchsvc:ro
-      - ./data/billsvc:/sources/billsvc:ro
-      - ./data/adminsvc:/data
+      BB_OPS_FLAGS_ENABLED: "1"
+    # No mounts at all. The three `:ro` bind mounts that were half of B1 are gone with the
+    # files they pointed at; what enforces it now is the credential above.
     expose:
       - "8790"
     networks:
@@ -248,21 +261,26 @@ services:
       retries: 3
       start_period: 10s
 
-  # The only process here that serves nothing. It snapshots the two databases this project
-  # cannot regenerate — accounts.db (who somebody is) and billing.db (what they paid for) —
-  # because until 2026-09-07 the backup procedure was a `scp` line in a README, i.e. a
-  # procedure only as reliable as somebody remembering it.
+  # The only process here that serves nothing. It snapshots the three databases this project
+  # cannot regenerate — `accounts` (who somebody is), `billing` (what they paid for) and
+  # `analytics` (what was measured) — because until 2026-09-07 the backup procedure was a
+  # `scp` line in a README, i.e. a procedure only as reliable as somebody remembering it.
   #
   # Two properties worth reading off this block:
   #
-  #  - **The source mounts are `:ro`.** `VACUUM INTO` works through a read-only SQLite
-  #    handle (verified, see src/backup/snapshot.ts), so this container cannot write to a
-  #    live database even if its code were wrong. They are mounted under `/sources/` rather
-  #    than `/data/` so that role is visible in every path in the logs.
+  #  - **It has ONE writable mount, and it is the backup directory.** The three `:ro` source
+  #    mounts are gone with the SQLite files they pointed at; what keeps this container from
+  #    writing to a live database is now the Atlas role on its credential, the same shift
+  #    adminsvc's decision B1 made. `BB_MONGO_URI` here should be a `read`-only user for the
+  #    same reason the console's is — and unlike the console, this process does not probe it,
+  #    because a worker that refused to start over a too-generous role is a worker that stops
+  #    taking backups over a permission it never uses.
   #  - **The healthcheck is real logic, not a ping.** `node backup.mjs --health` reads
   #    `status.json` and fails when any source failed OR when the last cycle is too old —
   #    so a worker whose loop died after one good cycle goes unhealthy instead of staying
-  #    green forever on a stale success.
+  #    green forever on a stale success. It reads the file and never the cluster, so a
+  #    network blip cannot turn the container unhealthy over a condition the last cycle
+  #    already recorded correctly.
   backup:
     build: .
     image: blightbloom:latest
@@ -273,27 +291,17 @@ services:
     environment:
       NODE_ENV: production
       BB_LOG_LEVEL: info
-      # Same variable names the owning services use for these files (src/backup/config.ts
-      # explains why), pointed at this container's read-only mounts.
-      BB_DB_PATH: /sources/matchsvc/accounts.db
-      BB_BILLING_DB_PATH: /sources/billsvc/billing.db
-      # The third source. Its loss is survivable where the other two are not — analytics can
-      # be re-collected and identity cannot — so it is here for the reason the alternative is
-      # worse: a per-source exception costs a special case in `prunable`, in the health
-      # arithmetic and in this file, and buys back a few kilobytes a day.
-      BB_ANALYTICS_DB_PATH: /sources/matchsvc/analytics.db
-      # `ops.db` is deliberately NOT a fourth backup source. Every row in it is a value an
-      # operator typed, over a default that is in git — so a lost `ops.db` costs the current
-      # override set, which the console shows and a human can retype in a minute, and
-      # nothing that cannot be reconstructed. The other three hold identity, money and
-      # measurement. Adding it would mean a `:ro` mount, a `SOURCE_VARS` entry and a fourth
-      # line in the health arithmetic, to protect four rows of typed input.
+      # WHICH databases are backed up is no longer set here. It was three env vars holding
+      # file paths, deliberately reusing the owning services' own variable names so that
+      # "which file is this" stayed one fact with one name; there are no paths now, and
+      # `src/backup/config.ts`'s `BACKUP_STORES` is that one fact — checked against
+      # `mongo.ts`'s own list at boot, so a store renamed there cannot silently stop being
+      # backed up. `ops` is excluded, and that file says why.
+      BB_MONGO_URI: ${BB_MONGO_URI:?set BB_MONGO_URI in .env (the Atlas connection string)}
       BB_BACKUP_DIR: /backups
       BB_BACKUP_INTERVAL_HOURS: "24"
       BB_BACKUP_KEEP: "14"
     volumes:
-      - ./data/matchsvc:/sources/matchsvc:ro
-      - ./data/billsvc:/sources/billsvc:ro
       - ./backups:/backups
     networks:
       - bb

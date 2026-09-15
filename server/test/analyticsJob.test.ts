@@ -1,5 +1,5 @@
 /**
- * The rollup job — `src/analytics/job.ts` — plus `matchsvc.ts`'s `analyticsDbPathFromEnv`.
+ * The rollup job — `src/analytics/job.ts` — plus `analytics/db.ts`'s `analyticsEnabledFromEnv`.
  *
  * The job is small, and every case here is about a failure mode that looks like success:
  *
@@ -19,10 +19,15 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Db } from 'mongodb';
-import { EVENT_RETENTION_DAYS, dailyRollupOf, ensureAnalyticsIndexes, eventsOf } from '../src/analytics/db';
+import {
+  EVENT_RETENTION_DAYS,
+  analyticsEnabledFromEnv,
+  dailyRollupOf,
+  ensureAnalyticsIndexes,
+  eventsOf,
+} from '../src/analytics/db';
 import { writeBatch } from '../src/analytics/store';
 import { ROLLUP_INTERVAL_MS, runRollupCycle, startRollupJob } from '../src/analytics/job';
-import { analyticsDbPathFromEnv } from '../src/matchsvc';
 import type { Logger } from '../src/log';
 import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
@@ -229,24 +234,48 @@ describe('startRollupJob', () => {
   });
 });
 
-describe('analyticsDbPathFromEnv', () => {
-  it('returns the path when it is set', () => {
-    expect(analyticsDbPathFromEnv({ BB_ANALYTICS_DB_PATH: '/data/analytics.db' })).toBe('/data/analytics.db');
+/**
+ * The switch, which replaced `analyticsDbPathFromEnv` on 2026-09-15.
+ *
+ * The cases below are the same cases, asked of a boolean instead of a path, and the reason
+ * they are still here is that the PATH used to be the switch: an unset `BB_ANALYTICS_DB_PATH`
+ * had nothing to fall back to, so the deployment collected nothing. `store('analytics')`
+ * always resolves, so a port that simply dropped the reader would have turned collection on
+ * for every deployment that upgraded — in the one subsystem with a privacy policy attached,
+ * silently, by omission.
+ *
+ * Every case here therefore asserts the OFF direction for an input that is not an explicit
+ * yes. That asymmetry is the whole content of the function.
+ */
+describe('analyticsEnabledFromEnv', () => {
+  it('is ON for an explicit 1 or true, in either case', () => {
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: '1' })).toBe(true);
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: 'true' })).toBe(true);
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: 'TRUE' })).toBe(true);
+    // Trimmed, so a compose value with a stray space is still the yes somebody typed.
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: '  1  ' })).toBe(true);
   });
 
-  it('trims a stray space rather than opening " /data/x.db"', () => {
-    expect(analyticsDbPathFromEnv({ BB_ANALYTICS_DB_PATH: '  /data/x.db  ' })).toBe('/data/x.db');
-  });
-
-  it('treats an EMPTY value as OFF, not as a database at ""', () => {
-    // SQLite opens '' as a temporary database, so the wrong answer here is not a crash —
-    // it is collection that appears to work and disappears on restart. matchsvc no longer
-    // opens a file, but `adminsvc/dbs.ts` still resolves this variable the same way.
-    expect(analyticsDbPathFromEnv({ BB_ANALYTICS_DB_PATH: '' })).toBeNull();
-    expect(analyticsDbPathFromEnv({ BB_ANALYTICS_DB_PATH: '   ' })).toBeNull();
+  it('treats an EMPTY value as OFF', () => {
+    // design/19 §9's already-paid-for lesson, from the safe side: a compose file with a
+    // trailing `BB_ANALYTICS_ENABLED:` and no value produces `""`. Under the old path
+    // reader the equivalent mistake opened SQLite's temporary database, so collection
+    // appeared to work and vanished on restart. Here it collects nothing, which is the
+    // answer a privacy-relevant subsystem should give to a question nobody answered.
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: '' })).toBe(false);
+    expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: '   ' })).toBe(false);
   });
 
   it('is OFF when unset', () => {
-    expect(analyticsDbPathFromEnv({})).toBeNull();
+    expect(analyticsEnabledFromEnv({})).toBe(false);
+  });
+
+  it('is OFF for anything else, including the values that LOOK affirmative', () => {
+    // `yes` and `on` are not accepted, deliberately: an allowlist of two spellings is a rule
+    // somebody can check against a compose file, and every near miss lands on the safe side
+    // rather than on a guess about what was meant.
+    for (const raw of ['0', 'false', 'yes', 'on', 'enabled', '2']) {
+      expect(analyticsEnabledFromEnv({ BB_ANALYTICS_ENABLED: raw }), raw).toBe(false);
+    }
   });
 });

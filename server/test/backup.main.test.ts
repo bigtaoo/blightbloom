@@ -27,7 +27,15 @@ afterEach(() => {
 });
 
 function env(destDir: string): NodeJS.ProcessEnv {
-  return { BB_DB_PATH: '/sources/matchsvc/accounts.db', BB_BACKUP_DIR: destDir, BB_BACKUP_INTERVAL_HOURS: '24' };
+  // `BB_MONGO_URI` is never connected to here — `main`'s `--health` mode returns before it
+  // connects, and every other case in this file drives `runForever` through an injected
+  // `io`. What the variable has to be is PRESENT, because `readBackupConfig` refuses without
+  // one: a worker with no cluster to read is the silent no-op this config exists to prevent.
+  return {
+    BB_MONGO_URI: 'mongodb://cluster.example/',
+    BB_BACKUP_DIR: destDir,
+    BB_BACKUP_INTERVAL_HOURS: '24',
+  };
 }
 
 describe('healthExitCode', () => {
@@ -60,7 +68,7 @@ describe('healthExitCode', () => {
     writeStatus(dir, {
       at: new Date('2026-09-07T01:00:00Z').toISOString(),
       ok: false,
-      sources: [{ source: '/sources/matchsvc/accounts.db', ok: false, error: 'unreadable' }],
+      sources: [{ source: 'accounts', ok: false, error: 'unreadable' }],
     });
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(healthExitCode(readBackupConfig(env(dir)), new Date('2026-09-07T01:05:00Z'))).toBe(1);
@@ -74,9 +82,14 @@ describe('loadOrExit', () => {
     expect(loadOrExit(env(dir)).destDir).toBe(dir);
   });
 
-  it('exits 2 with a message when there is nothing to back up', () => {
+  it('exits 2 with a message when there is no cluster to back up', () => {
     // Not a throw: this is a process boundary, and the contract compose sees is the exit
     // code. `unless-stopped` then restart-loops it visibly instead of running a no-op.
+    //
+    // The refusal used to be "no source paths set"; the sources are compiled in now, so the
+    // reachable version of the same failure is an unset `BB_MONGO_URI`. A worker that
+    // started anyway would log one cheerful line and back up nothing, which is the state
+    // this whole file is written against.
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('exit called');
@@ -84,7 +97,7 @@ describe('loadOrExit', () => {
 
     expect(() => loadOrExit({})).toThrow('exit called');
     expect(exit).toHaveBeenCalledWith(2);
-    expect(err.mock.calls[0]?.[0]).toContain('no databases to back up');
+    expect(err.mock.calls[0]?.[0]).toContain('BB_MONGO_URI is not set');
   });
 
   it('rethrows anything that is NOT a configuration refusal', () => {
@@ -165,14 +178,32 @@ describe('runForever pacing', () => {
     return seen;
   }
 
-  /** A source that fails the first `failFor` cycles and succeeds after — the cold-start
-   *  race's actual shape: the file does not exist yet, then it does. */
+  /**
+   * A source that fails the first `failFor` cycles and succeeds after.
+   *
+   * The cold-start race's actual shape, which the port CHANGED rather than removed. It used
+   * to be "the file does not exist yet, then it does" — matchsvc creating `analytics.db`
+   * 0.6s after this worker looked for it. There is no file to be missing now; what takes its
+   * place is a cluster that is not reachable in the first second of a deploy, or a service
+   * that has not created a collection yet. Same shape, same fix, and the pacing is what is
+   * being pinned either way.
+   *
+   * It REJECTS rather than throwing synchronously, because that is what a network read does
+   * and because a synchronous throw would be caught by `runCycle` even if its `await` were
+   * missing.
+   */
   function flakyIo(failFor: number, log: string[] = []): CycleIo {
     let n = 0;
     return {
       snapshot: (source, destDir, at) => {
-        if (n++ < failFor) throw new Error('unable to open database file');
-        return { source, file: `${destDir}/accounts-${at.toISOString()}.db.gz`, bytes: 10, rawBytes: 100 };
+        if (n++ < failFor) return Promise.reject(new Error('server selection timed out'));
+        return Promise.resolve({
+          source,
+          file: `${destDir}/accounts-${at.toISOString()}.ndjson.gz`,
+          bytes: 10,
+          rawBytes: 100,
+          documents: 3,
+        });
       },
       list: () => [],
       remove: () => {},
@@ -186,7 +217,9 @@ describe('runForever pacing', () => {
     const delays = await delaysOf(cfg, flakyIo(1), 2);
 
     // First wait is the RETRY floor, not the 24h interval: this is the deploy-breaking
-    // case, where matchsvc created `analytics.db` 0.6s after the worker looked for it.
+    // case, which on the SQLite deployment was matchsvc creating `analytics.db` 0.6s after
+    // the worker looked for it, and on this one is a cluster not yet reachable in the first
+    // second of a `compose up`.
     expect(delays[0]).toBe(FAILURE_RETRY_FLOOR_MS);
     // ...and the retry succeeded, so the loop is back on its normal schedule AND the
     // failure counter reset — a counter that kept climbing would show up as a delay of
@@ -213,7 +246,12 @@ describe('runForever pacing', () => {
 });
 
 describe('main', () => {
-  it('--health runs the health mode and exits with its code, without a cycle', async () => {
+  it('--health runs the health mode and exits with its code, without connecting', async () => {
+    // BEFORE the connection, which is load-bearing since the port: the healthcheck reads
+    // `status.json` and nothing else, so a probe that had to reach the cluster would turn
+    // the container unhealthy over a network blip the last cycle already recorded
+    // correctly. `BB_MONGO_URI` here points at a host that does not exist — if this ever
+    // connected, the case would hang rather than pass.
     const dir = tmp();
     writeStatus(dir, { at: new Date().toISOString(), ok: true, sources: [] });
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {

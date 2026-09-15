@@ -9,9 +9,11 @@
  * ## The three things that make this proportionate on the public internet
  *
  * 1. **There is no write here to reach.** Not "the handlers do not write" — `deps.dbs`
- *    holds three `readOnly` SQLite handles and nothing else (`dbs.ts`, decision B1), so
- *    the worst outcome of a total compromise of this login is disclosure. Everything below
- *    is defence in depth behind that fact.
+ *    holds three player-data handles whose credential carries no write role, PROBED at boot
+ *    (`dbs.ts`, decision B1), so the worst outcome of a total compromise of this login is
+ *    disclosure. Everything below is defence in depth behind that fact — which since the
+ *    MongoDB port is a fact this process re-establishes at startup rather than one a file
+ *    mode held for it.
  * 2. **A login rate limit**, per IP, ahead of the credential comparison — `rateLimit.ts`'s
  *    limiter with its own budget ({@link LOGIN_RATE_LIMIT}).
  * 3. **Every request is logged**, with the path, the outcome and whether it carried a live
@@ -27,13 +29,13 @@
  * who has just been limited by it.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import type { Logger } from '../log';
 import type { AdminDbs } from './dbs';
 import { RateLimiter, clientKey } from '../rateLimit';
 import { credentialMatches, type AdminCredential } from './credentials';
 import { AdminSessionStore, ADMIN_COOKIE_PATH, clearCookieHeader, cookieHeader, readCookie } from './session';
-import { readForm, redirect, sendHtml, sendJson } from './http';
+import { readFormBody, redirect, sendHtml, sendJson } from './http';
 import { document, esc, loginPage, shell, tabFrom, unavailable } from './page/layout';
 import { commerceSection, playersSection, retentionSection } from './page/sections';
 import { searchPlayers } from './views/players';
@@ -74,15 +76,15 @@ export interface AdminRouteDeps {
   /** Injected by tests to freeze the clock. */
   now?: () => number;
   /**
-   * `ops.db` (design/21 §4), or `null` when this deployment has no flag store.
+   * The `ops` database (design/21 §4), or `null` when this deployment has no flag store.
    *
    * On the SHARED deps bundle rather than only on `flagRoutes.ts`'s own, because two
    * handlers here need it: `getPage` renders the flags tab and `getHealth` reports whether
-   * the handle exists. It is the only writable database this process opens, and the only
+   * the handle exists. It is the only WRITABLE database this process opens, and the only
    * one that holds nothing about a player — `flags/store.ts`'s header is where that
-   * distinction is argued.
+   * distinction is argued, and `dbs.ts`'s write probe deliberately does not cover it.
    */
-  opsDb?: DatabaseSync | null;
+  opsDb?: Db | null;
 }
 
 const nowOf = (deps: AdminRouteDeps): number => (deps.now ?? Date.now)();
@@ -104,7 +106,12 @@ export function authed(req: IncomingMessage, deps: AdminRouteDeps): boolean {
  * would make a browser show its own basic-auth prompt in some configurations, and a
  * redirect to a login URL would be one more path to get the auth check right on.
  */
-export function getPage(req: IncomingMessage, res: ServerResponse, url: URL, deps: AdminRouteDeps): void {
+export async function getPage(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  deps: AdminRouteDeps,
+): Promise<void> {
   if (!authed(req, deps)) return sendHtml(res, 200, loginPage(null));
 
   const tab = tabFrom(url.searchParams.get('tab'));
@@ -115,16 +122,16 @@ export function getPage(req: IncomingMessage, res: ServerResponse, url: URL, dep
     body =
       deps.dbs.billing === null
         ? unavailable('Commerce', deps.dbs.errors.billing)
-        : commerceSection(commerceSnapshot(deps.dbs.billing));
+        : commerceSection(await commerceSnapshot(deps.dbs.billing));
   } else if (tab === 'retention') {
     body =
       deps.dbs.analytics === null
         ? unavailable('Retention', deps.dbs.errors.analytics)
-        : retentionSection(cohortGrid(deps.dbs.analytics));
+        : retentionSection(await cohortGrid(deps.dbs.analytics));
   } else if (tab === 'flags') {
     // The one tab whose database is WRITABLE, and the one whose absence is a configuration
     // state rather than a fault — see `flagsUnavailable`.
-    body = (deps.opsDb ?? null) === null ? flagsUnavailable() : flagsSection(flagsView(deps.opsDb!));
+    body = (deps.opsDb ?? null) === null ? flagsUnavailable() : flagsSection(await flagsView(deps.opsDb!));
   } else if (deps.dbs.accounts === null) {
     body = unavailable('Players', deps.dbs.errors.accounts);
   } else {
@@ -133,7 +140,7 @@ export function getPage(req: IncomingMessage, res: ServerResponse, url: URL, dep
     // to look an account up (`dbs.ts`'s header).
     if (deps.dbs.analytics === null) notes.push(`Last-active column is blank: ${deps.dbs.errors.analytics}`);
     body = playersSection(
-      searchPlayers(deps.dbs.accounts, deps.dbs.analytics, url.searchParams.get('q') ?? ''),
+      await searchPlayers(deps.dbs.accounts, deps.dbs.analytics, url.searchParams.get('q') ?? ''),
       deps.dbs.analytics === null,
     );
   }
@@ -148,7 +155,12 @@ export function getPage(req: IncomingMessage, res: ServerResponse, url: URL, dep
  * parse rather than a 4 KB buffer plus two SHA-256s — the same ordering
  * `postClientLog` uses and for the same reason.
  */
-export function postLogin(req: IncomingMessage, res: ServerResponse, _url: URL, deps: AdminRouteDeps): void {
+export async function postLogin(
+  req: IncomingMessage,
+  res: ServerResponse,
+  _url: URL,
+  deps: AdminRouteDeps,
+): Promise<void> {
   const at = nowOf(deps);
   const key = clientKey(req);
 
@@ -157,21 +169,24 @@ export function postLogin(req: IncomingMessage, res: ServerResponse, _url: URL, 
     return sendHtml(res, 429, loginPage('Too many attempts. Wait a few minutes and try again.'));
   }
 
-  readForm(req, (form) => {
-    const user = form.get('user') ?? '';
-    const password = form.get('password') ?? '';
-    if (!credentialMatches({ user, password }, deps.credential)) {
-      // The presented username is NOT logged. It is attacker-chosen text on its way to a
-      // log store, and `internalAuth.ts`'s `sanitizeAuditValue` exists because that
-      // combination has one known failure mode; the IP is what an operator needs here
-      // anyway, and a rejected login says nothing else worth keeping.
-      deps.log.warn('login rejected', { ip: key });
-      return sendHtml(res, 401, loginPage('Wrong operator or password.'));
-    }
-    const session = deps.sessions.create(at);
-    deps.log.info('login accepted', { ip: key, operator: deps.credential.user });
-    redirect(res, ADMIN_ROOT, { 'set-cookie': cookieHeader(session, at, deps.cookieSecure) });
-  });
+  // The budget is still spent BEFORE the body is awaited. That ordering was free when the
+  // read was a callback; with an `await` in the handler it is the whole control, because a
+  // flood's next request arrives while this one is parked on the body and a limiter taken
+  // afterwards is a limiter the flood has already walked around.
+  const form = await readFormBody(req);
+  const user = form.get('user') ?? '';
+  const password = form.get('password') ?? '';
+  if (!credentialMatches({ user, password }, deps.credential)) {
+    // The presented username is NOT logged. It is attacker-chosen text on its way to a
+    // log store, and `internalAuth.ts`'s `sanitizeAuditValue` exists because that
+    // combination has one known failure mode; the IP is what an operator needs here
+    // anyway, and a rejected login says nothing else worth keeping.
+    deps.log.warn('login rejected', { ip: key });
+    return sendHtml(res, 401, loginPage('Wrong operator or password.'));
+  }
+  const session = deps.sessions.create(at);
+  deps.log.info('login accepted', { ip: key, operator: deps.credential.user });
+  redirect(res, ADMIN_ROOT, { 'set-cookie': cookieHeader(session, at, deps.cookieSecure) });
 }
 
 /**
@@ -244,10 +259,12 @@ export const COOKIE_PATH = ADMIN_COOKIE_PATH;
  * override rows with their metadata — including the ones that failed validation, which are
  * the state the table has to be loud about.
  */
-export function flagsView(opsDb: DatabaseSync): FlagsView {
-  const { rows, invalid } = listOverrides(opsDb);
+export async function flagsView(opsDb: Db): Promise<FlagsView> {
+  // Concurrent rather than sequential: two independent reads of one database, so the page
+  // waits for the slower of the two rather than for their sum.
+  const [{ rows, invalid }, effective] = await Promise.all([listOverrides(opsDb), effectiveFlags(opsDb)]);
   return {
-    effective: effectiveFlags(opsDb),
+    effective,
     overrides: rows,
     invalid,
     // Derived here rather than inside the renderer, so that module stays pure over its

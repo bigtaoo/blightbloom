@@ -34,11 +34,11 @@
  * that could carry a session.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Db } from 'mongodb';
 import { describeInternalAuthFailure, sanitizeAuditValue, type InternalVerifier } from '../internalAuth';
 import { effectiveFlags, clearFlag, setFlag } from '../flags/store';
 import { FLAG_DEFS, isFlagName, type FlagName } from '../flags/defs';
-import { readForm, redirect, sendJson } from './http';
+import { readFormBody, redirect, sendJson } from './http';
 import { authed, ADMIN_ROOT, type AdminRouteDeps } from './routes';
 import { notFound } from './routes';
 
@@ -54,15 +54,20 @@ export const FLAGS_CLEAR_PATH = '/admin/flags/clear';
 
 export interface FlagRouteDeps extends AdminRouteDeps {
   /**
-   * `ops.db`, or `null` when this deployment has no flag store.
+   * The `ops` database, or `null` when this deployment has no flag store.
    *
-   * Null is a real state, not a defensive one: `BB_OPS_DB_PATH` unset means the console
-   * shows no flag tab and `/internal/flags` answers 503, so every service stays on its
-   * compiled-in defaults — which is Phase C's fail-safe posture arriving through
+   * Null is a real state, not a defensive one: `BB_OPS_FLAGS_ENABLED` unset means the
+   * console shows no flag tab and `/internal/flags` answers 503, so every service stays on
+   * its compiled-in defaults — which is Phase C's fail-safe posture arriving through
    * configuration rather than through a failure. A deployment that never wants a remote
    * switch simply does not set the variable.
+   *
+   * It used to be the presence of a FILE PATH that said so. On a cluster `store('ops')`
+   * always resolves, so the switch had to become an explicit one or the flag store would
+   * turn itself on for every deployment that upgraded — the same trap, and the same answer,
+   * as `matchsvc.ts`'s `analyticsEnabledFromEnv`.
    */
-  opsDb: DatabaseSync | null;
+  opsDb: Db | null;
   /**
    * Internal-key verifier for `GET /internal/flags`. REQUIRED, not optional.
    *
@@ -89,12 +94,12 @@ export interface FlagRouteDeps extends AdminRouteDeps {
  * A 503 with no body when there is no `ops.db`: the client turns any non-2xx into "keep the
  * defaults", so this is the same outcome as being unreachable, said explicitly.
  */
-export function getInternalFlags(
+export async function getInternalFlags(
   req: IncomingMessage,
   res: ServerResponse,
   _url: URL,
   deps: FlagRouteDeps,
-): void {
+): Promise<void> {
   const auth = deps.verifier.verify(req.headers);
   if (!auth.ok) {
     // The audit line for a rejected internal call, in the shared format — the claimed
@@ -103,7 +108,7 @@ export function getInternalFlags(
     return sendJson(res, 401, { error: 'unauthorized' });
   }
   if (deps.opsDb === null) return sendJson(res, 503, { error: 'no flag store' });
-  sendJson(res, 200, { flags: effectiveFlags(deps.opsDb) });
+  sendJson(res, 200, { flags: await effectiveFlags(deps.opsDb) });
 }
 
 /**
@@ -119,44 +124,52 @@ export function getInternalFlags(
  * A refusal is a redirect back to the tab, not a 400: the tab re-renders from the table, so
  * an unchanged page IS the refusal, and the log line says which flag and why.
  */
-export function postFlagSet(req: IncomingMessage, res: ServerResponse, _url: URL, deps: FlagRouteDeps): void {
+export async function postFlagSet(
+  req: IncomingMessage,
+  res: ServerResponse,
+  _url: URL,
+  deps: FlagRouteDeps,
+): Promise<void> {
   if (!authed(req, deps)) return notFound(res);
   const db = deps.opsDb;
   if (db === null) return notFound(res);
 
-  readForm(req, (form) => {
-    const name = form.get('name') ?? '';
-    const raw = form.get('value') ?? '';
-    if (!isFlagName(name)) {
-      // C1's line, at the write path: a name that is not in the allowlist cannot become a
-      // row. Logged rather than silently dropped, because the only way to get here is a
-      // hand-made request or a stale page.
-      deps.log.warn('flag set refused — unknown flag', { flag: sanitizeAuditValue(name) });
-      return redirect(res, FLAGS_TAB_URL);
-    }
-    const ok = setFlag(db, name, parseFormValue(name, raw), (deps.now ?? Date.now)(), deps.credential.user);
-    if (!ok) deps.log.warn('flag set refused — value rejected by its definition', { flag: name });
-    else deps.log.info('flag set', { flag: name, by: deps.credential.user });
-    redirect(res, FLAGS_TAB_URL);
-  });
+  const form = await readFormBody(req);
+  const name = form.get('name') ?? '';
+  const raw = form.get('value') ?? '';
+  if (!isFlagName(name)) {
+    // C1's line, at the write path: a name that is not in the allowlist cannot become a
+    // document. Logged rather than silently dropped, because the only way to get here is a
+    // hand-made request or a stale page.
+    deps.log.warn('flag set refused — unknown flag', { flag: sanitizeAuditValue(name) });
+    return redirect(res, FLAGS_TAB_URL);
+  }
+  const ok = await setFlag(db, name, parseFormValue(name, raw), (deps.now ?? Date.now)(), deps.credential.user);
+  if (!ok) deps.log.warn('flag set refused — value rejected by its definition', { flag: name });
+  else deps.log.info('flag set', { flag: name, by: deps.credential.user });
+  redirect(res, FLAGS_TAB_URL);
 }
 
 /** `POST /admin/flags/clear` — returns one flag to its compiled-in default by DELETING its
- *  row (`store.ts` explains why deleting beats writing the default in). */
-export function postFlagClear(req: IncomingMessage, res: ServerResponse, _url: URL, deps: FlagRouteDeps): void {
+ *  document (`store.ts` explains why deleting beats writing the default in). */
+export async function postFlagClear(
+  req: IncomingMessage,
+  res: ServerResponse,
+  _url: URL,
+  deps: FlagRouteDeps,
+): Promise<void> {
   if (!authed(req, deps)) return notFound(res);
   const db = deps.opsDb;
   if (db === null) return notFound(res);
 
-  readForm(req, (form) => {
-    const name = form.get('name') ?? '';
-    // Deliberately NOT gated on `isFlagName`: clearing is the one operation that has to work
-    // on the stale row a flag REMOVED in a deploy leaves behind, and that name is by
-    // definition no longer in the allowlist.
-    const removed = clearFlag(db, name);
-    deps.log.info('flag cleared', { flag: sanitizeAuditValue(name), removed, by: deps.credential.user });
-    redirect(res, FLAGS_TAB_URL);
-  });
+  const form = await readFormBody(req);
+  const name = form.get('name') ?? '';
+  // Deliberately NOT gated on `isFlagName`: clearing is the one operation that has to work
+  // on the stale document a flag REMOVED in a deploy leaves behind, and that name is by
+  // definition no longer in the allowlist.
+  const removed = await clearFlag(db, name);
+  deps.log.info('flag cleared', { flag: sanitizeAuditValue(name), removed, by: deps.credential.user });
+  redirect(res, FLAGS_TAB_URL);
 }
 
 /**

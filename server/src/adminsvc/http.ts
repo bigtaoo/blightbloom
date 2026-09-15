@@ -18,8 +18,9 @@
  *
  * ## The body reader
  *
- * One form is POSTed to this server (the login) and one field pair comes back, so the
- * reader is `application/x-www-form-urlencoded` and bounded at {@link LOGIN_BODY_LIMIT}.
+ * Three forms are POSTed to this server (the login and the two flag writes) and a field pair
+ * comes back from each, so the reader is `application/x-www-form-urlencoded` and bounded at
+ * {@link LOGIN_BODY_LIMIT}.
  * Overflow behaviour follows `routes/http.ts`'s: the tail past the limit is dropped, so
  * what gets parsed is a truncated body, which yields a login attempt that fails. The safe
  * direction — and the reason no handler here has to defend against a half-read form.
@@ -106,15 +107,33 @@ export function redirect(res: ServerResponse, location: string, extra: Record<st
  * `URLSearchParams` does the decoding, which means a malformed percent-escape cannot throw
  * out of here — it is lenient by specification, and the alternative (`decodeURIComponent`
  * per field) throws on `%zz` and would turn a corrupted form into a 500.
+ *
+ * ## Why there is no callback form of this any more
+ *
+ * There was one — `readForm(req, done)` — and it was deleted rather than kept beside this,
+ * because a callback shape does not survive an async handler. `routes/http.ts`'s
+ * `readJsonBodyUpTo` spells the general version out for matchsvc: a rejected promise
+ * returned by the callback escapes into an unhandled rejection the server's error boundary
+ * never sees, since the handler has already returned by the time the body arrives, and Node
+ * answers an unhandled rejection by killing the process. On this console that means one
+ * failed flag write logs every operator out of every session.
+ *
+ * The reason is sharper here than it was there. Every form handler in this process now also
+ * reads the CLUSTER, so the body callback is exactly where a network failure surfaces — the
+ * one class of error that is ordinary rather than a programming bug, and the one a callback
+ * has nowhere to deliver. Keeping both shapes would have left the unusable one reachable and
+ * indistinguishable at the call site, which is how it would come back.
  */
-export function readForm(req: IncomingMessage, done: (form: URLSearchParams) => void): void {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  req.on('data', (c: Buffer) => {
-    size += c.length;
-    if (size > LOGIN_BODY_LIMIT) return; // ignore the overflow tail
-    chunks.push(c);
+export function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > LOGIN_BODY_LIMIT) return; // ignore the overflow tail
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))));
+    req.on('error', () => resolve(new URLSearchParams()));
   });
-  req.on('end', () => done(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))));
-  req.on('error', () => done(new URLSearchParams()));
 }

@@ -7,41 +7,36 @@
  *     rethrows anything that is not one.
  *   - The port constants, which are an interface contract rather than a tuning knob.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, it, expect, afterEach, inject, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
-import { openLegacyAccountsDb as openDb } from './legacyAccountsDb';
 import { DEFAULT_ADMIN_PORT, OTHER_PLANE_PORTS, adminHost, adminPort, main, runMain } from '../src/adminsvc/main';
 import { AdminStartupError } from '../src/adminsvc/credentials';
-import type { AdminsvcServer } from '../src/adminsvc/server';
+import { ALLOW_WRITABLE_VAR, type AdminsvcServer } from '../src/adminsvc/server';
+import { closeMongo } from '../src/mongo';
 
 const PASSWORD = 'm'.repeat(24);
 const handles: AdminsvcServer[] = [];
-const dirs: string[] = [];
-
-function scratchAccounts(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'bb-adminsvc-main-'));
-  dirs.push(dir);
-  const path = join(dir, 'accounts.db');
-  openDb(path).close();
-  return path;
-}
+let prefixCounter = 0;
 
 /**
  * Binds on port 0 so the suite never collides with a real 8790 or with itself.
  *
- * The three DATABASE paths are stubbed into `process.env` rather than passed as an
- * argument, and that is the seam being tested rather than a shortcut. `main` is the process
- * entry point: `createAdminsvcServer`'s `env` option carries only the CREDENTIAL (the same
- * shape billsvc's `StartupEnv` has), while the database paths are resolved by each owning
- * module's own default from the real environment. A test that handed them in directly would
- * prove nothing about the container, where they arrive exactly this way.
+ * Everything reaches the process through `process.env`, and that is the seam being tested
+ * rather than a shortcut. `main` is the process entry point: `createAdminsvcServer`'s `env`
+ * option carries only the CREDENTIAL (the same shape billsvc's `StartupEnv` has), while the
+ * cluster connection is resolved by `mongo.ts` from the real environment. A test that handed
+ * a `Db` in directly would prove nothing about the container, where none of this is injected.
+ *
+ * `BB_MONGO_DB_PREFIX` carries a counter so two cases in this file cannot see each other's
+ * documents, and `BB_ADMIN_ALLOW_WRITABLE` is what lets the write probe pass against a
+ * mongod with no roles — see `adminsvc.http.test.ts`'s header.
  */
 async function listen(env: Record<string, string>): Promise<AdminsvcServer> {
+  vi.stubEnv('BB_MONGO_URI', inject('mongoUri'));
+  vi.stubEnv('BB_MONGO_DB_PREFIX', `adminmain${process.pid}x${++prefixCounter}`);
+  vi.stubEnv(ALLOW_WRITABLE_VAR, '1');
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
-  const handle = main(process.env, 0, '127.0.0.1');
+  const handle = await main(process.env, 0, '127.0.0.1');
   handles.push(handle);
   await new Promise<void>((resolve) => handle.server.once('listening', resolve));
   return handle;
@@ -52,67 +47,86 @@ afterEach(async () => {
   while (handles.length) {
     const handle = handles.pop()!;
     handle.server.closeAllConnections();
-    // The 'close' handler closes the three SQLite connections. Required before the rmSync:
-    // Windows keeps a lock on an open database file and the removal fails with EPERM.
     await new Promise<void>((resolve) => handle.server.close(() => resolve()));
   }
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+  // The pooled client is process-wide and outlives every socket here — `mongo.ts` owns it,
+  // and a file that left it open would hand the next one this file's connection.
+  await closeMongo();
 });
 
 describe('main', () => {
   it('binds and serves /admin/health on the port it was given', async () => {
-    const accounts = scratchAccounts();
-    const handle = await listen({
-      BB_ADMIN_PASSWORD: PASSWORD,
-      BB_DB_PATH: accounts,
-      BB_BILLING_DB_PATH: join(dirs[0]!, 'no-billing.db'),
-      BB_ANALYTICS_DB_PATH: '',
-      BB_OPS_DB_PATH: '',
-    });
+    const handle = await listen({ BB_ADMIN_PASSWORD: PASSWORD });
     const { port } = handle.server.address() as AddressInfo;
     const body = (await (await fetch(`http://127.0.0.1:${port}/admin/health`)).json()) as {
       service: string;
       databases: Record<string, boolean>;
     };
     expect(body.service).toBe('blightbloom-adminsvc');
-    // The accounts file exists and the other two do not — the state a fresh box is in, and
-    // the one `main` has to come up in rather than refuse.
-    expect(body.databases).toEqual({ accounts: true, billing: false, analytics: false, ops: false });
+    // Two switched-off subsystems and two handles, which is the state a deployment that has
+    // opted into neither analytics nor the flag store is in — and `main` has to come up in
+    // it rather than refuse. The three-missing-files version of this case is gone with the
+    // files: on a cluster a database nobody has written simply answers every query with
+    // nothing, which is the correct answer rather than an error.
+    expect(body.databases).toEqual({ accounts: true, billing: true, analytics: false, ops: false });
   });
 
-  it('returns the handle, so a caller can close the sockets AND the databases', async () => {
-    // The reason `main` returns `AdminsvcServer` and not `Server`: the three SQLite
-    // connections live for the process, and on Windows an unclosed one locks the file.
-    const accounts = scratchAccounts();
+  it('switches analytics and the flag store on from the environment', async () => {
+    // The other half, and the half that is a DECISION rather than a default. Both used to
+    // be implied by a file path existing; both are explicit variables now, because
+    // `store(name)` always resolves and a port that dropped the readers would have turned
+    // on collection and created a writable database on every deployment that upgraded.
     const handle = await listen({
       BB_ADMIN_PASSWORD: PASSWORD,
-      BB_DB_PATH: accounts,
-      BB_BILLING_DB_PATH: join(dirs[0]!, 'no-billing.db'),
-      BB_ANALYTICS_DB_PATH: '',
-      BB_OPS_DB_PATH: '',
+      BB_ANALYTICS_ENABLED: '1',
+      BB_OPS_FLAGS_ENABLED: '1',
     });
+    const { port } = handle.server.address() as AddressInfo;
+    const body = (await (await fetch(`http://127.0.0.1:${port}/admin/health`)).json()) as {
+      databases: Record<string, boolean>;
+    };
+    expect(body.databases).toEqual({ accounts: true, billing: true, analytics: true, ops: true });
+  });
+
+  it('reports what the write probe FOUND, rather than a constant', async () => {
+    // `readOnly` was the literal `true` in the startup line while the handles carried a mode
+    // flag — honest then, and a lie now: what enforces B1 is an Atlas role this repository
+    // cannot see. So the line reports the probe's answer, and a console running under
+    // `BB_ADMIN_ALLOW_WRITABLE` — as every case in this file does — says `false` on every
+    // boot instead of looking identical to one that holds the property.
+    const handle = await listen({ BB_ADMIN_PASSWORD: PASSWORD });
+    expect(handle.readOnly).toBe(false);
+  });
+
+  it('returns the handle, which no longer carries anything to close', async () => {
+    const handle = await listen({ BB_ADMIN_PASSWORD: PASSWORD });
     expect(handle.dbs.accounts).not.toBeNull();
-    expect(typeof handle.dbs.close).toBe('function');
-    // `opsDb` is NOT inside `dbs`, on purpose: that bundle's whole meaning is that
-    // nothing in it can be written (`flags/store.ts`'s header argues the distinction).
+    // The absence IS the assertion. `dbs.close()` existed because three SQLite connections
+    // belonged to this process and, on Windows, an unclosed one locked the file. They are
+    // three views onto one pooled client owned by `mongo.ts` now, and a `close` here would
+    // mean a socket's close event tearing down a connection the process still needs.
+    expect('close' in handle.dbs).toBe(false);
+    // `opsDb` is NOT inside `dbs`, on purpose: that bundle's whole meaning is that nothing
+    // in it can be written (`flags/store.ts`'s header argues the distinction).
     expect(handle.opsDb).toBeNull();
   });
 
-  it('THROWS before binding when the environment carries no credential', () => {
+  it('REJECTS before binding when the environment carries no credential', async () => {
     // The ordering is the property. A process that bound first and threw afterwards would
     // have put a public port up with no login behind it, however briefly — and `listen` is
-    // asynchronous, so "briefly" is not bounded by anything.
-    expect(() => main({}, 0, '127.0.0.1')).toThrow(AdminStartupError);
+    // asynchronous, so "briefly" is not bounded by anything. It also never reaches the
+    // cluster, which is why this case needs no `BB_MONGO_URI` to pass.
+    await expect(main({}, 0, '127.0.0.1')).rejects.toThrow(AdminStartupError);
   });
 });
 
 describe('runMain', () => {
-  it('reports an AdminStartupError as a configuration problem and exits 1', () => {
+  it('reports an AdminStartupError as a configuration problem and exits 1', async () => {
     const lines: string[] = [];
     const codes: number[] = [];
     // `exit` returns rather than exiting, so the code path after it is observable — the real
     // `process.exit` never comes back and a test that let it run would take the runner with it.
-    runMain({}, ((code: number) => {
+    await runMain({}, ((code: number) => {
       codes.push(code);
       return undefined as never;
     }) as (code: number) => never, (line) => lines.push(line));
@@ -125,21 +139,27 @@ describe('runMain', () => {
     expect(lines[0]).toContain('openssl rand -hex 16');
   });
 
-  it('RETHROWS anything that is not a startup error', () => {
+  it('RETHROWS anything that is not a startup error', async () => {
     // The arm that matters for the NEXT bug rather than this one: a `catch` that swallowed
     // everything would turn a real fault into "refused to start" and exit 1, which reads as
     // a configuration problem and sends the operator to the wrong file.
     //
     // Reached through a real failure path rather than a thrown stub. `ADMIN_PORT=99999` is
-    // out of range, so `listen` throws ERR_SOCKET_BAD_PORT synchronously — a genuine
-    // non-configuration fault of exactly the kind this arm exists for, and one that is only
-    // reachable because `adminPort` reads the variable per call rather than at import.
+    // out of range, so `listen` throws ERR_SOCKET_BAD_PORT — a genuine non-configuration
+    // fault of exactly the kind this arm exists for, and one that is only reachable because
+    // `adminPort` reads the variable per call rather than at import. It arrives as a
+    // REJECTION now rather than a synchronous throw, which is the whole reason the guard at
+    // the bottom of `main.ts` grew its own `.catch`: without one it would have become an
+    // unhandled rejection with no log line at all.
+    vi.stubEnv('BB_MONGO_URI', inject('mongoUri'));
+    vi.stubEnv('BB_MONGO_DB_PREFIX', `adminmain${process.pid}x${++prefixCounter}`);
+    vi.stubEnv(ALLOW_WRITABLE_VAR, '1');
     const exit = ((code: number) => {
       throw new Error(`exit(${code}) must not be reached`);
     }) as (code: number) => never;
-    expect(() =>
-      runMain({ BB_ADMIN_PASSWORD: PASSWORD, ADMIN_PORT: '99999', HOST: '127.0.0.1' }, exit, () => {}),
-    ).toThrow(/port/i);
+    await expect(
+      runMain({ ...process.env, BB_ADMIN_PASSWORD: PASSWORD, ADMIN_PORT: '99999', HOST: '127.0.0.1' }, exit, () => {}),
+    ).rejects.toThrow(/port/i);
   });
 });
 
