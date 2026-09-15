@@ -3,7 +3,7 @@
 #
 # **It used to run no exporters of its own, and that was the right call at the time.** The
 # borrowed box already ran cAdvisor (container CPU/memory/restarts) and node-exporter (host
-# CPU/RAM/disk/load) for its owner's stack, both on the shared `docker_default` network, and
+# CPU/RAM/disk/load) for its owner's stack, both on the shared external network, and
 # both measuring the WHOLE machine — our containers included. Standing up a second
 # privileged cAdvisor there, mounting `/`, `/sys`, `/var/run` and `/dev/kmsg` a second time
 # on hardware this project did not own, to recompute numbers that already existed one DNS

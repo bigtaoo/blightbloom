@@ -86,7 +86,7 @@ describe('the config files compose mounts', () => {
 describe('the obs- prefix, and the filter that used to depend on it', () => {
   it('every observability service is prefixed obs-', () => {
     // This was the single most consequential line in the file while the project lived on a
-    // SHARED `docker_default` network: compose publishes each service NAME as a network
+    // SHARED external network: compose publishes each service NAME as a network
     // alias, and the box's owner ran Loki, Grafana, Prometheus and Promtail under exactly
     // those names. A service called `loki` would have put two containers behind one DNS
     // name, with their collector's pushes landing in our store or ours in theirs,

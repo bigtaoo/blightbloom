@@ -954,28 +954,27 @@ in miniature — is killed by the absence test, which is exactly what that test 
 *"我去给这个游戏买一个专属服务器"* — and the interesting part of this pass is not the move. It
 is how much of `server/docker-compose.yml`, `prometheus.yml`, `config.alloy` and
 `deploy/ci-deploy.sh` turned out to be describing **the landlord rather than the services**.
-Since 2026-09-07 the three planes had run as a guest on `wnet-server`, the company's box,
+Since 2026-09-07 the three planes had run as a guest on a box belonging to somebody else,
 borrowed for its idle spare capacity. Four things in the deployment existed only because of
 that, and every one of them had a comment explaining itself, which is the only reason they
 could be told apart from decisions with live reasons:
 
 - **The reverse proxy was somebody else's.** This project's entire footprint on that machine
-  was ONE site block appended by hand to `~/wnet/docker/Caddyfile`, a file fronting
-  `wnet-mock.elk.de`, `sync.gamestao.com` and `pata-api.gamestao.com` as well as us. It is now
-  `server/caddy/Caddyfile`, a tracked file shipped with every deploy — same four-way `handle`
-  split, upstreams named by compose SERVICE (`matchsvc:8788`) rather than by container
-  (`wnet-test-matchsvc:8788`), because our Caddy is inside the project now.
-- **The network was theirs.** `external: true, name: docker_default` existed so that THEIR
+  was ONE site block appended by hand to the host's own Caddyfile, a file fronting three
+  other site blocks as well as us. It is now `server/caddy/Caddyfile`, a tracked file shipped
+  with every deploy — same four-way `handle` split, upstreams named by compose SERVICE
+  (`matchsvc:8788`) rather than by container, because our Caddy is inside the project now.
+- **The network was theirs.** An `external: true` network existed so that THEIR
   Caddy could resolve OUR container names. Both halves of that arrangement left with the box.
-- **Prometheus scraped their exporters.** `docker-cadvisor-1` and `docker-node-exporter-1` —
+- **Prometheus scraped their exporters.** The host's own cAdvisor and node-exporter —
   the right trade on hardware we did not own (a second privileged cAdvisor mounting `/`,
   `/sys` and `/dev/kmsg` to recompute numbers that already existed one DNS name away), and a
   trade whose stated cost was that another team renaming a container emptied every infra panel
   here. `obs-cadvisor` and `obs-node-exporter` are ours now.
-- **Everything was named `wnet-test`** so that nothing about the game appeared on a machine
+- **Nothing was named after the game** so that nothing about it appeared on a machine
   belonging to someone else. Containers are `bb-*` and the image is `blightbloom:latest`; the
-  disguise cost nothing while it was true and reads as somebody else's container on a box with
-  no wnet on it.
+  disguise cost nothing while it was true and reads as somebody else's container on a box
+  that is ours.
 
 **What did NOT change is the more useful half.** The `obs-` prefix stays, the Alloy discovery
 filter stays, and both now guard something smaller than they were written for — so both say so
@@ -1041,11 +1040,14 @@ The borrowed box is clean: block removed from its Caddyfile with `cp` rather tha
 file is a single-FILE bind mount, so a rename changes the inode and leaves `validate` and
 `reload` both reporting success against the stale one — 2026-09-09's full-day diagnosis), its
 four neighbours confirmed still routed by reading Caddy's own loaded config rather than by
-guessing at a 404, and `~/wnet-test` with its volumes, image and script backups all gone. **One
-thing could not be finished from here**: `~/.ssh/authorized_keys` on that machine is root-owned,
-so the retired deploy key's line has to be removed by whoever has its `sudo` password. It is
-already inert — its forced command names a script that no longer exists — but inert is not
-revoked.
+guessing at a 404, and the deploy directory with its volumes, image and script backups all
+gone. **One thing could not be finished from here**: `~/.ssh/authorized_keys` on that machine
+is root-owned, so the retired deploy key's line has to be removed by whoever has its `sudo`
+password. It is already inert — its forced command names a script that no longer exists — but
+inert is not revoked.
+
+> **"Clean" meant the stack.** A sweep of the box later the same day found what a
+> `compose down` does not touch — see "Leaving a borrowed box is a second job" below.
 
 Two things were left open at the end of the move and both were decided the same day, by the
 person who has to act on them — recorded because one of the decisions **reshapes the item rather
@@ -1206,3 +1208,112 @@ two engine cases for the gap. engine 1,600 → 1,602; client 6,305 → 6,369.
   never opens.
 - **Nobody has listened** to `chest.open`, or to the 61 cues before it. Unchanged, and still the one
   open item on the audio set that measurement cannot close.
+
+## Leaving a borrowed box is a second job (2026-09-15, infra + docs, no engine change)
+
+The ask: the game has its own server now, so delete everything the borrowing left behind — and
+the interesting part is that the deployment had already been torn down. "The borrowed box is clean" is written
+four sections up in this same volume, and it was true about the thing it was measuring: no
+containers, no volumes, no deploy directory, no site block. It was the wrong measurement.
+
+### `docker compose down` removes the deployment, not the project
+
+A sweep of the machine afterwards found, none of it reachable from a compose file:
+
+| left behind | what it actually was |
+| --- | --- |
+| `~/db-snapshots/` | two SQLite snapshots of **live account and billing data**, taken by hand before the `display_name` migration |
+| `~/obs-*.mjs` ×4 | throwaway probe scripts from the observability bring-up, still naming `obs-loki` / `obs-prometheus` |
+| 4 images | the version-pinned `alloy` / `loki` / `grafana` / `prometheus` this stack ran; every other tenant used `:latest` or a different major |
+| 124 buildx refs | `~/.docker/buildx/refs/…`, each a JSON line recording this project's build paths |
+| 761 MB build cache | the shared builder's, dominated by 13× `COPY dist/*.mjs` and 12× this Dockerfile's `mkdir -p /data /backups` |
+| 5 `.bash_history` lines | including the deploy key's whole `authorized_keys` line, pasted three times |
+| 5 Caddyfile backups | the host's own `Caddyfile.bak-*`, each still carrying the site block and its upstream container names |
+
+The first row is the one that matters. Everything else is litter; that one is player data on
+hardware this project no longer has any claim to, and no teardown step would ever have caught it
+because nothing created it — a human did, once, and then the file was done being interesting.
+
+**Two traps in the cleanup itself**, both of which would have damaged a neighbour:
+
+- **The buildx refs directory is SHARED.** 124 of the 215 files there were this project's; the
+  other 91 belong to the two co-tenants. `rm -rf` on that directory is the obvious move and it
+  destroys their build metadata. The refs are one-line JSON naming a `LocalPath`, so the correct
+  filter is `grep -l` on the paths and nothing else.
+- **`docker buildx prune --filter description~=…` is accepted and does nothing.** `du` takes the
+  same filter and returns a correct subset — a nonsense value matched zero entries, which is what
+  made the filter look trustworthy — but `prune` with it reclaimed `0B` three times in a row while
+  the matching entries sat in `du`'s output. So the cache is all-or-nothing. A full prune was the
+  call: it costs the neighbours one cold rebuild and nothing else, and leaving it would have left
+  this project's source layers on the disk indefinitely.
+
+**One thing cannot be removed and should be written down rather than quietly dropped**: every log
+line this project's containers wrote between 2026-09-07 and the move is in the box owner's Loki,
+permanently. Their collector read the Docker socket unfiltered, this stack could never close that
+half (`../19-server-platform.md` §10 has the pair), and a retention policy on somebody else's
+store is not a thing to go and edit.
+
+### The disguise changes hands
+
+The second half of the ask — rename the co-tenant to the name this project had been using —
+only parses once you look at the box: the co-tenant that moved in after this project left was sitting there under its
+own project name, in the open, which is exactly the exposure the neutral name was invented to
+avoid. So the name was not retired — it was handed over. Directory, compose project, container,
+CI script, key file and installer all renamed, and the Caddy block's comment and upstream with
+them.
+
+Two things deliberately did **not** move:
+
+- **The public hostname.** It is a live DNS record with a client pointing at it; renaming it is a
+  DNS change and a client change, not a change to this machine. The disguise is about what is
+  visible with shell access, and a public hostname is not that.
+- **The application bundle.** It is CI output from the other repo, overwritten on every deploy,
+  and it carries that project's name in a dozen admin strings. Renaming it here would be undone
+  by the next push and would break an env var while it lasted.
+
+**The ordering constraint is the part worth keeping.** The live deploy script's path is named
+inside `authorized_keys` as an SSH forced command, and `authorized_keys` is root-owned on that
+box with no passwordless sudo — so the rename could not be atomic with the thing that points at
+it. Renaming the script alone breaks that project's CI deploy silently, at the next push, with an
+sshd error nobody is watching for. So the old path stays as a shim and a prepared script does both
+edits in one root run. **A rename that needs two privileges is two deploys, and the order is:
+create the new name, leave the old one working, switch the pointer, then remove the old name.**
+
+### What "delete the information" means when the information is load-bearing
+
+The repo half was not a `sed`. Four of this deployment's decisions exist *because* the box was
+borrowed, and this volume argued four sections ago that they were retirable only because each one
+carried a comment saying so. Deleting those comments would have re-created the exact problem the
+move solved — a rule with no surviving reason, which nobody can evaluate and therefore nobody can
+remove.
+
+So the split is **identity out, shape in**. Gone from the whole tree, roadmap history included:
+the hostname, the IP, the neighbours' site names, their Caddyfile path, their container and
+network names, the account names, and the neutral name itself. Kept: that the box was
+borrowed, that the proxy was somebody else's, that the network was external, that the exporters
+were the host's, and that the names were deliberately neutral — every one of which is this
+project's own history and none of which identifies anybody. Seventeen files: `server/deploy/`'s
+runbook, the compose / alloy / prometheus headers, `matchsvc.ts`, two deploy test files,
+`../19-server-platform.md`, the top-level `README.md`, `../ROADMAP.md`, and roadmap volumes 40,
+42, 44, 47, 50, 52 and this one.
+
+Two of those edits were corrections rather than scrubs, and they are the reason a sweep like this
+should not be done with a regex:
+
+- This volume's own *"the borrowed box is clean"* was false when written, and is now a pointer to
+  the section you are reading.
+- `server/deploy/README.md` §7 said the retired deploy key was *"owner-confirmed as theirs to
+  clean up"*, which had quietly become a way of never doing it. It names the staged script and
+  the one command now.
+
+### Still open
+
+- **One root run on the old box**, `sudo sh ~/finish-rename.sh`: it deletes this project's retired
+  deploy key, scrubs that key line from the `authorized_keys.bak-*` files beside it, repoints the
+  co-tenant's forced command, and removes the shim. Everything else is done; this one needs a
+  password no session here has.
+- **The other repo has not caught up.** `bigtaoo/e.gamestao` still holds its own copies of the
+  deploy script and compose file under the old names. They are inert copies — the live ones on the
+  box are what run — but a re-install from that repo would undo half of this.
+
+`platform` `docs`

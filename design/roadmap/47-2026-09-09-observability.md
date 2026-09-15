@@ -39,7 +39,7 @@ is not this project's to change unilaterally, so it is recorded rather than fixe
 established the constraint that turned out to matter most:
 
 **Every service name here is `obs-`prefixed, and that is not cosmetic.** This compose
-project joins the host's shared `docker_default` network, and compose publishes each
+project joins the host's shared external network, and compose publishes each
 service NAME as a network alias on it. Their stack already answers to `loki`, `grafana`,
 `prometheus` and `promtail` there. A service called `loki` would have put two containers
 behind one DNS name on a shared network — their collector's pushes landing in our store, or

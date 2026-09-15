@@ -215,7 +215,7 @@ All three were the owner's call and all three were made:
 - **Nothing is deployed.** `main` is now 7 commits ahead of `origin/main`, and a push
   deploys both halves. Two hand steps have to precede the first push that brings adminsvc up,
   in this order, both in `server/deploy/README.md` §2: `BB_ADMIN_PASSWORD` into
-  `~/wnet-test/.env` (16-character floor; compose's `:?` fails EVERY service without it), then
+  the deploy target's `.env` (16-character floor; compose's `:?` fails EVERY service without it), then
   a `handle /admin*` block in the Caddy site file AHEAD of the catch-all. Getting the Caddy
   block wrong is not an error — it is the console's page answered by matchsvc's 404 handler,
   a blank page with a 200, which is why §4's acceptance checklist has a row for exactly that.
