@@ -12,7 +12,17 @@
  * exactly the category that runs on every call while only the happy side is ever exercised.
  */
 import { describe, it, expect, beforeEach, afterEach, inject } from 'vitest';
-import { closeMongo, connectMongo, dbName, mongoUri, requireClient, store, STORES } from '../src/mongo';
+import {
+  closeMongo,
+  connectMongo,
+  dbName,
+  mongoUri,
+  mongoUriProblem,
+  requireClient,
+  store,
+  STORES,
+} from '../src/mongo';
+import { MongoClient } from 'mongodb';
 
 const ORIGINAL_URI = process.env.BB_MONGO_URI;
 const ORIGINAL_PREFIX = process.env.BB_MONGO_DB_PREFIX;
@@ -53,6 +63,65 @@ describe('mongoUri', () => {
   it('returns the value trimmed', () => {
     process.env.BB_MONGO_URI = '  mongodb://host/  ';
     expect(mongoUri()).toBe('mongodb://host/');
+  });
+
+  it('refuses a placeholder that every presence check accepts, naming the variable', () => {
+    // The 2026-09-15 near-miss, pinned: `mongodb+srv://…` was written to the live box's
+    // `.env` by a runbook one-liner pasted verbatim, and compose's `${VAR:?}`,
+    // ci-deploy.sh's grep and the `!raw` check above ALL passed it.
+    process.env.BB_MONGO_URI = 'mongodb+srv://…';
+    expect(() => mongoUri()).toThrow(/BB_MONGO_URI contains a non-ASCII character/);
+  });
+});
+
+describe('mongoUriProblem', () => {
+  it('accepts the strings this project actually deploys and tests with', () => {
+    for (const ok of [
+      'mongodb+srv://user:pw%40word@cluster0.abcde.mongodb.net/?retryWrites=true',
+      'mongodb://host/',
+      'mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=200',
+      'mongodb://cluster.example/',
+      'mongodb://a:b@one.example.com:27017,two.example.com:27017/?replicaSet=rs0',
+    ]) {
+      expect(mongoUriProblem(ok), ok).toBeNull();
+    }
+  });
+
+  it('rejects a non-ASCII byte wherever it hides', () => {
+    // Three real ways one arrives: a pasted ellipsis, a smart quote out of a document, a
+    // full-width character from an IME. None of them is a legal URI — a password that is
+    // not ASCII has to be percent-encoded before it is one.
+    expect(mongoUriProblem('mongodb+srv://…')).toMatch(/non-ASCII/);
+    expect(mongoUriProblem('mongodb+srv://u:p’w@a.b.mongodb.net/')).toMatch(/non-ASCII/);
+    expect(mongoUriProblem('mongodb://ｈｏｓｔ/')).toMatch(/non-ASCII/);
+  });
+
+  it('rejects a scheme the driver does not speak', () => {
+    expect(mongoUriProblem('REPLACE_ME')).toMatch(/does not begin with/);
+    expect(mongoUriProblem('https://cluster0.abcde.mongodb.net')).toMatch(/does not begin with/);
+    // The near-miss class this does NOT catch on its own: an ASCII placeholder that
+    // happens to carry the right scheme. That is what the srv host rule below is for.
+    expect(mongoUriProblem('mongodb://REPLACE_ME')).toBeNull();
+  });
+
+  it('rejects an srv host that the driver would reject at DNS time, at config time instead', () => {
+    expect(mongoUriProblem('mongodb+srv://REPLACE_ME')).toMatch(/hostname, domain and tld/);
+    expect(mongoUriProblem('mongodb+srv://cluster0.mongodb')).toMatch(/hostname, domain and tld/);
+    expect(mongoUriProblem('mongodb+srv://u:p@localhost/')).toMatch(/hostname, domain and tld/);
+  });
+
+  it('never refuses a URI the driver itself would parse — the guard must not be stricter', () => {
+    // A shape check that rejects something MongoClient accepts is a config-time outage
+    // invented by this repo, which is a worse failure than the one it prevents. So every
+    // string this function calls clean is handed to the real parser.
+    for (const ok of [
+      'mongodb+srv://user:pw@cluster0.abcde.mongodb.net/',
+      'mongodb://host/',
+      'mongodb://a:b@one.example.com:27017,two.example.com:27017/?replicaSet=rs0',
+    ]) {
+      expect(mongoUriProblem(ok)).toBeNull();
+      expect(() => new MongoClient(ok)).not.toThrow();
+    }
   });
 });
 

@@ -239,8 +239,42 @@ a fixture fails a case written for exactly that.
 `check.yml` caches the mongod binary, keyed on the pinned version rather than on a lockfile hash:
 the `check` and `coverage` jobs each downloaded ~64MB per push without it.
 
+### Every gate on the connection string was a PRESENCE check, and a placeholder passed all four
+
+Found on the first attempt at the cutover, before it started. The runbook's one-liner was pasted
+verbatim, ellipsis included, and `~/blightbloom/.env` on the live box came to hold
+`BB_MONGO_URI=mongodb+srv://…` — twice, identically, for both users.
+
+What makes it worth a section is how far that value travelled. `docker-compose.yml`'s
+`${BB_MONGO_URI:?}` is satisfied by any non-empty string; `ci-deploy.sh`'s `grep -q "^$var=..*"`
+by any single character; `mongo.ts`'s `if (!raw)` by the same; and `new MongoClient('mongodb+srv://…')`
+**constructs without complaint**, because the driver's URI parser accepts `…` as a hostname. The
+first component with an opinion is the SRV lookup inside `connectMongo()`, which — correctly, per
+that module's "connect at boot, never lazily" argument — fails the service, but as a DNS error in
+five containers during a cutover window, naming neither the variable nor the cause.
+
+`mongoUriProblem()` (`src/mongo.ts`) now refuses two shapes at config time: a non-ASCII byte, which
+is never legal in a connection string (a password that is not ASCII is percent-encoded first) and is
+the signature of every way a placeholder arrives — a pasted `…`, a smart quote, a full-width IME
+character; and a scheme the driver does not speak, plus the driver's own three-label rule for
+`mongodb+srv` hosts, moved from a DNS error to a message naming the variable. `readBackupConfig`
+calls the same helper rather than restating it, because the worker reads `BB_MONGO_URI` through its
+own path and would otherwise have been the one service where a placeholder still booted — into a
+failing cycle, which is a status file somebody has to go and read.
+
+Two deliberate non-additions. A well-formed URI for the **wrong cluster** is not detectable here and
+the §5 Players-tab check is what catches it. And there is no test that `BB_ADMIN_MONGO_URI` differs
+from `BB_MONGO_URI`: `adminsvc/dbs.ts` already probes the role by attempting a real write and
+refusing to boot unless the server refuses, which is the property B1 actually claims — a string
+comparison would be a weaker restatement of a check that already exists. `ci-deploy.sh` was left
+alone for the reason the 2026-09-08 backup incident records: a change to it does nothing until
+somebody hand-reinstalls it on the box, so a guard there would read as protection that is not
+deployed.
+
 ### Not done
 
 **Stage 7 has not been RUN.** The runbook is in `server/deploy/README.md` §5 ("The MongoDB
 cutover"), and it needs two new `.env` values and a window with the services stopped. Until it
-runs, merging this to `main` deploys a server pointed at an empty cluster.
+runs, merging this to `main` deploys a server pointed at an empty cluster. As of 2026-09-15 the
+box's `.env` holds the placeholder described above in both variables — it must be corrected before
+anything restarts those containers, because presence is all the deploy path checks.

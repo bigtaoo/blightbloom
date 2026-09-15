@@ -9,7 +9,7 @@
  * interval is refused rather than clamped into something plausible.
  */
 
-import type { StoreName } from '../mongo';
+import { mongoUriProblem, type StoreName } from '../mongo';
 
 /** One resolved configuration. */
 export interface BackupConfig {
@@ -97,10 +97,19 @@ function positive(env: NodeJS.ProcessEnv, name: string, fallback: number, intege
  * untested one.
  */
 export function readBackupConfig(env: NodeJS.ProcessEnv): BackupConfig {
-  if (pick(env, 'BB_MONGO_URI') === undefined) {
+  const uri = pick(env, 'BB_MONGO_URI');
+  if (uri === undefined) {
     throw new BackupConfigError(
       'BB_MONGO_URI is not set: there is no cluster to back up (a backup worker with nothing to read is a silent no-op)',
     );
+  }
+  // The shape check is shared with `mongoUri()` rather than restated, because this worker
+  // reads the variable through its own path and would otherwise be the one service where a
+  // placeholder URI still boots — into a cycle that fails, which is a status file somebody
+  // has to go and read rather than a refusal at start.
+  const problem = mongoUriProblem(uri);
+  if (problem) {
+    throw new BackupConfigError(`BB_MONGO_URI ${problem} (see server/deploy/README.md section 5)`);
   }
   return {
     sources: BACKUP_STORES,

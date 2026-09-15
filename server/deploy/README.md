@@ -120,7 +120,8 @@ openssl rand -hex 16   # BB_GRAFANA_ADMIN_PASSWORD
 ```
 
 Two more are not generated but copied out of Atlas, and `compose up` refuses EVERY service
-until both are set (`ci-deploy.sh` checks each by name first, so the deploy log says which):
+until both are PRESENT (`ci-deploy.sh` checks each by name first, so the deploy log says
+which). **Present, not valid** — that distinction is the whole of the next paragraph:
 
 - `BB_MONGO_URI` — the cluster's connection string. matchsvc, billsvc and the backup worker
   use it.
@@ -128,6 +129,20 @@ until both are set (`ci-deploy.sh` checks each by name first, so the deploy log 
   `accounts`, `billing` and `analytics`, `readWrite` on `ops`, and nothing else. It is what
   is left of decision B1 now that the console has no `:ro` mounts and no `readOnly: true`
   handles, and the console proves it at boot — see "The MongoDB cutover" in §5.
+
+**Paste the real strings, not this file's placeholders.** Every gate between an operator and
+the cluster used to be a presence check — compose's `${VAR:?}`, the `grep` in `ci-deploy.sh`,
+`mongo.ts`'s `if (!raw)` — and a `.env` line reading `BB_MONGO_URI=mongodb+srv://…` passed all
+three, as does `new MongoClient()`: the driver's parser accepts `…` as a hostname. It died at
+SRV resolution instead, as a DNS error in five containers naming neither the variable nor the
+cause. `mongoUriProblem()` in `src/mongo.ts` now refuses a non-ASCII or wrong-scheme URI at
+config time in both paths that read the variable (every service, and the backup worker's own
+`readBackupConfig`). Two things it still cannot see: a well-formed string for the WRONG
+cluster, and correct credentials — §5's Players-tab check is what catches the first.
+
+Editing `.env` over `ssh` is best done with an editor on the box rather than a one-liner:
+a pasted placeholder survives a copy, and PowerShell expands `$` inside double quotes, which
+silently truncates an Atlas password containing one.
 
 `BB_MONGO_DB_PREFIX` is optional and unset in production. Setting it (`staging`, say) moves
 the four databases to `staging_accounts` and friends, so one cluster can host a second
@@ -527,7 +542,10 @@ the order is not a suggestion: the migration reads a snapshot, and anything writ
 files after it reads them stays behind.
 
 Before starting, `~/blightbloom/.env` needs two new values, both of which `compose up` will
-refuse to start without (§0 "Secrets"):
+refuse to start without — and which, since 2026-09-15, are also checked for SHAPE rather than
+mere presence, because the first attempt at this step wrote the placeholder below to the live
+box and every gate accepted it (§0 "Secrets" has the account). Edit `.env` with an editor on
+the box; do not paste a one-liner out of this file:
 
 - `BB_MONGO_URI` — the cluster's connection string, for matchsvc, billsvc and the backup
   worker.

@@ -56,6 +56,16 @@ describe('readBackupConfig — sources', () => {
     expect(() => readBackupConfig({ BB_MONGO_URI: '   ' })).toThrow(/BB_MONGO_URI is not set/);
   });
 
+  it('REFUSES a present-but-unusable URI, because this worker has its own config path', () => {
+    // `mongoUri()`'s shape check does not cover this file — the worker reads the variable
+    // itself — so without this it would be the one service where a runbook placeholder
+    // still boots, into a failing cycle that nobody sees until a restore is needed. Same
+    // no-op, one layer further in.
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'mongodb+srv://…' })).toThrow(BackupConfigError);
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'mongodb+srv://…' })).toThrow(/non-ASCII/);
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'REPLACE_ME' })).toThrow(/does not begin with/);
+  });
+
   it('names only stores mongo.ts declares', () => {
     // The successor to "the source var names are shared with matchsvc/billsvc on purpose".
     // That sharing existed so a rename could not leave this worker reading a path nobody
