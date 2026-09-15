@@ -110,7 +110,7 @@ export interface TelemetryRouteDeps {
  */
 export { RateLimiter, clientKey };
 
-export const postClientLog: RouteHandler<TelemetryRouteDeps> = (req, res, _url, deps) => {
+export const postClientLog: RouteHandler<TelemetryRouteDeps> = async (req, res, _url, deps) => {
   const now = deps.now ?? Date.now;
   const at = now();
 
@@ -121,7 +121,7 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = (req, res, _url, 
   }
 
   // Resolved before the body is read so the answer never depends on how big the body was.
-  const session = requireAuth(req, deps.auth);
+  const session = await requireAuth(req, deps.auth);
 
   readJsonUpTo(req, CLIENT_LOG_BODY_LIMIT, (body) => {
     const batch = parseBatch(body);
@@ -151,14 +151,14 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = (req, res, _url, 
  * the request, so it is wrapped — a database error must answer `accepted: 0` and be logged,
  * never surface to the player and never take the process down.
  */
-export const postClientEvents: RouteHandler<TelemetryRouteDeps> = (req, res, _url, deps) => {
+export const postClientEvents: RouteHandler<TelemetryRouteDeps> = async (req, res, _url, deps) => {
   const now = deps.now ?? Date.now;
 
   if (!deps.limiter.take(clientKey(req), now())) {
     return send(res, 200, { ok: true, accepted: 0 });
   }
 
-  const session = requireAuth(req, deps.auth);
+  const session = await requireAuth(req, deps.auth);
   const db = deps.analyticsDb ?? null;
 
   readJsonUpTo(req, CLIENT_EVENTS_BODY_LIMIT, (body) => {

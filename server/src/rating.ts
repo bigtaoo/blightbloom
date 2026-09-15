@@ -26,7 +26,8 @@
  * Omitting `teamIds` (every pre-squad caller) defaults each index to its own singleton
  * team, which degenerates the math back to the original per-seat formula exactly.
  */
-import type { DatabaseSync } from 'node:sqlite';
+import type { ClientSession } from 'mongodb';
+import type { AccountsStore } from './db';
 
 export const K_FACTOR = 32;
 export const DEFAULT_RATING = 1000;
@@ -101,12 +102,12 @@ export type ApplyMatchOnceResult =
  * what an account IS — a guest/bot's scaffold `seat:{roomId}:{seatIdx}` id (see
  * ladderReport.ts) works exactly like a real one, it just resets every restart.
  *
- * Persists to db.ts's `ratings` table when a `DatabaseSync` is passed in (design/16
- * added that table for exactly this — matchsvc.ts wires its own `openDb()` result
- * through), so a real player's rating now survives a server restart the same way
- * their account/blueprints already do. Falls back to an in-memory `Map` when
- * constructed with no db (every existing test, plus any future caller that wants a
- * scratch store) — same value, same shape, just not durable.
+ * Persists to db.ts's `ratings` collection when an `AccountsStore` is passed in (design/16
+ * added that store for exactly this — matchsvc.ts wires its own connection through), so a
+ * real player's rating survives a restart the same way their account/blueprints already do.
+ * Falls back to an in-memory `Map` when constructed with no store (every existing test,
+ * plus any future caller that wants a scratch store) — same value, same shape, just not
+ * durable.
  *
  * `applyMatchOnce` is the exactly-once entry point (design/19 §3, closing ROADMAP 8.1's one
  * open item) and the one every real report goes through; `applyMatch` stays what design/15
@@ -114,45 +115,54 @@ export type ApplyMatchOnceResult =
  */
 export class RatingStore {
   private readonly cache = new Map<string, number>();
-  /** The no-db backend's `rating_reports` (see `applyMatchOnce`). */
+  /** The no-store backend's `ratingReports` (see `applyMatchOnce`). */
   private readonly claimed = new Set<string>();
 
   constructor(
-    private readonly db?: DatabaseSync,
-    /** Injected only so a test can pin `rating_reports.applied_at`; production wants the clock. */
+    private readonly store?: AccountsStore,
+    /** Injected only so a test can pin `ratingReports.appliedAt`; production wants the clock. */
     private readonly nowMs: () => number = () => Date.now(),
   ) {}
 
-  get(accountId: string): number {
-    if (this.db) {
-      const row = this.db.prepare('SELECT rating FROM ratings WHERE account_id = ?').get(accountId) as
-        | { rating: number }
-        | undefined;
+  async get(accountId: string, session?: ClientSession): Promise<number> {
+    if (this.store) {
+      const row = await this.store.ratings.findOne({ _id: accountId }, { session });
       return row?.rating ?? DEFAULT_RATING;
     }
     return this.cache.get(accountId) ?? DEFAULT_RATING;
   }
 
-  /** Apply one verified match's placements; returns every account's {before, after}.
+  /**
+   * Apply one verified match's placements; returns every account's {before, after}.
    * `teamIds` (optional, index-aligned with `accountIds`/`places`) makes the rating
-   * squad-aware — see `computeRatingDeltas`'s doc comment. */
-  applyMatch(accountIds: readonly string[], places: readonly number[], teamIds?: readonly number[]): RatingChange[] {
-    const before = accountIds.map((id) => this.get(id));
+   * squad-aware — see `computeRatingDeltas`'s doc comment.
+   *
+   * `session` is threaded through rather than read from a field because `applyMatchOnce`
+   * calls this from INSIDE its transaction: a write that omits the session silently lands
+   * outside it and survives the rollback, which is the one failure the claim exists to
+   * prevent.
+   */
+  async applyMatch(
+    accountIds: readonly string[],
+    places: readonly number[],
+    teamIds?: readonly number[],
+    session?: ClientSession,
+  ): Promise<RatingChange[]> {
+    const before: number[] = [];
+    for (const id of accountIds) before.push(await this.get(id, session));
     const deltas = computeRatingDeltas(before, places, teamIds);
-    return accountIds.map((accountId, i) => {
+    const changes: RatingChange[] = [];
+    for (const [i, accountId] of accountIds.entries()) {
       const b = before[i]!;
       const after = b + deltas[i]!;
-      if (this.db) {
-        this.db
-          .prepare(
-            'INSERT INTO ratings (account_id, rating) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET rating = excluded.rating',
-          )
-          .run(accountId, after);
+      if (this.store) {
+        await this.store.ratings.updateOne({ _id: accountId }, { $set: { rating: after } }, { upsert: true, session });
       } else {
         this.cache.set(accountId, after);
       }
-      return { accountId, before: b, after };
-    });
+      changes.push({ accountId, before: b, after });
+    }
+    return changes;
   }
 
   /**
@@ -179,46 +189,52 @@ export class RatingStore {
    * Throws whatever the write threw, after rolling back. The caller (`routes/rating.ts`)
    * turns that into a 5xx precisely so the retry ladder gets to try again.
    *
-   * `BEGIN IMMEDIATE` is deliberately OUTSIDE the try: a second connection already holding
-   * the write lock makes it throw with no transaction open, and a `ROLLBACK` there would
-   * throw a second, less informative error over the first.
+   * THE CALLBACK MUST BE SAFE TO RUN TWICE. `withTransaction` re-runs its body on a
+   * transient transaction error, which is a shape `BEGIN IMMEDIATE` never had. Two
+   * consequences are designed for rather than discovered:
    *
-   * TWO EQUIVALENT MUTANTS, recorded rather than papered over (mutation battery, 2026-09-05).
-   * Downgrading `BEGIN IMMEDIATE` to a plain deferred `BEGIN` changes nothing *today*, because
-   * the claim is the transaction's FIRST statement and it is a write — so the write lock is
-   * taken at the same instant either way. `IMMEDIATE` stays because it says what this
-   * transaction is for, and because the equivalence quietly ends the moment a read is added
-   * ahead of the claim, which is exactly the mistake design/19 §4's AMENDMENT 2 is about.
-   * And `ROLLBACK` vs `COMMIT` on the lost-claim branch is genuinely indistinguishable —
-   * nothing was written — so no test can tell them apart and none pretends to.
+   *  - `appliedAt` is read from the clock ONCE, out here, so a retried attempt claims the
+   *    same instant it would have claimed the first time.
+   *  - `outcome` is assigned fresh at the top of every attempt. A `let` that accumulated
+   *    across attempts would let a losing first attempt decide a winning second one.
+   *
+   * The retry itself is harmless because the previous attempt's writes were rolled back:
+   * the claim is unclaimed again, so it is re-won rather than seen as somebody else's.
    */
-  applyMatchOnce(
+  async applyMatchOnce(
     reportKey: string,
     accountIds: readonly string[],
     places: readonly number[],
     teamIds?: readonly number[],
-  ): ApplyMatchOnceResult {
-    const db = this.db;
-    if (!db) return this.applyMatchOnceInMemory(reportKey, accountIds, places, teamIds);
+  ): Promise<ApplyMatchOnceResult> {
+    const store = this.store;
+    if (!store) return this.applyMatchOnceInMemory(reportKey, accountIds, places, teamIds);
 
-    db.exec('BEGIN IMMEDIATE');
+    const appliedAt = this.nowMs();
+    const session = store.client.startSession();
     try {
-      const claim = db
-        .prepare('INSERT INTO rating_reports (report_key, applied_at) VALUES (?, ?) ON CONFLICT(report_key) DO NOTHING')
-        .run(reportKey, this.nowMs());
-      if (Number(claim.changes) !== 1) {
-        // Nothing was written, so there is nothing to commit — and unlike billsvc's
-        // `settle`, losing this claim raises no follow-up question (there is no second
-        // account whose report this could be), so the transaction just ends.
-        db.exec('ROLLBACK');
-        return { applied: false };
-      }
-      const changes = this.applyMatch(accountIds, places, teamIds);
-      db.exec('COMMIT');
-      return { applied: true, changes };
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
+      let outcome: ApplyMatchOnceResult = { applied: false };
+      await session.withTransaction(async () => {
+        outcome = { applied: false };
+        // THE CLAIM, and it is the transaction's first statement on purpose. `upsertedCount`
+        // is the whole mechanism — a find followed by an insert would answer the question
+        // before holding the lock that would make the answer true (design/19 §4 AMENDMENT 2).
+        const claim = await store.ratingReports.updateOne(
+          { _id: reportKey },
+          { $setOnInsert: { appliedAt } },
+          { upsert: true, session },
+        );
+        if (claim.upsertedCount !== 1) {
+          // Nothing to commit — and unlike billsvc's `settle`, losing this claim raises no
+          // follow-up question (there is no second account whose report this could be), so
+          // the transaction simply ends having written nothing.
+          return;
+        }
+        outcome = { applied: true, changes: await this.applyMatch(accountIds, places, teamIds, session) };
+      });
+      return outcome;
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -226,20 +242,20 @@ export class RatingStore {
    * The no-db backend's `applyMatchOnce`. A `Set` is the claim table and a snapshot of the
    * touched keys is the transaction — hand-rolled so the two backends answer identically,
    * including the rollback. Worth the eight lines: every RatingStore test that does not
-   * specifically want SQLite runs on this path, so a memory store that "deduped" but left a
+   * specifically want the cluster runs on this path, so a memory store that "deduped" but left a
    * half-applied match behind would make those tests agree with a store that cannot happen.
    */
-  private applyMatchOnceInMemory(
+  private async applyMatchOnceInMemory(
     reportKey: string,
     accountIds: readonly string[],
     places: readonly number[],
     teamIds?: readonly number[],
-  ): ApplyMatchOnceResult {
+  ): Promise<ApplyMatchOnceResult> {
     if (this.claimed.has(reportKey)) return { applied: false };
     this.claimed.add(reportKey);
     const snapshot = accountIds.map((id) => [id, this.cache.get(id)] as const);
     try {
-      return { applied: true, changes: this.applyMatch(accountIds, places, teamIds) };
+      return { applied: true, changes: await this.applyMatch(accountIds, places, teamIds) };
     } catch (e) {
       this.claimed.delete(reportKey);
       for (const [id, prior] of snapshot) {

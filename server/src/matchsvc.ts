@@ -63,7 +63,7 @@
  * is chosen per response by `GameRegistry` (ROADMAP 8.6, design/19 §6) and never enters
  * the ticket payload — the ticket is a seat authorization and knows no topology.
  */
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Matchmaker } from './Matchmaker';
@@ -82,7 +82,8 @@ import { createFlagClient, type FlagClient } from './flags/client';
 import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import { GameRegistry } from './GameRegistry';
 import { spawnBotClient } from './BotClient';
-import { openDb } from './db';
+import { accountsStore, ensureAccountsIndexes, type AccountsStore } from './db';
+import { connectMongo, store as mongoStore } from './mongo';
 import { openAnalyticsDb } from './analytics/db';
 import { startRollupJob, type RollupJob } from './analytics/job';
 import { AuthService } from './AuthService';
@@ -118,9 +119,14 @@ export interface MatchsvcServerOptions {
    * care passes nothing and gets the compiled-in defaults.
    */
   flags?: FlagClient;
-  /** DB path override (design/16-accounts.md) — tests pass `':memory:'` for isolation;
-   * defaults to `openDb`'s own real-file default. */
-  dbPath?: string;
+  /**
+   * The control plane's collections (design/16-accounts.md). INJECTED rather than opened
+   * here, which is what keeps this builder synchronous: connecting to the cluster is
+   * asynchronous, and making the builder async would ripple into every test that constructs
+   * a server. `main` connects once and hands the result in; a test passes a throwaway
+   * database from `test/mongoHarness.ts`.
+   */
+  store: AccountsStore;
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
   /**
@@ -194,7 +200,7 @@ export interface MatchsvcServerOptions {
  * be asserted without a network stub — the exact layer that let design/16-accounts.md's
  * missing-`authorization`-header CORS bug slip past every other test.
  */
-export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
+export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   const secret = opts.secret ?? ticketSecret().secret;
   // Seeds only need to differ per room (the engine derives all determinism from seed +
   // inputs); a counter off the start time avoids Math.random and cross-restart collision.
@@ -257,14 +263,14 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
   // which may legitimately be nothing (see `GameRegistry.pick`). The route group asks for
   // the instance and does the stamping, so it can refuse BEFORE consuming a queue entry.
   const pickGameserver = () => registry.pick();
-  const db = openDb(opts.dbPath);
-  const ratings = new RatingStore(db);
+  const store = opts.store;
+  const ratings = new RatingStore(store);
   const parties = new PartyService({
     nowMs: () => Date.now(),
     newPartyId: () => randomUUID(),
     newCode: partyRoutes.randomCode,
   });
-  const auth = new AuthService(db);
+  const auth = new AuthService(store);
   // Portal login (design/20 "account integration"). The key store is constructed eagerly but
   // fetches lazily — nothing leaves this process until the first `/auth/portal` call, so a
   // deployment that never serves a portal build makes no outbound request at all.
@@ -294,7 +300,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     ratings,
     parties,
     auth,
-    db,
+    store,
     portal,
     billing: opts.billing,
     log,
@@ -305,13 +311,17 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     fetchImpl: opts.fetchImpl,
   };
 
-  const server = createServer((req, res) => {
-    if (req.method === 'OPTIONS') return send(res, 204, {});
+  /**
+   * The dispatch chain. Returns whatever the matched handler returns, which since the 2026-09-15
+   * move to MongoDB may be a promise — see `route`'s caller for why that has to be caught.
+   */
+  const dispatch = (req: IncomingMessage, res: ServerResponse): void | Promise<void> => {
+    if (req.method === 'OPTIONS') return void send(res, 204, {});
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
     const path = url.pathname;
 
     if (req.method === 'GET' && path === '/health') {
-      return send(res, 200, { ok: true, service: 'daydayup-matchsvc' });
+      return void send(res, 200, { ok: true, service: 'daydayup-matchsvc' });
     }
 
     // Prometheus scrapes this over the compose network. matchsvc is the ONE service Caddy
@@ -322,9 +332,9 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     // outside" means here, and the answer is a plain 404 rather than a 403 — a 403 confirms
     // the route exists.
     if (req.method === 'GET' && path === '/metrics') {
-      if (req.headers['x-forwarded-for'] !== undefined) return send(res, 404, { error: 'not found' });
+      if (req.headers['x-forwarded-for'] !== undefined) return void send(res, 404, { error: 'not found' });
       res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
-      return res.end(renderMetrics(matchsvcMetrics(matchmaker, registry, rollup)));
+      return void res.end(renderMetrics(matchsvcMetrics(matchmaker, registry, rollup)));
     }
 
     if (req.method === 'POST' && path === telemetryRoutes.CLIENT_LOG_PATH) {
@@ -386,7 +396,40 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions = {}): Server {
     }
 
     send(res, 404, { error: 'not found' });
+  };
+
+  /**
+   * The ERROR BOUNDARY, and it is new with the MongoDB port rather than tidiness.
+   *
+   * Until 2026-09-15 every handler was synchronous over a local SQLite file: a throw was a
+   * programming bug, it was rare, and there was no boundary here at all. Handlers now await a
+   * network database, so a transient failure — a failover, a pool timeout, a dropped
+   * connection to Atlas — arrives as a REJECTED PROMISE on an ordinary request. With no
+   * boundary Node treats that as an unhandled rejection and takes the whole process down,
+   * turning a blip that should have been one 500 into an outage for every player connected to
+   * this service.
+   *
+   * `headersSent` is checked because a handler that already started a response cannot be given
+   * a status code; there the connection is simply destroyed, which is the only honest ending.
+   */
+  const server = createServer((req, res) => {
+    let result: void | Promise<void>;
+    try {
+      result = dispatch(req, res);
+    } catch (e) {
+      return failRequest(res, e);
+    }
+    if (result) void result.catch((e: unknown) => failRequest(res, e));
   });
+
+  function failRequest(res: ServerResponse, e: unknown): void {
+    log.error('matchsvc: request failed', { error: e instanceof Error ? e.message : String(e) });
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    send(res, 500, { error: 'internal error' });
+  }
 
   // Stopping both background things here rather than exposing them: the builder's return
   // type is a plain `Server` and every caller already knows how to close one. The flag
@@ -468,10 +511,18 @@ export function startupTarget(registry: GameRegistry): string {
   return registry.pick()?.wsUrl ?? '(no gameserver — /find will answer 503)';
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const log = createLogger('matchsvc');
   const registry = new GameRegistry();
-  const server = createMatchsvcServer({ registry, log });
+  // Connect BEFORE binding a port. A bad URI, a firewalled cluster or a wrong password is a
+  // boot failure here rather than a 500 on some player's first request — the same posture
+  // `billsvc/startupGuard.ts` takes toward its own configuration. `ensureAccountsIndexes` is
+  // idempotent and runs on every boot, which is what keeps a freshly created Atlas database
+  // correct without a separate migration step.
+  await connectMongo();
+  const accountsDb = mongoStore('accounts');
+  await ensureAccountsIndexes(accountsDb);
+  const server = createMatchsvcServer({ registry, log, store: accountsStore(accountsDb) });
   server.listen(PORT, HOST, () => {
     log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
     // Arms the flag poll, and does one immediate cycle — so a restarted process is on the
@@ -487,5 +538,11 @@ function main(): void {
 // imported by a test — the ESM equivalent of `require.main === module`, needed now that
 // `createMatchsvcServer` is a real importable export (design/16-accounts.md).
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  // `main` awaits the cluster now, so its rejection has to be handled here or it becomes an
+  // unhandled rejection with no log line at all — which is precisely the boot failure an
+  // operator most needs to read.
+  main().catch((e: unknown) => {
+    console.error(`[blightbloom] matchsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+  });
 }

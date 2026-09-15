@@ -51,7 +51,7 @@
  * enum and "a purchase-sourced entitlement must carry an order id" are enforced by the
  * server against every writer, that same `mongosh` prompt included.
  */
-import type { Collection, Db } from 'mongodb';
+import type { Collection, Db, MongoClient, ObjectId } from 'mongodb';
 
 /** One account. `_id` is the account id the rest of the server passes around as a string. */
 export interface AccountDoc {
@@ -96,7 +96,13 @@ export interface MetaStateDoc {
  *  blueprint/character ownership lives here, because a whole-blob upsert is a free-money
  *  hole once those are sold. */
 export interface EntitlementDoc {
-  _id: string;
+  /** An ObjectId rather than a string, and that is load-bearing: the SQLite table keyed on
+   *  `INTEGER PRIMARY KEY` and `list()` ordered by it to answer "oldest grant first". An
+   *  ObjectId embeds its creation time and sorts the same way, so that ordering survives
+   *  without adding a sequence nothing else needs. Ordering by `grantedAt` instead would tie
+   *  for grants minted in one millisecond — which is exactly what a settled multi-SKU order
+   *  produces. */
+  _id: ObjectId;
   accountId: string;
   sku: string;
   source: 'purchase' | 'grant' | 'event' | 'starter' | 'drop';
@@ -127,6 +133,11 @@ export interface RatingReportDoc {
  *  `DatabaseSync` used to be — see `test/mongoHarness.ts` on why nothing reaches for a
  *  process-wide handle instead. */
 export interface AccountsStore {
+  /** The pooled client, carried alongside the collections because a transaction needs
+   *  `startSession()` and a `Collection` does not expose one. Every multi-document write in
+   *  this plane (`rating.ts`'s settlement, `routes/internalEntitlements.ts`'s grant) starts
+   *  its session here. */
+  client: MongoClient;
   accounts: Collection<AccountDoc>;
   sessions: Collection<SessionDoc>;
   ratings: Collection<RatingDoc>;
@@ -148,6 +159,7 @@ export const CI_COLLATION = { locale: 'en', strength: 2 } as const;
 
 export function accountsStore(db: Db): AccountsStore {
   return {
+    client: db.client,
     accounts: db.collection<AccountDoc>('accounts'),
     sessions: db.collection<SessionDoc>('sessions'),
     ratings: db.collection<RatingDoc>('ratings'),

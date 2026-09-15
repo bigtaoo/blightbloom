@@ -24,11 +24,11 @@ import {
   sanitizeAuditValue,
   type InternalVerifier,
 } from '../internalAuth';
-import { readJson, send, type RouteHandler } from './http';
+import { readJsonBody, send, type RouteHandler } from './http';
 
 /**
  * A sanity bound on the dedupe key, which becomes a PRIMARY KEY value. `ladderReport.ts`
- * produces ~53 characters (a UUID room id plus a 16-hex digest); `readJson` already caps the
+ * produces ~53 characters (a UUID room id plus a 16-hex digest); `readJsonBody` already caps the
  * whole body at 4 KB, so this is not the size defence — it is the "this is not a key we
  * generated" signal, which is worth refusing loudly rather than storing.
  */
@@ -50,7 +50,7 @@ export interface RatingRouteDeps {
 /** `GET /rating/:accountId` — checked after `POST /rating/report`, which it would shadow. */
 export const RATING_LOOKUP_PATH = /^\/rating\/([^/]+)$/;
 
-export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) => {
+export const postReport: RouteHandler<RatingRouteDeps> = async (req, res, _url, deps) => {
   const verifier = deps.internalAuth ?? createInternalVerifier(internalKeys().registry);
   const auth = verifier.verify(req.headers);
   if (!auth.ok) {
@@ -62,7 +62,8 @@ export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) 
     return send(res, 401, { error: 'unauthorized' });
   }
 
-  readJson(req, (body) => {
+  {
+    const body = await readJsonBody(req);
     const { accountIds, places, teamIds, reportKey } =
       (body as { accountIds?: unknown; places?: unknown; teamIds?: unknown; reportKey?: unknown }) ?? {};
     if (!Array.isArray(accountIds) || !Array.isArray(places) || accountIds.length !== places.length) {
@@ -79,9 +80,9 @@ export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) 
       // A THROWN apply is a 5xx, not an escaped exception. `applyMatchOnce` rolls its claim
       // back before rethrowing, so the report has provably not been applied — and a 5xx is
       // the one status `internalFetch` retries, which is exactly what should happen next.
-      // Without this the throw would escape a `req.on('end')` handler, where node answers
-      // nothing at all and the caller waits out its own timeout instead.
-      send(res, 200, applyReport(deps, accountIds as string[], places as number[], teamIds as number[] | undefined, reportKey));
+      // Kept as a local try/catch rather than left to matchsvc's error boundary, because
+      // the log line below names the report — which is the whole point of catching it here.
+      send(res, 200, await applyReport(deps, accountIds as string[], places as number[], teamIds as number[] | undefined, reportKey));
     } catch (e) {
       // `sanitizeAuditValue` for the same reason `internalAuth.ts` uses it on the caller
       // claim: `reportKey` arrives in a request body, and a newline in it would forge a
@@ -93,7 +94,7 @@ export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) 
       );
       send(res, 500, { error: 'rating apply failed' });
     }
-  });
+  }
 };
 
 /**
@@ -118,28 +119,28 @@ export const postReport: RouteHandler<RatingRouteDeps> = (req, res, _url, deps) 
  * hole to keep small: the route is internal-key gated, and anyone who can reach it can
  * already post whatever placements they like.
  */
-function applyReport(
+async function applyReport(
   deps: RatingRouteDeps,
   accountIds: string[],
   places: number[],
   teamIds: number[] | undefined,
   reportKey: string | undefined,
-): { duplicate: boolean; changes: RatingChange[]; reportKey?: string } {
+): Promise<{ duplicate: boolean; changes: RatingChange[]; reportKey?: string }> {
   if (reportKey === undefined) {
     console.warn(
       '[blightbloom] matchsvc: /rating/report with no reportKey — applied WITHOUT the ' +
         'exactly-once claim (design/19 §3). A retried delivery of this report will double-apply it; ' +
         'the sender is running a pre-8.1-followup gameserver.',
     );
-    return { duplicate: false, changes: deps.ratings.applyMatch(accountIds, places, teamIds) };
+    return { duplicate: false, changes: await deps.ratings.applyMatch(accountIds, places, teamIds) };
   }
-  const result = deps.ratings.applyMatchOnce(reportKey, accountIds, places, teamIds);
+  const result = await deps.ratings.applyMatchOnce(reportKey, accountIds, places, teamIds);
   return result.applied
     ? { duplicate: false, reportKey, changes: result.changes }
     : { duplicate: true, reportKey, changes: [] };
 }
 
-export const getRating: RouteHandler<RatingRouteDeps> = (_req, res, url, deps) => {
+export const getRating: RouteHandler<RatingRouteDeps> = async (_req, res, url, deps) => {
   const accountId = decodeURIComponent(url.pathname.match(RATING_LOOKUP_PATH)![1]!);
-  send(res, 200, { accountId, rating: deps.ratings.get(accountId) });
+  send(res, 200, { accountId, rating: await deps.ratings.get(accountId) });
 };
