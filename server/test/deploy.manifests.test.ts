@@ -46,17 +46,17 @@ const compose = read('docker-compose.yml');
 const dockerfile = read('Dockerfile');
 const ciDeploy = read('deploy/ci-deploy.sh');
 const deployPkg = JSON.parse(read('deploy/package.json')) as { dependencies: Record<string, string> };
-const runbook = read('deploy/README.md');
 const workflow = read('../.github/workflows/server-deploy.yml');
 
 /**
- * The bundles compose actually runs — `entries` minus the tools.
+ * The bundles compose actually runs — `entries` minus any tools.
  *
- * `scripts/build.mjs` builds one more file than there are services: `migrate.mjs`, the
- * one-time cutover (server/deploy/README.md §5), which has no compose entry because nothing
- * runs it on a schedule. Filtering on the entry's own `service` flag rather than on the name
- * keeps every cross-check below asserting the real rule — every service bundle is named by a
- * service, and every service names a bundle — instead of an exemption list.
+ * Every entry is a service today. The filter is what makes that a CHECKED fact rather than
+ * an assumption: `scripts/build.mjs` built a sixth bundle for one day (`migrate.mjs`, the
+ * one-time cutover), and a tool has no compose `command:` to be cross-checked against. The
+ * next one is filtered out here instead of being added to an exemption list, and
+ * `toolBundles` is what the case at the bottom of this describe holds to the rules that do
+ * apply to it.
  */
 const bundleNames: string[] = (entries as Array<{ out: string; service: boolean }>)
   .filter((e) => e.service)
@@ -504,31 +504,27 @@ describe('the bundle filenames', () => {
   });
 
   /**
-   * THE RUNBOOK'S COMMAND IS A BUNDLE THAT EXISTS (2026-09-16).
+   * A TOOL BUNDLE IS STILL A BUNDLE (2026-09-16).
    *
-   * The one assertion in this file written after the failure rather than before it. §5's
-   * cutover said `node --import tsx/esm scripts/migrateFromSqlite.ts`, run inside an image
-   * whose Dockerfile is `COPY dist/*.mjs ./` — no `scripts/`, no TypeScript, no `tsx`. Every
-   * test was green, because the migration's logic was covered and the sentence an operator
-   * would type was covered by nothing. A runbook command is deployment configuration too;
-   * this is where it gets checked against the artifact like every other copy of a filename
-   * here.
+   * Written after a failure rather than before one, and kept after the tool that caused it
+   * was deleted. The cutover runbook told an operator to run a TypeScript file under `tsx`
+   * inside an image whose Dockerfile is `COPY dist/*.mjs ./` — no `scripts/`, no TypeScript,
+   * no `tsx`. Every test was green, because the migration's logic was covered and the
+   * sentence an operator would type was covered by nothing.
    *
-   * It is also the reason `service` exists on a build entry: `migrate.mjs` is shipped, has no
-   * compose service, and must not be mistaken for a missing one.
+   * `toolBundles` is empty today, so what this case pins now is the SHAPE the next one has
+   * to arrive in: no compose service may run it, and the deploy payload still has to carry
+   * it. It reads as a no-op until the day somebody adds an entry, which is the day it earns
+   * its place.
    */
-  it('name the one-time migration, which ships without being a service', () => {
-    expect(toolBundles).toEqual(['migrate.mjs']);
-    // Not run by anything on a schedule — an operator runs it once, by hand.
-    expect(APP_SERVICES.map((n) => services[n]!.command[1])).not.toContain('migrate.mjs');
-    // It still arrives: the payload ships `dist` as a whole directory, so the bundle needs
-    // no entry of its own in either list. (`ci-deploy.sh`'s check is "no half-finished
-    // deploy", and a one-time tool missing does not make one.)
+  it('hold a tool bundle to the rules that do apply to it', () => {
+    // The payload ships `dist` whole, so a tool bundle needs no entry in either file list —
+    // this is the assumption that lets the loops above be about services only.
     expect(/tar czf - -C server (.+?)\s*\|/.exec(workflow)?.[1]?.split(/\s+/) ?? []).toContain('dist');
-    // And the runbook types the name the build actually produces. The old command, which
-    // could not run in any image this tree builds, must not come back.
-    expect(runbook).toContain('node migrate.mjs --dir=/data');
-    expect(runbook).not.toContain('tsx/esm scripts/migrateFromSqlite.ts');
+    for (const tool of toolBundles) {
+      expect(APP_SERVICES.map((n) => services[n]!.command[1]), tool).not.toContain(tool);
+      expect(bundleNames, tool).not.toContain(tool);
+    }
   });
 });
 

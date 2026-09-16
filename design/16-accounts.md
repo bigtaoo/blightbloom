@@ -14,16 +14,18 @@ That argument was true and, on its own terms, still is. It was not refuted; its 
 - **Uniqueness semantics differ where it matters.** MongoDB's unique index treats a MISSING field as one `null` and admits exactly one such document, where SQLite treats every NULL as distinct. Every index over a formerly-nullable column is therefore PARTIAL. `server/test/mongo.semantics.test.ts` pins this and three other server behaviours the port depends on.
 - **Reads are asynchronous**, which removed an accident registration was relying on — see `db.ts` and volume 66 on the case-insensitive unique index, and on the request error boundary `matchsvc.ts` grew at the same time.
 
-**MIGRATION: the code has moved, the DATA has not.** As of 2026-09-15 all four stores —
-`accounts`, `billing`, `analytics`, `ops` — are logical databases on the cluster, adminsvc and the
-backup worker read them through the driver, and `node:sqlite` is imported by exactly one file in
-this repository (`scripts/migrateFromSqlite.ts`, which carries its own deletion date).
+**MIGRATION: DONE, both halves.** The code moved 2026-09-15 — all four stores (`accounts`,
+`billing`, `analytics`, `ops`) are logical databases on the cluster and adminsvc and the backup
+worker read them through the driver. The DATA moved **2026-09-16**: 175 rows off the deployed
+box's four `.db` files, verified through the ops console. `node:sqlite` is imported nowhere in
+this repository; the one-time migration was deleted with the data it carried, which was its
+stated expiry from the day it was written.
 
-**What has NOT happened is the one-time migration of live player data off the deployed box.**
-Until it runs, a deployed matchsvc reads an EMPTY cluster. The runbook is in
-`server/deploy/README.md` §5 ("The MongoDB cutover"); it needs two new `.env` values and a window
-with the services stopped, and running it a second time afterwards is refused by a completion
-marker rather than by an operator remembering. Volumes 66 and 67 have the full account.
+`server/deploy/README.md` §5 is the record of that cutover rather than a procedure — what ran, in
+what order, what moved, and how to bring the migration back out of git if a later discovery needs
+it (a completed run leaves a marker in the `ops` store, so a second run is REFUSED without
+`--force`). Volumes 66, 67 and 68 have the full account; 68 is also where the packaging hole that
+nearly stopped the cutover at its first command is written up.
 
 ## Server (`matchsvc.ts`, port 8788 — same control-plane process as matchmaking/party/rating)
 

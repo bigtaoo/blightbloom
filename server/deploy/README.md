@@ -539,136 +539,78 @@ scp -r blightbloom:/home/deploy/blightbloom/backups/. ./backups/
 ssh blightbloom 'cd /home/deploy/blightbloom && docker compose down && rm -rf /home/deploy/blightbloom'
 ```
 
-### The MongoDB cutover — ONE TIME, and the order is the procedure
+### The MongoDB cutover — DONE 2026-09-16, and kept here as the record
 
-The four `node:sqlite` files became four logical databases on an Atlas cluster on
-2026-09-15. Everything below happens **once**, on the box, with the services **stopped**, and
-the order is not a suggestion: the migration reads a snapshot, and anything written to the
-files after it reads them stays behind.
+The four `node:sqlite` files became four logical databases on an Atlas cluster on 2026-09-15,
+and the live data moved on **2026-09-16**. This section is no longer a procedure — the
+migration and its bundle were deleted the same day, which was always their expiry — but the
+order it prescribed is what a future one-time data move should copy, so it is written down
+as what actually happened rather than trimmed to a sentence.
 
-Before starting, `~/blightbloom/.env` needs two new values, both of which `compose up` will
-refuse to start without — and which, since 2026-09-15, are also checked for SHAPE rather than
-mere presence, because the first attempt at this step wrote the placeholder below to the live
-box and every gate accepted it (§0 "Secrets" has the account). Edit `.env` with an editor on
-the box; do not paste a one-liner out of this file:
+**What ran, in this order.** Stop the five writing services (`gameserver matchsvc billsvc
+adminsvc backup`), leaving Caddy and the observability stack up. `tar czf
+~/pre-mongo-$(date -u +%Y%m%dT%H%M%SZ).tar.gz data/` — a last snapshot by hand, because the
+worker had already stopped reading those files. Ship `dist/` + `Dockerfile` +
+`docker-compose.yml` + `deploy/package.json` + `monitoring` + `caddy` and `docker compose
+build` with **nothing started**: the image on the box predated the port, so the new one had
+to exist before the migration ran and no service could start before it. Then the migration
+in a throwaway container with `data/` mounted read-only — `--dry-run` first, then for real —
+and finally `docker compose up -d --force-recreate`.
+
+**What moved.** 175 rows: 2 accounts, 2 sessions, 1 meta_state, 74 events, 7 daily_active,
+88 daily_rollup, 1 flag. Every collection ended up holding at least what its table did, which
+is the count the migration checks rather than trusting its own write tally. Zero rows in the
+billing plane, which is correct — nothing has been sold yet.
+
+**What was checked afterwards.** All twelve containers healthy; `/health` answering;
+`/client/flags` returning exactly its two public keys with `cache-control: no-store`; 404 on
+`/metrics` and `/admin/health`. adminsvc logged three refused write probes (`accounts`,
+`billing`, `analytics`) and came up `readOnly=true`, so **decision B1 was proven against the
+live cluster at boot** and not only in a test. Signed into the console, the Players tab lists
+both real accounts and Retention reads all 88 rollup rows — the check that catches the one
+failure a successful-looking migration can still be: services pointed at a different
+`BB_MONGO_DB_PREFIX` from the one the migration wrote.
+
+**Two values in `.env` made it possible**, both `${VAR:?}` so `compose up` refuses every
+service until they are set, and both checked for SHAPE rather than mere presence since
+2026-09-15 (`mongoUriProblem`) — because the first attempt at this step wrote a runbook
+placeholder to the live box and every gate accepted it (§0 "Secrets" has the account):
 
 - `BB_MONGO_URI` — the cluster's connection string, for matchsvc, billsvc and the backup
-  worker.
-- `BB_ADMIN_MONGO_URI` — the ops console's own, for a database user with **`read` on
-  `accounts`, `billing` and `analytics` and `readWrite` on `ops` only**. This is what is left
-  of decision B1 ("the console cannot write player data") now that there are no `:ro` mounts
-  and no `readOnly: true` handles: the console PROBES the role at boot, by attempting a real
-  write to each player-data database and refusing to start unless the server refuses. Give it
-  the same string as `BB_MONGO_URI` and adminsvc will not come up — which is the point.
-
-> #### How the migration reaches the box — and why that was the last thing to fix
->
-> Steps 4 and 5 below used to invoke the migration's TypeScript source under `tsx`, out of a
-> `scripts/` directory, and that cannot run in any image this tree builds. The Dockerfile is
-> `COPY dist/*.mjs ./` and nothing else: no `scripts/`, no TypeScript, no `tsx`. It
-> survived a fully green suite for a day (2026-09-15 → 16) because the migration's LOGIC was
-> covered by tests against a real cluster while the way it reaches a production box was
-> covered by nothing — which is the general shape worth remembering, not the typo.
->
-> It is now the SIXTH bundle, `dist/migrate.mjs` (`scripts/build.mjs`), so the command is
-> `node migrate.mjs --dir=/data` — the same shape as every other process here.
-> `test/deploy.bundle.test.ts` runs that bundle against real `.db` files and a real cluster in
-> this section's own order, and `test/deploy.manifests.test.ts` checks the command **in this
-> file** against the filename the build actually emits. The entry is marked `service: false`
-> because compose does not run it; it ships because the deploy payload sends `dist` whole.
->
-> That is also why step 3 exists: the image on the box predates the port (its `node_modules`
-> holds only `ws`), so the new image must be built BEFORE the migration runs, and no service
-> may start until after it.
-
-```bash
-ssh blightbloom
-cd /home/deploy/blightbloom
-
-# 1. Stop everything that writes. The proxy and the observability stack can stay up.
-docker compose stop gameserver matchsvc billsvc adminsvc backup
-
-# 2. Take a last SQLite snapshot by hand, because the worker no longer reads these files.
-#    Keep it until the cluster has served players for a day.
-tar czf ~/pre-mongo-$(date -u +%Y%m%dT%H%M%SZ).tar.gz data/
-
-# 3. Build the new image — BUILD ONLY, nothing starts. The image on this box predates the
-#    port, so `migrate.mjs` and the `mongodb` dependency it imports arrive with it and in no
-#    other way. Ship the payload from the workstation first (see below), then:
-docker compose build
-
-# 4. DRY RUN first. It reads, maps every row and counts, and writes nothing — so a row that
-#    cannot be mapped is found here rather than half-way through the real thing.
-docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
-  node migrate.mjs --dir=/data --dry-run
-
-# 5. The real run. Idempotent: if it is interrupted, run it again — every write is an upsert
-#    on a key derived from the source row, and the completion marker is written only by a run
-#    that finished.
-docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
-  node migrate.mjs --dir=/data
-
-# 6. Bring everything up on the new compose file (no more ./data mounts for the services).
-docker compose up -d --force-recreate
-docker compose ps
-```
-
-Step 3's payload, sent from the workstation before that `docker compose build` — the same six
-paths CI ships, so the box lands in exactly the state the merge will put it in:
-
-```bash
-cd /d/daydayup && npm run build -w server
-tar czf - -C server dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy \
-  | ssh blightbloom 'tar xzf - -C /home/deploy/blightbloom && chown -R deploy:deploy /home/deploy/blightbloom/dist /home/deploy/blightbloom/Dockerfile /home/deploy/blightbloom/docker-compose.yml /home/deploy/blightbloom/deploy /home/deploy/blightbloom/monitoring /home/deploy/blightbloom/caddy'
-```
-
-`tar | ssh` rather than the `rsync` the Ops block above used to show: there is no `rsync` in
-Git Bash on the workstation, and `ssh blightbloom` lands as **root**, so anything it writes
-needs the `chown` back to `deploy` (uid 1000) that CI's own script would have done.
-
-#### What is already verified against the live cluster (2026-09-15)
-
-Everything the cutover needs except the image, which step 3 above now builds. Re-deriving any
-of it is wasted time:
-
-- **Cluster** `blightbloom`, `IDLE`, `mongodb+srv://blightbloom.emecoyp.mongodb.net`. It is in
-  a DIFFERENT Atlas project from `funny`'s — the API key in the `secrets` repo's
-  `infra/atlas.yaml` cannot see it, and a key that can is in `secrets/blightbloom/prod.yaml`.
-- **`bb-app`** (`BB_MONGO_URI`): `readWrite` on all four databases plus `dbAdmin` on
-  `accounts` and `billing`. The `dbAdmin` half is not optional — `ensureValidator` issues
+  worker. Atlas user `bb-app`: `readWrite` on all four databases plus **`dbAdmin` on
+  `accounts` and `billing`**. The `dbAdmin` half is not optional — `ensureValidator` issues
   `db.command({ collMod })` for a collection that already exists, `collMod` is a `dbAdmin`
-  action, and the migration's own upserts create those collections. Without it the FIRST boot
-  after the cutover fails, not the second.
-- **`bb-admin`** (`BB_ADMIN_MONGO_URI`): `read` on `accounts`/`billing`/`analytics`,
-  `readWrite` on `ops`. Probed for real: a write to `accounts` came back refused and a write
-  to `ops` succeeded, so decision B1 holds on the live cluster and not only in a test.
-- **Network access** holds `62.238.1.182`. The four databases do not exist yet
-  (`listDatabases` is empty), which is what a pre-migration cluster should look like.
-- **`.env` on the box is correct and is mirrored in the `secrets` repo** —
-  `secrets/blightbloom/prod.yaml`, all six values, `push-env.py` reports "no change".
+  action, and the migration's own upserts created those collections. Without it the FIRST
+  boot after the cutover fails, not the second.
+- `BB_ADMIN_MONGO_URI` — the console's own, user `bb-admin`: `read` on
+  `accounts`/`billing`/`analytics`, `readWrite` on `ops` only. Give it the same string as
+  `BB_MONGO_URI` and adminsvc will not come up, which is the point.
+
+Both live in the `secrets` store as well as on the box. Edit `.env` with an editor **on the
+box**; never paste a one-liner with a placeholder in it out of a document — that is how the
+placeholder got there the first time, and a shape check catches `mongodb+srv://…` but not an
+invented hostname.
 
 > `ssh blightbloom` lands as **root**, so `~` is `/root` and not `/home/deploy`. Any tool
 > given `~/blightbloom/.env` writes to a path that does not exist. Always pass
 > `/home/deploy/blightbloom/.env` in full (and `MSYS_NO_PATHCONV=1` from Git Bash, or the
 > leading slash is rewritten into a Windows path).
 
-Then the acceptance checklist in §4, plus one extra: sign in to the console at
-`/admin/` and confirm the Players tab shows the accounts that were on the box. An empty
-Players tab after a migration that reported success means the services are pointed at a
-different database from the one the migration wrote — check `BB_MONGO_DB_PREFIX` on both
-sides before doing anything else.
-
-**Running it a second time is REFUSED**, and that is the guard worth understanding. A
-completed run leaves a marker in the `ops` store; a later run sees it and stops, because
-every upsert would overwrite a live document with what the `.db` file still says — every
-player's progress since the cutover. `--force` goes past it and should be a decision somebody
-writes down, not a flag somebody reaches for because the command failed.
-
 **Keep `data/` on the box.** Nothing reads it any more, and it is the only copy of the
 pre-migration state until the cluster has been serving for long enough to trust. The backup
 worker deliberately cannot see the `.db.gz` snapshots from before the port either — its
 pruner does not recognise that name — so a retention policy cannot age them out during
 exactly the window they matter.
+
+**If the migration ever has to run again** — a discovery days later that something did not
+come across — the code is in git, not gone: `server/src/migrate/`,
+`server/scripts/migrateFromSqlite.ts` and the `migrate` build entry, as of the commit that
+deleted them. Restore those three, `npm run build -w server`, ship, and run with `--force`:
+a completed run leaves a marker in the `ops` store and a second run without that flag is
+REFUSED, because every upsert would overwrite a live document with what the `.db` file still
+says — every player's progress since the cutover. `--force` is a decision somebody writes
+down, not a flag somebody reaches for because the command failed.
+
 
 ### Backups — automated 2026-09-07, on the cluster since 2026-09-15
 
