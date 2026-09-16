@@ -205,12 +205,13 @@ Falling out of the sweeps, and each recorded as a live drift check rather than f
 ## Layer 6: the deploy/build axis — the artifact is not the thing you tested (2026-09-07)
 
 Layers 0-5 all test the source. Since 2026-09-07 (ROADMAP 9.0) production runs something else:
-**four** flat ESM bundles that `server/scripts/build.mjs` produced by collapsing the
-`@dd/engine` / `@dd/game/*` / `@dd/net/*` workspace graph into one file per process, with `ws`
-and `node:sqlite` left external, inside a container whose behaviour is set by four more files.
-Three of the four are the HTTP planes; the fourth is the backup worker that landed later the
-same day, and it is the one that made this layer's own assertions turn out to be shaped around
-"a service answers a route".
+**five** flat ESM bundles (four when this was written; `adminsvc` landed 2026-09-09) that
+`server/scripts/build.mjs` produced by collapsing the `@dd/engine` / `@dd/game/*` / `@dd/net/*`
+workspace graph into one file per process, with `ws` and `mongodb` left external — it was `ws`
+and `node:sqlite` until the MongoDB port on 2026-09-15 — inside a container whose behaviour is
+set by four more files. Four of the five are the HTTP planes; the other is the backup worker that
+landed later the same day, and it is the one that made this layer's own assertions turn out to be
+shaped around "a service answers a route".
 **None of it was reachable from any test in the repo.** The server tree measured 99.56% lines /
 97.93% branches at the time, and that number said nothing about whether the thing being deployed
 could start.
@@ -236,10 +237,12 @@ production stack trace in the failure message.
 `status.json` its first cycle publishes, **gunzip the snapshot it actually wrote and read a row
 back out of it**, then ask the same bundle for its health verdict in a second process
 (`node backup.mjs --health`), which is literally the container's healthcheck. A second case
-asserts it exits 2 with `no databases to back up` when misconfigured — the failure that would
+asserts it exits non-zero with a named reason when misconfigured — the failure that would
 otherwise be a container coming up green and backing up nothing. This is the only place the
-`VACUUM INTO` path is exercised through the built artifact on real `node:sqlite`, which is where
-it runs.
+snapshot path runs through the built artifact against a real store, which is where it runs. It
+was `VACUUM INTO` over `node:sqlite` until 2026-09-15 and is a cursor per collection over the
+cluster now; the case survived the port because it asserts on the OUTPUT — decompress the
+snapshot and read a row back — rather than on the mechanism.
 
 **`deploy.manifests.test.ts` cross-checks the five places the same facts are written down** —
 `scripts/build.mjs`, `Dockerfile`, `docker-compose.yml`, `deploy/package.json`,
@@ -311,6 +314,24 @@ guard is now asserted from both sides (a build where no rewrite fired must throw
 one did must not), with a FRESH plugin instance per case, because `applied` is per-build state
 and sharing the configured instance let an earlier test's success satisfy a later test's
 "nothing happened" case.
+
+**The hole this layer had for a day, and what it cost to close (2026-09-16).** Everything above
+iterates over `build.mjs`'s entries, which makes it blind to something that must run in production
+and is not an entry. The MongoDB cutover's one-time migration was exactly that: the runbook told an
+operator to run its TypeScript source under `tsx`, inside an image built by `COPY dist/*.mjs ./`
+that has no `scripts/`, no TypeScript and no `tsx`. The migration's own suite was at 100% lines
+against a real cluster, and this layer could not catch it because there was no bundle for it to
+boot — "every bundle boots" is not "everything that must run, runs". The general shape is that **a
+step which runs once, by hand, on the day everything is stopped is the step nothing routinely
+exercises**: migrations, restores, key rotations. Two moves closed it, and both belong to this
+layer rather than to more branch coverage. First, package the one-time tool like a process (a
+build entry, so the machinery above covers it) and then RUN it end to end in the runbook's own
+order — dry run, real run, and the refusal that stops a second run — against real inputs. Second,
+assert the runbook's own command against the filename the build emits: **a command written in a
+runbook is deployment configuration**, one more copy of a name no compiler compares, exactly like
+a compose `command:` or a CI payload list. The tool is gone; what stayed is `service: true|false`
+on each build entry, so the next bundle that no service runs is filtered out of the cross-checks
+explicitly instead of being added to an exemption list.
 
 **What this layer deliberately does not do** is run Docker. Building the image and starting the
 compose project needs a daemon CI would have to provide, and the two properties that actually
