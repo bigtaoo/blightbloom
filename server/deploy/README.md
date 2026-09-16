@@ -519,14 +519,19 @@ instead of on the box. Neither runs Docker.
 # Logs (or, since 2026-09-09, the Backend dashboard at https://bb.gamestao.com/grafana/ — see section 8)
 ssh blightbloom 'docker compose -f /home/deploy/blightbloom/docker-compose.yml logs -f'
 
-# Redeploy after a code change (build locally, then re-ship + rebuild)
-cd server && npm run build
-rsync -av dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy blightbloom:~/blightbloom/
-ssh blightbloom 'cd /home/deploy/blightbloom && docker compose up -d --build'
+# Redeploy after a code change (build locally, then re-ship + rebuild). Normally CI does
+# this; the hand version is for a box that is mid-cutover or a workflow that is red.
+# `tar | ssh`, not `rsync`: Git Bash on the workstation has no rsync. And the paths are
+# spelled out — `ssh blightbloom` lands as ROOT, so `~` is /root and `~/blightbloom` is a
+# directory that does not exist, which a copy will happily create and then deploy nothing.
+npm run build -w server
+tar czf - -C server dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy \
+  | ssh blightbloom 'tar xzf - -C /home/deploy/blightbloom'
+ssh blightbloom 'cd /home/deploy/blightbloom && chown -R deploy:deploy dist Dockerfile docker-compose.yml deploy monitoring caddy && docker compose up -d --build'
 
 # Pull the automated backups off the box (see the Backups section below — the snapshots
 # themselves are taken on the box, daily, by the `backup` service; this is the off-box copy)
-rsync -av blightbloom:~/blightbloom/backups/ ./backups/
+scp -r blightbloom:/home/deploy/blightbloom/backups/. ./backups/
 
 # Tear down entirely. Unlike on the borrowed box there is no neighbour to be careful of and
 # no foreign Caddyfile block to remember — but this now takes the PROXY down too, so it is a
@@ -556,29 +561,25 @@ the box; do not paste a one-liner out of this file:
   write to each player-data database and refusing to start unless the server refuses. Give it
   the same string as `BB_MONGO_URI` and adminsvc will not come up — which is the point.
 
-> #### ⛔ Steps 3 and 4 below DO NOT RUN as written (found 2026-09-15, not yet fixed)
+> #### How the migration reaches the box — and why that was the last thing to fix
 >
-> `node --import tsx/esm scripts/migrateFromSqlite.ts` cannot work in any image this tree
-> builds. The Dockerfile does `COPY dist/*.mjs ./` and nothing else — there is no `scripts/`
-> directory in the image, no TypeScript, and no `tsx`. `scripts/build.mjs` declares five
-> bundle entries (index, matchsvc, billsvc, backup, adminsvc) and the migration is not one of
-> them. Nothing asserts this command, which is why it survived a fully green suite: the
-> migration is covered by unit tests against a real cluster, and the way it reaches a
-> production box is covered by nothing.
+> Steps 4 and 5 below used to invoke the migration's TypeScript source under `tsx`, out of a
+> `scripts/` directory, and that cannot run in any image this tree builds. The Dockerfile is
+> `COPY dist/*.mjs ./` and nothing else: no `scripts/`, no TypeScript, no `tsx`. It
+> survived a fully green suite for a day (2026-09-15 → 16) because the migration's LOGIC was
+> covered by tests against a real cluster while the way it reaches a production box was
+> covered by nothing — which is the general shape worth remembering, not the typo.
 >
-> **The fix** is a sixth entry in `scripts/build.mjs` — `src/migrate/…` or the script itself
-> out to `dist/migrate.mjs` — so the command becomes `node migrate.mjs --dir=/data`, the same
-> shape as every other process here, and `test/deploy.bundle.test.ts` boots it like the rest.
-> `node:sqlite` is a builtin and needs no packaging; `mongodb` is already `external` and
-> already in `deploy/package.json`.
+> It is now the SIXTH bundle, `dist/migrate.mjs` (`scripts/build.mjs`), so the command is
+> `node migrate.mjs --dir=/data` — the same shape as every other process here.
+> `test/deploy.bundle.test.ts` runs that bundle against real `.db` files and a real cluster in
+> this section's own order, and `test/deploy.manifests.test.ts` checks the command **in this
+> file** against the filename the build actually emits. The entry is marked `service: false`
+> because compose does not run it; it ships because the deploy payload sends `dist` whole.
 >
-> **It also reorders this runbook.** The image on the box is the pre-Mongo one (its
-> `node_modules` holds only `ws`), so a new image has to exist BEFORE the migration runs and
-> the services must NOT start before it — insert `docker compose build` (build only, no `up`)
-> between steps 2 and 3, after `rsync`ing `dist/`, `Dockerfile` and `deploy/package.json`.
->
-> Everything ABOVE this box is verified against the live cluster and is good: see the
-> "verified 2026-09-15" note under step 5.
+> That is also why step 3 exists: the image on the box predates the port (its `node_modules`
+> holds only `ws`), so the new image must be built BEFORE the migration runs, and no service
+> may start until after it.
 
 ```bash
 ssh blightbloom
@@ -591,25 +592,44 @@ docker compose stop gameserver matchsvc billsvc adminsvc backup
 #    Keep it until the cluster has served players for a day.
 tar czf ~/pre-mongo-$(date -u +%Y%m%dT%H%M%SZ).tar.gz data/
 
-# 3. DRY RUN first. It reads, maps every row and counts, and writes nothing — so a row that
+# 3. Build the new image — BUILD ONLY, nothing starts. The image on this box predates the
+#    port, so `migrate.mjs` and the `mongodb` dependency it imports arrive with it and in no
+#    other way. Ship the payload from the workstation first (see below), then:
+docker compose build
+
+# 4. DRY RUN first. It reads, maps every row and counts, and writes nothing — so a row that
 #    cannot be mapped is found here rather than half-way through the real thing.
 docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
-  node --import tsx/esm scripts/migrateFromSqlite.ts --dir=/data --dry-run
+  node migrate.mjs --dir=/data --dry-run
 
-# 4. The real run. Idempotent: if it is interrupted, run it again — every write is an upsert
+# 5. The real run. Idempotent: if it is interrupted, run it again — every write is an upsert
 #    on a key derived from the source row, and the completion marker is written only by a run
 #    that finished.
 docker run --rm -v "$PWD/data:/data:ro" --env-file .env -w /app blightbloom:latest \
-  node --import tsx/esm scripts/migrateFromSqlite.ts --dir=/data
+  node migrate.mjs --dir=/data
 
-# 5. Bring everything up on the new compose file (no more ./data mounts for the services).
+# 6. Bring everything up on the new compose file (no more ./data mounts for the services).
 docker compose up -d --force-recreate
 docker compose ps
 ```
 
+Step 3's payload, sent from the workstation before that `docker compose build` — the same six
+paths CI ships, so the box lands in exactly the state the merge will put it in:
+
+```bash
+cd /d/daydayup && npm run build -w server
+tar czf - -C server dist Dockerfile docker-compose.yml deploy/package.json monitoring caddy \
+  | ssh blightbloom 'tar xzf - -C /home/deploy/blightbloom && chown -R deploy:deploy /home/deploy/blightbloom/dist /home/deploy/blightbloom/Dockerfile /home/deploy/blightbloom/docker-compose.yml /home/deploy/blightbloom/deploy /home/deploy/blightbloom/monitoring /home/deploy/blightbloom/caddy'
+```
+
+`tar | ssh` rather than the `rsync` the Ops block above used to show: there is no `rsync` in
+Git Bash on the workstation, and `ssh blightbloom` lands as **root**, so anything it writes
+needs the `chown` back to `deploy` (uid 1000) that CI's own script would have done.
+
 #### What is already verified against the live cluster (2026-09-15)
 
-Everything the cutover needs except the image. Re-deriving any of it is wasted time:
+Everything the cutover needs except the image, which step 3 above now builds. Re-deriving any
+of it is wasted time:
 
 - **Cluster** `blightbloom`, `IDLE`, `mongodb+srv://blightbloom.emecoyp.mongodb.net`. It is in
   a DIFFERENT Atlas project from `funny`'s — the API key in the `secrets` repo's

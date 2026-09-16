@@ -46,9 +46,24 @@ const compose = read('docker-compose.yml');
 const dockerfile = read('Dockerfile');
 const ciDeploy = read('deploy/ci-deploy.sh');
 const deployPkg = JSON.parse(read('deploy/package.json')) as { dependencies: Record<string, string> };
+const runbook = read('deploy/README.md');
 const workflow = read('../.github/workflows/server-deploy.yml');
 
-const bundleNames: string[] = (entries as Array<{ out: string }>).map((e) => `${e.out}.mjs`);
+/**
+ * The bundles compose actually runs — `entries` minus the tools.
+ *
+ * `scripts/build.mjs` builds one more file than there are services: `migrate.mjs`, the
+ * one-time cutover (server/deploy/README.md §5), which has no compose entry because nothing
+ * runs it on a schedule. Filtering on the entry's own `service` flag rather than on the name
+ * keeps every cross-check below asserting the real rule — every service bundle is named by a
+ * service, and every service names a bundle — instead of an exemption list.
+ */
+const bundleNames: string[] = (entries as Array<{ out: string; service: boolean }>)
+  .filter((e) => e.service)
+  .map((e) => `${e.out}.mjs`);
+const toolBundles: string[] = (entries as Array<{ out: string; service: boolean }>)
+  .filter((e) => !e.service)
+  .map((e) => `${e.out}.mjs`);
 
 // ───────────────────────── a deliberately small compose reader ─────────────────────────
 
@@ -486,6 +501,34 @@ describe('the bundle filenames', () => {
       const top = path.split('/')[0]!;
       expect(shipped.some((s) => s === path || s === top), `${path} is checked for but never sent`).toBe(true);
     }
+  });
+
+  /**
+   * THE RUNBOOK'S COMMAND IS A BUNDLE THAT EXISTS (2026-09-16).
+   *
+   * The one assertion in this file written after the failure rather than before it. §5's
+   * cutover said `node --import tsx/esm scripts/migrateFromSqlite.ts`, run inside an image
+   * whose Dockerfile is `COPY dist/*.mjs ./` — no `scripts/`, no TypeScript, no `tsx`. Every
+   * test was green, because the migration's logic was covered and the sentence an operator
+   * would type was covered by nothing. A runbook command is deployment configuration too;
+   * this is where it gets checked against the artifact like every other copy of a filename
+   * here.
+   *
+   * It is also the reason `service` exists on a build entry: `migrate.mjs` is shipped, has no
+   * compose service, and must not be mistaken for a missing one.
+   */
+  it('name the one-time migration, which ships without being a service', () => {
+    expect(toolBundles).toEqual(['migrate.mjs']);
+    // Not run by anything on a schedule — an operator runs it once, by hand.
+    expect(APP_SERVICES.map((n) => services[n]!.command[1])).not.toContain('migrate.mjs');
+    // It still arrives: the payload ships `dist` as a whole directory, so the bundle needs
+    // no entry of its own in either list. (`ci-deploy.sh`'s check is "no half-finished
+    // deploy", and a one-time tool missing does not make one.)
+    expect(/tar czf - -C server (.+?)\s*\|/.exec(workflow)?.[1]?.split(/\s+/) ?? []).toContain('dist');
+    // And the runbook types the name the build actually produces. The old command, which
+    // could not run in any image this tree builds, must not come back.
+    expect(runbook).toContain('node migrate.mjs --dir=/data');
+    expect(runbook).not.toContain('tsx/esm scripts/migrateFromSqlite.ts');
   });
 });
 
