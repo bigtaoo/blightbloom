@@ -88,7 +88,9 @@ Three questions, in the order they are worth money:
 1. **Do people come back?** D1–D7 retention, DAU, by host (`web` / `wechat` / `crazygames`).
 2. **Where do they stop?** A funnel: loaded → first run → run finished → came back.
 3. **Who is this account, and what does it own?** One row per player, without an SSH session
-   and a `sqlite3` prompt.
+   and a database prompt. (It was `sqlite3` when this was written; the four stores moved to a
+   MongoDB Atlas cluster 2026-09-15, so the prompt this displaces is `mongosh` now. The console
+   shipped 2026-09-09 and answers it — §3.4.)
 
 Explicitly not answered, and each of these is a decision rather than an omission:
 
@@ -185,7 +187,9 @@ resolution. Same fire-and-forget posture on the client — a batch flushed on a 
 the exit flush silently never land).
 
 **One deviation from the log route, and it is the reason this is not just more logging:** these
-rows go to SQLite, not to Loki. Loki is a log store. Funnel counts are expressible in LogQL,
+rows go to the project's own database, not to Loki — SQLite when this was written, a logical
+database on the cluster since 2026-09-15; the argument is about Loki either way. Loki is a log
+store. Funnel counts are expressible in LogQL,
 but a D1–D7 cohort is a join of a day's set of install ids against the following seven days'
 sets, and that is a query a log store should not be asked to do.
 
@@ -432,7 +436,9 @@ One page, three sections, all read-only:
 
 - **Players** — search by username or display name; a row per account: id, provider (`local` /
   `cg`), created, display name, rating, entitlements owned, last active day (from
-  `daily_active`). This is the query that today requires SSH and `sqlite3`.
+  `daily_active`). This is the query that required SSH and `sqlite3` before the console; the
+  console has answered it since 2026-09-09, and the prompt it displaces is `mongosh` since the
+  2026-09-15 port.
 - **Commerce** — the `review_queue` and `webhook_events` tables billsvc already writes. The
   data has existed since 2026-09-05 with nothing to look at it through; this is a view over
   existing rows, not a new feature.
@@ -704,8 +710,10 @@ convenience one).
   refund arrives."* That decision is **superseded by this document**, and not by the trigger it
   named — the reason is retention measurement and operability, not refunds. §7's actual
   requirement (*"the schema must be queryable and hand-correctable by a human with SQL"*)
-  survives intact and is in fact what B2 relies on: the CLI-and-`sqlite3` write path is not a
-  workaround here, it is the design.
+  survives intact and is in fact what B2 relies on: the CLI-and-database-prompt write path is
+  not a workaround here, it is the design. (`sqlite3` when written, `mongosh` since 2026-09-15 —
+  and §7's requirement is now carried by collection VALIDATORS, which do bind that prompt, where
+  the FOREIGN KEYS did not survive the port at all.)
 - **design/19 §8**'s deliberately-not-built table gains no row from this document but should
   lose or amend the *"Loki / Alloy / Grafana"* row on the observability pass's own account.
 - **design/20** records that no analytics exists in the tree; that becomes false at Phase A.

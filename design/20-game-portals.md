@@ -302,9 +302,11 @@ That decision is what the `accounts` table encodes, and the three consequences a
 `UNIQUE(provider, provider_id)` was already in the schema (design/16 reserved it) and is what makes
 the find-or-create safe under a race: the losing INSERT re-reads the winner's row. `display_name`
 needed the **first real migration this project has had** — `db.ts`'s `ADDED_COLUMNS`, applied
-behind a `PRAGMA table_info` guard because SQLite's `ADD COLUMN` has no `IF NOT EXISTS`. It is
+behind a `PRAGMA table_info` guard because SQLite's `ADD COLUMN` has no `IF NOT EXISTS`. It was
 tested against the pre-2026-09-08 DDL on a real temp file, because a `:memory:` database always
-takes the fresh-schema path and could never fail.
+takes the fresh-schema path and could never fail. (Both the mechanism and that test left with
+SQLite on 2026-09-15 — a document store adds a field by writing one — but the lesson about a
+`:memory:` database being unable to fail a migration test outlived them.)
 
 ### Onboarding: the first-click path had no instructions on it
 

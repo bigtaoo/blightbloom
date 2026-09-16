@@ -69,8 +69,8 @@ else's container, which is the opposite of what the name was for.
 
 Four processes from one image (`server/Dockerfile`, `server/docker-compose.yml`):
 `gameserver` (WS data plane, design/06), `matchsvc` (control plane — matchmaking,
-accounts, store proxy), `billsvc` (billing plane) and `backup` (the daily SQLite
-snapshotter, §5). Since 2026-09-09 the same compose project also runs **four off-the-shelf
+accounts, store proxy), `billsvc` (billing plane) and `backup` (the daily snapshotter — of the
+four SQLite files until 2026-09-15, of the cluster's four databases since, §5). Since 2026-09-09 the same compose project also runs **four off-the-shelf
 observability containers** — Loki, Alloy, Prometheus and Grafana (§8) — which run no code
 from this repo and which nothing above depends on. **billsvc runs in dev-stub mode**:
 no real Paddle credential exists yet (design/19-server-platform.md §9), so `NODE_ENV` is
@@ -770,6 +770,21 @@ rather than moved.
 Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**`/
 `client/src/**`.
 
+> **⚠️ The LIVE copy is stale as of 2026-09-16, and this is the third time that has mattered.**
+> `/home/deploy/blightbloom-ci-deploy.sh` is dated 2026-09-15 07:47 and predates the MongoDB
+> port, so two things in the repo copy are **not running**: its `.env` check covers only
+> `BB_GRAFANA_ADMIN_PASSWORD` and `BB_ADMIN_PASSWORD`, not `BB_MONGO_URI` and
+> `BB_ADMIN_MONGO_URI` — the two variables `compose up` now refuses EVERY service without — and
+> its ownership loop still creates `data/matchsvc`, `data/billsvc` and `data/adminsvc`, which no
+> service mounts any more. Nothing is broken today (the box's `.env` has both values and those
+> directories already exist), but the guard that exists so a deploy log NAMES the missing
+> variable is absent, and the failure it prevents reads as "compose refused to interpolate".
+> Re-install with the command above, then re-verify the forced command actually restricts.
+>
+> The general rule, which this file has now paid for three times: **CI going green is not
+> evidence that a check added to `ci-deploy.sh` is running.** The live copy is deliberately
+> outside the deploy target, so a deploy cannot update it — only a human can.
+
 ## 7. Still open
 
 - **Paddle credentials**, which is the actual reason billsvc exists at all
@@ -780,15 +795,31 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   (§9 already documents that funny was rejected twice on exactly that). No agent should
   do this part — it needs a human with the authority to accept a Merchant of Record
   agreement and hand over real financial/business information.
-- **The OFF-BOX copy of the backups — SUPERSEDED 2026-09-15, not closed.** Everything below
-  described the problem correctly and proposed the wrong fix, and the difference is worth
-  keeping: the owner's answer is that **player data moves off SQLite onto a database**, at
-  which point "get a verified copy of `accounts.db` somewhere else" stops being this
-  project's problem to solve and becomes a property of whatever that database is. So no
-  scheduled pull and no object-store upload is being built here. What does NOT go away with
-  the move is the requirement — identity and money need a copy that survives the box — so
-  this item stays open until the new store actually has one, rather than being ticked off by
-  a decision. The old text, for whoever does that migration:
+- **The OFF-BOX copy of the backups — the shape changed 2026-09-16, and what is left is
+  smaller and still open.** The premise below is now false and is kept because the reasoning
+  is not: it said a single Hetzner VM holds the only copy of `accounts.db` and `billing.db`.
+  Since the cutover, **the live data is on the Atlas cluster and the box holds the copies** —
+  which inverts the original risk, because the daily snapshot the `backup` worker writes is by
+  construction on different hardware from the database it snapshots. Losing the VM no longer
+  loses player data; losing the cluster no longer loses the backups.
+
+  **Three things are genuinely still open, and none of them is the scheduled pull below:**
+
+  1. **The restore has never been drilled.** `zcat … | mongoimport` is written down in §5's
+     Backups section and exercised in the suite against a real store, never against this
+     cluster from these files. A backup nobody has restored is a hypothesis. This is the one
+     worth doing first, and it can be done into a throwaway database prefix without touching
+     production.
+  2. **The cluster tier has no point-in-time recovery.** An operator error — a dropped
+     collection, a bad `updateMany` at a `mongosh` prompt — is recoverable only from the box's
+     daily NDJSON, i.e. to the last cycle, not to the last minute. That is a deliberate
+     trade at this size; it stops being one when real money moves through billing.
+  3. **A copy that survives losing BOTH** is still unbuilt, and that is the residue of the old
+     item. Cheap floor: Hetzner's own backups (Options → BACKUPS, about 20% of the server
+     price) put the box's snapshots on their infrastructure, and Atlas holds the live data
+     regardless.
+
+  The old text, for the reasoning rather than the plan:
 
   The `backup` service (§5, "Backups") takes and
   verifies a daily snapshot of both databases and keeps 14 of each, on the same disk as the
@@ -803,7 +834,8 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   The move to dedicated hardware made this **more** urgent, not less. On the borrowed box
   the machine itself was somebody else's to keep alive, with their snapshots and their
   monitoring around it; now a single Hetzner VM holds the only copy of `accounts.db` and
-  `billing.db`, and nothing outside it would notice their loss. Hetzner's own backups are one
+  `billing.db`, and nothing outside it would notice their loss. *(That last sentence stopped
+  being true on 2026-09-16 — see above.)* Hetzner's own backups are one
   checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
   turning on as a floor under this, but they are a whole-disk snapshot rather than a
   verified database copy, so they do not close the item.
