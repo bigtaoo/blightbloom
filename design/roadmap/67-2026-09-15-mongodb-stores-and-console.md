@@ -15,6 +15,10 @@ on it.
 What is still open is not code. **The migration has not been RUN.** Until it is, a deployed
 matchsvc reads an empty cluster, which is why the day's PR stays a draft.
 
+> **It ran the next day** — [volume 68](68-2026-09-16-mongodb-cutover.md), 2026-09-16, 175 rows.
+> The packaging problem this volume's last section names was real and was the last blocker: the
+> migration became a sixth bundle, ran, and was deleted with `src/migrate/`.
+
 ### Three merges, and the one conflict shape they all had
 
 Stages 2 and 3 were built concurrently on branches cut from volume 66's foundation, so each of
