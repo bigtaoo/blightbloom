@@ -46,9 +46,24 @@ const compose = read('docker-compose.yml');
 const dockerfile = read('Dockerfile');
 const ciDeploy = read('deploy/ci-deploy.sh');
 const deployPkg = JSON.parse(read('deploy/package.json')) as { dependencies: Record<string, string> };
+const runbook = read('deploy/README.md');
 const workflow = read('../.github/workflows/server-deploy.yml');
 
-const bundleNames: string[] = (entries as Array<{ out: string }>).map((e) => `${e.out}.mjs`);
+/**
+ * The bundles compose actually runs — `entries` minus the tools.
+ *
+ * `scripts/build.mjs` builds one more file than there are services: `migrate.mjs`, the
+ * one-time cutover (server/deploy/README.md §5), which has no compose entry because nothing
+ * runs it on a schedule. Filtering on the entry's own `service` flag rather than on the name
+ * keeps every cross-check below asserting the real rule — every service bundle is named by a
+ * service, and every service names a bundle — instead of an exemption list.
+ */
+const bundleNames: string[] = (entries as Array<{ out: string; service: boolean }>)
+  .filter((e) => e.service)
+  .map((e) => `${e.out}.mjs`);
+const toolBundles: string[] = (entries as Array<{ out: string; service: boolean }>)
+  .filter((e) => !e.service)
+  .map((e) => `${e.out}.mjs`);
 
 // ───────────────────────── a deliberately small compose reader ─────────────────────────
 
@@ -321,29 +336,28 @@ describe('the compose reader actually read something', () => {
     }
   });
 
-  it('the backup worker mounts its sources READ-ONLY and writes only to its own volume', () => {
-    // The property that makes this container safe to run beside a live database at all
-    // (src/backup/snapshot.ts: `VACUUM INTO` works through a read-only handle). A `:ro`
-    // dropped from these two lines is invisible until the day the worker has a bug.
+  it('the backup worker mounts NOTHING but its own volume', () => {
+    // This used to assert a partition: two `:ro` source mounts plus one writable backup
+    // directory, which was the property that made the container safe to run beside a live
+    // database (`VACUUM INTO` works through a read-only SQLite handle, so it held no
+    // writable handle on anything and the kernel agreed).
+    //
+    // Both source mounts are gone with the files. What is left is the half that is still a
+    // deploy-level fact, and it is a STRONGER one to assert than "the sources are `:ro`":
+    // the only path this container can write is the one it writes backups to. A `./data/…`
+    // line reappearing here would mean somebody had pointed it back at files nothing writes.
     const block = /\n  backup:\n([\s\S]*?)\n(?:  [\w-]+:|networks:)/.exec(compose)?.[1] ?? '';
     expect(block).not.toBe('');
-    // Only the `volumes:` list — `networks:` is a bullet list too, and matching every
-    // bullet in the block swept `- bb` in as a fourth "mount" (caught by the length
-    // assertion below, which is why it is an exact count and not `>= 2`).
     const volumes = /\n    volumes:\n([\s\S]*?)\n    [a-z_]+:/.exec(block)?.[1] ?? '';
-    // `host:container[:mode]`, split on the colons rather than matched with two greedy
-    // groups (which quietly makes `mode` the whole container path).
     const mounts = [...volumes.matchAll(/^\s+- (\S+)$/gm)].map(([, spec]) => spec!.split(':'));
-    expect(mounts).toHaveLength(3);
-    for (const parts of mounts) {
-      expect(parts.length, parts.join(':')).toBeGreaterThanOrEqual(2);
-      const [host, , mode] = parts as [string, string, string | undefined];
-      // Every mount of a service DATA directory is read-only; the only writable one is the
-      // backup directory itself.
-      expect(mode === 'ro', parts.join(':')).toBe(host.startsWith('./data/'));
-    }
+    expect(mounts).toEqual([['./backups', '/backups']]);
     expect(services.backup!.env.BB_BACKUP_DIR).toBe('/backups');
-    expect(mounts.some((p) => p[0] === './backups' && p[1] === '/backups' && p[2] === undefined)).toBe(true);
+    // ...and WHICH databases it reads is no longer here at all. It was three env vars
+    // holding file paths; `src/backup/config.ts`'s `BACKUP_STORES` is that one fact now, and
+    // a compose file that grew a source list again would be a second place for it to be
+    // wrong. The cluster string is what this block still has to carry.
+    expect(Object.keys(services.backup!.env)).not.toContain('BB_DB_PATH');
+    expect(services.backup!.env.BB_MONGO_URI).toMatch(/^\$\{BB_MONGO_URI:\?/);
   });
 
   it('every bind-mounted state dir is one the deploy script makes container-writable', () => {
@@ -361,16 +375,20 @@ describe('the compose reader actually read something', () => {
     // reads. Splitting them here rather than listing both is what keeps the rule stated as
     // a rule — a new writable mount is caught, and a new config file is not made to look
     // like one.
-    // Grouped by HOST path, not by mount, because the same directory is mounted twice with
-    // different modes on purpose: `./data/matchsvc` is writable for matchsvc and `:ro` for
-    // the backup worker. What decides whether it needs an ownership rule is whether ANY
-    // container writes it — so a host dir counts as writable if even one of its mounts is.
+    // Grouped by HOST path, not by mount, because a directory could be mounted twice with
+    // different modes — `./data/matchsvc` was writable for matchsvc and `:ro` for the backup
+    // worker until 2026-09-15. What decides whether it needs an ownership rule is whether ANY
+    // container writes it, so a host dir counts as writable if even one of its mounts is.
+    // The grouping is kept rather than simplified away now that only one writable dir is
+    // left: what it encodes is the RULE, and the rule is what a new mount has to satisfy.
     const all = Object.values(services).flatMap((s) => s.volumes);
     const hosts = [...new Set(all.map((v) => v.host))];
     const mountsOf = (h: string): Array<{ readonly: boolean }> => all.filter((v) => v.host === h);
     const rw = hosts.filter((h) => mountsOf(h).some((v) => !v.readonly));
     const ro = hosts.filter((h) => mountsOf(h).every((v) => v.readonly));
-    expect(rw.sort()).toEqual(['./backups', './data/adminsvc', './data/billsvc', './data/matchsvc']);
+    // One, since the four SQLite files became four logical databases on the cluster and the
+    // three services that owned them stopped writing to disk entirely.
+    expect(rw.sort()).toEqual(['./backups']);
     expect(ro.length).toBeGreaterThan(0);
     for (const host of ro) {
       expect(host, 'a never-written mount is config, and config lives in one of two places').toMatch(
@@ -483,6 +501,34 @@ describe('the bundle filenames', () => {
       const top = path.split('/')[0]!;
       expect(shipped.some((s) => s === path || s === top), `${path} is checked for but never sent`).toBe(true);
     }
+  });
+
+  /**
+   * THE RUNBOOK'S COMMAND IS A BUNDLE THAT EXISTS (2026-09-16).
+   *
+   * The one assertion in this file written after the failure rather than before it. §5's
+   * cutover said `node --import tsx/esm scripts/migrateFromSqlite.ts`, run inside an image
+   * whose Dockerfile is `COPY dist/*.mjs ./` — no `scripts/`, no TypeScript, no `tsx`. Every
+   * test was green, because the migration's logic was covered and the sentence an operator
+   * would type was covered by nothing. A runbook command is deployment configuration too;
+   * this is where it gets checked against the artifact like every other copy of a filename
+   * here.
+   *
+   * It is also the reason `service` exists on a build entry: `migrate.mjs` is shipped, has no
+   * compose service, and must not be mistaken for a missing one.
+   */
+  it('name the one-time migration, which ships without being a service', () => {
+    expect(toolBundles).toEqual(['migrate.mjs']);
+    // Not run by anything on a schedule — an operator runs it once, by hand.
+    expect(APP_SERVICES.map((n) => services[n]!.command[1])).not.toContain('migrate.mjs');
+    // It still arrives: the payload ships `dist` as a whole directory, so the bundle needs
+    // no entry of its own in either list. (`ci-deploy.sh`'s check is "no half-finished
+    // deploy", and a one-time tool missing does not make one.)
+    expect(/tar czf - -C server (.+?)\s*\|/.exec(workflow)?.[1]?.split(/\s+/) ?? []).toContain('dist');
+    // And the runbook types the name the build actually produces. The old command, which
+    // could not run in any image this tree builds, must not come back.
+    expect(runbook).toContain('node migrate.mjs --dir=/data');
+    expect(runbook).not.toContain('tsx/esm scripts/migrateFromSqlite.ts');
   });
 });
 
@@ -698,42 +744,37 @@ describe("the ops console's compose environment against the real startup guard",
     expect(compose).not.toContain('BB_ADMIN_INSECURE_COOKIE');
   });
 
-  it('reads all three databases through READ-ONLY mounts and writes nothing', () => {
-    // Decision B1, as a property of the deploy rather than of the code: this container has
-    // no writable mount at all. `dbs.ts` also opens every handle `readOnly: true`, so the
-    // process is refused twice over — and this is the half a bug in the code cannot undo.
+  it('connects with its OWN credential, which is what is left of decision B1 here', () => {
+    // Decision B1 as a property of the DEPLOY rather than of the code. It used to be a mount
+    // partition: two `:ro` player-data sources plus one writable `./data/adminsvc` for
+    // `ops.db`, which said exactly "the console can change how the game behaves and cannot
+    // change who anybody is" — in a form a bug in our code could not undo, because the
+    // kernel was enforcing it.
+    //
+    // That is gone with the files, and what this file can still assert is the one thing
+    // compose decides: that the console's connection string is a DIFFERENT variable from
+    // every other service's. If it were the same one, the console would hold a writable
+    // credential and B1 would be false with nothing anywhere to notice — the process's own
+    // boot-time write probe (src/adminsvc/dbs.ts) is what catches that, and this is the
+    // deploy-level half of the same claim.
     const svc = services.adminsvc!;
-    // Three mounts, and exactly ONE of them writable: the two player-data sources are `:ro`,
-    // and `./data/adminsvc` is where `ops.db` lives (design/21 §4). That split IS decision
-    // B1 as a property of the deploy — the console can change how the game behaves and
-    // cannot change who anybody is — so it is asserted as a partition rather than as "all
-    // read-only", which stopped being true when Phase C landed.
-    expect(svc.volumes.length).toBe(3);
-    const ro = svc.volumes.filter((v) => v.readonly).map((v) => v.host).sort();
-    const rwMounts = svc.volumes.filter((v) => !v.readonly).map((v) => v.host);
-    expect(ro).toEqual(['./data/billsvc', './data/matchsvc']);
-    expect(rwMounts).toEqual(['./data/adminsvc']);
-    // ...pointed at the files their OWNERS name with the same variables (src/backup/config.ts's
-    // reason). A console reading a path nobody writes shows an empty console.
-    expect(svc.env.BB_DB_PATH).toBe('/sources/matchsvc/accounts.db');
-    expect(svc.env.BB_BILLING_DB_PATH).toBe('/sources/billsvc/billing.db');
-    expect(svc.env.BB_ANALYTICS_DB_PATH).toBe('/sources/matchsvc/analytics.db');
-    // ...and the two READ-ONLY mounts are the state dirs their owners write, mounted under
-    // `/sources/` so the role is visible in every path in the logs. The exact lines are
-    // asserted because the env paths above are only correct RELATIVE to them: a mount point
-    // renamed on its own leaves three paths pointing at nothing, and every section then
-    // reports "unavailable" on a deploy that looks fine.
-    expect(compose).toContain('- ./data/matchsvc:/sources/matchsvc:ro');
-    expect(compose).toContain('- ./data/billsvc:/sources/billsvc:ro');
-    expect(compose).toContain('- ./data/adminsvc:/data');
-    for (const path of [svc.env.BB_DB_PATH!, svc.env.BB_BILLING_DB_PATH!, svc.env.BB_ANALYTICS_DB_PATH!]) {
-      expect(path.startsWith('/sources/'), path).toBe(true);
+    expect(svc.volumes).toEqual([]);
+    expect(svc.env.BB_MONGO_URI).toMatch(/^\$\{BB_ADMIN_MONGO_URI:\?/);
+    for (const other of ['matchsvc', 'billsvc', 'backup'] as const) {
+      expect(services[other]!.env.BB_MONGO_URI, other).toMatch(/^\$\{BB_MONGO_URI:\?/);
+      expect(services[other]!.env.BB_MONGO_URI, other).not.toBe(svc.env.BB_MONGO_URI);
     }
-    // ...and the writable one is NOT under `/sources/`, so the path in every log line says
-    // which kind of handle it is. A flag store pointed at `/sources/...` would be aimed at a
-    // read-only mount and every write would fail at runtime.
-    expect(svc.env.BB_OPS_DB_PATH).toBe('/data/ops.db');
-    expect(svc.env.BB_OPS_DB_PATH!.startsWith('/sources/')).toBe(false);
+    // The flag store is the one database this process writes (design/21 §4), and it is an
+    // explicit opt-in rather than something implied by a path existing — because
+    // `store('ops')` always resolves and a port that dropped the switch would have created
+    // a writable database on every deployment that upgraded.
+    expect(svc.env.BB_OPS_FLAGS_ENABLED).toBe('1');
+    // ...and the console must agree with the collector about whether analytics is on, or a
+    // deployment that is collecting shows a "not configured" retention tab.
+    expect(svc.env.BB_ANALYTICS_ENABLED).toBe(services.matchsvc!.env.BB_ANALYTICS_ENABLED);
+    // The escape hatch for the write probe must NEVER appear in a deployed environment: it
+    // is the one variable that turns B1 off, and its whole safety rests on nobody setting it.
+    expect(compose).not.toContain('BB_ADMIN_ALLOW_WRITABLE');
   });
 
   it('listens on its own plane, and the port the code defaults to is the one compose sets', () => {

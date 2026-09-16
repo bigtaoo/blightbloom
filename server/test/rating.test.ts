@@ -2,44 +2,36 @@
  * PvP ladder rating (design/15, ROADMAP 4.6) — the matchsvc-side rating math and
  * store, in isolation from any HTTP/matchsvc wiring.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
-import { openDb } from '../src/db';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import type { AccountsStore } from '../src/db';
 import { computeRatingDeltas, RatingStore, DEFAULT_RATING, type RatingChange } from '../src/rating';
+import { openTestAccounts, type AccountsTestContext } from './mongoHarness';
 
 /**
- * A real file-backed account DB, for the cases that need TWO connections to one database —
- * `:memory:` gives each connection its own private database, so a dedupe claim made on one
- * would be invisible to the other and the test would pass for the wrong reason.
+ * The old suite kept a `fileDb()` helper next to its `:memory:` one, because `:memory:`
+ * gives every SQLite CONNECTION its own private database — so a dedupe claim made through
+ * one would have been invisible to the other, and a two-connection test would have passed
+ * for the wrong reason. That distinction does not exist here: two `AccountsStore`s built
+ * over one database name see one database, which is what the `fileDb` cases were buying.
+ * The two-store cases below therefore build two stores over `ctx.store` instead.
  */
-let tempDir: string | undefined;
-let openDbs: DatabaseSync[] = [];
+let ctx: AccountsTestContext;
+let store_: AccountsStore;
 
-function fileDb(): DatabaseSync {
-  tempDir ??= mkdtempSync(join(tmpdir(), 'bb-rating-'));
-  const db = openDb(join(tempDir, 'ratings.db'));
-  openDbs.push(db);
-  return db;
-}
-
-afterEach(() => {
-  for (const db of openDbs) db.close(); // release the handle before rmSync (Windows-safe)
-  openDbs = [];
-  if (tempDir) {
-    rmSync(tempDir, { recursive: true, force: true });
-    tempDir = undefined;
-  }
+beforeEach(async () => {
+  ctx = await openTestAccounts();
+  store_ = ctx.store;
+});
+afterEach(async () => {
+  await ctx.dispose();
 });
 
 describe('computeRatingDeltas', () => {
-  it('a single participant (nothing to compare against) gets a zero delta', () => {
+  it('a single participant (nothing to compare against) gets a zero delta', async () => {
     expect(computeRatingDeltas([1000], [1])).toEqual([0]);
   });
 
-  it('equal ratings: 1st place gains, last place loses, by roughly symmetric amounts', () => {
+  it('equal ratings: 1st place gains, last place loses, by roughly symmetric amounts', async () => {
     const deltas = computeRatingDeltas([1000, 1000, 1000, 1000], [1, 2, 3, 4]);
     expect(deltas[0]!).toBeGreaterThan(0); // 1st gained
     expect(deltas[3]!).toBeLessThan(0); // last lost
@@ -49,7 +41,7 @@ describe('computeRatingDeltas', () => {
     expect(deltas[2]!).toBeGreaterThanOrEqual(deltas[3]!);
   });
 
-  it('a favorite (higher rating) placing last loses more than an underdog placing last', () => {
+  it('a favorite (higher rating) placing last loses more than an underdog placing last', async () => {
     const deltas = computeRatingDeltas([1400, 1000, 1000, 600], [4, 2, 3, 1]);
     // deltas[0] is the 1400-rated favorite finishing last; deltas[3] is the 600-rated
     // underdog finishing FIRST — both are "surprising" outcomes, both should be large
@@ -58,7 +50,7 @@ describe('computeRatingDeltas', () => {
     expect(deltas[3]!).toBeGreaterThan(0);
   });
 
-  it('a higher-rated favorite winning gains less than a lower-rated underdog winning', () => {
+  it('a higher-rated favorite winning gains less than a lower-rated underdog winning', async () => {
     const favoriteWins = computeRatingDeltas([1400, 1000, 1000, 1000], [1, 2, 3, 4]);
     const underdogWins = computeRatingDeltas([600, 1000, 1000, 1000], [1, 2, 3, 4]);
     expect(favoriteWins[0]!).toBeLessThan(underdogWins[0]!);
@@ -66,7 +58,7 @@ describe('computeRatingDeltas', () => {
 });
 
 describe('computeRatingDeltas — squad-aware (design/05/15 squad follow-up)', () => {
-  it('omitting teamIds is byte-identical to the original per-seat formula', () => {
+  it('omitting teamIds is byte-identical to the original per-seat formula', async () => {
     const ratings = [1400, 1000, 1000, 600];
     const places = [4, 2, 3, 1];
     expect(computeRatingDeltas(ratings, places)).toEqual(
@@ -74,7 +66,7 @@ describe('computeRatingDeltas — squad-aware (design/05/15 squad follow-up)', (
     );
   });
 
-  it('every member of a squad gets the identical delta, even with different individual places', () => {
+  it('every member of a squad gets the identical delta, even with different individual places', async () => {
     // team0 = seats 0,1 (adjacent places 1,2 — the winning squad); team1 = seats 2,3 (places 3,4).
     const deltas = computeRatingDeltas([1000, 1000, 1000, 1000], [1, 2, 3, 4], [0, 0, 1, 1]);
     expect(deltas[0]).toBe(deltas[1]); // same squad, same delta
@@ -97,33 +89,33 @@ describe('computeRatingDeltas — squad-aware (design/05/15 squad follow-up)', (
 });
 
 describe('RatingStore', () => {
-  it('an unknown account starts at DEFAULT_RATING', () => {
+  it('an unknown account starts at DEFAULT_RATING', async () => {
     const store = new RatingStore();
-    expect(store.get('alice')).toBe(DEFAULT_RATING);
+    expect(await store.get('alice')).toBe(DEFAULT_RATING);
   });
 
-  it('applyMatch updates every account and returns before/after for each', () => {
+  it('applyMatch updates every account and returns before/after for each', async () => {
     const store = new RatingStore();
-    const changes = store.applyMatch(['alice', 'bob', 'carol', 'dave'], [1, 2, 3, 4]);
+    const changes = await store.applyMatch(['alice', 'bob', 'carol', 'dave'], [1, 2, 3, 4]);
     expect(changes).toHaveLength(4);
     expect(changes[0]!.accountId).toBe('alice');
     expect(changes[0]!.before).toBe(DEFAULT_RATING);
     expect(changes[0]!.after).toBeGreaterThan(DEFAULT_RATING); // alice won
-    expect(store.get('alice')).toBe(changes[0]!.after); // persisted
-    expect(store.get('dave')).toBeLessThan(DEFAULT_RATING); // dave placed last
+    expect(await store.get('alice')).toBe(changes[0]!.after); // persisted
+    expect(await store.get('dave')).toBeLessThan(DEFAULT_RATING); // dave placed last
   });
 
-  it('ratings compound across multiple matches', () => {
+  it('ratings compound across multiple matches', async () => {
     const store = new RatingStore();
-    store.applyMatch(['alice', 'bob'], [1, 2]);
-    const afterFirst = store.get('alice');
-    store.applyMatch(['alice', 'bob'], [1, 2]);
-    expect(store.get('alice')).toBeGreaterThan(afterFirst); // won again, rating keeps climbing
+    await store.applyMatch(['alice', 'bob'], [1, 2]);
+    const afterFirst = await store.get('alice');
+    await store.applyMatch(['alice', 'bob'], [1, 2]);
+    expect(await store.get('alice')).toBeGreaterThan(afterFirst); // won again, rating keeps climbing
   });
 
-  it('applyMatch, given teamIds, applies the same delta to every squadmate', () => {
+  it('applyMatch, given teamIds, applies the same delta to every squadmate', async () => {
     const store = new RatingStore();
-    const changes = store.applyMatch(['alice', 'bob', 'carol', 'dave'], [1, 2, 3, 4], [0, 0, 1, 1]);
+    const changes = await store.applyMatch(['alice', 'bob', 'carol', 'dave'], [1, 2, 3, 4], [0, 0, 1, 1]);
     const delta = (c: (typeof changes)[number]) => c.after - c.before;
     expect(delta(changes[0]!)).toBe(delta(changes[1]!)); // alice/bob, same squad
     expect(delta(changes[2]!)).toBe(delta(changes[3]!)); // carol/dave, same squad
@@ -131,36 +123,37 @@ describe('RatingStore', () => {
   });
 });
 
-describe('RatingStore — SQLite-backed', () => {
-  it('persists ratings in the given db, surviving a fresh RatingStore instance', () => {
-    const db = openDb(':memory:');
-    const store = new RatingStore(db);
-    const changes = store.applyMatch(['alice', 'bob'], [1, 2]);
+describe('RatingStore — cluster-backed', () => {
+  it('persists ratings in the given store, surviving a fresh RatingStore instance', async () => {
+    const store = new RatingStore(store_);
+    const changes = await store.applyMatch(['alice', 'bob'], [1, 2]);
 
-    // A brand new store over the SAME db (simulates a server restart) sees the same ratings.
-    const reopened = new RatingStore(db);
-    expect(reopened.get('alice')).toBe(changes[0]!.after);
-    expect(reopened.get('bob')).toBe(changes[1]!.after);
+    // A brand new store over the SAME collections (simulates a restart) sees the same ratings.
+    const reopened = new RatingStore(store_);
+    expect(await reopened.get('alice')).toBe(changes[0]!.after);
+    expect(await reopened.get('bob')).toBe(changes[1]!.after);
   });
 
-  it('a db-backed store does not leak into an in-memory-only store, and vice versa', () => {
-    const db = openDb(':memory:');
-    const dbStore = new RatingStore(db);
+  it('a store-backed RatingStore does not leak into an in-memory-only one, and vice versa', async () => {
+    const dbStore = new RatingStore(store_);
     const memStore = new RatingStore();
-    dbStore.applyMatch(['alice', 'bob'], [1, 2]);
-    expect(memStore.get('alice')).toBe(DEFAULT_RATING);
+    await dbStore.applyMatch(['alice', 'bob'], [1, 2]);
+    expect(await memStore.get('alice')).toBe(DEFAULT_RATING);
   });
 
-  it('a scaffold guest/bot id (seat:{roomId}:{seatIdx}) persists fine despite the FK on accounts', () => {
-    const db = openDb(':memory:');
-    const store = new RatingStore(db);
-    expect(() => store.applyMatch(['seat:room1:0', 'seat:room1:1'], [1, 2])).not.toThrow();
-    expect(store.get('seat:room1:0')).toBeGreaterThan(DEFAULT_RATING);
+  it('a scaffold guest/bot id (seat:{roomId}:{seatIdx}) persists fine, having no account behind it', async () => {
+    // Was "despite the FK on accounts" — `ratings` deliberately carried no foreign key so
+    // that a bot scaffold could hold a rating. There is no FK anywhere now (see db.ts), so
+    // what this pins is narrower and still worth pinning: an id shaped like a scaffold is
+    // written and read back like any other.
+    const store = new RatingStore(store_);
+    await expect(store.applyMatch(['seat:room1:0', 'seat:room1:1'], [1, 2])).resolves.toBeDefined();
+    expect(await store.get('seat:room1:0')).toBeGreaterThan(DEFAULT_RATING);
   });
 });
 
 describe('computeRatingDeltas — the squad-aware arms nothing else reaches', () => {
-  it('gives everyone zero when the whole field is ONE team', () => {
+  it('gives everyone zero when the whole field is ONE team', async () => {
     // `numTeams <= 1 ? 0.5 : ...`. A four-seat room where every seat shares a squad has no
     // ranking to express, so the actual score is a draw against itself — and the delta must
     // be 0 rather than the K-factor swing an `(numTeams - rank) / (numTeams - 1)` with
@@ -170,7 +163,7 @@ describe('computeRatingDeltas — the squad-aware arms nothing else reaches', ()
     for (const d of deltas) expect(Number.isFinite(d)).toBe(true);
   });
 
-  it('breaks a tie between two teams that share a best place by teamId, deterministically', () => {
+  it('breaks a tie between two teams that share a best place by teamId, deterministically', async () => {
     // The `|| a.teamId - b.teamId` arm. Two teams whose best member placed the same is
     // structurally impossible from a real match, but the sort has to be TOTAL anyway:
     // without the tiebreak the order depends on the engine's sort stability, and the same
@@ -204,193 +197,217 @@ describe('RatingStore.applyMatchOnce — the dedupe claim', () => {
 
   it.each([
     ['in-memory', (): RatingStore => new RatingStore()],
-    ['SQLite', (): RatingStore => new RatingStore(openDb(':memory:'))],
-    ['SQLite on a real file', (): RatingStore => new RatingStore(fileDb())],
-  ])('%s: the same reportKey applies ONCE, and the second report moves nothing', (_label, make) => {
+    ['cluster', (): RatingStore => new RatingStore(store_)],
+  ])('%s: the same reportKey applies ONCE, and the second report moves nothing', async (_label, make) => {
     const store = make();
-    const first = store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
+    const first = await store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
     expect(first.applied).toBe(true);
-    const afterFirst = { alice: store.get('alice'), bob: store.get('bob') };
+    const afterFirst = { alice: await store.get('alice'), bob: await store.get('bob') };
     expect(afterFirst.alice).toBeGreaterThan(DEFAULT_RATING); // the match really was applied
 
-    const second = store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
+    const second = await store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
     expect(second.applied).toBe(false);
     // The assertion that matters. `applied: false` with the ratings moved again would be
     // the original defect wearing the new return type.
-    expect(store.get('alice')).toBe(afterFirst.alice);
-    expect(store.get('bob')).toBe(afterFirst.bob);
+    expect(await store.get('alice')).toBe(afterFirst.alice);
+    expect(await store.get('bob')).toBe(afterFirst.bob);
   });
 
   it.each([
     ['in-memory', (): RatingStore => new RatingStore()],
-    ['SQLite', (): RatingStore => new RatingStore(openDb(':memory:'))],
-  ])('%s: a DIFFERENT reportKey is a different match and applies again', (_label, make) => {
+    ['cluster', (): RatingStore => new RatingStore(store_)],
+  ])('%s: a DIFFERENT reportKey is a different match and applies again', async (_label, make) => {
     // The mirror of the case above, and the one that fails if the key is over-broad (e.g. a
     // roomId-only key against `index.ts`'s legacy dev handshake, where a room id can be
     // reused): a store that refuses every second report is not idempotent, it is broken.
     const store = make();
-    store.applyMatchOnce('room-7:aaaaaaaaaaaaaaaa', ['alice', 'bob'], [1, 2]);
-    const afterFirst = store.get('alice');
-    const second = store.applyMatchOnce('room-8:bbbbbbbbbbbbbbbb', ['alice', 'bob'], [1, 2]);
+    await store.applyMatchOnce('room-7:aaaaaaaaaaaaaaaa', ['alice', 'bob'], [1, 2]);
+    const afterFirst = await store.get('alice');
+    const second = await store.applyMatchOnce('room-8:bbbbbbbbbbbbbbbb', ['alice', 'bob'], [1, 2]);
     expect(second.applied).toBe(true);
-    expect(store.get('alice')).toBeGreaterThan(afterFirst);
+    expect(await store.get('alice')).toBeGreaterThan(afterFirst);
   });
 
-  it('returns the same {before, after} changes an unconditional applyMatch would', () => {
-    const once = new RatingStore().applyMatchOnce(KEY, ['alice', 'bob', 'carol'], [1, 2, 3], [0, 0, 1]);
-    const plain = new RatingStore().applyMatch(['alice', 'bob', 'carol'], [1, 2, 3], [0, 0, 1]);
+  it('returns the same {before, after} changes an unconditional applyMatch would', async () => {
+    const once = await new RatingStore().applyMatchOnce(KEY, ['alice', 'bob', 'carol'], [1, 2, 3], [0, 0, 1]);
+    const plain = await new RatingStore().applyMatch(['alice', 'bob', 'carol'], [1, 2, 3], [0, 0, 1]);
     expect(once.applied && once.changes).toEqual(plain);
   });
 
-  it('records applied_at from the injected clock, so an operator can date the claim', () => {
-    const db = openDb(':memory:');
-    new RatingStore(db, () => 1_700_000_000_000).applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
-    const row = db.prepare('SELECT report_key, applied_at FROM rating_reports').get() as unknown as {
-      report_key: string;
-      applied_at: number;
-    };
-    expect(row.report_key).toBe(KEY);
-    expect(row.applied_at).toBe(1_700_000_000_000);
+  it('records appliedAt from the injected clock, so an operator can date the claim', async () => {
+    await new RatingStore(store_, () => 1_700_000_000_000).applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
+    const doc = await store_.ratingReports.findOne({});
+    expect(doc?._id).toBe(KEY);
+    expect(doc?.appliedAt).toBe(1_700_000_000_000);
   });
 
-  it('leaves applyMatch itself unchanged — an unkeyed apply still compounds', () => {
+  it('claims exactly once under CONCURRENT reports of the same key', async () => {
+    // Not in the old suite, and it is the assertion the port most needs: `node:sqlite` is
+    // synchronous, so two settlements could not interleave and a sequential test was the
+    // only one worth writing. Every call is a promise now, so eight simultaneous retries of
+    // one at-least-once delivery is a state this code really reaches.
+    const store = new RatingStore(store_);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => store.applyMatchOnce('room-race:ffffffffffffffff', ['alice', 'bob'], [1, 2])),
+    );
+    expect(results.filter((r) => r.applied)).toHaveLength(1);
+    expect(await store_.ratingReports.countDocuments({ _id: 'room-race:ffffffffffffffff' })).toBe(1);
+  });
+
+  it('leaves applyMatch itself unchanged — an unkeyed apply still compounds', async () => {
     // design/15's contract, and what every pre-8.1 caller and test depends on. If dedupe
     // had been folded INTO `applyMatch`, this would silently become a no-op.
     const store = new RatingStore();
-    store.applyMatch(['alice', 'bob'], [1, 2]);
-    const afterFirst = store.get('alice');
-    store.applyMatch(['alice', 'bob'], [1, 2]);
-    expect(store.get('alice')).toBeGreaterThan(afterFirst);
+    await store.applyMatch(['alice', 'bob'], [1, 2]);
+    const afterFirst = await store.get('alice');
+    await store.applyMatch(['alice', 'bob'], [1, 2]);
+    expect(await store.get('alice')).toBeGreaterThan(afterFirst);
   });
 });
 
 describe('RatingStore.applyMatchOnce — the claim and the ratings are ONE transaction', () => {
   const KEY = 'room-rollback:0000000000000000';
 
-  it('SQLite: a failed rating write rolls the CLAIM back with it, so a retry can still land', () => {
+  /**
+   * Make the SERVER refuse every write to `ratings`, and undo it.
+   *
+   * The SQLite version of these two tests installed a `BEFORE INSERT ... RAISE(ABORT)`
+   * trigger, and its comment said why: "forced with a real SQLite trigger rather than a
+   * mocked driver — the point is that the DATABASE aborts the write the claim is supposed to
+   * be tied to". A collection validator that nothing can satisfy is the same instrument. A
+   * stubbed collection would test that this code handles an exception; this tests that the
+   * transaction really discards a claim when the write beside it is rejected.
+   */
+  const refuseRatingWrites = (refuse: boolean): Promise<unknown> =>
+    ctx.db.command({ collMod: 'ratings', validator: refuse ? { $expr: false } : {} });
+
+  it('cluster: a failed rating write rolls the CLAIM back with it, so a retry can still land', async () => {
     // The failure this protects against is the worse of the two directions: a burned key
     // for a match whose deltas were never written means that match's rating is gone
-    // forever, and the next retry is answered "already applied". Forced with a real SQLite
-    // trigger rather than a mocked driver — the point is that the DATABASE aborts the write
-    // the claim is supposed to be tied to.
-    const db = openDb(':memory:');
-    const store = new RatingStore(db);
-    db.exec(`CREATE TRIGGER ratings_refuse BEFORE INSERT ON ratings BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`);
+    // forever, and the next retry is answered "already applied".
+    const store = new RatingStore(store_);
+    await store_.ratings.insertOne({ _id: '__seed', rating: 1 }); // the collection must exist to collMod it
+    await refuseRatingWrites(true);
 
-    expect(() => store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).toThrow(/disk on fire/);
-    expect(store.get('alice')).toBe(DEFAULT_RATING); // nothing was applied
-    const claims = db.prepare('SELECT COUNT(*) AS c FROM rating_reports').get() as unknown as { c: number };
-    expect(claims.c).toBe(0);
+    await expect(store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).rejects.toThrow();
+    expect(await store.get('alice')).toBe(DEFAULT_RATING); // nothing was applied
+    expect(await store_.ratingReports.countDocuments()).toBe(0);
 
     // And now the retry — the whole reason the rollback matters. `routes/rating.ts` answers
     // the throw with a 500, which is the one status `internalFetch` retries.
-    db.exec('DROP TRIGGER ratings_refuse');
-    const retry = store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
+    await refuseRatingWrites(false);
+    const retry = await store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]);
     expect(retry.applied).toBe(true);
-    expect(store.get('alice')).toBeGreaterThan(DEFAULT_RATING);
+    expect(await store.get('alice')).toBeGreaterThan(DEFAULT_RATING);
   });
 
-  it('SQLite: the connection is usable afterwards — no transaction left open', () => {
-    // A `ROLLBACK` that did not run (or ran twice) leaves the connection either inside a
-    // transaction or throwing on the next `BEGIN`, and the process serves every later
-    // settlement through this same connection.
-    const db = openDb(':memory:');
-    const store = new RatingStore(db);
-    db.exec(`CREATE TRIGGER ratings_refuse BEFORE INSERT ON ratings BEGIN SELECT RAISE(ABORT, 'nope'); END`);
-    expect(() => store.applyMatchOnce(KEY, ['alice'], [1])).toThrow();
-    db.exec('DROP TRIGGER ratings_refuse');
-    expect(() => store.applyMatchOnce('another:key000000000000', ['carol', 'dave'], [1, 2])).not.toThrow();
-    expect(store.get('carol')).toBeGreaterThan(DEFAULT_RATING);
+  it('cluster: the client is usable afterwards — no session or transaction left open', async () => {
+    // `applyMatchOnce` ends its session in a `finally`. A leaked session is not visible from
+    // the outside until the pool runs out, so what this asserts is the observable half: the
+    // very next settlement through the same store still works.
+    const store = new RatingStore(store_);
+    await store_.ratings.insertOne({ _id: '__seed', rating: 1 });
+    await refuseRatingWrites(true);
+    await expect(store.applyMatchOnce(KEY, ['alice'], [1])).rejects.toThrow();
+    await refuseRatingWrites(false);
+    await expect(store.applyMatchOnce('another:key000000000000', ['carol', 'dave'], [1, 2])).resolves.toMatchObject({
+      applied: true,
+    });
+    expect(await store.get('carol')).toBeGreaterThan(DEFAULT_RATING);
   });
 
-  it('in-memory: a failed apply restores the cache AND releases the claim', () => {
+  it('in-memory: a failed apply restores the cache AND releases the claim', async () => {
     // The no-db backend hand-rolls the transaction, so it gets the same test rather than
     // being trusted. `super.applyMatch` really does write the cache before the throw, which
     // is what makes the restore observable.
     class FlakyStore extends RatingStore {
       fail = true;
-      override applyMatch(
+      override async applyMatch(
         accountIds: readonly string[],
         places: readonly number[],
         teamIds?: readonly number[],
-      ): RatingChange[] {
-        const changes = super.applyMatch(accountIds, places, teamIds);
+      ): Promise<RatingChange[]> {
+        const changes = await super.applyMatch(accountIds, places, teamIds);
         if (this.fail) throw new Error('boom');
         return changes;
       }
     }
     const store = new FlakyStore();
-    expect(() => store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).toThrow(/boom/);
-    expect(store.get('alice')).toBe(DEFAULT_RATING); // rolled back, not left half-applied
-    expect(store.get('bob')).toBe(DEFAULT_RATING);
+    await expect(store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).rejects.toThrow(/boom/);
+    expect(await store.get('alice')).toBe(DEFAULT_RATING); // rolled back, not left half-applied
+    expect(await store.get('bob')).toBe(DEFAULT_RATING);
 
     store.fail = false;
-    expect(store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]).applied).toBe(true);
-    expect(store.get('alice')).toBeGreaterThan(DEFAULT_RATING);
+    expect((await store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).applied).toBe(true);
+    expect(await store.get('alice')).toBeGreaterThan(DEFAULT_RATING);
   });
 
-  it('in-memory: a failed apply RESTORES an existing rating rather than clearing it', () => {
+  it('in-memory: a failed apply RESTORES an existing rating rather than clearing it', async () => {
     // The other arm of the same rollback, and the one a fresh store cannot show: these
     // accounts already have a ladder history, so "undo" means putting the previous number
     // back, not deleting the entry and silently resetting them to DEFAULT_RATING.
     class FlakyStore extends RatingStore {
       fail = false;
-      override applyMatch(
+      override async applyMatch(
         accountIds: readonly string[],
         places: readonly number[],
         teamIds?: readonly number[],
-      ): RatingChange[] {
-        const changes = super.applyMatch(accountIds, places, teamIds);
+      ): Promise<RatingChange[]> {
+        const changes = await super.applyMatch(accountIds, places, teamIds);
         if (this.fail) throw new Error('boom');
         return changes;
       }
     }
     const store = new FlakyStore();
-    store.applyMatch(['alice', 'bob'], [1, 2]); // a prior match, so both have a real rating
-    const established = { alice: store.get('alice'), bob: store.get('bob') };
+    await store.applyMatch(['alice', 'bob'], [1, 2]); // a prior match, so both have a real rating
+    const established = { alice: await store.get('alice'), bob: await store.get('bob') };
     expect(established.alice).not.toBe(DEFAULT_RATING);
 
     store.fail = true;
-    expect(() => store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).toThrow(/boom/);
-    expect(store.get('alice')).toBe(established.alice);
-    expect(store.get('bob')).toBe(established.bob);
+    await expect(store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).rejects.toThrow(/boom/);
+    expect(await store.get('alice')).toBe(established.alice);
+    expect(await store.get('bob')).toBe(established.bob);
   });
 });
 
 describe('RatingStore.applyMatchOnce — two settlements racing for one claim', () => {
   const KEY = 'room-race:1111111111111111';
 
-  it('two connections to one database file: the second loses the claim and applies nothing', () => {
-    // The durable half of "only one wins". Within one process every apply is synchronous,
-    // so the interleaving that matters is across CONNECTIONS — a restarted matchsvc, or a
-    // second instance — which is exactly what a shared `rating_reports` row is for. A
-    // `:memory:` db per connection could not show this at all.
-    const a = new RatingStore(fileDb());
-    const b = new RatingStore(fileDb());
-    expect(a.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]).applied).toBe(true);
-    const afterA = a.get('alice');
+  it('two independent stores over one database: the second loses the claim and applies nothing', async () => {
+    // The durable half of "only one wins" — a restarted matchsvc, or a second instance,
+    // settling the same at-least-once report. Two `RatingStore`s over the same collections
+    // are what that looks like from here.
+    const a = new RatingStore(store_);
+    const b = new RatingStore(store_);
+    expect((await a.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).applied).toBe(true);
+    const afterA = await a.get('alice');
 
-    expect(b.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]).applied).toBe(false);
-    expect(b.get('alice')).toBe(afterA); // b sees a's committed rating, and did not add to it
-    expect(a.get('alice')).toBe(afterA);
+    expect((await b.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).applied).toBe(false);
+    expect(await b.get('alice')).toBe(afterA); // b sees a's committed rating, and did not add to it
+    expect(await a.get('alice')).toBe(afterA);
   });
 
-  it('a peer already holding the write lock THROWS rather than skipping the claim', () => {
-    // `BEGIN IMMEDIATE` sits outside the try on purpose: a busy database means no
-    // transaction was opened, so there is nothing to roll back, and the honest answer is to
-    // fail the request. `routes/rating.ts` turns it into a 500 and the sender retries —
-    // whereas treating a locked database as "already claimed" would DROP the settlement,
-    // which is the failure nothing logs.
-    const holder = fileDb();
-    const store = new RatingStore(fileDb());
-    holder.exec('BEGIN IMMEDIATE');
-    holder.prepare('INSERT INTO ratings (account_id, rating) VALUES (?, ?)').run('someone-else', 1234);
-    try {
-      expect(() => store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2])).toThrow(/locked/i);
-    } finally {
-      holder.exec('ROLLBACK');
-    }
-    // Nothing was claimed, so once the lock clears the settlement still lands.
-    expect(store.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]).applied).toBe(true);
+  it('two stores settling SIMULTANEOUSLY: exactly one applies, and the ratings move once', async () => {
+    // REPLACES a SQLite-only test, rather than porting one.
+    //
+    // The old suite asserted that a peer holding `BEGIN IMMEDIATE` made the claim THROW
+    // ("locked"), on the reasoning that treating a busy database as "already claimed" would
+    // silently drop a settlement. That mechanism does not exist here: MongoDB has no
+    // database-wide write lock, and a genuine conflict on the claim document surfaces as a
+    // transient transaction error that `withTransaction` RETRIES on its own. There is no
+    // "locked" to assert and pretending otherwise would be a test of nothing.
+    //
+    // What survives is the property the old test was ultimately protecting: under real
+    // simultaneity the settlement is neither dropped nor applied twice.
+    const a = new RatingStore(store_);
+    const b = new RatingStore(store_);
+    const [ra, rb] = await Promise.all([
+      a.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]),
+      b.applyMatchOnce(KEY, ['alice', 'bob'], [1, 2]),
+    ]);
+    expect([ra.applied, rb.applied].filter(Boolean)).toHaveLength(1);
+    const winner = ra.applied ? ra : rb;
+    expect(winner.applied && (await a.get('alice'))).toBe(winner.applied && winner.changes[0]!.after);
+    expect(await store_.ratingReports.countDocuments({ _id: KEY })).toBe(1);
   });
 });

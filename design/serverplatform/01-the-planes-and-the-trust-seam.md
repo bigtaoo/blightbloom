@@ -81,7 +81,7 @@ from a paid one afterwards.
   the point. A rating key is any opaque id `ladderReport.ts` hands over, including a guest/bot
   `seat:{roomId}:{seatIdx}` scaffold with no `accounts` row at all. An entitlement is only ever
   minted for a real logged-in account — a guest has no row here — so no legitimate id can fail the
-  constraint, and `node:sqlite` enforcing foreign keys by default is then exactly what makes a
+  constraint, and `node:sqlite` enforcing foreign keys by default was then exactly what made a
   typo'd hand-issue fail loudly instead of becoming an orphan that silently never delivers.
 - **Two CHECK constraints**, both because §7 rules out an admin service and the schema therefore
   has to survive being corrected by a human at a `sqlite3` prompt: `source` is constrained to the

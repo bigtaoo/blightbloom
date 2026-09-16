@@ -214,8 +214,8 @@ function guard(route: string, work: Promise<unknown>): void {
 }
 
 /** `GET /store/skus` → billsvc `GET /skus`. The catalogue, at the server's prices. */
-export const getSkus: RouteHandler<StoreRouteDeps> = (req, res, _url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const getSkus: RouteHandler<StoreRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   guard('GET /store/skus', relaySkus(res, deps));
 };
@@ -234,8 +234,8 @@ async function relaySkus(res: ServerResponse, deps: StoreRouteDeps): Promise<voi
  * `amount` is not among them). Body out: those two plus the accountId of the verified
  * session — see this file's header on why the client's own claim is never read.
  */
-export const postOrder: RouteHandler<StoreRouteDeps> = (req, res, _url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const postOrder: RouteHandler<StoreRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   readJson(req, (body) => {
     const b = (body ?? {}) as { sku?: unknown; platform?: unknown };
@@ -258,8 +258,8 @@ async function relayOrder(res: ServerResponse, deps: StoreRouteDeps, json: unkno
  * `GET /store/order/:id` → billsvc `GET /order/:id`, narrowed to the session's own account.
  * The poll `StorePurchase` runs while a payment is in flight.
  */
-export const getOrder: RouteHandler<StoreRouteDeps> = (req, res, url, deps) => {
-  const session = requireAuth(req, deps.auth);
+export const getOrder: RouteHandler<StoreRouteDeps> = async (req, res, url, deps) => {
+  const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   const match = STORE_ORDER_PATH.exec(url.pathname);
   // Unreachable through `matchsvc.ts`, which tests the same pattern before dispatching — but

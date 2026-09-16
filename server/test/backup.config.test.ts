@@ -4,62 +4,80 @@
  * The bug this file is written against does not throw and does not crash: a worker that
  * starts with nothing to do, logs one cheerful line, stays green, and is discovered on the
  * day somebody needs a restore. Every case below is a way that could happen.
+ *
+ * ## The refusal that moved, 2026-09-15
+ *
+ * Seven cases here used to be about SOURCE PATHS: three env vars naming SQLite files,
+ * deliberately sharing the owning services' own variable names so a rename could not leave
+ * this worker backing up a path nobody writes. They are gone, and so is the failure they
+ * covered — `BACKUP_STORES` is compiled in, so "no sources" is unrepresentable rather than
+ * refused.
+ *
+ * What replaced them is not nothing. The same no-op is now reachable through an unset
+ * `BB_MONGO_URI`, and the same drift is now reachable through a store renamed in `mongo.ts`
+ * and not here. Both are cases below. Deleting the old ones without replacing them is how a
+ * port quietly loses the property the deleted tests were protecting.
  */
 import { describe, it, expect } from 'vitest';
-import { readBackupConfig, BackupConfigError, SOURCE_VARS } from '../src/backup/config';
+import { readBackupConfig, BackupConfigError, BACKUP_STORES } from '../src/backup/config';
+import { STORES } from '../src/mongo';
 
-const base = { BB_DB_PATH: '/sources/matchsvc/accounts.db' };
+const base = { BB_MONGO_URI: 'mongodb://cluster.example/' };
 
 describe('readBackupConfig — sources', () => {
-  it('takes every database, in declaration order, from the owning services’ own var names', () => {
-    const cfg = readBackupConfig({
-      BB_DB_PATH: '/sources/matchsvc/accounts.db',
-      BB_BILLING_DB_PATH: '/sources/billsvc/billing.db',
-      BB_ANALYTICS_DB_PATH: '/sources/matchsvc/analytics.db',
-    });
-    expect(cfg.sources).toEqual([
-      '/sources/matchsvc/accounts.db',
-      '/sources/billsvc/billing.db',
-      '/sources/matchsvc/analytics.db',
-    ]);
-    // The names are shared with matchsvc/billsvc on purpose; a rename there must not leave
-    // this worker backing up a path nobody writes to any more.
-    expect(SOURCE_VARS).toEqual(['BB_DB_PATH', 'BB_BILLING_DB_PATH', 'BB_ANALYTICS_DB_PATH']);
+  it('backs up three of the cluster\'s four logical databases, in a fixed order', () => {
+    expect(readBackupConfig(base).sources).toEqual(['accounts', 'billing', 'analytics']);
   });
 
-  it('keeps working when a source var is not set at all, which is how one is added', () => {
-    // design/21 §2.4 adds the analytics database to this list before compose sets its var.
-    // A worker that refused an unset member of SOURCE_VARS would turn "a new source is
-    // being introduced" into "no backups at all" — the exact failure this worker exists to
-    // prevent, arriving through its own configuration.
-    const cfg = readBackupConfig({ BB_DB_PATH: '/a.db', BB_BILLING_DB_PATH: '/b.db' });
-    expect(cfg.sources).toEqual(['/a.db', '/b.db']);
+  it('leaves `ops` out, and that is a decision rather than an oversight', () => {
+    // Every document in `ops` is a value an operator typed over a default that is in git, so
+    // a lost flag store costs the current override set — which the console shows and a human
+    // retypes in a minute. The other three hold identity, money and measurement. Asserted
+    // rather than left implicit, because "add the fourth, it is free" is the obvious change
+    // and the argument against it lives in a comment nobody has to read.
+    expect(BACKUP_STORES).not.toContain('ops');
+    expect(STORES).toContain('ops');
   });
 
-  it('accepts either one alone — billing exists before accounts does not', () => {
-    expect(readBackupConfig({ BB_BILLING_DB_PATH: '/b/billing.db' }).sources).toEqual(['/b/billing.db']);
-  });
-
-  it('REFUSES to start with no source at all', () => {
+  it('REFUSES to start with no cluster to read', () => {
+    // The successor to "no databases to back up". Same failure — a container that starts,
+    // logs one cheerful line and backs up nothing — reached through the one input that can
+    // still be missing.
     expect(() => readBackupConfig({})).toThrow(BackupConfigError);
-    expect(() => readBackupConfig({})).toThrow(/no databases to back up/);
+    expect(() => readBackupConfig({})).toThrow(/BB_MONGO_URI is not set/);
   });
 
-  it('treats an EMPTY var as absent, and so refuses on two empty ones', () => {
-    // design/19 records this exact failure in the sibling project: a var set to '' beats a
-    // `?? fallback`, because that only checks for nullish. A compose file with a trailing
-    // `BB_DB_PATH:` and no value produces it.
-    expect(() => readBackupConfig({ BB_DB_PATH: '', BB_BILLING_DB_PATH: '   ' })).toThrow(
-      /no databases to back up/,
-    );
+  it('treats an EMPTY BB_MONGO_URI as absent', () => {
+    // design/19 §9 records this exact failure in the sibling project: a var set to '' beats
+    // a `?? fallback`, because that only checks for nullish. A compose file with a trailing
+    // `BB_MONGO_URI:` and no value produces it, and the driver's own error for an empty
+    // connection string arrives one cycle later in a status file rather than at boot.
+    expect(() => readBackupConfig({ BB_MONGO_URI: '' })).toThrow(/BB_MONGO_URI is not set/);
+    expect(() => readBackupConfig({ BB_MONGO_URI: '   ' })).toThrow(/BB_MONGO_URI is not set/);
   });
 
-  it('trims a stray space rather than opening " /data/x.db"', () => {
-    expect(readBackupConfig({ BB_DB_PATH: ' /data/x.db ' }).sources).toEqual(['/data/x.db']);
+  it('REFUSES a present-but-unusable URI, because this worker has its own config path', () => {
+    // `mongoUri()`'s shape check does not cover this file — the worker reads the variable
+    // itself — so without this it would be the one service where a runbook placeholder
+    // still boots, into a failing cycle that nobody sees until a restore is needed. Same
+    // no-op, one layer further in.
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'mongodb+srv://…' })).toThrow(BackupConfigError);
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'mongodb+srv://…' })).toThrow(/non-ASCII/);
+    expect(() => readBackupConfig({ BB_MONGO_URI: 'REPLACE_ME' })).toThrow(/does not begin with/);
   });
 
-  it('refuses a source INSIDE the backup directory — a copy of a copy every cycle', () => {
-    expect(() => readBackupConfig({ BB_DB_PATH: '/backups/accounts.db' })).toThrow(/lies inside/);
+  it('names only stores mongo.ts declares', () => {
+    // The successor to "the source var names are shared with matchsvc/billsvc on purpose".
+    // That sharing existed so a rename could not leave this worker reading a path nobody
+    // writes; the same drift is now a store renamed in `mongo.ts` and not here, and the
+    // consequence is worse — a database that silently stops being backed up, with a green
+    // container and a status file full of successes for the two that still resolve.
+    //
+    // `BACKUP_STORES`'s `satisfies readonly StoreName[]` is what actually catches it, at
+    // COMPILE time, which is why `config.ts` has no runtime check. This is the same claim
+    // asserted where a reader looks for it — and it would survive somebody weakening that
+    // declaration to a plain `as const`.
+    for (const source of BACKUP_STORES) expect(STORES, source).toContain(source);
   });
 });
 
@@ -77,8 +95,8 @@ describe('readBackupConfig — schedule and retention', () => {
 
   it('refuses a zero, negative or unparseable interval instead of clamping it', () => {
     // Clamping is the tempting move and it is wrong: `0` almost certainly means somebody
-    // meant to disable the worker, and a busy-loop of VACUUMs is a worse answer than a
-    // container that will not start.
+    // meant to disable the worker, and a busy-loop of full-collection scans against a live
+    // cluster is a worse answer than a container that will not start.
     for (const value of ['0', '-1', 'nightly', 'NaN', '']) {
       const env = { ...base, BB_BACKUP_INTERVAL_HOURS: value };
       if (value === '') {
@@ -96,5 +114,11 @@ describe('readBackupConfig — schedule and retention', () => {
 
   it('refuses keep=0 — that is "back up and immediately delete"', () => {
     expect(() => readBackupConfig({ ...base, BB_BACKUP_KEEP: '0' })).toThrow(BackupConfigError);
+  });
+
+  it('takes a destination directory from the environment', () => {
+    expect(readBackupConfig({ ...base, BB_BACKUP_DIR: '/mnt/snapshots' }).destDir).toBe('/mnt/snapshots');
+    // ...and an empty one is unset, not a directory named "".
+    expect(readBackupConfig({ ...base, BB_BACKUP_DIR: '' }).destDir).toBe('/backups');
   });
 });

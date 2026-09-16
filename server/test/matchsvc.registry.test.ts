@@ -28,6 +28,7 @@ import { createMatchsvcServer, startupTarget, type MatchsvcServerOptions } from 
 import { GameRegistry, type GameServerEntry } from '../src/GameRegistry';
 import { verifyTicket } from '../src/ticket';
 import type { BotClientOptions } from '../src/BotClient';
+import { freshAccounts } from './mongoHarness';
 
 const SECRET = 'registry-test-secret';
 /** Distinctive on purpose — a hardcoded fallback could never accidentally equal it. */
@@ -40,10 +41,10 @@ interface Ctx {
   close: () => Promise<void>;
 }
 
-async function start(opts: Omit<MatchsvcServerOptions, 'dbPath' | 'secret'> = {}): Promise<Ctx> {
+async function start(opts: Partial<Omit<MatchsvcServerOptions, 'store' | 'secret'>> = {}): Promise<Ctx> {
   const bots: BotClientOptions[] = [];
   const server: Server = createMatchsvcServer({
-    dbPath: ':memory:',
+    store: await freshAccounts(),
     secret: SECRET,
     spawnBot: (o) => void bots.push(o),
     ...opts,

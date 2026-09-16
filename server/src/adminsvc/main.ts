@@ -12,9 +12,16 @@
  * requests to avoid becoming a free readout of how many players are online. An admin
  * surface built on that server would make every future admin route inherit "public unless
  * it remembers not to be". A separate process inverts the default, and buys the property in
- * B1: this one opens `accounts.db`, `billing.db` and `analytics.db` with `readOnly: true`,
- * so it is not that the console *does not* write player data — it *cannot*, and that is a
+ * B1: it is not that the console *does not* write player data — it *cannot*, and that is a
  * sentence that survives a bug in it.
+ *
+ * Since the MongoDB port that sentence is bought differently. It used to be
+ * `readOnly: true` on three SQLite handles behind `:ro` bind mounts — enforced by two layers
+ * neither of which was this code. It is an Atlas ROLE now, which lives in the cluster's
+ * configuration where no diff can show it, so `server.ts` PROVES it at boot instead: it
+ * attempts a real write to each player-data database and refuses to start unless the server
+ * refuses. A check at one instant rather than a capability, which is weaker, and the reason
+ * both the probe and this paragraph exist.
  *
  * ## The first thing `main` does is throw
  *
@@ -71,27 +78,38 @@ export function adminHost(env: AdminEnv & { HOST?: string } = process.env): stri
 /**
  * Starts the ops console.
  *
- * Returns the whole handle rather than just the `Server`: the three SQLite connections stay
- * open for the life of the process, so anything that shuts this down needs them as well as
- * the socket.
+ * Async because `createAdminsvcServer` connects to the cluster and runs the write probe
+ * before it builds anything — both of which have to finish before a port is bound, for the
+ * reason every `main.ts` here now connects first: a bad URI or an unreachable cluster should
+ * be a boot failure with a line an operator can read, not a 500 on the page they opened to
+ * find out what was wrong.
+ *
+ * Returns the whole handle rather than just the `Server`. It no longer carries anything to
+ * close — the pooled client belongs to `mongo.ts` — but the health-relevant booleans hang
+ * off it and a test reads them.
  */
-export function main(
+export async function main(
   env: AdminEnv & { ADMIN_PORT?: string; HOST?: string } = process.env,
   port = adminPort(env),
   host = adminHost(env),
-): AdminsvcServer {
+): Promise<AdminsvcServer> {
   const log = createLogger('adminsvc');
-  const handle = createAdminsvcServer({ env, log });
+  const handle = await createAdminsvcServer({ env, log });
   handle.server.listen(port, host, () => {
     // The three booleans are the one posture fact worth being able to query months later
     // ("was the commerce tab even connected on the day of that order?"), and they are
     // FIELDS rather than prose in the message so `| logfmt` can see them.
+    //
+    // `readOnly` is no longer the constant `true` it was when the handles were opened with
+    // a mode flag. It is what the write probe actually found, which is the whole point of
+    // having one: a console running with `BB_ADMIN_ALLOW_WRITABLE` says so on every boot
+    // rather than looking identical to a correctly-scoped one.
     log.info('ops console listening', {
       addr: `http://${host}:${port}/admin/`,
       accounts: handle.dbs.accounts !== null,
       billing: handle.dbs.billing !== null,
       analytics: handle.dbs.analytics !== null,
-      readOnly: true,
+      readOnly: handle.readOnly,
     });
     startHeartbeat({ log });
   });
@@ -111,13 +129,13 @@ export function main(
  * code 1 rather than 0 so compose's `restart: unless-stopped` reports a failure rather
  * than a clean stop.
  */
-export function runMain(
+export async function runMain(
   env: AdminEnv & { ADMIN_PORT?: string; HOST?: string } = process.env,
   exit: (code: number) => never = process.exit as (code: number) => never,
   report: (line: string) => void = console.error,
-): AdminsvcServer {
+): Promise<AdminsvcServer> {
   try {
-    return main(env);
+    return await main(env);
   } catch (e) {
     if (e instanceof AdminStartupError) {
       report(`[blightbloom] adminsvc refused to start: ${e.message}`);
@@ -131,5 +149,13 @@ export function runMain(
 // imported by a test — the ESM equivalent of `require.main === module`, the same guard every
 // other entry point here uses.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  runMain();
+  // `runMain` awaits the cluster now, so its rejection has to be handled here or it becomes
+  // an unhandled rejection with no log line at all — which is precisely the boot failure an
+  // operator most needs to read. `AdminStartupError` is already turned into a line and an
+  // exit code inside; this catches everything else, which is most usefully a connection
+  // that never came up.
+  runMain().catch((e: unknown) => {
+    console.error(`[blightbloom] adminsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+  });
 }

@@ -8,22 +8,12 @@
  * being applied. A test driven only through HTTP hits whichever side the current defaults
  * happen to produce.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, it, expect } from 'vitest';
 import { FLAG_DEFS, FLAG_NAMES, type FlagValue } from '../src/flags/defs';
 import { flagsSection, flagsUnavailable, type FlagsView } from '../src/adminsvc/page/flags';
-import { defaultOpsDbPath, listOverrides, openOpsDb, setFlag } from '../src/flags/store';
 import { parseFormValue } from '../src/adminsvc/flagRoutes';
 
 const T0 = 1_757_000_000_000;
-const dirs: string[] = [];
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
-});
 
 function view(over: Partial<FlagsView> = {}): FlagsView {
   const effective: Record<string, FlagValue> = {};
@@ -214,61 +204,17 @@ describe('parseFormValue', () => {
     expect(parseFormValue('ui.maintenanceBanner', ' back soon ')).toBe(' back soon ');
   });
 });
-
-describe('defaultOpsDbPath', () => {
-  it('takes BB_OPS_DB_PATH when it is set', () => {
-    vi.stubEnv('BB_OPS_DB_PATH', '/data/ops.db');
-    expect(defaultOpsDbPath()).toBe('/data/ops.db');
-  });
-
-  it('falls back to a data/ops.db sibling when it is unset', () => {
-    vi.stubEnv('BB_OPS_DB_PATH', '');
-    expect(defaultOpsDbPath()).toMatch(/[\\/]data[\\/]ops\.db$/);
-    // Never one of the other three files. Pointing this at `accounts.db` would hand adminsvc
-    // the write handle B1 exists to deny it, which is why it is a distinct variable with a
-    // distinct default.
-    expect(defaultOpsDbPath()).not.toMatch(/accounts|billing|analytics/);
-  });
-});
-
-describe('openOpsDb', () => {
-  it('creates the directory and the file, and is idempotent', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bb-ops-open-'));
-    dirs.push(dir);
-    const path = join(dir, 'nested', 'ops.db');
-    const first = openOpsDb(path);
-    setFlag(first, 'match.queueTimeoutMs', 45_000, T0, 'admin');
-    first.close();
-    // Second open over an existing file: `CREATE TABLE IF NOT EXISTS` must not wipe it.
-    const second = openOpsDb(path);
-    expect(listOverrides(second).rows).toHaveLength(1);
-    second.close();
-  });
-
-  it('accepts :memory: without trying to make a directory for it', () => {
-    // `mkdirSync(dirname(':memory:'))` would create a literal `.` — harmless here and a
-    // real mess on a path like `file::memory:?cache=shared`. Every other opener in this
-    // repo carries the same special case, so it is asserted the same way.
-    const db = openOpsDb(':memory:');
-    expect(db.prepare('SELECT COUNT(*) AS n FROM flags').get()).toEqual({ n: 0 });
-    db.close();
-  });
-});
-
-describe('listOverrides — the unparsable row', () => {
-  it('reports a row whose value is not JSON as invalid rather than throwing', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bb-ops-bad-'));
-    dirs.push(dir);
-    const db = openOpsDb(join(dir, 'ops.db'));
-    db.prepare('INSERT INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      'ui.maintenanceBanner',
-      'not json at all',
-      T0,
-      'sqlite3',
-    );
-    const { rows, invalid } = listOverrides(db);
-    expect(rows).toEqual([]);
-    expect(invalid).toEqual(['ui.maintenanceBanner']);
-    db.close();
-  });
-});
+/**
+ * THREE DESCRIBES ENDED HERE ON 2026-09-15, and where they went matters.
+ *
+ * `defaultOpsDbPath` and `openOpsDb` were about a FILE — that the path honoured its env var,
+ * that reopening one did not wipe it, that `:memory:` needed no `mkdir`. The flag store is a
+ * logical database on the cluster now, so none of those questions exist: there is no path to
+ * default, `ensureOpsIndexes` replaces the opener, and `flags.store.test.ts` is where its
+ * idempotency is pinned.
+ *
+ * The third — a `flags` document whose value is not JSON, which an operator at a prompt can
+ * still produce — is a question that survived the move intact, and it moved WITH it:
+ * `flags.store.test.ts`'s "reports a document whose value is not JSON as invalid rather than
+ * throwing". Deleted here rather than ported, so the case has one home instead of two.
+ */

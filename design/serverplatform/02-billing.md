@@ -12,6 +12,28 @@ on 8789 and its routes are `server/src/billsvc/server.ts`. Two amendments the pl
 anticipate are recorded at the end of this section, along with the one thing it left open — which
 closed the next day (2026-09-05, ROADMAP 8.7) and now reads CLOSED rather than open.
 
+
+> **AMENDED 2026-09-15 — the four SQLite files became four logical databases on one MongoDB
+> Atlas cluster** (`server/src/mongo.ts`; volumes 66 and 67, and `design/16-accounts.md` for the
+> decision that reverses its own heading). The paragraphs below still describe the SHAPE
+> correctly — what each store holds, why the planes are separate, which constraint each rule
+> rests on — and the storage words in them are historical. The three differences that are not
+> cosmetic:
+>
+> - **"Money gets its own process and its own database" survives as a separate logical
+>   DATABASE on the cluster**, not a collection prefix, reached through an injected `Db`. A
+>   shared handle is how a later refactor quietly re-merges the two planes, which is the same
+>   argument the separate FILE rested on.
+> - **Foreign keys do not survive and have no equivalent.** Every FK the old schema declared is
+>   an application-level check at its one write path now, which binds this code and not the
+>   database — so a hand-issued document at a `mongosh` prompt bypasses it where a
+>   hand-issued row at a `sqlite3` prompt failed loudly. The CHECK constraints DID survive, as
+>   `$jsonSchema` and `$expr` collection validators.
+> - **A UNIQUE column that was NULLABLE must become a PARTIAL index.** MongoDB treats a missing
+>   field as one `null` and admits exactly one such document where SQLite treats every NULL as
+>   distinct — so the naive translation of `platform_txn_id TEXT UNIQUE` rejects the second
+>   concurrent UNSETTLED order, on the payment path, in production.
+
 Three tables in `billsvc`'s **own** SQLite file (`BB_BILLING_DB_PATH`), never the account DB —
 and never `db.ts`'s `openDb` either, because a shared opener is how a later refactor quietly
 re-merges two files this decision separated on purpose:

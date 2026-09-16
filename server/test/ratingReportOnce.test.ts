@@ -35,7 +35,7 @@ import { createMatchsvcServer } from '../src/matchsvc';
 import { INTERNAL_KEY_HEADER } from '../src/internalAuth';
 import { MAX_REPORT_KEY_LENGTH, postReport } from '../src/routes/rating';
 import { RatingStore, type ApplyMatchOnceResult, type RatingChange } from '../src/rating';
-import { openDb } from '../src/db';
+import { freshAccounts } from './mongoHarness';
 
 /** `config.ts`'s dev fallback, which is what an unset `BB_INTERNAL_KEY` yields under test. */
 const DEV_INTERNAL_KEY = 'dev-insecure-internal-key-do-not-use-in-prod';
@@ -62,7 +62,7 @@ let baseUrl: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const server = createMatchsvcServer({ dbPath: ':memory:', secret: 'report-once-test-secret' });
+  const server = createMatchsvcServer({ store: await freshAccounts(), secret: 'report-once-test-secret' });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
@@ -281,12 +281,15 @@ describe('postReport — a report whose apply THROWS', () => {
   });
 
   it('a real store whose write is refused mid-transaction produces that 500, claim released', async () => {
-    // The same path with nothing stubbed: a SQLite trigger aborts the rating write, so the
-    // 500 comes from the transaction actually rolling back rather than from a fake throw.
+    // The same path with nothing stubbed: a collection validator makes the SERVER abort the
+    // rating write, so the 500 comes from the transaction actually rolling back rather than
+    // from a fake throw. (Was a SQLite `BEFORE INSERT ... RAISE(ABORT)` trigger, same idea.)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const db = openDb(':memory:');
-    const ratings = new RatingStore(db);
-    db.exec(`CREATE TRIGGER ratings_refuse BEFORE INSERT ON ratings BEGIN SELECT RAISE(ABORT, 'refused'); END`);
+    const store = await freshAccounts();
+    const ratings = new RatingStore(store);
+    const ratingsDb = store.client.db(store.ratings.dbName);
+    await store.ratings.insertOne({ _id: '__seed', rating: 1 }); // must exist before collMod
+    await ratingsDb.command({ collMod: 'ratings', validator: { $expr: false } });
     const body = settlement('room-refused');
 
     const first = fakeRes();
@@ -295,13 +298,12 @@ describe('postReport — a report whose apply THROWS', () => {
     expect(error).toHaveBeenCalled();
 
     // The retry the 500 invites: it must APPLY, not be turned away as a duplicate.
-    db.exec('DROP TRIGGER ratings_refuse');
+    await ratingsDb.command({ collMod: 'ratings', validator: {} });
     const second = fakeRes();
     postReport(fakeReq(body), second.res, url, { ratings });
     await vi.waitFor(() => expect(second.sent.status).toBe(200));
     expect((JSON.parse(second.sent.body) as ReportResponse).duplicate).toBe(false);
-    expect(ratings.get(body.accountIds[0]!)).toBeGreaterThan(1000);
-    db.close();
+    expect(await ratings.get(body.accountIds[0]!)).toBeGreaterThan(1000);
   });
 });
 
@@ -314,7 +316,7 @@ describe('postReport — a report with NO reportKey (an un-redeployed sender)', 
     // risks 8.1's bounded double-apply; a 400 would lose those matches' ratings for good,
     // because `internalFetch` never retries a 4xx. The recoverable failure wins.
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const ratings = new RatingStore(openDb(':memory:'));
+    const ratings = new RatingStore(await freshAccounts());
     const { res, sent } = fakeRes();
     postReport(fakeReq(keyless()), res, url, { ratings });
     await vi.waitFor(() => expect(sent.status).toBe(200));
@@ -322,7 +324,7 @@ describe('postReport — a report with NO reportKey (an un-redeployed sender)', 
     expect(parsed.duplicate).toBe(false);
     expect(parsed.changes).toHaveLength(2);
     expect(parsed.reportKey).toBeUndefined(); // nothing invented a key on the sender's behalf
-    expect(ratings.get('skew-alice')).toBeGreaterThan(1000);
+    expect(await ratings.get('skew-alice')).toBeGreaterThan(1000);
   });
 
   it('warns, because "the gameserver has not been redeployed" is actionable', async () => {
@@ -366,28 +368,30 @@ describe('postReport — a report with NO reportKey (an un-redeployed sender)', 
       postReport(fakeReq(keyless()), res, url, { ratings });
       await vi.waitFor(() => expect(sent.status).toBe(200));
     }
-    const changes = ratings.applyMatch(['skew-alice'], [1]);
+    const changes = await ratings.applyMatch(['skew-alice'], [1]);
     expect(changes[0]!.before).toBeGreaterThan(1000 + 15); // two wins' worth, not one
   });
 });
 
-describe('rating_reports — the schema constraint the claim rests on', () => {
-  it('a second row with the same report_key is refused by the PRIMARY KEY, not by app code', () => {
-    // `applyMatchOnce`'s `ON CONFLICT DO NOTHING` + `changes()` is only a claim because the
-    // column cannot hold two of the same key. Asserted against the real error text, so
-    // dropping the constraint fails here rather than quietly making every retry a winner.
-    const db = openDb(':memory:');
-    db.prepare('INSERT INTO rating_reports (report_key, applied_at) VALUES (?, ?)').run('k', 1);
-    expect(() => db.prepare('INSERT INTO rating_reports (report_key, applied_at) VALUES (?, ?)').run('k', 2)).toThrow(
-      /UNIQUE constraint failed: rating_reports.report_key/,
-    );
-    db.close();
+describe('ratingReports — the constraint the claim rests on', () => {
+  it('a second document with the same report key is refused by the server, not by app code', async () => {
+    // `applyMatchOnce`'s upsert is only a CLAIM because the key cannot be held twice. The
+    // SQLite version asserted the PRIMARY KEY's error text; here the report key IS the
+    // `_id`, so the refusal comes from the server with no declared constraint that could be
+    // dropped by accident. Asserted anyway rather than reasoned about: if this ever stops
+    // throwing, every retry becomes a winner and the ladder silently double-credits.
+    const store = await freshAccounts();
+    await store.ratingReports.insertOne({ _id: 'k', appliedAt: 1 });
+    await expect(store.ratingReports.insertOne({ _id: 'k', appliedAt: 2 })).rejects.toMatchObject({ code: 11000 });
+    expect(await store.ratingReports.countDocuments()).toBe(1);
   });
 
-  it('takes no foreign key — a guest/bot scaffold settlement is claimable too', () => {
+  it('takes no reference to accounts — a guest/bot scaffold settlement is claimable too', async () => {
     // Same reasoning `ratings` records: a report key names a MATCH, and the accounts in it
-    // may be `seat:{roomId}:{seatIdx}` scaffolds with no accounts row anywhere.
-    const store = new RatingStore(openDb(':memory:'));
-    expect(store.applyMatchOnce('seat-room:0000000000000000', ['seat:r:0', 'seat:r:1'], [1, 2]).applied).toBe(true);
+    // may be `seat:{roomId}:{seatIdx}` scaffolds with no account document anywhere.
+    const store = new RatingStore(await freshAccounts());
+    expect(
+      (await store.applyMatchOnce('seat-room:0000000000000000', ['seat:r:0', 'seat:r:1'], [1, 2])).applied,
+    ).toBe(true);
   });
 });

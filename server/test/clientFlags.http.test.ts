@@ -26,6 +26,7 @@ import { createMatchsvcServer } from '../src/matchsvc';
 import { defaultFlags, type FlagName, type FlagValue, type FlagValues } from '../src/flags/defs';
 import type { FlagClient } from '../src/flags/client';
 import { PUBLIC_FLAGS_PATH, PUBLIC_FLAG_NAMES, parsePublicFlags } from '@dd/net/publicFlags';
+import { freshAccounts } from './mongoHarness';
 
 const servers: Server[] = [];
 
@@ -54,7 +55,7 @@ function mutableFlags(initial: FlagValues = defaultFlags()): FlagClient & { set(
 }
 
 async function start(flags?: FlagClient): Promise<string> {
-  const server = createMatchsvcServer({ dbPath: ':memory:', secret: 'test-secret', flags });
+  const server = createMatchsvcServer({ store: await freshAccounts(), secret: 'test-secret', flags });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

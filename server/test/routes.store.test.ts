@@ -115,17 +115,26 @@ afterEach(() => {
 /** Drive `getSkus` to completion. */
 async function skus(p: Plane, req = bearer('tok-ada')): Promise<Recorded> {
   const { res, sent } = fakeRes();
-  getSkus(req, res, new URL('http://match.test/store/skus'), deps(p));
+  await getSkus(req, res, new URL('http://match.test/store/skus'), deps(p));
   await sent.done;
   return sent;
 }
 
-/** Drive `postOrder` to completion, feeding `body` through the real `readJson`. */
+/**
+ * Drive `postOrder` to completion, feeding `body` through the real `readJson`.
+ *
+ * The tick before the emit is load-bearing: `postOrder` awaits the session BEFORE it reads
+ * the body, so emitting on this line would push the bytes past a stream nobody is listening
+ * to yet and `sent.done` would never settle. Written as a wait rather than as a
+ * `queueMicrotask` so the reason stays visible at the one place it matters.
+ */
 async function order(p: Plane, body: unknown, req = bearer('tok-ada')): Promise<Recorded> {
   const { res, sent } = fakeRes();
-  postOrder(req, res, new URL('http://match.test/store/order'), deps(p));
+  const done = postOrder(req, res, new URL('http://match.test/store/order'), deps(p));
+  await Promise.resolve();
   req.emit('data', Buffer.from(JSON.stringify(body)));
   req.emit('end');
+  await done;
   await sent.done;
   return sent;
 }
@@ -133,7 +142,7 @@ async function order(p: Plane, body: unknown, req = bearer('tok-ada')): Promise<
 /** Drive `getOrder` to completion for one order id. */
 async function poll(p: Plane, id: string, req = bearer('tok-ada')): Promise<Recorded> {
   const { res, sent } = fakeRes();
-  getOrder(req, res, new URL(`http://match.test/store/order/${encodeURIComponent(id)}`), deps(p));
+  await getOrder(req, res, new URL(`http://match.test/store/order/${encodeURIComponent(id)}`), deps(p));
   await sent.done;
   return sent;
 }
@@ -152,11 +161,13 @@ describe('store proxy — the player half of the trust seam', () => {
     const anon = fakeReq();
 
     const a = fakeRes();
-    getSkus(anon, a.res, new URL('http://match.test/store/skus'), deps(p));
     const b = fakeRes();
-    postOrder(anon, b.res, new URL('http://match.test/store/order'), deps(p));
     const c = fakeRes();
-    getOrder(anon, c.res, new URL('http://match.test/store/order/o-1'), deps(p));
+    await Promise.all([
+      getSkus(anon, a.res, new URL('http://match.test/store/skus'), deps(p)),
+      postOrder(anon, b.res, new URL('http://match.test/store/order'), deps(p)),
+      getOrder(anon, c.res, new URL('http://match.test/store/order/o-1'), deps(p)),
+    ]);
 
     for (const sent of [a.sent, b.sent, c.sent]) {
       expect(sent.status).toBe(401);
@@ -331,7 +342,7 @@ describe('store proxy — when the billing plane does not answer', () => {
         init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
       })) as unknown as typeof fetch;
     const { res, sent } = fakeRes();
-    getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
+    await getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
       auth: fakeAuth(),
       billing: { url: PLANE, fetchImpl: slow, timeoutMs: 5 },
     });
@@ -390,7 +401,7 @@ describe('store proxy — when the billing plane does not answer', () => {
     const { res, sent } = fakeRes(() => {
       throw new Error('write after end');
     });
-    getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), deps(p));
+    await getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), deps(p));
     await vi.waitFor(() => expect(error).toHaveBeenCalled());
     expect(String(error.mock.calls[0]?.[0])).toContain('write after end');
     expect(sent.status).toBe(0); // nothing was ever answered, and nothing tried to answer twice
@@ -409,7 +420,7 @@ describe('store proxy — the uninjected configuration', () => {
     vi.stubEnv('BB_INTERNAL_KEY', 'real-key');
     const p = plane(json({ skus: [] }));
     const { res, sent } = fakeRes();
-    getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
+    await getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
       auth: fakeAuth(),
       billing: { fetchImpl: p.fetchImpl },
     });
@@ -428,7 +439,7 @@ describe('store proxy — the uninjected configuration', () => {
     vi.stubEnv('BB_INTERNAL_KEY', '');
     const p = plane({ status: 401, body: JSON.stringify({ error: 'unauthorized' }) });
     const { res, sent } = fakeRes();
-    getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
+    await getSkus(bearer('tok-ada'), res, new URL('http://match.test/store/skus'), {
       auth: fakeAuth(),
       billing: { url: PLANE, fetchImpl: p.fetchImpl },
     });

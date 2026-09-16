@@ -18,11 +18,13 @@
  * rather than derived from the local tables, which is what makes a difference it reports mean
  * something.
  *
- * Environment: `BB_BILLING_DB_PATH` (the billing file), `BB_BILLING_DEV_STUB` (must be on for
- * the dev platform to answer at all), `BB_BILLING_DEV_ORDERS` (path to the dev order book).
+ * Environment: `BB_MONGO_URI` (+ `BB_MONGO_DB_PREFIX`, the billing logical database),
+ * `BB_BILLING_DEV_STUB` (must be on for the dev platform to answer at all),
+ * `BB_BILLING_DEV_ORDERS` (path to the dev order book).
  */
 import { readFileSync } from 'node:fs';
-import { openBillingDb } from '../src/billingDb';
+import { closeMongo, connectMongo, store } from '../src/mongo';
+import { ensureBillingIndexes } from '../src/billing/schema';
 import { createPlatformOrderLister } from '../src/billsvc/iap/factory';
 import { DevStubOrderBook } from '../src/billsvc/iap/devStub';
 import {
@@ -48,7 +50,9 @@ if (!Number.isInteger(days) || days < 1) throw new Error(`--days must be a posit
 const bookPath = process.env.BB_BILLING_DEV_ORDERS;
 const book = bookPath ? DevStubOrderBook.fromJson(readFileSync(bookPath, 'utf8')) : undefined;
 
-const db = openBillingDb();
+await connectMongo();
+const db = store('billing');
+await ensureBillingIndexes(db);
 try {
   const { sinceMs, untilMs } = dailyWindow(Date.now(), days);
   const report = await reconcileWindow(
@@ -63,6 +67,7 @@ try {
   // permanent state and a cron mail nobody reads. `--strict` is for the day that changes.
   if (args.strict === 'true' && (!report.complete || report.differenceCount > 0)) process.exitCode = 1;
 } finally {
-  // Windows keeps a lock on an unclosed SQLite file; the test suite found that the hard way.
-  db.close();
+  // The pooled client keeps the process alive otherwise — a cron job that never exits is
+  // the same operational problem the old "Windows keeps a lock on the file" note was about.
+  await closeMongo();
 }

@@ -19,24 +19,27 @@
  *    difference between a flag and a differently-spelled deploy.
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { openDb } from '../src/db';
-import { openBillingDb } from '../src/billingDb';
-import { openAnalyticsDb } from '../src/analytics/db';
-import { createAdminsvcServer, type AdminsvcServer } from '../src/adminsvc/server';
+import { ALLOW_WRITABLE_VAR, createAdminsvcServer, type AdminsvcServer } from '../src/adminsvc/server';
+import type { AdminDbName } from '../src/adminsvc/dbs';
 import { createInternalVerifier } from '../src/internalAuth';
 import { INTERNAL_FLAGS_PATH, createFlagClient, parseFlagsResponse } from '../src/flags/client';
 import { FLAG_DEFS } from '../src/flags/defs';
-import { setFlag } from '../src/flags/store';
+import { flagsOf, setFlag } from '../src/flags/store';
+import { openTestMongo, type MongoTestContext } from './mongoHarness';
 
 const PASSWORD = 'f'.repeat(32);
 const KEY = 'internal-test-key';
 const CALLER = 'matchsvc';
 
-const dirs: string[] = [];
+/**
+ * `BB_ADMIN_ALLOW_WRITABLE` on every console here, for the reason `adminsvc.http.test.ts`'s
+ * header gives at length: the suite's mongod has no roles, so the boot-time write probe
+ * finds every player-data database writable and the builder would refuse to start.
+ * `adminsvc.dbs.test.ts` is where that refusal is proven.
+ */
+const ENV = { BB_ADMIN_PASSWORD: PASSWORD, NODE_ENV: 'test', [ALLOW_WRITABLE_VAR]: '1' } as const;
+
 const handles: AdminsvcServer[] = [];
 const silent = {
   error: () => {},
@@ -46,20 +49,10 @@ const silent = {
   child: () => silent,
 } as never;
 
-let paths: { accounts: string; billing: string; analytics: string; ops: string };
+let ctx: MongoTestContext;
 
-beforeEach(() => {
-  const dir = mkdtempSync(join(tmpdir(), 'bb-flags-http-'));
-  dirs.push(dir);
-  paths = {
-    accounts: join(dir, 'accounts.db'),
-    billing: join(dir, 'billing.db'),
-    analytics: join(dir, 'analytics.db'),
-    ops: join(dir, 'ops.db'),
-  };
-  openDb(paths.accounts).close();
-  openBillingDb(paths.billing).close();
-  openAnalyticsDb(paths.analytics).close();
+beforeEach(async () => {
+  ctx = await openTestMongo();
 });
 
 afterEach(async () => {
@@ -68,15 +61,27 @@ afterEach(async () => {
     handle.server.closeAllConnections();
     await new Promise<void>((resolve) => handle.server.close(() => resolve()));
   }
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+  await ctx.dispose();
 });
 
-async function startConsole(opsDbPath: string | null = paths.ops): Promise<string> {
-  const handle = createAdminsvcServer({
-    env: { BB_ADMIN_PASSWORD: PASSWORD, NODE_ENV: 'test' },
+/**
+ * A console with, or without, a flag store.
+ *
+ * `opsFlags: false` is what "this deployment has no remote switch" looks like now. It used
+ * to be an absent FILE PATH — the absence was the switch — and on a cluster `store('ops')`
+ * always resolves, so the state had to be said out loud or it would have stopped existing.
+ * Which would have meant every deployment growing a writable database nobody chose, in the
+ * one process whose whole argument is what it cannot write.
+ */
+async function startConsole(opsFlags = true): Promise<string> {
+  const handle = await createAdminsvcServer({
+    env: { ...ENV },
     log: silent,
-    paths: { accounts: paths.accounts, billing: paths.billing, analytics: paths.analytics },
-    opsDbPath,
+    dbs: { analyticsEnabled: true, open: (name: AdminDbName) => ctx.db(name) },
+    opsFlags,
+    // Omitted rather than nulled when the switch is off: `opsDb` is `Db | undefined`, and
+    // "this deployment has no flag store" has exactly one spelling — `opsFlags: false`.
+    ...(opsFlags ? { opsDb: ctx.db('ops') } : {}),
     verifier: createInternalVerifier([{ caller: CALLER, key: KEY }]),
   });
   handles.push(handle);
@@ -135,7 +140,7 @@ describe('GET /internal/flags', () => {
   it('answers 503 when the deployment has no flag store', async () => {
     // Which every polling client reads as "keep the compiled-in defaults" — the same
     // outcome as being unreachable, said explicitly.
-    const base = await startConsole(null);
+    const base = await startConsole(false);
     const res = await fetch(`${base}${INTERNAL_FLAGS_PATH}`, { headers: { 'x-internal-key': KEY } });
     expect(res.status).toBe(503);
   });
@@ -144,11 +149,12 @@ describe('GET /internal/flags', () => {
     // design/19 §5's production branch: `internalKeys()` returns an EMPTY registry when
     // `BB_INTERNAL_KEY` is unset under production, and an empty registry rejects
     // everything. Never "allow all".
-    const handle = createAdminsvcServer({
-      env: { BB_ADMIN_PASSWORD: PASSWORD, NODE_ENV: 'test' },
+    const handle = await createAdminsvcServer({
+      env: { ...ENV },
       log: silent,
-      paths: { accounts: paths.accounts, billing: paths.billing, analytics: paths.analytics },
-      opsDbPath: paths.ops,
+      dbs: { analyticsEnabled: true, open: (name: AdminDbName) => ctx.db(name) },
+      opsFlags: true,
+      opsDb: ctx.db('ops'),
       verifier: createInternalVerifier([]),
     });
     handles.push(handle);
@@ -271,7 +277,7 @@ describe('POST /admin/flags/set and /clear', () => {
   });
 
   it('404s both write paths when the deployment has no flag store', async () => {
-    const base = await startConsole(null);
+    const base = await startConsole(false);
     const cookie = await signIn(base);
     const headers = { 'content-type': 'application/x-www-form-urlencoded', cookie };
     expect((await fetch(`${base}/admin/flags/set`, { ...setForm('match.queueTimeoutMs', '45000'), headers })).status).toBe(404);
@@ -304,24 +310,24 @@ describe('the flags TAB', () => {
 
   it('is loud about a stored row that is NOT being applied', async () => {
     // A hand-edited row, or a flag a deploy removed: the table says the flag is set and
-    // every service is ignoring it. Produced by writing straight to the table, which is
+    // every service is ignoring it. Produced by writing straight to the collection, which is
     // exactly how it happens in production.
     const base = await startConsole();
     const cookie = await signIn(base);
     const handle = handles[handles.length - 1]!;
-    handle.opsDb!.prepare('INSERT INTO flags (name, value, updated_at, set_by) VALUES (?,?,?,?)').run(
-      'removed.oldFlag',
-      'true',
-      1,
-      'sqlite3',
-    );
+    await flagsOf(handle.opsDb!).insertOne({
+      _id: 'removed.oldFlag',
+      value: 'true',
+      updatedAt: 1,
+      setBy: 'mongosh',
+    });
     const html = await (await fetch(`${base}/admin/?tab=flags`, { headers: { cookie } })).text();
     expect(html).toContain('NOT being applied');
     expect(html).toContain('removed.oldFlag');
   });
 
   it('says so plainly when there is no flag store', async () => {
-    const base = await startConsole(null);
+    const base = await startConsole(false);
     const cookie = await signIn(base);
     const html = await (await fetch(`${base}/admin/?tab=flags`, { headers: { cookie } })).text();
     expect(html).toContain('No flag store on this deployment');
@@ -374,7 +380,7 @@ describe('a flag actually changes what matchsvc does', () => {
     expect(supplier()).toBe(FLAG_DEFS['match.queueTimeoutMs'].default);
 
     const handle = handles[handles.length - 1]!;
-    setFlag(handle.opsDb!, 'match.queueTimeoutMs', 45_000, Date.now(), 'admin');
+    await setFlag(handle.opsDb!, 'match.queueTimeoutMs', 45_000, Date.now(), 'admin');
     await flags.poll();
     expect(supplier()).toBe(45_000);
     void cookie;
