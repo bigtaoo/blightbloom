@@ -92,6 +92,55 @@ that cannot currently be walked through should carry the same visual weight as o
 lives in the Forge, behind SOLO PvE, so a player who saved on floor 3 last night sees a lobby that
 says nothing about it. A saved run is device-local and does not travel with an account
 (`design/16`), which makes its visibility a lobby question and not an account one.
+✅ **Fixed the same day — see the next section.**
+
+### CONTINUE RUN on the front door (2026-09-17)
+
+`client/src/game/ui/LobbyRoutes.ts` + `client/src/game/match/resumableRun.ts`; work log:
+[volume 71](roadmap/71-2026-09-17-lobby-continue-run.md). The lobby grows a sixth route at the
+TOP of the stack — CONTINUE RUN plus a one-line caption naming the floor and the time played —
+and it resumes directly, with no stop at the Forge. Five decisions, each of which is somebody's
+requirement rather than a preference:
+
+- **The row is drawn off `checkResumable`, not off "a save exists".** Those are different
+  questions and the Forge had been answering the wrong one since 2026-09-10: a save from an older
+  `ENGINE_VERSION`, or one whose floor library moved under it, drew a full-size primary CONTINUE
+  whose only possible outcome was to drop the save and toast a refusal. Surviving one screen deep
+  is not the same as surviving on the front door, so `resumableRun.ts` now rebuilds the run config
+  from **today's** content for the save's own seed and loadout and asks the same `checkResumable`
+  the resume itself will ask. **Both screens read that one function**, so the lobby and the Forge
+  cannot end up disagreeing about whether there is a run to come back to. Its cost is real and
+  measured — `contentHashOf` digests 20,724 characters of `EMBER_DUNGEON` + `EMBER_L1_ROOMS` —
+  so the verdict is memoised against the save object the process-wide slot hands back.
+- **A non-resumable save is left in storage, not cleared.** This is a read called from a render
+  path (the Forge asks twice per `render()`, on every keystroke), and a provider that mutates
+  storage while a screen lays itself out turns a re-render into a side effect. The slot is
+  reclaimed by the next `beginRun`. The honest cost: a player whose save we broke is told nothing
+  rather than being told at the moment they press a button they cannot use — which is the trade
+  design/10 already makes elsewhere ("a refusal a player cannot predict reads as a broken button").
+- **On a portal, CONTINUE takes quick-play's slot instead of standing beside it.** Both answer
+  "start playing now", the platform requirement behind PLAY is that a **first-time** visitor reach
+  gameplay in one click (`design/20`), and a player with an unfinished run is not one — CONTINUE is
+  one click into gameplay by the same measure. That is also the only shape that fits: the tallest
+  legal lobby with both — portal quick-play, the data notice, a 140-character maintenance banner
+  and the CONTINUE block — measured **702px against a 640px design height, in all eight locales**,
+  and `viewportFit.test.ts` failed the moment the case was put in front of it. What was NOT done is
+  re-point PLAY at the resume: one button whose meaning depends on the state is how a player loses
+  a run they meant to keep, the same rule that keeps SAVE & QUIT and QUIT as two rows in the pause
+  menu. Two labels, one drawn at a time, is a different thing.
+- **The floor and the elapsed time are a caption, not part of the label.** A `CONTINUE — FLOOR {n}`
+  button is 316px of Russian in a 280px row; the caption is mostly digits and measures 152-165px
+  in the worst locale. It is one unwrapped line on purpose, because wrapping would make the routes
+  block's height a `Text` measurement and every position in these screens is arithmetic on
+  constants so a layout needs no canvas. `labelFit.test.ts` sweeps buttons and would not have seen
+  it, so `LobbyRoutes.test.ts` measures it against the row width in all eight locales itself.
+- **Nothing shares a slot.** CONTINUE takes the y SOLO used to sit at and every row below moves
+  down by the whole block, so a tap aimed at SOLO on a save-less lobby can never land on CONTINUE
+  on a saved one — the pause menu's SAVE & QUIT rule, one screen out.
+
+A refusal that does slip through (the save died between the render and the press) now re-renders
+**the screen the press came from** rather than always the Forge: answering "no" with a navigation
+is its own defect, and both screens carry the verb now.
 
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 

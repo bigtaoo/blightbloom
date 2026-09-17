@@ -10,6 +10,7 @@ import { getSession, setSession, resetSessionCacheForTests, type Session } from 
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { setPublicFlags } from '../../net/clientFlags';
 import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
+import type { SavedRunSummary } from '../match/runSave';
 
 const ALICE: Session = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -28,6 +29,8 @@ function privateOf(m: MainMenu) {
     subtitle: { text: string };
     playBtn: Btn;
     routes: {
+      continueBtn: Btn;
+      continueCaption: { text: string; visible: boolean };
       soloBtn: Btn;
       coopBtn: Btn;
       pvpSoloBtn: Btn;
@@ -40,6 +43,7 @@ function privateOf(m: MainMenu) {
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
     banner: { text: string; visible: boolean; anchor: { x: number; y: number }; position: { x: number; y: number } };
+    menuCard: { h: number; view: { position: { x: number; y: number } } };
     privacyLink: {
       text: string;
       visible: boolean;
@@ -674,5 +678,92 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     m.show(800, 600);
     expect(privateOf(m).privacyLink.text).not.toBe(english);
     expect(privateOf(m).privacyLink.text.length).toBeGreaterThan(0);
+  });
+
+  // ── CONTINUE RUN on the front door (design/10, 2026-09-17) ──────────────────────────
+  //
+  // The report: a player who saved on floor 3 last night opens the game and the lobby says
+  // nothing about it — CONTINUE RUN lived in the Forge, one click behind SOLO PvE. The row
+  // below is the fix, and what these cases pin is the three paths its acceptance named.
+
+  it('draws no CONTINUE row when the provider says there is nothing to continue', () => {
+    // Also the DEFAULT provider, which is what an assembly that forgets to wire one gets:
+    // no row, rather than a row that leads nowhere.
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(false);
+    expect(privateOf(m).routes.continueCaption.visible).toBe(false);
+  });
+
+  it('draws the row, and asks the provider again on every show', () => {
+    // A save is written from the pause menu mid-session, so a value read once at boot would
+    // leave the lobby denying a run the player saved four minutes ago. The provider shape is
+    // `Forge.savedRun`'s, for exactly this reason.
+    let saved: SavedRunSummary | null = null;
+    const m = new MainMenu();
+    m.resumableRun = () => saved;
+    m.show(800, 600);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(false);
+
+    saved = { floorIndex: 2, ticks: 9000, savedAtMs: 0 };
+    m.show(800, 600);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(true);
+    expect(privateOf(m).routes.continueCaption.text).toContain('3'); // floor, 1-based
+
+    saved = null;
+    m.show(800, 600);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(false);
+  });
+
+  it('forwards the CONTINUE row tap to onContinue', () => {
+    const m = new MainMenu();
+    const hits: string[] = [];
+    m.onContinue = () => hits.push('continue');
+    m.onSolo = () => hits.push('solo');
+    m.onPlay = () => hits.push('play');
+    m.resumableRun = () => ({ floorIndex: 0, ticks: 30, savedAtMs: 0 });
+    m.show(800, 600);
+    privateOf(m).routes.continueBtn.onTap?.();
+    expect(hits).toEqual(['continue']);
+  });
+
+  it('grows the card and the whole block by the row it added, keeping both on screen', () => {
+    const plain = new MainMenu();
+    plain.show(800, 600);
+    const saved = new MainMenu();
+    saved.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+    saved.show(800, 600);
+
+    const a = privateOf(plain);
+    const b = privateOf(saved);
+    // The card is sized off the routes block, so a row that is drawn but not accounted for
+    // would hang past its bottom edge — the exact shape of the Forge overlap
+    // `viewportFit.test.ts`'s own header records.
+    expect(b.menuCard.h).toBeGreaterThan(a.menuCard.h);
+    expect(b.accountBtn.view.position.y).toBeGreaterThan(a.accountBtn.view.position.y);
+    expect(b.routes.continueBtn.view.position.y).toBeGreaterThan(b.menuCard.view.position.y);
+    expect(b.accountBtn.view.position.y)
+      .toBeLessThan(b.menuCard.view.position.y + b.menuCard.h);
+  });
+
+  it('gives the portal CONTINUE instead of PLAY, never both', () => {
+    // Both answer "start playing now", and the platform requirement behind PLAY is about a
+    // FIRST-time visitor reaching gameplay in one click — which a player with an unfinished
+    // run is not. Stacking them also does not fit: the tallest legal lobby measured 702px
+    // against a 640px design height (see `applyPrimary`).
+    const GREEN = 0x2f855a;
+    const m = new MainMenu();
+    m.setQuickPlay(true);
+    m.show(800, 600);
+    expect(m['playBtn'].view.visible).toBe(true);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(false);
+
+    m.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+    m.show(800, 600);
+    expect(m['playBtn'].view.visible).toBe(false);
+    expect(privateOf(m).routes.continueBtn.view.visible).toBe(true);
+    // ...and the green goes with the slot, so the card still has exactly one primary.
+    expect(privateOf(m).routes.continueBtn.color).toBe(GREEN);
+    expect(privateOf(m).routes.soloBtn.color).not.toBe(GREEN);
   });
 });

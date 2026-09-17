@@ -10,6 +10,8 @@ export const pl: Translations<typeof en> = {
     title: 'BLIGHTBLOOM',
     subtitle: 'zejdź, wydobądź, przetrwaj',
     play: 'GRAJ',
+    continueRun: 'KONTYNUUJ ▸',
+    continueRunAt: 'Piętro {floor} · {m}:{ss} gry',
     solo: 'SOLO PvE',
     coop: 'KOOPERACJA',
     pvpSolo: 'KOLEJKA PVP SOLO',
