@@ -203,6 +203,16 @@ One store for both halves: the backend's logs and the browser's.
   evidence. The API key and the client-side token are account-level and *could* be shared, but a
   separately issued pair is independently revocable, which is worth more than the minute it costs.
 
+  **One thing outside billsvc becomes due at the same moment: the cluster's backup tier
+  (2026-09-17).** The Atlas cluster has no point-in-time recovery, so an operator error is
+  recoverable only to the last daily NDJSON cycle. That is a deliberate trade while the
+  irreplaceable data is two accounts and a rollup table; it is a different question once a
+  settled payment can fall inside the window a restore discards, because `ledger`/`receipts`
+  then stop being reconstructible from anything this project holds. **The trigger is the first
+  real payment settling, not the credential arriving** — and PITR is a tier change with a bill
+  attached, not a checkbox, which is why it is written down as a trigger instead of being done
+  now. Reasoning in `server/deploy/README.md` §7 rather than duplicated here.
+
   **The merchant-domain review is a real gate with a real failure history.** Paddle is a Merchant
   of Record, so it crawls the seller's domain and its legal pages before approving it. funny was
   rejected **twice**, and both reasons apply here unchanged: once because the game's root path is a

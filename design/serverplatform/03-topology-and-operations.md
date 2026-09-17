@@ -233,3 +233,15 @@ scenario; the off-box copy is a human `rsync`, filed as still open in
 `server/deploy/README.md` §7. And a restore is downtime plus a shell (`docker compose stop`,
 `gunzip -c > …`, start) — documented step by step there, deliberately needing no tooling from
 this repo, because the day it is needed is the wrong day to depend on a script nobody has run.
+
+> **DRILLED 2026-09-17 — and the argument in that last sentence turned out to cut both ways.**
+> 174 documents went from the box's own snapshot files back into a database and came out
+> byte-identical (canonical Extended JSON, `diff`ed, not eyeballed), twice: into a throwaway
+> server on the box, then into scratch collections on the live cluster. So the worker's output
+> is now known-restorable and not merely known-parseable. But "needs no tooling from this repo"
+> was doing less work than it read like: the box has no `mongoimport`, no `mongosh` and no
+> `jq`, and the scratch DATABASE the procedure told you to restore into is refused by the only
+> Atlas role this deployment holds. A procedure nobody has run is not safer than a script
+> nobody has run — it just fails later, in prose. `server/deploy/README.md` §5's Backups
+> section carries the corrected version and the two collections a drill still cannot cover
+> (`billing.*` and `accounts.entitlements` are empty until something sells).

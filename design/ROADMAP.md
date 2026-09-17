@@ -1389,9 +1389,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-16** [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change) — the MongoDB port's last mile: the runbook's own first command could not run in any image this tree builds (`COPY dist/*.mjs ./`, so no `scripts/`, no TypeScript, no `tsx`), and the suite was green because the migration's LOGIC was covered against a real cluster while the way it REACHES a box was covered by nothing. Packaged as a sixth bundle, run against the live box — 175 rows, every collection holding at least what its table did — and then deleted, which was always its expiry. **Decision B1's real refusal ran for the first time**: adminsvc logged three refused write probes against the live cluster and came up `readOnly=true`, the arm no test here can reach because a local mongod has no roles to refuse with. The tests that would have caught it are the ones kept: `deploy.bundle.test.ts` ran the SHIPPED bundle against real `.db` files in the runbook's own order (dry run, real run, refusal), and `deploy.manifests.test.ts` checks the command written in the README against the filename the build emits — a runbook command is deployment configuration too. What survives the tool is `service: true|false` on a build entry, so the next bundle nothing runs on a schedule has somewhere to be checked instead of an exemption list. `test` `docs` `platform`
 
+**[2026-09-17 — the backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md)**
+
+- **09-17** [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change) — the cutover's four *enabled-not-closed* items: three closed, the fourth written down as a trigger, **no code changed**. 174 documents restored out of the box's own snapshots and back into a database twice — a throwaway server, then the live cluster — and verified by `diff`ing CANONICAL Extended JSON against the file rather than by counting, because a round trip that squashes an ObjectId into a string restores the right *number* of documents; all six collections byte-identical, all 169 ObjectIds intact including the migration's `0xbb` marker byte. **The written procedure was wrong in three places, none of them findable by a test**: the box has no `mongoimport`/`mongosh`/`jq` at all (hence a pinned `mongo:7.0` container, left on the box on purpose), `--db restore_check` is REFUSED because `bb-app`'s roles are `readWrite` on the four database *names* — so the scratch target has to be a collection prefix inside `ops`, the one database with no player data — and `set -a; . .env` silently yields an EMPTY variable, the URI's `?…&w=majority` reading as "background this assignment". The live `ci-deploy.sh` was two days stale (its `.env` guard did not check either cluster URI) and **the documented install command could not run**: Ubuntu 26.04 ships uutils coreutils, whose `install` fails on a PIPE source over an EXISTING destination and prints `removed '<dest>'` while leaving the inode untouched — a `-v` transcript claiming a removal is not evidence of one. Forced command re-verified on all three halves afterwards. The pre-migration copies are deleted, but only after `python3`'s `sqlite3` counted all 16 tables row-for-row against the cluster; `ratings`/`rating_reports` have no collections there and that is not a hole in the port, because MongoDB materialises a collection on first write. `platform` `docs`
+
 ## The work log — by theme
 
-The same 166 entries, grouped. An entry with more than one tag appears more than once.
+The same 167 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1656,7 +1660,7 @@ The same 166 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(30)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(31)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -1688,6 +1692,7 @@ The same 166 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
+- 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 
 **`ui`** — HUD, screens, widgets *(24)*
 
@@ -1739,7 +1744,7 @@ The same 166 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(89)*
+**`docs`** — design docs and this log itself *(90)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1830,6 +1835,7 @@ The same 166 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
+- 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(22)*
 

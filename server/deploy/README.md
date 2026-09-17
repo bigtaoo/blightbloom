@@ -327,11 +327,38 @@ that shipped only to the repo.
 # install (LF only — the worktree holds CRLF under core.autocrlf on Windows, and a CRLF
 # shell script dies on the box with `$'\r': command not found`. `server/.gitattributes`
 # pins this file to LF for exactly that reason, so the `tr` is now belt to that braces.)
+# Written to a NEW name and renamed over the old one, for the reason in the note below.
 tr -d '\r' < server/deploy/ci-deploy.sh |
-  ssh blightbloom "install -m 700 -o deploy -g deploy /dev/stdin /home/deploy/blightbloom-ci-deploy.sh"
+  ssh blightbloom 'rm -f /home/deploy/blightbloom-ci-deploy.sh.new &&
+    install -m 700 -o deploy -g deploy /dev/stdin /home/deploy/blightbloom-ci-deploy.sh.new &&
+    mv -f /home/deploy/blightbloom-ci-deploy.sh.new /home/deploy/blightbloom-ci-deploy.sh'
 # then prove it, which is the standing check before believing anything about a deploy step
 ssh blightbloom 'cat /home/deploy/blightbloom-ci-deploy.sh' | diff - <(tr -d '\r' < server/deploy/ci-deploy.sh) && echo IN-SYNC
 ```
+
+> **Why not `install … /dev/stdin <dest>` directly, which is what this said until
+> 2026-09-17.** Ubuntu 26.04 ships **uutils coreutils** (`install (uutils coreutils) 0.8.0`,
+> the Rust rewrite) as `/usr/bin/install`, and there its copy fails when the source is a
+> **pipe reached through `/dev/stdin`** *and the destination already exists*:
+>
+> ```
+> removed '/home/deploy/blightbloom-ci-deploy.sh'
+> install: No such file or directory
+> ```
+>
+> Both halves of that matter. The ENOENT is for the *source* — `/dev/stdin` →
+> `/proc/self/fd/0` → the magic link `pipe:[5179570]`, which uutils re-opens by name rather
+> than by descriptor — and the `removed` line is a lie: the inode is unchanged afterwards and
+> the old script survives intact. So the three failed attempts that found this destroyed
+> nothing, and a `-v` transcript that says "removed" is not evidence that anything was.
+> A regular-file source works, and `/dev/stdin` backed by a redirect from a regular file
+> works; only the pipe-over-an-existing-file combination fails. It never fired before because
+> every previous install on this box was the FIRST one (2026-09-15, fresh machine) and every
+> install before that was on the borrowed box, which ran GNU coreutils.
+>
+> Writing to `….sh.new` sidesteps it (the destination does not exist) and the `mv` is an
+> atomic replace besides — worth having anyway, because uutils' `install` truncates the
+> destination in place rather than replacing it, so the documented command was never atomic.
 
 #### A bind-mounted CONFIG FILE binds to an inode, not to a path
 
@@ -596,11 +623,26 @@ invented hostname.
 > `/home/deploy/blightbloom/.env` in full (and `MSYS_NO_PATHCONV=1` from Git Bash, or the
 > leading slash is rewritten into a Windows path).
 
-**Keep `data/` on the box.** Nothing reads it any more, and it is the only copy of the
-pre-migration state until the cluster has been serving for long enough to trust. The backup
-worker deliberately cannot see the `.db.gz` snapshots from before the port either — its
-pruner does not recognise that name — so a retention policy cannot age them out during
-exactly the window they matter.
+**`data/` is gone — deleted 2026-09-17, and so are the rest of the pre-port artefacts.** It
+was kept for a day after the cutover as the only copy of the pre-migration state, and what
+closed that window was not the clock: it was the restore drill below, plus a row-for-row
+check against the `.db` files themselves. `python3`'s `sqlite3` module read all four of them
+(the box has no `sqlite3` binary) and every table's count was present on the cluster —
+`accounts` 2, `sessions` 2, `meta_state` 1, `daily_active` 7, `daily_rollup` 88 (99 by then;
+the rollup job kept running), `events` 74, `flags` 1, and ten tables empty on both sides.
+Two of those ten are `ratings` and `rating_reports`, which is worth naming because their
+**collections do not exist on the cluster** and that is not evidence of anything: `db.ts`
+declares both, and MongoDB materialises a collection on first write, so an unsold,
+unrated game has nowhere to have created them yet.
+
+What was deleted: `data/` (four `.db` files, 236 KB), `/root/pre-mongo-20260916T063739Z.tar.gz`
+— whose four members hashed identically to the live `data/`, so one of the two was always
+redundant — and the 42 retired `*.db.gz` in `backups/` that the worker's pruner deliberately
+could not see (it does not recognise that name, so retention could not age them out during
+the window they mattered). Nothing brings `data/` back on the next deploy: compose has no
+`./data` bind mount any more and `ci-deploy.sh`'s ownership loop is down to `backups` alone.
+All twelve containers stayed healthy across the deletion, and the backup worker took a
+verified cycle afterwards.
 
 **If the migration ever has to run again** — a discovery days later that something did not
 come across — the code is in git, not gone: `server/src/migrate/`,
@@ -657,34 +699,96 @@ docker ps --filter name=bb-backup   # STATUS shows (healthy)/(unhealthy)
 ssh blightbloom 'cd /home/deploy/blightbloom && docker compose restart backup'
 ```
 
-**Restoring.** A snapshot is gzipped NDJSON, so a restore needs no tooling from this repo —
-and it is a different shape from the old file-swap, because a document store is restored
-collection by collection rather than by replacing a file:
+**Restoring — DRILLED 2026-09-17, and the procedure written here before that date was wrong
+in three places.** A snapshot is gzipped NDJSON, so a restore needs no tooling from this
+repo, and it is a different shape from the old file-swap: a document store is restored
+collection by collection rather than by replacing a file. Every command below has now been
+run on the box.
 
 ```bash
-ssh blightbloom
+ssh blightbloom                                   # lands as ROOT; spell every path in full
 cd /home/deploy/blightbloom
-docker compose stop matchsvc billsvc adminsvc     # nothing may be writing
+
+# The URI, WITHOUT sourcing .env. `set -a; . .env` looks like it works and leaves the
+# variable EMPTY: the connection string ends `?retryWrites=true&w=majority`, so the shell
+# reads the `&` as "run that assignment in the background" and the value never reaches this
+# shell. `mongosh ""` then quietly tries 127.0.0.1:27017 and reports ECONNREFUSED, naming
+# neither the variable nor the cause. (docker compose is unaffected — it parses `.env`
+# itself and no shell is involved.)
+U=$(sed -n 's/^BB_MONGO_URI=//p' /home/deploy/blightbloom/.env)
 
 # Look at it first. Every line carries the collection it came from, so this is also how you
 # find out what is in a snapshot without restoring it.
-zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz | head -3
-zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz | wc -l
+zcat backups/accounts-2026-09-17T06-45-06Z.ndjson.gz | head -3
+zcat backups/accounts-2026-09-17T06-45-06Z.ndjson.gz | wc -l
 
-# Split by collection and load. `--mode=upsert` so a partial restore can be repeated, and
-# `--jsonArray` is NOT used: this is one document per line.
-zcat backups/accounts-2026-09-07T02-00-00Z.ndjson.gz \
-  | jq -c 'select(.c=="accounts") | .d' > /tmp/accounts.ndjson
-mongoimport --uri "$BB_MONGO_URI" --db accounts --collection accounts \
-  --mode=upsert --upsertFields=_id --file /tmp/accounts.ndjson
+# A REAL restore, over the live collections: nothing may be writing. (A DRILL into a scratch
+# target — below — needs no downtime at all, which is the whole reason to prefer one.)
+docker compose stop matchsvc billsvc adminsvc
+
+# Split by collection and load, one collection at a time. `--mode=upsert` so a partial
+# restore can be repeated, and `--jsonArray` is NOT used: this is one document per line.
+# The loop runs in a throwaway `mongo:7.0` container because that image carries `zcat`, `jq`
+# and `mongoimport` and THE BOX HAS NONE OF THEM.
+SNAP=accounts-2026-09-17T06-45-06Z.ndjson.gz
+docker run --rm -e U="$U" -e SNAP="$SNAP" \
+  -v /home/deploy/blightbloom/backups:/backups:ro mongo:7.0 sh -c '
+  snap=/backups/$SNAP
+  for col in $(zcat $snap | jq -r .c | sort -u); do
+    zcat $snap | jq -c --arg c "$col" "select(.c==\$c) | .d" > /tmp/$col.ndjson
+    mongoimport --uri "$U" --db accounts --collection "$col" \
+      --mode=upsert --upsertFields=_id --file /tmp/$col.ndjson
+  done'
 
 docker compose start matchsvc billsvc adminsvc
 curl -fsS http://127.0.0.1:8788/health            # or the Caddy route from §2
 ```
 
-Restore into a SCRATCH database first (`--db restore_check`) whenever there is any doubt
-about what the snapshot holds — the cluster makes that cheap in a way the single-file layout
-never did, and it is the one operation here that can lose data that still existed.
+**Three things the drill corrected.** None of them is a bug in the worker, and none could
+have been found by a test — they are all facts about this box and this cluster:
+
+1. **The box has no `mongoimport`, no `mongosh` and no `jq`,** and
+   `mongodb-database-tools` is not in Ubuntu's own repositories. So the restore runs inside
+   `mongo:7.0` (which carries all three, plus `zcat` and `mongoexport`) with `backups/`
+   bind-mounted read-only, and nothing is installed on the host. That is the version of
+   "readable without this repository" that is actually true: readable with one pinned public
+   image and nothing else. **That image is already on the box** (1.18 GB, pulled for the
+   drill and deliberately left there, because an incident is the wrong time to need 1.18 GB
+   off the internet first); `docker pull mongo:7.0` if a `docker system prune -a` has taken
+   it, since nothing in compose references it and a prune will not spare it.
+2. **`--db restore_check` is refused, so a scratch DATABASE is not available.** This section
+   used to advise one. `bb-app`'s Atlas roles are `readWrite` on the four database *names*,
+   so a fifth database answers `AtlasError: user is not allowed to do action [insert] on
+   [restore_check_accounts.probe]` — and `BB_MONGO_DB_PREFIX` is exactly how you would create
+   one, which makes the prefix useless here. This project also holds **no Atlas API key for
+   this cluster's project** (`secrets/infra/atlas.yaml` is funny's, a different project), so
+   granting one is a human at the Atlas console, not a command. The scratch target that does
+   work is a **collection prefix inside `ops`**: the one logical database holding no player
+   data, and the one the worker deliberately does not snapshot. The drill used
+   `ops.zz_drill_*` and dropped all six afterwards.
+3. **Do not source `.env`** (the `&`, above). `sed` instead.
+
+**What makes it a verified restore rather than a hopeful one.** Counts are not enough: a JSON
+round trip that squashes an ObjectId into a string still restores the right *number* of
+documents. So the drill compared representations — `mongoexport --jsonFormat=canonical` out
+of the restored collection against `jq -c .d` out of the snapshot, both `sort`ed, then
+`diff` — and all six collections came back **byte-identical**, 174 documents, twice: once
+into a throwaway `mongo:7.0` server on the box, once into `ops.zz_drill_*` on the live
+cluster. The 169 ObjectIds stayed ObjectIds, the migration's `0xbb` marker byte at offset 4
+included (`6aa169e7bb00000000000100`). `--jsonFormat=canonical` is load-bearing in that
+comparison: the worker writes `EJSON.stringify(…, { relaxed: false })`, and relaxed output
+differs on every `$numberLong`. `--mode=upsert` was confirmed repeatable too — a second
+identical run reports `0 document(s) imported`, which is success and not a failure.
+
+**What the drill could NOT check, because the data does not exist yet.** `billing`'s snapshot
+is 20 bytes, six empty collections, and `accounts.entitlements` — the only other collection
+whose `_id` is an ObjectId — is empty as well. So the money half of the backup has been
+verified as a FILE and never as a restore, and it stays that way until something sells.
+
+**Record.** Restored and verified **2026-09-17** from the `2026-09-16T08-58-59Z` snapshots
+(`accounts` 5 documents, `analytics` 169, `billing` 0). Production was untouched and that was
+checked rather than assumed: all four databases' collection counts were captured before and
+after the drill and diffed clean.
 
 **What it deliberately does NOT do: it does not copy anything off the box.** A snapshot beside
 the database survives every failure this project has actually had (a bad migration, a
@@ -770,20 +874,33 @@ rather than moved.
 Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**`/
 `client/src/**`.
 
-> **⚠️ The LIVE copy is stale as of 2026-09-16, and this is the third time that has mattered.**
-> `/home/deploy/blightbloom-ci-deploy.sh` is dated 2026-09-15 07:47 and predates the MongoDB
-> port, so two things in the repo copy are **not running**: its `.env` check covers only
+> **✅ The live copy was stale from 2026-09-16 to 2026-09-17 — the third time that has
+> mattered — and is now in sync.** It was dated 2026-09-15 07:47 and predated the MongoDB
+> port, so two things in the repo copy were **not running**: its `.env` check covered only
 > `BB_GRAFANA_ADMIN_PASSWORD` and `BB_ADMIN_PASSWORD`, not `BB_MONGO_URI` and
 > `BB_ADMIN_MONGO_URI` — the two variables `compose up` now refuses EVERY service without — and
-> its ownership loop still creates `data/matchsvc`, `data/billsvc` and `data/adminsvc`, which no
-> service mounts any more. Nothing is broken today (the box's `.env` has both values and those
-> directories already exist), but the guard that exists so a deploy log NAMES the missing
-> variable is absent, and the failure it prevents reads as "compose refused to interpolate".
-> Re-install with the command above, then re-verify the forced command actually restricts.
+> its ownership loop still created `data/matchsvc`, `data/billsvc` and `data/adminsvc`, which no
+> service mounts any more. Nothing was broken by that (the box's `.env` has both values), but
+> the guard that exists so a deploy log NAMES the missing variable was absent, and the failure
+> it prevents reads as "compose refused to interpolate".
+>
+> Re-installed 2026-09-17 with §2's re-install block ("...and the other hand step"), which
+> had to be corrected first — see the uutils note there — and the diff above prints
+> `IN-SYNC`. The **forced command was
+> re-verified afterwards**, because installing a new script is exactly when it is worth
+> proving the constraint is still the constraint, and all three halves hold: asking the key
+> to run `cat /etc/shadow; id` runs `ci-deploy.sh` anyway (it rejects the non-tar.gz stdin
+> and never runs the command), `ssh -tt` gets `PTY allocation request failed on channel 0`,
+> and a `-L` tunnel is accepted locally and then reset by the server on first use, so
+> `restrict`'s `no-port-forwarding` is doing its half too. `authorized_keys` is still one
+> line, still `command=…,restrict`.
 >
 > The general rule, which this file has now paid for three times: **CI going green is not
 > evidence that a check added to `ci-deploy.sh` is running.** The live copy is deliberately
-> outside the deploy target, so a deploy cannot update it — only a human can.
+> outside the deploy target, so a deploy cannot update it — only a human can. The converse
+> is also worth saying now that the guard is live: the next push to `main` that touches
+> `server/**` is what first exercises it, and this README is under `server/`, so the commit
+> that records all this is itself that push.
 
 ## 7. Still open
 
@@ -803,17 +920,30 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   construction on different hardware from the database it snapshots. Losing the VM no longer
   loses player data; losing the cluster no longer loses the backups.
 
-  **Three things are genuinely still open, and none of them is the scheduled pull below:**
+  **One of the three is now closed; two are genuinely still open, and neither is the
+  scheduled pull below:**
 
-  1. **The restore has never been drilled.** `zcat … | mongoimport` is written down in §5's
-     Backups section and exercised in the suite against a real store, never against this
-     cluster from these files. A backup nobody has restored is a hypothesis. This is the one
-     worth doing first, and it can be done into a throwaway database prefix without touching
-     production.
+  1. ~~**The restore has never been drilled.**~~ **— drilled 2026-09-17.** 174 documents
+     restored from the box's own snapshot files and verified byte-identical, twice (a
+     throwaway server on the box, then the live cluster), production untouched and checked.
+     §5's Backups section is the record, including the three things the written procedure
+     had wrong and the two collections a drill cannot cover until something sells. The
+     backup is no longer a hypothesis; the *money half of it* still is.
   2. **The cluster tier has no point-in-time recovery.** An operator error — a dropped
      collection, a bad `updateMany` at a `mongosh` prompt — is recoverable only from the box's
      daily NDJSON, i.e. to the last cycle, not to the last minute. That is a deliberate
      trade at this size; it stops being one when real money moves through billing.
+
+     **The trigger, written down so it is a decision and not a drift (2026-09-17):**
+     re-evaluate when **billsvc gets real Paddle credentials and the first real payment
+     settles** — the first item in this section. Not before, deliberately: today the
+     irreplaceable data is 2 accounts and a rollup table, both reconstructible from a day-old
+     snapshot with nobody out of pocket, and PITR means an M10-and-up cluster (continuous
+     backup is not offered on the shared tiers, so it is a tier change and a bill, not a
+     checkbox). Once money settles, "recoverable to the last daily cycle" means a player can
+     have paid inside a window the restore silently discards, and the `ledger`/`receipts`
+     pair stops being reconstructible from anything this project holds. The same trigger is
+     recorded against decision B1's neighbours in design/19-server-platform.md §9.
   3. **A copy that survives losing BOTH** is still unbuilt, and that is the residue of the old
      item. Cheap floor: Hetzner's own backups (Options → BACKUPS, about 20% of the server
      price) put the box's snapshots on their infrastructure, and Atlas holds the live data
