@@ -95,7 +95,7 @@ import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
 import * as partyRoutes from './routes/party';
-import type { PortalAuthDeps } from './routes/auth';
+import { REGISTER_RATE_LIMIT, type PortalAuthDeps } from './routes/auth';
 import { RateLimiter, RATE_LIMIT } from './routes/telemetry';
 import type { BillingPlaneConfig } from './routes/store';
 
@@ -122,6 +122,13 @@ export interface MatchsvcServerOptions {
   store: AccountsStore;
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
+  /**
+   * The account-creation limiter (`routes/auth.ts`'s `REGISTER_RATE_LIMIT`), or one built
+   * from that constant when omitted. Injected for the same reason `matchmaker` above is: the
+   * shipped budget is thirty registrations per ten minutes, which no test can exhaust at a
+   * sane runtime, so the 429 arm would otherwise be unreachable from the HTTP layer.
+   */
+  authLimiter?: RateLimiter;
   /**
    * The `analytics` database (design/21 §2.4), or `null`/absent for "collect nothing".
    *
@@ -285,6 +292,10 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   // warning that is the only signal an operator gets when it is unset (lokiPush.ts).
   const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
   const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
+  // A SECOND limiter, with its own budget: account creation and telemetry are different
+  // questions with the same shape (`rateLimit.ts`'s own header says so), and one shared
+  // counter would let a chatty client's log batches spend the budget a registration needs.
+  const authLimiter = opts.authLimiter ?? new RateLimiter(REGISTER_RATE_LIMIT.requests, REGISTER_RATE_LIMIT.windowMs);
 
   // Analytics (design/21 §2.4). Injected rather than opened here since the MongoDB port —
   // see `MatchsvcServerOptions.analyticsDb`. Until this process's own boot path awaits
@@ -309,6 +320,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     log,
     lokiUrl,
     limiter,
+    authLimiter,
     analyticsDb,
     flags,
     fetchImpl: opts.fetchImpl,

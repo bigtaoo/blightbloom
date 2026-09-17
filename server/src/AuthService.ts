@@ -34,9 +34,31 @@
  * arrives with a name chosen under someone else's rules, and it cannot be forced through
  * ours (see `loginWithProvider`).
  */
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { isBlockedUsername } from './usernameFilter';
 import { CI_COLLATION, type AccountsStore } from './db';
+
+/**
+ * scrypt, on the THREADPOOL rather than on the event loop (2026-09-17).
+ *
+ * This was `scryptSync` until a test pass asked what an unthrottled `/auth/register` costs.
+ * A password hash here is ~50-100ms of deliberate CPU, and the synchronous call spent every
+ * millisecond of it inside the one event loop that also serves matchmaking, party and
+ * ladder settlement — so a burst of registrations did not merely queue, it froze every
+ * other route in the control plane for the duration. The async form does the same work on
+ * libuv's threadpool: the cost is unchanged and is meant to be, but it is no longer paid by
+ * a player who is only trying to find a match.
+ *
+ * `routes/auth.ts`'s `REGISTER_RATE_LIMIT` is the other half and neither replaces the other
+ * — the limiter bounds how much of this work a caller may ask for, this bounds what that
+ * work blocks while it runs.
+ */
+const scryptAsync = promisify(scrypt) as (
+  password: string,
+  salt: Buffer,
+  keylen: number,
+) => Promise<Buffer>;
 
 /** MongoDB's duplicate-key error. The only driver error code this class interprets rather
  *  than propagates: it is how both `register` and `loginWithProvider` learn they lost a
@@ -97,18 +119,22 @@ export type AuthResult = AuthSuccess | AuthFailure;
  */
 const NO_PASSWORD = '!';
 
-function hashPassword(password: string): string {
+async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, SCRYPT_KEYLEN);
+  const hash = await scryptAsync(password, salt, SCRYPT_KEYLEN);
   return `${salt.toString('hex')}:${hash.toString('hex')}`;
 }
 
-function verifyPassword(password: string, stored: string): boolean {
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
   if (stored === NO_PASSWORD) return false; // see NO_PASSWORD — a federated row, never loginable by password
   const [saltHex, hashHex] = stored.split(':');
   if (!saltHex || !hashHex) return false;
   const expected = Buffer.from(hashHex, 'hex');
-  const actual = scryptSync(password, Buffer.from(saltHex, 'hex'), expected.length);
+  // A stored hash of zero length would make `timingSafeEqual` compare nothing and answer
+  // `true`, so the length check is a guard rather than a formality — and it runs before the
+  // comparison for that reason, not after it.
+  if (expected.length === 0) return false;
+  const actual = await scryptAsync(password, Buffer.from(saltHex, 'hex'), expected.length);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
@@ -163,7 +189,7 @@ export class AuthService {
       await this.store.accounts.insertOne({
         _id: accountId,
         username: name,
-        passwordHash: hashPassword(password as string),
+        passwordHash: await hashPassword(password as string),
         provider: 'local',
         createdAt: this.nowMs(),
       });
@@ -199,7 +225,7 @@ export class AuthService {
     // case AND stops using `accounts_username_ci`, so a player who registered as 'Alice'
     // could never log in as 'alice'. See its doc comment in db.ts.
     const row = await this.store.accounts.findOne({ username }, { collation: CI_COLLATION });
-    if (!row || row.provider !== 'local' || !verifyPassword(password, row.passwordHash)) {
+    if (!row || row.provider !== 'local' || !(await verifyPassword(password, row.passwordHash))) {
       // Reaching here means any prior lockout already expired (a still-active one
       // returned above), so the streak simply continues from wherever it left off.
       const count = (attempt?.count ?? 0) + 1;
@@ -326,10 +352,30 @@ export class AuthService {
     return { accountId: row.accountId, username: row.displayName ?? row.username ?? '' };
   }
 
+  /**
+   * Change a local account's password, and **revoke every other session it has** (the
+   * `keepToken` half, 2026-09-17).
+   *
+   * Until that date this method wrote a new hash and stopped there, so a session minted
+   * before the change kept working for the rest of its 30 days. That is the wrong answer to
+   * the reason people change a password: "somebody else is in my account" is the case this
+   * screen exists for, and a password change that leaves the intruder's bearer token live
+   * answers the one question it was asked with "no".
+   *
+   * `keepToken` is the caller's OWN session — `routes/auth.ts` has it, because
+   * `/auth/change-password` carries the token in its body — and it is spared so the player
+   * who just changed their password is not immediately signed out of the device they did it
+   * on. Every other token for the account dies. Omitting `keepToken` revokes all of them,
+   * which is the safe direction for any future caller that has no session in hand.
+   *
+   * The revocation runs only on the success path, after the write. A failed attempt must
+   * leave sessions alone, or a wrong-password guess becomes a way to sign a player out.
+   */
   async changePassword(
     accountId: string,
     oldPassword: unknown,
     newPassword: unknown,
+    keepToken?: string,
   ): Promise<{ ok: true } | AuthFailure> {
     const row = await this.store.accounts.findOne({ _id: accountId }, { projection: { passwordHash: 1 } });
     // A federated account has no password to change, and no way to acquire one — saying so
@@ -339,14 +385,22 @@ export class AuthService {
     if (row?.passwordHash === NO_PASSWORD) {
       return { error: 'this account signs in through its platform and has no password' };
     }
-    if (!row || typeof oldPassword !== 'string' || !verifyPassword(oldPassword, row.passwordHash)) {
+    if (!row || typeof oldPassword !== 'string' || !(await verifyPassword(oldPassword, row.passwordHash))) {
       return { error: 'invalid current password' };
     }
     const passwordError = validatePassword(newPassword);
     if (passwordError) return { error: passwordError };
     await this.store.accounts.updateOne(
       { _id: accountId },
-      { $set: { passwordHash: hashPassword(newPassword as string) } },
+      { $set: { passwordHash: await hashPassword(newPassword as string) } },
+    );
+    // Two filter shapes rather than one with `$ne: keepToken` in it: the driver serializes
+    // an `undefined` value to `null`, so the one-shape version would quietly become
+    // `_id: { $ne: null }` and mean "all of them" by accident rather than on purpose. It
+    // happens to be the behaviour wanted here, which is exactly what makes it worth not
+    // depending on.
+    await this.store.sessions.deleteMany(
+      keepToken === undefined ? { accountId } : { accountId, _id: { $ne: keepToken } },
     );
     return { ok: true };
   }
