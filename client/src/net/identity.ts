@@ -2,11 +2,18 @@
  * Local player identity (design/05/15's PvP squad follow-up; design/16-accounts.md).
  * `getPlayerId()` prefers a logged-in account's real `accountId` (`net/session.ts`)
  * once one exists; the random id below is only the guest/anonymous fallback, kept for
- * players who never log in. This is the seam `server/src/ladderReport.ts`'s own note
- * anticipated: "swapping in real account ids later is a caller-side change only."
+ * players who never log in.
+ *
+ * It is NOT the ladder key, and was only ever an accidental one (2026-09-17, design/16
+ * hole 3). `net/matchmaking.ts` used to send this value to `/find` as a body field, where
+ * matchsvc took it as the scored identity — a self-declared key, which is exactly what a
+ * rating may not be keyed by. `/find` now proves identity with the session's bearer token
+ * instead and this function has nothing to do with rating. What still reads it is
+ * `PartyScreen` (which member of a squad am I), where a declared id is the right trust
+ * level: the worst a forged one can do is confuse a party the forger is already in.
  *
  * Since design/21 there are TWO readers of the stored id and they want opposite things:
- * `getPlayerId()` prefers the account (a ladder key should follow the person) and
+ * `getPlayerId()` prefers the account (a party seat should follow the person) and
  * `getInstallId()` never does (a retention cohort has to follow the browser). Both read the
  * same `daydayup.playerId.v1`, so analytics stores nothing new.
  *
@@ -61,7 +68,7 @@ let installedStore: IdentityStore | null = null;
  * `setAssetHost`/`setHostKind`/`setUiAudio` already use, set once by an entry point.
  *
  * It exists because the two production readers take no arguments: `installAnalytics` calls
- * `getInstallId()` and the ladder report calls `getPlayerId()`, and neither has any business
+ * `getInstallId()` and `PartyScreen` calls `getPlayerId()`, and neither has any business
  * knowing which platform it is on. So a host whose persistence is not `localStorage` needs
  * one line at boot rather than a store threaded through everything in between —
  * `main.wechat.ts` calls this with `createWeChatIdentityStore()` before it installs
@@ -112,7 +119,7 @@ export function getPlayerId(store: IdentityStore = identityStore()): string {
  * somebody clearing their site data to have to find.
  *
  * The difference from `getPlayerId` is the one that matters for a cohort. `getPlayerId`
- * PREFERS the account id once a session exists, which is right for a ladder key and wrong
+ * PREFERS the account id once a session exists, which is right for a party seat and wrong
  * here: a player who logs in halfway through their second visit would change identity
  * mid-cohort and read as one install that vanished plus one that appeared. Retention has to
  * be a question about the browser, and this is the browser's answer.

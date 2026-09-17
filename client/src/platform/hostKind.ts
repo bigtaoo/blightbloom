@@ -51,3 +51,33 @@ export function resetHostKind(): void {
 export function isPortalHost(kind: HostKind = current): boolean {
   return kind === 'crazygames';
 }
+
+/**
+ * Whether telling this host's player to "sign in" would lead anywhere.
+ *
+ * Added 2026-09-17 for design/16 hole 3: the PvP results screen tells a guest their rank is
+ * not being recorded and that signing in starts recording it, and that sentence is only
+ * honest where signing in is possible AND sticks. Anywhere else it is a door painted on a
+ * wall — the failure the lobby's own dead doors were just cleared of.
+ *
+ * A `Record` rather than `kind === 'web'`, so a fourth host is a COMPILE error here and has
+ * to answer the question rather than inherit an answer (the shape `Matchmaker.botFillMs`
+ * uses for the same reason).
+ */
+const SIGN_IN_AVAILABLE: Record<HostKind, boolean> = {
+  // Our own domain: `LoginScreen`, a real `POST /auth/login`, and a session in localStorage.
+  web: true,
+  // No `wx.login` exchange and — the part that decides it — no `SessionStore` over
+  // `wx.getStorageSync`, so `net/session.ts` reads through `createWebSessionStore`, finds no
+  // `localStorage`, and answers `null` forever. A player there could type a password into a
+  // screen that then forgets it. design/16's "Correction: WeChat does not log in at all".
+  wechat: false,
+  // The portal signs the player in silently (`platform/crazygames/portalAuth.ts`), so a
+  // logged-out player is not a state that exists there — and the platform forbids our own
+  // login as a call to action anyway (`MainMenu.setAccountEntry` carries the citation).
+  crazygames: false,
+};
+
+export function canSignIn(kind: HostKind = current): boolean {
+  return SIGN_IN_AVAILABLE[kind];
+}

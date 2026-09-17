@@ -170,6 +170,61 @@ A simplified multiplayer Elo, deliberately kept **outside** `@dd/engine` — it 
 
 **Update (2026-08-03): ladder rating is now squad-aware — the one item explicitly flagged above as "deliberately not done."** Two gaps closed together, since fixing one exposed the other: (1) `state.placements` never lists the winning squad's non-representative members (only `state.winner` names one seat, and `WinConditionSystem.tickPlacement` only ever pushes *losing* squads' seats) — a real seat count was needed to recover them, so `SettledMatch` gained a `playerCount` field (`MatchRoom.reportResult` already knew it) and `buildRatingReportBody` gained a required `playerCount` param; every seat sharing the winner's `teamId` (via the same `teamIdForOwner` formula the engine assigns teams with) is now filled in as tied for 1st. (2) `rating.ts`'s `computeRatingDeltas` gained an optional `teamIds` param (index-aligned with `ratings`/`places`): when present, a participant's ACTUAL score comes from their TEAM's rank among teams (derived from each team's best member place) — so tied squadmates share one actual score — and their EXPECTED score compares their team's AVERAGE rating (not their own) against the field average, so every squad member gets the identical delta, as if the squad were one combined participant. Omitting `teamIds` (or a squad size of 1, i.e. every pre-squad/solo-FFA match) degenerates every formula back to the original per-seat math exactly — proven in `rating.test.ts` by asserting byte-identical output with/without the param. `ladderReport.ts`'s `RatingReportBody` also carries a new `teamIds` array end-to-end (`matchsvc.ts`'s `/rating/report` now accepts an optional `teamIds` alongside `accountIds`/`places`). 14 new tests: `rating.test.ts`/`ladderReport.test.ts`/`MatchRoom.test.ts`, plus 5 real-HTTP-wire tests added to `matchsvc.http.test.ts` covering `/rating/report`'s validation branches (including the new `teamIds`-length check) and `/rating/:accountId` — this endpoint had zero test coverage anywhere before this pass, a pre-existing gap this change happened to touch.
 
+### Who a rating belongs to (locked 2026-09-17)
+
+**A ladder rating is keyed only by an identity the server verified. A guest is not scored,
+and the results screen says so.** This closes `design/16-accounts.md`'s hole 3 — and it
+closes it by the option that doc's own text argued against ("*telling* the player their
+rating is thrown away is not the fix"), so the reversal is recorded here rather than quietly
+applied.
+
+**What was actually there.** Hole 3 described a guest being re-keyed every match by
+`ladderReport.ts`'s `seat:{roomId}:{seatIdx}` scaffold, with the fix being to carry the
+guest's persistent id into the ticket instead. Tracing the wire showed the carry already
+happened: `findMatch` sent `accountId: getPlayerId()` in the `/find` body, `postFind` took it
+whenever no session outranked it, and it rode the signed ticket through `MatchRoom` into the
+report. A guest's rating did accumulate. What *did not* exist was the outranking — the client
+sent **no `Authorization` header on `/find` at all**, so `deps.auth.verifySession` never ran
+in production and the scored identity was the caller's own unverified claim on *every*
+request, for logged-in players too. Posting `{ playerCount, accountId: "<a stranger's id>" }`
+and losing was enough to move that stranger's rating.
+
+**Why the key cannot simply be verified instead.** A guest id is client-declared by
+construction — it is a UUID in that browser's `localStorage` and there is nothing to check it
+against. Making it unforgeable *is* making it an account. So the choice was between a rating
+keyed by a claim and no rating; and the three reasons it went the second way:
+
+1. **What authentication buys here is non-impersonation, not scarcity.** `register` is an
+   unverified username/password, so an account key is barely scarcer than a guest UUID. But
+   non-impersonation is exactly the property a rank needs, and exactly the one a declared key
+   cannot have.
+2. **A guest rating could never be carried into an account afterwards.** Importing a
+   forgeable key's value into an unforgeable one re-imports the forgery, so the number would
+   be permanently orphaned — unable to join the account system it is waiting for. (The
+   one-time guest merge that hole 1 shipped moves `MetaState`, and deliberately not this.)
+3. **Rating is the one piece of state in this project that is not local-first.** design/16's
+   "a guest is a first-class player" rests on `MetaState` being local and an account only
+   ever mirroring it; `rating.ts` is account-level bookkeeping that never enters engine
+   state. So the ladder does not make login a *gate* — a guest still queues, plays, wins and
+   sees the result — it makes the ladder the first thing an account is actually **for**.
+
+**What shipped.** `findMatch` sends the stored session's bearer token; `postFind` reads the
+account id and display name from the session it verifies and no longer parses the body's
+`accountId` at all; a guest seat carries neither, and the per-match scaffold keys it, which
+is now correct by design rather than by accident. Deleting the body fallback also fixed
+design/20's seat names by the same line — `session?.username` had been `undefined` in
+production for the same reason, so the verified roster names had never once been shown.
+
+**And the honest line.** `RunOutcome`'s two arena screens end with one translated row,
+`results.guestNotRanked`, gated twice: `canSignIn()` (added to `platform/hostKind.ts`) so it
+never appears on WeChat, where no session can persist, or on the portal, which signs the
+player in itself and forbids the ask; and `getSession()` so a signed-in player is not told
+their rank is being discarded when it is not. It names **no number**, because nothing in this
+client has ever displayed a rating — there is still no caller of `GET /rating/:accountId`
+anywhere — and a line promising to "keep your rating" would point at a thing the player has
+never been shown. Showing the rating itself is its own ROADMAP item; this row only has to
+stop the loss from being invisible.
+
 ## Anti-cheat: periodic checkpoints, not just an end-of-match verdict
 
 Extends `06`'s existing `runHeadless` backstop (today: one re-simulation, done after the match, from `seed + recorded input`) into something that can act **during** a match, using machinery the engine mostly already has.

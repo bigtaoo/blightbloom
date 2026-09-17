@@ -277,6 +277,7 @@ export const it: Translations<typeof en> = {
     materialsLost: 'Tutti i {count} materiali trasportati sono andati persi',
     placeOf: '1° posto su {total}',
     placedOfTotal: 'Posizione {place}/{total}',
+    guestNotRanked: 'Ospite: non in classifica. Accedi per entrarci.',
     connectionLostTitle: 'CONNESSIONE PERSA',
     connectionLostBody: 'Impossibile riconnettersi alla partita.',
   },

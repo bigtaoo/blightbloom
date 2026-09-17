@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { getHostKind, isPortalHost, resetHostKind, setHostKind, type HostKind } from './hostKind';
+import { canSignIn, getHostKind, isPortalHost, resetHostKind, setHostKind, type HostKind } from './hostKind';
 // The same three names as a VALUE, which this module only has as a type. `analyticsEvents`
 // owns the runtime list because the server imports it too, and its own comment says it
 // matches `HostKind` — the sweep below is where that agreement is actually exercised.
@@ -49,6 +49,48 @@ describe('hostKind', () => {
     setHostKind('crazygames');
     resetHostKind();
     expect(getHostKind()).toBe('web');
+  });
+});
+
+/**
+ * `canSignIn` (design/16-accounts.md hole 3) — the gate on the PvP results screen's
+ * "sign in to be ranked" line. Each case is a different REASON, not a different enum value,
+ * which is why they are three tests and not one table.
+ */
+describe('canSignIn', () => {
+  it('is true on our own domain, where LoginScreen and a stored session both exist', () => {
+    expect(canSignIn('web')).toBe(true);
+    expect(canSignIn()).toBe(true); // ...and that is the default, so a plain unit test sees it
+  });
+
+  it('is false on WeChat, where a typed password could not be remembered', () => {
+    // Not a policy refusal — a capability one. `net/session.ts` stores through
+    // `createWebSessionStore`, there is no `localStorage` in the mini-game shell and no
+    // `wx.getStorageSync` adapter installed for sessions, so `getSession()` answers null
+    // forever. Telling that player to sign in is telling them to do something that does
+    // not stick.
+    expect(canSignIn('wechat')).toBe(false);
+  });
+
+  it('is false on the portal, where the player is already signed in and the ask is banned', () => {
+    expect(canSignIn('crazygames')).toBe(false);
+    // Worth pinning next to `isPortalHost`: these two agree TODAY on this host and are not
+    // the same question. A second portal that let a game run its own login would separate
+    // them, and the results line must follow this one.
+    expect(isPortalHost('crazygames')).toBe(true);
+  });
+
+  it('follows the declared host, not just an explicit argument', () => {
+    setHostKind('wechat');
+    expect(canSignIn()).toBe(false);
+  });
+
+  it('answers for every host the type admits — a new one cannot default to true', () => {
+    // The `Record<HostKind, boolean>` behind this makes a fourth host a compile error, which
+    // a test cannot observe. What it CAN observe is that no current host is answered by a
+    // fallback: every one of them is a deliberate entry.
+    for (const host of HOSTS) expect(typeof canSignIn(host)).toBe('boolean');
+    expect(HOSTS.filter((h) => canSignIn(h))).toEqual(['web']);
   });
 });
 

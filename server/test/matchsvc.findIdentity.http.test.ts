@@ -1,10 +1,16 @@
 /**
- * Who a `/find` seat belongs to, over the real HTTP layer (design/20).
+ * Who a `/find` seat belongs to, over the real HTTP layer (design/20; design/16 hole 3).
  *
- * This is the trust boundary that makes a display name safe to show other players. The name
- * in a match ticket is what every other client renders on its roster, so a client-declared
- * one would be an impersonation primitive — `/find` reads it from the bearer session it
- * verifies, and never from the body.
+ * This is the trust boundary that makes a display name safe to show other players AND a
+ * ladder rating safe to record. Both travel in the match ticket: the name is what every
+ * other client renders on its roster, and the accountId is what `ladderReport.ts` credits
+ * when the match settles. A client-declared value in either is an impersonation primitive,
+ * so `/find` reads both from the bearer session it verifies, and NEITHER from the body.
+ *
+ * The body half is the 2026-09-17 change, and the guest block below is where it shows. Until
+ * then a body `accountId` was accepted whenever no session outranked it — and since the
+ * client sent no bearer at all, that was every request in production, so anyone could post a
+ * stranger's account id and move their rating. The route no longer parses the field.
  *
  * Asserted by DECODING the signed ticket the route hands back, rather than by reading a
  * service's internals: the ticket is the artefact the gameserver trusts, and it is the only
@@ -14,6 +20,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
+import { buildRatingReportBody } from '../src/ladderReport';
 import { freshAccounts } from './mongoHarness';
 
 const SECRET = 'test-secret';
@@ -90,37 +97,54 @@ describe('POST /find — a logged-in caller', () => {
 });
 
 describe('POST /find — a guest', () => {
-  it('keeps the body accountId and carries NO name', async () => {
-    // The pre-existing behaviour, unchanged: a guest id is trusted no more than
-    // `playerCount` is, and it only ever reaches `ladderReport.ts`, which falls back to its
-    // own seat scaffold anyway.
-    const ticket = await find({ playerCount: 1, accountId: 'guest-uuid' });
-    expect(ticket.accountId).toBe('guest-uuid');
-    expect(ticket.name).toBeUndefined();
-  });
-
-  it('carries neither when the body has no accountId either', async () => {
-    const ticket = await find({ playerCount: 1 });
+  it('DISCARDS a body accountId rather than scoring under it (design/16 hole 3)', async () => {
+    // The 2026-09-17 reversal, and the single most load-bearing assertion in this file.
+    // `'victims-real-account'` is the attack in one literal: with no bearer to contradict
+    // it, the old route put this string in the ticket, the gameserver copied it into
+    // `seatAccounts`, and matchsvc moved that account's rating by whatever place the caller
+    // arranged to finish in. An undefined accountId here is what makes that impossible.
+    const ticket = await find({ playerCount: 1, accountId: 'victims-real-account' });
     expect(ticket.accountId).toBeUndefined();
     expect(ticket.name).toBeUndefined();
   });
 
-  it('falls back to the body for an INVALID bearer token rather than refusing', async () => {
+  it('is scored by the per-match scaffold, which is what an absent accountId MEANS', async () => {
+    // The other half of the same fact, asserted where a reader can see it: an undefined
+    // ticket accountId is not a hole in the report, it is the instruction to key this seat
+    // by `seat:{roomId}:{seatIdx}` — an identity that lasts exactly one match.
+    const ticket = await find({ playerCount: 1 });
+    expect(ticket.accountId).toBeUndefined();
+    const { accountIds } = buildRatingReportBody(ticket.roomId, 0, [], 1, {});
+    expect(accountIds).toEqual([`seat:${ticket.roomId}:0`]);
+  });
+
+  it('treats an INVALID bearer token as a guest rather than refusing', async () => {
     // A 401 here would break a player whose 30-day session simply expired mid-session:
-    // they are a guest for this match, which is a state the game fully supports.
+    // they are a guest for this match, which is a state the game fully supports. What
+    // changed is only what a guest gets — the scaffold, not the body's claim.
     const ticket = await find(
       { playerCount: 1, accountId: 'guest-uuid' },
       { authorization: 'Bearer not-a-real-token' },
     );
-    expect(ticket.accountId).toBe('guest-uuid');
+    expect(ticket.accountId).toBeUndefined();
     expect(ticket.name).toBeUndefined();
   });
 
   it('ignores a malformed Authorization header', async () => {
     for (const authorization of ['Basic abc', 'Bearer', 'bearer lowercase-scheme', '']) {
       const ticket = await find({ playerCount: 1, accountId: 'guest-uuid' }, { authorization });
-      expect(ticket.accountId, authorization).toBe('guest-uuid');
+      expect(ticket.accountId, authorization).toBeUndefined();
       expect(ticket.name, authorization).toBeUndefined();
     }
+  });
+
+  it('still gets a playable seat — nothing but the ladder key is withheld', async () => {
+    // The design's own promise, pinned: design/16's "a guest is a first-class player".
+    // A guest queues, matches, and is handed the same signed seat as anyone else.
+    const ticket = await find({ playerCount: 1, mode: 'pvp' });
+    expect(ticket.roomId).toBeTruthy();
+    expect(ticket.owner).toBe(0);
+    expect(ticket.playerCount).toBe(1);
+    expect(ticket.mode).toBe('pvp');
   });
 });

@@ -59,6 +59,9 @@ import { defaultMetaState } from '../../meta';
 import { defaultSettingsState } from '../../settings';
 import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
 import { setPublicFlags } from '../../net/clientFlags';
+import { RunOutcome, type RunOutcomeHost } from '../controllers/RunOutcome';
+import { createGameState, type GameState } from '@dd/engine/state/GameState';
+import type { ArenaMap } from '@dd/engine/content/arenas';
 import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
 // Forge.render()/Settings.show() flow off `Text.height` — see fakeTextCanvas.ts.
@@ -83,6 +86,68 @@ const VIEWPORTS = [
 /** Every screen, built and laid out at whatever size it is handed. Async is allowed — see
  *  the two entries at the end of the list. */
 type ScreenBuild = (w: number, h: number) => Container | Promise<Container>;
+
+/**
+ * The result screen's REAL content, produced by the shipped `RunOutcome` rather than restated
+ * here (2026-09-17).
+ *
+ * Both `Screens` entries below used to be built with `['line one', 'line two']`, which made
+ * every one of them — INCLUDING the eight-locale sweep at the bottom of this file — a
+ * measurement of English placeholder text. The sweep ran eight times over a fixture that could
+ * not change with the locale, so it was structurally incapable of catching the thing it exists
+ * to catch, and it proved it: `results.guestNotRanked` (design/16 hole 3) shipped at **878px in
+ * Spanish and 809px in Polish against a 760px design width**, through a green run of this file.
+ *
+ * Driving the real `RunOutcome` rather than calling the same `t()` keys by hand is the half that
+ * keeps it honest. A fixture that lists the keys is a second copy of the composition: add a
+ * ninth line to a result screen and the copy still measures eight. This one measures whatever
+ * the screen actually shows, so a future line is swept the day it is written and in every
+ * locale, with nobody having to remember this file exists.
+ *
+ * Note the guest-ladder notice is present in the arena cases precisely because these run as an
+ * unauthenticated player on the default `web` host — the widest real state, which is the one a
+ * fit sweep wants.
+ */
+const MEASURE_ARENA: ArenaMap = {
+  id: 'fit', sizeGrid: { w: 10, h: 10 },
+  rooms: [{ id: 'A', rectGrid: { x: 0, y: 0, w: 10, h: 10 }, solids: [] }],
+  doors: [], spawns: [{ x: 5, y: 5 }], eyeCandidates: [{ roomId: 'A' }],
+};
+
+type Outcome = { won: boolean; title: string; lines: readonly string[] };
+
+/** Runs one outcome through `RunOutcome` and returns what it put on screen. */
+function realOutcome(kind: 'arenaWin' | 'arenaLoss' | 'pveWin' | 'pveLoss'): Outcome {
+  const arena = kind === 'arenaWin' || kind === 'arenaLoss';
+  const s: GameState = createGameState({
+    seed: 1, worldW: 0, worldH: 0, waves: [],
+    // Eight seats: design/06's match-size ceiling, so the placement line is measured at the
+    // widest field the game can actually produce rather than at a convenient small one.
+    ...(arena ? { arena: MEASURE_ARENA, players: Array.from({ length: 8 }, (_, i) => ({ teamId: i })) } : {}),
+  });
+  // A six-digit score and a 1:37 clock: the numbers a real result block reaches, rather than
+  // the zeroes a freshly-created state would hand it.
+  s.tick = 60 * 97 + 15;
+  if (arena) {
+    if (kind === 'arenaWin') s.winner = 0;
+    else { s.winner = 7; s.placements.push(1, 2, 3, 4, 5, 6, 0); }
+  } else {
+    s.floorIndex = 2;
+    s.bankedMaterials = { fire: 3, ice: 2 };
+    if (kind === 'pveLoss') s.winner = 'enemies';
+  }
+  let shown: Outcome | undefined;
+  const host: RunOutcomeHost = {
+    localOwner: 0,
+    addScore: () => {}, currentScore: () => 123456, setPhase: () => {}, hideHud: () => {},
+    bankRunCarryOut: () => {}, isOnline: () => true, // online: suppresses the ad offer, which
+                                                    // the second entry below supplies itself
+    showOutcomeScreen: (won, title, lines) => { shown = { won, title, lines }; },
+  };
+  new RunOutcome(host).handle(s);
+  if (!shown) throw new Error(`realOutcome(${kind}): RunOutcome showed no screen — the fixture would measure nothing`);
+  return shown;
+}
 
 const SCREENS: Array<[string, ScreenBuild]> = [
   // `storeEnabled` on: the STORE button reserves its own 36px row, so a selling build is
@@ -171,13 +236,24 @@ const SCREENS: Array<[string, ScreenBuild]> = [
     return s.view;
   }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s.view; }],
-  ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one', 'line two']); return s.view; }],
+  // All four outcomes, because they hold different content and the arena pair carries a line
+  // the PvE pair does not (the guest-ladder notice).
+  ...(['arenaWin', 'arenaLoss', 'pveWin', 'pveLoss'] as const).map((kind) =>
+    [`Screens (${kind})`, (w: number, h: number) => {
+      const o = realOutcome(kind);
+      const s = new Screens();
+      s.show(w, h, o.won, o.title, o.lines);
+      return s.view;
+    }] as [string, ScreenBuild]),
   // The rewarded-ad offer makes this screen a row TALLER and, with the longest locale's
   // label, wider than any fixed-width button on it — so the offer variant is the one the
   // fit actually has to clear, exactly as `storeEnabled` is for the Forge above.
   ['Screens + ad offer', (w, h) => {
+    // The PvE win is the only outcome the offer can appear on (`RunOutcome.doubleOffer`), so
+    // it is that outcome's real lines under it rather than four placeholders.
+    const o = realOutcome('pveWin');
     const s = new Screens();
-    s.show(w, h, true, 'EXTRACTED', ['line one', 'line two', 'line three', 'line four'],
+    s.show(w, h, o.won, o.title, o.lines,
       { label: 'СМОТРЕТЬ РЕКЛАМУ: МАТЕРИАЛЫ x2', claim: async () => [] });
     return s.view;
   }],
@@ -459,13 +535,33 @@ describe('Store — BACK is reachable, not buried under the SKU rows', () => {
   });
 });
 
-describe('every menu screen fits in every shipped locale', () => {
-  // Translated copy changes measured text width, and the Forge FLOWS its layout off
-  // `infoText.height` — so "fits in English" is not the same claim as "fits". design/17-i18n
-  // ships 8 locales; a screen that only overflows in de/ru would otherwise reach a player
-  // before it reached a test. Run at the tightest real viewport (the mini-game one).
+/**
+ * Translated copy changes measured text width, and the Forge FLOWS its layout off
+ * `infoText.height` — so "fits in English" is not the same claim as "fits". design/17-i18n
+ * ships 8 locales; a screen that only overflows in de/ru would otherwise reach a player before
+ * it reached a test.
+ *
+ * **Two viewports, and the second one was missing until 2026-09-17.** This sweep ran only at the
+ * mini-game's 844x390, which is the tightest real viewport in HEIGHT — and at that aspect the
+ * fit scale is height-bound, so the design space is ~1386px WIDE. Every locale had ~626px of
+ * horizontal slack it will not have on a portrait phone, where width binds and the design space
+ * is exactly `MENU_DESIGN_W`. `VIEWPORTS` above already carries two width-binding entries for
+ * precisely this reason, and the sweep at the top of the file runs them — but only in English.
+ * So the locale axis and the width-bound axis were each covered and never crossed, which is a
+ * hole shaped exactly like the thing both were built to catch.
+ *
+ * It was not hypothetical: `results.guestNotRanked` (design/16 hole 3) shipped at 878px in
+ * Spanish and 809px in Polish against a 760px design width, and BOTH sweeps stayed green — the
+ * English one because English is 445px, this one because 878 < 1386. Adding the portrait phone
+ * here is what turns it red. (The result screen's own fixture was the other half of that miss;
+ * see `realOutcome` above.)
+ */
+describe.each([
+  { name: 'wechat landscape (height-bound)', w: 844, h: 390 },
+  { name: 'portrait phone (width-bound)', w: 390, h: 844 },
+])('every menu screen fits in every shipped locale — $name', ({ w, h }) => {
   afterEach(() => resetLocaleForTests());
-  const design = new MenuLayer().fit({ w: 844, h: 390 });
+  const design = new MenuLayer().fit({ w, h });
 
   for (const locale of LOCALES) {
     it.each(SCREENS)(`${locale} — %s`, async (_name, build) => {

@@ -175,29 +175,32 @@ describe('POST /find', () => {
     }
   });
 
-  it('accepts an accountId and carries it into the signed ticket', async () => {
-    // The ladder reads this back off the seat (design/16). A dropped accountId is silent:
-    // the match plays normally and the rating report falls back to its seat: scaffold.
+  it('REFUSES a body accountId — an unauthenticated seat is never a scored one', async () => {
+    // Reversed 2026-09-17 (design/16 hole 3). This case used to assert the opposite, and the
+    // assertion was the bug: `accountId` is what `ladderReport.ts` credits when the match
+    // settles, so honouring a body field meant any caller could move any account's rating by
+    // naming it here. The identity now comes from a verified bearer session or from nowhere
+    // — see `matchsvc.findIdentity.http.test.ts` for the session half.
     const ctx = await start();
     try {
       const { body } = await post(ctx.url, '/find', { playerCount: 1, accountId: 'acct-7' });
       const token = (body.match as Record<string, unknown>).token as string;
-      expect(verifyTicket(token, SECRET, Date.now())?.accountId).toBe('acct-7');
+      expect(verifyTicket(token, SECRET, Date.now())?.accountId).toBeUndefined();
     } finally {
       await ctx.close();
     }
   });
 
-  it('ignores an empty-string partyId/accountId rather than treating it as a value', async () => {
+  it('ignores an empty-string partyId rather than treating it as a value', async () => {
+    // `accountId` is deliberately NOT in this case any more: the route does not read the
+    // field at all, so an empty one and a populated one are the same non-event, and keeping
+    // it here would look like a boundary that is still being enforced. `partyId` IS still
+    // read from the body, and empty-vs-absent is a real distinction for it.
     const ctx = await start();
     try {
-      const { body } = await post(ctx.url, '/find', {
-        playerCount: 1,
-        partyId: '',
-        accountId: '',
-      });
-      expect(verifyTicket((body.match as Record<string, unknown>).token as string, SECRET, Date.now())
-        ?.accountId).toBeUndefined();
+      const { body } = await post(ctx.url, '/find', { playerCount: 2, partyId: '' });
+      expect(body.queueId).toBeTruthy();
+      expect(body.match).toBeUndefined(); // an empty partyId formed no group of its own
     } finally {
       await ctx.close();
     }

@@ -11,6 +11,8 @@ import { setPublicFlags } from '../../net/clientFlags';
 import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 import type { ResultOffer } from '../screens/Screens';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetHostKind, setHostKind } from '../../platform/hostKind';
+import { resetSessionCacheForTests, setSession, type Session } from '../../net/session';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { ArenaMap } from '@dd/engine/content/arenas';
@@ -221,7 +223,11 @@ describe('RunOutcome — PvP arena victory/elimination', () => {
     expect(host.shown).toEqual({
       won: true,
       title: 'VICTORY ROYALE',
-      lines: ['1st place of 4', 'Time 1:05', `Score ${SCORE.victory}`],
+      // The fourth line is the guest-ladder footnote: these tests run as an unauthenticated
+      // player on the default `web` host, which is exactly when it shows. Its own block
+      // below owns the cases; it is spelled out here because this is an EXACT-equality
+      // assertion, and letting it drift to `toContain` would hide the line appearing at all.
+      lines: ['1st place of 4', 'Time 1:05', `Score ${SCORE.victory}`, 'Not ranked as a guest. Sign in to rank.'],
     });
   });
 
@@ -259,6 +265,85 @@ describe('RunOutcome — PvP arena victory/elimination', () => {
     const host = mockHost(0);
     new RunOutcome(host).handle(s);
     expect(host.shown?.lines[0]).toBe('Placed 3/3');
+  });
+});
+
+/**
+ * The guest-ladder footnote on an arena result (design/16-accounts.md hole 3, 2026-09-17).
+ *
+ * The decision it reports: a guest's PvP rating is discarded, because a guest's id is
+ * client-declared and a rating keyed by a claim is a rating anybody can move. The line
+ * exists so that decision is not also a SILENCE — the player placed 3rd of 8 and would
+ * otherwise be told nothing about where that went.
+ *
+ * Every case here is about the line being honest somewhere, not about it being present
+ * everywhere: two hosts must not show it at all, and a signed-in player must not be told
+ * their rank is being thrown away when it is not.
+ */
+describe('RunOutcome — the guest ladder notice', () => {
+  const NOTICE = 'Not ranked as a guest. Sign in to rank.';
+
+  /** An in-memory SessionStore — `setSession`'s default reads `localStorage`, which the
+   *  node test environment does not have. */
+  function fakeSessionStore() {
+    let held: Session | null = null;
+    return { load: () => held, save: (s: Session | null) => { held = s; } };
+  }
+
+  /** One arena elimination, returning the stat block it put on screen. 8 seats with the
+   *  local one eliminated 6th of the losers, so the placement line is a real 3/8. */
+  function arenaLoss(): readonly string[] {
+    const s = pvpState(8);
+    s.winner = 7;
+    s.placements.push(1, 2, 3, 4, 5, 0);
+    const host = mockHost(0);
+    new RunOutcome(host).handle(s);
+    return host.shown!.lines;
+  }
+
+  beforeEach(() => {
+    resetHostKind();
+    setSession(null, fakeSessionStore());
+  });
+  afterEach(() => {
+    resetHostKind();
+    resetSessionCacheForTests();
+  });
+
+  it('is the LAST line, after the stats, on an elimination', () => {
+    const lines = arenaLoss();
+    expect(lines[0]).toBe('Placed 3/8'); // the stats are untouched...
+    expect(lines[lines.length - 1]).toBe(NOTICE); // ...and this is a footnote under them
+  });
+
+  it('is absent for a signed-in player, whose rank IS being recorded', () => {
+    setSession({ accountId: 'acct-1', username: 'ada', token: 'tok' }, fakeSessionStore());
+    expect(arenaLoss()).not.toContain(NOTICE);
+  });
+
+  it('is absent on WeChat, where signing in would not stick', () => {
+    setHostKind('wechat');
+    expect(arenaLoss()).not.toContain(NOTICE);
+  });
+
+  it('is absent on the portal, where the player is signed in by the platform', () => {
+    setHostKind('crazygames');
+    expect(arenaLoss()).not.toContain(NOTICE);
+  });
+
+  it('never appears on a PvE result, which has no ladder to be kept out of', () => {
+    // A PvE run is scored in materials and floors; a ladder sentence there would answer a
+    // question that screen never asked.
+    const host = mockHost(0);
+    new RunOutcome(host).handle(pveState());
+    expect(host.shown?.lines).not.toContain(NOTICE);
+  });
+
+  it('is translated like every other results line, not pinned to English', () => {
+    setLocale('zh');
+    const lines = arenaLoss();
+    expect(lines).not.toContain(NOTICE);
+    expect(lines[lines.length - 1]).toBe('访客不计天梯。登录后开始记分。');
   });
 });
 

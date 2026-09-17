@@ -34,9 +34,11 @@ export interface MatchRouteDeps {
    * than typed as `AuthService`, so the matchmaking group does not depend on that class's
    * shape — the same narrowing `pickGameserver` above already applies to the registry.
    *
-   * Optional: every pre-2026-09-08 caller of `createMatchsvcServer` (and every test that
-   * builds this deps bundle by hand) omits it, and a `/find` with no auth behind it behaves
-   * exactly as it always did.
+   * Optional, and what "omitted" means changed on 2026-09-17: with no auth layer wired there
+   * is no session to resolve, so EVERY seat is a guest and every match is keyed by
+   * `ladderReport.ts`'s per-match scaffold. That is the safe direction to fail — a deps
+   * bundle that forgot the account layer now records no rating rather than recording it
+   * against whatever the caller claimed.
    */
   auth?: { verifySession(token: unknown): Promise<{ accountId: string; username: string } | null> };
 }
@@ -86,24 +88,30 @@ export const postFind: RouteHandler<MatchRouteDeps> = async (req, res, _url, dep
     // one squad chunk. Absent (every pre-party caller) → plain FIFO, unaffected.
     const rawGroupId = (body as { partyId?: unknown })?.partyId;
     const groupId = typeof rawGroupId === 'string' && rawGroupId ? rawGroupId : undefined;
-    // Who this seat belongs to. Two sources, and the ORDER is the point (design/20).
+    // Who this seat belongs to. ONE source, and that is the whole point (design/16 hole 3,
+    // closed 2026-09-17; design/20 for the name).
     //
-    // An `Authorization: Bearer` header, if the caller sent one, is VERIFIED here and wins
-    // outright — both the account id and the display name come from the session, and the
-    // body's `accountId` is ignored rather than merged. That is what makes the name safe to
-    // put in the ticket and show to other players: a client that could name itself could
-    // name itself anything, and a name is the one field in a match other players SEE.
+    // An `Authorization: Bearer` header is VERIFIED here, and both the account id and the
+    // display name come from the session it resolves. Without a header this is a GUEST seat:
+    // `accountId` and `name` are both `undefined`, and `ladderReport.ts`'s
+    // `seat:{roomId}:{seatIdx}` scaffold keys the match — a throwaway identity per match,
+    // which is the correct answer rather than a missing feature.
     //
-    // Without a header, the body's `accountId` is used exactly as it was before — a guest's
-    // local id, trusted no more than `playerCount`/`mode` already are, and carrying no name.
-    // That is the pre-existing behaviour and this route's trust boundary is unchanged for
-    // it: the account layer's boundary is `/auth/*`/`/account/*`, and a guest's id only ever
-    // reaches `ladderReport.ts`, which falls back to its own `seat:{roomId}:{seatIdx}`
-    // scaffold anyway.
+    // The body's `accountId` used to be read here as a fallback and is now IGNORED
+    // ENTIRELY — it is not even parsed. That fallback was this route's trust boundary
+    // failing open: until the same pass the client sent no bearer at ALL, so EVERY `/find`
+    // took the caller's word for who it was, and anyone could POST a stranger's real
+    // accountId and move their ladder rating. Which is also why the fix is not "verify the guest id":
+    // a guest's id is client-declared by construction, so a key built from one can never be
+    // unforgeable, and a rating that cannot be attributed must not be recorded.
+    // `design/15-pvp-arena.md` "Who a rating belongs to" has the full argument, including why a
+    // guest's rating could never have been merged into an account afterwards.
+    //
+    // The player loses nothing else by staying a guest: every PvP match is still playable,
+    // still winnable, and still shows its result. Only the durable RANK needs a name that
+    // cannot be borrowed, and the results screen says so (`RunOutcome.winArena`).
     const session = (await deps.auth?.verifySession(bearerToken(req.headers.authorization))) ?? null;
-    const rawAccountId = (body as { accountId?: unknown })?.accountId;
-    const bodyAccountId = typeof rawAccountId === 'string' && rawAccountId ? rawAccountId : undefined;
-    const accountId = session?.accountId ?? bodyAccountId;
+    const accountId = session?.accountId;
     const name = session?.username;
     try {
       // Asked BEFORE enqueueing, so a control plane with no data plane behind it does not

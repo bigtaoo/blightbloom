@@ -282,6 +282,7 @@ export const ru: Translations<typeof en> = {
     materialsLost: 'Все переносимые материалы потеряны: {count}',
     placeOf: '1-е место из {total}',
     placedOfTotal: 'Место {place}/{total}',
+    guestNotRanked: 'Гость: без рейтинга. Войдите, чтобы попасть.',
     connectionLostTitle: 'СОЕДИНЕНИЕ ПОТЕРЯНО',
     connectionLostBody: 'Не удалось переподключиться к матчу.',
   },
