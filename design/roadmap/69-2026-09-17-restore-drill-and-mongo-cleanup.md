@@ -107,6 +107,16 @@ request failed on channel 0`, and a `-L` tunnel is accepted by the local client 
 by the server on first use, so `restrict`'s `no-port-forwarding` is doing its half too.
 `authorized_keys` is still one line.
 
+**And then it was exercised for real**, because this README is under `server/` and merging the
+pass is therefore a `server/**` push: `server-deploy` ran green against the new copy, twelve
+containers recreated and healthy, the backup worker's cycle verified. The confirmation that the
+NEW copy ran is not the log — it prints nothing when the guards pass — but a **state difference
+on the box**: `data/` is still absent afterwards, where the old script's ownership loop would
+have `mkdir -p`'d three directories straight back. This file's own rule ("CI going green is not
+evidence that a check in `ci-deploy.sh` is running") has an obvious second half nobody had
+written down: a green deploy is not evidence of *which copy* ran. Find something the two copies
+do differently **to the box**, and look at the box.
+
 ### The pre-migration copies are gone, and what was checked before deleting them
 
 `data/`, `/root/pre-mongo-20260916T063739Z.tar.gz` and 42 retired `*.db.gz` were the only copies

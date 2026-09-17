@@ -900,10 +900,17 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
 >
 > The general rule, which this file has now paid for three times: **CI going green is not
 > evidence that a check added to `ci-deploy.sh` is running.** The live copy is deliberately
-> outside the deploy target, so a deploy cannot update it — only a human can. The converse
-> is also worth saying now that the guard is live: the next push to `main` that touches
-> `server/**` is what first exercises it, and this README is under `server/`, so the commit
-> that records all this is itself that push.
+> outside the deploy target, so a deploy cannot update it — only a human can.
+>
+> **Exercised for real the same day.** Merging PR #24 (this README is under `server/`, so the
+> commit recording all of the above is itself a `server/**` push) ran `server-deploy` green
+> against the new copy: all twelve containers recreated, all healthy, the backup worker's
+> cycle verified. And because that rule cuts both ways — a green deploy is not evidence of
+> WHICH copy ran either — the confirmation is a state difference rather than the log, which
+> prints nothing when the guards pass: **`data/` is still absent on the box afterwards.** The
+> old script's ownership loop would have `mkdir -p`'d `data/matchsvc`, `data/billsvc` and
+> `data/adminsvc` straight back. That is the cheap general trick here — find something the
+> two copies do *differently to the box*, and look at the box.
 
 ## 7. Still open
 
