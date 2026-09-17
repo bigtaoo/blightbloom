@@ -13,7 +13,7 @@
  * level: the worst a forged one can do is confuse a party the forger is already in.
  *
  * Since design/21 there are TWO readers of the stored id and they want opposite things:
- * `getPlayerId()` prefers the account (a ladder key should follow the person) and
+ * `getPlayerId()` prefers the account (a party seat should follow the person) and
  * `getInstallId()` never does (a retention cohort has to follow the browser). Both read the
  * same `daydayup.playerId.v1`, so analytics stores nothing new.
  *
