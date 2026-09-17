@@ -10,6 +10,8 @@ export const zh: Translations<typeof en> = {
     title: '绽晶',
     subtitle: '深入·撤离·生存',
     play: '开始',
+    continueRun: '继续行动 ▸',
+    continueRunAt: '第 {floor} 层 · 已进行 {m}:{ss}',
     solo: '单人闯关',
     coop: '联机合作',
     pvpSolo: '大逃杀单排',

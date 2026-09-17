@@ -133,8 +133,8 @@ function make() {
     } as never,
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
-    mainMenu: { ...screenStub('onPlay', 'onSolo', 'onCoop', 'onPvpSolo', 'onSquad', 'onTutorial',
-      'onAccount', 'onSettings'),
+    mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onCoop', 'onPvpSolo', 'onSquad',
+      'onTutorial', 'onAccount', 'onSettings'),
       setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
@@ -237,6 +237,19 @@ describe('wireScreens', () => {
     t.called.length = 0;
     forge.onStart!();
     expect(t.called).toEqual(['confirm']);
+  });
+
+  it('gives the LOBBY the same CONTINUE verb, not a second implementation of it', () => {
+    // Both screens offer the row since 2026-09-17 (design/10). One handler, because "continue"
+    // is one thing the game does and two copies is how the entry points start disagreeing
+    // about what gets spent, cleared or replayed.
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as Record<string, () => void>;
+
+    t.called.length = 0;
+    menu.onContinue!();
+    expect(t.called).toEqual(['runs.resumeSavedRun']);
   });
 
   it('sends every BACK button to the lobby', () => {

@@ -1420,9 +1420,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-17** [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change) — Stage 1 closed from the owner's side (technical validation only; the device half verified personally) and Stage 2 opened on the front door. **No code changed**; what this produced is a design, three defects found by reading, and a reflection that reversed part of its own first answer. The defects are all live and none is reachable by a test as the code stands: **logging into an account that already has server state silently discards local guest progress** (`setMeta(remote ?? local)` — the `??` only covers the brand-new-account branch, so the migration `design/20`'s table claims exists only where there was nothing to migrate); **a stored token is trusted forever** — `fetchMe` has ZERO production callers, `SESSION_TTL_MS` is written once and never extended, so an expired session paints as `Hi, {name}` while every bearer call 401s into a `.catch()` and cloud save has never once worked; and **a guest's ladder rating is keyed per MATCH** (`seat:{roomId}:{seatIdx}`) although the guest already has a persistent id `POST /find` receives. What the reflection reversed is the more useful half: the first answer was **a vault for an empty bank** (an account today buys cloud sync of six fields, a ladder nobody is on, and a store that cannot sell anything), its boot-time token check was **a second request that was not needed** (`/account/meta`'s own 401 answers it), it **labelled the ladder loss instead of fixing it** — three warnings on a front door whose locked rule is that login is never required is nagging, and each warning had a fix available — and it **designed the account corner without looking at the front door**: `Matchmaker.poll` backfills bots only for `mode === 'pvp'`, so **CO-OP is a dead door** (queue, wait `queueTtlMs`, expire), PvP answers an empty queue in 30 s rather than answering it, SQUAD needs a second human, and CONTINUE RUN sits a screen below the returning player's first need. Merge default reversed too: not a field-by-field union, which is wrong on a shared computer, but **once per device on first association, account-is-truth afterwards**, primary button *use the account's*. Kept: three identity layers behind one `getPlayerId()` seam, clickability-is-the-host's / copy-is-the-session's, and offline-is-not-logged-out. Also recorded: **every WeChat player is a guest** — no `wx.login`, no `/auth/wechat` — and closing that is our choice, not a platform requirement, which makes it a cost to weigh. `docs` `ui` `net`
 
+**[2026-09-17 — CONTINUE RUN moves to the front door](roadmap/71-2026-09-17-lobby-continue-run.md)**
+
+- **09-17** [CONTINUE RUN moves to the front door, and the button that could only apologise](roadmap/71-2026-09-17-lobby-continue-run.md#continue-run-moves-to-the-front-door-and-the-button-that-could-only-apologise-2026-09-17-client--docs-no-engine-change) — the finding volume 70 ended on, fixed: *“首页对他的存档只字不提”* — the lobby grows a sixth route at the TOP of the stack, CONTINUE RUN plus a caption naming the floor and the time played, resuming directly with no stop at the Forge. **Writing the check the brief asked for is what exposed the existing one.** The Forge had drawn its CONTINUE off `savedRunSummary() !== null` — *a save exists* — while `resumeSavedRun` decided off `checkResumable` — *a save this build can rebuild*: a save from an older `ENGINE_VERSION`, or one whose floor library had moved, drew a full-size primary whose only possible outcome was to drop the save and apologise. Nothing was red; the wrong answer was one screen deep and the right one ran a frame later, and neither is true on a front door. Both screens read one new module now, which rebuilds the config from TODAY's content via the same builder the resume calls — memoised on the save OBJECT, because `contentHashOf` digests **20,724 characters** of dungeon content and the Forge asks twice per keystroke. A non-resumable save is deliberately LEFT in storage: this is a read from a render path, and the slot is reclaimed by the next `beginRun`. **The sweep is what set the portal rule, not taste** — stacking CONTINUE under a portal's quick-play PLAY measured **702px against a 640px design height in 8/8 locales**, so CONTINUE takes that slot instead: both answer “start playing now” and the platform requirement behind PLAY is about a FIRST-time visitor. What was NOT done is re-point PLAY at the resume — one button whose meaning depends on the state is how a player loses a run they meant to keep. Same story for the caption: `CONTINUE — FLOOR {n}` is 316px of Russian in a 280px row, so floor and elapsed time became a separate 11px line (165px at worst, German), one unwrapped line because wrapping would make the block's height a `Text` measurement. `labelFit.test.ts` sweeps BUTTONS and is blind to it, so the new `LobbyRoutes.test.ts` measures it against the row in all eight locales itself. A refusal that does slip through now re-renders the screen the press came from, since answering “no” with a navigation is its own defect. Volume 70's other three findings — CO-OP's dead queue, PvP's 30-second empty-queue answer, the visual weight of a route that cannot be walked — are untouched. `ui` `test` `docs`
+
 ## The work log — by theme
 
-The same 168 entries, grouped. An entry with more than one tag appears more than once.
+The same 169 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1590,7 +1594,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(84)*
+**`test`** — coverage sweeps, gates, mutation batteries *(85)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1676,6 +1680,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
+- 09-17 [CONTINUE RUN moves to the front door, and the button that could only apologise](roadmap/71-2026-09-17-lobby-continue-run.md#continue-run-moves-to-the-front-door-and-the-button-that-could-only-apologise-2026-09-17-client--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1721,7 +1726,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(25)*
+**`ui`** — HUD, screens, widgets *(26)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1748,6 +1753,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-17 [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change)
+- 09-17 [CONTINUE RUN moves to the front door, and the button that could only apologise](roadmap/71-2026-09-17-lobby-continue-run.md#continue-run-moves-to-the-front-door-and-the-button-that-could-only-apologise-2026-09-17-client--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(20)*
 
@@ -1772,7 +1778,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(91)*
+**`docs`** — design docs and this log itself *(92)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1865,6 +1871,7 @@ The same 168 entries, grouped. An entry with more than one tag appears more than
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 - 09-17 [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change)
+- 09-17 [CONTINUE RUN moves to the front door, and the button that could only apologise](roadmap/71-2026-09-17-lobby-continue-run.md#continue-run-moves-to-the-front-door-and-the-button-that-could-only-apologise-2026-09-17-client--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(23)*
 

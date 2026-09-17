@@ -576,6 +576,19 @@ describe('resumeSavedRun', () => {
     expect(t.run.engine!.state.events).toEqual([]);
   });
 
+  it('hides BOTH the lobby and the forge, whichever one the press came from', () => {
+    // Found by resuming from the lobby in the running client, not by a test: the resume took
+    // `enterPrimedRun`'s default, which hides the FORGE alone, and CONTINUE has two entry
+    // points now — so the lobby stayed drawn, full screen, over a live ticking run. The unit
+    // suite could not see it because the screens here are notes with no pixels; what it can
+    // pin is that both are told to go.
+    const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    writeSavedRun(saveOf());
+    t.runs.resumeSavedRun();
+    expect(t.order).toContain('mainMenu.hide');
+    expect(t.order).toContain('forge.hide');
+  });
+
   it('does not re-spend the loadout — those weapons are already in the run', () => {
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
     t.run.setMeta({ ...t.run.meta, loadout: ['cryobolt'] });
@@ -596,6 +609,7 @@ describe('resumeSavedRun', () => {
     const save = saveOf();
     writeSavedRun({ ...save, engineVersion: save.engineVersion - 1 });
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    t.run.phase = 'forge';
     t.runs.resumeSavedRun();
 
     expect(t.run.engine).toBeNull();
@@ -604,9 +618,26 @@ describe('resumeSavedRun', () => {
     expect(t.deps.hud.toast).toHaveBeenCalled();
   });
 
+  // Both screens offer CONTINUE since 2026-09-17 (design/10), so the refusal has to put the
+  // player back where they pressed. Asserting the NEGATIVE too, because a re-render that
+  // navigates is exactly the bug: a lobby press answered with `showForge` would move someone
+  // to a screen they did not ask for, in the middle of being told no.
+  it('re-renders the LOBBY, not the forge, when the refused press came from the lobby', () => {
+    const save = saveOf();
+    writeSavedRun({ ...save, engineVersion: save.engineVersion - 1 });
+    const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    t.run.phase = 'menu';
+    t.runs.resumeSavedRun();
+
+    expect(t.deps.nav.showMenu).toHaveBeenCalled();
+    expect(t.deps.nav.showForge).not.toHaveBeenCalled();
+    expect(t.deps.hud.toast).toHaveBeenCalled();
+  });
+
   it('refuses a save whose content no longer matches, drops it, and says so', () => {
     writeSavedRun({ ...saveOf(), contentHash: 0 });
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
+    t.run.phase = 'forge';
     t.runs.resumeSavedRun();
     expect(t.run.engine).toBeNull();
     expect(loadSavedRun()).toBeNull();
