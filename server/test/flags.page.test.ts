@@ -42,8 +42,9 @@ describe('flagsSection', () => {
     expect(html).toContain('overridden');
     expect(html).toContain('admin');
     expect(html).toContain('>Clear<');
-    // ...and the three flags with no row still say "as shipped", so a reader can tell which
-    // is which at a glance.
+    // ...and every OTHER flag still says "as shipped", so a reader can tell which is which
+    // at a glance. Counted off `FLAG_NAMES` rather than written out, so adding a flag does
+    // not quietly weaken this into "at least one row is overridden".
     expect([...html.matchAll(/as shipped/g)]).toHaveLength(FLAG_NAMES.length - 1);
   });
 

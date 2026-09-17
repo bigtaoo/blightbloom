@@ -12,6 +12,13 @@
  * Transport model is deliberately poll-based (matchsvc: POST /find → GET /find/:id): a
  * `find` enqueues and returns a `queueId`; the client polls until its seat is `matched`.
  * The player whose arrival completes a group gets its ticket back inline from `enqueue`.
+ *
+ * **No queue ever answers "nobody is here" by refusing to start** (2026-09-17, design/10's
+ * front-door audit). Both modes bot-fill the empty seats after their own short delay —
+ * `pvpBotFillMs` / `coopBotFillMs`, 5 s each — so a solo player who taps CO-OP or PVP
+ * SOLO QUEUE with an empty server gets a match, not an expiry. Expiry (`queueTtlMs`) is
+ * still the rule, and still the one an operator can put back in front by raising a
+ * backfill delay above it; it is just no longer what a lone player meets.
  */
 import type { MatchMode, TicketPayload } from './ticket';
 import { squadSizeForPlayerCount, teamIdForOwner } from './config';
@@ -28,8 +35,11 @@ export interface MatchmakerDeps {
   /** Ticket lifetime from formation (ms). Default 30 s — long enough to open the socket. */
   ticketTtlMs?: number;
   /** How long a still-waiting player lives before poll reports `expired` (ms). Default 30 s.
-   * PvP never actually reaches this for a waiter that's had ANY company — see `pvpBotFillMs`,
-   * which fires first at the same default and forms the room with bots instead.
+   * **In the shipped configuration nothing ever reaches it**: both modes bot-fill first
+   * (`pvpBotFillMs` / `coopBotFillMs`, 5 s each against this 30 s and against the deployed
+   * flag's 120 s), and `poll` checks the backfill BEFORE the expiry. It is still the rule
+   * that decides, not a dead branch — an operator who raises a backfill delay above this
+   * value gets expiry back for that mode, which is the honest reading of "give up after".
    *
    * A FUNCTION here is read on every use rather than once at construction, which is what
    * makes it a live value: design/21 §4's `match.queueTimeoutMs` flag is delivered this way,
@@ -39,8 +49,10 @@ export interface MatchmakerDeps {
   /**
    * PvP practice-bot backfill (design/15 follow-up): how long a still-waiting PvP request
    * may sit before the group forms anyway, topped up with bots for the empty seats.
-   * Default 30 s. Coop is unaffected — it only ever expires (queueTtlMs), never bot-fills;
-   * a squad-only mode without a solo-bot fairness story doesn't get the same treatment.
+   * Default 5 s — lowered from 30 s on 2026-09-17 (design/10's front-door audit). The 30 s
+   * was a matchmaking window borrowed from games that have a queue; with nobody else in it,
+   * all it bought was thirty seconds of spelling out "nobody is here". A deployment with a
+   * real population raises it through the flag — that is what the flag is for.
    *
    * Accepts a function for the same reason `queueTtlMs` does: this is design/21 §4's
    * `match.pvpBotBackfillDelayMs` flag, and the right value depends on how many people are
@@ -49,13 +61,31 @@ export interface MatchmakerDeps {
    */
   pvpBotFillMs?: number | (() => number);
   /**
-   * Fired once, synchronously inside the `poll()` call that triggers a bot-filled PvP
-   * room, with everything the shell needs to actually spawn a bot connection per empty
+   * Co-op ally backfill (design/10 front-door audit, 2026-09-17), the same mechanism with
+   * its own delay: how long a still-waiting `coop` request may sit before the room forms
+   * with an AI ally in each empty seat. Default 5 s.
+   *
+   * **Separate from `pvpBotFillMs` because the two waits buy different things.** A PvP bot
+   * is a lesser opponent, so a deployment with players will want to wait a while for a
+   * human; a co-op bot ally is the one the game already ships — `?coop=1` has driven the
+   * second seat with `AllyController` since ROADMAP 3.1 — so waiting for a human buys
+   * almost nothing. One shared value would force an operator raising the PvP window to
+   * also make CO-OP's second seat take that long to appear.
+   *
+   * Delivered as design/21 §4's `match.coopBotBackfillDelayMs`; a function for the same
+   * live-value reason as its two neighbours above.
+   */
+  coopBotFillMs?: number | (() => number);
+  /**
+   * Fired once, synchronously inside the `poll()` call that triggers a bot-filled room,
+   * with everything the shell needs to actually spawn a bot connection per empty
    * seat. Matchmaker itself is transport/process-agnostic (like `nowMs`/`sign`/etc., this
    * is injected non-determinism) — a bot seat is otherwise indistinguishable from a real
    * one: it redeems a ticket for `roomId`/`seed`/`playerCount` exactly like any player, so
-   * MatchRoom/RoomManager need no bot concept at all. Omitted (every pre-4.x/pre-PvP
-   * caller) → PvP just expires like coop always has.
+   * MatchRoom/RoomManager need no bot concept at all. `mode` is what tells the shell which
+   * brain to give the seat (`BotClient.ts`: `PvpBotController` vs `AllyController`), and it
+   * is the reason a co-op backfill is not just PvP's with the mode check deleted. Omitted
+   * (every pre-4.x/pre-PvP caller) → the room still forms short-handed, just silently.
    */
   onBotFill?: (info: {
     roomId: string;
@@ -102,6 +132,11 @@ export const MAX_PLAYERS = 8; // design/06 match-size ceiling (5v5 proven); co-o
 
 const DEFAULT_TICKET_TTL_MS = 30_000;
 const DEFAULT_QUEUE_TTL_MS = 30_000;
+/** Both modes' backfill default (see `MatchmakerDeps.pvpBotFillMs` / `coopBotFillMs`).
+ * Deliberately ONE constant: the two are separately configurable, but the shipped answer
+ * to "there is nobody else here" is the same for both, and two literals that happen to
+ * agree today is how they stop agreeing tomorrow for no stated reason. */
+const DEFAULT_BOT_FILL_MS = 5_000;
 
 interface Waiter {
   queueId: string;
@@ -137,13 +172,20 @@ export class Matchmaker {
   /** Read per use, never captured — see `MatchmakerDeps.queueTtlMs`. A plain number in the
    *  deps becomes a constant function here, so there is one code path and not two. */
   private readonly queueTtlMs: () => number;
-  private readonly pvpBotFillMs: () => number;
+  /** Per-mode backfill delay, keyed by `MatchMode` so `poll`/`liveQueue` never re-derive
+   * "which mode gets a backfill" — every mode does, and the only question is when. A
+   * `MatchMode`-keyed record rather than an if/else is also what makes a third mode a
+   * COMPILE error here rather than a silently-never-filling queue. */
+  private readonly botFillMs: Record<MatchMode, () => number>;
   private readonly sign: (p: TicketPayload) => string;
 
   constructor(private readonly deps: MatchmakerDeps) {
     this.ticketTtlMs = deps.ticketTtlMs ?? DEFAULT_TICKET_TTL_MS;
     this.queueTtlMs = asSupplier(deps.queueTtlMs, DEFAULT_QUEUE_TTL_MS);
-    this.pvpBotFillMs = asSupplier(deps.pvpBotFillMs, DEFAULT_QUEUE_TTL_MS);
+    this.botFillMs = {
+      pvp: asSupplier(deps.pvpBotFillMs, DEFAULT_BOT_FILL_MS),
+      coop: asSupplier(deps.coopBotFillMs, DEFAULT_BOT_FILL_MS),
+    };
     // Default signer uses the injected `sign`; a caller can omit it in a test that only
     // asserts grouping (tokens are then empty — verify is covered by ticket.test.ts).
     this.sign = deps.sign ?? (() => '');
@@ -195,12 +237,15 @@ export class Matchmaker {
       return { status: 'matched', ticket: waiter.ticket };
     }
     const waited = this.deps.nowMs() - waiter.enqueuedAt;
-    // PvP practice-bot backfill: at pvpBotFillMs, form the group right now with whoever
+    // Practice-bot backfill: at this mode's delay, form the group right now with whoever
     // is still queued for this shape, topping up the empty seats with bots — checked
-    // BEFORE the plain expiry below (same 30s default) so PvP never actually expires
-    // once it has this path; coop (mode check) always falls through to expiry as before.
-    if (waiter.mode === 'pvp' && waited >= this.pvpBotFillMs()) {
-      this.formWithBots(waiter.playerCount, waiter.mode);
+    // BEFORE the plain expiry below, so a mode whose backfill fires first never expires
+    // at all. Until 2026-09-17 this arm was gated on `mode === 'pvp'` and CO-OP had no
+    // way out of the queue but expiry: a solo player who tapped CO-OP with nobody else
+    // online waited out `queueTtlMs` and was told the request expired, which is the game
+    // refusing to start a mode it can already play (design/10's front-door audit).
+    if (waited >= this.botFillMs[waiter.mode]()) {
+      this.formWithBots(waiter.playerCount, waiter.mode, queueId);
       if (waiter.ticket) {
         this.waiters.delete(queueId);
         return { status: 'matched', ticket: waiter.ticket };
@@ -215,8 +260,21 @@ export class Matchmaker {
 
   // ───────────────────────── internals ─────────────────────────
 
-  /** The (playerCount, mode) shape's queue with expired still-waiting entries reaped out. */
-  private liveQueue(playerCount: number, mode: MatchMode): string[] {
+  /**
+   * The (playerCount, mode) shape's queue with expired still-waiting entries reaped out.
+   *
+   * `keepId` is the ONE waiter this call must not reap by age: the one whose own `poll`
+   * is forming this room right now. Without it the age sweep races `formWithBots` into
+   * dropping exactly that waiter — it is past the backfill point, so it is also past any
+   * TTL below it — and the player who waited long enough to earn a room is handed
+   * `expired` instead. Before 2026-09-17 the same race was avoided by not age-reaping PvP
+   * at ALL (`mode !== 'pvp'`), which worked only because PvP was the only mode with a
+   * backfill; now that both have one, that shape would mean nothing is ever reaped by age
+   * and an ABANDONED queue entry — a client that closed the tab and stopped polling —
+   * would linger forever and be grouped into a stranger's room, which then never starts
+   * because nobody is coming to sit in that seat.
+   */
+  private liveQueue(playerCount: number, mode: MatchMode, keepId?: string): string[] {
     const key = queueKey(playerCount, mode);
     let q = this.queues.get(key);
     if (!q) {
@@ -228,11 +286,8 @@ export class Matchmaker {
     for (const id of q) {
       const w = this.waiters.get(id);
       if (!w || w.ticket) continue; // gone or already matched
-      // Coop entries go stale by age (queueTtlMs); PvP never does — it always resolves
-      // via formIfReady (full group) or formWithBots (bot-filled at pvpBotFillMs), and
-      // reaping by age here too would race formWithBots into dropping the very waiter
-      // whose own poll() just triggered it (both default to the identical 30 s).
-      if (mode !== 'pvp' && now - w.enqueuedAt > this.queueTtlMs()) {
+      // Stale by age — every mode, see `keepId` above for the one exception.
+      if (id !== keepId && now - w.enqueuedAt > this.queueTtlMs()) {
         this.waiters.delete(id);
         continue;
       }
@@ -264,8 +319,8 @@ export class Matchmaker {
    * squad chunks together first (a party gets bots only to top up ITS OWN squad, not
    * scattered across others) via the same `pullChunk` grouping `formIfReady` uses.
    */
-  private formWithBots(playerCount: number, mode: MatchMode): void {
-    const q = this.liveQueue(playerCount, mode);
+  private formWithBots(playerCount: number, mode: MatchMode, keepId?: string): void {
+    const q = this.liveQueue(playerCount, mode, keepId);
     if (q.length === 0 || q.length >= playerCount) return;
     const squadSize = squadSizeForPlayerCount(playerCount);
     const group: string[] = [];
