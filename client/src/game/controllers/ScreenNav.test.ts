@@ -67,6 +67,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     screens: screen() as never,
     settingsScreen: screen() as never,
     pauseMenu: screen() as never,
+    accountPrompt: { relayout: vi.fn() },
     screenSize: () => ({ w: 1600, h: 1200 }),
     settings: () => ({ quality: 'high' }) as never,
     connect: vi.fn(),
@@ -312,6 +313,20 @@ describe('relayout', () => {
     t.run.phase = 'forge';
     t.nav.relayout();
     expect(t.deps.forge.render).toHaveBeenCalledWith(t.run.meta, 800, 600);
+  });
+
+  it('relays out the account prompt from EVERY phase — it floats, it is not a screen', () => {
+    // The modal (design/16 holes 1 and 2) has no `case` of its own because it is drawn over
+    // whichever screen is up. A resize handled only inside the switch would leave it pinned
+    // to the viewport it opened at, which on a phone rotation is off screen. It no-ops while
+    // closed, so it is safe to call unconditionally — and that is why this asserts the CALL
+    // rather than a position.
+    for (const phase of ['menu', 'forge', 'playing', 'store'] as const) {
+      const t = make();
+      t.run.phase = phase;
+      t.nav.relayout();
+      expect(t.deps.accountPrompt.relayout, phase).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('resizes the result screen for both outcomes', () => {

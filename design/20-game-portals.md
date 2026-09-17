@@ -245,7 +245,7 @@ progress need an account.
 | Silent sign-in | `platform/crazygames/portalAuth.ts`, installed by `main.crazygames.ts` | New and returning portal users are registered/logged in automatically |
 | Every start | the same `start()`, plus `addAuthListener` for a mid-session login | "Request current user data every time the game starts" |
 | The name shown | `MainMenu`'s account LABEL (not a button), and `ui/SeatRoster.ts` in a match | The platform's username must be displayed |
-| Guest progress carried up | `platform/sessionEvents.ts` → `gameWiring`'s existing meta re-sync → `pullAccountMeta`'s brand-new-account branch pushes local state up | "Support migrating local guest progress upon login" |
+| Guest progress carried up | `platform/sessionEvents.ts` → `gameWiring`'s meta re-sync → `OnlineMatch.resolveAccountMeta`: the brand-new-account branch pushes local state up, and an account that ALREADY has state offers the one-time device merge (design/16 hole 1, closed 2026-09-17 — before that, this row was true only where there was nothing to migrate) | "Support migrating local guest progress upon login" |
 | The data notice | `auth.portalDataNotice`, one line under the main-menu card, with a link to the hosted policy under it (`platform/policyLinks.ts`) | Terms/privacy notice at the collection point |
 
 `showAuthPrompt` is declared in `CgSdkShape` and **deliberately never called**: auto-prompting is

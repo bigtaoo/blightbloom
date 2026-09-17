@@ -78,8 +78,11 @@ describe('GET /client/flags', () => {
     const base = await start();
     const body = (await (await fetch(`${base}${PUBLIC_FLAGS_PATH}`)).json()) as { flags: Record<string, unknown> };
     expect(Object.keys(body.flags).sort()).toEqual([...PUBLIC_FLAG_NAMES].sort());
-    expect(body.flags).not.toHaveProperty('match.queueTimeoutMs');
-    expect(body.flags).not.toHaveProperty('match.pvpBotBackfillDelayMs');
+    // Stated as a PREFIX rather than the two names it used to list. Those two were the only
+    // matchmaking timings when this was written; there are three since 2026-09-17, and an
+    // enumeration that goes stale reads as a checklist somebody completed. No `match.*` value
+    // may reach a browser — a backfill delay tells a player which seat is not a person.
+    expect(Object.keys(body.flags).filter((k) => k.startsWith('match.'))).toEqual([]);
   });
 
   it('reflects a value the flag client acquired AFTER the server was built', async () => {

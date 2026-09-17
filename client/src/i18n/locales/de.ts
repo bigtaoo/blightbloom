@@ -204,6 +204,15 @@ export const de: Translations<typeof en> = {
       'Optional. Bei der Registrierung speichern wir Benutzername, Passwort-Hash und Fortschritt auf unserem Server. Ohne Konto wird nichts gesendet.',
     portalDataNotice: 'Solange du bei CrazyGames angemeldet bist, speichern wir deinen CrazyGames-Namen und deinen Spielfortschritt auf unserem Server.',
     privacyLink: 'Datenschutzerklärung',
+    mergeTitle: 'GASTFORTSCHRITT ÜBERNEHMEN?',
+    mergeBody:
+      'Auf diesem Gerät liegt Gastfortschritt, den {username} nicht hat: {materials} Materialien, {blueprints} Baupläne, {characters} Charaktere. Diese Frage kommt einmal pro Gerät.',
+    mergeUseAccount: 'KONTO VERWENDEN',
+    mergeCombine: 'BEIDES ZUSAMMEN',
+    sessionExpiredTitle: 'ABGEMELDET',
+    sessionExpiredBody:
+      'Deine gespeicherte Sitzung ist nicht mehr gültig, du spielst jetzt als Gast. Der Fortschritt auf diesem Gerät bleibt unangetastet — melde dich erneut an, um ihn zu synchronisieren.',
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'TRUPP',

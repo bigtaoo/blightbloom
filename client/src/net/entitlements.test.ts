@@ -13,12 +13,14 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
+  ACCOUNT_UNAUTHORIZED,
   BLUEPRINT_SKU_PREFIX,
   CHARACTER_SKU_PREFIX,
   ENTITLEMENT_SOURCES,
   entitlementOwnership,
   fetchAccountState,
   parseEntitlements,
+  type AccountState,
   type Entitlement,
 } from './entitlements';
 
@@ -144,6 +146,7 @@ describe('fetchAccountState', () => {
     expect(await fetchAccountState('http://mm', 'tok-1', { fetch: doFetch })).toEqual({
       data: { materialBank: { mat_fire: 1 } },
       entitlements: [{ sku: 'character:hero', source: 'purchase', grantedAt: 9 }],
+      guestMerged: true,
     });
     expect(doFetch).toHaveBeenCalledTimes(1);
   });
@@ -152,6 +155,7 @@ describe('fetchAccountState', () => {
     expect(await fetchAccountState('http://mm', 'tok-1', { fetch: fakeFetch({ data: null, entitlements: [] }) })).toEqual({
       data: null,
       entitlements: [],
+      guestMerged: true,
     });
   });
 
@@ -161,13 +165,14 @@ describe('fetchAccountState', () => {
     expect(await fetchAccountState('http://mm', 'tok-1', { fetch: fakeFetch({ data: { loadout: [] } }) })).toEqual({
       data: { loadout: [] },
       entitlements: [],
+      guestMerged: true,
     });
   });
 
   it('throws the server error message on an error payload', async () => {
     await expect(
-      fetchAccountState('http://mm', 'bad', { fetch: fakeFetch({ error: 'invalid or expired session' }, { status: 401 }) }),
-    ).rejects.toThrow('invalid or expired session');
+      fetchAccountState('http://mm', 'bad', { fetch: fakeFetch({ error: 'server exploded' }, { status: 500 }) }),
+    ).rejects.toThrow('server exploded');
   });
 
   it('throws on a 2xx body that still carries an error field', async () => {
@@ -190,7 +195,7 @@ describe('fetchAccountState', () => {
     const global = fakeFetch({ data: null, entitlements: [] });
     vi.stubGlobal('fetch', global);
     try {
-      expect(await fetchAccountState('http://mm', 'tok-1')).toEqual({ data: null, entitlements: [] });
+      expect(await fetchAccountState('http://mm', 'tok-1')).toEqual({ data: null, entitlements: [], guestMerged: true });
       expect(global).toHaveBeenCalledWith('http://mm/account/meta', { headers: { authorization: 'Bearer tok-1' } });
     } finally {
       vi.unstubAllGlobals();
@@ -203,6 +208,84 @@ describe('fetchAccountState', () => {
       entitlements: [{ sku: 'character:hero', source: 'purchase', grantedAt: 1 }, { sku: 'x', source: 'gift' }],
     });
     const state = await fetchAccountState('http://mm', 'tok-1', { fetch: doFetch });
-    expect(state.entitlements).toEqual([{ sku: 'character:hero', source: 'purchase', grantedAt: 1 }]);
+    expect(state).not.toBe(ACCOUNT_UNAUTHORIZED);
+    expect((state as AccountState).entitlements).toEqual([{ sku: 'character:hero', source: 'purchase', grantedAt: 1 }]);
+  });
+});
+
+/**
+ * The 401, as a VALUE (design/16 hole 2, 2026-09-17).
+ *
+ * This is the whole of what verifies a stored session now, so the distinction it draws is
+ * load-bearing in both directions and both are asserted here: a 401 must NOT throw (or the
+ * caller's `catch` swallows it back into "keep using local state", which is the 30-day
+ * `Hi, {name}` over a dead session), and a network/5xx failure must STILL throw (or the
+ * caller signs an offline player out of an account that is perfectly valid).
+ */
+describe('fetchAccountState — a 401 is the answer, not a failure', () => {
+  it('returns ACCOUNT_UNAUTHORIZED on a 401 instead of throwing', async () => {
+    const result = await fetchAccountState('http://mm', 'expired', {
+      fetch: fakeFetch({ error: 'invalid or expired session' }, { status: 401 }),
+    });
+    expect(result).toBe(ACCOUNT_UNAUTHORIZED);
+  });
+
+  it('reads the 401 off the STATUS, so a proxy HTML body is still a clean sign-out', async () => {
+    // A 401 whose body is not JSON would otherwise fall into the guarded `res.json()` and
+    // come back as `account request failed (401)` — a throw, which the caller reads as
+    // "offline". The player would then keep a dead session indefinitely.
+    expect(await fetchAccountState('http://mm', 'expired', { fetch: nonJsonFetch(401) })).toBe(ACCOUNT_UNAUTHORIZED);
+  });
+
+  it('still THROWS on a 500, a 502 and a rejected fetch — offline is not logged out', async () => {
+    await expect(fetchAccountState('http://mm', 'tok-1', { fetch: nonJsonFetch(500) })).rejects.toThrow();
+    await expect(fetchAccountState('http://mm', 'tok-1', { fetch: nonJsonFetch(502) })).rejects.toThrow();
+    const dead = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+    await expect(fetchAccountState('http://mm', 'tok-1', { fetch: dead })).rejects.toThrow(/Failed to fetch/);
+  });
+});
+
+/**
+ * `guestMerged` and the `x-guest-id` header (design/16 hole 1).
+ *
+ * Both defaults point at "do not offer a merge", and that is deliberate rather than
+ * incidental: not asking costs a guest nothing (their progress stays on the device), while
+ * asking a second time costs them a material bank counted twice, with nothing able to tell
+ * afterwards. So an absent field, a non-boolean field and a caller that sent no id all read
+ * as `true`.
+ */
+describe('fetchAccountState — the guest-merge question', () => {
+  it('sends x-guest-id only when a guestId is supplied', async () => {
+    const withId = fakeFetch({ data: null, entitlements: [], guestMerged: false });
+    await fetchAccountState('http://mm', 'tok-1', { fetch: withId, guestId: 'install-7' });
+    expect(withId).toHaveBeenCalledWith('http://mm/account/meta', {
+      headers: { authorization: 'Bearer tok-1', 'x-guest-id': 'install-7' },
+    });
+
+    const without = fakeFetch({ data: null, entitlements: [] });
+    await fetchAccountState('http://mm', 'tok-1', { fetch: without });
+    expect(without).toHaveBeenCalledWith('http://mm/account/meta', { headers: { authorization: 'Bearer tok-1' } });
+  });
+
+  it('carries an explicit false through — the one value that opens the question', async () => {
+    const state = await fetchAccountState('http://mm', 'tok-1', {
+      fetch: fakeFetch({ data: {}, entitlements: [], guestMerged: false }),
+      guestId: 'install-7',
+    });
+    expect((state as AccountState).guestMerged).toBe(false);
+  });
+
+  it.each([
+    ['absent (a pre-2026-09-17 server)', {}],
+    ['a string', { guestMerged: 'no' }],
+    ['null', { guestMerged: null }],
+  ])('reads %s as true — do not ask', async (_name, extra) => {
+    const state = await fetchAccountState('http://mm', 'tok-1', {
+      fetch: fakeFetch({ data: {}, entitlements: [], ...extra }),
+      guestId: 'install-7',
+    });
+    expect((state as AccountState).guestMerged).toBe(true);
   });
 });

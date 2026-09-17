@@ -204,6 +204,15 @@ export const es: Translations<typeof en> = {
       'Opcional. Al registrarte guardamos tu nombre de usuario, un hash de la contraseña y tu progreso en nuestro servidor. Sin cuenta no se envía nada.',
     portalDataNotice: 'Cuando tienes la sesión iniciada en CrazyGames, guardamos tu nombre de CrazyGames y tu progreso en nuestro servidor.',
     privacyLink: 'Política de Privacidad',
+    mergeTitle: '¿TRAER EL PROGRESO DE INVITADO?',
+    mergeBody:
+      'Este dispositivo tiene progreso de invitado que {username} no tiene: {materials} materiales, {blueprints} planos, {characters} personajes. Solo se pregunta una vez por dispositivo.',
+    mergeUseAccount: 'USAR LA CUENTA',
+    mergeCombine: 'COMBINAR AMBOS',
+    sessionExpiredTitle: 'SESIÓN CERRADA',
+    sessionExpiredBody:
+      'Tu sesión guardada ya no es válida, así que estás jugando como invitado. El progreso de este dispositivo no se ha tocado: vuelve a iniciar sesión para sincronizarlo.',
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'ESCUADRA',

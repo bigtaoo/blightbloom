@@ -71,6 +71,16 @@ Those guards are trust boundaries fed straight off the wire. Functions is measur
 reported but deliberately **not** gated: it is the metric most easily satisfied by calling a
 function once and asserting nothing.
 
+The branch column has a **second** use, found 2026-09-17 (`roadmap/72`): read per-file, over
+only the files a pass touched, it is the cheapest way to find a test that pins nothing. An
+uncovered arm sitting directly under an assertion whose comment names that arm is the signature
+of a tautology — there, `m.mode ?? 'coop'` was uncovered beside
+`expect(brainFor('coop')(state, 1, 5)).toEqual(ally)`, where `ally` was the same call, green
+forever and claiming to be the fallback's test. It takes one command
+(`vitest run --coverage --coverage.include='src/<file>.ts'`) and it is not something a mutation
+battery will do for you: a battery only mutates what somebody thought to list, so it cannot
+find the arm nobody knew was bare.
+
 **Scope is the knob that raises every number without a test.** The gate therefore carries a
 `scopeShrunk` rule: it fails when the coverage report holds fewer files than the package's
 source tree, using the answer vitest's own matcher just produced rather than re-deriving the

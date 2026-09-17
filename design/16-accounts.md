@@ -101,10 +101,15 @@ Two consequences of that table are worth stating because they are easy to assume
 
 ## Three holes, found 2026-09-17 by reading the boot path against the account path
 
-None of these is reachable by a test as the code stands, and all three are live. They are P0 for
-the account system in the sense that they are wrong *whatever* the account turns out to be worth —
-see [volume 70](roadmap/70-2026-09-17-home-and-login-design.md) for why most of the rest of that
-design was deferred.
+**Holes 1 and 2 were closed the same day** — see
+[volume 73](roadmap/73-2026-09-17-guest-merge-and-session-check.md). Hole 3 is still open. The
+original text of all three is kept verbatim below, each with what actually shipped underneath it,
+because the diagnosis is the part worth being able to read back: none of the three was reachable by
+a test as the code stood, and what made them invisible is more reusable than what fixed them.
+
+They were P0 for the account system in the sense that they are wrong *whatever* the account turns
+out to be worth — see [volume 70](roadmap/70-2026-09-17-home-and-login-design.md) for why most of
+the rest of that design was deferred.
 
 1. **Logging into an account that already has server state discards local guest progress.**
    `OnlineMatch.syncMetaWithSession` is `setMeta(remote ?? d.run.meta)`, and the `??` only covers
@@ -115,6 +120,27 @@ design was deferred.
    keyed by the guest install id and made idempotent server-side (`mergedGuestIds`), after which
    the account is the truth; blueprint/character ownership unions, the material bank adds, and the
    confirmation screen's primary button says *use the account's*.
+
+   ✅ **Closed 2026-09-17, as designed.** `accounts.mergedGuestIds` holds the guest install ids
+   this account has been offered a merge on; `POST /account/guest-merge` claims one atomically
+   (one conditional update, `modifiedCount` as the answer — never a find-then-write, because two
+   tabs answering at once would otherwise both merge and the bank would be added twice), and
+   `GET /account/meta` reports the answer back for the id in the `x-guest-id` header as a single
+   boolean. `OnlineMatch.resolveAccountMeta` is the decision; `meta/guestMerge.ts` is the pure
+   arithmetic. Three things worth knowing that the design above does not say:
+   - **The claim is spent on the ANSWER, not on the merge.** A player who chose *use the
+     account's* is recorded exactly like one who combined, because what the key records is the
+     question having been asked. Recording the answer instead would re-offer a declined merge on
+     every login forever.
+   - **An empty account side merges without asking.** A modal whose two buttons do the same thing
+     is worse than none, and taking the account's empty state there would be this hole again on
+     the shape where it is most obviously wrong.
+   - **The ownership half of the union is not durable, and that is ROADMAP 8.2, not a bug.**
+     `POST /account/meta` strips `unlockedBlueprints`/`ownedCharacters` out of the blob and `GET`
+     writes the server's `entitlements` answer back over them, so ownership a client granted
+     itself survives the session and not the round trip. The bank — the half a guest actually
+     accumulates — is stored verbatim and does survive. Granting a real entitlement from the
+     client is precisely the free-money hole 8.2 closed, so the merge does not try.
 2. **A stored token is trusted forever and never verified.** `fetchMe` exists and has **zero
    production callers**; boot reads the session out of `localStorage` and believes it.
    `SESSION_TTL_MS` is 30 days, written once by `issueSession` and never extended, so an expired or
@@ -123,10 +149,30 @@ design was deferred.
    the check — `fetchAccountMeta` needs to return that status as a value rather than throwing it.
    Then **401 clears the session and never touches local `MetaState`**, and a network failure
    changes nothing at all (offline is not logged out).
+
+   ✅ **Closed 2026-09-17, as designed, and with no second request.** `fetchAccountState` returns
+   a 401 as the value `ACCOUNT_UNAUTHORIZED` and still throws on everything else; the 401 is read
+   off the STATUS before the body is touched, so a proxy's HTML error page behind one is still a
+   clean sign-out rather than a parse failure wearing its clothes. `syncMetaWithSession` then
+   clears the session, announces it through `platform/sessionEvents.ts` (which is what walks the
+   lobby chip back from `Hi, {name}` to LOGIN) and shows a notice — while a network failure
+   returns having changed nothing at all. `fetchMe` and `fetchAccountMeta` were **deleted**, not
+   left in place: two tested readers with no production callers are what made this hole look like
+   a check that existed.
+
+   One deviation from the design's wording, and it matters: the notice is **a dismissible panel,
+   not a toast**. `HudView`'s toast queue lives inside `hudView`, which every hub screen sets
+   `visible = false` — and a 401 fires at the lobby by definition, since it is the answer to the
+   meta pull a login or a boot just made. A toast would have been pushed into a hidden container,
+   which is this same hole moved down one layer.
 3. **A guest's ladder rating is discarded every match.** A seat with no `accountId` is keyed
    `seat:{roomId}:{seatIdx}` — a new identity per match. The guest already has a persistent id
    that `POST /find` receives, so this is a key choice, not a missing capability. Carrying it into
    the ticket is the fix; *telling* the player their rating is thrown away is not.
+
+   ⏳ **Still open** — deliberately left out of the 2026-09-17 pass, which took the two that both
+   land inside `OnlineMatch.syncMetaWithSession` and share the same failure shape. This one is on
+   the server's ladder path instead and shares nothing with them but a date.
 
 ## Login is never a gate (locked; restated 2026-09-10 against a proposal to make it one)
 

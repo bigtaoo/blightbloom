@@ -146,11 +146,58 @@ an override passed straight to the matchmaker would pass just as happily if
 `createMatchsvcServer` had never wired `match.coopBotBackfillDelayMs` to it, which is the one
 line those tests exist for.
 
-Server suite 1837 green, repo `check` green (minus a worktree-only artifact: a fresh checkout
-gets `tools/png-pipeline/*.test.mjs` with CRLF line endings, which those two files do not parse
-under — they pass in the shared checkout and nothing in this pass touches them). Coverage
-97.71/93.24 client, 97.71/93.77 engine, **98.61/97.66 server**, all three packages over the
-90/90 gate.
+### Then the same question again, asked of the tests themselves
+
+The battery is only as wide as the list somebody wrote for it, so after it was green the pass
+asked what the new tests *still* do not pin — and checked by mutating rather than by reasoning.
+Two of three candidates **survived**.
+
+**Reading the branch column per file is what found the first one.** `m.mode ?? 'coop'` — the
+fallback for a `match_start` that states no mode, which every `MatchRoom` in this repo sends, so
+nothing else in the suite reaches it — sat uncovered directly beneath an assertion whose comment
+named it: `expect(brainFor('coop')(state, 1, 5)).toEqual(ally)`, where `ally` was the same call.
+The same call twice, green forever. **An uncovered arm beside a test that names it is the
+signature of a tautology**, it costs one command to look for, and a battery will never find it
+because a battery only mutates what somebody thought to list. The replacement is the co-op room
+harness with one variable changed: a transport that deletes `mode` from `match_start` on its way
+in — what a gameserver older than design/15 looks like from a bot's side — counting what it
+stripped, so the case cannot pass because the field was never there. (design/18 "Layer 4" now
+carries this as the branch column's second use.)
+
+**The second is the line the whole "one ally" decision rests on.** `connectOnlineSession` sends
+`playerCount: opts.pvp ? opts.pvpSeats : 2`, and nothing read the `/find` REQUEST — every case
+in that file passes `pvpSeats: 2`, so none of them could see the ternary at all. Deleting it
+hands a solo co-op player three allies instead of one, silently, because the server's rule is
+"fill every seat the humans left". The assertion has to read the request rather than the join
+below it, since the join is built from the ticket the server sent back — the server's answer,
+not the client's question.
+
+The third candidate was not a gap: `GET /client/flags` already asserts an EXACT key set against
+the client's own contract, and `publicFlags.test.ts` pins that contract's list exactly, so both
+halves of the two-workspace gate were closed. What it had was an `not.toHaveProperty` pair naming
+two match flags when there are now three — an enumeration going stale, which reads as a checklist
+somebody completed. It is a `match.` prefix rule now.
+
+Also checked and deliberately left alone: a co-op room reaching the ladder (already pinned, with
+a seat-spoofing variant, in `index.lifecycle.test.ts`); a co-op `groupId`, which `enqueue` accepts
+but no product path can produce, since SQUAD is PvP-only — a test there would assert the behaviour
+of an unreachable combination; and `poll`'s "backfill fired but granted nothing" arm, which no
+input reaches (`keepId` keeps the waiter in the queue and `grantGroup` always tickets it), so it
+is documented as defensive rather than tested.
+
+### Numbers
+
+Server suite **1862** green across 92 files, repo `npm run check` green, `check:logic` green.
+Coverage 97.73/93.29 client, 97.71/93.77 engine, **98.61/97.66 server** — all three packages over
+the 90/90 gate.
+
+One gate failure in this pass was pure artifact and is worth naming so the next reader does not
+chase it: a fresh `git worktree` checks `.mjs` files out as CRLF under `core.autocrlf=true`, and a
+file that is both shebanged and CRLF dies in vitest's transform — four `build/*.test.mjs` plus
+two in `tools/png-pipeline`, none of them touched here, all green in the shared checkout. It is
+already written up in the worktree notes; the one-line fix is
+`git ls-files '*.mjs' | while read f; do perl -pi -e 's/\r\n/\n/' "$f"; done`, and `git diff`
+is empty afterwards.
 
 ### Still open
 

@@ -2,6 +2,20 @@
  * Client auth calls (design/16-accounts.md) — thin wrapper over matchsvc's `/auth/*`
  * and `/account/*` routes, same injected-fetch shape as `net/party.ts`/`matchmaking.ts`
  * so this is unit-testable without a network.
+ *
+ * ## Two functions that used to live here, deleted 2026-09-17 (design/16 hole 2)
+ *
+ * `fetchMe` (`GET /auth/me`) and `fetchAccountMeta` (`GET /account/meta`) both existed, were
+ * both tested, and both had **zero production callers** — which is the whole of what made a
+ * stored session "verified": nothing ever asked. A boot that reads `localStorage` and
+ * believes it renders `Hi, {name}` over an expired or revoked session while every bearer
+ * call 401s into a `.catch()`.
+ *
+ * The fix is deliberately NOT a boot-time `fetchMe`. `/account/meta` is already called on the
+ * way in, so its 401 is the answer to the same question for no extra round trip — which is
+ * what `net/entitlements.ts`'s `fetchAccountState` now returns as a VALUE rather than
+ * throwing, and what `OnlineMatch.syncMetaWithSession` acts on. Keeping two dead readers of
+ * the two routes around would have left the code looking like it checks.
  */
 export interface AuthResult {
   accountId: string;
@@ -71,35 +85,45 @@ export async function changePassword(
   await post<{ ok: true }>(baseUrl, '/auth/change-password', { token, oldPassword, newPassword }, opts);
 }
 
-/** `null` on an invalid/expired token (401) — distinct from a thrown error, which
- * means the request itself failed. */
-export async function fetchMe(
-  baseUrl: string,
-  token: string,
-  opts: AuthCallOptions = {},
-): Promise<{ accountId: string; username: string } | null> {
-  const doFetch = opts.fetch ?? fetch;
-  const res = await doFetch(`${baseUrl}/auth/me`, { headers: { authorization: `Bearer ${token}` } });
-  if (res.status === 401) return null;
-  // Guarded like `call()`'s own res.json() — a non-2xx response can come back with a
-  // non-JSON body (e.g. a proxy's HTML error page on a 502/504), which would otherwise
-  // throw an unhandled SyntaxError here instead of the clean Error every other auth call
-  // in this file produces.
-  const json = (await res.json().catch(() => null)) as { accountId: string; username: string; error?: string } | null;
-  if (!res.ok || json?.error) throw new Error(json?.error ?? `auth request failed (${res.status})`);
-  return json as { accountId: string; username: string };
-}
-
 export type MetaCallOptions = AuthCallOptions;
 
-/** `null` when the account has never saved meta state (a brand-new account). */
-export async function fetchAccountMeta(baseUrl: string, token: string, opts: MetaCallOptions = {}): Promise<unknown | null> {
-  const doFetch = opts.fetch ?? fetch;
-  const res = await doFetch(`${baseUrl}/account/meta`, { headers: { authorization: `Bearer ${token}` } });
-  // Guarded like `call()`'s own res.json() — see fetchMe's identical note above.
-  const json = (await res.json().catch(() => null)) as { data: unknown; error?: string } | null;
-  if (!res.ok || json?.error) throw new Error(json?.error ?? `auth request failed (${res.status})`);
-  return json?.data ?? null;
+/**
+ * Claim this browser's guest install id against the logged-in account (`POST /account
+ * /guest-merge`, design/16 hole 1) — the server-side idempotency key of the one-time device
+ * merge. `true` means this caller won the claim and may apply the merge it just offered the
+ * player; `false` means the device had already been through the question and the account's
+ * own state stands.
+ *
+ * ## Why a whole round trip for a boolean, and why it is not a local flag
+ *
+ * A `localStorage` "already merged" flag would answer the same question for free and be
+ * wrong in both directions. It survives nothing — clearing site data re-offers a merge of
+ * progress that was already folded in, which double-counts the material bank — and it is
+ * per-BROWSER where the rule is per-(device, account). The account is the only place that
+ * can hold "this device has been through the question" across a second tab, a reinstall and
+ * a different machine, so the account is where it lives.
+ *
+ * Throws like every other call here. A caller that cannot reach the server must take the
+ * account's state unchanged rather than merge unclaimed: merging twice silently inflates a
+ * bank, while declining once is visible and recoverable.
+ */
+export async function claimGuestMerge(
+  baseUrl: string,
+  token: string,
+  guestId: string,
+  opts: MetaCallOptions = {},
+): Promise<boolean> {
+  const { claimed } = await call<{ claimed: boolean }>(
+    baseUrl,
+    '/account/guest-merge',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ guestId }),
+    },
+    opts,
+  );
+  return claimed;
 }
 
 export async function saveAccountMeta(baseUrl: string, token: string, data: unknown, opts: MetaCallOptions = {}): Promise<void> {

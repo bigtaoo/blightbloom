@@ -52,6 +52,7 @@ import { PartyScreen } from './PartyScreen';
 import { LoginScreen } from './LoginScreen';
 import { Matchmaking } from './Matchmaking';
 import { StoreScreen } from './StoreScreen';
+import { AccountPrompt } from '../ui/AccountPrompt';
 import { StorePurchase } from '../controllers/StorePurchase';
 import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
@@ -235,6 +236,21 @@ const SCREENS: Array<[string, ScreenBuild]> = [
     expect(visibleRows, 'a full page of SKU rows').toBe(6); // PAGE_SIZE, private to StoreScreen
     expect(pagerOf(s).view.visible, 'the pager, i.e. more SKUs than one page').toBe(true);
     return s.view;
+  }],
+  // The account modals (design/16 holes 1 and 2). Not a full-screen menu, but it is laid out
+  // in the same design space and its panel is a fixed 268px tall, so it belongs to the same
+  // question this file asks: does it stay on a 390px-tall landscape phone? Its scrim is child
+  // 0 and spans the viewport by construction, exactly like a screen's backdrop `Panel`, so
+  // `contentBounds` skips it without needing a special case.
+  ['AccountPrompt (merge)', (w, h) => {
+    const p = new AccountPrompt({ size: () => ({ w, h }) });
+    void p.askGuestMerge({ materials: 5, blueprints: 1, characters: 0 }, 'alice');
+    return p.view;
+  }],
+  ['AccountPrompt (notice)', (w, h) => {
+    const p = new AccountPrompt({ size: () => ({ w, h }) });
+    p.showNotice('SIGNED OUT', 'your saved session is no longer valid');
+    return p.view;
   }],
 ];
 

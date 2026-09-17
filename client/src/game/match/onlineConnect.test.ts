@@ -45,7 +45,10 @@ const MATCH_START: ServerMsg = { type: 'match_start', seed: 1, startFrame: 0, lo
  * matchmaking.test.ts's own `fakeFetch` exactly. */
 function fakeFetch(bodies: unknown[]) {
   let i = 0;
-  return vi.fn(async () => {
+  // The parameters are declared (rather than the bare `async () =>` this used to be) so a
+  // test can read what was SENT off `mock.calls` — the /find request body is the subject of
+  // the seat-count case below, and an untyped mock types its calls as `[]`.
+  return vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
     const body = bodies[Math.min(i++, bodies.length - 1)];
     return { ok: true, status: 200, json: async () => body } as Response;
   });
@@ -96,6 +99,46 @@ describe('connectOnlineSession — success', () => {
     transport.deliver({ ...MATCH_START, localOwner: 1 });
     await promise;
     expect(seen).toEqual([1]);
+  });
+
+  it('asks for TWO seats in co-op and `pvpSeats` in pvp — the request, not the ticket', async () => {
+    /**
+     * `playerCount: opts.pvp ? opts.pvpSeats : 2` is the only place the co-op match SIZE is
+     * decided, and the server's co-op bot backfill rests on it: `Matchmaker.formWithBots`
+     * fills every seat the real waiters did not take, so "co-op gets exactly one AI ally"
+     * is a fact about this line and nothing else (design/10, 2026-09-17). Dropping the
+     * ternary would hand a solo co-op player three bots instead of one, silently.
+     *
+     * Every other case in this file passes `pvpSeats: 2`, so none of them can see the
+     * difference — and the assertion has to read the /find REQUEST, because the join below
+     * is built from the ticket the server sent back, which is the server's answer rather
+     * than the client's question.
+     */
+    const coopFetch = fakeFetch([{ queueId: 'q1', match: MATCH }]);
+    await connectOnlineSession({
+      matchBaseUrl: 'http://mm', pvp: false, pvpSeats: 8, lagMs: 0, // pvpSeats set, and IGNORED
+      onMatchStart: () => {},
+      fetch: coopFetch,
+      sleep: noSleep,
+      createTransport: () => new FakeTransport(),
+      matchStartTimeoutMs: 1,
+    }).catch(() => {}); // never resolves here — no match_start is delivered; the POST is the subject
+    await flush();
+    const coopBody = JSON.parse(coopFetch.mock.calls[0]![1]!.body as string);
+    expect(coopBody).toMatchObject({ playerCount: 2, mode: 'coop' });
+
+    const pvpFetch = fakeFetch([{ queueId: 'q2', match: MATCH }]);
+    await connectOnlineSession({
+      matchBaseUrl: 'http://mm', pvp: true, pvpSeats: 8, lagMs: 0,
+      onMatchStart: () => {},
+      fetch: pvpFetch,
+      sleep: noSleep,
+      createTransport: () => new FakeTransport(),
+      matchStartTimeoutMs: 1,
+    }).catch(() => {});
+    await flush();
+    const pvpBody = JSON.parse(pvpFetch.mock.calls[0]![1]!.body as string);
+    expect(pvpBody).toMatchObject({ playerCount: 8, mode: 'pvp' });
   });
 
   it('joins the room with the seat/seed/playerCount the ticket assigned', async () => {

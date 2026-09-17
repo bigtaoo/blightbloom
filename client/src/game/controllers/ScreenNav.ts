@@ -56,6 +56,11 @@ export interface ScreenNavDeps {
   screens: Screens;
   settingsScreen: Settings;
   pauseMenu: PauseMenu;
+  /** The account modals (design/16 holes 1 and 2). Not a screen — it floats over whichever
+   *  one is up — so it has no `showX` here, only the relayout hook below. Narrowed to the
+   *  one method this file calls rather than typed as `AccountPrompt`, which would drag a
+   *  Pixi import into a module `pureLayerBoundary.test.ts` lists. */
+  accountPrompt: { relayout(): void };
   /** Live renderer dimensions (`viewport.ts`'s computeScreenSize over the Application). */
   screenSize: () => { w: number; h: number };
   /** The live settings, for the screens that render them. */
@@ -279,6 +284,9 @@ export class ScreenNav {
     d.portalPrompt.reposition(size);
     d.floorCardPrompt.reposition(size);
     d.screenFlow.repositionSettingsButtonIfForge(d.run.phase === 'forge', w, h);
+    // Unconditional, and before the phase switch: the prompt floats over every hub screen
+    // rather than being one, so no `case` below owns it. It no-ops while closed.
+    d.accountPrompt.relayout();
     switch (d.run.phase) {
       case 'menu': d.mainMenu.show(w, h); break; // the badge is already set — see showMenu
       case 'pvpPreview': d.pvpPreview.show(w, h, d.run.meta.selectedSkin); break;

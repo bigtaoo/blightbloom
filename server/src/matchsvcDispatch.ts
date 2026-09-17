@@ -112,6 +112,9 @@ export function dispatch(req: IncomingMessage, res: ServerResponse, ctx: Dispatc
 
   if (req.method === 'GET' && path === '/account/meta') return accountRoutes.getMeta(req, res, url, ctx.deps);
   if (req.method === 'POST' && path === '/account/meta') return accountRoutes.postMeta(req, res, url, ctx.deps);
+  if (req.method === 'POST' && path === '/account/guest-merge') {
+    return accountRoutes.postGuestMerge(req, res, url, ctx.deps);
+  }
 
   // The store proxy (ROADMAP 8.8). Three player-facing routes that answer nothing here —
   // every one of them verifies the bearer session and then forwards to billsvc over 8.1's

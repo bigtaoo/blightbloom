@@ -200,6 +200,7 @@ describe('matchsvc HTTP — /account/meta', () => {
     expect(await getRes.json()).toEqual({
       data: { ...data, unlockedBlueprints: [], ownedCharacters: [] },
       entitlements: [],
+      guestMerged: true,
     });
   });
 
@@ -222,13 +223,14 @@ describe('matchsvc HTTP — /account/meta', () => {
     expect(await getRes.json()).toEqual({
       data: { materialBank: { mat_ice: 1 }, unlockedBlueprints: [], ownedCharacters: [] },
       entitlements: [],
+      guestMerged: true,
     });
   });
 
   it('a brand-new account with no saved meta gets { data: null } and no entitlements', async () => {
     const { body } = await register('httpmeta2', 'hunter22');
     const res = await fetch(`${baseUrl}/account/meta`, { headers: { authorization: `Bearer ${body.token as string}` } });
-    expect(await res.json()).toEqual({ data: null, entitlements: [] });
+    expect(await res.json()).toEqual({ data: null, entitlements: [], guestMerged: true });
   });
 
   it('rejects GET without a session with 401', async () => {
@@ -241,6 +243,43 @@ describe('matchsvc HTTP — /account/meta', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ data: { x: 1 } }),
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * The one-time device merge (design/16 hole 1), through the real HTTP surface — because the
+ * unit suite next door proves the handlers and proves nothing about the DISPATCH. A route
+ * that is never wired answers 404, and a `guestMerged` the header never reaches answers
+ * `true` forever, which reads as "everything is fine, nobody needs a merge".
+ */
+describe('matchsvc HTTP — /account/guest-merge', () => {
+  it('claims once per device, and reports the claim back through GET /account/meta', async () => {
+    const { body } = await register('httpmerge1', 'hunter22');
+    const token = body.token as string;
+    const auth = { authorization: `Bearer ${token}` };
+
+    const before = await fetch(`${baseUrl}/account/meta`, { headers: { ...auth, 'x-guest-id': 'install-7' } });
+    expect(((await before.json()) as { guestMerged: boolean }).guestMerged).toBe(false);
+
+    const claim = await fetch(`${baseUrl}/account/guest-merge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ guestId: 'install-7' }),
+    });
+    expect(claim.status).toBe(200);
+    expect(await claim.json()).toEqual({ claimed: true });
+
+    const after = await fetch(`${baseUrl}/account/meta`, { headers: { ...auth, 'x-guest-id': 'install-7' } });
+    expect(((await after.json()) as { guestMerged: boolean }).guestMerged).toBe(true);
+  });
+
+  it('401s without a session', async () => {
+    const res = await fetch(`${baseUrl}/account/guest-merge`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ guestId: 'install-7' }),
     });
     expect(res.status).toBe(401);
   });
@@ -379,6 +418,22 @@ describe('matchsvc HTTP — CORS (regression: design/16-accounts.md missing-auth
     const allowHeaders = res.headers.get('access-control-allow-headers') ?? '';
     expect(allowHeaders.toLowerCase()).toContain('authorization');
     expect(allowHeaders.toLowerCase()).toContain('content-type');
+  });
+
+  it('a preflight for /account/meta allows x-guest-id — the same bug, a second header (2026-09-17)', async () => {
+    // A custom request header needs its own entry or the browser refuses the request at
+    // preflight, with no server log at all. The one-time merge would then be offered on
+    // every login forever, because `guestMerged` would default to "nothing to say".
+    const res = await fetch(`${baseUrl}/account/meta`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization,x-guest-id',
+      },
+    });
+    expect(res.status).toBe(204);
+    expect((res.headers.get('access-control-allow-headers') ?? '').toLowerCase()).toContain('x-guest-id');
   });
 
   it('a preflight for /auth/me (a bearer-only GET route) also allows authorization', async () => {
