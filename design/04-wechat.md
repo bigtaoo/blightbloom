@@ -544,6 +544,15 @@ verified against the real base library.
 
 ## Verification checklist
 
+> **2026-09-17: the owner reports having verified this target on a real handset**, and Stage 1 was
+> closed on that basis (`ROADMAP.md` "Product stages", item 3). The boxes below stay as they are
+> **on purpose**: this checklist's own currency is a written answer per item — which base library,
+> which device, what the quality ladder settled on, whether a request left the shell — and an
+> owner's summary carries none of those. Ticking them from it would put six claims in this
+> document that no artefact backs, which is the exact failure the list exists to prevent. What
+> changed is the STAKE, not the evidence: these items no longer gate a stage, so the next person to
+> run them is filling in a record rather than unblocking anything.
+
 > Method used so far: drive WeChat DevTools via its CLI (`cli.bat open --project
 > platforms/wechat`) and capture the window with `PrintWindow` + read `WeappLog` logs.
 > Mini-games have no automation API to assert rendered pixels, so this is

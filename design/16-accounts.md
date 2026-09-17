@@ -64,6 +64,70 @@ nearly stopped the cutover at its first command is written up.
 
 **Same day, later: the third item — expired `sessions` rows are now swept.** `verifySession` already deleted the one expired row it happened to look up, but nothing ever cleared a session nobody logged out of and never came back to check — the table only grew. `issueSession` (the one place a new row gets written, i.e. the one place growth actually happens) now runs `DELETE FROM sessions WHERE expires_at < now` first — an opportunistic sweep, not a background timer, matching this project's "no process the team doesn't need yet" convention; the hot per-request read path (`verifySession`) deliberately still only touches the one row it's already looking at, so an authenticated request stays a single indexed lookup. **144 server tests** (was 142).
 
+## The identity model, and the platform matrix (2026-09-17)
+
+Three layers, and **one seam**. Everything above was built one platform at a time; this is the
+shape they turned out to have, written down before a fourth platform arrives and adds a fourth set
+of branches. Work log: [volume 70](roadmap/70-2026-09-17-home-and-login-design.md).
+
+| Layer | What it is | Who mints it | Lives as long as | Where |
+| --- | --- | --- | --- | --- |
+| **L0 device guest** | a UUID plus a local `MetaState` | the client itself | this browser's storage | `net/identity.ts` |
+| **L1 host-vouched identity** | a signed assertion from the platform the game is embedded in | CrazyGames (WeChat would be the second) | the platform account | `platform/crazygames/portalAuth.ts` → `POST /auth/portal` |
+| **L2 our own account** | a username/password row | the player, deliberately | forever, revocable | `LoginScreen` → `/auth/register`\|`/auth/login` |
+
+**L1 and L2 are two shapes of the same `accounts` document** (`provider: 'local'` vs a federated
+provider; the handle is `{provider}:{providerId}`, which contains a `:` and is therefore
+unreachable by `validateUsername`). Downstream there is exactly one reader: `getPlayerId()`, which
+prefers a session's `accountId` and falls back to the guest UUID. **A new platform is one
+`/auth/<provider>` route plus one silent call site** — that is what CrazyGames actually cost, and
+the prediction the reserved `provider`/`provider_id` columns made.
+
+| Host | Identity from | Login action | Our credential form | What the player sees | Cloud save |
+| --- | --- | --- | --- | --- | --- |
+| **web** | L2 | the player opts in | allowed | `LOGIN` button / `Hi, {name}` | after login |
+| **CrazyGames** | L1 | silent, every start | **forbidden** (three separate rules, see `design/20`) | platform display name, as a LABEL | automatic |
+| **WeChat** | none today — every player is a guest | — | pointless | guest | none |
+
+Two consequences of that table are worth stating because they are easy to assume the other way:
+
+- **Clickability is the HOST's decision; the copy is the SESSION's.** They are one boolean today
+  (`MainMenu.setAccountEntry`), and they come apart at the first host that has an identity and
+  forbids a logout — which is every federated host, WeChat included if it ever gets one.
+- **WeChat having no login is a real gap, not a simplification.** A cleared storage there is a new
+  player with nothing. Closing it is a token exchange shaped exactly like `POST /auth/portal` and
+  `wx.login` needs no consent dialog — but unlike the portal's, it is OUR choice and it mints a
+  server-side identity for a player who never asked for one. Weigh it; do not tick it.
+
+## Three holes, found 2026-09-17 by reading the boot path against the account path
+
+None of these is reachable by a test as the code stands, and all three are live. They are P0 for
+the account system in the sense that they are wrong *whatever* the account turns out to be worth —
+see [volume 70](roadmap/70-2026-09-17-home-and-login-design.md) for why most of the rest of that
+design was deferred.
+
+1. **Logging into an account that already has server state discards local guest progress.**
+   `OnlineMatch.syncMetaWithSession` is `setMeta(remote ?? d.run.meta)`, and the `??` only covers
+   the brand-new-account branch (`pullAccountMeta` returns `null`). The merge that the "Guest
+   progress carried up" row of `design/20`'s table claims therefore exists only where there was
+   nothing to merge. **The fix is not a field-by-field union** — that is the wrong default on a
+   shared computer. It is: this device merges **once**, on its first association with any account,
+   keyed by the guest install id and made idempotent server-side (`mergedGuestIds`), after which
+   the account is the truth; blueprint/character ownership unions, the material bank adds, and the
+   confirmation screen's primary button says *use the account's*.
+2. **A stored token is trusted forever and never verified.** `fetchMe` exists and has **zero
+   production callers**; boot reads the session out of `localStorage` and believes it.
+   `SESSION_TTL_MS` is 30 days, written once by `issueSession` and never extended, so an expired or
+   revoked session paints as `Hi, {name}` while every bearer call 401s into a `.catch()`. The fix
+   is not a second request at boot: `/account/meta` is already called on the way in, so its 401 is
+   the check — `fetchAccountMeta` needs to return that status as a value rather than throwing it.
+   Then **401 clears the session and never touches local `MetaState`**, and a network failure
+   changes nothing at all (offline is not logged out).
+3. **A guest's ladder rating is discarded every match.** A seat with no `accountId` is keyed
+   `seat:{roomId}:{seatIdx}` — a new identity per match. The guest already has a persistent id
+   that `POST /find` receives, so this is a key choice, not a missing capability. Carrying it into
+   the ticket is the fix; *telling* the player their rating is thrown away is not.
+
 ## Login is never a gate (locked; restated 2026-09-10 against a proposal to make it one)
 
 The proposal, from the same report that produced design/10's lobby: boot into an **auto-login
