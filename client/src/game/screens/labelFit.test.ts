@@ -146,6 +146,17 @@ const SCREENS: Array<[string, Build]> = [
     s.show(w, h);
     return s;
   }],
+  // With a resumable run in the slot (2026-09-17) — the state that draws the lobby's own
+  // CONTINUE row and pushes the five routes down a block. The row's button is CONSTRUCTED in
+  // every MainMenu case above, so its label is measured in all eight locales either way; this
+  // case is what measures it in the layout it is actually drawn in, which is the distinction
+  // the `Forge (saved run)` entry below was added for.
+  ['MainMenu (saved run)', (w, h) => {
+    const s = new MainMenu();
+    s.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+    s.show(w, h);
+    return s;
+  }],
   // Logged in, because the ACCOUNT button's label is then a GREETING containing a name —
   // the one label on any of these screens whose length is not ours to choose.
   ['MainMenu (signed in)', (w, h) => {
@@ -250,15 +261,16 @@ describe('the sweep measured what it claims to', () => {
     // Every number below was cross-checked against `grep -c 'new Button(' <screen>.ts` when
     // it was written, which is what makes it a measurement rather than a snapshot of
     // whatever the walk happened to do. Two of them only agree because the walk reaches
-    // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 5
+    // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 6
     // (a composed widget), and StoreScreen is 4 plus its five row buttons (an array).
     expect([...seen].map(([name, fields]) => `${name}: ${fields.length}`).sort()).toEqual([
       'Forge (saved run): 9',
       'Forge: 9',
       'LoginScreen: 5',
-      'MainMenu (portal): 8',
-      'MainMenu (signed in): 8',
-      'MainMenu: 8',
+      'MainMenu (portal): 9',
+      'MainMenu (saved run): 9',
+      'MainMenu (signed in): 9',
+      'MainMenu: 9',
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
       'PartyScreen: 5',

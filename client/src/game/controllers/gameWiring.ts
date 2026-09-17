@@ -172,6 +172,11 @@ export function wireScreens(d: WiringDeps): void {
   // starting a FRESH run is what it means from the forge, which is precisely the opposite
   // of this one.
   d.forge.onContinue = () => d.runs.resumeSavedRun();
+  // ...and the same verb on the LOBBY, which is where a returning player actually looks
+  // (design/10, 2026-09-17). One handler, not two: "continue" is one thing the game does,
+  // and a second implementation is how the two entry points start disagreeing about what
+  // gets spent, cleared or replayed.
+  d.mainMenu.onContinue = () => d.runs.resumeSavedRun();
 }
 
 /** The in-run HUD's own controls and the portal popup. */

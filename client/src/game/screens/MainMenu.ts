@@ -1,6 +1,7 @@
 import { Container, Text } from 'pixi.js';
 import { Panel, Button } from '../ui/widgets';
-import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H } from '../ui/LobbyRoutes';
+import { LobbyRoutes, LOBBY_ROUTES_W } from '../ui/LobbyRoutes';
+import type { SavedRunSummary } from '../match/runSave';
 import { getSession } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
@@ -61,6 +62,14 @@ const BANNER_RESERVE = 72;
  * route actually does. `ui/LobbyRoutes.ts` owns the five routes and their layout; everything
  * here is the shell — title, maintenance banner, the account chip, SETTINGS, and (on a game
  * portal only) the one-click PLAY button above the routes and the data notice below them.
+ * Which of those top rows is actually drawn is `applyPrimary`'s call, not `setQuickPlay`'s.
+ *
+ * One thing the shell does own about the routes, since 2026-09-17: whether there is an
+ * unfinished run to continue (`resumableRun`). The lobby was audited as a front door and the
+ * returning player's first need turned out to be one screen deep — CONTINUE RUN lived in the
+ * Forge, behind SOLO PvE, so a player who stopped on floor 3 last night met a lobby that said
+ * nothing about it (design/10). The row itself is `LobbyRoutes`'; the question is the shell's,
+ * because a save is host state and this is the screen with a provider to read it through.
  */
 export class MainMenu {
   readonly view = new Container();
@@ -116,9 +125,29 @@ export class MainMenu {
   private banner: Text;
   private quickPlay = false;
   private accountEntry = true;
+  /** The resumable run `show()` last read off `resumableRun`. Cached because `applyPrimary`
+   *  is also reachable from `setQuickPlay`, which the assembly calls before the first show. */
+  private saved: SavedRunSummary | null = null;
+
+  /**
+   * Whether this lobby has an unfinished run to offer, and which one (design/10, 2026-09-17).
+   *
+   * A PROVIDER rather than a value, and the same shape — and the same reasoning — as
+   * `Forge.savedRun`: `show()` is called on every entry to the lobby and on every relayout,
+   * and a field would have to be re-pushed at each of them. Defaulted to "nothing", which is
+   * the fail-closed direction: a caller that forgets to set it draws no CONTINUE row, rather
+   * than one that leads nowhere.
+   *
+   * What it must be wired to is `match/resumableRun.ts`, not `savedRunSummary` — the row is
+   * an offer, and an offer this build cannot honour has no business on the front door. The
+   * assembly wires both screens to the same function for exactly that reason.
+   */
+  resumableRun: () => SavedRunSummary | null = () => null;
 
   /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
+  /** CONTINUE RUN — only ever called while `resumableRun()` answers non-null. */
+  onContinue: (() => void) | null = null;
   onSolo: (() => void) | null = null;
   onCoop: (() => void) | null = null;
   onPvpSolo: (() => void) | null = null;
@@ -147,6 +176,7 @@ export class MainMenu {
     this.playBtn.setIcon(getUiTexture('icon_play'));
     this.playBtn.view.visible = false;
 
+    this.routes.onContinue = () => this.onContinue?.();
     this.routes.onSolo = () => this.onSolo?.();
     this.routes.onCoop = () => this.onCoop?.();
     this.routes.onPvpSolo = () => this.onPvpSolo?.();
@@ -213,11 +243,40 @@ export class MainMenu {
    * Called once during assembly, from the host branch in `gameWiring.ts`. Not a constructor
    * argument because `Screens`/`PauseMenu`/every other screen here takes none, and one screen
    * with a different construction signature is how that convention starts to rot.
+   *
+   * It is a REQUEST, not the final answer, since 2026-09-17 — see `applyPrimary`, which is
+   * where quick-play and a resumable run are reconciled.
    */
   setQuickPlay(enabled: boolean): void {
     this.quickPlay = enabled;
-    this.playBtn.view.visible = enabled;
-    this.routes.setSoloPrimary(!enabled);
+    this.applyPrimary();
+  }
+
+  /**
+   * Exactly one primary on the card, and it is the topmost row that puts the player into a
+   * run in one click.
+   *
+   * With a resumable save that is always CONTINUE — including on a portal, where it takes
+   * quick-play's slot rather than sitting under it. Both buttons answer "start playing now",
+   * the save is the better answer for the player who has one, and the platform requirement
+   * behind PLAY is about a FIRST-time visitor reaching gameplay in one click
+   * (`docs.crazygames.com/requirements/gameplay`) — a player with an unfinished run is by
+   * definition not one, and CONTINUE is one click into gameplay by the same measure.
+   *
+   * Note what this deliberately is not: PLAY re-pointed at the resume. Two rows with two
+   * labels, one of which is drawn at a time, is a different thing from one row that changes
+   * what it does — the latter is how a player loses a run they meant to keep, which is the
+   * rule that keeps SAVE & QUIT and QUIT as separate rows in the pause menu (design/10).
+   *
+   * The 2026-09-17 sweep is what forced the choice rather than taste: the tallest legal
+   * lobby — portal quick-play, the data notice, a 140-character maintenance banner AND the
+   * CONTINUE block — measured 702px against a 640px design height in all eight locales
+   * (`viewportFit.test.ts`). Stacking both was never going to fit.
+   */
+  private applyPrimary(): void {
+    const showPlay = this.quickPlay && this.saved === null;
+    this.playBtn.view.visible = showPlay;
+    this.routes.setSoloPrimary(!showPlay);
   }
 
   /** Call before `show()` so the TUTORIAL badge reflects `!MetaState.hasSeenTutorial` — the
@@ -261,6 +320,13 @@ export class MainMenu {
     // whatever the current session's name makes it, and the pair cannot be placed until the
     // text that sizes it is in.
     this.refreshAccountLabel();
+    // Also before the layout, and for the same kind of reason: the CONTINUE row changes the
+    // routes block's HEIGHT, which the card below is sized from. Asked on every show rather
+    // than cached, so a run saved from the pause menu is on the front door the moment the
+    // player lands back on it.
+    this.saved = this.resumableRun();
+    this.routes.setContinue(this.saved);
+    this.applyPrimary();
     this.panel.layout(w, h);
     const cx = w / 2;
     const cy = h / 2;
@@ -268,8 +334,14 @@ export class MainMenu {
     // The whole block is CENTRED as one unit, so a host that adds a row (quick-play) or a
     // paragraph (the portal's data notice) stays centred instead of drifting down — and
     // `menuLayer.ts`'s fit-scale then keeps it inside a landscape phone's viewport.
-    const extra = this.quickPlay ? PLAY_H + 12 : 0;
-    const cardH = 12 + extra + LOBBY_ROUTES_H + 12 + 42 + 24;
+    // Off `playBtn.view.visible`, not off `quickPlay`: a portal lobby with a resumable run
+    // draws CONTINUE in that slot instead, and reserving a row for a hidden button would
+    // leave a gap the size of PLAY at the top of the card (see `applyPrimary`).
+    const extra = this.playBtn.view.visible ? PLAY_H + 12 : 0;
+    // `routes.height`, not the `LOBBY_ROUTES_H` constant: the block grows by a row and a
+    // caption when it has a resumable run to offer (2026-09-17).
+    const routesH = this.routes.height;
+    const cardH = 12 + extra + routesH + 12 + 42 + 24;
     const below = this.accountEntry ? 0 : NOTICE_BLOCK_H;
     // ...but never so high that a maintenance banner would be drawn off the top. The banner
     // is deliberately not part of the block (see its own comment), so the block owes it room
@@ -294,10 +366,10 @@ export class MainMenu {
     this.menuCard.layout(cardW, cardH);
     this.menuCard.view.position.set(cx - cardW / 2, cardTop);
 
-    if (this.quickPlay) this.playBtn.view.position.set(cx - LOBBY_ROUTES_W / 2, cardTop + 12);
+    if (this.playBtn.view.visible) this.playBtn.view.position.set(cx - LOBBY_ROUTES_W / 2, cardTop + 12);
     this.routes.layout(cx, cardTop + 12 + extra);
 
-    const tertiaryY = cardTop + 12 + extra + LOBBY_ROUTES_H + 12;
+    const tertiaryY = cardTop + 12 + extra + routesH + 12;
     if (this.accountEntry) {
       // Centred as a PAIR from the measured widths, so a long name pushes SETTINGS right
       // instead of overlapping it.
