@@ -7,6 +7,8 @@ import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
 import { track } from '../../net/analytics';
 import { publicFlag } from '../../net/clientFlags';
+import { getSession } from '../../net/session';
+import { canSignIn } from '../../platform/hostKind';
 import type { ResultOffer } from '../screens/Screens';
 
 /** The bits of Game a run-outcome reaction needs — score/meta/phase/screen are all
@@ -57,6 +59,33 @@ function totalForfeited(s: GameState): number {
   let n = totalBanked(s);
   for (const v of Object.values(s.floorMaterials)) n += v ?? 0;
   return n;
+}
+
+/**
+ * The arena result's footnote for a player whose rank is not being recorded — zero or one
+ * line, spread into the stat block (design/16-accounts.md hole 3, closed 2026-09-17).
+ *
+ * A guest's PvP match is keyed by `ladderReport.ts`'s per-match scaffold and its rating is
+ * discarded when the room is, because a guest's id is client-declared and a rating may not
+ * be keyed by a claim (`design/15-pvp-arena.md` "Who a rating belongs to"). That is a defensible
+ * decision and an indefensible SILENCE: the player was ranked 3rd of 8 and told nothing
+ * about where that went.
+ *
+ * Two gates, and both are about not lying rather than about tidiness:
+ *
+ * - `canSignIn()` — on WeChat and on the portal this sentence has no door behind it, so
+ *   there it is not shown at all rather than shown and unactionable.
+ * - `getSession()` — a signed-in player IS being recorded, and telling them otherwise would
+ *   be the same silence with the sign reversed.
+ *
+ * What it deliberately does NOT say is a number. Nothing in this client has ever displayed
+ * a rating (there is no caller of `GET /rating/:accountId` anywhere), so "keep your rating"
+ * would name a thing the player has never been shown. Showing the rating itself is its own
+ * ROADMAP item; this line only has to stop the loss from being invisible.
+ */
+function guestLadderNotice(): readonly string[] {
+  if (!canSignIn() || getSession() !== null) return [];
+  return [t('results.guestNotRanked')];
 }
 
 /** `Time M:SS`, from the sim's own tick counter (GameEngine.ts increments `s.tick`
@@ -222,6 +251,7 @@ export class RunOutcome {
       t('results.placeOf', { total: s.players.length }),
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
+      ...guestLadderNotice(),
     ]);
   }
 
@@ -236,6 +266,7 @@ export class RunOutcome {
       t('results.placedOfTotal', { place, total: s.players.length }),
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
+      ...guestLadderNotice(),
     ]);
   }
 }

@@ -101,11 +101,13 @@ Two consequences of that table are worth stating because they are easy to assume
 
 ## Three holes, found 2026-09-17 by reading the boot path against the account path
 
-**Holes 1 and 2 were closed the same day** — see
-[volume 73](roadmap/73-2026-09-17-guest-merge-and-session-check.md). Hole 3 is still open. The
-original text of all three is kept verbatim below, each with what actually shipped underneath it,
-because the diagnosis is the part worth being able to read back: none of the three was reachable by
-a test as the code stood, and what made them invisible is more reusable than what fixed them.
+**All three were closed the same day** — holes 1 and 2 in
+[volume 73](roadmap/73-2026-09-17-guest-merge-and-session-check.md), hole 3 in
+[volume 74](roadmap/74-2026-09-17-ladder-identity.md). The original text of all three is kept
+verbatim below, each with what actually shipped underneath it, because the diagnosis is the part
+worth being able to read back: none of the three was reachable by a test as the code stood, and
+what made them invisible is more reusable than what fixed them. Hole 3 is the one whose diagnosis
+turned out to be **wrong**, and its entry is worth reading for that alone.
 
 They were P0 for the account system in the sense that they are wrong *whatever* the account turns
 out to be worth — see [volume 70](roadmap/70-2026-09-17-home-and-login-design.md) for why most of
@@ -170,9 +172,35 @@ the rest of that design was deferred.
    that `POST /find` receives, so this is a key choice, not a missing capability. Carrying it into
    the ticket is the fix; *telling* the player their rating is thrown away is not.
 
-   ⏳ **Still open** — deliberately left out of the 2026-09-17 pass, which took the two that both
-   land inside `OnlineMatch.syncMetaWithSession` and share the same failure shape. This one is on
-   the server's ladder path instead and shares nothing with them but a date.
+   ✅ **Closed 2026-09-17, by the OPPOSITE decision** — a guest is not scored at all, and the
+   PvP results screen says so. The full argument is in `design/15-pvp-arena.md`'s "Who a rating
+   belongs to (locked 2026-09-17)"; what belongs here is why the paragraph above is wrong, since
+   it is the only one of the three whose diagnosis did not survive contact with the wire.
+
+   - **The carry it asks for already happened.** `findMatch` sent `accountId: getPlayerId()` in
+     the `/find` body and `postFind` honoured it, so a guest's rating did accumulate under a
+     stable key. `seat:{roomId}:{seatIdx}` only ever keyed bots and the dev raw-param handshake.
+     "This is a key choice, not a missing capability" was right; which key had been chosen was
+     not.
+   - **What was actually missing was the check that makes any key mean anything.** The client
+     sent **no `Authorization` header on `/find`**, so `deps.auth.verifySession` had zero
+     production callers — hole 2's exact shape, on a different route. Every scored identity was
+     the caller's unverified claim, so anyone could post a stranger's real accountId and move
+     their rating. Carrying the guest id further is what OPENS that; it is not what closes it.
+   - **So the fix inverts.** `/find` proves identity with the session's bearer token and reads
+     the body's `accountId` never. A guest carries no identity, the per-match scaffold keys the
+     seat, and that per-match-ness is now the design rather than an accident. A guest's rating
+     could not have been merged into their account later anyway (importing a forgeable key's
+     value into an unforgeable one re-imports the forgery), so what hole 3 proposed building was
+     a number with nowhere to go.
+   - **"Telling the player is not the fix" was answered on its own terms.** The line does not
+     stand in for a fix — the fix is the trust boundary above. It stands in for the SILENCE that
+     came with it, and it is gated twice (`canSignIn()`, `getSession()`) so it never appears
+     where signing in is impossible or already done. It names no number, because this client has
+     never displayed a rating.
+   - **One thing came free.** `session?.username` was `undefined` in production for the same
+     missing header, so design/20's verified seat names had never been shown to anyone. Sending
+     the token turned them on.
 
 ## Login is never a gate (locked; restated 2026-09-10 against a proposal to make it one)
 

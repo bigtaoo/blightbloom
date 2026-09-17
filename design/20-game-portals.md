@@ -402,11 +402,20 @@ It rides the path `design/16` already cut for `accountId`, one field over: `Tick
 `MatchStart.names` (and `ConnResync.names`). Four properties are load-bearing:
 
 - **Server-supplied, and that is the point.** `POST /find` reads the bearer session when the caller
-  sent one, and the session's `accountId` and `username` **win outright over the body's
-  `accountId`, which is ignored rather than merged**. A name is the one field in a match that other
-  players SEE, so a client-declared one is an impersonation primitive. A guest — or an expired
-  token — still falls back to the body exactly as before; a 401 there would break a player whose
-  30-day session simply lapsed, which is a fully supported state.
+  sent one, and the session's `accountId` and `username` are the ONLY source of either. A name is
+  the one field in a match that other players SEE, so a client-declared one is an impersonation
+  primitive. A guest — or an expired token — gets no name and no account id; a 401 there would
+  break a player whose 30-day session simply lapsed, which is a fully supported state.
+
+  > **Correction, 2026-09-17.** This bullet used to end "still falls back to the body exactly as
+  > before", and the body fallback is gone (`design/16` hole 3, `design/15`'s "Who a rating belongs
+  > to"): it let any caller name any account as the seat's, which the ladder then credited.
+  >
+  > The larger correction is that **none of this worked in production until that same pass**.
+  > `findMatch` sent no `Authorization` header at all, so `verifySession` never ran, `session` was
+  > always `null`, and `name` was therefore always `undefined` — the whole chain above was correct,
+  > tested, and fed by nothing. `MatchStart.names` had never once carried a name to a real player.
+  > The requirement this section exists to satisfy was met on the day the token started being sent.
 - **A room with no logged-in players puts nothing new on the wire.** `undefined`, not an array of
   nulls, so every pre-existing client, fixture and test sees a byte-identical `match_start`.
 - **A mixed room nulls seats at their own index** rather than compacting, because position IS the

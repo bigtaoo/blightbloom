@@ -9,7 +9,7 @@
  * `fetch`/`sleep` are injected so the whole flow is unit-testable with a fake — the ONLY
  * real-network dependency, mirroring how transport.ts isolates the WebSocket.
  */
-import { getPlayerId } from './identity';
+import { getSession } from './session';
 
 /** Everything needed to open the gameserver socket for the assigned seat. */
 export interface MatchInfo {
@@ -35,10 +35,23 @@ export interface FindMatchOptions {
    * client sends this once their leader starts matching, so the control plane groups
    * them into one squad chunk. Omitted (every pre-party caller) → plain solo queue. */
   partyId?: string;
-  /** The account to attribute PvP ladder rating to (design/16-accounts.md). Default:
-   * `net/identity.ts`'s `getPlayerId()` — the real accountId once logged in, otherwise
-   * the local guest id (in which case the server just uses its usual seat scaffold). */
-  accountId?: string;
+  /**
+   * The logged-in session's bearer token, sent as `Authorization: Bearer` so matchsvc can
+   * VERIFY who this seat belongs to (design/16-accounts.md hole 3, design/20's seat names).
+   * Default: the stored session's token, or none at all for a guest.
+   *
+   * This replaced an `accountId` field that travelled in the request BODY, and the
+   * difference is the whole of the fix. A body field is a claim: matchsvc had no way to
+   * tell a player naming themselves from a player naming somebody else, so anyone could
+   * post a stranger's accountId and move their ladder rating — and, because nothing ever
+   * set this header, that was the only path in production, for logged-in players too.
+   * A token is a proof, and `routes/match.ts` now accepts nothing else.
+   *
+   * Omitting it is a GUEST seat, deliberately: the match is played, won and scored on
+   * screen exactly as before, and only the durable ladder rank needs a name that cannot be
+   * borrowed (`design/15-pvp-arena.md` "Who a rating belongs to").
+   */
+  token?: string;
   /** Injected for tests; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** Injected for tests; defaults to a real timer sleep. */
@@ -64,14 +77,22 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
   const pollIntervalMs = opts.pollIntervalMs ?? 500;
   const timeoutMs = opts.timeoutMs ?? 60_000;
 
+  // An explicit `undefined` check rather than `opts.token ?? getSession()?.token`: a caller
+  // that passes an empty string is saying "queue as a guest", and must not be handed the
+  // stored session the way an OMITTED field is. The two are different requests.
+  const token = opts.token !== undefined ? opts.token : getSession()?.token;
   const findRes = await doFetch(`${baseUrl}/find`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      // Only when there is one. A `Bearer undefined` header would be a token matchsvc has
+      // to try and fail to verify, which is the same guest outcome by a noisier route.
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({
       playerCount: opts.playerCount,
       mode: opts.mode ?? 'coop',
       partyId: opts.partyId,
-      accountId: opts.accountId ?? getPlayerId(),
     }),
   });
   const found = (await findRes.json()) as { queueId?: string; match?: MatchInfo; error?: string };
