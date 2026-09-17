@@ -210,22 +210,29 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   // rule `billsvc/main.ts` follows for the delivery pump. `main` starts it.
   const flags = opts.flags ?? defaultFlagClient(log);
   const matchmaker = new Matchmaker({
-    // The two live timings (design/21 §4). SUPPLIERS, not numbers: a value captured at
+    // The three live timings (design/21 §4). SUPPLIERS, not numbers: a value captured at
     // construction would only take effect on the next restart, i.e. it would not be a flag.
-    // Spread BEFORE `opts.matchmaker` so a test that pins either one still wins — this is
+    // Spread BEFORE `opts.matchmaker` so a test that pins any of them still wins — this is
     // the deployment's default, not an override.
     queueTtlMs: () => flags.get('match.queueTimeoutMs'),
     pvpBotFillMs: () => flags.get('match.pvpBotBackfillDelayMs'),
+    coopBotFillMs: () => flags.get('match.coopBotBackfillDelayMs'),
     ...opts.matchmaker,
     nowMs: () => Date.now(),
     nextSeed: () => (seedCounter = (seedCounter + 1) & 0x7fffffff),
     newRoomId: () => randomUUID(),
     sign: (payload) => signTicket(payload, secret),
-    // PvP practice-bot backfill (design/15 follow-up): a queue that's sat too long forms
-    // anyway with bots filling the empty seats. A bot redeems its own freshly-signed
-    // ticket and opens the SAME ticket-authenticated gameserver socket a real player
-    // would (BotClient.ts) — matchsvc is the trusted issuer, so it can mint one directly
-    // without a round trip through its own /find queue.
+    // Practice-bot backfill (design/15 follow-up; extended to co-op 2026-09-17): a queue
+    // that's sat too long forms anyway with bots filling the empty seats. A bot redeems its
+    // own freshly-signed ticket and opens the SAME ticket-authenticated gameserver socket a
+    // real player would (BotClient.ts) — matchsvc is the trusted issuer, so it can mint one
+    // directly without a round trip through its own /find queue.
+    //
+    // Nothing here branches on `mode`, and that is the point: the ticket a co-op ally seat
+    // gets is the same grant shape a PvP practice bot's is, and the bot learns which brain
+    // to run from the `match_start` the gameserver sends it — not from anything minted
+    // here, which is the only version of this that cannot disagree with the real clients in
+    // the same room (design/06 anti-drift).
     onBotFill: ({ roomId, seed, playerCount, mode, botOwners }) => {
       // Picked once for the room, not once per seat: the bots of one match belong on one
       // instance, exactly as its real players do. No gameserver → no socket for a bot to

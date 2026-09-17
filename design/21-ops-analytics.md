@@ -482,8 +482,9 @@ decision rather than let it default), and one Caddy line.
 that piece landed the same day — see *the gap* below for both halves.
 As code: `server/src/flags/` (the allowlist, `ops.db`, the poll client),
 `adminsvc/flagRoutes.ts` (the internal endpoint and the two write paths),
-`adminsvc/page/flags.ts` (the tab), matchsvc's poll wiring, and `Matchmaker`'s two timings
-converted from captured numbers to suppliers. Then the public delivery path:
+`adminsvc/page/flags.ts` (the tab), matchsvc's poll wiring, and `Matchmaker`'s timings
+converted from captured numbers to suppliers (two of them then; three since 2026-09-17, when
+the co-op backfill delay joined them — design/10's front-door audit). Then the public delivery path:
 `client/src/net/publicFlags.ts` (the shared contract, imported by the server),
 `client/src/net/clientFlags.ts` (the store and its poll),
 `server/src/routes/clientFlags.ts` (`GET /client/flags`), `FlagDef.public`, and the two
@@ -592,7 +593,9 @@ means every service keeps its default, which is the shipped behaviour.
 C1 is the whole safety argument, so it is worth being concrete about which side of the line
 things fall on:
 
-- **Legitimate flags:** the rewarded-ad offer on/off; the PvP practice-bot backfill delay; a
+- **Legitimate flags:** the rewarded-ad offer on/off; the practice-bot backfill delays, one
+  per mode — a co-op ally and a PvP opponent are worth different waits, and one shared value
+  would make raising the PvP window raise CO-OP's too (design/10, 2026-09-17); a
   maintenance banner; matchmaking queue timeouts.
 - **Never flags:** anything that changes an authentication decision, anything that could put
   billsvc into or out of dev-stub mode, anything that disables a validation at a trust
@@ -690,7 +693,8 @@ Caddy route. §3's own "what building it found" has the two places this plan was
 compiled-in allowlist, the merge-over-defaults reader in matchsvc, and the two write paths in
 the console. It shipped with the CLIENT half of the delivery path missing and labelled, which
 is the state §4's *the gap* records; **that half landed the same day** — the public route,
-the shared contract, and the two consumers it exists for. All four flags are `delivered` now.
+the shared contract, and the two consumers it exists for. Every flag is `delivered` now
+(four then; five since 2026-09-17's `match.coopBotBackfillDelayMs`).
 
 **Deployed 2026-09-09**, and §4's checklist is walked. The row that distinguishes a working
 `/admin*` route from matchsvc's 404 JSON answering it is the one that failed first, and not for

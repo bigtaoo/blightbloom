@@ -137,8 +137,15 @@ describe('Matchmaker — grouping', () => {
 });
 
 describe('Matchmaker — expiry & validation', () => {
+  // Every test here has to DISABLE the backfill to reach expiry at all, which is the point
+  // of the change it documents: since 2026-09-17 both modes bot-fill long before the TTL,
+  // so in the shipped configuration a waiter never expires. `queueTtlMs` is still the rule
+  // that decides — it is just now reached only where an operator has put a backfill delay
+  // above it, which is exactly what `noBackfill` spells.
+  const noBackfill = { pvpBotFillMs: 10 ** 9, coopBotFillMs: 10 ** 9 };
+
   it('reports a stale waiter as expired and drops it from the queue', () => {
-    const { mm, advance } = make();
+    const { mm, advance } = make(noBackfill);
     const a = mm.enqueue(2);
     advance(30_001); // past the default 30 s queue TTL
     expect(mm.poll(a.queueId)).toEqual({ status: 'expired' });
@@ -150,12 +157,41 @@ describe('Matchmaker — expiry & validation', () => {
   });
 
   it('an expired waiter is not counted toward a new group', () => {
-    const { mm, advance } = make();
+    const { mm, advance } = make(noBackfill);
     mm.enqueue(2); // will go stale
     advance(30_001);
     const b = mm.enqueue(2); // should NOT pair with the stale one
     expect(b.ticket).toBeUndefined();
     expect(mm.waiting(2)).toBe(1);
+  });
+
+  it('reaps an ABANDONED waiter by age even in a mode that bot-fills', () => {
+    // The hazard the `liveQueue` age sweep exists for, and the reason it could not simply
+    // be switched off once every mode gained a backfill: a client that closed the tab stops
+    // polling but leaves its queue entry behind. Left in place it would be seated into the
+    // next room formed for that shape — a room that then never starts, because nobody is
+    // coming to sit in that seat. Note this is asserted for PvP, which before 2026-09-17
+    // was never age-reaped at all.
+    const { mm, advance } = make({ pvpBotFillMs: 10 ** 9 }); // backfill out of reach
+    mm.enqueue(2, 'pvp'); // enqueued, then abandoned — never polled again
+    advance(30_001);
+    const b = mm.enqueue(2, 'pvp');
+    expect(b.ticket).toBeUndefined(); // did NOT pair with the ghost
+    expect(mm.waiting(2, 'pvp')).toBe(1);
+  });
+
+  it('never reaps the waiter whose own poll is forming the room', () => {
+    // The race `liveQueue`'s `keepId` exists for: this waiter is past the TTL *and* past its
+    // backfill point, so the age sweep `formWithBots` runs internally would otherwise drop
+    // the very player who just earned a room and hand them `expired` instead. Control: the
+    // old `mode !== 'pvp'` guard passed this for PvP by never sweeping, and would fail it
+    // outright for coop.
+    const { mm, advance } = make({ queueTtlMs: 1_000, coopBotFillMs: 100 });
+    const a = mm.enqueue(2);
+    advance(5_000); // past BOTH thresholds — backfill (100 ms) and TTL (1 s)
+    const polled = mm.poll(a.queueId);
+    expect(polled.status).toBe('matched');
+    expect(polled).toHaveProperty('ticket.owner', 0);
   });
 
   it('poll of an unknown/collected queueId is expired', () => {
@@ -176,21 +212,27 @@ describe('Matchmaker — expiry & validation', () => {
 });
 
 describe('Matchmaker — PvP practice-bot backfill (design/15 follow-up)', () => {
-  it('forms the group with bots after pvpBotFillMs, leaving coop unaffected at the same wait', () => {
+  it('forms the group with bots after pvpBotFillMs, and keys the delay off the MODE', () => {
     const botFills: { roomId: string; botOwners: readonly number[] }[] = [];
-    const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
+    // The two delays are separate names for a reason (see MatchmakerDeps.coopBotFillMs), so
+    // pin them apart here: a coop waiter enqueued at the same instant, for the same shape,
+    // must still be sitting at 30 s because ITS delay is the one that applies to it. This
+    // replaces an assertion that coop stays queued FOREVER — which is what it did before
+    // 2026-09-17, and which design/10's audit called the dead door.
+    const { mm, advance } = make({ pvpBotFillMs: 30_000, coopBotFillMs: 120_000, onBotFill: (info) => botFills.push(info) });
 
     const a = mm.enqueue(4, 'pvp'); // wants a 4-seat PvP match, alone
-    const coop = mm.enqueue(4); // a coop 4-seat waiter, same wait, must NOT bot-fill
+    const coop = mm.enqueue(4); // same shape, same instant, longer delay
 
-    advance(30_000); // exactly at the default pvpBotFillMs/queueTtlMs boundary
+    advance(30_000); // exactly at this test's pvpBotFillMs
     const polledPvp = mm.poll(a.queueId);
     expect(polledPvp.status).toBe('matched');
     expect(polledPvp).toHaveProperty('ticket.owner', 0);
     expect(botFills).toEqual([{ roomId: (polledPvp as { ticket: { roomId: string } }).ticket.roomId, seed: expect.any(Number), playerCount: 4, mode: 'pvp', botOwners: [1, 2, 3] }]);
 
-    // Coop still just sits queued at the identical wait — no bot-fill concept for it.
+    // The coop waiter is untouched: its own delay has not come round yet.
     expect(mm.poll(coop.queueId)).toEqual({ status: 'queued' });
+    expect(botFills).toHaveLength(1);
   });
 
   it('includes every real waiter still queued for the shape, bot-filling only the remainder', () => {
@@ -239,6 +281,140 @@ describe('Matchmaker — PvP practice-bot backfill (design/15 follow-up)', () =>
     const { mm, advance } = make(); // no onBotFill dep at all
     const a = mm.enqueue(3, 'pvp');
     advance(30_000);
+    expect(mm.poll(a.queueId).status).toBe('matched');
+  });
+});
+
+/**
+ * Co-op ally backfill (design/10's front-door audit, 2026-09-17). The same mechanism as the
+ * block above, and these tests are deliberately near-copies of it — the feature IS "PvP's
+ * backfill, for the other mode", and a reader comparing the two should find nothing that
+ * differs except the mode and which delay applies.
+ *
+ * What it fixed: `poll` gated the backfill on `waiter.mode === 'pvp'`, so a solo player who
+ * tapped CO-OP with nobody else online sat until `queueTtlMs` and was told the request had
+ * expired — while the same game already ships an AI ally for that seat and drives it locally
+ * behind `?coop=1`. A route that cannot be walked, past content that exists.
+ */
+describe('Matchmaker — co-op ally backfill (design/10 front-door audit)', () => {
+  it('forms the 2-seat co-op room with one ally after coopBotFillMs', () => {
+    const botFills: unknown[] = [];
+    const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
+
+    const a = mm.enqueue(2); // the lobby's CO-OP button: playerCount 2, mode 'coop'
+    expect(mm.poll(a.queueId)).toEqual({ status: 'queued' }); // nothing yet at t=0
+
+    advance(5_000); // the default coopBotFillMs
+    const polled = mm.poll(a.queueId);
+    expect(polled.status).toBe('matched');
+    expect(polled).toHaveProperty('ticket.owner', 0); // the human keeps seat 0
+    expect(polled).toHaveProperty('ticket.mode', 'coop');
+    expect(botFills).toEqual([{
+      roomId: (polled as { ticket: { roomId: string } }).ticket.roomId,
+      seed: expect.any(Number),
+      playerCount: 2,
+      mode: 'coop',
+      // Exactly ONE seat, and seat 1 — `BotClient.brainFor` hands the ally
+      // `LEADER_SEAT` (0) to regroup on, which is only sound while the bots take the
+      // trailing indices. This is the assertion that keeps that true.
+      botOwners: [1],
+    }]);
+  });
+
+  it('a real partner arriving inside the delay still gets the human match', () => {
+    // The backfill must not cost co-op the thing it is for. The delay is short, not zero:
+    // two players who tap CO-OP within it are paired with each other, and no bot is minted.
+    const botFills: unknown[] = [];
+    const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
+
+    const a = mm.enqueue(2);
+    advance(4_000); // still inside the 5 s window
+    const b = mm.enqueue(2);
+
+    expect(b.ticket).toBeDefined(); // the arrival completed the group inline
+    expect(mm.poll(a.queueId)).toHaveProperty('ticket.owner', 0);
+    expect(b.ticket!.owner).toBe(1);
+    expect(botFills).toEqual([]); // no ally was minted — the seat went to a person
+  });
+
+  it('bot-fills a larger co-op shape down to a single real seat', () => {
+    // `playerCount` is 2 for every route the lobby offers today, but `enqueue` accepts any
+    // shape and this one must not have a special case hiding in it.
+    const botFills: { botOwners: readonly number[]; mode: string }[] = [];
+    const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
+    const a = mm.enqueue(4);
+    advance(5_000);
+    expect(mm.poll(a.queueId).status).toBe('matched');
+    expect(botFills).toEqual([expect.objectContaining({ mode: 'coop', botOwners: [1, 2, 3] })]);
+  });
+
+  it('keeps coop and pvp queues of the SAME shape apart when both bot-fill', () => {
+    // `queueKey` is (mode, playerCount), and the backfill runs per shape — so two lone
+    // waiters, one per mode, must produce two rooms, not one room with a stranger's mode on
+    // the ticket. Before co-op bot-filled at all, only one of these two could reach
+    // `formWithBots`, so nothing was ever asserted about the pair.
+    const botFills: { roomId: string; mode: string }[] = [];
+    const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
+    const coop = mm.enqueue(2);
+    const pvp = mm.enqueue(2, 'pvp');
+
+    advance(5_000);
+    const polledCoop = mm.poll(coop.queueId);
+    const polledPvp = mm.poll(pvp.queueId);
+    expect(polledCoop).toHaveProperty('ticket.mode', 'coop');
+    expect(polledPvp).toHaveProperty('ticket.mode', 'pvp');
+    expect((polledCoop as { ticket: { roomId: string } }).ticket.roomId)
+      .not.toBe((polledPvp as { ticket: { roomId: string } }).ticket.roomId);
+    expect(botFills.map((f) => f.mode).sort()).toEqual(['coop', 'pvp']);
+  });
+
+  it('carries the account and name of the real seat into a bot-filled co-op ticket', () => {
+    // The backfill path grants through the same `grantGroup` a full group does, so nothing
+    // a logged-in player brings to the queue may be dropped just because the room filled
+    // out with an ally (design/16 rating attribution, design/20 nameplates).
+    const { mm, advance, at } = make();
+    const a = mm.enqueue(2, 'coop', undefined, 'acct-alice', 'Alice');
+    advance(5_000);
+    const polled = mm.poll(a.queueId) as { status: string; ticket: { token: string } };
+    expect(polled.status).toBe('matched');
+    expect(verifyTicket(polled.ticket.token, SECRET, at())).toMatchObject({
+      accountId: 'acct-alice',
+      name: 'Alice',
+      mode: 'coop',
+    });
+  });
+
+  it('honours a LIVE coopBotFillMs — the flag is read per poll, not captured', () => {
+    // `match.coopBotBackfillDelayMs` is a flag (design/21 §4), which means an operator's
+    // edit has to take effect in the running process. A value captured in the constructor
+    // would pass every test above and be a differently-spelled deploy in production.
+    let delay = 60_000;
+    const { mm, advance } = make({ coopBotFillMs: () => delay });
+    const a = mm.enqueue(2);
+    advance(10_000);
+    expect(mm.poll(a.queueId)).toEqual({ status: 'queued' }); // 10 s < 60 s
+
+    delay = 5_000; // operator lowers it mid-wait
+    expect(mm.poll(a.queueId).status).toBe('matched'); // the SAME waiter, no re-enqueue
+  });
+
+  it('lets an operator put expiry back in front by raising the delay above the TTL', () => {
+    // `poll` checks the backfill before the expiry, so the two thresholds' ORDER is the
+    // whole rule. This is the configuration in which a co-op queue still expires — stated
+    // in `MatchmakerDeps.queueTtlMs`, and worth pinning because it is the only remaining way
+    // to reach that branch.
+    const { mm, advance } = make({ queueTtlMs: 2_000, coopBotFillMs: 30_000 });
+    const a = mm.enqueue(2);
+    advance(2_001);
+    expect(mm.poll(a.queueId)).toEqual({ status: 'expired' });
+  });
+
+  it('is a no-op without onBotFill wired — co-op still forms the smaller room, just silently', () => {
+    // The pre-4.x caller shape, mirrored from the PvP block: `onBotFill` is what SPAWNS the
+    // ally, so without it the room forms with an empty seat rather than not forming.
+    const { mm, advance } = make(); // no onBotFill dep at all
+    const a = mm.enqueue(2);
+    advance(5_000);
     expect(mm.poll(a.queueId).status).toBe('matched');
   });
 });

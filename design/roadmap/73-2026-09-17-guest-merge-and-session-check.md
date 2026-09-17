@@ -1,6 +1,6 @@
 # Work log — 2026-09-17
 
-Volume 72. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+Volume 73. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
 
 ## Two of design/16's three holes, closed — the guest merge and the session that was never checked (2026-09-17, client + server)
 

@@ -69,7 +69,7 @@ import { ScreenNav } from './ScreenNav';
 import { AccountPrompt } from '../ui/AccountPrompt';
 import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
-import { savedRunSummary } from '../match/runSaveStore';
+import { resumableRunSummary } from '../match/resumableRun';
 import { pullAccountMeta } from '../../meta/accountSync';
 import { getSession } from '../../net/session';
 import type { RunState } from '../runState';
@@ -159,9 +159,16 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // Whether the forge offers CONTINUE RUN, and what its info line says about the save
   // (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61). A provider, not a
   // value, so every one of `render()`'s five call sites reads the CURRENT answer — see
-  // `Forge.savedRun`'s own note. `savedRunSummary` reads the parsed save out of the
-  // process-wide slot, so this costs nothing per render.
-  p.forge.savedRun = () => savedRunSummary();
+  // `Forge.savedRun`'s own note.
+  //
+  // `resumableRunSummary`, not `savedRunSummary`, since 2026-09-17: the second answers "a
+  // save exists", which is not the question a CONTINUE button is asking — a save from an
+  // older `ENGINE_VERSION` drew a full-size primary that could only drop the save and
+  // apologise. The LOBBY gets the identical provider, so the two screens cannot end up
+  // disagreeing about whether there is a run to come back to; `match/resumableRun.ts`'s
+  // header has the rest, including the memo that keeps it free per render.
+  p.forge.savedRun = () => resumableRunSummary();
+  p.mainMenu.resumableRun = () => resumableRunSummary();
 
   // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the
   // expired-session notice. Its `size` thunk is `ScreenNav.fit()`'s own body, because both

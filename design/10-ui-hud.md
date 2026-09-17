@@ -79,19 +79,112 @@ routes are not in equal health, and nothing on the screen says so.** Work log:
 | --- | --- |
 | SOLO PvE | works |
 | TUTORIAL | works |
-| **CO-OP** | **a dead door.** `Matchmaker.poll` backfills bots only for `mode === 'pvp'`; a co-op queue with nobody else in it waits out `queueTtlMs` (30 s default) and then EXPIRES |
-| PVP SOLO QUEUE | works, but a solo player waits `pvpBotFillMs` (30 s default) before the bot backfill forms the room — i.e. the empty-queue case is answered slowly rather than answered |
-| SQUAD | needs a second human and a room code |
+| **CO-OP** | ~~**a dead door.** `Matchmaker.poll` backfills bots only for `mode === 'pvp'`; a co-op queue with nobody else in it waits out `queueTtlMs` (30 s default) and then EXPIRES~~ — **fixed the same day**, see below |
+| PVP SOLO QUEUE | ~~works, but a solo player waits `pvpBotFillMs` (30 s default) before the bot backfill forms the room — i.e. the empty-queue case is answered slowly rather than answered~~ — **5 s since the same day**, see below |
+| SQUAD | needs a second human and a room code — the one route still conditional on somebody else, and the only one that should be |
 
 Three consequences, all of them design questions this doc owes an answer to rather than bugs with
 an obvious fix: whether co-op should backfill with the bot ally that `?coop=1` already builds
 locally; whether an empty queue should be answered in ~5 s rather than 30; and whether a route
 that cannot currently be walked through should carry the same visual weight as one that can.
+✅ **All three answered the same day — see "Two of the five routes were a server question" below.**
 
 **And the returning player's first need is one screen deep.** CONTINUE RUN (`runSave.ts`, 2026-09-10)
 lives in the Forge, behind SOLO PvE, so a player who saved on floor 3 last night sees a lobby that
 says nothing about it. A saved run is device-local and does not travel with an account
 (`design/16`), which makes its visibility a lobby question and not an account one.
+✅ **Fixed the same day — see the next section.**
+
+### CONTINUE RUN on the front door (2026-09-17)
+
+`client/src/game/ui/LobbyRoutes.ts` + `client/src/game/match/resumableRun.ts`; work log:
+[volume 71](roadmap/71-2026-09-17-lobby-continue-run.md). The lobby grows a sixth route at the
+TOP of the stack — CONTINUE RUN plus a one-line caption naming the floor and the time played —
+and it resumes directly, with no stop at the Forge. Five decisions, each of which is somebody's
+requirement rather than a preference:
+
+- **The row is drawn off `checkResumable`, not off "a save exists".** Those are different
+  questions and the Forge had been answering the wrong one since 2026-09-10: a save from an older
+  `ENGINE_VERSION`, or one whose floor library moved under it, drew a full-size primary CONTINUE
+  whose only possible outcome was to drop the save and toast a refusal. Surviving one screen deep
+  is not the same as surviving on the front door, so `resumableRun.ts` now rebuilds the run config
+  from **today's** content for the save's own seed and loadout and asks the same `checkResumable`
+  the resume itself will ask. **Both screens read that one function**, so the lobby and the Forge
+  cannot end up disagreeing about whether there is a run to come back to. Its cost is real and
+  measured — `contentHashOf` digests 20,724 characters of `EMBER_DUNGEON` + `EMBER_L1_ROOMS` —
+  so the verdict is memoised against the save object the process-wide slot hands back.
+- **A non-resumable save is left in storage, not cleared.** This is a read called from a render
+  path (the Forge asks twice per `render()`, on every keystroke), and a provider that mutates
+  storage while a screen lays itself out turns a re-render into a side effect. The slot is
+  reclaimed by the next `beginRun`. The honest cost: a player whose save we broke is told nothing
+  rather than being told at the moment they press a button they cannot use — which is the trade
+  design/10 already makes elsewhere ("a refusal a player cannot predict reads as a broken button").
+- **On a portal, CONTINUE takes quick-play's slot instead of standing beside it.** Both answer
+  "start playing now", the platform requirement behind PLAY is that a **first-time** visitor reach
+  gameplay in one click (`design/20`), and a player with an unfinished run is not one — CONTINUE is
+  one click into gameplay by the same measure. That is also the only shape that fits: the tallest
+  legal lobby with both — portal quick-play, the data notice, a 140-character maintenance banner
+  and the CONTINUE block — measured **702px against a 640px design height, in all eight locales**,
+  and `viewportFit.test.ts` failed the moment the case was put in front of it. What was NOT done is
+  re-point PLAY at the resume: one button whose meaning depends on the state is how a player loses
+  a run they meant to keep, the same rule that keeps SAVE & QUIT and QUIT as two rows in the pause
+  menu. Two labels, one drawn at a time, is a different thing.
+- **The floor and the elapsed time are a caption, not part of the label.** A `CONTINUE — FLOOR {n}`
+  button is 316px of Russian in a 280px row; the caption is mostly digits and measures 152-165px
+  in the worst locale. It is one unwrapped line on purpose, because wrapping would make the routes
+  block's height a `Text` measurement and every position in these screens is arithmetic on
+  constants so a layout needs no canvas. `labelFit.test.ts` sweeps buttons and would not have seen
+  it, so `LobbyRoutes.test.ts` measures it against the row width in all eight locales itself.
+- **Nothing shares a slot.** CONTINUE takes the y SOLO used to sit at and every row below moves
+  down by the whole block, so a tap aimed at SOLO on a save-less lobby can never land on CONTINUE
+  on a saved one — the pause menu's SAVE & QUIT rule, one screen out.
+
+A refusal that does slip through (the save died between the render and the press) now re-renders
+**the screen the press came from** rather than always the Forge: answering "no" with a navigation
+is its own defect, and both screens carry the verb now.
+
+### Two of the five routes were a server question, not a UI one (2026-09-17)
+
+`server/src/Matchmaker.ts` + `server/src/BotClient.ts`; work log:
+[volume 72](roadmap/72-2026-09-17-coop-backfill.md). The audit above asked three questions and
+the third one — the only one that was actually about this document — turned out to be answered
+by the other two. **A route in poor health is not a styling problem.** Dimming CO-OP would have
+been a change to how the lobby lies about itself; the route was one `mode` check away from
+working.
+
+- **CO-OP bot-fills, like PvP always has.** `Matchmaker.poll`'s backfill arm was gated on
+  `waiter.mode === 'pvp'`, so the co-op queue's only exit was expiry. It is now gated on the
+  wait alone, and the mode selects only the DELAY. The seat count is not a decision: co-op is
+  a 2-seat match everywhere the lobby can produce one (`onlineConnect.ts` hard-codes it), so
+  "fill every empty seat", the rule PvP already used, is exactly one ally.
+- **The ally is the one the game already ships.** `AllyController` has driven the second seat
+  behind `?coop=1` since ROADMAP 3.1. That is what made this worth wiring rather than
+  designing: the content existed and only matchmaking refused to reach it. `BotClient` now
+  picks its brain from `match_start.mode` — `AllyController` for co-op, `PvpBotController` for
+  pvp — and builds its EngineConfig with `buildOnlineConfig`, the same function every browser
+  tab calls, instead of the arena builder it used to call unconditionally.
+- **An empty queue is answered in 5 s, both modes.** `match.pvpBotBackfillDelayMs` came down
+  from 30 s, and `match.coopBotBackfillDelayMs` is new beside it. Thirty seconds is a
+  matchmaking window and this deployment has no queue to window over — with nobody else
+  waiting, those seconds only spelled out the emptiness at greater length. Five is still long
+  enough that two people who tap within a few seconds of each other are paired with each other.
+- **Two flag names rather than one shared "bot backfill delay".** A PvP bot is a lesser
+  opponent and a co-op ally is not, so a deployment that grows a population will want to wait
+  for a human in one mode and not the other; one value would make raising the PvP window raise
+  CO-OP's too.
+
+**What the audit's third question is owed, now that the first two are gone.** The rule this
+doc adopts is: **do not dim a door — open it, or take it off the screen.** A de-emphasised route
+is still a route the player taps, and the only thing the styling bought was a worse first
+impression on the way to the same dead end. SQUAD is the one remaining route conditional on
+another person, and it is not in poor health — it is a feature that needs a friend, which is a
+fact to SAY on the screen rather than to imply by weight. Nothing in the lobby's styling
+changed in this pass, and that is the finding.
+
+**One thing this does not fix, deliberately**: a queue entry whose client closed the tab still
+sits until `queueTtlMs`, and can be seated into a room that then never starts. It is reaped by
+age now in every mode (it was reaped in none of them for PvP before this pass), which bounds it;
+what would remove it is a cancel on the way out of the matchmaking screen, which nothing sends.
 
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 

@@ -102,7 +102,7 @@ Two consequences of that table are worth stating because they are easy to assume
 ## Three holes, found 2026-09-17 by reading the boot path against the account path
 
 **Holes 1 and 2 were closed the same day** — see
-[volume 72](roadmap/72-2026-09-17-guest-merge-and-session-check.md). Hole 3 is still open. The
+[volume 73](roadmap/73-2026-09-17-guest-merge-and-session-check.md). Hole 3 is still open. The
 original text of all three is kept verbatim below, each with what actually shipped underneath it,
 because the diagnosis is the part worth being able to read back: none of the three was reachable by
 a test as the code stood, and what made them invisible is more reusable than what fixed them.

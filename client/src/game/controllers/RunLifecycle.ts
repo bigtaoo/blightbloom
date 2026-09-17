@@ -59,8 +59,9 @@ export interface RunLifecycleDeps {
   /** The in-run HUD's visibility root — every phase transition toggles it. */
   hudView: Container;
   forge: Forge;
-  /** Only `beginQuickRun` needs it — the one run entry point reached from the main menu
-   *  itself, so the one that has to hide the main menu rather than the forge. */
+  /** The run entry points reached from the LOBBY rather than from the forge, and so the ones
+   *  that have to hide the main menu: `beginQuickRun`, the tutorial, and — since 2026-09-17 —
+   *  `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
   mainMenu: { hide(): void };
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -246,7 +247,11 @@ export class RunLifecycle {
    *  - **The version and content checks come first** (`checkResumable`). A save from another
    *    `ENGINE_VERSION`, or one whose floor library has been edited since, replays into a
    *    different world; refusing is the only honest answer, and the save is dropped so the
-   *    Forge stops offering it.
+   *    screen that offered it stops. Since 2026-09-17 both entry points — the Forge's button
+   *    and the lobby's row — are drawn off `match/resumableRun.ts`, which asks the SAME
+   *    `checkResumable` before offering anything, so this branch is belt and braces rather
+   *    than the live refusal path it used to be. It stays because the alternative is a
+   *    `return` that silently does nothing, and because the two must not be able to drift.
    *  - **The fast-forward's last tick must not reach the render layer.** `step()` clears
    *    `state.events` at the top of each tick, so after the loop the final tick's events are
    *    still sitting there and `GameLoop`'s first real frame would drain them — replaying a
@@ -272,7 +277,12 @@ export class RunLifecycle {
     const refusal = checkResumable(save, config);
     if (refusal !== null) {
       clearSavedRun();
-      d.nav.showForge(); // re-render, so the now-impossible CONTINUE button goes away
+      // Re-render whichever screen the press came from, so the now-impossible CONTINUE
+      // control goes away without moving the player somewhere they did not ask to go. Both
+      // screens offer this verb since 2026-09-17, and sending a lobby press to the Forge
+      // would answer a refusal with a navigation.
+      if (d.run.phase === 'menu') d.nav.showMenu();
+      else d.nav.showForge();
       d.hud.toast(
         t(refusal === 'engine-version' ? 'toast.runSaveOldVersion' : 'toast.runSaveStale'),
         THEME.colors.enemy,
@@ -292,7 +302,13 @@ export class RunLifecycle {
     d.run.engine = engine;
     d.run.runCount++;
     d.run.score = save.score; // after resetRenderState, which zeroes it for a fresh run
-    this.enterPrimedRun(engine);
+    // Both screens, because CONTINUE has TWO entry points since 2026-09-17 and only one of
+    // them is the Forge. `enterPrimedRun`'s default hides the Forge alone, which left the
+    // lobby drawn over a live, ticking run when the press came from there — invisible to
+    // every unit test, since they hand this controller a mocked screen whose `hide` nobody
+    // asserts, and found by resuming from the lobby in the running client. Hiding a screen
+    // that is already hidden costs nothing, so this does not need to know which one it was.
+    this.enterPrimedRun(engine, () => { d.mainMenu.hide(); d.forge.hide(); });
   }
 
   /** `?replay=<url>`: watch a recording instead of playing (match/replayPlayback.ts).

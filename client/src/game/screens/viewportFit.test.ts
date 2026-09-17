@@ -144,6 +144,32 @@ const SCREENS: Array<[string, ScreenBuild]> = [
       setPublicFlags(null);
     }
   }],
+  // The TALLEST lobby there is (2026-09-17): a portal build's quick-play row and data notice,
+  // the longest legal maintenance banner above the title, AND the CONTINUE row + caption a
+  // resumable save adds on top of the five routes. Each of those three was separately the
+  // reason a previous entry was added here; the configuration that has all of them at once is
+  // the only one that proves the card still centres on screen at a landscape phone's height.
+  ['MainMenu (portal + banner + saved run)', (w, h) => {
+    setPublicFlags({ ...PUBLIC_FLAG_DEFAULTS, 'ui.maintenanceBanner': 'M'.repeat(BANNER_MAX_LENGTH) });
+    try {
+      const s = new MainMenu();
+      s.setQuickPlay(true);
+      s.setAccountEntry(false);
+      s.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+      s.show(w, h);
+      return s.view;
+    } finally {
+      setPublicFlags(null);
+    }
+  }],
+  // ...and the ordinary build with a saved run, which is the shape almost every returning
+  // player actually sees.
+  ['MainMenu (saved run)', (w, h) => {
+    const s = new MainMenu();
+    s.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+    s.show(w, h);
+    return s.view;
+  }],
   ['PvpPreview', (w, h) => { const s = new PvpPreview(); s.show(w, h, defaultMetaState().selectedSkin); return s.view; }],
   ['Screens', (w, h) => { const s = new Screens(); s.show(w, h, true, 'VICTORY', ['line one', 'line two']); return s.view; }],
   // The rewarded-ad offer makes this screen a row TALLER and, with the longest locale's

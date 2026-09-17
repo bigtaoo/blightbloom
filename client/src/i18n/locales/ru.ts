@@ -15,6 +15,8 @@ export const ru: Translations<typeof en> = {
     title: 'BLIGHTBLOOM',
     subtitle: 'спускайся, добывай, выживай',
     play: 'ИГРАТЬ',
+    continueRun: 'ПРОДОЛЖИТЬ ▸',
+    continueRunAt: 'Этаж {floor} · {m}:{ss} игры',
     solo: 'СОЛО PvE',
     coop: 'КООП',
     pvpSolo: 'СОЛО-ОЧЕРЕДЬ PVP',

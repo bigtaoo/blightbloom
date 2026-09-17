@@ -9,6 +9,8 @@ export const en = {
     title: 'BLIGHTBLOOM',
     subtitle: 'descend, extract, survive',
     play: 'PLAY',
+    continueRun: 'CONTINUE RUN ▸',
+    continueRunAt: 'Floor {floor} · {m}:{ss} played',
     solo: 'SOLO PvE',
     coop: 'CO-OP',
     pvpSolo: 'PVP SOLO QUEUE',
