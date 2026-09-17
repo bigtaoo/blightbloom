@@ -52,7 +52,9 @@ class BridgeTransport implements Transport {
   readonly conn: RoomConnection;
   readonly sent: ClientMsg[] = [];
   closed = false;
-  private handler: ((msg: ServerMsg) => void) | null = null;
+  // `protected` rather than `private` for `ModeStrippingBridge` below, which wraps the
+  // handler on its way in.
+  protected handler: ((msg: ServerMsg) => void) | null = null;
 
   constructor(owner: number) {
     this.conn = { owner, send: (m) => this.handler?.(m) };
@@ -70,6 +72,27 @@ class BridgeTransport implements Transport {
 
 const humanCmd = (tick: number): PlayerCommand =>
   makeCommand({ owner: 0, tick, moveBrad: 0 as Brad, moveMag: 0, buttons: 0 });
+
+/**
+ * A `BridgeTransport` that deletes `mode` from the `match_start` it relays — the only thing
+ * that distinguishes a pre-design/15 gameserver from this one, from a bot's side. Counts what
+ * it stripped so a test cannot pass because the field was never there.
+ */
+class ModeStrippingBridge extends BridgeTransport {
+  strippedMatchStarts = 0;
+
+  override onMessage(handler: (msg: ServerMsg) => void): void {
+    super.onMessage((msg) => {
+      if (msg.type === 'match_start' && msg.mode !== undefined) {
+        this.strippedMatchStarts++;
+        const { mode: _dropped, ...rest } = msg;
+        handler(rest as ServerMsg);
+        return;
+      }
+      handler(msg);
+    });
+  }
+}
 
 /** One enemy at a pixel position — the `brainFor` fixture's only moving part. Mirrors the
  *  client's own `ally.test.ts` helper; `AllyController` reads nothing here but the position. */
@@ -397,11 +420,55 @@ describe('BotClient — a CO-OP room gets an ally, not a PvP practice bot', () =
     expect(ally).toEqual(new AllyController().build(state, 1, 0, 5));
     expect(pvp).toEqual(new PvpBotController().build(state, 1, 5));
 
-    // And the absent-mode fallback is co-op, matching `MatchMode`'s own default (protocol.ts:
-    // "Optional/absent → 'coop'"). `runBotClient` spells it as `m.mode ?? 'coop'`, so a
-    // pre-4.x gameserver that sends no mode gets an ally, not an arena bot in a dungeon.
-    expect(brainFor('coop')(state, 1, 5)).toEqual(ally);
   });
+
+  it('falls back to the ally when `match_start` states no mode at all', () => {
+    /**
+     * `runBotClient` spells the fallback `m.mode ?? 'coop'`, matching the protocol's own
+     * default (`protocol.ts`: "Optional/absent → 'coop'"). Every `MatchRoom` in this repo
+     * sends a mode, so nothing else in the suite reaches that `??` — it is there for a
+     * gameserver older than design/15, and the cost of getting it wrong is an arena bot
+     * standing in a dungeon, which is the one combination that does nothing at all.
+     *
+     * The harness is the co-op room from the test above with ONE variable changed: a
+     * transport that deletes `mode` from `match_start` as it passes. Real frames, real
+     * state, real `MatchRoom` — only the server's claim about the mode is missing, which
+     * is exactly what an old gameserver looks like from here.
+     */
+    vi.useFakeTimers();
+    const scheduler = new FakeScheduler();
+    const room = new MatchRoom('rc4', 4242, 2, { scheduler, onDestroy: () => {}, mode: 'coop', framesPerBatch: 1 });
+
+    const human: RoomConnection = { owner: 0, send: () => {} };
+    room.join(human);
+    const bridge = new ModeStrippingBridge(1);
+    const bot = runBotClient({
+      transport: bridge,
+      wsUrl: 'unused',
+      token: 'unused',
+      roomId: 'rc4',
+      owner: 1,
+      seed: 4242,
+      playerCount: 2,
+      tickMs: 10,
+    });
+    room.join(bridge.conn);
+
+    expect(bridge.strippedMatchStarts).toBe(1); // the harness really did remove it
+
+    const fired = (): boolean =>
+      bridge.sent.some((m) => m.type === 'cmd' && m.cmd.owner === 1 && (m.cmd.buttons & Button.FIRE) !== 0);
+    for (let i = 0; i < 3_000 && !fired(); i++) {
+      room.submitCmd(0, humanCmd(i + 1));
+      vi.advanceTimersByTime(10);
+      scheduler.pulse();
+    }
+
+    // Same discriminator as the co-op case: a `PvpBotController` here has no other-team
+    // player to target and can only idle, so one FIRE is the fallback having chosen an ally.
+    expect(fired()).toBe(true);
+    bot.stop();
+  }, 60_000);
 
   it('a co-op seat has no OPPONENT, which is why the old brain could only idle there', () => {
     vi.useFakeTimers();
