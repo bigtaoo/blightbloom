@@ -828,8 +828,8 @@ spine can answer.
 
 | Stage | What it is for | State |
 | --- | --- | --- |
-| **1 — Validation** | Prove the gameplay and the art actually work. Content stays deliberately thin. | **Nearly closed** — see below |
-| **2 — Polish** | Tune the core experience and the systems around it, on a loop that has been proven. | Not started |
+| **1 — Validation** | Prove the gameplay and the art actually work. Content stays deliberately thin. | **Closed 2026-09-17**, scoped to TECHNICAL validation — see below |
+| **2 — Polish** | Tune the core experience and the systems around it, on a loop that has been proven. | **Open since 2026-09-17**, starting at the front door |
 | **3 — Launch** | Ship it. Payments go live (Phase 9), store pages, real acquisition. | Not started |
 
 **What Stage 1 has answered.** Map and character presentation (one 5-floor hand-authored PvE
@@ -856,15 +856,38 @@ turns on.
    source and the recoverable half; a **coin** is what a kill drops in a weapon's place.
 2. **A reason to run it again.** ✅ **Shipped 2026-09-14** (same version) — a blueprint drops from
    the boss at 5%, out of an earnable pool the signup grant no longer covers. **B5.**
-3. **A real device.** WeChat is verified in the simulator only; the render quality ladder's
-   `low` tier has never been seen on a handset, and the portal build's ads and banner have never
-   run under a registered domain. All three are silent when wrong.
-4. **A player who is not the developer.** Every gameplay report so far comes from one person.
+3. **A real device.** ✅ **Closed 2026-09-17 by the owner, who verified it personally**
+   (*"真机和 wechat 我已经验证了"*). Recorded as what it is: an owner's report that the WeChat build
+   and a real handset were exercised, not a checklist sweep with captured evidence —
+   `design/04`'s items 2/3/4/5/6/18 keep their boxes unticked because nobody wrote down what each
+   one answered, and ticking them from a summary would put a claim in the doc that no artefact
+   backs. The portal build's ads and banner under a registered domain are a Stage 3 dependency
+   (the upload) rather than a validation item, and stay in `design/20`'s "What remains".
+   *The original filing follows.* WeChat is verified in the simulator only; the render quality
+   ladder's `low` tier has never been seen on a handset, and the portal build's ads and banner have
+   never run under a registered domain. All three are silent when wrong.
+4. **A player who is not the developer.** ⏸ **Explicitly scoped OUT of the stage gate, 2026-09-17**
+   (*"我们目前只做技术验证"*) — Stage 1 was declared closed on the technical half alone. Nothing
+   below stopped being true; a closed multiplayer test is now a Stage 2 instrument rather than a
+   Stage 1 blocker, and the big chest in particular still has no way to be validated until one
+   happens. *The original filing follows.* Every gameplay report so far comes from one person.
    The big chest in particular **cannot be validated solo** — one seat means one mechanism and
    one weapon, so the coordination it exists for never fires. That makes a small closed multiplayer test the
    only instrument that can measure it, and it is worth keeping *closed*: an open portal launch
    this thin would return "not enough content", which is already known, at the cost of a
    first-impression that only happens once.
+
+**Where Stage 2 starts: the front door.** The first pass took the whole shipped loop apart to see
+what Stage 2 is tuning (the account of it is `design/05` and its three `gameplay/` parts, which
+already describe the live shape), and then went at the lobby. Two findings came out of that and
+are filed where they belong rather than here: **three of the lobby's five routes are shut or slow**
+for a solo player, and CONTINUE RUN is a screen deeper than the returning player's first need
+(`design/10`, "The lobby audited as a front door"); and the account system has **three live
+defects** that are wrong whatever an account turns out to be worth — a login that silently discards
+local guest progress, a stored token nothing ever verifies, and a guest ladder key thrown away
+every match (`design/16`, "Three holes"). Work log:
+[volume 70](roadmap/70-2026-09-17-home-and-login-design.md), which also records the half of that
+design pass that was reversed on reflection.
 
 Deliberately **not** Stage 1 blockers: Phase 9 payments (Stage 3 by definition), **B3**
 (skippable rooms), **B4** (the depth-curve fields), and **B2** (what a chest or a counter
@@ -1393,9 +1416,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-17** [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change) — the cutover's four *enabled-not-closed* items: three closed, the fourth written down as a trigger, **no code changed**. 174 documents restored out of the box's own snapshots and back into a database twice — a throwaway server, then the live cluster — and verified by `diff`ing CANONICAL Extended JSON against the file rather than by counting, because a round trip that squashes an ObjectId into a string restores the right *number* of documents; all six collections byte-identical, all 169 ObjectIds intact including the migration's `0xbb` marker byte. **The written procedure was wrong in three places, none of them findable by a test**: the box has no `mongoimport`/`mongosh`/`jq` at all (hence a pinned `mongo:7.0` container, left on the box on purpose), `--db restore_check` is REFUSED because `bb-app`'s roles are `readWrite` on the four database *names* — so the scratch target has to be a collection prefix inside `ops`, the one database with no player data — and `set -a; . .env` silently yields an EMPTY variable, the URI's `?…&w=majority` reading as "background this assignment". The live `ci-deploy.sh` was two days stale (its `.env` guard did not check either cluster URI) and **the documented install command could not run**: Ubuntu 26.04 ships uutils coreutils, whose `install` fails on a PIPE source over an EXISTING destination and prints `removed '<dest>'` while leaving the inode untouched — a `-v` transcript claiming a removal is not evidence of one. Forced command re-verified on all three halves afterwards. The pre-migration copies are deleted, but only after `python3`'s `sqlite3` counted all 16 tables row-for-row against the cluster; `ratings`/`rating_reports` have no collections there and that is not a hole in the port, because MongoDB materialises a collection on first write. `platform` `docs`
 
+**[2026-09-17 — the home page and the login behind it, designed](roadmap/70-2026-09-17-home-and-login-design.md)**
+
+- **09-17** [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change) — Stage 1 closed from the owner's side (technical validation only; the device half verified personally) and Stage 2 opened on the front door. **No code changed**; what this produced is a design, three defects found by reading, and a reflection that reversed part of its own first answer. The defects are all live and none is reachable by a test as the code stands: **logging into an account that already has server state silently discards local guest progress** (`setMeta(remote ?? local)` — the `??` only covers the brand-new-account branch, so the migration `design/20`'s table claims exists only where there was nothing to migrate); **a stored token is trusted forever** — `fetchMe` has ZERO production callers, `SESSION_TTL_MS` is written once and never extended, so an expired session paints as `Hi, {name}` while every bearer call 401s into a `.catch()` and cloud save has never once worked; and **a guest's ladder rating is keyed per MATCH** (`seat:{roomId}:{seatIdx}`) although the guest already has a persistent id `POST /find` receives. What the reflection reversed is the more useful half: the first answer was **a vault for an empty bank** (an account today buys cloud sync of six fields, a ladder nobody is on, and a store that cannot sell anything), its boot-time token check was **a second request that was not needed** (`/account/meta`'s own 401 answers it), it **labelled the ladder loss instead of fixing it** — three warnings on a front door whose locked rule is that login is never required is nagging, and each warning had a fix available — and it **designed the account corner without looking at the front door**: `Matchmaker.poll` backfills bots only for `mode === 'pvp'`, so **CO-OP is a dead door** (queue, wait `queueTtlMs`, expire), PvP answers an empty queue in 30 s rather than answering it, SQUAD needs a second human, and CONTINUE RUN sits a screen below the returning player's first need. Merge default reversed too: not a field-by-field union, which is wrong on a shared computer, but **once per device on first association, account-is-truth afterwards**, primary button *use the account's*. Kept: three identity layers behind one `getPlayerId()` seam, clickability-is-the-host's / copy-is-the-session's, and offline-is-not-logged-out. Also recorded: **every WeChat player is a guest** — no `wx.login`, no `/auth/wechat` — and closing that is our choice, not a platform requirement, which makes it a cost to weigh. `docs` `ui` `net`
+
 ## The work log — by theme
 
-The same 167 entries, grouped. An entry with more than one tag appears more than once.
+The same 168 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1694,7 +1721,7 @@ The same 167 entries, grouped. An entry with more than one tag appears more than
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(24)*
+**`ui`** — HUD, screens, widgets *(25)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1720,6 +1747,7 @@ The same 167 entries, grouped. An entry with more than one tag appears more than
 - 09-10 [The lobby, and the login that was still in flight when the menu went live](roadmap/52-2026-09-09-backend-deploy.md#the-lobby-and-the-login-that-was-still-in-flight-when-the-menu-went-live-2026-09-10-client--docs-no-engine-change)
 - 09-10 [The bank button that was really a save button](roadmap/53-2026-09-10-boss-only-extraction.md#the-bank-button-that-was-really-a-save-button-2026-09-10-engine--client--docs-engine_version-6061)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
+- 09-17 [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(20)*
 
@@ -1744,7 +1772,7 @@ The same 167 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(90)*
+**`docs`** — design docs and this log itself *(91)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1836,8 +1864,9 @@ The same 167 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
+- 09-17 [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(22)*
+**`net`** — matchmaking, sockets, reconnect *(23)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -1861,6 +1890,7 @@ The same 167 entries, grouped. An entry with more than one tag appears more than
 - 09-09 [The two globals a mini-game does not have, and the four features waiting on them](roadmap/51-2026-09-09-wechat-network-adapter.md#the-two-globals-a-mini-game-does-not-have-and-the-four-features-waiting-on-them-2026-09-09-client--docs-no-engine-change)
 - 09-15 [The control plane moves to MongoDB, and the accident that was holding registration together](roadmap/66-2026-09-15-mongodb-control-plane.md#the-control-plane-moves-to-mongodb-and-the-accident-that-was-holding-registration-together-2026-09-15-server--deploy--docs-no-engine-change)
 - 09-15 [The other three stores follow, and SQLite leaves the repository](roadmap/67-2026-09-15-mongodb-stores-and-console.md#the-other-three-stores-follow-and-sqlite-leaves-the-repository-2026-09-15-server--deploy--docs-no-engine-change)
+- 09-17 [The home page and the login behind it, designed — then the design reflected on](roadmap/70-2026-09-17-home-and-login-design.md#the-home-page-and-the-login-behind-it-designed--then-the-design-reflected-on-2026-09-17-docs-only-no-engine-change)
 
 **`i18n`** — locales and text layout *(12)*
 

@@ -68,6 +68,42 @@ weeks, and the reason it changed is the interesting part.
 - **Pause** (single-player only) stops calling `engine.tick()`; the last state stays on screen. In co-op/PvP there is no true pause — the frame stream keeps coming (`06`); the shell shows a non-blocking overlay instead. ✅ **Shipped exactly as specified** (`client/src/game/screens/PauseMenu.ts`, Escape/P) — offline/local play genuinely freezes (mirrors the hit-stop `acc`-doesn't-accumulate trick, no catch-up burst on resume); online is a documented no-op for now (the overlay itself isn't built for that path, matching "no true pause" above). ✅ **A real touch/WeChat entry point shipped too (2026-08-05) — a genuine gap, not a design deferral: the ONLY way into `pause()` was a keyboard `Escape`/`P` listener, so a touch/WeChat player (no keyboard at all) could never pause mid-run.** `HudView.pauseBtn` (`‖`, top-right corner, above the minimap) calls the exact same `pause()` the keyboard handler does, gated by the identical `!this.online` check (`pause()`'s freeze is unconditional once entered — `phase === 'paused'` skips both `advanceSim` AND `advanceOnline` — so the button replicates the keyboard path's online guard rather than inventing a second one). Lives inside `HudView.view`, so it inherits every phase-transition's existing show/hide for free (no new wiring needed at the ~11 call sites that already toggle `hudView.visible`).
 - **A record button beside it, for the same reason (2026-08-31).** `HudView.replayBtn` ('●', immediately left of `pauseBtn`) saves a replay of the run so far, marked at that tick — the second entry point to the verb `design/08` describes under "Getting a replay OUT of a live session", whose first was an **F9 hotkey**, i.e. unusable on exactly the platform a bug report is most likely to come FROM. Two rules it follows that the pause button set the precedent for: it calls the same `saveReplay()` the keyboard does (one verb, never two implementations), and it **hides itself when the run cannot be saved** — online, whose record is the server's confirmed stream, or while watching a replay, which is already somebody else's file — rather than offering a control that silently does nothing. Its outcome is a toast, and all three outcomes (saved, nothing to save, this device cannot) are separate `t()` keys (`17`): a control the player pressed BECAUSE something went wrong must never report a false success.
 
+### The lobby audited as a front door (2026-09-17) — three of its five routes are shut or slow
+
+Stage 2 opened on the front door (`ROADMAP.md` "Product stages"), and the first question asked of
+it was about the account chip. Auditing the chip is what surfaced the larger finding: **the five
+routes are not in equal health, and nothing on the screen says so.** Work log:
+[volume 70](roadmap/70-2026-09-17-home-and-login-design.md).
+
+| Route | What a solo player actually gets today |
+| --- | --- |
+| SOLO PvE | works |
+| TUTORIAL | works |
+| **CO-OP** | **a dead door.** `Matchmaker.poll` backfills bots only for `mode === 'pvp'`; a co-op queue with nobody else in it waits out `queueTtlMs` (30 s default) and then EXPIRES |
+| PVP SOLO QUEUE | works, but a solo player waits `pvpBotFillMs` (30 s default) before the bot backfill forms the room — i.e. the empty-queue case is answered slowly rather than answered |
+| SQUAD | needs a second human and a room code |
+
+Three consequences, all of them design questions this doc owes an answer to rather than bugs with
+an obvious fix: whether co-op should backfill with the bot ally that `?coop=1` already builds
+locally; whether an empty queue should be answered in ~5 s rather than 30; and whether a route
+that cannot currently be walked through should carry the same visual weight as one that can.
+
+**And the returning player's first need is one screen deep.** CONTINUE RUN (`runSave.ts`, 2026-09-10)
+lives in the Forge, behind SOLO PvE, so a player who saved on floor 3 last night sees a lobby that
+says nothing about it. A saved run is device-local and does not travel with an account
+(`design/16`), which makes its visibility a lobby question and not an account one.
+
+### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
+
+`MainMenu.setAccountEntry(boolean)` fuses two decisions that come apart at the first host that has
+an identity and forbids a logout — which is every federated host (`design/16`'s platform matrix).
+The split to make when this is next touched: the HOST decides whether the chip is interactive, the
+SESSION decides what it says, and a host that is still resolving a silent login renders a
+placeholder rather than the word "guest" (the `identityGate` already holds boot for exactly that
+window; the chip is the part that does not know about it yet). A restored-but-not-yet-revalidated
+session must look **identical** to a confirmed one — the player is not being asked to care that we
+are checking.
+
 ## HUD (in-match)
 
 Lives in the `ui` layer (`01`, topmost). Renders each frame from `state` + `events`. ✅ **The HUD is composed widgets** (`client/src/game/ui/HudView.ts`) — a `PlayerCard` (character portrait + name + HP/shield/energy bars), a `WeaponCard` (real weapon art + rarity border + rarity/kind/element subtitle + element-tinted damage badge + cooldown sweep), a row of icon-led `StatChip`s, an `AllyRow`, a `SeatRoster` (2026-09-08 — who else is in an online match, by name; see below), and toasts, over one backing `Panel` sized to whichever section is widest, plus the `Minimap` floating independently top-right (shared by both modes since 2026-08-05, see below). It shipped as a monospace `Text` blob, then as two `Text` lines over a panel, and was rebuilt into widgets 2026-08-02 (see "Every value on screen is a widget" below).
