@@ -13,6 +13,11 @@ away something the player had, in two different directions.
 The third (a guest's ladder rating keyed per match) is on the server's ladder path and shares
 nothing with these but a date. It is still open, and `design/16` says so.
 
+> **Closed later the same day** — [volume 74](74-2026-09-17-ladder-identity.md), and by the
+> opposite answer to the one `design/16` proposed. The sentence above is also wrong about the
+> two passes sharing nothing: hole 3 turned out to be hole 2’s shape on another route — a
+> verified reader with no production caller — which is exactly what made both invisible.
+
 ### Hole 1 — logging in discarded this browser's guest progress
 
 The `??` only ever reached the brand-new-account branch, where `pullAccountMeta` returns `null`.
