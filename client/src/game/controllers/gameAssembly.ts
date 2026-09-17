@@ -66,6 +66,7 @@ import { OnlineMatch } from './OnlineMatch';
 import { RunLifecycle } from './RunLifecycle';
 import { ScreenFlow } from './ScreenFlow';
 import { ScreenNav } from './ScreenNav';
+import { AccountPrompt } from '../ui/AccountPrompt';
 import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
 import { savedRunSummary } from '../match/runSaveStore';
@@ -162,11 +163,18 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // process-wide slot, so this costs nothing per render.
   p.forge.savedRun = () => savedRunSummary();
 
+  // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the
+  // expired-session notice. Its `size` thunk is `ScreenNav.fit()`'s own body, because both
+  // have to lay out in the same MENU DESIGN space every screen does.
+  const accountPrompt = new AccountPrompt({ size: () => p.layers.menu.fit(host.screenSize()) });
+
   p.layers.menu.mount(
     [p.mainMenu.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,
       p.screens.view, p.settingsScreen.view, p.pauseMenu.view,
       partyScreen.view, loginScreen.view, storeScreen.view],
-    [p.settingsBtn.view], // floats OVER a screen — see MenuLayer.mount for why that matters
+    // Both float OVER a screen — see MenuLayer.mount for why that matters. The prompt is
+    // last of all: it is modal, so it has to be above the SETTINGS button too.
+    [p.settingsBtn.view, accountPrompt.view],
   );
 
   const screenFlow = new ScreenFlow({
@@ -186,7 +194,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
     forge: p.forge, storeScreen, screens: p.screens, settingsScreen: p.settingsScreen,
-    pauseMenu: p.pauseMenu,
+    pauseMenu: p.pauseMenu, accountPrompt,
     screenSize: () => host.screenSize(),
     settings: () => host.settingsState(),
     connect: (signal) => net.connect(signal),
@@ -214,7 +222,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   });
 
   net = new OnlineMatch({
-    run: p.run, nav, hud: p.hud, matchmaking: p.matchmaking,
+    run: p.run, nav, hud: p.hud, matchmaking: p.matchmaking, accountPrompt,
     endRunAsDefeat: (title, body) => host.endRunAsDefeat(title, body),
   });
 

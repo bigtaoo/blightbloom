@@ -202,6 +202,14 @@ export const zh: Translations<typeof en> = {
       '可选。注册会在我们的服务器上保存你的用户名、密码哈希和游戏进度。不注册也能玩，不会上传任何数据。',
     portalDataNotice: '当你在 CrazyGames 上处于登录状态时，我们会在服务器上保存你的 CrazyGames 名称和游戏进度。',
     privacyLink: '隐私政策',
+    mergeTitle: '要把访客进度带过来吗？',
+    mergeBody:
+      '本设备上有 {username} 没有的访客进度：{materials} 个材料、{blueprints} 张蓝图、{characters} 个角色。每台设备只会询问一次。',
+    mergeUseAccount: '用账号的',
+    mergeCombine: '两边合并',
+    sessionExpiredTitle: '已退出登录',
+    sessionExpiredBody: '保存的登录状态已失效，你现在以访客身份游玩。本设备上的进度未受影响——重新登录即可同步。',
+    noticeDismiss: '好',
   },
   party: {
     title: '组队',

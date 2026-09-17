@@ -28,7 +28,11 @@ export const CORS = {
   // real request before it's even sent (fails as a bare "Failed to fetch", no server
   // log at all — caught live via claude-in-chrome, not by any unit test, since node's
   // fetch/undici and curl don't enforce browser CORS preflight rules).
-  'access-control-allow-headers': 'content-type, authorization',
+  // 'x-guest-id' (design/16 hole 1, 2026-09-17) — `GET /account/meta` reads this browser's
+  // guest install id out of it to answer whether the one-time device merge is still on
+  // offer. Listed here for exactly the reason `authorization` above is, and it is the same
+  // failure if it is not: the preflight rejects the request before it is sent.
+  'access-control-allow-headers': 'content-type, authorization, x-guest-id',
   /**
    * How long a browser may reuse this preflight result. Found live, 2026-09-09: every
    * `POST /client/events` in a real session was preceded by its own `OPTIONS`, because

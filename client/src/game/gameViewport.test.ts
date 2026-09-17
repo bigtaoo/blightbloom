@@ -189,14 +189,18 @@ describe('Game — menu screens are laid out in design space and land inside the
   it('the forge SETTINGS button paints above every screen, not under one', () => {
     const { inner } = newGame(WECHAT.w, WECHAT.h);
     inner.nav.showForge();
-    // Above EVERY screen, not just the forge — it is the only floating widget in the layer
-    // today, so "last child" is the invariant. A second float should extend this list, not
-    // relax it to "above the one screen we happened to check" (the mutant that hid here:
-    // moving the button into the screens array, but not last, still cleared a forge-only
-    // check while leaving it under the party/login screens).
+    // Above EVERY screen, not just the forge. It was the only floating widget in the layer
+    // until 2026-09-17, when the account prompt (design/16 holes 1 and 2) became the second
+    // one — so the invariant is stated as "above every SCREEN, below every later float"
+    // rather than relaxed to "above the one screen we happened to check" (the mutant that
+    // hid here: moving the button into the screens array, but not last, still cleared a
+    // forge-only check while leaving it under the party/login screens).
     const menu = inner.layers.menu.children;
-    expect(menu.indexOf(inner.settingsBtn.view)).toBe(menu.length - 1);
+    const FLOATS = 2; // settingsBtn, then the modal account prompt
+    expect(menu.indexOf(inner.settingsBtn.view)).toBe(menu.length - FLOATS);
     expect(menu.indexOf(inner.settingsBtn.view)).toBeGreaterThan(menu.indexOf(inner.forge.view));
+    // ...and the modal is above the button too, since it has to swallow taps meant for it.
+    expect(menu.length - 1).toBeGreaterThan(menu.indexOf(inner.settingsBtn.view));
     expect(inner.settingsBtn.view.visible).toBe(true);
     const b = inner.settingsBtn.view.getBounds();
     expect(b.maxX).toBeLessThanOrEqual(WECHAT.w + SLACK);

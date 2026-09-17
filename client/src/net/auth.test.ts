@@ -2,9 +2,16 @@
  * Client auth calls (design/16-accounts.md). Fake-fetch driven, mirrors
  * party.test.ts's style — the server's own AuthService.test.ts owns the real
  * register/login/session behavior; this just pins the client's request/response shapes.
+ *
+ * `fetchMe` and `fetchAccountMeta` were tested here until 2026-09-17 and are gone with the
+ * functions: both had zero production callers, which is what made design/16's hole 2 — a
+ * stored token nothing ever verified — invisible. Their cases passing was never evidence
+ * that anything checked a session, and that is the shape worth remembering: a green test
+ * over a function nobody calls measures the test, not the product. The check that replaced
+ * them is `net/entitlements.ts`'s 401-as-a-value, on a route the boot path already calls.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { register, login, portalLogin, logout, changePassword, fetchMe, fetchAccountMeta, saveAccountMeta } from './auth';
+import { register, login, portalLogin, logout, changePassword, claimGuestMerge, saveAccountMeta } from './auth';
 
 const RESULT = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -78,30 +85,6 @@ describe('auth client calls', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ token: 'tok-1', oldPassword: 'old', newPassword: 'newpassword1' });
   });
 
-  it('fetchMe sends a bearer token and returns the account', async () => {
-    const fetch = fakeFetch(200, { accountId: 'acct-1', username: 'alice' });
-    const me = await fetchMe('http://mm', 'tok-1', { fetch });
-    expect(me).toEqual({ accountId: 'acct-1', username: 'alice' });
-    const [, init] = fetch.mock.calls[0]!;
-    expect((init as RequestInit).headers).toMatchObject({ authorization: 'Bearer tok-1' });
-  });
-
-  it('fetchMe returns null on a 401', async () => {
-    const fetch = fakeFetch(401, { error: 'invalid or expired session' });
-    expect(await fetchMe('http://mm', 'bogus', { fetch })).toBeNull();
-  });
-
-  it('fetchAccountMeta returns the stored data', async () => {
-    const fetch = fakeFetch(200, { data: { unlockedBlueprints: ['a'] } });
-    const data = await fetchAccountMeta('http://mm', 'tok-1', { fetch });
-    expect(data).toEqual({ unlockedBlueprints: ['a'] });
-  });
-
-  it('fetchAccountMeta returns null for a brand-new account', async () => {
-    const fetch = fakeFetch(200, { data: null });
-    expect(await fetchAccountMeta('http://mm', 'tok-1', { fetch })).toBeNull();
-  });
-
   it('saveAccountMeta posts the data with a bearer token', async () => {
     const fetch = fakeFetch(200, { ok: true });
     await saveAccountMeta('http://mm', 'tok-1', { unlockedBlueprints: ['a'] }, { fetch });
@@ -109,6 +92,37 @@ describe('auth client calls', () => {
     expect(url).toBe('http://mm/account/meta');
     expect((init as RequestInit).headers).toMatchObject({ authorization: 'Bearer tok-1' });
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ data: { unlockedBlueprints: ['a'] } });
+  });
+});
+
+/**
+ * `claimGuestMerge` (design/16 hole 1) — the one-time device merge's idempotency key.
+ *
+ * Its whole contract is the boolean, and the two arms of it mean opposite things to the
+ * caller: `true` is "apply the merge you just offered", `false` is "another tab answered
+ * first, take the account's state unchanged". A call that reported `true` twice would add a
+ * material bank the account already holds, with nothing afterwards able to tell.
+ */
+describe('claimGuestMerge', () => {
+  it('posts the guest id with a bearer token, and returns the claim', async () => {
+    const fetch = fakeFetch(200, { claimed: true });
+    expect(await claimGuestMerge('http://mm', 'tok-1', 'install-7', { fetch })).toBe(true);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe('http://mm/account/guest-merge');
+    expect((init as RequestInit).headers).toMatchObject({ authorization: 'Bearer tok-1' });
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ guestId: 'install-7' });
+  });
+
+  it('returns false — not an error — when the device was already claimed', async () => {
+    // A second tab, or a second login on the same browser. Ordinary, and the caller's
+    // correct response to it is to keep the account's state rather than to retry.
+    const fetch = fakeFetch(200, { claimed: false });
+    expect(await claimGuestMerge('http://mm', 'tok-1', 'install-7', { fetch })).toBe(false);
+  });
+
+  it('rejects on a 401 rather than reporting an unclaimed device as claimed', async () => {
+    const fetch = fakeFetch(401, { error: 'invalid or expired session' });
+    await expect(claimGuestMerge('http://mm', 'bogus', 'install-7', { fetch })).rejects.toThrow(/invalid/);
   });
 });
 
@@ -122,14 +136,9 @@ function fakeFetchNonJsonBody(status: number) {
 }
 
 describe('auth client calls — non-JSON error bodies (a proxy 502/504 HTML page, not a real API response)', () => {
-  it('fetchMe throws a clean Error instead of an unhandled SyntaxError', async () => {
+  it('claimGuestMerge throws a clean Error instead of an unhandled SyntaxError', async () => {
     const fetch = fakeFetchNonJsonBody(502);
-    await expect(fetchMe('http://mm', 'tok-1', { fetch })).rejects.toThrow(/auth request failed \(502\)/);
-  });
-
-  it('fetchAccountMeta throws a clean Error instead of an unhandled SyntaxError', async () => {
-    const fetch = fakeFetchNonJsonBody(504);
-    await expect(fetchAccountMeta('http://mm', 'tok-1', { fetch })).rejects.toThrow(/auth request failed \(504\)/);
+    await expect(claimGuestMerge('http://mm', 'tok-1', 'install-7', { fetch })).rejects.toThrow(/auth request failed \(502\)/);
   });
 
   it('every other auth call already had this guard via call() — confirms the same shape applies here too', async () => {

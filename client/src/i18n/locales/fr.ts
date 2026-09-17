@@ -202,6 +202,15 @@ export const fr: Translations<typeof en> = {
       'Facultatif. L’inscription enregistre votre nom d’utilisateur, une empreinte du mot de passe et votre progression sur notre serveur. Sans compte, rien n’est envoyé.',
     portalDataNotice: 'Lorsque vous êtes connecté sur CrazyGames, nous conservons votre nom CrazyGames et votre progression sur notre serveur.',
     privacyLink: 'Politique de confidentialité',
+    mergeTitle: 'REPRENDRE LA PROGRESSION INVITÉ ?',
+    mergeBody:
+      "Cet appareil contient une progression invité que {username} n'a pas : {materials} matériaux, {blueprints} plans, {characters} personnages. La question n'est posée qu'une fois par appareil.",
+    mergeUseAccount: 'UTILISER LE COMPTE',
+    mergeCombine: 'COMBINER LES DEUX',
+    sessionExpiredTitle: 'DÉCONNECTÉ',
+    sessionExpiredBody:
+      "Votre session enregistrée n'est plus valide, vous jouez donc en tant qu'invité. La progression de cet appareil est intacte — reconnectez-vous pour la synchroniser.",
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'ESCOUADE',

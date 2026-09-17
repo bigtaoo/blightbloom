@@ -22,12 +22,45 @@
  *   brand-new account's local state before its first blob exists).
  *
  * A guest never reaches either route — no session, no row, byte-identical to today.
+ *
+ * ## The one-time device merge (design/16 hole 1, closed 2026-09-17)
+ *
+ * `POST /account/guest-merge` is the third route here, and it stores no progress at all: it
+ * CLAIMS a guest install id against this account, atomically, and answers whether the claim
+ * was this caller's to make. The client does the merging (it owns `MetaState`'s shape and
+ * always has); what it cannot do on its own is decide, exactly once across every tab and
+ * device, whether this browser has already been through the question. `accounts
+ * .mergedGuestIds` is that decision, and `GET /account/meta` reports it back as the single
+ * boolean `guestMerged` so the confirmation screen is offered once and never again.
+ *
+ * The guest id reaches `GET` as the `x-guest-id` REQUEST HEADER rather than a query
+ * parameter, because a query string is logged by every proxy in front of this and an install
+ * id is the analytics cohort key (design/21 A2). `routes/http.ts`'s `CORS` block lists the
+ * header for the same reason it lists `authorization` — a browser refuses the request at
+ * preflight otherwise, with no server log at all.
  */
+import type { IncomingMessage } from 'node:http';
 import type { AccountsStore } from '../db';
 import type { AuthService } from '../AuthService';
 import { readJsonBody, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
 import { EntitlementService, applyOwnership, stripOwnership } from '../EntitlementService';
+
+/** The `GET /account/meta` header carrying this browser's guest install id. */
+export const GUEST_ID_HEADER = 'x-guest-id';
+
+/** Longer than a UUID and than `identity.ts`'s `p-{base36}-{8}` fallback, short enough that
+ *  a junk value can never become a large array element. */
+const MAX_GUEST_ID = 128;
+
+function readGuestId(req: IncomingMessage): string | null {
+  const raw = req.headers[GUEST_ID_HEADER];
+  // node lowercases header names but a repeated header arrives as an array — take neither
+  // side rather than guessing which browser sent which.
+  const value = typeof raw === 'string' ? raw : null;
+  if (!value || value.length > MAX_GUEST_ID) return null;
+  return value;
+}
 
 export interface AccountRouteDeps {
   auth: AuthService;
@@ -50,6 +83,14 @@ export const getMeta: RouteHandler<AccountRouteDeps> = async (req, res, _url, de
   const entitlements = entitlementsOf(deps);
   const rows = await entitlements.list(session.accountId);
   const row = await deps.store.metaState.findOne({ _id: session.accountId });
+  const guestId = readGuestId(req);
+  // `true` when the caller sent no id: it means "offer nothing", which is the answer that
+  // cannot lose data. A client that did not ask has no merge in flight, and the only way to
+  // MOVE this to false is to name an id the account has never been offered.
+  const account = guestId
+    ? await deps.store.accounts.findOne({ _id: session.accountId }, { projection: { mergedGuestIds: 1 } })
+    : null;
+  const guestMerged = guestId === null || (account?.mergedGuestIds ?? []).includes(guestId);
   // `data: null` still means "this account has never saved meta state" — unchanged, and
   // load-bearing: the client answers it by pushing its own (possibly guest-accumulated)
   // local state up rather than overwriting it with nothing. Entitlements ride alongside
@@ -63,6 +104,7 @@ export const getMeta: RouteHandler<AccountRouteDeps> = async (req, res, _url, de
     // `orderId` is deliberately not exposed: it addresses a row in billsvc's private
     // database and the client has no use for it.
     entitlements: rows.map((r) => ({ sku: r.sku, source: r.source, grantedAt: r.grantedAt })),
+    guestMerged,
   });
 };
 
@@ -78,4 +120,36 @@ export const postMeta: RouteHandler<AccountRouteDeps> = async (req, res, _url, d
     { upsert: true },
   );
   send(res, 200, { ok: true });
+};
+
+/**
+ * Claim this browser's guest install id against the logged-in account — the idempotency key
+ * of the one-time device merge (see the header). Writes no progress: the client's own
+ * `POST /account/meta` does that, after this has told it the claim was its to make.
+ *
+ * The claim is one conditional update, never a read followed by a write. Two tabs finishing
+ * the confirmation screen at the same moment is the case that matters, and a
+ * find-then-insert would let both of them merge — which double-counts the material bank,
+ * because the second merge adds a local bank that the first has already folded into the
+ * account. `modifiedCount` is the only thing here that distinguishes the winner from the
+ * loser, and it is the database's answer rather than ours. This is the same shape design/19
+ * §4's AMENDMENT 2 requires of billing and `AuthService.register` uses for a taken username.
+ *
+ * `{ claimed: false }` is a completely ordinary answer, not an error: it means this device
+ * has already been through the question, on this tab's own earlier visit or on another's.
+ * The caller's correct response to it is to take the account's state unchanged.
+ */
+export const postGuestMerge: RouteHandler<AccountRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
+  if (!session) return send(res, 401, { error: 'invalid or expired session' });
+  const body = await readJsonBody(req);
+  const guestId = (body as { guestId?: unknown })?.guestId;
+  if (typeof guestId !== 'string' || !guestId || guestId.length > MAX_GUEST_ID) {
+    return send(res, 400, { error: 'guestId required' });
+  }
+  const result = await deps.store.accounts.updateOne(
+    { _id: session.accountId, mergedGuestIds: { $ne: guestId } },
+    { $addToSet: { mergedGuestIds: guestId } },
+  );
+  send(res, 200, { claimed: result.modifiedCount === 1 });
 };

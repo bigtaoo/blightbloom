@@ -21,7 +21,7 @@ import { createWebMetaStore, migrate, type MetaStore } from './store';
 import type { MetaState } from './MetaState';
 import { getSession } from '../net/session';
 import { saveAccountMeta } from '../net/auth';
-import { entitlementOwnership, fetchAccountState, type Entitlement } from '../net/entitlements';
+import { ACCOUNT_UNAUTHORIZED, entitlementOwnership, fetchAccountState, type Entitlement } from '../net/entitlements';
 
 export function createAccountSyncMetaStore(getBaseUrl: () => string): MetaStore {
   const local = createWebMetaStore();
@@ -65,10 +65,43 @@ export function createAccountSyncMetaStore(getBaseUrl: () => string): MetaStore 
  * Omitting it is exactly the pre-8.2 behaviour.
  */
 export async function pullAccountMeta(baseUrl: string, token: string, local?: MetaState): Promise<MetaState | null> {
-  const state = await fetchAccountState(baseUrl, token);
-  if (state.data !== null) return migrate(state.data);
-  if (!local || state.entitlements.length === 0) return null;
-  return mergeEntitlements(local, state.entitlements);
+  const snapshot = await pullAccountSnapshot(baseUrl, token, { local });
+  // A 401 is an ordinary failure to THESE callers — `StorePurchase.refreshOwnership` and the
+  // store's assembly, both of which already have a player-facing line for "could not read
+  // your ownership back" and neither of which is the boot-time session check. Only
+  // `syncMetaWithSession` acts on the distinction, and it calls `pullAccountSnapshot` direct.
+  if (snapshot.status === 'unauthorized') throw new Error('account session rejected (401)');
+  return snapshot.meta;
+}
+
+/**
+ * What a login needs to know, in one request: the account's state, and whether this device
+ * has already been through the one-time guest-merge question (design/16 holes 1 and 2,
+ * 2026-09-17).
+ *
+ * `pullAccountMeta` above is this function with the 401 turned back into a throw, which is
+ * the older and simpler contract every other caller still wants. The split exists because
+ * exactly one caller must tell "the stored session is dead" from "the request failed" — and
+ * conflating them is what let an expired session paint as `Hi, {name}` for thirty days.
+ *
+ * `guestId` is passed only by that caller. Omitting it makes the server answer
+ * `guestMerged: true`, i.e. offer nothing, which is the answer that cannot lose data.
+ */
+export type AccountSnapshot =
+  | { status: 'unauthorized' }
+  | { status: 'ok'; meta: MetaState | null; guestMerged: boolean };
+
+export async function pullAccountSnapshot(
+  baseUrl: string,
+  token: string,
+  opts: { local?: MetaState; guestId?: string } = {},
+): Promise<AccountSnapshot> {
+  const state = await fetchAccountState(baseUrl, token, { guestId: opts.guestId });
+  if (state === ACCOUNT_UNAUTHORIZED) return { status: 'unauthorized' };
+  const { local } = opts;
+  if (state.data !== null) return { status: 'ok', meta: migrate(state.data), guestMerged: state.guestMerged };
+  const meta = !local || state.entitlements.length === 0 ? null : mergeEntitlements(local, state.entitlements);
+  return { status: 'ok', meta, guestMerged: state.guestMerged };
 }
 
 /** `local` plus everything the server says this account owns. Additive, never subtractive

@@ -36,8 +36,9 @@
  *   POST /auth/portal       { token }  (a CrazyGames user token) -> { accountId, username, token } | 401/503
  *   GET  /auth/me           (Bearer token)                 -> { accountId, username } | 401
  *   POST /auth/change-password { token, oldPassword, newPassword } -> { ok: true } | 400/401
- *   GET  /account/meta      (Bearer token)  -> { data: MetaState | null, entitlements } | 401
+ *   GET  /account/meta      (Bearer token, x-guest-id) -> { data: MetaState | null, entitlements, guestMerged } | 401
  *   POST /account/meta      (Bearer token) { data }        -> { ok: true } | 400/401    routes/account
+ *   POST /account/guest-merge (Bearer token) { guestId }   -> { claimed } | 400/401
  *   GET  /store/skus        (Bearer token)  -> { skus } | 401/502                       routes/store
  *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502
  *   GET  /store/order/:id   (Bearer token)  -> { order } | 401/404/502
