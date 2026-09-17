@@ -116,6 +116,58 @@ The rest:
 
 Client 6547 green, server 1863 green, the 12 logic-consistency gates green.
 
+### The follow-up pass: asking what tests were missing, and being told
+
+The pass above shipped, and the next question was whether anything was left untested. The
+answer came from measuring rather than reading, and it was not the answer expected.
+
+**A mutation battery over the change killed 12 of 12.** Ten mutants across both sides of the
+new wire (the body fallback restored, the session identity dropped, the bearer scheme changed,
+the header removed, the scheme removed, the session default removed, an `accountId` put back in
+the body, `canSignIn` inverted, each of the notice's two gates deleted), plus two built
+specifically to survive (a renamed session-token field, a `/find` reading a header nobody
+sends). No survivors. But the table has a shape worth keeping:
+
+| | client unit suites | server suites |
+| --- | --- | --- |
+| every SERVER mutant | green | RED |
+| every CLIENT mutant | RED | green |
+
+Each half tests its own side completely and neither can see the other disagree — which is the
+structure that produced the original bug, still standing after it was fixed. It is survivable
+here only because both sides hardcode the same literals; nothing *ties* them.
+
+**The real gap was somewhere else, and it had already shipped a defect.** `results.guestNotRanked`
+went out at **878px in Spanish and 809px in Polish against a 760px design width**, through green
+runs of every suite in the repo. Two independent blindnesses had to line up for that, and both
+are now closed:
+
+1. **The result screen's fit fixture was English placeholder text.** Both `Screens` entries in
+   `viewportFit.test.ts` were built with `['line one', 'line two']`, so the eight-locale sweep at
+   the bottom of that file ran eight times over a fixture that could not change with the locale.
+   They are built from the shipped `RunOutcome` now — all four outcomes — rather than from a
+   hand-written list, because a list is a second copy of the composition and would still measure
+   the old number of lines after a ninth is added.
+2. **The locale axis and the width-bound axis were never crossed.** The locale sweep ran only at
+   the mini-game's 844x390, which is the tightest real viewport in HEIGHT — and at that aspect
+   the fit is height-bound, so the design space is ~1386px wide. Every locale had ~626px of
+   horizontal slack it does not have on a portrait phone, where width binds and the design space
+   is exactly `MENU_DESIGN_W`. `VIEWPORTS` has carried two width-binding entries since a
+   mutation run found that hole, and the sweep at the top of the file runs them — in English
+   only. So each axis was covered, and the product of the two was not. The locale sweep runs at
+   both aspects now.
+
+**The control is the part worth copying.** Fixing (1) alone left the suite green against the
+878px string — a fixture change that looks like an improvement and bites nothing, which is
+exactly what a mutation battery exists to expose. Only after (2) did restoring the long string
+turn the run red, on precisely the two arena screens, at `minX = -58.9`. *Change the fixture,
+then put the bug back and watch it fail* — a green run after a test edit says nothing about
+whether the edit did anything.
+
+The strings were shortened to fit: the widest is now Spanish at 593px against 760, and the
+narrowest margin any locale has is 167px rather than 8px. Russian and Italian had been sitting
+at 752px — inside the fake text-metric's own approximation error, i.e. passing by luck.
+
 ### Still open, and named here so it is not rediscovered
 
 **The player cannot see their rating.** That is now the largest thing missing from the ladder: the

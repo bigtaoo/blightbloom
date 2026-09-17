@@ -227,7 +227,7 @@ describe('RunOutcome — PvP arena victory/elimination', () => {
       // player on the default `web` host, which is exactly when it shows. Its own block
       // below owns the cases; it is spelled out here because this is an EXACT-equality
       // assertion, and letting it drift to `toContain` would hide the line appearing at all.
-      lines: ['1st place of 4', 'Time 1:05', `Score ${SCORE.victory}`, 'Not ranked as a guest. Sign in to be ranked.'],
+      lines: ['1st place of 4', 'Time 1:05', `Score ${SCORE.victory}`, 'Not ranked as a guest. Sign in to rank.'],
     });
   });
 
@@ -281,7 +281,7 @@ describe('RunOutcome — PvP arena victory/elimination', () => {
  * their rank is being thrown away when it is not.
  */
 describe('RunOutcome — the guest ladder notice', () => {
-  const NOTICE = 'Not ranked as a guest. Sign in to be ranked.';
+  const NOTICE = 'Not ranked as a guest. Sign in to rank.';
 
   /** An in-memory SessionStore — `setSession`'s default reads `localStorage`, which the
    *  node test environment does not have. */
@@ -343,7 +343,7 @@ describe('RunOutcome — the guest ladder notice', () => {
     setLocale('zh');
     const lines = arenaLoss();
     expect(lines).not.toContain(NOTICE);
-    expect(lines[lines.length - 1]).toBe('访客对局不计入天梯。登录后开始记分。');
+    expect(lines[lines.length - 1]).toBe('访客不计天梯。登录后开始记分。');
   });
 });
 
