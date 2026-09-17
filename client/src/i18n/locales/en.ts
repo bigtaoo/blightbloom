@@ -297,6 +297,7 @@ export const en = {
     materialsLost: 'All {count} carried materials were lost',
     placeOf: '1st place of {total}',
     placedOfTotal: 'Placed {place}/{total}',
+    guestNotRanked: 'Not ranked as a guest. Sign in to be ranked.',
     connectionLostTitle: 'CONNECTION LOST',
     connectionLostBody: "Couldn't reconnect to the match.",
   },
