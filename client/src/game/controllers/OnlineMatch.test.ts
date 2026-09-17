@@ -508,6 +508,26 @@ describe('the one-time device merge (design/16 hole 1)', () => {
     expect(t.run.meta.materialBank).toEqual({ mat_fire: 10, mat_poison: 1 });
   });
 
+  it('PERSISTS the merged state, rather than only holding it in memory', async () => {
+    // The failure this pins is the worst one available here, because it is silent AND
+    // permanent: `setMeta` is what mirrors into localStorage and pushes to `/account/meta`,
+    // and the device has just spent its one claim. A merge that updated `run.meta` without
+    // going through the store would look perfect for the rest of the session and be gone on
+    // the next login, with `guestMerged` now true so it could never be offered again.
+    //
+    // Every other case in this suite reads `t.run.meta`, which a plain field assignment
+    // would satisfy — so none of them can see this.
+    const saves: MetaState[] = [];
+    const t = firstLogin();
+    (t.run.store as { save: (m: MetaState) => void }).save = (m) => saves.push(m);
+    t.accountPrompt.askGuestMerge.mockResolvedValue('merge');
+
+    await t.net.syncMetaWithSession();
+    expect(saves).toHaveLength(1);
+    expect(saves[0]!.materialBank).toEqual({ mat_fire: 15, mat_poison: 1 });
+    expect(saves[0]).toBe(t.run.meta);
+  });
+
   it('asks nothing on the brand-new-account branch — local state is pushed up whole', async () => {
     // `data: null` on the server. There is no other side to merge with, so the question never
     // arises and the guest's whole state becomes the account's first save.

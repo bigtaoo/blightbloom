@@ -78,7 +78,9 @@ interface GameInternals {
     pause: () => void;
     openSettings: () => void;
     relayout: () => void;
+    deps: { accountPrompt: object };
   };
+  net: { deps: { accountPrompt: object } };
 }
 
 function newGame(w: number, h: number) {
@@ -97,6 +99,37 @@ function newGame(w: number, h: number) {
   game.start();
   return { game, screen, inner: game as unknown as GameInternals };
 }
+
+/**
+ * The account prompt is wired by IDENTITY, not by shape (design/16 holes 1 and 2).
+ *
+ * `AccountPrompt` is reached from three places that are assembled independently
+ * (`gameAssembly.ts`): it is mounted into the menu layer, handed to `ScreenNav` for the
+ * resize hook, and handed to `OnlineMatch` as the thing it asks its two questions through.
+ * Every one of those three is satisfied by a DIFFERENT instance — the types all check, every
+ * unit suite stays green, and what a player gets is a modal that never appears on screen
+ * (asked on an unmounted copy) or one that never re-lays out on a rotation.
+ *
+ * That is the half-moved-assembly shape: the pieces are all present and all correct, and the
+ * wiring between them is what is wrong, so nothing that tests a piece can see it. Only an
+ * assembled `Game` can, and identity — not behaviour — is the assertion that catches it.
+ */
+describe('the account prompt is ONE object, reached three ways', () => {
+  it('the mounted view, ScreenNav\'s relayout hook and OnlineMatch\'s prompt are the same instance', () => {
+    const { inner } = newGame(WECHAT.w, WECHAT.h);
+    const asked = inner.net.deps.accountPrompt as { view: Container };
+    const relaidOut = inner.nav.deps.accountPrompt;
+    const menu = inner.layers.menu.children;
+
+    expect(relaidOut, 'ScreenNav resizes a different prompt than OnlineMatch opens').toBe(asked);
+    // ...and the thing both of them hold is the thing actually on the display tree. A prompt
+    // that is asked but never mounted resolves its promise from a panel nobody can see, so
+    // the player's only way out of the merge question is to close the tab.
+    expect(menu.indexOf(asked.view), 'the prompt OnlineMatch opens is not in the menu layer').toBeGreaterThanOrEqual(0);
+    // Last of all, because it is modal: above every screen AND above the SETTINGS button.
+    expect(menu.indexOf(asked.view)).toBe(menu.length - 1);
+  });
+});
 
 /** Union of every visible leaf's GLOBAL (post-scale, real-pixel) bounds under `root`. */
 function globalContentBounds(root: Container) {

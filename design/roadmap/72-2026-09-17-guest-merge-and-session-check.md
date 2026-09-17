@@ -142,6 +142,51 @@ Three notes on where the cases went, because the placement was the judgement:
   locales — two of them are whole sentences rather than the one-word verbs most rows carry — and
   `viewportFit` checks both modes against a 390 px-tall landscape phone.
 
+### Three gaps the first round of tests left, found by asking
+
+A pass over the suite afterwards — *what can still break with all of this green?* — found three,
+and each one is a different way for a green test to be about nothing.
+
+**1. Nothing met the other half of the wire.** `routes.account.test.ts` builds a request by hand;
+the client suites answer their own `fetch` with whatever they like. Four literals live on both
+sides — `x-guest-id`, the `guestId` body key, `claimed`, `guestMerged` — and each suite reads the
+value it writes. `accountMerge.contract.http.test.ts` drives the SHIPPED client
+(`@dd/net/auth`, `@dd/net/entitlements` through the alias) against a real matchsvc, the same shape
+`store.proxy.http.test.ts` already uses.
+
+The header of that file first claimed the unit suites were blind to all four renames. **Measured,
+they are not, and the claim was corrected to the table instead**:
+
+| one-sided rename on the server | client unit suites | `routes.account.test.ts` | contract |
+| --- | --- | --- | --- |
+| `guestMerged` → `merged` | green | RED | RED |
+| `claimed` → `ok` | green | RED | RED |
+| body `guestId` → `installId` | green | RED | RED |
+| header `x-guest-id` → `x-install-id` | green | **green** | RED |
+
+The client column is green on all four, which is the durable finding: no client suite can ever
+notice the server disagreeing, because its `fetch` is a `vi.fn()`. And the last row is the one
+that earns the file on its own — the server's suite imports `GUEST_ID_HEADER` from the source, so
+renaming the constant renames both sides of its own assertion and it stays green over a header no
+browser will ever send. **A test that reads the value it writes cannot catch a rename of that
+value.**
+
+**2. Nothing asserted the merged state was PERSISTED.** Every case read `run.meta`, which a plain
+field assignment satisfies — so `d.run.setMeta(next)` becoming `d.run.meta = next` was invisible,
+and it is the worst failure available here: the merge looks perfect for the rest of the session,
+is gone on the next login, and the device has already spent its one claim so it can never be
+offered again. Confirmed by making exactly that edit and watching the suite go red.
+
+**3. Nothing asserted the prompt is ONE object.** `AccountPrompt` is reached from three places
+assembled independently — mounted into the menu layer, handed to `ScreenNav` for the resize hook,
+handed to `OnlineMatch` as the thing it asks. Three different instances type-check and leave every
+unit suite green, and what a player gets is a modal asked on an unmounted copy: a question with no
+answer but closing the tab. It is the half-moved-assembly shape, only an assembled `Game` can see
+it, and **identity rather than behaviour is the assertion** — `gameViewport.test.ts` now pins that
+the view `OnlineMatch` opens is the one in the layer and the one `ScreenNav` relayouts.
+
+### Two existing guards had something to say
+
 Two existing guards had something to say about the new file, and both were right. `AccountPrompt`
 became the **second** floating widget in the menu layer, and `gameViewport.test.ts` asserted the
 SETTINGS button was the last child — its own comment already said a second float should extend
@@ -152,14 +197,34 @@ regex that happens to match.
 
 ### Numbers
 
-Client 6,463 tests green (6,450 before this pass's own additions landed in the count), server
-1,839, coverage 97.73%/93.30% client, 98.58%/97.73% server — both gated halves still well clear
-of 90/90. `tsc --noEmit` clean on both workspaces; the 500-line gate reports no new violations.
+Client 6,452 tests green, server 1,845, engine 1,599. Coverage 97.73%/93.30% client,
+97.71%/93.77% engine, 98.58%/97.73% server — every gated half well clear of 90/90.
+`tsc --noEmit` clean on both workspaces; the 500-line, doc-path, roadmap-index and
+WeChat-package gates all pass.
+
+Eight reverts in total, eight red runs: the six on the fixes themselves, plus the two on the
+gaps found afterwards. The four one-sided renames above are a ninth through twelfth, and those
+were run to *measure* a claim rather than to confirm one — which is why the claim changed.
 
 ### Still open
 
-Hole 3 (a guest's ladder rating keyed `seat:{roomId}:{seatIdx}`, so nothing accumulates) and all
-of volume 70's P1 front-door work — co-op's missing bot backfill, PvP's 30-second wait, CONTINUE
-RUN's absence from the lobby — which other passes on the same day are taking.
+**A residual of this pass's own, found while auditing and deliberately not fixed here.** The claim
+is spent BEFORE the merged blob is pushed: `resolveAccountMeta` claims, returns the merged state,
+and `setMeta`'s push to `/account/meta` is fire-and-forget. If that one push fails — the window is
+a single round trip on a connection that just worked — the device is recorded as merged while the
+account still holds the un-merged blob, and the next login takes the account's state with
+`guestMerged` now `true`. It is the same loss this pass exists to close, narrowed to a rare
+window, which is exactly the shape worth writing down rather than leaving to be re-found.
+
+The fix is to stop making it two requests: have `POST /account/guest-merge` take the merged blob
+alongside `guestId` and write it in the same handler, guarded by having won the claim, so the
+claim and the blob land together or not at all. The client already computes the merge before it
+claims, so it is a smaller change than it sounds. Not taken here because it is a route-shape
+change and this pass was scoped to the two holes.
+
+Also open: hole 3 (a guest's ladder rating keyed `seat:{roomId}:{seatIdx}`, so nothing
+accumulates) and all of volume 70's P1 front-door work — co-op's missing bot backfill, PvP's
+30-second wait, CONTINUE RUN's absence from the lobby — which other passes on the same day are
+taking.
 
 `net` `ui`
