@@ -22,9 +22,32 @@ import type { Server } from 'node:http';
 import { createMatchsvcServer, type MatchsvcServerOptions } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
 import type { BotClientOptions } from '../src/BotClient';
+import { defaultFlags, type FlagName, type FlagValue, type FlagValues } from '../src/flags/defs';
+import type { FlagClient } from '../src/flags/client';
 import { freshAccounts } from './mongoHarness';
 
 const SECRET = 'queue-test-secret';
+
+/**
+ * A flag client pinned to fixed values, for the cases that must go through the FLAG rather
+ * than through `MatchsvcServerOptions.matchmaker`. The distinction is the whole point of
+ * these: `matchmaker: { coopBotFillMs: 1 }` overrides the wiring and would pass just as
+ * happily if `createMatchsvcServer` had never wired the flag to the matchmaker at all.
+ */
+function pinnedFlags(over: Partial<Record<FlagName, FlagValue>> = {}): FlagClient {
+  // `FlagValues` types each default as a LITERAL (`FLAG_DEFS` is `as const`), so a
+  // `Partial<FlagValues>` cannot express "5_000, but 0 here" — which is the only thing this
+  // helper is for. Widening to `FlagValue` and casting once is the narrow escape.
+  const values = { ...defaultFlags(), ...over } as FlagValues;
+  return {
+    get: <K extends FlagName>(name: K) => values[name],
+    all: () => ({ ...values }),
+    poll: async () => false,
+    start: () => {},
+    stop: () => {},
+    healthy: () => true,
+  };
+}
 
 interface Ctx {
   url: string;
@@ -221,7 +244,7 @@ describe('GET /find/:queueId', () => {
   });
 });
 
-describe('PvP bot backfill — the onBotFill block', () => {
+describe('practice-bot backfill — the onBotFill block', () => {
   it('mints one correctly-signed ticket per EMPTY seat when a pvp queue fills with bots', async () => {
     // 30 s in production, 1 ms here. One real player asks for a 4-seat pvp match, nobody
     // else arrives, and the room forms anyway with three bots.
@@ -256,16 +279,58 @@ describe('PvP bot backfill — the onBotFill block', () => {
     }
   });
 
-  it('never bot-fills a CO-OP queue — that mode expires instead', async () => {
-    // The control for the case above. Without it, `expect(bots).toHaveLength(3)` would pass
-    // just as happily if bot-fill fired for every mode.
-    const ctx = await start({ matchmaker: { pvpBotFillMs: 1, queueTtlMs: 1 } });
+  it('mints an ALLY for the empty seat of a co-op queue (design/10 front-door audit)', async () => {
+    // The route that was dead until 2026-09-17: a lone player taps CO-OP — `playerCount` 2,
+    // `mode` 'coop' — and used to sit until `queueTtlMs` and be told the request expired.
+    //
+    // Driven through the FLAG, not through `matchmaker`, and that is the only reason this
+    // case exists separately from `Matchmaker.test.ts`'s own co-op block: the thing it pins
+    // is one line of `createMatchsvcServer` wiring `match.coopBotBackfillDelayMs` to
+    // `coopBotFillMs`. Delete that line and the matchmaker falls back to its compiled-in
+    // 5 s default, and this test's 20 ms wait is nowhere near it.
+    const ctx = await start({ flags: pinnedFlags({ 'match.coopBotBackfillDelayMs': 0 }) });
     try {
-      const { body } = await post(ctx.url, '/find', { playerCount: 4, mode: 'coop' });
+      const { body } = await post(ctx.url, '/find', { playerCount: 2, mode: 'coop' });
+      expect(body.match).toBeUndefined(); // one player is not a room yet
       await new Promise((r) => setTimeout(r, 20));
+
       const polled = await get(ctx.url, `/find/${body.queueId as string}`);
-      expect(polled.body.status).toBe('expired');
-      expect(ctx.bots).toEqual([]);
+      expect(polled.body.status).toBe('matched');
+      const seat = polled.body.match as Record<string, unknown>;
+      expect(seat.owner).toBe(0); // the human keeps seat 0
+
+      expect(ctx.bots).toHaveLength(1);
+      const ally = ctx.bots[0]!;
+      expect(ally.owner).toBe(1);
+      expect(ally.roomId).toBe(seat.roomId);
+      expect(ally.seed).toBe(seat.seed);
+      expect(ally.playerCount).toBe(2);
+      // The ticket carries `mode: 'coop'`, which is what the gameserver stamps into the
+      // `match_start` the ally reads its brain and its EngineConfig from (BotClient.ts).
+      // A bot minted with the wrong mode joins the right room and simulates a different
+      // game in it.
+      const payload = verifyTicket(ally.token, SECRET, Date.now());
+      expect(payload).toMatchObject({ roomId: seat.roomId, owner: 1, mode: 'coop' });
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('keeps the two modes on SEPARATE flags — a long PvP wait does not slow co-op down', async () => {
+    // The control that the two delays are wired to two different flags rather than one
+    // value read twice. This is the configuration an operator with a real PvP population
+    // would set, and CO-OP's second seat must not inherit its wait.
+    const ctx = await start({
+      flags: pinnedFlags({ 'match.coopBotBackfillDelayMs': 0, 'match.pvpBotBackfillDelayMs': 60_000 }),
+    });
+    try {
+      const coop = await post(ctx.url, '/find', { playerCount: 2, mode: 'coop' });
+      const pvp = await post(ctx.url, '/find', { playerCount: 2, mode: 'pvp' });
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect((await get(ctx.url, `/find/${coop.body.queueId as string}`)).body.status).toBe('matched');
+      expect((await get(ctx.url, `/find/${pvp.body.queueId as string}`)).body.status).toBe('queued');
+      expect(ctx.bots.map((b) => b.owner)).toEqual([1]); // exactly the co-op ally, no PvP bot
     } finally {
       await ctx.close();
     }

@@ -66,7 +66,7 @@ export interface FlagDef<T extends FlagValue = FlagValue> {
    * it today.
    *
    * This field exists because building Phase C found a gap the design did not name: two of
-   * the four flags below are about the CLIENT, and §4's delivery mechanism is an internal
+   * the five flags below are about the CLIENT, and §4's delivery mechanism is an internal
    * `x-internal-key` endpoint that a browser cannot call and must never be able to. For one
    * pass those two had a row in `ops.db`, a control in the console and nothing on the other
    * end, and the state was carried here rather than left to be discovered — because a
@@ -121,12 +121,36 @@ export const FLAG_DEFS = {
     public: true,
   },
   /**
+   * How long a CO-OP queue waits before matchmaking backfills an AI ally. Sibling of the
+   * PvP delay below and deliberately a SEPARATE name rather than one shared "bot backfill
+   * delay": a PvP bot is a lesser opponent, so a deployment with a real population will
+   * want to wait for a human, while a co-op ally is the same `AllyController` the game has
+   * driven the second seat with since ROADMAP 3.1 — waiting for a human buys almost
+   * nothing. One value would force raising CO-OP's wait to raise PvP's.
+   *
+   * Added 2026-09-17 with the backfill itself (design/10's front-door audit): before it,
+   * `Matchmaker.poll` bot-filled only `mode === 'pvp'` and a co-op queue with nobody in it
+   * simply expired.
+   */
+  'match.coopBotBackfillDelayMs': {
+    default: 5_000,
+    help: 'Wait this long before backfilling a co-op queue with an AI ally. Lower = matches sooner, more bots.',
+    range: { min: 0, max: 300_000 },
+    consumer: 'matchsvc (Matchmaker.coopBotFillMs)',
+    delivered: true,
+  },
+  /**
    * How long a PvP queue waits before matchmaking backfills a practice bot. Already a
    * constant somewhere; a flag because the right value depends on how many people are
    * actually queueing, which is a thing that changes without a deploy.
+   *
+   * Default lowered 30_000 → 5_000 on 2026-09-17 (design/10's front-door audit). Thirty
+   * seconds is a matchmaking window, and this deployment has no queue to window over: with
+   * nobody else waiting, the only thing those thirty seconds bought was a longer way of
+   * saying "nobody is here". Raising it is one console edit the day that stops being true.
    */
   'match.pvpBotBackfillDelayMs': {
-    default: 30_000,
+    default: 5_000,
     help: 'Wait this long before backfilling a PvP queue with a practice bot. Lower = matches sooner, more bots.',
     range: { min: 0, max: 300_000 },
     consumer: 'matchsvc (Matchmaker.pvpBotFillMs)',

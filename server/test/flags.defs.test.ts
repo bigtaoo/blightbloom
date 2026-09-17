@@ -32,17 +32,52 @@ import {
 } from '../src/flags/defs';
 
 describe('the allowlist', () => {
-  it('is EXACTLY these four names', () => {
+  it('is EXACTLY these five names', () => {
     // The mechanism (see the file header). If this fails because you added a flag: say in
     // the commit message which of §4's legitimate categories it is, and confirm it is
     // neither an auth decision, nor anything reaching billsvc's dev-stub mode, nor a
     // validation at a trust boundary.
     expect(FLAG_NAMES).toEqual([
       'ads.rewardedOfferEnabled',
+      'match.coopBotBackfillDelayMs',
       'match.pvpBotBackfillDelayMs',
       'match.queueTimeoutMs',
       'ui.maintenanceBanner',
     ]);
+  });
+
+  it('keeps every match timing PRIVATE — a backfill delay names which seat is a bot', () => {
+    // The `public` test is "is the value already visible to the player it reaches"
+    // (FlagDef.public). A backfill delay is not: knowing it turns "my partner joined after
+    // five seconds" into "my partner is the AI ally", which is a thing the game is entitled
+    // to not spell out mid-run. Asserted over a PREFIX rather than the two names, so the
+    // third match timing somebody adds is covered on the day it is added.
+    for (const name of FLAG_NAMES) {
+      if (!name.startsWith('match.')) continue;
+      expect(FLAG_DEFS[name], name).not.toHaveProperty('public', true);
+    }
+  });
+
+  it('answers an EMPTY queue in seconds, not in half a minute (design/10 front-door audit)', () => {
+    // These two numbers are the shipped answer to "nobody else is here", so they are pinned
+    // as numbers rather than left to a comment. The audit that set them: a solo player who
+    // taps PVP SOLO QUEUE on an empty server does not benefit from thirty seconds of
+    // matchmaking — there is no queue to match against, so the wait only spells out the
+    // emptiness at greater length. Five seconds is still long enough for two people who tap
+    // within a few seconds of each other to be paired with each other rather than with bots
+    // (`Matchmaker.test.ts` pins that half), and the flag is how a deployment that grows a
+    // real population raises it without a deploy.
+    //
+    // A test of a default is a test of a DECISION, which is why the reason is written down
+    // here: changing either number should require saying what changed about the population.
+    expect(FLAG_DEFS['match.coopBotBackfillDelayMs'].default).toBe(5_000);
+    expect(FLAG_DEFS['match.pvpBotBackfillDelayMs'].default).toBe(5_000);
+    // And both must stay well under the give-up timeout, or they never fire at all:
+    // `Matchmaker.poll` checks the backfill first, so a delay above this value is what puts
+    // `expired` back in front of a lone player.
+    for (const name of ['match.coopBotBackfillDelayMs', 'match.pvpBotBackfillDelayMs'] as const) {
+      expect(FLAG_DEFS[name].default, name).toBeLessThan(FLAG_DEFS['match.queueTimeoutMs'].default);
+    }
   });
 
   it('has no flag whose NAME is in a category C1 forbids', () => {

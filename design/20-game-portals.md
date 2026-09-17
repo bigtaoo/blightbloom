@@ -145,7 +145,8 @@ is the shape that breaks absolute paths:
   screen that carried them until 2026-09-10**; that button is gone and the same three routes
   are rows in the lobby directly under PLAY (design/10). What the line asserts — that a
   one-click front door does not cost the portal build the other modes — is unchanged.
-- **Online play works against the deployed backend**: PVP SOLO QUEUE → bot-fill at 30 s → a
+- **Online play works against the deployed backend**: PVP SOLO QUEUE → bot-fill (30 s when
+  this was walked; 5 s since 2026-09-17, design/10's front-door audit) → a
   live match, `ALIVE 2/2`, `zoneEnabled`, and the lockstep advancing 897 ticks over 4 seconds
   of wall clock. `vite.crazygames.config.js` defaults `VITE_MATCHSVC_URL` to
   `https://bb.gamestao.com` for exactly this reason: `runState.ts` falls back to
