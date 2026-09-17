@@ -668,7 +668,9 @@ who somebody is, what they paid for, and what was measured.
 - **The format is readable without this repository.** `zcat` shows you the documents and
   `mongoimport` restores them, which is what decides whether a backup is usable by whoever is
   holding it at 3am. Extended JSON rather than plain JSON because `entitlements._id` is an
-  ObjectId whose embedded time IS the "oldest grant first" ordering.
+  ObjectId whose embedded time IS the "oldest grant first" ordering. *(Readable without this
+  repository, yes — but not with the tools on this box: `zcat` is there and `mongoimport`,
+  `mongosh` and `jq` are not. "Restoring", below, is where that turned out to matter.)*
 - **It is NOT point-in-time consistent across collections.** `VACUUM INTO` was, because it
   ran inside a read transaction over one file; a cursor per collection is consistent per
   document and not across them, so a settlement landing between the `orders` read and the
@@ -793,7 +795,8 @@ after the drill and diffed clean.
 **What it deliberately does NOT do: it does not copy anything off the box.** A snapshot beside
 the database survives every failure this project has actually had (a bad migration, a
 hand-edited row, an `rm` in the wrong directory) and none of the ones that take the host with
-it. The off-box copy is the `rsync` line in §5 and it is a human step — stated here rather
+it. The off-box copy is the `scp` line in §5 (it says `rsync` nowhere any more — Git Bash on
+the workstation has none) and it is a human step — stated here rather
 than papered over, because a backup system that quietly protects less than it appears to is
 worse than one whose limit is written down. "The host is gone" is a real
 scenario.
@@ -953,7 +956,8 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
 
   The `backup` service (§5, "Backups") takes and
   verifies a daily snapshot of both databases and keeps 14 of each, on the same disk as the
-  databases. Getting them somewhere else is still the `rsync` line in §5, run by a person.
+  databases. Getting them somewhere else is still a hand-run copy — the `scp` line in §5,
+  which this paragraph called `rsync` back when the workstation was assumed to have it.
   What would close it: a scheduled pull from a machine that is not this VPS, or an
   object-store bucket the worker uploads to. A PULL is still the better shape even now that
   the box is ours — a push credential stored on the server is a credential an attacker who
@@ -969,6 +973,24 @@ Push-to-`main` deploys are now live for anything touching `server/**`/`engine/**
   checkbox away (Options → BACKUPS → Enable, about 20% of the server price) and are worth
   turning on as a floor under this, but they are a whole-disk snapshot rather than a
   verified database copy, so they do not close the item.
+- **The backup worker holds a READ-WRITE role, and its own comment says it should not**
+  (found 2026-09-17, while probing what `bb-app` can actually do for the restore drill).
+  `docker-compose.yml` says, above the service, *"`BB_MONGO_URI` here should be a `read`-only
+  user for the same reason the console's is"* — and then hands it `${BB_MONGO_URI}`, the
+  shared string for `bb-app`: `readWrite` on all four databases plus `dbAdmin` on `accounts`
+  and `billing`. So "what keeps it from writing is a ROLE" is currently an aspiration, and
+  unlike adminsvc this worker deliberately does not probe its own role at boot (a worker that
+  refuses to start over a too-generous permission is a worker that stops taking backups), so
+  nothing anywhere notices.
+
+  **The fix needs no code**, because adminsvc already set the pattern: create an Atlas user
+  `bb-backup` with `read` on `accounts`/`billing`/`analytics`, put it in `.env` and the
+  `secrets` store as `BB_BACKUP_MONGO_URI`, and change the backup service's line to
+  `BB_MONGO_URI: ${BB_BACKUP_MONGO_URI:?…}` exactly as adminsvc does with
+  `BB_ADMIN_MONGO_URI`. It is filed rather than done because the two halves must land
+  together: `${VAR:?}` refuses EVERY service until the value is on the box, and creating the
+  user is a human at the Atlas console — this project holds no management API key for that
+  project (§5's Backups section, finding 2).
 - ~~**The retired deploy key on the old box**~~ **— revoked 2026-09-15.** `~/.ssh/authorized_keys`
   there is root-owned, so the line could not be deleted from this side; the owner ran two
   prepared scripts instead. The live file is three lines and none of them is this project's, and

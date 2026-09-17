@@ -144,6 +144,23 @@ reconstructible from anything this project holds.
 Still open, unchanged: the off-box copy of the backups (§7 item 3), and the money half of the
 backup, which cannot be drilled until there is money in it.
 
+**And one new item, found by probing what `bb-app` can actually do.** `docker-compose.yml`
+says above the backup service that *"`BB_MONGO_URI` here should be a `read`-only user for the
+same reason the console's is"* — and hands it `${BB_MONGO_URI}`, which is `bb-app`:
+`readWrite` on all four databases plus `dbAdmin` on two. So the sentence that says what keeps
+the worker from writing to player data is currently an aspiration, and because this worker
+deliberately does NOT probe its own role at boot (unlike adminsvc, for a stated reason — a
+worker that refuses to start over a permission it never uses is a worker that stops taking
+backups), nothing anywhere notices. The fix needs no code, only the pattern adminsvc already
+uses — an Atlas user `bb-backup` with `read` on three databases, a `BB_BACKUP_MONGO_URI` in
+`.env`, and one line of compose — but the two halves must land together, since `${VAR:?}`
+refuses every service until the value is on the box and creating the user is a human at a
+console this project holds no API key for. Filed in §7 rather than half-done.
+
+That is the drill's second-order finding, and the more interesting one: what it *measured* was
+that the snapshots restore. What it *found*, by having to ask the cluster what this deployment
+is allowed to do, is a capability the documents describe as absent and the deployment holds.
+
 ### Numbers
 
 - **174 documents** restored and diffed byte-identical, twice; **169** of them ObjectIds.
