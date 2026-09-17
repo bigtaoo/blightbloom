@@ -30,8 +30,8 @@ nearly stopped the cutover at its first command is written up.
 ## Server (`matchsvc.ts`, port 8788 — same control-plane process as matchmaking/party/rating)
 
 - `server/src/db.ts` — schema: `accounts(id, username UNIQUE, password_hash, provider, provider_id, created_at)`, `sessions(token, account_id, expires_at)`, `ratings(account_id, rating)` (no FK to `accounts` — a rating key is any opaque id `ladderReport.ts` hands over, including a guest/bot's `seat:{roomId}:{seatIdx}` scaffold that never has an `accounts` row), `meta_state(account_id, data)`, and — since 2026-09-04, ROADMAP 8.2 — `entitlements(id, account_id, sku, source, order_id, granted_at)` with `UNIQUE(account_id, sku)`, which **does** take the FK `ratings` refuses, because an entitlement is only ever minted for a real logged-in account (`design/19-server-platform.md` §2 has the full contrast).
-- `server/src/AuthService.ts` — pure class over an injected `DatabaseSync`, same DI shape as `Matchmaker`/`PartyService`. Passwords: `crypto.scryptSync` + a random 16-byte salt (`salt:hash` hex), `timingSafeEqual` to verify — no bcrypt/argon2 dependency. Sessions: opaque `crypto.randomBytes(32)` bearer tokens stored server-side (revocable via `DELETE`, not JWT — no new dependency, mirrors `ticket.ts`'s own HMAC-over-JWT choice), 30-day TTL. `login` also enforces an in-memory per-username lockout (5 consecutive failures → locked 15 minutes, reset on any success) — the username is case-folded before use as the lockout key so it lines up with the `COLLATE NOCASE` account lookup; keyed by username rather than request IP since this server has no IP plumbing today, but a per-username lock already stops the actual attack it defends against (repeated password guessing against one account).
-- Routes (all in `matchsvc.ts`, same linear-`if` dispatch as every other route there): `POST /auth/register`, `POST /auth/login`, `POST /auth/portal` (a verified CrazyGames user token → one of our sessions, 2026-09-08 — `server/src/portalToken.ts` + `portalKeys.ts`, `design/20`), `POST /auth/logout`, `GET /auth/me` (Bearer), `POST /auth/change-password`, `GET/POST /account/meta` (Bearer) — the Forge `MetaState` JSON blob. **No longer the whole of `MetaState`**: since ROADMAP 8.2 blueprint/character ownership is owned by the `entitlements` table, `GET` overwrites those two fields in the returned blob from it and returns the entitlement list alongside, and `POST` strips them before storing (ignored, not rejected). See `design/19-server-platform.md` §2.
+- `server/src/AuthService.ts` — pure class over an injected `DatabaseSync`, same DI shape as `Matchmaker`/`PartyService`. Passwords: `crypto.scrypt` + a random 16-byte salt (`salt:hash` hex), `timingSafeEqual` to verify — no bcrypt/argon2 dependency. **The ASYNC scrypt since 2026-09-17**: it was `scryptSync` until then, which spent every millisecond of a deliberate ~50-100ms hash inside the one event loop that also serves matchmaking, party and ladder settlement, so a burst of registrations froze the whole control plane rather than merely queueing. Same cost, paid on the threadpool. Sessions: opaque `crypto.randomBytes(32)` bearer tokens stored server-side (revocable via `DELETE`, not JWT — no new dependency, mirrors `ticket.ts`'s own HMAC-over-JWT choice), 30-day TTL. `login` also enforces an in-memory per-username lockout (5 consecutive failures → locked 15 minutes, reset on any success) — the username is case-folded before use as the lockout key so it lines up with the `COLLATE NOCASE` account lookup; keyed by username rather than request IP since this server has no IP plumbing today, but a per-username lock already stops the actual attack it defends against (repeated password guessing against one account). `changePassword` **revokes the account's other sessions** (2026-09-17): it takes the caller's own token as `keepToken` and deletes every other session row, because "somebody else is in my account" is the case a password change exists for and leaving the intruder's 30-day bearer token live answers it with "no". The caller's own device stays signed in; a REFUSED change revokes nothing, or a wrong guess becomes a way to sign somebody out.
+- Routes (all in `matchsvc.ts`, same linear-`if` dispatch as every other route there): `POST /auth/register` (rate-limited per IP since 2026-09-17 — `REGISTER_RATE_LIMIT`, thirty in ten minutes, its own limiter rather than telemetry's, and the budget is spent BEFORE the body is read; it was the only route here that was both unbounded and expensive), `POST /auth/login`, `POST /auth/portal` (a verified CrazyGames user token → one of our sessions, 2026-09-08 — `server/src/portalToken.ts` + `portalKeys.ts`, `design/20`), `POST /auth/logout`, `GET /auth/me` (Bearer), `POST /auth/change-password`, `GET/POST /account/meta` (Bearer) — the Forge `MetaState` JSON blob. **No longer the whole of `MetaState`**: since ROADMAP 8.2 blueprint/character ownership is owned by the `entitlements` table, `GET` overwrites those two fields in the returned blob from it and returns the entitlement list alongside, and `POST` strips them before storing (ignored, not rejected). See `design/19-server-platform.md` §2.
 - `accounts.provider`/`provider_id` (default `'local'`/`NULL`) were reserved for third-party login (WeChat openid, etc.) per the user's request. **Used since 2026-09-08** (`design/20` "Account integration"): CrazyGames is the first provider, `AuthService.loginWithProvider` is the federated half, and `POST /auth/portal` is its route. The reservation's prediction held — a new provider is a `provider != 'local'` row plus a route — with one thing it did not predict, and `accounts.display_name` is that thing: a federated identity arrives with a name chosen under someone else's rules, and it cannot be forced through ours (`validateUsername`'s length, charset and profanity list are the rules for a name a player chooses HERE; applied to a platform username they leave real players unable to log in at all). So `username` became strictly the LOGIN HANDLE — `{provider}:{providerId}` for a federated row, which contains a `:` and is therefore unreachable by `validateUsername`, so the two namespaces cannot collide — and `display_name` is what a human sees, read everywhere through `COALESCE(display_name, username)` so every pre-existing local row is unaffected. `password_hash` is `NOT NULL`, so a federated row stores the sentinel `'!'`, checked explicitly in `verifyPassword`; `login` additionally refuses any row whose provider is not `local`. Two independent guards, on purpose. **This is also this project's first real schema MIGRATION** — `db.ts`'s `ADDED_COLUMNS`, applied behind a `PRAGMA table_info` guard, because `CREATE TABLE IF NOT EXISTS` never re-reads the body of a table that already exists on a deployed box.
 
 ## Client
@@ -201,6 +201,47 @@ the rest of that design was deferred.
    - **One thing came free.** `session?.username` was `undefined` in production for the same
      missing header, so design/20's verified seat names had never been shown to anyone. Sending
      the token turned them on.
+
+## What the account's own tests were not testing (2026-09-17)
+
+Asked of this doc's whole surface once the three holes above were closed, and answered by reading
+a full `coverage` run against it rather than against the total. Work log:
+[volume 75](roadmap/75-2026-09-17-account-test-gaps.md).
+
+**The server had no gap worth the name** — `routes/auth.ts` and `routes/account.ts` are at 100% on
+every column. Both real gaps were on the client and were the same shape, which is the part worth
+keeping, because a 90/90 gate cannot see it: **the tests inject a fake and the shipped
+implementation is what is left over.**
+
+- `net/session.ts` read **69.23% lines / 53.84% branches**. Every case passes a `fakeStore` and this
+  runner has no `localStorage`, so `createWebSessionStore` — the store every web and portal build
+  actually uses — had never executed, including the `catch` that decides whether a corrupt stored
+  session reads as *logged out* or throws out of boot. `identity.ts`'s twin had web-store cases
+  from the start; this was the one of the pair that was missed.
+- `LoginScreen.ts` read **42.3% on functions**. Every case calls `doLogin`/`doRegister` directly, so
+  the path a player actually takes — button → `promptCredentials` → the overlay → `do*` — was dead
+  code as far as the suite was concerned. What that hid: **`password: true` is passed in exactly one
+  place and was asserted in none.** Deleting the word left 4000+ green tests and the player's
+  password rendered in plain text as they typed it, with `autocapitalize` upper-casing it on a
+  phone, since this overlay's default is the party join-code field.
+
+Two further findings were **decisions rather than missing tests**, and both shipped: the session
+revocation on `changePassword` and the `/auth/register` budget, each described in the Server
+section above. And one was a live defect found while moving scrypt off the event loop:
+`verifyPassword` guards `!saltHex || !hashHex`, but a stored `'aa:zz'` walks past that with both
+halves non-empty while `Buffer.from('zz', 'hex')` is EMPTY — so it asked scrypt for a zero-length
+key and `timingSafeEqual(<empty>, <empty>)` answered **true**, and any password logged in. It needs
+a damaged or planted row to reach, and the pre-existing corrupted-hash case could never have found
+it (`'garbage'` has no colon and stops at the earlier guard). There is an explicit length check
+ahead of the comparison now.
+
+One thing came out of this that is not about accounts at all. **The seven `daydayup.*` storage keys
+were pinned by nothing** — each is a lone literal in one module, read back only by that module, so
+renaming one is a one-word edit that no type, no test and no gate would notice, and the day it
+happens every existing player silently becomes a new one. Since the rename to Blightbloom was
+deliberately left unfinished (see the name note in `README.md`), that edit is a plausible act of
+tidying rather than a mistake. `client/src/storageKeys.test.ts` is the gate: the exact set, one
+module each, and the converse — no `blightbloom.*` twin.
 
 ## Login is never a gate (locked; restated 2026-09-10 against a proposal to make it one)
 

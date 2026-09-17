@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LoginScreen, type AuthApi } from './LoginScreen';
 import { resetSessionCacheForTests, getSession } from '../../net/session';
 import type { AuthResult } from '../../net/auth';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { setLocale, resetLocaleForTests, t } from '../../i18n';
 
 function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
   return {
@@ -354,5 +354,169 @@ describe('LoginScreen — the hosted policy link (design/20)', () => {
     s.show(800, 600);
     expect(privateOf(s).privacyLink.text).not.toBe(english);
     expect(privateOf(s).privacyLink.text.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The INPUT path — button tap to API call, through the real `TextInputOverlay` (2026-09-17).
+ *
+ * Every case above this point calls `doLogin`/`doRegister`/`doChangePassword` directly, so
+ * `beginLogin`, `beginRegister`, `promptCredentials` and `beginChangePassword` — the whole
+ * of how a player actually reaches those methods — had never run: 178-220 of the source, and
+ * the reason this screen reported 42% function coverage while looking thoroughly tested.
+ *
+ * What that left unasserted was not cosmetic. `password: true` is passed here and nowhere
+ * else; deleting it keeps the entire suite green and shows the player's password in plain
+ * text as they type it. The real overlay is used rather than a fake one for exactly that
+ * reason — a fake would have to be told what the flag means, which is the assertion.
+ */
+class FakeInput {
+  type = '';
+  placeholder = '';
+  maxLength = 0;
+  autocapitalize = '';
+  autocomplete = '';
+  spellcheck = false;
+  style: Record<string, string> = {};
+  value = '';
+  removed = false;
+  private readonly listeners: Record<string, ((e: unknown) => void)[]> = {};
+  addEventListener(type: string, fn: (e: unknown) => void): void {
+    (this.listeners[type] ??= []).push(fn);
+  }
+  focus(): void {}
+  remove(): void {
+    this.removed = true;
+  }
+  /** Type a value and press Enter, which is the only way this overlay submits. */
+  submit(value: string): void {
+    this.value = value;
+    for (const fn of [...(this.listeners.keydown ?? [])]) fn({ key: value === null ? 'Escape' : 'Enter', stopPropagation: () => {} });
+  }
+}
+
+function stubDom(): FakeInput[] {
+  const appended: FakeInput[] = [];
+  vi.stubGlobal('document', {
+    createElement: () => new FakeInput(),
+    body: { appendChild: (el: FakeInput) => appended.push(el) },
+  });
+  return appended;
+}
+
+function taps(s: LoginScreen) {
+  return s as unknown as {
+    loginBtn: { onTap: () => void };
+    registerBtn: { onTap: () => void };
+    changePasswordBtn: { onTap: () => void };
+  };
+}
+
+describe('LoginScreen — from the button to the API', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('LOGIN asks for a username, then a MASKED password, then calls the API with both', async () => {
+    const inputs = stubDom();
+    const login = vi.fn().mockResolvedValue(SESSION);
+    const s = makeScreen(fakeApi({ login }));
+
+    taps(s).loginBtn.onTap();
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]!.placeholder).toBe(t('auth.usernamePlaceholder'));
+    expect(inputs[0]!.maxLength).toBe(20); // the server's MAX_USERNAME
+    expect(inputs[0]!.type).toBe('text');
+
+    inputs[0]!.submit('alice');
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]!.placeholder).toBe(t('auth.passwordPlaceholder'));
+    expect(inputs[1]!.maxLength).toBe(64);
+    // The one assertion this whole block exists for.
+    expect(inputs[1]!.type).toBe('password');
+
+    inputs[1]!.submit('hunter22');
+    await vi.waitFor(() => expect(login).toHaveBeenCalledWith('http://mm', 'alice', 'hunter22'));
+  });
+
+  it('trims the username, so a stray space cannot make a second account', () => {
+    const inputs = stubDom();
+    const login = vi.fn().mockResolvedValue(SESSION);
+    const s = makeScreen(fakeApi({ login }));
+    taps(s).loginBtn.onTap();
+    inputs[0]!.submit('  alice  ');
+    inputs[1]!.submit('hunter22');
+    expect(login).toHaveBeenCalledWith('http://mm', 'alice', 'hunter22');
+  });
+
+  it('refuses an empty username without ever asking for a password', () => {
+    // A blank submit must not walk on to the password prompt and then post `''` as a
+    // username — the server would refuse it, but only after the player typed their password
+    // into a field opened for an account that cannot exist.
+    const inputs = stubDom();
+    const login = vi.fn();
+    const s = makeScreen(fakeApi({ login }));
+    taps(s).loginBtn.onTap();
+    inputs[0]!.submit('   ');
+    expect(inputs).toHaveLength(1);
+    expect(privateOf(s).statusText.text).toBe(t('auth.usernameRequired'));
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('REGISTER takes the same two steps and lands on register, not login', () => {
+    const inputs = stubDom();
+    const register = vi.fn().mockResolvedValue(SESSION);
+    const login = vi.fn();
+    const s = makeScreen(fakeApi({ register, login }));
+    taps(s).registerBtn.onTap();
+    inputs[0]!.submit('newbie');
+    expect(inputs[1]!.type).toBe('password');
+    inputs[1]!.submit('hunter22');
+    expect(register).toHaveBeenCalledWith('http://mm', 'newbie', 'hunter22');
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('CHANGE PASSWORD asks for the old then the new, and masks BOTH', async () => {
+    const inputs = stubDom();
+    const changePassword = vi.fn().mockResolvedValue(undefined);
+    const s = makeScreen(fakeApi({ login: vi.fn().mockResolvedValue(SESSION), changePassword }));
+    await privateOf(s).doLogin('alice', 'hunter22'); // the button only exists once logged in
+    inputs.length = 0;
+
+    taps(s).changePasswordBtn.onTap();
+    expect(inputs[0]!.type).toBe('password');
+    expect(inputs[0]!.placeholder).toBe(t('auth.currentPasswordPlaceholder'));
+    inputs[0]!.submit('hunter22');
+    expect(inputs[1]!.type).toBe('password');
+    expect(inputs[1]!.placeholder).toBe(t('auth.newPasswordPlaceholder'));
+    inputs[1]!.submit('newpassword1');
+    await vi.waitFor(() => expect(changePassword).toHaveBeenCalledWith('http://mm', 'tok-1', 'hunter22', 'newpassword1'));
+  });
+
+  it('opens nothing at all while a call is still in flight', async () => {
+    // `begin*`'s own busy guard, which is a different line from the one in `do*` that the
+    // re-entrancy block above pins: without it a second tap opens a second overlay over the
+    // first, and the player types their password into a field whose submit is discarded.
+    const inputs = stubDom();
+    const d = deferred<AuthResult>();
+    const s = makeScreen(fakeApi({ login: vi.fn().mockReturnValue(d.promise) }));
+    taps(s).loginBtn.onTap();
+    inputs[0]!.submit('alice');
+    inputs[1]!.submit('hunter22');
+    const during = inputs.length;
+    taps(s).loginBtn.onTap();
+    taps(s).registerBtn.onTap();
+    taps(s).changePasswordBtn.onTap();
+    expect(inputs).toHaveLength(during);
+    d.resolve(SESSION);
+    await Promise.resolve();
+  });
+
+  it('CHANGE PASSWORD does nothing at all for a guest', () => {
+    // The button is hidden rather than disabled, but `beginChangePassword` guards on the
+    // session too — a tap arriving from a stale hit area must not open a prompt whose
+    // submit would read `this.session` as null.
+    const inputs = stubDom();
+    const s = makeScreen(fakeApi());
+    taps(s).changePasswordBtn.onTap();
+    expect(inputs).toHaveLength(0);
   });
 });

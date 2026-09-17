@@ -9,6 +9,7 @@
  * "rejects a duplicate" case below pass by accident and assert nothing.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { AuthService, type AuthServiceDeps } from '../src/AuthService';
 import { freshAccounts } from './mongoHarness';
 
@@ -183,6 +184,62 @@ describe('AuthService — changePassword', () => {
   });
 });
 
+/**
+ * The half a password change is FOR (2026-09-17). Until this date `changePassword` wrote a
+ * new hash and stopped, so every session minted before it — including the one belonging to
+ * whoever the player is changing their password because of — stayed live for the rest of its
+ * thirty days. The describe above passed throughout: "invalidates the old one" there is about
+ * the old PASSWORD, and nothing in this file had ever looked at a session across the change.
+ */
+describe('AuthService — changePassword revokes the account\'s other sessions', () => {
+  it('kills a session issued before the change, and spares the caller\'s own', async () => {
+    const { auth } = await make();
+    const { accountId, token: phone } = await auth.register('alice', 'hunter22') as { accountId: string; token: string };
+    const { token: laptop } = await auth.login('alice', 'hunter22') as { token: string };
+    expect(await auth.verifySession(phone)).not.toBeNull(); // both live before the change
+
+    expect(await auth.changePassword(accountId, 'hunter22', 'newpassword1', laptop)).toEqual({ ok: true });
+
+    expect(await auth.verifySession(phone)).toBeNull();
+    // The device that did the changing stays signed in — a password change that signs the
+    // player out of the screen they are standing in front of is the reason this is not
+    // simply "delete everything".
+    expect(await auth.verifySession(laptop)).toMatchObject({ accountId });
+  });
+
+  it('revokes ALL of them when no token is spared', async () => {
+    // The default direction for any future caller that has no session in hand. It is the safe
+    // one, which is why it is the default rather than "keep everything".
+    const { auth } = await make();
+    const { accountId, token: phone } = await auth.register('alice', 'hunter22') as { accountId: string; token: string };
+    const { token: laptop } = await auth.login('alice', 'hunter22') as { token: string };
+    await auth.changePassword(accountId, 'hunter22', 'newpassword1');
+    expect(await auth.verifySession(phone)).toBeNull();
+    expect(await auth.verifySession(laptop)).toBeNull();
+  });
+
+  it('leaves ANOTHER account\'s sessions alone', async () => {
+    // The filter carries an accountId. Without it the delete would be "every session", which
+    // is a shape that passes both cases above and signs out the entire playerbase.
+    const { auth } = await make();
+    const { accountId } = await auth.register('alice', 'hunter22') as { accountId: string };
+    const { token: bob } = await auth.register('bob', 'hunter22') as { token: string };
+    await auth.changePassword(accountId, 'hunter22', 'newpassword1');
+    expect(await auth.verifySession(bob)).toMatchObject({ username: 'bob' });
+  });
+
+  it('a REFUSED change revokes nothing — a wrong guess is not a way to sign somebody out', async () => {
+    const { auth } = await make();
+    const { accountId, token: phone } = await auth.register('alice', 'hunter22') as { accountId: string; token: string };
+    expect(await auth.changePassword(accountId, 'wrongpass', 'newpassword1')).toMatchObject({ error: expect.any(String) });
+    expect(await auth.verifySession(phone)).not.toBeNull();
+    // ...and neither does a change refused for the NEW password, which is the arm that runs
+    // after the old one already verified.
+    expect(await auth.changePassword(accountId, 'hunter22', 'short')).toMatchObject({ error: expect.any(String) });
+    expect(await auth.verifySession(phone)).not.toBeNull();
+  });
+});
+
 describe('AuthService — expired session sweep', () => {
   it('a login/register sweeps away already-expired session rows (not just the one it happens to look up)', async () => {
     const { auth, store, advance } = await make();
@@ -344,5 +401,57 @@ describe('AuthService — the non-string arms of every public entry point', () =
     await auth.register('carol', 'hunter22');
     await store.accounts.updateOne({ username: 'carol' }, { $set: { passwordHash: 'garbage' } });
     expect(await auth.login('carol', 'hunter22')).toEqual({ error: 'invalid username or password' });
+  });
+
+  it('a stored hash whose hex half decodes to ZERO BYTES refuses every password', async () => {
+    // Found 2026-09-17 while moving scrypt off the event loop, and it was live: the test
+    // above only reaches the `!saltHex || !hashHex` arm, because 'garbage' has no colon.
+    // 'aa:zz' has both halves non-empty, so it walks past that guard — and `Buffer.from('zz',
+    // 'hex')` is EMPTY, which made the old code ask scrypt for a zero-length key and compare
+    // it against a zero-length expectation. `timingSafeEqual(<empty>, <empty>)` is `true`, so
+    // any password at all logged in. It takes a damaged or planted row to get here, which is
+    // why it is a latent hole rather than an open door — but "the password check answered
+    // true" is not a failure mode to leave to chance.
+    const { auth, store } = await make();
+    await auth.register('dave', 'hunter22');
+    await store.accounts.updateOne({ username: 'dave' }, { $set: { passwordHash: 'aa:zz' } });
+    expect(await auth.login('dave', 'anything-at-all')).toEqual({ error: 'invalid username or password' });
+    expect(await auth.login('dave', 'hunter22')).toEqual({ error: 'invalid username or password' });
+  });
+});
+
+/**
+ * A source sweep, paired with the behaviour tests above rather than replacing one: every
+ * password path here must stay OFF the event loop.
+ *
+ * `scryptSync` is a one-word edit away at every call site and nothing about the suite would
+ * change if it came back — the hashes verify identically, so the tests above stay green while
+ * a registration freezes matchmaking for a tenth of a second. The sweep's own failure mode is
+ * matching nothing, so it asserts the async form is present as well as the sync form's
+ * absence: a rename that made both patterns stop matching would otherwise pass forever.
+ */
+describe('AuthService — scrypt runs on the threadpool, not the event loop', () => {
+  const source = readFileSync(new URL('../src/AuthService.ts', import.meta.url), 'utf8');
+  // Comments stripped, because the file's own header explains what it moved away FROM and
+  // names it. The stripping is asserted below rather than trusted: one that ate the whole
+  // file would satisfy every "does not contain" check there is.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  it('strips comments without eating the code', () => {
+    expect(code.length).toBeLessThan(source.length);
+    expect(code).toContain('async login(');
+    expect(code).toContain('async changePassword(');
+  });
+
+  it('uses the async scrypt', () => {
+    expect(code).toMatch(/import \{[^}]*\bscrypt\b[^}]*\} from 'node:crypto'/);
+    expect(code).toContain('promisify(scrypt)');
+    // Both hashing sites go through it. A floor on what was found, so the check cannot pass
+    // by finding nothing.
+    expect(code.match(/await scryptAsync\(/g) ?? []).toHaveLength(2);
+  });
+
+  it('calls no synchronous scrypt anywhere', () => {
+    expect(code).not.toMatch(/\bscryptSync\b/);
   });
 });

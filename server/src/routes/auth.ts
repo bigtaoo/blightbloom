@@ -9,12 +9,35 @@ import type { IncomingMessage } from 'node:http';
 import type { AuthService } from '../AuthService';
 import type { PortalKeyStore } from '../portalKeys';
 import { verifyPortalToken } from '../portalToken';
+import { RateLimiter, clientKey } from '../rateLimit';
 import { readJsonBody, send, type RouteHandler } from './http';
 
 /** The provider name written to `accounts.provider` for a CrazyGames identity, and the
  *  prefix of the derived login handle. One constant so the row, the handle and any future
  *  lookup cannot drift apart. */
 export const PROVIDER_CRAZYGAMES = 'cg';
+
+/**
+ * The per-IP budget for ACCOUNT CREATION (2026-09-17). Thirty in ten minutes.
+ *
+ * `/auth/register` was the one route in this server that was both unbounded and expensive:
+ * every call mints a row and pays a full scrypt hash for it, and nothing anywhere — not
+ * here, not in Caddy — put a ceiling on how many a single caller could ask for. The two
+ * halves of that were fixed together: `AuthService`'s hash moved off the event loop, and
+ * this bounds the flood that made the blocking matter.
+ *
+ * Deliberately far looser than adminsvc's ten-in-five-minutes login budget, and for the
+ * opposite reason. There the legitimate rate is one a day and a false positive inconveniences
+ * an operator who can wait; here a false positive is a real player who cannot make an
+ * account, and a carrier-grade NAT can put a whole city behind one address. Thirty accounts
+ * per ten minutes is far above anything a human does and low enough to keep a single source's
+ * hashing cost near a tenth of a second per minute.
+ *
+ * It bounds ONE caller, which is the honest description: a spread-out flood from many
+ * addresses walks around any per-IP limit, and this file is not the place that would answer
+ * that.
+ */
+export const REGISTER_RATE_LIMIT = { requests: 30, windowMs: 10 * 60_000 } as const;
 
 export interface PortalAuthDeps {
   /** Where the verification key comes from. Injected so a test needs no network. */
@@ -32,6 +55,29 @@ export interface AuthRouteDeps {
   portal?: PortalAuthDeps;
 }
 
+/**
+ * `postRegister`'s own deps — the only handler in this group that rate-limits, so the
+ * limiter is declared here rather than on `AuthRouteDeps`. That follows the rule
+ * `matchsvc.ts` states over its shared bundle: a handler declares, and can only reach, the
+ * few dependencies it names. The bundle satisfies both interfaces; `/auth/me` still cannot
+ * see a limiter.
+ */
+export interface RegisterRouteDeps extends AuthRouteDeps {
+  /**
+   * The account-creation budget ({@link REGISTER_RATE_LIMIT}). Its OWN instance, never the
+   * telemetry limiter from the same bundle: sharing one counter would let a chatty client's
+   * log batches spend the budget its registration needs, and would make either route's limit
+   * depend on how talkative the other one happens to be.
+   *
+   * Required rather than optional because an absent limiter can only mean "no limit", and a
+   * working way to be exempt is an invitation to use it — the same reasoning the coverage
+   * gate's no-exemption rule is written down with.
+   */
+  authLimiter: RateLimiter;
+  /** Injected so a test can drive the window without sleeping. Defaults to the wall clock. */
+  nowMs?: () => number;
+}
+
 /** Parses `Authorization: Bearer <token>` and resolves it to a live session, or `null`. */
 export function requireAuth(
   req: IncomingMessage,
@@ -42,7 +88,13 @@ export function requireAuth(
   return auth.verifySession(header.slice('Bearer '.length));
 }
 
-export const postRegister: RouteHandler<AuthRouteDeps> = async (req, res, _url, deps) => {
+export const postRegister: RouteHandler<RegisterRouteDeps> = async (req, res, _url, deps) => {
+  // The budget is spent BEFORE the body is awaited, exactly as adminsvc's login does it and
+  // for the reason written there: a flood's next request arrives while this one is parked on
+  // its body, so a limiter taken afterwards is a limiter the flood has already walked past.
+  if (!deps.authLimiter.take(clientKey(req), (deps.nowMs ?? Date.now)())) {
+    return send(res, 429, { error: 'too many accounts created from this address — try again later' });
+  }
   const body = await readJsonBody(req);
   const { username, password } = (body as { username?: unknown; password?: unknown }) ?? {};
   const result = await deps.auth.register(username, password);
@@ -114,6 +166,10 @@ export const postChangePassword: RouteHandler<AuthRouteDeps> = async (req, res, 
     (body as { token?: unknown; oldPassword?: unknown; newPassword?: unknown }) ?? {};
   const session = await deps.auth.verifySession(token);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
-  const result = await deps.auth.changePassword(session.accountId, oldPassword, newPassword);
+  // The caller's own token is handed down so a successful change revokes this account's
+  // OTHER sessions and not this one — see `AuthService.changePassword`. `verifySession`
+  // just proved it is a live token for this account, so it is safe to spare; nothing else
+  // in the request is.
+  const result = await deps.auth.changePassword(session.accountId, oldPassword, newPassword, token as string);
   send(res, 'error' in result ? 400 : 200, result);
 };
