@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Session } from '../net/session';
-import { entitlementOwnership, type AccountState } from '../net/entitlements';
+import { ACCOUNT_UNAUTHORIZED, entitlementOwnership, type AccountState } from '../net/entitlements';
 
 const mocks = vi.hoisted(() => ({
   session: null as Session | null,
@@ -33,14 +33,21 @@ vi.mock('../net/entitlements', async (importOriginal) => ({
   fetchAccountState: mocks.fetchAccountState,
 }));
 
-import { createAccountSyncMetaStore, pullAccountMeta } from './accountSync';
+import { createAccountSyncMetaStore, pullAccountMeta, pullAccountSnapshot } from './accountSync';
 import { defaultMetaState } from './MetaState';
 
 /** The `GET /account/meta` response, whose ownership fields the server has already
- * overwritten from its own entitlements table (design/19 §2). */
-const serverState = (data: unknown, entitlements: AccountState['entitlements'] = []): AccountState => ({
+ * overwritten from its own entitlements table (design/19 §2). `guestMerged` defaults to
+ * `true` — "do not offer a merge" — which is what every case here that is not ABOUT the
+ * one-time device merge wants, and what the wire itself defaults to. */
+const serverState = (
+  data: unknown,
+  entitlements: AccountState['entitlements'] = [],
+  guestMerged = true,
+): AccountState => ({
   data,
   entitlements,
+  guestMerged,
 });
 
 const ALICE: Session = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
@@ -133,7 +140,7 @@ describe('pullAccountMeta', () => {
   it('returns null for a brand-new account with no server-side meta yet', async () => {
     mocks.fetchAccountState.mockResolvedValue(serverState(null));
     expect(await pullAccountMeta('http://mm', 'tok-1')).toBeNull();
-    expect(mocks.fetchAccountState).toHaveBeenCalledWith('http://mm', 'tok-1');
+    expect(mocks.fetchAccountState).toHaveBeenCalledWith('http://mm', 'tok-1', { guestId: undefined });
   });
 
   it('runs the fetched data through migrate() rather than trusting it verbatim', async () => {
@@ -248,5 +255,54 @@ describe('pullAccountMeta — ROADMAP 8.2, the server now owns the ownership fie
     expect(entitlementOwnership([{ sku: 'character:hero', source: 'purchase', grantedAt: 1 }]).ownedCharacters).toEqual([
       'hero',
     ]);
+  });
+});
+
+/**
+ * `pullAccountSnapshot` — what a LOGIN needs, in one request (design/16 holes 1 and 2).
+ *
+ * It is `pullAccountMeta` with the two answers that method has to flatten kept apart: the
+ * 401, and whether this device has been offered the one-time merge. Everything about the
+ * blob itself is covered above and is not re-tested here; what is tested is that the two
+ * new answers survive, and that the older contract really is the same function underneath
+ * rather than a second copy of it that can drift.
+ */
+describe('pullAccountSnapshot', () => {
+  it('reports a 401 as a STATUS rather than throwing', async () => {
+    mocks.fetchAccountState.mockResolvedValue(ACCOUNT_UNAUTHORIZED);
+    await expect(pullAccountSnapshot('http://mm', 'expired')).resolves.toEqual({ status: 'unauthorized' });
+  });
+
+  it('lets a real failure throw, so the caller can tell offline from logged out', async () => {
+    mocks.fetchAccountState.mockRejectedValue(new Error('Failed to fetch'));
+    await expect(pullAccountSnapshot('http://mm', 'tok-1')).rejects.toThrow(/Failed to fetch/);
+  });
+
+  it('forwards the guest id to the request and carries guestMerged back', async () => {
+    mocks.fetchAccountState.mockResolvedValue(serverState({ ...defaultMetaState() }, [], false));
+    const snapshot = await pullAccountSnapshot('http://mm', 'tok-1', { guestId: 'install-7' });
+    expect(mocks.fetchAccountState).toHaveBeenCalledWith('http://mm', 'tok-1', { guestId: 'install-7' });
+    expect(snapshot).toMatchObject({ status: 'ok', guestMerged: false });
+  });
+
+  it('carries guestMerged on the brand-new-account branch too, where data is null', async () => {
+    // The branch that returns before the blob is ever migrated. A `guestMerged` dropped here
+    // would read as `undefined`, which the caller compares as falsy — so a device that HAD
+    // already merged would be asked a second time, on the exact account shape (empty) where
+    // the merge is applied without a prompt.
+    mocks.fetchAccountState.mockResolvedValue(serverState(null, [], false));
+    expect(await pullAccountSnapshot('http://mm', 'tok-1')).toEqual({
+      status: 'ok',
+      meta: null,
+      guestMerged: false,
+    });
+  });
+
+  it('pullAccountMeta turns that same 401 back into a throw — its callers want the old contract', async () => {
+    // `StorePurchase.refreshOwnership` and the assembly's own ownership refresh are the two
+    // callers, and both already have a player-facing line for a failed read. Neither is the
+    // session check, so neither should be handed a status it would have to interpret.
+    mocks.fetchAccountState.mockResolvedValue(ACCOUNT_UNAUTHORIZED);
+    await expect(pullAccountMeta('http://mm', 'expired')).rejects.toThrow(/401/);
   });
 });

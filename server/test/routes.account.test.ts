@@ -25,7 +25,7 @@ import type { AuthService } from '../src/AuthService';
 import type { AccountsStore } from '../src/db';
 import { freshAccounts } from './mongoHarness';
 import { EntitlementService, blueprintSku, characterSku } from '../src/EntitlementService';
-import { getMeta, postMeta, type AccountRouteDeps } from '../src/routes/account';
+import { getMeta, postGuestMerge, postMeta, GUEST_ID_HEADER, type AccountRouteDeps } from '../src/routes/account';
 
 const ACCOUNT = 'acct-1';
 const SESSION = { accountId: ACCOUNT, username: 'ada' };
@@ -68,7 +68,8 @@ function fakeAuth(): AuthService {
 
 const url = new URL('http://match.test/account/meta');
 const parsed = (sent: Recorded) => JSON.parse(sent.body) as Record<string, unknown>;
-const authed = () => fakeReq({ authorization: 'Bearer tok-1' });
+const authed = (extra: Record<string, string> = {}) => fakeReq({ authorization: 'Bearer tok-1', ...extra });
+const GUEST = 'install-7';
 
 function deps(): AccountRouteDeps {
   return { auth: fakeAuth(), store };
@@ -131,7 +132,7 @@ describe('GET /account/meta — ownership comes from entitlements, not the blob'
     expect(sent.status).toBe(200);
     // `data: null` is load-bearing and unchanged by 8.2: the client answers it by pushing
     // its own (possibly guest-accumulated) local state up, rather than overwriting it.
-    expect(parsed(sent)).toEqual({ data: null, entitlements: [] });
+    expect(parsed(sent)).toEqual({ data: null, entitlements: [], guestMerged: true });
   });
 
   it('still answers { data: null } when the account owns something but has never saved', async () => {
@@ -144,6 +145,7 @@ describe('GET /account/meta — ownership comes from entitlements, not the blob'
     expect(parsed(sent)).toEqual({
       data: null,
       entitlements: [{ sku: 'character:hero', source: 'purchase', grantedAt: 42 }],
+      guestMerged: true,
     });
   });
 
@@ -160,6 +162,7 @@ describe('GET /account/meta — ownership comes from entitlements, not the blob'
         { sku: 'blueprint:cannon', source: 'purchase', grantedAt: 10 },
         { sku: 'character:hero', source: 'grant', grantedAt: 20 },
       ],
+      guestMerged: true,
     });
   });
 
@@ -270,5 +273,121 @@ describe('POST /account/meta — ownership is ignored, not rejected', () => {
       unlockedBlueprints: ['cannon'],
       ownedCharacters: [],
     });
+  });
+});
+
+/**
+ * The one-time device merge (design/16 hole 1, 2026-09-17) — `accounts.mergedGuestIds`, the
+ * idempotency key, read by `GET /account/meta` and written by `POST /account/guest-merge`.
+ *
+ * Every case here is about ASKING TWICE, because that is the failure the whole mechanism
+ * exists to prevent and the only one that cannot be recovered from: a second merge adds a
+ * material bank the account already holds, and nothing afterwards can tell it happened. Its
+ * mirror — a claim that reports success for a device already recorded — would be that bug
+ * with an extra step, so the two `claimed` arms are asserted separately rather than through
+ * one round trip.
+ */
+async function guestMerge(body: unknown, headers: Record<string, string> = { authorization: 'Bearer tok-1' }): Promise<Recorded> {
+  const req = fakeReq(headers);
+  const { res, sent } = fakeRes();
+  const done = postGuestMerge(req, res, url, deps());
+  await Promise.resolve();
+  req.emit('data', Buffer.from(JSON.stringify(body)));
+  req.emit('end');
+  await done;
+  return sent;
+}
+
+const mergedIds = async (): Promise<string[] | undefined> =>
+  (await store.accounts.findOne({ _id: ACCOUNT }))?.mergedGuestIds;
+
+describe('POST /account/guest-merge — the claim', () => {
+  it('401s without a session, and writes nothing', async () => {
+    const sent = await guestMerge({ guestId: GUEST }, {});
+    expect(sent.status).toBe(401);
+    expect(await mergedIds()).toBeUndefined();
+  });
+
+  it('claims an unseen device once, and refuses the second claim', async () => {
+    expect(parsed(await guestMerge({ guestId: GUEST }))).toEqual({ claimed: true });
+    expect(await mergedIds()).toEqual([GUEST]);
+    // The second call is the two-tabs race, collapsed into sequence. `false` is what makes
+    // the loser take the account's state instead of adding the same bank again.
+    expect(parsed(await guestMerge({ guestId: GUEST }))).toEqual({ claimed: false });
+    expect(await mergedIds()).toEqual([GUEST]);
+  });
+
+  it('keeps one entry per device, so a second browser gets its own answer', async () => {
+    await guestMerge({ guestId: GUEST });
+    expect(parsed(await guestMerge({ guestId: 'install-9' }))).toEqual({ claimed: true });
+    expect(await mergedIds()).toEqual([GUEST, 'install-9']);
+  });
+
+  it.each([
+    ['missing', {}],
+    ['empty', { guestId: '' }],
+    ['not a string', { guestId: 42 }],
+    ['absurdly long', { guestId: 'x'.repeat(129) }],
+  ])('400s a %s guestId rather than storing it', async (_label, body) => {
+    const sent = await guestMerge(body);
+    expect(sent.status).toBe(400);
+    expect(await mergedIds()).toBeUndefined();
+  });
+});
+
+describe('GET /account/meta — guestMerged', () => {
+  it('answers false for a device this account has never been offered a merge on', async () => {
+    const { res, sent } = fakeRes();
+    await getMeta(authed({ [GUEST_ID_HEADER]: GUEST }), res, url, deps());
+    expect(parsed(sent).guestMerged).toBe(false);
+  });
+
+  it('answers true once that device has claimed', async () => {
+    await guestMerge({ guestId: GUEST });
+    const { res, sent } = fakeRes();
+    await getMeta(authed({ [GUEST_ID_HEADER]: GUEST }), res, url, deps());
+    expect(parsed(sent).guestMerged).toBe(true);
+  });
+
+  it('is per-device: another browser on the same account is still unmerged', async () => {
+    await guestMerge({ guestId: GUEST });
+    const { res, sent } = fakeRes();
+    await getMeta(authed({ [GUEST_ID_HEADER]: 'install-9' }), res, url, deps());
+    expect(parsed(sent).guestMerged).toBe(false);
+  });
+
+  it('is per-account: the same browser is unmerged against a DIFFERENT account', async () => {
+    // A shared computer, which is the case the whole "merge once" rule is shaped around. The
+    // key is the pair, not the device — recording it on the device alone would silently
+    // suppress the second player's prompt and hand them the first one's materials.
+    await guestMerge({ guestId: GUEST });
+    await store.accounts.insertOne({ _id: 'acct-2', username: 'bob', passwordHash: 'hash', provider: 'local', createdAt: 1 });
+    const other = { ...deps(), auth: { verifySession: () => ({ accountId: 'acct-2', username: 'bob' }) } as unknown as AuthService };
+    const { res, sent } = fakeRes();
+    await getMeta(authed({ [GUEST_ID_HEADER]: GUEST }), res, url, other);
+    expect(parsed(sent).guestMerged).toBe(false);
+  });
+
+  it.each([
+    ['no header at all', {}],
+    ['a header repeated, which node hands over as an array', { [GUEST_ID_HEADER]: ['a', 'b'] as unknown as string }],
+    ['an absurdly long header', { [GUEST_ID_HEADER]: 'x'.repeat(129) }],
+  ])('answers true for %s — the default is always "offer nothing"', async (_label, headers) => {
+    // Both defaults point the same way on purpose. Not asking costs a guest nothing (their
+    // progress stays on the device); asking twice costs them a bank counted twice.
+    const { res, sent } = fakeRes();
+    await getMeta(authed(headers), res, url, deps());
+    expect(parsed(sent).guestMerged).toBe(true);
+  });
+
+  it('does not read the accounts collection at all when no guest id was sent', async () => {
+    // The read is the one this route did not have before; every `/account/meta` on every
+    // logged-in boot would pay for it. Skipping it when there is no question to answer is
+    // the difference, and a spy is the only way to see a query that did not happen.
+    const spy = vi.spyOn(store.accounts, 'findOne');
+    const { res } = fakeRes();
+    await getMeta(authed(), res, url, deps());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

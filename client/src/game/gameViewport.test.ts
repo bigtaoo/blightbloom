@@ -78,7 +78,9 @@ interface GameInternals {
     pause: () => void;
     openSettings: () => void;
     relayout: () => void;
+    deps: { accountPrompt: object };
   };
+  net: { deps: { accountPrompt: object } };
 }
 
 function newGame(w: number, h: number) {
@@ -97,6 +99,37 @@ function newGame(w: number, h: number) {
   game.start();
   return { game, screen, inner: game as unknown as GameInternals };
 }
+
+/**
+ * The account prompt is wired by IDENTITY, not by shape (design/16 holes 1 and 2).
+ *
+ * `AccountPrompt` is reached from three places that are assembled independently
+ * (`gameAssembly.ts`): it is mounted into the menu layer, handed to `ScreenNav` for the
+ * resize hook, and handed to `OnlineMatch` as the thing it asks its two questions through.
+ * Every one of those three is satisfied by a DIFFERENT instance — the types all check, every
+ * unit suite stays green, and what a player gets is a modal that never appears on screen
+ * (asked on an unmounted copy) or one that never re-lays out on a rotation.
+ *
+ * That is the half-moved-assembly shape: the pieces are all present and all correct, and the
+ * wiring between them is what is wrong, so nothing that tests a piece can see it. Only an
+ * assembled `Game` can, and identity — not behaviour — is the assertion that catches it.
+ */
+describe('the account prompt is ONE object, reached three ways', () => {
+  it('the mounted view, ScreenNav\'s relayout hook and OnlineMatch\'s prompt are the same instance', () => {
+    const { inner } = newGame(WECHAT.w, WECHAT.h);
+    const asked = inner.net.deps.accountPrompt as { view: Container };
+    const relaidOut = inner.nav.deps.accountPrompt;
+    const menu = inner.layers.menu.children;
+
+    expect(relaidOut, 'ScreenNav resizes a different prompt than OnlineMatch opens').toBe(asked);
+    // ...and the thing both of them hold is the thing actually on the display tree. A prompt
+    // that is asked but never mounted resolves its promise from a panel nobody can see, so
+    // the player's only way out of the merge question is to close the tab.
+    expect(menu.indexOf(asked.view), 'the prompt OnlineMatch opens is not in the menu layer').toBeGreaterThanOrEqual(0);
+    // Last of all, because it is modal: above every screen AND above the SETTINGS button.
+    expect(menu.indexOf(asked.view)).toBe(menu.length - 1);
+  });
+});
 
 /** Union of every visible leaf's GLOBAL (post-scale, real-pixel) bounds under `root`. */
 function globalContentBounds(root: Container) {
@@ -189,14 +222,18 @@ describe('Game — menu screens are laid out in design space and land inside the
   it('the forge SETTINGS button paints above every screen, not under one', () => {
     const { inner } = newGame(WECHAT.w, WECHAT.h);
     inner.nav.showForge();
-    // Above EVERY screen, not just the forge — it is the only floating widget in the layer
-    // today, so "last child" is the invariant. A second float should extend this list, not
-    // relax it to "above the one screen we happened to check" (the mutant that hid here:
-    // moving the button into the screens array, but not last, still cleared a forge-only
-    // check while leaving it under the party/login screens).
+    // Above EVERY screen, not just the forge. It was the only floating widget in the layer
+    // until 2026-09-17, when the account prompt (design/16 holes 1 and 2) became the second
+    // one — so the invariant is stated as "above every SCREEN, below every later float"
+    // rather than relaxed to "above the one screen we happened to check" (the mutant that
+    // hid here: moving the button into the screens array, but not last, still cleared a
+    // forge-only check while leaving it under the party/login screens).
     const menu = inner.layers.menu.children;
-    expect(menu.indexOf(inner.settingsBtn.view)).toBe(menu.length - 1);
+    const FLOATS = 2; // settingsBtn, then the modal account prompt
+    expect(menu.indexOf(inner.settingsBtn.view)).toBe(menu.length - FLOATS);
     expect(menu.indexOf(inner.settingsBtn.view)).toBeGreaterThan(menu.indexOf(inner.forge.view));
+    // ...and the modal is above the button too, since it has to swallow taps meant for it.
+    expect(menu.length - 1).toBeGreaterThan(menu.indexOf(inner.settingsBtn.view));
     expect(inner.settingsBtn.view.visible).toBe(true);
     const b = inner.settingsBtn.view.getBounds();
     expect(b.maxX).toBeLessThanOrEqual(WECHAT.w + SLACK);

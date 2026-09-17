@@ -222,6 +222,17 @@ export const en = {
       'Optional. Registering stores your username, a password hash and your progress on our server. Play without an account and nothing is sent.',
     portalDataNotice: 'When you are signed in on CrazyGames we store your CrazyGames name and your game progress on our server.',
     privacyLink: 'Privacy Policy',
+    // The one-time device merge (design/16 hole 1) and the expired-session notice (hole 2) —
+    // both rendered by `game/ui/AccountPrompt.ts`.
+    mergeTitle: 'CARRY GUEST PROGRESS OVER?',
+    mergeBody:
+      'This device has guest progress that {username} does not: {materials} materials, {blueprints} blueprints, {characters} characters. You are asked once per device.',
+    mergeUseAccount: "USE THE ACCOUNT'S",
+    mergeCombine: 'COMBINE BOTH',
+    sessionExpiredTitle: 'SIGNED OUT',
+    sessionExpiredBody:
+      'Your saved session is no longer valid, so you are playing as a guest. The progress on this device is untouched — log in again to sync it.',
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'SQUAD',

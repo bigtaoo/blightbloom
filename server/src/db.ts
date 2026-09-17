@@ -69,6 +69,23 @@ export interface AccountDoc {
   providerId?: string;
   createdAt: number;
   displayName?: string;
+  /**
+   * The guest install ids (`client/src/net/identity.ts`'s `getInstallId()`) this account has
+   * already been offered the one-time device merge on (design/16 hole 1, closed 2026-09-17).
+   * ABSENT, not `[]`, on an account nobody has ever offered one to.
+   *
+   * It records the question having been ANSWERED, not the answer. A player who chose "use the
+   * account's" is written here exactly like one who chose to combine, because the rule is
+   * *this device merges once, on its first association with any account* — and being asked
+   * again on the same browser is the failure BOTH answers protect against. Recording the
+   * answer instead would re-offer a merge the player already declined, on every login,
+   * forever.
+   *
+   * These are ids this player's own browsers minted and handed us; nothing else keys off the
+   * array, and no route reads it back out to a client — `GET /account/meta` answers only the
+   * yes/no about the one id the caller already holds.
+   */
+  mergedGuestIds?: string[];
 }
 
 export interface SessionDoc {

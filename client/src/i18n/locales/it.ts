@@ -204,6 +204,15 @@ export const it: Translations<typeof en> = {
       'Opzionale. La registrazione salva nome utente, hash della password e progressi sul nostro server. Senza account non viene inviato nulla.',
     portalDataNotice: 'Quando hai effettuato l\'accesso su CrazyGames, conserviamo il tuo nome CrazyGames e i tuoi progressi sul nostro server.',
     privacyLink: 'Informativa sulla privacy',
+    mergeTitle: 'PORTARE I PROGRESSI OSPITE?',
+    mergeBody:
+      'Questo dispositivo ha progressi ospite che {username} non ha: {materials} materiali, {blueprints} progetti, {characters} personaggi. La domanda viene fatta una volta per dispositivo.',
+    mergeUseAccount: "USA L'ACCOUNT",
+    mergeCombine: 'UNISCI ENTRAMBI',
+    sessionExpiredTitle: 'DISCONNESSO',
+    sessionExpiredBody:
+      'La sessione salvata non è più valida, quindi stai giocando come ospite. I progressi su questo dispositivo sono intatti: accedi di nuovo per sincronizzarli.',
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'SQUADRA',

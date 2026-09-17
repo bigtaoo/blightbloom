@@ -45,6 +45,7 @@ import { PartyScreen } from './PartyScreen';
 import { LoginScreen } from './LoginScreen';
 import { Matchmaking } from './Matchmaking';
 import { StoreScreen } from './StoreScreen';
+import { AccountPrompt } from '../ui/AccountPrompt';
 import { StorePurchase } from '../controllers/StorePurchase';
 import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
@@ -207,6 +208,17 @@ const SCREENS: Array<[string, Build]> = [
     await new Promise((r) => setTimeout(r, 0));
     return s;
   }],
+  // Not a screen — it floats over whichever one is up (design/16 holes 1 and 2) — but its
+  // three buttons are measured here for the same reason every screen's are, and it is the
+  // worst case in the file for a translated label: two of the three are whole sentences
+  // ("USE THE ACCOUNT'S" / "COMBINE BOTH") rather than the one-word verbs most rows carry.
+  // Merge mode, because it is the one that shows two of the three; the third keeps its label
+  // at all times (see the class's own note) so it is measured in both.
+  ['AccountPrompt (merge)', (w, h) => {
+    const p = new AccountPrompt({ size: () => ({ w, h }) });
+    void p.askGuestMerge({ materials: 5, blueprints: 1, characters: 0 }, 'alice');
+    return p;
+  }],
 ];
 
 /** Sub-pixel text-metric noise, not a layout budget — the same slack `viewportFit` allows. */
@@ -264,6 +276,7 @@ describe('the sweep measured what it claims to', () => {
     // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 6
     // (a composed widget), and StoreScreen is 4 plus its five row buttons (an array).
     expect([...seen].map(([name, fields]) => `${name}: ${fields.length}`).sort()).toEqual([
+      'AccountPrompt (merge): 3',
       'Forge (saved run): 9',
       'Forge: 9',
       'LoginScreen: 5',

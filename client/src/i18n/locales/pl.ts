@@ -204,6 +204,15 @@ export const pl: Translations<typeof en> = {
       'Opcjonalnie. Rejestracja zapisuje nazwę użytkownika, skrót hasła i postęp na naszym serwerze. Bez konta nic nie jest wysyłane.',
     portalDataNotice: 'Gdy jesteś zalogowany w CrazyGames, przechowujemy Twoją nazwę CrazyGames i postęp w grze na naszym serwerze.',
     privacyLink: 'Polityka prywatności',
+    mergeTitle: 'PRZENIEŚĆ POSTĘP GOŚCIA?',
+    mergeBody:
+      'To urządzenie ma postęp gościa, którego {username} nie ma: {materials} materiałów, {blueprints} planów, {characters} postaci. Pytamy o to raz na urządzenie.',
+    mergeUseAccount: 'UŻYJ KONTA',
+    mergeCombine: 'POŁĄCZ OBA',
+    sessionExpiredTitle: 'WYLOGOWANO',
+    sessionExpiredBody:
+      'Zapisana sesja straciła ważność, więc grasz jako gość. Postęp na tym urządzeniu pozostał nienaruszony — zaloguj się ponownie, aby go zsynchronizować.',
+    noticeDismiss: 'OK',
   },
   party: {
     title: 'DRUŻYNA',
