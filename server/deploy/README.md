@@ -502,9 +502,11 @@ the stale file and reported success), and the `cache-control` sub-row below aske
       `{"flags":{"ads.rewardedOfferEnabled":true,"ui.maintenanceBanner":""}}` — the public
       flag route (design/21 §4). Three things to actually check in that output, because it is
       the one route on this host that is *supposed* to be readable by anybody:
-    - **Exactly two keys.** `match.queueTimeoutMs` or `match.pvpBotBackfillDelayMs`
-      appearing here is a private flag on a public surface — the backfill delay would tell a
-      player which of their opponents was not a person.
+    - **Exactly two keys.** Any `match.*` name appearing here — `match.queueTimeoutMs`,
+      `match.pvpBotBackfillDelayMs`, `match.coopBotBackfillDelayMs` — is a private flag on a
+      public surface: a backfill delay would tell a player which of the other seats was not a
+      person. Read it as "no `match.` prefix in the output", which stays right as flags are
+      added.
     - **A 200, not a 404.** Unlike `/metrics` and `/admin/health` above, this one MUST be
       public, so it is the one row in this list where a 404 is the failure. It is served by
       matchsvc under the catch-all, so no Caddy block is needed for it.
