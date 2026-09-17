@@ -176,6 +176,34 @@ describe('matchsvc HTTP — /auth/change-password', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('signs the account\'s OTHER devices out, and leaves the caller signed in', async () => {
+    // The route-level half of `AuthService.changePassword`'s revocation: the handler has to
+    // hand its own token down as `keepToken`, and a handler that forgot to would pass every
+    // unit test in AuthService.test.ts while signing the player out of the very screen they
+    // changed their password on. Both directions are checked through real bearer calls.
+    const { body } = await register('httppw3', 'hunter22');
+    const phone = body.token as string;
+    const second = await fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'httppw3', password: 'hunter22' }),
+    });
+    const laptop = ((await second.json()) as { token: string }).token;
+    expect(laptop).not.toBe(phone);
+
+    const changeRes = await fetch(`${baseUrl}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: laptop, oldPassword: 'hunter22', newPassword: 'newpassword1' }),
+    });
+    expect(changeRes.status).toBe(200);
+
+    const phoneMe = await fetch(`${baseUrl}/auth/me`, { headers: { authorization: `Bearer ${phone}` } });
+    expect(phoneMe.status).toBe(401);
+    const laptopMe = await fetch(`${baseUrl}/auth/me`, { headers: { authorization: `Bearer ${laptop}` } });
+    expect(laptopMe.status).toBe(200);
+  });
 });
 
 describe('matchsvc HTTP — /account/meta', () => {

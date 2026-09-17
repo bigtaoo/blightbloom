@@ -157,3 +157,47 @@ describe('TextInputOverlay — blur teardown (previously documented but not impl
     expect(appended[0]!.removed).toBe(true);
   });
 });
+
+/**
+ * The `password` option, which had no test of any kind until 2026-09-17 — the flag was
+ * declared, documented, passed by `LoginScreen` and asserted nowhere. Deleting the word
+ * `password` from either side left 4000+ green tests and a player's password rendered in
+ * plain text on a screen someone else may be looking at.
+ *
+ * Three attributes, not one, because each fails differently: `type` is the masking itself,
+ * `autocapitalize` would otherwise upper-case a typed password (the join-code default this
+ * class was built for), and `autocomplete` is what lets a password manager fill the field
+ * instead of the player typing a long secret by hand on a phone.
+ */
+describe('TextInputOverlay — the password field', () => {
+  it('masks the input, and turns off the join-code text handling around it', () => {
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ password: true, onSubmit: vi.fn() });
+    const el = appended[0]!;
+    expect(el.type).toBe('password');
+    expect(el.autocapitalize).toBe('off');
+    expect(el.autocomplete).toBe('current-password');
+  });
+
+  it('leaves an ordinary field unmasked — the converse, so the flag cannot be hard-wired on', () => {
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ onSubmit: vi.fn() });
+    const el = appended[0]!;
+    expect(el.type).toBe('text');
+    expect(el.autocapitalize).toBe('characters');
+    expect(el.autocomplete).toBe('off');
+  });
+
+  it('still submits the REAL typed value, not the mask', () => {
+    // Masking is a render decision of the browser's. A test that only read `type` would
+    // pass against an implementation that also mangled what the player typed.
+    const { appended } = stubDom();
+    const onSubmit = vi.fn();
+    new TextInputOverlay().open({ password: true, maxLength: 64, onSubmit });
+    const el = appended[0]!;
+    expect(el.maxLength).toBe(64);
+    el.value = 'hunter22';
+    el.keydown('Enter');
+    expect(onSubmit).toHaveBeenCalledWith('hunter22');
+  });
+});
