@@ -133,6 +133,36 @@ describe('resetRenderState', () => {
     expect(t.order).toContain('gameLoop.reset');
     expect(t.order).toContain('screenFlow.hideSettingsButton');
   });
+
+  it('declares the run OFFLINE, so a stale queue flag cannot freeze it', () => {
+    // The 2026-09-20 freeze, at the layer that has to survive the next screen forgetting:
+    // `run.online` is what `GameLoop.update` routes the whole frame on, and a run started
+    // under a stale `true` enters `advanceOnline`, finds no session, and holds the scene
+    // forever — built room, no actors, no ticks, and the previous run's numbers still in
+    // the HUD. Asserted here rather than only at the leak (`OnlineMatch.onCancelled`)
+    // because this is the one place every fresh offline run passes through.
+    const t = make();
+    t.run.online = true;
+    t.runs.resetRenderState();
+    expect(t.run.online).toBe(false);
+  });
+});
+
+describe('a run started after the queue was left', () => {
+  // Reached by pressing PVP SOLO QUEUE and then BACK out of the preview, which is what made
+  // the report intermittent: the lobby looks identical either way.
+  it.each([
+    ['the tutorial', (r: RunLifecycle) => r.beginTutorialRun()],
+    ['a dungeon run', (r: RunLifecycle) => r.beginRun()],
+    ['the one-click quick run', (r: RunLifecycle) => r.beginQuickRun()],
+  ])('runs the OFFLINE sim — %s', (_label, start) => {
+    const t = make();
+    t.run.online = true;
+    start(t.runs);
+    expect(t.run.online).toBe(false);
+    expect(t.run.phase).toBe('playing');
+    expect(t.run.engine).not.toBeNull();
+  });
 });
 
 describe('beginRun — the dungeon path', () => {
@@ -258,6 +288,9 @@ describe('finalizeOnlineRun', () => {
     t.runs.finalizeOnlineRun(session as never);
     expect(t.run.session).toBe(session);
     expect(t.run.phase).toBe('playing');
+    // Re-declared after `resetRenderState`'s offline default — the one entry point that has
+    // to put it back. Without this the confirmed frame stream would be drained by nobody.
+    expect(t.run.online).toBe(true);
     expect(t.order).toContain('gameLoop.resetPrediction');
     for (const hidden of ['matchmaking.hide', 'forge.hide', 'screens.hide', 'partyScreen.hide']) {
       expect(t.order, hidden).toContain(hidden);

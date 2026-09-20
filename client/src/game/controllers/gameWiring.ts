@@ -111,7 +111,11 @@ export function wireScreens(d: WiringDeps): void {
   // point, because this is the layer that has a `mainMenu` to refresh.
   setPublicFlagsListener(() => d.mainMenu.refreshBanner());
   d.pvpPreview.onQueue = () => d.nav.showMatchmaking();
-  d.pvpPreview.onBack = () => d.nav.showMenu();
+  // BACK, not just a navigation: the preview is already INSIDE the queue flow
+  // (`beginSoloQueue` declared the run online to get here), so leaving it has to leave the
+  // flow. `onCancelled` is the verb for that and routes to the lobby by itself — see its
+  // doc comment for the freeze that a bare `nav.showMenu()` left behind.
+  d.pvpPreview.onBack = () => d.net.onCancelled();
   d.matchmaking.onConnected = (session) => d.runs.finalizeOnlineRun(session);
   d.matchmaking.onCancelled = () => d.net.onCancelled();
   d.partyScreen.onBack = () => d.nav.showMenu();

@@ -332,7 +332,14 @@ describe('an online match is not exportable — and neither is the run before it
 
     h.inner.runs.finalizeOnlineRun({ close: () => {} });
 
-    h.pressF9();
+    // The HUD's record BUTTON, not F9 — and the difference is the whole reason this guard
+    // has to exist rather than being covered by the hotkey table. `keydownAction` refuses F9
+    // outright once `run.online` is set (and since 2026-09-20 `finalizeOnlineRun` sets it
+    // itself rather than inheriting it from `beginSoloQueue`), so the key never reaches here
+    // in a real match. The button is deliberately NOT phase-gated — an offline run stays
+    // packable after it ends — so it is the one surface that can still ask an online match
+    // for a file, and `recorder.end()` is what answers.
+    h.inner.hud.replayBtn.onTap!();
     expect(h.saved).toHaveLength(1); // nothing new reached the disk
     expect(h.toasts[h.toasts.length - 1]).toBe(t('toast.replayNoRun'));
   });
