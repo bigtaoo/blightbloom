@@ -30,6 +30,70 @@ describe('SKIN_DEFS — characters as balanced defensive identities (design/14)'
     }
   });
 
+  /**
+   * Every authored number on a character is an INTEGER, at BOTH scales (2026-09-21).
+   *
+   * This is the gate the roster did not have, and its absence cost exactly what you would
+   * expect: `vanguard.maxShield` shipped as `3.2` for two months — the only fractional
+   * design number anywhere in `engine/content` — because the PvP pair used to be derived
+   * as `Math.round(pool × PVP_SCALE_FACTOR)` and 16/5 is 3.2. The forge prints this pair
+   * verbatim, so the remainder was on screen; `serializeState` hashes hp and shield, so it
+   * was in the replay hash as a `hp: 5.2` too. Fixed point is how the SIM carries
+   * sub-unit quantities (`math/fixed.ts`, positions and velocities) — a design number a
+   * player reads is not.
+   */
+  it('every authored number is an integer, at both scales', () => {
+    for (const s of ALL) {
+      for (const [label, v] of [
+        ['maxHp', s.maxHp], ['maxShield', s.maxShield], ['maxEnergy', s.maxEnergy],
+        ['pvp.maxHp', s.pvp.maxHp], ['pvp.maxShield', s.pvp.maxShield],
+      ] as const) {
+        expect(Number.isInteger(v), `${s.id}.${label} is ${v}, not an integer`).toBe(true);
+      }
+      if (s.shieldBreak) {
+        // The passive's radius is authored in grid and converted once to fp, so a fraction
+        // there is legitimate geometry — its DAMAGE is a design number like the pools.
+        const dmg = s.shieldBreak.kind === 'aoe' ? s.shieldBreak.damage : 0;
+        expect(Number.isInteger(dmg), `${s.id}.shieldBreak.damage is ${dmg}`).toBe(true);
+      }
+    }
+  });
+
+  // The arena pair is a SECOND scale of the same identity, not a second character
+  // (design/15): it may be re-tuned on its own, but it must not invert who is tankier —
+  // a player who picks the big-shield character in the forge has to get the big-shield
+  // character in the arena. Checked as a rank correspondence per axis rather than as a
+  // fixed ratio, so either column can move without this becoming a restatement of the
+  // multiplication the split removed.
+  it('the arena pair keeps the PvE ordering on each axis (one roster, two scales)', () => {
+    for (const a of ALL) {
+      for (const b of ALL) {
+        if (a.id === b.id) continue;
+        expect(Math.sign(a.pvp.maxHp - b.pvp.maxHp), `${a.id} vs ${b.id} hp order`)
+          .toBe(Math.sign(a.maxHp - b.maxHp));
+        expect(Math.sign(a.pvp.maxShield - b.pvp.maxShield), `${a.id} vs ${b.id} shield order`)
+          .toBe(Math.sign(a.maxShield - b.maxShield));
+      }
+    }
+  });
+
+  // …and the side-grade rule itself has to survive the trip to the arena. Without this,
+  // the PvP column is an unguarded second content set where an all-rounder could appear
+  // while every rule above stayed green on the PvE one.
+  it('no character Pareto-dominates another at the ARENA scale either', () => {
+    for (const a of ALL) {
+      for (const b of ALL) {
+        if (a.id === b.id) continue;
+        const dominates =
+          a.pvp.maxHp >= b.pvp.maxHp &&
+          a.pvp.maxShield >= b.pvp.maxShield &&
+          a.maxEnergy >= b.maxEnergy && // unscaled by design (ENGINE_VERSION 60)
+          (a.pvp.maxHp > b.pvp.maxHp || a.pvp.maxShield > b.pvp.maxShield || a.maxEnergy > b.maxEnergy);
+        expect(dominates, `${a.id} strictly dominates ${b.id} in the arena`).toBe(false);
+      }
+    }
+  });
+
   // The reference pool is a DEFINITION, not a tuning choice: every `energyCost` in
   // `content/weaponSpecs/` was authored against the default character's bar, and
   // `balance/energy.ts`'s sustainability classification is stated in those terms. If the
@@ -111,6 +175,16 @@ describe('SKIN_DEFS — characters as balanced defensive identities (design/14)'
     // points, so adding the two would be an invented exchange rate of exactly the kind
     // design/03 refuses to make up — and at ~100 it would swamp a 9-point body budget
     // and make this band meaningless.
+  });
+
+  // …and within that band, no two characters share a budget EXACTLY. Measured, not
+  // stylistic: an exact tie makes a near-symmetric fight double-KO far more often, which
+  // shows up in `pvpBalanceSim` as simultaneous-elimination ties (confirmed across 3
+  // different splits at total=9). This is the constraint vanguard's `3.2` was invented to
+  // satisfy; the constraint was real and is kept, the fraction was not needed to meet it.
+  it('no two characters share an exact (hp + shield) budget', () => {
+    const budgets = ALL.map((s) => s.maxHp + s.maxShield);
+    expect(new Set(budgets).size, `budgets collide: ${budgets.join(', ')}`).toBe(ALL.length);
   });
 
   // A shield-break passive is only meaningful on a character that HAS a shield to break

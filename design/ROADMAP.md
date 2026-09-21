@@ -125,7 +125,7 @@ added 2026-08-05's "graph2d content" pass, Room & door model section below). **W
 
 - **2.1 ✅ Forge outpost** (14/09): blueprint unlock (permanent) + per-run craft from materials. Recipes are `element × qty × min-tier` — and **`minTier` is now enforced**: the material bank keys by (element, rolled tier) via `bankKey` (additive, no bump — tier 0 keeps the flat key), so a premium recipe (e.g. emberblade: fire×2 minTier 1) genuinely demands materials from deeper floors; spending is lowest-qualifying-tier-first.
 - **2.2 ✅ Loadout screen** (10): up to 2 crafted weapons carried into a run via `EngineConfig.loadout`; a free slot keeps its starter default, by kind, so every run carries a gun + a melee weapon (ENGINE_VERSION 45). Lives in the demo forge outpost (`game/Forge.ts`).
-- **2.3 ✅ Character roster + select** (14/09/13): the **3 launch characters** ship — vanguard (6/3.2), skirmisher (3/6), juggernaut (11/0, the flat-HP tank). *(Shipped numbers as retuned against `pvpBalanceSim` 2026-07-28; this line said 6/4, 3/8, 9/0 — the pre-retune values — until 2026-09-03, as did design/09 and design/14 with two other variants. `content/skins.ts` is the source of truth.)* Full side-grade balance suite (`skins.test.ts`): Pareto-non-domination, per-axis spread, equal-worth budget band, no inert passive on a zero-shield body. All free for now (paid split is the store's job).
+- **2.3 ✅ Character roster + select** (14/09/13): the **3 launch characters** ship — vanguard (6/4), skirmisher (3/6), juggernaut (11/0, the flat-HP tank). *(Shipped numbers as retuned against `pvpBalanceSim` 2026-07-28; this line said 6/4, 3/8, 9/0 — the pre-retune values — until 2026-09-03, as did design/09 and design/14 with two other variants. `content/skins.ts` is the source of truth.)* Full side-grade balance suite (`skins.test.ts`): Pareto-non-domination, per-axis spread, equal-worth budget band, no inert passive on a zero-shield body. All free for now (paid split is the store's job).
 - **2.4 ✅ Monetization scaffolding** (14): direct-purchase blueprint/character grant APIs (`acquireBlueprint`/`grantCharacter`/`purchasableBlueprints`), no gacha. Real billing is deliberately out of scope (a platform adapter would call these after its own payment flow).
 
 **Deferred out of Phase 2 (not blocking the loop):** ~~touch/WeChat forge input (web-keyboard only today)~~ — **stale, corrected 2026-08-31**: every Forge control is a tappable `ui/widgets` `Button` with an `onTap` (back, character cycle, blueprint cards, clear, acquire, page, START RUN), and design/04's verification checklist items 12 and 13 are the WeChat-simulator proof — item 12 fixed the day every Button on that platform was silently unclickable, item 13 fixed the landscape layout that hid START RUN, both on a real device runtime with no keyboard at all. The keyboard digits in the forge key handler (`controllers/ForgeInput.onKey`, split out of `Game.onForgeKey` on 2026-09-03) are a desktop shortcut on top, not the only path; the outpost's real art (design/13 → Phase 5 art pipeline) — **shipped 2026-08-01, NPC included as of 2026-08-02, see 5.3's update below**; a real billing adapter.
@@ -1447,10 +1447,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 **[2026-09-21 — the docs, tidied](roadmap/77-2026-09-21-doc-tidy.md)**
 
 - **09-21** [The docs, tidied: a missing volume, two splits, and an index that claimed more than it carried](roadmap/77-2026-09-21-doc-tidy.md#the-docs-tidied-a-missing-volume-two-splits-and-an-index-that-claimed-more-than-it-carried-2026-09-21-docs-only-no-code-change) — *“整理文档”* again, run like volume 64: mechanical checks first, and **every defect was in an index or a file boundary, none in a description of what the code does.** Both doc gates were green while the 09-20/21 pass — a live freeze, its fix, its assembly test, merged in PR #31 — had **no work-log volume at all**, which `checkRoadmapIndex` structurally cannot see: it runs from the volumes to the index, so a pass that wrote no volume is one it has nothing to ask about (the tell is `git log` against `ls design/roadmap/`, and it wants a human). `design/18` was 1,072 lines → a 107-line index plus `testing/` × 3, with the boundary drawn by **how the code cites it** — 73 citations in two vocabularies, `design/18 G4` (planning, part 2) and `design/18 Layer 0` (also part 2) against `Layer 4`–`7` (reporting, part 1) — and verified line-for-line against the pre-split file. It also gained **Layer 7**, which had existed unnamed for four weeks: nine `client/src/game/game*.test.ts` files, 67 cases, all headed *“end to end through `Game`”* since 2026-08-25, in the one doc whose job is to say what stops each class of defect — the layer that catches a value written by one controller, read by a second and leaked by a screen owned by a third. Volume 65's deferred gap closed exactly as specified: `03-occlusion-and-doors.md` → `03-occlusion` (333) + `04-doors` (722), `04-floor-arena-void` → `05`, `05-character-and-objects` → `06`, 22 references following. **A pointer follows a renamed file and a claim does not** — the blanket rewrite turned volume 65's *“is 1,046 lines”* measurement into something never true, and was reverted. `design/01` says outright that its map carries every `##` and `###`; checked for the first time, it was missing a whole section (the 2026-09-11 door halo, unindexed ten days) and thirteen subsections. Two broken links in 1,196, both a stale suffix. `docs` `test`
+**[2026-09-21 — the shield stops being a fraction](roadmap/78-2026-09-21-integer-design-numbers.md)**
+
+- **09-21** [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67) — a forge screenshot, circled: *“先锋（6生命 / 3.2护盾）”*, with the rule beside it — *“定点数仅用作逻辑计算，不参与数值设计的，最终数值只能是整数”*. One grep sizes the problem: **exactly one fractional gameplay stat in the tree**, and it was not a design choice. `buildArenaSpecs` derived the PvP pools as `Math.round(pool × PVP_SCALE_FACTOR)`, so authoring the **16** the 2026-07-28 PvP retune had measured required writing 16/5 in the PvE column — **a rounding artefact parked in the file the character screen reads**, defended by a nine-line comment about budget ties that was true and was not the reason. **In PvE the fraction was provably inert**: post-resist damage is always an integer ≥ 1 and a spent shield overflows into hp, so death depends only on cumulative damage against the TOTAL pool and `D ≥ 9.2 ⟺ D ≥ 10` — identical hits-to-kill at every damage 1–10, identical shield-break timing, no divergence under any damage/regen interleaving. What it bought was the screenshot, a `hp: 5.2` in the hashed state and `hpTotal: 4.2` in the golden witness. `SkinDef` now carries an AUTHORED `pvp: {maxHp, maxShield}` (30/16, 15/30, 55/0 — what the sim measured), the PvE pool is the 4 it always effectively was, and the factor keeps scaling weapon damage only, so neither scale is a rounding of the other. **Run before the bump, the gate said something**: six of SEVEN scenario hashes moved and `launch-arena-pvp`'s did not — PvP byte-identical as measured — with every event counter, phase and PRNG cursor unchanged and one witness field moving, `hpTotal: 4.2 → 5`. Three gates, because a roster-only one is how this lasted two months: integrality at both scales plus a per-axis ORDERING correspondence between them (`skins.test.ts`), the same rule over six catalogs with the exception keyed on the field's NAME rather than its value (`authoredNumbers.test.ts` — `*Grid`/`*Sec`/`bulletZ` may be fractional, `damage`/`maxHp`/`cost` may not), and the two-pool invariant in its two halves (`poolIntegrality.test.ts` — `applyResist` over every shipped resist profile, which had **no unit test at all**, and the pools keeping what they are handed whole). `smoke.test.ts`'s *“no float except the two that are deliberate”* flips to *“no float at all”*. Four mutants killed; **`ceil(pool / damage)` survived the 3.2 mutant and should have**, which is the finding stated as a test rather than contradicted by one. Still open and older than this pass: vanguard reads **47%** against a 33% fair share. `engine` `test` `docs`
 
 ## The work log — by theme
 
-The same 175 entries, grouped. An entry with more than one tag appears more than once.
+The same 176 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(65)*
 
@@ -1558,7 +1561,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(32)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(33)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1592,6 +1595,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Chests, and the id that retuned a floor](roadmap/56-2026-09-14-chests.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
+- 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 
 **`arena`** — the PvP launch map and its audit *(7)*
 
@@ -1618,7 +1622,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(90)*
+**`test`** — coverage sweeps, gates, mutation batteries *(91)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1710,6 +1714,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [The account's untested halves, and the two decisions hiding in them](roadmap/75-2026-09-17-account-test-gaps.md#the-accounts-untested-halves-and-the-two-decisions-hiding-in-them-2026-09-17-server--client--test)
 - 09-20 [The tutorial froze, and the seam every green suite stubbed](roadmap/76-2026-09-20-run-clock-freeze.md#the-tutorial-froze-and-the-seam-every-green-suite-stubbed-2026-09-20--09-21-client--test--docs-no-engine-change)
 - 09-21 [The docs, tidied: a missing volume, two splits, and an index that claimed more than it carried](roadmap/77-2026-09-21-doc-tidy.md#the-docs-tidied-a-missing-volume-two-splits-and-an-index-that-claimed-more-than-it-carried-2026-09-21-docs-only-no-code-change)
+- 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1811,7 +1816,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(96)*
+**`docs`** — design docs and this log itself *(97)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1909,6 +1914,7 @@ The same 175 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [The ladder gets a trust boundary, and the third hole closes by inverting](roadmap/74-2026-09-17-ladder-identity.md#the-ladder-gets-a-trust-boundary-and-the-third-hole-closes-by-inverting-2026-09-17-client--server--docs-no-engine-change)
 - 09-20 [The tutorial froze, and the seam every green suite stubbed](roadmap/76-2026-09-20-run-clock-freeze.md#the-tutorial-froze-and-the-seam-every-green-suite-stubbed-2026-09-20--09-21-client--test--docs-no-engine-change)
 - 09-21 [The docs, tidied: a missing volume, two splits, and an index that claimed more than it carried](roadmap/77-2026-09-21-doc-tidy.md#the-docs-tidied-a-missing-volume-two-splits-and-an-index-that-claimed-more-than-it-carried-2026-09-21-docs-only-no-code-change)
+- 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 
 **`net`** — matchmaking, sockets, reconnect *(27)*
 

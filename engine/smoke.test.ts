@@ -417,28 +417,26 @@ describe('the smoke suite as a whole exercised the engine', () => {
     expect(withWalls.length, 'no scenario has any wall geometry — the containment rule is inert').toBeGreaterThan(1);
   });
 
-  it('the serialized state carries no float except the two that are deliberate', () => {
+  it('the serialized state carries no float at all', () => {
     // `serializeState` is what the replay hash and the anti-cheat checkpoint are computed over
     // (design/06/15), so this walks the whole serialized shape rather than the handful of
     // fields the per-tick invariant covers.
     //
-    // FINDING, recorded rather than asserted away: `hp` and `shield` ARE fractional (3.2, 4.2
-    // in four of the five scenarios) because shield regen and healing add sub-unit amounts.
-    // design/06 lists "native float in stored state" as banned, so this is a documented-rule vs
-    // shipped-code divergence in the same family as design/07's swept-bullet claim.
-    //
-    // It is NOT a desync risk, and the distinction is worth stating precisely so nobody
-    // "fixes" it into an ENGINE_VERSION bump for nothing: IEEE 754 specifies `+ - * /` to be
-    // correctly rounded, so the same operations in the same order give bit-identical results on
-    // every platform. What design/06 is really guarding against is transcendentals and
-    // platform-dependent math — neither is involved here. Positions and velocities, where
-    // accumulated error WOULD compound tick over tick, are integers, and the per-tick invariant
-    // above proves it.
-    const ALLOWED_FRACTIONAL = new Set(['hp', 'shield']);
-    void ALLOWED_FRACTIONAL; // documented above; the index-based filter below is the mechanism
+    // Until 2026-09-21 this test recorded a FINDING instead of enforcing the rule: `hp` and
+    // `shield` came out fractional (3.2, 4.2 in four of the five scenarios) and the exemption
+    // was argued to be safe — correctly, as far as it went (IEEE 754 specifies `+ - * /` to be
+    // correctly rounded, so the same ops in the same order are bit-identical on every platform;
+    // what design/06 really bans is transcendentals and platform-dependent math). But "safe"
+    // was never the whole question. The single source of every one of those fractions was
+    // `vanguard.maxShield: 3.2`, a design number the forge printed at the player, and its own
+    // note warned that the first `*` or `/` on the pool would turn the exemption into a real
+    // desync. The pool is an integer now (`content/skins.ts`), so the rule holds with no
+    // exemption and this asserts it rather than describing it.
     const floats: string[] = [];
+    let numbersSeen = 0;
     const walk = (v: unknown, path: string): void => {
       if (typeof v === 'number') {
+        numbersSeen++;
         if (!Number.isInteger(v)) floats.push(`${path} = ${v}`);
         return;
       }
@@ -451,13 +449,8 @@ describe('the smoke suite as a whole exercised the engine', () => {
       }
     };
     for (const r of RUNS) walk(serializeState(r.state), r.sc.name);
-    // `serializeState` emits players as flat tuples, so the exemption is positional. Indices 10
-    // (hp), 13 and 14 (shield, maxShield) are the fractional ones; everything else must be an
-    // integer. Pinned by index deliberately: if the tuple's shape changes, this fails and the
-    // exemption gets re-examined instead of silently covering a new field.
-    const exempt = /\.players\[\d+\]\[(?:10|13|14)\]$/;
-    const unexpected = floats.filter((f) => !exempt.test(f.split('=')[0]!.trim()));
-    expect(unexpected.slice(0, 8)).toEqual([]);
-    expect(floats.length, 'the known fractional fields vanished — re-check the exemption').toBeGreaterThan(0);
+    expect(floats.slice(0, 8)).toEqual([]);
+    // The anti-vacuity half: a walk that visited nothing would also report no floats.
+    expect(numbersSeen, 'the walk visited no numbers — the no-float rule is inert').toBeGreaterThan(500);
   });
 });

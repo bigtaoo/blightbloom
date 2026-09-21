@@ -10,8 +10,8 @@
  * is no parameter for it (design/09 "compile-time impossible to leak persistent gear
  * into PvP", unit-tested by arity). `skinId` is NOT a wall violation: design/14/15
  * name character choice as the fairness wall's one deliberate exception (a player's
- * chosen skin carries into PvP same as PvE) — it is what lets buildArenaSpecs apply
- * the PvP HP/weapon scale factor (design/15) to the RIGHT (maxHp, maxShield) pair.
+ * chosen skin carries into PvP same as PvE) — it is what lets buildArenaSpecs pick the
+ * RIGHT character's authored arena (maxHp, maxShield) pair (design/15).
  * PvP power beyond the landing kit + character choice comes only from on-map pickups
  * (design/05). This is design/05's hybrid-gear table made executable.
  *
@@ -74,12 +74,21 @@ const ARENA_PRESETS: Record<ArenaPresetId, { loadout: WeaponSimSpec[] }> = {
 export const ARENA_PRESET_IDS: readonly ArenaPresetId[] = Object.keys(ARENA_PRESETS);
 
 /**
- * PvP HP/weapon scale factor (design/15) — a single factor applied to both a
- * character's (maxHp, maxShield) and the landing-kit/arena-loot weapons' damage, so
- * relative time-to-kill matches PvE's feel at a bigger absolute number range (PvE's
- * 3-10ish HP pool leaves no room for a shrinking-zone DoT curve to matter). Design/15
- * is explicit that the EXACT value is content-tuning, not part of its locked shape
- * ("real play required") — this is a first-pass placeholder, not a tuned constant.
+ * PvP WEAPON-damage scale factor (design/15) — the arena's half of the two-sided scale
+ * that keeps relative time-to-kill at PvE's feel while the absolute numbers get bigger
+ * (PvE's 3-10ish HP pool leaves no room for a shrinking-zone DoT curve to matter).
+ * Design/15 is explicit that the EXACT value is content-tuning, not part of its locked
+ * shape ("real play required") — this is a first-pass placeholder, not a tuned constant.
+ *
+ * The other half — a character's arena (maxHp, maxShield) — stopped being derived from
+ * this factor on 2026-09-21 and is now AUTHORED per character (`SkinDef.pvp`). The
+ * derivation was `Math.round(pool × 5)`, which put the rounding remainder in the wrong
+ * file: to land on the 16 the balance pass had measured, vanguard's PvE shield had to be
+ * authored as `3.2` — a fraction the forge then printed at the player. The pairing that
+ * actually preserves TTK is "pools and weapon damage scale TOGETHER", and two authored
+ * integer columns satisfy it exactly as well as one multiplication did, while letting
+ * either scale be re-tuned without dragging the other with it. `skins.ts` holds the
+ * numbers; `skins.test.ts` holds the two columns to one ordering.
  */
 export const PVP_SCALE_FACTOR = 5;
 
@@ -103,8 +112,8 @@ export interface ArenaBuildResult {
  * PvP arena builder. Takes a preset id + which character — and NOTHING else. There
  * is deliberately no meta (weapon/material/blueprint) parameter, so persistent gear
  * is compile-time impossible to leak into PvP (design/05/06/09/15 fairness wall);
- * `skinId` is the wall's one named exception (design/14/15), needed here so the HP
- * scale factor applies to the right character. Guarded by an arity test
+ * `skinId` is the wall's one named exception (design/14/15), needed here so the arena
+ * pools come from the right character. Guarded by an arity test
  * (build.test.ts: exactly 2 params, never 3).
  */
 export function buildArenaSpecs(presetId: ArenaPresetId, skinId?: SkinId): ArenaBuildResult {
@@ -113,7 +122,9 @@ export function buildArenaSpecs(presetId: ArenaPresetId, skinId?: SkinId): Arena
   const skin = resolveSkin(skinId); // unknown/absent → default (forward-compat, same as PvE)
   return {
     weapons: preset.loadout.map((base) => makeWeapon(scaleWeaponDamage(base, PVP_SCALE_FACTOR))),
-    maxHp: Math.round(skin.maxHp * PVP_SCALE_FACTOR),
-    maxShield: Math.round(skin.maxShield * PVP_SCALE_FACTOR),
+    // Authored, not scaled (see PVP_SCALE_FACTOR above): the arena pair is content on the
+    // SkinDef, so this builder reads it rather than re-deriving it from the PvE pair.
+    maxHp: skin.pvp.maxHp,
+    maxShield: skin.pvp.maxShield,
   };
 }

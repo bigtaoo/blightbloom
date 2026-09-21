@@ -34,8 +34,10 @@
  *
  * Sizing, measured rather than assumed: each shooter is one `ENEMY_GUN_SIM` shot per
  * 1.5s = 0.67 damage/s. At 3 slots the sim's careful bot cleared the entrance room
- * but died on floor 1 in every run — a room cost 5-9 damage against a renewable 3.2
- * shield, so the 6-point HP pool drained one room at a time with no way back up. At 2
+ * but died on floor 1 in every run — a room cost 5-9 damage against a renewable
+ * 4-point shield (authored as `3.2` when this was measured, the same pool either way —
+ * ENGINE_VERSION 67), so the 6-point HP pool drained one room at a time with no way
+ * back up. At 2
  * it costs 4-8, floor 1 is passable but not free (the careful bot descends in ~37% of
  * runs and deaths spread across floors 0-3), which is the difficulty this level is
  * aiming for. Survival comes down to spacing and movement — a mob that is closing

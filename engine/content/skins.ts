@@ -13,6 +13,15 @@
  * matter how big their pool is. The stat therefore crosses design/15's fairness wall (a
  * player's chosen character carries into PvP) without putting a raw power ladder on it.
  *
+ * Every number on a `SkinDef` is an INTEGER, and both scales are authored (2026-09-21).
+ * A character carries two defensive pairs — the PvE one and `pvp` — because design/15's
+ * single `PVP_SCALE_FACTOR` is still what scales weapon DAMAGE, but deriving the pools
+ * from it by `Math.round(pool × 5)` made the authored PvE number a back-solved fraction:
+ * vanguard's shield was `3.2` for two months purely so that `× 5` landed on the 16 the
+ * balance pass had measured. Fixed point is the sim's business; a design number the
+ * player reads (the forge prints this pair verbatim) is not the place to keep a
+ * remainder.
+ *
  * `atlasKey`/`animRef` are RENDER-only refs (the sim ignores them, like `tint`); the
  * defensive numbers are the sim's. Human-unit passive fields (grid radius, grid/s
  * impulse) convert ONCE here into the fp `ShieldBreakSim` the combat layer reads
@@ -38,6 +47,16 @@ export interface KnockBreak {
 }
 export type ShieldBreakPassive = AoeBreak | KnockBreak;
 
+/**
+ * A character's defensive pair at ONE scale. Both members are integers — the rule the
+ * whole `SkinDef` is held to (`skins.test.ts`), and the reason `pvp` is authored rather
+ * than derived (see this file's header).
+ */
+export interface DefensivePools {
+  maxHp: number;
+  maxShield: number;
+}
+
 export interface SkinDef {
   id: SkinId;
   nameKey: string; // i18n KEY only, never display text (design/09) — client resolves via tName()
@@ -45,6 +64,19 @@ export interface SkinDef {
   animRef: string; // render-only animation set
   maxHp: number;
   maxShield: number;
+  /**
+   * The PvP-scale pair (design/15), authored — NOT `Math.round(pool × PVP_SCALE_FACTOR)`.
+   * The factor still scales the landing kit's and arena loot's weapon damage, which is
+   * what preserves relative TTK; the pools simply stopped riding on it, so neither scale
+   * has to be a rounding of the other and both can stay integral.
+   *
+   * These are the numbers the 2026-07-28 `pvpBalanceSim` pass actually measured (30/16,
+   * 15/30, 55/0) — the split is deliberately a no-op on PvP balance, so this file's two
+   * columns can be re-tuned independently from here on. `skins.test.ts` holds the pair to
+   * the same side-grade rules as the PvE one, and pins the two columns to the same
+   * ORDERING per axis, so the roster cannot say one thing in PvE and the opposite in PvP.
+   */
+  pvp: DefensivePools;
   /**
    * Weapon-energy capacity (`balance/energy.ts`, ENGINE_VERSION 60). The roster's THIRD
    * axis, and the one that is not defensive: it buys burst length, never sustained dps
@@ -74,22 +106,33 @@ export const SKIN_DEFS: Record<string, SkinDef> = {
   // vs-bot win rate across seed sweeps, vs. an ~33% fair share): the HP+shield hybrid
   // out-earns either pure-HP (juggernaut) or mostly-shield (skirmisher) build at the
   // same total budget, since it gets both a persistent body AND a shield that resets
-  // (fuelling repeat shieldBreak bursts) between fights. maxShield 4->3.2 trims that
-  // edge (verified: shifts win rate toward fair share without moving HP, the weaker
-  // lever here — shield does double duty for vanguard so it's the one that matters).
-  // Deliberately NOT an integer: every whole-number total between 8 and 11 either
-  // exactly matches another character's (hp+shield) budget — which empirically spikes
-  // simultaneous-elimination ties (near-symmetric fights double-KO far more often,
-  // confirmed across 3 different splits at total=9) — or overcorrects hard (total=8
-  // crashed vanguard's win rate regardless of split). Safe only because shield regen
-  // (StatusEffectSystem.ts) now clamps to maxShield instead of always `+1`-ing past it.
+  // (fuelling repeat shieldBreak bursts) between fights. The trim was authored as
+  // maxShield 4->3.2 so that `× PVP_SCALE_FACTOR` landed on 20->16, and that is where it
+  // worked: the sim it was measured against is the PVP one.
+  //
+  // In PvE the fraction did NOTHING, which is why it is gone (2026-09-21). All damage in
+  // this engine is a post-resist integer >= 1 (`applyResist`, `critDamage`,
+  // `buffedDamage`), and `takeDamage` overflows a spent shield into hp — so death depends
+  // only on cumulative integer damage vs. the total pool, and `D >= 9.2 <=> D >= 10` for
+  // every integer D. Measured across damage 1..10: identical hits-to-kill at every value,
+  // identical shield-break timing, and no divergence in any damage/regen interleaving
+  // (regen is `+1` clamped, so the two pools differ by 0 or 0.8 and never by a full
+  // point). What the fraction did buy was a "3.2 shield" line in the forge and a
+  // `hp: 5.2` in the hashed replay state. The PvE pool is the 4 it always effectively was,
+  // 16 is authored directly in `pvp` below rather than back-solved through the factor.
+  //
+  // The tie constraint that argued for a fraction still holds and is still satisfied:
+  // vanguard's total is 10, distinct from skirmisher's 9 and juggernaut's 11 (an exact
+  // budget tie empirically spikes simultaneous-elimination — near-symmetric fights
+  // double-KO far more often, confirmed across 3 different splits at total=9).
   vanguard: {
     id: 'vanguard',
     nameKey: 'skin.vanguard.name',
     atlasKey: 'char_vanguard',
     animRef: 'humanoid',
     maxHp: 6,
-    maxShield: 3.2,
+    maxShield: 4,
+    pvp: { maxHp: 30, maxShield: 16 },
     // The reference pool itself — every `energyCost` in `content/weaponSpecs/` was priced
     // against this number on the default character, so it is the one value in this column
     // that is a definition rather than a tuning choice (`skins.test.ts` pins it).
@@ -114,6 +157,7 @@ export const SKIN_DEFS: Record<string, SkinDef> = {
     animRef: 'humanoid',
     maxHp: 3,
     maxShield: 6,
+    pvp: { maxHp: 15, maxShield: 30 },
     // +30% pool (ENGINE_VERSION 60). The 3 HP body cannot win a long trade, so what it
     // gets is a longer OPENING one: roughly one extra pull of the heaviest frame in the
     // game off a full bar. It buys nothing at all once the bar is empty, which is the
@@ -140,6 +184,7 @@ export const SKIN_DEFS: Record<string, SkinDef> = {
     animRef: 'humanoid',
     maxHp: 11,
     maxShield: 0,
+    pvp: { maxHp: 55, maxShield: 0 },
     // -30% pool (ENGINE_VERSION 60) — the counterweight to the biggest body in the
     // roster. This is the character whose fights are long by construction (no shield, no
     // regen, it stands and trades), and length is exactly the regime where capacity stops
