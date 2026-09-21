@@ -1145,6 +1145,44 @@ describe('Actor — idle hover', () => {
     expect(a.shadow!.alpha).toBeLessThan(1);
   });
 
+  it('does NOT carry the health bar up and down with it — the readout stays pinned', () => {
+    // Live report 2026-09-21, *"角色头上的血条能不跟着角色上下晃动吗？眼睛都被晃花了"*. The
+    // hover is a cue about the BODY's weight; the bar is the one piece of furniture the eye
+    // has to fixate on and read a fraction off, and this archetype's amp 2 moves it 4 world px
+    // peak to trough — one full bar height (`setHealth` draws the track 4 px tall), ~14-16
+    // screen px at a room's cover-fit zoom. `applyTransform` adds `visualZ` back so the bar
+    // hangs at a constant height while the body bobs beneath it.
+    const a = new Actor('player', 20, undefined, false, 'char_vanguard');
+    a.pushState(100, 250, 0, 0);
+    a.snap();
+    const bodyYs: number[] = [];
+    const barYs: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      a.interpolate(1, 120); // 4.8 s total — two full cycles of this archetype's 2400 ms bob
+      bodyYs.push(a.y);
+      barYs.push(a.healthBar!.y);
+    }
+    // The fixture is meaningless unless the body really is bobbing over these samples.
+    expect(Math.max(...bodyYs) - Math.min(...bodyYs)).toBeGreaterThan(2);
+    expect(Math.max(...barYs) - Math.min(...barYs)).toBeCloseTo(0, 5);
+    // Pinned to the GROUND point's own offset, not to some arbitrary constant — and still
+    // tracking x, which was never the complaint.
+    const offsetY = (a as unknown as { healthBarOffsetY: number }).healthBarOffsetY;
+    expect(barYs[0]).toBeCloseTo(250 + offsetY, 5);
+    expect(a.healthBar!.x).toBeCloseTo(100, 5);
+  });
+
+  it('still carries the health bar with a REAL height change — only the idle bob is pinned', () => {
+    // The fix strips `visualZ`, not `z`. Engine z is 0 for every actor today (design/01,
+    // "`z` never gates gameplay"), but a knock-up would be the actor genuinely being
+    // somewhere else, and a bar left behind on the floor would be the worse bug.
+    const grounded = new Actor('enemy', 14, undefined, false, 'critter-core');
+    grounded.place(0, 400, 0);
+    const resting = grounded.healthBar!.y;
+    grounded.place(0, 400, 30);
+    expect(grounded.healthBar!.y).toBeCloseTo(resting - 30, 5);
+  });
+
   it('spreads phase across actors so a room full of floaters does not pulse in lockstep', () => {
     const a = new Actor('enemy', 14, undefined, false, 'floater-core');
     const b = new Actor('enemy', 14, undefined, false, 'floater-core');

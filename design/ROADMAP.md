@@ -1471,11 +1471,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-21** [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change) — *“宝箱的体积放大一倍”* One constant — `ChestLayer`'s `BODY_HALF` 9/14 → **18/28**, so a chest is drawn 36 px wide instead of 18 beside a player's own 32 — and everything that follows it (the sprite, the Graphics fallback, the ground shadow) is derived rather than restated. The plate radius is deliberately NOT scaled: it is drawn to the sim's own `CHEST_MECHANISM_RADIUS_GRID` so the picture answers *am I standing on it*, and a plate scaled with the body would lie about where the mechanic measures. **The finding is that 1,509 scene tests passed a doubling without one going red**, and not by accident: every size assertion derives from `chestFootprintWidth()`, which is the right way to write them and is exactly why they survive a change to that function's answer — leaving the size pinned from BELOW (`big > small`, design/13's dual channel) and from nowhere above. Two ceilings added as RELATIONS against the sim's numbers rather than as sizes anyone picked: a chest is never wider than the range that opens it (past that, a player standing squarely on the art is out of range of the thing they are standing on), and a big chest stays clear of its own mechanism plates (`config.ts` gives the ring a reason in words — *“standing on one plate is visibly NOT standing on the chest”* — about a drawn width the config file cannot see). Both mutation-checked, because a ceiling far above the value it guards is indistinguishable from no ceiling: 36/56 turns the first red, 65 turns both. No `ENGINE_VERSION` bump, no golden re-record — a chest is not a collider, so nothing an actor can walk into changed. `render` `test` `docs`
 
+**[2026-09-21 — the health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md)**
+
+- **09-21** [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change) — *“角色头上的血条能不跟着角色上下晃动吗？眼睛都被晃花了”* One term, added back: the bar is positioned at `this.y + visualZ + offsetY`, so it tracks the actor’s GROUND height rather than its drawn one. `Entity.applyTransform` draws a body at `y - (z + visualZ)` and the floating bar — synced to `this.y` since the days it was a child of the actor, and still synced to it after the 2026-08-21 move onto `layers.hud` — inherited **every** term of that, including the one that is not height at all but an idle animation (`actorLift.ts`’s `HOVER`). **The measurement is what makes it a defect rather than a taste**: `amp` is 1-2 world px, so the bar travelled 2-4 px peak to trough against a track `setHealth` draws **4 px tall** — a full bar height, twice per 2.4 s cycle, or 14-16 screen px at the 3.4-4.1x a room is cover-fitted to. Nothing was tuned wrong; the swing sits inside the `[6, 10]` band the 2026-08-21 pass locked. It was applied to the wrong object. **The hover’s own argument is about the shadow** — it exists because an authored `idle` clip bobs bones and cannot move a shadow, so `Entity.visualZ` shrinks, fades and slides one under a body that left the floor. That reaches the body and its shadow; it never reached the one piece of an actor’s furniture the eye is asked to hold still and read a fraction off. The status aura is the counter-example that fixes the boundary: it wraps the body and keeps riding, because it is a property OF the body rather than a value read off it. Engine `z` is still honoured (0 for every actor today, design/01 “`z` never gates gameplay”, but a knock-up would carry the bar with it), and what inverts is which quantity is constant — the bar’s screen height, rather than its clearance above the head. Two cases, and the second half of the first one is the control: 40 frames across two full cycles assert the bar’s y spread is **0** AND the body’s is **> 2**, without which the case passes on an actor that never moved — design/18 Layer 4’s absence that was never a presence — plus `place(0, 400, 30)` on a grounded critter requiring the bar to rise by exactly 30, which is the difference between stripping `visualZ` and stripping height. `game/scene` 1,511 → **1,513** green. No `ENGINE_VERSION` bump. `render` `test` `docs`
+
 ## The work log — by theme
 
-The same 181 entries, grouped. An entry with more than one tag appears more than once.
+The same 182 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(67)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(68)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1544,6 +1548,7 @@ The same 181 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
+- 09-21 [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change)
 
 **`art`** — authored assets and the art pipeline *(19)*
 
@@ -1644,7 +1649,7 @@ The same 181 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(96)*
+**`test`** — coverage sweeps, gates, mutation batteries *(97)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1743,6 +1748,7 @@ The same 181 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
+- 09-21 [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1848,7 +1854,7 @@ The same 181 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(100)*
+**`docs`** — design docs and this log itself *(101)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1950,6 +1956,7 @@ The same 181 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
+- 09-21 [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(28)*
 
