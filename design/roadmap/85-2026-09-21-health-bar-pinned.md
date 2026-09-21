@@ -4,8 +4,8 @@ Volume 85. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The health bar stops riding the hover (2026-09-21, client + test + docs, no engine change)
 
-> *"角色头上的血条能不跟着角色上下晃动吗？眼睛都被晃花了"* — with a screenshot of the hero mid-hover,
-> the bar circled in red.
+> *"can the health bar above the character stop bobbing up and down with it? my eyes are
+> swimming"* — with a screenshot of the hero mid-hover, the bar circled in red.
 
 One term, added back: `Actor.applyTransform` positions the bar at `this.y + visualZ + offsetY`
 instead of `this.y + offsetY`. `Entity.applyTransform` draws a body at `y - (z + visualZ)`, so
