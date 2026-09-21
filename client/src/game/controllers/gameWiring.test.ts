@@ -255,15 +255,25 @@ describe('wireScreens', () => {
   it('sends every BACK button to the lobby', () => {
     const t = make();
     wireScreens(t.d);
-    // pvpPreview used to be the exception — its BACK went one step to the mode-select
-    // screen rather than all the way home. With that screen merged into the lobby
-    // (2026-09-10) one step back and all the way home are the same place, so the exception
-    // is gone rather than forgotten.
-    for (const screen of ['pvpPreview', 'partyScreen', 'loginScreen', 'forge'] as const) {
+    for (const screen of ['partyScreen', 'loginScreen', 'forge'] as const) {
       t.called.length = 0;
       (t.d[screen] as unknown as Record<string, () => void>).onBack!();
       expect(t.called, screen).toEqual(['nav.showMenu']);
     }
+  });
+
+  it('LEAVES THE QUEUE on the PvP preview BACK, rather than just navigating', () => {
+    // pvpPreview used to be listed with the plain BACK buttons above, wired straight to
+    // `nav.showMenu` — and that was the 2026-09-20 freeze. Reaching the preview means
+    // `beginSoloQueue` has already declared the run online; walking back to the lobby
+    // without undoing that left the flag set, and the next offline run (the lobby's own
+    // TUTORIAL row) rendered its room and then never ticked. `onCancelled` clears the flag
+    // and routes to the lobby itself, so this is still one press to the same place.
+    const t = make();
+    wireScreens(t.d);
+    t.called.length = 0;
+    (t.d.pvpPreview as unknown as Record<string, () => void>).onBack!();
+    expect(t.called).toEqual(['net.onCancelled']);
   });
 
   it('refreshes BOTH the account label and the meta store on a session change', () => {

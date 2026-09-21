@@ -92,6 +92,17 @@ export class RunLifecycle {
     }
     d.fx.resetForNewRun();
     d.roomBuilder.clear();
+    // Which clock drives the run is declared HERE, defaulting to the offline one, and
+    // `finalizeOnlineRun` — the single online entry point — re-declares it immediately
+    // after. Not because any offline caller sets it (none ever did), but because
+    // `GameLoop.update` routes the whole frame on `run.online`, so a stale `true` left
+    // behind by a screen that was never entered on the way to this run freezes it solid:
+    // `advanceOnline` finds no session, holds the scene and returns, so the room this run
+    // just built sits there with no actors, no ticks and a HUD still showing the previous
+    // run's numbers. That is not hypothetical — it shipped (2026-09-20, the PvP preview's
+    // BACK; `OnlineMatch.onCancelled` has the report). One default in the one place every
+    // fresh run passes through is what stops the next screen from doing it again.
+    d.run.online = false;
     d.run.score = 0;
     d.gameLoop.resetForNewRun();
     d.screenFlow.hideSettingsButton();
@@ -370,6 +381,7 @@ export class RunLifecycle {
   finalizeOnlineRun(session: CoopSession): void {
     const d = this.deps;
     this.resetRenderState();
+    d.run.online = true; // re-declared after resetRenderState's offline default — see it
     d.run.tutorialActive = false;
     // No hints in an online match: `GameLoop.advanceOnline` never consumed them (they are
     // driven from the offline sim step alone), and a lockstep session is the wrong place to

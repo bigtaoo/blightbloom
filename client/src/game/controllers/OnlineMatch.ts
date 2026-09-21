@@ -94,9 +94,29 @@ export class OnlineMatch {
     this.deps.endRunAsDefeat(t('results.connectionLostTitle'), t('results.connectionLostBody'));
   }
 
+  /**
+   * Left the queue flow without a match. TWO callers, and that is the point: the
+   * Matchmaking screen's CANCEL, and — since 2026-09-20 — the PvP preview's BACK.
+   *
+   * `beginSoloQueue`/`beginSquadMatch` declare the run online BEFORE any screen is shown,
+   * so every exit from the flow has to undo that declaration. The preview's BACK did not
+   * (`gameWiring` wired it straight to `nav.showMenu`), and `run.online` is not a screen's
+   * own state: `GameLoop.update` routes the WHOLE frame on it. An offline run started under
+   * a stale `true` — the lobby's TUTORIAL row, PLAY, CONTINUE — enters `advanceOnline` with
+   * no session, which holds the scene and returns. The room `RunLifecycle.enterPrimedRun`
+   * just built stays on screen with no actors in it, the sim never ticks, the HUD keeps the
+   * PREVIOUS run's numbers, and (both `keydownAction` and `HudView.onPause` are gated on the
+   * same flag) Escape and the pause button are dead too — a freeze with no way out but a
+   * reload. Live report 2026-09-20: *"新手教程，点进去就卡住了。有时候是好的，有时候不行"* —
+   * intermittent because it takes a visit to the preview first.
+   *
+   * Routing by `matchmakingReturnPhase` is what makes one method serve both: the preview is
+   * only ever reached from the lobby (`beginSoloQueue` sets `'menu'`), so BACK from it lands
+   * where the button says it does.
+   */
   onCancelled(): void {
     const d = this.deps;
-    d.matchmaking.hide();
+    d.matchmaking.hide(); // already hidden when the caller is the preview's BACK
     d.run.online = false;
     d.run.partyId = undefined;
     if (d.run.matchmakingReturnPhase === 'squad') d.nav.showSquad();

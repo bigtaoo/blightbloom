@@ -8,6 +8,14 @@
       "port": 5173
     },
     {
+      // Same server as `client-dev`, on a second port — for a session that finds 5173 already
+      // taken by another checkout's dev server (the shared-tree hazard in CLAUDE.md).
+      "name": "client-dev-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "client", "--", "--port", "5183", "--strictPort"],
+      "port": 5183
+    },
+    {
       // The portal build's dev server (design/20). Same rewrite as `build:crazygames` — the
       // SDK script and the `main.crazygames.ts` entry — so the quick-play menu, the declared
       // host and the SDK bracket are all live here.
