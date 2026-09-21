@@ -14,11 +14,16 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Container, Graphics } from 'pixi.js';
+import {
+  CHEST_MECHANISM_RADIUS_GRID,
+  CHEST_MECHANISM_RING_GRID,
+  CHEST_OPEN_RANGE_GRID,
+} from '@dd/engine';
 import type { Chest, GameState } from '@dd/engine';
 import { Sprite, Texture } from 'pixi.js';
 import { ChestLayer, buildChestBody, chestFootprintWidth, drawBody, drawPlate } from './ChestLayer';
 import { getChestTexture } from '../../render/environmentSprites';
-import { fpToPx } from '../coords';
+import { fpToPx, PX_PER_GRID } from '../coords';
 
 // `getChestTexture` is the one thing this module reads that a headless test has no way to
 // satisfy for real (`preloadEnvironmentSprites` needs a GPU and a network). Mocked rather than
@@ -314,5 +319,39 @@ describe('the drawn forms', () => {
         expect(b.width, `${kind}/${opened}: drawn to the kind width`).toBeCloseTo(chestFootprintWidth(kind) + 1, 0);
       }
     }
+  });
+});
+
+describe('the size the drawn chest is allowed to be', () => {
+  // Added 2026-09-21, when the owner asked for twice the chest (volume 84) and the
+  // constant went 9/14 → 18/28 with **every test in this file still green**. That is not luck:
+  // each size assertion above derives its expectation from `chestFootprintWidth`, which is the
+  // right way to write them (a restated literal tests the constant against itself) and leaves
+  // the size pinned from BELOW — big > small — and from nowhere at all above. A body may be
+  // drawn any width whatsoever without a red line anywhere in the repo.
+  //
+  // So the two ceilings are stated here as RELATIONS against the sim's own numbers, because
+  // both are properties the picture has to keep rather than sizes anyone picked.
+
+  it('never draws a chest wider than the range that opens it', () => {
+    // `ChestSystem` opens a small chest for a player within `CHEST_OPEN_RANGE_GRID` of its
+    // CENTRE. Past that the drawn box reaches further than the mechanic does, and a player
+    // standing squarely on the art — the most explicit "I am here" a player can perform — is
+    // out of range of the thing they are standing on. At half-width 28 against 48 px of range
+    // the shipped big chest has room; one more doubling would not.
+    for (const kind of ['small', 'big'] as const) {
+      const half = chestFootprintWidth(kind) / 2;
+      expect(half, `${kind}: drawn half-width inside the open range`)
+        .toBeLessThan(CHEST_OPEN_RANGE_GRID * PX_PER_GRID);
+    }
+  });
+
+  it('leaves a big chest clear of its own mechanism plates', () => {
+    // `config.ts`'s stated reason for the ring radius: "wide enough that standing on one plate
+    // is visibly NOT standing on the chest (so the coordination reads)". That sentence is about
+    // a drawn width the config file cannot see, and it stops being true the moment the body
+    // reaches the near edge of a plate.
+    const nearestPlateEdgePx = (CHEST_MECHANISM_RING_GRID - CHEST_MECHANISM_RADIUS_GRID) * PX_PER_GRID;
+    expect(chestFootprintWidth('big') / 2).toBeLessThan(nearestPlateEdgePx);
   });
 });

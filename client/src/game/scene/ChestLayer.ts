@@ -20,8 +20,9 @@
 // other in `ChestLayer.test.ts`.
 //
 // They also still carry design/13's dual-channel rule, which the art had to inherit: the two
-// kinds differ in SIZE and FORM — 18 px flat-lidded brass-bound coffer against a 28 px
-// domed-lid iron strongbox — not only in hue, so they stay apart for a colourblind player.
+// kinds differ in SIZE and FORM — 36 px flat-lidded brass-bound coffer against a 56 px
+// domed-lid iron strongbox (both doubled 2026-09-21 — at 18/28 a chest read as floor litter
+// beside a 32 px player) — not only in hue, so they stay apart for a colourblind player.
 //
 // ## What the plates have to communicate, and what they must not
 //
@@ -39,7 +40,7 @@ import { SHADOW_SQUASH } from './Entity';
 
 /** Half-width of a chest body, world px. A big chest is the one with the ring around it, so it
  *  is also the one that has to read from further away. */
-const BODY_HALF = { small: 9, big: 14 } as const;
+const BODY_HALF = { small: 18, big: 28 } as const;
 /** How tall the drawn box is relative to its half-width — a chest is wider than it is tall in
  *  this tilted view, the same foreshortening every ground-plane object here gets. */
 const BODY_ASPECT = 0.8;
