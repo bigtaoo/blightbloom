@@ -1467,11 +1467,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-21** [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change) — *“房间码仅用0-9十个数字，长度改为6位，并在服务端去重”* plus a question about the same feature — *“请确认组队和匹配功能，是否需要玩家登录”*. The join code was five characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, an alphabet picked in the 2026-07-29 squad pass so a code read aloud could not be misheard; digits carry that one step further — no letter is left for a digit to be confused with, the code is dictatable **and typable** in all eight shipped locales, and a phone can offer a keypad for a field that holds nothing else. **The keyspace bill splits in two and only one half is a non-event**: 32^5 (~33.5M) → 10^6 (1M) leaves a collision far below the live set (a party TTLs out after 10 idle minutes) and makes GUESSING feasible in bulk, which is undefended — nothing in `/party/*` rate-limits — and is now stated beside the generator with the fix named rather than filed as a TODO. `randomInt` replaced `Math.floor(Math.random() * n)` because that expression was uniform for the old alphabet only in that **32 is a power of two**. Dedup already existed as `while (taken) redraw()` under a `// vanishingly rare` comment — true of a 33.5M code, and the kind of claim that stops being true when the shape under it changes; an unbounded loop over a saturated keyspace is an infinite loop on the ONE event loop that also serves matchmaking and ladder settlement, so it is bounded at `CODE_DRAW_ATTEMPTS` (100, chosen so reaching it is evidence rather than luck) and throws `CodeSpaceExhausted`, answered 503. That catch is load-bearing, not defensive: `readJson` calls its callback from inside a `.then()`, so a throw escaping it is an unhandled rejection the error boundary never sees and **the request answers nothing at all**. **The shape briefly lived in two constants, and that is the defect no test could have caught** — `routes/party.ts`’s `CODE_LENGTH` and `PartyScreen.ts`’s `ROOM_CODE_LENGTH`, the copy justified on the grounds that `client/src` may not import from `server/src`. True, and the wrong direction: `server/src/config.ts` already re-exports `SQUAD_SIZE` from `@dd/game/match/pvpConfig` with a comment saying why (*“instead of two hand-mirrored copies that could drift”*). Each constant is independently correct, so a drift mints six digits into a field five wide with both suites green. Deleted rather than tested: a pure `client/src/game/match/roomCode.ts` owns the length, the digit count, the pattern, `isRoomCode` and `normalizeRoomCode`, reached from the server through the alias it already uses, and listed in `pureLayerBoundary.test.ts` because the SERVER imports it — “losadable with no browser” is matchsvc booting, not a testability nicety. `isRoomCode` takes `unknown` on purpose: **the mistake a digit-only code invites is sending it as a number**, which also truncates `004271` to `4271`, and a predicate typed to `string` would pass the first through a `test()` coercion. **The login question was a question about an absence**, which is what no suite asserts by accident — `requireAuth` gates `/account/*` and `/store/*` and nothing else, so a squad needs no account by decision (`design/16`’s *“logging in is never required to play”*) and a guest forgoes only the durable ladder rating. Both directions are pinned, because one is not enough: the whole flow runs with **no `Authorization` header**, AND a **valid bearer is ignored**, without which a route silently preferring the session over `playerId` would pass and a member logging in mid-lobby would change identity under their own party. A 29-mutant battery killed 28 with 3/3 controls surviving; **the survivor was right to survive** — `\d`+u is byte-for-byte `[0-9]` in JavaScript, unlike .NET or Python’s `re` — but measuring its NEIGHBOUR found `[\p{Nd}]`+u accepts full-width, Arabic-Indic and Devanagari digits, six glyphs a human reads as a valid code. One of each now sits in the near-miss list to kill that edit, and the pattern’s own comment records why `[0-9]` is not fussiness. The transferable rule: **when a survivor is a character-class swap, enumerate the other swaps the same tidy-up could produce and test those** — an equivalent survivor and a catastrophic one look identical in a diff. `net` `ui` `test` `docs`
 
+**[2026-09-21 — Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md)**
+
+- **09-21** [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change) — *“宝箱的体积放大一倍”* One constant — `ChestLayer`'s `BODY_HALF` 9/14 → **18/28**, so a chest is drawn 36 px wide instead of 18 beside a player's own 32 — and everything that follows it (the sprite, the Graphics fallback, the ground shadow) is derived rather than restated. The plate radius is deliberately NOT scaled: it is drawn to the sim's own `CHEST_MECHANISM_RADIUS_GRID` so the picture answers *am I standing on it*, and a plate scaled with the body would lie about where the mechanic measures. **The finding is that 1,509 scene tests passed a doubling without one going red**, and not by accident: every size assertion derives from `chestFootprintWidth()`, which is the right way to write them and is exactly why they survive a change to that function's answer — leaving the size pinned from BELOW (`big > small`, design/13's dual channel) and from nowhere above. Two ceilings added as RELATIONS against the sim's numbers rather than as sizes anyone picked: a chest is never wider than the range that opens it (past that, a player standing squarely on the art is out of range of the thing they are standing on), and a big chest stays clear of its own mechanism plates (`config.ts` gives the ring a reason in words — *“standing on one plate is visibly NOT standing on the chest”* — about a drawn width the config file cannot see). Both mutation-checked, because a ceiling far above the value it guards is indistinguishable from no ceiling: 36/56 turns the first red, 65 turns both. No `ENGINE_VERSION` bump, no golden re-record — a chest is not a collider, so nothing an actor can walk into changed. `render` `test` `docs`
+
 ## The work log — by theme
 
-The same 180 entries, grouped. An entry with more than one tag appears more than once.
+The same 181 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(66)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(67)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1539,6 +1543,7 @@ The same 180 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [Loot that arrives on you](roadmap/60-2026-09-15-pickup-flight.md#loot-that-arrives-on-you-2026-09-15-engine--client--docs-no-engine_version-bump)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
+- 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
 
 **`art`** — authored assets and the art pipeline *(19)*
 
@@ -1639,7 +1644,7 @@ The same 180 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(95)*
+**`test`** — coverage sweeps, gates, mutation batteries *(96)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1737,6 +1742,7 @@ The same 180 entries, grouped. An entry with more than one tag appears more than
 
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
+- 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1842,7 +1848,7 @@ The same 180 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(99)*
+**`docs`** — design docs and this log itself *(100)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1943,6 +1949,7 @@ The same 180 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
+- 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(28)*
 
