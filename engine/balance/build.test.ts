@@ -19,7 +19,7 @@ describe('the PvP fairness wall (design/05/06/09/15)', () => {
     // The wall is structural: buildArenaSpecs(presetId, skinId) has arity 2, so
     // persistent gear is compile-time impossible to leak into PvP (design/09
     // hard-wall). skinId is the wall's one named exception (design/14/15), not a
-    // meta leak — it only selects which character's stats get scaled.
+    // meta leak — it only selects which character's arena stats are served.
     expect(buildArenaSpecs.length).toBe(2);
   });
 
@@ -27,18 +27,34 @@ describe('the PvP fairness wall (design/05/06/09/15)', () => {
     expect(() => buildArenaSpecs('does_not_exist')).toThrow();
   });
 
-  it('scales the default character\'s (maxHp, maxShield) by PVP_SCALE_FACTOR when skinId is omitted', () => {
+  it('serves the default character\'s AUTHORED arena pair when skinId is omitted', () => {
     const result = buildArenaSpecs('landing_basic');
     const defaultSkin = SKIN_DEFS[DEFAULT_SKIN_ID]!;
-    expect(result.maxHp).toBe(Math.round(defaultSkin.maxHp * PVP_SCALE_FACTOR));
-    expect(result.maxShield).toBe(Math.round(defaultSkin.maxShield * PVP_SCALE_FACTOR));
+    expect(result.maxHp).toBe(defaultSkin.pvp.maxHp);
+    expect(result.maxShield).toBe(defaultSkin.pvp.maxShield);
   });
 
-  it('scales a NAMED character\'s (maxHp, maxShield), not always the default', () => {
+  it('serves a NAMED character\'s arena pair, not always the default', () => {
     const result = buildArenaSpecs('landing_basic', 'juggernaut');
     const juggernaut = SKIN_DEFS['juggernaut']!;
-    expect(result.maxHp).toBe(Math.round(juggernaut.maxHp * PVP_SCALE_FACTOR));
-    expect(result.maxShield).toBe(Math.round(juggernaut.maxShield * PVP_SCALE_FACTOR));
+    expect(result.maxHp).toBe(juggernaut.pvp.maxHp);
+    expect(result.maxShield).toBe(juggernaut.pvp.maxShield);
+  });
+
+  /**
+   * The pools are AUTHORED, not `Math.round(pvePool × PVP_SCALE_FACTOR)` (2026-09-21).
+   * Asserted as a NEGATIVE rather than left implicit by the two tests above: the old
+   * derivation is what forced `vanguard.maxShield` to be `3.2` — the only fractional design
+   * number in the tree, and it existed solely so `× 5` landed on the 16 the balance pass had
+   * measured. A later pass that quietly reinstates the multiplication would put that fraction
+   * back in front of the player, and the default character is the one that proves it hasn't:
+   * 16 is not a multiple of 5, so no factor applied to an integer PvE pool can produce it.
+   */
+  it('does NOT re-derive the arena pools from the PvE pair by the scale factor', () => {
+    const vanguard = SKIN_DEFS[DEFAULT_SKIN_ID]!;
+    expect(Number.isInteger(vanguard.maxShield)).toBe(true);
+    expect(vanguard.pvp.maxShield).not.toBe(Math.round(vanguard.maxShield * PVP_SCALE_FACTOR));
+    expect(buildArenaSpecs('landing_basic').maxShield).toBe(vanguard.pvp.maxShield);
   });
 
   it('scales EVERY landing-kit weapon\'s damage, without mutating the shared authored specs', () => {

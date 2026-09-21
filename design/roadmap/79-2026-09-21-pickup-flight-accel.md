@@ -1,6 +1,6 @@
 # Work log — 2026-09-21
 
-Volume 78. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+Volume 79. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
 
 ## Loot that accelerates into the body, and the floor that was backwards (2026-09-21, client + docs, no engine change)
 

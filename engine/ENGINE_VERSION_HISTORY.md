@@ -2375,3 +2375,51 @@ fail if the rule goes back. The fixture is re-recorded only to stamp v66.
 recorded buttons open a small chest earlier (or open one the recording never opened), and every
 `dropPrng` draw after that point shifts with it.
 
+## v67: the vanguard's shield becomes an integer, and PvP gets its own authored pair (2026-09-21)
+
+Reported from a forge screenshot: the character line read **"3.2 shield"**. Fixed point is how
+this engine carries sub-unit quantities inside the sim (`math/fixed.ts` — positions,
+velocities, angles); a design number a player reads is supposed to be a whole number, and
+this was the only one in the tree that wasn't. `grep` over `engine/content` + `engine/balance`
+finds exactly one fractional gameplay stat: `vanguard.maxShield: 3.2`. Everything else
+fractional there is geometry (`bulletZ: 0.5`, a grid height) or a ratio threshold.
+
+**Where the fraction came from.** `buildArenaSpecs` derived the arena pools as
+`Math.round(pool × PVP_SCALE_FACTOR)`. The 2026-07-28 balance pass measured its vanguard trim
+in the **PvP** sim and wanted **16**; with the factor fixed at 5, the only way to author 16 was
+to write 3.2 in the PvE column. The remainder was a rounding artefact of the derivation,
+parked in the file the forge reads.
+
+**In PvE the fraction did nothing at all, and that is measurable.** Every damage number that
+reaches `takeDamage` is a post-resist integer >= 1 (`applyResist` rounds/truncates and floors
+at 1; `critDamage`/`buffedDamage` are `Math.round`), and a spent shield overflows into hp — so
+death depends only on cumulative integer damage against the TOTAL pool. `D >= 9.2 <=> D >= 10`
+for every integer D, so 6/3.2 and 6/4 are the same character: identical hits-to-kill at every
+damage value 1..10, identical shield-break timing, and no divergence under any damage/regen
+interleaving (regen is `+1` clamped, so the two pools differ by 0 or 0.8 and never by a full
+point). What it did buy was the forge line and a `hp: 5.2` in the hashed state.
+
+**The change.** `SkinDef` now carries `pvp: { maxHp, maxShield }` — authored, integral, and
+equal to the numbers the sim measured (vanguard 30/16, skirmisher 15/30, juggernaut 55/0) — and
+the PvE pool becomes the 4 it always effectively was. `PVP_SCALE_FACTOR` keeps its real job,
+scaling landing-kit and arena-loot weapon DAMAGE; it no longer touches the pools, so neither
+scale is a rounding of the other and both can be re-tuned independently.
+
+**Balance is deliberately unmoved on both sides.** PvP numbers are identical by construction.
+PvE is identical by the argument above, and the gate agrees: measured BEFORE the bump, all six
+scenarios' hashes moved but every event counter, phase, placement and PRNG cursor stayed
+byte-identical, and exactly one witness field changed — `ember-dungeon-floor1`'s
+`hpTotal: 4.2 -> 5`. That is the remainder leaving, not an outcome moving.
+
+**A v66 stream replayed at v67 still diverges**, which is what the bump is for: the recorded
+`shield`/`maxShield` fields differ from tick 0, and the anti-cheat checkpoint hashes them.
+
+**Two gates came out of it.** `skins.test.ts` now asserts every authored number on every
+character is an integer at BOTH scales (the rule that was missing while 3.2 shipped for two
+months), holds the arena pair to the same side-grade rules as the PvE pair plus a per-axis
+ORDERING correspondence (one roster, two scales — the arena must not invert who is tankier),
+and pins the no-exact-budget-tie constraint that 3.2 was invented to satisfy. And
+`smoke.test.ts`'s "the serialized state carries no float **except the two that are
+deliberate**" flips to "**no float at all**": that exemption existed solely because of this
+pool, its own note warned that the first `*` or `/` on the field would turn it into a real
+desync, and the whole serialized state is now integral with the exemption deleted.
