@@ -102,7 +102,6 @@ The persistent layer **between runs**: what carries across, what materials buy, 
 
 - A safe hub between runs: **forge** (unlock / craft weapons), **character select**, cosmetics. The outpost's look and any NPCs are `13`'s to-design.
 - Screen-flow: sits in `10`'s menu → loadout state machine, ahead of a run's loadout pick (bring up to 2 crafted weapons — **at most one per kind**, since 2026-09-03 the forge refuses to stage a second gun or a second blade; each replaces the starter weapon of its own kind, and any free slot keeps its starter default — so never a one-weapon run and never a parry-less one, `05`/`03`).
-- **Two screens since 2026-09-21, not one** (`10`'s own bullet has the report and the reasoning). `screens/Forge.ts` is the CRAFTING page — the blueprint grid, the material bank, the compare card, the store entry — reached from the lobby's FORGE row or from the pre-run screen's FORGE card. `screens/Loadout.ts` is the PRE-RUN screen — the character (with a portrait), the weapons the run would actually carry (`resolveLoadout`, so a starter filling a free slot is drawn and labelled as one), CLEAR LOADOUT, CONTINUE RUN and START RUN. The transactions in `meta/forge.ts` did not change at all; what changed is which screen each one is pressed on.
 
 ## Relationship to other docs
 
