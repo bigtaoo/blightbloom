@@ -1463,9 +1463,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-21** [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change) — the follow-up [volume 80](roadmap/80-2026-09-21-loadout-forge-split.md) named and deferred: *“`ui/PlayerCard.ts` has the identical hole and its own task.”* `bindPortrait` has two halves — bind the character's rig `shell` texture into the 44 px frame, or draw a teal disc when the art is missing — and **only the second had ever executed**, not by anyone's choice: under plain vitest there is no asset pipeline, so `getRigSkin` answers `undefined` for every key, and the file's one portrait case said so in its own title (*“survives a skin id with no registered art”*). **It is the mirror of [volume 75](roadmap/75-2026-09-17-account-test-gaps.md)'s shape and the pair is worth naming**: there the test ran an injected fake and the shipped implementation was what was left over; here the test runs the REAL dependency answering its failure value, so what goes unexecuted is the branch every player sees on every frame. Volume 75's version is a decision someone made once and can grep for; this one is made by the RUNNER, silently, for every test in the file and every test anyone adds later. Neither is visible as a percentage — the lines run, one side taken, which is the column `18` Layer 4 says bites. Fixed the way `scene/Skin.test.ts` established and volume 80 reused: `vi.hoisted` + `importOriginal` over `render/skinRegistry`, empty by default so every other case still meets the no-art state. Ten cases, each a claim rather than a restated constant: **contain not stretch on BOTH arms of the `Math.min`** (80×40 and 40×80, asserting `scale.x === scale.y` AND the magnitude, so neither a per-axis fit — 0.45 by 0.9, the character squashed 2:1 — nor a `Math.max` survives), **child index 1** with the two neighbours that give it meaning (at 0 the frame paints over the face; appended, the face paints over the name and all three bars), **the re-bind as TWO claims** (the texture swaps and the fit is recomputed — reassigning `texture` alone keeps the old character's scale), the drop back to the disc when the next seat's art is missing rather than keeping the previous character's face, and the lookup going through `atlasKey` rather than the skin id. The `lastSkinId` cache is pinned by a LOOKUP LOG rather than by the outcome, because a cache that stopped caching still hands back the same sprite object — object identity cannot see that defect and a call count can. Eleven mutations, all eleven killed (2 / 3 / 1 / 1 / 1 / 1 / 1 / 1 / 1 / 9 / 1 red). **One survived the first pass and the TEST was at fault**: *no disc left under real art* was asserted on a freshly constructed card, where the constructor has never drawn a disc, so `clear()` was a no-op and the expectation held either way — the familiar absence-that-was-never-a-presence, reached from a new direction, since the missing precondition was not absent from the fixture but from **the order the two `set()` calls were made in**. It now runs through an unarted character first, the only path on which a placeholder can actually be left painted under a portrait, and an invisible defect at that: the disc is inset well within the portrait and reads as a tint on the art, not as a stray shape. Client 7,067 → **7,077** green, coverage 97.98 → 98.06% lines and 93.80 → 93.86% branches. No production file changed, no `ENGINE_VERSION` bump. `ui` `test`
 
+**[2026-09-21 — the room code becomes six digits](roadmap/82-2026-09-21-numeric-room-code.md)**
+
+- **09-21** [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change) — *“房间码仅用0-9十个数字，长度改为6位，并在服务端去重”* plus a question about the same feature — *“请确认组队和匹配功能，是否需要玩家登录”*. The join code was five characters of `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, an alphabet picked in the 2026-07-29 squad pass so a code read aloud could not be misheard; digits carry that one step further — no letter is left for a digit to be confused with, the code is dictatable **and typable** in all eight shipped locales, and a phone can offer a keypad for a field that holds nothing else. **The keyspace bill splits in two and only one half is a non-event**: 32^5 (~33.5M) → 10^6 (1M) leaves a collision far below the live set (a party TTLs out after 10 idle minutes) and makes GUESSING feasible in bulk, which is undefended — nothing in `/party/*` rate-limits — and is now stated beside the generator with the fix named rather than filed as a TODO. `randomInt` replaced `Math.floor(Math.random() * n)` because that expression was uniform for the old alphabet only in that **32 is a power of two**. Dedup already existed as `while (taken) redraw()` under a `// vanishingly rare` comment — true of a 33.5M code, and the kind of claim that stops being true when the shape under it changes; an unbounded loop over a saturated keyspace is an infinite loop on the ONE event loop that also serves matchmaking and ladder settlement, so it is bounded at `CODE_DRAW_ATTEMPTS` (100, chosen so reaching it is evidence rather than luck) and throws `CodeSpaceExhausted`, answered 503. That catch is load-bearing, not defensive: `readJson` calls its callback from inside a `.then()`, so a throw escaping it is an unhandled rejection the error boundary never sees and **the request answers nothing at all**. **The shape briefly lived in two constants, and that is the defect no test could have caught** — `routes/party.ts`’s `CODE_LENGTH` and `PartyScreen.ts`’s `ROOM_CODE_LENGTH`, the copy justified on the grounds that `client/src` may not import from `server/src`. True, and the wrong direction: `server/src/config.ts` already re-exports `SQUAD_SIZE` from `@dd/game/match/pvpConfig` with a comment saying why (*“instead of two hand-mirrored copies that could drift”*). Each constant is independently correct, so a drift mints six digits into a field five wide with both suites green. Deleted rather than tested: a pure `client/src/game/match/roomCode.ts` owns the length, the digit count, the pattern, `isRoomCode` and `normalizeRoomCode`, reached from the server through the alias it already uses, and listed in `pureLayerBoundary.test.ts` because the SERVER imports it — “losadable with no browser” is matchsvc booting, not a testability nicety. `isRoomCode` takes `unknown` on purpose: **the mistake a digit-only code invites is sending it as a number**, which also truncates `004271` to `4271`, and a predicate typed to `string` would pass the first through a `test()` coercion. **The login question was a question about an absence**, which is what no suite asserts by accident — `requireAuth` gates `/account/*` and `/store/*` and nothing else, so a squad needs no account by decision (`design/16`’s *“logging in is never required to play”*) and a guest forgoes only the durable ladder rating. Both directions are pinned, because one is not enough: the whole flow runs with **no `Authorization` header**, AND a **valid bearer is ignored**, without which a route silently preferring the session over `playerId` would pass and a member logging in mid-lobby would change identity under their own party. A 29-mutant battery killed 28 with 3/3 controls surviving; **the survivor was right to survive** — `\d`+u is byte-for-byte `[0-9]` in JavaScript, unlike .NET or Python’s `re` — but measuring its NEIGHBOUR found `[\p{Nd}]`+u accepts full-width, Arabic-Indic and Devanagari digits, six glyphs a human reads as a valid code. One of each now sits in the near-miss list to kill that edit, and the pattern’s own comment records why `[0-9]` is not fussiness. The transferable rule: **when a survivor is a character-class swap, enumerate the other swaps the same tidy-up could produce and test those** — an equivalent survivor and a catastrophic one look identical in a diff. `net` `ui` `test` `docs`
+
 ## The work log — by theme
 
-The same 179 entries, grouped. An entry with more than one tag appears more than once.
+The same 180 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(66)*
 
@@ -1635,7 +1639,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(94)*
+**`test`** — coverage sweeps, gates, mutation batteries *(95)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-全部加测试)
@@ -1732,6 +1736,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
 
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
+- 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1777,7 +1782,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-16 [The cutover runs, and the migration deletes itself](roadmap/68-2026-09-16-mongodb-cutover.md#the-cutover-runs-and-the-migration-deletes-itself-2026-09-16-server--deploy--docs-no-engine-change)
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(32)*
+**`ui`** — HUD, screens, widgets *(33)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1812,6 +1817,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
 
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
+- 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(20)*
 
@@ -1836,7 +1842,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(98)*
+**`docs`** — design docs and this log itself *(99)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1936,8 +1942,9 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [The docs, tidied: a missing volume, two splits, and an index that claimed more than it carried](roadmap/77-2026-09-21-doc-tidy.md#the-docs-tidied-a-missing-volume-two-splits-and-an-index-that-claimed-more-than-it-carried-2026-09-21-docs-only-no-code-change)
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
+- 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(27)*
+**`net`** — matchmaking, sockets, reconnect *(28)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -1966,6 +1973,7 @@ The same 179 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [Two of design/16's three holes, closed — the guest merge and the session that was never checked](roadmap/73-2026-09-17-guest-merge-and-session-check.md#two-of-design16s-three-holes-closed--the-guest-merge-and-the-session-that-was-never-checked-2026-09-17-client--server)
 - 09-17 [The ladder gets a trust boundary, and the third hole closes by inverting](roadmap/74-2026-09-17-ladder-identity.md#the-ladder-gets-a-trust-boundary-and-the-third-hole-closes-by-inverting-2026-09-17-client--server--docs-no-engine-change)
 - 09-17 [The account's untested halves, and the two decisions hiding in them](roadmap/75-2026-09-17-account-test-gaps.md#the-accounts-untested-halves-and-the-two-decisions-hiding-in-them-2026-09-17-server--client--test)
+- 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 
 **`i18n`** — locales and text layout *(12)*
 
