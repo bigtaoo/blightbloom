@@ -5,22 +5,36 @@
  * (`nowMs`/`newPartyId`/`newCode`), in-memory `Map` state (this repo's standing
  * convention — no DB anywhere yet, see `RatingStore`).
  *
- * No account system backs this (none exists anywhere in this project — see
- * `rating.ts`'s own note). A "player" here is just whatever opaque id string the
- * client sends; nothing is verified. This is the same trust level `Matchmaker.enqueue`
- * already gives a bare `playerCount`/`mode` — a party gets no more.
+ * **A party needs no account, and that is the decision rather than a gap** (re-audited
+ * 2026-09-21; the note this replaces predated design/16 and still said no account system
+ * existed anywhere, which stopped being true on 2026-07-29). One DOES exist now, and none of
+ * the five `/party/*` routes consults it: a "player" here is whatever opaque id string the
+ * client sends — the real `accountId` once that client has a session, a locally generated
+ * guest id otherwise (`client/src/net/identity.ts`) — and nothing verifies which. That is
+ * the same trust level `Matchmaker.enqueue` gives a bare `playerCount`/`mode`, and it is
+ * enough here because the worst a forged id can do is confuse a party the forger has already
+ * joined. `matchsvc.queue.http.test.ts` pins the whole squad flow running with no
+ * `Authorization` header at all, so adding a gate to any of these routes turns a test red
+ * rather than quietly changing the answer.
+ *
+ * The one thing a guest genuinely forgoes is the durable LADDER RATING, which `/find` keys
+ * off a verified bearer token precisely because a self-declared identity cannot own one
+ * (`routes/match.ts`, design/16 hole 3). Not the party, not the match, not the win.
  *
  * Two lookup keys per party: an internal `partyId` (what the client polls) and a
- * short, human-typeable `code` (what a leader reads out / pastes to a friend) — the
- * same `roomId`-vs-`queueId` separation `Matchmaker`/`ticket.ts` already use.
+ * short, human-typeable room `code` (what a leader reads out / pastes to a friend) — the
+ * same `roomId`-vs-`queueId` separation `Matchmaker`/`ticket.ts` already use. The code's
+ * SHAPE belongs to whoever supplies `newCode` (six digits, `routes/party.ts`); what belongs
+ * here is that it is UNIQUE across every live party — see {@link CODE_DRAW_ATTEMPTS}.
  */
 import { SQUAD_SIZE } from './config';
 
 export interface PartyServiceDeps {
   nowMs(): number;
   newPartyId(): string;
-  /** A fresh short join code. Injected so tests are deterministic and collisions are
-   * trivially forceable (real: a random alphanumeric generator). */
+  /** A fresh short room code. Injected so tests are deterministic and collisions are
+   * trivially forceable (real: `routes/party.ts`'s six-digit `randomCode`). Its uniqueness
+   * is NOT assumed — {@link PartyService.create} redraws a code already in use. */
   newCode(): string;
 }
 
@@ -40,6 +54,40 @@ export interface PartyInfo {
 export const MAX_PARTY_SIZE = SQUAD_SIZE;
 
 const DEFAULT_TTL_MS = 10 * 60_000; // 10 min idle — generous; a lobby isn't a hot loop
+
+/**
+ * How many times {@link PartyService.create} redraws a code that is already taken before it
+ * gives up and throws {@link CodeSpaceExhausted}.
+ *
+ * The loop it bounds used to be `while (taken) redraw()`, with a `// vanishingly rare`
+ * comment that was true of the old 33.5M-wide alphabetic code and is the kind of claim that
+ * quietly stops being true when the shape underneath it changes. It is still true at six
+ * digits in normal operation — 1M codes against a live set that TTLs out after ten idle
+ * minutes — but "unlikely" and "cannot happen" are different guarantees, and an unbounded
+ * loop over a saturated keyspace is an infinite loop on the ONE event loop that also serves
+ * matchmaking, party polling and ladder settlement. A hang there is worse than a refusal:
+ * a refusal is a 503 the player can retry, a hang is every player in the process.
+ *
+ * 100 and not 10: at 100 draws the probability of exhausting them is (live/1M)^100, so the
+ * throw is unreachable until the keyspace is genuinely close to full (~100k live parties
+ * still clears it with room to spare), which makes reaching it real evidence rather than
+ * bad luck. And 100 iterations over a `Map.has` is microseconds, so the bound costs nothing
+ * in the case that always happens: the first draw is free.
+ */
+export const CODE_DRAW_ATTEMPTS = 100;
+
+/**
+ * Thrown by {@link PartyService.create} when {@link CODE_DRAW_ATTEMPTS} consecutive draws all
+ * collided. A distinct class rather than a bare `Error` so the route layer can answer 503
+ * ("retry, the service is briefly out of codes") instead of the 400 its `catch` gives a
+ * malformed request — nothing the caller sent is wrong.
+ */
+export class CodeSpaceExhausted extends Error {
+  constructor(attempts: number) {
+    super(`no free room code after ${attempts} draws`);
+    this.name = 'CodeSpaceExhausted';
+  }
+}
 
 interface Party {
   code: string;
@@ -61,12 +109,17 @@ export class PartyService {
     this.ttlMs = ttlMs;
   }
 
-  /** Create a new party with `playerId` as its sole member and leader. */
+  /** Create a new party with `playerId` as its sole member and leader.
+   *
+   * @throws {CodeSpaceExhausted} when {@link CODE_DRAW_ATTEMPTS} draws all collide. The
+   * sweep above runs FIRST, so an expired party's code is already back in the pool before
+   * any of those draws — the throw means the LIVE set is saturated, not that the map has
+   * been filling up with corpses.
+   */
   create(playerId: string): PartyInfo {
     this.sweepExpired();
     const partyId = this.deps.newPartyId();
-    let code = this.deps.newCode();
-    while (this.codeToPartyId.has(code)) code = this.deps.newCode(); // vanishingly rare
+    const code = this.drawFreeCode();
     const party: Party = { code, leaderId: playerId, members: [playerId], matching: false, updatedAt: this.deps.nowMs() };
     this.parties.set(partyId, party);
     this.codeToPartyId.set(code, partyId);
@@ -121,6 +174,16 @@ export class PartyService {
     party.matching = true;
     party.updatedAt = this.deps.nowMs();
     return this.toInfo(partyId, party);
+  }
+
+  /** A code no live party holds. See {@link CODE_DRAW_ATTEMPTS} for the bound and why the
+   *  loop is not `while (taken)`. */
+  private drawFreeCode(): string {
+    for (let i = 0; i < CODE_DRAW_ATTEMPTS; i++) {
+      const code = this.deps.newCode();
+      if (!this.codeToPartyId.has(code)) return code;
+    }
+    throw new CodeSpaceExhausted(CODE_DRAW_ATTEMPTS);
   }
 
   private toInfo(partyId: string, party: Party): PartyInfo {

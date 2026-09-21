@@ -93,6 +93,33 @@ async function get(
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
+/** `post` with an `Authorization` header — for the party group's auth control, which needs to
+ *  send a REAL session and watch nothing change. */
+async function postAs(
+  base: string,
+  path: string,
+  body: unknown,
+  token: string,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+/** A real account + session on this server's own store — same shape
+ *  `matchsvc.findIdentity.http.test.ts` uses. */
+async function register(base: string, username: string): Promise<{ accountId: string; token: string }> {
+  const res = await fetch(`${base}/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, password: 'hunter22' }),
+  });
+  return (await res.json()) as { accountId: string; token: string };
+}
+
 describe('POST /find', () => {
   it('matches a solo co-op request inline and returns a redeemable ticket', async () => {
     const ctx = await start();
@@ -341,16 +368,40 @@ describe('practice-bot backfill — the onBotFill block', () => {
 });
 
 describe('/party/*', () => {
-  it('creates a party with a human-typeable code from the unambiguous alphabet', async () => {
+  it('creates a party whose room code is six digits, end to end', async () => {
     const ctx = await start();
     try {
       const { status, body } = await post(ctx.url, '/party/create', { playerId: 'p1' });
       expect(status).toBe(200);
       expect(typeof body.partyId).toBe('string');
-      // `randomCode`'s whole point: a player reads this to a friend out loud, so 0/O and 1/I
-      // are excluded. A regression to a plain base36 generator is invisible until someone
-      // mistypes a code, which no automated signal ever reports.
-      expect(body.code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}$/);
+      // Asserted at the HTTP boundary and not only over `randomCode`, because the shape a
+      // player sees depends on the WIRING too: `matchsvc.ts` passes `randomCode` as
+      // `PartyService`'s `newCode`, and a deps bundle that forgot to (or that kept a local
+      // generator) is invisible to the unit test in `routes.test.ts`. The shape used to be
+      // five characters of an alphabet with no 0/O/1/I; a code is now dictatable and typable
+      // in every locale this game ships, and a phone shows a keypad for it.
+      expect(body.code).toMatch(/^[0-9]{6}$/);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('every code minted in one process is distinct — the server, not the client, dedups', async () => {
+    const ctx = await start();
+    try {
+      // 120 parties from ONE process, all alive at once (the idle TTL is 10 minutes and this
+      // test takes milliseconds). At a 1M keyspace a genuine collision is unlikely enough
+      // that a broken dedup would still pass this, which is why `PartyService.test.ts` forces
+      // the collision directly — what THIS pins is that the real generator and the real
+      // service are wired together at all, and that 120 concurrent creates over the real HTTP
+      // path produce 120 distinct codes rather than sharing one.
+      const codes = await Promise.all(
+        Array.from({ length: 120 }, (_, i) =>
+          post(ctx.url, '/party/create', { playerId: `p${i}` }).then((r) => r.body.code as string),
+        ),
+      );
+      expect(new Set(codes).size).toBe(120);
+      for (const code of codes) expect(code).toMatch(/^[0-9]{6}$/);
     } finally {
       await ctx.close();
     }
@@ -379,7 +430,9 @@ describe('/party/*', () => {
       expect(joined.body.partyId).toBe(created.body.partyId);
       expect(joined.body.members).toEqual(['leader', 'friend']);
 
-      const missing = await post(ctx.url, '/party/join', { playerId: 'x', code: 'ZZZZZ' });
+      // Well-formed (six digits) but unknown — 404. Drawn far from anything `randomCode`
+      // would have minted in this process, since a 1-in-1M clash would make this flaky.
+      const missing = await post(ctx.url, '/party/join', { playerId: 'x', code: '000000' });
       expect(missing.status).toBe(404);
     } finally {
       await ctx.close();
@@ -390,8 +443,70 @@ describe('/party/*', () => {
     const ctx = await start();
     try {
       expect((await post(ctx.url, '/party/join', { playerId: 'p' })).status).toBe(400);
-      expect((await post(ctx.url, '/party/join', { code: 'ABCDE' })).status).toBe(400);
+      expect((await post(ctx.url, '/party/join', { code: '123456' })).status).toBe(400);
       expect((await post(ctx.url, '/party/join', {})).status).toBe(400);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('400s a join whose code is not six digits — a different answer from 404', async () => {
+    const ctx = await start();
+    try {
+      // "That is not a room code" and "no room has that code" are distinct answers, and the
+      // distinction is worth keeping: the 400 is the one a client can act on by fixing its
+      // input, and it also means this route cannot be used to feed arbitrary strings into the
+      // lookup map. The old five-character alphabetic shape is on this list on purpose — it
+      // is exactly what a stale client or a bookmarked invite link would send.
+      for (const code of ['ABCDE', '12345', '1234567', 'ABC123', '12 456', '', '12345 ']) {
+        const res = await post(ctx.url, '/party/join', { playerId: 'p', code });
+        expect(res.status).toBe(400);
+      }
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('refuses a code sent as a JSON NUMBER — the hazard a digit-only code introduces', async () => {
+    // New with the six-digit shape (2026-09-21) and worth its own case, because it is the
+    // mistake the shape invites: a code that looks like an integer round-trips through one
+    // in a client that forgets `String()`, and `004271` comes back as `4271`. Two different
+    // wrong things then follow — a silently truncated code, and a `code` field that is not a
+    // string at all — and the route has to refuse both rather than coerce.
+    //
+    // A 400 and not a 404: the service never stringifies the body, so `join` would be handed
+    // a number and miss on a Map keyed by strings, which is a 404 that reads as "your
+    // friend's code is wrong" when the bug is entirely on the sending side.
+    const ctx = await start();
+    try {
+      const created = await post(ctx.url, '/party/create', { playerId: 'leader' });
+      const asNumber = Number(created.body.code as string);
+      expect((await post(ctx.url, '/party/join', { playerId: 'p', code: asNumber })).status).toBe(400);
+      // And the truncation itself, spelled out: a leading-zero code passed through a number
+      // is a DIFFERENT, shorter string, which the pattern refuses too.
+      expect(String(Number('004271'))).toBe('4271');
+      expect((await post(ctx.url, '/party/join', { playerId: 'p', code: 4271 })).status).toBe(400);
+      expect((await post(ctx.url, '/party/join', { playerId: 'p', code: '4271' })).status).toBe(400);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('tolerates whitespace around a pasted code rather than refusing it', async () => {
+    const ctx = await start();
+    try {
+      // A code arriving from a chat message or a copy-paste carries a leading/trailing space
+      // often enough that refusing it would read as "the code my friend sent me is wrong".
+      // The trim is the route's, not the service's: `PartyService` keys its map on the exact
+      // string it minted.
+      const created = await post(ctx.url, '/party/create', { playerId: 'leader' });
+      const joined = await post(ctx.url, '/party/join', {
+        playerId: 'friend',
+        code: `  ${created.body.code as string}
+`,
+      });
+      expect(joined.status).toBe(200);
+      expect(joined.body.members).toEqual(['leader', 'friend']);
     } finally {
       await ctx.close();
     }
@@ -468,6 +583,73 @@ describe('/party/*', () => {
     try {
       expect((await post(ctx.url, '/party/start', { partyId: 'x' })).status).toBe(400);
       expect((await post(ctx.url, '/party/start', { playerId: 'x' })).status).toBe(400);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('IGNORES a valid bearer token — playerId alone names a member, logged in or not', async () => {
+    // The positive control for the case below, and it is not redundant with it. "Works
+    // without a header" is also true of a route that reads the session WHEN one is present
+    // and quietly prefers it over `playerId` — which would mean a logged-in player's seat is
+    // identified differently from a guest's, for reasons nothing in the design states, and
+    // that a member who logs in mid-lobby changes identity under their own party.
+    //
+    // So: the same `playerId` under a real session must produce the same roster entry, and a
+    // `playerId` that DISAGREES with the session must still win, because this route has no
+    // business resolving identity at all (that is `/find`'s job, and only for the ladder).
+    const ctx = await start();
+    try {
+      const session = await register(ctx.url, 'ada');
+      const created = await postAs(ctx.url, '/party/create', { playerId: 'declared-a' }, session.token);
+      expect(created.status).toBe(200);
+      expect(created.body.leaderId).toBe('declared-a');
+      expect(created.body.members).toEqual(['declared-a']);
+      expect(created.body.leaderId).not.toBe(session.accountId);
+
+      // And the leader check keys off the declared id too: the session holder is NOT the
+      // leader here, so starting as the account id has to be refused.
+      const partyId = created.body.partyId as string;
+      const byAccount = await postAs(ctx.url, '/party/start', { partyId, playerId: session.accountId }, session.token);
+      expect(byAccount.status).toBe(404);
+      const byDeclared = await postAs(ctx.url, '/party/start', { partyId, playerId: 'declared-a' }, session.token);
+      expect(byDeclared.status).toBe(200);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('runs the WHOLE squad flow with no Authorization header — a login is never required', async () => {
+    // Audited and pinned 2026-09-21, because "does this need an account?" is a question
+    // whose answer is a scatter of ABSENT auth checks, and an absence is exactly what no
+    // test asserts by accident. It is a decision, not an oversight: design/16's "logging in
+    // is never required to play", and `matchsvc.findIdentity.http.test.ts` already pins the
+    // matchmaking half ("still gets a playable seat — nothing but the ladder key is
+    // withheld"). This is the party half, end to end.
+    //
+    // `post` sends no `authorization`, which is the point of using it here: adding
+    // `requireAuth` to any of these five routes, or to `/find`, has to turn this red.
+    // A `playerId` is a client-declared string either way — the account layer gates
+    // `/account/*` and `/store/*` and nothing else, and the worst a forged party id can do
+    // is confuse a party the forger has already joined.
+    const ctx = await start();
+    try {
+      const created = await post(ctx.url, '/party/create', { playerId: 'guest-a' });
+      expect(created.status).toBe(200);
+      const code = created.body.code as string;
+      const partyId = created.body.partyId as string;
+
+      expect((await post(ctx.url, '/party/join', { playerId: 'guest-b', code })).status).toBe(200);
+      expect((await get(ctx.url, `/party/${partyId}`)).body.members).toEqual(['guest-a', 'guest-b']);
+      expect((await post(ctx.url, '/party/start', { partyId, playerId: 'guest-a' })).status).toBe(200);
+
+      // And the queue entry the squad's members each make off the back of that start — the
+      // step that would be pointless to leave open if the lobby needed a login.
+      const queued = await post(ctx.url, '/find', { playerCount: 8, mode: 'pvp', partyId });
+      expect(queued.status).toBe(200);
+      expect(typeof queued.body.queueId).toBe('string');
+
+      expect((await post(ctx.url, '/party/leave', { partyId, playerId: 'guest-b' })).status).toBe(200);
     } finally {
       await ctx.close();
     }

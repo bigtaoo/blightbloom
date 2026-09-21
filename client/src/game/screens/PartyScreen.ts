@@ -8,6 +8,7 @@ import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { setPartyPresence } from '../../platform/partyPresence';
 import { SQUAD_SIZE } from '../match/pvpConfig';
+import { ROOM_CODE_LENGTH, normalizeRoomCode } from '../match/roomCode';
 
 /** The party network calls this screen needs — injected (default: the real
  * `net/party.ts` functions) so tests can drive it with a fake, same DI convention as
@@ -26,10 +27,18 @@ export interface PartyApi {
  * same shape as Forge.ts/Screens.ts: Game.ts owns what `onStartMatch` actually does
  * (hand off to the existing `connectOnlineSession` PvP path with this partyId).
  *
- * No account system backs "playerId" (none exists anywhere in this project, see
- * `net/identity.ts`'s own note) — it's a random id generated once and persisted
- * locally. A join "code" is a short human-typeable string, separate from the
- * internal `partyId`, entered via `TextInputOverlay` (Pixi has no native text input).
+ * Playing in a squad needs NO LOGIN (audited 2026-09-21, and it is a decision rather than a
+ * gap — design/16's "logging in is never required to play"). `playerId` is `getPlayerId()`,
+ * which is the real `accountId` once a session exists and otherwise a guest id generated once
+ * and persisted locally; the server verifies neither, and the worst a forged one can do is
+ * confuse a party the forger has already joined (`net/identity.ts` argues this out). What a
+ * guest actually forgoes is the durable LADDER RATING, which `/find` keys off a verified
+ * bearer token instead — not the party, not the match, not the win.
+ *
+ * A room "code" is {@link ROOM_CODE_LENGTH} digits, separate from the internal `partyId`,
+ * entered via `TextInputOverlay` (Pixi has no native text input). That constant is IMPORTED
+ * from the pure layer and shared with the server rather than restated here — see
+ * `../match/roomCode`'s header for the hour this file spent holding a second copy of it.
  */
 export class PartyScreen {
   readonly view = new Container();
@@ -210,9 +219,11 @@ export class PartyScreen {
   private openJoinInput(): void {
     this.inputOverlay.open({
       placeholder: t('party.codePlaceholder'),
-      maxLength: 6,
-      uppercase: true,
-      onSubmit: (code) => void this.doJoin(code.trim()),
+      maxLength: ROOM_CODE_LENGTH,
+      // `numeric` replaced `uppercase` when the code became six digits (2026-09-21): there
+      // is no letter left to up-case, and this is what gets a phone to show a keypad.
+      numeric: true,
+      onSubmit: (code) => void this.doJoin(normalizeRoomCode(code)),
     });
   }
 
@@ -222,10 +233,14 @@ export class PartyScreen {
    *
    * Deliberately the same `doJoin` a typed code runs through, rather than a second path:
    * the busy guard, the stale-attempt token, the error text and the presence publish are all
-   * behaviour this must share, and the only difference is where the string came from.
+   * behaviour this must share, and the only difference is where the string came from — and
+   * both go through the same `normalizeRoomCode` the SERVER applies, so a code that survives
+   * this side is normalized the way the route will normalize it rather than merely similarly.
+   * (It was a bare `.trim()` on both paths until the shared module existed, which was the
+   * same claim spelled three times in three files.)
    */
   joinWithCode(code: string): void {
-    void this.doJoin(code.trim());
+    void this.doJoin(normalizeRoomCode(code));
   }
 
   private async doJoin(code: string): Promise<void> {
