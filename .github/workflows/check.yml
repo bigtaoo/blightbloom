@@ -39,6 +39,31 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
+# Nothing in CI runs Electron, and until 2026-09-21 every job downloaded it anyway.
+#
+# `electron` is a devDependency of `tools/desktop-shell`, so a root `npm ci` runs its
+# postinstall, which fetches a ~100MB platform binary from `github.com/electron/electron`
+# releases. That download is on the critical path of ALL FIVE workflows in this directory
+# and is cached by nothing: `actions/setup-node`'s `cache: npm` caches the npm cache, while
+# Electron writes to `~/.cache/electron` on its own. So it is a fresh cross-internet fetch
+# per job, per push, forever — and on 2026-09-21 it answered `504 Gateway Time-out` twice in
+# two consecutive runs, failing `sims` in 30 seconds with no simulation executed. A red gate
+# that says nothing about the code is worse than a slow one.
+#
+# Skipping it costs nothing here, and the reason is checkable rather than asserted: all nine
+# `tools/desktop-shell/src/*.test.ts` files mock the module with a FACTORY
+# (`vi.mock('electron', () => ...)`), so vitest never loads the real one. Verified by hiding
+# `node_modules/electron/{path.txt,dist}` — the exact state this variable produces — and
+# running that suite: 81 tests, 9 files, green.
+#
+# The npm package itself is still installed, so module resolution is unaffected; only the
+# binary is skipped. **What re-opens this question** is a test (or a build step) that
+# actually launches Electron rather than mocking it — and that failure is already gated,
+# because `npm run check` runs desktop-shell's own suite across the workspaces and would go
+# red here rather than silently passing.
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
 jobs:
   # The named consistency step. `npm run check` below already runs every one of these tests,
   # which is precisely why this job exists separately: inside a 6,000-test summary, a gate
@@ -65,8 +90,9 @@ jobs:
           node-version: 22
           cache: npm
       # `npm ci` runs postinstall scripts that this repo gates behind npm 11's allowScripts
-      # (electron's binary download, esbuild's platform binary). The allow list lives in the
-      # root package.json, so a plain `npm ci` is enough.
+      # (esbuild's platform binary; electron's binary download is allowed there too but is
+      # skipped in CI by the workflow-level env above). The allow list lives in the root
+      # package.json, so a plain `npm ci` is enough.
       - run: npm ci
       # The suite's mongod, cached. `mongodb-memory-server` downloads ~64MB the first time a
       # machine runs a test that touches a store (server/test/mongoGlobalSetup.ts), which is
