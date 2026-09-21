@@ -1,5 +1,5 @@
 /**
- * TextInputOverlay (design/05/15's party join-code field, design/16-accounts.md's
+ * TextInputOverlay (design/05/15's party room-code field, design/16-accounts.md's
  * login/password fields). This project has no jsdom/happy-dom environment configured
  * (plain vitest — see net/transport.test.ts's own `FakeWebSocket` for the same
  * convention), so `document` is faked here with just the small, fixed surface this
@@ -23,6 +23,11 @@ class FakeInput {
   maxLength = 0;
   autocapitalize = '';
   autocomplete = '';
+  // Both are the `numeric` option's keypad hints, and both start empty so a test can tell
+  // "never set" from "set to something" — a default of 'numeric' would make the converse
+  // case below pass against an implementation that hard-wires the flag on.
+  inputMode = '';
+  pattern = '';
   spellcheck = false;
   style: Record<string, string> = {};
   value = '';
@@ -199,5 +204,88 @@ describe('TextInputOverlay — the password field', () => {
     el.value = 'hunter22';
     el.keydown('Enter');
     expect(onSubmit).toHaveBeenCalledWith('hunter22');
+  });
+});
+
+/**
+ * The `numeric` option — the room code became six digits on 2026-09-21
+ * (`server/src/routes/party.ts`), which is the shape this field now has to produce.
+ *
+ * Each of the three things it sets fails differently, so each is asserted separately:
+ * `inputMode` is what makes a phone show a keypad instead of a full keyboard, `pattern` is
+ * what stops iOS Safari ignoring `inputMode` on a `type="text"` field, and the `input`
+ * listener is the only one of the three that ENFORCES anything — both attributes are hints
+ * that a hardware keyboard, an IME or a paste walks straight past.
+ */
+describe('TextInputOverlay — the numeric room-code field', () => {
+  it('asks for a numeric keypad without using type=number', () => {
+    // `type="number"` is the tempting shortcut and it is wrong here twice over: it strips a
+    // leading zero, which `004271` needs, and it draws spinner arrows on a field that is not
+    // a quantity.
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ numeric: true, maxLength: 6, onSubmit: vi.fn() });
+    const el = appended[0]!;
+    expect(el.type).toBe('text');
+    expect(el.inputMode).toBe('numeric');
+    expect(el.pattern).toBe('[0-9]*');
+    expect(el.maxLength).toBe(6);
+    expect(el.autocapitalize).toBe('off'); // nothing to capitalize, and it would fight the keypad
+  });
+
+  it('leaves an ordinary field alone — the converse, so the flag cannot be hard-wired on', () => {
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ onSubmit: vi.fn() });
+    const el = appended[0]!;
+    expect(el.inputMode).toBe('');
+    expect(el.pattern).toBe('');
+  });
+
+  it('strips every non-digit as typed, including a pasted code with separators', () => {
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ numeric: true, onSubmit: vi.fn() });
+    const el = appended[0]!;
+    for (const [typed, kept] of [
+      ['4', '4'],
+      ['abc', ''],
+      ['12-34 56', '123456'],
+      ['CODE: 004271', '004271'],
+      ['一二三', ''], // an IME's output is not a digit either
+    ] as const) {
+      el.value = typed;
+      el.fire('input', {});
+      expect(el.value).toBe(kept);
+    }
+  });
+
+  it('keeps a leading zero — 004271 is a code the server can mint', () => {
+    const { appended } = stubDom();
+    const onSubmit = vi.fn();
+    new TextInputOverlay().open({ numeric: true, onSubmit });
+    const el = appended[0]!;
+    el.value = '004271';
+    el.fire('input', {});
+    expect(el.value).toBe('004271');
+    el.keydown('Enter');
+    expect(onSubmit).toHaveBeenCalledWith('004271');
+  });
+
+  it('supersedes `uppercase` rather than fighting it over the same value', () => {
+    // Both listeners write `input.value` on the same event. With `numeric` winning there is
+    // one writer; passing both must not resurrect the second.
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ numeric: true, uppercase: true, onSubmit: vi.fn() });
+    const el = appended[0]!;
+    el.value = 'a1b2c3';
+    el.fire('input', {});
+    expect(el.value).toBe('123');
+  });
+
+  it('still up-cases when only `uppercase` is asked for — the option is not dead', () => {
+    const { appended } = stubDom();
+    new TextInputOverlay().open({ uppercase: true, onSubmit: vi.fn() });
+    const el = appended[0]!;
+    el.value = 'abc12';
+    el.fire('input', {});
+    expect(el.value).toBe('ABC12');
   });
 });

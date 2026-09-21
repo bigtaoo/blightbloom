@@ -2,7 +2,7 @@
  * A real HTML `<input>` overlaid on top of the Pixi canvas (design/10 "no DOM
  * widgets" is about ON-CANVAS chrome — text entry is the one thing Pixi has no native
  * primitive for at all, and this repo has no on-screen-keyboard precedent to reuse).
- * Used for the party join-code field (design/05/15's squad follow-up) — a single
+ * Used for the party room-code field (design/05/15's squad follow-up) — a single
  * short field, not a form, so a fixed-position centered overlay is simpler and more
  * robust across resizes than trying to track the exact canvas pixel position of a
  * Pixi-drawn field.
@@ -14,8 +14,21 @@
 export interface TextInputOverlayOptions {
   placeholder?: string;
   maxLength?: number;
-  /** Upper-cased as typed (join codes are alphabetic, case shouldn't matter to the player). */
+  /** Upper-cased as typed. Kept for a field where case shouldn't matter to the player;
+   *  {@link numeric} supersedes it for the room code, which has no letters left in it. */
   uppercase?: boolean;
+  /**
+   * Digits only (the room code since 2026-09-21, `server/src/routes/party.ts`).
+   *
+   * Three separate things, because a browser needs all three and no one of them is enough:
+   * `inputmode="numeric"` is what makes a phone show a keypad instead of a full keyboard;
+   * `pattern` is what stops iOS Safari from ignoring `inputmode` on a `type="text"` field;
+   * and the `input` listener is the only one of the three that actually ENFORCES anything —
+   * both attributes are hints a hardware keyboard, an IME or a paste blows straight past.
+   * `type="number"` is deliberately not used: it strips leading zeros, which a code like
+   * `004271` needs, and offers spinner arrows for a field that is not a quantity.
+   */
+  numeric?: boolean;
   /** Masks input as `••••` (design/16-accounts.md's password field) — otherwise plain text. */
   password?: boolean;
   onSubmit: (value: string) => void;
@@ -35,9 +48,13 @@ export class TextInputOverlay {
     input.type = opts.password ? 'password' : 'text';
     input.placeholder = opts.placeholder ?? '';
     input.maxLength = opts.maxLength ?? 32;
-    input.autocapitalize = opts.password ? 'off' : 'characters';
+    input.autocapitalize = opts.password || opts.numeric ? 'off' : 'characters';
     input.autocomplete = opts.password ? 'current-password' : 'off';
     input.spellcheck = false;
+    if (opts.numeric) {
+      input.inputMode = 'numeric';
+      input.pattern = '[0-9]*'; // see `numeric`'s note — this is what iOS Safari reads
+    }
     Object.assign(input.style, {
       position: 'fixed',
       left: '50%',
@@ -56,7 +73,14 @@ export class TextInputOverlay {
       width: '220px',
     } satisfies Partial<CSSStyleDeclaration>);
 
-    if (opts.uppercase) {
+    // `numeric` first and `else if`: stripping non-digits already covers case, and running
+    // both would fight over `input.value` on the same event.
+    if (opts.numeric) {
+      input.addEventListener('input', () => {
+        const digits = input.value.replace(/\D+/g, '');
+        if (digits !== input.value) input.value = digits;
+      });
+    } else if (opts.uppercase) {
       input.addEventListener('input', () => {
         const upper = input.value.toUpperCase();
         if (upper !== input.value) input.value = upper;

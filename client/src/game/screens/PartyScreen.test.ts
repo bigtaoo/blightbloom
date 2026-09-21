@@ -32,7 +32,7 @@ function fakeApi(overrides: Partial<PartyApi> = {}): PartyApi {
   };
 }
 
-const PARTY: PartyInfo = { partyId: 'p1', code: 'ABCDE', leaderId: 'me', members: ['me'], matching: false };
+const PARTY: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'me', members: ['me'], matching: false };
 
 function makeScreen(api: PartyApi, playerId = 'me') {
   const screen = new PartyScreen({ matchBaseUrl: 'http://mm', playerId, api });
@@ -51,6 +51,8 @@ function privateOf(s: PartyScreen) {
     startBtn: { view: { visible: boolean }; label: { text: string } };
     leaveBtn: { view: { visible: boolean }; label: { text: string } };
     codeText: { text: string };
+    inputOverlay: { open(opts: Record<string, unknown>): void };
+    openJoinInput(): void;
     membersText: { text: string };
     statusText: { text: string };
     doCreate(): Promise<void>;
@@ -74,6 +76,39 @@ describe('PartyScreen — no party yet', () => {
   });
 });
 
+describe('PartyScreen — the room-code input field', () => {
+  it('asks for a six-digit numeric field, not the old up-cased alphabetic one', () => {
+    // The wiring, not the widget: `TextInputOverlay.test.ts` pins what `numeric` DOES, and
+    // this pins that the room-code field is the thing that asks for it. Both halves are
+    // needed — the overlay's own option could be perfect while this screen still opened a
+    // 6-wide `uppercase` field, which on a phone is a full keyboard for a field that can
+    // only hold digits, and on any host is a field that accepts a code the server refuses.
+    const s = makeScreen(fakeApi());
+    const p = privateOf(s);
+    const opened: Record<string, unknown>[] = [];
+    p.inputOverlay = { open: (opts) => opened.push(opts) };
+    p.openJoinInput();
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.numeric).toBe(true);
+    expect(opened[0]!.maxLength).toBe(6);
+    expect(opened[0]!.uppercase).toBeUndefined();
+  });
+
+  it('submits what was typed through the same doJoin a portal invite uses', async () => {
+    // `onSubmit` is the only part of that options object with behaviour, and it must reach
+    // `doJoin` — the one path that owns the busy guard, the stale-attempt token and the
+    // error text (the screen's own header says so).
+    const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(PARTY) });
+    const s = makeScreen(api);
+    const p = privateOf(s);
+    let submit: ((v: string) => void) | undefined;
+    p.inputOverlay = { open: (opts) => void (submit = opts.onSubmit as (v: string) => void) };
+    p.openJoinInput();
+    submit!(' 482913 ');
+    await vi.waitFor(() => expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', '482913'));
+  });
+});
+
 describe('PartyScreen — create', () => {
   it('creating a party shows the code and switches to leave/start (as leader)', async () => {
     const api = fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) });
@@ -81,7 +116,7 @@ describe('PartyScreen — create', () => {
     const p = privateOf(s);
     await p.doCreate();
     expect(api.createParty).toHaveBeenCalledWith('http://mm', 'me');
-    expect(p.codeText.text).toContain('ABCDE');
+    expect(p.codeText.text).toContain('482913');
     expect(p.startBtn.view.visible).toBe(true); // leader
     expect(p.leaveBtn.view.visible).toBe(true);
     expect(p.createBtn.view.visible).toBe(false);
@@ -99,12 +134,12 @@ describe('PartyScreen — create', () => {
 
 describe('PartyScreen — join', () => {
   it('joining shows the roster and hides start (not leader)', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: 'ABCDE', leaderId: 'alice', members: ['alice', 'me'] , matching: false };
+    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'] , matching: false };
     const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(joined) });
     const s = makeScreen(api, 'me');
     const p = privateOf(s);
-    await p.doJoin('ABCDE');
-    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', 'ABCDE');
+    await p.doJoin('482913');
+    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', '482913');
     expect(p.membersText.text).toContain('alice');
     expect(p.membersText.text).toContain('you'); // self labeled "you", not its raw id
     expect(p.startBtn.view.visible).toBe(false); // alice is leader, not me
@@ -138,7 +173,7 @@ describe('PartyScreen — start matching', () => {
   });
 
   it('a non-leader polling and seeing matching flip to true also fires onStartMatch, without tapping anything', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: 'ABCDE', leaderId: 'alice', members: ['alice', 'me'], matching: false };
+    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'], matching: false };
     const nowMatching: PartyInfo = { ...joined, matching: true };
     const api = fakeApi({
       joinParty: vi.fn().mockResolvedValue(joined),
@@ -148,7 +183,7 @@ describe('PartyScreen — start matching', () => {
     const p = privateOf(s);
     const onStart = vi.fn();
     s.onStartMatch = onStart;
-    await p.doJoin('ABCDE');
+    await p.doJoin('482913');
     await p.pollOnce(); // simulates the periodic poll observing the leader's flip
     expect(onStart).toHaveBeenCalledWith('p1');
   });
@@ -231,7 +266,7 @@ describe('PartyScreen — staleness guard (backing out mid-request never lands a
   });
 
   it('pollOnce: hiding the screen mid-poll discards the result and never fires onStartMatch', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: 'ABCDE', leaderId: 'alice', members: ['alice', 'me'], matching: false };
+    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'], matching: false };
     const d = deferred<PartyInfo>();
     const api = fakeApi({
       joinParty: vi.fn().mockResolvedValue(joined),
@@ -241,7 +276,7 @@ describe('PartyScreen — staleness guard (backing out mid-request never lands a
     const p = privateOf(s);
     const onStart = vi.fn();
     s.onStartMatch = onStart;
-    await p.doJoin('ABCDE');
+    await p.doJoin('482913');
 
     const pollPromise = p.pollOnce(); // a routine 1s poll goes out...
     s.hide(); // ...player backs out before it lands
@@ -280,9 +315,9 @@ describe('PartyScreen — staleness guard (backing out mid-request never lands a
 
     s.show(800, 600);
     const api2 = api.createParty as ReturnType<typeof vi.fn>;
-    api2.mockResolvedValue({ ...PARTY, code: 'ZZZZZ' });
+    api2.mockResolvedValue({ ...PARTY, code: '571064' });
     await p.doCreate(); // must not be swallowed by a `busy` flag stuck true from the stale attempt
-    expect(p.codeText.text).toContain('ZZZZZ');
+    expect(p.codeText.text).toContain('571064');
   });
 });
 
@@ -303,7 +338,7 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
     const s = makeScreen(api);
     await privateOf(s).doCreate();
     const p = privateOf(s);
-    expect(p.codeText.text).toBe('邀请码：ABCDE');
+    expect(p.codeText.text).toBe('邀请码：482913');
     expect(p.membersText.text).toContain('你');
   });
 
@@ -342,7 +377,7 @@ describe('PartyScreen — declaring the squad to the host (design/20)', () => {
     const api = fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) });
     const s = makeScreen(api);
     await privateOf(s).doCreate();
-    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: 'ABCDE', joinable: true });
+    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: '482913', joinable: true });
   });
 
   it('declares it CLOSED once the party is matching', async () => {
@@ -386,25 +421,25 @@ describe('PartyScreen.joinWithCode — an accepted portal invite', () => {
     const joined: PartyInfo = { ...PARTY, leaderId: 'them', members: ['them', 'me'] };
     const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(joined) });
     const s = makeScreen(api);
-    s.joinWithCode('ABCDE');
+    s.joinWithCode('482913');
     await Promise.resolve();
     await Promise.resolve();
-    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', 'ABCDE');
-    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: 'ABCDE', joinable: true });
+    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', '482913');
+    expect(getPartyPresence()).toEqual({ partyId: 'p1', code: '482913', joinable: true });
   });
 
   it('trims the code, since it arrived from a URL', async () => {
     const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(PARTY) });
-    makeScreen(api).joinWithCode('  ABCDE  ');
+    makeScreen(api).joinWithCode('  482913  ');
     await Promise.resolve();
-    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', 'ABCDE');
+    expect(api.joinParty).toHaveBeenCalledWith('http://mm', 'me', '482913');
   });
 
   it('shares the busy guard with a typed join rather than racing it', async () => {
     const gate = deferred<PartyInfo>();
     const api = fakeApi({ joinParty: vi.fn().mockReturnValue(gate.promise) });
     const s = makeScreen(api);
-    s.joinWithCode('ABCDE');
+    s.joinWithCode('482913');
     s.joinWithCode('WXYZ');
     gate.resolve(PARTY);
     await Promise.resolve();

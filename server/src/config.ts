@@ -20,6 +20,13 @@ const DEV_SECRET = 'dev-insecure-secret-do-not-use-in-prod';
 // instead of two hand-mirrored copies that could drift (design/06's own stated lesson).
 export { SQUAD_SIZE, squadSizeForPlayerCount, teamIdForOwner } from '@dd/game/match/pvpConfig';
 
+// The party ROOM CODE's shape, through the same seam and for the same reason (2026-09-21).
+// `routes/party.ts` mints codes and validates the ones it is sent; `PartyScreen.ts` sizes the
+// input field that produces them. Those two numbers agreeing is not something a test can
+// check from either side alone — each is independently correct, so a drift mints six digits
+// into a field five wide with both suites green. See `@dd/game/match/roomCode`'s header.
+export { ROOM_CODE_LENGTH, ROOM_CODE_DIGITS, ROOM_CODE_PATTERN, isRoomCode, normalizeRoomCode } from '@dd/game/match/roomCode';
+
 import type { InternalCaller } from './internalAuth';
 
 let warned = false;
