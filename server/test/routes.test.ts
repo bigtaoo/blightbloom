@@ -29,10 +29,13 @@ import type { AuthService } from '../src/AuthService';
 import type { Matchmaker, MatchTicket } from '../src/Matchmaker';
 import type { PartyService } from '../src/PartyService';
 import type { RatingStore } from '../src/rating';
+import type { Logger } from '../src/log';
 import { CORS, readJson, send } from '../src/routes/http';
 import { getMe, postLogout, requireAuth } from '../src/routes/auth';
 import { FIND_POLL_PATH, getFindPoll } from '../src/routes/match';
-import { PARTY_LOOKUP_PATH, getParty, randomCode } from '../src/routes/party';
+import { PARTY_LOOKUP_PATH, getParty, postCreate, randomCode } from '../src/routes/party';
+import { ROOM_CODE_PATTERN } from '../src/config';
+import { CodeSpaceExhausted } from '../src/PartyService';
 import { RATING_LOOKUP_PATH, getRating } from '../src/routes/rating';
 
 // --- fakes -----------------------------------------------------------------------------
@@ -310,11 +313,18 @@ describe('routes/match getFindPoll', () => {
   });
 });
 
+/** The party group's `log`, which only `/party/create`'s unexpected-failure arm ever calls
+ *  — so a `getParty` test supplies one that does nothing rather than a recorder. */
+function silentLog(): Logger {
+  const noop = () => {};
+  return { error: noop, warn: noop, info: noop, debug: noop } as unknown as Logger;
+}
+
 describe('routes/party getParty', () => {
   it('percent-decodes the party id before the lookup', async () => {
     const get = vi.fn(() => undefined);
     const { res, sent } = fakeRes();
-    getParty(fakeReq(), res, url('/party/p%2F1'), { parties: { get } as unknown as PartyService });
+    getParty(fakeReq(), res, url('/party/p%2F1'), { parties: { get } as unknown as PartyService, log: silentLog() });
     expect(get).toHaveBeenCalledWith('p/1');
     expect(sent.status).toBe(404);
     expect(parsed(sent)).toEqual({ error: 'party not found' });
@@ -325,6 +335,7 @@ describe('routes/party getParty', () => {
     const { res, sent } = fakeRes();
     getParty(fakeReq(), res, url('/party/p1'), {
       parties: { get: () => info } as unknown as PartyService,
+      log: silentLog(),
     });
     expect(sent.status).toBe(200);
     expect(parsed(sent)).toEqual(info);
@@ -359,19 +370,124 @@ describe('routes/rating getRating', () => {
 
 // --- routes/party.ts randomCode --------------------------------------------------------
 
+describe('routes/party postCreate', () => {
+  /** POST an already-JSON body through a handler that reads it with `readJson`. */
+  function drive(handler: () => void, req: EventEmitter, body: unknown): Promise<void> {
+    handler();
+    req.emit('data', Buffer.from(JSON.stringify(body)));
+    req.emit('end');
+    // `readJson` resolves through a promise, so the response lands a microtask later.
+    return Promise.resolve().then(() => {});
+  }
+
+  it('answers 503, not a hang, when the code space is exhausted', async () => {
+    // The failure this pins is the one the bound exists for, and it is silent: `readJson`
+    // invokes its callback from inside a `.then()`, so a throw escaping the handler becomes
+    // an unhandled rejection and the request is answered with NOTHING — a client left
+    // waiting on its own timeout, with `matchsvc.ts`'s error boundary never seeing it
+    // (`routes/http.ts` says so in its own header). 503 rather than 400 or 500 because the
+    // caller sent nothing wrong and a retry very likely succeeds.
+    const req = fakeReq();
+    const { res, sent } = fakeRes();
+    const parties = {
+      create: () => {
+        throw new CodeSpaceExhausted(100);
+      },
+    } as unknown as PartyService;
+    await drive(() => postCreate(req, res, url('/party/create'), { parties, log: silentLog() }), req, { playerId: 'p1' });
+    expect(sent.status).toBe(503);
+    expect(parsed(sent)).toEqual({ error: 'no room code available' });
+  });
+
+  it('answers 500 and logs it for any OTHER failure, rather than answering nothing', async () => {
+    // Same escape hatch, different verdict: an unexpected throw is a bug, not a condition,
+    // so it gets a 500 and a line in the log store instead of vanishing into an unhandled
+    // rejection. Asserted on the log too — a 500 nobody can find the cause of is barely
+    // better than the hang.
+    const lines: { msg: string; fields?: Record<string, unknown> }[] = [];
+    const log = {
+      error: (msg: string, fields?: Record<string, unknown>) => lines.push({ msg, fields }),
+      warn: () => {},
+      info: () => {},
+      debug: () => {},
+    } as unknown as Logger;
+    const req = fakeReq();
+    const { res, sent } = fakeRes();
+    const parties = {
+      create: () => {
+        throw new Error('mongo went away');
+      },
+    } as unknown as PartyService;
+    await drive(() => postCreate(req, res, url('/party/create'), { parties, log }), req, { playerId: 'p1' });
+    expect(sent.status).toBe(500);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.fields).toEqual({ error: 'mongo went away' });
+  });
+
+  it('400s a missing playerId before it ever reaches the service', async () => {
+    const create = vi.fn();
+    const req = fakeReq();
+    const { res, sent } = fakeRes();
+    await drive(
+      () => postCreate(req, res, url('/party/create'), { parties: { create } as unknown as PartyService, log: silentLog() }),
+      req,
+      {},
+    );
+    expect(sent.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
 describe('routes/party randomCode', () => {
-  it('emits 5 characters from an alphabet with no 0/O/1/I, over many draws', async () => {
-    // The alphabet's whole point is that a player reads this code out to a friend, so the
-    // visually ambiguous glyphs are excluded. Nothing pinned that before.
+  it('emits exactly 6 decimal digits, over many draws', () => {
+    // Six digits since 2026-09-21 (it was 5 characters of a no-0/O/1/I alphabet). Asserted
+    // over many draws rather than one because the ways this breaks are statistical: a
+    // generator that occasionally emits five characters, or that can produce a non-digit,
+    // is invisible in a single sample.
     const seen = new Set<string>();
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 2000; i++) {
       const code = randomCode();
-      expect(code).toMatch(/^[A-Z2-9]{5}$/);
+      expect(code).toMatch(/^[0-9]{6}$/);
+      expect(code).toHaveLength(6);
       for (const ch of code) seen.add(ch);
     }
-    for (const banned of ['0', 'O', '1', 'I']) expect(seen.has(banned)).toBe(false);
-    // 500 draws x 5 chars over a 32-glyph alphabet: a generator stuck on a subset (a
-    // truncated alphabet, a mis-scaled index) shows up as a shortfall here.
-    expect(seen.size).toBe(32);
+    // All ten digits, 0 included: a 1-based or leading-zero-shy generator (a `% 9`, a
+    // `randomInt(1, 10)`) shows up here as a shortfall, and `004271` is a code this service
+    // has to be able to mint.
+    expect([...seen].sort().join('')).toBe('0123456789');
+  });
+
+  it('draws digits near-uniformly, not the biased shape a scaled Math.random gives', () => {
+    // `Math.floor(Math.random() * n)` was uniform for the old 32-glyph alphabet only because
+    // 32 is a power of two; it is not for 10, and the `%` spelling of the same idea is
+    // measurably biased — which is why the generator uses `crypto.randomInt`. A chi-square
+    // would be the rigorous test; this generous band is enough to catch the real failures (a
+    // digit that never appears, or one appearing half again as often as the rest).
+    const counts = new Map<string, number>();
+    const draws = 5000; // x6 digits = 30000 samples, ~3000 expected per digit
+    for (let i = 0; i < draws; i++) for (const ch of randomCode()) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+    const expected = (draws * 6) / 10;
+    for (let d = 0; d <= 9; d++) {
+      const n = counts.get(String(d)) ?? 0;
+      expect(n).toBeGreaterThan(expected * 0.85);
+      expect(n).toBeLessThan(expected * 1.15);
+    }
+  });
+
+  it('randomCode mints codes the SHARED pattern accepts, plus the near-misses a stale client sends', () => {
+    // Two claims, and only the first belongs to this file now that the shape moved to
+    // `@dd/game/match/roomCode`: that the server's own GENERATOR satisfies the shared
+    // pattern. `client/src/game/match/roomCode.test.ts` is the shape's authority and owns
+    // the exhaustive near-miss list, including the Unicode-digit scripts that a `[\p{Nd}]`
+    // pattern would wrongly accept.
+    //
+    // What is kept here is the server-side concern: what a STALE CLIENT sends — five
+    // characters of the old no-0/O/1/I alphabet, a truncated or padded code. Anchoring is
+    // still worth restating, since an unanchored `[0-9]{6}` matches `abc123456xyz` and would
+    // hand an arbitrary string to the lookup map.
+    for (let i = 0; i < 200; i++) expect(ROOM_CODE_PATTERN.test(randomCode())).toBe(true);
+    expect(ROOM_CODE_PATTERN.test('004271')).toBe(true);
+    const nearMisses = ['', '12345', '1234567', 'ABCDE', 'A12345', '12345A', ' 123456', '123456 ', '12 456', 'x123456y', '1e5000', '12.456'];
+    for (const bad of nearMisses) expect(ROOM_CODE_PATTERN.test(bad)).toBe(false);
   });
 });

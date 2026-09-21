@@ -266,6 +266,46 @@ front door without being a *gate*, and it opens `LoginScreen` only where `setAcc
 host permits one at all. The instinct the proposal got right was that login state used to be
 invisible AND late — the chip fixes the first half, the identity gate the second.
 
+### Audited against the code, and pinned (2026-09-21)
+
+Asked directly — *“请确认组队和匹配功能，是
+否需要玩家登录”* — so the rule above was checked against what the
+routes actually do rather than restated. It holds. `requireAuth` (`routes/auth.ts`) is called from
+`routes/account.ts` and `routes/store.ts` and **nowhere else**: all five `/party/*` routes, plus
+`/find`, `/find/:queueId` and `/resume`, resolve no session and refuse nobody.
+
+- A **`playerId`** is whatever opaque string the client sends — the real `accountId` once a
+  session exists, a locally generated guest id otherwise (`net/identity.ts`) — and nothing
+  verifies which. That is the right trust level here: the worst a forged one can do is confuse a
+  party the forger has already joined.
+- **`/find` does verify an `Authorization: Bearer` when one is sent**, but a missing or invalid one
+  means *guest*, not 401 (a 30-day session expiring mid-play must not end the match). The only
+  thing withheld is the durable **ladder rating**, which falls back to `ladderReport.ts`'s
+  one-match `seat:{roomId}:{seatIdx}` scaffold — not the party, not the match, not the win. See
+  the three-holes section above for why a self-declared identity can never own a rating.
+
+**Why this needed tests and not just this paragraph.** The guarantee is an *absence* of auth checks
+spread over eight route registrations, and an absence is what no suite asserts by accident —
+adding a `requireAuth` to `/party/create` would have broken nothing and changed the answer. Both
+directions are now pinned in `server/test/matchsvc.queue.http.test.ts`, and the second is not
+redundant with the first:
+
+1. the whole squad flow (create → join → poll → start → `/find` → leave) runs with
+   **no `Authorization` header at all**;
+2. a **valid bearer token is ignored** — `playerId` still names the member, and the session holder
+   is still refused as a non-leader. Without this case, a route that quietly preferred the session
+   over `playerId` would pass (1) happily, and a player who logged in mid-lobby would change
+   identity underneath their own party.
+
+`matchsvc.findIdentity.http.test.ts` already held the matchmaking half (*“still gets a playable
+seat — nothing but the ladder key is withheld”*); (1) and (2) are the party half.
+
+One stale claim fell out of the same audit: `server/src/PartyService.ts`'s header said *“no
+account system backs this (none exists anywhere in this project)”*, written before this doc
+shipped on 2026-07-29 and left standing for two months. It now says that one exists and that this
+route group deliberately does not consult it, which is a stronger statement than the one it
+replaced — and the tests above are what keep it honest.
+
 ### Correction: WeChat does not log in at all (2026-09-10)
 
 Worth stating plainly, because "CrazyGames and WeChat both auto-login" is a natural reading of

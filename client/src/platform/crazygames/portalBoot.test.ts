@@ -40,8 +40,8 @@ describe('applyPortalBootIntent', () => {
 
   it('joins the party an accepted invite carried', async () => {
     const entry = entryStub();
-    const intent = await applyPortalBootIntent(stubSdk({ party: 'ABCD' }));
-    expect(entry.joinPartyByCode).toHaveBeenCalledWith('ABCD');
+    const intent = await applyPortalBootIntent(stubSdk({ party: '482913' }));
+    expect(entry.joinPartyByCode).toHaveBeenCalledWith('482913');
     expect(entry.queueCoop).not.toHaveBeenCalled();
     expect(intent.action).toBe('joined-party');
   });
@@ -58,10 +58,10 @@ describe('applyPortalBootIntent', () => {
     // The precedence decision, stated as a test because it is the one thing here that
     // could reasonably have gone the other way.
     const entry = entryStub();
-    const intent = await applyPortalBootIntent(stubSdk({ party: 'ABCD', instant: true }));
-    expect(entry.joinPartyByCode).toHaveBeenCalledWith('ABCD');
+    const intent = await applyPortalBootIntent(stubSdk({ party: '482913', instant: true }));
+    expect(entry.joinPartyByCode).toHaveBeenCalledWith('482913');
     expect(entry.queueCoop).not.toHaveBeenCalled();
-    expect(intent).toEqual({ partyCode: 'ABCD', instantMultiplayer: true, action: 'joined-party' });
+    expect(intent).toEqual({ partyCode: '482913', instantMultiplayer: true, action: 'joined-party' });
   });
 
   it('reports a missing capability instead of silently doing nothing', async () => {
@@ -69,7 +69,7 @@ describe('applyPortalBootIntent', () => {
     // absent one is a wiring bug, and reporting it as `none` would hide it behind the
     // page that legitimately has no intent.
     setOnlineEntry(null);
-    const intent = await applyPortalBootIntent(stubSdk({ party: 'ABCD' }));
+    const intent = await applyPortalBootIntent(stubSdk({ party: '482913' }));
     expect(intent.action).toBe('no-entry-installed');
   });
 

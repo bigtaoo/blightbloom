@@ -105,6 +105,18 @@ const PURE_FILES = [
   // with two plain objects and no page — which is the whole reason the extraction was worth
   // doing rather than shaving a comment off a 500-line file.
   'controllers/hudContext.ts',
+  // The shared room-code shape (2026-09-21). Listed for a reason the others are not: the
+  // SERVER imports this one, via `server/src/config.ts`'s `@dd/game/match/roomCode`
+  // re-export, so "stays loadable with no browser behind it" is not a testability nicety
+  // here — it is matchsvc booting. A file with no imports at all passes both checks
+  // trivially today, which is exactly why it is worth listing now: the guard costs nothing
+  // and fires on the first import that would break the server.
+  //
+  // Its sibling `match/pvpConfig.ts` is in the same position (the server imports
+  // `SQUAD_SIZE`/`teamIdForOwner` from it) and is NOT listed — an existing gap, not a
+  // decision. The survey case at the bottom of this file only walks `controllers/`, so
+  // nothing under `match/` has ever been offered up for listing.
+  'match/roomCode.ts',
 ] as const;
 
 /**
