@@ -1,6 +1,6 @@
 # 2026-09-08 — the frame nobody sees: a power budget, a middle rung, and a frame rate
 
-Volume 46, a battery pass. One report — *"游戏现在运行在手机和ipad上时耗电量非常高"* — and what it
+Volume 46, a battery pass. One report — *"the game drains a lot of battery when it runs on phones and iPads"* — and what it
 turned out to name was not a slow frame anywhere: **every instrument this repo has measures
 framerate, and nothing measured waste.** A device that comfortably holds 60 fps while drawing an
 invisible dungeon at 120 Hz is not struggling, so the auto-quality watchdog never fires and never
@@ -125,7 +125,7 @@ sampler, 30 never trips it and 20 does), and **an idle screen may never cost mor
 run** (`min(IDLE_MAX_FPS, playCap)`).
 
 `i18n`: three keys × eight locales (`qualityMedium`, `qualityAutoMedium`, `frameRate`), with the
-gender agreement the Romance and Slavic locales need on a word describing 画质/QUALITY. Adding a
+gender agreement the Romance and Slavic locales need on a word describing quality/QUALITY. Adding a
 tier also falsified three source comments that COUNT tiers — `actorFilters.ts`'s "the two tiers
 agree on WHEN the actor is gone", `Scene.refreshQuality`'s "where the two tiers differ most" and
 an `FxController` test titled "across both tiers" — the cardinality trap this log already records

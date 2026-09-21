@@ -4,8 +4,8 @@ Volume 71. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## CONTINUE RUN moves to the front door, and the button that could only apologise (2026-09-17, client + docs, no engine change)
 
-Volume 70 audited the lobby as a front door and ended with a finding it did not fix: *"一个昨晚存在
-第三层的玩家，今天打开游戏，首页对他的存档只字不提"* — a player who saved on floor 3 last night opens
+Volume 70 audited the lobby as a front door and ended with a finding it did not fix: *"a player who saved on
+floor 3 last night opens the game today, and the home page says nothing at all about their save"* — a player who saved on floor 3 last night opens
 the game and the home screen says nothing about it. CONTINUE RUN
 ([`Forge.ts:178`](../../client/src/game/screens/Forge.ts)) lived one click behind SOLO PvE. This
 pass puts the offer on the lobby and, in doing so, found that the offer itself had been wrong

@@ -4,7 +4,7 @@ Volume 61. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The backend gets hardware of its own (2026-09-15, deploy + infra + docs, no engine change)
 
-*"我去给这个游戏买一个专属服务器"* — and the interesting part of this pass is not the move. It
+*"I am going to buy this game a dedicated server"* — and the interesting part of this pass is not the move. It
 is how much of `server/docker-compose.yml`, `prometheus.yml`, `config.alloy` and
 `deploy/ci-deploy.sh` turned out to be describing **the landlord rather than the services**.
 Since 2026-09-07 the three planes had run as a guest on a box belonging to somebody else,

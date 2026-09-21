@@ -4,7 +4,7 @@ Volume 75. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The account's untested halves, and the two decisions hiding in them (2026-09-17, server + client + test)
 
-Two questions, in order: *"登录和账号部分做完了吗"* and then *"你看看还有测试可以加吗"*. The first is
+Two questions, in order: *"is the login and account work finished?"* and then *"see whether there are more tests worth adding"*. The first is
 answered by [volume 70](70-2026-09-17-home-and-login-design.md)'s three holes being closed in
 [73](73-2026-09-17-guest-merge-and-session-check.md) and [74](74-2026-09-17-ladder-identity.md).
 This is the second, and it found four things — two of which turned out to be decisions about

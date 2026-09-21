@@ -4,7 +4,7 @@ Volume 79. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## Loot that accelerates into the body, and the floor that was backwards (2026-09-21, client + docs, no engine change)
 
-> *"拾取物品时的飞行特效，特效的飞行给个加速度，越靠近角色越快，然后整体时间也对应缩短。"*
+> *"the pickup flight effect should accelerate — faster the closer it gets to the character — and the overall time should shorten to match."*
 
 The collected-drop flight ([volume 60](60-2026-09-15-pickup-flight.md)) fed `t` to its cubic Bézier
 raw and let the control-point spacing *be* the speed curve. That is a real curve, but a flat one,

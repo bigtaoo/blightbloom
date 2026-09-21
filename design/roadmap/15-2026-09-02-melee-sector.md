@@ -164,7 +164,7 @@ rather than decided in passing.
 
 From a live report on the two passes above, in three parts: the sector fx reads well, but the
 MOTION does not match it; weapons have different attack intervals, so the animation's playback
-length should follow, *"这样对于重型武器和轻型武器的感觉就能区分开了"*; and then take a look at
+length should follow, *"that way a heavy weapon and a light one will feel different"*; and then take a look at
 optimising the firing motion too.
 
 Two of the three had been half-answered already and the entries above say so — the sweep was tied
@@ -329,8 +329,8 @@ records — the numbers above are the evidence, the picture would have been a li
 
 ### A follow-up coverage pass, and what it found (same day)
 
-Asked directly after the above landed: *"给每把武器单独做动作应该是最优解，但是工作量太大了，
-先放着。你看看有测试可以加吗"* — per-weapon clips deferred, so look for tests worth adding.
+Asked directly after the above landed: *"a separate animation per weapon would be the best answer, but it is too much work,
+leave it for now. See whether there are tests worth adding"* — per-weapon clips deferred, so look for tests worth adding.
 
 **9 cases (+9).** Stated as a delta rather than an absolute on purpose: a concurrent door pass
 was landing its own tests in the same shared tree throughout, so the suite total moves for

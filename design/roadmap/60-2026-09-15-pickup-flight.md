@@ -4,7 +4,7 @@ Volume 60. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## Loot that arrives on you (2026-09-15, engine + client + docs, no ENGINE_VERSION bump)
 
-> *"你可以在 worktree 里给拾取物品加一个曲线飞行特效吗？大概 0.6 秒飞到玩家身上。就是其他游戏里普遍有的那种拾取效果。"*
+> *"could you add a curved flight effect to pickups in a worktree? About 0.6 s to fly onto the player — the pickup effect other games all have."*
 
 **Followed up 2026-09-21 ([volume 79](79-2026-09-21-pickup-flight-accel.md)): the curve gained an
 acceleration and the flight is now 420 ms.** Every number below was true when it was written and

@@ -4,8 +4,8 @@ Volume 66. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The control plane moves to MongoDB, and the accident that was holding registration together (2026-09-15, server + deploy + docs, no engine change)
 
-*"现在将数据直接保存到db吧"*, over a screenshot of a freshly created Atlas cluster named
-`blightbloom`, then *"四个库全部替换掉 SQLite"* and *"取代：SQLite 那部分直接删掉"*. This volume is
+*"let us save the data straight into a database now"*, over a screenshot of a freshly created Atlas cluster named
+`blightbloom`, then *"replace all four stores away from SQLite"* and *"in its place — just delete the SQLite part"*. This volume is
 **stage 1 of that**, and only stage 1: the control plane is on the cluster, billing and analytics
 and the ops flags are not, and adminsvc still opens all three as read-only files.
 

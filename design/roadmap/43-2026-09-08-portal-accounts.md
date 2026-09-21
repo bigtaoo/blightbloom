@@ -1,7 +1,7 @@
 # 2026-09-08 — the login the portal forbids, and the room it wants told about
 
-Volume 43, still the launch-readiness queue. Two entries from one question — *"第一个平台我打算上
-crazy games 的审核，你看看整个游戏流程需要如何进行修改？尤其是新手引导和登录页"* — and from the
+Volume 43, still the launch-readiness queue. Two entries from one question — *"the first platform I plan to launch on is
+crazy games 's review — see how the whole game flow needs to change, especially onboarding and the login page"* — and from the
 two decisions the answer needed: the first submission keeps multiplayer, and the same human on two
 platforms is deliberately two accounts.
 

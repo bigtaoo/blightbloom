@@ -4,7 +4,7 @@ Volume 65. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The two docs over the ceiling, and the index check becomes a gate (2026-09-15, docs + build, no engine change)
 
-Volume 64 ended with two named gaps and *"两个没做的也都做了"* is the whole prompt. Both are closed
+Volume 64 ended with two named gaps and *"the two that were not done are done too"* is the whole prompt. Both are closed
 here: `design/05` and `design/19` are split behind indexes, and the per-volume *"is every dated
 `##` heading indexed by date"* check is `build/checkRoadmapIndex.mjs`, in `npm run check`.
 

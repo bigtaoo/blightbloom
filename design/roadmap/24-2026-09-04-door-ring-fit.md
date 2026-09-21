@@ -7,9 +7,9 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
 ## A door's ring belongs to the door it lights (2026-09-04, client only, no engine bump)
 
-Live report, screenshot of the same locked doorway with the ring circled in red: *"现状圆圈都显示
-出来了，只是位置有点偏上了，你能将其放在门的中心吗？而且有的门大，有的小，最好那个圈能跟随门的大小
-进行缩放"* — the circles all show now, they just sit a bit high; can they go at the centre of the
+Live report, screenshot of the same locked doorway with the ring circled in red: *"the circles do all show
+now, they just sit a little high — can you put them at the door's centre? And some doors are big and some small, so the ring had better follow the door's size
+and scale with it"* — the circles all show now, they just sit a bit high; can they go at the centre of the
 door, and scale with the door's size?
 
 Two complaints, one root cause. Every number that placed or sized a door's floor decals came from
@@ -32,7 +32,7 @@ where the door looks like it is:
 94.5 rather than the wall's own height because `RoomBuilder` builds every door at `DOOR_H` and
 `doorLeafFrame` fits the art by width without squashing: 217 rows of leaf art at a 64 px opening
 want 94.5 px of height, and the lintel takes the rest. A sixth of the fixture's height, which at
-the reporter's zoom is some 60 screen px — comfortably "偏上".
+the reporter's zoom is some 60 screen px — comfortably "sitting high".
 
 `cy` is now `-min(drawH, r.h) / 2`, the drawn opening's own mid-height, clamped into the passage so
 an arch taller than the hole it stands in cannot push its decals out the far side of it. The

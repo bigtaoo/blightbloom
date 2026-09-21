@@ -4,7 +4,7 @@ Volume 86. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## A loading page with a floor under it, and four things measured on the way to the menu (2026-09-21, client + build + docs, no engine change)
 
-> *"进入游戏的时候，加一个loading页面，最低保持3秒。现状进入游戏时，有时候会白屏。顺便检查一下目前的加载策略，我希望首页尽量小，尽量快的进入"*
+> *"add a loading page when entering the game, held for at least 3 s. Today you sometimes get a white screen on the way in. While you are at it, check the current loading strategy — I want the first page as small as it can be, and as fast as it can be to get into"*
 
 Three asks in one sentence — a loading page with a three-second floor, a white screen to explain,
 and the loading strategy to look at — and the honest way to take the third one is to measure
@@ -152,7 +152,7 @@ timeline, so whether a `<link rel="preload" as="image">` would be a cache hit or
 download could not be verified — and shipping that unverified is a coin flip on the one download
 in front of the menu.
 
-### *"有测试可以加吗"* — five holes, and every one of them was a silence
+### *"are there tests worth adding"* — five holes, and every one of them was a silence
 
 The follow-up pass, run the way volumes 80 and 81 ran theirs: not "more assertions", but *where
 could this pass be wrong with the suite still green*. All five answers were the same shape.

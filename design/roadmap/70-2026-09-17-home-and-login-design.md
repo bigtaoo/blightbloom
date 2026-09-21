@@ -4,12 +4,12 @@ Volume 70. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The home page and the login behind it, designed — then the design reflected on (2026-09-17, docs only, no engine change)
 
-Stage 1 closed from the owner's side (see `ROADMAP.md` "Product stages"): *"我们目前只做技术验证。
-真机和 wechat 我已经验证了。现在我们进入阶段二。"* — the two open Stage 1 items were scoped to
+Stage 1 closed from the owner's side (see `ROADMAP.md` "Product stages"): *"for now we are only doing technical validation.
+I have verified it on a real device and in WeChat. Now we move to stage two."* — the two open Stage 1 items were scoped to
 technical validation, the device half was verified by the owner personally, and Stage 2 opened on
-that basis. The first Stage 2 question was the front door: *"我们先从首页开始。有些平台有账号系统，
-有些要走我自己的账号系统，而且关卡的话不需要登录 … 你给个完整的设计"*, followed by one correction
-(*"如果玩家之前登录过，本地有 token 的话，应该是走自动登录的"*) and then *"你再全面反思一下"*.
+that basis. The first Stage 2 question was the front door: *"let us start with the home page. Some platforms have their own account system,
+some have to use mine, and the levels need no login at all … give me a complete design"*, followed by one correction
+(*"if the player has logged in before and there is a token locally, it should auto-login"*) and then *"now reflect on the whole thing again"*.
 
 **No code changed.** What this pass produced is a design in `16` and `10`, three defects found by
 reading rather than by running, and a reflection that reversed part of its own first answer. The

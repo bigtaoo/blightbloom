@@ -10,7 +10,7 @@ are recorded here as one.
 
 ### The report, and the one screenshot that contained the whole shape of it
 
-*"新手教程，点进去就卡住了。有时候是好的，有时候不行"* — the tutorial freezes on entry,
+*"the tutorial sticks as soon as you click into it. Sometimes it works, sometimes it does not"* — the tutorial freezes on entry,
 intermittently. The screenshot answered most of it before any code was read: the arena's ground and
 walls were drawn, there was **no player and no portal in them**, and the HUD still held the
 PREVIOUS run's chips (floor 2/2, score 140, coins 5, buffs 1) with its extraction popup still open.

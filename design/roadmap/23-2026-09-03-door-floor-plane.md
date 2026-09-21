@@ -9,8 +9,8 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
 ## The floor a door lights is not always south of it (2026-09-03d, client only, no engine bump)
 
-Live report, with a screenshot of a locked doorway and a red circle drawn under it: *"门的这个特效
-下面的光圈被挡住了，是故意的，还是层级算错了？"* — the light ring below the door's effect is covered
+Live report, with a screenshot of a locked doorway and a red circle drawn under it: *"this door effect's
+light ring underneath is covered up — is that deliberate, or is the layering wrong?"* — the light ring below the door's effect is covered
 up; is that deliberate, or is the layering wrong?
 
 Neither, as it turned out, and that is the interesting part. **Nothing in the fixture's paint order

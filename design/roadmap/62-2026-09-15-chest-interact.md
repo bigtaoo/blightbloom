@@ -4,7 +4,7 @@ Volume 62. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The chest nobody could open (2026-09-15, engine + client + art + audio + docs, `ENGINE_VERSION` 65→66)
 
-> *"宝箱无法打开。"* — with a screenshot of a player standing on one.
+> *"the chest will not open."* — with a screenshot of a player standing on one.
 
 The mechanic was fine. That is the whole finding, and everything below follows from it: a headless
 run opens the shipped level-1 cache chest the tick a command carries `INTERACT`, and the running
@@ -22,7 +22,7 @@ all day.
 
 The first pass added the missing sentence: `ui/ChestPrompt.ts`, a bottom-centre caption naming the
 control this device actually has (`E`, or the touch `+` pad). The owner's answer a few hours later
-was to **delete the step instead** — *"开普通箱子不要额外操作，玩家靠近后自动打开"* — so a small chest now opens
+was to **delete the step instead** — *"opening an ordinary chest should need no extra action — it opens when the player comes near"* — so a small chest now opens
 on APPROACH and its caption is gone with its button, along with three strings in eight locales.
 Both halves are worth keeping in mind, because they are different lessons: a step nobody can
 discover needs explaining, **and the cheapest way to make a step discoverable is often not to need

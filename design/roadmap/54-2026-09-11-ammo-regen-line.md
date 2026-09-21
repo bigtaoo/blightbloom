@@ -4,7 +4,7 @@ Volume 54. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The clock was the whole supply (2026-09-11, engine + client + docs, `ENGINE_VERSION` 61→62)
 
-> *"现在的子弹自动回复速度太快了，地图上掉落的子弹价值变得非常低。"*
+> *"ammo regenerates far too fast now, which leaves the ammo dropped on the floor worth very little."*
 
 The auto-refill is too fast, so the ammo lying on the floor is worth almost nothing. One
 constant moved — `ENERGY_REGEN_PER_SEC` 20 → 15, as `+1` every 2 ticks instead of `+2` every

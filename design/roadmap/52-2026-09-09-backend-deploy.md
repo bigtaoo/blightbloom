@@ -205,10 +205,10 @@ somewhere in the middle.
   this deploy, on the same disk as the databases.
 ## `main` stops being a place you can commit to (2026-09-10, repo governance + docs, no code change)
 
-*"把 funny 项目的 main 分支保护，每日分支，开 PR 的规则借鉴过来"* — adopt the sibling project's
+*"adopt the funny project's rules — a protected main branch, daily branches, and opening a PR"* — adopt the sibling project's
 branch governance here.
 
-Until today this repo's rule was the opposite one, written into `CLAUDE.md`'s 结束任务 sequence:
+Until today this repo's rule was the opposite one, written into `CLAUDE.md`'s end task sequence:
 finish a task by merging it **onto `main`** and committing there. That is why the whole log above
 exists as a straight line of commits on `main` — and why nothing in this repo ever ran CI before
 the code was already on the branch that deploys. `check.yml` triggers on `pull_request` and on
@@ -237,7 +237,7 @@ What `funny` does instead, and what is now in force here:
   above one level down. Merging the PR is what deploys.
 
 Three documents record it. `CLAUDE.md` gains a "Branches, the daily branch, and pull requests"
-section and its 结束任务 sequence grows a fifth step (push, open-or-update the day's PR, report
+section and its end task sequence grows a fifth step (push, open-or-update the day's PR, report
 the check state, merge when green) with step 2 retargeted from `main` to the daily branch;
 `README.md` gains a short *Branching* note under "Getting started"; and the memory file that had
 been teaching the old habit — *Worktree & concurrency gotchas*, whose §"Merging YOUR branch to
@@ -267,7 +267,7 @@ in English") is now written down in both repos; only one of them enforces it mec
 
 ## The lobby, and the login that was still in flight when the menu went live (2026-09-10, client + docs, no engine change)
 
-*"这个页面是否需要重新设计？对于crazygames或者微信这种自动登录的，应该要自动登录的loading，对于需要登录的，应该是登录页面。然后进入到大厅，大厅里才是关卡，匹配，组队之类的"* — a screenshot of the shipped title screen with **组队** (SQUAD) and **登录** (LOGIN) circled, and a three-part proposal: an auto-login loading state, a login screen where there is no auto-login, and a lobby behind both. Two of the three shipped. The third is refused, and design/16 now says why in its own section rather than leaving the next person to re-derive it.
+*"does this page need a redesign? For hosts like CrazyGames or WeChat that log you in automatically there should be an auto-login loading state; for ones that need a login there should be a login page. Then you go into the lobby, and the lobby is where levels, matchmaking and squad live"* — a screenshot of the shipped title screen with **SQUAD** (SQUAD) and **LOGIN** (LOGIN) circled, and a three-part proposal: an auto-login loading state, a login screen where there is no auto-login, and a lobby behind both. Two of the three shipped. The third is refused, and design/16 now says why in its own section rather than leaving the next person to re-derive it.
 
 **What the screenshot was actually showing.** One screen doing three jobs — title card, account entry, mode entry — and the incoherence that follows from it: *"play with other people" had two doors that were never adjacent.* SQUAD sat on the title screen as a peer of PLAY; CO-OP and PVP SOLO QUEUE sat one screen deeper, behind it, on `ModeSelect`. Merging the two screens removes a layer rather than adding one — four screens to a run became three — and the five routes became siblings. `ModeSelect.ts` is deleted, the `'modeSelect'` phase is gone from the union, `MatchmakingReturnPhase` is down to `'menu' | 'squad'`, and the analytics table loses its `mode_select` screen id. The file is still `MainMenu.ts` and the phase is still `'menu'`: the docs call it the lobby, the code calls it the menu, and both places now say so. The routes themselves live in a new composed widget (`ui/LobbyRoutes.ts`), which is CLAUDE.md's split order ② — four cross-boundary calls in one direction.
 

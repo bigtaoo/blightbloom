@@ -13,7 +13,7 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
 ## The docs' locked decisions had been superseded by their own later sections (2026-09-03, docs + engine + client, `ENGINE_VERSION` 54)
 
-An audit rather than a report — *"分析一下当前的策划文档，看看玩法是否自洽，是否有遗漏的或者与当前实现不符的地方"*.
+An audit rather than a report — *"analyse the current design docs: is the gameplay self-consistent, and is anything missing or out of step with what is implemented?"*.
 The answer to the first half is yes: the loop, the two modes, the survivability model and the
 parry mechanic hang together, and nothing in this pass changed a rule. The answer to the
 second half is where the work was, and it has a shape worth naming, because it is not
@@ -103,7 +103,7 @@ gate landed, because distance had stopped being the only condition. `pickupWould
 exported and the overlay asks it rather than restating it (design/18 G6). `replay/inspect`
 inherits the fix through `pickupDebugGate`, and its header now says that a heal reported as
 never-collectible is a legitimate verdict to cross-check against the player's HP — worth
-recording, since this tool exists for the *"依然有掉落的物品无法拾取"* lineage and a new
+recording, since this tool exists for the *"there are still drops that cannot be picked up"* lineage and a new
 benign cause of that reading would otherwise be read as the bug.
 
 **The two weapon buttons were the same control.** `platform/TouchControls.ts` has a
