@@ -6,6 +6,7 @@ import type { Matchmaking, MatchmakingConnect } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { LoginScreen } from '../screens/LoginScreen';
 import type { Forge } from '../screens/Forge';
+import type { Loadout } from '../screens/Loadout';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { Screens } from '../screens/Screens';
 import type { Settings } from '../screens/Settings';
@@ -14,7 +15,7 @@ import type { MetaState } from '../../meta';
 import type { SettingsState } from '../../settings';
 
 /** Every full-screen overlay widget + the in-run HUD's own visibility root, plus the
- * forge-only floating SETTINGS button — everything a screen transition hides/shows.
+ * loadout-only floating SETTINGS button — everything a screen transition hides/shows.
  * Constructed once, in `Game.start()`, after every widget it references exists
  * (`partyScreen`/`loginScreen`/`settingsBtn` are built there too, needing the
  * post-query-param-override `matchBaseUrl` — see Game.ts's own field comments). */
@@ -25,6 +26,7 @@ export interface ScreenFlowWidgets {
   partyScreen: PartyScreen;
   loginScreen: LoginScreen;
   forge: Forge;
+  loadout: Loadout;
   storeScreen: StoreScreen;
   screens: Screens;
   settingsScreen: Settings;
@@ -43,7 +45,7 @@ export interface ScreenFlowWidgets {
  * here, passing whatever this needs (selected skin, recommend-tutorial flag, the
  * matchmaking connect function, …) as plain parameters. This is a pure mover of the
  * exact pre-split method bodies — including their per-screen asymmetries (`showSquad`
- * never hides `partyScreen` since that's what it shows; `showForge` is the only one
+ * never hides `partyScreen` since that's what it shows; `showLoadout` is the only one
  * that turns the SETTINGS button ON) — preserved verbatim, not generalized into a
  * single "hide everything except X" helper, since collapsing those asymmetries would
  * be a behavior change disguised as a refactor.
@@ -56,6 +58,7 @@ export class ScreenFlow {
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
@@ -73,6 +76,7 @@ export class ScreenFlow {
     this.w.mainMenu.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
@@ -88,6 +92,7 @@ export class ScreenFlow {
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.loginScreen.hide();
@@ -101,6 +106,7 @@ export class ScreenFlow {
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
@@ -113,6 +119,7 @@ export class ScreenFlow {
     this.w.mainMenu.hide();
     this.w.pvpPreview.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
@@ -122,14 +129,15 @@ export class ScreenFlow {
   }
 
   /** The store (design/19 §4). Reached only from the forge, and it hides the forge like any
-   * other full screen — the SETTINGS button goes dark with it, since that button is
-   * forge-only and would otherwise float over a purchase screen it cannot return from. */
+   * other full screen. The SETTINGS button is already dark by then (the forge turns it off),
+   * and this keeps it that way rather than trusting the screen it came from. */
   showStore(width: number, height: number, meta: MetaState): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
@@ -138,27 +146,51 @@ export class ScreenFlow {
     this.w.storeScreen.show(width, height, meta);
   }
 
+  /** The CRAFTING page (design/14). Since 2026-09-21 it is no longer the screen the
+   *  floating SETTINGS button belongs to — that moved with the pre-run half, to
+   *  `showLoadout` below — so this turns the button OFF like every other transition. */
   showForge(width: number, height: number, meta: MetaState): void {
     this.w.hudView.visible = false;
     this.w.mainMenu.hide();
     this.w.pvpPreview.hide();
     this.w.matchmaking.hide();
+    this.w.loadout.hide();
     this.w.screens.hide();
     this.w.settingsScreen.hide();
     this.w.partyScreen.hide();
     this.w.loginScreen.hide();
     this.w.storeScreen.hide();
+    this.w.settingsBtn.view.visible = false;
     this.w.forge.render(meta, width, height);
+  }
+
+  /** The PRE-RUN screen (design/10, 2026-09-21) — character, the weapons being carried,
+   *  START RUN. The one transition that turns the floating SETTINGS button ON, which is
+   *  `showForge`'s old asymmetry following the screen it was about. */
+  showLoadout(width: number, height: number, meta: MetaState): void {
+    this.w.hudView.visible = false;
+    this.w.mainMenu.hide();
+    this.w.pvpPreview.hide();
+    this.w.matchmaking.hide();
+    this.w.forge.hide();
+    this.w.screens.hide();
+    this.w.settingsScreen.hide();
+    this.w.partyScreen.hide();
+    this.w.loginScreen.hide();
+    this.w.storeScreen.hide();
+    this.w.loadout.render(meta, width, height);
     this.w.settingsBtn.view.position.set(width - 130, height - 50);
     this.w.settingsBtn.view.visible = true;
   }
 
-  /** Only reachable from the forge/menu phases (Game's own `openSettings()` guards
-   * this) — hides just the two screens that can be showing at that point, matching
-   * the pre-split behavior exactly (this never touched matchmaking/squad/account/etc.,
-   * since none of those phases can open settings). */
+  /** Only reachable from the loadout/menu phases (`ScreenNav.openSettings()` guards this)
+   * — hides just the screens that can be showing at that point (this never touched
+   * matchmaking/squad/account/etc., since none of those phases can open settings). The
+   * forge is hidden alongside them because the loadout screen took the crafting page's
+   * place as the phase that owns the SETTINGS button. */
   openSettings(width: number, height: number, settings: SettingsState): void {
     this.w.forge.hide();
+    this.w.loadout.hide();
     this.w.mainMenu.hide();
     this.w.settingsBtn.view.visible = false;
     this.w.settingsScreen.show(width, height, settings);
@@ -183,15 +215,15 @@ export class ScreenFlow {
   }
 
   /** `resetRunRenderState`'s one settings-button touch (Game.ts) — a fresh run always
-   * starts from the forge, so the button (forge-only) must go dark. */
+   * starts from the loadout screen, so the button (that screen's only) must go dark. */
   hideSettingsButton(): void {
     this.w.settingsBtn.view.visible = false;
   }
 
-  /** The forge-phase settings-button reposition `relayoutViewport` does on every
-   * resize — kept separate from `showForge`'s own positioning call since a resize
-   * must reposition without re-rendering the whole forge screen. */
-  repositionSettingsButtonIfForge(isForgePhase: boolean, width: number, height: number): void {
-    if (isForgePhase) this.w.settingsBtn.view.position.set(width - 130, height - 50);
+  /** The loadout-phase settings-button reposition `relayoutViewport` does on every
+   * resize — kept separate from `showLoadout`'s own positioning call since a resize
+   * must reposition without re-rendering the whole screen. */
+  repositionSettingsButtonIfLoadout(isLoadoutPhase: boolean, width: number, height: number): void {
+    if (isLoadoutPhase) this.w.settingsBtn.view.position.set(width - 130, height - 50);
   }
 }

@@ -107,6 +107,21 @@ describe('flightPose — the shape of the arc', () => {
     expect(distanceToTarget(50 / FLIGHT_MS)).toBeGreaterThan(distanceToTarget(0));
   });
 
+  it('holds that pop open past the first QUARTER of the clock — a hang, not a twitch', () => {
+    // The pop is what puts the eye on the item before the item moves, and under `ACCEL` it is
+    // most of what the first half of the flight has to show. On the flat curve it peaked at
+    // t = 0.06 and was gone; if a later edit puts the speed back, the peak walks back to the
+    // first few frames and this fails while every "is it a curve?" assertion above stays green.
+    let peakT = 0;
+    let peak = -Infinity;
+    for (let i = 0; i <= 200; i++) {
+      const d = distanceToTarget(i / 200);
+      if (d > peak) [peak, peakT] = [d, i / 200];
+    }
+    expect(peakT).toBeGreaterThan(0.25);
+    expect(peak).toBeGreaterThan(distanceToTarget(0) + 1.5);
+  });
+
   it('then closes in monotonically over the second half — no second hesitation near the body', () => {
     let last = Infinity;
     for (let t = 0.5; t <= 1.0001; t += 0.05) {
@@ -117,11 +132,18 @@ describe('flightPose — the shape of the arc', () => {
     expect(last).toBeCloseTo(0, 6);
   });
 
-  it('HOPS: it rises above both endpoints, tops out by mid-flight, and dives in from there', () => {
+  it('HOPS: it rises above both endpoints, tops out in the first half of the PATH, and dives in', () => {
     const samples = Array.from({ length: 21 }, (_, i) => flightPose(i / 20, FROM, TO, 1).z);
     const peak = Math.max(...samples);
     expect(peak).toBeGreaterThan(Math.max(FROM.z, TO.z)); // an arc, not a ramp between two heights
-    expect(samples.indexOf(peak) / 20).toBeLessThanOrEqual(0.5);
+    // Measured against DISTANCE COVERED, not against the clock: `ACCEL` means the two are no
+    // longer the same statement (38% of the path is 61% of the time), and the one that says
+    // what this assertion is actually about — "at the top of its arc while still near where it
+    // lay" — is the path. Reading the clock here would pass a hop keyed to the clock, which is
+    // the mutation that flattens the arc into a diagonal slide.
+    const peakPose = flightPose(samples.indexOf(peak) / 20, FROM, TO, 1);
+    const travelled = Math.hypot(peakPose.x - FROM.x, peakPose.y - FROM.y);
+    expect(travelled / Math.hypot(TO.x - FROM.x, TO.y - FROM.y)).toBeLessThan(0.5);
     // Falling through the whole last third, so the drop comes DOWN into the collector rather
     // than still climbing when it reaches them.
     for (let i = 14; i < 20; i++) expect(samples[i + 1]!).toBeLessThan(samples[i]!);
@@ -156,6 +178,119 @@ describe('flightPose — the shape of the arc', () => {
     // The hop is the only motion left, and it still happens: the drop lifts and drops back in.
     expect(flightPose(0.3, same, same, 1).z).toBeGreaterThan(same.z);
   });
+});
+
+/**
+ * The acceleration — the drop gets faster the closer it is to the body.
+ *
+ * Every assertion here is measured on the DRAWN SCREEN PATH and stated as a RATIO of the same
+ * flight against itself, for the reason the rest of this file already learned the hard way: a
+ * number restated ("`ACCEL` is 2", "arrival is 790 px/s") passes whatever the constant happens
+ * to be and says nothing about whether the two halves of the mechanism still agree. They can
+ * disagree silently, and did: the time warp and the curve's own control points are separately
+ * capable of setting the arrival speed, and with the second control point parked ON the
+ * collector the geometry pins it at ZERO no matter what the warp says — a fast middle and a
+ * crawl into the body, which is precisely the stretch this exists to speed up.
+ *
+ * Both mutations that produce that are covered below on all four directions: `ACCEL = 1` (no
+ * warp) and `LEAD = 0` (no tangent to arrive on).
+ */
+describe('flightPose — it accelerates into the collector', () => {
+  const CASES: Array<[string, FlightPoint]> = [
+    ['east-west, 120 px', { x: 220, y: 200, z: 24 }],
+    ['east-west, 28 px (the one auto-collection produces)', { x: 128, y: 200, z: 24 }],
+    ['north-south, 120 px', { x: 100, y: 320, z: 24 }],
+    ['north-south, 28 px', { x: 100, y: 228, z: 24 }],
+  ];
+
+  /** Length of the drawn screen path over the clock window [a, b] — the px the player's eye
+   *  actually tracks, not the straight-line distance between two endpoints. */
+  function drawn(to: FlightPoint, a: number, b: number, samples = 400): number {
+    let len = 0;
+    let prev = screen(flightPose(a, FROM, to, 1));
+    for (let i = 1; i <= samples; i++) {
+      const p = screen(flightPose(a + ((b - a) * i) / samples, FROM, to, 1));
+      len += Math.hypot(p.x - prev.x, p.y - prev.y);
+      prev = p;
+    }
+    return len;
+  }
+
+  it.each(CASES)('covers more ground in its LAST QUARTER than in its whole first half — %s', (_n, to) => {
+    // The plainest statement of the whole feature, and the one a flat curve cannot satisfy: at
+    // a single speed the first half is by definition half the path. (`ACCEL = 1` reads 0.39 /
+    // 0.31 here, the wrong way round.)
+    const total = drawn(to, 0, 1);
+    expect(drawn(to, 0.75, 1) / total).toBeGreaterThan(drawn(to, 0, 0.5) / total);
+  });
+
+  it.each(CASES)('is still GAINING speed when it lands: final speed > 1.5x its own average — %s', (_n, to) => {
+    // The assertion that catches the two halves disagreeing. A flat flight lands at ~1.0x by
+    // construction; the pre-`LEAD` geometry lands at 0.26-0.75x — decelerating into the body
+    // while the time warp believes it is accelerating.
+    const average = drawn(to, 0, 1);
+    const arrival = drawn(to, 0.999, 1) / 0.001;
+    expect(arrival / average).toBeGreaterThan(1.5);
+  });
+
+  it.each(CASES)('does not coast the last few px — the final 5% of the clock is real travel — %s', (_n, to) => {
+    // `LEAD_R` named directly: a cubic whose second control point sits on its endpoint arrives
+    // at zero speed, and the last 5% of that flight is 1.2 px of nothing on the 28 px case.
+    expect(drawn(to, 0.95, 1)).toBeGreaterThan(3);
+  });
+
+  it('hangs before it goes: half the clock is spent in the first quarter of the path', () => {
+    // The other end of the same curve, and why the flight could afford to lose 180 ms. The pop
+    // is what answers "did that go to me?" and it needs to be LOOKED at; the dive does not.
+    const total = drawn(TO, 0, 1);
+    expect(drawn(TO, 0, 0.5) / total).toBeLessThan(0.25);
+  });
+
+  /** Fastest instant of the flight, as a fraction of the clock. */
+  function peakSpeedAt(to: FlightPoint): number {
+    const n = 25;
+    let best = -1;
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      const v = drawn(to, i / n, (i + 1) / n, 20);
+      if (v > best) [best, at] = [v, (i + 0.5) / n];
+    }
+    return at;
+  }
+
+  it.each([...CASES, ['east-west, 10 px', { x: 110, y: 200, z: 24 }] as [string, FlightPoint]])(
+    'is at its FASTEST on arrival, not somewhere in the middle — %s',
+    (_n, to) => {
+      // The literal reading of the request, and a strictly stronger statement than the ratio
+      // above: "final speed beats the average" still passes for a curve that peaks at 60% and
+      // is merely *still* quick at the end. This one says the peak IS the arrival.
+      expect(peakSpeedAt(to)).toBeGreaterThan(0.8);
+    },
+  );
+
+  it.each([1, 5, 10, 15, 28, 60, 120])(
+    'has STOPPED RUNNING AWAY well before half-time, even at %s px where the floors dwarf the flight',
+    (px) => {
+      // The regression test for a real defect this change shipped and then fixed. Every other
+      // offset in the file is floored because the typical flight is tiny; a floor on the LEAD
+      // does the opposite, because p1 already sits 8 px BEHIND the drop and a lead longer than
+      // the flight puts p2 behind it too — a cubic with both middle control points behind its
+      // start is a backwards excursion with a snap on the end, not an arc into a body. With a
+      // 14 px floor a 1 px flight was still moving AWAY at t = 0.74; three quarters of its own
+      // clock spent leaving. Asserted across the whole ladder because the two cases that read
+      // wrong (1 px, 5 px) are exactly the ones no hand-picked "typical" distance covers.
+      const to: FlightPoint = { x: FROM.x + px, y: FROM.y, z: 24 };
+      let peakT = 0;
+      let peak = -Infinity;
+      for (let i = 0; i <= 200; i++) {
+        const p = flightPose(i / 200, FROM, to, 1);
+        const d = Math.hypot(to.x - p.x, to.y - p.y);
+        if (d > peak) [peak, peakT] = [d, i / 200];
+      }
+      expect(peakT).toBeLessThan(0.6);
+    },
+  );
+
 });
 
 /** A view with a shadow, the same shape every real drop has (`Pickup` calls `makeShadow`). */
@@ -195,6 +330,27 @@ describe('PickupFlightLayer', () => {
     expect(view.destroyed).toBe(true);
     expect(entities.children).not.toContain(view);
     expect(shadows.children).not.toContain(shadow);
+  });
+
+  it('drives the curve with the RAW clock fraction — the acceleration is applied once, in one place', () => {
+    // The contract between the layer and the pure function, and it is worth stating because the
+    // acceleration gave them a way to disagree that neither side can see alone. `flightPose`
+    // warps `t` internally; a layer that also warped what it passes (or that drifted on its own
+    // `/ FLIGHT_MS`) would still produce a flight that starts at the drop, ends on the body and
+    // accelerates — every other assertion in this file stays green — while running a curve
+    // nobody designed. Checked at three points, because matching at one is what an off-by-a-warp
+    // does anyway at t = 0 and t = 1.
+    for (const t of [0.25, 0.5, 0.75]) {
+      const { layer } = makeLayer();
+      const view = makeView();
+      layer.launch(view, FROM, () => TO, 1);
+      layer.update(FLIGHT_MS * t);
+      const pose = flightPose(t, FROM, TO, 1);
+      expect(view.x).toBeCloseTo(pose.x, 6);
+      expect(view.y).toBeCloseTo(pose.y - pose.z, 6); // screen y is the ground point minus the lift
+      expect(view.alpha).toBeCloseTo(pose.alpha, 6);
+      expect(view.scale.x).toBeCloseTo(pose.scale, 6);
+    }
   });
 
   it('CHASES a moving collector: the target is re-asked every frame, not captured at launch', () => {
@@ -242,7 +398,10 @@ describe('PickupFlightLayer', () => {
     layer.launch(view, FROM, () => moving, 1);
     // `PLAYER_BASE.speedPerTick` is 6.4 px/tick (192 px/s): ~3.2 px in a 60 fps frame, and this
     // is a whole 30 Hz sim tick's worth per frame, i.e. faster than anyone can actually move.
-    for (let i = 0; i < 30; i++) {
+    // The frame count is derived from `FLIGHT_MS` rather than fixed, so that what is asserted
+    // stays "it did not GIVE UP" and cannot quietly become "it ran out of time" the next time
+    // the flight gets shorter.
+    for (let i = 0; i < Math.floor((FLIGHT_MS * 0.9) / 16); i++) {
       moving.x += 6.4;
       layer.update(16);
     }

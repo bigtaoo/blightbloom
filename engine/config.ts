@@ -21,10 +21,13 @@ export { ENGINE_VERSION } from './versionHistory';
 // so clearing a lingering status is a precondition for regen.
 export const SHIELD_REGEN_DELAY = 90; // ~3 s idle before regen starts
 // ~2 s per +1 shield thereafter. Was 300 (~10 s) through ENGINE_VERSION 40, which
-// made the shield pool effectively single-use in a PvE run: a character refills
-// 3.2 shield in ~32 s of taking no damage at all, while a dungeon room takes ~8 s to
-// clear and the next one is a few seconds' walk away — so a player entered a 37-enemy
-// floor with one 9.2-point pool and no way to get any of it back except heal drops
+// made the shield pool effectively single-use in a PvE run: a character refills a
+// 4-point shield in ~40 s of taking no damage at all, while a dungeon room takes ~8 s
+// to clear and the next one is a few seconds' walk away — so a player entered a
+// 37-enemy floor with one 10-point pool and no way to get any of it back except heal
+// drops (the numbers then read 3.2/32 s/9.2 — vanguard's pool was authored as the
+// fraction `3.2` until ENGINE_VERSION 67, which was the same pool: regen is `+1`
+// clamped, so it took the same four steps to fill)
 // (`client/sim/pveLevelSim.sim.ts` measured the result: floor 1 cleared in 0% of bot
 // runs even after the room garrisons were halved). 60 makes the two-pool split mean
 // what design/07 says it means — shield is the RENEWABLE half, HP the permanent half

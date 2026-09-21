@@ -67,15 +67,15 @@ describe('GameState.buildSeat — buildArenaSpecs wiring (design/15, ROADMAP 4.2
     eyeCandidates: [{ roomId: 'A' }],
   };
 
-  it('an arena seat gets buildArenaSpecs\' scaled HP/shield and landing-kit weapon, ignoring loadout', () => {
+  it('an arena seat gets buildArenaSpecs\' arena HP/shield and landing-kit weapon, ignoring loadout', () => {
     const s = createGameState({
       seed: 1, worldW: 0, worldH: 0, waves: [], arena: MINI_MAP,
       players: [{ teamId: 0, loadout: ['saber'] }], // a PvE weapon id — must be ignored in arena mode
     });
     const p = s.players[0]!;
     const defaultSkin = SKIN_DEFS[DEFAULT_SKIN_ID]!;
-    expect(p.maxHp).toBe(Math.round(defaultSkin.maxHp * PVP_SCALE_FACTOR));
-    expect(p.maxShield).toBe(Math.round(defaultSkin.maxShield * PVP_SCALE_FACTOR));
+    expect(p.maxHp).toBe(defaultSkin.pvp.maxHp);
+    expect(p.maxShield).toBe(defaultSkin.pvp.maxShield);
     expect(p.hp).toBe(p.maxHp); // spawns full
     expect(p.shield).toBe(p.maxShield);
     expect(p.weapon?.spec.damage).toBe(Math.round(BLASTER_SIM.damage * PVP_SCALE_FACTOR)); // landing kit, not the PvE loadout
@@ -90,13 +90,13 @@ describe('GameState.buildSeat — buildArenaSpecs wiring (design/15, ROADMAP 4.2
     expect(melee!.spec.damage).not.toBe(SABER_SIM.damage);
   });
 
-  // The one place the character-capacity axis (ENGINE_VERSION 60) meets the PvP scale
-  // factor. (maxHp, maxShield) are multiplied by PVP_SCALE_FACTOR because weapon DAMAGE
-  // is multiplied alongside them, which is what preserves relative TTK. `energyCost` is
-  // NOT scaled — so scaling the pool too would not preserve a ratio, it would hand every
+  // The one place the character-capacity axis (ENGINE_VERSION 60) meets the PvP scale.
+  // (maxHp, maxShield) get their own arena-scale numbers because weapon DAMAGE is scaled
+  // alongside them, which is what preserves relative TTK. `energyCost` is NOT scaled — so
+  // giving the pool an arena number too would not preserve a ratio, it would hand every
   // arena seat five times as many shots at the same price and remove the ammo economy
-  // from PvP entirely. Asserted against the raw SkinDef number (not "!== 5x") so it still
-  // means something if the factor is ever retuned.
+  // from PvP entirely. Asserted against the raw SkinDef number (not "!== the arena one")
+  // so it still means something if either scale is ever retuned.
   it('an arena seat carries the character energy pool through UNSCALED, unlike hp/shield', () => {
     const s = createGameState({
       seed: 1, worldW: 0, worldH: 0, waves: [], arena: MINI_MAP,
@@ -106,17 +106,17 @@ describe('GameState.buildSeat — buildArenaSpecs wiring (design/15, ROADMAP 4.2
     const skin = SKIN_DEFS.juggernaut!;
     expect(p.maxEnergy).toBe(skin.maxEnergy);
     expect(p.energy).toBe(skin.maxEnergy); // spawns full, like hp/shield
-    expect(p.maxHp).toBe(Math.round(skin.maxHp * PVP_SCALE_FACTOR)); // scaled, for contrast
+    expect(p.maxHp).toBe(skin.pvp.maxHp); // the arena pair, for contrast
     expect(p.maxHp).not.toBe(skin.maxHp);
   });
 
-  it('an arena seat scales the RIGHT character\'s stats by skinId', () => {
+  it('an arena seat takes the RIGHT character\'s stats by skinId', () => {
     const s = createGameState({
       seed: 1, worldW: 0, worldH: 0, waves: [], arena: MINI_MAP,
       players: [{ teamId: 0, skinId: 'juggernaut' }],
     });
     const juggernaut = SKIN_DEFS['juggernaut']!;
-    expect(s.players[0]!.maxHp).toBe(Math.round(juggernaut.maxHp * PVP_SCALE_FACTOR));
+    expect(s.players[0]!.maxHp).toBe(juggernaut.pvp.maxHp);
   });
 
   it('an arena seat carries PLAYER_BASE.solidRadius too — PvP walls are hugged like PvE ones', () => {

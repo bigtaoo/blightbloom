@@ -25,6 +25,7 @@ import { isHubPhase, type Phase } from './phase';
  */
 const HUB: Record<Phase, boolean> = {
   menu: true,
+  loadout: true,
   forge: true,
   store: true,
   squad: true,
@@ -60,6 +61,6 @@ describe('isHubPhase', () => {
     // from the union while its row stayed here — which is exactly what this pass did to
     // `modeSelect`, and `tsc` alone does not flag an extra key on a `Record` literal.
     const rows = Object.keys(HUB).length;
-    expect(rows, 'add or remove a row when the Phase union changes').toBe(12);
+    expect(rows, 'add or remove a row when the Phase union changes').toBe(13);
   });
 });

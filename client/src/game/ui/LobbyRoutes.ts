@@ -9,7 +9,7 @@
 // the cross-boundary call list is exactly one direction and four calls (`layout`, `retext`,
 // `setRecommendTutorial`, `setSoloPrimary`), which is what that rule means by countable.
 //
-// ## Five full-width rows — six with a saved run (2026-09-17)
+// ## Five rows — six with a saved run (2026-09-17)
 //
 // CONTINUE RUN joined the top of the stack when the lobby was audited as a front door
 // (design/10): the row is drawn only for a save `match/resumableRun.ts` says this build can
@@ -17,7 +17,7 @@
 // that works. It takes the green from SOLO when it is there — see `applyHierarchy` for the
 // ladder and for the portal case, where it takes nothing.
 //
-// ## Five full-width rows, and the two-up row that was measured and rejected
+// ## Four full-width rows, one two-up row, and the two-up row that was measured and rejected
 //
 // The first version put CO-OP and PVP QUEUE side by side at half width, to buy back the
 // vertical space five stacked rows cost against the portal layout's budget (`MainMenu.show`).
@@ -31,10 +31,24 @@
 // nothing lands outside the design space — a label spilling out of its own button into the
 // gap beside it is still comfortably inside the screen. Its own header says to read it as
 // "nothing is off screen", never as "nothing collides", and this is that sentence collecting.
-// What found it was reading the label widths off a running page.
+// What found it was reading the label widths off a running page. `screens/labelFit.test.ts`
+// exists because of it, and it is what makes the two-up row below checkable rather than a
+// second guess.
 //
-// So every route is full width, and the height came out of the header instead (`HEADER_H`)
-// and out of a banner that now wraps wider before it wraps taller.
+// So CO-OP and PVP QUEUE are full width, and the height came out of the header instead
+// (`HEADER_H`) and out of a banner that now wraps wider before it wraps taller.
+//
+// ## Why SQUAD and FORGE share a row (2026-09-21)
+//
+// FORGE is a sixth route: the crafting page has its own screen now (`screens/Forge.ts`) and
+// the lobby is its front door, beside the loadout screen that SOLO opens. A sixth FULL-WIDTH
+// row would not have fitted — the tallest legal lobby (a portal build's quick-play row and
+// data notice, the longest maintenance banner, and a resumable save) already measures 630 of
+// a 640-px design height in all eight locales, so there was 10 px to spend and a row costs
+// 47. What makes the pair safe where CO-OP/PVP QUEUE was not is the labels: the longest of
+// the eight is 8 characters (`SCHMIEDE`, `ESCOUADE`) against a budget of ~87 px, where
+// `PVP SOLO QUEUE` needed 169. `labelFit.test.ts` checks that claim in every locale rather
+// than leaving it as arithmetic in a comment.
 import { Container, Text } from 'pixi.js';
 import { Button } from './widgets';
 import { getUiTexture } from '../../render/uiSkins';
@@ -45,6 +59,9 @@ import { t } from '../../i18n';
 /** The block's width — the same 280 every other stacked control in the menu uses. */
 export const LOBBY_ROUTES_W = 280;
 const GAP = 5;
+/** The gap between the two halves of the SQUAD/FORGE row, and each half's width. */
+const PAIR_GAP = 6;
+const PAIR_W = (LOBBY_ROUTES_W - PAIR_GAP) / 2;
 const SOLO_H = 48;
 /** CONTINUE RUN, when there is one: SOLO's own height, because it is the same tier of
  *  action — "start playing" — and the one the returning player came for. */
@@ -78,6 +95,8 @@ export class LobbyRoutes {
   private coopBtn: Button;
   private pvpSoloBtn: Button;
   private squadBtn: Button;
+  /** The crafting page's lobby door (2026-09-21) — half a row, beside SQUAD. */
+  private forgeBtn: Button;
   private tutorialBtn: Button;
   private recommendedTag: Text;
   private recommendTutorial = false;
@@ -93,6 +112,7 @@ export class LobbyRoutes {
   onCoop: (() => void) | null = null;
   onPvpSolo: (() => void) | null = null;
   onSquad: (() => void) | null = null;
+  onForge: (() => void) | null = null;
   onTutorial: (() => void) | null = null;
 
   constructor() {
@@ -124,9 +144,15 @@ export class LobbyRoutes {
     this.pvpSoloBtn.onTap = () => this.onPvpSolo?.();
     this.pvpSoloBtn.setIcon(getUiTexture('icon_squad'), 0x742a2a);
 
-    this.squadBtn = new Button(t('mainMenu.squad'), { w: LOBBY_ROUTES_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    this.squadBtn = new Button(t('mainMenu.squad'), { w: PAIR_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
     this.squadBtn.onTap = () => this.onSquad?.();
     this.squadBtn.setIcon(getUiTexture('icon_party_create'), 0x2c5282);
+
+    // The forger NPC's own art as the chip, rather than a new icon nobody has drawn yet:
+    // it is the character this route leads to, and the forge screen already shows him.
+    this.forgeBtn = new Button(t('mainMenu.forge'), { w: PAIR_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    this.forgeBtn.onTap = () => this.onForge?.();
+    this.forgeBtn.setIcon(getUiTexture('npc_forger'), 0x744210);
 
     this.tutorialBtn = new Button(t('mainMenu.tutorial'), { w: LOBBY_ROUTES_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
@@ -142,7 +168,7 @@ export class LobbyRoutes {
     this.view.addChild(
       this.continueBtn.view, this.continueCaption,
       this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view,
-      this.squadBtn.view, this.tutorialBtn.view, this.recommendedTag,
+      this.squadBtn.view, this.forgeBtn.view, this.tutorialBtn.view, this.recommendedTag,
     );
   }
 
@@ -234,6 +260,7 @@ export class LobbyRoutes {
     this.pvpSoloBtn.view.position.set(left, pvpY);
     const squadY = pvpY + QUEUE_H + GAP;
     this.squadBtn.view.position.set(left, squadY);
+    this.forgeBtn.view.position.set(left + PAIR_W + PAIR_GAP, squadY);
     const tutorialY = squadY + ROW_H + GAP;
     this.tutorialBtn.view.position.set(left, tutorialY);
     // Inside the button's own right edge, not out past it: the badge sat to the RIGHT of the
@@ -269,6 +296,7 @@ export class LobbyRoutes {
     this.coopBtn.setText(t('mainMenu.coop'));
     this.pvpSoloBtn.setText(t('mainMenu.pvpSolo'));
     this.squadBtn.setText(t('mainMenu.squad'));
+    this.forgeBtn.setText(t('mainMenu.forge'));
     this.tutorialBtn.setText(t('mainMenu.tutorial'));
     this.recommendedTag.text = t('mainMenu.recommended');
   }

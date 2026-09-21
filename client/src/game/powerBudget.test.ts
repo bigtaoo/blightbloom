@@ -42,6 +42,7 @@ afterEach(() => resetPlayFrameCap());
 const DRAWS_WORLD: Record<Phase, boolean> = {
   playing: true,
   menu: false,
+  loadout: false,
   forge: false,
   pvpPreview: false,
   matchmaking: false,

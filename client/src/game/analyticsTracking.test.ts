@@ -91,7 +91,7 @@ describe('SCREEN_IDS', () => {
     // `Record<Phase, string>` makes this a compile error too; asserted at runtime as well
     // because the compile error is what a new phase HITS, and this is what says why.
     const phases: Phase[] = [
-      'menu', 'forge', 'pvpPreview', 'matchmaking', 'playing',
+      'menu', 'loadout', 'forge', 'pvpPreview', 'matchmaking', 'playing',
       'paused', 'victory', 'defeat', 'settings', 'squad', 'account', 'store',
     ];
     for (const p of phases) expect(SCREEN_IDS[p], p).toBeTruthy();

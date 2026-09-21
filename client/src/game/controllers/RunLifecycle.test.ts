@@ -61,7 +61,7 @@ function make(over: Partial<RunLifecycleDeps> & {
       resetOnlinePrediction: note('gameLoop.resetPrediction'),
     } as never,
     screenFlow: { hideSettingsButton: note('screenFlow.hideSettingsButton') } as never,
-    nav: { showMenu: note('nav.showMenu'), showForge: note('nav.showForge') } as never,
+    nav: { showMenu: note('nav.showMenu'), showLoadout: note('nav.showLoadout') } as never,
     artGate: {
       defer: (retry: () => void) => {
         if (gateOpen) return false;
@@ -95,6 +95,7 @@ function make(over: Partial<RunLifecycleDeps> & {
     hud: { toast: vi.fn() } as never,
     hudView: { visible: false } as never,
     forge: { hide: note('forge.hide') } as never,
+    loadout: { hide: note('loadout.hide') } as never,
     mainMenu: { hide: note('mainMenu.hide') },
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
@@ -219,7 +220,7 @@ describe('beginRun — the dungeon path', () => {
 });
 
 describe('the primed entry points', () => {
-  it('the tutorial primes the room and hides the lobby, not the forge', () => {
+  it('the tutorial primes the room and hides the lobby, not the loadout screen', () => {
     // Flat mode never fires `room_enter`, so nothing else would ever build the geometry —
     // the run would start on an empty screen.
     const t = make();
@@ -228,19 +229,19 @@ describe('the primed entry points', () => {
     expect(t.order).toContain('tutorialHints.reset');
     expect(t.order).toContain('roomBuilder.build');
     expect(t.order).toContain('mainMenu.hide');
-    expect(t.order).not.toContain('forge.hide');
+    expect(t.order).not.toContain('loadout.hide');
   });
 
-  it('the arena demo primes the room and hides the forge', () => {
+  it('the arena demo primes the room and hides the loadout screen', () => {
     const t = make();
     t.run.arenaDemo = 'landing_basic';
     t.runs.beginArenaDemoRun();
     expect(t.order).toContain('roomBuilder.build');
-    expect(t.order).toContain('forge.hide');
+    expect(t.order).toContain('loadout.hide');
     expect(t.run.phase).toBe('playing');
   });
 
-  it('the quick run enters the dungeon and hides the MAIN MENU, not the forge', () => {
+  it('the quick run enters the dungeon and hides the MAIN MENU, not just the loadout screen', () => {
     // The portal's one-click entry (`docs.crazygames.com/requirements/gameplay`). It is a
     // second door to the SAME run `beginRun` starts — so the only thing that can be wrong
     // about it is which screen it takes down, and getting that wrong leaves the main menu
@@ -292,7 +293,7 @@ describe('finalizeOnlineRun', () => {
     // to put it back. Without this the confirmed frame stream would be drained by nobody.
     expect(t.run.online).toBe(true);
     expect(t.order).toContain('gameLoop.resetPrediction');
-    for (const hidden of ['matchmaking.hide', 'forge.hide', 'screens.hide', 'partyScreen.hide']) {
+    for (const hidden of ['matchmaking.hide', 'forge.hide', 'loadout.hide', 'screens.hide', 'partyScreen.hide']) {
       expect(t.order, hidden).toContain(hidden);
     }
   });
@@ -316,23 +317,23 @@ describe('finalizeOnlineRun', () => {
 });
 
 describe('quitRun', () => {
-  it('hides the pause menu and returns to the forge', () => {
+  it('hides the pause menu and returns to the loadout screen', () => {
     const t = make();
     t.run.phase = 'paused';
     t.runs.quitRun();
     expect(t.order).toContain('pauseMenu.hide');
-    expect(t.order).toContain('nav.showForge');
+    expect(t.order).toContain('nav.showLoadout');
   });
 
   it('a tutorial SKIP marks it seen and returns to the lobby instead', () => {
     // A skip counts the same as a completion for `hasSeenTutorial` (never forced), and a
-    // tutorial run never touched the loadout, so the forge is the wrong destination.
+    // tutorial run never touched the loadout, so that screen is the wrong destination.
     const t = make();
     t.run.tutorialActive = true;
     t.runs.quitRun();
     expect(t.run.meta.hasSeenTutorial).toBe(true);
     expect(t.order).toContain('nav.showMenu');
-    expect(t.order).not.toContain('nav.showForge');
+    expect(t.order).not.toContain('nav.showLoadout');
   });
 
   it('leaves the run state consistent for whatever comes next', () => {
@@ -473,7 +474,7 @@ describe('saveAndQuitRun', () => {
     expect(saved.floorIndex).toBe(2);
     expect(saved.score).toBe(340);
     expect(saved.commands).toHaveLength(5);
-    expect(t.deps.nav.showForge).toHaveBeenCalled();
+    expect(t.deps.nav.showLoadout).toHaveBeenCalled();
     expect(t.run.engine).toBeNull(); // the run really ended
   });
 
@@ -496,7 +497,7 @@ describe('saveAndQuitRun', () => {
     const t = playing();
     t.runs.saveAndQuitRun();
     expect(t.deps.hud.toast).toHaveBeenCalled();
-    expect(t.deps.nav.showForge).not.toHaveBeenCalled();
+    expect(t.deps.nav.showLoadout).not.toHaveBeenCalled();
     expect(t.run.engine).not.toBeNull(); // still playing
   });
 
@@ -505,14 +506,14 @@ describe('saveAndQuitRun', () => {
     t.run.engine = { state: { tick: 5, floorIndex: 0 } } as never;
     t.runs.saveAndQuitRun();
     expect(t.deps.hud.toast).toHaveBeenCalled();
-    expect(t.deps.nav.showForge).not.toHaveBeenCalled();
+    expect(t.deps.nav.showLoadout).not.toHaveBeenCalled();
     expect(loadSavedRun()).toBeNull();
   });
 
   it('refuses when no run is live at all', () => {
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
     t.runs.saveAndQuitRun(); // run.engine is null
-    expect(t.deps.nav.showForge).not.toHaveBeenCalled();
+    expect(t.deps.nav.showLoadout).not.toHaveBeenCalled();
     expect(loadSavedRun()).toBeNull();
   });
 });
@@ -609,17 +610,17 @@ describe('resumeSavedRun', () => {
     expect(t.run.engine!.state.events).toEqual([]);
   });
 
-  it('hides BOTH the lobby and the forge, whichever one the press came from', () => {
+  it('hides BOTH the lobby and the hub screens, whichever one the press came from', () => {
     // Found by resuming from the lobby in the running client, not by a test: the resume took
-    // `enterPrimedRun`'s default, which hides the FORGE alone, and CONTINUE has two entry
-    // points now — so the lobby stayed drawn, full screen, over a live ticking run. The unit
-    // suite could not see it because the screens here are notes with no pixels; what it can
-    // pin is that both are told to go.
+    // `enterPrimedRun`'s default, which hides ONE screen, and CONTINUE has two entry points
+    // now — so the lobby stayed drawn, full screen, over a live ticking run. The unit suite
+    // could not see it because the screens here are notes with no pixels; what it can pin is
+    // that both are told to go.
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
     writeSavedRun(saveOf());
     t.runs.resumeSavedRun();
     expect(t.order).toContain('mainMenu.hide');
-    expect(t.order).toContain('forge.hide');
+    expect(t.order).toContain('loadout.hide');
   });
 
   it('does not re-spend the loadout — those weapons are already in the run', () => {
@@ -642,12 +643,12 @@ describe('resumeSavedRun', () => {
     const save = saveOf();
     writeSavedRun({ ...save, engineVersion: save.engineVersion - 1 });
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
-    t.run.phase = 'forge';
+    t.run.phase = 'loadout';
     t.runs.resumeSavedRun();
 
     expect(t.run.engine).toBeNull();
-    expect(loadSavedRun()).toBeNull(); // so the forge stops offering it
-    expect(t.deps.nav.showForge).toHaveBeenCalled(); // re-rendered without the button
+    expect(loadSavedRun()).toBeNull(); // so the screen stops offering it
+    expect(t.deps.nav.showLoadout).toHaveBeenCalled(); // re-rendered without the button
     expect(t.deps.hud.toast).toHaveBeenCalled();
   });
 
@@ -663,14 +664,14 @@ describe('resumeSavedRun', () => {
     t.runs.resumeSavedRun();
 
     expect(t.deps.nav.showMenu).toHaveBeenCalled();
-    expect(t.deps.nav.showForge).not.toHaveBeenCalled();
+    expect(t.deps.nav.showLoadout).not.toHaveBeenCalled();
     expect(t.deps.hud.toast).toHaveBeenCalled();
   });
 
   it('refuses a save whose content no longer matches, drops it, and says so', () => {
     writeSavedRun({ ...saveOf(), contentHash: 0 });
     const t = make({ recordedConfig: RUN_CONFIG(), recordedStream: STREAM });
-    t.run.phase = 'forge';
+    t.run.phase = 'loadout';
     t.runs.resumeSavedRun();
     expect(t.run.engine).toBeNull();
     expect(loadSavedRun()).toBeNull();
