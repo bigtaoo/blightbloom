@@ -59,7 +59,7 @@ const BANNER_RESERVE = 72;
  * four screens to a run became three.
  *
  * Pure presentation, same shape as PauseMenu.ts/Settings.ts: `gameWiring.ts` owns what each
- * route actually does. `ui/LobbyRoutes.ts` owns the five routes and their layout; everything
+ * route actually does. `ui/LobbyRoutes.ts` owns the six routes and their layout; everything
  * here is the shell — title, maintenance banner, the account chip, SETTINGS, and (on a game
  * portal only) the one-click PLAY button above the routes and the data notice below them.
  * Which of those top rows is actually drawn is `applyPrimary`'s call, not `setQuickPlay`'s.
@@ -152,6 +152,9 @@ export class MainMenu {
   onCoop: (() => void) | null = null;
   onPvpSolo: (() => void) | null = null;
   onSquad: (() => void) | null = null;
+  /** FORGE — the crafting page's lobby door (2026-09-21). The row lives on `routes`; this
+   *  is the shell's passthrough, same as every other route on it. */
+  onForge: (() => void) | null = null;
   onTutorial: (() => void) | null = null;
   onAccount: (() => void) | null = null;
   onSettings: (() => void) | null = null;
@@ -181,6 +184,7 @@ export class MainMenu {
     this.routes.onCoop = () => this.onCoop?.();
     this.routes.onPvpSolo = () => this.onPvpSolo?.();
     this.routes.onSquad = () => this.onSquad?.();
+    this.routes.onForge = () => this.onForge?.();
     this.routes.onTutorial = () => this.onTutorial?.();
 
     // `autoWidth`, alone among this screen's buttons, because it is the only one whose label

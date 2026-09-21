@@ -40,6 +40,7 @@ import type { Matchmaking } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { LoginScreen } from '../screens/LoginScreen';
 import type { Forge } from '../screens/Forge';
+import type { Loadout } from '../screens/Loadout';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { Screens } from '../screens/Screens';
 import type { PauseMenu } from '../screens/PauseMenu';
@@ -63,6 +64,7 @@ export interface WiringDeps {
   partyScreen: PartyScreen;
   loginScreen: LoginScreen;
   forge: Forge;
+  loadout: Loadout;
   storeScreen: StoreScreen;
   screens: Screens;
   pauseMenu: PauseMenu;
@@ -74,19 +76,23 @@ export interface WiringDeps {
 
 /** Every screen's own buttons. */
 export function wireScreens(d: WiringDeps): void {
-  // The lobby's five routes, wired once (design/10's 2026-09-10 merge — they used to be the
+  // The lobby's six routes, wired once (design/10's 2026-09-10 merge — they used to be the
   // mode-select screen's four plus this screen's SQUAD). Every one of them hands off to
   // something that already existed; what the merge changed is which screen they are on.
-  d.mainMenu.onSolo = () => d.nav.showForge();
+  d.mainMenu.onSolo = () => d.nav.showLoadout();
   d.mainMenu.onCoop = () => d.net.beginSoloQueue(false);
   d.mainMenu.onPvpSolo = () => d.net.beginSoloQueue(true);
   d.mainMenu.onSquad = () => d.nav.showSquad();
+  // FORGE — the crafting page's own lobby door (2026-09-21). `'menu'` is what BACK on that
+  // screen will honour, so a player who came from here goes back here rather than landing on
+  // the loadout screen they never asked for.
+  d.mainMenu.onForge = () => d.nav.showForge('menu');
   d.mainMenu.onTutorial = () => d.runs.beginTutorialRun();
   d.mainMenu.onSettings = () => d.nav.openSettings();
   // ...and the one control whose presence depends on the HOST (`platform/hostKind.ts`):
   //
-  //   default   no PLAY button at all. SOLO is the primary action and goes to the forge —
-  //             the between-run decision this game is built around.
+  //   default   no PLAY button at all. SOLO is the primary action and goes to the loadout
+  //             screen — the between-run decision this game is built around.
   //   portal    a PLAY button above the routes that starts a run immediately, because the
   //             platform allows a first-time visitor at most one click to gameplay
   //             (`docs.crazygames.com/requirements/gameplay`). Nothing becomes unreachable:
@@ -148,11 +154,17 @@ export function wireScreens(d: WiringDeps): void {
   // resolve either side of this wiring — `sessionEvents.ts`'s header has the race it is
   // built to make impossible.
   onSessionChanged(sessionChanged);
-  d.forge.onBack = () => d.nav.showMenu();
-  d.forge.onCycleCharacter = () => d.forgeInput.cycleCharacter();
-  d.forge.onClear = () => d.forgeInput.clear();
+  // The two hub screens. BACK on the crafting page is `leaveForge`, not a fixed
+  // `showMenu` — it has two doors now (the lobby's FORGE row and the loadout screen's FORGE
+  // card) and returning to the wrong one drops a player who was two clicks from a run back
+  // onto the front door.
+  d.forge.onBack = () => d.nav.leaveForge();
   d.forge.onCraftAt = (i) => d.forgeInput.craftAt(i);
-  d.forge.onStart = () => d.confirm();
+  d.loadout.onBack = () => d.nav.showMenu();
+  d.loadout.onCycleCharacter = () => d.forgeInput.cycleCharacter();
+  d.loadout.onClear = () => d.forgeInput.clear();
+  d.loadout.onStart = () => d.confirm();
+  d.loadout.onForge = () => d.nav.showForge('loadout');
   // STORE — a real purchase screen where the `demo: free grant` ACQUIRE used to be
   // (design/19 §4). The button is only rendered where this build may sell at all; the
   // assembly sets `forge.storeEnabled` from `platform/storePlatform.ts`.
@@ -160,8 +172,10 @@ export function wireScreens(d: WiringDeps): void {
   // BACK re-renders the forge against the CURRENT meta, which is how a delivered purchase
   // reaches it: `StorePurchase`'s `refreshOwnership` has already written the server's answer
   // through `run.setMeta` by then. No separate "ownership changed" hook — the store is a
-  // full phase, so the forge is not on screen to refresh while it is open.
-  d.storeScreen.onBack = () => d.nav.showForge();
+  // full phase, so the forge is not on screen to refresh while it is open. The forge's own
+  // return door is untouched: `showForge` only records one when it is told which, and the
+  // store is a round trip back to the same screen, not a new way in.
+  d.storeScreen.onBack = () => d.nav.showForge(d.run.forgeReturnPhase);
   d.screens.onConfirm = () => d.confirm();
   d.screens.onMenu = () => d.nav.showMenu();
   d.pauseMenu.onResume = () => d.nav.resume();
@@ -171,11 +185,11 @@ export function wireScreens(d: WiringDeps): void {
   // decides whether the first button is even drawn.
   d.pauseMenu.onSaveQuit = () => d.runs.saveAndQuitRun();
   d.pauseMenu.onQuit = () => d.runs.quitRun();
-  // CONTINUE RUN — the forge's other primary button. Not routed through `d.confirm()` the
-  // way START RUN is: confirm() is the phase-router for a menu/result-screen keypress and
-  // starting a FRESH run is what it means from the forge, which is precisely the opposite
-  // of this one.
-  d.forge.onContinue = () => d.runs.resumeSavedRun();
+  // CONTINUE RUN — the loadout screen's other primary button. Not routed through
+  // `d.confirm()` the way START RUN is: confirm() is the phase-router for a menu/result-screen
+  // keypress and starting a FRESH run is what it means from that screen, which is precisely
+  // the opposite of this one.
+  d.loadout.onContinue = () => d.runs.resumeSavedRun();
   // ...and the same verb on the LOBBY, which is where a returning player actually looks
   // (design/10, 2026-09-17). One handler, not two: "continue" is one thing the game does,
   // and a second implementation is how the two entry points start disagreeing about what
@@ -242,7 +256,7 @@ export type KeyAction = 'forge' | 'closeSettings' | 'pause' | 'resume' | 'saveRe
  *    client without server reconciliation, so the hotkey is a deliberate no-op there — and a
  *    regression would look like "Escape sometimes doesn't work", not like a bug.
  *  - Escape and O BOTH close the settings screen, but only from the settings phase; O in the
- *    forge phase OPENS it, which is the `forge` action (ForgeInput owns that table).
+ *    loadout phase OPENS it, which is the `forge` action (ForgeInput owns that table).
  *
  * Every code that is not a shell hotkey returns `forge`, because ForgeInput's own handler is
  * phase-guarded and ignores anything it does not recognise.

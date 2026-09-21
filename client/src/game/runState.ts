@@ -35,9 +35,19 @@ import type { GameQueryParams } from './match/gameQueryParams';
 import type { Phase } from './phase';
 
 /** Where the settings screen's BACK button returns to — set right before each open. */
-export type SettingsReturnPhase = 'menu' | 'forge' | 'paused';
+export type SettingsReturnPhase = 'menu' | 'loadout' | 'paused';
 /** Where Cancel/Back on the Matchmaking screen returns to (solo queue vs. a party). */
 export type MatchmakingReturnPhase = 'menu' | 'squad';
+/**
+ * Where BACK on the FORGE returns to (2026-09-21).
+ *
+ * The forge has two doors since the crafting grid moved onto a page of its own: the lobby's
+ * FORGE route and the loadout screen's FORGE card (`screens/Loadout.ts`). A fixed BACK would
+ * be wrong at one of them, and "wrong" here means dropping a player who was two clicks from
+ * starting a run back onto the front door — so the door records itself on the way in, the
+ * same shape `matchmakingReturnPhase` already uses for the two ways into a queue.
+ */
+export type ForgeReturnPhase = 'menu' | 'loadout';
 
 /** Per-run seed = base + run index. Deterministic, and deliberately not a clock read. */
 export const SEED_BASE = 0xda1d;
@@ -75,6 +85,7 @@ export class RunState {
   phase: Phase = 'menu';
   settingsReturnPhase: SettingsReturnPhase = 'menu';
   matchmakingReturnPhase: MatchmakingReturnPhase = 'menu';
+  forgeReturnPhase: ForgeReturnPhase = 'menu';
 
   // ── the run itself ────────────────────────────────────────────────────────
   runCount = 0;
