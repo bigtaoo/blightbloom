@@ -21,7 +21,7 @@
  *     to prevent.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { Sprite, Texture, TextureSource } from 'pixi.js';
+import { Graphics, Sprite, Texture, TextureSource } from 'pixi.js';
 import { PLAYER_BASE, SKIN_DEFS, resolveLoadout } from '@dd/engine';
 import { Loadout } from './Loadout';
 import { installFakeTextCanvas } from './fakeTextCanvas';
@@ -106,6 +106,11 @@ function portraitOf(l: Loadout): Sprite | null {
   return (l as unknown as { portrait: Sprite | null }).portrait;
 }
 
+/** How wide the fallback disc is currently painted — 0 once it has been cleared. */
+function discWidthOf(l: Loadout): number {
+  return (l as unknown as { portraitFallback: Graphics }).portraitFallback.getLocalBounds().width;
+}
+
 describe('Loadout — the character block', () => {
   it('names the selected character and states its pools beside the portrait', () => {
     const l = new Loadout();
@@ -188,6 +193,52 @@ describe('Loadout — the portrait', () => {
     expect(portrait!.texture).toBe(texture);
     expect(portrait!.scale.x).toBeCloseTo(INNER / 160, 6);
     expect(portrait!.scale.y).toBeCloseTo(portrait!.scale.x, 6);
+  });
+
+  it('CONTAINS a tall texture too — the other arm of the same Math.min', () => {
+    // The gap the PlayerCard pass (volume 81) exposed by contrast: with a WIDE texture
+    // `Math.min` picks the width arm anyway, so dropping the height term entirely survives a
+    // wide-only test. 80×160 is the case that fails it — the height arm is the smaller one.
+    const m = defaultMetaState();
+    withPortraitArt(m.selectedSkin, 80, 160);
+    const l = new Loadout();
+    l.render(m, 1280, 720);
+
+    const portrait = portraitOf(l)!;
+    expect(portrait.scale.y).toBeCloseTo(INNER / 160, 6);
+    expect(portrait.scale.x).toBeCloseTo(portrait.scale.y, 6);
+  });
+
+  it('falls back for a rig that loaded WITHOUT the shell slot', () => {
+    // A bundle that resolved but carries no `shell` binding is a different input from no
+    // bundle at all, and it reaches the same `!texture` branch. Worth its own case because a
+    // lookup that stopped optional-chaining would throw here rather than draw the disc.
+    const m = defaultMetaState();
+    const bundle = { bindings: new Map(), clips: new Map(), textures: new Map() }; // no 'shell'
+    rigs.byAtlasKey.set(SKIN_DEFS[m.selectedSkin]!.atlasKey, { bundle } as unknown as LoadedRigSkin);
+
+    const l = new Loadout();
+    expect(() => l.render(m, 1280, 720)).not.toThrow();
+    expect(portraitOf(l)).toBeNull();
+  });
+
+  it('clears the disc it already drew when the NEXT character DOES have art', () => {
+    // The other direction from the fallback case below, and the one that leaves a visible
+    // artefact: a placeholder painted for an unarted character and never cleared sits
+    // underneath the real portrait. Asserted through a card that has actually drawn a disc —
+    // on a freshly constructed one the assertion holds either way, which is the vacuity trap
+    // the PlayerCard pass hit and recorded.
+    const m = defaultMetaState();
+    const [first, second] = m.ownedCharacters;
+    withPortraitArt(second!, 64, 64); // only the SECOND has art
+
+    const l = new Loadout();
+    l.render({ ...m, selectedSkin: first! }, 1280, 720);
+    expect(discWidthOf(l), 'the disc was never drawn — this case would pass vacuously').toBeGreaterThan(0);
+
+    l.render({ ...m, selectedSkin: second! }, 1280, 720);
+    expect(portraitOf(l)).not.toBeNull();
+    expect(discWidthOf(l)).toBe(0);
   });
 
   it('centres it in the frame, and moves it when the layout does', () => {
