@@ -63,6 +63,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     partyScreen: screen() as never,
     loginScreen: screen() as never,
     forge: screen() as never,
+    loadout: screen() as never,
     storeScreen: screen() as never,
     screens: screen() as never,
     settingsScreen: screen() as never,
@@ -95,6 +96,7 @@ describe('the plain transitions', () => {
     ['showMenu', 'menu', 'showMenu'],
     ['showSquad', 'squad', 'showSquad'],
     ['showAccount', 'account', 'showAccount'],
+    ['showLoadout', 'loadout', 'showLoadout'],
     ['showForge', 'forge', 'showForge'],
     ['showStore', 'store', 'showStore'],
     ['showPvpPreview', 'pvpPreview', 'showPvpPreview'],
@@ -149,8 +151,8 @@ describe('the hub hook (deferred meta sync, 2026-09-10)', () => {
   // What is on the other end of this is `OnlineMatch.flushPendingMetaSync` — an account
   // session that arrived mid-run and had its `setMeta` held back. See `phase.ts`'s
   // `isHubPhase` for the clobber it avoids.
-  it('fires on the way into the menu and the forge', () => {
-    for (const method of ['showMenu', 'showForge'] as const) {
+  it('fires on the way into the menu and either hub screen', () => {
+    for (const method of ['showMenu', 'showLoadout', 'showForge'] as const) {
       const onHubEntered = vi.fn();
       const t = make({ onHubEntered });
       t.nav[method]();
@@ -170,28 +172,51 @@ describe('the hub hook (deferred meta sync, 2026-09-10)', () => {
     }
   });
 
-  it('waits for the art gate — a deferred forge flushes when the art lands, not before', () => {
+  it('waits for the art gate — a deferred hub flushes when the art lands, not before', () => {
     // The ordering the hook is placed after `artGate.defer` for: a flush during the loading
     // screen would apply the account's meta while the phase is still the one before it.
-    const onHubEntered = vi.fn();
-    const t = make({ onHubEntered });
+    for (const method of ['showLoadout', 'showForge'] as const) {
+      const onHubEntered = vi.fn();
+      const t = make({ onHubEntered });
+      t.closeGate();
+      t.nav[method]();
+      expect(onHubEntered, method).not.toHaveBeenCalled();
+      t.releaseGate();
+      expect(onHubEntered, method).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('a deferred forge still honours the door it was opened from', () => {
+    // The `from` argument has to survive the art gate: the retry is a fresh call, and one
+    // that dropped the argument would send every cold-cache player back to the lobby instead
+    // of to the loadout screen they pressed FORGE on.
+    const t = make();
     t.closeGate();
-    t.nav.showForge();
-    expect(onHubEntered).not.toHaveBeenCalled();
+    t.nav.showForge('loadout');
     t.releaseGate();
-    expect(onHubEntered).toHaveBeenCalledTimes(1);
+    expect(t.run.forgeReturnPhase).toBe('loadout');
   });
 });
 
 describe('settings and pause', () => {
-  it('remembers the forge as the return phase, and goes back there', () => {
+  it('remembers the loadout screen as the return phase, and goes back there', () => {
+    const t = make();
+    t.run.phase = 'loadout';
+    t.nav.openSettings();
+    expect(t.run.phase).toBe('settings');
+    expect(t.run.settingsReturnPhase).toBe('loadout');
+
+    t.nav.closeSettings();
+    expect(t.run.phase).toBe('loadout');
+  });
+
+  it('refuses to open from the FORGE — that screen has no settings button', () => {
+    // The floating SETTINGS button moved to the loadout screen with the split, so [O] on the
+    // crafting page has nothing behind it. An unguarded open would strand the player: BACK
+    // from settings routes by `settingsReturnPhase`, which has no 'forge' member to be set to.
     const t = make();
     t.run.phase = 'forge';
     t.nav.openSettings();
-    expect(t.run.phase).toBe('settings');
-    expect(t.run.settingsReturnPhase).toBe('forge');
-
-    t.nav.closeSettings();
     expect(t.run.phase).toBe('forge');
   });
 
@@ -315,6 +340,13 @@ describe('relayout', () => {
     expect(t.deps.forge.render).toHaveBeenCalledWith(t.run.meta, 800, 600);
   });
 
+  it('re-renders the loadout screen with the CURRENT meta', () => {
+    const t = make();
+    t.run.phase = 'loadout';
+    t.nav.relayout();
+    expect(t.deps.loadout.render).toHaveBeenCalledWith(t.run.meta, 800, 600);
+  });
+
   it('relays out the account prompt from EVERY phase — it floats, it is not a screen', () => {
     // The modal (design/16 holes 1 and 2) has no `case` of its own because it is drawn over
     // whichever screen is up. A resize handled only inside the switch would leave it pinned
@@ -342,7 +374,7 @@ describe('relayout', () => {
     const t = make();
     t.run.phase = 'playing';
     t.nav.relayout();
-    for (const dep of ['mainMenu', 'forge', 'storeScreen', 'screens', 'pauseMenu'] as const) {
+    for (const dep of ['mainMenu', 'forge', 'loadout', 'storeScreen', 'screens', 'pauseMenu'] as const) {
       const s = (t.deps as unknown as Record<string, { show: ReturnType<typeof vi.fn>; render: ReturnType<typeof vi.fn>; resize: ReturnType<typeof vi.fn> }>)[dep]!;
       expect(s.show, dep).not.toHaveBeenCalled();
       expect(s.render, dep).not.toHaveBeenCalled();
@@ -351,18 +383,48 @@ describe('relayout', () => {
   });
 });
 
-describe('refreshForgeIfOpen', () => {
-  it('re-renders only while the forge is the live screen', () => {
-    // Called after an account sync changes the meta. Rendering the forge from another phase
-    // would draw it over whatever is actually on screen.
+describe('refreshHubIfOpen', () => {
+  it('re-renders only while a hub screen is the live one', () => {
+    // Called after an account sync changes the meta. Rendering either hub screen from another
+    // phase would draw it over whatever is actually on screen.
     const t = make();
     t.run.phase = 'menu';
-    t.nav.refreshForgeIfOpen();
+    t.nav.refreshHubIfOpen();
     expect(t.deps.forge.render).not.toHaveBeenCalled();
+    expect(t.deps.loadout.render).not.toHaveBeenCalled();
 
     t.run.phase = 'forge';
-    t.nav.refreshForgeIfOpen();
+    t.nav.refreshHubIfOpen();
     expect(t.deps.forge.render).toHaveBeenCalledTimes(1);
+    expect(t.deps.loadout.render).not.toHaveBeenCalled();
+  });
+
+  it('re-renders the LOADOUT screen too — a synced loadout changes what it says you carry', () => {
+    // The half a forge-only refresh missed: an account sync can replace `loadout` and
+    // `selectedSkin`, which is the entire content of that screen.
+    const t = make();
+    t.run.phase = 'loadout';
+    t.nav.refreshHubIfOpen();
+    expect(t.deps.loadout.render).toHaveBeenCalledTimes(1);
+    expect(t.deps.forge.render).not.toHaveBeenCalled();
+  });
+});
+
+describe('leaveForge — the crafting page has two doors', () => {
+  it('returns to the lobby when the lobby opened it', () => {
+    const t = make();
+    t.nav.showForge('menu');
+    t.nav.leaveForge();
+    expect(t.run.phase).toBe('menu');
+  });
+
+  it('returns to the loadout screen when that opened it', () => {
+    // The case a fixed BACK got wrong: a player two clicks from starting a run would be
+    // dropped back onto the front door by the button that says it goes back.
+    const t = make();
+    t.nav.showForge('loadout');
+    t.nav.leaveForge();
+    expect(t.run.phase).toBe('loadout');
   });
 });
 

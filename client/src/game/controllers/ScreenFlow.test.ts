@@ -15,6 +15,7 @@ import { Matchmaking } from '../screens/Matchmaking';
 import { PartyScreen } from '../screens/PartyScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { Forge } from '../screens/Forge';
+import { Loadout } from '../screens/Loadout';
 import { StoreScreen } from '../screens/StoreScreen';
 import { StorePurchase } from './StorePurchase';
 import { Screens } from '../screens/Screens';
@@ -64,6 +65,7 @@ function buildWidgets(): ScreenFlowWidgets {
     partyScreen: new PartyScreen({ matchBaseUrl: 'http://mm' }),
     loginScreen: new LoginScreen({ matchBaseUrl: 'http://mm' }),
     forge: new Forge(),
+    loadout: new Loadout(),
     storeScreen: new StoreScreen(storePurchaseStub()),
     screens: new Screens(),
     settingsScreen: new Settings(),
@@ -81,7 +83,10 @@ function showEverything(w: ScreenFlowWidgets) {
   w.matchmaking.show(800, 600, async () => { throw new Error('not used'); });
   w.partyScreen.show(800, 600);
   w.loginScreen.show(800, 600);
-  w.forge.hide(); // Forge has no show(); render() doesn't flip visible — start hidden like `showX()`'s pre-state assumes
+  // Neither hub screen has a `show()`; `render()` does flip `visible`, but starting them
+  // hidden is what lets a test tell "this call hid it" from "it was already hidden".
+  w.forge.hide();
+  w.loadout.hide();
   w.screens.show(800, 600, true, 'title', []);
   w.settingsScreen.show(800, 600, defaultSettingsState());
   w.pauseMenu.show(800, 600);
@@ -99,6 +104,7 @@ describe('ScreenFlow', () => {
     expect(w.pvpPreview.view.visible).toBe(false);
     expect(w.matchmaking.view.visible).toBe(false);
     expect(w.forge.view.visible).toBe(false);
+    expect(w.loadout.view.visible).toBe(false);
     expect(w.screens.view.visible).toBe(false);
     expect(w.settingsScreen.view.visible).toBe(false);
     expect(w.partyScreen.view.visible).toBe(false);
@@ -172,22 +178,41 @@ describe('ScreenFlow', () => {
     expect(passedConnect).toBe(connect); // same function reference reaches Matchmaking.show
   });
 
-  it('showForge: turns the settings button ON and positions it (the one show*() that does)', () => {
+  it('showLoadout: turns the settings button ON and positions it (the one show*() that does)', () => {
     const w = buildWidgets();
     showEverything(w);
     w.settingsBtn.view.visible = false;
 
-    new ScreenFlow(w).showForge(800, 600, { ...defaultMetaLike() });
+    new ScreenFlow(w).showLoadout(800, 600, { ...defaultMetaLike() });
 
+    expect(w.loadout.view.visible).toBe(true);
     expect(w.settingsBtn.view.visible).toBe(true);
     expect(w.settingsBtn.view.position.x).toBe(800 - 130);
     expect(w.settingsBtn.view.position.y).toBe(600 - 50);
     expect(w.mainMenu.view.visible).toBe(false);
+    expect(w.forge.view.visible).toBe(false);
   });
 
-  it('openSettings: hides only forge + mainMenu, hides the settings button, shows settingsScreen', () => {
+  it('showForge: turns the settings button OFF — it belongs to the loadout screen now', () => {
+    // The asymmetry moved with the split (2026-09-21). A forge that left the button on would
+    // float a SETTINGS the crafting page cannot return from, which is the same defect
+    // `showStore` already turns it off for.
+    const w = buildWidgets();
+    showEverything(w);
+    w.settingsBtn.view.visible = true;
+
+    new ScreenFlow(w).showForge(800, 600, { ...defaultMetaLike() });
+
+    expect(w.forge.view.visible).toBe(true);
+    expect(w.settingsBtn.view.visible).toBe(false);
+    expect(w.loadout.view.visible).toBe(false);
+    expect(w.mainMenu.view.visible).toBe(false);
+  });
+
+  it('openSettings: hides the hub screens + mainMenu, hides the settings button, shows settingsScreen', () => {
     const w = buildWidgets();
     w.forge.hide();
+    w.loadout.render({ ...defaultMetaLike() }, 800, 600);
     w.mainMenu.show(800, 600);
     w.settingsBtn.view.visible = true;
     // Untouched by openSettings — must stay exactly as they were (it never references them).
@@ -195,6 +220,7 @@ describe('ScreenFlow', () => {
     new ScreenFlow(w).openSettings(800, 600, defaultSettingsState());
 
     expect(w.mainMenu.view.visible).toBe(false);
+    expect(w.loadout.view.visible).toBe(false);
     expect(w.settingsBtn.view.visible).toBe(false);
     expect(w.settingsScreen.view.visible).toBe(true);
   });
@@ -231,15 +257,15 @@ describe('ScreenFlow', () => {
     expect(w.settingsBtn.view.visible).toBe(false);
   });
 
-  it('repositionSettingsButtonIfForge: repositions only when told the current phase is forge', () => {
+  it('repositionSettingsButtonIfLoadout: repositions only when told the phase is loadout', () => {
     const w = buildWidgets();
     w.settingsBtn.view.position.set(0, 0);
     const flow = new ScreenFlow(w);
 
-    flow.repositionSettingsButtonIfForge(false, 800, 600);
+    flow.repositionSettingsButtonIfLoadout(false, 800, 600);
     expect(w.settingsBtn.view.position.x).toBe(0);
 
-    flow.repositionSettingsButtonIfForge(true, 800, 600);
+    flow.repositionSettingsButtonIfLoadout(true, 800, 600);
     expect(w.settingsBtn.view.position.x).toBe(800 - 130);
     expect(w.settingsBtn.view.position.y).toBe(600 - 50);
   });

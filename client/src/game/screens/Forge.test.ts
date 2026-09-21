@@ -1,14 +1,18 @@
 /**
- * Forge (the loadout/outpost screen). Pixi Container/Text/Graphics construct and
- * mutate fine under plain vitest with no renderer attached (same finding
- * Screens.test.ts/PartyScreen.test.ts made) — asserted here via `.position`/`.visible`/
- * `.text`, not pixel output.
+ * Forge — the CRAFTING page. Pixi Container/Text/Graphics construct and mutate fine under
+ * plain vitest with no renderer attached (same finding Screens.test.ts/PartyScreen.test.ts
+ * made) — asserted here via `.position`/`.visible`/`.text`, not pixel output.
  *
  * Two real layout bugs, both reported live as "the screen is a mess": the buyable-
  * blueprint list had no length bound and could run off both edges of the screen as one
- * line, and the bottom action bar (clear/start/hint) was positioned by flowing down
- * from the row list + compare card and only *clamped* to fit once it overflowed —
- * which left it floating on top of the still-there row list instead of below it.
+ * line, and the bottom action bar was positioned by flowing down from the row list +
+ * compare card and only *clamped* to fit once it overflowed — which left it floating on
+ * top of the still-there row list instead of below it.
+ *
+ * That action bar lives on `Loadout.ts` since the 2026-09-21 split, and so do the cases
+ * that were about it (the character line, START RUN / CLEAR / CONTINUE). What is left here
+ * is the grid, the store entry, the compare card and the hint line this screen still owns —
+ * plus the "give way rather than overlap" rule, now measured against that hint line.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { Forge } from './Forge';
@@ -46,12 +50,9 @@ function privateOf(f: Forge) {
     title: { text: string };
     infoText: { text: string; style: { wordWrap: boolean; breakWords: boolean } };
     rowCards: TestCard[];
-    clearBtn: TestButton;
-    startBtn: TestButton;
-    continueBtn: TestButton;
     storeBtn: TestButton;
+    prevPageBtn: TestButton;
     hint: { position: { x: number; y: number }; text: string };
-    charText: { text: string };
     compareCard: {
       view: { visible: boolean; position: { x: number; y: number }; height: number };
       leftName: { text: string };
@@ -197,39 +198,30 @@ describe('Forge — store button (design/19 §4; was ACQUIRE, the `demo: free gr
   });
 });
 
-describe('Forge — fixed bottom action bar', () => {
-  it('anchors clear/start/hint to the viewport height, not to the content flow above them', () => {
+describe('Forge — the hint line is anchored, not flowed', () => {
+  it('pins the hint to the viewport height, not to the content flow above it', () => {
     const f = new Forge();
-    const m = defaultMetaState();
-    f.render(m, 1280, 720);
-    const p = privateOf(f);
-    expect(p.startBtn.view.position.y).toBe(720 - 60);
-    expect(p.clearBtn.view.position.y).toBe(720 - 60 + 7);
-    expect(p.hint.position.y).toBe(720 - 6);
+    f.render(defaultMetaState(), 1280, 720);
+    expect(privateOf(f).hint.position.y).toBe(720 - 6);
   });
 
-  it('stays at the same height-relative offset on a short viewport instead of drifting onto the row list', () => {
-    // The original bug: this button's y came from `Math.min(flowedY, h - 70)`, so on a
-    // short screen it landed wherever the flow happened to overflow to — which, with
-    // eight full-size rows above it, meant on top of rows 6-8. Pinning it to `h` means
-    // the same offset from the bottom holds regardless of viewport size.
+  it('stays at the same height-relative offset on a short viewport', () => {
+    // The original bug, in the shape it took on this screen: a bottom row whose y came from
+    // `Math.min(flowedY, h - 70)` landed wherever the flow happened to overflow to — which,
+    // with eight full-size cards above it, meant on top of cards 6-8.
     const f = new Forge();
-    const m = defaultMetaState();
-    f.render(m, 1280, 480);
-    const p = privateOf(f);
-    expect(p.startBtn.view.position.y).toBe(480 - 60);
-    expect(p.clearBtn.view.position.y).toBe(480 - 60 + 7);
-    expect(p.hint.position.y).toBe(480 - 6);
+    f.render(defaultMetaState(), 1280, 480);
+    expect(privateOf(f).hint.position.y).toBe(480 - 6);
   });
 
-  it('does not move the action bar when paging changes how much content sits above it', () => {
+  it('does not move the pager when paging changes what sits above it', () => {
     const f = new Forge();
     const m = defaultMetaState();
     f.render(m, 1280, 600);
-    const before = privateOf(f).startBtn.view.position.y;
-    f.moveSelection(1); // may flip pages, changing the row-list content but not its size
+    const before = privateOf(f).prevPageBtn.view.position.y;
+    f.moveSelection(1); // may flip pages, changing the grid's content but not its size
     f.render(m, 1280, 600);
-    expect(privateOf(f).startBtn.view.position.y).toBe(before);
+    expect(privateOf(f).prevPageBtn.view.position.y).toBe(before);
   });
 });
 
@@ -240,14 +232,14 @@ describe('Forge — compare card no-room hide', () => {
     expect(privateOf(f).compareCard.view.visible).toBe(true);
   });
 
-  it('hides the compare card instead of overlapping the fixed action bar on a short viewport', () => {
+  it('hides the compare card instead of overlapping the hint line on a short viewport', () => {
     const f = new Forge();
     f.render(defaultMetaState(), 1280, 380);
     const p = privateOf(f);
     expect(p.compareCard.view.visible).toBe(false);
-    // And the action bar itself must still be exactly where a taller render would put
-    // it relative to `h` — hiding the card must not be achieved by moving the bar.
-    expect(p.startBtn.view.position.y).toBe(380 - 60);
+    // And the hint itself must still be exactly where a taller render would put it relative
+    // to `h` — hiding the card must not be achieved by moving what it was giving way to.
+    expect(p.hint.position.y).toBe(380 - 6);
   });
 });
 
@@ -257,13 +249,6 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
     f.render(defaultMetaState(), 1280, 720);
     // order[0] is 'repeater' (blueprints.ts's first entry) — its own translated name.
     expect(privateOf(f).rowCards[0]!.nameLabel).toBe('Repeater');
-  });
-
-  it('shows the selected character\'s translated name in the char-stats line', () => {
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 720);
-    // defaultMetaState() selects DEFAULT_SKIN_ID ('vanguard').
-    expect(privateOf(f).charText.text).toContain('Vanguard');
   });
 
   it('shows translated weapon names in the compare-card equipped/candidate headers', () => {
@@ -282,7 +267,6 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
     f.render(defaultMetaState(), 1280, 900);
     const p = privateOf(f);
     expect(p.rowCards[0]!.nameLabel).toBe('连发枪');
-    expect(p.charText.text).toContain('先锋');
     expect(p.compareCard.leftName.text).toBe('当前装备：爆能枪');
     expect(p.compareCard.rightName.text).toBe('候选：连发枪');
   });
@@ -308,12 +292,10 @@ describe('Forge — i18n (design/17-i18n.md)', () => {
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
     expect(p.title.text).toBe('锻造场');
-    expect(p.startBtn.label.text).toBe('开始行动 ▸');
-    expect(p.clearBtn.label.text).toBe('清空装备');
     expect(p.storeBtn.label.text).toBe('商店');
-    expect(p.hint.text).toBe('[↑↓]/[1-9]/[C]/[X]/[Enter] 键盘快捷键仍然可用');
+    expect(p.hint.text).toBe('[↑↓] 浏览 · [1-9] 打造 · [B] 商店');
     expect(p.infoText.text).toContain('材料');
-    expect(p.infoText.text).toContain('已拥有角色：3');
+    expect(p.infoText.text).toContain('装备');
   });
 
   it('a blueprint card still shows the status text translated', () => {
@@ -354,128 +336,5 @@ describe('Forge — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     f.render(defaultMetaState(), 1280, 720);
     expect(privateOf(f).title.text).toBe('FORGE OUTPOST');
-  });
-});
-
-/**
- * CONTINUE RUN (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — the forge's
- * second primary button, and the two-row action bar it produces.
- *
- * The screen decides nothing here: it asks a `savedRun` PROVIDER, which the assembly points
- * at the real save slot. That indirection is what these cases are mostly about — a provider
- * read once and cached would show CONTINUE for a run that has since been won or abandoned,
- * which is the failure the three clear-the-slot call sites exist to prevent, and it would be
- * defeated entirely by this screen holding a stale copy.
- */
-describe('Forge — CONTINUE RUN', () => {
-  const SAVED = { floorIndex: 2, ticks: 5400, savedAtMs: 0 }; // floor 3, 3:00 played
-
-  function withSave(saved: typeof SAVED | null = SAVED): Forge {
-    const f = new Forge();
-    f.savedRun = () => saved;
-    return f;
-  }
-
-  it('is hidden with no saved run — the default provider answers null', () => {
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.view.visible).toBe(false);
-  });
-
-  it('appears when there is one', () => {
-    const f = withSave();
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.view.visible).toBe(true);
-  });
-
-  it('re-reads the provider on every render, so a cleared save stops being offered', () => {
-    // The live case: the run is resumed (or won, or abandoned), the slot is cleared, and the
-    // forge is re-rendered by the very navigation that got us back here.
-    let saved: typeof SAVED | null = SAVED;
-    const f = new Forge();
-    f.savedRun = () => saved;
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.view.visible).toBe(true);
-
-    saved = null;
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.view.visible).toBe(false);
-  });
-
-  it('takes the footer slot, and pushes START RUN to the row above', () => {
-    // Continuing is what a returning player came for, so it gets the primary position; and
-    // the two must not overlap, because the other one discards the save.
-    const f = withSave();
-    f.render(defaultMetaState(), 1280, 720);
-    const p = privateOf(f);
-    expect(p.continueBtn.view.position.y).toBe(720 - 60);
-    expect(p.startBtn.view.position.y).toBe(720 - 60 - 52);
-  });
-
-  it('leaves START RUN exactly where it was when there is no save', () => {
-    // The regression guard for every existing action-bar assertion in this file: adding a
-    // button must not move the one that was already there for the common case.
-    const f = withSave(null);
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).startBtn.view.position.y).toBe(720 - 60);
-  });
-
-  it('fires onContinue, never onStart', () => {
-    const f = withSave();
-    const calls: string[] = [];
-    f.onStart = () => calls.push('start');
-    f.onContinue = () => calls.push('continue');
-    f.render(defaultMetaState(), 1280, 720);
-    privateOf(f).continueBtn.onTap?.();
-    expect(calls).toEqual(['continue']);
-  });
-
-  it('names the saved run in the info block — floor and time played', () => {
-    // Two buttons that differ only by label are not enough to decide between "resume" and
-    // "throw it away" on. 5400 ticks at 30 Hz is 3:00.
-    const f = withSave();
-    f.render(defaultMetaState(), 1280, 720);
-    const text = privateOf(f).infoText.text;
-    expect(text).toContain('floor 3'); // 0-based 2, displayed 1-based
-    expect(text).toContain('3:00');
-  });
-
-  it('pads the seconds, so 65 ticks reads 0:02 and not 0:2', () => {
-    const f = withSave({ floorIndex: 0, ticks: 65, savedAtMs: 0 });
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).infoText.text).toContain('0:02');
-  });
-
-  it('says nothing about a saved run when there is none', () => {
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).infoText.text).not.toContain('Saved run');
-  });
-
-  it('hides the compare card against the TOP of the two-row bar, not the footer row', () => {
-    // Without this the card is measured against the lower row and can overlap START RUN on
-    // a viewport that is short but not short enough to trip the original check — the same
-    // "floating on top of what is still there" shape the flowed layout used to have.
-    const tall = withSave();
-    tall.render(defaultMetaState(), 1280, 900);
-    expect(privateOf(tall).compareCard.view.visible).toBe(true);
-
-    const f = withSave();
-    f.render(defaultMetaState(), 1280, 620);
-    const p = privateOf(f);
-    if (p.compareCard.view.visible) {
-      expect(p.compareCard.view.position.y + p.compareCard.view.height)
-        .toBeLessThanOrEqual(p.startBtn.view.position.y);
-    }
-  });
-
-  it('retexts from the active locale', () => {
-    const f = withSave();
-    setLocale('zh');
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.label.text).toBe('继续行动 ▸');
-    setLocale('en');
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).continueBtn.label.text).toBe('CONTINUE RUN ▸');
   });
 });

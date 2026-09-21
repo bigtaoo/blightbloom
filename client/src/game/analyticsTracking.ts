@@ -61,6 +61,7 @@ export const TICK_RATE = 30;
  */
 export const SCREEN_IDS: Record<Phase, string> = {
   menu: 'menu',
+  loadout: 'loadout',
   forge: 'forge',
   pvpPreview: 'pvp_preview',
   matchmaking: 'matchmaking',

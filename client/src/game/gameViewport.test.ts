@@ -68,12 +68,18 @@ interface GameInternals {
   backdrop: { resize: (w: number, h: number) => void };
   forge: {
     view: Container;
-    startBtn: { view: Container };
     rowCards: Array<{ view: Container }>;
+  };
+  loadout: {
+    view: Container;
+    startBtn: { view: Container };
+    weaponCards: Array<{ view: Container }>;
+    forgeCard: { view: Container };
   };
   settingsBtn: { view: Container };
   nav: {
     showForge: () => void;
+    showLoadout: () => void;
     showMenu: () => void;
     pause: () => void;
     openSettings: () => void;
@@ -179,8 +185,9 @@ describe('Game — menu screens are laid out in design space and land inside the
 
   const PHASES: Array<[string, (i: GameInternals) => void]> = [
     ['menu', (i) => i.nav.showMenu()],
+    ['loadout', (i) => i.nav.showLoadout()],
     ['forge', (i) => i.nav.showForge()],
-    ['settings', (i) => { i.nav.showForge(); i.nav.openSettings(); }],
+    ['settings', (i) => { i.nav.showLoadout(); i.nav.openSettings(); }],
     ['paused', (i) => i.nav.pause()],
   ];
 
@@ -205,13 +212,13 @@ describe('Game — menu screens are laid out in design space and land inside the
     expect(b.maxX).toBeGreaterThan(WECHAT.w * 0.7);
   });
 
-  it('forge — START RUN is on screen and no weapon card is drawn over it', () => {
+  it('loadout — START RUN is on screen and no weapon card is drawn over it', () => {
     const { inner } = newGame(WECHAT.w, WECHAT.h);
-    inner.nav.showForge();
-    const btn = inner.forge.startBtn.view.getBounds();
+    inner.nav.showLoadout();
+    const btn = inner.loadout.startBtn.view.getBounds();
     expect(btn.minY).toBeGreaterThanOrEqual(-SLACK);
     expect(btn.maxY).toBeLessThanOrEqual(WECHAT.h + SLACK);
-    for (const card of inner.forge.rowCards) {
+    for (const card of [...inner.loadout.weaponCards, inner.loadout.forgeCard]) {
       if (!card.view.visible) continue;
       const c = card.view.getBounds();
       const overlaps = c.minX < btn.maxX && c.maxX > btn.minX && c.minY < btn.maxY && c.maxY > btn.minY;
@@ -219,19 +226,19 @@ describe('Game — menu screens are laid out in design space and land inside the
     }
   });
 
-  it('the forge SETTINGS button paints above every screen, not under one', () => {
+  it('the hub SETTINGS button paints above every screen, not under one', () => {
     const { inner } = newGame(WECHAT.w, WECHAT.h);
-    inner.nav.showForge();
+    inner.nav.showLoadout();
     // Above EVERY screen, not just the forge. It was the only floating widget in the layer
     // until 2026-09-17, when the account prompt (design/16 holes 1 and 2) became the second
     // one — so the invariant is stated as "above every SCREEN, below every later float"
     // rather than relaxed to "above the one screen we happened to check" (the mutant that
     // hid here: moving the button into the screens array, but not last, still cleared a
-    // forge-only check while leaving it under the party/login screens).
+    // one-screen check while leaving it under the party/login screens).
     const menu = inner.layers.menu.children;
     const FLOATS = 2; // settingsBtn, then the modal account prompt
     expect(menu.indexOf(inner.settingsBtn.view)).toBe(menu.length - FLOATS);
-    expect(menu.indexOf(inner.settingsBtn.view)).toBeGreaterThan(menu.indexOf(inner.forge.view));
+    expect(menu.indexOf(inner.settingsBtn.view)).toBeGreaterThan(menu.indexOf(inner.loadout.view));
     // ...and the modal is above the button too, since it has to swallow taps meant for it.
     expect(menu.length - 1).toBeGreaterThan(menu.indexOf(inner.settingsBtn.view));
     expect(inner.settingsBtn.view.visible).toBe(true);

@@ -9,7 +9,8 @@
 // that goes with it. The two were together in Game.ts because a transition is two lines of
 // each, and separating them is what lets the decision half be tested without a renderer.
 //
-// It reads and writes `RunState.phase`, `settingsReturnPhase` and `tutorialActive`, and
+// It reads and writes `RunState.phase`, `settingsReturnPhase`, `forgeReturnPhase` and
+// `tutorialActive`, and
 // nothing else of the run's. It never starts, ends or advances a run — `RunLifecycle` does
 // that and calls in here for the screen half, never the other way round. That one-way edge
 // is deliberate: CLAUDE.md names a two-way dependency as a sign the boundary is drawn
@@ -24,6 +25,7 @@ import type { PortalPrompt } from '../ui/PortalPrompt';
 import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import type { Screens } from '../screens/Screens';
 import type { Forge } from '../screens/Forge';
+import type { Loadout } from '../screens/Loadout';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { MainMenu } from '../screens/MainMenu';
 import type { PvpPreview } from '../screens/PvpPreview';
@@ -35,7 +37,7 @@ import type { PauseMenu } from '../screens/PauseMenu';
 import type { CoopSession } from '../../net/CoopSession';
 import type { ArtGate } from './ArtGate';
 import type { ScreenFlow } from './ScreenFlow';
-import type { RunState } from '../runState';
+import type { ForgeReturnPhase, RunState } from '../runState';
 
 export interface ScreenNavDeps {
   run: RunState;
@@ -52,6 +54,7 @@ export interface ScreenNavDeps {
   partyScreen: PartyScreen;
   loginScreen: LoginScreen;
   forge: Forge;
+  loadout: Loadout;
   storeScreen: StoreScreen;
   screens: Screens;
   settingsScreen: Settings;
@@ -88,9 +91,10 @@ export class ScreenNav {
 
   /**
    * The LOBBY — the boot front door and, since the 2026-09-10 merge, the branch point too
-   * (design/10 screen flow). SOLO drops into the forge/loadout screen below; CO-OP and PVP
-   * SOLO QUEUE open matchmaking; SQUAD opens the PvP party lobby (design/05/15); TUTORIAL
-   * starts the standalone level; SETTINGS reuses the same overlay the forge uses.
+   * (design/10 screen flow). SOLO drops into the loadout screen below; FORGE opens the
+   * crafting page beside it; CO-OP and PVP SOLO QUEUE open matchmaking; SQUAD opens the PvP
+   * party lobby (design/05/15); TUTORIAL starts the standalone level; SETTINGS reuses the
+   * same overlay the loadout screen uses.
    *
    * It carries the recommend-tutorial flag the mode-select screen's own show used to, for
    * the same reason: the badge is drawn from `MetaState.hasSeenTutorial`, and this method is
@@ -132,28 +136,59 @@ export class ScreenNav {
     this.deps.screenFlow.showAccount(w, h);
   }
 
-  /** The forge outpost / loadout screen — the between-run hub (design/14). Shows the
-   *  current meta (bank / blueprints / loadout / character); Fire, Enter, or the START
-   *  RUN button descends into a run. */
-  showForge(): void {
-    // The run-art boundary (design/12): the forge is where a player CHOOSES with weapon art,
-    // so it is gated rather than START RUN. Returns false — and costs nothing — once the art
+  /**
+   * The LOADOUT screen — the between-run hub (design/10, design/14). Shows the character,
+   * the weapons the next run would actually carry and the material bank; Fire, Enter, or
+   * the START RUN button descends into a run.
+   *
+   * This is what SOLO PvE opens and what a finished run returns to. It was `showForge`
+   * until 2026-09-21, when the crafting grid moved onto a page of its own — the transition
+   * kept every property the old one had (the art gate, the hub flush, the SETTINGS button),
+   * because those belong to "the player is between runs", not to "the player is crafting".
+   */
+  showLoadout(): void {
+    // The run-art boundary (design/12): this is where a player CHOOSES with weapon art, so
+    // it is gated rather than START RUN. Returns false — and costs nothing — once the art
     // is in.
-    if (this.deps.artGate.defer(() => this.showForge())) return;
+    if (this.deps.artGate.defer(() => this.showLoadout())) return;
     // AFTER the art gate, not before: a deferred call re-enters this method once the art
     // lands, and flushing on the way past would run the sync while the loading screen is
     // still up and the phase is still whatever it was.
     this.deps.onHubEntered();
+    this.deps.run.phase = 'loadout';
+    const { w, h } = this.fit();
+    this.deps.screenFlow.showLoadout(w, h, this.deps.run.meta);
+  }
+
+  /**
+   * The FORGE — the crafting page (design/14), reached from the lobby's FORGE route or from
+   * the loadout screen's FORGE card. `from` records which, so BACK returns there (see
+   * `RunState.forgeReturnPhase`); it defaults to the lobby, which is the door a player who
+   * arrives by any future third route is least likely to be surprised by.
+   *
+   * Art-gated like the loadout screen and for the same reason: this is the screen that
+   * draws a grid of weapon art, so it is the one that must not open half-drawn.
+   */
+  showForge(from: ForgeReturnPhase = 'menu'): void {
+    if (this.deps.artGate.defer(() => this.showForge(from))) return;
+    this.deps.onHubEntered();
+    this.deps.run.forgeReturnPhase = from;
     this.deps.run.phase = 'forge';
     const { w, h } = this.fit();
     this.deps.screenFlow.showForge(w, h, this.deps.run.meta);
+  }
+
+  /** BACK on the forge — the lobby or the loadout screen, whichever opened it. */
+  leaveForge(): void {
+    if (this.deps.run.forgeReturnPhase === 'loadout') this.showLoadout();
+    else this.showMenu();
   }
 
   /**
    * The store (design/19 §4) — reached only from the forge's STORE button or its [B] key,
    * and BACK returns there. Not art-gated like `showForge`: this screen draws no weapon art,
    * only names and prices, so gating it would make a purchase wait on a download it does not
-   * use. `showForge` on the way back is gated as it always was.
+   * use. The forge on the way back is gated as it always was.
    */
   showStore(): void {
     this.deps.run.phase = 'store';
@@ -174,17 +209,23 @@ export class ScreenNav {
     this.deps.screenFlow.showMatchmaking(w, h, (signal) => this.deps.connect(signal));
   }
 
-  /** Re-render the forge in place — used after an account sync changes what it shows. */
-  refreshForgeIfOpen(): void {
-    if (this.deps.run.phase !== 'forge') return;
+  /**
+   * Re-render whichever of the two hub pages is open in place — used after an account sync
+   * changes what they show. Both, not just the forge: an account's blueprints decide what
+   * the crafting grid offers AND a synced `loadout`/`selectedSkin` decides what the pre-run
+   * screen says you are carrying, so refreshing only one of them leaves the other stating
+   * the pre-sync answer.
+   */
+  refreshHubIfOpen(): void {
     const { w, h } = this.fit();
-    this.deps.forge.render(this.deps.run.meta, w, h);
+    if (this.deps.run.phase === 'forge') this.deps.forge.render(this.deps.run.meta, w, h);
+    else if (this.deps.run.phase === 'loadout') this.deps.loadout.render(this.deps.run.meta, w, h);
   }
 
   // ---- Settings ----
 
   openSettings(): void {
-    if (this.deps.run.phase !== 'forge' && this.deps.run.phase !== 'menu') return;
+    if (this.deps.run.phase !== 'loadout' && this.deps.run.phase !== 'menu') return;
     this.deps.run.settingsReturnPhase = this.deps.run.phase;
     this.deps.run.phase = 'settings';
     const { w, h } = this.fit();
@@ -193,7 +234,7 @@ export class ScreenNav {
 
   closeSettings(): void {
     if (this.deps.run.settingsReturnPhase === 'menu') this.showMenu();
-    else this.showForge();
+    else this.showLoadout();
   }
 
   // ---- In-run pause menu (design/10, now resolved) ----
@@ -283,13 +324,14 @@ export class ScreenNav {
     d.hud.reposition(size);
     d.portalPrompt.reposition(size);
     d.floorCardPrompt.reposition(size);
-    d.screenFlow.repositionSettingsButtonIfForge(d.run.phase === 'forge', w, h);
+    d.screenFlow.repositionSettingsButtonIfLoadout(d.run.phase === 'loadout', w, h);
     // Unconditional, and before the phase switch: the prompt floats over every hub screen
     // rather than being one, so no `case` below owns it. It no-ops while closed.
     d.accountPrompt.relayout();
     switch (d.run.phase) {
       case 'menu': d.mainMenu.show(w, h); break; // the badge is already set — see showMenu
       case 'pvpPreview': d.pvpPreview.show(w, h, d.run.meta.selectedSkin); break;
+      case 'loadout': d.loadout.render(d.run.meta, w, h); break;
       case 'forge': d.forge.render(d.run.meta, w, h); break;
       case 'matchmaking': d.matchmaking.resize(w, h); break; // NOT show() — must not restart connect()
       case 'squad': d.partyScreen.show(w, h); break;

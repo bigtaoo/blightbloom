@@ -218,7 +218,7 @@ export class OnlineMatch {
       ? d.run.meta
       : await this.resolveAccountMeta(remote, snapshot.guestMerged, session.token, session.username);
     d.run.setMeta(next);
-    d.nav.refreshForgeIfOpen();
+    d.nav.refreshHubIfOpen();
   }
 
   /**

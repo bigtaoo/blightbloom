@@ -1,9 +1,8 @@
 import { Container, Sprite, Text } from 'pixi.js';
 import {
-  BLUEPRINT_CATALOG, SKIN_DEFS, DAMAGE_TYPES, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS, TICK_RATE,
+  BLUEPRINT_CATALOG, DAMAGE_TYPES, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS,
   resolveLoadout, type WeaponBlueprint,
 } from '@dd/engine';
-import type { SavedRunSummary } from '../match/runSave';
 import type { MetaState } from '../../meta';
 import { bankTotal, canAfford, isUnlocked, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
 import { Panel, Button } from '../ui/widgets';
@@ -31,15 +30,25 @@ const GRID_W = GRID_COLS * BlueprintCard.W + (GRID_COLS - 1) * GRID_GAP_X;
 const GRID_H = GRID_ROWS * BlueprintCard.H + (GRID_ROWS - 1) * GRID_GAP_Y;
 
 /**
- * The forge outpost (design/14, ROADMAP 2.2/2.3) — the between-run hub where the player
- * spends banked materials to craft weapons for the next run and picks a character. Pure
- * presentation: it reads a MetaState and renders it; all mutation goes through the meta/
- * forge transactions, driven by Game via the `onX` callbacks below (same pattern as
- * PauseMenu.ts/Settings.ts) — the keyboard path (Game's `onForgeKey`) drives the exact
- * same underlying Game methods as these buttons, so both input paths stay in sync by
- * construction rather than by duplicated logic. Clickable rows replace the old
- * keyboard-only text board (design/10's screen-flow gap); the keyboard shortcuts still
- * work unchanged as a second input path.
+ * The forge outpost (design/14, ROADMAP 2.2/2.3) — the page where the player spends
+ * banked materials to craft weapons for the next run.
+ *
+ * ## One question per screen (2026-09-21)
+ *
+ * This used to be the whole between-run hub: the character picker, the materials bank,
+ * START RUN and a paged grid of every blueprint in the catalog, all on one screen. It
+ * answered two questions at once, and the crafting one took four fifths of the pixels. So
+ * the pre-run half moved to `Loadout.ts` — character, the weapons actually being carried,
+ * and the button that starts the run — and this screen kept the crafting grid and nothing
+ * else. It is now reached from two places: the lobby's own FORGE route, and the FORGE card
+ * at the end of the loadout screen's weapon row. BACK returns to whichever one that was
+ * (`RunState.forgeReturnPhase`), not to a fixed screen.
+ *
+ * Pure presentation: it reads a MetaState and renders it; all mutation goes through the
+ * meta/forge transactions, driven via the `onX` callbacks below (same pattern as
+ * PauseMenu.ts/Settings.ts) — the keyboard path (`ForgeInput`) drives the exact same
+ * underlying methods as these cards, so both input paths stay in sync by construction
+ * rather than by duplicated logic.
  */
 export class Forge {
   readonly view = new Container();
@@ -49,12 +58,6 @@ export class Forge {
   private hint: Text;
   private pageLabel: Text;
   private backBtn: Button;
-  private prevCharBtn: Button;
-  private nextCharBtn: Button;
-  private charText: Text;
-  private clearBtn: Button;
-  private startBtn: Button;
-  private continueBtn: Button;
   private storeBtn: Button;
   private prevPageBtn: Button;
   private nextPageBtn: Button;
@@ -87,12 +90,6 @@ export class Forge {
   private pageStart = 0;
 
   onBack: (() => void) | null = null;
-  /** Both the ‹ and › buttons drive this — the underlying roster cycle (Game.ts's
-   * `cycleCharacter`) is forward-only today; a true reverse cycle is a follow-up, not
-   * something to invent here. */
-  onCycleCharacter: (() => void) | null = null;
-  onClear: (() => void) | null = null;
-  onStart: (() => void) | null = null;
   /** Tapping a row both previews (moves `selectedIndex`) AND crafts it — one tap, no
    * separate select-then-confirm step (design/10's "favor fewer, clearer actions"
    * clutter decision). */
@@ -103,27 +100,12 @@ export class Forge {
    * answering `/account/meta` from its own entitlements table. It now opens a real
    * purchase screen instead; `KeyB` runs the same verb. */
   onStore: (() => void) | null = null;
-  /** CONTINUE RUN — resume the saved unfinished run (design/05 "Only the boss floor ends a
-   *  run", ENGINE_VERSION 61). Only ever called while `savedRun()` answers non-null. */
-  onContinue: (() => void) | null = null;
 
   /** Whether this build may show a store entry at all (`platform/storePlatform.ts` — a
    * web checkout inside an iOS store build is an App Store rule break, not a rough edge).
    * Set by the assembly; presentation never decides it. Default `false` so a caller that
    * forgets to set it shows NO store, which is the fail-closed direction. */
   storeEnabled = false;
-
-  /**
-   * The resumable saved run, or null when there is none (`match/runSaveStore.ts`).
-   *
-   * A PROVIDER rather than a field, because `render()` has five call sites (three in
-   * `ForgeActions`, two in the nav/flow controllers) and a field would have to be re-pushed
-   * at every one of them — which is four places for a stale answer to survive. Injected by
-   * the assembly so this screen still decides nothing, the same shape `storeEnabled` uses,
-   * and defaulted to "no save" so a caller that forgets to set it shows no CONTINUE button
-   * (the fail-closed direction: offering a resume that cannot happen is the worse error).
-   */
-  savedRun: () => SavedRunSummary | null = () => null;
 
   constructor() {
     // `padding` guards against a real observed font-metrics clipping bug (see
@@ -148,13 +130,6 @@ export class Forge {
     this.backBtn = new Button(t('forge.backButton'), { w: 90, h: 30, fontSize: 12, sound: 'ui.back' });
     this.backBtn.onTap = () => this.onBack?.();
 
-    this.charText = new Text({ text: '', style: { fill: 0xf7fafc, fontSize: 17, fontFamily: 'monospace', fontWeight: 'bold', padding: 18 } });
-    this.charText.anchor.set(0.5);
-    this.prevCharBtn = new Button('‹', { w: 32, h: 30, fontSize: 16 });
-    this.prevCharBtn.onTap = () => this.onCycleCharacter?.();
-    this.nextCharBtn = new Button('›', { w: 32, h: 30, fontSize: 16 });
-    this.nextCharBtn.onTap = () => this.onCycleCharacter?.();
-
     this.rowCards = Array.from({ length: PAGE_SIZE }, (_, slot) => {
       const c = new BlueprintCard();
       c.onTap = () => {
@@ -169,15 +144,6 @@ export class Forge {
     this.nextPageBtn = new Button(t('forge.pageNextButton'), { w: 80, h: 26, fontSize: 11 });
     this.nextPageBtn.onTap = () => this.turnPage(1);
 
-    this.clearBtn = new Button(t('forge.clearLoadout'), { w: 160, h: 30, fontSize: 12 });
-    this.clearBtn.onTap = () => this.onClear?.();
-    this.clearBtn.setIcon(getUiTexture('icon_clear'));
-    this.startBtn = new Button(t('forge.startRun'), { w: 220, h: 44, fontSize: 17 });
-    this.startBtn.onTap = () => this.onStart?.();
-    this.startBtn.setIcon(getUiTexture('icon_play'));
-    this.continueBtn = new Button(t('forge.continueRun'), { w: 220, h: 44, fontSize: 17 });
-    this.continueBtn.onTap = () => this.onContinue?.();
-    this.continueBtn.setIcon(getUiTexture('icon_play'));
     // Plain `ui.tap`, unlike the craft rows: opening a screen always does something, so
     // there is no outcome for a `silent` widget to wait on. The cues that DEPEND on a
     // transaction now live one screen further in, on the store's own rows.
@@ -189,11 +155,10 @@ export class Forge {
 
     this.view.addChild(
       this.panel.view, this.npcSprite, this.title, this.backBtn.view,
-      this.prevCharBtn.view, this.charText, this.nextCharBtn.view,
       this.infoText, this.storeBtn.view,
       ...this.rowCards.map((c) => c.view),
       this.prevPageBtn.view, this.pageLabel, this.nextPageBtn.view,
-      this.clearBtn.view, this.compareCard.view, this.startBtn.view, this.continueBtn.view,
+      this.compareCard.view,
       this.hint,
     );
     this.view.eventMode = 'static';
@@ -230,16 +195,10 @@ export class Forge {
     this.backBtn.setText(t('forge.backButton'));
     this.prevPageBtn.setText(t('forge.pagePrevButton'));
     this.nextPageBtn.setText(t('forge.pageNextButton'));
-    this.clearBtn.setText(t('forge.clearLoadout'));
-    this.startBtn.setText(t('forge.startRun'));
-    this.continueBtn.setText(t('forge.continueRun'));
     this.storeBtn.setText(t('forge.storeButton'));
 
     // Material bank — the five elemental kinds (design/14), summed across every rolled tier.
     const bank = DAMAGE_TYPES.map((e) => `${t(ELEMENT_SHORT_KEY[e])} ${bankTotal(m, e)}`).join('   ');
-
-    const skin = SKIN_DEFS[m.selectedSkin];
-    this.charText.text = skin ? t('forge.charStats', { skin: tName(skin.nameKey), hp: skin.maxHp, sh: skin.maxShield }) : m.selectedSkin;
 
     // Empty board text names the ACTUAL default pair (resolveLoadout's fill-by-kind
     // rule, ENGINE_VERSION 45) instead of the old "(none → auto pistol)" — that string
@@ -259,20 +218,10 @@ export class Forge {
     // content-independent worst-case length is safer than trusting wordWrap to clip a
     // longer line to its declared width.
     const buyableText = buyable.length <= 3 ? buyable.join(', ') : t('forge.moreAvailable', { count: buyable.length });
-    // The saved-run line names what CONTINUE resumes and what START RUN would throw away.
-    // Two buttons whose difference is only their label is not enough on its own — a player
-    // who has been away a week has no way to know which run is in the slot, and the discard
-    // is irreversible.
-    const savedInfo = this.savedRun();
     this.infoText.text =
-      t('forge.materialsLine', { bank, ownedChars: m.ownedCharacters.length }) + '\n' +
+      t('forge.materialsLine', { bank }) + '\n' +
       t('forge.loadoutLine', { loadout, count: m.loadout.length, max: PLAYER_BASE.weaponSlots }) +
-      (buyable.length ? '\n' + t('forge.storeLine', { items: buyableText }) : '') +
-      (savedInfo ? '\n' + t('forge.savedRunLine', {
-        floor: savedInfo.floorIndex + 1, // 1-based, matching every other floor readout
-        m: Math.floor(savedInfo.ticks / TICK_RATE / 60),
-        ss: String(Math.floor(savedInfo.ticks / TICK_RATE) % 60).padStart(2, '0'),
-      }) : '');
+      (buyable.length ? '\n' + t('forge.storeLine', { items: buyableText }) : '');
 
     // Blueprint cards — icon, name, cost, status. The browse cursor (moveSelection /
     // a card tap) is a bright border instead of the old leading '»' glyph (design/14
@@ -313,24 +262,18 @@ export class Forge {
     });
     this.pageLabel.text = t('forge.pageLabel', { current: Math.floor(this.pageStart / PAGE_SIZE) + 1, total: pageCount(this.order.length, PAGE_SIZE) });
 
-    // Layout: title top, back button top-left corner, character row, info block,
-    // paged blueprint rows filling the middle. clear/start/hint are a FIXED bottom
-    // action bar anchored to `h`, not flowed down from the row/compare-card stack
-    // above — they used to be, with the flowed position merely clamped to fit once
-    // it overflowed the screen. That clamp never moved the rows/compare-card out of
-    // the way, so on any viewport short enough to overflow, START RUN ended up
-    // floating on top of the still-there weapon list instead of below it (the real
-    // bug behind the "screen is a mess" report). The compare card now hides itself
-    // if there's no longer room for it above the fixed bar, rather than overlapping it.
+    // Layout: title top, back button top-left corner, info block, paged blueprint rows
+    // filling the middle, and a hint line pinned to the bottom. The hint is anchored to
+    // `h` rather than flowed down from the grid above it — a flowed bottom row, merely
+    // clamped once it overflowed, is what drew START RUN on top of the still-there weapon
+    // cards on a landscape phone (the "screen is a mess" report; `viewportFit.test.ts`'s
+    // header has the whole account). The compare card hides itself if there is no longer
+    // room for it above that line, rather than overlapping it.
     const cx = w / 2;
     const halfGrid = GRID_W / 2;
     let y = Math.max(20, h * 0.05);
     this.title.position.set(cx, y);
     this.backBtn.view.position.set(16, 16);
-    y += 44;
-    this.prevCharBtn.view.position.set(cx - 150, y);
-    this.charText.position.set(cx, y + 15);
-    this.nextCharBtn.view.position.set(cx + 118, y);
     y += 44;
     this.infoText.style.wordWrapWidth = Math.min(760, w - 80);
     this.infoText.position.set(cx, y);
@@ -359,17 +302,10 @@ export class Forge {
     this.nextPageBtn.view.position.set(cx + halfGrid - 80, y);
     y += 40;
 
-    // Action bar. With a saved run there are TWO primary buttons and they stack vertically
-    // rather than sitting side by side: CONTINUE takes the footer slot START RUN normally
-    // occupies (it is what the player came back for), and START RUN moves one row up as the
-    // "start over instead" option. Side by side would need ~450px of centred width, which
-    // runs straight into CLEAR LOADOUT at this screen's 760px design width.
-    const footerY = h - 60;
-    const saved = this.savedRun();
-    this.clearBtn.view.position.set(cx - halfGrid, footerY + 7);
-    this.continueBtn.view.visible = saved !== null;
-    this.continueBtn.view.position.set(cx - 110, footerY);
-    this.startBtn.view.position.set(cx - 110, saved ? footerY - 52 : footerY);
+    // The bottom of this screen is the hint line and nothing else since the START RUN bar
+    // moved to `Loadout.ts` — but the reservation it used to make is still worth keeping,
+    // because the compare card below flows down into whatever is left.
+    const footerY = h - 34;
     this.hint.position.set(cx, h - 6);
 
     // Forger NPC — corner decoration, right of the centered blueprint grid. Only
@@ -381,18 +317,17 @@ export class Forge {
       this.npcSprite.texture = npcTex;
       const targetH = Math.min(220, h * 0.32);
       this.npcSprite.scale.set(targetH / npcTex.height);
-      this.npcSprite.position.set(w - 24 - (npcTex.width * this.npcSprite.scale.x) / 2, footerY + 40);
+      this.npcSprite.position.set(w - 24 - (npcTex.width * this.npcSprite.scale.x) / 2, footerY - 6);
       this.npcSprite.visible = true;
     } else {
       this.npcSprite.visible = false;
     }
 
     const cardShown = this.renderCompareCard(m, cx, y);
-    // Measured against the TOP of the action bar, not the footer row — with a saved run the
-    // bar is two rows tall, and checking only the lower one let the card overlap START RUN
-    // (the same "floating on top of what is still there" bug the flowed layout used to have).
-    const barTopY = saved ? footerY - 52 : footerY;
-    if (cardShown && y + this.compareCard.view.height + 16 > barTopY) this.compareCard.hide();
+    // Measured against the hint line, which is the lowest thing this screen draws — a card
+    // that no longer fits above it hides rather than overlapping it, the same "give way
+    // instead of stacking" rule the action bar used to get.
+    if (cardShown && y + this.compareCard.view.height + 16 > footerY) this.compareCard.hide();
 
     this.view.visible = true;
   }

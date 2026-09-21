@@ -213,7 +213,8 @@ describe('the transitions that are gated', () => {
       return src.slice(at, src.indexOf('\n  }', at));
     };
     for (const gated of [
-      'showForge(): void {',
+      'showLoadout(): void {',
+      "showForge(from: ForgeReturnPhase = 'menu'): void {",
       'showPvpPreview(): void {',
       'showMatchmaking(): void {',
       'beginTutorialRun(): void {',

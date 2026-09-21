@@ -32,6 +32,7 @@ import type { RoomBuilder } from '../scene/RoomBuilder';
 import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
 import type { Forge } from '../screens/Forge';
+import type { Loadout } from '../screens/Loadout';
 import type { Matchmaking } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PauseMenu } from '../screens/PauseMenu';
@@ -58,10 +59,15 @@ export interface RunLifecycleDeps {
   hud: HudView;
   /** The in-run HUD's visibility root — every phase transition toggles it. */
   hudView: Container;
+  /** The two hub screens a run can be entered from. Both are hidden on the way into a run:
+   *  a run can start from either (START RUN on the loadout screen, or the lobby's own
+   *  CONTINUE/PLAY), and a screen left visible under the HUD is one that reappears the
+   *  moment the HUD is hidden again. */
   forge: Forge;
-  /** The run entry points reached from the LOBBY rather than from the forge, and so the ones
-   *  that have to hide the main menu: `beginQuickRun`, the tutorial, and — since 2026-09-17 —
-   *  `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
+  loadout: Loadout;
+  /** The run entry points reached from the LOBBY rather than from the hub screens, and so
+   *  the ones that have to hide the main menu: `beginQuickRun`, the tutorial, and — since
+   *  2026-09-17 — `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
   mainMenu: { hide(): void };
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -157,7 +163,7 @@ export class RunLifecycle {
 
     // The crafted weapons are spent the moment they enter a run — one run each (design/05).
     // Consume the staged loadout now so a death doesn't refund it and the next visit to the
-    // forge starts empty. Materials already left the bank at craft time.
+    // loadout screen starts empty. Materials already left the bank at craft time.
     d.run.setMeta(clearLoadout(d.run.meta));
 
     // No view priming here: the first room loads on sim tick 1 (SpawnSystem), which
@@ -168,6 +174,7 @@ export class RunLifecycle {
     d.run.phase = 'playing';
     d.hudView.visible = true;
     d.forge.hide();
+    d.loadout.hide();
     d.screens.hide();
   }
 
@@ -178,16 +185,17 @@ export class RunLifecycle {
    * A game portal's own rule is "land new users in gameplay immediately... a maximum of 1
    * click is allowed" (`docs.crazygames.com/requirements/gameplay`), and this game's normal
    * route is PLAY → SELECT MODE → SOLO PvE → START RUN, which is four. That route is not
-   * wrong — the forge IS the between-run decision this game is built around — it is simply
+   * wrong — the loadout screen IS the between-run decision this game is built around — it is
+   * simply
    * not what a portal's first-time visitor is given a chance to sit through. So this is a
    * second door to the SAME run, not a different mode: it calls `beginRun` with whatever the
    * meta already holds, which for a first-time player is an empty loadout that
-   * `resolveLoadout` fills with the starter kit — exactly what pressing START RUN in the
-   * forge without crafting anything does.
+   * `resolveLoadout` fills with the starter kit — exactly what pressing START RUN without
+   * crafting anything does.
    *
    * The art gate is the one thing this must not skip, and the reason it is a method here
-   * rather than a second `onPlay` handler in the wiring table: the forge is normally what
-   * `showForge` gates on the player's behalf (see `ScreenNav.showForge`), and a run entered
+   * rather than a second `onPlay` handler in the wiring table: the hub is normally what
+   * `showLoadout` gates on the player's behalf (see `ScreenNav.showLoadout`), and a run entered
    * with no screen in between has to gate for itself or the first room is drawn out of
    * placeholder rectangles. Same shape as `beginTutorialRun`/`beginArenaDemoRun`, which are
    * the other two entry points with no screen between them and the run.
@@ -290,10 +298,10 @@ export class RunLifecycle {
       clearSavedRun();
       // Re-render whichever screen the press came from, so the now-impossible CONTINUE
       // control goes away without moving the player somewhere they did not ask to go. Both
-      // screens offer this verb since 2026-09-17, and sending a lobby press to the Forge
-      // would answer a refusal with a navigation.
+      // screens offer this verb since 2026-09-17, and sending a lobby press to the loadout
+      // screen would answer a refusal with a navigation.
       if (d.run.phase === 'menu') d.nav.showMenu();
-      else d.nav.showForge();
+      else d.nav.showLoadout();
       d.hud.toast(
         t(refusal === 'engine-version' ? 'toast.runSaveOldVersion' : 'toast.runSaveStale'),
         THEME.colors.enemy,
@@ -319,7 +327,7 @@ export class RunLifecycle {
     // every unit test, since they hand this controller a mocked screen whose `hide` nobody
     // asserts, and found by resuming from the lobby in the running client. Hiding a screen
     // that is already hidden costs nothing, so this does not need to know which one it was.
-    this.enterPrimedRun(engine, () => { d.mainMenu.hide(); d.forge.hide(); });
+    this.enterPrimedRun(engine, () => { d.mainMenu.hide(); d.forge.hide(); d.loadout.hide(); });
   }
 
   /** `?replay=<url>`: watch a recording instead of playing (match/replayPlayback.ts).
@@ -351,7 +359,7 @@ export class RunLifecycle {
   /** The tail every run whose scene is primed up front shares (arena/tutorial/replay): build
    *  the geometry once, then hand the screen over. Dungeon runs do NOT come here — their
    *  first room primes on tick 1's `room_enter` (see `beginRun`'s note). */
-  private enterPrimedRun(engine: GameEngine, hide: () => void = () => this.deps.forge.hide()): void {
+  private enterPrimedRun(engine: GameEngine, hide: () => void = () => this.deps.loadout.hide()): void {
     const d = this.deps;
     d.roomBuilder.build(engine.state);
     d.run.phase = 'playing';
@@ -397,6 +405,7 @@ export class RunLifecycle {
     d.run.phase = 'playing';
     d.hudView.visible = true;
     d.forge.hide();
+    d.loadout.hide();
     d.screens.hide();
     d.partyScreen.hide();
   }
@@ -469,7 +478,7 @@ export class RunLifecycle {
       d.run.markTutorialSeen();
       d.nav.showMenu();
     } else {
-      d.nav.showForge();
+      d.nav.showLoadout();
     }
   }
 

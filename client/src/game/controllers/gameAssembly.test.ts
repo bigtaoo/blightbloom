@@ -6,7 +6,9 @@
  * ~1,600 tests):
  *
  *   SURVIVED  `p.mainMenu.resumableRun = () => null`      — the lobby wired to nothing
- *   SURVIVED  `p.forge.savedRun = () => null`             — the Forge never offering CONTINUE
+ *   SURVIVED  `p.loadout.savedRun = () => null`           — the pre-run screen never offering
+ *                                                           CONTINUE (it was the Forge's own
+ *                                                           field until the 2026-09-21 split)
  *
  * Both are the same hole. `MainMenu.test.ts` and `Forge.test.ts` each drive their screen from
  * an INJECTED provider, which is the right way to test a screen and is exactly why neither can
@@ -24,12 +26,13 @@
  * into only a handful of the 31 parts while doing it (`run.matchBaseUrl`, `layers.menu.mount`,
  * and the `.view` of each screen it mounts). Standing up a real `Layers`/`Scene`/`HudView`
  * would need a WebGL renderer and would test Pixi rather than the table. `mainMenu` and
- * `forge` are REAL, because they are the two this file is actually about.
+ * `loadout` are REAL, because they are the two this file is actually about.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { assembleGame, type AssemblyParts, type GameShellHost } from './gameAssembly';
 import { MainMenu } from '../screens/MainMenu';
 import { Forge } from '../screens/Forge';
+import { Loadout } from '../screens/Loadout';
 import { RunState } from '../runState';
 import { defaultMetaState, MemoryMetaStore } from '../../meta';
 import { packRunSave, type SavedRun } from '../match/runSave';
@@ -60,13 +63,14 @@ function freshSave(): SavedRun {
 
 function build() {
   const mainMenu = new MainMenu();
-  const forge = new Forge();
+  const loadout = new Loadout();
   const stub = { view: {} };
   const parts = {
     run: new RunState(new MemoryMetaStore()),
     layers: { menu: { mount: vi.fn() }, world: {} },
     mainMenu,
-    forge,
+    loadout,
+    forge: new Forge(),
     settingsBtn: stub,
     pvpPreview: stub,
     matchmaking: stub,
@@ -82,7 +86,7 @@ function build() {
     endRunAsDefeat: () => {},
   } as unknown as GameShellHost;
   assembleGame(parts, host);
-  return { mainMenu, forge };
+  return { mainMenu, loadout };
 }
 
 let store: ReturnType<typeof memRunSaveStore>;
@@ -93,43 +97,43 @@ beforeEach(() => {
   resetResumableCacheForTests();
 });
 
-describe('the lobby and the Forge cannot disagree about a saved run', () => {
+describe('the lobby and the loadout screen cannot disagree about a saved run', () => {
   it('installs a provider on BOTH screens — neither is left at its "no save" default', () => {
     // The default on each screen is `() => null` (fail-closed, so a screen nobody wired shows
     // no CONTINUE). That makes "the provider is missing" and "there is no save" the same
     // answer, which is why this case puts a real save in first: without one, a completely
     // unwired assembly would look identical to a correct one.
     writeSavedRun(freshSave(), store);
-    const { mainMenu, forge } = build();
+    const { mainMenu, loadout } = build();
     expect(mainMenu.resumableRun()).not.toBeNull();
-    expect(forge.savedRun()).not.toBeNull();
+    expect(loadout.savedRun()).not.toBeNull();
   });
 
   it('gives both the SAME answer, save by save', () => {
     writeSavedRun(freshSave(), store);
-    const { mainMenu, forge } = build();
-    expect(mainMenu.resumableRun()).toEqual(forge.savedRun());
+    const { mainMenu, loadout } = build();
+    expect(mainMenu.resumableRun()).toEqual(loadout.savedRun());
     expect(mainMenu.resumableRun()).toEqual({ floorIndex: 2, ticks: 120, savedAtMs: 42 });
   });
 
   it('withdraws the offer from both when this build can no longer rebuild the save', () => {
-    // The 2026-09-17 defect, in the shape it actually shipped: the Forge asked "does a save
+    // The 2026-09-17 defect, in the shape it actually shipped: the screen asked "does a save
     // exist" and got yes, so it drew a full-size primary CONTINUE that could only drop the
     // save and apologise. Asserting BOTH here is the point — one screen answering `null`
     // while the other answers a summary is the disagreement the single provider exists to
     // make impossible.
     const save = freshSave();
     writeSavedRun({ ...save, engineVersion: ENGINE_VERSION - 1 }, store);
-    const { mainMenu, forge } = build();
+    const { mainMenu, loadout } = build();
     expect(mainMenu.resumableRun()).toBeNull();
-    expect(forge.savedRun()).toBeNull();
+    expect(loadout.savedRun()).toBeNull();
   });
 
   it('answers null on both with no save at all', () => {
     clearSavedRun(store);
-    const { mainMenu, forge } = build();
+    const { mainMenu, loadout } = build();
     expect(mainMenu.resumableRun()).toBeNull();
-    expect(forge.savedRun()).toBeNull();
+    expect(loadout.savedRun()).toBeNull();
   });
 
   it('is a PROVIDER, not a snapshot — a save written after assembly still reaches both', () => {
@@ -137,11 +141,11 @@ describe('the lobby and the Forge cannot disagree about a saved run', () => {
     // pause menu much later. A value read here would leave the lobby denying a run the player
     // put away four minutes ago.
     clearSavedRun(store);
-    const { mainMenu, forge } = build();
+    const { mainMenu, loadout } = build();
     expect(mainMenu.resumableRun()).toBeNull();
 
     writeSavedRun(freshSave(), store);
     expect(mainMenu.resumableRun()).not.toBeNull();
-    expect(forge.savedRun()).not.toBeNull();
+    expect(loadout.savedRun()).not.toBeNull();
   });
 });

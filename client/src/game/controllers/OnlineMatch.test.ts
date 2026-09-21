@@ -34,7 +34,7 @@ function make(over: Partial<OnlineMatchDeps> = {}) {
   const run = new RunState(store);
   const nav = {
     showSquad: vi.fn(), showMenu: vi.fn(), showMatchmaking: vi.fn(),
-    showPvpPreview: vi.fn(), refreshForgeIfOpen: vi.fn(),
+    showPvpPreview: vi.fn(), refreshHubIfOpen: vi.fn(),
   };
   const accountPrompt = {
     askGuestMerge: vi.fn((): Promise<'account' | 'merge'> => Promise.resolve('account')),
@@ -242,7 +242,7 @@ describe('syncMetaWithSession', () => {
     const t = make();
     await t.net.syncMetaWithSession();
     expect(t.run.meta).toEqual(remote);
-    expect(t.nav.refreshForgeIfOpen).toHaveBeenCalled();
+    expect(t.nav.refreshHubIfOpen).toHaveBeenCalled();
   });
 
   it('PUSHES local state up for a brand-new account instead of wiping it', async () => {
@@ -599,7 +599,7 @@ describe('a rejected session (design/16 hole 2)', () => {
     await t.net.syncMetaWithSession();
     expect(t.run.meta).toBe(before);
     expect(t.run.meta.materialBank).toEqual({ mat_fire: 5 });
-    expect(t.nav.refreshForgeIfOpen).not.toHaveBeenCalled();
+    expect(t.nav.refreshHubIfOpen).not.toHaveBeenCalled();
   });
 
   it('a NETWORK failure signs nobody out — offline is not logged out', async () => {

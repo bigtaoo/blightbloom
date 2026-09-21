@@ -52,7 +52,8 @@ interface PickupItem { id: number; weaponId?: string }
 interface GameScreens {
   mainMenu: { playBtn: Tappable; settingsBtn: Tappable; routes: { soloBtn: Tappable } };
   settingsScreen: { muteBtn: Tappable; backBtn: Tappable };
-  forge: { backBtn: Tappable; startBtn: Tappable; storeBtn: Tappable; rowCards: Tappable[] };
+  forge: { backBtn: Tappable; storeBtn: Tappable; rowCards: Tappable[] };
+  loadout: { backBtn: Tappable; startBtn: Tappable; clearBtn: Tappable };
   pauseMenu: { resumeBtn: Tappable };
   hud: { pauseBtn: Tappable; weaponPickupPrompt: {
     closeBtn: Tappable;
@@ -180,7 +181,7 @@ describe('Game — every screen it builds carries the right UI cue', () => {
     const { cues, screens } = newGame();
     for (const btn of [
       screens.mainMenu.settingsBtn, screens.mainMenu.routes.soloBtn,
-      screens.settingsScreen.muteBtn, screens.forge.startBtn, screens.hud.pauseBtn,
+      screens.settingsScreen.muteBtn, screens.loadout.startBtn, screens.hud.pauseBtn,
     ]) tap(btn);
     expect(cues).toHaveLength(5);
   });
