@@ -20,20 +20,23 @@ Adopted 2026-09-10 from the sibling project `funny` (its `CLAUDE.md` "分支与�
    Task work still gets its own worktree + branch (`.claude/worktrees/<slug>` on
    `feat/<slug>`, branched off the daily branch) and merges back `--no-ff`; a small
    doc-level fix can be committed straight onto the daily branch in the shared tree.
-3. **One PR per daily branch, `<DD.MM.YYYY>` → `main`, opened early.** `check.yml` only
-   triggers on `pull_request` and on pushes to `main`, so until the PR exists the daily
-   branch is running no CI at all — open it with the day's first push, not at the end.
-   Title and body in English like everything else here (see "Language policy"). Merge it
-   when the four checks are green; a red check is the answer, not an obstacle to route
-   around. Merging is also what deploys — `client-deploy` / `server-deploy` and friends
-   trigger on push to `main`.
+3. **One PR per daily branch, `<DD.MM.YYYY>` → `main` — and the *user* opens it.**
+   Revised 2026-09-21: the user creates the day's PR themselves once the day's work is
+   done. A session pushes the daily branch and stops; it does not run `gh pr create`, and
+   it does not ask to. The cost is known and accepted: `check.yml` only triggers on
+   `pull_request` and on pushes to `main`, so until that PR exists the daily branch is
+   running **no CI at all** — say so when reporting a push, and keep the local gates
+   (`npm run check`, the full test suite, `tsc --noEmit`) as the only signal there is.
+   Title and body in English like everything else here (see "Language policy"). Once the
+   PR is open, merge it when the four checks are green; a red check is the answer, not an
+   obstacle to route around. Merging is also what deploys — `client-deploy` /
+   `server-deploy` and friends trigger on push to `main`.
 
 ```bash
 git fetch origin && git switch -c 10.09.2026 origin/main   # start the day
 git worktree add -b feat/<slug> .claude/worktrees/<slug> 10.09.2026
 git merge --no-ff feat/<slug>                              # task branch → daily branch
-git push -u origin 10.09.2026
-gh pr create --base main --head 10.09.2026 --title "..." --body "..."
+git push -u origin 10.09.2026                              # stop here; the user opens the PR
 ```
 
 Reusing a daily branch that has already been merged: fast-forward it first with
@@ -60,17 +63,18 @@ When the user says **"结束任务"**, run this exact sequence, in this exact or
    now-redundant worktree and delete the branch.
 4. **Commit last** — the final commit should capture the fully-merged, fully-cleaned-up
    state, not an intermediate one.
-5. **Push, and open or update the day's PR into `main`** — `git push` the daily branch,
-   then `gh pr create --base main --head <DD.MM.YYYY>` if the day has no PR yet (English
-   title and body). Report the PR link and the state of the four required checks. Merge it
-   once they are green; if any is red, leave the PR open and say which one, rather than
-   reaching for the admin bypass.
+5. **Push the daily branch** — `git push` and stop there. **Do not create the PR**: the
+   user opens one PR per day themselves, once the day's work is done (adopted 2026-09-21).
+   Report what was pushed, and say plainly that the branch is running no CI until that PR
+   exists. If the day's PR is already open, the push updates it — report the state of the
+   four required checks, and leave a red one red rather than reaching for the admin bypass.
 
-If any step finds nothing to do (e.g. no unmerged branch exists, or the day's PR is
-already open and green), skip it silently rather than asking. Treat "结束任务" as a
-distinct trigger phrase from an ordinary "commit this" or "merge this" request — it means
-run the full five-step sequence, not just whichever single step the wording most
-resembles.
+If any step finds nothing to do (e.g. no unmerged branch exists, or nothing new to
+push), skip it silently rather than asking. Treat "结束任务" as a distinct trigger phrase
+from an ordinary "commit this" or "merge this" request — it means run the full five-step
+sequence, not just whichever single step the wording most resembles. It does **not** mean
+"open the PR"; that is the user's own end-of-day step, and asking whether to open one is
+just as wrong as opening it.
 
 ## Code organization: 500-line file convention
 
