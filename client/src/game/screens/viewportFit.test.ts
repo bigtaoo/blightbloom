@@ -43,6 +43,7 @@ import { Texture, type Container } from 'pixi.js';
 import { installFakeTextCanvas } from './fakeTextCanvas';
 import { MenuLayer, MENU_DESIGN_W, MENU_DESIGN_H } from '../ui/menuLayer';
 import { Forge } from './Forge';
+import { Loadout } from './Loadout';
 import { MainMenu } from './MainMenu';
 import { PvpPreview } from './PvpPreview';
 import { Screens } from './Screens';
@@ -153,17 +154,23 @@ const SCREENS: Array<[string, ScreenBuild]> = [
   // `storeEnabled` on: the STORE button reserves its own 36px row, so a selling build is
   // the TALLER of the two forge layouts and therefore the one the fit has to clear.
   ['Forge', (w, h) => { const s = new Forge(); s.storeEnabled = true; s.render(defaultMetaState(), w, h); return s.view; }],
-  // The Forge with a SAVED RUN (2026-09-10, ENGINE_VERSION 61) — its action bar is two rows
-  // instead of one, plus a fourth info line, so this is the taller of the two forge layouts
-  // and by this sweep's own rule the one the fit has to clear. Its own entry rather than a
-  // flag on the case above, because `savedRun` defaults to "no save": without it the sweep is
-  // structurally blind to the taller bar, which is the trap the store entry at the bottom of
-  // this file records.
-  ['Forge (saved run: two-row action bar)', (w, h) => {
-    const s = new Forge();
-    s.storeEnabled = true;
+  // The LOADOUT screen (2026-09-21) — the pre-run half the forge used to also be. Its own
+  // entry for the same reason every other screen has one, and two of them, because a SAVED
+  // RUN makes its action bar two rows instead of one plus a wrapped saved-run line. Without
+  // the second case the sweep is structurally blind to the taller bar, which is the trap the
+  // store entry at the bottom of this file records.
+  ['Loadout', (w, h) => { const s = new Loadout(); s.render(defaultMetaState(), w, h); return s.view; }],
+  ['Loadout (saved run: two-row action bar)', (w, h) => {
+    const s = new Loadout();
     s.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
     s.render(defaultMetaState(), w, h);
+    return s.view;
+  }],
+  // ...and with a full loadout, because the weapon cards then carry real weapon NAMES (they
+  // wrap) and a forged badge, where an empty one carries the starter kit's shorter pair.
+  ['Loadout (forged loadout)', (w, h) => {
+    const s = new Loadout();
+    s.render({ ...defaultMetaState(), loadout: ['repeater', 'emberblade'] }, w, h);
     return s.view;
   }],
   ['MainMenu', (w, h) => { const s = new MainMenu(); s.show(w, h); return s.view; }],
@@ -401,21 +408,22 @@ describe.each(VIEWPORTS)('every menu screen fits $name ($w x $h)', ({ w, h }) =>
   });
 });
 
-describe('Forge — START RUN is reachable, not buried under the blueprint grid', () => {
-  /** The exact failure the user saw: the button exists and is on-screen, but a weapon
-   *  card is drawn over the same pixels, so there is nothing tappable-looking there. */
+describe('Loadout — START RUN is reachable, not buried under the weapon row', () => {
+  /** The exact failure the user saw, on the screen that owns the button now: it exists and
+   *  is on-screen, but a card is drawn over the same pixels, so there is nothing
+   *  tappable-looking there. */
   function startButtonOverlapsACard(w: number, h: number, saved = false) {
-    const f = new Forge();
-    f.storeEnabled = true; // the taller layout — see the sweep's note above
-    // `saved` moves START RUN one row UP, toward the grid — see the saved-run cases below.
-    if (saved) f.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
-    f.render(defaultMetaState(), w, h);
-    const p = f as unknown as {
-      rowCards: Array<{ view: { visible: boolean; x: number; y: number } }>;
+    const l = new Loadout();
+    // `saved` moves START RUN one row UP, toward the cards — see the saved-run cases below.
+    if (saved) l.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
+    l.render(defaultMetaState(), w, h);
+    const p = l as unknown as {
+      weaponCards: Array<{ view: { visible: boolean; x: number; y: number } }>;
+      forgeCard: { view: { visible: boolean; x: number; y: number } };
       startBtn: { view: { x: number; y: number } };
     };
     const btn = { x: p.startBtn.view.x, y: p.startBtn.view.y, w: 220, h: 44 }; // widgets.ts Button opts
-    return p.rowCards.some((c) => {
+    return [...p.weaponCards, p.forgeCard].some((c) => {
       if (!c.view.visible) return false;
       return c.view.x < btn.x + btn.w && c.view.x + 132 > btn.x
         && c.view.y < btn.y + btn.h && c.view.y + 132 > btn.y; // BlueprintCard.W/H
@@ -428,30 +436,12 @@ describe('Forge — START RUN is reachable, not buried under the blueprint grid'
   });
 
   // With a saved run START RUN is no longer the bottom row — CONTINUE RUN takes that slot and
-  // START RUN moves 52px UP, i.e. toward the blueprint grid. That is strictly closer to the
+  // START RUN moves 52px UP, i.e. toward the weapon row. That is strictly closer to the
   // reported bug this whole block exists for, so it needs its own sweep rather than trusting
   // the one above: every case there lays out the shape where the button is furthest away.
   it.each(VIEWPORTS)('$name — with a saved run, START RUN sits a row higher', ({ w, h }) => {
     const design = new MenuLayer().fit({ w, h });
     expect(startButtonOverlapsACard(design.w, design.h, true)).toBe(false);
-  });
-
-  it('and the compare card gives way to the taller bar rather than overlapping it', () => {
-    // The other half of the same reservation: `renderCompareCard`'s no-room check measures
-    // against the TOP of the action bar, so with two rows it has to hide 52px sooner. Checking
-    // it here rather than only in Forge.test.ts because this file owns the "on screen but
-    // something is drawn over it" class of failure.
-    const f = new Forge();
-    f.storeEnabled = true;
-    f.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
-    f.render(defaultMetaState(), 1280, MENU_DESIGN_H);
-    const p = f as unknown as {
-      compareCard: { view: { visible: boolean; y: number; height: number } };
-      startBtn: { view: { y: number } };
-    };
-    if (p.compareCard.view.visible) {
-      expect(p.compareCard.view.y + p.compareCard.view.height).toBeLessThanOrEqual(p.startBtn.view.y);
-    }
   });
 
   // Harness check: the assertion above must be able to FAIL. Laying the same screen out
@@ -461,20 +451,11 @@ describe('Forge — START RUN is reachable, not buried under the blueprint grid'
     expect(startButtonOverlapsACard(844, 390)).toBe(true);
   });
 
-  // ...and the same for the fits-the-viewport sweep: unfitted, the Forge must overflow.
-  it('the unfitted 844x390 viewport also overflows on its own', () => {
-    const f = new Forge();
-    f.storeEnabled = true;
-    f.render(defaultMetaState(), 844, 390);
-    expect(contentBounds(f.view).maxY).toBeGreaterThan(390);
-  });
-
-  // Pins WHY the design height is what it is: the Forge is the tallest screen, and its
-  // grid + fixed bottom bar is what sets the floor. Shrinking MENU_DESIGN_H below this
-  // brings the overlap back on every device at once.
-  it('the design height clears the grid the bottom bar has to sit under', () => {
+  // Pins WHY the design height is what it is: shrinking `MENU_DESIGN_H` far enough brings
+  // the overlap back on every device at once.
+  it('the design height clears the row the bottom bar has to sit under', () => {
     expect(startButtonOverlapsACard(1280, MENU_DESIGN_H)).toBe(false);
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 80)).toBe(true);
+    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 200)).toBe(true);
   });
 
   it('...and still clears it with the taller two-row bar, which can also FAIL', () => {
@@ -482,7 +463,34 @@ describe('Forge — START RUN is reachable, not buried under the blueprint grid'
     // file has: a passing `false` proves nothing unless `true` is reachable. It is reachable
     // 52px sooner than for the one-row bar, which is the whole point of measuring it.
     expect(startButtonOverlapsACard(1280, MENU_DESIGN_H, true)).toBe(false);
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 80, true)).toBe(true);
+    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 200, true)).toBe(true);
+  });
+});
+
+describe('Forge — the grid gives way rather than stacking on the hint line', () => {
+  it('the compare card hides instead of overlapping what is pinned to the bottom', () => {
+    // The other half of the same reservation the action bar used to get: this screen's
+    // lowest drawn thing is now its hint line, and `renderCompareCard`'s no-room check
+    // measures against it. Checked here rather than only in Forge.test.ts because this file
+    // owns the "on screen but something is drawn over it" class of failure.
+    const f = new Forge();
+    f.storeEnabled = true;
+    f.render(defaultMetaState(), 1280, MENU_DESIGN_H);
+    const p = f as unknown as {
+      compareCard: { view: { visible: boolean; y: number; height: number } };
+      hint: { y: number };
+    };
+    if (p.compareCard.view.visible) {
+      expect(p.compareCard.view.y + p.compareCard.view.height).toBeLessThanOrEqual(p.hint.y);
+    }
+  });
+
+  // ...and the fits-the-viewport sweep's own harness check: unfitted, the Forge must overflow.
+  it('the unfitted 844x390 viewport also overflows on its own', () => {
+    const f = new Forge();
+    f.storeEnabled = true;
+    f.render(defaultMetaState(), 844, 390);
+    expect(contentBounds(f.view).maxY).toBeGreaterThan(390);
   });
 });
 

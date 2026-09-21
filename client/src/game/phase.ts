@@ -15,16 +15,24 @@
 // (every party member's poll auto-advances to beginSquadMatch, so a manual confirm gate
 // there would desync followers who never see it; PartyScreen's own lobby/roster already
 // serves as squad's pre-match review step).
+// 'loadout' is the PRE-RUN screen — character, the weapons actually being carried, START RUN
+// (design/10, 2026-09-21). It is what SOLO PvE now opens and what a finished run returns to;
+// 'forge' is no longer that screen. The two were one until the crafting grid was split onto
+// its own page (see `screens/Loadout.ts`'s header), and every reader that used to mean "the
+// pre-run hub" by `'forge'` means `'loadout'` now.
+// 'forge' is the CRAFTING page: spend banked materials on blueprints. Reached from the
+// lobby's own FORGE route and from the loadout screen's FORGE card, and BACK returns to
+// whichever of the two it was (`RunState.forgeReturnPhase`).
 // 'store' is the real-money purchase screen (design/19 §4), opened from the forge's STORE
 // button or its [B] key. A full phase rather than an overlay for one concrete reason: every
-// forge key is guarded on `phase === 'forge'` (ForgeInput), so a separate phase silences the
-// whole craft/clear/cycle table for free while a purchase is in flight — an overlay would
-// leave [X] CLEAR LOADOUT live under a modal asking someone for money.
+// forge key is guarded on the phase (ForgeInput), so a separate phase silences the whole
+// craft table for free while a purchase is in flight — an overlay would leave the craft
+// digits live under a modal asking someone for money.
 //
 // Lives at the game root rather than under screens/ because it is the shared vocabulary
 // Game.ts and the screen layer both speak, not a screen implementation detail.
 export type Phase =
-  | 'menu' | 'forge' | 'pvpPreview' | 'matchmaking' | 'playing' | 'paused'
+  | 'menu' | 'loadout' | 'forge' | 'pvpPreview' | 'matchmaking' | 'playing' | 'paused'
   | 'victory' | 'defeat' | 'settings' | 'squad' | 'account' | 'store';
 
 /**
@@ -45,6 +53,6 @@ export type Phase =
  * costs nothing — the next thing every one of those screens does is return here.
  */
 export function isHubPhase(phase: Phase): boolean {
-  return phase === 'menu' || phase === 'forge' || phase === 'store'
+  return phase === 'menu' || phase === 'loadout' || phase === 'forge' || phase === 'store'
     || phase === 'squad' || phase === 'account' || phase === 'settings';
 }

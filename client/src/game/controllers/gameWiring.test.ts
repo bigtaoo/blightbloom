@@ -92,7 +92,9 @@ function make() {
   const nav = {
     showMenu: track('nav.showMenu'),
     showSquad: track('nav.showSquad'), showAccount: track('nav.showAccount'),
-    openSettings: track('nav.openSettings'), showForge: track('nav.showForge'),
+    openSettings: track('nav.openSettings'), showLoadout: track('nav.showLoadout'),
+    showForge: vi.fn((from: string) => void called.push(`nav.showForge(${from})`)),
+    leaveForge: track('nav.leaveForge'), showStore: track('nav.showStore'),
     showMatchmaking: track('nav.showMatchmaking'), openSettingsFromPause: track('nav.openSettingsFromPause'),
     resume: track('nav.resume'), pause: track('nav.pause'),
   };
@@ -134,14 +136,15 @@ function make() {
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
     mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onCoop', 'onPvpSolo', 'onSquad',
-      'onTutorial', 'onAccount', 'onSettings'),
+      'onForge', 'onTutorial', 'onAccount', 'onSettings'),
       setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
     partyScreen: screenStub('onBack', 'onStartMatch') as never,
     loginScreen: screenStub('onBack', 'onSessionChange') as never,
-    forge: screenStub('onBack', 'onCycleCharacter', 'onClear', 'onCraftAt', 'onStart', 'onStore',
-      'onContinue') as never,
+    forge: screenStub('onBack', 'onCraftAt', 'onStore') as never,
+    loadout: screenStub('onBack', 'onCycleCharacter', 'onClear', 'onStart', 'onContinue',
+      'onForge') as never,
     storeScreen: screenStub('onBack') as never,
     screens: screenStub('onConfirm', 'onMenu') as never,
     pauseMenu: screenStub('onResume', 'onSettings', 'onSaveQuit', 'onQuit') as never,
@@ -159,7 +162,7 @@ describe('wireScreens', () => {
     const t = make();
     wireScreens(t.d);
     const screens = ['mainMenu', 'pvpPreview', 'matchmaking', 'partyScreen',
-      'loginScreen', 'forge', 'screens', 'pauseMenu'] as const;
+      'loginScreen', 'forge', 'loadout', 'screens', 'pauseMenu'] as const;
     for (const name of screens) {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
@@ -187,6 +190,7 @@ describe('wireScreens', () => {
     fire('mainMenu', 'onCoop');
     fire('mainMenu', 'onPvpSolo');
     fire('mainMenu', 'onSquad');
+    fire('mainMenu', 'onForge');
     fire('mainMenu', 'onTutorial');
     fire('mainMenu', 'onAccount');
     fire('pvpPreview', 'onQueue');
@@ -194,13 +198,14 @@ describe('wireScreens', () => {
     fire('pauseMenu', 'onQuit');
     fire('pauseMenu', 'onResume');
     fire('pauseMenu', 'onSaveQuit');
-    fire('forge', 'onContinue');
+    fire('loadout', 'onContinue');
+    fire('loadout', 'onForge');
     expect(t.called).toEqual([
-      'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
-      'nav.showSquad', 'runs.beginTutorialRun', 'nav.showAccount',
+      'nav.showLoadout', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
+      'nav.showSquad', 'nav.showForge(menu)', 'runs.beginTutorialRun', 'nav.showAccount',
       'nav.showMatchmaking', 'net.beginSquadMatch',
       'runs.quitRun', 'nav.resume',
-      'runs.saveAndQuitRun', 'runs.resumeSavedRun',
+      'runs.saveAndQuitRun', 'runs.resumeSavedRun', 'nav.showForge(loadout)',
     ]);
   });
 
@@ -223,20 +228,50 @@ describe('wireScreens', () => {
   });
 
   it('CONTINUE RUN resumes, and does NOT go through the confirm router like START RUN', () => {
-    // `onStart` deliberately routes to `confirm()` (the phase router, which from the forge
-    // means "start a fresh run"). Wiring CONTINUE to the same place would silently discard
-    // the save it exists to load — the two buttons sit next to each other and mean opposites.
+    // `onStart` deliberately routes to `confirm()` (the phase router, which from the loadout
+    // screen means "start a fresh run"). Wiring CONTINUE to the same place would silently
+    // discard the save it exists to load — the two buttons sit next to each other and mean
+    // opposites.
     const t = make();
     wireScreens(t.d);
-    const forge = t.d.forge as unknown as Record<string, () => void>;
+    const loadout = t.d.loadout as unknown as Record<string, () => void>;
 
     t.called.length = 0;
-    forge.onContinue!();
+    loadout.onContinue!();
     expect(t.called).toEqual(['runs.resumeSavedRun']);
 
     t.called.length = 0;
-    forge.onStart!();
+    loadout.onStart!();
     expect(t.called).toEqual(['confirm']);
+  });
+
+  it('the two doors into the FORGE each record where BACK should go', () => {
+    // A fixed BACK was wrong at one of them: a player who pressed FORGE on the loadout screen
+    // and came back to the lobby would have to walk in again to start the run they were two
+    // clicks from. The lobby's own row records 'menu' for the same reason in reverse.
+    const t = make();
+    wireScreens(t.d);
+
+    t.called.length = 0;
+    (t.d.mainMenu as unknown as Record<string, () => void>).onForge!();
+    expect(t.called).toEqual(['nav.showForge(menu)']);
+
+    t.called.length = 0;
+    (t.d.loadout as unknown as Record<string, () => void>).onForge!();
+    expect(t.called).toEqual(['nav.showForge(loadout)']);
+  });
+
+  it('the STORE returns through the door the forge already recorded', () => {
+    // The store is a round trip, not a new way into the forge. Re-recording `'menu'` on the
+    // way back would quietly re-point BACK at the lobby for a player who came from the
+    // loadout screen and merely looked at the shop.
+    const t = make();
+    wireScreens(t.d);
+    t.run.forgeReturnPhase = 'loadout';
+
+    t.called.length = 0;
+    (t.d.storeScreen as unknown as Record<string, () => void>).onBack!();
+    expect(t.called).toEqual(['nav.showForge(loadout)']);
   });
 
   it('gives the LOBBY the same CONTINUE verb, not a second implementation of it', () => {
@@ -255,7 +290,7 @@ describe('wireScreens', () => {
   it('sends every BACK button to the lobby', () => {
     const t = make();
     wireScreens(t.d);
-    for (const screen of ['partyScreen', 'loginScreen', 'forge'] as const) {
+    for (const screen of ['partyScreen', 'loginScreen', 'loadout'] as const) {
       t.called.length = 0;
       (t.d[screen] as unknown as Record<string, () => void>).onBack!();
       expect(t.called, screen).toEqual(['nav.showMenu']);
@@ -350,7 +385,7 @@ describe('wireHud', () => {
     const t = make();
     wireHud(t.d);
     const onSwap = (t.d.hud as unknown as { onSwapWeapon: () => void }).onSwapWeapon;
-    t.run.phase = 'forge';
+    t.run.phase = 'loadout';
     onSwap();
     expect(t.called).toEqual([]);
     t.run.phase = 'playing';
@@ -385,7 +420,7 @@ describe('wireHud', () => {
     const t = make();
     wireHud(t.d);
     const onSwitch = (t.d.input as unknown as { onSwitchWeapon: (s: number) => void }).onSwitchWeapon;
-    t.run.phase = 'forge';
+    t.run.phase = 'loadout';
     onSwitch(2);
     expect(t.called).toEqual([]);
   });
@@ -411,7 +446,7 @@ describe('wireScreens — the portal host', () => {
     expect(menu.setQuickPlay).toHaveBeenCalledWith(true);
     menu.onPlay();
     menu.onSolo();
-    expect(t.called).toEqual(['runs.beginQuickRun', 'nav.showForge']);
+    expect(t.called).toEqual(['runs.beginQuickRun', 'nav.showLoadout']);
   });
 
   it('leaves every other route exactly where it was', () => {
@@ -426,7 +461,7 @@ describe('wireScreens — the portal host', () => {
     menu.onPvpSolo!();
     menu.onTutorial!();
     expect(t.called).toEqual([
-      'nav.showForge', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
+      'nav.showLoadout', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
       'runs.beginTutorialRun',
     ]);
   });

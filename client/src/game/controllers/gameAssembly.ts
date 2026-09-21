@@ -33,6 +33,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { PartyScreen } from '../screens/PartyScreen';
 import { StoreScreen } from '../screens/StoreScreen';
 import type { Forge } from '../screens/Forge';
+import type { Loadout } from '../screens/Loadout';
 import type { MainMenu } from '../screens/MainMenu';
 import type { Matchmaking } from '../screens/Matchmaking';
 import type { PauseMenu } from '../screens/PauseMenu';
@@ -113,6 +114,7 @@ export interface AssemblyParts {
   pvpPreview: PvpPreview;
   matchmaking: Matchmaking;
   forge: Forge;
+  loadout: Loadout;
   screens: Screens;
   settingsScreen: Settings;
   pauseMenu: PauseMenu;
@@ -156,10 +158,10 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   });
   const storeScreen = new StoreScreen(storePurchase);
   p.forge.storeEnabled = storePlatform !== null;
-  // Whether the forge offers CONTINUE RUN, and what its info line says about the save
-  // (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61). A provider, not a
-  // value, so every one of `render()`'s five call sites reads the CURRENT answer — see
-  // `Forge.savedRun`'s own note.
+  // Whether the LOADOUT screen offers CONTINUE RUN, and what its info line says about the
+  // save (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61). A provider, not a
+  // value, so every one of `render()`'s call sites reads the CURRENT answer — see
+  // `Loadout.savedRun`'s own note.
   //
   // `resumableRunSummary`, not `savedRunSummary`, since 2026-09-17: the second answers "a
   // save exists", which is not the question a CONTINUE button is asking — a save from an
@@ -167,7 +169,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // apologise. The LOBBY gets the identical provider, so the two screens cannot end up
   // disagreeing about whether there is a run to come back to; `match/resumableRun.ts`'s
   // header has the rest, including the memo that keeps it free per render.
-  p.forge.savedRun = () => resumableRunSummary();
+  p.loadout.savedRun = () => resumableRunSummary();
   p.mainMenu.resumableRun = () => resumableRunSummary();
 
   // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the
@@ -176,7 +178,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   const accountPrompt = new AccountPrompt({ size: () => p.layers.menu.fit(host.screenSize()) });
 
   p.layers.menu.mount(
-    [p.mainMenu.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,
+    [p.mainMenu.view, p.loadout.view, p.forge.view, p.pvpPreview.view, p.matchmaking.view,
       p.screens.view, p.settingsScreen.view, p.pauseMenu.view,
       partyScreen.view, loginScreen.view, storeScreen.view],
     // Both float OVER a screen — see MenuLayer.mount for why that matters. The prompt is
@@ -187,7 +189,8 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   const screenFlow = new ScreenFlow({
     mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
-    forge: p.forge, storeScreen, screens: p.screens, settingsScreen: p.settingsScreen,
+    forge: p.forge, loadout: p.loadout, storeScreen, screens: p.screens,
+    settingsScreen: p.settingsScreen,
     pauseMenu: p.pauseMenu, settingsBtn: p.settingsBtn, hudView: p.hudView,
   });
 
@@ -200,7 +203,8 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     backdrop: p.backdrop, hud: p.hud, portalPrompt: p.portalPrompt, floorCardPrompt: p.floorCardPrompt,
     mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
-    forge: p.forge, storeScreen, screens: p.screens, settingsScreen: p.settingsScreen,
+    forge: p.forge, loadout: p.loadout, storeScreen, screens: p.screens,
+    settingsScreen: p.settingsScreen,
     pauseMenu: p.pauseMenu, accountPrompt,
     screenSize: () => host.screenSize(),
     settings: () => host.settingsState(),
@@ -223,7 +227,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     roomBuilder: p.roomBuilder, gameLoop, screenFlow,
     nav, artGate: p.artGate, recorder: p.recorder,
     tutorialHints: p.tutorialHints, hud: p.hud, hudView: p.hudView,
-    forge: p.forge, mainMenu: p.mainMenu, matchmaking: p.matchmaking,
+    forge: p.forge, loadout: p.loadout, mainMenu: p.mainMenu, matchmaking: p.matchmaking,
     partyScreen, pauseMenu: p.pauseMenu, screens: p.screens,
     allySkinId: () => host.allySkinId(),
   });
@@ -238,6 +242,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     screenSize: () => host.screenSize(),
     openSettings: () => nav.openSettings(),
     openStore: () => nav.showStore(),
+    openForge: () => nav.showForge('loadout'),
     confirm: () => host.confirm(),
   });
 

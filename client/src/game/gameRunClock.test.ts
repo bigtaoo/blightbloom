@@ -67,7 +67,7 @@ function newGame() {
     // presses below go through `gameWiring`'s table rather than around it.
     mainMenu: { onPvpSolo: (() => void) | null; onTutorial: (() => void) | null; onSolo: (() => void) | null };
     pvpPreview: { onBack: (() => void) | null };
-    forge: { onStart: (() => void) | null };
+    loadout: { onStart: (() => void) | null };
     runs: { finalizeOnlineRun(session: unknown): void };
   };
 
@@ -118,8 +118,8 @@ describe('Game — an offline run runs, whatever screens were visited first', ()
     const g = newGame();
     g.inner.mainMenu.onPvpSolo!();
     g.inner.pvpPreview.onBack!();
-    g.inner.mainMenu.onSolo!(); // SOLO PvE opens the forge...
-    g.inner.forge.onStart!(); // ...and START RUN is the press that enters the dungeon
+    g.inner.mainMenu.onSolo!(); // SOLO PvE opens the loadout screen...
+    g.inner.loadout.onStart!(); // ...and START RUN is the press that enters the dungeon
     g.frames(30);
     expect(g.tick()).toBeGreaterThan(0);
     expect(g.inner.scene.player).not.toBeNull();

@@ -8,6 +8,7 @@ import { Layers } from './scene/layers';
 import { Scene } from './scene/Scene';
 import { Screens, type ResultOffer } from './screens/Screens';
 import { Forge } from './screens/Forge';
+import { Loadout } from './screens/Loadout';
 import { MainMenu } from './screens/MainMenu';
 import { PvpPreview } from './screens/PvpPreview';
 import { Matchmaking } from './screens/Matchmaking';
@@ -57,9 +58,9 @@ import type { AudioBus, InputCanvas, InputSource } from '../platform/types';
 // ignored in dungeon/arena mode — each room/arena resizes the world as it loads).
 
 // Render-side run phases (design/10). The engine only knows idle/playing/gameover;
-// the main menu (the boot front door), the forge/loadout outpost (the between-run hub,
-// design/14), and the result screens live here in the shell, along with score (derived
-// from events). 'paused' is the in-run pause menu (design/10's own open question,
+// the main menu (the boot front door), the loadout screen and the forge outpost beside it
+// (the between-run hub, design/14), and the result screens live here in the shell, along
+// with score (derived from events). 'paused' is the in-run pause menu (design/10's own open question,
 // resolved) — 'settings' also serves as the pause menu's settings sub-screen (Game
 // tracks which phase to return to via settingsReturnPhase). 'squad' is the PvP
 // pre-formed-party lobby (design/05/15's squad follow-up) — the first runtime (not
@@ -95,6 +96,8 @@ export class Game {
 
   private screens = new Screens();
   private forge = new Forge();
+  // The pre-run half the forge used to also be (2026-09-21) — see `screens/Loadout.ts`.
+  private loadout = new Loadout();
   private mainMenu = new MainMenu();
   // PvP match preview (design/10 open question "PvP preset-pick has no UI yet") —
   // The lobby's PVP SOLO QUEUE routes here before Matchmaking, so a player sees their
@@ -163,7 +166,7 @@ export class Game {
   // file's doc comment) — a field initializer is fine here (unlike screenFlow below):
   // both `forge` and `store` above are already-declared field initializers themselves,
   // no query-param-override timing dependency.
-  private readonly forgeActions = new ForgeActions(this.forge, this.store);
+  private readonly forgeActions = new ForgeActions({ forge: this.forge, loadout: this.loadout, store: this.store });
 
   // Persistent client-side settings (design/10/11: master/SFX/music volume + mute).
   // Reached from the forge outpost only — see openSettings/closeSettings.
@@ -302,8 +305,8 @@ export class Game {
       floorCardPrompt: this.floorCardPrompt, ticker: this.app.ticker,
       pickupDebugOverlay: this.pickupDebugOverlay, settingsBtn: this.settingsBtn,
       mainMenu: this.mainMenu, pvpPreview: this.pvpPreview,
-      matchmaking: this.matchmaking, forge: this.forge, screens: this.screens,
-      settingsScreen: this.settingsScreen, pauseMenu: this.pauseMenu,
+      matchmaking: this.matchmaking, forge: this.forge, loadout: this.loadout,
+      screens: this.screens, settingsScreen: this.settingsScreen, pauseMenu: this.pauseMenu,
     }, this);
     this.partyScreen = parts.partyScreen; this.loginScreen = parts.loginScreen;
     this.storeScreen = parts.storeScreen;
@@ -319,8 +322,8 @@ export class Game {
       hud: this.hud, portalPrompt: this.portalPrompt, floorCardPrompt: this.floorCardPrompt,
       mainMenu: this.mainMenu, pvpPreview: this.pvpPreview,
       matchmaking: this.matchmaking, partyScreen: this.partyScreen, loginScreen: this.loginScreen,
-      forge: this.forge, storeScreen: this.storeScreen, screens: this.screens, pauseMenu: this.pauseMenu,
-      confirm: () => this.confirm(),
+      forge: this.forge, loadout: this.loadout, storeScreen: this.storeScreen,
+      screens: this.screens, pauseMenu: this.pauseMenu, confirm: () => this.confirm(),
       activeSlot: () => this.activeState()?.players[this.run.localOwner]?.activeSlot,
     };
     wireScreens(wiring);
@@ -431,17 +434,17 @@ export class Game {
 
   confirm() {
     this.audio.resume(); // a confirm tap is a user gesture — clears the autoplay gate (design/11)
-    if (this.run.phase === 'menu') this.nav.showForge();
-    else if (this.run.phase === 'forge') this.runs.beginRun();
+    if (this.run.phase === 'menu') this.nav.showLoadout();
+    else if (this.run.phase === 'loadout') this.runs.beginRun();
     else if (this.run.phase === 'victory' || this.run.phase === 'defeat') {
-      // The tutorial never touched the loadout, so it returns to the lobby instead of
-      // Forge (design/10 screen-flow gap) — `hasSeenTutorial` was already marked the
-      // moment this run hit gameover (stepSim), not here.
+      // The tutorial never touched the loadout, so it returns to the lobby instead of the
+      // loadout screen (design/10 screen-flow gap) — `hasSeenTutorial` was already marked
+      // the moment this run hit gameover (stepSim), not here.
       if (this.run.tutorialActive) {
         this.run.tutorialActive = false;
         this.nav.showMenu();
       } else {
-        this.nav.showForge();
+        this.nav.showLoadout();
       }
     }
   }

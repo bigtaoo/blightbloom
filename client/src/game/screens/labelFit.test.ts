@@ -36,6 +36,7 @@ import { Graphics, Text, Texture } from 'pixi.js';
 import { installFakeTextCanvas } from './fakeTextCanvas';
 import { MENU_DESIGN_W, MENU_DESIGN_H } from '../ui/menuLayer';
 import { Forge } from './Forge';
+import { Loadout } from './Loadout';
 import { MainMenu } from './MainMenu';
 import { PvpPreview } from './PvpPreview';
 import { Screens } from './Screens';
@@ -167,14 +168,16 @@ const SCREENS: Array<[string, Build]> = [
     return s;
   }],
   ['Forge', (w, h) => { const s = new Forge(); s.storeEnabled = true; s.render(defaultMetaState(), w, h); return s; }],
-  // With a saved run in the slot (ENGINE_VERSION 61) — the state that draws CONTINUE RUN and
-  // moves START RUN up a row. Its own case because a `savedRun` provider is the only way to
-  // reach that layout, and the default is "no save": without this the CONTINUE label would be
-  // constructed, measured once at its constructor default, and never re-measured under a
-  // locale, which is exactly the "counted but not covered" shape the count guard below is for.
-  ['Forge (saved run)', (w, h) => {
-    const s = new Forge();
-    s.storeEnabled = true;
+  // The LOADOUT screen (2026-09-21) — where START RUN / CONTINUE RUN / CLEAR LOADOUT live
+  // since the split, i.e. where the longest translated labels on either hub screen are.
+  ['Loadout', (w, h) => { const s = new Loadout(); s.render(defaultMetaState(), w, h); return s; }],
+  // With a saved run in the slot (ENGINE_VERSION 61) — the state that draws CONTINUE RUN.
+  // Its own case because a `savedRun` provider is the only way to reach that layout, and the
+  // default is "no save": without this the CONTINUE label would be constructed, measured once
+  // at its constructor default, and never re-measured under a locale, which is exactly the
+  // "counted but not covered" shape the count guard below is for.
+  ['Loadout (saved run)', (w, h) => {
+    const s = new Loadout();
     s.savedRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
     s.render(defaultMetaState(), w, h);
     return s;
@@ -273,17 +276,19 @@ describe('the sweep measured what it claims to', () => {
     // Every number below was cross-checked against `grep -c 'new Button(' <screen>.ts` when
     // it was written, which is what makes it a measurement rather than a snapshot of
     // whatever the walk happened to do. Two of them only agree because the walk reaches
-    // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 6
-    // (a composed widget), and StoreScreen is 4 plus its five row buttons (an array).
+    // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 7
+    // (a composed widget — FORGE joined it on 2026-09-21), and StoreScreen is 4 plus its
+    // five row buttons (an array).
     expect([...seen].map(([name, fields]) => `${name}: ${fields.length}`).sort()).toEqual([
       'AccountPrompt (merge): 3',
-      'Forge (saved run): 9',
-      'Forge: 9',
+      'Forge: 4',
+      'Loadout (saved run): 6',
+      'Loadout: 6',
       'LoginScreen: 5',
-      'MainMenu (portal): 9',
-      'MainMenu (saved run): 9',
-      'MainMenu (signed in): 9',
-      'MainMenu: 9',
+      'MainMenu (portal): 10',
+      'MainMenu (saved run): 10',
+      'MainMenu (signed in): 10',
+      'MainMenu: 10',
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
       'PartyScreen: 5',
