@@ -6,6 +6,11 @@ Volume 60. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 > *"你可以在 worktree 里给拾取物品加一个曲线飞行特效吗？大概 0.6 秒飞到玩家身上。就是其他游戏里普遍有的那种拾取效果。"*
 
+**Followed up 2026-09-21 ([volume 78](78-2026-09-21-pickup-flight-accel.md)): the curve gained an
+acceleration and the flight is now 420 ms.** Every number below was true when it was written and
+is left alone; what changed is that `t` no longer goes into the bézier raw, which is a decision
+this volume argues for at length and that volume overturns with its own measurements.
+
 A drop was collected by ceasing to exist. `PickupSystem` takes it on overlap and compacts it out
 of `state.pickups` the same tick, so the next `Scene.reconcile` destroyed the view and that was
 the whole event on screen — plus an `fx.flash()` drawn **at the loot**, which is the one place
