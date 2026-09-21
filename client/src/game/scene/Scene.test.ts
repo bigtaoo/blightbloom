@@ -1294,8 +1294,17 @@ describe('Scene.reconcile — a collected drop flies to whoever took it', () => 
     const drop = inFlight(scene, layers)[0]!;
     const mate = scene.actorAt(b.id)!;
     const me = scene.actorAt(a.id)!;
-    expect(Math.hypot(drop.x - mate.x, drop.y - mate.y)).toBeLessThan(20);
-    expect(Math.hypot(drop.x - me.x, drop.y - me.y)).toBeGreaterThan(100);
+    // The absolute bound is loose on purpose, and the RATIO is what this test is actually
+    // about. Most of the 20-odd px is the collector's own chest height (the arc ends on the
+    // BODY, which the "ARRIVES on the collector's body" case above pins exactly) plus the tail
+    // of the arc, and that tail moved when the flight gained its acceleration — a drop that now
+    // crosses the last stretch at ~790 px/s is a few px further out at t = 0.99 than one that
+    // used to crawl in. Neither number can be confused with 400 px of "flew to the wrong seat".
+    const toMate = Math.hypot(drop.x - mate.x, drop.y - mate.y);
+    const toMe = Math.hypot(drop.x - me.x, drop.y - me.y);
+    expect(toMate).toBeLessThan(30);
+    expect(toMe).toBeGreaterThan(100);
+    expect(toMate).toBeLessThan(toMe / 4);
   });
 
   it('bows two simultaneous drops to OPPOSITE sides — a chest payout is not one stack of arcs', () => {

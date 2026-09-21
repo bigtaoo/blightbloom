@@ -16,10 +16,12 @@
 import type { Container } from 'pixi.js';
 import type { Entity } from './Entity';
 
-/** How long a drop takes to reach the collector. 600 ms is slow enough that the curve reads as
- *  a path rather than a jump cut, and short enough that a chest paying six items at once has
- *  cleared the screen before the player has walked out of the room. */
-export const FLIGHT_MS = 600;
+/** How long a drop takes to reach the collector. Was 600 ms while the flight ran at one speed
+ *  the whole way: at that pace 600 ms was the shortest that still read as a *path* rather than
+ *  a jump cut. `ACCEL` bought the budget back — three quarters of the distance is now covered
+ *  in the last third of the flight — so the same path reads as a path in 420 ms, and a chest
+ *  paying six items at once clears the screen that much sooner. */
+export const FLIGHT_MS = 420;
 
 /** How far the collector may move between two render frames before the flight gives up on them
  *  (world px). Re-asking the target every frame is what makes a flight follow a running player;
@@ -32,7 +34,7 @@ export const FLIGHT_MS = 600;
  *
  *  120 px cannot be reached honestly: `PLAYER_BASE.speedPerTick` is 6.4 px/tick (192 px/s), so a
  *  legitimate 120 px step would need a 625 ms render frame — and during a stall that long nobody
- *  is watching a 600 ms arc anyway. A flight that trips this is FINISHED, not re-anchored: the
+ *  is watching a 420 ms arc anyway. A flight that trips this is FINISHED, not re-anchored: the
  *  item is already collected, and the player is somewhere else with no arc that could honestly
  *  connect the two points. */
 const TARGET_TELEPORT_PX = 120;
@@ -70,6 +72,41 @@ export interface FlightPose extends FlightPoint {
   rotation: number;
 }
 
+/** **The acceleration.** `u = t ** ACCEL` is how far along the PATH the drop is at fraction `t`
+ *  of the flight's clock, and everything spatial below is fed `u`, never `t` — one speed curve,
+ *  not two fighting over the same 420 ms.
+ *
+ *  The exponent is exactly 2 because that is not a taste knob: `s = ½at²` is constant
+ *  acceleration, so the drop leaves the floor at rest and gains speed at a steady rate the whole
+ *  way in. That IS "the closer to the body, the faster", stated once, in the one place a reader
+ *  can check it against physics rather than against how it looked on the day.
+ *
+ *  What it buys is legibility at both ends of the same animation, which a single speed could
+ *  not give: the first half of the clock covers only the first quarter of the path, so the drop
+ *  visibly hangs where it lay and the eye has time to find it (this is what the pop below is
+ *  FOR, and at one speed the pop was over in ~60 ms); then it snaps into the body instead of
+ *  coasting the last few px. Measured on the 120 px case, screen speed runs ~100 px/s through
+ *  the pop and ~790 px/s on arrival. */
+const ACCEL = 2;
+
+/** How far SHORT of the collector the curve's second control point sits, along the travel
+ *  direction — the other half of the acceleration, and the half that is easy to leave out.
+ *
+ *  A cubic's speed at the end is `3·(p3 − p2)`, so parking p2 ON the collector — which is what
+ *  this curve did while `t` went in raw — pins the ARRIVAL SPEED AT ZERO for any flight the bow
+ *  does not shape sideways, and an east–west flight bows by exactly 0 (`BULGE_R`). The two
+ *  halves then cancel in the worst possible place: the time warp says "fastest at the end", the
+ *  geometry says "stopped at the end", and what is drawn is a fast middle followed by a crawl
+ *  into the body — the one stretch this change exists to speed up. Pulling p2 back gives the
+ *  curve a real tangent to arrive on.
+ *
+ *  Same fraction/floor/cap shape as every other offset here and for the same reason
+ *  (`POP_BACK_R`): the flight the player sees most is ~28 px long, and a purely proportional
+ *  lead would be 14 px of nothing. */
+const LEAD_R = 0.5;
+const LEAD_MIN = 14;
+const LEAD_MAX = 55;
+
 /** How far the drop first pops AWAY from the collector, as a fraction of the distance to them,
  *  floored and capped in px. The pop is what makes the arc read as an object being thrown
  *  rather than slid: it puts the eye on the item before the item moves, and it is the reason
@@ -79,11 +116,15 @@ export interface FlightPose extends FlightPoint {
  *  The FLOOR is the load-bearing half, and it is there because of a number outside this file:
  *  everything but a weapon is auto-collected on overlap (`SIM.pickupRadius`, 15 px of padding
  *  past the player's own ~16 px body), so the typical flight is barely 30 px long. Sized purely
- *  as a fraction of that, the arc collapses to a few px and 600 ms of it reads as a drop
- *  sliding in slow motion. Floored, the same 600 ms reads as the item swinging up and out of
+ *  as a fraction of that, the arc collapses to a few px and 420 ms of it reads as a drop
+ *  sliding in slow motion. Floored, the same 420 ms reads as the item swinging up and out of
  *  the floor and curling into the body — the motion carries the duration instead of the
  *  distance having to. A weapon click from across the reveal ring (80 px) is the case the
- *  FRACTION is for. */
+ *  FRACTION is for.
+ *
+ *  `ACCEL` leans on this floor harder than the flat curve did, which is why it is worth saying
+ *  twice: the pop is now most of what the first HALF of the clock has to show, so on the 28 px
+ *  flight a fraction-only pop would be ~7 px of travel spread over 210 ms — a stall, not a hang. */
 const POP_BACK_R = 0.25;
 const POP_BACK_MIN = 8;
 const POP_BACK_MAX = 18;
@@ -118,10 +159,15 @@ const SWING_IN = 0.35;
 const HOP_BASE = 14;
 const HOP_R = 0.08;
 const HOP_MAX = 28;
-/** Where the hop peaks, as an exponent on the time parameter: `t ** HOP_SKEW` reaches 0.5 at
- *  t = 0.5 ** (1 / HOP_SKEW), i.e. ~0.31 here. Early on purpose — the drop should be at the
+/** Where the hop peaks, as an exponent on the PATH parameter: `u ** HOP_SKEW` reaches 0.5 at
+ *  u = 0.5 ** (1 / HOP_SKEW), i.e. ~0.38 here. Early on purpose — the drop should be at the
  *  top of its arc while it is still near where it lay, and spend the rest of the flight
- *  diving in. A symmetric hop (skew 1) reads as a lob, which is a different, lazier motion. */
+ *  diving in. A symmetric hop (skew 1) reads as a lob, which is a different, lazier motion.
+ *
+ *  It is deliberately keyed to `u` and not to the clock, which under `ACCEL` are no longer the
+ *  same statement: 38% of the PATH is 61% of the TIME. Keyed to the clock instead, the drop
+ *  would already be falling out of its hop while it was still sitting over the floor it was
+ *  taken from, and would come in flat. The apex belongs to a place on the arc. */
 const HOP_SKEW = 0.7;
 
 /** Scale: a small swell on the pop (the item "notices" it has been taken), then down to
@@ -131,8 +177,16 @@ const POP_SCALE = 0.25;
 const SHRINK = 0.5;
 /** The last stretch of the flight fades out, so the drop dissolves into the collector instead
  *  of popping out of existence one frame short of them. Deliberately late: fading from the
- *  start would hide the curve this whole file exists to draw. */
-const FADE_FROM = 0.78;
+ *  start would hide the curve this whole file exists to draw.
+ *
+ *  Measured in PATH, like everything else under `ACCEL`, because that is the reading the fade
+ *  is actually about — "nearly there", not "nearly out of time". Read off the clock it would
+ *  start while the drop was still 45% of the way out, which is a drop going transparent in open
+ *  air. The threshold came down from 0.78 to 0.62 to pay for the same choice from the other
+ *  side: the tail of the path is now the FAST part, so 0.78 of the path is only the last 49 ms
+ *  — three frames, a blink rather than a dissolve. 0.62 is ~89 ms, which is what 0.78 of the
+ *  old 600 ms flight was worth. */
+const FADE_FROM = 0.62;
 /** Peak tilt (radians) at mid-flight, returning to 0 on arrival — a wobble, not a tumble. A
  *  full spin would turn a weapon drop's element badge and rarity pips (`Pickup`'s two design/13
  *  channels) upside down, which is the one thing on a drop that must stay readable. */
@@ -143,9 +197,15 @@ const SPIN = 0.5;
  * pure function of the two endpoints.
  *
  * Ground path: a cubic Bézier whose first control point sits BEHIND the drop (away from the
- * collector) and bowed to one side, and whose second sits beside the collector. `t` is fed in
- * raw, with no easing: the control-point spacing is the speed curve, and adding an ease on top
- * of it is how a "pop then swoop" turns into two fights over the same 600 ms.
+ * collector) and bowed to one side, and whose second sits `LEAD` short of the collector along
+ * the way in.
+ *
+ * `t` is the flight's CLOCK and is used for nothing but `u = t ** ACCEL`, the fraction of the
+ * PATH covered; `u` then drives every curve below. That split is the whole of the "faster the
+ * closer it gets" behaviour, and it is a split precisely so there is only ever ONE speed curve:
+ * the control-point spacing used to be the speed curve, and layering an ease on top of it is
+ * how a "pop then swoop" turns into two fights over the same 420 ms. `LEAD` is what settled
+ * that fight rather than splitting it — see its own note.
  *
  * `sign` (+1/-1) flips which side the bow is on. `Scene` derives it from the drop's engine id,
  * for the reason `Pickup`'s own `GOLDEN_ANGLE` phase spread exists: a chest paying six items at
@@ -156,6 +216,9 @@ const SPIN = 0.5;
  * which is the right answer, not a special case (there is no arc to draw across zero px).
  */
 export function flightPose(t: number, from: FlightPoint, to: FlightPoint, sign: number): FlightPose {
+  // The only place the clock is read. Past this line there is no `t` but the rotation wobble,
+  // which is not a place on the path (see below) — everything else is a function of `u`.
+  const u = t ** ACCEL;
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const dist = Math.hypot(dx, dy);
@@ -167,28 +230,35 @@ export function flightPose(t: number, from: FlightPoint, to: FlightPoint, sign: 
   // to pop back along or bow around, so the floor would only add jitter in an arbitrary one.
   const back = dist > 0 ? Math.min(POP_BACK_MAX, Math.max(POP_BACK_MIN, dist * POP_BACK_R)) : 0;
   const bulge = (dist > 0 ? Math.min(BULGE_MAX, Math.max(BULGE_MIN, dist * BULGE_R)) : 0) * sign;
+  const lead = dist > 0 ? Math.min(LEAD_MAX, Math.max(LEAD_MIN, dist * LEAD_R)) : 0;
   // The ground perpendicular is (-uy, ux); only its X component is used — see `BULGE_R` for
   // why bowing in ground Y would fight the hop instead of adding to it.
   const bowX = -uy * bulge;
   const p1x = from.x - ux * back + bowX;
   const p1y = from.y - uy * back;
-  const p2x = to.x + bowX * SWING_IN;
-  const p2y = to.y;
-  const s = 1 - t;
+  // p2 sits `lead` short of the collector, not on them: on them, the curve arrives at zero
+  // speed and cancels the acceleration exactly where it matters (see `LEAD_R`).
+  const p2x = to.x - ux * lead + bowX * SWING_IN;
+  const p2y = to.y - uy * lead;
+  const s = 1 - u;
   const b0 = s * s * s;
-  const b1 = 3 * s * s * t;
-  const b2 = 3 * s * t * t;
-  const b3 = t * t * t;
-  const hop = Math.min(HOP_MAX, HOP_BASE + dist * HOP_R) * Math.sin(Math.PI * t ** HOP_SKEW);
+  const b1 = 3 * s * s * u;
+  const b2 = 3 * s * u * u;
+  const b3 = u * u * u;
+  const hop = Math.min(HOP_MAX, HOP_BASE + dist * HOP_R) * Math.sin(Math.PI * u ** HOP_SKEW);
   return {
     x: b0 * from.x + b1 * p1x + b2 * p2x + b3 * to.x,
     y: b0 * from.y + b1 * p1y + b2 * p2y + b3 * to.y,
-    // Height interpolates on t² rather than t: the drop hangs near its hover height through
+    // Height interpolates on u² rather than u: the drop hangs near its hover height through
     // the pop and only climbs into the body at the end, so the hop above stays the shape of
     // the arc instead of being added to a ramp already halfway up.
-    z: from.z + (to.z - from.z) * t * t + hop,
-    scale: 1 + POP_SCALE * Math.sin(Math.PI * t ** HOP_SKEW) - SHRINK * t * t,
-    alpha: t < FADE_FROM ? 1 : Math.max(0, (1 - t) / (1 - FADE_FROM)),
+    z: from.z + (to.z - from.z) * u * u + hop,
+    scale: 1 + POP_SCALE * Math.sin(Math.PI * u ** HOP_SKEW) - SHRINK * u * u,
+    alpha: u < FADE_FROM ? 1 : Math.max(0, (1 - u) / (1 - FADE_FROM)),
+    // The one curve still read off the CLOCK. A wobble is not a place on the path — its whole
+    // job is to be 0 at both ends and lean over in between — and on `u` it would lean out
+    // slowly and then whip back upright over the last third, which is the part of the flight
+    // that should be reading as a clean dive. Even in time, it just leans and returns.
     rotation: SPIN * Math.sin(Math.PI * t) * sign,
   };
 }
