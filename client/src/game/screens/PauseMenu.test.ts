@@ -6,6 +6,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { PauseMenu } from './PauseMenu';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 interface Btn {
   label: { text: string };
@@ -90,9 +91,9 @@ describe('PauseMenu — i18n (design/17-i18n.md)', () => {
     expect(p.quitBtn.label.text).toBe('QUIT TO FORGE');
   });
 
-  it('retexts its static labels from the active locale on show()', () => {
+  it('retexts its static labels from the active locale on show()', async () => {
     const m = new PauseMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     const p = privateOf(m);
     expect(p.title.text).toBe('已暂停');
@@ -101,9 +102,9 @@ describe('PauseMenu — i18n (design/17-i18n.md)', () => {
     expect(p.quitBtn.label.text).toBe('返回锻造场');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const m = new PauseMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     setLocale('en');
     m.show(800, 600);
@@ -178,9 +179,9 @@ describe('PauseMenu — SAVE & QUIT', () => {
     expect(privateOf(m).quitBtn.view.position.y).toBe(privateOf(m).saveQuitBtn.view.position.y);
   });
 
-  it('retexts from the active locale like every other label here', () => {
+  it('retexts from the active locale like every other label here', async () => {
     const m = new PauseMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600, undefined, true);
     expect(privateOf(m).saveQuitBtn.label.text).toBe('保存并退出');
     setLocale('en');

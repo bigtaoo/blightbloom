@@ -71,6 +71,26 @@ export function createWebSettingsStore(key: string = DEFAULT_KEY, deps: Settings
   };
 }
 
+/**
+ * The locale a returning player last chose, read straight off the persisted settings.
+ *
+ * Exists for one caller shape: an entry point has to have the active locale's table in memory
+ * BEFORE `new Game(...)`, because screens read `t()` while being constructed — and `Game` is
+ * also what loads the settings, so the entry cannot ask it. Reading the same store with the
+ * same default key is what keeps the two answers identical; `SettingsBinding` constructs
+ * `createWebSettingsStore()` with those same defaults.
+ *
+ * Fails soft in both directions, like the store it reads: no save, an unreadable one or no
+ * `localStorage` at all yields the default locale, which is the one that is bundled anyway.
+ */
+export function persistedLocale(store: SettingsStore = createWebSettingsStore()): Locale {
+  try {
+    return store.load().locale;
+  } catch {
+    return defaultSettingsState().locale;
+  }
+}
+
 function migrate(parsed: unknown): SettingsState {
   const d = defaultSettingsState();
   if (!parsed || typeof parsed !== 'object') return d;

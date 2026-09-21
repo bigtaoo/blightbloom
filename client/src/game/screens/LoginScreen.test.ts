@@ -8,6 +8,7 @@ import { LoginScreen, type AuthApi } from './LoginScreen';
 import { resetSessionCacheForTests, getSession } from '../../net/session';
 import type { AuthResult } from '../../net/auth';
 import { setLocale, resetLocaleForTests, t } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 function fakeApi(overrides: Partial<AuthApi> = {}): AuthApi {
   return {
@@ -288,9 +289,9 @@ describe('LoginScreen — hide()', () => {
 });
 
 describe('LoginScreen — i18n (design/17-i18n.md)', () => {
-  it('retexts on show() under zh, guest and logged-in copy alike', () => {
+  it('retexts on show() under zh, guest and logged-in copy alike', async () => {
     const s = makeScreen(fakeApi());
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600);
     const p = privateOf(s);
     expect(p.title.text).toBe('账户');
@@ -301,15 +302,15 @@ describe('LoginScreen — i18n (design/17-i18n.md)', () => {
 
   it('a failed login under zh falls back to the translated error when the server sends none', async () => {
     const api = fakeApi({ login: vi.fn().mockRejectedValue(new Error()) });
-    setLocale('zh');
+    await useLocale('zh');
     const s = makeScreen(api);
     await privateOf(s).doLogin('alice', 'wrong');
     expect(privateOf(s).statusText.text).toBe('登录失败，请重试。');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const s = makeScreen(fakeApi());
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600);
     setLocale('en');
     s.show(800, 600);
@@ -347,10 +348,10 @@ describe('LoginScreen — the hosted policy link (design/20)', () => {
     expect(open.mock.calls[0]![1]).toBe('_blank');
   });
 
-  it('translates with the rest of the screen', () => {
+  it('translates with the rest of the screen', async () => {
     const s = makeScreen(fakeApi());
     const english = privateOf(s).privacyLink.text;
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600);
     expect(privateOf(s).privacyLink.text).not.toBe(english);
     expect(privateOf(s).privacyLink.text.length).toBeGreaterThan(0);

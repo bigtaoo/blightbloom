@@ -21,8 +21,9 @@ import { CanvasTextMetrics, DOMAdapter, TextStyle, Text } from 'pixi.js';
 import { Button } from '../game/ui/widgets';
 import { Settings } from '../game/screens/Settings';
 import { defaultSettingsState } from '../settings';
-import { LOCALES, setLocale, resetLocaleForTests } from '../i18n';
+import { LOCALES, resetLocaleForTests } from '../i18n';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './textMetrics';
+import { useLocale } from '../i18n/loadLocale';
 
 // Per-character advance at 15px, as Chrome reported for `bold 15px monospace`:
 // 'AAAAA' → 41.2px / 'ААААА' → 41.2px on a DOM canvas, 45px / 85px on an OffscreenCanvas.
@@ -494,7 +495,7 @@ describe('Button label vs. box — the Russian settings-screen regression', () =
     expect(left).toBeCloseTo(button.width - right, 3);
   });
 
-  it('every locale’s real settings labels fit inside their boxes under truthful metrics', () => {
+  it('every locale’s real settings labels fit inside their boxes under truthful metrics', async () => {
     // Settings.test.ts already covers each BOX's width and where it sits; what it cannot
     // check without a canvas is the LABEL inside it. Sizing comes from
     // `estimateMonoWidth`'s 0.6em assumption while the font's real advance is 0.55em, so
@@ -504,7 +505,7 @@ describe('Button label vs. box — the Russian settings-screen regression', () =
     const screen = new Settings();
     const buttons = screen as unknown as Record<string, Button>;
     for (const locale of LOCALES) {
-      setLocale(locale);
+      await useLocale(locale);
       screen.show(800, 600, { ...defaultSettingsState(), locale });
       for (const key of ['languageBtn', 'controlLayoutBtn', 'muteBtn', 'backBtn']) {
         const button = buttons[key]!;

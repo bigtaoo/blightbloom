@@ -22,6 +22,7 @@ import { packRunSave } from '../match/runSave';
 import { loadSavedRun, resetRunSaveCacheForTests, writeSavedRun } from '../match/runSaveStore';
 import { RunOutcome, type RunOutcomeHost } from './RunOutcome';
 import { SCORE } from '../score';
+import { useLocale } from '../../i18n/loadLocale';
 
 const MINI_MAP: ArenaMap = {
   id: 'mini',
@@ -339,8 +340,8 @@ describe('RunOutcome — the guest ladder notice', () => {
     expect(host.shown?.lines).not.toContain(NOTICE);
   });
 
-  it('is translated like every other results line, not pinned to English', () => {
-    setLocale('zh');
+  it('is translated like every other results line, not pinned to English', async () => {
+    await useLocale('zh');
     const lines = arenaLoss();
     expect(lines).not.toContain(NOTICE);
     expect(lines[lines.length - 1]).toBe('访客不计天梯。登录后开始记分。');
@@ -348,8 +349,8 @@ describe('RunOutcome — the guest ladder notice', () => {
 });
 
 describe('RunOutcome — i18n (design/17-i18n.md)', () => {
-  it('win (extract) under zh: translated title/lines, `won` stays a real boolean, not display text', () => {
-    setLocale('zh');
+  it('win (extract) under zh: translated title/lines, `won` stays a real boolean, not display text', async () => {
+    await useLocale('zh');
     const s = pveState();
     s.floorIndex = 2;
     s.bankedMaterials = { fire: 3, ice: 2 };
@@ -368,8 +369,8 @@ describe('RunOutcome — i18n (design/17-i18n.md)', () => {
     ]);
   });
 
-  it('lose (death) under zh: translated title/lines, `won` is false', () => {
-    setLocale('zh');
+  it('lose (death) under zh: translated title/lines, `won` is false', async () => {
+    await useLocale('zh');
     const s = pveState();
     s.floorIndex = 0;
     s.winner = 'enemies';
@@ -383,9 +384,9 @@ describe('RunOutcome — i18n (design/17-i18n.md)', () => {
     expect(host.shown?.lines).toContain('携带的 0 个材料已全部丢失');
   });
 
-  it('switching back to English produces the original English copy again', () => {
+  it('switching back to English produces the original English copy again', async () => {
     const s = pveState();
-    setLocale('zh');
+    await useLocale('zh');
     new RunOutcome(mockHost()).handle(s);
     setLocale('en');
     const host = mockHost();
@@ -478,9 +479,9 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
     expect(host.offer?.label).toBe('WATCH AD: MATERIALS x2');
   });
 
-  it('the offer label follows the active locale, like every other results-screen string', () => {
+  it('the offer label follows the active locale, like every other results-screen string', async () => {
     stubAd();
-    setLocale('zh');
+    await useLocale('zh');
     const host = mockHost();
     new RunOutcome(host).handle(extractedState());
 

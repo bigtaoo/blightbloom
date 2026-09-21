@@ -11,13 +11,6 @@
  * SettingsState threaded through it.
  */
 import { en } from './locales/en';
-import { zh } from './locales/zh';
-import { de } from './locales/de';
-import { fr } from './locales/fr';
-import { es } from './locales/es';
-import { pl } from './locales/pl';
-import { ru } from './locales/ru';
-import { it } from './locales/it';
 
 export type Locale = 'en' | 'zh' | 'de' | 'fr' | 'es' | 'pl' | 'ru' | 'it';
 export const LOCALES: readonly Locale[] = ['en', 'zh', 'de', 'fr', 'es', 'pl', 'ru', 'it'];
@@ -33,7 +26,32 @@ export type TranslationKey = DotPaths<typeof en>;
 /** The shape a translation locale must have: `en.ts`'s exact nested keys, string leaves. */
 export type Translations<T> = { [K in keyof T]: T[K] extends string ? string : Translations<T[K]> };
 
-const MESSAGES: Record<Locale, Translations<typeof en>> = { en, zh, de, fr, es, pl, ru, it };
+/**
+ * The locale tables that are actually in memory.
+ *
+ * `en` alone is static, and that is a size decision with a number behind it (2026-09-21):
+ * the eight tables together are 85 kB of the 912 kB entry chunk, and a build with the other
+ * seven removed came out 22 kB smaller after brotli — 9.4% off the one download that stands
+ * between a player and the menu, for seven tables no single visit can use. The rest arrive
+ * through `loadLocale.ts`, which is the only thing that calls `registerLocale`.
+ *
+ * `en` is not lazy for two reasons beyond being the one most visits want: it is the
+ * source-of-truth locale every other one is typed against (design/17), and it is the fallback
+ * `lookup` falls to — a fallback that could itself be missing is not one.
+ */
+const MESSAGES: Partial<Record<Locale, Translations<typeof en>>> = { en };
+
+/** Put a loaded table in memory. Called by `loadLocale.ts` and by nothing else — a caller
+ *  that wants a locale available asks `ensureLocale`, which owns the import. */
+export function registerLocale(locale: Locale, table: Translations<typeof en>): void {
+  MESSAGES[locale] = table;
+}
+
+/** Is `locale`'s table in memory? `t()` answers in English until it is, so anything that
+ *  cares (the entry points, and the test that pins this) asks first. */
+export function isLocaleLoaded(locale: Locale): boolean {
+  return MESSAGES[locale] !== undefined;
+}
 
 let currentLocale: Locale = DEFAULT_LOCALE;
 
@@ -41,7 +59,17 @@ export function getLocale(): Locale {
   return currentLocale;
 }
 
-/** Call once at boot (after `SettingsStore.load()`) and again on every language change. */
+/**
+ * Point `t()` at `locale`. Synchronous, and deliberately kept that way — it is read by every
+ * one of the ~1,500 `t()` call sites in this client and an async seam there would be an async
+ * seam everywhere.
+ *
+ * It does NOT load anything. A locale whose table has not been registered renders English
+ * (see `lookup`), which is a silent fallback and therefore the one failure mode worth naming:
+ * **callers that CHANGE language use `useLocale` from `loadLocale.ts`**, which loads and then
+ * calls this. This stays exported for the paths that only mirror an already-loaded choice —
+ * `settingsBinding.load()` at boot, after an entry point has already ensured it.
+ */
 export function setLocale(locale: Locale): void {
   currentLocale = locale;
 }
@@ -50,6 +78,15 @@ export function setLocale(locale: Locale): void {
  * into the next one (same convention as `net/session.ts`'s `resetSessionCacheForTests`). */
 export function resetLocaleForTests(): void {
   currentLocale = DEFAULT_LOCALE;
+}
+
+/** Test-only: forget every lazily-registered table, leaving the statically bundled `en`.
+ *  Without it a locale loaded in one test file stays in memory for the whole run, and the
+ *  case that matters most — what `t()` does BEFORE a table lands — can never be reached
+ *  twice. Reached through `loadLocale.ts`'s `resetLoadedLocalesForTests`, which owns the
+ *  other half of the same state. */
+export function clearLoadedLocalesForTests(): void {
+  for (const locale of LOCALES) if (locale !== DEFAULT_LOCALE) delete MESSAGES[locale];
 }
 
 /**
@@ -70,7 +107,10 @@ export function detectBrowserLocale(languages: readonly string[]): Locale {
 }
 
 function lookup(key: TranslationKey, locale: Locale): string {
-  let node: unknown = MESSAGES[locale];
+  // `?? MESSAGES.en` is the not-loaded-yet arm (see MESSAGES above). English rather than the
+  // raw key, because a lobby drawn one tick before its table lands should read as the game in
+  // the wrong language, not as a screen full of `mainMenu.play`.
+  let node: unknown = MESSAGES[locale] ?? MESSAGES.en;
   for (const part of key.split('.')) {
     // A `t()` call can never hit this branch — `TranslationKey` guarantees every
     // segment resolves to a nested object until the final string leaf. `tName()`

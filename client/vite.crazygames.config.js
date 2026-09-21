@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { engineAlias } from '../build/ddAlias.mjs';
+import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
 
 // The CrazyGames build. `npm run build:crazygames` → `client/dist-crazygames/`, which is the
 // directory to zip and upload. `npm run dev:crazygames` runs the same shape on the dev server.
@@ -128,7 +129,9 @@ export const portalHtml = () => {
 export default defineConfig({
   base: './',
   resolve: { alias: engineAlias },
-  plugins: [portalHtml()],
+  // The same renderer-chunk preload as the web build. It reads Vite's `base`, so the relative
+  // paths this target requires come out right without a second list.
+  plugins: [portalHtml(), runtimeChunkPreload()],
   // No `versionManifestPlugin` — the auto-reload it feeds is deliberately absent from this
   // target (see `main.crazygames.ts` note 4), so emitting the manifest would ship a file
   // nothing reads.

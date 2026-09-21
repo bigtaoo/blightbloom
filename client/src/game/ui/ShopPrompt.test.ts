@@ -12,7 +12,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { Shop, ShopOffer } from '@dd/engine';
 import type { Fp } from '@dd/engine';
 import { ShopPrompt } from './ShopPrompt';
-import { setLocale, resetLocaleForTests, t } from '../../i18n';
+import { resetLocaleForTests, t } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -144,12 +145,12 @@ describe('ShopPrompt — a tap is the purchase', () => {
 });
 
 describe('ShopPrompt — locale', () => {
-  it('rebuilds on a language change even though the shop did not move', () => {
+  it('rebuilds on a language change even though the shop did not move', async () => {
     const p = new ShopPrompt();
     const s = shop([offer()]);
     p.update(s, 100);
     const before = privateOf(p).rows[0]!.label.text;
-    setLocale('zh');
+    await useLocale('zh');
     p.update(s, 100);
     expect(privateOf(p).rows[0]!.label.text).not.toBe(before);
   });

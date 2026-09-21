@@ -6,8 +6,9 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Matchmaking, type MatchmakingSignal } from './Matchmaking';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetLocaleForTests } from '../../i18n';
 import type { CoopSession } from '../../net/CoopSession';
+import { useLocale } from '../../i18n/loadLocale';
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -162,10 +163,10 @@ describe('Matchmaking — i18n (design/17-i18n.md)', () => {
     expect(privateOf(m).title.text).toBe('Finding a match…');
   });
 
-  it('retexts on a fresh show() after a locale change', () => {
+  it('retexts on a fresh show() after a locale change', async () => {
     const connect = vi.fn().mockReturnValue(deferred<CoopSession>().promise);
     const m = new Matchmaking();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600, connect);
     expect(privateOf(m).title.text).toBe('正在匹配对局…');
   });

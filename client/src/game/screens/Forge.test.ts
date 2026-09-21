@@ -20,6 +20,7 @@ import { installFakeTextCanvas } from './fakeTextCanvas';
 import { defaultMetaState, acquireBlueprint, purchasableBlueprints } from '../../meta';
 import type { MetaState } from '../../meta';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 // `Button.label` is private on the real class — same escape hatch every other screen
 // test here uses (MainMenu.test.ts/PauseMenu.test.ts/Settings.test.ts) to read it anyway.
@@ -261,9 +262,9 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
     expect(p.compareCard.rightName.text).toBe('Candidate: Repeater');
   });
 
-  it('translates all three under zh', () => {
+  it('translates all three under zh', async () => {
     const f = new Forge();
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 900);
     const p = privateOf(f);
     expect(p.rowCards[0]!.nameLabel).toBe('连发枪');
@@ -271,14 +272,14 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
     expect(p.compareCard.rightName.text).toBe('候选：连发枪');
   });
 
-  it('uses the translated compact element codes for the material bank line and blueprint cost, not the old English-derived slice()', () => {
+  it('uses the translated compact element codes for the material bank line and blueprint cost, not the old English-derived slice()', async () => {
     const f = new Forge();
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
     expect(p.infoText.text).toMatch(/PHY \d+.*FIR \d+.*ICE \d+.*LIG \d+.*POI \d+/s);
     expect(p.rowCards[0]!.costLabel).toBe('PHY×3'); // repeater: 3 physical
 
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     expect(privateOf(f).infoText.text).toMatch(/物 \d+.*火 \d+.*冰 \d+.*雷 \d+.*毒 \d+/s);
     expect(privateOf(f).rowCards[0]!.costLabel).toBe('物×3');
@@ -286,9 +287,9 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
 });
 
 describe('Forge — i18n (design/17-i18n.md)', () => {
-  it('render() retexts static labels and interpolates the info block under zh', () => {
+  it('render() retexts static labels and interpolates the info block under zh', async () => {
     const f = new Forge();
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
     expect(p.title.text).toBe('锻造场');
@@ -298,17 +299,17 @@ describe('Forge — i18n (design/17-i18n.md)', () => {
     expect(p.infoText.text).toContain('装备');
   });
 
-  it('a blueprint card still shows the status text translated', () => {
+  it('a blueprint card still shows the status text translated', async () => {
     const f = new Forge();
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     const text = privateOf(f).rowCards[0]!.statusLabel;
     expect(text).toMatch(/材料不足|可打造|未解锁/);
   });
 
-  it('translates the blueprint unlock-source word instead of leaking the raw BlueprintSource enum value', () => {
+  it('translates the blueprint unlock-source word instead of leaking the raw BlueprintSource enum value', async () => {
     const f = new Forge();
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
     // order[2] = cryobolt (source: 'purchase'), order[6] = emberblade (source:
@@ -329,9 +330,9 @@ describe('Forge — i18n (design/17-i18n.md)', () => {
     expect(p.rowCards[6]!.statusLabel).toBe('locked (event)');
   });
 
-  it('switching back to English on a later render() fully reverts', () => {
+  it('switching back to English on a later render() fully reverts', async () => {
     const f = new Forge();
-    setLocale('zh');
+    await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     setLocale('en');
     f.render(defaultMetaState(), 1280, 720);

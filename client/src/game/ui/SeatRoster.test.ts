@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { SeatRoster } from './SeatRoster';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -75,11 +76,11 @@ describe('SeatRoster.set', () => {
     expect(r.estimatedWidth()).toBe(0);
   });
 
-  it('localises the YOU marker', () => {
+  it('localises the YOU marker', async () => {
     const r = new SeatRoster();
     r.set(['Ada'], 0);
     const english = r.text;
-    setLocale('zh');
+    await useLocale('zh');
     r.set(['Ada'], 0);
     expect(r.text).not.toBe(english);
     expect(r.text).toContain('Ada');

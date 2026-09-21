@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { t, getLocale, setLocale, resetLocaleForTests, LOCALES, detectBrowserLocale } from './index';
+import { t, getLocale, resetLocaleForTests, LOCALES, detectBrowserLocale } from './index';
 import { en } from './locales/en';
 import { zh } from './locales/zh';
+import { useLocale } from '../i18n/loadLocale';
 
 beforeEach(() => resetLocaleForTests());
 
@@ -11,8 +12,8 @@ describe('t()', () => {
     expect(t('mainMenu.title')).toBe('BLIGHTBLOOM');
   });
 
-  it('switches locale', () => {
-    setLocale('zh');
+  it('switches locale', async () => {
+    await useLocale('zh');
     expect(t('mainMenu.play')).toBe(zh.mainMenu.play);
     expect(t('mainMenu.play')).not.toBe(en.mainMenu.play);
   });
@@ -25,8 +26,8 @@ describe('t()', () => {
     expect(t('results.scoreLine', {})).toBe('Score {score}');
   });
 
-  it('resetLocaleForTests restores the default', () => {
-    setLocale('zh');
+  it('resetLocaleForTests restores the default', async () => {
+    await useLocale('zh');
     resetLocaleForTests();
     expect(getLocale()).toBe('en');
   });
@@ -43,10 +44,10 @@ describe('the shipping title', () => {
     expect(zh.mainMenu.title).toBe('绽晶');
   });
 
-  it('stays Latin-script BLIGHTBLOOM in every other locale', () => {
+  it('stays Latin-script BLIGHTBLOOM in every other locale', async () => {
     for (const locale of LOCALES) {
       if (locale === 'zh') continue;
-      setLocale(locale);
+      await useLocale(locale);
       expect(t('mainMenu.title'), `${locale} translated the title`).toBe('BLIGHTBLOOM');
     }
   });
@@ -76,7 +77,7 @@ describe('detectBrowserLocale', () => {
 });
 
 describe('locale parity', () => {
-  it('every declared locale actually resolves every key (no silent key-miss fallback)', () => {
+  it('every declared locale actually resolves every key (no silent key-miss fallback)', async () => {
     function leafPaths(node: unknown, prefix: string): string[] {
       if (typeof node === 'string') return [prefix];
       return Object.entries(node as Record<string, unknown>).flatMap(([k, v]) =>
@@ -85,7 +86,7 @@ describe('locale parity', () => {
     }
     const keys = leafPaths(en, '');
     for (const locale of LOCALES) {
-      setLocale(locale);
+      await useLocale(locale);
       for (const key of keys) {
         expect(t(key as never)).not.toBe(key); // lookup() falls back to the raw key on a miss
       }

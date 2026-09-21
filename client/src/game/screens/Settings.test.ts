@@ -8,9 +8,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Settings } from './Settings';
 import { defaultSettingsState, type SettingsState } from '../../settings';
-import { getLocale, setLocale, resetLocaleForTests, LOCALES } from '../../i18n';
+import { getLocale, resetLocaleForTests, LOCALES, type Locale } from '../../i18n';
 import { estimateMonoWidth } from '../ui/textWidth';
 import { resetActiveQuality, setActiveQuality } from '../../render/quality';
+import { useLocale } from '../../i18n/loadLocale';
 
 type ButtonInternals = {
   label: { text: string };
@@ -35,6 +36,20 @@ function privateOf(s: Settings) {
     frameRateBtn: ButtonInternals;
     backBtn: ButtonInternals;
   };
+}
+
+/**
+ * Tap the language button and wait for the switch to actually land.
+ *
+ * The tap has been asynchronous since 2026-09-21: a locale's table is its own chunk
+ * (`i18n/loadLocale.ts`), and the button loads it BEFORE switching so the screen never
+ * redraws itself in English on the way. `vi.waitFor` rather than a fixed number of microtask
+ * flushes, because how many ticks a dynamic import takes is not something a test should be
+ * asserting by accident.
+ */
+async function tapLanguage(s: Settings, expected: Locale): Promise<void> {
+  privateOf(s).languageBtn.onTap?.();
+  await vi.waitFor(() => expect(getLocale()).toBe(expected));
 }
 
 afterEach(() => resetLocaleForTests());
@@ -80,33 +95,38 @@ describe('Settings — language toggle (design/17-i18n.md)', () => {
     expect(privateOf(s).languageBtn.label.text).toBe('LANGUAGE: English');
   });
 
-  it('tapping the toggle flips the live locale immediately and reports it via onChange', () => {
+  it('tapping the toggle switches the live locale and reports it via onChange', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const onChange = vi.fn();
     s.onChange = onChange;
-    privateOf(s).languageBtn.onTap?.();
-    expect(getLocale()).toBe('zh'); // setLocale() happens synchronously inside onTap
+    await tapLanguage(s, 'zh');
+    // BOTH halves, and the order between them is the point: the table is loaded and the live
+    // mirror moved before `onChange` fires, so whatever re-renders off that report is already
+    // reading the new language rather than one frame of English.
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ locale: 'zh' }));
   });
 
-  it('the toggle relabels itself and every other static label in the same tap', () => {
+  it('the toggle relabels itself and every other static label in the same tap', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
-    privateOf(s).languageBtn.onTap?.();
+    await tapLanguage(s, 'zh');
     const p = privateOf(s);
     expect(p.languageBtn.label.text).toBe('语言：中文');
     expect(p.title.text).toBe('设置');
     expect(p.backBtn.label.text).toBe('返回');
   });
 
-  it('cycles through every locale in declared order and wraps back to English', () => {
+  it('cycles through every locale in declared order and wraps back to English', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const p = privateOf(s);
     const seen: string[] = [getLocale()];
+    // Every locale in turn, which also means every one of the seven lazily-imported tables is
+    // really fetched and registered here — the closest this suite gets to proving the split
+    // did not simply drop seven languages on the floor.
     for (let i = 0; i < LOCALES.length; i++) {
-      p.languageBtn.onTap?.();
+      await tapLanguage(s, LOCALES[(i + 1) % LOCALES.length]!);
       seen.push(getLocale());
     }
     // One full cycle (LOCALES.length taps) visits every locale exactly once, in
@@ -115,10 +135,10 @@ describe('Settings — language toggle (design/17-i18n.md)', () => {
     expect(p.languageBtn.label.text).toBe('LANGUAGE: English');
   });
 
-  it('a later show() re-applies the active locale, e.g. after re-entering from the pause menu', () => {
+  it('a later show() re-applies the active locale, e.g. after re-entering from the pause menu', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
-    setLocale('zh');
+    await useLocale('zh');
     const zhState: SettingsState = { ...defaultSettingsState(), locale: 'zh' };
     s.show(800, 600, zhState);
     expect(privateOf(s).title.text).toBe('设置');
@@ -162,8 +182,8 @@ describe('Settings — control-layout toggle (design/10 open question, left-hand
     );
   });
 
-  it('translates under zh', () => {
-    setLocale('zh');
+  it('translates under zh', async () => {
+    await useLocale('zh');
     const s = new Settings();
     s.show(800, 600, { ...defaultSettingsState(), locale: 'zh' });
     expect(privateOf(s).controlLayoutBtn.label.text).toBe('操作布局：标准');
@@ -188,20 +208,20 @@ describe('Settings — button width/centering across locales (autoWidth, 2026-08
     return Math.max(minW, estimateMonoWidth(text, fontSize) + PAD);
   }
 
-  it('tracks the formula-computed width for the current label at every locale', () => {
+  it('tracks the formula-computed width for the current label at every locale', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const p = privateOf(s);
     expect(p.languageBtn.width).toBeCloseTo(expectedWidth('LANGUAGE: English', 160), 6);
 
-    setLocale('ru');
+    await useLocale('ru');
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     expect(p.languageBtn.label.text).toBe('ЯЗЫК: Русский');
     expect(p.languageBtn.width).toBeCloseTo(expectedWidth('ЯЗЫК: Русский', 160), 6);
   });
 
-  it('grows the control-layout button to fit a longer translated label instead of clipping it', () => {
-    setLocale('ru');
+  it('grows the control-layout button to fit a longer translated label instead of clipping it', async () => {
+    await useLocale('ru');
     const s = new Settings();
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     const btn = privateOf(s).controlLayoutBtn;
@@ -230,20 +250,20 @@ describe('Settings — button width/centering across locales (autoWidth, 2026-08
     expect(centerOf()).toBeCloseTo(CX, 6); // still centered even though the box resized
   });
 
-  it('keeps the control-layout button centered under the panel midpoint at every locale', () => {
+  it('keeps the control-layout button centered under the panel midpoint at every locale', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const btn = privateOf(s).controlLayoutBtn;
     const centerOf = () => btn.view.position.x + btn.width / 2;
     expect(centerOf()).toBeCloseTo(CX, 6);
 
-    setLocale('ru');
+    await useLocale('ru');
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     btn.onTap?.();
     expect(centerOf()).toBeCloseTo(CX, 6);
   });
 
-  it('lays out mute+back as a fixed-gap pair, centered together, at every width', () => {
+  it('lays out mute+back as a fixed-gap pair, centered together, at every width', async () => {
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const p = privateOf(s);
@@ -265,7 +285,7 @@ describe('Settings — button width/centering across locales (autoWidth, 2026-08
     p.muteBtn.onTap?.();
     assertPairLayout();
 
-    setLocale('ru');
+    await useLocale('ru');
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     p.muteBtn.onTap?.(); // -> "ВКЛЮЧИТЬ ЗВУК", noticeably longer than "MUTE"/"БЕЗ ЗВУКА"
     expect(p.muteBtn.label.text).toBe('ВКЛЮЧИТЬ ЗВУК');
@@ -332,11 +352,11 @@ describe('Settings — render quality', () => {
     expect(p.qualityBtn.label.text).toBe('QUALITY: AUTO (LOW)');
   });
 
-  it('stays centred and translated in every locale', () => {
+  it('stays centred and translated in every locale', async () => {
     const s = new Settings();
     const p = privateOf(s);
     for (const loc of LOCALES) {
-      setLocale(loc);
+      await useLocale(loc);
       // `medium`, not `low`: it is the longest of the four in most locales, so it is the pick
       // that actually exercises the auto-width centring.
       s.show(800, 600, { ...defaultSettingsState(), locale: loc, quality: 'medium' });
@@ -379,11 +399,11 @@ describe('Settings — frame rate', () => {
     expect(p.frameRateBtn.label.text).toBe('FRAME RATE: 30');
   });
 
-  it('stays centred and translated in every locale', () => {
+  it('stays centred and translated in every locale', async () => {
     const s = new Settings();
     const p = privateOf(s);
     for (const loc of LOCALES) {
-      setLocale(loc);
+      await useLocale(loc);
       s.show(800, 600, { ...defaultSettingsState(), locale: loc, frameRate: 30 });
       expect(p.frameRateBtn.label.text, loc).not.toContain('{fps}');
       expect(p.frameRateBtn.label.text, loc).not.toBe('settings.frameRate');

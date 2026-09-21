@@ -10,3 +10,40 @@
   Cache-Control: no-cache, must-revalidate
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# ## The art, and why it needed a rule of its own (2026-09-21)
+#
+# Everything this file did not name fell to the platform default, which is
+# `public, max-age=0, must-revalidate` — measured on the live deploy, on `/ui/hub_bg.png`,
+# `/skins/orb-core/frames.json` and `/audio/ui-tap_00.mp3` alike. `max-age=0` means the
+# browser may keep the bytes but must ask before using them, so a RETURNING player re-opened
+# a conditional request for every one of the ~200 shipped art and audio files. They come back
+# 304 with no body, which is why this was invisible in a bytes-transferred view — but a round
+# trip per file, batched behind the connection limit, is the same wait whether or not bytes
+# come back with it, and it sits in front of the menu (the `lobby` pack) and in front of the
+# first run (everything else).
+#
+# These files are NOT content-hashed — `/ui/hub_bg.png` keeps its name across deploys — so
+# `immutable` is not available here the way it is for `/assets/*`: it would pin a player to
+# whatever art they first downloaded, with no URL change to ever release them. An hour of
+# freshness plus a week of `stale-while-revalidate` is the trade instead: a returning player
+# inside the hour makes no request at all, one after it paints instantly from cache while the
+# revalidation runs in the background, and new art reaches them on the visit after that.
+#
+# The one thing that makes this safe to trade away is a rule from design/12: art is pure
+# presentation and never feeds the engine. A player briefly running a deploy old in its
+# textures and new in its code sees the older icon; they cannot desync, because no byte of
+# this influences the simulation. Code has the opposite property and gets the opposite rule —
+# hashed filenames and `immutable` above.
+/ui/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
+/skins/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
+/weapons/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
+/biome/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
+/environment/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800
+/audio/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=604800

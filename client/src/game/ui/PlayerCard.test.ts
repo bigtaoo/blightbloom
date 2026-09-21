@@ -18,7 +18,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { Graphics, Sprite, Text, Texture, TextureSource, type Container } from 'pixi.js';
 import { PlayerCard, AllyRow } from './PlayerCard';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 /** Only the one path `bindPortrait` walks — `getRigSkin(atlasKey)?.bundle.textures` —
  *  is faked; a whole `LoadedRigSkin` (rig, referenceRadius, bodyFill) would be four
@@ -314,8 +315,8 @@ describe('AllyRow', () => {
     expect(row.statusText).toBe('');
   });
 
-  it('translates both branches under zh', () => {
-    setLocale('zh');
+  it('translates both branches under zh', async () => {
+    await useLocale('zh');
     const row = new AllyRow();
     row.set('vanguard', 8, 10, false, 0);
     expect(row.nameText).toBe('队友·先锋');

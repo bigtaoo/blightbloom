@@ -13,7 +13,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { GameState } from '@dd/engine';
 import { FLOOR_CARDS, RUN_BUFFS } from '@dd/engine';
 import { FloorCardPrompt } from './FloorCardPrompt';
-import { setLocale, resetLocaleForTests, t } from '../../i18n';
+import { resetLocaleForTests, t } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -108,12 +109,12 @@ describe('what the cards say', () => {
     expect(labels(p)[0]).toBe('card_from_the_future');
   });
 
-  it('re-renders on a locale change even though the offer did not move', () => {
+  it('re-renders on a locale change even though the offer did not move', async () => {
     const p = new FloorCardPrompt();
     const s = state(['edge', 'cadence', 'bulwark'], [0]);
     p.update(s, true, 0);
     const en = labels(p).join('|');
-    setLocale('zh');
+    await useLocale('zh');
     p.update(s, true, 0);
     expect(labels(p).join('|')).not.toBe(en);
   });

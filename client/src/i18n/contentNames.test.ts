@@ -9,8 +9,9 @@
  * so "resolved" means "not equal to the raw key").
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { tName, setLocale, resetLocaleForTests, LOCALES } from './index';
+import { tName, resetLocaleForTests, LOCALES } from './index';
 import { WEAPON_SPECS, SKIN_DEFS, MATERIAL_DEFS, RUN_BUFFS, FLOOR_CARDS } from '@dd/engine';
+import { useLocale } from '../i18n/loadLocale';
 
 beforeEach(() => resetLocaleForTests());
 
@@ -28,14 +29,14 @@ function allContentNameKeys(): string[] {
 }
 
 describe('tName() content-catalog parity', () => {
-  it('every weapon/skin/material/buff/card nameKey resolves in every declared locale', () => {
+  it('every weapon/skin/material/buff/card nameKey resolves in every declared locale', async () => {
     const keys = allContentNameKeys();
     // Guards against a future catalog refactor silently emptying the list out from
     // under this test (an empty `keys` array would make every locale's loop a no-op
     // pass, hiding a real regression rather than catching one).
     expect(keys.length).toBeGreaterThan(0);
     for (const locale of LOCALES) {
-      setLocale(locale);
+      await useLocale(locale);
       for (const key of keys) {
         expect(tName(key)).not.toBe(key);
       }

@@ -58,12 +58,13 @@ import { StorePurchase } from '../controllers/StorePurchase';
 import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
 import { defaultSettingsState } from '../../settings';
-import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
+import { LOCALES, resetLocaleForTests } from '../../i18n';
 import { setPublicFlags } from '../../net/clientFlags';
 import { RunOutcome, type RunOutcomeHost } from '../controllers/RunOutcome';
 import { createGameState, type GameState } from '@dd/engine/state/GameState';
 import type { ArenaMap } from '@dd/engine/content/arenas';
 import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
+import { useLocale } from '../../i18n/loadLocale';
 
 // Forge.render()/Settings.show() flow off `Text.height` — see fakeTextCanvas.ts.
 installFakeTextCanvas();
@@ -573,7 +574,7 @@ describe.each([
 
   for (const locale of LOCALES) {
     it.each(SCREENS)(`${locale} — %s`, async (_name, build) => {
-      setLocale(locale);
+      await useLocale(locale);
       const b = contentBounds(await build(design.w, design.h));
       expect(b.minY).toBeGreaterThanOrEqual(-SLACK);
       expect(b.maxY).toBeLessThanOrEqual(design.h + SLACK);
@@ -642,8 +643,8 @@ describe('a label that spills out of its own button (2026-09-10)', () => {
   }
 
   for (const locale of LOCALES) {
-    it(`${locale} — every lobby label stays inside its own button`, () => {
-      setLocale(locale);
+    it(`${locale} — every lobby label stays inside its own button`, async () => {
+      await useLocale(locale);
       const m = new MainMenu();
       m.setQuickPlay(true); // draws PLAY too, so the portal build is covered in the same pass
       m.show(MENU_DESIGN_W, MENU_DESIGN_H);

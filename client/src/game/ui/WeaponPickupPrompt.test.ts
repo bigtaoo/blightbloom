@@ -3,6 +3,7 @@ import { Container, EventBoundary, FederatedContainer, FederatedPointerEvent, ex
 import type { PickupItem, Fp } from '@dd/engine';
 import { WeaponPickupPrompt } from './WeaponPickupPrompt';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -92,9 +93,9 @@ describe('WeaponPickupPrompt — close behavior (stays hidden until the set chan
 });
 
 describe('WeaponPickupPrompt — i18n (design/17-i18n.md)', () => {
-  it('translates the title under zh and reverts under en', () => {
+  it('translates the title under zh and reverts under en', async () => {
     const prompt = new WeaponPickupPrompt();
-    setLocale('zh');
+    await useLocale('zh');
     prompt.update([pickup(1, 'blaster')]);
     const zhTitle = privateOf(prompt).titleText.text;
     setLocale('en');
