@@ -121,6 +121,12 @@ adds it.
   `05-character-and-objects` → `06`, which touches ~25 links across `README.md`,
   `design/01-rendering.md`, `design/README.md` and three roadmap volumes. Mechanical, but its own
   pass, and deliberately not bolted onto this one.
+  > **Closed 2026-09-21** — done exactly as described, in the tidy pass of
+  > [volume 77](77-2026-09-21-doc-tidy.md): `03-occlusion.md` (334) + `04-doors.md` (723), with
+  > `04-floor-arena-void` → `05` and `05-character-and-objects` → `06`. The one thing the plan did
+  > not predict is that the same sweep found `design/01`'s map missing a whole `##` section (the
+  > 2026-09-11 door halo) and thirteen `###` subsections, against a doc that says outright it
+  > carries every one.
 - **`design/ROADMAP.md` is ~1,850 lines and grows by two index lines per pass** — structural, not
   drift, since it is the index. The eventual answer is moving the two log indexes into
   `roadmap/index-by-date.md` / `index-by-theme.md` and leaving the phase spine here, which is

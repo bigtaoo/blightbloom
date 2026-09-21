@@ -39,7 +39,7 @@ Split into **55–63**, one pass each, 93–227 lines:
 
 53 links in `ROADMAP.md` were rewritten by mapping each one's **anchor** to the volume that now
 owns that heading, so no anchor changed and no link text moved. The one reference from outside
-(`rendering/03-occlusion-and-doors.md`) points at the door-ellipse pass, which kept its file.
+(`rendering/04-doors.md`) points at the door-ellipse pass, which kept its file.
 
 **The part a mechanical split cannot do is the prose that counts sections.** Four sentences
 referred across what had become a file boundary — *"the content half the two passes above kept

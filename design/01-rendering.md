@@ -42,49 +42,68 @@ How stone is built and shaded: standing runs, the measurement that judged them, 
   - [`wallComposition.test.ts` — the assertion class all four rounds were missing](rendering/02-walls.md#wallcompositiontestts--the-assertion-class-all-four-rounds-were-missing)
 - **[A pillar is a sprite now (2026-08-20)](rendering/02-walls.md#a-pillar-is-a-sprite-now-2026-08-20)** — "Pillars read as smooth cans next to the walls."
 
-### [Occlusion & doors](rendering/03-occlusion-and-doors.md)
+### [Occlusion](rendering/03-occlusion.md)
 
-Keeping the character visible through stone, and the one fixture a player has to read at a glance.
+Keeping the character visible through stone.
 
-- **[The occlusion x-ray: the character is never lost behind a block (2026-08-20)](rendering/03-occlusion-and-doors.md#the-occlusion-x-ray-the-character-is-never-lost-behind-a-block-2026-08-20)** — "角色跑到墙下面去了" — the body read luma 78.4 against cap stone and was simply gone.
-  - [The deep pass stops where the body does (2026-08-27)](rendering/03-occlusion-and-doors.md#the-deep-pass-stops-where-the-body-does-2026-08-27)
-- **[A door is a wall block whose face is an opening (2026-08-20)](rendering/03-occlusion-and-doors.md#a-door-is-a-wall-block-whose-face-is-an-opening-2026-08-20)** — A door was a flat sprite stretched to its passage box while everything around it had volume.
-- **[An open door is lit from beyond (2026-08-30)](rendering/03-occlusion-and-doors.md#an-open-door-is-lit-from-beyond-2026-08-30)** — "You can walk through here" was being rendered as the absence of a signal.
-  - [The recess itself is still shared stone, and then it is a whole illustrated curtain (2026-08-30b)](rendering/03-occlusion-and-doors.md#the-recess-itself-is-still-shared-stone-and-then-it-is-a-whole-illustrated-curtain-2026-08-30b)
-- **[Every door is the same door, whatever wall it is cut into (2026-09-03)](rendering/03-occlusion-and-doors.md#every-door-is-the-same-door-whatever-wall-it-is-cut-into-2026-09-03)** — 11 of the 24 shipped doors were a 22 px letterbox under 64 px of their own lintel; a door now has one height, not the wall's.
-- **[A door has a clock (2026-09-03b)](rendering/03-occlusion-and-doors.md#a-door-has-a-clock-2026-09-03b)** — "太死板": a door measured 0.01 luma of motion because nothing in this project could animate a scene fixture at all. Direction is what now says passable.
-- **[...and then only the door, with no wall hanging over it (2026-09-03c)](rendering/03-occlusion-and-doors.md#and-then-only-the-door-with-no-wall-hanging-over-it-2026-09-03c)** — one height for every door left the 11 kerb doorways with a slab of their own cap stone hanging 82 px above the crown line; a door draws a cap only where its flank reaches it.
-- **[The floor a door lights is not always south of it (2026-09-03d)](rendering/03-occlusion-and-doors.md#the-floor-a-door-lights-is-not-always-south-of-it-2026-09-03d)** — the light a door lays on the floor was always drawn south of its threshold; on the 13 doors cut through a north-south wall that ground is the same wall continuing, and it drew over it.
-- **[A door's ring belongs to the door it lights (2026-09-04)](rendering/03-occlusion-and-doors.md#a-doors-ring-belongs-to-the-door-it-lights-2026-09-04)** — with the rings finally visible, they were centred on the passage rather than the arch and reached 2.7 door widths out; both numbers now come from the drawn opening.
+- **[The occlusion x-ray: the character is never lost behind a block (2026-08-20)](rendering/03-occlusion.md#the-occlusion-x-ray-the-character-is-never-lost-behind-a-block-2026-08-20)** — "角色跑到墙下面去了" — the body read luma 78.4 against cap stone and was simply gone.
+  - [The deep pass stops where the body does (2026-08-27)](rendering/03-occlusion.md#the-deep-pass-stops-where-the-body-does-2026-08-27)
 
-### [The floor, the arena, the void](rendering/04-floor-arena-void.md)
+### [Doors](rendering/04-doors.md)
+
+The one fixture a player has to read at a glance: is this thing passable, and from where.
+
+- **[A door is a wall block whose face is an opening (2026-08-20)](rendering/04-doors.md#a-door-is-a-wall-block-whose-face-is-an-opening-2026-08-20)** — A door was a flat sprite stretched to its passage box while everything around it had volume.
+- **[An open door is lit from beyond (2026-08-30)](rendering/04-doors.md#an-open-door-is-lit-from-beyond-2026-08-30)** — "You can walk through here" was being rendered as the absence of a signal.
+  - [The recess itself is still shared stone, and then it is a whole illustrated curtain (2026-08-30b)](rendering/04-doors.md#the-recess-itself-is-still-shared-stone-and-then-it-is-a-whole-illustrated-curtain-2026-08-30b)
+- **[Every door is the same door, whatever wall it is cut into (2026-09-03)](rendering/04-doors.md#every-door-is-the-same-door-whatever-wall-it-is-cut-into-2026-09-03)** — 11 of the 24 shipped doors were a 22 px letterbox under 64 px of their own lintel; a door now has one height, not the wall's.
+  - [What the mutation battery said, and the five value survivors it found (2026-09-03)](rendering/04-doors.md#what-the-mutation-battery-said-and-the-five-value-survivors-it-found-2026-09-03)
+- **[A door has a clock (2026-09-03b)](rendering/04-doors.md#a-door-has-a-clock-2026-09-03b)** — "太死板": a door measured 0.01 luma of motion because nothing in this project could animate a scene fixture at all. Direction is what now says passable.
+  - [What the clock is spent on: direction, rhythm, reaction](rendering/04-doors.md#what-the-clock-is-spent-on-direction-rhythm-reaction)
+  - [No new art, and why that was the cheaper answer](rendering/04-doors.md#no-new-art-and-why-that-was-the-cheaper-answer)
+  - [The unlock is an event now](rendering/04-doors.md#the-unlock-is-an-event-now)
+  - [The refusal is client-derived, and never reaches the sim](rendering/04-doors.md#the-refusal-is-client-derived-and-never-reaches-the-sim)
+  - [What it cost, and what it bought](rendering/04-doors.md#what-it-cost-and-what-it-bought)
+  - [The Nyquist gate `01` asked for, five weeks late](rendering/04-doors.md#the-nyquist-gate-01-asked-for-five-weeks-late)
+  - [Two things that had to be settled to make this safe](rendering/04-doors.md#two-things-that-had-to-be-settled-to-make-this-safe)
+  - [What the tier lever is, and what it deliberately is not](rendering/04-doors.md#what-the-tier-lever-is-and-what-it-deliberately-is-not)
+  - [What the mutation battery said](rendering/04-doors.md#what-the-mutation-battery-said)
+- **[...and then only the door, with no wall hanging over it (2026-09-03c)](rendering/04-doors.md#and-then-only-the-door-with-no-wall-hanging-over-it-2026-09-03c)** — one height for every door left the 11 kerb doorways with a slab of their own cap stone hanging 82 px above the crown line; a door draws a cap only where its flank reaches it.
+- **[The floor a door lights is not always south of it (2026-09-03d)](rendering/04-doors.md#the-floor-a-door-lights-is-not-always-south-of-it-2026-09-03d)** — the light a door lays on the floor was always drawn south of its threshold; on the 13 doors cut through a north-south wall that ground is the same wall continuing, and it drew over it.
+- **[A door's ring belongs to the door it lights (2026-09-04)](rendering/04-doors.md#a-doors-ring-belongs-to-the-door-it-lights-2026-09-04)** — with the rings finally visible, they were centred on the passage rather than the arch and reached 2.7 door widths out; both numbers now come from the drawn opening.
+- **[A door’s halo runs the way the door does (2026-09-11)](rendering/04-doors.md#a-doors-halo-runs-the-way-the-door-does-2026-09-11)** — *“这个椭圆的长边要和门的长边保持一致”* — the floor halo under a passable door ran the same way whatever wall the door was cut into. *(Added to this map 2026-09-21; the section had been unindexed since it landed.)*
+
+### [The floor, the arena, the void](rendering/05-floor-arena-void.md)
 
 The ground plane, what it costs on a real GPU, and what is drawn beyond where the stone ends.
 
-- **[The floor stops at its rooms (2026-08-20)](rendering/04-floor-arena-void.md#the-floor-stops-at-its-rooms-2026-08-20)** — One `TilingSprite` over the whole world, with two separate defects in one extract.
-- **[The same sweeps, on the arena (2026-08-26)](rendering/04-floor-arena-void.md#the-same-sweeps-on-the-arena-2026-08-26)** — Every wall/door/x-ray sweep had measured the five PvE floors and nothing else.
-- **[The arena's frame, measured on a GPU (2026-08-26)](rendering/04-floor-arena-void.md#the-arenas-frame-measured-on-a-gpu-2026-08-26)** — It did not need a handset, it needed a browser surface with a timer-query extension.
-  - [Follow-up: the floor is cullable now, and the diagnosis above was wrong (2026-08-26)](rendering/04-floor-arena-void.md#follow-up-the-floor-is-cullable-now-and-the-diagnosis-above-was-wrong-2026-08-26)
-  - [Both of those experiments came back no, and the floor is half spill (2026-08-27)](rendering/04-floor-arena-void.md#both-of-those-experiments-came-back-no-and-the-floor-is-half-spill-2026-08-27)
-  - [The clip that follows, and where a cut on a floor is allowed to land (2026-08-27)](rendering/04-floor-arena-void.md#the-clip-that-follows-and-where-a-cut-on-a-floor-is-allowed-to-land-2026-08-27)
-- **[The void gets a face (2026-08-27)](rendering/04-floor-arena-void.md#the-void-gets-a-face-2026-08-27)** — Twelve empty grid cells read as a flat black rectangle, about a fifth of a 16:9 frame.
-  - [The rule, and why it is spans and not a boolean](rendering/04-floor-arena-void.md#the-rule-and-why-it-is-spans-and-not-a-boolean)
-  - [The return, and why it is the CAP's swatch](rendering/04-floor-arena-void.md#the-return-and-why-it-is-the-caps-swatch)
-  - [What it fires on](rendering/04-floor-arena-void.md#what-it-fires-on)
-  - [Why NORTH is not in this, and how that was checked rather than assumed](rendering/04-floor-arena-void.md#why-north-is-not-in-this-and-how-that-was-checked-rather-than-assumed)
-  - [What it costs](rendering/04-floor-arena-void.md#what-it-costs)
-- **[The void's far side (2026-08-28)](rendering/04-floor-arena-void.md#the-voids-far-side-2026-08-28)** — Pit, open sky, or ground beyond the wall — the projection settles it before anything is built.
-  - [What it is, and the two things it does not have to compute](rendering/04-floor-arena-void.md#what-it-is-and-the-two-things-it-does-not-have-to-compute)
-  - [Measured, on a live frame](rendering/04-floor-arena-void.md#measured-on-a-live-frame)
-  - [Two defects found on the way, one by the frame and one by a battery](rendering/04-floor-arena-void.md#two-defects-found-on-the-way-one-by-the-frame-and-one-by-a-battery)
+- **[The floor stops at its rooms (2026-08-20)](rendering/05-floor-arena-void.md#the-floor-stops-at-its-rooms-2026-08-20)** — One `TilingSprite` over the whole world, with two separate defects in one extract.
+- **[The same sweeps, on the arena (2026-08-26)](rendering/05-floor-arena-void.md#the-same-sweeps-on-the-arena-2026-08-26)** — Every wall/door/x-ray sweep had measured the five PvE floors and nothing else.
+- **[The arena's frame, measured on a GPU (2026-08-26)](rendering/05-floor-arena-void.md#the-arenas-frame-measured-on-a-gpu-2026-08-26)** — It did not need a handset, it needed a browser surface with a timer-query extension.
+  - [Follow-up: the floor is cullable now, and the diagnosis above was wrong (2026-08-26)](rendering/05-floor-arena-void.md#follow-up-the-floor-is-cullable-now-and-the-diagnosis-above-was-wrong-2026-08-26)
+  - [Both of those experiments came back no, and the floor is half spill (2026-08-27)](rendering/05-floor-arena-void.md#both-of-those-experiments-came-back-no-and-the-floor-is-half-spill-2026-08-27)
+  - [The clip that follows, and where a cut on a floor is allowed to land (2026-08-27)](rendering/05-floor-arena-void.md#the-clip-that-follows-and-where-a-cut-on-a-floor-is-allowed-to-land-2026-08-27)
+- **[The void gets a face (2026-08-27)](rendering/05-floor-arena-void.md#the-void-gets-a-face-2026-08-27)** — Twelve empty grid cells read as a flat black rectangle, about a fifth of a 16:9 frame.
+  - [The rule, and why it is spans and not a boolean](rendering/05-floor-arena-void.md#the-rule-and-why-it-is-spans-and-not-a-boolean)
+  - [The return, and why it is the CAP's swatch](rendering/05-floor-arena-void.md#the-return-and-why-it-is-the-caps-swatch)
+  - [What it fires on](rendering/05-floor-arena-void.md#what-it-fires-on)
+  - [Why NORTH is not in this, and how that was checked rather than assumed](rendering/05-floor-arena-void.md#why-north-is-not-in-this-and-how-that-was-checked-rather-than-assumed)
+  - [What it costs](rendering/05-floor-arena-void.md#what-it-costs)
+- **[The void's far side (2026-08-28)](rendering/05-floor-arena-void.md#the-voids-far-side-2026-08-28)** — Pit, open sky, or ground beyond the wall — the projection settles it before anything is built.
+  - [What it is, and the two things it does not have to compute](rendering/05-floor-arena-void.md#what-it-is-and-the-two-things-it-does-not-have-to-compute)
+  - [Measured, on a live frame](rendering/05-floor-arena-void.md#measured-on-a-live-frame)
+  - [Two defects found on the way, one by the frame and one by a battery](rendering/05-floor-arena-void.md#two-defects-found-on-the-way-one-by-the-frame-and-one-by-a-battery)
 
-### [The character and the objects on the floor](rendering/05-character-and-objects.md)
+### [The character and the objects on the floor](rendering/06-character-and-objects.md)
 
 The things standing on the ground rather than the ground itself.
 
-- **[Grounding the character (2026-08-18)](rendering/05-character-and-objects.md#grounding-the-character-2026-08-18)** — A 360° facing continuum, and still nothing saying the body was a volume in a space.
-- **[The drops and the gate get real art (2026-08-20)](rendering/05-character-and-objects.md#the-drops-and-the-gate-get-real-art-2026-08-20)** — The scene queue closed for surfaces; this closes it for the objects standing on them.
-- **[A collected drop flies to whoever took it (2026-09-15)](rendering/05-character-and-objects.md#a-collected-drop-flies-to-whoever-took-it-2026-09-15)** — the loot stopped existing the tick it was taken; now it arcs into the collector's body, and the bow lives in the one axis this view's shear leaves free.
+- **[Grounding the character (2026-08-18)](rendering/06-character-and-objects.md#grounding-the-character-2026-08-18)** — A 360° facing continuum, and still nothing saying the body was a volume in a space.
+- **[The drops and the gate get real art (2026-08-20)](rendering/06-character-and-objects.md#the-drops-and-the-gate-get-real-art-2026-08-20)** — The scene queue closed for surfaces; this closes it for the objects standing on them.
+- **[A collected drop flies to whoever took it (2026-09-15)](rendering/06-character-and-objects.md#a-collected-drop-flies-to-whoever-took-it-2026-09-15)** — the loot stopped existing the tick it was taken; now it arcs into the collector's body, and the bow lives in the one axis this view's shear leaves free.
+  - [Three things decided the shape, and two of them are this view's geometry](rendering/06-character-and-objects.md#three-things-decided-the-shape-and-two-of-them-are-this-views-geometry)
+  - [Why the arc has floors as well as fractions](rendering/06-character-and-objects.md#why-the-arc-has-floors-as-well-as-fractions)
+  - [The chase has one exception, and the step order is what names it](rendering/06-character-and-objects.md#the-chase-has-one-exception-and-the-step-order-is-what-names-it)
 
 
 ## Fidelity roadmap (by priority)

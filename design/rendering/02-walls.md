@@ -182,7 +182,7 @@ extruded block on the `entities` layer — `scene/wallRender.ts` owns the drawin
 
 ## Volume, measured (2026-08-19)
 
-The two passes it follows — [Standing walls](#standing-walls-2026-08-18) above and [Grounding the character](05-character-and-objects.md#grounding-the-character-2026-08-18) — were built by *looking*. This one was built by **measuring the frame they
+The two passes it follows — [Standing walls](#standing-walls-2026-08-18) above and [Grounding the character](06-character-and-objects.md#grounding-the-character-2026-08-18) — were built by *looking*. This one was built by **measuring the frame they
 produced** — `renderer.extract` on `layers.world` at zoom 1, sampled per wall entity using the
 geometry the renderer itself had just used (cap sprite y/height, face sprite y/height) rather than
 coordinates guessed from the level data. That is what turned five look notes into numbers, and the
