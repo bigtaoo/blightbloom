@@ -119,7 +119,7 @@ drives it, not width — the map's widest run (1760x32) costs 152.
 
 ## The arena's frame, measured on a GPU (2026-08-26)
 
-The [wall](02-walls.md) and [occlusion](03-occlusion-and-doors.md) sections count draw calls, and `perf/README.md` records four CPU numbers. None of them
+The [wall](02-walls.md) and [occlusion](03-occlusion.md) sections count draw calls, and `perf/README.md` records four CPU numbers. None of them
 said what the arena's frame actually *costs*, and the standing assumption in design/04's on-device
 list was that a handset was needed to find out. It was not — it needed the right browser surface.
 The in-app browser pane here is a software rasterizer (`Microsoft Basic Render Driver`, no

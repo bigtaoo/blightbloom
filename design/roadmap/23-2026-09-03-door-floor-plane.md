@@ -28,7 +28,7 @@ straight up the door's own stone."* Correct, and it is exactly half the picture.
 
 A door's passage AABB is a hole in a wall, so its short axis is the wall's own thickness. For the
 shipped content that is two shapes, and the fixture treats them as one on purpose (see
-[`../rendering/03-occlusion-and-doors.md`](../rendering/03-occlusion-and-doors.md) — a door needs no
+[`../rendering/04-doors.md`](../rendering/04-doors.md) — a door needs no
 orientation branch because a lintel's mass lands where a wall block's cap lands either way):
 
 - **11 doors are `128x64`** — a hole in an EAST-WEST wall, crossed north-south. South of the

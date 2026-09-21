@@ -419,18 +419,83 @@ Every offset is sized as a fraction of the distance flown, and then floored: `PO
 `BULGE_MIN` 16 px, and a `HOP_BASE` of 14 px. The floors are the load-bearing half, because of a
 number outside the render layer entirely — everything but a weapon is auto-collected on overlap
 (`SIM.pickupRadius`, 15 px of padding past the player's own ~16 px body), so **the typical flight
-is barely 28 px long**. Sized purely proportionally the arc collapses to a few px, and 600 ms of
+is barely 28 px long**. Sized purely proportionally the arc collapses to a few px, and 420 ms of
 that reads as a drop sliding in slow motion. A weapon claimed from across the reveal ring
 (`SIM.lootRevealRadius`, 80 px) is the case the fractions are for.
 
-The rest of the pose: `t` is fed to the cubic bézier raw (the control-point spacing *is* the speed
-curve — a pop away from the collector in the first third, a fast swoop in the last), height
-interpolates on `t²` under a hop that peaks at ~0.31 and then dives, scale swells to 1.2 and ends
-at 0.5 so the drop enters the body rather than landing on it, alpha holds until 0.78, and the tilt
-is a ±0.5 rad wobble that returns to 0 — never a tumble, because a weapon drop's rarity pips and
-element badge (design/13's two channels) have to stay the right way up. The shadow's own alpha is
-multiplied by the pose's *after* `place()` rewrites it from the height falloff, or a dissolving
-drop leaves its shadow sliding under the collector for the last 130 ms.
+The rest of the pose: height interpolates on `u²` under a hop that peaks at ~38% of the path and
+then dives, scale swells to 1.2 and ends at 0.5 so the drop enters the body rather than landing on
+it, alpha holds until 62% of the path, and the tilt is a ±0.5 rad wobble that returns to 0 — never
+a tumble, because a weapon drop's rarity pips and element badge (design/13's two channels) have to
+stay the right way up. The shadow's own alpha is multiplied by the pose's *after* `place()`
+rewrites it from the height falloff, or a dissolving drop leaves its shadow sliding under the
+collector for the last ~90 ms.
+
+### The drop accelerates into the body (2026-09-21)
+
+> *"特效的飞行给个加速度，越靠近角色越快，然后整体时间也对应缩短。"*
+
+The first cut fed `t` to the bézier raw and let the control-point spacing *be* the speed curve.
+That is a real curve but a flat one, and flatness costs at both ends of the same animation: the
+pop — the thing that puts the eye on the item before the item moves, and so the thing that
+actually answers *did that go to me?* — was over in ~60 ms, and the drop then coasted the last few
+px into the body at the same pace it crossed the middle.
+
+`flightPose` now reads the clock exactly once, as **`u = t ** ACCEL`** with `ACCEL = 2`, and feeds
+`u` to everything spatial. The exponent is not a taste knob: `s = ½at²` *is* constant acceleration,
+so the drop leaves the floor at rest and gains speed steadily the whole way in, which is the
+request stated in the one form a reader can check against physics instead of against how it looked
+on the day. Half the clock now buys the first quarter of the path (the hang) and the last third
+buys three quarters of it (the dive) — screen speed on the 120 px case runs ~100 px/s through the
+pop and ~790 px/s on arrival. That is what paid for the shortened duration: **`FLIGHT_MS` 600 →
+420**, because the stretch that used to need the time was the one the acceleration deletes.
+
+**One constant had to move with it, and it is the half that is easy to leave out.** A cubic's
+speed at the end is `3·(p3 − p2)`, so the old second control point — parked *on* the collector —
+pinned the ARRIVAL SPEED AT ZERO for any flight the sideways bow does not shape, and an east–west
+flight bows by exactly 0 (above). The two halves then cancel in the worst possible place: the time
+warp says "fastest at the end", the geometry says "stopped at the end", and what is drawn is a
+fast middle followed by a crawl into the body — the one stretch the change exists to speed up.
+`LEAD` (0.5 of the distance, capped at 55 px) pulls p2 back along the travel direction so the
+curve has a real tangent to arrive on. Measured as final speed over the flight's own average:
+0.26–0.75× without it, 1.8–2.5× with it.
+
+**It is the one offset here with no FLOOR, and that absence cost a shipped defect to learn.**
+Every other offset is floored because the typical flight is ~28 px and a proportional arc
+collapses at that size (above). A floor on the lead does the opposite: p1 already sits
+`POP_BACK_MIN` = 8 px *behind* the drop, so a lead longer than the flight puts p2 behind it too,
+and a cubic whose middle two control points are both behind its start is a backwards excursion
+with a snap on the end. With the 14 px floor this first shipped with, a 1 px flight was still
+moving AWAY at t = 0.74 — three quarters of its own clock spent leaving — and a 10 px one never
+closed in monotonically at all. The floor also bought nothing at the size it was meant to protect,
+because `0.5 × 28` is 14 px exactly. The right reading is that this offset is a *speed*, not a
+visible displacement: the floors elsewhere keep the arc big enough to SEE, and this one is not
+drawn, so a short flight simply wants a proportionally gentler arrival.
+
+Two more followed from `u` being the parameter rather than the clock. The hop's apex and the fade
+are both keyed to the **path**, not to time — 38% of the path is 61% of the time now, and a hop
+read off the clock would already be falling while the drop still sat over the floor it came from,
+while a fade read off the clock would start going transparent 45% of the way out, in open air.
+`FADE_FROM` came down 0.78 → 0.62 to pay for the same choice from the other side: the tail of the
+path is the fast part, so 0.78 *of the path* is only the last 49 ms — a blink, not a dissolve.
+Only the tilt still reads the clock, because a wobble is not a place on a path.
+
+Every assertion `pickupFlight.test.ts` adds for this is a **ratio of the flight against itself**
+measured on the drawn screen path, never a restated constant — the last quarter of the clock
+covers more ground than the whole first half, the flight's fastest instant is its arrival, and the
+final speed beats its own average by 1.5×. All three are false for `ACCEL = 1` and for `LEAD = 0`,
+which is the point: the two halves of this mechanism are separately capable of setting the arrival
+speed, and the failure mode is them disagreeing silently while every existing "is it a curve?"
+assertion stays green. Two more cover what those ratios cannot — the drop has stopped running away
+by 60% of its clock *at every distance on a 1–120 px ladder* (the lead-floor defect above, which
+no hand-picked "typical" distance would have caught), and the layer drives the curve with the RAW
+clock fraction, so the warp is applied once, in one place.
+
+A nine-mutation battery decided that list and kills all nine (18 / 7 / 10 / 2 / 6 / 1 / 1 / 7 / 18
+tests red). One candidate was **dropped rather than written**: keying `scale` to the clock instead
+of the path survives, and measuring it showed why it should — the swell's peak moves by 2–28% of
+the path, which is not a property anyone can see, so a test for it would have pinned the mutant
+rather than the motion.
 
 ### The chase has one exception, and the step order is what names it
 
@@ -444,7 +509,7 @@ drop would then streak from the old floor's geometry to the new floor's spawn po
 A target that moves more than `TARGET_TELEPORT_PX` (120) between two frames therefore ENDS the
 flight rather than being chased. The number cannot be reached honestly — `PLAYER_BASE.speedPerTick`
 is 6.4 px/tick (192 px/s), so a legitimate 120 px step needs a 625 ms render frame, and nobody is
-watching a 600 ms arc through a stall that long. Ending rather than re-anchoring is the point: the
+watching a 420 ms arc through a stall that long. Ending rather than re-anchoring is the point: the
 item is already collected, and there is no arc that could honestly connect the two points.
 
 Two details that guard has to get right, both found by the test that pins it. The layer stores a
@@ -456,5 +521,5 @@ resolved on the first `update`, never at launch: `Scene.spawn` pushes state and 
 (0, 0), and resolving then would hand the guard a jump it must not act on.
 
 **What this does NOT change: when a drop is collected.** The flight starts the tick the sim
-already took the item. It is after-the-fact feedback, interruptible and droppable — 600 ms of
-travel is not 600 ms of the pickup being in doubt.
+already took the item. It is after-the-fact feedback, interruptible and droppable — 420 ms of
+travel is not 420 ms of the pickup being in doubt.
