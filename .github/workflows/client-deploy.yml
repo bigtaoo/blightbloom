@@ -34,6 +34,13 @@ concurrency:
   group: client-deploy
   cancel-in-progress: true
 
+# Electron's ~100MB postinstall binary, skipped: it is a devDependency of
+# `tools/desktop-shell`, which this workflow does not build, and its download is an uncached
+# cross-internet fetch that has failed CI with a 504. See `check.yml`'s own comment for the
+# full reasoning and how it was verified.
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
