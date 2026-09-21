@@ -67,6 +67,23 @@ in the first place. The guard has two halves — no runtime import may reach a b
 module, and the file may not touch a browser global itself — because the first alone is a hole
 you can drive through: a module needs no imports at all to call `document.createElement`.
 
+**And a percentage cannot tell you WHICH side of a branch ran** — the lines are the same lines
+either way. Two passes found the same defect from opposite directions, and the pair is the useful
+form. In [`roadmap/75`](../roadmap/75-2026-09-17-account-test-gaps.md) the tests injected a fake and
+the shipped implementation was what was left over: `session.test.ts` handed every case a
+`fakeStore`, so `createWebSessionStore` — the store that actually ships on web and portal —
+had never once run. In [`roadmap/81`](../roadmap/81-2026-09-21-playercard-portrait-tests.md) the
+tests called the REAL dependency and it answered its failure value: with no asset pipeline under
+plain vitest, `getRigSkin` returns `undefined` for every key, so `PlayerCard.bindPortrait` only ever
+drew its missing-art fallback and the branch that binds a character's actual face had never been
+executed. **The second kind is the worse one to leave standing**, for two reasons: it is chosen by
+the RUNNER rather than by a line of test code, so there is nothing to grep for and every test added
+to the file later inherits it; and it selects the FAILURE path, so what goes unexecuted is the
+branch every player sees on every frame. The tell is an environment-dependent dependency — an
+asset registry, a storage API, a canvas — whose test-time answer is the same as its
+error-time answer. Mock it and the other half becomes reachable; until then the percentage counts
+those lines as covered, because they are.
+
 ### The gates, by name
 
 Every [Layer 0](02-the-six-gaps-and-the-original-plan.md#layer-0--contract-gates-closes-g1-g2) and
