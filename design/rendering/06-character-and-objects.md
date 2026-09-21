@@ -456,9 +456,21 @@ pinned the ARRIVAL SPEED AT ZERO for any flight the sideways bow does not shape,
 flight bows by exactly 0 (above). The two halves then cancel in the worst possible place: the time
 warp says "fastest at the end", the geometry says "stopped at the end", and what is drawn is a
 fast middle followed by a crawl into the body — the one stretch the change exists to speed up.
-`LEAD` (0.5 of the distance, floored at 14 px, capped at 55) pulls p2 back along the travel
-direction so the curve has a real tangent to arrive on. Measured as final speed over the flight's
-own average: 0.26–0.75× without it, 1.8–2.5× with it.
+`LEAD` (0.5 of the distance, capped at 55 px) pulls p2 back along the travel direction so the
+curve has a real tangent to arrive on. Measured as final speed over the flight's own average:
+0.26–0.75× without it, 1.8–2.5× with it.
+
+**It is the one offset here with no FLOOR, and that absence cost a shipped defect to learn.**
+Every other offset is floored because the typical flight is ~28 px and a proportional arc
+collapses at that size (above). A floor on the lead does the opposite: p1 already sits
+`POP_BACK_MIN` = 8 px *behind* the drop, so a lead longer than the flight puts p2 behind it too,
+and a cubic whose middle two control points are both behind its start is a backwards excursion
+with a snap on the end. With the 14 px floor this first shipped with, a 1 px flight was still
+moving AWAY at t = 0.74 — three quarters of its own clock spent leaving — and a 10 px one never
+closed in monotonically at all. The floor also bought nothing at the size it was meant to protect,
+because `0.5 × 28` is 14 px exactly. The right reading is that this offset is a *speed*, not a
+visible displacement: the floors elsewhere keep the arc big enough to SEE, and this one is not
+drawn, so a short flight simply wants a proportionally gentler arrival.
 
 Two more followed from `u` being the parameter rather than the clock. The hop's apex and the fade
 are both keyed to the **path**, not to time — 38% of the path is 61% of the time now, and a hop
@@ -470,10 +482,20 @@ Only the tilt still reads the clock, because a wobble is not a place on a path.
 
 Every assertion `pickupFlight.test.ts` adds for this is a **ratio of the flight against itself**
 measured on the drawn screen path, never a restated constant — the last quarter of the clock
-covers more ground than the whole first half, and the final speed beats the flight's own average
-by 1.5×. Both statements are false for `ACCEL = 1` and for `LEAD = 0`, which is the point: the two
-halves of this mechanism are separately capable of setting the arrival speed, and the failure mode
-is them disagreeing silently while every existing "is it a curve?" assertion stays green.
+covers more ground than the whole first half, the flight's fastest instant is its arrival, and the
+final speed beats its own average by 1.5×. All three are false for `ACCEL = 1` and for `LEAD = 0`,
+which is the point: the two halves of this mechanism are separately capable of setting the arrival
+speed, and the failure mode is them disagreeing silently while every existing "is it a curve?"
+assertion stays green. Two more cover what those ratios cannot — the drop has stopped running away
+by 60% of its clock *at every distance on a 1–120 px ladder* (the lead-floor defect above, which
+no hand-picked "typical" distance would have caught), and the layer drives the curve with the RAW
+clock fraction, so the warp is applied once, in one place.
+
+A nine-mutation battery decided that list and kills all nine (18 / 7 / 10 / 2 / 6 / 1 / 1 / 7 / 18
+tests red). One candidate was **dropped rather than written**: keying `scale` to the clock instead
+of the path survives, and measuring it showed why it should — the swell's peak moves by 2–28% of
+the path, which is not a property anyone can see, so a test for it would have pinned the mutant
+rather than the motion.
 
 ### The chase has one exception, and the step order is what names it
 

@@ -205,11 +205,11 @@ describe('flightPose — it accelerates into the collector', () => {
 
   /** Length of the drawn screen path over the clock window [a, b] — the px the player's eye
    *  actually tracks, not the straight-line distance between two endpoints. */
-  function drawn(to: FlightPoint, a: number, b: number): number {
+  function drawn(to: FlightPoint, a: number, b: number, samples = 400): number {
     let len = 0;
     let prev = screen(flightPose(a, FROM, to, 1));
-    for (let i = 1; i <= 400; i++) {
-      const p = screen(flightPose(a + ((b - a) * i) / 400, FROM, to, 1));
+    for (let i = 1; i <= samples; i++) {
+      const p = screen(flightPose(a + ((b - a) * i) / samples, FROM, to, 1));
       len += Math.hypot(p.x - prev.x, p.y - prev.y);
       prev = p;
     }
@@ -245,6 +245,52 @@ describe('flightPose — it accelerates into the collector', () => {
     const total = drawn(TO, 0, 1);
     expect(drawn(TO, 0, 0.5) / total).toBeLessThan(0.25);
   });
+
+  /** Fastest instant of the flight, as a fraction of the clock. */
+  function peakSpeedAt(to: FlightPoint): number {
+    const n = 25;
+    let best = -1;
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      const v = drawn(to, i / n, (i + 1) / n, 20);
+      if (v > best) [best, at] = [v, (i + 0.5) / n];
+    }
+    return at;
+  }
+
+  it.each([...CASES, ['east-west, 10 px', { x: 110, y: 200, z: 24 }] as [string, FlightPoint]])(
+    'is at its FASTEST on arrival, not somewhere in the middle — %s',
+    (_n, to) => {
+      // The literal reading of the request, and a strictly stronger statement than the ratio
+      // above: "final speed beats the average" still passes for a curve that peaks at 60% and
+      // is merely *still* quick at the end. This one says the peak IS the arrival.
+      expect(peakSpeedAt(to)).toBeGreaterThan(0.8);
+    },
+  );
+
+  it.each([1, 5, 10, 15, 28, 60, 120])(
+    'has STOPPED RUNNING AWAY well before half-time, even at %s px where the floors dwarf the flight',
+    (px) => {
+      // The regression test for a real defect this change shipped and then fixed. Every other
+      // offset in the file is floored because the typical flight is tiny; a floor on the LEAD
+      // does the opposite, because p1 already sits 8 px BEHIND the drop and a lead longer than
+      // the flight puts p2 behind it too — a cubic with both middle control points behind its
+      // start is a backwards excursion with a snap on the end, not an arc into a body. With a
+      // 14 px floor a 1 px flight was still moving AWAY at t = 0.74; three quarters of its own
+      // clock spent leaving. Asserted across the whole ladder because the two cases that read
+      // wrong (1 px, 5 px) are exactly the ones no hand-picked "typical" distance covers.
+      const to: FlightPoint = { x: FROM.x + px, y: FROM.y, z: 24 };
+      let peakT = 0;
+      let peak = -Infinity;
+      for (let i = 0; i <= 200; i++) {
+        const p = flightPose(i / 200, FROM, to, 1);
+        const d = Math.hypot(to.x - p.x, to.y - p.y);
+        if (d > peak) [peak, peakT] = [d, i / 200];
+      }
+      expect(peakT).toBeLessThan(0.6);
+    },
+  );
+
 });
 
 /** A view with a shadow, the same shape every real drop has (`Pickup` calls `makeShadow`). */
@@ -284,6 +330,27 @@ describe('PickupFlightLayer', () => {
     expect(view.destroyed).toBe(true);
     expect(entities.children).not.toContain(view);
     expect(shadows.children).not.toContain(shadow);
+  });
+
+  it('drives the curve with the RAW clock fraction — the acceleration is applied once, in one place', () => {
+    // The contract between the layer and the pure function, and it is worth stating because the
+    // acceleration gave them a way to disagree that neither side can see alone. `flightPose`
+    // warps `t` internally; a layer that also warped what it passes (or that drifted on its own
+    // `/ FLIGHT_MS`) would still produce a flight that starts at the drop, ends on the body and
+    // accelerates — every other assertion in this file stays green — while running a curve
+    // nobody designed. Checked at three points, because matching at one is what an off-by-a-warp
+    // does anyway at t = 0 and t = 1.
+    for (const t of [0.25, 0.5, 0.75]) {
+      const { layer } = makeLayer();
+      const view = makeView();
+      layer.launch(view, FROM, () => TO, 1);
+      layer.update(FLIGHT_MS * t);
+      const pose = flightPose(t, FROM, TO, 1);
+      expect(view.x).toBeCloseTo(pose.x, 6);
+      expect(view.y).toBeCloseTo(pose.y - pose.z, 6); // screen y is the ground point minus the lift
+      expect(view.alpha).toBeCloseTo(pose.alpha, 6);
+      expect(view.scale.x).toBeCloseTo(pose.scale, 6);
+    }
   });
 
   it('CHASES a moving collector: the target is re-asked every frame, not captured at launch', () => {

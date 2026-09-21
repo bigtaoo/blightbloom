@@ -100,11 +100,21 @@ const ACCEL = 2;
  *  into the body — the one stretch this change exists to speed up. Pulling p2 back gives the
  *  curve a real tangent to arrive on.
  *
- *  Same fraction/floor/cap shape as every other offset here and for the same reason
- *  (`POP_BACK_R`): the flight the player sees most is ~28 px long, and a purely proportional
- *  lead would be 14 px of nothing. */
+ *  **This is the one offset in the file with a fraction and a cap but NO FLOOR, and the absence
+ *  is load-bearing.** Every other offset here is floored because the flight the player sees most
+ *  is ~28 px long and a purely proportional arc collapses at that size. A floor on the lead does
+ *  the opposite: p1 already sits `POP_BACK_MIN` = 8 px BEHIND the drop, so a lead that can exceed
+ *  the distance puts p2 behind the drop as well, and a cubic whose middle two control points are
+ *  both behind its start is not an arc into the collector — it is a backwards excursion with a
+ *  snap at the end. Measured with a 14 px floor: a 1 px flight was still moving AWAY at t = 0.74,
+ *  three quarters of the way through its own clock. The floor also bought nothing at the size it
+ *  was supposed to protect, because `0.5 × 28` is 14 px exactly.
+ *
+ *  A fraction alone is the right shape here precisely BECAUSE this offset is a speed and not a
+ *  displacement: the arrival speed it sets is `3·lead / FLIGHT_MS`, and a short flight wants a
+ *  proportionally slower arrival — the floors elsewhere exist to keep the arc VISIBLE, and this
+ *  one is not drawn. `pickupFlight.test.ts` pins the short cases directly. */
 const LEAD_R = 0.5;
-const LEAD_MIN = 14;
 const LEAD_MAX = 55;
 
 /** How far the drop first pops AWAY from the collector, as a fraction of the distance to them,
@@ -230,7 +240,7 @@ export function flightPose(t: number, from: FlightPoint, to: FlightPoint, sign: 
   // to pop back along or bow around, so the floor would only add jitter in an arbitrary one.
   const back = dist > 0 ? Math.min(POP_BACK_MAX, Math.max(POP_BACK_MIN, dist * POP_BACK_R)) : 0;
   const bulge = (dist > 0 ? Math.min(BULGE_MAX, Math.max(BULGE_MIN, dist * BULGE_R)) : 0) * sign;
-  const lead = dist > 0 ? Math.min(LEAD_MAX, Math.max(LEAD_MIN, dist * LEAD_R)) : 0;
+  const lead = Math.min(LEAD_MAX, dist * LEAD_R); // no floor, and no `dist > 0` guard needed
   // The ground perpendicular is (-uy, ux); only its X component is used — see `BULGE_R` for
   // why bowing in ground Y would fight the hop instead of adding to it.
   const bowX = -uy * bulge;
