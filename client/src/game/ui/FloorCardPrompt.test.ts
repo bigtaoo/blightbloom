@@ -9,12 +9,20 @@
  * card is drawn as chosen — because all of it is derived from state rather than stored,
  * and none of it would go red on its own if the derivation drifted.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { Texture } from 'pixi.js';
 import type { GameState } from '@dd/engine';
 import { FLOOR_CARDS, RUN_BUFFS } from '@dd/engine';
-import { FloorCardPrompt } from './FloorCardPrompt';
+import { FloorCardPrompt, PANEL_W } from './FloorCardPrompt';
 import { resetLocaleForTests, t } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
+
+// Only the seven catalogue ids resolve — an unknown id answers `undefined`, which is the
+// missing-art path the fallback case below drives.
+vi.mock('../../render/uiSkins', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../render/uiSkins')>()),
+  getUiTexture: (key: string) => (key.startsWith('icon_card_card_from_the_future') ? undefined : Texture.WHITE),
+}));
 
 afterEach(() => resetLocaleForTests());
 
@@ -106,7 +114,10 @@ describe('what the cards say', () => {
     // the player can still pick this one, and the sim still applies it correctly.
     const p = new FloorCardPrompt();
     p.update(state(['card_from_the_future', 'edge', 'cadence'], [0]), true, 0);
-    expect(labels(p)[0]).toBe('card_from_the_future');
+    // Newlines removed: a raw id has no spaces to break at, so a long one is folded
+    // mid-token to stay inside the card (`wrapMono`'s hard break). What matters is that
+    // every character of the id is still on the card, not that it is on one line.
+    expect(labels(p)[0]!.split('\n').join('')).toBe('card_from_the_future');
   });
 
   it('re-renders on a locale change even though the offer did not move', async () => {
@@ -117,6 +128,37 @@ describe('what the cards say', () => {
     await useLocale('zh');
     p.update(s, true, 0);
     expect(labels(p).join('|')).not.toBe(en);
+  });
+});
+
+describe('the card art', () => {
+  /** What `setIcon` was handed for each visible card: the texture and the placement. */
+  const icons = (p: FloorCardPrompt) =>
+    (p as unknown as { cards: Array<{ view: { visible: boolean }; iconSprite: unknown; iconPlacement: string }> }).cards
+      .filter((c) => c.view.visible)
+      .map((c) => ({ hasIcon: c.iconSprite !== null, placement: c.iconPlacement }));
+
+  it('asks for each card’s own icon, above the text rather than beside it', () => {
+    // `getUiTexture` is mocked here rather than left to answer `undefined`, because the
+    // no-art path is the one a headless test takes by default and it is NOT the shipped
+    // layout — a card's label sits under its icon, and only a real texture puts it there.
+    const p = new FloorCardPrompt();
+    p.update(state(['edge', 'cadence', 'bulwark'], [0]), true, 0);
+    expect(icons(p)).toEqual([
+      { hasIcon: true, placement: 'top' },
+      { hasIcon: true, placement: 'top' },
+      { hasIcon: true, placement: 'top' },
+    ]);
+  });
+
+  it('draws a card with no art as text alone instead of a hole', () => {
+    // The art contract design/12 states for every asset here: a missing file leaves the
+    // panel on its pre-art look. Reachable two ways — a card the sim knows and this build
+    // has no icon for, and any card at all before `preloadUiArt` has finished.
+    const p = new FloorCardPrompt();
+    p.update(state(['card_from_the_future', 'edge', 'cadence'], [0]), true, 0);
+    expect(icons(p)[0]).toEqual({ hasIcon: false, placement: 'top' });
+    expect(labels(p)[0]!.split('\n').join('')).toBe('card_from_the_future');
   });
 });
 
@@ -198,8 +240,34 @@ describe('layout and press handling', () => {
     p.reposition({ w: 480, h: 320 });
     // Never off the top of a short screen: the panel is clamped rather than floated
     // above the portal popup at whatever negative offset the arithmetic produces.
-    const panelY = (p as unknown as { panel: { view: { y: number } } }).panel.view.y;
-    expect(panelY).toBeGreaterThanOrEqual(0);
+    expect(p.view.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it('leaves the panel at its own size on a viewport wide enough for it', () => {
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 1280, h: 720 });
+    expect(p.view.scale.x).toBe(1);
+    expect(p.view.x).toBeCloseTo(1280 / 2 - PANEL_W / 2, 6);
+  });
+
+  it('scales the whole panel down rather than letting a card hang off a narrow screen', () => {
+    // 494px of panel on a 480px viewport: the pre-2026-09-21 layout put its left edge at
+    // x=-7 and the first card's outer half off the screen entirely.
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 480, h: 320 });
+    expect(p.view.scale.x).toBeLessThan(1);
+    expect(p.view.x).toBeGreaterThanOrEqual(0);
+    expect(p.view.x + PANEL_W * p.view.scale.x).toBeLessThanOrEqual(480);
+  });
+
+  it('lays its children out in the panel’s own space, so the scale carries all of them', () => {
+    // The reason the scale works at all: a child positioned in SCREEN space would be moved
+    // by the container's scale as well as sized by it, and would drift out of the panel.
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 480, h: 320 });
+    const inner = p as unknown as { panel: { view: { x: number; y: number } }; cards: Array<{ view: { x: number } }> };
+    expect(inner.panel.view).toMatchObject({ x: 0, y: 0 });
+    expect(inner.cards[0]!.view.x).toBeLessThan(PANEL_W);
   });
 
   it('reports a press on the panel so the tap cannot also fire a shot', () => {

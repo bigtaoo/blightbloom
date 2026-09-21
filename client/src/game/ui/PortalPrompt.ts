@@ -3,6 +3,12 @@ import type { GameState } from '@dd/engine';
 import { Panel, Button } from './widgets';
 import { t } from '../../i18n';
 
+/** The button box, and the width its label is wrapped to (the box less 10px either side).
+ *  Exported for `hudLabelFit.test.ts`'s locale sweep, which measures against the BOX. */
+export const BTN_W = 260;
+export const BTN_FONT = 15;
+const BTN_TEXT_W = BTN_W - 20;
+
 /**
  * Everything the EXTRACT press would hand to the account — shown on the popup so "bank &
  * leave" isn't an abstract phrase without a number attached to it.
@@ -63,9 +69,13 @@ export class PortalPrompt {
     });
     this.titleText.anchor.set(0.5, 0);
 
-    this.extractBtn = new Button('', { w: 260, h: 40 });
+    // `wrapWidth`: "Bank & Extract (12 materials)" is 261px at this font — it did not fit
+    // its own 260px box in ENGLISH, let alone in Russian at 378px, and ran out of the
+    // button and past the panel's edge in seven of the eight locales (2026-09-21). The box
+    // cannot grow (the panel is capped at 320px on a phone), so the label folds instead.
+    this.extractBtn = new Button('', { w: BTN_W, h: 40, wrapWidth: BTN_TEXT_W });
     this.extractBtn.onTap = () => this.onExtract?.();
-    this.descendBtn = new Button('', { w: 260, h: 40 });
+    this.descendBtn = new Button('', { w: BTN_W, h: 40, wrapWidth: BTN_TEXT_W });
     this.descendBtn.onTap = () => this.onDescend?.();
 
     this.view.addChild(this.panel.view, this.titleText, this.extractBtn.view, this.descendBtn.view);
@@ -96,7 +106,7 @@ export class PortalPrompt {
     this.titleText.position.set(screenPx.w / 2, y + 12);
     // One slot, and both buttons sit in it — only one is ever visible (see the class
     // header), so they cannot collide and neither needs a layout of its own.
-    const btnX = x + w / 2 - 130;
+    const btnX = x + w / 2 - BTN_W / 2;
     const btnY = y + 58;
     this.extractBtn.view.position.set(btnX, btnY);
     this.descendBtn.view.position.set(btnX, btnY);

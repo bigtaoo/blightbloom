@@ -7,6 +7,13 @@ import { t, getLocale } from '../../i18n';
 
 const ROW_W = 250;
 const ROW_H = 34;
+/** Row label font, and the width a label is wrapped to. The lane is what is left of the row
+ *  once the icon chip on the left and the price on the right have taken theirs — a buff row
+ *  in Polish ("Zwiększona szansa na trafienie krytyczne") measures 312px against a 250px row
+ *  and ran straight through the price and out of the panel until 2026-09-21. Exported for
+ *  `hudLabelFit.test.ts`'s locale sweep. */
+export const ROW_FONT = 13;
+export const ROW_TEXT_W = 160;
 const ROW_GAP = 6;
 const PAD = 10;
 const HEADER_H = 30;
@@ -121,7 +128,8 @@ export class ShopPrompt {
       const row = new Button(this.rowLabel(offer), {
         w: ROW_W,
         h: ROW_H,
-        fontSize: 13,
+        fontSize: ROW_FONT,
+        wrapWidth: ROW_TEXT_W,
         color: offer.sold ? 0x1a1f28 : affordable ? 0x2a3140 : 0x20242e,
         textColor: offer.sold ? 0x4a5568 : affordable ? 0xe2e8f0 : 0x8a93a3,
         // Silent unless it will actually do something — the forge's craft rows already

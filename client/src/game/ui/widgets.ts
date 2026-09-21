@@ -1,7 +1,7 @@
 import { Container, Graphics, Text, Rectangle, Sprite, type Texture } from 'pixi.js';
 import { getUiTexture } from '../../render/uiSkins';
 import { playUiCue, type UiCue } from '../../audio/uiSound';
-import { estimateMonoWidth } from './textWidth';
+import { widestMonoLine, wrapMono } from './textWidth';
 
 // A minimal Pixi widget kit (design/10 "build vs. a tiny in-house layer" — kept small,
 // no framework). Every widget is pure presentation: it takes plain values in `set()`/
@@ -186,6 +186,9 @@ export class Button {
   private label: Text;
   private iconChip: Graphics | null = null;
   private iconSprite: Sprite | null = null;
+  /** Where the current icon sits: beside the label (a menu row) or above it (a floor card).
+   *  Set by `setIcon`, read by `layoutLabel`/`iconLane`. */
+  private iconPlacement: 'left' | 'top' = 'left';
   private w: number;
   private readonly h: number;
   private readonly minW: number;
@@ -207,6 +210,14 @@ export class Button {
   // label text is translated and can outgrow the width picked for English (settings.md
   // 2026-08-14, Russian "ВКЛЮЧИТЬ ЗВУК"/"УПРАВЛЕНИЕ: ЛЕВША" overflowing their box).
   private readonly autoWidth: boolean;
+  // `wrapWidth` (opt-in): the pixel width the label is wrapped to on every `setText`, for a
+  // box that CANNOT grow — the in-run HUD's panels are laid out against the real screen, not
+  // a design space that scales, so an over-long label there has nowhere to go sideways and
+  // has to go down instead. The mirror image of `autoWidth`, and the two are alternatives
+  // rather than a pair: one widens the box to the text, this one folds the text into the box.
+  // Wrapped here rather than through Pixi's own `style.wordWrap` so the result is a plain
+  // string a Node-only test can measure — see `wrapMono`'s header for what that bought.
+  private readonly wrapWidth: number | undefined;
   // Which UI cue this button makes when pressed (design/11's screen-layer cues). Defaults to
   // `ui.tap`, so every one of the ~40 buttons in the client is audible without opting in —
   // the opt-INs are the exceptions that mean something else: `ui.back` for the button that
@@ -220,8 +231,8 @@ export class Button {
   // 2026-08-02): a flat fill alone reads as low-contrast wherever a button sits over
   // a background image darker/lighter than the fill itself (e.g. MainMenu's hub art).
   // A crisp stroke keeps the button legible regardless of what's behind it.
-  constructor(text: string, opts: { w: number; h: number; color?: number; textColor?: number; fontSize?: number; borderColor?: number; borderAlpha?: number; autoWidth?: boolean; sound?: UiCue | 'silent' }) {
-    const { w, h, color = 0x2a3140, textColor = 0xe2e8f0, fontSize = 15, borderColor, borderAlpha = 0.9, autoWidth = false, sound = 'ui.tap' } = opts;
+  constructor(text: string, opts: { w: number; h: number; color?: number; textColor?: number; fontSize?: number; borderColor?: number; borderAlpha?: number; autoWidth?: boolean; wrapWidth?: number; sound?: UiCue | 'silent' }) {
+    const { w, h, color = 0x2a3140, textColor = 0xe2e8f0, fontSize = 15, borderColor, borderAlpha = 0.9, autoWidth = false, wrapWidth, sound = 'ui.tap' } = opts;
     this.minW = w;
     this.w = w;
     this.h = h;
@@ -230,12 +241,16 @@ export class Button {
     this.borderColor = borderColor;
     this.borderAlpha = borderAlpha;
     this.autoWidth = autoWidth;
+    this.wrapWidth = wrapWidth;
     this.sound = sound;
     // `padding` works around a real font-metrics mismatch observed in headless/sandboxed
     // Chromium: Pixi's own text measurement can come in narrower than the canvas's actual
     // paint-time glyph width for bold text, clipping the last character(s) — Pixi's own
     // documented mitigation ("occasionally some fonts are cropped").
-    this.label = new Text({ text, style: { fill: textColor, fontSize, fontFamily: 'monospace', fontWeight: 'bold', padding: 14 } });
+    // `align: 'center'` matters only once a label has more than one line, which only a
+    // `wrapWidth` button can have — Pixi's default leaves the short line ragged-left inside
+    // a centred block.
+    this.label = new Text({ text: this.fit(text), style: { fill: textColor, fontSize, fontFamily: 'monospace', fontWeight: 'bold', padding: 14, align: 'center' } });
     this.label.anchor.set(0.5);
     // The label is decoration: the box (`bg`) is what the press lands on. Marking it
     // 'none' takes the whole Text out of hit-testing, which is both Pixi's own advice for
@@ -265,9 +280,19 @@ export class Button {
    * uses `estimateMonoWidth` rather than Pixi's `Text.width` (see textWidth.ts): the
    * label is `fontFamily: 'monospace'`, so the estimate is accurate, and unlike
    * `Text.width` it needs no real canvas — same convention as StatChip/WeaponCard. */
+  /** The label text this button actually draws: wrapped to `wrapWidth` when the caller asked
+   *  for it, and the caller's own string otherwise. */
+  private fit(text: string): string {
+    return this.wrapWidth === undefined ? text : wrapMono(text, this.fontSize, this.wrapWidth).join('\n');
+  }
+
   private redraw() {
+    // `widestMonoLine`, not `estimateMonoWidth`: a label may now carry newlines (a
+    // `wrapWidth` button, or a caller that composed its own two-line string like
+    // `FloorCardPrompt`), and summing every line into one run would size an `autoWidth`
+    // box for a string that is never drawn.
     this.w = this.autoWidth
-      ? Math.max(this.minW, estimateMonoWidth(this.label.text, this.fontSize) + 28 + this.iconLane())
+      ? Math.max(this.minW, widestMonoLine(this.label.text, this.fontSize) + 28 + this.iconLane())
       : this.minW;
     const radius = Math.min(8, this.h / 2);
     this.bg.clear().roundRect(0, 0, this.w, this.h, radius).fill({ color: this.color, alpha: 1 });
@@ -276,9 +301,17 @@ export class Button {
   }
 
   /** Horizontal space an icon takes out of the box: the chip, plus the 8px either side of it
-   *  that `layoutLabel` positions the label against. Zero when there is no icon. */
+   *  that `layoutLabel` positions the label against. Zero when there is no icon, and zero for
+   *  a `'top'` icon, which takes its room out of the HEIGHT instead. */
   private iconLane(): number {
-    return this.iconSprite ? this.h - 8 + 16 : 0;
+    return this.iconSprite && this.iconPlacement === 'left' ? this.h - 8 + 16 : 0;
+  }
+
+  /** A `'top'` icon's square box, and the gap under it. Derived from the button rather than
+   *  passed in: the one caller is a 150x108 card, and a box tied to the button's own height
+   *  cannot drift out of it when that height is retuned. */
+  private topIconBox(): number {
+    return Math.round(Math.min(this.h * 0.4, this.w * 0.4));
   }
 
   /**
@@ -295,6 +328,15 @@ export class Button {
    * reason.
    */
   private layoutLabel(): void {
+    if (this.iconSprite && this.iconPlacement === 'top') {
+      // Under the icon, and anchored to its TOP rather than its middle: this label is
+      // multi-line (a floor card is a name plus a wrapped description), so centring it
+      // vertically would move the first line whenever the wrap produced a different number
+      // of lines, and the three cards in a row would no longer share a baseline.
+      this.label.anchor.set(0.5, 0);
+      this.label.position.set(this.w / 2, 8 + this.topIconBox() + 6);
+      return;
+    }
     if (this.iconSprite) {
       const box = this.h - 8;
       this.label.anchor.set(0, 0.5);
@@ -314,7 +356,7 @@ export class Button {
   }
 
   setText(text: string) {
-    this.label.text = text;
+    this.label.text = this.fit(text);
     if (this.autoWidth) this.redraw();
   }
 
@@ -342,7 +384,8 @@ export class Button {
    * CompareCard). Pass `undefined` to clear. Shifts the label to sit right of the icon
    * instead of centering — the only layout change, so buttons without an icon are
    * unaffected. */
-  setIcon(texture: Texture | undefined, chipColor?: number): void {
+  setIcon(texture: Texture | undefined, chipColor?: number, placement: 'left' | 'top' = 'left'): void {
+    this.iconPlacement = placement;
     if (!texture) {
       this.iconSprite?.destroy();
       this.iconSprite = null;
@@ -351,14 +394,19 @@ export class Button {
       this.layoutLabel();
       return;
     }
-    const box = this.h - 8;
-    const cx = 4 + box / 2;
-    const cy = this.h / 2;
+    const top = placement === 'top';
+    const box = top ? this.topIconBox() : this.h - 8;
+    const cx = top ? this.w / 2 : 4 + box / 2;
+    const cy = top ? 8 + box / 2 : this.h / 2;
     if (!this.iconChip) {
       this.iconChip = new Graphics();
       this.view.addChildAt(this.iconChip, 1);
     }
-    this.iconChip.clear().roundRect(4, 4, box, box, 4).fill({ color: chipColor ?? 0x1f2532, alpha: 0.9 });
+    // A `'top'` icon gets no backing chip: the card it sits on IS the chip, and a second
+    // rounded rectangle inside it reads as a button within a button. `clear()` alone keeps
+    // the Graphics around so the two placements share one lifecycle.
+    this.iconChip.clear();
+    if (!top) this.iconChip.roundRect(4, 4, box, box, 4).fill({ color: chipColor ?? 0x1f2532, alpha: 0.9 });
     if (!this.iconSprite) {
       this.iconSprite = new Sprite();
       this.iconSprite.anchor.set(0.5);

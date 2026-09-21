@@ -31,6 +31,17 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   icon_party_join: '/ui/icon_party_join.png',
   icon_party_leave: '/ui/icon_party_leave.png',
   icon_clear: '/ui/icon_clear.png',
+  // The checkpoint's floor-card offer (2026-09-21) — one per entry in the engine's
+  // `FLOOR_CARDS`, keyed `icon_card_<card id>` so `FloorCardPrompt` can look one up from the
+  // offer without a second table mapping cards to art. A card whose icon is missing (an id
+  // newer than this build, or art not yet generated) draws as it always did: text only.
+  icon_card_potion_flow: '/ui/icon_card_potion_flow.png',
+  icon_card_windfall: '/ui/icon_card_windfall.png',
+  icon_card_edge: '/ui/icon_card_edge.png',
+  icon_card_cadence: '/ui/icon_card_cadence.png',
+  icon_card_bulwark: '/ui/icon_card_bulwark.png',
+  icon_card_precision: '/ui/icon_card_precision.png',
+  icon_card_capacitor: '/ui/icon_card_capacitor.png',
   // The Forge outpost NPC (design/13's "Outpost/hub" NPC gap — a forger character
   // standing in the loadout screen). Sprite, not a button icon — Forge.ts positions
   // it directly rather than going through Button.setIcon.

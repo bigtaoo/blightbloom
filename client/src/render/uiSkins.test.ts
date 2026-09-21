@@ -8,6 +8,7 @@
  * the registry, independent of whether its PNG exists yet.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { FLOOR_CARD_IDS } from '@dd/engine';
 import { preloadUiArt, getUiTexture, UI_ASSET_KEYS } from './uiSkins';
 
 // The 2026-08 icon pass (LoginScreen/PauseMenu/PartyScreen/Forge) + the Forger NPC
@@ -27,6 +28,15 @@ describe('uiSkins — asset registry', () => {
     for (const key of ['hub', 'icon_play', 'icon_squad', 'icon_account', 'icon_settings']) {
       expect(UI_ASSET_KEYS).toContain(key);
     }
+  });
+
+  it('has an icon key for every floor card the engine can offer', () => {
+    // A consistency gate, not a spot check (design/18): `FloorCardPrompt` looks its art up
+    // as `icon_card_${id}` straight off the offer, and a card added to the engine catalogue
+    // with no key here would draw text-only forever — the fallback is silent by design, so
+    // nothing else would ever go red. Read a failure as "generate the icon and wire it",
+    // never as "loosen this".
+    for (const id of FLOOR_CARD_IDS) expect(UI_ASSET_KEYS).toContain(`icon_card_${id}`);
   });
 
   it('getUiTexture returns undefined for an unregistered key', () => {
