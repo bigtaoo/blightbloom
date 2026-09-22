@@ -61,6 +61,7 @@ export const en = {
     reduceMotion: 'REDUCE MOTION: {mode}',
     on: 'ON',
     off: 'OFF',
+    tutorial: 'REPLAY TUTORIAL',
     back: 'BACK',
   },
   forge: {

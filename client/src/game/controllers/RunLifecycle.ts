@@ -65,10 +65,10 @@ export interface RunLifecycleDeps {
    *  moment the HUD is hidden again. */
   forge: Forge;
   loadout: Loadout;
-  /** The run entry points reached from the LOBBY rather than from the hub screens, and so
-   *  the ones that have to hide the main menu: `beginQuickRun`, the tutorial, and — since
-   *  2026-09-17 — `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
+  /** The run entry points reached from the LOBBY, and so the ones that have to hide the main
+   *  menu: `beginQuickRun`, the tutorial, and `resumeSavedRun` (its CONTINUE row, 2026-09-17). */
   mainMenu: { hide(): void };
+  settingsScreen: { hide(): void };
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
   pauseMenu: PauseMenu;
@@ -226,7 +226,7 @@ export class RunLifecycle {
       buildTutorialConfig({ skinId: d.run.meta.selectedSkin }),
     );
     d.run.runCount++;
-    this.enterPrimedRun(tutorial, () => d.mainMenu.hide());
+    this.enterPrimedRun(tutorial, () => { d.mainMenu.hide(); d.settingsScreen.hide(); });
   }
 
   /** Dev-only (see RunState's `arenaDemo` comment): a catalog ArenaMap + two local seats on

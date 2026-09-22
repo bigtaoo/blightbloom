@@ -313,6 +313,7 @@ describe('MainMenu — button hierarchy and layout', () => {
     expect(soloB.width).toBeGreaterThan(accountB.width);
   });
 
+
   it('gives the card exactly one green primary, and hands it over under quick play', () => {
     // The failure this exists for is the one design/10 recorded on 2026-08-02: two controls
     // of equal weight on one card, reported as clicks landing on the wrong page when the
@@ -365,12 +366,15 @@ describe('MainMenu — button hierarchy and layout', () => {
     }
   });
 
-  it('backs the button cluster with a card sized to fully contain it', () => {
+  it('backs the button cluster with a card sized to fully contain the ROUTES — the utility row moved out of it (2026-09-22)', () => {
     const m = new MainMenu();
     m.show(800, 600);
     const p = privateOf(m) as unknown as {
       menuCard: { view: { position: { x: number; y: number }; children: unknown[] } };
-      routes: { soloBtn: { view: { position: { x: number; y: number }; children: unknown[] } } };
+      routes: {
+        soloBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
+        tutorialBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
+      };
       settingsBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
     };
     const card = p.menuCard.view;
@@ -378,10 +382,80 @@ describe('MainMenu — button hierarchy and layout', () => {
     // suite for the same convention).
     const cardBounds = (card.children[0] as Graphics).getLocalBounds();
     const playTop = p.routes.soloBtn.view.position.y;
-    const settingsBottom = p.settingsBtn.view.position.y + bgBounds(p.settingsBtn).height;
+    // TUTORIAL, not SETTINGS: the card's last row is a ROUTE now, since the utility pair
+    // (ACCOUNT/SETTINGS) no longer sits inside it at all — see the assertion below.
+    const tutorialBottom = p.routes.tutorialBtn.view.position.y + bgBounds(p.routes.tutorialBtn).height;
 
     expect(card.position.y).toBeLessThanOrEqual(playTop);
-    expect(card.position.y + cardBounds.height).toBeGreaterThanOrEqual(settingsBottom);
+    expect(card.position.y + cardBounds.height).toBeGreaterThanOrEqual(tutorialBottom);
+    // The utility row sits BELOW the card, not inside it (design/10 "do not dim a door",
+    // read as: a control that is not a route into the game does not belong on the card
+    // that holds the ones that are).
+    expect(p.settingsBtn.view.position.y).toBeGreaterThan(card.position.y + cardBounds.height);
+  });
+
+  it('keeps the utility row outside the card in every state (2026-09-22)', () => {
+    const CASES: Array<[string, () => MainMenu]> = [
+      ['plain', () => { const m = new MainMenu(); m.show(800, 600); return m; }],
+      ['portal', () => {
+        const m = new MainMenu();
+        m.setQuickPlay(true);
+        m.setAccountEntry(false);
+        m.show(800, 600);
+        return m;
+      }],
+      ['saved run', () => {
+        const m = new MainMenu();
+        m.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
+        m.show(800, 600);
+        return m;
+      }],
+      ['signed in', () => {
+        setSession(ALICE);
+        const m = new MainMenu();
+        m.show(800, 600);
+        return m;
+      }],
+    ];
+    for (const [name, build] of CASES) {
+      const m = build();
+      const p = privateOf(m) as unknown as {
+        menuCard: { view: { position: { y: number }; children: unknown[] } };
+        settingsBtn: { view: { position: { y: number } } };
+      };
+      const cardBottom = p.menuCard.view.position.y
+        + (p.menuCard.view.children[0] as Graphics).getLocalBounds().height;
+      expect(p.settingsBtn.view.position.y, name).toBeGreaterThan(cardBottom);
+      setSession(null);
+    }
+  });
+
+  it('shrinks the card and pulls the utility row up when TUTORIAL hides (2026-09-22)', () => {
+    // The same "grows/shrinks the card by the row it (dis)owns" property `CONTINUE RUN`'s
+    // own test pins above, on the other end: TUTORIAL is the LAST row in the card, so hiding
+    // it for a returning player (`hasSeenTutorial`) must shrink the card and pull everything
+    // below it — the utility row included — up by exactly the row it gave back.
+    const shown = new MainMenu();
+    shown.setRecommendTutorial(true);
+    shown.show(800, 600);
+    const hidden = new MainMenu();
+    hidden.setRecommendTutorial(false);
+    hidden.show(800, 600);
+
+    const a = privateOf(shown);
+    const b = privateOf(hidden);
+    expect(b.menuCard.h).toBeLessThan(a.menuCard.h);
+    expect(b.settingsBtn.view.position.y).toBeLessThan(a.settingsBtn.view.position.y);
+    // TUTORIAL's own row (42) plus the gap above it (5) — the same 47 `LobbyRoutes.test.ts`
+    // pins on `LobbyRoutes.height` directly; asserted again here because that number has to
+    // reach all the way through `MainMenu.show()`'s own arithmetic, not just `routes.height`.
+    const shrink = a.menuCard.h - b.menuCard.h;
+    expect(shrink).toBe(47);
+    // Only HALF of that reaches the utility row's absolute position, not all of it: the whole
+    // title-to-utility-row block is CENTRED (`show()`'s own `top` arithmetic), so a shorter
+    // card also pulls the block's TOP down as it pulls the bottom up — the same "grew in BOTH
+    // directions" property the quick-play centring test above asserts for PLAY's own row.
+    expect(a.settingsBtn.view.position.y - b.settingsBtn.view.position.y).toBe(shrink / 2);
   });
 });
 
@@ -743,8 +817,11 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(b.menuCard.h).toBeGreaterThan(a.menuCard.h);
     expect(b.accountBtn.view.position.y).toBeGreaterThan(a.accountBtn.view.position.y);
     expect(b.routes.continueBtn.view.position.y).toBeGreaterThan(b.menuCard.view.position.y);
+    // ACCOUNT sits below the card (2026-09-22 — the utility row is chrome now, not a route,
+    // so it moved out of `menuCard` entirely), and it moves down WITH the card as CONTINUE
+    // grows it, rather than landing back inside it.
     expect(b.accountBtn.view.position.y)
-      .toBeLessThan(b.menuCard.view.position.y + b.menuCard.h);
+      .toBeGreaterThan(b.menuCard.view.position.y + b.menuCard.h);
   });
 
   it('gives the portal CONTINUE instead of PLAY, never both', () => {

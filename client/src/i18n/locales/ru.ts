@@ -63,6 +63,7 @@ export const ru: Translations<typeof en> = {
     reduceMotion: 'МЕНЬШЕ ТРЯСКИ: {mode}',
     on: 'ВКЛ.',
     off: 'ВЫКЛ.',
+    tutorial: 'ПОВТОРИТЬ ОБУЧЕНИЕ',
     back: 'НАЗАД',
   },
   forge: {

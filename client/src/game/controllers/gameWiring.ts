@@ -43,6 +43,7 @@ import type { Forge } from '../screens/Forge';
 import type { Loadout } from '../screens/Loadout';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { Screens } from '../screens/Screens';
+import type { Settings } from '../screens/Settings';
 import type { PauseMenu } from '../screens/PauseMenu';
 import { shouldSwapToSlot } from './weaponSlotSelect';
 import type { RunState } from '../runState';
@@ -67,6 +68,11 @@ export interface WiringDeps {
   loadout: Loadout;
   storeScreen: StoreScreen;
   screens: Screens;
+  /** Reached from the lobby OR from the loadout screen, so its own TUTORIAL passthrough
+   *  (2026-09-22 — the second door `LobbyRoutes`' own row relies on once it can hide) is
+   *  wired here rather than in `Game.ts` alongside `onChange`/`onBack`, which read/write
+   *  `SettingsState` and stay there. */
+  settingsScreen: Settings;
   pauseMenu: PauseMenu;
   /** Confirm — the verb Fire, Enter and the START RUN / result-screen buttons share. */
   confirm: () => void;
@@ -89,6 +95,9 @@ export function wireScreens(d: WiringDeps): void {
   d.mainMenu.onForge = () => d.nav.showForge('menu');
   d.mainMenu.onTutorial = () => d.runs.beginTutorialRun();
   d.mainMenu.onSettings = () => d.nav.openSettings();
+  // The settings screen's own door onto the same run (2026-09-22) — see `WiringDeps.
+  // settingsScreen`'s comment.
+  d.settingsScreen.onTutorial = () => d.runs.beginTutorialRun();
   // ...and the one control whose presence depends on the HOST (`platform/hostKind.ts`):
   //
   //   default   no PLAY button at all. SOLO is the primary action and goes to the loadout

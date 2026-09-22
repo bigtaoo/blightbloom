@@ -106,6 +106,7 @@ function make(over: Partial<RunLifecycleDeps> & {
     forge: { hide: note('forge.hide') } as never,
     loadout: { hide: note('loadout.hide') } as never,
     mainMenu: { hide: note('mainMenu.hide') },
+    settingsScreen: { hide: note('settingsScreen.hide') } as never,
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
     pauseMenu: { hide: note('pauseMenu.hide') } as never,
@@ -239,6 +240,18 @@ describe('the primed entry points', () => {
     expect(t.order).toContain('roomBuilder.build');
     expect(t.order).toContain('mainMenu.hide');
     expect(t.order).not.toContain('loadout.hide');
+  });
+
+  it('the tutorial also hides SETTINGS — its second door since 2026-09-22', () => {
+    // `LobbyRoutes`' own TUTORIAL row can now hide (`setRecommendTutorial(false)`, once
+    // `MetaState.hasSeenTutorial`), so `Settings.ts`'s REPLAY TUTORIAL button is a second way
+    // to reach this same method — one this test's OWN screen stub cannot tell apart from the
+    // lobby's, which is exactly why both must be hidden unconditionally rather than by asking
+    // which door the player came through.
+    const t = make();
+    t.runs.beginTutorialRun();
+    expect(t.order).toContain('mainMenu.hide');
+    expect(t.order).toContain('settingsScreen.hide');
   });
 
   it('the arena demo primes the room and hides the loadout screen', () => {

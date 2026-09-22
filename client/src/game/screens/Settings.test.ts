@@ -35,6 +35,7 @@ function privateOf(s: Settings) {
     qualityBtn: ButtonInternals;
     frameRateBtn: ButtonInternals;
     reduceMotionBtn: ButtonInternals;
+    tutorialBtn: ButtonInternals;
     backBtn: ButtonInternals;
   };
 }
@@ -86,6 +87,32 @@ describe('Settings — back', () => {
     s.onBack = onBack;
     privateOf(s).backBtn.onTap?.();
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Settings — replay tutorial (2026-09-22)', () => {
+  it('tapping it fires onTutorial, and touches no SettingsState field', () => {
+    // Unlike every button above it, this one is a fixed action, not a toggle — the same
+    // shape as `onBack`, and the reason `buttonCueConventions.test.ts` carries it as a
+    // named exception to "every Settings option is ui.toggle".
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    const onTutorial = vi.fn();
+    const onChange = vi.fn();
+    s.onTutorial = onTutorial;
+    s.onChange = onChange;
+    privateOf(s).tutorialBtn.onTap?.();
+    expect(onTutorial).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders the label from the active locale, translated with the rest of the screen', async () => {
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    expect(privateOf(s).tutorialBtn.label.text).toBe('REPLAY TUTORIAL');
+    await useLocale('zh');
+    s.show(800, 600, { ...defaultSettingsState(), locale: 'zh' });
+    expect(privateOf(s).tutorialBtn.label.text).toBe('重玩教程');
   });
 });
 
@@ -264,34 +291,38 @@ describe('Settings — button width/centering across locales (autoWidth, 2026-08
     expect(centerOf()).toBeCloseTo(CX, 6);
   });
 
-  it('lays out mute+back as a fixed-gap pair, centered together, at every width', async () => {
+  it('lays out mute+tutorial+back as a fixed-gap row, centered together, at every width', async () => {
+    // TUTORIAL joined this row 2026-09-22 (it used to be MUTE+BACK alone) — see
+    // `Settings.ts`'s `layoutButtons` for why it landed here instead of a row of its own.
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const p = privateOf(s);
     const GAP = 20;
 
-    const assertPairLayout = () => {
-      // Back sits immediately after mute with exactly GAP between them...
-      expect(p.backBtn.view.position.x).toBeCloseTo(p.muteBtn.view.position.x + p.muteBtn.width + GAP, 6);
-      // ...and the pair as a whole is centered under the panel midpoint.
-      const pairLeft = p.muteBtn.view.position.x;
-      const pairRight = p.backBtn.view.position.x + p.backBtn.width;
-      expect((pairLeft + pairRight) / 2).toBeCloseTo(CX, 6);
+    const assertRowLayout = () => {
+      // TUTORIAL sits immediately after MUTE, and BACK immediately after TUTORIAL, exactly
+      // GAP apart each time...
+      expect(p.tutorialBtn.view.position.x).toBeCloseTo(p.muteBtn.view.position.x + p.muteBtn.width + GAP, 6);
+      expect(p.backBtn.view.position.x).toBeCloseTo(p.tutorialBtn.view.position.x + p.tutorialBtn.width + GAP, 6);
+      // ...and the row as a whole is centered under the panel midpoint.
+      const rowLeft = p.muteBtn.view.position.x;
+      const rowRight = p.backBtn.view.position.x + p.backBtn.width;
+      expect((rowLeft + rowRight) / 2).toBeCloseTo(CX, 6);
     };
-    assertPairLayout();
+    assertRowLayout();
 
     // Toggling to UNMUTE swaps in "ВКЛЮЧИТЬ ЗВУК"-length text (here still English, but
-    // exercises the same resize-then-relayout path) — the pair must stay glued together
+    // exercises the same resize-then-relayout path) — the row must stay glued together
     // and centered even though muteBtn's width just changed.
     p.muteBtn.onTap?.();
-    assertPairLayout();
+    assertRowLayout();
 
     await useLocale('ru');
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     p.muteBtn.onTap?.(); // -> "ВКЛЮЧИТЬ ЗВУК", noticeably longer than "MUTE"/"БЕЗ ЗВУКА"
     expect(p.muteBtn.label.text).toBe('ВКЛЮЧИТЬ ЗВУК');
     expect(p.muteBtn.width).toBeGreaterThan(120);
-    assertPairLayout();
+    assertRowLayout();
   });
 });
 

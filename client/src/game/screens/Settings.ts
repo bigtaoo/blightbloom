@@ -86,10 +86,19 @@ export class Settings {
   private qualityBtn: Button;
   private frameRateBtn: Button;
   private reduceMotionBtn: Button;
+  /** A second door onto the standalone level (2026-09-22) — the lobby's own TUTORIAL row
+   *  hides once `MetaState.hasSeenTutorial` (`LobbyRoutes.setRecommendTutorial`, "open it, or
+   *  take it off the screen" rather than dim it), and a route may not become fully
+   *  unreachable, so this is where a returning player who wants to see it again finds it. */
+  private tutorialBtn: Button;
   private backBtn: Button;
 
   onChange: ((s: SettingsState) => void) | null = null;
   onBack: (() => void) | null = null;
+  /** REPLAY TUTORIAL — a passthrough, same shape as `onBack`: this screen does not know how
+   *  to start a run, only that something else does. `gameWiring.ts` points it at the same
+   *  verb the lobby's own TUTORIAL row calls. */
+  onTutorial: (() => void) | null = null;
 
   private state: SettingsState = {
     master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en', controlLayout: 'standard',
@@ -188,6 +197,13 @@ export class Settings {
       this.update({ ...this.state, reduceMotion: !this.state.reduceMotion });
     };
 
+    // REPLAY TUTORIAL (2026-09-22) — a fixed action, same shape as `backBtn`: it does not
+    // read or write `SettingsState`, it only fires a passthrough (see `onTutorial`'s own
+    // comment on why this screen is not the one that knows how to start a run). Joins the
+    // MUTE/BACK row rather than getting a row of its own — see `layoutButtons`.
+    this.tutorialBtn = new Button(t('settings.tutorial'), { w: 200, h: 34, autoWidth: true, sound: 'ui.tap' });
+    this.tutorialBtn.onTap = () => this.onTutorial?.();
+
     this.backBtn = new Button(t('settings.back'), { w: 120, h: 34, autoWidth: true, sound: 'ui.back' });
     this.backBtn.onTap = () => this.onBack?.();
 
@@ -197,7 +213,7 @@ export class Settings {
       this.sfxLabel, this.sfxSlider.view,
       this.musicLabel, this.musicSlider.view,
       this.muteBtn.view, this.languageBtn.view, this.controlLayoutBtn.view, this.qualityBtn.view,
-      this.frameRateBtn.view, this.reduceMotionBtn.view, this.backBtn.view,
+      this.frameRateBtn.view, this.reduceMotionBtn.view, this.tutorialBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -215,6 +231,7 @@ export class Settings {
     // change (design/17-i18n.md) takes effect the next time this screen is shown.
     this.title.text = t('settings.title');
     this.backBtn.setText(t('settings.back'));
+    this.tutorialBtn.setText(t('settings.tutorial'));
     this.masterSlider.set(this.state.master);
     this.sfxSlider.set(this.state.sfx);
     this.musicSlider.set(this.state.music);
@@ -249,14 +266,19 @@ export class Settings {
     this.qualityBtn.view.position.set(cx - this.qualityBtn.width / 2, this.qualityY);
     this.frameRateBtn.view.position.set(cx - this.frameRateBtn.width / 2, this.frameRateY);
     this.reduceMotionBtn.view.position.set(cx - this.reduceMotionBtn.width / 2, this.reduceMotionY);
-    // Mute + Back sit side-by-side as a pair, centered as a unit under `cx` (was
-    // `cx - 130` / `cx + 10`, i.e. two fixed 120px boxes with a 20px gap between them —
-    // reproduced here from each button's actual width instead).
+    // MUTE + TUTORIAL + BACK sit side-by-side as a triple, centered as a unit under `cx`
+    // (was a pair — reproduced here from each button's actual width, same as the pair
+    // always was, so a fourth button would extend the same way). TUTORIAL joined the row
+    // rather than getting one of its own (2026-09-22): this screen's design height already
+    // had no headroom left (`viewportFit.test.ts` — the last row landed exactly on the
+    // 640px design floor), and a row already this wide had far more of it to spare than a
+    // fresh 44px did.
     const gap = 20;
-    const pairW = this.muteBtn.width + gap + this.backBtn.width;
-    const pairX = cx - pairW / 2;
-    this.muteBtn.view.position.set(pairX, this.pairY);
-    this.backBtn.view.position.set(pairX + this.muteBtn.width + gap, this.pairY);
+    const tripleW = this.muteBtn.width + gap + this.tutorialBtn.width + gap + this.backBtn.width;
+    const tripleX = cx - tripleW / 2;
+    this.muteBtn.view.position.set(tripleX, this.pairY);
+    this.tutorialBtn.view.position.set(tripleX + this.muteBtn.width + gap, this.pairY);
+    this.backBtn.view.position.set(tripleX + this.muteBtn.width + gap + this.tutorialBtn.width + gap, this.pairY);
   }
 
   show(w: number, h: number, s: SettingsState) {

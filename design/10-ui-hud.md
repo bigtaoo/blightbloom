@@ -204,6 +204,59 @@ sits until `queueTtlMs`, and can be seated into a room that then never starts. I
 age now in every mode (it was reaped in none of them for PvP before this pass), which bounds it;
 what would remove it is a cancel on the way out of the matchmaking screen, which nothing sends.
 
+### The card grouped by kind, and TUTORIAL taken off the screen rather than dimmed (2026-09-22)
+
+`client/src/game/screens/MainMenu.ts`, `client/src/game/ui/LobbyRoutes.ts`,
+`client/src/game/screens/Settings.ts`, `client/src/game/controllers/{gameWiring,RunLifecycle,
+gameAssembly}.ts`; work log: [volume 91](roadmap/91-2026-09-22-lobby-route-grouping.md). The owner
+looked at a shipped screenshot and asked whether eight tap targets on one card was too many. The
+count was not the defect: the card held three different KINDS of route — start playing
+(CONTINUE/SOLO/CO-OP/PVP), prepare (SQUAD/FORGE/TUTORIAL), chrome (LOGIN/SETTINGS) — with nothing
+in the layout encoding that, so a player scanning it saw eight near-identical dark pills and the
+one green fill.
+
+**LOGIN and SETTINGS left the card entirely**, to a centred row 12px under it with no backing
+panel — they are not routes into the game, and the 2026-08-02 legibility fix that paired them
+side-by-side (design/10 above, this same doc) had already treated them as a different kind of
+control; this pass just stopped drawing them on the same card as the ones that are routes. A 1px
+divider inside `LobbyRoutes` now separates "start playing" from "prepare" — full width, no
+`onTap`, so it is a rule rather than a button and stays invisible to `widgetOverlap.test.ts`'s
+tappable walk without a special case. Height was break-even by construction: the utility row's 42
++ 12px gap that left the card is exactly what the card's bottom pad gave back (24 → 12, sized for
+a button's descender room that is no longer the card's last element), and the divider's own 12px
+of extra room (8 + 1 + 8, replacing a plain 5px row gap) came out of that same pad. Measured at
+the binding case (portal, quick-play + data notice, no save): 630px of 640 before, 630 after.
+
+**This is the "do not dim a door" rule from the 2026-09-17 pass above, taken at its word.**
+Grouping by KIND is not dimming by health — every route below the divider keeps its height, fill,
+border and icon chip, and the fix is a separator, not a lower-contrast fill — but the rule still
+bites on TUTORIAL: `LobbyRoutes.setRecommendTutorial(recommend)` used to drive only the "NEW
+HERE?" badge, with the row itself always on screen regardless of `MetaState.hasSeenTutorial`. It
+now hides the row too when `recommend` is false, which is the letter of "open it, or take it off
+the screen" applied to a route that had been silently dimmed-by-habit rather than styled that
+way — a returning player was never being asked to ignore the badge, they were being asked to
+ignore the whole row, every visit, forever. Taking the row off the screen would make the route
+UNREACHABLE if nothing replaced it, so `screens/Settings.ts` gained a REPLAY TUTORIAL entry (a
+fixed action, not a `SettingsState` field) as the second door onto the same run
+(`RunLifecycle.beginTutorialRun`, now hiding either screen it might have been reached from). It
+joined the existing MUTE/BACK row rather than getting a row of its own: Settings' design height
+already sat exactly on the 640px floor (`viewportFit.test.ts`), so a fresh row would have
+overflowed it by the row's own height, and a row already wide enough for the worst-case Russian
+MUTE/BACK labels had more room to spare than a blank one did.
+
+**TUTORIAL also stopped borrowing the account chip's purple** (`0x6b46c1` → `0x2f6f5f`) — it had
+been reusing `icon_account`'s colour as well as its glyph, a second and more literal violation of
+this doc's own "two adjacent buttons must differ by more than their label" (2026-08-02, cited in
+the 2026-09-17 sweep above). The glyph itself is still borrowed; no dedicated tutorial icon
+exists yet.
+
+**Deliberately out of scope**: relabelling CO-OP/SQUAD, the sharpest remaining confusion the
+audit that prompted this found (they cross two axes — mode and social unit — and neither label
+says which one it differs by). It is a copy change gated on an open design question
+(design/05:152, whether co-op PvE is matchmade or friends-only at launch) that a layout pass
+should not decide by accident in eight locale files; the new divider already puts the two on
+opposite sides of a visible rule, which is most of the confusion this pass could close without it.
+
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 
 `MainMenu.setAccountEntry(boolean)` fuses two decisions that come apart at the first host that has

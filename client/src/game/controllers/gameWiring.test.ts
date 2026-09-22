@@ -151,6 +151,7 @@ function make() {
       'onForge') as never,
     storeScreen: screenStub('onBack') as never,
     screens: screenStub('onConfirm', 'onMenu') as never,
+    settingsScreen: screenStub('onTutorial') as never,
     pauseMenu: screenStub('onResume', 'onSettings', 'onSaveQuit', 'onQuit') as never,
     confirm: vi.fn(() => void called.push('confirm')),
     activeSlot: () => 0,
@@ -166,7 +167,7 @@ describe('wireScreens', () => {
     const t = make();
     wireScreens(t.d);
     const screens = ['mainMenu', 'pvpPreview', 'matchmaking', 'partyScreen',
-      'loginScreen', 'forge', 'loadout', 'screens', 'pauseMenu'] as const;
+      'loginScreen', 'forge', 'loadout', 'screens', 'settingsScreen', 'pauseMenu'] as const;
     for (const name of screens) {
       const obj = t.d[name] as unknown as Record<string, unknown>;
       for (const [slot, value] of Object.entries(obj)) {
@@ -204,12 +205,16 @@ describe('wireScreens', () => {
     fire('pauseMenu', 'onSaveQuit');
     fire('loadout', 'onContinue');
     fire('loadout', 'onForge');
+    fire('settingsScreen', 'onTutorial');
     expect(t.called).toEqual([
       'nav.showLoadout', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
       'nav.showSquad', 'nav.showForge(menu)', 'runs.beginTutorialRun', 'nav.showAccount',
       'nav.showMatchmaking', 'net.beginSquadMatch',
       'runs.quitRun', 'nav.resume',
       'runs.saveAndQuitRun', 'runs.resumeSavedRun', 'nav.showForge(loadout)',
+      // The settings screen's own door onto the same run (2026-09-22) — same verb as the
+      // lobby's TUTORIAL row, fired a second time here.
+      'runs.beginTutorialRun',
     ]);
   });
 

@@ -322,7 +322,7 @@ export class Game {
       hud: this.hud, portalPrompt: this.portalPrompt, floorCardPrompt: this.floorCardPrompt,
       mainMenu: this.mainMenu, pvpPreview: this.pvpPreview,
       matchmaking: this.matchmaking, partyScreen: this.partyScreen, loginScreen: this.loginScreen,
-      forge: this.forge, loadout: this.loadout, storeScreen: this.storeScreen,
+      forge: this.forge, loadout: this.loadout, storeScreen: this.storeScreen, settingsScreen: this.settingsScreen,
       screens: this.screens, pauseMenu: this.pauseMenu, confirm: () => this.confirm(),
       activeSlot: () => this.activeState()?.players[this.run.localOwner]?.activeSlot,
     };

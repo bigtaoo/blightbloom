@@ -58,6 +58,7 @@ export const fr: Translations<typeof en> = {
     reduceMotion: 'RÉDUIRE LES MOUVEMENTS : {mode}',
     on: 'OUI',
     off: 'NON',
+    tutorial: 'REVOIR LE TUTORIEL',
     back: 'RETOUR',
   },
   forge: {
