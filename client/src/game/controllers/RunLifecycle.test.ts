@@ -233,6 +233,18 @@ describe('the primed entry points', () => {
     expect(t.order).not.toContain('loadout.hide');
   });
 
+  it('the tutorial also hides SETTINGS — its second door since 2026-09-22', () => {
+    // `LobbyRoutes`' own TUTORIAL row can now hide (`setRecommendTutorial(false)`, once
+    // `MetaState.hasSeenTutorial`), so `Settings.ts`'s REPLAY TUTORIAL button is a second way
+    // to reach this same method — one this test's OWN screen stub cannot tell apart from the
+    // lobby's, which is exactly why both must be hidden unconditionally rather than by asking
+    // which door the player came through.
+    const t = make();
+    t.runs.beginTutorialRun();
+    expect(t.order).toContain('mainMenu.hide');
+    expect(t.order).toContain('settingsScreen.hide');
+  });
+
   it('the arena demo primes the room and hides the loadout screen', () => {
     const t = make();
     t.run.arenaDemo = 'landing_basic';

@@ -90,6 +90,32 @@ describe('Settings — back', () => {
   });
 });
 
+describe('Settings — replay tutorial (2026-09-22)', () => {
+  it('tapping it fires onTutorial, and touches no SettingsState field', () => {
+    // Unlike every button above it, this one is a fixed action, not a toggle — the same
+    // shape as `onBack`, and the reason `buttonCueConventions.test.ts` carries it as a
+    // named exception to "every Settings option is ui.toggle".
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    const onTutorial = vi.fn();
+    const onChange = vi.fn();
+    s.onTutorial = onTutorial;
+    s.onChange = onChange;
+    privateOf(s).tutorialBtn.onTap?.();
+    expect(onTutorial).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders the label from the active locale, translated with the rest of the screen', async () => {
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    expect(privateOf(s).tutorialBtn.label.text).toBe('REPLAY TUTORIAL');
+    await useLocale('zh');
+    s.show(800, 600, { ...defaultSettingsState(), locale: 'zh' });
+    expect(privateOf(s).tutorialBtn.label.text).toBe('重玩教程');
+  });
+});
+
 describe('Settings — language toggle (design/17-i18n.md)', () => {
   it('starts on English, showing its own name', () => {
     const s = new Settings();

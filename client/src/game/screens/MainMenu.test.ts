@@ -429,6 +429,34 @@ describe('MainMenu — button hierarchy and layout', () => {
       setSession(null);
     }
   });
+
+  it('shrinks the card and pulls the utility row up when TUTORIAL hides (2026-09-22)', () => {
+    // The same "grows/shrinks the card by the row it (dis)owns" property `CONTINUE RUN`'s
+    // own test pins above, on the other end: TUTORIAL is the LAST row in the card, so hiding
+    // it for a returning player (`hasSeenTutorial`) must shrink the card and pull everything
+    // below it — the utility row included — up by exactly the row it gave back.
+    const shown = new MainMenu();
+    shown.setRecommendTutorial(true);
+    shown.show(800, 600);
+    const hidden = new MainMenu();
+    hidden.setRecommendTutorial(false);
+    hidden.show(800, 600);
+
+    const a = privateOf(shown);
+    const b = privateOf(hidden);
+    expect(b.menuCard.h).toBeLessThan(a.menuCard.h);
+    expect(b.settingsBtn.view.position.y).toBeLessThan(a.settingsBtn.view.position.y);
+    // TUTORIAL's own row (42) plus the gap above it (5) — the same 47 `LobbyRoutes.test.ts`
+    // pins on `LobbyRoutes.height` directly; asserted again here because that number has to
+    // reach all the way through `MainMenu.show()`'s own arithmetic, not just `routes.height`.
+    const shrink = a.menuCard.h - b.menuCard.h;
+    expect(shrink).toBe(47);
+    // Only HALF of that reaches the utility row's absolute position, not all of it: the whole
+    // title-to-utility-row block is CENTRED (`show()`'s own `top` arithmetic), so a shorter
+    // card also pulls the block's TOP down as it pulls the bottom up — the same "grew in BOTH
+    // directions" property the quick-play centring test above asserts for PLAY's own row.
+    expect(a.settingsBtn.view.position.y - b.settingsBtn.view.position.y).toBe(shrink / 2);
+  });
 });
 
 describe('MainMenu — i18n (design/17-i18n.md)', () => {
