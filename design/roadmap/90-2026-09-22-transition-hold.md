@@ -99,6 +99,56 @@ The source sweep that lists the gated transitions now asserts on the **method na
 `transitions.` — a plain `defer` at any of those call sites takes the floor back off the
 transition this request was about, and every behavioural test in that file stays green.
 
+### The battery, and the nine things it found
+
+39 mutants over the changed code, judged by nine suites. Two controls (a comment, an equivalent
+type spelling) survived as designed, 0 unmeasured, 0 hung — and the first run reported **10
+SKIPs**, all of them multi-line find-strings, because a fresh `git worktree add` under
+`core.autocrlf=true` hands back CRLF where the shared tree holds LF. That is a number nobody
+measured dressed up as a result; the harness normalises to LF for matching and writes back in
+whatever the file used.
+
+**9 real survivors.** One was dead code and eight were test gaps.
+
+- **The floor's own VALUE was unpinned.** `MIN_TRANSITION_MS: 3000 → 300` passed everything,
+  because every case compared `clock.slept` against the constant — a tautology over the one
+  quantity the request actually named. Now asserted as a literal, and as a floor, so a
+  deliberate lengthening is not a test edit and a silent shortening is.
+- **`Promise.all` → `Promise.race` survived a case written to kill exactly it.** The case
+  drained one microtask (`await Promise.resolve()`) and the mutant resolves one link further
+  down; the assertion that nothing had happened ran before the thing could happen. An
+  assertion about an ABSENCE is only worth its wording if it gave the thing every chance to
+  occur — a full macrotask turn here.
+- **The bar's opening value was dead code, not an untested one.** `screen.setProgress(0,
+  runArtUnitCount())` in front of `ensureRunArt` looked like sizing the bar before the first
+  tick. `ensureRunArt` replays where the download already is, *synchronously*, as it registers
+  the listener — so the explicit zero was overwritten on the next statement, and in exactly
+  the case its own comment described (a gate opening at 12 of 16 units) the zero was the wrong
+  number. Deleted; the property it was reaching for is now asserted against a host that
+  settles some packs and blocks the rest.
+- **`leaveRunTo` could say ENTERING THE DUNGEON on the way out.** The `ScreenNav` stub dropped
+  the direction argument, and the direction is the caption — the one half of that call no
+  behavioural assertion can see, since both directions hold for the same three seconds and
+  land on the same screen. Its two destinations could also be swapped silently; `leaveRunTo`
+  had no case at all.
+- **Both result-screen exits could be re-wired to the plain `showMenu`/`showLoadout`.**
+  `leaveRunTo('menu')` and `showMenu()` land on the same screen, so every phase assertion
+  passes either way and what the plain call skips is three seconds of transition. `gameWiring`'s
+  stub had no `leaveRunTo` at all, so nothing had ever fired `screens.onMenu`. A new
+  `gameRunExit.test.ts` drives the real result-screen buttons through a headless `Game` and
+  asserts the VERB, with a control that `confirm()` from the lobby reaches no exit at all.
+- **The tutorial's exit flag could be cleared before it is read.** One statement's order:
+  clearing first sends every tutorial exit to the loadout screen — a screen the tutorial never
+  touched — and neither screen looks wrong when it happens.
+- **A floor can be re-added at the CALL SITE.** Both removals are pinned inside the modules
+  that owned them, and neither stops `await new Promise((r) => setTimeout(r, 3000))` appearing
+  as its own statement in an entry point. So the rule is now stated about the entry points:
+  everything `boot()` waits for is a real event — a download settling, a frame the renderer
+  drew, an identity answer — and none of those is a duration. All three entries hold to that
+  today, which is what makes the absence assertable rather than aspirational.
+
+Re-run against the fixes: **37 of 39 killed, the two survivors both controls.**
+
 ### Two things this cost that are worth recording
 
 `Game.ts` and `RunLifecycle.ts` both crossed 500 lines on the first draft (503 and 509). Neither
@@ -109,6 +159,6 @@ was baselined: the additions were prose, and the prose was trimmed back. Both no
 `bootHold.ts` are allowlisted in `checkDocPaths` as names a doc cites *as gone*. A doc that quietly
 stops mentioning a decision it reversed is how the next pass makes the same mistake.
 
-Client 7,333 → **7,330** green, and it is the rare pass that ends with FEWER: `bootHold.ts` was
-deleted with its nine cases, and the six new ones (five on the floor, one on the WeChat teardown)
-do not quite replace them. Test files 311 → 310. No `ENGINE_VERSION` bump.
+Client 7,333 → **7,344** green (7,330 before the battery: `bootHold.ts` went out with its nine
+cases, and the pass had put six back; the battery added fourteen more). No `ENGINE_VERSION`
+bump.

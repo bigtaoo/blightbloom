@@ -128,3 +128,23 @@ describe('the WeChat entry, which has no DOM to put a splash in', () => {
     expect(src).not.toContain('await loading.done()');
   });
 });
+
+describe('a boot entry waits for events, never for a clock', () => {
+  it.each(ALL_ENTRIES)('%s: contains no timer at all', (entry) => {
+    // The floor came off `bootSplash.ts` and `showBootLoading` on 2026-09-22, and both
+    // removals are pinned by their own unit tests — but a floor does not have to live in
+    // either. `await new Promise((r) => setTimeout(r, 3000))` as its own statement in an
+    // entry point reproduces it exactly, and survived the whole suite when a mutation battery
+    // tried it (2026-09-22).
+    //
+    // So the rule is stated about the entry points rather than about the splash: everything
+    // `boot()` waits for is a real event — a download settling, a frame the renderer drew, an
+    // identity answer — and none of those is a duration. All three entries hold to that today
+    // (0 timers between them), which is what makes the absence assertable rather than
+    // aspirational. `bootSplash.ts`'s fade and `afterFirstRenderedFrame`'s timeout are the two
+    // real timers in this boot, and they live in the module that owns them, behind an injected
+    // `sleep` their tests drive.
+    const src = source(entry);
+    expect(src).not.toMatch(/setTimeout|setInterval/);
+  });
+});

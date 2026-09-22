@@ -95,6 +95,10 @@ function make() {
     openSettings: track('nav.openSettings'), showLoadout: track('nav.showLoadout'),
     showForge: vi.fn((from: string) => void called.push(`nav.showForge(${from})`)),
     leaveForge: track('nav.leaveForge'), showStore: track('nav.showStore'),
+    // The run EXIT (2026-09-22). Absent from this stub until a mutation battery pointed out
+    // that nothing in this file had ever fired `screens.onMenu`, so re-wiring it to the plain
+    // `showMenu` — which jump-cuts past the held transition — changed no test.
+    leaveRunTo: vi.fn((hub: string) => void called.push(`nav.leaveRunTo(${hub})`)),
     showMatchmaking: track('nav.showMatchmaking'), openSettingsFromPause: track('nav.openSettingsFromPause'),
     resume: track('nav.resume'), pause: track('nav.pause'),
   };
@@ -230,6 +234,20 @@ describe('wireScreens', () => {
     t.called.length = 0;
     pause.onQuit!();
     expect(t.called).toEqual(['runs.quitRun']);
+  });
+
+  it("the outcome screen's MENU button leaves the RUN, rather than just showing the lobby", () => {
+    // `showMenu` and `leaveRunTo('menu')` land on the same screen, so the difference is
+    // invisible in every phase assertion: what the plain call skips is the held transition
+    // (controllers/TransitionGate.ts). It would be the one exit out of four that jump-cuts,
+    // and the three beside it are wired in the sweep above.
+    const t = make();
+    wireScreens(t.d);
+    const screens = t.d.screens as unknown as Record<string, () => void>;
+
+    t.called.length = 0;
+    screens.onMenu!();
+    expect(t.called).toEqual(['nav.leaveRunTo(menu)']);
   });
 
   it('CONTINUE RUN resumes, and does NOT go through the confirm router like START RUN', () => {
