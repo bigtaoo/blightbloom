@@ -24,18 +24,26 @@ import {
   FRAME_RATE_SETTINGS,
   IDLE_MAX_FPS,
   PLAY_MAX_FPS,
+  GATE_EPSILON_MS,
+  activeDisplayHz,
   activePlayFrameCap,
   applyPowerBudget,
   maxFpsForPhase,
+  resetDisplayHz,
   resetPlayFrameCap,
+  setDisplayHz,
   setPlayFrameCap,
+  tickerCapFor,
   worldDrawnInPhase,
 } from './powerBudget';
 
 // The play cap is a module mirror (same shape as `render/quality.ts`'s), so one case's pick
 // would otherwise leak into the next — and the leak would be invisible, since both values are
 // legal.
-afterEach(() => resetPlayFrameCap());
+afterEach(() => {
+  resetPlayFrameCap();
+  resetDisplayHz();
+});
 
 /** Every phase, with the answer for each. A `Record` and not an array on purpose: a new
  *  member of the `Phase` union is a type error here until it is given a row. */
@@ -182,11 +190,36 @@ describe('applyPowerBudget', () => {
     const ticker = { maxFPS: 0 };
     expect(applyPowerBudget('playing', world, ticker)).toBe(true);
     expect(world.renderable).toBe(true);
-    expect(ticker.maxFPS).toBe(PLAY_MAX_FPS);
+    // Not `PLAY_MAX_FPS` itself: what reaches the ticker is what `tickerCapFor` makes of the
+    // phase's target, which is the entire fix of 2026-09-22. Asserted THROUGH that function
+    // rather than as a literal, so the two cannot disagree silently.
+    expect(ticker.maxFPS).toBe(tickerCapFor(PLAY_MAX_FPS, null));
 
     expect(applyPowerBudget('forge', world, ticker)).toBe(false);
     expect(world.renderable).toBe(false);
-    expect(ticker.maxFPS).toBe(IDLE_MAX_FPS);
+    expect(ticker.maxFPS).toBe(tickerCapFor(IDLE_MAX_FPS, null));
+  });
+
+  it('honours the measured display rate — a 60 Hz panel asked for 60 is left uncapped', () => {
+    // The report this came from. A cap can only remove frames the display was going to show,
+    // so on a panel already at the target it is pure loss; the ticker is left at 0, which is
+    // Pixi for "no gate at all", and the display does the limiting.
+    const world = { renderable: false };
+    const ticker = { maxFPS: 999 };
+    setDisplayHz(60);
+    applyPowerBudget('playing', world, ticker);
+    expect(ticker.maxFPS).toBe(0);
+
+    // ...and the idle screens are still capped, because 30 really is below 60. The power
+    // budget's whole purpose survives the fix.
+    applyPowerBudget('menu', world, ticker);
+    expect(ticker.maxFPS).toBeGreaterThan(0);
+    expect(ticker.maxFPS).toBe(tickerCapFor(IDLE_MAX_FPS, 60));
+
+    // A 120 Hz panel is still halved — the 2026-09-08 finding, unchanged by this.
+    setDisplayHz(120);
+    applyPowerBudget('playing', world, ticker);
+    expect(ticker.maxFPS).toBeGreaterThan(0);
   });
 
   it('is safe to call every frame — the same phase twice changes nothing', () => {
@@ -251,6 +284,218 @@ describe('IDLE_MAX_FPS against pixi.js Ticker', () => {
     expect(framesRun(IDLE_MAX_FPS, HZ_60, 120)).toBeLessThanOrEqual(62);
     expect(framesRun(IDLE_MAX_FPS, HZ_120, 240)).toBeGreaterThanOrEqual(58);
     expect(framesRun(IDLE_MAX_FPS, HZ_120, 240)).toBeLessThanOrEqual(62);
+  });
+});
+
+// ---- frame CADENCE, against the real ticker ----
+//
+// Everything above this line counts frames. Counting frames is what missed the 2026-09-22
+// report: a cap that drops 103 frames a minute still counts 58 of 60, which every assertion
+// in this file read as healthy. What a player feels is not the count, it is whether the
+// frames are evenly spaced — one frame that lasts twice as long as its neighbours, 1.7 times
+// a second, forever. So these cases ask WHEN each frame ran.
+//
+// Two things make them mean something, and both were absent before:
+//
+//  - **jitter**. `t += stepMs` produces vsync timestamps no real display has ever produced.
+//    With them the gate's truncated arithmetic lands on the same side every time and the bug
+//    is invisible; ±0.2 ms — less than the noise in any real rAF timestamp — is enough to
+//    expose it. The jitter is from a seeded generator, so a failure here is reproducible.
+//  - **a cadence metric**, not an average. `unevenPct` is the share of drawn frames whose
+//    length differs from the usual one, measured in whole display intervals. A cap that
+//    draws every second vsync on a 120 Hz panel is perfectly even at 0%; the shipped cap at
+//    58.3 fps is 2.9% on a 60 Hz panel, and 44.7% on a 144 Hz one.
+
+/** Deterministic ±`amp` ms of timestamp noise. A real rAF timestamp is vsync-derived and
+ *  still not exact; `Math.random` here would make a real regression flake instead of fail. */
+function jitter(amp: number): () => number {
+  let seed = 24680;
+  return () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed / 0x7fffffff - 0.5) * 2 * amp;
+  };
+}
+
+interface Cadence {
+  fps: number;
+  /** Share (0..100) of drawn frames that lasted a different number of display intervals
+   *  than the most common one. */
+  unevenPct: number;
+}
+
+/** Drive a real `Ticker` at `refreshHz` for `seconds` and report what the player would see. */
+function cadence(maxFPS: number, refreshHz: number, seconds = 30, amp = 0.2): Cadence {
+  const ticker = new Ticker();
+  ticker.maxFPS = maxFPS;
+  const period = 1000 / refreshHz;
+  const noise = jitter(amp);
+  const ranAt: number[] = [];
+  let now = 0;
+  ticker.add(() => ranAt.push(now));
+  for (let t = 1000; t < 1000 + seconds * 1000; t += period) {
+    now = t + noise();
+    ticker.update(now);
+  }
+  ticker.destroy();
+
+  // Frame lengths in whole display intervals. The first gap is dropped: it spans the
+  // ticker's own first update, which has no predecessor to be spaced from.
+  const intervals: number[] = [];
+  for (let i = 2; i < ranAt.length; i++) intervals.push(Math.round((ranAt[i]! - ranAt[i - 1]!) / period));
+  const counts = new Map<number, number>();
+  for (const n of intervals) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const mode = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+  return {
+    fps: ranAt.length / seconds,
+    unevenPct: (100 * intervals.filter((n) => n !== mode).length) / intervals.length,
+  };
+}
+
+describe('frame cadence', () => {
+  it('reproduces the 2026-09-22 report: a raw 60 cap stutters on a 60 Hz display', () => {
+    // This is the bug, pinned as a fact about Pixi rather than about our code — if a future
+    // Pixi fixes its own gate, this case fails and the whole section can be reconsidered.
+    const shipped = cadence(60, 60);
+    expect(shipped.unevenPct).toBeGreaterThan(1.5);
+    // ...and it is invisible to a frame COUNT, which is how it shipped: still ~58 of 60.
+    expect(shipped.fps).toBeGreaterThan(57);
+  });
+
+  it('...and the fix removes it outright on that display', () => {
+    const fixed = cadence(tickerCapFor(PLAY_MAX_FPS, 60), 60);
+    expect(fixed.unevenPct).toBe(0);
+    expect(fixed.fps).toBeGreaterThan(59.5);
+  });
+
+  it('is at least as even as the raw target on every ordinary refresh rate', () => {
+    // A table rather than one case, because the failure being guarded against is a rule that
+    // helps the display it was written for and hurts the next one. `+0.5` of slack so that a
+    // rate where the two are equal (nothing to win) does not read as a regression.
+    for (const hz of [60, 75, 90, 100, 120, 144, 165, 240]) {
+      for (const target of FRAME_RATE_SETTINGS) {
+        const before = cadence(target, hz);
+        const after = cadence(tickerCapFor(target, hz), hz);
+        expect(after.unevenPct, `${hz}Hz @ ${target}`).toBeLessThanOrEqual(before.unevenPct + 0.5);
+        expect(after.fps, `${hz}Hz @ ${target} fps`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('buys evenness with frames where it has to, and 90 Hz is where', () => {
+    // The one case where the snap costs a visible amount of frame rate, stated rather than
+    // discovered: 90 Hz asked for 60 is 1.5 vsyncs per frame, so the nearest even division is
+    // 45 — 13 fps below what the raw cap DELIVERS on that panel. It is still the right trade,
+    // and this case is here so that it is a decision somebody can find and revisit rather
+    // than a surprise. An even 45 is what a player reads as smooth; a 58 fps average
+    // alternating one and two vsyncs per frame is what they read as a stutter.
+    const raw = cadence(60, 90);
+    const snapped = cadence(tickerCapFor(60, 90), 90);
+    expect(raw.fps).toBeGreaterThan(snapped.fps);
+    expect(raw.unevenPct).toBeGreaterThan(30);
+    // Not zero, and the reason is the same fractional millisecond as the idle case below:
+    // 45 fps is a 22.22 ms interval, so the integer the gate can be given sits 0.22 ms under
+    // it and the carried-forward phase drifts into a dropped frame every so often. 45% down
+    // to 7% is the win; the last 7% is not available through `maxFPS` at all.
+    expect(snapped.unevenPct).toBeLessThan(10);
+  });
+
+  it('leaves a run on the two panels this project ships against completely even', () => {
+    // 60 Hz (the desktop report) and 120 Hz (the ProMotion iPad the cap was written for).
+    for (const hz of [60, 120]) {
+      expect(cadence(tickerCapFor(60, hz), hz).unevenPct, `${hz}Hz`).toBeLessThan(1);
+    }
+  });
+
+  it('leaves a RESIDUE on the idle cap, and that is the accepted trade', () => {
+    // 30 fps on a 60 Hz panel is 33.33 ms, which is not a whole number of milliseconds, so no
+    // integer `_minElapsedMS` can divide it and the gate's carried-forward phase drifts until
+    // it drops a frame: ~2.7% of frames, about one every two seconds. That cannot be fixed
+    // through `maxFPS` at all (see `tickerCapFor`'s header). It is accepted rather than worked
+    // around because of WHERE it lands: `IDLE_MAX_FPS` applies only to phases that draw no
+    // world (`worldDrawnInPhase`), i.e. to a static menu panel, where a frame of the same
+    // unchanged image lasting twice as long is not observable by anyone. The moment that
+    // stops being true — an animated menu — this case is the one that has to be revisited.
+    const idle = cadence(tickerCapFor(30, 60), 60);
+    expect(idle.unevenPct).toBeLessThan(4);
+    expect(idle.fps).toBeGreaterThan(29);
+    expect(ALL_PHASES.filter((p) => maxFpsForPhase(p) === IDLE_MAX_FPS).some(worldDrawnInPhase)).toBe(false);
+  });
+});
+
+describe('tickerCapFor', () => {
+  it('does not cap a display that is already at or below the target', () => {
+    expect(tickerCapFor(60, 60)).toBe(0);
+    expect(tickerCapFor(60, 59.94)).toBe(0);
+    expect(tickerCapFor(60, 30)).toBe(0);
+    // The 1.02 slack: a panel reported as 60 Hz is routinely 60.02, and which side of the
+    // line it falls on must not be decided by the third decimal of a measurement.
+    expect(tickerCapFor(60, 60.02)).toBe(0);
+    // ...but a genuinely faster panel is still capped.
+    expect(tickerCapFor(60, 75)).toBeGreaterThan(0);
+  });
+
+  it('caps at a whole millisecond, which is what the gate can actually honour', () => {
+    // The property the whole fix rests on, asserted on the value PIXI ends up holding rather
+    // than on the one we passed it — `maxFPS` is a setter that stores `1 / (fps / 1000)`, and
+    // the round trip through it is exactly where the first version of this went wrong. Read
+    // back through the private field for the same reason the file header gives: this is a
+    // claim about Pixi, so nothing but Pixi can confirm it.
+    for (const target of [60, 30]) {
+      for (const hz of [null, 75, 90, 100, 120, 144, 165, 240]) {
+        const cap = tickerCapFor(target, hz);
+        if (cap === 0) continue;
+        const ticker = new Ticker();
+        try {
+          ticker.maxFPS = cap;
+          const min = (ticker as unknown as { _minElapsedMS: number })._minElapsedMS;
+          const whole = Math.round(min);
+          // Whole, so the phase the gate carries forward cannot drift...
+          expect(Math.abs(min - whole), `${hz} @ ${target} integral`).toBeLessThan(0.01);
+          // ...and never ABOVE that whole millisecond, which an integer `delta` would lose to.
+          expect(min, `${hz} @ ${target} not above`).toBeLessThanOrEqual(whole);
+          // ...and strictly below the interval it is gating, with room for the truncation.
+          const aimed = hz === null ? target : hz / Math.max(1, Math.round(hz / target));
+          expect(min, `${hz} @ ${target} below interval`).toBeLessThan(1000 / aimed);
+        } finally {
+          ticker.destroy();
+        }
+      }
+    }
+  });
+
+  it('snaps a faster display to a whole number of vsyncs per frame', () => {
+    // 144 Hz asked for 60 is 2.4 vsyncs per frame, which a vsynced display can only draw as
+    // an endless 2,2,3 — so the target moves to 72 (two vsyncs) rather than the cadence
+    // being sacrificed to keep the number 60.
+    const gateMs = (cap: number): number => 1000 / cap + GATE_EPSILON_MS;
+    expect(gateMs(tickerCapFor(60, 144))).toBeCloseTo(Math.floor(1000 / 72), 6);
+    expect(gateMs(tickerCapFor(60, 120))).toBeCloseTo(Math.floor(1000 / 60), 6);
+    expect(gateMs(tickerCapFor(30, 120))).toBeCloseTo(Math.floor(1000 / 30), 6);
+  });
+
+  it('treats an unknown display rate as the target itself, never as uncapped', () => {
+    // Case 2. `null` is the state every session is in for its first second, and the 120 Hz
+    // waste this file exists to stop is real during it.
+    const cap = tickerCapFor(60, null);
+    expect(cap).toBeGreaterThan(0);
+    expect(1000 / cap + GATE_EPSILON_MS).toBeCloseTo(16, 6);
+  });
+});
+
+describe('the display-rate mirror', () => {
+  it('starts unmeasured and refuses a rate that cannot be one', () => {
+    expect(activeDisplayHz()).toBe(null);
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      setDisplayHz(bad);
+      // A nonsense rate must land on "not measured", not on the nonsense: `tickerCapFor`
+      // reads a 0 Hz display as "slower than the target, do not cap", which is the exact
+      // state the fix exists to avoid reaching by accident.
+      expect(activeDisplayHz(), String(bad)).toBe(null);
+    }
+    setDisplayHz(144);
+    expect(activeDisplayHz()).toBe(144);
+    setDisplayHz(null);
+    expect(activeDisplayHz()).toBe(null);
   });
 });
 

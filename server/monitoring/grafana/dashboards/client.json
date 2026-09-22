@@ -8,7 +8,7 @@
   ],
   "timezone": "utc",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "1m",
   "time": {
@@ -383,6 +383,364 @@
             "uid": "loki"
           },
           "expr": "{source=\"client\", host=~\"$host\", level=~\"$level\"} | logfmt | session=~\"$session.*\" | acct=~\"$acct.*\" |~ \"(?i)$search\""
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Frame pacing (2026-09-22)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Judder - doubled frames, % of frames drawn",
+      "description": "The headline of the 2026-09-22 report, and the number this whole row exists for. A frame markedly longer than its neighbours is what a player feels as a stutter, and it is invisible to every other measurement here: the machine in that report held 58 fps with a frame p50 of 16.7 ms while dropping a frame nearly twice a second. Under ~0.5 is even; anything sustained above ~3 is what somebody would describe as \"the game feels off\". Fixed to level=info deliberately - the level picker above is for the error panels, and a reader filtering to `error` should not silently empty this row.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap long_pct [$__auto])"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "In-run frame rate - mean, and the worst window",
+      "description": "`fps` is the mean over a reported minute; `worst_fps` is the slowest single 2-second window inside it. The pair is the point: a mean of 58 with a worst of 55 is a steady game, a mean of 58 with a worst of 20 is one that hitches, and no single number separates them. In-run windows only - idle screens are capped at 30 fps on purpose (`game/powerBudget.ts`) and are never reported.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap fps [$__auto])",
+          "legendFormat": "mean fps"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "min_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap worst_fps [$__auto])",
+          "legendFormat": "worst window"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "Reports whose display rate was never measured",
+      "description": "`hz=0` means `perf/displayRate.ts` refused to answer - a hidden tab for the whole probe window, a host with no rAF, or a variable-refresh panel with no single rate in it. Those sessions get the conservative frame cap rather than the tuned one, so this is how many players the fix is only half reaching. A handful is normal; a jump means the probe broke, and it would break silently.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | hz = 0 [$__auto]))"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Judder over time, by build target",
+      "description": "Split by target for the same reason the log-volume panel above is: the same number on `web` and `wechat` is ours, and one of them alone is that host's. Watch this across a deploy - a rendering change that costs frame stability shows up here before anybody files a report, which is the entire reason the number is collected.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap long_pct [$__auto]) by (host)",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "bargauge",
+      "title": "Judder by display refresh rate, in range",
+      "description": "The panel that says whether the 2026-09-22 frame-cap rule is working in the field, and the one to read first when somebody reports a stutter. `tickerCapFor` can make a 60 Hz or 120 Hz panel perfectly even and provably cannot do the same for 90, 100 or 165 Hz - their vsync interval is not a whole number of milliseconds, so Pixi's integer frame gate has nothing even to land on (see `game/powerBudget.ts`). A tall bar on one of those three is the known residue. A tall bar on 60 or 120 is a regression.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap long_pct [$__auto]) by (hz)",
+          "legendFormat": "{{hz}} Hz"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Which half of the frame - update vs render (p95, ms)",
+      "description": "Only worth reading once the panels above say something is wrong, and then it is most of the diagnosis: `render` is scene traversal and draw-call submission, `update` is the game's own simulation and mirroring. The 2026-08-24 pass found this client render-bound by more than 15x, and this split is what found it.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap render_p95 [$__auto])",
+          "legendFormat": "render p95"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap update_p95 [$__auto])",
+          "legendFormat": "update p95"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\" | logfmt | unwrap frame_p50 [$__auto])",
+          "legendFormat": "frame p50"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "logs",
+      "title": "Raw frame-pacing reports - one line per minute of play",
+      "description": "One line per minute of PLAY per session, and the thing to read when a panel above is odd. Set the `session id` variable to follow one visit. `cap` is the frame rate the player asked for, `tier` the render quality actually in force (which for `auto` is not the setting), `hz` the measured display, `span_s` how much play the line covers.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{source=\"client\", level=\"info\", host=~\"$host\"} | logfmt | tag=\"perf\" | session=~\"$session.*\" | line_format \"{{.msg}}\""
         }
       ]
     }

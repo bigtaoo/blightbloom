@@ -54,6 +54,9 @@ export const en = {
     qualityMedium: 'MEDIUM',
     qualityAutoMedium: 'AUTO (MEDIUM)',
     frameRate: 'FRAME RATE: {fps}',
+    reduceMotion: 'REDUCE MOTION: {mode}',
+    on: 'ON',
+    off: 'OFF',
     back: 'BACK',
   },
   forge: {

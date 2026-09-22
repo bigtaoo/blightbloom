@@ -7,6 +7,7 @@ import { LightRegistry, makeLightBuffer, type ActiveLight } from './lighting';
 import { activeQuality } from '../../render/quality';
 import { cullGroundLayer } from '../scene/groundCulling';
 import { acquireSlashArc, releaseSlashArc, type SlashArc, type SlashArcPose } from './slashArc';
+import { motionReduced } from '../../render/motion';
 
 const FX_LIFE_MS = 170; // flash/trail lifetime (the default for a `_life`-tagged fx child)
 /** Muzzle-flare lifetime. Much shorter than a flash: a gun's flare is a single frame of real
@@ -347,7 +348,12 @@ export class FxController {
       ? (vh - effH) / 2
       : clamp(vh / 2 - targetY * zoom, vh - effH, overscanTop);
 
-    const shakeMag = this.shakeTrauma * this.shakeTrauma * MAX_SHAKE_PX;
+    // `motionReduced()` is read HERE rather than at `addShake`, so trauma keeps accumulating
+    // and decaying exactly as it always did and the setting is a pure output filter: turning it
+    // on or off mid-fight cannot leave the controller in a state it could not have reached on
+    // its own. See `render/motion.ts` for what the setting covers and what it deliberately
+    // does not.
+    const shakeMag = motionReduced() ? 0 : this.shakeTrauma * this.shakeTrauma * MAX_SHAKE_PX;
     const shakeX = shakeMag > 0.05 ? (Math.random() * 2 - 1) * shakeMag : 0;
     const shakeY = shakeMag > 0.05 ? (Math.random() * 2 - 1) * shakeMag : 0;
 
@@ -431,8 +437,14 @@ export class FxController {
     this.hitStopMs = Math.max(this.hitStopMs, ms);
   }
 
-  /** Bump the chromatic-aberration pulse (clamped to a sane max) — decays in updateFx. */
+  /** Bump the chromatic-aberration pulse (clamped to a sane max) — decays in updateFx.
+   *  Suppressed under "reduce motion" (`render/motion.ts`): it is a full-frame distortion on a
+   *  hit, and the hit is already told by the flash, the knockback and the damage number.
+   *  Refused at the BUMP and not at the uniform, unlike the shake above, because the pulse has
+   *  no accumulating state worth preserving — it decays from whatever it was last set to, so
+   *  never raising it is the whole of the behaviour. */
   pulseChromatic(amount: number): void {
+    if (motionReduced()) return;
     this.chromatic.amount = Math.min(0.03, this.chromatic.amount + amount);
   }
 

@@ -13,8 +13,12 @@ import { MemorySettingsStore, defaultSettingsState, type SettingsState } from '.
 import { getLocale, resetLocaleForTests } from '../i18n';
 import { resetExternalMute, setExternalMute } from '../audio/externalMute';
 import { activePlayFrameCap, resetPlayFrameCap } from './powerBudget';
+import { motionReduced, resetReduceMotion } from '../render/motion';
 
-afterEach(() => resetPlayFrameCap());
+afterEach(() => {
+  resetPlayFrameCap();
+  resetReduceMotion();
+});
 
 function harness(initial: Partial<SettingsState> = {}) {
   const audio = { sfx: -1, music: -1 };
@@ -108,6 +112,37 @@ describe('SettingsBinding — the in-run frame cap', () => {
     expect(activePlayFrameCap()).toBe(30);
     setExternalMute(false);
     expect(activePlayFrameCap()).toBe(30);
+  });
+});
+
+describe('SettingsBinding — reduce motion', () => {
+  it('applies the persisted setting at BOOT, not only after the first tap', () => {
+    // Same mirror shape and the same failure as the frame cap above, and worth its own case
+    // for a reason specific to THIS setting: the player who turns it on is the player it makes
+    // unwell, so a first run back at the default is not a cosmetic miss.
+    expect(motionReduced()).toBe(false);
+    harness({ reduceMotion: true }).binding.load();
+    expect(motionReduced()).toBe(true);
+  });
+
+  it('applies a change reported by the settings screen, both ways', () => {
+    const h = harness({ reduceMotion: false });
+    h.binding.load();
+    h.binding.update({ ...h.binding.state, reduceMotion: true });
+    expect(motionReduced()).toBe(true);
+    h.binding.update({ ...h.binding.state, reduceMotion: false });
+    expect(motionReduced()).toBe(false);
+  });
+
+  it('survives an unrelated edit and the ad-mute re-apply path', () => {
+    const h = harness({ reduceMotion: true });
+    h.binding.load();
+    h.binding.update({ ...h.binding.state, master: 0.4 });
+    expect(motionReduced()).toBe(true);
+    setExternalMute(true);
+    expect(motionReduced()).toBe(true);
+    setExternalMute(false);
+    expect(motionReduced()).toBe(true);
   });
 });
 

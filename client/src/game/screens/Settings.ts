@@ -85,6 +85,7 @@ export class Settings {
   private controlLayoutBtn: Button;
   private qualityBtn: Button;
   private frameRateBtn: Button;
+  private reduceMotionBtn: Button;
   private backBtn: Button;
 
   onChange: ((s: SettingsState) => void) | null = null;
@@ -92,7 +93,7 @@ export class Settings {
 
   private state: SettingsState = {
     master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en', controlLayout: 'standard',
-    quality: 'auto', frameRate: 60,
+    quality: 'auto', frameRate: 60, reduceMotion: false,
   };
 
   // Screen-space anchors for the buttons below, captured by `show()` and reused by
@@ -104,6 +105,7 @@ export class Settings {
   private controlY = 0;
   private qualityY = 0;
   private frameRateY = 0;
+  private reduceMotionY = 0;
   private pairY = 0;
 
   constructor() {
@@ -177,6 +179,15 @@ export class Settings {
       this.update({ ...this.state, frameRate: nextFrameRate(this.state.frameRate) });
     };
 
+    // Reduce motion (`render/motion.ts`, 2026-09-22) — under the two device knobs above it
+    // because a player who came to this screen because the game made them feel unwell will try
+    // all three, and directly above them is where the eye lands last. An on/off toggle rather
+    // than a cycle: there are two states and no third one worth inventing.
+    this.reduceMotionBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    this.reduceMotionBtn.onTap = () => {
+      this.update({ ...this.state, reduceMotion: !this.state.reduceMotion });
+    };
+
     this.backBtn = new Button(t('settings.back'), { w: 120, h: 34, autoWidth: true, sound: 'ui.back' });
     this.backBtn.onTap = () => this.onBack?.();
 
@@ -186,7 +197,7 @@ export class Settings {
       this.sfxLabel, this.sfxSlider.view,
       this.musicLabel, this.musicSlider.view,
       this.muteBtn.view, this.languageBtn.view, this.controlLayoutBtn.view, this.qualityBtn.view,
-      this.frameRateBtn.view, this.backBtn.view,
+      this.frameRateBtn.view, this.reduceMotionBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -218,6 +229,9 @@ export class Settings {
     this.controlLayoutBtn.setText(t('settings.controlLayout', { mode: t(modeKey) }));
     this.qualityBtn.setText(t('settings.quality', { mode: qualityLabel(this.state.quality) }));
     this.frameRateBtn.setText(t('settings.frameRate', { fps: String(this.state.frameRate) }));
+    this.reduceMotionBtn.setText(t('settings.reduceMotion', {
+      mode: this.state.reduceMotion ? t('settings.on') : t('settings.off'),
+    }));
     this.layoutButtons();
   }
 
@@ -234,6 +248,7 @@ export class Settings {
     this.controlLayoutBtn.view.position.set(cx - this.controlLayoutBtn.width / 2, this.controlY);
     this.qualityBtn.view.position.set(cx - this.qualityBtn.width / 2, this.qualityY);
     this.frameRateBtn.view.position.set(cx - this.frameRateBtn.width / 2, this.frameRateY);
+    this.reduceMotionBtn.view.position.set(cx - this.reduceMotionBtn.width / 2, this.reduceMotionY);
     // Mute + Back sit side-by-side as a pair, centered as a unit under `cx` (was
     // `cx - 130` / `cx + 10`, i.e. two fixed 120px boxes with a 20px gap between them —
     // reproduced here from each button's actual width instead).
@@ -268,6 +283,8 @@ export class Settings {
     this.qualityY = y + 10;
     y += 44;
     this.frameRateY = y + 10;
+    y += 44;
+    this.reduceMotionY = y + 10;
     y += 44;
     this.pairY = y + 10;
     this.syncWidgets();

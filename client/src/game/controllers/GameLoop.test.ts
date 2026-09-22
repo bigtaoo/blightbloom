@@ -579,6 +579,134 @@ describe('GameLoop — online path (advanceOnline)', () => {
     expect(scene.reconcile).toHaveBeenCalledTimes(1);
   });
 
+  // ---- render interpolation (2026-09-22) ----
+  //
+  // What this path did before: `reconcile` every render frame, then `interpolate(1)`. Since
+  // `Entity.pushState` shifts cur → prev, mirroring twice inside one sim tick collapses the
+  // two, so there was nothing to interpolate BETWEEN and an online match moved in 30 Hz steps
+  // on a 60 Hz screen — every remote actor, every bullet, and the camera whenever the local
+  // seat was not being predicted. Each case below fails against that version.
+
+  it('mirrors the confirmed state once per TICK, not once per frame', () => {
+    const { deps, scene } = buildDeps();
+    const session = fakeSession();
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    loop.update(16);
+    loop.update(16);
+    expect(scene.reconcile).toHaveBeenCalledTimes(1);
+
+    // ...and a tick that really did advance mirrors again.
+    session.state!.tick += 1;
+    loop.update(16);
+    expect(scene.reconcile).toHaveBeenCalledTimes(2);
+  });
+
+  it('ramps alpha across the tick and clamps it at 1', () => {
+    const { deps, scene, fx } = buildDeps();
+    const session = fakeSession();
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+    const alphas = (): number[] => scene.interpolate.mock.calls.map((c) => c[0] as number);
+
+    loop.update(16);
+    // The frame the tick lands on draws the position it interpolates FROM. Not a rounding
+    // detail: at alpha 1 the scene would show the newest confirmed frame and then have to
+    // stand still until the next one, which is the stutter this whole change is about.
+    expect(alphas()).toEqual([0]);
+
+    loop.update(16);
+    expect(alphas()[1]).toBeCloseTo(16 / (1000 / 30), 5);
+    loop.update(16);
+    expect(alphas()[2]).toBeCloseTo(32 / (1000 / 30), 5);
+
+    // A server stall: three more frames with no new tick. Alpha stops at 1 rather than running
+    // remote actors past their newest confirmed position.
+    loop.update(16);
+    loop.update(16);
+    loop.update(16);
+    for (const a of alphas()) expect(a).toBeLessThanOrEqual(1);
+    expect(alphas()[alphas().length - 1]).toBe(1);
+
+    // The camera is handed the same alpha, not a separate one — it follows the same entities.
+    const camAlphas = fx.updateCamera.mock.calls.map((c) => c[0] as number);
+    expect(camAlphas).toEqual(alphas());
+  });
+
+  it('restarts the ramp on every confirmed tick', () => {
+    const { deps, scene } = buildDeps();
+    const session = fakeSession();
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    loop.update(16);
+    session.state!.tick += 1;
+    loop.update(16);
+    expect(scene.interpolate.mock.calls.map((c) => c[0] as number)).toEqual([0, 16 / (1000 / 30), 0]);
+  });
+
+  it('still mirrors a frame that carries events but no new tick', () => {
+    // `drive()` returns the events of the frames it applied; dropping one loses a pickup
+    // flight or a death permanently, while re-mirroring an unchanged tick costs one frame of
+    // a remote actor standing still. The trade is stated in `advanceOnline`.
+    const { deps, scene } = buildDeps();
+    const events = [{ type: 'pickup', by: 1, kind: 'coin', gx: 0, gy: 0 }];
+    const session = fakeSession({ drive: vi.fn().mockReturnValue(events) as unknown as CoopSession['drive'] });
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    loop.update(16); // same tick, events again
+    expect(scene.reconcile).toHaveBeenCalledTimes(2);
+    expect(scene.reconcile.mock.calls[1]![2]).toBe(events);
+  });
+
+  it('lays down bullet trails once per tick, not once per frame', () => {
+    // The doc comment on `spawnBulletTrails` has always said "once per sim tick"; the online
+    // path called it per render frame, so an online comet tail was twice as dense as the
+    // offline one it is meant to match — and denser again on a 120 Hz panel.
+    const { deps, fx } = buildDeps();
+    const state = createGameEngine(CFG).state;
+    state.projectiles.push({
+      ...state.projectiles[0],
+      alive: true, gx: toFp(10), gy: toFp(10), radius: toFp(2), damageType: 'fire',
+    } as (typeof state.projectiles)[number]);
+    const session = fakeSession({ state });
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    loop.update(16);
+    loop.update(16);
+    expect(fx.trailDot).toHaveBeenCalledTimes(1);
+
+    state.tick += 1;
+    loop.update(16);
+    expect(fx.trailDot).toHaveBeenCalledTimes(2);
+  });
+
+  it('resetOnlinePrediction clears the mirrored tick, so a fresh match at tick 0 is drawn', () => {
+    // A new match starts at tick 0. A leftover `onlineTick` of 0 from the previous one would
+    // read as "already mirrored" and hold the first confirmed frame off the screen entirely
+    // until tick 1 — a black-ish first frame that would look like a connection problem.
+    const { deps, scene } = buildDeps();
+    const first = createGameEngine(CFG).state;
+    first.tick = 0;
+    const session = fakeSession({ state: first });
+    const host = buildHost({ isOnline: () => true, getSession: () => session });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    expect(scene.reconcile).toHaveBeenCalledTimes(1);
+
+    loop.resetOnlinePrediction();
+    loop.update(16);
+    expect(scene.reconcile).toHaveBeenCalledTimes(2);
+  });
+
   it('gameover: reports the result hash and hands off to RunOutcome exactly once', () => {
     const { deps, runOutcome } = buildDeps();
     const gameoverState = createGameEngine(CFG).state;

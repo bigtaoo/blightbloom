@@ -99,11 +99,31 @@ function randomSession(): string {
 
 const rank = (level: ClientLogLevel): number => LEVELS.indexOf(level);
 
+/**
+ * The least severe level SENT when an entry point does not say otherwise.
+ *
+ * `'warn'` until 2026-09-22, when frame-pacing telemetry (`perf/perfReport.ts`) needed a way
+ * to report a number that is not a failure. Widening the default rather than passing
+ * `minLevel: 'info'` at each of the three entry points is deliberate and is the same argument
+ * this module's `host` label already lost once (design/19 §10): a per-entry pin only exists
+ * where somebody thought of it, and the failure — one build target silently reporting nothing
+ * — looks exactly like nobody playing on it.
+ *
+ * What it costs is bounded, because `'info'` is not a level anything reaches by accident: the
+ * console wrapper maps `console.error`/`console.warn` onto `'error'`/`'warn'` and does not
+ * wrap `console.log` at all, so the only `'info'` lines in the client are the ones written
+ * through `ClientLogger.log` on purpose. Today that is one line per minute of play.
+ *
+ * `'debug'` stays below the line, which is what keeps it available as the level for something
+ * genuinely chatty.
+ */
+export const DEFAULT_MIN_LEVEL: ClientLogLevel = 'info';
+
 export function createClientLogger(deps: ClientLoggerDeps): ClientLogger {
   const now = deps.now ?? Date.now;
   const doFetch = deps.fetchImpl ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
   const session = deps.sessionId ?? randomSession();
-  const minRank = rank(deps.minLevel ?? 'warn');
+  const minRank = rank(deps.minLevel ?? DEFAULT_MIN_LEVEL);
   const ring: ClientLogEntry[] = [];
   let sending = false;
 

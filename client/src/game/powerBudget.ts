@@ -37,6 +37,19 @@
 //    every frame-time number in design/01 was measured at, and the player can ask for 30 —
 //    one render frame per tick, the cheapest rate that still shows every tick.
 //
+// 3. **A cap is not a number Pixi honours — it is a gate that drops frames** (2026-09-22,
+//    live report: *"玩20分钟左右就头晕"* — dizziness after ~20 minutes on a desktop at
+//    1920x1080 @ 60 Hz). `Ticker.update` truncates the elapsed time to whole milliseconds
+//    before comparing it (`const delta = currentTime - this._lastFrame | 0`), and a 60 Hz
+//    vsync interval is 16.67 ms, which truncates to 16 and loses to a `_minElapsedMS` of
+//    16.667. With perfectly spaced timestamps the phase it carries forward hides that —
+//    which is exactly what `powerBudget.test.ts` was driving, and why it reported the cap
+//    healthy. Real vsync timestamps are not perfectly spaced, and at ±0.2 ms of jitter the
+//    same gate drops **103 frames per minute — a doubled frame ~1.7 times a second,
+//    indefinitely**. A steady 58 fps is not what that looks like to a player; a frame that
+//    is twice as long as its neighbours 1.7 times a second is judder, and judder is what
+//    makes people ill. See `tickerCapFor` for what replaced it.
+//
 // **Why this is not the render-quality lever** (`render/quality.ts`): that tier is picked by
 // a FRAMERATE watchdog, and none of the above shows up as a slow frame. A device that holds
 // 60 fps while drawing an invisible dungeon at 120 Hz never trips the watchdog and never
@@ -80,6 +93,111 @@ export const PLAY_MAX_FPS: FrameRateSetting = 60;
  *  nothing having actually been slow. `powerBudget.test.ts` asserts the clearance against the
  *  real watchdog rather than against the number. */
 export const IDLE_MAX_FPS = 30;
+
+// ---- the cap, as Pixi actually applies it ----
+//
+// Everything above is a TARGET: "this phase is worth this many frames a second". What
+// `Ticker` takes is not a target, it is `_minElapsedMS = 1000 / maxFPS`, checked against an
+// elapsed time truncated to whole milliseconds and carried forward through
+// `_lastFrame = currentTime - delta % _minElapsedMS`. Two properties of that gate decide
+// everything in this section, and neither is documented by Pixi:
+//
+//   - **the truncation costs up to a full millisecond**, so a `_minElapsedMS` equal to the
+//     display's own interval loses the comparison on most frames; and
+//   - **a fractional `_minElapsedMS` makes the carried-forward phase drift**, because
+//     `delta` is an integer and the remainder is not, so the residual grows a little on
+//     every pass until it crosses an interval and a frame is dropped. That is the beat the
+//     header's third point measures.
+//
+// Both are avoided by choosing a WHOLE number of milliseconds strictly below the interval
+// we want between frames. `1000 / floor(1000 / fps)` is that number: at 60 fps it is
+// 1000/16, i.e. a `_minElapsedMS` of exactly 16 against a 16.67 ms display interval — under
+// it by enough to survive the truncation, integral so the phase cannot drift.
+//
+// Measured against the real `Ticker` in `powerBudget.test.ts` ("frame cadence", ±0.2 ms of
+// jitter, one minute of frames), uneven frames as a percentage of frames drawn:
+//
+//   | display | target | shipped 2026-09-08 | this rule       |
+//   |---------|--------|--------------------|-----------------|
+//   | 60 Hz   | 60     | 58.3 fps / 2.9%    | 60 fps / 0%     |
+//   | 120 Hz  | 60     | 58.3 fps / 5.7%    | 60 fps / 0.2%   |
+//   | 144 Hz  | 60     | 58.8 fps / 44.7%   | 73.5 fps / 4%   |
+//   | 60 Hz   | 30     | 29.6 fps / 3%      | 30 fps / 0.2%   |
+//
+// The residue on 90/100/165 Hz panels (5-9%) is the one thing this cannot fix: their vsync
+// interval is not a whole number of milliseconds either, so no integer `_minElapsedMS`
+// divides it evenly. Fixing THOSE means not using Pixi's gate at all — taking
+// `app.render` off the ticker and calling it on our own schedule — which is a much larger
+// change than the one the report asked for, and is recorded in design/01 as the follow-up
+// rather than attempted here.
+
+/**
+ * The measured refresh rate of the display the game is on, or `null` while nothing has
+ * measured it (`perf/displayRate.ts` does, once, a second after boot).
+ *
+ * A module mirror for the same reason `playCap` below is one: it is process-wide by
+ * definition and read on a path that runs every frame.
+ */
+let displayHz: number | null = null;
+
+/** The display probe has an answer (or has given up, with `null`). */
+export function setDisplayHz(hz: number | null): void {
+  displayHz = hz !== null && Number.isFinite(hz) && hz > 0 ? hz : null;
+}
+
+/** What the probe last reported. `null` means "not measured", never "unknown, assume 60". */
+export function activeDisplayHz(): number | null {
+  return displayHz;
+}
+
+/** Test helper — one case's measurement must not leak into the next. */
+export function resetDisplayHz(): void {
+  displayHz = null;
+}
+
+/** How far below the chosen whole millisecond the cap aims, to survive `Ticker.maxFPS`'s
+ *  own float round trip. See the comment at the point of use. */
+export const GATE_EPSILON_MS = 0.001;
+
+/**
+ * Translate a target frame rate into the `Ticker.maxFPS` that delivers it *evenly* on this
+ * display. The three cases, in the order they are checked:
+ *
+ * 1. **The display is already at or below the target ⇒ no cap at all (`0`).** This is the
+ *    case the report came from: a 60 Hz panel asked for 60 fps cannot be helped by a gate,
+ *    only harmed by one, because every frame it drops is a frame the display was going to
+ *    show. The 1.02 slack is because a "60 Hz" panel is rarely exactly 60.000 — 59.94 and
+ *    60.02 are both ordinary — and a rule that capped the second and not the first would be
+ *    decided by the third decimal place of a measurement.
+ * 2. **The display rate is unknown ⇒ cap at the target's own whole millisecond.** Better
+ *    than not capping (the 120 Hz waste this file exists to stop is real) and better than
+ *    the raw target (which is the bug).
+ * 3. **The display is faster ⇒ snap the target to a whole division of it first.** A 144 Hz
+ *    panel asked for 60 gets 72 rather than 60: the nearest rate that is one frame per N
+ *    vsyncs, which is the only kind of rate a vsynced display can deliver evenly at all.
+ *    Asking for 60 there means 2.4 vsyncs per frame, and 2.4 is drawn as an endless
+ *    2,2,3,2,2,3 — the 44.7% in the table above.
+ *
+ * Pure, and the reason it is exported separately from {@link applyPowerBudget}: every number
+ * in that table is a property of this function alone, so the test drives it directly.
+ */
+export function tickerCapFor(targetFps: number, hz: number | null): number {
+  if (hz !== null && hz <= targetFps * 1.02) return 0;
+  const even = hz === null ? targetFps : hz / Math.max(1, Math.round(hz / targetFps));
+  // `ceil(interval) - 1`, and the `- 1` is load-bearing rather than defensive: `floor` lands
+  // ON the interval whenever the interval is already a whole millisecond (a 100 Hz panel
+  // asked for 60 resolves to 50 fps, i.e. exactly 20 ms), and `delta` truncating to 19
+  // against a `_minElapsedMS` of 20 is the shipped bug in miniature. Strictly below, always.
+  const minMs = Math.max(1, Math.ceil(1000 / even) - 1);
+  // ...and then a hair below THAT, because the value does not survive the round trip.
+  // `Ticker` stores `1 / (fps / 1000)`, so asking for `1000 / 33` comes back as
+  // 33.000000000000004 — a `_minElapsedMS` fractionally ABOVE the integer we picked, which
+  // an integer `delta` of exactly 33 then loses to. Measured before this line existed: a
+  // 30 fps idle cap on a 60 Hz panel read 2.7% uneven instead of 0.1%, entirely from the
+  // last bit of a double. `EPSILON` is far too small to survive the same round trip; a
+  // thousandth of a millisecond is below anything the gate can resolve and is not.
+  return 1000 / (minMs - GATE_EPSILON_MS);
+}
 
 /** The one display bit this needs — narrowed per CLAUDE.md rather than taking `Layers` or a
  *  whole `Container`. `renderable`, not `visible`: it is the bit that means "do not draw
@@ -144,6 +262,10 @@ export function maxFpsForPhase(phase: Phase): number {
 export function applyPowerBudget(phase: Phase, world: WorldLayerLike, ticker: FrameRateLike): boolean {
   const drawn = worldDrawnInPhase(phase);
   world.renderable = drawn;
-  ticker.maxFPS = maxFpsForPhase(phase);
+  // The phase decides the TARGET; `tickerCapFor` decides what to write so that the target
+  // arrives as evenly spaced frames rather than as an average. Reading the mirror here, and
+  // not at the call site, keeps the display measurement off `GameLoop`'s parameter list for
+  // the same reason `playCap` is not on it.
+  ticker.maxFPS = tickerCapFor(maxFpsForPhase(phase), displayHz);
   return drawn;
 }
