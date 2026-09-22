@@ -167,7 +167,7 @@ rejects are in `leftovers/` as `icon_card_<id>_alt_*.webp`, unconverted.
 | --- | --- | --- |
 | `potion_flow` | the three-vial pour | — (single candidate) |
 | `windfall` | the coin stack | — |
-| `edge` | shard **b** | **a** — its glow is a hairline outline, and the body is near-black on a near-black card, so at 43px only the outline survived. `b` puts a lit edge INSIDE the blade, which is what reads |
+| `edge` | the 2026-09-22 re-roll (see below) | **a** and **b** — both near-black bodies on a near-black card; `b` shipped for a day and was replaced |
 | `cadence` | the three bolts | — |
 | `bulwark` | shield **b** | **a** — softer, panel-lined, and its crystal core is a low-contrast inset; `b`'s outlined core holds at icon size |
 | `precision` | reticle **a** | **b** — brackets pushed out to the frame corners and a smaller crystal, so it reads as four unrelated marks once it is small |
@@ -198,7 +198,22 @@ looks each one up as `icon_card_${id}` straight off the offer, and `Button.setIc
 to hold both). A card with no art still draws as text alone; `uiSkins.test.ts` gates that
 every id in `FLOOR_CARDS` has a key, so a new card cannot quietly ship iconless.
 
-**Known weak one: `edge`.** It is a dark shard on a dark card, and only its lit edge really
-carries at 43px. Kept because it is the better of the two generations and it does read — but
-if it is re-rolled, ask for a body two or three values lighter than `#2d2a42`, not a brighter
-glow.
+## `edge`, re-rolled (2026-09-22)
+
+The first two generations were both a near-black shard on a near-black card, and the fix was
+NOT a brighter glow — a glow is an edge, and an edge is what was already carrying the whole
+icon. What was missing was a BODY. The re-roll names the body's values in the prompt
+(`#d7dbe4` lit face, `#8a93a3` shadow face) and tells the generator what it will sit on
+(`#2d2a42`, at 43px), rather than asking for "lighter".
+
+Measured against that card fill, over solid (alpha >= 250) pixels only:
+
+| | median body contrast | solid pixels DARKER than the card |
+| --- | --- | --- |
+| old (`leftovers/icon_card_edge_alt_b.png`) | **1.27:1** | **59.1%** |
+| shipped (`icon_card_edge_raw.png`) | **9.09:1** | 15.5% (the black outline, which is ink) |
+
+1.27:1 is the number worth remembering: over half the old icon's solid art was darker than
+the background it was drawn on, which is why only its lit edge survived. Judge a dark-on-dark
+icon this way rather than by eye — a generation viewed on the white background it was made
+against always looks fine.
