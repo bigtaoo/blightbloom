@@ -1,6 +1,8 @@
 # Work log — 2026-09-22
 
-Volume 88. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+Volume 89. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+(Written as 88 and renumbered on landing: a parallel session's frame-pacing pass took that
+number the same day. The volume file is a collision-free resource and the peer committed first.)
 
 ## Every route that was unbounded, in one pass (2026-09-22, net + ui + test + i18n + docs, no engine change)
 
