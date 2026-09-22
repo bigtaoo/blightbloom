@@ -1,6 +1,6 @@
 # Work log — 2026-09-04: the weapon roster gets tested
 
-Volume 26. A question — *"现在的武器系统，有平衡性测试吗？每个武器的玩法和效果都有测试吗"* (does the
+Volume 26. A question — *"does the weapon system have balance tests? is every weapon's play and effect tested?"* (does the
 weapon system have balance tests? does every weapon's behaviour and effect have tests?) — whose
 honest answer was *the mechanics do, the weapons don't, and the balance nothing does*.
 

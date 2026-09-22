@@ -2,6 +2,7 @@ import { Container, Text } from 'pixi.js';
 import type { GameState } from '@dd/engine';
 import { FLOOR_CARDS, floorCardDescVars } from '@dd/engine';
 import { Panel, Button } from './widgets';
+import { getUiTexture } from '../../render/uiSkins';
 import { t, tName, getLocale } from '../../i18n';
 
 /**
@@ -28,11 +29,26 @@ import { t, tName, getLocale } from '../../i18n';
  * With one player there is no ambiguity to resolve, so the counts stay hidden.
  */
 
-const CARD_W = 150;
-const CARD_H = 96;
+/** Card box geometry. Exported because the locale sweep in `hudLabelFit.test.ts` measures
+ *  against the BOX, not against the wrap width derived from it — a test that read the same
+ *  derived number the code wraps with could not tell a wrong derivation from a right one. */
+export const CARD_W = 150;
+// 108, not the 96 it was before the icons landed (2026-09-21): 8px of padding, a 43px icon
+// box (`Button.topIconBox`), 6px of gap and three 15px lines, which is the worst wrapped
+// height any of the 56 card strings produces at this width.
+export const CARD_H = 108;
+/** The card label's font size, and the width its text is wrapped to: the box less 8px of
+ *  breathing room either side. */
+export const CARD_FONT = 12;
+const CARD_TEXT_W = CARD_W - 16;
 const GAP = 10;
 const PANEL_PAD = 12;
 const TITLE_H = 26;
+/** The whole panel's fixed size, in its own local space. `reposition` scales this DOWN to
+ *  fit a narrow viewport rather than re-flowing it (the same policy `menuLayer` applies to
+ *  the full-screen menus — the HUD is outside that layer and has to do its own). */
+export const PANEL_W = 3 * CARD_W + 2 * GAP + 2 * PANEL_PAD;
+export const PANEL_H = CARD_H + TITLE_H + 2 * PANEL_PAD + 14;
 
 export class FloorCardPrompt {
   readonly view = new Container();
@@ -64,7 +80,10 @@ export class FloorCardPrompt {
 
     for (let i = 0; i < 3; i++) {
       const slot = i + 1;
-      const btn = new Button('', { w: CARD_W, h: CARD_H, color: 0x2d2a42, borderColor: 0x6b46c1, fontSize: 12 });
+      // `wrapWidth`: a card is 150px wide in every locale, and 26 of the 56 card strings do
+      // not fit on one line at that width (the Spanish potion card measures 238px) — they
+      // were drawn running out of the card and across its neighbours until 2026-09-21.
+      const btn = new Button('', { w: CARD_W, h: CARD_H, color: 0x2d2a42, borderColor: 0x6b46c1, fontSize: CARD_FONT, wrapWidth: CARD_TEXT_W });
       btn.onTap = () => this.onVote?.(slot);
       this.cards.push(btn);
 
@@ -89,21 +108,32 @@ export class FloorCardPrompt {
     this.view.on('pointerdowncapture', () => this.onPressStart?.());
   }
 
-  /** Re-anchor on viewport resize (Game's relayoutViewport, same as HudView). */
+  /**
+   * Re-anchor on viewport resize (Game's relayoutViewport, same as HudView).
+   *
+   * Everything inside is laid out in the panel's OWN space and the container is then
+   * placed and scaled as a whole. The scale is what keeps a 494px-wide panel of three
+   * cards on a viewport narrower than that: at 480px the old absolute layout put the
+   * panel's left edge at x=-7 and its first card half off the screen. Down only
+   * (`Math.min(1, …)`), so every viewport at or above the panel's own width is
+   * unchanged — the same rule, and the same reason, as `menuFitScale`.
+   */
   reposition(screenPx: { w: number; h: number }): void {
-    const w = 3 * CARD_W + 2 * GAP + 2 * PANEL_PAD;
-    const h = CARD_H + TITLE_H + 2 * PANEL_PAD + 14;
-    this.panel.layout(w, h);
+    this.panel.layout(PANEL_W, PANEL_H);
+    const scale = Math.min(1, (screenPx.w - 16) / PANEL_W);
+    this.view.scale.set(scale);
     // Above the portal popup (which sits at 0.6 of the screen height), so the two read
     // as one stack: "here is what you won, here is where you go".
-    const x = screenPx.w / 2 - w / 2;
-    const y = Math.max(8, screenPx.h * 0.6 - h - 12);
-    this.panel.view.position.set(x, y);
-    this.titleText.position.set(screenPx.w / 2, y + 8);
+    this.view.position.set(
+      screenPx.w / 2 - (PANEL_W * scale) / 2,
+      Math.max(8, screenPx.h * 0.6 - PANEL_H * scale - 12),
+    );
+    this.panel.view.position.set(0, 0);
+    this.titleText.position.set(PANEL_W / 2, 8);
     for (let i = 0; i < this.cards.length; i++) {
-      const cx = x + PANEL_PAD + i * (CARD_W + GAP);
-      this.cards[i]!.view.position.set(cx, y + TITLE_H + PANEL_PAD);
-      this.tallies[i]!.position.set(cx + CARD_W / 2, y + TITLE_H + PANEL_PAD + CARD_H + 2);
+      const cx = PANEL_PAD + i * (CARD_W + GAP);
+      this.cards[i]!.view.position.set(cx, TITLE_H + PANEL_PAD);
+      this.tallies[i]!.position.set(cx + CARD_W / 2, TITLE_H + PANEL_PAD + CARD_H + 2);
     }
   }
 
@@ -151,6 +181,12 @@ export class FloorCardPrompt {
       // the catalogue itself (`floorCardDescVars`) so a retuned buff cannot leave eight
       // locale files promising the old figure.
       btn.setText(def ? `${tName(def.nameKey)}\n${tName(def.descKey, floorCardDescVars(id))}` : id);
+      // The card's own art, above its text (`uiSkins.ts`'s `icon_card_*`). Keyed off the
+      // offer's id rather than a table here, and `undefined` — a card with no art yet, or
+      // an id from a newer sim — takes `setIcon`'s clear branch and leaves the card exactly
+      // as it read before the icons existed. Art never gates play (design/12), and this is
+      // the panel where that matters most: the offer is on a timer the player is standing in.
+      btn.setIcon(getUiTexture(`icon_card_${id}`), undefined, 'top');
       // The local seat's own pick is the selected one. Border colour rather than fill,
       // matching the browse-cursor convention `BlueprintCard` already uses.
       btn.setBorder(mine === i + 1 ? 0xfaf089 : 0x6b46c1);

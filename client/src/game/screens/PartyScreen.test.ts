@@ -10,6 +10,7 @@ import { PartyScreen, type PartyApi } from './PartyScreen';
 import type { PartyInfo } from '../../net/party';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { getPartyPresence, resetPartyPresence } from '../../platform/partyPresence';
+import { useLocale } from '../../i18n/loadLocale';
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -322,9 +323,9 @@ describe('PartyScreen — staleness guard (backing out mid-request never lands a
 });
 
 describe('PartyScreen — i18n (design/17-i18n.md)', () => {
-  it('retexts on show() under zh', () => {
+  it('retexts on show() under zh', async () => {
     const s = makeScreen(fakeApi());
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600);
     const p = privateOf(s);
     expect(p.title.text).toBe('组队');
@@ -334,7 +335,7 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
 
   it('translates the code line, member "you" label, and status messages under zh', async () => {
     const api = fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) });
-    setLocale('zh');
+    await useLocale('zh');
     const s = makeScreen(api);
     await privateOf(s).doCreate();
     const p = privateOf(s);
@@ -344,15 +345,15 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
 
   it('a failed create under zh surfaces the translated error', async () => {
     const api = fakeApi({ createParty: vi.fn().mockRejectedValue(new Error('boom')) });
-    setLocale('zh');
+    await useLocale('zh');
     const s = makeScreen(api);
     await privateOf(s).doCreate();
     expect(privateOf(s).statusText.text).toBe('创建队伍失败，请重试。');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const s = makeScreen(fakeApi());
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600);
     setLocale('en');
     s.show(800, 600);

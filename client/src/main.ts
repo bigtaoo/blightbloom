@@ -7,6 +7,7 @@ import { installAutoReload, deployedVersion } from './platform/web/autoReload';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
 import { reportWebBootFailure } from './bootError';
+import { afterFirstRenderedFrame, hideBootSplash, setBootProgress } from './bootSplash';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
@@ -15,6 +16,8 @@ import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
 import { setHostKind } from './platform/hostKind';
 import { getLocale } from './i18n';
+import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
+import { persistedLocale } from './settings';
 import { getSession } from './net/session';
 
 // Web entry. The WeChat entry is client/src/main.wechat.ts (loaded by client/wechat/game.js).
@@ -39,6 +42,15 @@ async function boot() {
   // one that a new entry point forgot, so every entry states its own host and
   // `hostKind.test.ts` sweeps all three.
   setHostKind('web');
+
+  // The active locale's table, which since 2026-09-21 is its own chunk rather than one of
+  // eight inside the bundle (i18n/loadLocale.ts — 22 kB of brotli off the first download).
+  // KICKED here and AWAITED below, so its round trip overlaps the renderer coming up and the
+  // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
+  // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
+  // than asked of `Game`, because `Game` is what loads them.
+  const localeReady = ensureLocale(persistedLocale());
+
 
   // Browser logs, on their way to the same store the backend writes to (design/19 §10).
   // FIRST, before anything else in boot() can fail: this wraps console.error/warn and the
@@ -85,10 +97,10 @@ async function boot() {
   const app = await platform.createApp();
   const input = platform.createInput(app);
   const audio = platform.createAudio();
-  // The SFX set (design/11) — deliberately NOT awaited. It is 95 kB and usually lands well
-  // before the first shot, and every cue has a procedural voice to fall back on meanwhile,
-  // so blocking boot on it would buy nothing. Failure is logged per file inside SampleBank.
-  void audio.preload();
+  // The renderer is up — the first thing in this boot with a duration worth reporting. The
+  // bar's remaining budget belongs to the `lobby` pack below, which is the only part of this
+  // sequence whose length the player's connection decides.
+  setBootProgress(0.2);
   // The other half of design/11's cue vocabulary: the cues a SCREEN makes (button taps), as
   // opposed to the ones an engine event makes. `EventReactor` gets the bus from `Game`; the
   // ~20 widget/screen classes take no dependencies at all, so they reach it through this one
@@ -108,7 +120,16 @@ async function boot() {
   // than Pixi can, before the WebGL context even exists (`index.html`'s `#boot-loading`, removed
   // further down); the Pixi `LoadingScreen` is for the WeChat entry, which has no DOM, and for
   // the run gate on both.
-  await preloadLobbyArt();
+  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)));
+
+  // The SFX set (design/11) — deliberately NOT awaited, and deliberately kicked HERE rather
+  // than beside `createAudio()` where it used to sit. It is 70 files, and on the live deploy
+  // they went out as 70 parallel requests while the `lobby` pack — the one download a player
+  // is actually waiting on — was still in flight. Every cue has a procedural voice to fall
+  // back on and none of them can be triggered before there is a menu, so there is nothing to
+  // buy by starting them earlier and a slower first screen to pay for it. Failure is logged
+  // per file inside SampleBank.
+  void audio.preload();
 
   // Phase two, kicked and not awaited: the rig/weapon/biome/environment art and the music,
   // downloaded while the player is reading the menu. `Game.artGate` awaits it at the run
@@ -120,6 +141,14 @@ async function boot() {
   // first line — the `?replay=` path does — and a gate that is not armed yet would let that run
   // begin with placeholder art. Pinned in render/wechatPhasedBoot.test.ts.
   beginDeferredArt();
+  // ...and the other seven locale tables, on the same terms: kicked once the lobby is up,
+  // never awaited. It makes the settings screen's language button a toggle rather than a
+  // fetch; `useLocale` is what makes it CORRECT either way.
+  prefetchLocales();
+
+  // ...and here is where it has to be in: screens read `t()` while they are being CONSTRUCTED,
+  // so a table that lands a tick later leaves English baked into labels nothing re-reads.
+  await localeReady;
 
   const game = new Game(app, input, audio);
   game.start();
@@ -137,7 +166,6 @@ async function boot() {
     // frame. Same stream the `[perf]` console warning already uses.
     onSnapshot: (s) => game.observePerfWindow(s.window),
   });
-  document.getElementById('boot-loading')?.remove();
 
   // Pick up a new deploy when the player tabs back in (production builds only). Held back
   // while a run or a network session is live — those phases hold state a reload would throw
@@ -147,6 +175,14 @@ async function boot() {
 
   // Expose for debugging
   (globalThis as unknown as { __game: Game }).__game = game;
+
+  // The splash comes down LAST, and everything about that is in `bootSplash.ts`: it waits for
+  // a frame the renderer has actually drawn (`start()` fills the stage, it does not draw it —
+  // removing the splash on the next statement uncovered a canvas the menu had never been
+  // rendered onto), and it never comes down before `bootHold.ts`'s floor. Last in `boot()`
+  // because it is a wait: nothing the player can use should be queued behind it.
+  await afterFirstRenderedFrame(app.ticker);
+  await hideBootSplash();
 }
 
 boot().catch(reportWebBootFailure);

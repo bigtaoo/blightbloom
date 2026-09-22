@@ -14,6 +14,7 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { EngineConfig } from '@dd/engine/state/GameState';
 import { PortalPrompt } from './PortalPrompt';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -176,10 +177,10 @@ describe('PortalPrompt — i18n (design/17-i18n.md)', () => {
     expect(privateOf(prompt).titleText.text).not.toBe('');
   });
 
-  it('translates under zh and reverts under en on a later update()', () => {
+  it('translates under zh and reverts under en on a later update()', async () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    setLocale('zh');
+    await useLocale('zh');
     prompt.update(s, true);
     const zhTitle = privateOf(prompt).titleText.text;
     setLocale('en');

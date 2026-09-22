@@ -4,7 +4,7 @@ Volume 47. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## One store for both halves: the backend's logs and the browser's (2026-09-09, server + client + deploy + docs, no engine change)
 
-*"在后端的container里，集成grafana，集中展示后端和服务器状态相关的日志，并用于收集和展示前端的日志。可以参考funny项目"*
+*"put Grafana in the backend's own containers, showing the backend and server-status logs in one place, and use it to collect and show the client's logs too. You can look at the funny project"*
 
 design/19 §8 had a row saying not to do this, and the row was right when it was written:
 *"its monitors exist to feed a sink this project does not have, so a literal port computes

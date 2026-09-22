@@ -16,8 +16,9 @@ import { installFakeTextCanvas } from './fakeTextCanvas';
 import { StorePurchase, type StorePurchaseApi, type StorePurchaseDeps } from '../controllers/StorePurchase';
 import { setUiAudio } from '../../audio/uiSound';
 import { defaultMetaState, type MetaState } from '../../meta';
-import { setLocale, resetLocaleForTests, t } from '../../i18n';
+import { resetLocaleForTests, t } from '../../i18n';
 import type { StoreOrder, StoreSku } from '../../net/billing';
+import { useLocale } from '../../i18n/loadLocale';
 
 installFakeTextCanvas();
 afterEach(() => { setUiAudio(null); resetLocaleForTests(); });
@@ -131,7 +132,7 @@ describe('the listing', () => {
   it("names the weapon in the player's language, not the server's operator title", async () => {
     // design/09: engine data carries keys, never display text. The server's `title` is an
     // operator label; a row has to read like the rest of the game.
-    setLocale('zh');
+    await useLocale('zh');
     const f = await shown({ skus: [CRYO] });
     expect(f.ui.rows[0]!.label.text).not.toContain('Blueprint');
     expect(f.ui.rows[0]!.label.text).toMatch(/12/); // ...and the price is still on it
@@ -367,7 +368,7 @@ describe('leaving the screen', () => {
 
 describe('i18n (design/17-i18n.md)', () => {
   it('retexts every static label on show()', async () => {
-    setLocale('zh');
+    await useLocale('zh');
     const f = await shown();
     expect(f.ui.title.text).toBe('商店');
     // No arrow glyph in the label — `icon_back` draws one, and carrying both rendered as

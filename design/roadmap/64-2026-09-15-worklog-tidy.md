@@ -4,7 +4,7 @@ Volume 64. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The work log stopped being one volume per pass (2026-09-15, docs only, no engine change)
 
-*"整理文档"*, with nothing attached — so it was built as the mechanical checks first, and the
+*"tidy the docs"*, with nothing attached — so it was built as the mechanical checks first, and the
 result shape is the finding again: every defect was in the INDEX and in the volume boundaries,
 and not one was a wrong description of what the code does. `check:docpaths` and
 `check:filelength` were both green before this pass started and are green after it.
@@ -55,15 +55,18 @@ Caught by the control, not by review: concatenate the nine new files' bodies, dr
 and diff against the original's — 1,105 lines against 1,105, with exactly the four intended
 cross-reference rewrites differing. The first run of that check said **1,107 against 1,105**.
 
-`design/roadmap/55` contained **two lone `` bytes**, both inside code spans in its last pass —
+`design/roadmap/55` contained **two lone `
+` bytes**, both inside code spans in its last pass —
 ``tr -d '<CR>' < f | ssh host 'cat > f'`` and ``$'<CR>': command not found``, a section that is
 *about* CRLF damage. Python's text mode is universal-newline: it turns a bare CR into `
 ` on
 read, so the split silently broke each of those lines in two and lost the byte the sentence was
-about. The doc-conventions memory says "strip `` on read" — correct for the CRLF checkout this
+about. The doc-conventions memory says "strip `
+` on read" — correct for the CRLF checkout this
 repo produces, and exactly what destroys a CR that is CONTENT. Read a doc as **bytes** and strip
 only `
-` when a script is going to write the file back; strip every `` only when the result
+` when a script is going to write the file back; strip every `
+` only when the result
 is thrown away (a count, a regex match).
 
 The generalisable half: **a read-modify-write over prose needs a whole-corpus control**, and

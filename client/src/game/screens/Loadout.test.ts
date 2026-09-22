@@ -28,6 +28,7 @@ import { installFakeTextCanvas } from './fakeTextCanvas';
 import { defaultMetaState } from '../../meta';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
 import type { LoadedRigSkin } from '../../render/skinRegistry';
+import { useLocale } from '../../i18n/loadLocale';
 
 /**
  * The rig registry, per-character and switchable per test.
@@ -523,10 +524,10 @@ describe('Loadout — CONTINUE RUN', () => {
 });
 
 describe('Loadout — i18n (design/17-i18n.md)', () => {
-  it('render() retexts every static label from the active locale', () => {
+  it('render() retexts every static label from the active locale', async () => {
     const l = new Loadout();
     l.savedRun = () => ({ floorIndex: 1, ticks: 1800, savedAtMs: 0 });
-    setLocale('zh');
+    await useLocale('zh');
     l.render(defaultMetaState(), 1280, 720);
     const p = privateOf(l);
     expect(p.title.text).toBe('出击准备');
@@ -537,9 +538,9 @@ describe('Loadout — i18n (design/17-i18n.md)', () => {
     expect(p.hint.text).toBe('[C] 切换角色 · [X] 清空装备 · [F] 锻造场 · [Enter] 出发');
   });
 
-  it('translates the character, the weapon cards and the forge card too', () => {
+  it('translates the character, the weapon cards and the forge card too', async () => {
     const l = new Loadout();
-    setLocale('zh');
+    await useLocale('zh');
     l.render({ ...defaultMetaState(), loadout: ['repeater'] }, 1280, 720);
     const p = privateOf(l);
     const def = SKIN_DEFS[defaultMetaState().selectedSkin]!;
@@ -552,9 +553,9 @@ describe('Loadout — i18n (design/17-i18n.md)', () => {
     expect(p.infoText.text).toMatch(/物 \d+/);
   });
 
-  it('switching back to English on a later render() fully reverts', () => {
+  it('switching back to English on a later render() fully reverts', async () => {
     const l = new Loadout();
-    setLocale('zh');
+    await useLocale('zh');
     l.render(defaultMetaState(), 1280, 720);
     setLocale('en');
     l.render(defaultMetaState(), 1280, 720);

@@ -161,8 +161,8 @@ saw, which in the data is indistinguishable from the per-visit-id bug the whole 
 What none of it can reach is the pair of operational gates, because they need a real account and
 a real handset. `wx.request` refuses plain http, and a plain `npm run build:wechat` bakes in
 `http://localhost:8788` (`VITE_MATCHSVC_URL` is injected by the web deploy workflow, and this
-target has no CI build); and `bb.gamestao.com` has to be in the account's **服务器域名**
-whitelist, where an un-whitelisted host fails on a device while DevTools with 不校验域名 ticked
+target has no CI build); and `bb.gamestao.com` has to be in the account's **server-domain**
+whitelist, where an un-whitelisted host fails on a device while DevTools with do not verify domains ticked
 succeeds. Both are silent and fail-safe, which is the problem: **zero `wechat` rows in
 `daily_active` is the symptom of both of them and of a build nobody played, and the events store
 cannot tell them apart.** Filed as design/04's checklist item 18, as a POSITIVE check — play a

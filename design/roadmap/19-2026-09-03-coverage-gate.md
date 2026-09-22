@@ -1,7 +1,7 @@
 # Work log — 2026-09-03: coverage becomes a gate, and Game.ts stops being the shell that holds everything
 
-Volume 19, and the fourth pass of the same day. The ask: *"你参考funny的测试覆盖率的方式，当前客户端的
-测试要超过90%。逻辑部分独立出去，单独测试。每次ci都跑逻辑一致性测试。"* — adopt funny's coverage
+Volume 19, and the fourth pass of the same day. The ask: *"follow funny's approach to test coverage: the client's
+tests must be over 90%. Split the logic out and test it separately. Run the logic-consistency test on every CI run."* — adopt funny's coverage
 approach, get the client over 90%, split the logic out and test it on its own, and run the
 logic-consistency tests on every CI event.
 
@@ -32,7 +32,7 @@ What was actually missing here was not coverage. It was three things:
 1. **Nothing measured it.** No provider installed, no script, no CI step. The number was true
    by accident and could stop being true with nothing to say so.
 2. **Branches sat 0.03 percentage points over the bar.** The next unexercised `if` would have
-   taken the client under a 90% branch gate — and every "补测" note in this repo quotes LINE
+   taken the client under a 90% branch gate — and every "back-fill" note in this repo quotes LINE
    coverage, which is the column that was comfortable.
 3. **Nothing stopped the scope from being narrowed.** The one edit that raises every number
    without adding a test.

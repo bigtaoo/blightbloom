@@ -25,12 +25,13 @@ import type { FxController } from '../fx/FxController';
 import { HudView } from '../ui/HudView';
 import { Layers } from '../scene/layers';
 import type { AudioBus } from '../../platform/types';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetLocaleForTests } from '../../i18n';
 import { THEME } from '../theme';
 import type { SlashArcPose } from '../fx/slashArc';
 import {
   swingSchedule, recoilSchedule, RECOIL_MS, type ShotShape, type SwingShape,
 } from '../../render/rigAttackMotion';
+import { useLocale } from '../../i18n/loadLocale';
 
 // `FxController`'s real constructor builds WebGL filters (VignetteFilter/
 // ChromaticAberrationFilter), which need an actual `document`/GL context this repo's
@@ -152,8 +153,8 @@ describe('EventReactor — pickup toasts', () => {
 });
 
 describe('EventReactor — pickup toasts, i18n (design/17-i18n.md)', () => {
-  it('translate every toast template under zh', () => {
-    setLocale('zh');
+  it('translate every toast template under zh', async () => {
+    await useLocale('zh');
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'heal' }] as GameEvent[]);
     expect(toast).toHaveBeenCalledWith('+1 生命', expect.anything());
@@ -165,8 +166,8 @@ describe('EventReactor — pickup toasts, i18n (design/17-i18n.md)', () => {
     expect(toast).toHaveBeenCalledWith('+1 材料', expect.anything());
   });
 
-  it('translates a recognized weapon/buff/material name, not just the generic templates', () => {
-    setLocale('zh');
+  it('translates a recognized weapon/buff/material name, not just the generic templates', async () => {
+    await useLocale('zh');
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'weapon', weaponId: 'repeater' }] as GameEvent[]);
     expect(toast).toHaveBeenCalledWith('连发枪', expect.anything());

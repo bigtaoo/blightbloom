@@ -15,6 +15,7 @@
 // The spin is driven by a ticker callback the screen owns and removes on `destroy()`. It is
 // wall-clock, not frame-count: a boot that stalls on a slow download must still visibly move.
 import { Application, Container, Graphics, Text, Ticker } from 'pixi.js';
+import { holdBootMinimum, type BootHoldDeps } from '../../bootHold';
 import { t } from '../../i18n';
 import { THEME } from '../theme';
 import { computeScreenSize } from '../viewport';
@@ -143,7 +144,9 @@ export class LoadingScreen {
 /** Handle the boot callers hold: the screen is already parked on the stage and spinning. */
 export interface BootLoading {
   onProgress(done: number, total: number): void;
-  done(): void;
+  /** Take the screen down once it has been up for `bootHold.ts`'s minimum. Awaited, because
+   *  that minimum is a wait — a caller that drops the promise tears the screen down early. */
+  done(): Promise<void>;
 }
 
 /**
@@ -153,7 +156,7 @@ export interface BootLoading {
  * Added LAST so it covers whatever the platform put on the stage before it, and removed by
  * `done()` before `new Game(...)` builds the real layer tree.
  */
-export function showBootLoading(app: Application): BootLoading {
+export function showBootLoading(app: Application, hold: BootHoldDeps = {}): BootLoading {
   // `computeScreenSize`, never `renderer.width / resolution` — see viewport.ts's header for the
   // HiDPI bug that division caused, which is invisible at devicePixelRatio 1.
   const screen = new LoadingScreen({
@@ -166,6 +169,12 @@ export function showBootLoading(app: Application): BootLoading {
   app.stage.addChild(screen.view);
   return {
     onProgress: (done, total) => screen.setProgress(done, total),
-    done: () => screen.destroy(),
+    // The same floor the DOM splash obeys on web and the portal (`bootHold.ts`): a boot fast
+    // enough to flash this screen for 200 ms reads as a glitch rather than as a load, and on
+    // this host there is nothing else on the stage for it to flash against.
+    done: async () => {
+      await holdBootMinimum(hold);
+      screen.destroy();
+    },
   };
 }

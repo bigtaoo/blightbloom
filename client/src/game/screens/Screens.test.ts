@@ -21,6 +21,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Screens, type ResultOffer } from './Screens';
 import { setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 function privateOf(s: Screens) {
   return s as unknown as {
@@ -135,17 +136,17 @@ describe('Screens — confirm is a real button, not tap-anywhere (2026-08-17)', 
 });
 
 describe('Screens — i18n (design/17-i18n.md)', () => {
-  it('retexts CONFIRM and MAIN MENU on show() under zh', () => {
+  it('retexts CONFIRM and MAIN MENU on show() under zh', async () => {
     const s = new Screens();
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600, true, 'EXTRACTED', ['line one']);
     expect(privateOf(s).menuBtn.label.text).toBe('主菜单');
     expect(privateOf(s).confirmBtn.label.text).not.toBe('CONFIRM');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const s = new Screens();
-    setLocale('zh');
+    await useLocale('zh');
     s.show(800, 600, true, 'EXTRACTED', ['line one']);
     setLocale('en');
     s.show(800, 600, true, 'EXTRACTED', ['line one']);

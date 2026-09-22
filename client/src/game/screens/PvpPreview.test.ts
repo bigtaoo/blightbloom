@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { buildArenaSpecs, PVP_SCALE_FACTOR, DEFAULT_SKIN_ID, SKIN_DEFS } from '@dd/engine';
 import { PvpPreview } from './PvpPreview';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 function privateOf(p: PvpPreview) {
   return p as unknown as {
@@ -123,8 +124,8 @@ describe('PvpPreview — i18n (design/17-i18n.md)', () => {
     expect(privateOf(p).queueBtn.label.text).toBe('QUEUE');
   });
 
-  it('retexts its static labels from the active locale on show()', () => {
-    setLocale('zh');
+  it('retexts its static labels from the active locale on show()', async () => {
+    await useLocale('zh');
     const p = new PvpPreview();
     p.show(800, 600, DEFAULT_SKIN_ID);
     expect(privateOf(p).title.text).toBe('PVP 对战');
@@ -132,9 +133,9 @@ describe('PvpPreview — i18n (design/17-i18n.md)', () => {
     expect(privateOf(p).backBtn.label.text).toBe('返回');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const p = new PvpPreview();
-    setLocale('zh');
+    await useLocale('zh');
     p.show(800, 600, DEFAULT_SKIN_ID);
     setLocale('en');
     p.show(800, 600, DEFAULT_SKIN_ID);

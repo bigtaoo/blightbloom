@@ -242,34 +242,34 @@ converts it losslessly (verified pixel-for-pixel, not assumed).
 ## The game gets its name: Blightbloom (2026-09-06, docs + client + server, no engine change)
 
 `design/13`'s last open item was *"is 'DayDayUp' the final name or a codename?"*. It was a
-codename, and the reason to retire it is not taste: **天天向上 is Hunan TV's flagship variety
+codename, and the reason to retire it is not taste: **Tiantian Xiangshang is Hunan TV's flagship variety
 show**, which is the worst possible collision to carry into a WeChat mini-game name review, and
 "DayDayUp" is an unownable Chinglish meme — no trademark path, no search space, and it says
 nothing about the game. The item guessed the setting would supply the replacement, and it did.
 
 **`Blightbloom` is this doc's own two poles in one word** — the `Blight` that crystallises the
 world and the `bloom` that is simultaneously what the enemies literally are ("wild
-crystal-blooms") and what `13`'s tone bullet promises. **《绽晶》 is deliberately not a
-translation** but a second name on the same image, 绽 (burst into bloom) + 晶 (crystal), leading
+crystal-blooms") and what `13`'s tone bullet promises. **«Zhanjing» is deliberately not a
+translation** but a second name on the same image, zhan (burst into bloom) + jing (crystal), leading
 with the bloom where the English leads with the rot.
 
 **Three finalists, and availability picked between them — the rejections are the useful part.**
-《枯潮》 was the owner's first choice and died on trademark: two characters ending in the
-*identical* 潮 as **《鸣潮》** (Wuthering Waves, mark registered 2021-07) in the same classes, and
-CN defensive-registration practice explicitly covers *"在相同类别注册与其商标音同、形似等的相似商标"* —
-形似 is precisely that axis. 《枯晶》 replaced it, was legally clean, and died on **discoverability**:
-search engines rewrite 枯晶 to **《晶核》** (Crystal of Atlan, ByteDance-published), and a title that
+«Kuchao» was the owner's first choice and died on trademark: two characters ending in the
+*identical* -chao as **«Mingchao»** (Wuthering Waves, mark registered 2021-07) in the same classes, and
+CN defensive-registration practice explicitly covers *"registering, in the same classes, a similar mark that sounds or looks like theirs"* —
+looking alike is precisely that axis. «Kujing» replaced it, was legally clean, and died on **discoverability**:
+search engines rewrite Kujing to **«Jinghe»** (Crystal of Atlan, ByteDance-published), and a title that
 gets auto-corrected into a competitor pays that tax forever — a failure mode no trademark search
 would ever have surfaced, found only because the check was run as a real search and the engine
-did it to us mid-query. 《绽晶》 has neither problem: no game, no mark, no novel, not even an
-existing word, nearest neighbour a class-3 cosmetics brand (绽界). `Blightbloom` itself is free on
+did it to us mid-query. «Zhanjing» has neither problem: no game, no mark, no novel, not even an
+existing word, nearest neighbour a class-3 cosmetics brand (Zhanjie). `Blightbloom` itself is free on
 every storefront and `blightbloom.com`/`.net` are unregistered — verified by RDAP against a
 **working control** (`blightbound.com` returns full registration data, so the 404s are real
 availability rather than a dead endpoint, which is the only thing that makes a 404 evidence).
 
 **The line the code change was held to: a name a human READS moves, an identifier a machine
 MATCHES does not.** That is what decided each of ~30 occurrences rather than a judgement call per
-file. Moved: `mainMenu.title` in all eight locale files (`BLIGHTBLOOM`, and 绽晶 for `zh` — the
+file. Moved: `mainMenu.title` in all eight locale files (`BLIGHTBLOOM`, and Zhanjing for `zh` — the
 first Chinese title this game has ever had, since `zh.ts` had been carrying the English
 `'DAYDAYUP'` for its whole life), the `<title>`, Capacitor `appName`, the WeChat project name, the
 `Not a Blightbloom replay` throw, the boot-failure console prefix, every `[blightbloom]` server log
@@ -288,7 +288,7 @@ Two smaller things fell out of doing it properly. `internalAuth.test.ts`'s log-i
 spoofs the real log prefix, so it moved with it — the test passes either way (sanitisation strips
 newlines regardless), but a payload forging a prefix the server no longer prints is no longer
 testing what its name says. And the title got a **test of its own**: `i18n.test.ts` now pins
-`en` = `BLIGHTBLOOM`, `zh` = 绽晶, and — the actual invariant — that **every other locale keeps the
+`en` = `BLIGHTBLOOM`, `zh` = Zhanjing, and — the actual invariant — that **every other locale keeps the
 Latin title**, because `Translations<typeof en>` only checks that a key exists, never that its
 value is still the brand, so a helpful translator localising a proper noun is a branding bug the
 type system cannot see.
@@ -297,13 +297,13 @@ No `ENGINE_VERSION` bump: nothing here touches simulation state, and the golden-
 it. `npm run typecheck` clean, 8489 tests green across all eight workspace packages.
 
 **Still open, and not closable from inside this repo:** a real CNIPA register search on classes
-9 + 41 (`tm.aliyun.com` or a 商标代理), and WeChat's own 小程序名称唯一性 check. The Chinese half is
-**暂定** until the register clears. 枯潮 survives as the in-fiction name of the Blight itself, which
+9 + 41 (`tm.aliyun.com` or a a trademark agent), and WeChat's own mini-program name-uniqueness check. The Chinese half is
+**provisional** until the register clears. Kuchao survives as the in-fiction name of the Blight itself, which
 needs no clearance at all. `docs` `i18n` `platform` `test`
 
 ## The BGM gets quieter and slower, and the tempo turns out to live in the file (2026-09-06, client + tools + docs, no engine change)
 
-A balance request in plain language — *"背景音乐的音量大概是音效的一半，节奏是目前的0.7倍"* — split into
+A balance request in plain language — *"the background music should be about half the volume of the SFX, at 0.7x the current tempo"* — split into
 one one-line fix and one real pipeline problem, because only one of the two has a runtime knob.
 **Volume** is a slider product (`effectiveVolume = master * sfx|music`), so the new-install default
 `music` moved from 0.5 to 0.25 — half of `sfx`'s 0.5 — in `SettingsState.ts`; a returning player's

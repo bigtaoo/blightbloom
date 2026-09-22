@@ -23,6 +23,8 @@ import { createWeChatIdentityStore } from './platform/wechat/weChatStorage';
 import { createWeChatFetch } from './platform/wechat/weChatFetch';
 import { resolveMatchBaseUrl } from './game/runState';
 import { getLocale } from './i18n';
+import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
+import { persistedLocale } from './settings';
 import { getSession } from './net/session';
 
 // WeChat mini-game entry, loaded by client/wechat/game.js. There is no weapp-adapter (an
@@ -71,6 +73,15 @@ async function boot() {
   // simply never had the call. Nothing else changes: the two other readers ask
   // `isPortalHost()`, which is false either way.
   setHostKind('wechat');
+
+  // The active locale's table, which since 2026-09-21 is its own chunk rather than one of
+  // eight inside the bundle (i18n/loadLocale.ts — 22 kB of brotli off the first download).
+  // KICKED here and AWAITED below, so its round trip overlaps the renderer coming up and the
+  // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
+  // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
+  // than asked of `Game`, because `Game` is what loads them.
+  const localeReady = ensureLocale(persistedLocale());
+
 
   // Browser logs (design/19 §10). AFTER the declaration above, for the reason just given. No
   // `location` in this shell, so the base URL is the build-time default with no query
@@ -166,10 +177,6 @@ async function boot() {
   // is best-effort, so a missing or unreadable asset degrades to the Graphics placeholder
   // this entry used to render exclusively, rather than failing boot.
   setAssetHost(weChatAssetHost);
-  // The SFX set (design/11), same fire-and-forget as the web entry — but note the ordering:
-  // it must come AFTER the host swap, because that is what turns '/audio/impact_00.mp3' into
-  // a code-package path this runtime can read at all.
-  void audio.preload();
   // UI cues (design/11), same one-line wiring as the web entry — and it matters more here:
   // `WeChatAudio` registers none of the window listeners `WebAudio` uses to clear the
   // autoplay gate, so a menu tap is this runtime's first chance to resume the context.
@@ -187,7 +194,18 @@ async function boot() {
   // Graphics + Text only, because at this point in boot there IS no art (ui/loadingScreen.ts).
   const loading = showBootLoading(app);
   await preloadLobbyArt(loading.onProgress);
-  loading.done();
+
+  // The SFX set (design/11), same fire-and-forget as the web entry, and with two orderings on
+  // it rather than one. It must come AFTER the host swap, because that is what turns
+  // '/audio/impact_00.mp3' into a code-package path this runtime can read at all; and after
+  // the `lobby` pack, because 70 sample reads issued beside the one download the player is
+  // waiting on only make that wait longer.
+  void audio.preload();
+  // Awaited: `done()` holds the screen for `bootHold.ts`'s floor before destroying it, so a
+  // dropped promise here would take it down early on exactly the fast boots the floor exists
+  // for. It is time this entry spends idle rather than constructing, and that is the price of
+  // keeping `done()` ahead of `new Game(...)` — see the scrim note in loadingScreen.ts.
+  await loading.done();
 
   // Phase two, kicked and not awaited — the `run` packs plus `music`. On this platform that is
   // where most of the game's bytes are: the main package is now js/game.js alone (~0.95 MB of the
@@ -195,6 +213,14 @@ async function boot() {
   // at the run boundary. Before `new Game(...)` for the same load-bearing reason as the web
   // entry: this call is what arms the gate. See main.ts.
   beginDeferredArt();
+  // ...and the other seven locale tables, on the same terms: kicked once the lobby is up,
+  // never awaited. It makes the settings screen's language button a toggle rather than a
+  // fetch; `useLocale` is what makes it CORRECT either way.
+  prefetchLocales();
+
+  // ...and here is where it has to be in: screens read `t()` while they are being CONSTRUCTED,
+  // so a table that lands a tick later leaves English baked into labels nothing re-reads.
+  await localeReady;
 
   const game = new Game(app, input, audio);
   game.start();

@@ -12,6 +12,7 @@ import { baseAssetHost, setAssetHost } from './render/assetHost';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
 import { reportWebBootFailure } from './bootError';
+import { afterFirstRenderedFrame, hideBootSplash, setBootProgress } from './bootSplash';
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { resolveMatchBaseUrl } from './game/runState';
@@ -19,6 +20,8 @@ import { installClientLog, clientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
 import { getLocale } from './i18n';
+import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
+import { persistedLocale } from './settings';
 import { getSession } from './net/session';
 import { PortalAuth } from './platform/crazygames/portalAuth';
 import { settleIdentity } from './platform/identityGate';
@@ -70,6 +73,15 @@ async function boot() {
   // `Text` exists — see render/textMetrics.ts. Identical to `main.ts`.
   pinTextMeasurementToPaintCanvas();
   disableBrokenLetterSpacing();
+
+  // The active locale's table, which since 2026-09-21 is its own chunk rather than one of
+  // eight inside the bundle (i18n/loadLocale.ts — 22 kB of brotli off the first download).
+  // KICKED here and AWAITED below, so its round trip overlaps the renderer coming up and the
+  // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
+  // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
+  // than asked of `Game`, because `Game` is what loads them.
+  const localeReady = ensureLocale(persistedLocale());
+
 
   // (1) Asset paths, BEFORE the first preload — `preloadLobbyArt` resolves URLs through the
   // host, so a host installed after it would leave the lobby art fetched from the wrong
@@ -131,12 +143,23 @@ async function boot() {
   const app = await platform.createApp();
   const input = platform.createInput(app);
   const audio = platform.createAudio();
-  void audio.preload();
+  setBootProgress(0.2);
   setUiAudio(audio);
   setMusicAudio(audio);
 
-  await preloadLobbyArt();
+  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)));
+  // AFTER the lobby pack, same as `main.ts` and for the same reason: 70 sample requests
+  // fired beside the one download the player is waiting on only make that wait longer.
+  void audio.preload();
   beginDeferredArt();
+  // ...and the other seven locale tables, on the same terms: kicked once the lobby is up,
+  // never awaited. It makes the settings screen's language button a toggle rather than a
+  // fetch; `useLocale` is what makes it CORRECT either way.
+  prefetchLocales();
+
+  // ...and here is where it has to be in: screens read `t()` while they are being CONSTRUCTED,
+  // so a table that lands a tick later leaves English baked into labels nothing re-reads.
+  await localeReady;
 
   // Constructed but NOT started: the identity gate below runs between assembly and the first
   // frame, which is the whole point of it (design/10's screen flow).
@@ -206,7 +229,6 @@ async function boot() {
     overlay: parseGameQueryParams(location.search).perf,
     onSnapshot: (s) => game.observePerfWindow(s.window),
   });
-  document.getElementById('boot-loading')?.remove();
 
   // The ticker callback is added AFTER `game.start()` for the same reason `installPerf`'s
   // brackets are: it then runs outside every listener the game registered, so what it
@@ -239,6 +261,13 @@ async function boot() {
   // interrogated from a console (`__portal.diagnostics()`), which is the only place any of
   // the SDK half of this file can be verified at all.
   Object.assign(globalThis, { __game: game, __portal: portal, __auth: portalAuth, __rooms: portalRooms });
+
+  // The splash comes down last, on `bootSplash.ts`'s terms — after a frame the renderer has
+  // really drawn, and never before `bootHold.ts`'s floor. On THIS host it is also the last
+  // thing the identity gate above is protecting: the one-click menu (design/20) must not be
+  // live while the silent login is still in flight.
+  await afterFirstRenderedFrame(app.ticker);
+  await hideBootSplash();
 }
 
 boot().catch(reportWebBootFailure);

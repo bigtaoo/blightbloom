@@ -14,7 +14,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Chest, Fp } from '@dd/engine';
 import { ChestPrompt } from './ChestPrompt';
-import { setLocale, resetLocaleForTests, t } from '../../i18n';
+import { resetLocaleForTests, t } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -81,11 +82,11 @@ describe('ChestPrompt — it counts plates instead of naming a button', () => {
 });
 
 describe('ChestPrompt — the two things it must not do', () => {
-  it('redraws on a locale change with the chest untouched', () => {
+  it('redraws on a locale change with the chest untouched', async () => {
     const prompt = new ChestPrompt();
     prompt.update(big([false]));
     const english = privateOf(prompt).detailText.text;
-    setLocale('zh');
+    await useLocale('zh');
     prompt.update(big([false]));
     expect(privateOf(prompt).detailText.text).not.toBe(english);
     expect(privateOf(prompt).detailText.text).toBe(t('hud.chest.plates', { on: 0, total: 1 }));

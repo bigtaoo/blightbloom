@@ -208,7 +208,7 @@ export class Actor extends Entity {
     // HUD). A boss's is drawn bigger/further out (setHealth) so it still reads as the
     // more prominent threat.
     //
-    // NOT a child of this container (2026-08-21, live report *"血条被墙挡住了"*): a bar
+    // NOT a child of this container (2026-08-21, live report *"the health bar is blocked by the wall"*): a bar
     // parented here would Y-sort with the body, so a wall the occlusion x-ray only
     // PARTIALLY fades (`scene/occlusion.ts`'s cap-only fade, `XRAY_FADE` = 0.34) reads the
     // bar through the SAME translucent stone the body does — which keeps a near-white body
@@ -437,12 +437,27 @@ export class Actor extends Entity {
    *  deliberately not a child (see the constructor's doc comment), so nothing else moves it.
    *  Every position update funnels through here: `place()` (unused by Actor, but inherited)
    *  and `interpolate()` (Actor's own override, via `super.interpolate` → `applyTransform`)
-   *  both call this. */
+   *  both call this.
+   *
+   *  The bar tracks the actor's GROUND height, not its drawn one: `visualZ` — the render-only
+   *  idle hover (`actorLift.ts`'s HOVER) — is added back on top of the lift `super` just
+   *  subtracted, so the bar hangs at a constant screen height while the body bobs underneath
+   *  it. Live report 2026-09-21 — *"can the health bar above the character stop bobbing up
+   *  and down with it? my eyes are swimming"*. A hovering archetype's `amp` is 1-2 world px, so
+   *  the bar travelled 2-4 px peak to trough — at the 3.4-4.1x a room is cover-fitted to
+   *  (`FxController`) that is 7-16 screen px, and `setHealth` draws the track 4 px tall, so the
+   *  bar crossed its OWN HEIGHT twice a cycle. It is also the one piece of an actor's furniture
+   *  the eye is asked to fixate on and read a fraction off, so the bob that sells the body's
+   *  weight reads there as jitter. Engine `z` is deliberately still honoured (it is 0 for every
+   *  actor today, design/01 "`z` never gates gameplay", but a real knock-up should carry the
+   *  bar with it — that is the actor genuinely being somewhere else, not an idle animation).
+   *  The body's own `idle` clip bobs the ART inside `skin.view` and never reached the bar to
+   *  begin with, so pinning `visualZ` is the whole of the fix. */
   protected override applyTransform(x: number, y: number, z: number): void {
     super.applyTransform(x, y, z);
     if (this.healthBar) {
       this.healthBar.x = this.x;
-      this.healthBar.y = this.y + this.healthBarOffsetY;
+      this.healthBar.y = this.y + this.visualZ + this.healthBarOffsetY;
     }
   }
 

@@ -4,7 +4,7 @@ Volume 55. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## A door's halo runs the way the door does (2026-09-11, client only, no engine bump)
 
-> *"这个椭圆的长边要和门的长边保持一致。"*
+> *"the ellipse's long axis should line up with the door's long axis."*
 
 A screenshot of a passable door, with its floor halo circled: the ellipse's long axis has to run
 the same way the door's does. It did not — and only on the 13 doors cut through a north-south

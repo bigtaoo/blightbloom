@@ -279,7 +279,7 @@ function shieldFilterOf(a: Actor): { intensity: number; shatter: number } | null
 // decorative bones hang off the body bone's TIP, not its centre (orbCoreRig.ts's
 // eye/belly/weapon sockets all sit ~1 body-length above the shell's own origin), so
 // the assembled character is consistently top-heavy relative to (0,0). A live user
-// report ("护盾没有将角色放在中心位置" — the shield doesn't centre the character) caught
+// report ("the shield doesn't centre the character") caught
 // this: `critter-core`'s single-bone enemies have no such offset and looked fine,
 // `char_vanguard`'s orb-core rig does and visibly didn't. Fix: measure the skin's own
 // rest-pose bounds once (facing/aim-independent — only the X asymmetry above depends
@@ -323,9 +323,10 @@ describe('Actor — skin filterArea is a fixed rect centred on the skin\'s own r
   });
 
   it('puts the shell surface exactly SHELL_CLEARANCE body radii off the body, at every size', () => {
-    // 2026-08-27, report: *"整体缩小一点，类似紧贴着角色，稍微留点缝隙即可。缝隙的大小我感觉和图里枪
-    // 的直径差不多即可"*. The gap is one gun: the hero's weapon art has an opaque box 8.55 world px
-    // thick against a 16 px body radius, hence 0.53.
+    // 2026-08-27, report: *"shrink it overall so it sits close to the character, leaving just
+    // a small gap — about the diameter of the gun in the picture"*. The gap is one gun: the
+    // hero's weapon art has an opaque box 8.55 world px thick against a 16 px body radius,
+    // hence 0.53.
     //
     // This is the one piece of real arithmetic in the chain — `Actor` inverting the shader's own
     // geometry (`dist` of `SHELL_SURFACE` lands at `SHELL_SURFACE / sqrt(2) * regionWidth` px
@@ -344,7 +345,8 @@ describe('Actor — skin filterArea is a fixed rect centred on the skin\'s own r
   });
 
   it('is TALLER than wide, by exactly SHELL_ASPECT — the shell has no other source for its ellipse', () => {
-    // 2026-08-27, report: *"现在的盾是正圆的，改成椭圆或许更好，高度上长一点，看起来会更有立体感"*.
+    // 2026-08-27, report: *"the shield is a true circle today; an ellipse, a little taller
+    // than it is wide, would look more three-dimensional"*.
     // The shield shader is isotropic in region-normalized uv (measured in
     // shieldShellModel.test.ts), so this rect's aspect IS the shell's screen aspect and nothing
     // else contributes to it. That is what makes the ellipse free — every constant in the shader
@@ -1089,7 +1091,7 @@ describe('Actor.muzzlePos — the drawn barrel tip, in Entity coordinates', () =
   });
 });
 
-// Idle hover (2026-08-18 depth pass, user report "希望能再强化一下立体效果"). The rigs' own
+// Idle hover (2026-08-18 depth pass, user report "please strengthen the sense of depth a bit more"). The rigs' own
 // `idle` clips already bobbed the ART; what they could not do is move the SHADOW, because a
 // clip only knows about bones. `Entity.visualZ` lifts the whole entity instead, so the shadow
 // shrinks, fades and slides with it — which is the cue that says the body left the floor.
@@ -1143,6 +1145,44 @@ describe('Actor — idle hover', () => {
     expect(a.shadow!.y).toBeGreaterThan(400);
     expect(a.shadow!.scale.x).toBeLessThan(1); // and lifted off it, so smaller and fainter
     expect(a.shadow!.alpha).toBeLessThan(1);
+  });
+
+  it('does NOT carry the health bar up and down with it — the readout stays pinned', () => {
+    // Live report 2026-09-21, *"can the health bar above the character stop bobbing up and
+    // down with it? my eyes are swimming"*. The hover is a cue about the BODY's weight; the bar
+    // is the one piece of furniture the eye has to fixate on and read a fraction off, and this
+    // archetype's amp 2 moves it 4 world px peak to trough — one full bar height (`setHealth`
+    // draws the track 4 px tall), ~14-16 screen px at a room's cover-fit zoom. `applyTransform`
+    // adds `visualZ` back so the bar hangs at a constant height while the body bobs beneath it.
+    const a = new Actor('player', 20, undefined, false, 'char_vanguard');
+    a.pushState(100, 250, 0, 0);
+    a.snap();
+    const bodyYs: number[] = [];
+    const barYs: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      a.interpolate(1, 120); // 4.8 s total — two full cycles of this archetype's 2400 ms bob
+      bodyYs.push(a.y);
+      barYs.push(a.healthBar!.y);
+    }
+    // The fixture is meaningless unless the body really is bobbing over these samples.
+    expect(Math.max(...bodyYs) - Math.min(...bodyYs)).toBeGreaterThan(2);
+    expect(Math.max(...barYs) - Math.min(...barYs)).toBeCloseTo(0, 5);
+    // Pinned to the GROUND point's own offset, not to some arbitrary constant — and still
+    // tracking x, which was never the complaint.
+    const offsetY = (a as unknown as { healthBarOffsetY: number }).healthBarOffsetY;
+    expect(barYs[0]).toBeCloseTo(250 + offsetY, 5);
+    expect(a.healthBar!.x).toBeCloseTo(100, 5);
+  });
+
+  it('still carries the health bar with a REAL height change — only the idle bob is pinned', () => {
+    // The fix strips `visualZ`, not `z`. Engine z is 0 for every actor today (design/01,
+    // "`z` never gates gameplay"), but a knock-up would be the actor genuinely being
+    // somewhere else, and a bar left behind on the floor would be the worse bug.
+    const grounded = new Actor('enemy', 14, undefined, false, 'critter-core');
+    grounded.place(0, 400, 0);
+    const resting = grounded.healthBar!.y;
+    grounded.place(0, 400, 30);
+    expect(grounded.healthBar!.y).toBeCloseTo(resting - 30, 5);
   });
 
   it('spreads phase across actors so a room full of floaters does not pulse in lockstep', () => {

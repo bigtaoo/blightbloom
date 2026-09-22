@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { REVIVE_CHANNEL_TICKS } from '@dd/engine';
 import { DownedBanner } from './DownedBanner';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -36,8 +37,8 @@ describe('DownedBanner', () => {
     expect(b.view.visible).toBe(false);
   });
 
-  it('translates under zh', () => {
-    setLocale('zh');
+  it('translates under zh', async () => {
+    await useLocale('zh');
     const b = new DownedBanner();
     b.set(true, 30, 0);
     expect(b.titleText).toBe('你已倒地');

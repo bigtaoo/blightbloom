@@ -4,7 +4,7 @@ Volume 80. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## One screen was answering two questions: the loadout leaves the forge (2026-09-21, client + docs, no engine change)
 
-> *"进入游戏的画面改一下。1，当前选取的角色加上图片，文字放在图片右侧。2，下方的武器仅放已经锻造的，末端加一个前往锻造厂的跳转。3，锻造放在专门的页面，大厅加单独入口。"*
+> *"change the screen you enter the game on. 1, give the currently selected character a picture, with the text to the right of it. 2, the weapons below should be only the ones already forged, with a jump to the forge at the end. 3, put forging on its own page, with its own entrance in the lobby."*
 
 Three numbered asks against a screenshot of the screen SOLO PvE opens, with the character
 line circled. Taken one at a time they are a portrait, a shorter list and a new route. Taken
@@ -120,7 +120,7 @@ reachable from a failing one is a sweep that proves nothing.
 
 ## The other two gaps, found by asking
 
-*"有测试可以加吗"*, after the screens were already green.
+*"are there tests worth adding"*, after the screens were already green.
 
 **The portrait's art branch had never run.** `getRigSkin` answers `undefined` under plain
 vitest — there is no asset pipeline in the runner — so every portrait assertion in the new

@@ -147,7 +147,10 @@ describe('vite.crazygames.config.js', () => {
     const names = ((portalConfig as { plugins?: Array<{ name?: string }> }).plugins ?? [])
       .map((p) => p?.name);
     expect(names).not.toContain('dd-version-manifest');
-    expect(names).toEqual(['crazygames-html']);
+    // `runtime-chunk-preload` IS expected here — the portal build wants the same
+    // `<link rel="modulepreload">` for Pixi's runtime chunks as the web one, and it reads
+    // Vite's `base` so the relative paths this target requires come out right.
+    expect(names).toEqual(['crazygames-html', 'runtime-chunk-preload']);
   });
 });
 
@@ -197,7 +200,7 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
     // The one ordering bug with a half-working symptom: a host installed after
     // `preloadLobbyArt` leaves the lobby art fetched from the wrong place and everything
     // after it fetched from the right one, i.e. a menu with no art and a game with art.
-    expect(at('setAssetHost(baseAssetHost(')).toBeLessThan(at('await preloadLobbyArt()'));
+    expect(at('setAssetHost(baseAssetHost(')).toBeLessThan(at('await preloadLobbyArt('));
   });
 
   it('declares the host BEFORE the game is assembled', () => {
@@ -208,7 +211,7 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
   });
 
   it('opens the loading bracket before the art phase it is meant to measure', () => {
-    expect(at('sdk.loadingStart()')).toBeLessThan(at('await preloadLobbyArt()'));
+    expect(at('sdk.loadingStart()')).toBeLessThan(at('await preloadLobbyArt('));
   });
 
   it('drives the portal session from the ticker, after start()', () => {
@@ -231,9 +234,7 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
     //
     // A source assertion because there is no seam: an entry point runs `boot()` at import.
     expect(stmt('const identity = await settleIdentity(')).toBeLessThan(stmt('game.start();'));
-    expect(stmt('const identity = await settleIdentity(')).toBeLessThan(
-      stmt("document.getElementById('boot-loading')?.remove();"),
-    );
+    expect(stmt('const identity = await settleIdentity(')).toBeLessThan(stmt('await hideBootSplash();'));
   });
 
   it('does NOT make the boot intent part of that wait', () => {

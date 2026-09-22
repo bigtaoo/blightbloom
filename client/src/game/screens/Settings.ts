@@ -1,7 +1,8 @@
 import { Container, Text } from 'pixi.js';
 import type { ControlLayout, SettingsState } from '../../settings';
 import { Panel, Slider, Button } from '../ui/widgets';
-import { t, setLocale, LOCALES, type Locale } from '../../i18n';
+import { t, LOCALES, type Locale } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 import { QUALITY_SETTINGS, activeQuality, type QualitySetting } from '../../render/quality';
 import { FRAME_RATE_SETTINGS, type FrameRateSetting } from '../powerBudget';
 
@@ -132,13 +133,20 @@ export class Settings {
 
     // Language cycle button (design/17-i18n.md) — same tappable pattern as muteBtn
     // (design/10 "no DOM widgets"), stepping through `LOCALES` in declared order on
-    // each tap; `setLocale` takes effect immediately so this button's own next
-    // `syncWidgets()` already reads in the new language.
+    // each tap.
+    //
+    // `useLocale`, not `setLocale`, since 2026-09-21: the table is its own chunk now
+    // (i18n/loadLocale.ts), and switching to one that has not landed would redraw this screen
+    // in English and leave it there until something else re-rendered it. `useLocale` loads
+    // first and switches second, so this button's own next `syncWidgets()` still reads in the
+    // new language — the property the old comment claimed and `setLocale` alone no longer has.
+    // In practice the await is already settled: the entry points prefetch every table once the
+    // lobby is up. `this.state` is read INSIDE the callback so a change that landed while the
+    // chunk was in flight is not overwritten by a stale copy.
     this.languageBtn = new Button('', { w: 160, h: 34, autoWidth: true, sound: 'ui.toggle' });
     this.languageBtn.onTap = () => {
       const next = nextLocale(this.state.locale);
-      setLocale(next);
-      this.update({ ...this.state, locale: next });
+      void useLocale(next).then(() => this.update({ ...this.state, locale: next }));
     };
 
     // Left-handed control-layout toggle (design/10 open question) — same tap-to-cycle

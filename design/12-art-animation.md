@@ -897,6 +897,112 @@ downsample remains a one-command change if that day comes:
 — followed by updating `doorCurtainCoverage.test.ts`'s `CURTAIN_ART_W`/`CURTAIN_ART_H`, which
 hardcode 468/832 and would otherwise stay green against a fiction.
 
+## Update (2026-09-21): the splash owns the first screen, and the critical path was measured
+
+Everything above is about which BYTES arrive when. This pass is about what the player is
+looking at while they do, and it starts from a measurement rather than from a theory —
+resource timing off the live deploy (`b.gamestao.com`), cold load, from the browser's own
+`performance` entries:
+
+| what | starts | ends |
+| --- | --- | --- |
+| `index.html` | 0 ms | 642 ms (TTFB) |
+| `/assets/index-*.js` (287 kB gzipped) | 651 ms | 3170 ms |
+| `WebGLRenderer` / `RenderTargetSystem` / `BufferResource` | 3339 ms | ~3470 ms |
+| `browserAll` / `webworkerAll` | 3565 ms | ~4840 ms |
+| the 70 SFX files | 6272 ms | ~6520 ms |
+| run-phase skin sidecars (`beginDeferredArt`) | 6627 ms | ~6810 ms |
+
+Four findings, and three of them were fixed in this pass.
+
+**1. There was a real blank frame, and it was not the network.** `main.ts` ended with
+`document.getElementById('boot-loading')?.remove()` one statement after `game.start()`.
+`start()` populates the stage; the renderer draws it on its NEXT tick. So the splash was
+removed before anything had been drawn, uncovering a canvas that had never had the menu on
+it. `bootSplash.afterFirstRenderedFrame` now waits two ticker hops — the first fires before
+that tick's render (`Application` renders at `UPDATE_PRIORITY.LOW`, after a default-priority
+listener), the second after it — with a 4 s timeout, because a tab opened in the BACKGROUND
+is handed no `requestAnimationFrame` at all and would otherwise hold `boot()` open forever.
+
+**2. The splash now has a floor of 3 s, counted from the page opening** (`bootHold.ts`,
+`MIN_BOOT_SPLASH_MS`). Counted from navigation rather than from the first line of JavaScript,
+because the 642 ms + 2.5 s above is time the player has already spent looking at it; charging
+them three more would be the opposite of what a floor is for. All three entries obey it —
+web and the portal through the DOM splash, WeChat through `showBootLoading`'s `done()`, which
+is why that now returns a promise.
+
+**3. The SFX preload was competing with the download the player was waiting on.** 70 files,
+kicked beside `createAudio()` — i.e. before `preloadLobbyArt()`. Every cue has a procedural
+voice and none of them can be triggered before there is a menu, so the kick moved below the
+lobby await in all three entries. Nothing is lost and the `lobby` pack stops sharing the pipe.
+
+**4. Pixi's renderer chunks were arriving one round trip late.** They are reached through
+dynamic `import()`, so the browser cannot discover them until the entry chunk has downloaded,
+parsed and run — hence the 3339 ms start above, ~1.5 s of pure latency in front of the first
+screen for ~55 kB of code. `build/runtimeChunkPreload.mjs` emits a
+`<link rel="modulepreload">` for each one into `index.html`, so they fetch alongside the entry
+chunk. It is a NAME LIST rather than "every chunk" on purpose: `WebGPURenderer`,
+`CanvasRenderer` and `BitmapFont` are 69 kB this build never loads (`WebPlatform` pins
+`preference: 'webgl'`). A name matching no emitted chunk fails the build — a Pixi upgrade that
+renames them would otherwise turn the whole thing into a no-op with everything still green.
+
+### 5. Every art file was being revalidated on every visit
+
+Found while checking whether the `/ui/` pack could be preloaded from the document. `_headers`
+named the page, the version manifest and `/assets/*` and nothing else, so all ~200 shipped art
+and audio files fell to Cloudflare's static-assets default:
+
+    Cache-Control: public, max-age=0, must-revalidate
+
+`max-age=0` lets the browser keep the bytes and requires it to ask before using them. A
+returning player therefore opened a conditional request for every file, every visit. They come
+back 304 with no body, which is why this was invisible in a bytes-transferred view and why it
+survived this long — but a round trip per file, batched behind the connection limit, is the
+same wait whether or not bytes come back with it, and it sits in front of the menu (the
+`lobby` pack) and in front of the first run (everything else).
+
+These files are not content-hashed, so `immutable` is not available the way it is for
+`/assets/*`: it would pin a player to whatever art they first downloaded with no URL change to
+release them. The six asset directories now get `max-age=3600, stale-while-revalidate=604800`
+instead — inside the hour, no request at all; after it, the cached copy paints instantly while
+the revalidation runs behind it. What makes that safe to trade is this doc's own rule: **art is
+pure presentation and never feeds the engine**, so a player briefly running new code against
+older textures sees an older icon and cannot desync. `build/checkAssetHeaders.mjs` fails the
+build if a directory under `client/public/` has no rule, because a new art directory would
+otherwise land in exactly the same silence.
+
+### What is still on the table: the first download itself
+
+Attributing the 912 kB entry chunk back to its sources through the build's own sourcemap:
+
+| source | bytes | share | |
+| --- | --- | --- | --- |
+| PixiJS (the renderer itself) | 306 kB | 34% | |
+| `@dd/engine` | 117 kB | 13% | |
+| `client/src/i18n/locales` | 85 kB | 9.4% | **done** — see design/17, 2026-09-21 |
+| `client/src/game/scene` | 71 kB | 7.9% | |
+| `client/src/game/ui` | 52 kB | 5.8% | |
+| `client/src/game/screens` | 48 kB | 5.3% | |
+| `client/src/game/fx` | 46 kB | 5.1% | |
+| `client/src/game/controllers` | 41 kB | 4.5% | |
+
+The locales are done (912 → 830 kB raw, 290 → 262 kB gzipped). What is left needs an
+architectural change rather than a packaging one, and the reason is worth recording so it is
+not re-derived: **`@dd/engine` cannot leave the first chunk while `game/runState.ts` imports
+it**, and `runState.ts` is the pure lower layer the whole client rests on — `ScreenNav`, the
+main menu and every other lobby screen reach it. 79 non-test modules import the engine. Moving
+it behind the run gate that already exists for the run ART is the right shape and is a real
+project, not a packaging tweak; the same is true of `game/scene` and `game/fx`, which are
+constructed inside `Game`'s own assembly.
+
+Two things are NOT the remaining lever, both checked rather than assumed. Compression: the
+edge already serves brotli (285 kB against 294 kB gzipped, measured 2026-09-21), so there is no
+configuration win hiding there. And preloading the `lobby` art from the document: Pixi fetches
+textures inside a web worker, whose requests do not appear in the page's own network timeline,
+so whether a document-level `<link rel="preload" as="image">` would be a cache HIT or a second
+432 kB download could not be verified here — and shipping that unverified is a coin flip on the
+one download in front of the menu. It stays on this list with that reason attached.
+
 ## Open questions
 
 - **Texture format & max page size on the lowest base library** — must be measured on a real device (`04` checklist), not chosen from docs; affects atlas packing.

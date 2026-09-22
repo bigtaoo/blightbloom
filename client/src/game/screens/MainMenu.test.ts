@@ -11,6 +11,7 @@ import { setLocale, resetLocaleForTests } from '../../i18n';
 import { setPublicFlags } from '../../net/clientFlags';
 import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 import type { SavedRunSummary } from '../match/runSave';
+import { useLocale } from '../../i18n/loadLocale';
 
 const ALICE: Session = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -392,9 +393,9 @@ describe('MainMenu — i18n (design/17-i18n.md)', () => {
     expect(p.playBtn.label.text).toBe('PLAY');
   });
 
-  it('retexts its static labels from the active locale on show()', () => {
+  it('retexts its static labels from the active locale on show()', async () => {
     const m = new MainMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     const p = privateOf(m);
     expect(p.subtitle.text).toBe('深入·撤离·生存');
@@ -403,9 +404,9 @@ describe('MainMenu — i18n (design/17-i18n.md)', () => {
     expect(p.settingsBtn.label.text).toBe('设置');
   });
 
-  it('the account chip retexts as a guest, and stops being localisable once signed in', () => {
+  it('the account chip retexts as a guest, and stops being localisable once signed in', async () => {
     const m = new MainMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     expect(privateOf(m).accountBtn.label.text).toBe('登录');
 
@@ -420,9 +421,9 @@ describe('MainMenu — i18n (design/17-i18n.md)', () => {
     expect(privateOf(m).accountLabel.text).toBe('你好，alice');
   });
 
-  it('switching back to English on a later show() fully reverts', () => {
+  it('switching back to English on a later show() fully reverts', async () => {
     const m = new MainMenu();
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     setLocale('en');
     m.show(800, 600);
@@ -615,12 +616,12 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(notice.position.y).toBeLessThan(600);
   });
 
-  it('translates the notice with the rest of the screen', () => {
+  it('translates the notice with the rest of the screen', async () => {
     const m = new MainMenu();
     m.setAccountEntry(false);
     m.show(800, 600);
     const english = privateOf(m).dataNotice.text;
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     expect(privateOf(m).dataNotice.text).not.toBe(english);
     expect(privateOf(m).dataNotice.text.length).toBeGreaterThan(0);
@@ -669,12 +670,12 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(privateOf(m).privacyLink.visible).toBe(false);
   });
 
-  it('translates the link with the rest of the screen', () => {
+  it('translates the link with the rest of the screen', async () => {
     const m = new MainMenu();
     m.setAccountEntry(false);
     m.show(800, 600);
     const english = privateOf(m).privacyLink.text;
-    setLocale('zh');
+    await useLocale('zh');
     m.show(800, 600);
     expect(privateOf(m).privacyLink.text).not.toBe(english);
     expect(privateOf(m).privacyLink.text.length).toBeGreaterThan(0);

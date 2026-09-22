@@ -11,6 +11,7 @@ import { HudView, type HudContext } from './HudView';
 import { StatChip } from './StatChip';
 import { WeaponCard } from './WeaponCard';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -747,8 +748,8 @@ describe('HudView — degenerate states', () => {
 });
 
 describe('HudView — i18n (design/17-i18n.md)', () => {
-  it('translates the chip labels and the weapon subtitle under zh', () => {
-    setLocale('zh');
+  it('translates the chip labels and the weapon subtitle under zh', async () => {
+    await useLocale('zh');
     const hud = newHud();
 
     hud.update(pveState(), 16, CTX);
@@ -760,8 +761,8 @@ describe('HudView — i18n (design/17-i18n.md)', () => {
     expect(hud.weaponCard.damageText).toContain('伤害');
   });
 
-  it('translates the no-weapon fallback under zh', () => {
-    setLocale('zh');
+  it('translates the no-weapon fallback under zh', async () => {
+    await useLocale('zh');
     const hud = newHud();
     const s = pveState();
     s.players[0]!.weapon = null;
@@ -771,8 +772,8 @@ describe('HudView — i18n (design/17-i18n.md)', () => {
     expect(hud.weaponCard.nameText).toBe('无武器');
   });
 
-  it('translates the ally row, including the downed branch', () => {
-    setLocale('zh');
+  it('translates the ally row, including the downed branch', async () => {
+    await useLocale('zh');
     const hud = newHud();
     const s = createGameState({ ...PVE_CFG, players: [{}, {}] });
     const ally = s.players[1]!;
@@ -788,12 +789,12 @@ describe('HudView — i18n (design/17-i18n.md)', () => {
     expect(hud.allyRow.statusText).toBe('倒地 2秒');
   });
 
-  it('switching back to English on a later update() fully reverts', () => {
+  it('switching back to English on a later update() fully reverts', async () => {
     const hud = newHud();
     const s = pveState();
     s.players[0]!.weapon = null;
 
-    setLocale('zh');
+    await useLocale('zh');
     hud.update(s, 16, CTX);
     expect(hud.weaponCard.nameText).toBe('无武器');
 

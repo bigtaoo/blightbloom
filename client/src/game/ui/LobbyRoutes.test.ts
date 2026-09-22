@@ -17,6 +17,7 @@ import { installFakeTextCanvas } from '../screens/fakeTextCanvas';
 import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_CONTINUE_H } from './LobbyRoutes';
 import { LOCALES, setLocale, resetLocaleForTests, t } from '../../i18n';
 import type { SavedRunSummary } from '../match/runSave';
+import { useLocale } from '../../i18n/loadLocale';
 
 installFakeTextCanvas();
 
@@ -163,8 +164,8 @@ describe('the caption fits the card in every locale', () => {
   // `labelFit.test.ts` sweeps BUTTONS; this is a `Text` and would be invisible to it. It is
   // one unwrapped line by design (wrapping would make the block's height a measurement, which
   // these screens cannot afford — see `LOBBY_ROUTES_H`), so it has to fit on its own.
-  it.each(LOCALES)('%s', (locale) => {
-    setLocale(locale);
+  it.each(LOCALES)('%s', async (locale) => {
+    await useLocale(locale);
     const r = new LobbyRoutes();
     // The widest plausible readout: a two-digit floor and an hour-long run.
     r.setContinue({ floorIndex: 11, ticks: 30 * 60 * 99 + 30 * 59, savedAtMs: 0 });
@@ -177,7 +178,7 @@ describe('the caption fits the card in every locale', () => {
 });
 
 describe('a locale change reaches the row', () => {
-  it('retexts the button AND the caption, without being handed the save again', () => {
+  it('retexts the button AND the caption, without being handed the save again', async () => {
     const r = new LobbyRoutes();
     setLocale('en');
     r.setContinue(SAVED);
@@ -185,7 +186,7 @@ describe('a locale change reaches the row', () => {
     expect(p.continueBtn.label.text).toBe(t('mainMenu.continueRun'));
     const english = p.continueCaption.text;
 
-    setLocale('ru');
+    await useLocale('ru');
     r.retext();
     expect(p.continueBtn.label.text).toBe(t('mainMenu.continueRun'));
     expect(p.continueCaption.text).not.toBe(english);

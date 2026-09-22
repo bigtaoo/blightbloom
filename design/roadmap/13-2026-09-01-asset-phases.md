@@ -5,7 +5,7 @@ appending live in [../ROADMAP.md](../ROADMAP.md); entries here are in date order
 
 ## The first download becomes code only (2026-09-01, client + build + docs)
 
-*"关于首包的问题，我觉得只需要代码和加载界面的图片即可。其他的都可以分批进行下载。"* The question came
+*"on the first package: I think it only needs the code and the loading screen's images. Everything else can be downloaded in batches."* The question came
 out of the previous day's byte crisis: main had **2,729 bytes** of headroom, the music runtime is
 code, and the fix that had shipped was to move one 606 kB PNG into a pack named for its own
 symptom. The user's read was that the whole arrangement was backwards — the first download should
@@ -150,7 +150,7 @@ looking at it rather than measured — see below, and the entry after this one.
 - **Seven concurrent `wx.loadSubpackage` calls all succeed.** The in-flight count climbed 1 to 7
   (the calls issued within 6 ms of each other) and every one reported `success` 885–951 ms later,
   with every texture out of them resolving. `ensurePacks` is not being serialised. Still
-  undocumented by 分包 — a measurement is not a guarantee.
+  undocumented by subpackage — a measurement is not a guarantee.
 - **The background download does not hitch the lobby.** Over an 8 s window from the first menu
   frame, with instrumentation matched between arms, the two deferring runs delivered *more* frames
   than the two controls (324/313 vs 298/304) at a lower mean (24.4/24.8 ms vs 26.9/26.5) and a
@@ -294,7 +294,7 @@ the moment of the drop. This happens strictly afterwards, which is why the 903-d
 v50 could not see it: the sweep sampled drop sites. A doorway is not an exotic place for a drop to
 be — it is where fights happen, and a mob dying on a threshold or a weapon swapped in one, followed
 by the room activating, is an ordinary sequence. **This is a plausible mechanism for
-*"依然有掉落的物品无法拾取"*, which v50 closed as unexplained.**
+*"there are still drops that cannot be picked up"*, which v50 closed as unexplained.**
 
 Fixed with a re-clamp pass at `dropClearance()` over every alive pickup, after
 `rebuildSpatialIndex()`. Unconditional rather than "only the ones in a passage", because the
@@ -335,7 +335,7 @@ watching the test go red, and reverting. Highlights, all of which survived the f
 - **`updateWeaponPickupPrompt`'s radius** — `nearbyWeaponPickups`'s only production call site, with
   nothing asserting what it passes. Moving the constant out of `HudView` removed the duplicate
   definition and left the USE unpinned; the surviving mutant silences the panel at exactly the
-  distances 无法拾取 was reported at.
+  distances cannot be picked up was reported at.
 - Two of the three `dropClearance()` sites had no behavioural test; `formatInspectReport` — the
   harness that gets pointed at a real bug report once and has to be right — had none at all.
 

@@ -51,8 +51,9 @@ import { StorePurchase } from '../controllers/StorePurchase';
 import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
 import { defaultSettingsState } from '../../settings';
-import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
+import { LOCALES, resetLocaleForTests } from '../../i18n';
 import { setSession, resetSessionCacheForTests } from '../../net/session';
+import { useLocale } from '../../i18n/loadLocale';
 
 // Every UI icon resolves, so each screen is built with the chips it ships with. Mocked at the
 // registry rather than per button: a test that hands icons to buttons the design never gave
@@ -234,7 +235,7 @@ const seen = new Map<string, string[]>();
 describe('every button label fits inside its own button', () => {
   for (const locale of LOCALES) {
     it.each(SCREENS)(`${locale} — %s`, async (name, build) => {
-      setLocale(locale);
+      await useLocale(locale);
       const screen = await build(MENU_DESIGN_W, MENU_DESIGN_H);
       const buttons = buttonsOf(screen);
       // A screen whose buttons could not be found would pass this test perfectly.

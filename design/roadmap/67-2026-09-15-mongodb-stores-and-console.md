@@ -8,7 +8,7 @@ Volume 67. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 it had not. This is all six: billing and analytics merged from the branches they were built on,
 the ops console and the backup worker ported, compose and the deploy script rewritten, the
 one-time data migration written, and `node:sqlite` removed from every bundle. The owner's
-instruction was *"四个库全部替换掉 SQLite"* and *"取代：SQLite 那部分直接删掉"*; after this pass
+instruction was *"replace all four stores away from SQLite"* and *"in its place — just delete the SQLite part"*; after this pass
 there is exactly one file in the repository that imports the builtin, and it has a deletion date
 on it.
 

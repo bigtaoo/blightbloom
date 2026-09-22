@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { engineAlias } from '../build/ddAlias.mjs';
 import { versionManifestPlugin } from '../build/versionManifestPlugin.mjs';
+import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
 
 export default defineConfig({
   // @dd/engine — deterministic sim core (design/06), a sibling package at the repo root
@@ -9,7 +10,12 @@ export default defineConfig({
   // Emits dist/version.json, polled by src/platform/web/autoReload.ts so a tab left open
   // across a deploy reloads itself. public/_headers keeps that file (and index.html)
   // uncached at Cloudflare's edge, without which the poll would read a stale hash.
-  plugins: [versionManifestPlugin()],
+  //
+  // ...and `<link rel="modulepreload">` for the renderer chunks Pixi only reaches through a
+  // dynamic import, which the browser therefore cannot discover until the entry chunk has run.
+  // Worth ~1.5 s of serialised round trips in front of the first screen — see that file for the
+  // measurement.
+  plugins: [versionManifestPlugin(), runtimeChunkPreload()],
   server: { port: 5173, host: true },
   build: { target: 'es2020', outDir: 'dist' },
   // Vitest reads this same file — deliberately, so the `@dd/engine` alias above has exactly

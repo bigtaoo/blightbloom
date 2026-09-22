@@ -4,7 +4,7 @@
  * pre-existing-shape save" convention (see meta/store.ts, net/session.ts).
  */
 import { describe, it, expect } from 'vitest';
-import { createWebSettingsStore, MemorySettingsStore } from './store';
+import { createWebSettingsStore, MemorySettingsStore, persistedLocale } from './store';
 import { defaultSettingsState } from './SettingsState';
 import { QUALITY_SETTINGS } from '../render/quality';
 import { FRAME_RATE_SETTINGS } from '../game/powerBudget';
@@ -206,5 +206,50 @@ describe('SettingsStore — in-run frame cap (game/powerBudget.ts, 2026-09-08)',
         expect(createWebSettingsStore(key).load().frameRate, String(bad)).toBe(60);
       }
     });
+  });
+});
+
+describe('persistedLocale — what the entry points read before `Game` exists', () => {
+  it('reads the locale a returning player last chose', () => {
+    withFakeLocalStorage(() => {
+      const store = createWebSettingsStore('t.settings.locale.read');
+      store.save({ ...defaultSettingsState(), locale: 'ru' });
+      expect(persistedLocale(createWebSettingsStore('t.settings.locale.read'))).toBe('ru');
+    });
+  });
+
+  it('reads the SAME key `SettingsBinding` will read a moment later', () => {
+    // The property that makes the whole thing work, and the one with no symptom in this file
+    // if it breaks. An entry point calls `persistedLocale()` with no argument to decide which
+    // locale CHUNK to fetch; `SettingsBinding` then constructs its own
+    // `createWebSettingsStore()` and calls `setLocale` with what IT finds. Two different
+    // default keys would mean the game switches to a language whose table was never loaded —
+    // and `t()` answers in English rather than failing, so the only symptom is a menu in the
+    // wrong language on a player's second visit.
+    withFakeLocalStorage(() => {
+      createWebSettingsStore().save({ ...defaultSettingsState(), locale: 'pl' });
+      expect(persistedLocale()).toBe('pl');
+    });
+  });
+
+  it('falls back to the bundled default on a host with no storage at all', () => {
+    // WeChat, and a browser with site data blocked. `en` is the one locale that is always in
+    // memory, so this fallback is also the only one that cannot be wrong.
+    expect(persistedLocale()).toBe(defaultSettingsState().locale);
+    expect(persistedLocale()).toBe('en');
+  });
+
+  it('survives a store that throws rather than taking boot down with it', () => {
+    // `load()` is already fails-soft, so this arm needs a store that is broken in a way the
+    // store itself does not model. It runs inside `boot()`, before the error boundary has
+    // anything on screen to report into.
+    const exploding = {
+      load: () => {
+        throw new Error('storage disabled by policy');
+      },
+      save: () => {},
+    };
+    expect(() => persistedLocale(exploding)).not.toThrow();
+    expect(persistedLocale(exploding)).toBe('en');
   });
 });

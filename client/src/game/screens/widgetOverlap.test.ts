@@ -53,7 +53,8 @@ import { StorePurchase } from '../controllers/StorePurchase';
 import type { StoreSku } from '../../net/billing';
 import { defaultMetaState } from '../../meta';
 import { defaultSettingsState } from '../../settings';
-import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
+import { LOCALES, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 // Same reasoning as `labelFit.test.ts`: `getUiTexture` answers `undefined` with nothing
 // loaded, and an `autoWidth` button's box is `estimateMonoWidth(...) + 28 + iconLane()`, so
@@ -247,7 +248,7 @@ const SCREENS: Array<[string, Build]> = [
 describe('no two press targets are drawn on top of each other', () => {
   for (const locale of LOCALES) {
     it.each(SCREENS)(`${locale} — %s`, async (name, build) => {
-      setLocale(locale);
+      await useLocale(locale);
       const screen = await build(MENU_DESIGN_W, MENU_DESIGN_H);
       // A screen whose widgets could not be found would pass this test perfectly.
       const found = tappablesOf(screen).filter(([, t]) => t.view.visible);

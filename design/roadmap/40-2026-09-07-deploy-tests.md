@@ -58,7 +58,7 @@ outright, so the compose block runs it as `development` and reaches nothing but 
 
 ## The deploy layer gets tested (2026-09-07, server tests + build script, no engine change)
 
-Asked in one line — *"服务器部分有测试可以加吗"* — and the interesting part is what the answer
+Asked in one line — *"are there tests worth adding on the server side"* — and the interesting part is what the answer
 turned out to be. `server/src` measured **99.56% lines / 97.93% branches** over its whole tree,
 and reading the 27 uncovered branches one by one, almost all of them are defensive arms a nearer
 guard already shadows: `Matchmaker`'s `if (!w)` / `if (q)`, `MatchRoom.kickSeat`'s `if (!seat)`.

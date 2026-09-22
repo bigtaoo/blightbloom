@@ -15,6 +15,7 @@ import { WEAPON_SIM_BY_ID } from '@dd/engine';
 import { WeaponCard } from './WeaponCard';
 import { rarityColor } from '../theme';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -129,12 +130,12 @@ describe('WeaponCard — unarmed fallback', () => {
 });
 
 describe('WeaponCard — i18n', () => {
-  it('re-translates on a locale change even though the weapon did not move', () => {
+  it('re-translates on a locale change even though the weapon did not move', async () => {
     const card = new WeaponCard();
     card.set(BLASTER, 0, 10);
     expect(card.subText).toContain('ranged');
 
-    setLocale('zh');
+    await useLocale('zh');
     card.set(BLASTER, 0, 10); // identical spec — only the locale changed
     expect(card.subText).toContain('远程');
     expect(card.damageText).toContain('伤害');
@@ -144,8 +145,8 @@ describe('WeaponCard — i18n', () => {
     expect(card.subText).toContain('ranged');
   });
 
-  it('translates every rarity tier the engine can hand it', () => {
-    setLocale('zh');
+  it('translates every rarity tier the engine can hand it', async () => {
+    await useLocale('zh');
     const card = new WeaponCard();
     const expected: Record<string, string> = {
       common: '普通',
@@ -160,8 +161,8 @@ describe('WeaponCard — i18n', () => {
     }
   });
 
-  it('translates every damage type the engine can hand it', () => {
-    setLocale('zh');
+  it('translates every damage type the engine can hand it', async () => {
+    await useLocale('zh');
     const card = new WeaponCard();
     const expected: Record<string, string> = {
       physical: '物理',

@@ -15,6 +15,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { Rectangle } from 'pixi.js';
 import { AccountPrompt } from './AccountPrompt';
 import { LOCALES, setLocale, resetLocaleForTests } from '../../i18n';
+import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
 
@@ -163,22 +164,22 @@ describe('AccountPrompt — modality and layout', () => {
 });
 
 describe('AccountPrompt — i18n (design/17-i18n.md)', () => {
-  it('re-reads every button label on each open, so a language change in Settings lands', () => {
+  it('re-reads every button label on each open, so a language change in Settings lands', async () => {
     const t = make();
     setLocale('en');
     void t.prompt.askGuestMerge(OFFER, 'alice');
     const en = t.titleText.text;
-    setLocale('zh');
+    await useLocale('zh');
     void t.prompt.askGuestMerge(OFFER, 'alice');
     expect(t.titleText.text).not.toBe(en);
   });
 
-  it('has real copy in all eight locales, for both modes', () => {
+  it('has real copy in all eight locales, for both modes', async () => {
     // A missing key falls back to the key path itself (`i18n/index.ts`'s `lookup`), which
     // renders as `auth.mergeTitle` on the panel rather than failing anything.
     const t = make();
     for (const locale of LOCALES) {
-      setLocale(locale);
+      await useLocale(locale);
       void t.prompt.askGuestMerge(OFFER, 'alice');
       expect(t.titleText.text, locale).not.toContain('auth.');
       expect(t.bodyText.text, locale).not.toContain('auth.');

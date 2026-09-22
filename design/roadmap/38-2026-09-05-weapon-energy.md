@@ -9,10 +9,10 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
 Design call from the game's owner, the day after the loot pass in volume 36:
 
-> 我打算给武器加一个子弹的概念。这样1，能解决武器平衡性问题，有些大威力的武器一次就要消耗
-> 大量子弹。2，能解决怪物掉落的问题。毕竟降低了掉率之后打完地图空空如也也不好。
+> I plan to give weapons a concept of ammunition. That way, 1, it solves weapon balance — some high-power weapons would burn
+> a lot of ammo at once. 2, it solves the monster-drop problem — after lowering the drop rate, finishing a map with nothing to show for it is no good either.
 
-> 近战的怪也加上一些。
+> give the melee mobs some too.
 
 ### Reason 1 was half right, and the half that was wrong mattered
 

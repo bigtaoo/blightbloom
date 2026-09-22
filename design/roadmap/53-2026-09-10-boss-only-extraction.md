@@ -4,7 +4,7 @@ Volume 53. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## The bank button that was really a save button (2026-09-10, engine + client + docs, `ENGINE_VERSION` 60→61)
 
-> *"把中间层的撤离功能去掉，只有打完boss之后的撤离才能退出。对于单人地图，如果没有打完，可以保存进度，下次继续。其实单纯保存指令和随机种子就行了。重进的时候要比对引擎版本"*
+> *"drop extraction on the middle floors — only the extraction after the boss should let you leave. For a solo map, if it is unfinished, save the progress and continue next time. Really, just saving the inputs and the random seed is enough. On re-entry, compare the engine version"*
 
 Two asks, and the second is the reason the first is not a nerf.
 
@@ -53,7 +53,7 @@ straight off the witness: `floorIndex 1 -> 0` for a re-opened interior gate,
 
 ### A save is a seed and an input stream — which is why it cannot go stale against the sim
 
-The report already named the format: *"其实单纯保存指令和随机种子就行了"*. That is exactly right, and
+The report already named the format: *"really, just saving the inputs and the random seed is enough"*. That is exactly right, and
 for a reason worth stating — it is the property [`design/08`](../08-simulation-core.md) already
 builds replay on. A fresh engine on the same seed, fed the same inputs, reconstructs every frame
 bit-for-bit, so resuming is "replay the recording, then keep playing":
@@ -67,7 +67,7 @@ missing field reads as a default rather than as an error.
 
 Two things can still invalidate one, and each is a refusal rather than a replay:
 
-- **`ENGINE_VERSION` mismatch** — the ask's own *"重进的时候要比对引擎版本"*, and `design/08`'s
+- **`ENGINE_VERSION` mismatch** — the ask's own *"on re-entry, compare the engine version"*, and `design/08`'s
   "fail loud, never replay garbage" applied to a save instead of a recording.
 - **Content drift**, which is the half `ENGINE_VERSION` does not cover at all. `replayFile.ts`
   avoids it by embedding the whole `EngineConfig`; a save cannot afford that (the dungeon

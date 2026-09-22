@@ -4,8 +4,8 @@ Volume 78. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase 
 
 ## A design number with a remainder in it: the vanguard's shield becomes an integer (2026-09-21, engine + test + docs, ENGINE_VERSION 66 to 67)
 
-A forge screenshot with a red circle around the character line: **"先锋（6生命 / 3.2护盾）"**, and
-the rule stated with it — *"定点数仅用作逻辑计算，不参与数值设计的，最终数值只能是整数"*. Fixed point
+A forge screenshot with a red circle around the character line: **"the vanguard (6 health / 3.2 shield)"**, and
+the rule stated with it — *"fixed-point is only for the logic's own arithmetic, never for designing numbers; a final number can only be an integer"*. Fixed point
 is how the sim carries a sub-unit quantity; a number a player reads is not where a remainder
 belongs. One `grep` over `engine/content` + `engine/balance` says how wide the problem is:
 **exactly one fractional gameplay stat in the whole tree**, `vanguard.maxShield: 3.2`. Everything

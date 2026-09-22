@@ -7,8 +7,8 @@ Indexed from [`../ROADMAP.md`](../ROADMAP.md).
 
 ## The standing volume becomes the destination (2026-09-04, engine, `ENGINE_VERSION` 56)
 
-Live report, 2026-09-04: *"昨天改的寻路中怪物的站立体积，整体效果不错。有个细节，我希望的是在设置
-寻路终点时就考虑到这个站立体积。现在的做法是怪先跑到一起，然后再分散开。我希望的是一步到位。"*
+Live report, 2026-09-04: *"the standing volume you gave the mobs in pathfinding yesterday works well overall. One detail: I want it taken into account when setting
+the pathfinding destination. Today the mobs run together first and then spread out; I want it right in one step."*
 
 v55 shipped the standing volume (`standoffRadius`) and a pass that drifts two arrived mobs apart
 (`MovementSystem.resolveStandingSpacing`). What it did not do is tell any mob where it was going.
