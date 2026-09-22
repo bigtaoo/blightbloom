@@ -20,27 +20,27 @@
  * function modules), which is what a linear if/else chain over shared-nothing handlers
  * wants. Per-route documentation lives with each handler; the map is:
  *
- *   POST /find             { playerCount, mode?, partyId? } -> { queueId, match? }    routes/match
+ *   POST /find             { playerCount, mode?, partyId? } -> { queueId, match? } | 429  routes/match
  *   GET  /find/:id                                       -> { status: 'queued'|'matched'|'expired', match? }
  *   POST /resume            { token }                     -> { match } | 401 (ROADMAP reconnect)
  *   POST /rating/report     { accountIds, places, teamIds? } -> { changes: [{accountId,before,after}] }
  *   GET  /rating/:accountId                               -> { accountId, rating }    routes/rating
- *   POST /party/create      { playerId }                 -> PartyInfo                 routes/party
- *   POST /party/join        { playerId, code }           -> PartyInfo | 404 | 429 (per-IP budget)
+ *   POST /party/create      { playerId }                 -> PartyInfo | 429            routes/party
+ *   POST /party/join        { playerId, code }           -> PartyInfo | 404 | 429
  *   POST /party/leave       { partyId, playerId }        -> PartyInfo | null
  *   POST /party/start       { partyId, playerId }        -> PartyInfo | 404 (leader only)
  *   GET  /party/:id                                       -> PartyInfo | 404
- *   POST /auth/register     { username, password }        -> { accountId, username, token } | 400
- *   POST /auth/login        { username, password }        -> { accountId, username, token } | 401
+ *   POST /auth/register     { username, password }        -> { accountId, username, token } | 400 | 429
+ *   POST /auth/login        { username, password }        -> { accountId, username, token } | 401 | 429
  *   POST /auth/logout       { token }                      -> { ok: true }             routes/auth
- *   POST /auth/portal       { token }  (a CrazyGames user token) -> { accountId, username, token } | 401/503
+ *   POST /auth/portal       { token }  (a CrazyGames user token) -> { accountId, username, token } | 401/503 | 429
  *   GET  /auth/me           (Bearer token)                 -> { accountId, username } | 401
- *   POST /auth/change-password { token, oldPassword, newPassword } -> { ok: true } | 400/401
+ *   POST /auth/change-password { token, oldPassword, newPassword } -> { ok: true } | 400/401 | 429
  *   GET  /account/meta      (Bearer token, x-guest-id) -> { data: MetaState | null, entitlements, guestMerged } | 401
  *   POST /account/meta      (Bearer token) { data }        -> { ok: true } | 400/401    routes/account
  *   POST /account/guest-merge (Bearer token) { guestId }   -> { claimed } | 400/401
  *   GET  /store/skus        (Bearer token)  -> { skus } | 401/502                       routes/store
- *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502
+ *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502 | 429
  *   GET  /store/order/:id   (Bearer token)  -> { order } | 401/404/502
  *   POST /client/log        { session, host, ver, now, entries } -> { ok, accepted }  routes/telemetry
  *   GET  /metrics           (compose network only)         -> Prometheus exposition
@@ -95,8 +95,9 @@ import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
 import * as partyRoutes from './routes/party';
-import { REGISTER_RATE_LIMIT, type PortalAuthDeps } from './routes/auth';
-import { RateLimiter, RATE_LIMIT } from './routes/telemetry';
+import { type PortalAuthDeps } from './routes/auth';
+import { createLimiters } from './limitsTable';
+import type { Limiters } from './routes/limits';
 import type { BillingPlaneConfig } from './routes/store';
 
 const PORT = Number(process.env.MATCH_PORT ?? 8788);
@@ -123,19 +124,22 @@ export interface MatchsvcServerOptions {
   /** Ticket-signing secret override — tests can pin a fixed value; defaults to `ticketSecret()`. */
   secret?: string;
   /**
-   * The account-creation limiter (`routes/auth.ts`'s `REGISTER_RATE_LIMIT`), or one built
-   * from that constant when omitted. Injected for the same reason `matchmaker` above is: the
-   * shipped budget is thirty registrations per ten minutes, which no test can exhaust at a
-   * sane runtime, so the 429 arm would otherwise be unreachable from the HTTP layer.
+   * Per-budget limiter overrides, merged over the shipped set below. Injected for the same
+   * reason `matchmaker` above is: every shipped budget is tens to hundreds of requests per
+   * ten minutes, which no test can exhaust at a sane runtime, so each 429 arm would otherwise
+   * be unreachable from the HTTP layer.
+   *
+   * ONE option rather than the `authLimiter`/`joinLimiter` pair it replaces (2026-09-22).
+   * Those two arrived a fortnight apart and each cost an option here, a field on the bundle,
+   * a field on the route group's deps and a paragraph saying it is not the other one — a
+   * per-route tax on the cheapest thing this server has, and the reason five routes that
+   * wanted a budget never got one. `routes/limits.ts` has the full argument.
+   *
+   * `Partial`, and merged by key, so a test names the one budget it drives and inherits the
+   * shipped value for everything else. An absent key is never "no limit": {@link Limiters}
+   * requires every key, so the merge below always produces a complete set.
    */
-  authLimiter?: RateLimiter;
-  /**
-   * The code-entry limiter (`routes/party.ts`'s `JOIN_RATE_LIMIT`), or one built from that
-   * constant when omitted. Injected for exactly the reason `authLimiter` above is: the shipped
-   * budget is 120 join attempts per ten minutes, which no test can exhaust at a sane runtime,
-   * so `/party/join`'s 429 arm would otherwise be unreachable from the HTTP layer.
-   */
-  joinLimiter?: RateLimiter;
+  limits?: Partial<Limiters>;
   /**
    * The `analytics` database (design/21 §2.4), or `null`/absent for "collect nothing".
    *
@@ -298,16 +302,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   // process silently change where a player's logs go, and would hide the single startup
   // warning that is the only signal an operator gets when it is unset (lokiPush.ts).
   const lokiUrl = opts.lokiUrl !== undefined ? opts.lokiUrl : lokiPushUrl();
-  const limiter = new RateLimiter(RATE_LIMIT.requests, RATE_LIMIT.windowMs);
-  // A SECOND limiter, with its own budget: account creation and telemetry are different
-  // questions with the same shape (`rateLimit.ts`'s own header says so), and one shared
-  // counter would let a chatty client's log batches spend the budget a registration needs.
-  const authLimiter = opts.authLimiter ?? new RateLimiter(REGISTER_RATE_LIMIT.requests, REGISTER_RATE_LIMIT.windowMs);
-  // A THIRD, for `/party/join` (2026-09-22). Same mechanism, its own budget and its own
-  // counter — `routes/party.ts`'s `JOIN_RATE_LIMIT` argues the number, and `JoinRouteDeps`
-  // argues why it must not be either of the two above.
-  const joinLimiter =
-    opts.joinLimiter ?? new RateLimiter(partyRoutes.JOIN_RATE_LIMIT.requests, partyRoutes.JOIN_RATE_LIMIT.windowMs);
+  const limits = createLimiters(opts.limits);
 
   // Analytics (design/21 §2.4). Injected rather than opened here since the MongoDB port —
   // see `MatchsvcServerOptions.analyticsDb`. Until this process's own boot path awaits
@@ -331,9 +326,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     billing: opts.billing,
     log,
     lokiUrl,
-    limiter,
-    authLimiter,
-    joinLimiter,
+    limits,
     analyticsDb,
     flags,
     fetchImpl: opts.fetchImpl,

@@ -209,6 +209,7 @@ export const pl: Translations<typeof en> = {
     newPasswordPlaceholder: 'NOWE HASŁO',
     loginFailed: 'Logowanie nieudane — spróbuj ponownie.',
     registerFailed: 'Rejestracja nieudana — spróbuj ponownie.',
+    throttled: 'Zbyt wiele prób — spróbuj ponownie za kilka minut.',
     passwordChanged: 'Hasło zostało zmienione.',
     passwordChangeFailed: 'Nie udało się zmienić hasła.',
     loggedInAs: 'Zalogowano jako {username}',
@@ -236,6 +237,7 @@ export const pl: Translations<typeof en> = {
     back: 'WSTECZ',
     partyClosed: 'Drużyna rozwiązana.',
     createFailed: 'Nie udało się utworzyć drużyny — spróbuj ponownie.',
+    createThrottled: 'Utworzono zbyt wiele drużyn — spróbuj ponownie za kilka minut.',
     codePlaceholder: 'KOD',
     invalidCode: 'Nieprawidłowy kod lub drużyna pełna.',
     joinThrottled: 'Zbyt wiele prób — spróbuj ponownie za kilka minut.',
@@ -262,6 +264,7 @@ export const pl: Translations<typeof en> = {
     errorTimeout: 'Przekroczono czas oczekiwania na mecz.',
     errorCancelled: 'Wyszukiwanie anulowane.',
     errorGeneric: 'Nie udało się połączyć — spróbuj ponownie.',
+    errorThrottled: 'Zbyt wiele prób — odczekaj kilka minut przed kolejnym wyszukiwaniem.',
   },
   tutorial: {
     hintMoveKeys: 'Poruszaj się klawiszami WASD. Przytrzymaj lewy przycisk myszy, aby atakować — celowanie jest automatyczne.',

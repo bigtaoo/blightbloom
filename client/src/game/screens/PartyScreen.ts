@@ -204,8 +204,16 @@ export class PartyScreen {
     try {
       const party = await this.api.createParty(this.matchBaseUrl, this.playerId);
       if (token === this.attemptToken) this.party = party; // else: backed out — discard
-    } catch {
-      if (token === this.attemptToken) this.statusText.text = t('party.createFailed');
+    } catch (e) {
+      // The same carve-out `doJoin` makes below, for the budget `/party/create` gained on
+      // 2026-09-22 (`CREATE_RATE_LIMIT`). "Could not create a party — try again" is an
+      // invitation to retry, and a retry is what a throttled caller must not do; a 429 is
+      // also the one create failure that is not transient, so the generic message is wrong
+      // about the thing it is most confident about.
+      if (token === this.attemptToken) {
+        const throttled = e instanceof partyApi.PartyRequestError && e.status === 429;
+        this.statusText.text = t(throttled ? 'party.createThrottled' : 'party.createFailed');
+      }
     } finally {
       // `busy` always clears regardless of staleness — it's this screen's OWN
       // re-entrancy guard (not tied to whether the player navigated away), and must

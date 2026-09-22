@@ -36,6 +36,7 @@ import { FIND_POLL_PATH, getFindPoll } from '../src/routes/match';
 import { PARTY_LOOKUP_PATH, getParty, postCreate, randomCode } from '../src/routes/party';
 import { ROOM_CODE_PATTERN } from '../src/config';
 import { CodeSpaceExhausted } from '../src/PartyService';
+import { wideLimits } from './limitsHarness';
 import { RATING_LOOKUP_PATH, getRating } from '../src/routes/rating';
 
 // --- fakes -----------------------------------------------------------------------------
@@ -394,7 +395,7 @@ describe('routes/party postCreate', () => {
         throw new CodeSpaceExhausted(100);
       },
     } as unknown as PartyService;
-    await drive(() => postCreate(req, res, url('/party/create'), { parties, log: silentLog() }), req, { playerId: 'p1' });
+    await drive(() => postCreate(req, res, url('/party/create'), { parties, log: silentLog(), limits: wideLimits() }), req, { playerId: 'p1' });
     expect(sent.status).toBe(503);
     expect(parsed(sent)).toEqual({ error: 'no room code available' });
   });
@@ -418,7 +419,7 @@ describe('routes/party postCreate', () => {
         throw new Error('mongo went away');
       },
     } as unknown as PartyService;
-    await drive(() => postCreate(req, res, url('/party/create'), { parties, log }), req, { playerId: 'p1' });
+    await drive(() => postCreate(req, res, url('/party/create'), { parties, log, limits: wideLimits() }), req, { playerId: 'p1' });
     expect(sent.status).toBe(500);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.fields).toEqual({ error: 'mongo went away' });
@@ -429,7 +430,7 @@ describe('routes/party postCreate', () => {
     const req = fakeReq();
     const { res, sent } = fakeRes();
     await drive(
-      () => postCreate(req, res, url('/party/create'), { parties: { create } as unknown as PartyService, log: silentLog() }),
+      () => postCreate(req, res, url('/party/create'), { parties: { create } as unknown as PartyService, log: silentLog(), limits: wideLimits() }),
       req,
       {},
     );

@@ -227,6 +227,7 @@ export const en = {
     newPasswordPlaceholder: 'NEW PASSWORD',
     loginFailed: 'Login failed — try again.',
     registerFailed: 'Registration failed — try again.',
+    throttled: 'Too many attempts — try again in a few minutes.',
     passwordChanged: 'Password changed.',
     passwordChangeFailed: 'Could not change password.',
     loggedInAs: 'Logged in as {username}',
@@ -256,6 +257,7 @@ export const en = {
     back: 'BACK',
     partyClosed: 'Party closed.',
     createFailed: 'Could not create a party — try again.',
+    createThrottled: 'Too many parties created — try again in a few minutes.',
     codePlaceholder: 'CODE',
     invalidCode: 'Invalid or full code.',
     joinThrottled: 'Too many attempts — try again in a few minutes.',
@@ -282,6 +284,7 @@ export const en = {
     errorTimeout: 'Timed out waiting for a match.',
     errorCancelled: 'Matchmaking cancelled.',
     errorGeneric: 'Could not connect — try again.',
+    errorThrottled: 'Too many attempts — wait a few minutes before searching again.',
   },
   tutorial: {
     hintMoveKeys: 'Move with WASD. Hold the left mouse button to attack — aiming is automatic.',

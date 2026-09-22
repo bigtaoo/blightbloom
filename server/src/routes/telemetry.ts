@@ -37,7 +37,9 @@
  * Both routes take from the same per-IP budget. A legitimate client makes two requests per
  * 30s window across the pair, against a limit of 20 per minute, so sharing costs nothing —
  * and it means the budget bounds what one address can do to this server rather than what it
- * can do to one of its endpoints.
+ * can do to one of its endpoints. It is the ONE budget in this server two routes share, and
+ * that is a claim about these two routes rather than a pattern: `routes/limits.ts` names a
+ * separate counter per spender precisely so no other pair can drift into sharing by default.
  */
 import type { AuthService } from '../AuthService';
 import type { Logger } from '../log';
@@ -47,7 +49,8 @@ import { pushToLoki } from '../lokiPush';
 import { parseAnalyticsBatch } from '../analytics/ingest';
 import { writeBatch } from '../analytics/store';
 import { LIMITS as ANALYTICS_LIMITS } from '@dd/net/analyticsEvents';
-import { RateLimiter, clientKey } from '../rateLimit';
+import { RateLimiter, clientKey, type Budget } from '../rateLimit';
+import type { Limiters } from './limits';
 import { readJsonUpTo, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
 
@@ -68,7 +71,7 @@ export const CLIENT_EVENTS_BODY_LIMIT = 64 * 1024;
 /** Requests per IP per window, SHARED by both routes (see the file header). A client flushes
  *  each of them every 30s, so this is ten times the legitimate rate — a limit that only a
  *  loop can reach. */
-export const RATE_LIMIT = { requests: 20, windowMs: 60_000 } as const;
+export const RATE_LIMIT: Budget = { requests: 20, windowMs: 60_000 };
 
 export interface TelemetryRouteDeps {
   auth: AuthService;
@@ -76,12 +79,20 @@ export interface TelemetryRouteDeps {
   /** The push target, resolved once at startup by `matchsvc.ts` (`lokiPushUrl()`). */
   lokiUrl: string | null;
   /**
-   * Per-IP request budget. Owned by the deps bundle rather than a module singleton
-   * deliberately: a singleton is shared state between every server a test file builds, so
-   * one test exhausting the budget would silently change the next test's answer — the
-   * classic order-dependent suite. `matchsvc.ts` constructs exactly one per process.
+   * Per-IP request budget, named out of the one set `routes/limits.ts` declares. Owned by
+   * the deps bundle rather than a module singleton deliberately: a singleton is shared state
+   * between every server a test file builds, so one test exhausting the budget would silently
+   * change the next test's answer — the classic order-dependent suite. `matchsvc.ts`
+   * constructs exactly one per process.
+   *
+   * A bare `Pick` rather than `BudgetDeps<'telemetry'>`, which every other limited route
+   * uses, for two reasons that are both about this pair being the exception: these routes
+   * take their clock as `now` (they had one before any of them had a budget, and it times the
+   * log lines as well as the window), and their refusal is a **200 with `accepted: 0`** rather
+   * than the 429 `spendBudget` sends — see `postClientLog` for why a dropped batch must not
+   * be the one answer that makes a misbehaving client retry harder.
    */
-  limiter: RateLimiter;
+  limits: Pick<Limiters, 'telemetry'>;
   /** Injected by tests to observe the push without a network, and to freeze the clock. */
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -118,7 +129,7 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = async (req, res, 
   const now = deps.now ?? Date.now;
   const at = now();
 
-  if (!deps.limiter.take(clientKey(req), at)) {
+  if (!deps.limits.telemetry.take(clientKey(req), at)) {
     // Still a 200. A 429 would be more honest and would also be the one answer that makes
     // a misbehaving client retry harder; the batch is dropped either way.
     return send(res, 200, { ok: true, accepted: 0 });
@@ -164,7 +175,7 @@ export const postClientLog: RouteHandler<TelemetryRouteDeps> = async (req, res, 
 export const postClientEvents: RouteHandler<TelemetryRouteDeps> = async (req, res, _url, deps) => {
   const now = deps.now ?? Date.now;
 
-  if (!deps.limiter.take(clientKey(req), now())) {
+  if (!deps.limits.telemetry.take(clientKey(req), now())) {
     return send(res, 200, { ok: true, accepted: 0 });
   }
 

@@ -11,7 +11,7 @@
  * them is `net/entitlements.ts`'s 401-as-a-value, on a route the boot path already calls.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { register, login, portalLogin, logout, changePassword, claimGuestMerge, saveAccountMeta } from './auth';
+import { register, login, portalLogin, logout, changePassword, claimGuestMerge, saveAccountMeta, AuthRequestError } from './auth';
 
 const RESULT = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -43,6 +43,40 @@ describe('auth client calls', () => {
   it('login rejects on wrong credentials', async () => {
     const fetch = fakeFetch(401, { error: 'invalid username or password' });
     await expect(login('http://mm', 'alice', 'wrong', { fetch })).rejects.toThrow(/invalid/);
+  });
+
+  it('carries the status, so a screen can tell a THROTTLED call from a rejected one', async () => {
+    // Four of these routes spend a per-IP budget server-side since 2026-09-22, and a 429 is
+    // the one refusal whose message `LoginScreen` must NOT show: its prose is in English, on
+    // a screen the player has in one of eight languages, and it names no action they can
+    // take. The status is what lets the screen answer differently, so it is pinned here —
+    // at the layer that reads it — rather than only where it is branched on.
+    const err = await login('http://mm', 'alice', 'hunter22', { fetch: fakeFetch(429, { error: 'too many login attempts' }) }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(AuthRequestError);
+    expect((err as AuthRequestError).status).toBe(429);
+    expect((err as AuthRequestError).message).toMatch(/too many/i);
+  });
+
+  it('carries the status on the refusals that are NOT throttling', async () => {
+    // The control. A `status` hard-coded to 429 — or set only on the throttle path — would
+    // pass the case above and turn every failed login into "try again in a few minutes".
+    for (const status of [400, 401, 503]) {
+      const err = await register('http://mm', 'alice', 'hunter22', { fetch: fakeFetch(status, { error: 'nope' }) }).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(AuthRequestError);
+      expect((err as AuthRequestError).status).toBe(status);
+    }
+  });
+
+  it('carries a status even when the body is not the shape this client expects', async () => {
+    // `res.ok` is false and there is no `{ error }` to read, which is the proxy-error-page
+    // case `call()` already guarded. The STATUS still has to arrive, or a 429 served by
+    // something in front of this server would reach the screen as a generic failure.
+    const err = await login('http://mm', 'alice', 'hunter22', { fetch: fakeFetch(429, null) }).catch((e: unknown) => e);
+    expect((err as AuthRequestError).status).toBe(429);
   });
 
   it('portalLogin posts the PORTAL token under `token`, and returns OUR session', async () => {

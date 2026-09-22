@@ -59,10 +59,43 @@
  */
 import type { ServerResponse } from 'node:http';
 import type { AuthService } from '../AuthService';
+import type { Budget } from '../rateLimit';
 import { billingPlaneUrl, INTERNAL_CALLER_MATCHSVC, sharedInternalKey } from '../config';
 import { internalFetchJson } from '../internalFetch';
+import { spendBudget, type BudgetDeps } from './limits';
 import { readJson, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
+
+/**
+ * The per-IP budget for BOOKING AN ORDER (2026-09-22). Thirty in ten minutes.
+ *
+ * The header above argues that requiring a session is what keeps this proxy from being "a
+ * free unmetered amplifier from anywhere onto the billing plane". That is true of *anywhere*
+ * and it is the load-bearing half — but a session is not a scarce thing. It costs one
+ * registration, and `REGISTER_RATE_LIMIT` hands out thirty of those per ten minutes per
+ * address, each good for thirty days. So the session bounds WHO may reach billsvc, and
+ * nothing bounded how often, on the one route of the three that WRITES: every call books a
+ * real order row and mints payment parameters in another service's database.
+ *
+ * Thirty in ten minutes against a legitimate rate of a few purchases a session, with the
+ * abandoned-checkout retry that a player who changed their mind about a payment method
+ * actually does. It is the number `REGISTER_RATE_LIMIT` uses, and deliberately so: both
+ * bound a write into a database that is not this process's, and neither is a rate any human
+ * approaches.
+ *
+ * The cost of spending it before `requireAuth`, stated rather than discovered: an
+ * UNAUTHENTICATED caller can spend the budget a logged-in player behind the same address
+ * needs, so thirty anonymous POSTs from one NAT cost that NAT its purchases for ten minutes.
+ * That is the same trade every per-IP budget here makes, and it is the right way round —
+ * resolving a session is itself a database read the caller gets to ask for, so a budget taken
+ * after it pays for the flood it is about to refuse.
+ *
+ * `GET /store/skus` and `GET /store/order/:id` stay unbudgeted. Both are reads, the catalogue
+ * one is answered by billsvc from memory, and `StorePurchase.poll` calls the order one on a
+ * timer while a player watches a payment resolve — the same "do not rate-limit the client's
+ * own poll loop" case `routes/match.ts` makes for `GET /find/:queueId`.
+ */
+export const ORDER_RATE_LIMIT: Budget = { requests: 30, windowMs: 10 * 60_000 };
 
 /** `GET /store/order/:id`. Matched in `matchsvc.ts`, re-matched here for the id. */
 export const STORE_ORDER_PATH = /^\/store\/order\/([^/]+)$/;
@@ -99,6 +132,13 @@ export interface StoreRouteDeps {
  * that has not answered in three seconds is not about to.
  */
 export const STORE_TIMEOUT_MS = 3_000;
+
+/**
+ * `postOrder`'s own deps — the one route in this group with a budget ({@link
+ * ORDER_RATE_LIMIT}). The two GETs take plain {@link StoreRouteDeps} and cannot reach a
+ * limiter, which is this split's whole statement.
+ */
+export interface OrderRouteDeps extends StoreRouteDeps, BudgetDeps<'storeOrder'> {}
 
 function planeConfig(deps: StoreRouteDeps): BillingPlaneConfig {
   return {
@@ -234,7 +274,14 @@ async function relaySkus(res: ServerResponse, deps: StoreRouteDeps): Promise<voi
  * `amount` is not among them). Body out: those two plus the accountId of the verified
  * session — see this file's header on why the client's own claim is never read.
  */
-export const postOrder: RouteHandler<StoreRouteDeps> = async (req, res, _url, deps) => {
+export const postOrder: RouteHandler<OrderRouteDeps> = async (req, res, _url, deps) => {
+  // Before the session check, not after it. The session is the stronger gate and it stays
+  // where it is; the budget goes first because `requireAuth` is a database read any caller
+  // can make this process perform, and because every budget in this server is spent before
+  // the request's own work for the reason `routes/limits.ts` gives.
+  if (!spendBudget(deps.limits.storeOrder, req, res, (deps.nowMs ?? Date.now)(), 'too many orders from this address — try again later')) {
+    return;
+  }
   const session = await requireAuth(req, deps.auth);
   if (!session) return send(res, 401, { error: 'invalid or expired session' });
   readJson(req, (body) => {

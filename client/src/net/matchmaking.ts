@@ -26,6 +26,30 @@ export interface MatchInfo {
   token: string;
 }
 
+/**
+ * A refused `POST /find`, carrying the status the control plane answered with.
+ *
+ * The third of these (`net/party.ts`'s `PartyRequestError`, `net/auth.ts`'s
+ * `AuthRequestError`), and it exists for the same 2026-09-22 reason: `/find` spends a per-IP
+ * budget now, and its 429 is the one matchmaking failure whose right answer is **do not
+ * retry**. The Matchmaking screen's other failures all end in a RETRY button, which is
+ * correct for a timeout and actively wrong for a spent budget.
+ *
+ * Only the POST throws this. The poll loop below cannot be refused on a rate — `GET
+ * /find/:queueId` is deliberately unbudgeted, because the client calls it twice a second
+ * (`routes/match.ts`'s `FIND_RATE_LIMIT` says so) — so a status on the poll's own failures
+ * would be a field nothing could ever read.
+ */
+export class MatchRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'MatchRequestError';
+  }
+}
+
 export interface FindMatchOptions {
   playerCount: number;
   /** PvE co-op vs. PvP arena (design/15). Default 'coop' — the field predates PvP, so
@@ -96,7 +120,9 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
     }),
   });
   const found = (await findRes.json()) as { queueId?: string; match?: MatchInfo; error?: string };
-  if (!findRes.ok || found.error) throw new Error(found.error ?? `matchmaking failed (${findRes.status})`);
+  if (!findRes.ok || found.error) {
+    throw new MatchRequestError(found.error ?? `matchmaking failed (${findRes.status})`, findRes.status);
+  }
   if (found.match) return found.match; // this arrival completed the group
   if (!found.queueId) throw new Error('matchmaking: no queueId returned');
 

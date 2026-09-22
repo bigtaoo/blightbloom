@@ -235,7 +235,7 @@ export class LoginScreen {
         this.onSessionChange?.();
       }
     } catch (e) {
-      if (token === this.attemptToken) this.statusText.text = (e as Error).message || t('auth.loginFailed');
+      if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.loginFailed'));
     } finally {
       this.busy = false; // always clears — this screen's own guard, not tied to staleness
       if (token === this.attemptToken) this.refresh();
@@ -254,11 +254,35 @@ export class LoginScreen {
         this.onSessionChange?.();
       }
     } catch (e) {
-      if (token === this.attemptToken) this.statusText.text = (e as Error).message || t('auth.registerFailed');
+      if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.registerFailed'));
     } finally {
       this.busy = false;
       if (token === this.attemptToken) this.refresh();
     }
+  }
+
+  /**
+   * What the status line says when an auth call is refused.
+   *
+   * Every failure but one keeps the behaviour this screen has always had: the SERVER's own
+   * prose. That is deliberate and it is not laziness — "username is taken", "password must
+   * be at least 8 characters" and "invalid username or password" are answers only the server
+   * can give, and a client that localised them would have to know which of them it was
+   * looking at, which is exactly the prose-matching this codebase refuses to do.
+   *
+   * A 429 is the exception, and for the same reason `PartyScreen.doJoin` carved one out on
+   * the same day: a throttle's prose tells the player nothing they can act on, and the only
+   * action it suggests — try again — is the one that spends more of a budget they have
+   * already run out of. Four routes this screen calls can answer 429 now (`register`,
+   * `login`, `change-password`, and `portal` from elsewhere), so the branch is on the STATUS
+   * and one localised string covers all of them.
+   *
+   * A thrown plain `Error` — an injected test double, an offline `fetch` — has no status
+   * and keeps the old answer, which is why the check is `instanceof` rather than a cast.
+   */
+  private failureText(e: unknown, fallback: string): string {
+    if (e instanceof authApi.AuthRequestError && e.status === 429) return t('auth.throttled');
+    return (e as Error).message || fallback;
   }
 
   private async doChangePassword(oldPassword: string, newPassword: string): Promise<void> {
@@ -269,7 +293,7 @@ export class LoginScreen {
       await this.api.changePassword(this.matchBaseUrl, this.session.token, oldPassword, newPassword);
       if (token === this.attemptToken) this.statusText.text = t('auth.passwordChanged');
     } catch (e) {
-      if (token === this.attemptToken) this.statusText.text = (e as Error).message || t('auth.passwordChangeFailed');
+      if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.passwordChangeFailed'));
     } finally {
       this.busy = false;
       if (token === this.attemptToken) this.refresh();

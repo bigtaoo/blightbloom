@@ -53,7 +53,17 @@ export interface PartyInfo {
  * never grow larger than the squad it's meant to fill. */
 export const MAX_PARTY_SIZE = SQUAD_SIZE;
 
-const DEFAULT_TTL_MS = 10 * 60_000; // 10 min idle — generous; a lobby isn't a hot loop
+/**
+ * How long an idle party lives. Ten minutes — generous; a lobby isn't a hot loop.
+ *
+ * EXPORTED since 2026-09-22, for one reader: `routes/party.ts`'s `CREATE_RATE_LIMIT` argues
+ * its number from the fact that its window is exactly this TTL (the budget is then also the
+ * ceiling on how many live parties one address can hold). That argument is a claim about two
+ * constants agreeing, and two copies of a number cannot be held in agreement by prose — so
+ * the budget's test asserts the equality against THIS symbol rather than against `10 * 60_000`
+ * written a second time.
+ */
+export const DEFAULT_TTL_MS = 10 * 60_000;
 
 /**
  * How many times {@link PartyService.create} redraws a code that is already taken before it

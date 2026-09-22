@@ -16,6 +16,7 @@ import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createMatchsvcServer } from '../src/matchsvc';
 import type { PortalKeyStore } from '../src/portalKeys';
 import { freshAccounts } from './mongoHarness';
+import { wideLimits } from './limitsHarness';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const PEM = publicKey.export({ type: 'pkcs1', format: 'pem' }).toString();
@@ -219,7 +220,7 @@ describe('POST /auth/portal — a server built without portal support', () => {
       method: 'POST',
     }) as unknown as import('node:http').IncomingMessage;
 
-    postPortalLogin(req, res, new URL('http://x/auth/portal'), { auth: {} as never });
+    postPortalLogin(req, res, new URL('http://x/auth/portal'), { auth: {} as never, limits: wideLimits() });
     await new Promise((r) => setTimeout(r, 0));
     expect(captured.status).toBe(503);
     expect(captured.body).toContain('not configured');
