@@ -1,7 +1,7 @@
 /**
  * The DOM boot splash — `index.html`'s `#boot-loading`, for the two hosts that have a DOM
  * (`main.ts`, `main.crazygames.ts`). WeChat's equivalent is the Pixi `LoadingScreen`
- * (`game/ui/loadingScreen.ts`); both obey the same floor, which lives in `bootHold.ts`.
+ * (`game/ui/loadingScreen.ts`), for the same wait and on the same terms.
  *
  * The splash itself is markup and CSS in `index.html`, on purpose: it has to paint before a
  * single byte of this bundle has been parsed, which is most of the wait it exists to cover
@@ -10,27 +10,35 @@
  * the part that needs to know how the boot is going: the progress bar, and WHEN the splash
  * is allowed to come down.
  *
- * ## The gap this closes
+ * ## It comes down the instant it can, and that is the whole policy
+ *
+ * There is NO minimum on this screen. A floor lived here between 2026-09-21 and 2026-09-22
+ * and was wrong: the front door is the one screen a player has no reason to look at, and the
+ * request it came from ("held for at least 3 seconds") was about the in-game transitions —
+ * entering a map, returning to the lobby — not about the way in. That minimum now lives at the
+ * run boundary where it was asked for (`game/controllers/TransitionGate.ts`'s
+ * `MIN_TRANSITION_MS`), and boot is back to being as short as the download makes it.
+ *
+ * ## The gap that is still closed here
  *
  * `document.getElementById('boot-loading')?.remove()` used to be a bare statement one line
  * after `game.start()`. `start()` populates the stage; it does not draw it. The renderer
  * draws on its next tick, so removing the splash there uncovered a canvas that had never
  * had the menu on it — and on a cold boot a canvas that has never been drawn to is blank.
- * Both halves of the fix are here:
- *
- *   - `afterFirstRenderedFrame` waits for the renderer to have actually drawn the populated
- *     stage, so what the splash uncovers is the menu and never the gap before it;
- *   - `hideBootSplash` then pays out `bootHold.ts`'s floor and fades, so a fast boot does
- *     not flash the splash and a slow one is never cut short.
+ * That is what `afterFirstRenderedFrame` is for, and it is a WAIT FOR A REAL EVENT rather
+ * than a timer: it costs a fast boot one frame, not three seconds.
  *
  * Failure is NOT handled here — `bootError.ts` owns that, and deliberately keeps the element
  * in place with a refresh message rather than removing it. A boot that throws must leave
  * something on screen.
  */
-import { holdBootMinimum, type BootHoldDeps } from './bootHold';
 
 /** Matches `#boot-loading`'s CSS transition in `index.html`. A fade that outlasts its class
- *  would remove the element mid-transition and cut the splash off with a visible step. */
+ *  would remove the element mid-transition and cut the splash off with a visible step.
+ *
+ *  This is not a delay the player waits out: the menu is already drawn UNDER the splash by
+ *  the time this runs (see `afterFirstRenderedFrame`), so the fade is the menu arriving, not
+ *  a gap before it. */
 export const BOOT_SPLASH_FADE_MS = 320;
 /** The class `index.html` styles as `opacity: 0`. */
 export const HIDING_CLASS = 'is-hiding';
@@ -47,8 +55,9 @@ export interface SplashDoc {
   getElementById(id: string): SplashNode | null;
 }
 
-export interface BootSplashDeps extends BootHoldDeps {
+export interface BootSplashDeps {
   doc?: SplashDoc;
+  sleep?(ms: number): Promise<void>;
 }
 
 /** How far the bar has been pushed, so a later, smaller report cannot walk it backwards —
@@ -67,15 +76,15 @@ export function setBootProgress(fraction: number, deps: BootSplashDeps = {}): vo
 }
 
 /**
- * Take the splash down: wait out the floor, fade, remove.
+ * Take the splash down: fade, remove. No wait in front of either.
  *
- * Called LAST in `boot()`, after everything else the entry point installs — the floor is a
- * wait, and nothing else should be sitting behind it.
+ * Called LAST in `boot()`, after everything else the entry point installs — not because it
+ * is slow (it is one frame and a fade) but because nothing the player can use should be
+ * queued behind the statement that reveals the menu.
  */
 export async function hideBootSplash(deps: BootSplashDeps = {}): Promise<void> {
   const sleep = deps.sleep ?? defaultSleep;
   setBootProgress(1, deps);
-  await holdBootMinimum(deps);
   const el = resolveDoc(deps)?.getElementById('boot-loading');
   if (!el) return;
   el.classList.add(HIDING_CLASS);

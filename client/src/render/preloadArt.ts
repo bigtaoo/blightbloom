@@ -10,7 +10,7 @@
 //                               before `new Game(...)`, behind `ui/loadingScreen.ts`.
 //   RUN    `ensureRunArt()`     every `run`-phase pack + the four remaining loaders. Kicked in
 //                               the background from the lobby by `beginDeferredArt()`, and
-//                               awaited at the run boundary by `game/controllers/ArtGate.ts`.
+//                               awaited at the run boundary by `game/controllers/TransitionGate.ts`.
 //
 // THE RULE THIS SHAPE EXISTS TO KEEP (design/12): the set of available textures changes only at
 // a phase boundary. Not per asset, not per room. Re-running a loader once its pack has landed
@@ -137,6 +137,19 @@ export function beginDeferredArt(): void {
  */
 export function isRunArtReady(): boolean {
   return !deferred || runArtDone;
+}
+
+/**
+ * Has a host armed phase two at all (`beginDeferredArt`)?
+ *
+ * Only the three real entry points call that, so this answers `false` in every unit test in
+ * this repo that has not deliberately opted in — which is the single fact
+ * `controllers/TransitionGate.ts` needs to keep a MINIMUM-display transition out of a suite
+ * that drives `Game` synchronously. It is the same switch `isRunArtReady` reads, asked as
+ * the different question: not "is the art in" but "is this a real boot".
+ */
+export function isDeferredArtArmed(): boolean {
+  return deferred;
 }
 
 /**

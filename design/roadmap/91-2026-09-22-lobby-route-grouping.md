@@ -1,6 +1,8 @@
 # Work log — 2026-09-22
 
-Volume 90. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+Volume 91. See [`design/ROADMAP.md`](../ROADMAP.md) for the index and the phase spine.
+(Written as 90 and renumbered on landing: a parallel session's transition-hold pass took that
+number the same day. The volume file is a collision-free resource and the peer committed first.)
 
 ## Group the lobby by kind, and take a door off the screen instead of dimming it (2026-09-22, client + ui + test + i18n + docs, no engine change)
 

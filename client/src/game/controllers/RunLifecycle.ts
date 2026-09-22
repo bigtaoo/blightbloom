@@ -37,7 +37,7 @@ import type { Matchmaking } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { PauseMenu } from '../screens/PauseMenu';
 import type { Screens } from '../screens/Screens';
-import type { ArtGate } from './ArtGate';
+import type { TransitionGate } from './TransitionGate';
 import type { GameLoop } from './GameLoop';
 import type { ScreenFlow } from './ScreenFlow';
 import type { ScreenNav } from './ScreenNav';
@@ -53,7 +53,7 @@ export interface RunLifecycleDeps {
   gameLoop: GameLoop;
   screenFlow: ScreenFlow;
   nav: ScreenNav;
-  artGate: ArtGate;
+  transitions: TransitionGate;
   recorder: MatchRecorder;
   tutorialHints: TutorialHintController;
   hud: HudView;
@@ -127,6 +127,9 @@ export class RunLifecycle {
    */
   beginRun(): void {
     const d = this.deps;
+    // The run boundary (2026-09-22): every route into a fresh run passes through here, so this
+    // one line holds the screen for all of them — and waits out the run art while it is at it.
+    if (d.transitions.deferRunBoundary('run', () => this.beginRun())) return;
     // A fresh run replaces any saved one — there is only ever one save slot (`runSave.ts`),
     // and the Forge's NEW RUN button says so. Dropped here rather than at the button so the
     // rule holds for every route into a fresh run, including the portal's one-click PLAY.
@@ -196,15 +199,11 @@ export class RunLifecycle {
    * `resolveLoadout` fills with the starter kit — exactly what pressing START RUN without
    * crafting anything does.
    *
-   * The art gate is the one thing this must not skip, and the reason it is a method here
-   * rather than a second `onPlay` handler in the wiring table: the hub is normally what
-   * `showLoadout` gates on the player's behalf (see `ScreenNav.showLoadout`), and a run entered
-   * with no screen in between has to gate for itself or the first room is drawn out of
-   * placeholder rectangles. Same shape as `beginTutorialRun`/`beginArenaDemoRun`, which are
-   * the other two entry points with no screen between them and the run.
-   */
+   * The gate is asked BEFORE the menu comes down: a menu hidden while it is still deciding is a
+   * screen removed for a run that has not started. `beginRun` asks again and is waved through
+   * (`TransitionGate`'s pass-through) — one floor per press, not one per layer. */
   beginQuickRun(): void {
-    if (this.deps.artGate.defer(() => this.beginQuickRun())) return; // a run, with no screen between
+    if (this.deps.transitions.deferRunBoundary('run', () => this.beginQuickRun())) return;
     this.deps.mainMenu.hide();
     this.beginRun();
   }
@@ -220,7 +219,7 @@ export class RunLifecycle {
    */
   beginTutorialRun(): void {
     const d = this.deps;
-    if (d.artGate.defer(() => this.beginTutorialRun())) return; // a run, with no screen between
+    if (d.transitions.deferRunBoundary('run', () => this.beginTutorialRun())) return; // a run boundary
     this.resetRenderState();
     d.run.tutorialActive = true;
     d.run.firstRunHints = false; // the standalone level teaches on its own flag
@@ -242,7 +241,7 @@ export class RunLifecycle {
    *  submit path (GameLoop), not a real opponent. */
   beginArenaDemoRun(): void {
     const d = this.deps;
-    if (d.artGate.defer(() => this.beginArenaDemoRun())) return; // a run, with no screen between
+    if (d.transitions.deferRunBoundary('run', () => this.beginArenaDemoRun())) return; // a run boundary
     const arena = this.startOfflineEngine(
       'arena',
       buildArenaDemoConfig({
@@ -289,7 +288,7 @@ export class RunLifecycle {
    */
   resumeSavedRun(): void {
     const d = this.deps;
-    if (d.artGate.defer(() => this.resumeSavedRun())) return; // a run, with no screen between
+    if (d.transitions.deferRunBoundary('run', () => this.resumeSavedRun())) return; // a run boundary
     const save = loadSavedRun();
     if (!save) return; // nothing to continue — the button should not have been there
     const config = buildDungeonRunConfig({
@@ -341,7 +340,7 @@ export class RunLifecycle {
    *  worst way to say so. */
   async beginReplayRun(url: string): Promise<void> {
     const d = this.deps;
-    if (d.artGate.defer(() => void this.beginReplayRun(url))) return; // a run, no screen between
+    if (d.transitions.deferRunBoundary('run', () => void this.beginReplayRun(url))) return; // a run boundary
     try {
       const file = await loadReplayFile(url);
       this.resetRenderState();
@@ -390,7 +389,13 @@ export class RunLifecycle {
   // that screen already has a connected session in hand: there is no "blank playing phase
   // while invisibly connecting" window any more.
 
-  /** A match actually started — enter `playing` with the now-live session. */
+  /** A match actually started — enter `playing` with the now-live session.
+   *
+   *  The ONE run entry `TransitionGate` does not hold (2026-09-22), deliberately: the far side
+   *  is a server already ticking, so a three-second screen here is confirmed frames arriving for
+   *  a run nobody can see — including the FIRST, which `resetOnlinePrediction` anchors on. The
+   *  route has its own transition screen anyway (Matchmaking), which reports something real, and
+   *  the art gate for it stays where it is, on `showMatchmaking`. */
   finalizeOnlineRun(session: CoopSession): void {
     const d = this.deps;
     this.resetRenderState();
@@ -481,9 +486,9 @@ export class RunLifecycle {
     const { wasTutorial } = d.run.endRun();
     if (wasTutorial) {
       d.run.markTutorialSeen();
-      d.nav.showMenu();
+      d.nav.leaveRunTo('menu');
     } else {
-      d.nav.showLoadout();
+      d.nav.leaveRunTo('loadout');
     }
   }
 

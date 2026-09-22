@@ -26,6 +26,8 @@ export const es: Translations<typeof en> = {
   loading: {
     boot: 'CARGANDO',
     art: 'CARGANDO GRÁFICOS',
+    enteringRun: 'ENTRANDO EN LA MAZMORRA',
+    returningToHub: 'VOLVIENDO AL VESTÍBULO',
   },
   pauseMenu: {
     title: 'PAUSADO',

@@ -17,7 +17,7 @@ import packs from './assetPacks.json';
  *   - 'main'       the first download. Code only; no art rule points here.
  *   - 'lobby'      awaited at boot, before `new Game(...)`. The one wait a player sees.
  *   - 'background' kicked from the lobby and never awaited by anything.
- *   - 'run'        kicked from the lobby, awaited at the run boundary (`controllers/ArtGate.ts`).
+ *   - 'run'        kicked from the lobby, awaited at the run boundary (`controllers/TransitionGate.ts`).
  */
 export type PackPhase = 'main' | 'lobby' | 'background' | 'run';
 

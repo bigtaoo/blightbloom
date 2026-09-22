@@ -1,25 +1,30 @@
 /**
- * The run-boundary art gate (design/12) — its two load-bearing properties and the wiring that
- * uses them.
+ * The transition gate (design/12) — its load-bearing properties and the wiring that uses them.
+ *
+ * Two waits share one screen here, and the tests split the same way: the ART boundary, which
+ * is invisible almost always, and the RUN boundary's `MIN_TRANSITION_MS` floor, which is
+ * deliberately visible and was asked for by name.
  *
  * Driven against the REAL `render/preloadArt.ts` module state rather than a mocked one, because
- * both properties this file is about are properties of that state: "inert until something
+ * the properties this file is about are properties of that state: "inert until something
  * deferred" is `deferred === false`, and "synchronous when the art is in" is a promise that has
  * already resolved. A mock of `isRunArtReady` would let either one be wrong here and right
- * nowhere.
+ * nowhere. The floor's clock IS injected — a suite that waits out three real seconds per case
+ * is a suite nobody runs.
  *
  * The Pixi collaborators ARE faked (a Container and a Ticker are all this needs), same
  * convention as controllers/GameLoop.test.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Container, Ticker } from 'pixi.js';
+import { Container, Text, Ticker } from 'pixi.js';
 import { readFileSync } from 'node:fs';
-import { ArtGate } from './ArtGate';
+import { MIN_TRANSITION_MS, TransitionGate } from './TransitionGate';
 import { setAssetHost, resetAssetHost, webAssetHost, type AssetHost } from '../../render/assetHost';
 import { resetPackLoader } from '../../render/packLoader';
-import { beginDeferredArt, resetPreloadArt, runArtUnitCount } from '../../render/preloadArt';
+import { beginDeferredArt, isRunArtReady, resetPreloadArt, runArtUnitCount } from '../../render/preloadArt';
 import { pinTextMeasurementToPaintCanvas } from '../../render/textMetrics';
 import { LoadingScreen } from '../ui/loadingScreen';
+import { t } from '../../i18n';
 
 /** A host whose pack downloads never settle until released — the only way to observe a gate
  *  that is actually waiting, rather than one that has already let go. */
@@ -33,14 +38,43 @@ function blockingHost(): { host: AssetHost; release(): void } {
   };
 }
 
-function gateWith(): { gate: ArtGate; overlay: Container; ticker: Ticker } {
+/** A floor that never elapses until it is told to — the only way to observe a gate that is
+ *  still holding, rather than one that has already let go. */
+function heldClock(): { sleep: (ms: number) => Promise<void>; slept: number[]; elapse(): void } {
+  const waiting: Array<() => void> = [];
+  const slept: number[] = [];
+  return {
+    slept,
+    sleep: (ms) => {
+      slept.push(ms);
+      return new Promise<void>((resolve) => waiting.push(resolve));
+    },
+    elapse: () => {
+      for (const resolve of waiting.splice(0)) resolve();
+    },
+  };
+}
+
+function gateWith(sleep?: (ms: number) => Promise<void>): {
+  gate: TransitionGate;
+  overlay: Container;
+  ticker: Ticker;
+} {
   const overlay = new Container();
   const ticker = new Ticker();
   return {
-    gate: new ArtGate({ overlay, ticker, screenSize: () => ({ w: 800, h: 600 }) }),
+    gate: new TransitionGate({ overlay, ticker, screenSize: () => ({ w: 800, h: 600 }), sleep }),
     overlay,
     ticker,
   };
+}
+
+/** Arm the art phases and let them settle, so what is left to wait for is the floor alone.
+ *  (The real web `AssetHost` cannot fetch a root-relative path in Node, so every loader takes
+ *  its best-effort warn branch and `ensureRunArt` resolves — see `beforeEach`.) */
+async function withArtAlreadyIn(): Promise<void> {
+  beginDeferredArt();
+  await vi.waitFor(() => expect(isRunArtReady()).toBe(true));
 }
 
 beforeEach(() => {
@@ -212,19 +246,140 @@ describe('the transitions that are gated', () => {
       const at = src.indexOf(name);
       return src.slice(at, src.indexOf('\n  }', at));
     };
+    // The ART-only transitions: a screen that draws run art, with no floor under it.
     for (const gated of [
       'showLoadout(): void {',
       "showForge(from: ForgeReturnPhase = 'menu'): void {",
       'showPvpPreview(): void {',
       'showMatchmaking(): void {',
+    ]) {
+      expect(bodyAfter(gated), gated).toContain('transitions.defer(');
+    }
+    // ...and the RUN boundary, which is held. Asserted on the METHOD NAME rather than on
+    // `transitions.` alone, because the difference between the two is the whole point of this
+    // pass: a plain `defer` here would silently take the floor back off the transition the
+    // request was about, and every other test in this file would stay green.
+    for (const held of [
+      'beginRun(): void {',
       'beginTutorialRun(): void {',
       'beginArenaDemoRun(): void {',
+      'resumeSavedRun(): void {',
       'async beginReplayRun(',
+      "leaveRunTo(hub: 'menu' | 'loadout'): void {",
     ]) {
-      expect(bodyAfter(gated), gated).toContain('artGate.defer(');
+      expect(bodyAfter(held), held).toContain('deferRunBoundary(');
     }
     for (const ungated of ['showMenu(): void {', 'showAccount(): void {', 'showSquad(): void {']) {
-      expect(bodyAfter(ungated), ungated).not.toContain('artGate');
+      expect(bodyAfter(ungated), ungated).not.toContain('transitions');
     }
+  });
+});
+
+describe('the run boundary, which is held on purpose', () => {
+  it('holds the screen for MIN_TRANSITION_MS with the art already in', async () => {
+    // The ask this whole pass is about: "a loading screen, shown for at least 3 seconds ...
+    // the in-game screen switches, entering a map, returning to the lobby". The art is in, so
+    // `defer` would answer synchronously — a jump cut — and this is the one call that does not.
+    const clock = heldClock();
+    const { gate, overlay } = gateWith(clock.sleep);
+    await withArtAlreadyIn();
+
+    const retry = vi.fn();
+    expect(gate.deferRunBoundary('run', retry)).toBe(true);
+    expect(overlay.children.length).toBe(1);
+    expect(clock.slept).toEqual([MIN_TRANSITION_MS]);
+    expect(retry).not.toHaveBeenCalled();
+
+    clock.elapse();
+    await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+    expect(gate.waiting).toBe(false);
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('is inert in a session that never armed the art phases', async () => {
+    // The property that keeps this repo's ~7,000 tests synchronous: they drive `Game` through
+    // `beginRun` and `leaveRunTo` directly, and a three-second floor in each of them would be
+    // either a suite that hangs or one that silently swallows every transition it asserts on.
+    const clock = heldClock();
+    const { gate, overlay } = gateWith(clock.sleep);
+
+    const retry = vi.fn();
+    expect(gate.deferRunBoundary('run', retry)).toBe(false);
+    expect(overlay.children.length).toBe(0);
+    expect(clock.slept).toEqual([]);
+    expect(retry).not.toHaveBeenCalled(); // NOT deferred: the caller carries straight on itself
+  });
+
+  it('waits for the art AND the floor, not whichever finishes first', async () => {
+    // `Promise.race` in place of `Promise.all` passes both cases above and is wrong in the one
+    // case that matters: a cold cache, where the floor elapses while the run art is still
+    // downloading and the player is dropped into a room of placeholder rectangles.
+    const { host, release } = blockingHost();
+    setAssetHost(host);
+    const clock = heldClock();
+    const { gate } = gateWith(clock.sleep);
+    beginDeferredArt();
+
+    const retry = vi.fn();
+    expect(gate.deferRunBoundary('run', retry)).toBe(true);
+
+    clock.elapse(); // the floor is paid...
+    await Promise.resolve();
+    expect(retry).not.toHaveBeenCalled(); // ...and the art is not
+
+    release();
+    await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+  });
+
+  it('charges the floor once across a nested transition, not once per layer', async () => {
+    // `beginQuickRun` -> `beginRun` -> `beginArenaDemoRun` all cross the same boundary, and
+    // each one asks the gate. Without the pass-through a player would sit through three
+    // separate three-second screens for one press, with every other test here green.
+    const clock = heldClock();
+    const { gate, overlay } = gateWith(clock.sleep);
+    await withArtAlreadyIn();
+
+    const inner = vi.fn();
+    const outer = (): void => {
+      // The nested ask, made from inside the released transition exactly as `beginRun` makes
+      // it from inside `beginQuickRun`'s.
+      expect(gate.deferRunBoundary('run', inner)).toBe(false);
+    };
+    gate.deferRunBoundary('run', outer);
+    clock.elapse();
+
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+    // ONE floor for the whole nested transition. `clock.slept` is the assertion that matters:
+    // a second `sleep(MIN_TRANSITION_MS)` here is what charging per layer looks like.
+    expect(clock.slept).toEqual([MIN_TRANSITION_MS]);
+    expect(inner).not.toHaveBeenCalled(); // it returned false — the caller carried on itself
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('says which way the player is crossing', async () => {
+    // One screen, two captions. `t()` is synchronous and English is the source-of-truth
+    // locale, so this reads the real table rather than a stub.
+    const clock = heldClock();
+    const { gate, overlay } = gateWith(clock.sleep);
+    await withArtAlreadyIn();
+
+    const captionOf = (): string => {
+      const view = overlay.children[0] as Container;
+      return (view.children.find((c) => c instanceof Text) as Text).text;
+    };
+
+    gate.deferRunBoundary('run', () => {});
+    const entering = captionOf();
+    clock.elapse();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+
+    gate.deferRunBoundary('hub', () => {});
+    const returning = captionOf();
+    clock.elapse();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+
+    expect(entering).toBe(t('loading.enteringRun'));
+    expect(returning).toBe(t('loading.returningToHub'));
+    expect(entering).not.toBe(returning); // a single shared caption would pass both lines above
   });
 });

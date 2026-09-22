@@ -26,6 +26,8 @@ export const zh: Translations<typeof en> = {
   loading: {
     boot: '加载中',
     art: '正在加载素材',
+    enteringRun: '正在进入地图',
+    returningToHub: '正在返回大厅',
   },
   pauseMenu: {
     title: '已暂停',

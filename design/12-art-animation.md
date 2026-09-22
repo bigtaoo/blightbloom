@@ -692,22 +692,57 @@ it buys "either the run has all its art, or the player is still looking at a spi
 
 Entering the **forge** is the boundary, not START RUN. The forge is where a player *chooses* using
 weapon art, so weapons must be dressed before it paints — and by then the background load has had
-the whole login/menu sequence to finish. Gated sites: `showForge`, `showPvpPreview`,
-`showMatchmaking`, `beginTutorialRun`, `beginArenaDemoRun`, `beginReplayRun`. Everything left
-ungated (`showMenu`, `showAccount`, `showSquad`, settings) draws from the `lobby`
-pack alone.
+the whole login/menu sequence to finish. Art-gated sites: `showLoadout`, `showForge`,
+`showPvpPreview`, `showMatchmaking`. Everything left ungated (`showMenu`, `showAccount`,
+`showSquad`, settings, the store) draws from the `lobby` pack alone.
 
-`controllers/ArtGate.ts` owns it, and it has two properties worth stating because they are what
-keep the change small:
+`controllers/TransitionGate.ts` owns it — renamed from `ArtGate.ts` on 2026-09-22, when it took
+on a second reason to hold the same screen (see "The run boundary is held on purpose" below).
+Three properties are worth stating, because they are what keep the change at each call site down
+to one line:
 
-1. **Synchronous when the art is in.** The gate asks `isRunArtReady()` first and reports "not
+1. **Synchronous when the art is in.** `defer()` asks `isRunArtReady()` first and reports "not
    deferred" if so, leaving the caller's transition exactly as synchronous as it was. Only a
    genuine wait defers, and then the spinner goes up and the same transition re-runs on the other
    side.
-2. **Inert unless something actually deferred.** `isRunArtReady()` answers `true` until
-   `beginDeferredArt()` has been called, and only the entry points call it. Every unit test
-   that drives `Game` therefore sees the pre-2026-09-01 behaviour with no changes, and the gate
-   cannot silently swallow a transition in a test that never opted into deferral.
+2. **Inert unless something actually deferred.** `isRunArtReady()` answers `true` — and
+   `isDeferredArtArmed()` answers `false` — until `beginDeferredArt()` has been called, and only
+   the entry points call it. Every unit test that drives `Game` therefore sees the pre-2026-09-01
+   behaviour with no changes, and neither wait can silently swallow a transition in a test that
+   never opted into deferral.
+3. **Nested gating passes straight through.** While a released transition is running its retry,
+   the gate answers "not deferred" rather than opening a second wait. The run entry points nest
+   (`beginQuickRun` → `beginRun` → `beginArenaDemoRun`), and without this a player would pay the
+   floor once per layer for one press.
+
+#### The run boundary is held on purpose (2026-09-22)
+
+The second reason the gate holds a screen, and the only one a player is meant to notice: the
+in-game switches — into a map, back out to the lobby — show the same `LoadingScreen` for at least
+`MIN_TRANSITION_MS` (3 s) whether anything is downloading or not, so a transition reads as one
+thing ending and another beginning rather than as a jump cut. `deferRunBoundary('run' | 'hub', …)`
+is the verb; the caption is the only thing the argument decides.
+
+Held: `beginRun` (which every fresh-run route passes through, so START RUN, the portal's one-click
+PLAY and the arena demo are all covered by that one call), `beginQuickRun`, `beginTutorialRun`,
+`beginArenaDemoRun`, `resumeSavedRun`, `beginReplayRun`, and `ScreenNav.leaveRunTo` — the one
+exit, called by `quitRun`/`saveAndQuitRun`, by `Game.confirm` on the victory/defeat screen, and by
+that screen's MENU button.
+
+Two things it deliberately does NOT hold:
+
+- **`finalizeOnlineRun`.** The far side is a server that has already started ticking, so three
+  seconds here is three seconds of confirmed frames arriving for a run nobody can see — including
+  the first one, which `GameLoop.resetOnlinePrediction` anchors on. That route has its own
+  transition screen (Matchmaking) and it reports something real.
+- **Plain hub navigation.** `showMenu` and `showLoadout` are also reached by the loadout screen's
+  BACK, the party screen's BACK and a cancelled queue. A floor on those would make the menu
+  unusable, which is why the exit is a separate verb rather than a rule about the destination.
+
+The floor is safe to sit on only because the sim is already stopped at every one of those call
+sites — the pause menu runs at phase `paused`, the outcome screen at `victory`/`defeat`, and every
+entry point holds *before* the engine is built. A hold while the phase was still `playing` would
+be three seconds of a player being hit by things they cannot see.
 
 `beginDeferredArt()` is called BEFORE `new Game(...)` in every entry, and that ordering is
 load-bearing rather than tidy: the call is what ARMS the gate, and `Game.start()` can enter a run
@@ -924,12 +959,17 @@ that tick's render (`Application` renders at `UPDATE_PRIORITY.LOW`, after a defa
 listener), the second after it — with a 4 s timeout, because a tab opened in the BACKGROUND
 is handed no `requestAnimationFrame` at all and would otherwise hold `boot()` open forever.
 
-**2. The splash now has a floor of 3 s, counted from the page opening** (`bootHold.ts`,
-`MIN_BOOT_SPLASH_MS`). Counted from navigation rather than from the first line of JavaScript,
-because the 642 ms + 2.5 s above is time the player has already spent looking at it; charging
-them three more would be the opposite of what a floor is for. All three entries obey it —
-web and the portal through the DOM splash, WeChat through `showBootLoading`'s `done()`, which
-is why that now returns a promise.
+**2. The splash got a floor of 3 s on 2026-09-21, and it was taken back off on 2026-09-22.**
+The request it came from was about the in-game transitions — *"entering a map, returning to the
+lobby"* — and the front door is the one screen a player has no reason to look at: *"I want players
+to get to the home page as fast as they possibly can."* So `bootHold.ts` is gone, `hideBootSplash`
+fades and removes with nothing waited out in front of it, and `showBootLoading`'s `done()` is
+synchronous again. What stayed is finding 1 above, which is the half that was actually fixing the
+white screen: `afterFirstRenderedFrame` waits for a real event and costs a fast boot one frame,
+not three seconds. The floor itself moved to where it was asked for — `MIN_TRANSITION_MS` in
+`controllers/TransitionGate.ts`, above. What is left in front of the menu is the static markup in
+`index.html`: ~1.4 kB of inline HTML and CSS that paints on the browser's first paint of the
+document, before a byte of the bundle has been parsed.
 
 **3. The SFX preload was competing with the download the player was waiting on.** 70 files,
 kicked beside `createAudio()` — i.e. before `preloadLobbyArt()`. Every cue has a procedural

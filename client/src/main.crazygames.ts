@@ -263,7 +263,7 @@ async function boot() {
   Object.assign(globalThis, { __game: game, __portal: portal, __auth: portalAuth, __rooms: portalRooms });
 
   // The splash comes down last, on `bootSplash.ts`'s terms — after a frame the renderer has
-  // really drawn, and never before `bootHold.ts`'s floor. On THIS host it is also the last
+  // really drawn, and with no minimum in front of it. On THIS host it is also the last
   // thing the identity gate above is protecting: the one-click menu (design/20) must not be
   // live while the silent login is still in flight.
   await afterFirstRenderedFrame(app.ticker);

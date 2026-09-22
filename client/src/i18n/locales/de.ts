@@ -26,6 +26,8 @@ export const de: Translations<typeof en> = {
   loading: {
     boot: 'LÄDT',
     art: 'LADE GRAFIKEN',
+    enteringRun: 'BETRETE DEN DUNGEON',
+    returningToHub: 'ZURÜCK ZUR LOBBY',
   },
   pauseMenu: {
     title: 'PAUSIERT',

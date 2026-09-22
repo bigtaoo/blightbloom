@@ -30,7 +30,7 @@
     "    pack's completion clears the director's memo instead of being awaited.",
     "  - `run`: fetched from the lobby, AWAITED at the run boundary (entering the forge, the",
     "    tutorial, a PvP preview, matchmaking, the arena demo, a replay) behind the same progress",
-    "    screen. `controllers/ArtGate.ts` owns that gate.",
+    "    screen. `controllers/TransitionGate.ts` owns that gate.",
     "",
     "WHY THE UNREACHABLE-TODAY PACKS ARE IN THE `run` PHASE RATHER THAN LAZY AT POINT OF USE.",
     "`biome-ice` / `biome-lightning` / `biome-poison` / `boss` are still justified by content:",
