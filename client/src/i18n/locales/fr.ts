@@ -212,6 +212,7 @@ export const fr: Translations<typeof en> = {
     newPasswordPlaceholder: 'NOUVEAU MOT DE PASSE',
     loginFailed: 'Échec de la connexion — réessayez.',
     registerFailed: "Échec de l'inscription — réessayez.",
+    throttled: 'Trop de tentatives — réessayez dans quelques minutes.',
     passwordChanged: 'Mot de passe changé.',
     passwordChangeFailed: 'Impossible de changer le mot de passe.',
     loggedInAs: 'Connecté en tant que {username}',
@@ -239,6 +240,7 @@ export const fr: Translations<typeof en> = {
     back: 'RETOUR',
     partyClosed: 'Escouade dissoute.',
     createFailed: "Impossible de créer l'escouade — réessayez.",
+    createThrottled: "Trop d'escouades créées — réessayez dans quelques minutes.",
     codePlaceholder: 'CODE',
     invalidCode: 'Code invalide ou escouade complète.',
     joinThrottled: 'Trop de tentatives — réessayez dans quelques minutes.',
@@ -265,6 +267,7 @@ export const fr: Translations<typeof en> = {
     errorTimeout: "Délai d'attente dépassé pour trouver un match.",
     errorCancelled: 'Recherche annulée.',
     errorGeneric: 'Connexion impossible — réessayez.',
+    errorThrottled: 'Trop de tentatives — attendez quelques minutes avant de rechercher à nouveau.',
   },
   tutorial: {
     hintMoveKeys: 'Déplacez-vous avec ZQSD. Maintenez le clic gauche pour attaquer — la visée est automatique.',

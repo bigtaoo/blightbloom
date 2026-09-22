@@ -34,15 +34,22 @@ import * as telemetryRoutes from './routes/telemetry';
  * bundle — not a second interface to keep in step with the first.
  */
 export interface DispatchContext {
+  // Nine of these fourteen entries are a handler that asks for MORE than its siblings — its
+  // own per-IP budget, a `Pick` of one key of `Limiters` (`routes/limits.ts`). The
+  // intersection is derived from the handlers rather than re-declared precisely so that a
+  // widening shows up here: a route that starts spending a budget, or spends a different one,
+  // fails to compile at the one place that builds the bundle instead of at none.
   deps: Parameters<typeof matchRoutes.postFind>[3] &
     Parameters<typeof ratingRoutes.postReport>[3] &
     Parameters<typeof partyRoutes.postCreate>[3] &
-    // `postJoin` asks for more than its siblings (its per-IP budget), and the intersection is
-    // derived rather than re-declared precisely so that widening shows up here.
     Parameters<typeof partyRoutes.postJoin>[3] &
     Parameters<typeof authRoutes.postRegister>[3] &
+    Parameters<typeof authRoutes.postLogin>[3] &
+    Parameters<typeof authRoutes.postPortalLogin>[3] &
+    Parameters<typeof authRoutes.postChangePassword>[3] &
     Parameters<typeof accountRoutes.getMeta>[3] &
     Parameters<typeof storeRoutes.getSkus>[3] &
+    Parameters<typeof storeRoutes.postOrder>[3] &
     Parameters<typeof telemetryRoutes.postClientLog>[3] &
     Parameters<typeof internalEntitlementRoutes.postGrant>[3] &
     Parameters<typeof getClientFlags>[1];

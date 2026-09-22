@@ -38,7 +38,7 @@ async function serverWithBudget(requests: number): Promise<{ url: string; stop: 
   const server: Server = createMatchsvcServer({
     store: await freshAccounts(),
     secret: 'test-secret',
-    joinLimiter: new RateLimiter(requests, 5 * 60_000),
+    limits: { partyJoin: new RateLimiter(requests, 5 * 60_000) },
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
@@ -184,10 +184,12 @@ describe('POST /party/join — the budget is its own', () => {
   });
 
   it('leaves /party/create alone', async () => {
-    // `/party/create` is deliberately NOT bounded by this budget (`JOIN_RATE_LIMIT` says why:
-    // minting a code is not guessing one, and a collision is already a non-event). Asserted
-    // rather than assumed, because wiring the one limiter into both handlers is the obvious
-    // mistake and nothing else here would catch it.
+    // `/party/create` is not bounded by THIS budget. It had no budget at all when this case
+    // was written and gained its own (`CREATE_RATE_LIMIT`, 60 in ten minutes) hours later, so
+    // what the case pins did not change: wiring one limiter into both handlers is the obvious
+    // mistake, and nothing else here would catch it. The creates below are answered because
+    // only `partyJoin` is overridden on this server, leaving create the shipped sixty.
+    // `matchsvc.rateLimits.http.test.ts` asserts the same separation from the other side.
     const party = await createParty('leader6');
     await join(party.code, '203.0.113.28', 'p6a');
     await join(party.code, '203.0.113.28', 'p6b');
@@ -240,7 +242,7 @@ describe('postJoin — the budget is spent before the body is read', () => {
           throw new Error('must not be reached');
         },
       },
-      joinLimiter: limiter,
+      limits: { partyJoin: limiter },
     } as unknown as JoinRouteDeps;
 
     // No 'data'/'end' is ever emitted on `req`. If the handler read the body first this
@@ -253,7 +255,7 @@ describe('postJoin — the budget is spent before the body is read', () => {
     const limiter = new RateLimiter(1, 60_000);
     const deps = {
       parties: { join: () => ({ partyId: 'p', code: '123456', leaderId: 'l', members: ['l'], matching: false }) },
-      joinLimiter: limiter,
+      limits: { partyJoin: limiter },
       nowMs: () => now,
     } as unknown as JoinRouteDeps;
     const call = async () => {

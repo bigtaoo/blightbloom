@@ -17,6 +17,32 @@
  * throwing, and what `OnlineMatch.syncMetaWithSession` acts on. Keeping two dead readers of
  * the two routes around would have left the code looking like it checks.
  */
+
+/**
+ * A refused `/auth/*` call, carrying the status the server answered with.
+ *
+ * The same shape, and the same reason, as `net/party.ts`'s `PartyRequestError` (2026-09-22):
+ * four routes in this file spend a per-IP budget now, and a 429 is the one refusal here whose
+ * message must NOT be the server's own. Everything else this file throws carries prose the
+ * player needs and the server owns — "username is taken", "password must be at least 8
+ * characters" — and `LoginScreen` shows it verbatim. A throttle is the opposite case: its
+ * prose says nothing the player can act on, it arrives in English on a screen the player has
+ * in one of eight languages, and the only action it suggests is the one that spends more of
+ * the budget they have run out of.
+ *
+ * It carries the STATUS rather than the parsed message, because the message is the server's
+ * prose and a client that branches on prose breaks the day the prose is reworded.
+ */
+export class AuthRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'AuthRequestError';
+  }
+}
+
 export interface AuthResult {
   accountId: string;
   username: string;
@@ -37,7 +63,7 @@ async function call<T>(
   const doFetch = opts.fetch ?? fetch;
   const res = await doFetch(`${baseUrl}${path}`, init);
   const json = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok || json?.error) throw new Error(json?.error ?? `auth request failed (${res.status})`);
+  if (!res.ok || json?.error) throw new AuthRequestError(json?.error ?? `auth request failed (${res.status})`, res.status);
   return json as T;
 }
 

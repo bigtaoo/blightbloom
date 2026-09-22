@@ -131,6 +131,35 @@ describe('PartyScreen — create', () => {
     expect(p.statusText.text).toMatch(/could not create/i);
     expect(p.createBtn.view.visible).toBe(true); // still in the pre-party state
   });
+
+  it('a THROTTLED create says so, rather than inviting a retry', async () => {
+    // `/party/create` gained a per-IP budget on 2026-09-22 (`CREATE_RATE_LIMIT`), hours after
+    // `/party/join` did. "Could not create a party — try again" is an invitation to retry,
+    // and a retry is the one thing a throttled caller must not do; it is also the only create
+    // failure that is NOT transient, so the generic message is wrong about the part it sounds
+    // most sure of.
+    const api = fakeApi({
+      createParty: vi.fn().mockRejectedValue(new PartyRequestError('too many parties created', 429)),
+    });
+    const p = privateOf(makeScreen(api));
+    await p.doCreate();
+    expect(p.statusText.text).toMatch(/too many parties/i);
+    expect(p.statusText.text).not.toMatch(/could not create/i);
+    expect(p.createBtn.view.visible).toBe(true);
+  });
+
+  it('a create refusal that is NOT a 429 keeps the old message', async () => {
+    // The control, and the same one `doJoin`'s throttle case has: without it, a `doCreate`
+    // that rendered the throttle text for EVERY failure would pass the case above while
+    // telling a player whose server is down to wait a few minutes for a budget they never
+    // spent.
+    for (const status of [400, 500, 503]) {
+      const api = fakeApi({ createParty: vi.fn().mockRejectedValue(new PartyRequestError('nope', status)) });
+      const p = privateOf(makeScreen(api));
+      await p.doCreate();
+      expect(p.statusText.text).toMatch(/could not create/i);
+    }
+  });
 });
 
 describe('PartyScreen — join', () => {

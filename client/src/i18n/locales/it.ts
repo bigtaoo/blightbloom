@@ -212,6 +212,7 @@ export const it: Translations<typeof en> = {
     newPasswordPlaceholder: 'NUOVA PASSWORD',
     loginFailed: 'Accesso non riuscito — riprova.',
     registerFailed: 'Registrazione non riuscita — riprova.',
+    throttled: 'Troppi tentativi — riprova tra qualche minuto.',
     passwordChanged: 'Password cambiata.',
     passwordChangeFailed: 'Impossibile cambiare la password.',
     loggedInAs: 'Accesso effettuato come {username}',
@@ -239,6 +240,7 @@ export const it: Translations<typeof en> = {
     back: 'INDIETRO',
     partyClosed: 'Squadra sciolta.',
     createFailed: 'Impossibile creare la squadra — riprova.',
+    createThrottled: 'Troppe squadre create — riprova tra qualche minuto.',
     codePlaceholder: 'CODICE',
     invalidCode: 'Codice non valido o squadra al completo.',
     joinThrottled: 'Troppi tentativi — riprova tra qualche minuto.',
@@ -265,6 +267,7 @@ export const it: Translations<typeof en> = {
     errorTimeout: 'Tempo scaduto in attesa di una partita.',
     errorCancelled: 'Ricerca annullata.',
     errorGeneric: 'Impossibile connettersi — riprova.',
+    errorThrottled: 'Troppi tentativi — attendi qualche minuto prima di cercare di nuovo.',
   },
   tutorial: {
     hintMoveKeys: 'Muoviti con WASD. Tieni premuto il tasto sinistro del mouse per attaccare: la mira è automatica.',

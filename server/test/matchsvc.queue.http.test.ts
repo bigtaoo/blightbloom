@@ -25,6 +25,7 @@ import type { BotClientOptions } from '../src/BotClient';
 import { defaultFlags, type FlagName, type FlagValue, type FlagValues } from '../src/flags/defs';
 import type { FlagClient } from '../src/flags/client';
 import { freshAccounts } from './mongoHarness';
+import { wideLimits } from './limitsHarness';
 
 const SECRET = 'queue-test-secret';
 
@@ -387,7 +388,12 @@ describe('/party/*', () => {
   });
 
   it('every code minted in one process is distinct — the server, not the client, dedups', async () => {
-    const ctx = await start();
+    // A wide create budget, because 120 creates from one address is twice `CREATE_RATE_LIMIT`
+    // — which is the shipped budget doing exactly its job (it exists to stop one address
+    // holding parties by the hundred) and not what this case is about. The budget has its own
+    // file; this one is about the generator, so it buys itself out of the way rather than
+    // dropping to 60 and quietly measuring half as much.
+    const ctx = await start({ limits: { partyCreate: wideLimits().partyCreate } });
     try {
       // 120 parties from ONE process, all alive at once (the idle TTL is 10 minutes and this
       // test takes milliseconds). At a 1M keyspace a genuine collision is unlikely enough

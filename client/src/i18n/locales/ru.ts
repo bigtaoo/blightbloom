@@ -217,6 +217,7 @@ export const ru: Translations<typeof en> = {
     newPasswordPlaceholder: 'НОВЫЙ ПАРОЛЬ',
     loginFailed: 'Не удалось войти — попробуйте снова.',
     registerFailed: 'Не удалось зарегистрироваться — попробуйте снова.',
+    throttled: 'Слишком много попыток — повторите через несколько минут.',
     passwordChanged: 'Пароль изменён.',
     passwordChangeFailed: 'Не удалось изменить пароль.',
     loggedInAs: 'Вход выполнен как {username}',
@@ -244,6 +245,7 @@ export const ru: Translations<typeof en> = {
     back: 'НАЗАД',
     partyClosed: 'Отряд распущен.',
     createFailed: 'Не удалось создать отряд — попробуйте снова.',
+    createThrottled: 'Создано слишком много отрядов — повторите через несколько минут.',
     codePlaceholder: 'КОД',
     invalidCode: 'Неверный код или отряд заполнен.',
     joinThrottled: 'Слишком много попыток — повторите через несколько минут.',
@@ -270,6 +272,7 @@ export const ru: Translations<typeof en> = {
     errorTimeout: 'Истекло время ожидания матча.',
     errorCancelled: 'Поиск отменён.',
     errorGeneric: 'Не удалось подключиться — попробуйте снова.',
+    errorThrottled: 'Слишком много попыток — подождите несколько минут перед новым поиском.',
   },
   tutorial: {
     hintMoveKeys: 'Движение — WASD. Удерживайте левую кнопку мыши для атаки: прицеливание автоматическое.',

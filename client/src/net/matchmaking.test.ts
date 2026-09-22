@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { resetSessionCacheForTests, setSession } from './session';
-import { findMatch, requestResume, type MatchInfo } from './matchmaking';
+import { findMatch, requestResume, MatchRequestError, type MatchInfo } from './matchmaking';
 
 const MATCH: MatchInfo = {
   wsUrl: 'ws://localhost:8787/ws', roomId: 'room-1', owner: 1, seed: 42, playerCount: 2, teamId: 1, token: 'tok',
@@ -60,6 +60,28 @@ describe('findMatch', () => {
   it('rejects on a service error body', async () => {
     const fetch = vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: 'playerCount must be an integer in [1, 8]' }) } as Response));
     await expect(findMatch('http://mm', { playerCount: 99, fetch, sleep: noSleep })).rejects.toThrow(/playerCount/);
+  });
+
+  it('carries the status, so the screen can tell a THROTTLED search from a failed one', async () => {
+    // `POST /find` spends a per-IP budget server-side since 2026-09-22. A 429 is the one
+    // matchmaking failure whose right answer is DO NOT RETRY, and the screen's error state
+    // ends in a Retry button — so the status has to survive the trip, and it is pinned at
+    // this layer rather than only where it is branched on.
+    const fetch = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({ error: 'too many matchmaking requests' }) }) as Response);
+    const err = await findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MatchRequestError);
+    expect((err as MatchRequestError).status).toBe(429);
+    expect((err as MatchRequestError).message).toMatch(/too many/i);
+  });
+
+  it('carries the status on the refusals that are NOT throttling', async () => {
+    // The control. A status hard-coded to 429 — or set only on the throttle path — would pass
+    // the case above and turn every failed search into "wait a few minutes".
+    for (const status of [400, 503]) {
+      const fetch = vi.fn(async () => ({ ok: false, status, json: async () => ({ error: 'nope' }) }) as Response);
+      const err = await findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep }).catch((e: unknown) => e);
+      expect((err as MatchRequestError).status).toBe(status);
+    }
   });
 
   it('times out after the budget while stuck queued', async () => {

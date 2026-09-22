@@ -8,6 +8,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Matchmaking, type MatchmakingSignal } from './Matchmaking';
 import { resetLocaleForTests } from '../../i18n';
 import type { CoopSession } from '../../net/CoopSession';
+import { MatchRequestError } from '../../net/matchmaking';
 import { useLocale } from '../../i18n/loadLocale';
 
 function deferred<T>() {
@@ -75,6 +76,42 @@ describe('Matchmaking — error state', () => {
     expect(p.retryBtn.view.visible).toBe(true);
     expect(p.backBtn.view.visible).toBe(true);
     expect(p.statusText.text).toBe('Timed out waiting for a match.');
+  });
+
+  it('a THROTTLED search says wait, not try again', async () => {
+    // `POST /find` spends a per-IP budget since 2026-09-22 (`FIND_RATE_LIMIT`). This screen's
+    // error state ends in a RETRY button, and the generic message points straight at it —
+    // which is the one action that spends more of a budget the player has already run out of.
+    const d = deferred<CoopSession>();
+    const m = new Matchmaking();
+    m.show(800, 600, vi.fn().mockReturnValue(d.promise));
+    d.reject(new MatchRequestError('too many matchmaking requests from this address', 429));
+    await d.promise.catch(() => {});
+    await Promise.resolve();
+    const p = privateOf(m);
+    expect(p.statusText.text).toMatch(/wait a few minutes/i);
+    expect(p.statusText.text).not.toMatch(/could not connect/i);
+    // The server's own prose never reaches the screen — it is English, and this screen is
+    // rendered in eight languages.
+    expect(p.statusText.text).not.toMatch(/from this address/);
+  });
+
+  it('every other refusal keeps the message it had — the control', async () => {
+    // Without this, a `classifyError` that answered "throttled" for every `MatchRequestError`
+    // — or for every failure — would pass the case above while telling a player whose
+    // gameserver is down to go and wait for a budget they never spent.
+    for (const [status, expected] of [
+      [503, 'Could not connect — try again.'],
+      [400, 'Could not connect — try again.'],
+    ] as const) {
+      const d = deferred<CoopSession>();
+      const m = new Matchmaking();
+      m.show(800, 600, vi.fn().mockReturnValue(d.promise));
+      d.reject(new MatchRequestError('no gameserver available', status));
+      await d.promise.catch(() => {});
+      await Promise.resolve();
+      expect(privateOf(m).statusText.text).toBe(expected);
+    }
   });
 
   it('Retry re-invokes connect and can succeed on the second attempt', async () => {
