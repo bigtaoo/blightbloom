@@ -6,7 +6,7 @@
 //   - BOOT, from `main.ts` / `main.wechat.ts`, via `showBootLoading(app)`. This runs before
 //     `new Game(...)` exists, so it takes the Pixi `Application` directly and parks itself on
 //     `app.stage`. It is the only thing on screen while the `lobby` pack downloads.
-//   - THE RUN GATE, from `game/controllers/ArtGate.ts`, on `Layers.overlay`.
+//   - THE RUN/ART GATE, from `game/controllers/TransitionGate.ts`, on `Layers.overlay`.
 //
 // Graphics + Text only, and deliberately so: at boot the `lobby` pack has not landed, so
 // `getUiTexture('hub')` is undefined and every art-backed widget (`Panel`, `Button`) would
@@ -15,7 +15,6 @@
 // The spin is driven by a ticker callback the screen owns and removes on `destroy()`. It is
 // wall-clock, not frame-count: a boot that stalls on a slow download must still visibly move.
 import { Application, Container, Graphics, Text, Ticker } from 'pixi.js';
-import { holdBootMinimum, type BootHoldDeps } from '../../bootHold';
 import { t } from '../../i18n';
 import { THEME } from '../theme';
 import { computeScreenSize } from '../viewport';
@@ -70,7 +69,7 @@ export class LoadingScreen {
     // stops at the topmost interactive target, so a full-viewport interactive Graphics on the
     // overlay layer is what stops a tap reaching the screen still sitting underneath a run
     // gate (the mode-select buttons are still there — the transition has not happened yet).
-    // The KEYBOARD is not covered by this and cannot be; `ArtGate.defer` swallows the repeat.
+    // The KEYBOARD is not covered by this and cannot be; `TransitionGate` swallows the repeat.
     this.scrim.eventMode = 'static';
     this.view.addChild(this.scrim, this.spinner, this.bar, this.caption);
     this.ticker = opts.ticker;
@@ -144,9 +143,9 @@ export class LoadingScreen {
 /** Handle the boot callers hold: the screen is already parked on the stage and spinning. */
 export interface BootLoading {
   onProgress(done: number, total: number): void;
-  /** Take the screen down once it has been up for `bootHold.ts`'s minimum. Awaited, because
-   *  that minimum is a wait — a caller that drops the promise tears the screen down early. */
-  done(): Promise<void>;
+  /** Take the screen down. Synchronous, and there is no minimum in front of it — see
+   *  `showBootLoading`'s note, and `bootSplash.ts`'s header for the whole policy. */
+  done(): void;
 }
 
 /**
@@ -156,7 +155,7 @@ export interface BootLoading {
  * Added LAST so it covers whatever the platform put on the stage before it, and removed by
  * `done()` before `new Game(...)` builds the real layer tree.
  */
-export function showBootLoading(app: Application, hold: BootHoldDeps = {}): BootLoading {
+export function showBootLoading(app: Application): BootLoading {
   // `computeScreenSize`, never `renderer.width / resolution` — see viewport.ts's header for the
   // HiDPI bug that division caused, which is invisible at devicePixelRatio 1.
   const screen = new LoadingScreen({
@@ -169,12 +168,9 @@ export function showBootLoading(app: Application, hold: BootHoldDeps = {}): Boot
   app.stage.addChild(screen.view);
   return {
     onProgress: (done, total) => screen.setProgress(done, total),
-    // The same floor the DOM splash obeys on web and the portal (`bootHold.ts`): a boot fast
-    // enough to flash this screen for 200 ms reads as a glitch rather than as a load, and on
-    // this host there is nothing else on the stage for it to flash against.
-    done: async () => {
-      await holdBootMinimum(hold);
-      screen.destroy();
-    },
+    // Down the instant the lobby pack is in. No floor, deliberately: the minimum-display
+    // rule this game has belongs to the in-game transitions (`TransitionGate.MIN_TRANSITION_MS`),
+    // not to the way in — see `bootSplash.ts`'s header for why it briefly lived here too.
+    done: () => screen.destroy(),
   };
 }

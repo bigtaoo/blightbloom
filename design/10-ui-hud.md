@@ -12,6 +12,14 @@ The player-facing shell around the engine: the **HUD** during play, the **screen
 
 ## Screen flow (shipped, 2026-08-03; the lobby + identity gate, 2026-09-10)
 
+> **The run boundary is the one transition that is HELD (2026-09-22).** Crossing into a map or
+> back out to the lobby shows `ui/loadingScreen.ts` for at least three seconds, whether or not
+> anything is downloading — `controllers/TransitionGate.ts` owns it and `12` has the full account,
+> including the two transitions deliberately left instant. Everything else in this section is as
+> immediate as it reads: the hub screens below are ordinary navigation, and putting a floor on
+> those would make the menu unusable. The BOOT splash is not held either, and the paragraph in
+> `12` records why it briefly was.
+
 The full loop a player can complete start-to-finish — closed the last structural gaps
 (no menu-driven path into online play, no matchmaking feedback, no tutorial) in the
 2026-08-03 pass below, and collapsed the two front-door screens that pass left behind into

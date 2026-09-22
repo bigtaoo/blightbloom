@@ -20,7 +20,6 @@ import {
   type SplashDoc,
   type SplashNode,
 } from './bootSplash';
-import { MIN_BOOT_SPLASH_MS } from './bootHold';
 
 /** `index.html`'s two ids, as the plain objects this module actually touches. */
 class FakeNode implements SplashNode {
@@ -79,7 +78,7 @@ describe('setBootProgress', () => {
 });
 
 describe('hideBootSplash', () => {
-  it('fills the bar, waits out the floor, fades, and only then removes', async () => {
+  it('fills the bar, fades, and only then removes — with nothing waited out in front', async () => {
     const { doc, splash, bar } = fakeSplash();
     const order: string[] = [];
     const sleep = (ms: number): Promise<void> => {
@@ -87,12 +86,17 @@ describe('hideBootSplash', () => {
       return Promise.resolve();
     };
 
-    await hideBootSplash({ doc, elapsed: () => 400, sleep });
+    await hideBootSplash({ doc, sleep });
 
     // The bar reaching the end is part of coming down: a splash that fades out at 70% looks
     // like it gave up rather than finished.
     expect(bar.style.width).toBe('100%');
-    expect(order).toEqual([`sleep ${MIN_BOOT_SPLASH_MS - 400}`, `sleep ${BOOT_SPLASH_FADE_MS}`]);
+    // ONE sleep, and it is the fade. Between 2026-09-21 and 2026-09-22 there was a second one
+    // in front of it — a three-second floor counted from navigation — and taking it back out
+    // is the whole point of this assertion being an equality rather than a `toContain`: an
+    // extra wait added anywhere in this function is a slower front door, and the splash looks
+    // identical either way.
+    expect(order).toEqual([`sleep ${BOOT_SPLASH_FADE_MS}`]);
     expect(splash.classes).toEqual([HIDING_CLASS]);
     expect(splash.removed).toBe(true);
   });
@@ -105,7 +109,7 @@ describe('hideBootSplash', () => {
     const sleep = (ms: number): Promise<void> =>
       ms === BOOT_SPLASH_FADE_MS ? new Promise((r) => (releaseFade = () => r())) : Promise.resolve();
 
-    const hidden = hideBootSplash({ doc, elapsed: () => MIN_BOOT_SPLASH_MS, sleep });
+    const hidden = hideBootSplash({ doc, sleep });
     await new Promise((r) => setTimeout(r, 0));
     expect(splash.classes).toEqual([HIDING_CLASS]);
     expect(splash.removed).toBe(false);
@@ -115,18 +119,19 @@ describe('hideBootSplash', () => {
     expect(splash.removed).toBe(true);
   });
 
-  it('waits the floor out even when there is no splash left to remove', async () => {
-    // The floor is about what the PLAYER sees, and on a host whose element is already gone
-    // the game behind it is still not ready. Returning early here would let `boot()` finish
-    // ahead of the floor on exactly the path that cannot be seen.
+  it('returns at once when there is no splash left to remove', async () => {
+    // A host whose element is already gone, and the mini-game runtime that never had one.
+    // Nothing to fade means nothing to wait for — and `boot()` awaits this as its last
+    // statement, so any sleep reached on this path is time added to a boot with no splash in
+    // front of it to justify the wait.
     const slept: number[] = [];
     const { doc } = fakeSplash(false);
     const sleep = (ms: number): Promise<void> => {
       slept.push(ms);
       return Promise.resolve();
     };
-    await hideBootSplash({ doc, elapsed: () => 0, sleep });
-    expect(slept).toEqual([MIN_BOOT_SPLASH_MS]);
+    await hideBootSplash({ doc, sleep });
+    expect(slept).toEqual([]);
   });
 });
 

@@ -311,7 +311,7 @@ describe('the pure layer', () => {
     }
     // Known and deliberate: these reach no foreign package but are renderer/engine
     // collaborators rather than pure logic — see PURE_FILES' own note on RunLifecycle.
-    const KNOWN = new Set(['ArtGate.ts', 'ForgeActions.ts', 'RunOutcome.ts', 'ScreenFlow.ts',
+    const KNOWN = new Set(['TransitionGate.ts', 'ForgeActions.ts', 'RunOutcome.ts', 'ScreenFlow.ts',
       'AllyController.ts', 'CommandBuilder.ts', 'EventReactor.ts', 'GameLoop.ts',
       'LocalPredictor.ts', 'PvpBotController.ts', 'TutorialHintController.ts',
       'RunLifecycle.ts', 'gameAssembly.ts', 'confirmEdge.ts', 'ai/tactics.ts',

@@ -132,7 +132,7 @@ async function boot() {
   void audio.preload();
 
   // Phase two, kicked and not awaited: the rig/weapon/biome/environment art and the music,
-  // downloaded while the player is reading the menu. `Game.artGate` awaits it at the run
+  // downloaded while the player is reading the menu. `Game.transitions` awaits it at the run
   // boundary, so nothing downstream has to know whether it has landed.
   //
   // BEFORE `new Game(...)`, not after `start()`, and that ordering is load-bearing: this call is
@@ -179,8 +179,8 @@ async function boot() {
   // The splash comes down LAST, and everything about that is in `bootSplash.ts`: it waits for
   // a frame the renderer has actually drawn (`start()` fills the stage, it does not draw it —
   // removing the splash on the next statement uncovered a canvas the menu had never been
-  // rendered onto), and it never comes down before `bootHold.ts`'s floor. Last in `boot()`
-  // because it is a wait: nothing the player can use should be queued behind it.
+  // rendered onto), and then it goes, with no minimum in front of it. Last in `boot()`
+  // because nothing the player can use should be queued behind the reveal.
   await afterFirstRenderedFrame(app.ticker);
   await hideBootSplash();
 }

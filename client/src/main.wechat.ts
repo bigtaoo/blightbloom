@@ -201,15 +201,15 @@ async function boot() {
   // the `lobby` pack, because 70 sample reads issued beside the one download the player is
   // waiting on only make that wait longer.
   void audio.preload();
-  // Awaited: `done()` holds the screen for `bootHold.ts`'s floor before destroying it, so a
-  // dropped promise here would take it down early on exactly the fast boots the floor exists
-  // for. It is time this entry spends idle rather than constructing, and that is the price of
-  // keeping `done()` ahead of `new Game(...)` — see the scrim note in loadingScreen.ts.
-  await loading.done();
+  // Down as soon as the lobby pack is in, and not one tick later: there is no floor on this
+  // screen (see `bootSplash.ts`'s header for the one that briefly was). Still ahead of
+  // `new Game(...)`, because this screen is parked on `app.stage` and the game builds its
+  // own layer tree there — see the scrim note in loadingScreen.ts.
+  loading.done();
 
   // Phase two, kicked and not awaited — the `run` packs plus `music`. On this platform that is
   // where most of the game's bytes are: the main package is now js/game.js alone (~0.95 MB of the
-  // 4.00 MB ceiling), and everything else arrives while the menu is up. `Game.artGate` awaits it
+  // 4.00 MB ceiling), and everything else arrives while the menu is up. `Game.transitions` awaits it
   // at the run boundary. Before `new Game(...)` for the same load-bearing reason as the web
   // entry: this call is what arms the gate. See main.ts.
   beginDeferredArt();

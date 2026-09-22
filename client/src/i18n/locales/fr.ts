@@ -26,6 +26,8 @@ export const fr: Translations<typeof en> = {
   loading: {
     boot: 'CHARGEMENT',
     art: 'CHARGEMENT DES GRAPHISMES',
+    enteringRun: 'ENTRÉE DANS LE DONJON',
+    returningToHub: 'RETOUR AU HALL',
   },
   pauseMenu: {
     title: 'EN PAUSE',

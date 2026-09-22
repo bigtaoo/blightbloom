@@ -26,6 +26,8 @@ export const pl: Translations<typeof en> = {
   loading: {
     boot: 'WCZYTYWANIE',
     art: 'WCZYTYWANIE GRAFIKI',
+    enteringRun: 'WEJŚCIE DO LOCHU',
+    returningToHub: 'POWRÓT DO HOLU',
   },
   pauseMenu: {
     title: 'WSTRZYMANO',
