@@ -15,6 +15,7 @@ import type { Scene } from '../scene/Scene';
 import type { RoomBuilder } from '../scene/RoomBuilder';
 import { MAX_WALL_HEIGHT } from '../scene/wallGeometry';
 import { DoorFxDriver } from '../scene/doorTick';
+import { OnlineInterpolation } from './onlineInterpolation';
 import type { OcclusionFocus } from '../scene/occlusion';
 import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
@@ -129,6 +130,7 @@ export class GameLoop {
     ...DEFAULT_PREDICTOR,
   });
   private predLastTick = -1;
+  private readonly onlineInterp = new OnlineInterpolation(); // online render interpolation
   private readonly doorFx = new DoorFxDriver(); // per-frame fixture motion (`scene/doorTick.ts`)
 
   // Reused every `updateFx` call instead of a fresh array of fresh objects per render frame
@@ -156,6 +158,7 @@ export class GameLoop {
   resetOnlinePrediction(): void {
     this.predictor.deactivate();
     this.predLastTick = -1;
+    this.onlineInterp.reset();
   }
 
   update(dt: number): void {
@@ -320,17 +323,23 @@ export class GameLoop {
       this.predictor.deactivate();
     }
 
-    this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL (ticket-assigned) seat
+    // Mirror the confirmed state only on a frame whose tick moved — and on one that carries
+    // events, which is not belt-and-braces (`onlineInterpolation.ts` has the trade).
+    const advanced = this.onlineInterp.observe(s.tick, dt);
+    if (advanced || events.length > 0) {
+      this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL (ticket-assigned) seat
+      this.consumeEvents(events);
+    }
+    if (advanced) this.spawnBulletTrails(s); // once per sim tick — see its own doc comment
     // Draw the local seat from the predictor (camera follows it too); remote seats confirmed.
     if (predicting && p && this.predictor.isActive) {
       const pose = this.predictor.pose;
       this.deps.scene.positionLocal(pose.x, pose.y, fpToPx(p.z), bradToRad(p.facing), pose.moving);
     }
-    this.spawnBulletTrails(s);
-    this.consumeEvents(events);
-    this.deps.scene.interpolate(1, dt);
+    const { alpha } = this.onlineInterp;
+    this.deps.scene.interpolate(alpha, dt);
     this.updateFx(dt);
-    this.updateCamera(1);
+    this.updateCamera(alpha);
     this.updateHud(dt);
     this.deps.touchControlsView.update(this.deps.input.getTouchVisual());
 
@@ -360,7 +369,9 @@ export class GameLoop {
 
   // ---- fx / camera / hud (FxController/HudView do the actual work — see those files) ----
 
-  // Per-element bullet trails (design/03/07). Once per sim tick, drop a fading
+  // Per-element bullet trails (design/03/07). Once per sim tick — offline from `stepSim`, online
+  // from `advanceOnline`'s tick boundary (it ran per RENDER frame there until 2026-09-22, so an
+  // online tail was twice as dense as the offline one it matches). Drop a fading
   // element-coloured dot at each live elemental bullet's position; the fx fade
   // (FxController.updateFx) turns the string of dots into a comet tail. Physical
   // rounds leave none — the trail IS the "this shot is elemental" tell, matched to

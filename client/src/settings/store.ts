@@ -119,5 +119,10 @@ function migrate(parsed: unknown): SettingsState {
     controlLayout: controlLayout(p.controlLayout, d.controlLayout),
     quality: quality(p.quality, d.quality),
     frameRate: frameRate(p.frameRate, d.frameRate),
+    // A save written before this setting existed has no field, and `typeof undefined` is not
+    // `'boolean'`, so it lands on the default — off, i.e. exactly how that player's game
+    // already looked. Same shape as `muted` above deliberately: a boolean read out of storage
+    // is the one kind of field where `!!v` would silently turn a string into a preference.
+    reduceMotion: typeof p.reduceMotion === 'boolean' ? p.reduceMotion : d.reduceMotion,
   };
 }

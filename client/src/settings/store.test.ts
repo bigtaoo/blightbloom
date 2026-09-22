@@ -209,6 +209,41 @@ describe('SettingsStore — in-run frame cap (game/powerBudget.ts, 2026-09-08)',
   });
 });
 
+describe('reduceMotion', () => {
+  it('round-trips both values', () => {
+    withFakeLocalStorage(() => {
+      for (const on of [true, false]) {
+        const store = createWebSettingsStore(`t.settings.motion.${String(on)}`);
+        store.save({ ...defaultSettingsState(), reduceMotion: on });
+        expect(createWebSettingsStore(`t.settings.motion.${String(on)}`).load().reduceMotion).toBe(on);
+      }
+    });
+  });
+
+  it('leaves a save that predates the setting looking exactly as it did', () => {
+    // Off, i.e. how that player's game already looked. The other direction would turn the
+    // shake off for every existing player on the strength of a missing field.
+    withFakeLocalStorage(() => {
+      const { reduceMotion, ...before } = defaultSettingsState();
+      void reduceMotion;
+      localStorage.setItem('t.settings.motion.old', JSON.stringify(before));
+      expect(createWebSettingsStore('t.settings.motion.old').load().reduceMotion).toBe(false);
+    });
+  });
+
+  it('refuses a non-boolean rather than coercing it', () => {
+    // `!!v` would read the string 'false' — which is what a hand-edited save or a sloppy
+    // export writes — as ON, i.e. as a preference the player never expressed.
+    withFakeLocalStorage(() => {
+      for (const bad of ['false', 'true', 1, 0, null] as unknown[]) {
+        const key = `t.settings.motion.bad.${String(bad)}`;
+        localStorage.setItem(key, JSON.stringify({ ...defaultSettingsState(), reduceMotion: bad }));
+        expect(createWebSettingsStore(key).load().reduceMotion, String(bad)).toBe(false);
+      }
+    });
+  });
+});
+
 describe('persistedLocale — what the entry points read before `Game` exists', () => {
   it('reads the locale a returning player last chose', () => {
     withFakeLocalStorage(() => {

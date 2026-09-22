@@ -34,6 +34,7 @@ function privateOf(s: Settings) {
     controlLayoutBtn: ButtonInternals;
     qualityBtn: ButtonInternals;
     frameRateBtn: ButtonInternals;
+    reduceMotionBtn: ButtonInternals;
     backBtn: ButtonInternals;
   };
 }
@@ -411,5 +412,84 @@ describe('Settings — frame rate', () => {
       const centre = p.frameRateBtn.view.position.x + p.frameRateBtn.width / 2;
       expect(centre, loc).toBeCloseTo(400, 6);
     }
+  });
+});
+
+/**
+ * Reduce motion (2026-09-22) — the accessibility row, and the only button on this screen that
+ * had no case of its own until a mutation battery pointed at the hole. Everything about it is
+ * one boolean, which is exactly why it is worth pinning: a toggle wired to the wrong field
+ * compiles, renders, relabels, and reports the wrong setting forever.
+ */
+describe('Settings — reduce motion', () => {
+  afterEach(() => resetLocaleForTests());
+
+  it('toggles on and off, reporting each state through onChange', () => {
+    const s = new Settings();
+    const seen: SettingsState['reduceMotion'][] = [];
+    s.onChange = (next) => { seen.push(next.reduceMotion); s.show(800, 600, next); };
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: false });
+    const p = privateOf(s);
+    p.reduceMotionBtn.onTap?.();
+    p.reduceMotionBtn.onTap?.();
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('labels the state the player is in, and changes nothing else', () => {
+    // The "nothing else" half is the one that matters: the tap builds a whole new
+    // `SettingsState`, so a spread that dropped a field — or a handler that flipped `muted`
+    // because it was copied from the button above — reports a plausible object either way.
+    const s = new Settings();
+    const p = privateOf(s);
+    const onChange = vi.fn();
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: false });
+    expect(p.reduceMotionBtn.label.text).toBe('REDUCE MOTION: OFF');
+    s.onChange = onChange;
+    p.reduceMotionBtn.onTap?.();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      reduceMotion: true, muted: false, quality: 'auto', frameRate: 60, controlLayout: 'standard',
+    }));
+    expect(p.reduceMotionBtn.label.text).toBe('REDUCE MOTION: ON');
+  });
+
+  it('starts from the persisted value rather than from a default', () => {
+    // A player who turned this on is a player the game made unwell. Showing the screen with it
+    // reading OFF would be worse than the setting not existing.
+    const s = new Settings();
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: true });
+    expect(privateOf(s).reduceMotionBtn.label.text).toBe('REDUCE MOTION: ON');
+  });
+
+  it('stays centred and translated in every locale', async () => {
+    const s = new Settings();
+    const p = privateOf(s);
+    for (const loc of LOCALES) {
+      await useLocale(loc);
+      s.show(800, 600, { ...defaultSettingsState(), locale: loc, reduceMotion: true });
+      expect(p.reduceMotionBtn.label.text, loc).not.toContain('{mode}');
+      expect(p.reduceMotionBtn.label.text, loc).not.toBe('settings.reduceMotion');
+      // Every locale has to translate the VALUE too, not just the label — an `ON` left in
+      // English inside a translated row is the usual way a two-part string goes half-done.
+      expect(p.reduceMotionBtn.label.text, loc).not.toContain('{');
+      const centre = p.reduceMotionBtn.view.position.x + p.reduceMotionBtn.width / 2;
+      expect(centre, loc).toBeCloseTo(400, 6);
+    }
+  });
+
+  it('does not overlap the row above it or the pair below', async () => {
+    // The row was inserted between FRAME RATE and MUTE/BACK, and `show()` advances a running
+    // `y` — an insert that forgot to advance it stacks two buttons on the same line, which no
+    // label or state assertion can see.
+    //
+    // BOTH neighbours, and the second half was missing until a mutation battery pointed at it:
+    // deleting the `y += 44` after this row leaves the row itself correctly placed and drops
+    // MUTE/BACK on top of it, so a case that only looked upward passed the mutant while its own
+    // name said it covered the pair below.
+    const s = new Settings();
+    const p = privateOf(s);
+    await useLocale('en');
+    s.show(800, 600, defaultSettingsState());
+    expect(p.reduceMotionBtn.view.position.y).toBeGreaterThan(p.frameRateBtn.view.position.y + 20);
+    expect(p.muteBtn.view.position.y).toBeGreaterThan(p.reduceMotionBtn.view.position.y + 20);
   });
 });
