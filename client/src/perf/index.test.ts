@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Container, Graphics, Ticker, UPDATE_PRIORITY } from 'pixi.js';
 import { installPerf, type InstalledPerf } from './index';
+import { activeDisplayHz, resetDisplayHz } from '../game/powerBudget';
 
 // PerfOverlay builds a real Pixi `Text`, which measures on a canvas this plain-node vitest
 // does not have. Stubbed to a plain Container-shaped object: this file is about the WIRING
@@ -60,6 +61,9 @@ let handle: InstalledPerf | null = null;
 afterEach(() => {
   handle?.uninstall();
   handle = null;
+  // The display rate is a module mirror, and `installPerf` writes it through its real default
+  // in the case below — one file's measurement must not leak into the next.
+  resetDisplayHz();
   delete (globalThis as { __perf?: unknown }).__perf;
   vi.restoreAllMocks();
 });
@@ -151,6 +155,88 @@ describe('installPerf — the ?perf=1 session', () => {
     handle = installPerf(app, { overlay: true, windowMs: 50, onSnapshot: (s) => seen.push(s) });
     run(ticker, 20);
     expect(seen.length).toBeGreaterThan(0);
+  });
+});
+
+// ---- the 2026-09-22 wiring ----
+//
+// Both of these survived a mutation battery: `installPerf` could stop probing the display and
+// stop reporting windows, and every unit test for `displayRate.ts`, `perfReport.ts` and
+// `perfReporting.ts` would stay green — because each of those tests the piece rather than the
+// connection. What that buys is the whole feature dead with nothing red: a frame cap that never
+// learns the display rate, and a dashboard that looks exactly like nobody playing.
+
+describe('installPerf — the display-rate probe', () => {
+  it('probes the display and hands the answer to the frame cap', () => {
+    const { app } = fakeApp();
+    const onDisplayHz = vi.fn();
+    // A synchronous rAF, so the probe's whole second happens inside this call.
+    let t = 0;
+    handle = installPerf(app, {
+      raf: (cb) => { t += 1000 / 120; cb(t); },
+      onDisplayHz,
+    });
+    expect(onDisplayHz).toHaveBeenCalledTimes(1);
+    expect(onDisplayHz.mock.calls[0]![0]).toBeCloseTo(120, 4);
+  });
+
+  it('probes in a plain session too, not only under ?perf=1', () => {
+    // The cap is not a debugging feature — the overlay is. A probe gated on the flag would
+    // leave every real player on the conservative cap and every developer unable to see it.
+    const { app } = fakeApp();
+    const onDisplayHz = vi.fn();
+    let t = 0;
+    handle = installPerf(app, { overlay: false, raf: (cb) => { t += 1000 / 60; cb(t); }, onDisplayHz });
+    expect(onDisplayHz).toHaveBeenCalledTimes(1);
+    expect(onDisplayHz.mock.calls[0]![0]).toBeCloseTo(60, 4);
+  });
+
+  it('wires the answer to the frame cap by DEFAULT, not only when a caller passes a sink', () => {
+    // The mutation this kills replaces `setDisplayHz` with a no-op default, and it survived the
+    // first version of this section because every case above passes its own `onDisplayHz` — the
+    // injected fake leaving the SHIPPED path unrun, which is the most common way a wiring test
+    // agrees with a broken wire. So this one injects nothing and reads the real mirror.
+    expect(activeDisplayHz()).toBe(null);
+    const { app } = fakeApp();
+    let t = 0;
+    handle = installPerf(app, { raf: (cb) => { t += 1000 / 144; cb(t); } });
+    expect(activeDisplayHz()).toBeCloseTo(144, 4);
+  });
+
+  it('reports null, rather than nothing, on a host with no rAF', () => {
+    // Some WeChat shells. `null` is a state `tickerCapFor` knows how to be correct in; silence
+    // would leave the cap waiting on a callback that never comes.
+    const { app } = fakeApp();
+    const onDisplayHz = vi.fn();
+    handle = installPerf(app, { raf: undefined, onDisplayHz });
+    // `raf: undefined` is indistinguishable from "not passed", so this also covers the host
+    // where `globalThis.requestAnimationFrame` is absent — which is every test in this file.
+    expect(onDisplayHz).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('installPerf — frame-pacing telemetry', () => {
+  it('hands every closed window to the reporter', () => {
+    const { app, ticker } = fakeApp();
+    const reportWindow = vi.fn();
+    handle = installPerf(app, { reportWindow, windowMs: 100 });
+    run(ticker, 40);
+    expect(reportWindow).toHaveBeenCalled();
+    // The same object the monitor reported, not a copy or a summary: the reporter reads
+    // `longFrameRatio`, which nothing else in the snapshot carries.
+    expect(reportWindow.mock.calls.at(-1)![0]).toBe(handle.monitor.latest!.window);
+  });
+
+  it('reports alongside a caller-supplied onSnapshot rather than instead of it', () => {
+    // The quality watchdog is on `onSnapshot` and the telemetry is on this seam; one silently
+    // replacing the other is the shape of bug that leaves a device un-downgraded forever.
+    const { app, ticker } = fakeApp();
+    const reportWindow = vi.fn();
+    const onSnapshot = vi.fn();
+    handle = installPerf(app, { reportWindow, onSnapshot, windowMs: 100 });
+    run(ticker, 40);
+    expect(reportWindow).toHaveBeenCalled();
+    expect(onSnapshot).toHaveBeenCalledTimes(reportWindow.mock.calls.length);
   });
 });
 

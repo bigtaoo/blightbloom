@@ -418,3 +418,125 @@ full-bleed sprite at `alpha === 1` covering the viewport, from `Panel`'s backgro
 `game/scene/layers.test.ts` case (every layer a run draws into is under `world`; `backdrop`/`ui`
 are not). Deleting `background: 'hub'` from one screen turns the first red — without it, the
 world-hiding rule would quietly turn that screen into a hole.
+
+## Frame pacing (2026-09-22)
+
+A cap decides how often a frame is drawn. This is about whether those frames arrive **evenly** —
+and it exists because the report that prompted it (*"我在电脑上玩20分钟左右就头晕"* — dizziness
+after about twenty minutes on a desktop at 1920x1080 @ 60 Hz) was invisible to every instrument
+in this document, including the one added directly above it.
+
+**`Ticker.maxFPS` is not a rate the renderer honours; it is a gate that drops frames.** Pixi
+stores it as `_minElapsedMS = 1000 / maxFPS` and compares against an elapsed time **truncated to
+whole milliseconds** (`const delta = currentTime - this._lastFrame | 0`), then carries the phase
+forward through `_lastFrame = currentTime - delta % _minElapsedMS`. Two consequences, neither
+documented by Pixi and both load-bearing here:
+
+- the truncation costs up to a full millisecond, so a `_minElapsedMS` equal to the display's own
+  interval loses the comparison on most frames — 16 against 16.667 at 60 Hz;
+- a *fractional* `_minElapsedMS` makes the carried-forward phase drift, because `delta` is an
+  integer and the remainder is not, so the residual grows on every pass until it crosses an
+  interval and a frame is dropped.
+
+With perfectly spaced timestamps the second effect hides the first, which is exactly what
+`powerBudget.test.ts` was driving when it pronounced the cap healthy in 2026-09-08. Real vsync
+timestamps are not perfectly spaced. At ±0.2 ms of jitter — less than any real rAF timestamp —
+the shipped cap of 60 on a 60 Hz panel drops **103 frames a minute: a doubled frame about 1.7
+times a second, indefinitely**. That is not what 58 fps looks like to a player, and judder is
+what makes people ill.
+
+`tickerCapFor` (`game/powerBudget.ts`) translates a phase's *target* into what the gate can
+honour, in three cases: a display already at or below the target is left **uncapped** (a gate can
+only remove frames the display was going to show); an unknown display rate is capped at the
+target's own whole millisecond; a faster display has the target snapped to a whole number of
+vsyncs per frame first, because that is the only kind of rate a vsynced display can deliver
+evenly at all. Measured against the real `Ticker` in `powerBudget.test.ts`, uneven frames as a
+share of frames drawn:
+
+| display | target | shipped 2026-09-08 | after |
+|---|---|---|---|
+| 60 Hz | 60 | 58.3 fps / 2.9% | **60 fps / 0%** |
+| 120 Hz | 60 | 58.3 fps / 5.7% | 60 fps / 0.2% |
+| 144 Hz | 60 | 58.8 fps / 44.7% | 73.5 fps / 4% |
+| 90 Hz | 60 | 58.2 fps / 45.5% | 44.9 fps / 7% |
+| 60 Hz | 30 | 29.6 fps / 3% | 30 fps / 0.1% |
+
+Three things that row of tables settles, and one it does not:
+
+- **The 90 Hz row is a deliberate trade, not a regression.** 90/60 is 1.5 vsyncs per frame, which
+  a display can only draw as an endless 2,2,3 — so the target moves to the nearest whole division,
+  45. An even 45 is what a player reads as smooth; a 58 fps average alternating one and two
+  vsyncs per frame is what they read as a stutter.
+- **The residue on 90/100/165 Hz panels cannot be removed through `maxFPS`.** Their vsync interval
+  is not a whole number of milliseconds, so no integer `_minElapsedMS` divides it evenly. Fixing
+  those means not using Pixi's gate at all — taking `app.render` off the ticker and calling it on
+  our own schedule — which is a larger change than the report asked for and is recorded here as
+  the follow-up rather than attempted.
+- **The idle cap keeps a ~2.7% residue and that is accepted.** 30 fps on a 60 Hz panel is
+  33.33 ms, also not a whole number. It is accepted because of WHERE it lands: `IDLE_MAX_FPS`
+  applies only to phases that draw no world, i.e. to a static menu panel, where a frame of the
+  same unchanged image lasting twice as long is not observable by anyone. An animated menu would
+  make that argument false, and `powerBudget.test.ts` says so at the case.
+- **The display rate has to be measured, and there is no API for it.** `perf/displayRate.ts`
+  times rAF for a second at boot — rAF keeps firing at the display rate whether or not the ticker
+  runs a frame, because the cap is applied *inside* the ticker callback. It answers `null` rather
+  than guessing when the sample is short, implausible, or has no single rate in it, and
+  `tickerCapFor`'s unknown branch is correct for as long as it does. **It also refuses a sample
+  taken while the page is hidden, and that guard is not a refinement** — it was added an hour
+  after the rest, in a browser, because a hidden pane reported **30.03 Hz**: a browser throttles
+  rAF in a hidden tab and not always to the 1 Hz the plausible band already rejects. Believed,
+  that reading made `tickerCapFor` answer "the display is slower than the target" and return 0 —
+  no cap at all, for the whole session, on both the idle and the play target, i.e. the power
+  budget silently off. Opening a game in a background tab and switching to it a minute later is
+  an ordinary thing to do, so the probe restarts its sample instead of giving up: rAF is not
+  running while hidden, so the next callback IS the page coming back.
+
+### The other two causes, from the same report
+
+A dizziness report has more than one candidate and only one of them was a bug, so the other two
+were fixed on their own terms rather than folded into the above:
+
+- **An online match had no render interpolation at all.** `Entity.pushState` shifts cur → prev, so
+  `Scene.reconcile` is only meaningful once per sim tick; `GameLoop.advanceOnline` called it every
+  render frame, which collapses prev onto cur and leaves nothing to interpolate between. That is
+  why it passed `alpha = 1`, and why an online match moved in 30 Hz steps on a 60 Hz screen —
+  every remote actor, every bullet, and the camera whenever the local seat was not being
+  predicted. It mirrors on the tick boundary now (`controllers/onlineInterpolation.ts`), at the
+  standard cost of entity interpolation: remote entities are drawn up to one tick behind the
+  newest confirmed frame, the local seat is unaffected because the predictor snaps its view after.
+  Found in passing: `spawnBulletTrails` ran on that same per-frame path, so an online comet tail
+  was twice as dense as the offline one it is meant to match, and denser again at 120 Hz.
+- **There was no reduce-motion setting.** Camera shake is ±14 px of white noise applied to the
+  whole world layer and re-rolled every render frame; `render/motion.ts` and `10`'s REDUCE MOTION
+  row now suppress it and the chromatic-aberration pulse together. Off by default — the shake is
+  part of how the game is meant to feel — but a player who needs it off needs it off permanently,
+  which is what persisting it is for.
+
+### Telemetry, and why the answer to "do you have statistics?" was no
+
+`perf/README.md` had said since the port that the monitor has no sink and that `onWarn`/
+`onSnapshot` were seams for one. The report made the gap concrete: the monitor was running in
+every session and could not have produced the number in question even in principle. Two reasons:
+its only sink was a `console.warn` behind a threshold nothing normal reaches (five consecutive
+windows under 25 fps — the machine in the report was holding 58), and a window carried no metric
+for judder at all. An average and a p95 both miss it: at 2.9% of frames the doubled ones are
+inside the 5% the percentile discards.
+
+A mutation battery over the whole change is what made those two claims checkable rather than
+stated: 46 mutants, **36 killed on the first pass**, and every survivor a hole in the tests
+rather than unreachable code. The two worth carrying forward, because both are shapes rather
+than incidents: `longFrameRatio` was asserted by nothing at 100% line and branch coverage (every
+existing case ran the line and looked at other fields), and `installPerf`'s wiring was asserted
+by nothing, so the display probe and the window reporter could both be disconnected with every
+unit test for the pieces still green. The second one survived twice — the wiring cases added
+after the first pass all injected their own sink, leaving the production default unrun. 54
+mutants and 54 killed now; `design/roadmap/88` has the full account.
+
+`FrameWindow.longFrameRatio` is that metric — the share of frames markedly longer than the
+window's own median, so it says nothing about whether the frame rate is high enough and
+everything about whether it is steady. `perf/perfReport.ts` aggregates a minute of play into one
+logfmt line and sends it through the existing client-log channel (`19` §10) to Loki; the *Frame
+pacing* row of the `Client` dashboard reads it. The log channel rather than the analytics one
+because the questions are different shapes: analytics is a closed vocabulary rolled up daily to
+answer "do people come back", and this is per-session, wanted within the minute, and the thing
+you do with a bad one is filter to that session and read what else it said.

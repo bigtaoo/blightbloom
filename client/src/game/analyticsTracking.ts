@@ -197,6 +197,22 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
   return true;
 }
 
+/**
+ * The phase the last rendered frame was in, or `null` before the first one.
+ *
+ * Exported for `perfReporting.ts` (2026-09-22), which needs "is the player in a run right now"
+ * and has no other way to ask: it is driven from the perf monitor's window callback, which
+ * knows about frames and nothing about phases.
+ *
+ * Reliable in every host, including the ones that never install analytics: `reportFrame` sets
+ * `lastPhase` unconditionally, and it is the `track` calls below it that no-op. That is worth
+ * stating because the reverse would be invisible — a tool or a test would simply report every
+ * window as "not in a run" and the telemetry would be empty rather than wrong.
+ */
+export function lastRenderedPhase(): Phase | null {
+  return lastPhase;
+}
+
 /** Test-only: forget the last phase and the run snapshot. */
 export function resetAnalyticsTrackingForTests(): void {
   lastPhase = null;

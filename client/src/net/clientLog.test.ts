@@ -150,14 +150,26 @@ describe('the request that leaves', () => {
 });
 
 describe('what gets flushed', () => {
-  it('sends only entries at or above minLevel, defaulting to warn', async () => {
+  it('sends only entries at or above minLevel, defaulting to info', async () => {
+    // `'warn'` until 2026-09-22 — widened so frame-pacing telemetry has a level that is not a
+    // failure (`DEFAULT_MIN_LEVEL`'s own note). `'debug'` staying below the line is the half
+    // worth asserting: the default is a decision about what is CHATTY, and a default that sent
+    // everything would make the level meaningless rather than generous.
     const { logger, sent } = harness();
     logger.log('debug', 't', 'd');
     logger.log('info', 't', 'i');
     logger.log('warn', 't', 'w');
     logger.log('error', 't', 'e');
     await logger.flush();
-    expect((sent[0]!.body.entries as Array<{ msg: string }>).map((e) => e.msg)).toEqual(['w', 'e']);
+    expect((sent[0]!.body.entries as Array<{ msg: string }>).map((e) => e.msg)).toEqual(['i', 'w', 'e']);
+  });
+
+  it('still honours an explicit minLevel over the default', async () => {
+    const { logger, sent } = harness({ minLevel: 'warn' });
+    logger.log('info', 't', 'i');
+    logger.log('error', 't', 'e');
+    await logger.flush();
+    expect((sent[0]!.body.entries as Array<{ msg: string }>).map((e) => e.msg)).toEqual(['e']);
   });
 
   it('sends nothing at all when there is nothing sendable', async () => {

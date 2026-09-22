@@ -53,6 +53,9 @@ export const pl: Translations<typeof en> = {
     qualityMedium: 'ŚREDNIA',
     qualityAutoMedium: 'AUTO (ŚREDNIA)',
     frameRate: 'LICZBA FPS: {fps}',
+    reduceMotion: 'OGRANICZ RUCH: {mode}',
+    on: 'WŁ.',
+    off: 'WYŁ.',
     back: 'WSTECZ',
   },
   forge: {
