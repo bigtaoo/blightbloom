@@ -43,7 +43,7 @@
 // and the one exit. Everything else a player can reach — main menu, mode select, account,
 // squad, settings, store — draws from the `lobby` pack alone and is never gated at all.
 import type { Container, Ticker } from 'pixi.js';
-import { ensureRunArt, isDeferredArtArmed, isRunArtReady, runArtUnitCount } from '../../render/preloadArt';
+import { ensureRunArt, isDeferredArtArmed, isRunArtReady } from '../../render/preloadArt';
 import { t } from '../../i18n';
 import { LoadingScreen } from '../ui/loadingScreen';
 
@@ -135,12 +135,17 @@ export class TransitionGate {
     this.deps.overlay.addChild(screen.view);
 
     const waits: Promise<unknown>[] = [];
+    // A progress bar only when the ART is what we are waiting for. Over a pure floor it would
+    // be a progress report about a timer, which is the one thing a bar must never be.
+    //
+    // There is no `setProgress(0, …)` in front of this, and there used to be (deleted
+    // 2026-09-22, found by a mutation battery: removing it changed nothing). `ensureRunArt`
+    // replays where the download already is, synchronously, as it registers the listener — so
+    // an explicit zero here was overwritten on the next statement, and in the case its own
+    // comment claimed to be for (a gate opening at 12 of 16 units) the zero was the WRONG
+    // number. The property that call was reaching for is real and is asserted in
+    // `TransitionGate.test.ts`; it is `ensureRunArt` that provides it.
     if (artPending) {
-      // Sized before the first tick arrives: `ensureRunArt` may already be most of the way
-      // done, and a bar that appears at 0 and jumps is worse than one that appears where it
-      // is. Only when the art is what we are waiting for — a bar over a pure floor would be a
-      // progress report about a timer.
-      screen.setProgress(0, runArtUnitCount());
       waits.push(
         ensureRunArt((done, total) => screen.setProgress(done, total))
           // Caught here, so the gate opens on EVERY outcome. Every loader inside

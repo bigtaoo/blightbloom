@@ -21,7 +21,13 @@ import { readFileSync } from 'node:fs';
 import { MIN_TRANSITION_MS, TransitionGate } from './TransitionGate';
 import { setAssetHost, resetAssetHost, webAssetHost, type AssetHost } from '../../render/assetHost';
 import { resetPackLoader } from '../../render/packLoader';
-import { beginDeferredArt, isRunArtReady, resetPreloadArt, runArtUnitCount } from '../../render/preloadArt';
+import {
+  beginDeferredArt,
+  ensureRunArt,
+  isRunArtReady,
+  resetPreloadArt,
+  runArtUnitCount,
+} from '../../render/preloadArt';
 import { pinTextMeasurementToPaintCanvas } from '../../render/textMetrics';
 import { LoadingScreen } from '../ui/loadingScreen';
 import { t } from '../../i18n';
@@ -36,6 +42,37 @@ function blockingHost(): { host: AssetHost; release(): void } {
       for (const resolve of pending.splice(0)) resolve();
     },
   };
+}
+
+/** A host whose FIRST `settleFirst` pack downloads land immediately and whose rest block, so
+ *  a gate can be opened against a load that is genuinely part-way done. `blockingHost` above
+ *  cannot express that: it is all-or-nothing, and "already at 12 of 16" is the state the
+ *  progress rule is about. */
+function partiallyBlockingHost(settleFirst: number): { host: AssetHost; release(): void } {
+  const pending: Array<() => void> = [];
+  let seen = 0;
+  return {
+    host: {
+      ...webAssetHost,
+      loadPack: () =>
+        seen++ < settleFirst ? Promise.resolve() : new Promise<void>((resolve) => pending.push(resolve)),
+    },
+    release: () => {
+      for (const resolve of pending.splice(0)) resolve();
+    },
+  };
+}
+
+/** Where the shared background load has got to. There is no getter for it, and the replay
+ *  `ensureRunArt` hands a listener as it registers IS the getter — the same fact the gate's
+ *  bar is drawn from. Registered ONCE and read through the closure, so polling this does not
+ *  pile up listeners on the shared load. */
+function runArtProbe(): () => number {
+  let done = 0;
+  void ensureRunArt((d) => {
+    done = d;
+  });
+  return () => done;
 }
 
 /** A floor that never elapses until it is told to — the only way to observe a gate that is
@@ -209,6 +246,32 @@ describe('a genuine wait', () => {
     expect(moved[moved.length - 1]).toEqual([total, total]);
   });
 
+  it('opens the bar where the download already is, not at zero', async () => {
+    // The gate can arrive mid-download — the background load starts the moment the lobby
+    // paints — and a bar that appears at 0 and jumps to 12/16 reads as a restart. This is
+    // `ensureRunArt`'s synchronous replay doing it, not the gate: the gate used to call
+    // `setProgress(0, runArtUnitCount())` first, which was overwritten on the next statement
+    // and, in exactly this case, was the wrong number. That line is deleted; this asserts the
+    // behaviour it claimed, so nobody re-adds it.
+    const { host, release } = partiallyBlockingHost(2);
+    setAssetHost(host);
+    const { gate } = gateWith();
+    beginDeferredArt();                        // kicks the background load
+    const settled = runArtProbe();
+    // The fixture has to actually BE mid-download, or this case passes on nothing.
+    await vi.waitFor(() => expect(settled()).toBeGreaterThan(0));
+
+    const setProgress = vi.spyOn(LoadingScreen.prototype, 'setProgress');
+    gate.defer(() => {});
+
+    const first = setProgress.mock.calls[0];
+    expect(first, 'the bar was never sized at all').toBeDefined();
+    expect(first![0], 'the bar opened at zero part-way through the download').toBe(settled());
+    expect(first![1]).toBe(runArtUnitCount());
+    release();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+  });
+
   it('leaves no ticker callback behind when the wait ends', async () => {
     // A leaked callback keeps redrawing a Graphics that is no longer on the stage, for the rest
     // of the session — on the layer that invalidates `ui`'s render group when it changes.
@@ -276,6 +339,16 @@ describe('the transitions that are gated', () => {
 });
 
 describe('the run boundary, which is held on purpose', () => {
+  it('is three seconds, which is the number that was asked for', () => {
+    // Every other case here compares `clock.slept` against `MIN_TRANSITION_MS`, which is a
+    // tautology over the one quantity the request actually named: "held for at least 3
+    // seconds". Retuning the constant to 300 passed the whole suite until this line existed
+    // (mutation battery, 2026-09-22). Asserted as a floor rather than an equality so a
+    // deliberate lengthening is not a test edit, and a silent shortening is.
+    expect(MIN_TRANSITION_MS).toBeGreaterThanOrEqual(3000);
+    expect(MIN_TRANSITION_MS).toBe(3000);
+  });
+
   it('holds the screen for MIN_TRANSITION_MS with the art already in', async () => {
     // The ask this whole pass is about: "a loading screen, shown for at least 3 seconds ...
     // the in-game screen switches, entering a map, returning to the lobby". The art is in, so
@@ -324,8 +397,14 @@ describe('the run boundary, which is held on purpose', () => {
     expect(gate.deferRunBoundary('run', retry)).toBe(true);
 
     clock.elapse(); // the floor is paid...
-    await Promise.resolve();
+    // A FULL macrotask turn, not `await Promise.resolve()`. That single microtask was what
+    // this case shipped with, and it is one link short of the `.then()` behind `Promise.race`
+    // — so the mutant resolved on the next tick, after the assertion had already passed, and
+    // survived (mutation battery, 2026-09-22). An assertion that a thing has NOT happened is
+    // only worth its wording if it gave the thing every chance to happen.
+    await new Promise((r) => setTimeout(r, 0));
     expect(retry).not.toHaveBeenCalled(); // ...and the art is not
+    expect(gate.waiting).toBe(true);      // the screen is still up, which is what a player sees
 
     release();
     await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));

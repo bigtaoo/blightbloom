@@ -45,9 +45,17 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     deferred.push(retry);
     return true;
   };
+  // Which side each held transition said it was crossing. Recorded rather than ignored: the
+  // argument is the caption a player reads, and a stub that drops it lets `leaveRunTo` say
+  // ENTERING THE DUNGEON on the way OUT with the whole suite green (mutation battery,
+  // 2026-09-22).
+  const boundaries: Array<'run' | 'hub'> = [];
   const transitions = {
     defer: hold,
-    deferRunBoundary: (_into: 'run' | 'hub', retry: () => void) => hold(retry),
+    deferRunBoundary: (into: 'run' | 'hub', retry: () => void) => {
+      boundaries.push(into);
+      return hold(retry);
+    },
   };
   const screen = () => ({ show: vi.fn(), resize: vi.fn(), render: vi.fn(), hide: vi.fn() });
   const deps: ScreenNavDeps = {
@@ -82,6 +90,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     nav,
     run,
     deps,
+    boundaries,
     calls: flow.calls,
     closeGate: () => {
       gateOpen = false;
@@ -92,6 +101,44 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     },
   };
 }
+
+describe('leaveRunTo — the one exit, and the only held hub entry', () => {
+  it('lands on the lobby or the loadout screen, whichever the run asked for', () => {
+    // `showMenu`/`showLoadout` are also plain BACK navigation, so this verb is the only thing
+    // that distinguishes "a run ended" from "a button was pressed" — and swapping its two
+    // destinations sends every finished PvE run to the lobby and every tutorial to the
+    // loadout screen, which is a screen the tutorial never touched.
+    const menu = make();
+    menu.nav.leaveRunTo('menu');
+    expect(menu.run.phase).toBe('menu');
+
+    const loadout = make();
+    loadout.nav.leaveRunTo('loadout');
+    expect(loadout.run.phase).toBe('loadout');
+  });
+
+  it('tells the gate it is crossing OUT of a run, not into one', () => {
+    // The caption is the whole argument, and it is the half of this call a behavioural
+    // assertion cannot see: both directions hold for the same three seconds and land on the
+    // same screen. "ENTERING THE DUNGEON" on the way back to the lobby is a wrong sentence
+    // held in front of the player's face, and nothing else in this suite would say so.
+    const t = make();
+    t.nav.leaveRunTo('loadout');
+    expect(t.boundaries).toEqual(['hub']);
+  });
+
+  it('waits behind the gate rather than arriving early', () => {
+    // The same deferral contract every other gated transition has: nothing happens until the
+    // gate releases, and then it happens exactly once.
+    const t = make();
+    t.closeGate();
+    t.nav.leaveRunTo('loadout');
+    expect(t.run.phase).not.toBe('loadout');
+
+    t.releaseGate();
+    expect(t.run.phase).toBe('loadout');
+  });
+});
 
 describe('the plain transitions', () => {
   it.each([
