@@ -31,6 +31,8 @@ export const ru: Translations<typeof en> = {
   loading: {
     boot: 'ЗАГРУЗКА',
     art: 'ЗАГРУЗКА ГРАФИКИ',
+    enteringRun: 'ВХОД В ПОДЗЕМЕЛЬЕ',
+    returningToHub: 'ВОЗВРАЩЕНИЕ В ЛОББИ',
   },
   pauseMenu: {
     title: 'ПАУЗА',

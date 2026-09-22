@@ -31,7 +31,7 @@ import { TutorialHintController } from './controllers/TutorialHintController';
 import { RoomBuilder } from './scene/RoomBuilder';
 import { Backdrop } from './scene/Backdrop';
 import { PickupDebugOverlay } from './scene/PickupDebugOverlay';
-import { ArtGate } from './controllers/ArtGate';
+import { TransitionGate } from './controllers/TransitionGate';
 import { PortalPrompt } from './ui/PortalPrompt';
 import { FloorCardPrompt } from './ui/FloorCardPrompt';
 import { buildHudLayer } from './controllers/hudLayer';
@@ -173,8 +173,8 @@ export class Game {
   // Persisted settings + the four places a change to them lands — see `settingsBinding.ts`.
   private readonly settingsBinding: SettingsBinding;
   /** The run-boundary art gate (design/12). Inert in any session that did not defer art —
-   *  every unit test in this repo included; see `controllers/ArtGate.ts`. */
-  private readonly artGate: ArtGate;
+   *  every unit test in this repo included; see `controllers/TransitionGate.ts`. */
+  private readonly transitions: TransitionGate;
   // Render quality — the tier's whole wiring lives in `renderQuality.ts`; this is the handle.
   private readonly quality: RenderQualityController;
 
@@ -243,7 +243,7 @@ export class Game {
     });
     this.settingsBinding = new SettingsBinding({ audio, input, quality: this.quality });
     // Same "needs `app`" reason as `quality` above.
-    this.artGate = new ArtGate({
+    this.transitions = new TransitionGate({
       overlay: this.layers.overlay,
       ticker: app.ticker,
       screenSize: () => this.screenSize(),
@@ -299,7 +299,7 @@ export class Game {
       run: this.run, layers: this.layers, scene: this.scene, fx: this.fx,
       backdrop: this.backdrop, roomBuilder: this.roomBuilder, recorder: this.recorder,
       builder: this.builder, ally: this.ally, input: this.input, events: this.events,
-      runOutcome: this.runOutcome, tutorialHints: this.tutorialHints, artGate: this.artGate,
+      runOutcome: this.runOutcome, tutorialHints: this.tutorialHints, transitions: this.transitions,
       forgeActions: this.forgeActions, hud: this.hud, hudView: this.hudView,
       touchControlsView: this.touchControlsView, portalPrompt: this.portalPrompt,
       floorCardPrompt: this.floorCardPrompt, ticker: this.app.ticker,
@@ -440,12 +440,12 @@ export class Game {
       // The tutorial never touched the loadout, so it returns to the lobby instead of the
       // loadout screen (design/10 screen-flow gap) — `hasSeenTutorial` was already marked
       // the moment this run hit gameover (stepSim), not here.
-      if (this.run.tutorialActive) {
-        this.run.tutorialActive = false;
-        this.nav.showMenu();
-      } else {
-        this.nav.showLoadout();
-      }
+      // `leaveRunTo`, not `showMenu`/`showLoadout`: this exit is a HELD run boundary
+      // (controllers/TransitionGate.ts), and the flag is read before the hold starts so a
+      // repeat Enter during it — the overlay stops taps, not keys — cannot read a cleared one.
+      const hub = this.run.tutorialActive ? 'menu' : 'loadout';
+      this.run.tutorialActive = false;
+      this.nav.leaveRunTo(hub);
     }
   }
 

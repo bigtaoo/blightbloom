@@ -94,6 +94,8 @@ export const ALLOWLIST = [
   { token: 'world/arenas/arena_prototype_60.json', why: 'retired and deleted 2026-08-26; design/05 and design/09 both say so in the citing sentence' },
   { token: 'ModeSelect.ts', why: 'the same file cited by bare name in two neighbouring bullets' },
   { token: 'client/src/game/screens/ModeSelect.ts', why: 'deleted 2026-09-10 when the lobby merged its four routes into MainMenu; design/10 cites it in the bullet marking that supersession' },
+  { token: 'ArtGate.ts', why: 'renamed to TransitionGate.ts 2026-09-22 when the gate took on the run-boundary floor; design/12 cites the old name in the sentence recording the rename' },
+  { token: 'bootHold.ts', why: 'deleted 2026-09-22 — the 3 s floor it held moved off the boot splash onto the run boundary; design/12 cites it in the paragraph recording the removal' },
 
   // ── A phantom the docs deliberately record as a phantom.
   { token: 'client/.../standingCoverParity.test.ts', why: 'design/18 records that commit 14e693b cited this test and it was NEVER created — the citation is the finding' },

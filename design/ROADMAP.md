@@ -1491,9 +1491,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-22** [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change) — *“把 /party/create 也加上限流  你把类似的问题一次性解决”* (add rate limiting to `/party/create` too — and solve the similar problems all at once). [Volume 87](roadmap/87-2026-09-22-party-join-rate-limit.md) had left `/party/create` unbounded that morning, with a test asserting the absence and a reason beside it: *minting a code is not guessing one*. Still true, and about **discovery**; nothing had asked what a caller can do to the **supply**, and the answer was everything — every call holds one of 10^6 codes and a `Map` entry for ten idle minutes, so an unbounded caller’s steady state is its rate times the TTL (~30,000 live parties at 50 req/s, and `CodeSpaceExhausted` — a 503 on the create button for everybody — a few hundred a second in). `CREATE_RATE_LIMIT` is **60 per ten minutes**, and because the window IS the party TTL the budget is also the ceiling on live parties per address; half of join’s 120 because a squad has one creator and three joiners. Asking the same question of every other route found **five more**: `/auth/login` (60 — the per-username lockout is per NAME and stuffing is per LIST, a login against an existing account pays a full scrypt, and a missing username returns before any hashing, which is an enumeration ORACLE rather than a saving), `/auth/portal` (120 — an RS256 verify per call and the one account-minting path `REGISTER_RATE_LIMIT` never watched; the loosest, because the client spends it at BOOT and a refusal is silently answered by staying a guest), `/auth/change-password` (20 — two scrypt hashes, the most expensive request in the process), `/find` (120 — a waiter is not inert: enough of one shape FORMS A ROOM on a real gameserver) and `/store/order` (30 — the session bounds WHO may reach the billing plane and nothing bounded how often). **The structural half is why the list had stopped growing**: each hand-wired limiter cost four places and a paragraph saying it was not the other two (*“a SECOND limiter”*, *“a THIRD, for /party/join”*), so the set is declared once and a route names a key — keeping the separate counters and the narrow reach (`Pick` of one key, so `/party/leave` still cannot see a limiter). What stays unbudgeted is asserted, not assumed: `GET /find/:queueId` is polled twice a second by the real client, so any ceiling that inconveniences an attacker refuses a living room of real players first. Two things found on the way — `clientKey` **threw** on a socket-less request where its own doc promised a constant (a limiter that throws is a 500, not a refusal), and the register-limit file’s claim that login "was never in the same position" was true in both halves and wrong in its conclusion, so it is quoted rather than deleted. **Two mutants survived the whole HTTP suite** — a key handed the wrong constant, and two keys handed the same instance — because the file that would notice had overridden that very key; `limits.test.ts` reads each limiter’s CAPACITY back out instead and kills both. Eleven mutants, each killed by the case written for it; both client branches mutated both ways. Two follow-up findings, both from asking what was still untestable rather than untested: a **429 that sends but does not return** still mints the party (the first `writeHead` wins, so the wire looks identical), and a budget **frozen at one instant** never recovers — both survived the suite, so the stalled-body table became six routes × three questions with the work behind each budget as a SPY. And `/find`’s 429 fell through to *“could not connect — try again”* on a screen whose error state ends in a **Retry button**, which is volume 87’s defect exactly; `MatchRequestError` now carries the status and the arm is checked first. Eighteen mutants across fifteen rows, each killed by the case written for it. Server 1,909 → **1,954**, client 7,208 → **7,221**. `net` `ui` `test` `i18n` `docs`
 
+**[2026-09-22 — the loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md)**
+
+- **09-22** [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change) — *“The loading screen I asked for, held for at least 3 seconds, was about the in-game screen switches — entering a map, returning to the lobby. You put it in front of the home page instead. I want players to get to the home page as fast as they possibly can”* — and the pass being corrected is [volume 86](roadmap/86-2026-09-21-boot-splash-and-load-path.md), from the previous day, which read “entering the game” as launching it rather than entering a map, and so spent one day making the first screen arrive sooner and then held it up for three seconds on purpose. **`bootHold.ts` is deleted**: `hideBootSplash` fades and removes with nothing in front of it, `showBootLoading`’s `done()` is synchronous again, and the WeChat entry stops awaiting it. What stayed is volume 86’s finding 1 — `afterFirstRenderedFrame`, which waits for a **real event** and costs a fast boot one frame, as against a floor that waits for a **clock** and costs every boot three seconds. The transition page the request asks for already existed at the size it asks for: **~1.4 kB** of static inline HTML and CSS in `index.html`, painting on the browser’s first paint of the document. Both halves of the removal are pinned by **equality rather than presence**, because a floor looks identical on screen either way — `hideBootSplash` is asserted to sleep exactly once (the fade), and `done()` to empty the stage on the following statement with no microtask given up, with `main.wechat.ts` asserted not to contain `await loading.done()` (an `await` on a non-promise type-checks, which is precisely how it would come back). **The floor moved to where it was asked for**: `controllers/ArtGate.ts` → `controllers/TransitionGate.ts`, holding one screen for two reasons now, and `deferRunBoundary('run' | 'hub', retry)` waits for `MIN_TRANSITION_MS` **and** the run art — `Promise.all`, not `race`, since the case that matters is a cold cache where the floor elapses while the art is still downloading. Held: `beginRun` (which every fresh-run route passes through, so START RUN, the portal’s one-click PLAY and the arena demo are one call), `beginQuickRun`, `beginTutorialRun`, `beginArenaDemoRun`, `resumeSavedRun`, `beginReplayRun`, and `ScreenNav.leaveRunTo` — the one exit, called by quit, save-and-quit, the victory/defeat confirm and that screen’s MENU button. **A third gate property was needed to make that list safe**: the entry points nest (`beginQuickRun` → `beginRun` → `beginArenaDemoRun`), so a naive floor charges three separate three-second screens for one press — the gate answers “not deferred” while it is running a released transition’s retry. Two exclusions stated in code rather than discovered later: **`finalizeOnlineRun`** (the far side is a server already ticking, so the hold is confirmed frames arriving for a run nobody can see, including the first one `resetOnlinePrediction` anchors on — and Matchmaking is that route’s transition screen already), and **plain hub navigation** (`showMenu`/`showLoadout` are also the loadout screen’s BACK and a cancelled queue, which is why the exit is a separate verb rather than a rule about the destination). The hold is only safe because **the sim is already stopped at every call site** — `paused` or `victory`/`defeat`, and every entry holds before the engine is built; a hold at `playing` would be three seconds of being hit by things you cannot see. The property that keeps the suite synchronous is the 2026-09-01 one asked as a different question: `isDeferredArtArmed()` — “is this a real boot” — since a floor has no “already in” state of its own, and without it this pass is either a suite that hangs or one that silently swallows every transition it asserts on. The source sweep listing the gated transitions asserts the **method name**, not `transitions.`, because a plain `defer` at any of those sites takes the floor back off and leaves every behavioural test green. `Game.ts` and `RunLifecycle.ts` both crossed 500 lines on the first draft and were trimmed rather than baselined; both sit at exactly 500 now. Client 7,333 → **7,330** — the rare pass that ends with fewer, `bootHold.test.ts`’s nine cases out against six in. No `ENGINE_VERSION` bump. `platform` `ui` `i18n` `test` `docs`
+
 ## The work log — by theme
 
-The same 186 entries, grouped. An entry with more than one tag appears more than once.
+The same 187 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
 
@@ -1666,7 +1670,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(101)*
+**`test`** — coverage sweeps, gates, mutation batteries *(102)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1770,6 +1774,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1781,7 +1786,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(33)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(34)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -1816,8 +1821,9 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [The backup gets restored, and the runbook it was restored from was wrong in three places](roadmap/69-2026-09-17-restore-drill-and-mongo-cleanup.md#the-backup-gets-restored-and-the-runbook-it-was-restored-from-was-wrong-in-three-places-2026-09-17-deploy--docs-no-engine-change)
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
+- 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(37)*
+**`ui`** — HUD, screens, widgets *(38)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1857,6 +1863,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(20)*
 
@@ -1881,7 +1888,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(105)*
+**`docs`** — design docs and this log itself *(106)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1988,6 +1995,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(30)*
 
@@ -2022,7 +2030,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 
-**`i18n`** — locales and text layout *(15)*
+**`i18n`** — locales and text layout *(16)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2039,4 +2047,5 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 

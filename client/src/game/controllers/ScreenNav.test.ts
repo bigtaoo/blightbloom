@@ -37,22 +37,24 @@ function recorder() {
 function make(over: Partial<ScreenNavDeps> = {}) {
   const run = new RunState(store);
   const flow = recorder();
-  // The art gate: `defer` returning true means "not yet, I'll call you back".
+  // The transition gate: either method returning true means "not yet, I'll call you back".
   let gateOpen = true;
   const deferred: Array<() => void> = [];
-  const artGate = {
-    defer: (retry: () => void) => {
-      if (gateOpen) return false;
-      deferred.push(retry);
-      return true;
-    },
+  const hold = (retry: () => void): boolean => {
+    if (gateOpen) return false;
+    deferred.push(retry);
+    return true;
+  };
+  const transitions = {
+    defer: hold,
+    deferRunBoundary: (_into: 'run' | 'hub', retry: () => void) => hold(retry),
   };
   const screen = () => ({ show: vi.fn(), resize: vi.fn(), render: vi.fn(), hide: vi.fn() });
   const deps: ScreenNavDeps = {
     run,
     layers: { menu: { fit: () => ({ w: 800, h: 600 }) } } as never,
     screenFlow: flow.proxy,
-    artGate: artGate as never,
+    transitions: transitions as never,
     backdrop: { resize: vi.fn() } as never,
     hud: { reposition: vi.fn() } as never,
     portalPrompt: { reposition: vi.fn() } as never,
@@ -173,7 +175,7 @@ describe('the hub hook (deferred meta sync, 2026-09-10)', () => {
   });
 
   it('waits for the art gate — a deferred hub flushes when the art lands, not before', () => {
-    // The ordering the hook is placed after `artGate.defer` for: a flush during the loading
+    // The ordering the hook is placed after `transitions.defer` for: a flush during the loading
     // screen would apply the account's meta while the phase is still the one before it.
     for (const method of ['showLoadout', 'showForge'] as const) {
       const onHubEntered = vi.fn();

@@ -152,13 +152,8 @@ function fakeApp(w: number, h: number): { app: Application; stage: Container; ti
   return { app: app as unknown as Application, stage, ticker };
 }
 
-/** `bootHold.ts`'s floor, turned off. Every case below is about what the screen DOES, and a
- *  real three-second hold in each of them would make this file the slowest in the suite. The
- *  floor itself has its own case at the bottom, with an injected clock. */
-const NO_FLOOR = { minMs: 0 };
-
 describe('showBootLoading — the boot wait, on the stage', () => {
-  it('parks a laid-out screen on the stage, so a cold boot has something on it', async () => {
+  it('parks a laid-out screen on the stage, so a cold boot has something on it', () => {
     // The WeChat entry's ONLY feedback while the `lobby` subpackage downloads: there is no DOM
     // splash to fall back on the way web has (`index.html`'s `#boot-loading`). Dropping the
     // `app.stage.addChild(screen.view)` boots the mini-game to a blank screen with no spinner and
@@ -166,7 +161,7 @@ describe('showBootLoading — the boot wait, on the stage', () => {
     // every other case constructs `LoadingScreen` directly and never goes through this function.
     const { app, stage, ticker } = fakeApp(844, 390);
 
-    const loading = showBootLoading(app, NO_FLOOR);
+    const loading = showBootLoading(app);
 
     expect(stage.children.length).toBe(1);
     // Laid out against the viewport BEFORE the first paint, not left 0x0 for a frame — which on a
@@ -177,24 +172,24 @@ describe('showBootLoading — the boot wait, on the stage', () => {
     // ...and it is really spinning, on the app's own ticker.
     expect(ticker.count).toBe(1);
 
-    await loading.done();
+    loading.done();
   });
 
-  it('reads the viewport from renderer.screen, at whatever size the device is', async () => {
+  it('reads the viewport from renderer.screen, at whatever size the device is', () => {
     // `computeScreenSize`, never `renderer.width / resolution` — see viewport.ts's header for the
     // HiDPI bug that division caused, invisible at devicePixelRatio 1.
     for (const [w, h] of [[390, 844], [1280, 720]] as const) {
       const { app, stage } = fakeApp(w, h);
-      const loading = showBootLoading(app, NO_FLOOR);
+      const loading = showBootLoading(app);
       const scrim = ((stage.children[0] as Container).children[0] as Graphics).getLocalBounds();
       expect([scrim.width, scrim.height], `${w}x${h}`).toEqual([w, h]);
-      await loading.done();
+      loading.done();
     }
   });
 
-  it('moves the bar through the handle it returns', async () => {
+  it('moves the bar through the handle it returns', () => {
     const { app, stage } = fakeApp(844, 390);
-    const loading = showBootLoading(app, NO_FLOOR);
+    const loading = showBootLoading(app);
     const bar = () => ((stage.children[0] as Container).children[2] as Graphics);
 
     expect(bar().context.instructions.length).toBe(0); // no total known yet: spinner alone
@@ -204,46 +199,37 @@ describe('showBootLoading — the boot wait, on the stage', () => {
 
     expect(atZero).toBeGreaterThan(0);
     expect(bar().context.instructions.length).toBeGreaterThan(atZero); // the fill is a second rect
-    await loading.done();
+    loading.done();
   });
 
-  it('really destroys on done(), rather than merely being forgotten', async () => {
+  it('really destroys on done(), rather than merely being forgotten', () => {
     // `done: () => {}` in place of `screen.destroy()` is the mutant that survives everything
     // else, and it is the worst-looking bug of the set: the scrim is an OPAQUE full-viewport
     // interactive Graphics, so it would sit above the entire game — swallowing every tap — for
     // the rest of the session, with its ticker callback still redrawing the spinner on top.
     // `main.wechat.ts` calls this immediately before `new Game(...)`.
     const { app, stage, ticker } = fakeApp(844, 390);
-    const loading = showBootLoading(app, NO_FLOOR);
+    const loading = showBootLoading(app);
 
-    await loading.done();
+    loading.done();
 
     expect(stage.children.length).toBe(0);
     expect(ticker.count).toBe(0);
   });
 
-  it('holds the screen for the boot floor before destroying it', async () => {
-    // The mutant this kills: `done: () => screen.destroy()`, i.e. the pre-2026-09-21 shape.
-    // It passes every other case in this file, because every other case turns the floor off —
-    // and on a fast boot it flashes the spinner for a couple of frames, which is the exact
-    // thing `bootHold.ts` exists to stop. Asserted on the ORDER of the two effects rather than
-    // on wall-clock time: the sleep is injected, so nothing here actually waits.
+  it('destroys synchronously, with no minimum in front of it', () => {
+    // The regression this kills (2026-09-22): between 2026-09-21 and 2026-09-22 `done()` was
+    // `async` and awaited a three-second floor here, on the one screen a player has no reason
+    // to look at. An `await` would still be legal at the call site and the screen would look
+    // identical, so what pins it is that the stage is EMPTY on the statement after the call,
+    // with no microtask given up in between.
     const { app, stage } = fakeApp(844, 390);
-    const order: string[] = [];
-    const loading = showBootLoading(app, {
-      elapsed: () => 500,
-      sleep: (ms) => {
-        order.push(`slept ${ms}`);
-        return Promise.resolve();
-      },
-    });
+    const loading = showBootLoading(app);
 
-    const settled = loading.done().then(() => order.push('destroyed'));
-    // Still up while the floor is outstanding — the half a bare `destroy()` gets wrong.
-    expect(stage.children.length).toBe(1);
-    await settled;
+    const returned = loading.done() as unknown;
 
-    expect(order).toEqual(['slept 2500', 'destroyed']);
     expect(stage.children.length).toBe(0);
+    // ...and it does not hand back something awaitable that a caller could be made to wait on.
+    expect(returned).toBeUndefined();
   });
 });

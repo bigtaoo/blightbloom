@@ -22,11 +22,15 @@ export const en = {
     settings: 'SETTINGS',
     greeting: 'Hi, {username}',
   },
-  // The two progress screens (design/12 asset phases): boot waits for the `lobby` pack,
-  // the run gate waits for the `run` ones.
+  // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
+  // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
+  // player is meant to see, held for `MIN_TRANSITION_MS` whether anything is downloading or
+  // not (controllers/TransitionGate.ts).
   loading: {
     boot: 'LOADING',
     art: 'LOADING ART',
+    enteringRun: 'ENTERING THE DUNGEON',
+    returningToHub: 'RETURNING TO THE LOBBY',
   },
   pauseMenu: {
     title: 'PAUSED',

@@ -61,9 +61,18 @@ function make(over: Partial<RunLifecycleDeps> & {
       resetOnlinePrediction: note('gameLoop.resetPrediction'),
     } as never,
     screenFlow: { hideSettingsButton: note('screenFlow.hideSettingsButton') } as never,
-    nav: { showMenu: note('nav.showMenu'), showLoadout: note('nav.showLoadout') } as never,
-    artGate: {
+    nav: {
+      showMenu: note('nav.showMenu'),
+      showLoadout: note('nav.showLoadout'),
+      leaveRunTo: (hub: 'menu' | 'loadout') => note(`nav.leaveRunTo ${hub}`)(),
+    } as never,
+    transitions: {
       defer: (retry: () => void) => {
+        if (gateOpen) return false;
+        deferred.push(retry);
+        return true;
+      },
+      deferRunBoundary: (_into: 'run' | 'hub', retry: () => void) => {
         if (gateOpen) return false;
         deferred.push(retry);
         return true;
@@ -322,7 +331,10 @@ describe('quitRun', () => {
     t.run.phase = 'paused';
     t.runs.quitRun();
     expect(t.order).toContain('pauseMenu.hide');
-    expect(t.order).toContain('nav.showLoadout');
+    // `leaveRunTo`, not `showLoadout` — the exit is a held run boundary since 2026-09-22
+    // (controllers/TransitionGate.ts), and the two are not interchangeable: `showLoadout`
+    // here would be the one exit out of four that jump-cuts.
+    expect(t.order).toContain('nav.leaveRunTo loadout');
   });
 
   it('a tutorial SKIP marks it seen and returns to the lobby instead', () => {
@@ -332,8 +344,8 @@ describe('quitRun', () => {
     t.run.tutorialActive = true;
     t.runs.quitRun();
     expect(t.run.meta.hasSeenTutorial).toBe(true);
-    expect(t.order).toContain('nav.showMenu');
-    expect(t.order).not.toContain('nav.showLoadout');
+    expect(t.order).toContain('nav.leaveRunTo menu');
+    expect(t.order).not.toContain('nav.leaveRunTo loadout');
   });
 
   it('leaves the run state consistent for whatever comes next', () => {
@@ -474,7 +486,7 @@ describe('saveAndQuitRun', () => {
     expect(saved.floorIndex).toBe(2);
     expect(saved.score).toBe(340);
     expect(saved.commands).toHaveLength(5);
-    expect(t.deps.nav.showLoadout).toHaveBeenCalled();
+    expect(t.order).toContain('nav.leaveRunTo loadout');
     expect(t.run.engine).toBeNull(); // the run really ended
   });
 
@@ -648,7 +660,7 @@ describe('resumeSavedRun', () => {
 
     expect(t.run.engine).toBeNull();
     expect(loadSavedRun()).toBeNull(); // so the screen stops offering it
-    expect(t.deps.nav.showLoadout).toHaveBeenCalled(); // re-rendered without the button
+    expect(t.order).toContain('nav.showLoadout'); // re-rendered without the button
     expect(t.deps.hud.toast).toHaveBeenCalled();
   });
 

@@ -66,7 +66,7 @@ export class Layers {
 
   // ...and one more above both, added 2026-09-01 with the asset phases (design/12): the art
   // progress screen the run gate puts up (`ui/loadingScreen.ts`, via
-  // `controllers/ArtGate.ts`). It has to be its own layer for the same reason the split above
+  // `controllers/TransitionGate.ts`). It has to be its own layer for the same reason the split above
   // exists — a full-screen wait mounted into `menu` would paint UNDER whichever screen's own
   // full-viewport Panel was already up, which is exactly how the forge's SETTINGS button spent
   // months invisible. Unscaled like `hudOverlay`: a spinner is not menu content, and it must be

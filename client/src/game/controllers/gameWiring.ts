@@ -177,7 +177,10 @@ export function wireScreens(d: WiringDeps): void {
   // store is a round trip back to the same screen, not a new way in.
   d.storeScreen.onBack = () => d.nav.showForge(d.run.forgeReturnPhase);
   d.screens.onConfirm = () => d.confirm();
-  d.screens.onMenu = () => d.nav.showMenu();
+  // The outcome screen's MENU button — a run boundary like the CONTINUE beside it, so it is
+  // held rather than instant (`ScreenNav.leaveRunTo`). `showMenu` here would be the one exit
+  // out of four that jump-cuts.
+  d.screens.onMenu = () => d.nav.leaveRunTo('menu');
   d.pauseMenu.onResume = () => d.nav.resume();
   d.pauseMenu.onSettings = () => d.nav.openSettingsFromPause();
   // The two exits are separate verbs on purpose (design/05 "Only the boss floor ends a run",
