@@ -238,6 +238,7 @@ export const de: Translations<typeof en> = {
     createFailed: 'Trupp konnte nicht erstellt werden — bitte erneut versuchen.',
     codePlaceholder: 'CODE',
     invalidCode: 'Code ungültig oder Trupp voll.',
+    joinThrottled: 'Zu viele Versuche — bitte in ein paar Minuten erneut versuchen.',
     startFailed: 'Suche konnte nicht gestartet werden — bitte erneut versuchen.',
     codeLine: 'CODE: {code}',
     you: 'du',

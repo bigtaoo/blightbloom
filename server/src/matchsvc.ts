@@ -26,7 +26,7 @@
  *   POST /rating/report     { accountIds, places, teamIds? } -> { changes: [{accountId,before,after}] }
  *   GET  /rating/:accountId                               -> { accountId, rating }    routes/rating
  *   POST /party/create      { playerId }                 -> PartyInfo                 routes/party
- *   POST /party/join        { playerId, code }           -> PartyInfo | 404
+ *   POST /party/join        { playerId, code }           -> PartyInfo | 404 | 429 (per-IP budget)
  *   POST /party/leave       { partyId, playerId }        -> PartyInfo | null
  *   POST /party/start       { partyId, playerId }        -> PartyInfo | 404 (leader only)
  *   GET  /party/:id                                       -> PartyInfo | 404
@@ -129,6 +129,13 @@ export interface MatchsvcServerOptions {
    * sane runtime, so the 429 arm would otherwise be unreachable from the HTTP layer.
    */
   authLimiter?: RateLimiter;
+  /**
+   * The code-entry limiter (`routes/party.ts`'s `JOIN_RATE_LIMIT`), or one built from that
+   * constant when omitted. Injected for exactly the reason `authLimiter` above is: the shipped
+   * budget is 120 join attempts per ten minutes, which no test can exhaust at a sane runtime,
+   * so `/party/join`'s 429 arm would otherwise be unreachable from the HTTP layer.
+   */
+  joinLimiter?: RateLimiter;
   /**
    * The `analytics` database (design/21 §2.4), or `null`/absent for "collect nothing".
    *
@@ -296,6 +303,11 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   // questions with the same shape (`rateLimit.ts`'s own header says so), and one shared
   // counter would let a chatty client's log batches spend the budget a registration needs.
   const authLimiter = opts.authLimiter ?? new RateLimiter(REGISTER_RATE_LIMIT.requests, REGISTER_RATE_LIMIT.windowMs);
+  // A THIRD, for `/party/join` (2026-09-22). Same mechanism, its own budget and its own
+  // counter — `routes/party.ts`'s `JOIN_RATE_LIMIT` argues the number, and `JoinRouteDeps`
+  // argues why it must not be either of the two above.
+  const joinLimiter =
+    opts.joinLimiter ?? new RateLimiter(partyRoutes.JOIN_RATE_LIMIT.requests, partyRoutes.JOIN_RATE_LIMIT.windowMs);
 
   // Analytics (design/21 §2.4). Injected rather than opened here since the MongoDB port —
   // see `MatchsvcServerOptions.analyticsDb`. Until this process's own boot path awaits
@@ -321,6 +333,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     lokiUrl,
     limiter,
     authLimiter,
+    joinLimiter,
     analyticsDb,
     flags,
     fetchImpl: opts.fetchImpl,

@@ -238,6 +238,7 @@ export const fr: Translations<typeof en> = {
     createFailed: "Impossible de créer l'escouade — réessayez.",
     codePlaceholder: 'CODE',
     invalidCode: 'Code invalide ou escouade complète.',
+    joinThrottled: 'Trop de tentatives — réessayez dans quelques minutes.',
     startFailed: 'Impossible de lancer la recherche — réessayez.',
     codeLine: 'CODE : {code}',
     you: 'toi',

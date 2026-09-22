@@ -37,6 +37,9 @@ export interface DispatchContext {
   deps: Parameters<typeof matchRoutes.postFind>[3] &
     Parameters<typeof ratingRoutes.postReport>[3] &
     Parameters<typeof partyRoutes.postCreate>[3] &
+    // `postJoin` asks for more than its siblings (its per-IP budget), and the intersection is
+    // derived rather than re-declared precisely so that widening shows up here.
+    Parameters<typeof partyRoutes.postJoin>[3] &
     Parameters<typeof authRoutes.postRegister>[3] &
     Parameters<typeof accountRoutes.getMeta>[3] &
     Parameters<typeof storeRoutes.getSkus>[3] &

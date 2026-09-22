@@ -5,6 +5,9 @@
  * 2026-09-21 ({@link randomCode}; the shape itself is `@dd/game/match/roomCode`, shared with
  * the client).
  *
+ * `/party/join` is the one route here that spends a per-IP budget ({@link JOIN_RATE_LIMIT},
+ * 2026-09-22) — the gap {@link randomCode} used to describe and leave open.
+ *
  * A `playerId` is whatever opaque string the client sends; once a player is logged in
  * (design/16-accounts.md) the client sends its real `accountId` as `playerId` here, but
  * nothing in this group verifies it — the account layer only gates `/auth/*` and
@@ -17,6 +20,7 @@ import { CodeSpaceExhausted, type PartyService } from '../PartyService';
 // layer is readable in one place.
 import { ROOM_CODE_DIGITS, ROOM_CODE_LENGTH, isRoomCode, normalizeRoomCode } from '../config';
 import type { Logger } from '../log';
+import { RateLimiter, clientKey } from '../rateLimit';
 import { readJson, send, type RouteHandler } from './http';
 
 export interface PartyRouteDeps {
@@ -26,6 +30,57 @@ export interface PartyRouteDeps {
    *  one `deps` bundle whose type is the intersection of every group's, and a `log` is
    *  already in it. */
   log: Logger;
+}
+
+/**
+ * The per-IP budget for CODE ENTRY (2026-09-22). A hundred and twenty in ten minutes.
+ *
+ * This closes the gap {@link randomCode}'s last paragraph used to describe and leave open: at
+ * a 10^6 keyspace, a caller who can POST `/party/join` without a ceiling can walk the whole
+ * space, and what a walk buys is a seat in a stranger's squad.
+ *
+ * What a per-IP budget can change is the RATE, and that is the whole argument for this number.
+ * Unbounded, one caller at a modest 50 requests a second draws ~4.3M codes a day — several
+ * times the entire space — and so lands in essentially every party that is live while it runs.
+ * At 120 per ten minutes the same caller draws 17,280 a day, one pass over 10^6 takes about
+ * two months, and the expected number of live parties it stumbles into falls by the same three
+ * orders of magnitude. The walk does not become impossible; it becomes slower than the thing
+ * it walks toward, since a party TTLs out after 10 idle minutes and its code goes with it.
+ *
+ * Four times looser than `routes/auth.ts`'s `REGISTER_RATE_LIMIT`, and deliberately, because
+ * the false positives are not comparable. A refused registration is a player who waits; a
+ * refused join is a player who cannot get into the squad their friend is sitting in, having
+ * done nothing wrong — and a carrier-grade NAT can put a city's worth of mobile subscribers
+ * behind one address. A human enters one code, or three with a typo; 120 leaves room for
+ * dozens of humans in the same window and still costs a bulk walk everything.
+ *
+ * It bounds ONE caller, which is the honest description — a flood spread over many addresses
+ * walks around any per-IP limit, and this file is not the place that would answer that.
+ * `/party/create` stays unbounded for the reason it always was: minting a code is not guessing
+ * one, and a collision is already a non-event.
+ */
+export const JOIN_RATE_LIMIT = { requests: 120, windowMs: 10 * 60_000 } as const;
+
+/**
+ * `postJoin`'s own deps — the only handler in this group that rate-limits, so the limiter is
+ * declared here rather than on {@link PartyRouteDeps}. That follows the rule `matchsvc.ts`
+ * states over its shared bundle: a handler declares, and can only reach, the few dependencies
+ * it names. `/party/leave` still cannot see a limiter.
+ */
+export interface JoinRouteDeps extends PartyRouteDeps {
+  /**
+   * The code-entry budget ({@link JOIN_RATE_LIMIT}). Its OWN instance, never the telemetry or
+   * registration limiter from the same bundle: one shared counter would make each route's
+   * ceiling depend on how busy the others happen to be, so a chatty client's log batches could
+   * spend the budget a player's join needs.
+   *
+   * Required rather than optional because an absent limiter can only mean "no limit", and a
+   * working way to be exempt is an invitation to use it — the same reasoning `routes/auth.ts`
+   * gives for `RegisterRouteDeps.authLimiter`.
+   */
+  joinLimiter: RateLimiter;
+  /** Injected so a test can drive the window without sleeping. Defaults to the wall clock. */
+  nowMs?: () => number;
 }
 
 /**
@@ -49,13 +104,11 @@ export interface PartyRouteDeps {
  * On that keyspace, since this is the file that spends it: six digits is 10^6, down from the
  * old 32^5 (~33.5M). A COLLISION stays a non-event — a party TTLs out after 10 idle minutes,
  * so the live set sits orders of magnitude below 1M, and `create` redraws anyway (boundedly).
- * GUESSING is the half that got materially easier and is NOT defended: a caller who can POST
- * `/party/join` without a budget can walk the whole space, and nothing in this route group
- * rate-limits (`rateLimit.ts`'s `RateLimiter` is wired to `/auth/*` and the telemetry routes,
- * not here). What a walk buys is a seat in a stranger's squad — the same prize the old
- * alphabet made slow rather than impossible — so this is an existing gap widening, not a new
- * one. Worth closing with a per-IP budget the day a squad carries anything a stranger could
- * take.
+ * GUESSING is the half that got materially easier, and since 2026-09-22 it is bounded rather
+ * than merely written down: `/party/join` spends a per-IP budget ({@link JOIN_RATE_LIMIT})
+ * before it will look a code up at all. What a walk buys is still only a seat in a stranger's
+ * squad, and a per-IP ceiling still only slows ONE caller — but it slows that caller below the
+ * 10-minute TTL of the thing being walked toward, which is the difference that matters.
  */
 export function randomCode(): string {
   let s = '';
@@ -89,7 +142,21 @@ export const postCreate: RouteHandler<PartyRouteDeps> = (req, res, _url, deps) =
   });
 };
 
-export const postJoin: RouteHandler<PartyRouteDeps> = (req, res, _url, deps) => {
+export const postJoin: RouteHandler<JoinRouteDeps> = (req, res, _url, deps) => {
+  // Spent BEFORE the body is read, exactly as `/auth/register` does it and for the reason
+  // written there: a flood's next request arrives while this one is still parked on its body,
+  // so a limiter taken afterwards is one the flood has already walked past.
+  //
+  // Which means a SUCCESSFUL join is charged too, where a budget aimed purely at guessing
+  // would charge only the misses. Charging only the misses needs `RateLimiter` to answer "is
+  // this key exhausted" WITHOUT spending from it — a new method on a class the telemetry,
+  // auth and adminsvc routes all share — because otherwise an exhausted walker still has its
+  // probe answered before it is refused, which is the one thing the budget exists to stop.
+  // {@link JOIN_RATE_LIMIT} is set wide enough that a player's own joins never approach it,
+  // which is the cheaper way to buy the same property.
+  if (!deps.joinLimiter.take(clientKey(req), (deps.nowMs ?? Date.now)())) {
+    return send(res, 429, { error: 'too many join attempts from this address — try again later' });
+  }
   readJson(req, (body) => {
     const { playerId, code } = (body as { playerId?: unknown; code?: unknown }) ?? {};
     if (typeof playerId !== 'string' || !playerId || typeof code !== 'string' || !code) {

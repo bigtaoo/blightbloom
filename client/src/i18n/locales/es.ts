@@ -238,6 +238,7 @@ export const es: Translations<typeof en> = {
     createFailed: 'No se pudo crear la escuadra — inténtalo de nuevo.',
     codePlaceholder: 'CÓDIGO',
     invalidCode: 'Código inválido o escuadra llena.',
+    joinThrottled: 'Demasiados intentos — inténtalo de nuevo en unos minutos.',
     startFailed: 'No se pudo iniciar la búsqueda — inténtalo de nuevo.',
     codeLine: 'CÓDIGO: {code}',
     you: 'tú',

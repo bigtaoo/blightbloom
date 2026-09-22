@@ -258,6 +258,7 @@ export const en = {
     createFailed: 'Could not create a party — try again.',
     codePlaceholder: 'CODE',
     invalidCode: 'Invalid or full code.',
+    joinThrottled: 'Too many attempts — try again in a few minutes.',
     startFailed: 'Could not start matching — try again.',
     codeLine: 'CODE: {code}',
     you: 'you',

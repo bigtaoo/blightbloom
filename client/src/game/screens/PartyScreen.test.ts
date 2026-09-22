@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { PartyScreen, type PartyApi } from './PartyScreen';
-import type { PartyInfo } from '../../net/party';
+import { PartyRequestError, type PartyInfo } from '../../net/party';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { getPartyPresence, resetPartyPresence } from '../../platform/partyPresence';
 import { useLocale } from '../../i18n/loadLocale';
@@ -154,6 +154,36 @@ describe('PartyScreen — join', () => {
     await p.doJoin('NOPE1');
     expect(p.statusText.text).toMatch(/invalid or full/i);
     expect(p.leaveBtn.view.visible).toBe(false);
+  });
+
+  it('a THROTTLED join says so, rather than blaming the code', async () => {
+    // The server's per-IP budget (`JOIN_RATE_LIMIT`, 2026-09-22) answers 429 when it is
+    // spent, and that is the one refusal that is not about the code. The old catch-all
+    // rendered `party.invalidCode` for it — which is false, and tells the player to retype
+    // the code, which is the only action that makes their situation worse.
+    const api = fakeApi({
+      joinParty: vi.fn().mockRejectedValue(new PartyRequestError('too many join attempts', 429)),
+    });
+    const s = makeScreen(api);
+    const p = privateOf(s);
+    await p.doJoin('482913');
+    expect(p.statusText.text).toMatch(/too many attempts/i);
+    expect(p.statusText.text).not.toMatch(/invalid or full/i);
+    expect(p.leaveBtn.view.visible).toBe(false);
+  });
+
+  it('a refusal that is NOT a 429 still blames the code', async () => {
+    // The control. Without it, a `doJoin` that rendered the throttle message for EVERY
+    // `PartyRequestError` — or simply for every failure — would pass the case above while
+    // telling a player with a genuinely wrong code to go and wait a few minutes.
+    for (const status of [400, 404, 503]) {
+      const api = fakeApi({
+        joinParty: vi.fn().mockRejectedValue(new PartyRequestError('nope', status)),
+      });
+      const p = privateOf(makeScreen(api));
+      await p.doJoin('000000');
+      expect(p.statusText.text).toMatch(/invalid or full/i);
+    }
   });
 });
 

@@ -272,7 +272,12 @@ Asked directly — *“请确认组队和匹配功能，是
 否需要玩家登录”* — so the rule above was checked against what the
 routes actually do rather than restated. It holds. `requireAuth` (`routes/auth.ts`) is called from
 `routes/account.ts` and `routes/store.ts` and **nowhere else**: all five `/party/*` routes, plus
-`/find`, `/find/:queueId` and `/resume`, resolve no session and refuse nobody.
+`/find`, `/find/:queueId` and `/resume`, resolve no session and refuse nobody **on identity
+grounds**. One of them refuses on other grounds since 2026-09-22: `POST /party/join` answers 429
+once a caller's per-IP budget is spent (`JOIN_RATE_LIMIT`, see `design/15`). That is a rate, not an
+account check — a guest and a session holder get the same budget, and nothing about being logged
+in buys more of it — but "refuses nobody" would otherwise read as a promise this route no longer
+keeps.
 
 - A **`playerId`** is whatever opaque string the client sends — the real `accountId` once a
   session exists, a locally generated guest id otherwise (`net/identity.ts`) — and nothing

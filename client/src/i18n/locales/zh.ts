@@ -237,6 +237,7 @@ export const zh: Translations<typeof en> = {
     createFailed: '创建队伍失败，请重试。',
     codePlaceholder: '邀请码',
     invalidCode: '邀请码无效或队伍已满。',
+    joinThrottled: '尝试次数过多，请几分钟后再试。',
     startFailed: '开始匹配失败，请重试。',
     codeLine: '邀请码：{code}',
     you: '你',

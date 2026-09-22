@@ -238,6 +238,7 @@ export const pl: Translations<typeof en> = {
     createFailed: 'Nie udało się utworzyć drużyny — spróbuj ponownie.',
     codePlaceholder: 'KOD',
     invalidCode: 'Nieprawidłowy kod lub drużyna pełna.',
+    joinThrottled: 'Zbyt wiele prób — spróbuj ponownie za kilka minut.',
     startFailed: 'Nie udało się rozpocząć wyszukiwania — spróbuj ponownie.',
     codeLine: 'KOD: {code}',
     you: 'ty',

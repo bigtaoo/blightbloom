@@ -243,6 +243,7 @@ export const ru: Translations<typeof en> = {
     createFailed: 'Не удалось создать отряд — попробуйте снова.',
     codePlaceholder: 'КОД',
     invalidCode: 'Неверный код или отряд заполнен.',
+    joinThrottled: 'Слишком много попыток — повторите через несколько минут.',
     startFailed: 'Не удалось начать поиск — попробуйте снова.',
     codeLine: 'КОД: {code}',
     you: 'ты',
