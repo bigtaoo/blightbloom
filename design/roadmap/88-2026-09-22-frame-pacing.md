@@ -81,9 +81,13 @@ Four things that table settles:
   can only draw as an endless 2,2,3, so the target moves to the nearest whole division — 45. An
   even 45 reads as smooth; a 58 fps average alternating one and two vsyncs per frame reads as a
   stutter. Stated in its own test case so it is a decision someone can find and revisit.
-- **`ceil(interval) - 1`, and the `-1` is load-bearing.** `floor` lands ON the interval whenever
-  the interval is already whole (100 Hz asked for 60 resolves to 50 fps, i.e. exactly 20 ms), and
-  `delta` truncating to 19 against a `_minElapsedMS` of 20 is the shipped bug in miniature.
+- **`ceil(interval) - 1`, and the `-1` is worth one measured frame rate.** `floor` differs only
+  where the interval is already a whole number of milliseconds — 100 Hz asked for 60 resolves to
+  50 fps, i.e. exactly 20 ms — and there a `delta` that truncated to 19 is dropped. A mutation
+  battery found this survivable by every arithmetic property in the test file, which is fair: on
+  paper the two differ by 0.001 ms. In frames they differ by the cap **undershooting its own
+  target**, 48.8 fps against the 50 it had just chosen (51.3 with the `-1`), and that is what the
+  test pins now.
 - **...and then a thousandth of a millisecond below that**, because the value does not survive
   the round trip: `maxFPS`'s setter stores `1 / (fps / 1000)`, so asking for `1000/33` comes back
   as 33.000000000000004 — fractionally above the integer chosen, which an integer `delta` of 33
@@ -195,15 +199,58 @@ a real emitted line carries; it also requires each perf panel to pin `level="inf
 `line_format "{{.msg}}" | logfmt` second parse, since the server quotes the whole line into one
 `msg` field. Verified by control: renaming `long_pct` in the client turns it red.
 
-### What the tests are worth
+### What the tests are worth — 54 mutants, and what the first pass exposed
 
-The old cap test is the lesson. It drove the real `Ticker`, which is the right instrument, and
-asked it the wrong question — how many frames ran, never when. The new cases jitter the
-timestamps and measure cadence, and the first of them **reproduces the bug as a fact about Pixi**
-so that a future Pixi fixing its own gate turns it red and the whole section can be reconsidered.
-The online-interpolation cases were control-run against the old behaviour: 4 of 6 fail against
-`alpha = 1`, which is what makes them worth having.
+The old cap test is the lesson this whole volume turns on. It drove the real `Ticker`, which is
+the right instrument, and asked it the wrong question — how many frames ran, never when. So the
+new cases jitter the timestamps and measure cadence, and the first of them **reproduces the bug
+as a fact about Pixi**, so that a future Pixi fixing its own gate turns it red and the whole
+section can be reconsidered. The online-interpolation cases were control-run against the old
+behaviour: 4 of 6 fail against `alpha = 1`.
 
-Client 7,288 green. No `ENGINE_VERSION` bump — every line of this is presentation-only, and the
+Then a mutation battery over the change, and **the first pass killed only 36 of 46**. Every
+survivor was a real hole and none of them was in code the suite failed to reach:
+
+- **`longFrameRatio` was asserted by nothing at all** — 100% line AND branch coverage, three
+  mutants surviving (measure against 0 instead of the median, measure the UPDATE series, count a
+  frame exactly at the limit). Every existing sampler case ran the line and looked at other
+  fields. Coverage says a line ran; only an assertion says it was right, and this is the
+  cleanest example of the difference this project has produced.
+- **`installPerf`'s wiring was asserted by nothing** — the display probe and the window reporter
+  could both be disconnected inside it and every unit test for `displayRate.ts`, `perfReport.ts`
+  and `perfReporting.ts` would stay green, because each tests the piece rather than the
+  connection. The whole feature dead: a cap that never learns the display rate, and a dashboard
+  that looks exactly like nobody playing.
+- **One of those survived a second time**, after the wiring cases were added, and for the reason
+  worth naming: every new case passed its own `onDisplayHz`, so the DEFAULT — the only path
+  production takes — stayed unrun. The injected fake leaving the shipped code untouched. The
+  case that kills it injects nothing and reads the real mirror.
+- **The dropped-gap filter in `displayRate` was "tested" by a case a median passes either way.**
+  A median ignores a minority whatever its value, so counting the zeros or dropping them gave
+  the same answer. `samples` — the count the estimate was actually made from — is the one number
+  that can tell them apart.
+- **`ceil(interval) - 1` corrected the docs rather than the code.** It survived every arithmetic
+  assertion, which is fair: against `floor` the two differ by 0.001 ms on paper. They differ in
+  frames, and the honest statement is not "load-bearing" but **"the cap must not deliver less
+  than the rate it snapped to"** — 51.3 fps against 48.8 at 100 Hz. That is the case now, and
+  this log's own description of the constant was rewritten to match what was measured.
+
+Two couplings the battery could not see until it was asked to, both added after: **nothing
+asserted that `GameLoop.update` calls `reportFrame`** — which analytics has depended on since
+2026-09-08 and the telemetry depends on now, since without it every window routes to `flush` and
+no line is ever emitted — and the dashboard sweep followed only `| unwrap <field>`, so `hz`,
+which appears only as a label filter and a grouping, could be renamed with nothing red. The
+sweep reads three syntaxes now and has a floor on each, because one syntax emptying out while
+the total holds is how a source-reading test goes quiet.
+
+One more, from the pass that added the settings-screen mutants: the layout case there was named
+*"does not overlap the row above it or the pair below"* and asserted only the row above, so
+deleting the `y += 44` that advances the cursor past the new row dropped MUTE/BACK on top of it
+and the case passed. **A test whose name claims more than its assertion is the cheapest of all
+these to write and the hardest to notice**, because the name is what a reader checks against.
+
+**54 mutants, 54 killed**, across six test files.
+
+Client 7,315 green. No `ENGINE_VERSION` bump — every line of this is presentation-only, and the
 sim still runs off `GameLoop`'s own fixed 30 Hz accumulator, so two clients capped differently
 stay byte-identical (`design/06`). `render` `platform` `ui` `test` `docs`

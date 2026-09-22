@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { FrameSampler, msStats, numFromStorage, FPS_WARN_KEY, BUSY_WARN_KEY, type FrameWindow, type FrameSamplerOptions } from './frameSampler';
+import { FrameSampler, LONG_FRAME_TOLERANCE, longFrameRatio, msStats, numFromStorage, FPS_WARN_KEY, BUSY_WARN_KEY, type FrameWindow, type FrameSamplerOptions } from './frameSampler';
 
 // Node's own localStorage needs a --localstorage-file flag to exist at all, so the
 // threshold-override paths are exercised against a stub rather than the host's. Stubbed
@@ -271,6 +271,81 @@ describe('FrameSampler frame split', () => {
     expect(windows[0]!.update.p50).toBe(0);
     expect(windows[0]!.render.p50).toBe(0);
     expect(windows[0]!.fps).toBeCloseTo(100, 5);
+  });
+});
+
+// ---- the judder metric, through the real sampler (2026-09-22) ----
+//
+// Added after a mutation battery: `longFrameRatio` read 100% line and branch coverage and was
+// asserted by nothing. Three mutants survived — measuring against 0 instead of the median,
+// measuring the UPDATE series instead of the frame series, and counting a frame exactly at the
+// limit — because every existing case in this file runs the line and looks at other fields.
+// Coverage says a line ran; only an assertion says it was right.
+
+describe('FrameSampler judder (longFrameRatio)', () => {
+  /** Close ONE window holding exactly `frames`, and hand it back.
+   *
+   *  The window length is the sum, so the sampler closes on the last frame and not before:
+   *  a shorter one closes after every frame, each window holds a single sample, and every
+   *  ratio below would be 0 for a reason that has nothing to do with the metric. */
+  function windowOf(frames: readonly number[], update = 0, render = 0): FrameWindow {
+    let closed: FrameWindow | null = null;
+    const total = frames.reduce((a, b) => a + b, 0);
+    const s = new FrameSampler({ windowMs: total, onWindow: (w) => { closed = w; } });
+    for (const ms of frames) s.frame(ms, update, render);
+    return closed!;
+  }
+
+  it('is zero for a steady frame, at any rate', () => {
+    expect(windowOf(Array(60).fill(16.7)).longFrameRatio).toBe(0);
+    // 30 fps is a different complaint, and `fps` is the field for it. A metric that read
+    // "everything below 60" as judder would make the two indistinguishable on the dashboard.
+    const slow = windowOf(Array(60).fill(33.3));
+    expect(slow.longFrameRatio).toBe(0);
+    expect(slow.fps).toBeLessThan(35);
+  });
+
+  it('counts the doubled frames and nothing else', () => {
+    // The shipped 60 Hz case from the 2026-09-22 report: three frames in sixty lasting two
+    // display intervals instead of one, the rest jittering by tenths of a millisecond.
+    const frames = Array.from({ length: 60 }, (_, i) => (i % 20 === 0 ? 33.3 : 16.7 + (i % 3) * 0.2));
+    expect(windowOf(frames).longFrameRatio).toBeCloseTo(3 / 60, 5);
+  });
+
+  it('is scale-free: the same 50 ms frame is judder in one window and ordinary in another', () => {
+    // The property the whole metric rests on, stated as the one comparison that can express
+    // it. A fixed threshold ("longer than 20 ms") would answer these two identically and would
+    // call every 30 fps device permanently juddering.
+    expect(windowOf([...Array(59).fill(16.7), 50]).longFrameRatio).toBeCloseTo(1 / 60, 5);
+    expect(windowOf(Array(60).fill(50)).longFrameRatio).toBe(0);
+  });
+
+  it('measures the FRAME series, not the update or render one', () => {
+    // Every frame long, but the update cost inside them is flat. A metric computed over the
+    // wrong series reports 0 here, which is the shape of the second surviving mutant.
+    const frames = Array.from({ length: 60 }, (_, i) => (i % 10 === 0 ? 40 : 16.7));
+    const w = windowOf(frames, 1, 1);
+    expect(w.longFrameRatio).toBeCloseTo(6 / 60, 5);
+    // ...and the control: the update series really is flat, so a metric computed over it
+    // would have to report 0 — which is exactly what the surviving mutant did.
+    expect(w.update.p50).toBe(1);
+    expect(w.update.max).toBe(1);
+  });
+
+  it('does not count a frame exactly at the tolerance', () => {
+    // `>` and not `>=`: the limit is the first length that is NOT ordinary, so a frame landing
+    // exactly on it is the last ordinary one. Reachable only with whole numbers, which is why
+    // this uses 16 rather than 16.7 — a case built from realistic values cannot express it.
+    const at = windowOf([...Array(59).fill(16), 16 * (1 + LONG_FRAME_TOLERANCE)]);
+    expect(at.longFrameRatio).toBe(0);
+    const past = windowOf([...Array(59).fill(16), 16 * (1 + LONG_FRAME_TOLERANCE) + 0.01]);
+    expect(past.longFrameRatio).toBeCloseTo(1 / 60, 5);
+  });
+
+  it('is 0 and never NaN for a window that closed without a frame', () => {
+    // A NaN travels all the way to a Grafana panel as a gap, which reads like an outage.
+    expect(longFrameRatio([], 16.7)).toBe(0);
+    expect(longFrameRatio([1, 2, 3], 0)).toBe(0);
   });
 });
 

@@ -399,6 +399,26 @@ describe('frame cadence', () => {
     expect(snapped.unevenPct).toBeLessThan(10);
   });
 
+  it('never delivers less than the rate it snapped to', () => {
+    // What the `- 1` in `ceil(interval) - 1` is actually worth, measured rather than asserted
+    // from the formula — a mutation battery (2026-09-22) showed a `floor` mutant surviving
+    // every arithmetic property in this file, because `floor` differs only where the interval
+    // is already a whole number of milliseconds and the difference there is 0.001 ms on paper.
+    //
+    // It is not 0.001 ms in frames. 100 Hz asked for 60 resolves to 50 fps, i.e. 20 ms exactly:
+    // with `ceil - 1` the gate sits at 19 and a delta that truncated to 19 still passes, so the
+    // cap delivers 51.3 fps; with `floor` it sits at 20, that delta is dropped, and the cap
+    // delivers 48.8 — BELOW the rate it just chose. A cap undershooting its own target is the
+    // honest statement of the bug, and it is what this case pins.
+    for (const hz of [75, 90, 100, 120, 144, 165, 240]) {
+      for (const target of FRAME_RATE_SETTINGS) {
+        const aimed = hz / Math.max(1, Math.round(hz / target));
+        const got = cadence(tickerCapFor(target, hz), hz).fps;
+        expect(got, `${hz}Hz @ ${target} -> aimed ${aimed}`).toBeGreaterThan(aimed * 0.98);
+      }
+    }
+  });
+
   it('leaves a run on the two panels this project ships against completely even', () => {
     // 60 Hz (the desktop report) and 120 Hz (the ProMotion iPad the cap was written for).
     for (const hz of [60, 120]) {
@@ -453,9 +473,13 @@ describe('tickerCapFor', () => {
           expect(Math.abs(min - whole), `${hz} @ ${target} integral`).toBeLessThan(0.01);
           // ...and never ABOVE that whole millisecond, which an integer `delta` would lose to.
           expect(min, `${hz} @ ${target} not above`).toBeLessThanOrEqual(whole);
-          // ...and strictly below the interval it is gating, with room for the truncation.
+          // ...and strictly below the interval it is gating, but not by more than the one
+          // millisecond of truncation that makes the margin necessary. Both bounds matter and
+          // they pull opposite ways: at or above the interval is the shipped 2026-09-08 bug,
+          // and too far below lets an EARLIER vsync through, which is judder of the other kind.
           const aimed = hz === null ? target : hz / Math.max(1, Math.round(hz / target));
           expect(min, `${hz} @ ${target} below interval`).toBeLessThan(1000 / aimed);
+          expect(min, `${hz} @ ${target} not needlessly low`).toBeGreaterThan(1000 / aimed - 2);
         } finally {
           ticker.destroy();
         }

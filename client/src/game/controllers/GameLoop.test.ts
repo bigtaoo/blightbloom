@@ -9,7 +9,7 @@
  * convention as controllers/ally.test.ts), never against Game.ts, which this file,
  * by design, never imports.
  */
-import { describe, it, expect, vi, afterEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach, type Mock } from 'vitest';
 import { createGameEngine, createGameState, buildEnemyActor, makeCommand, quantizeMove, ReplayInputSource, toFp, toReplay, EMBER_DUNGEON, EMBER_ROOMS, type DungeonConfig, type GameState } from '@dd/engine';
 import type { CoopSession } from '../../net/CoopSession';
 import type { InputSource, InputState, TouchVisual } from '../../platform/types';
@@ -17,6 +17,8 @@ import { CommandBuilder } from './CommandBuilder';
 import { AllyController } from './AllyController';
 import { GameLoop, type GameLoopDeps, type GameLoopHost } from './GameLoop';
 import { setMusicAudio } from '../musicDirector';
+import { lastRenderedPhase, resetAnalyticsTrackingForTests } from '../analyticsTracking';
+import type { Phase } from '../phase';
 import type { AudioBus, MusicTrack } from '../../platform/types';
 import { MAX_WALL_HEIGHT } from '../scene/wallGeometry';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
@@ -537,6 +539,47 @@ describe('GameLoop — hit-stop', () => {
 
     expect(advanceSpy).not.toHaveBeenCalled();
     expect(scene.interpolate).toHaveBeenCalled(); // render still animates through the freeze
+  });
+});
+
+describe('GameLoop — the per-frame phase report', () => {
+  // BEFORE as well as after: the mirror is a module singleton and every other case in this file
+  // drives `update` too, so "it starts at null" is only true if this block makes it true. A
+  // case that assumed a clean slate would pass or fail on file order.
+  beforeEach(() => resetAnalyticsTrackingForTests());
+  afterEach(() => resetAnalyticsTrackingForTests());
+
+  it('reports EVERY frame\'s phase, which two other systems read', () => {
+    // `reportFrame` is called unconditionally at the top of `update`, and nothing asserted that
+    // until 2026-09-22. Two systems depend on it and both fail silently without it: analytics
+    // derives `screen_view`/`run_start`/the abandon half of `run_end` from the phase changes it
+    // sees, and the frame-pacing telemetry (`game/perfReporting.ts`) asks the mirror it leaves
+    // behind whether a closed perf window came from a live run. Move that call under any
+    // condition and the dashboards go quiet — which looks exactly like nobody playing.
+    const { deps } = buildDeps();
+    const engine = createGameEngine(CFG);
+    const host = buildHost({ getEngine: () => engine, getPhase: () => 'menu' });
+    const loop = new GameLoop(deps, host);
+
+    expect(lastRenderedPhase()).toBe(null);
+    loop.update(16);
+    expect(lastRenderedPhase()).toBe('menu');
+  });
+
+  it('follows the phase into a run, and back out of it', () => {
+    const { deps } = buildDeps();
+    const engine = createGameEngine(CFG);
+    let phase: Phase = 'menu';
+    const host = buildHost({ getEngine: () => engine, getPhase: () => phase });
+    const loop = new GameLoop(deps, host);
+
+    loop.update(16);
+    phase = 'playing';
+    loop.update(16);
+    expect(lastRenderedPhase()).toBe('playing');
+    phase = 'victory';
+    loop.update(16);
+    expect(lastRenderedPhase()).toBe('victory');
   });
 });
 

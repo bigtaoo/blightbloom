@@ -244,17 +244,38 @@ describe('the Grafana panels query fields this line actually carries', () => {
     readFileSync(new URL('../../../server/monitoring/grafana/dashboards/client.json', import.meta.url), 'utf8'),
   ) as { panels: { title: string; targets?: { expr: string }[] }[] };
 
-  /** Every `| unwrap <field>` in the dashboard, with the panel that asked for it. */
-  const unwrapped = dashboard.panels.flatMap((p) =>
-    (p.targets ?? []).flatMap((t) =>
-      [...t.expr.matchAll(/\|\s*unwrap\s+(\w+)/g)].map((m) => ({ panel: p.title, field: m[1]! })),
-    ),
+  /**
+   * Every field name a perf panel takes out of the parsed line, with the panel that asked.
+   *
+   * Three syntaxes, not one, and the two beyond `unwrap` were added after the first version of
+   * this sweep missed them: `hz` is never unwrapped, it is a label filter (`| hz = 0`) and a
+   * grouping (`by (hz)`), so renaming it passed a check whose whole job was to catch that.
+   * A sweep that reads one syntax looks exactly like a sweep that reads all of them.
+   */
+  const referenced = dashboard.panels.flatMap((p) =>
+    (p.targets ?? []).flatMap((t) => [
+      ...[...t.expr.matchAll(/\|\s*unwrap\s+(\w+)/g)].map((m) => ({ panel: p.title, field: m[1]!, how: 'unwrap' })),
+      ...[...t.expr.matchAll(/\bby\s*\((\w+)\)/g)].map((m) => ({ panel: p.title, field: m[1]!, how: 'by' })),
+      // `| foo = 0` / `| foo != ""` — a label filter on a field the second `logfmt` produced.
+      // Deliberately not `| tag="perf"`, which filters a field the SERVER writes: the guard
+      // below skips the names this module does not own.
+      ...[...t.expr.matchAll(/\|\s*(\w+)\s*(?:=|!=|>|<)/g)].map((m) => ({ panel: p.title, field: m[1]!, how: 'filter' })),
+    ]),
   );
 
+  /** The envelope fields, written by `server/src/clientLog.ts` rather than by this module. */
+  const SERVER_OWNED = new Set(['session', 'ver', 'acct', 'tag', 'msg', 'level', 'host', 'source']);
+  const unwrapped = referenced.filter((r) => !SERVER_OWNED.has(r.field));
+
   it('found the panels at all, so an empty sweep cannot pass as agreement', () => {
-    // The control. A dashboard path that moved, or a `panels` key that became nested rows,
-    // would otherwise make every assertion below vacuously true.
+    // The control, and a sweep that reads source needs one above all else: a regex that stops
+    // matching passes everything, forever, and looks like coverage in the file tree.
     expect(unwrapped.length).toBeGreaterThan(4);
+    // Per SYNTAX, not just in total — the whole reason this sweep was widened is that one
+    // syntax can empty out while the total holds.
+    for (const how of ['unwrap', 'by', 'filter']) {
+      expect(unwrapped.filter((u) => u.how === how).length, how).toBeGreaterThan(0);
+    }
   });
 
   it('unwraps only fields the reporter emits', () => {
@@ -262,8 +283,8 @@ describe('the Grafana panels query fields this line actually carries', () => {
     reporter.observe(win());
     reporter.flush();
     const emitted = new Set(Object.keys(fields(lines[0]!)));
-    for (const { panel, field } of unwrapped) {
-      expect(emitted.has(field), `${panel} unwraps "${field}"`).toBe(true);
+    for (const { panel, field, how } of unwrapped) {
+      expect(emitted.has(field), `${panel} (${how}) names "${field}"`).toBe(true);
     }
   });
 
@@ -284,5 +305,23 @@ describe('the Grafana panels query fields this line actually carries', () => {
 
   it('agrees with the tag constant rather than a copy of it', () => {
     expect(PERF_LOG_TAG).toBe('perf');
+  });
+
+  it('emits a line the server can quote and a panel can unquote again', () => {
+    // The line survives two parses it cannot influence. `server/src/clientLog.ts` renders it as
+    // `msg=<JSON.stringify(line)>` because it contains spaces, and the panel reverses that with
+    // `line_format "{{.msg}}"`. A quote or a backslash inside would still round-trip through
+    // JSON, but a NEWLINE would not survive Loki's line-per-entry model at all — it would
+    // become two log lines, the second of them unparseable.
+    const { reporter, lines } = harness();
+    reporter.observe(win());
+    reporter.flush();
+    const line = lines[0]!;
+    expect(line).not.toMatch(/["\\\n\r]/);
+    expect(JSON.parse(JSON.stringify(line))).toBe(line);
+    // ...and comfortably inside the client logger's own 1000-char message cap, which truncates
+    // silently: a line that grew past it would lose its last fields and the panels reading them
+    // would go quiet rather than red. The headroom is the room to add fields later.
+    expect(line.length).toBeLessThan(300);
   });
 });

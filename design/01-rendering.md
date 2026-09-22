@@ -522,6 +522,16 @@ windows under 25 fps — the machine in the report was holding 58), and a window
 for judder at all. An average and a p95 both miss it: at 2.9% of frames the doubled ones are
 inside the 5% the percentile discards.
 
+A mutation battery over the whole change is what made those two claims checkable rather than
+stated: 46 mutants, **36 killed on the first pass**, and every survivor a hole in the tests
+rather than unreachable code. The two worth carrying forward, because both are shapes rather
+than incidents: `longFrameRatio` was asserted by nothing at 100% line and branch coverage (every
+existing case ran the line and looked at other fields), and `installPerf`'s wiring was asserted
+by nothing, so the display probe and the window reporter could both be disconnected with every
+unit test for the pieces still green. The second one survived twice — the wiring cases added
+after the first pass all injected their own sink, leaving the production default unrun. 54
+mutants and 54 killed now; `design/roadmap/88` has the full account.
+
 `FrameWindow.longFrameRatio` is that metric — the share of frames markedly longer than the
 window's own median, so it says nothing about whether the frame rate is high enough and
 everything about whether it is steady. `perf/perfReport.ts` aggregates a minute of play into one

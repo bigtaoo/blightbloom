@@ -92,7 +92,14 @@ describe('estimateDisplayHz', () => {
     // the median; counting them would pull it toward zero, i.e. toward a "very fast display".
     const t = ticks(60, 90);
     const withDupes = t.flatMap((v, i) => (i % 10 === 0 ? [v, v] : [v]));
-    expect(estimateDisplayHz(withDupes)!.hz).toBeCloseTo(60, 3);
+    const est = estimateDisplayHz(withDupes)!;
+    expect(est.hz).toBeCloseTo(60, 3);
+    // ...and they were DROPPED rather than merely outvoted. The rate above is unmoved either
+    // way, because a median ignores a minority whatever its value — which is what let a
+    // "keep the zeros" mutant survive the 2026-09-22 battery. `samples` is the count the
+    // estimate was actually made from, and it is the one number that can tell the two apart.
+    expect(withDupes.length - 1).toBe(98); // gaps offered, including the 9 zero-length ones
+    expect(est.samples).toBe(89); // gaps used
   });
 
   it('agrees with itself about the tolerance it reports', () => {

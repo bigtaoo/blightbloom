@@ -19,6 +19,14 @@
  * Loki panels are skipped: their queries are label selectors and line filters over log
  * streams, which this file has no way to validate and which
  * `deploy.observability.test.ts` covers by running Alloy's real parser against a real line.
+ *
+ * One family of Loki panels IS joined to its producer, just not from here (2026-09-22). The
+ * `Frame pacing` row of `client.json` unwraps fields out of a logfmt line the CLIENT builds,
+ * so the client is where the join can be made: `client/src/perf/perfReport.test.ts` reads this
+ * same dashboard directory, extracts every field its perf panels name, and requires each one to
+ * appear in a line the real reporter emits. Stated here so that "Loki panels are skipped" is
+ * not read as "Loki panels cannot be checked" — where a panel's data has a single known
+ * producer, the same join this file makes for Prometheus is available.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';

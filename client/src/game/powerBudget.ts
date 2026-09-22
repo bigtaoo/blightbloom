@@ -184,10 +184,14 @@ export const GATE_EPSILON_MS = 0.001;
 export function tickerCapFor(targetFps: number, hz: number | null): number {
   if (hz !== null && hz <= targetFps * 1.02) return 0;
   const even = hz === null ? targetFps : hz / Math.max(1, Math.round(hz / targetFps));
-  // `ceil(interval) - 1`, and the `- 1` is load-bearing rather than defensive: `floor` lands
-  // ON the interval whenever the interval is already a whole millisecond (a 100 Hz panel
-  // asked for 60 resolves to 50 fps, i.e. exactly 20 ms), and `delta` truncating to 19
-  // against a `_minElapsedMS` of 20 is the shipped bug in miniature. Strictly below, always.
+  // `ceil(interval) - 1`, and the `- 1` is worth a measured frame rate rather than being
+  // defensive: `floor` lands ON the interval whenever the interval is already a whole
+  // millisecond (a 100 Hz panel asked for 60 resolves to 50 fps, i.e. exactly 20 ms), and a
+  // `delta` that truncated to 19 is then dropped. Measured, 100 Hz: 51.3 fps with the `- 1`
+  // and 48.8 without — the cap undershooting the rate it had just chosen. A 2026-09-22
+  // mutation battery found `floor` surviving every arithmetic assertion about this function,
+  // which is fair (on paper they differ by 0.001 ms); `powerBudget.test.ts`'s "never delivers
+  // less than the rate it snapped to" is the case that can actually tell them apart.
   const minMs = Math.max(1, Math.ceil(1000 / even) - 1);
   // ...and then a hair below THAT, because the value does not survive the round trip.
   // `Ticker` stores `1 / (fps / 1000)`, so asking for `1000 / 33` comes back as
