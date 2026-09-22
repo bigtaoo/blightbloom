@@ -65,12 +65,9 @@ export interface RunLifecycleDeps {
    *  moment the HUD is hidden again. */
   forge: Forge;
   loadout: Loadout;
-  /** The run entry points reached from the LOBBY rather than from the hub screens, and so
-   *  the ones that have to hide the main menu: `beginQuickRun`, the tutorial, and — since
-   *  2026-09-17 — `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
+  /** The run entry points reached from the LOBBY, and so the ones that have to hide the main
+   *  menu: `beginQuickRun`, the tutorial, and `resumeSavedRun` (its CONTINUE row, 2026-09-17). */
   mainMenu: { hide(): void };
-  /** The tutorial's SECOND door (2026-09-22, `Settings.ts`'s REPLAY TUTORIAL row) — hidden
-   *  alongside `mainMenu` since that run can now start from the settings overlay too. */
   settingsScreen: { hide(): void };
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
@@ -229,8 +226,6 @@ export class RunLifecycle {
       buildTutorialConfig({ skinId: d.run.meta.selectedSkin }),
     );
     d.run.runCount++;
-    // Both doors, unconditionally — hiding one that was never open is a no-op, same as
-    // `resumeSavedRun`'s hide callback below.
     this.enterPrimedRun(tutorial, () => { d.mainMenu.hide(); d.settingsScreen.hide(); });
   }
 
