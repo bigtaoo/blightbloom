@@ -14,10 +14,10 @@
  *
  * There is NO minimum on this screen. A floor lived here between 2026-09-21 and 2026-09-22
  * and was wrong: the front door is the one screen a player has no reason to look at, and the
- * request it came from ("最低保持3秒") was about the in-game transitions — entering a map,
- * returning to the lobby — not about the way in. That minimum now lives at the run boundary
- * where it was asked for (`game/controllers/TransitionGate.ts`'s `MIN_TRANSITION_MS`), and boot is
- * back to being as short as the download makes it.
+ * request it came from ("held for at least 3 seconds") was about the in-game transitions —
+ * entering a map, returning to the lobby — not about the way in. That minimum now lives at the
+ * run boundary where it was asked for (`game/controllers/TransitionGate.ts`'s
+ * `MIN_TRANSITION_MS`), and boot is back to being as short as the download makes it.
  *
  * ## The gap that is still closed here
  *

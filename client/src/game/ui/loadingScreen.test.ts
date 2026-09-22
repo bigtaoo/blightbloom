@@ -86,7 +86,7 @@ describe('the bar', () => {
   });
 
   it('survives a progress report that arrives before any layout', () => {
-    // `ArtGate` sets the total before it lays out; a bar drawn against a 0-width viewport must
+    // `TransitionGate` sets the total before it lays out; a bar drawn against a 0-width viewport must
     // not throw or emit a negative-width rect.
     const { screen } = make();
     expect(() => screen.setProgress(3, 16)).not.toThrow();
