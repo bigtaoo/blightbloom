@@ -38,6 +38,22 @@
 // So CO-OP and PVP QUEUE are full width, and the height came out of the header instead
 // (`HEADER_H`) and out of a banner that now wraps wider before it wraps taller.
 //
+// ## The divider, and TUTORIAL hiding once seen (2026-09-22)
+//
+// Nothing in the five/six-row stack encoded that it held three different KINDS of route —
+// start playing, prepare, chrome — so a player scanning it saw only one signal, the single
+// green fill. The lobby restructure (design/10) pulls LOGIN/SETTINGS out of this block
+// entirely (`MainMenu.show` owns that half now) and draws a 1px rule inside what is left,
+// between PVP SOLO QUEUE and the SQUAD|FORGE row, splitting "start playing" from "prepare".
+// It is a plain `Graphics`, not a `Button` — no `onTap`, so it is invisible to
+// `widgetOverlap.test.ts`'s tappable walk without needing to say so.
+//
+// TUTORIAL additionally disappears once `MetaState.hasSeenTutorial` — "open it, or take it
+// off the screen" (design/10), not dimmed — with a second door onto the same run added to
+// `screens/Settings.ts` so the route never becomes fully unreachable. `setRecommendTutorial`
+// already carried the exact boolean this needs (`!hasSeenTutorial`); it only drove the badge
+// before, and now drives the row's visibility too.
+//
 // ## Why SQUAD and FORGE share a row (2026-09-21)
 //
 // FORGE is a sixth route: the crafting page has its own screen now (`screens/Forge.ts`) and
@@ -49,7 +65,7 @@
 // the eight is 8 characters (`SCHMIEDE`, `ESCOUADE`) against a budget of ~87 px, where
 // `PVP SOLO QUEUE` needed 169. `labelFit.test.ts` checks that claim in every locale rather
 // than leaving it as arithmetic in a comment.
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import { Button } from './widgets';
 import { getUiTexture } from '../../render/uiSkins';
 import { TICK_RATE } from '@dd/engine';
@@ -72,13 +88,24 @@ const CONTINUE_CAPTION_H = 18;
 /** CO-OP and PVP QUEUE: still a tier of their own, one step down from SOLO. */
 const QUEUE_H = 44;
 const ROW_H = 42;
-/** What `MainMenu.show` reserves for this block WITHOUT a resumable run. A constant rather
- *  than a measurement: every position in these screens is arithmetic on constants precisely
- *  so that laying one out needs no canvas and no `Text.height` (see
- *  `screens/fakeTextCanvas.ts`). The saved-run row adds to it — see `height`. */
-export const LOBBY_ROUTES_H = SOLO_H + GAP + QUEUE_H + GAP + QUEUE_H + GAP + ROW_H + GAP + ROW_H;
+/** The divider's own thickness, and the room kept on each side of it — replaces the plain
+ *  `GAP` that used to separate PVP SOLO QUEUE from the SQUAD|FORGE row (2026-09-22). Wider
+ *  than a row gap on purpose: this is the one break in the stack that means something, and
+ *  it has to read as one even next to the tighter 5px rhythm the ordinary rows keep. */
+const DIVIDER_GAP = 8;
+const DIVIDER_H = 1;
+/** What `MainMenu.show` reserves for this block WITHOUT a resumable run and WITH TUTORIAL on
+ *  screen. A constant rather than a measurement: every position in these screens is
+ *  arithmetic on constants precisely so that laying one out needs no canvas and no
+ *  `Text.height` (see `screens/fakeTextCanvas.ts`). The saved-run row adds to it, and a
+ *  returning player's hidden TUTORIAL row subtracts from it — see `height`. */
+export const LOBBY_ROUTES_H =
+  SOLO_H + GAP + QUEUE_H + GAP + QUEUE_H + DIVIDER_GAP + DIVIDER_H + DIVIDER_GAP + ROW_H + GAP + ROW_H;
 /** What the CONTINUE row and its caption add when one is offered. */
 export const LOBBY_CONTINUE_H = CONTINUE_H + CONTINUE_CAPTION_H + GAP;
+/** What hiding TUTORIAL for a returning player gives back: its own row plus the gap above
+ *  it — the row is the LAST one in the stack, so nothing below it has to move. */
+const TUTORIAL_BLOCK_H = GAP + ROW_H;
 
 /** The "go" green every primary action in this project uses, and its brighter border. */
 const PRIMARY_FILL = 0x2f855a;
@@ -94,12 +121,21 @@ export class LobbyRoutes {
   private soloBtn: Button;
   private coopBtn: Button;
   private pvpSoloBtn: Button;
+  /** The rule between "start playing" and "prepare" (2026-09-22) — see the file header. Not
+   *  a `Button`: no `onTap`, so it draws no press target at all. */
+  private divider = new Graphics();
   private squadBtn: Button;
   /** The crafting page's lobby door (2026-09-21) — half a row, beside SQUAD. */
   private forgeBtn: Button;
   private tutorialBtn: Button;
   private recommendedTag: Text;
-  private recommendTutorial = false;
+  /** Both "badge this row NEW HERE?" and, since 2026-09-22, "draw this row at all" — a
+   *  returning player (`!MetaState.hasSeenTutorial` is false) gets neither. Defaults to
+   *  `true` rather than `false`: the real caller (`ScreenFlow.showMenu`) always calls
+   *  `setRecommendTutorial` before the first `show()`, so this default only reaches a
+   *  screen through a test that skips it, and what it shipped before this row could be
+   *  hidden at all was "always on screen" — the safer default to fall back to. */
+  private recommendTutorial = true;
   /** The resumable save this block is currently offering, or null. Kept so `retext()` can
    *  rebuild the caption in the new locale without the caller re-supplying it. */
   private saved: SavedRunSummary | null = null;
@@ -144,6 +180,10 @@ export class LobbyRoutes {
     this.pvpSoloBtn.onTap = () => this.onPvpSolo?.();
     this.pvpSoloBtn.setIcon(getUiTexture('icon_squad'), 0x742a2a);
 
+    // Fixed geometry, drawn once — `layout()` only ever moves it, same as every position in
+    // this file being arithmetic on constants rather than a measurement (see `LOBBY_ROUTES_H`).
+    this.divider.rect(0, 0, LOBBY_ROUTES_W, DIVIDER_H).fill({ color: 0x3a4a5c, alpha: 0.5 });
+
     this.squadBtn = new Button(t('mainMenu.squad'), { w: PAIR_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
     this.squadBtn.onTap = () => this.onSquad?.();
     this.squadBtn.setIcon(getUiTexture('icon_party_create'), 0x2c5282);
@@ -156,7 +196,12 @@ export class LobbyRoutes {
 
     this.tutorialBtn = new Button(t('mainMenu.tutorial'), { w: LOBBY_ROUTES_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
-    this.tutorialBtn.setIcon(getUiTexture('icon_account'), 0x6b46c1);
+    // Its own chip colour, not the account glyph's purple (design/10:75 "two adjacent buttons
+    // must differ by more than their label" — 2026-09-22, until a dedicated icon exists: the
+    // glyph is still borrowed, but the chip is the cue that fix already relied on once). Not
+    // one of the other rows' colours either — purple is ACCOUNT, blue is CO-OP/SQUAD, red is
+    // PVP, brown is FORGE.
+    this.tutorialBtn.setIcon(getUiTexture('icon_account'), 0x2f6f5f);
 
     // Never forced — the same "never required" convention `LoginScreen` follows, and the
     // badge `ModeSelect` carried before the merge. Hidden the moment the player has completed
@@ -167,7 +212,7 @@ export class LobbyRoutes {
 
     this.view.addChild(
       this.continueBtn.view, this.continueCaption,
-      this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view,
+      this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view, this.divider,
       this.squadBtn.view, this.forgeBtn.view, this.tutorialBtn.view, this.recommendedTag,
     );
   }
@@ -187,16 +232,23 @@ export class LobbyRoutes {
     this.applyHierarchy();
   }
 
-  /** What this block occupies vertically, which is state-dependent since 2026-09-17 —
+  /** What this block occupies vertically, which is state-dependent since 2026-09-17 (a
+   *  resumable save) and since 2026-09-22 (TUTORIAL hidden for a player who has seen it) —
    *  `MainMenu.show` sizes the card off this rather than off `LOBBY_ROUTES_H` alone. */
   get height(): number {
-    return LOBBY_ROUTES_H + (this.saved ? LOBBY_CONTINUE_H : 0);
+    const routesH = LOBBY_ROUTES_H - (this.recommendTutorial ? 0 : TUTORIAL_BLOCK_H);
+    return routesH + (this.saved ? LOBBY_CONTINUE_H : 0);
   }
 
-  /** Call before `layout()` so the TUTORIAL badge reflects `!MetaState.hasSeenTutorial`. */
+  /** Call before `layout()` so TUTORIAL reflects `!MetaState.hasSeenTutorial` — since
+   *  2026-09-22 that means whether the row is drawn AT ALL, not just its "NEW HERE?" badge
+   *  (design/10 "do not dim a door — open it, or take it off the screen"; `screens/
+   *  Settings.ts` is the second door this relies on, so the route stays reachable either
+   *  way). */
   setRecommendTutorial(recommend: boolean): void {
     this.recommendTutorial = recommend;
     this.recommendedTag.visible = recommend;
+    this.tutorialBtn.view.visible = recommend;
   }
 
   /**
@@ -258,11 +310,18 @@ export class LobbyRoutes {
     this.coopBtn.view.position.set(left, coopY);
     const pvpY = coopY + QUEUE_H + GAP;
     this.pvpSoloBtn.view.position.set(left, pvpY);
-    const squadY = pvpY + QUEUE_H + GAP;
+    // The rule between "start playing" and "prepare" — see the file header.
+    const dividerY = pvpY + QUEUE_H + DIVIDER_GAP;
+    this.divider.position.set(left, dividerY);
+    const squadY = dividerY + DIVIDER_H + DIVIDER_GAP;
     this.squadBtn.view.position.set(left, squadY);
     this.forgeBtn.view.position.set(left + PAIR_W + PAIR_GAP, squadY);
+    // Positioned even when hidden (a returning player) — same convention as the banner in
+    // `MainMenu.show`: an invisible node costs nothing, and it is one fewer branch to keep
+    // in sync with `height`'s own condition.
     const tutorialY = squadY + ROW_H + GAP;
     this.tutorialBtn.view.position.set(left, tutorialY);
+    this.tutorialBtn.view.visible = this.recommendTutorial;
     // Inside the button's own right edge, not out past it: the badge sat to the RIGHT of the
     // row on `ModeSelect`, where the block was the widest thing on the screen. Here the card
     // is only 40px wider than the row, so an outside badge would have crossed its border.

@@ -56,6 +56,7 @@ export const zh: Translations<typeof en> = {
     reduceMotion: '减少画面抖动: {mode}',
     on: '开',
     off: '关',
+    tutorial: '重玩教程',
     back: '返回',
   },
   forge: {

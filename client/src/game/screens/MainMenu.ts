@@ -26,7 +26,14 @@ function clipName(name: string): string {
 const PLAY_H = 60;
 /** Title top → card top: the title, the subtitle under it, and the gap. */
 const HEADER_H = 88;
-/** What the portal's data notice + policy link occupy under the card. */
+/** ACCOUNT/SETTINGS' own height, and the gap between the card and the row they sit on below
+ *  it (2026-09-22: pulled OUT of `menuCard` entirely — design/10 "do not dim a door", read
+ *  literally: they are not routes into the game at all, so they no longer share the card
+ *  that holds the ones that are). The gap matches the card's own top pad, now that the last
+ *  thing inside the card is a route row rather than this pair — see `cardH`. */
+const UTILITY_ROW_H = 42;
+const UTILITY_GAP = 12;
+/** What the portal's data notice + policy link occupy under the utility row. */
 const NOTICE_BLOCK_H = 14 + 44 + 18;
 /**
  * Room kept above the title for a maintenance banner that is not part of the centred block.
@@ -345,8 +352,14 @@ export class MainMenu {
     // `routes.height`, not the `LOBBY_ROUTES_H` constant: the block grows by a row and a
     // caption when it has a resumable run to offer (2026-09-17).
     const routesH = this.routes.height;
-    const cardH = 12 + extra + routesH + 12 + 42 + 24;
-    const below = this.accountEntry ? 0 : NOTICE_BLOCK_H;
+    // Top pad, the routes block, bottom pad — and nothing else: the utility row (ACCOUNT/
+    // SETTINGS) moved OUT of the card (2026-09-22), so this no longer owes it the 42+24 it
+    // used to. The bottom pad drops from 24 to 12 to match, for the same reason: 24 was sized
+    // for a 42px button's descender room, and the last thing in the card is a route row now.
+    const cardH = 12 + extra + routesH + 12;
+    // The utility row is ALWAYS below the card now, whether or not it is a pair — only the
+    // portal's notice+link block is conditional on that.
+    const below = UTILITY_GAP + UTILITY_ROW_H + (this.accountEntry ? 0 : NOTICE_BLOCK_H);
     // ...but never so high that a maintenance banner would be drawn off the top. The banner
     // is deliberately not part of the block (see its own comment), so the block owes it room
     // rather than a row.
@@ -361,11 +374,9 @@ export class MainMenu {
     this.banner.position.set(cx, top - 16);
     this.refreshBanner();
 
-    // The utility row is the one part of this card whose width is not a constant — see the
-    // account chip's own comment. The card grows with it rather than letting it hang over
-    // the edge; every other row is `LOBBY_ROUTES_W`.
-    const pairW = this.accountEntry ? this.accountBtn.width + 10 + this.settingsBtn.width : this.settingsBtn.width;
-    const cardW = Math.max(LOBBY_ROUTES_W + 40, pairW + 40);
+    // The card itself is back to a constant width — it no longer has to grow for the utility
+    // pair, which sits below it now and centres itself independently (see `pairW` below).
+    const cardW = LOBBY_ROUTES_W + 40;
     const cardTop = top + HEADER_H;
     this.menuCard.layout(cardW, cardH);
     this.menuCard.view.position.set(cx - cardW / 2, cardTop);
@@ -373,20 +384,27 @@ export class MainMenu {
     if (this.playBtn.view.visible) this.playBtn.view.position.set(cx - LOBBY_ROUTES_W / 2, cardTop + 12);
     this.routes.layout(cx, cardTop + 12 + extra);
 
-    const tertiaryY = cardTop + 12 + extra + routesH + 12;
+    // The utility row — chrome, not a route, so it sits UNDER the card rather than inside it
+    // (design/10 "do not dim a door", read as: a control that is not a door does not belong
+    // on the same card as the ones that are). Same `autoWidth`-measured centring as before,
+    // only the y changed.
+    const pairW = this.accountEntry ? this.accountBtn.width + 10 + this.settingsBtn.width : this.settingsBtn.width;
+    const tertiaryY = cardTop + cardH + UTILITY_GAP;
     if (this.accountEntry) {
       // Centred as a PAIR from the measured widths, so a long name pushes SETTINGS right
       // instead of overlapping it.
       this.accountBtn.view.position.set(cx - pairW / 2, tertiaryY);
       this.settingsBtn.view.position.set(cx - pairW / 2 + this.accountBtn.width + 10, tertiaryY);
     } else {
-      // SETTINGS takes the whole tertiary row rather than staying in its half, so the row
-      // does not read as one button that lost its pair.
+      // SETTINGS takes the whole row rather than staying in its half, so it does not read as
+      // one button that lost its pair.
       this.settingsBtn.view.position.set(cx - 67, tertiaryY);
-      this.accountLabel.position.set(cx, cardTop - 24);
-      // Below the card, not at the screen bottom: `BannerHost` owns the bottom centre of a
-      // portal page, and a notice underneath an ad is a notice nobody reads.
-      this.dataNotice.position.set(cx, cardTop + cardH + 14);
+      // The same slot SETTINGS sits in, not a separate one above the card — the two states
+      // (a button, or a label) occupy one row instead of two.
+      this.accountLabel.position.set(cx, tertiaryY + UTILITY_ROW_H / 2);
+      // Below the utility row, not at the screen bottom: `BannerHost` owns the bottom centre
+      // of a portal page, and a notice underneath an ad is a notice nobody reads.
+      this.dataNotice.position.set(cx, tertiaryY + UTILITY_ROW_H + 14);
       // Under the notice it belongs to, not beside it: the notice wraps to two lines on a
       // narrow portal frame and a link on the same row would collide with the second.
       //
@@ -394,7 +412,7 @@ export class MainMenu {
       // file also avoids: reading `.height` on a Pixi `Text` forces a canvas text
       // measurement, and these screens are unit-tested with no `document` at all. 44px
       // clears three wrapped lines at this font size, one more than the longest locale needs.
-      this.privacyLink.position.set(cx, cardTop + cardH + 14 + 44);
+      this.privacyLink.position.set(cx, tertiaryY + UTILITY_ROW_H + 14 + 44);
     }
     this.view.visible = true;
   }

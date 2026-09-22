@@ -69,6 +69,9 @@ export interface RunLifecycleDeps {
    *  the ones that have to hide the main menu: `beginQuickRun`, the tutorial, and — since
    *  2026-09-17 — `resumeSavedRun`, whose CONTINUE row is now on the front door too. */
   mainMenu: { hide(): void };
+  /** The tutorial's SECOND door (2026-09-22, `Settings.ts`'s REPLAY TUTORIAL row) — hidden
+   *  alongside `mainMenu` since that run can now start from the settings overlay too. */
+  settingsScreen: { hide(): void };
   matchmaking: Matchmaking;
   partyScreen: PartyScreen;
   pauseMenu: PauseMenu;
@@ -227,7 +230,9 @@ export class RunLifecycle {
       buildTutorialConfig({ skinId: d.run.meta.selectedSkin }),
     );
     d.run.runCount++;
-    this.enterPrimedRun(tutorial, () => d.mainMenu.hide());
+    // Both doors, unconditionally — hiding one that was never open is a no-op, same as
+    // `resumeSavedRun`'s hide callback below.
+    this.enterPrimedRun(tutorial, () => { d.mainMenu.hide(); d.settingsScreen.hide(); });
   }
 
   /** Dev-only (see RunState's `arenaDemo` comment): a catalog ArenaMap + two local seats on

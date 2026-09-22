@@ -1491,9 +1491,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-22** [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change) — *“把 /party/create 也加上限流  你把类似的问题一次性解决”* (add rate limiting to `/party/create` too — and solve the similar problems all at once). [Volume 87](roadmap/87-2026-09-22-party-join-rate-limit.md) had left `/party/create` unbounded that morning, with a test asserting the absence and a reason beside it: *minting a code is not guessing one*. Still true, and about **discovery**; nothing had asked what a caller can do to the **supply**, and the answer was everything — every call holds one of 10^6 codes and a `Map` entry for ten idle minutes, so an unbounded caller’s steady state is its rate times the TTL (~30,000 live parties at 50 req/s, and `CodeSpaceExhausted` — a 503 on the create button for everybody — a few hundred a second in). `CREATE_RATE_LIMIT` is **60 per ten minutes**, and because the window IS the party TTL the budget is also the ceiling on live parties per address; half of join’s 120 because a squad has one creator and three joiners. Asking the same question of every other route found **five more**: `/auth/login` (60 — the per-username lockout is per NAME and stuffing is per LIST, a login against an existing account pays a full scrypt, and a missing username returns before any hashing, which is an enumeration ORACLE rather than a saving), `/auth/portal` (120 — an RS256 verify per call and the one account-minting path `REGISTER_RATE_LIMIT` never watched; the loosest, because the client spends it at BOOT and a refusal is silently answered by staying a guest), `/auth/change-password` (20 — two scrypt hashes, the most expensive request in the process), `/find` (120 — a waiter is not inert: enough of one shape FORMS A ROOM on a real gameserver) and `/store/order` (30 — the session bounds WHO may reach the billing plane and nothing bounded how often). **The structural half is why the list had stopped growing**: each hand-wired limiter cost four places and a paragraph saying it was not the other two (*“a SECOND limiter”*, *“a THIRD, for /party/join”*), so the set is declared once and a route names a key — keeping the separate counters and the narrow reach (`Pick` of one key, so `/party/leave` still cannot see a limiter). What stays unbudgeted is asserted, not assumed: `GET /find/:queueId` is polled twice a second by the real client, so any ceiling that inconveniences an attacker refuses a living room of real players first. Two things found on the way — `clientKey` **threw** on a socket-less request where its own doc promised a constant (a limiter that throws is a 500, not a refusal), and the register-limit file’s claim that login "was never in the same position" was true in both halves and wrong in its conclusion, so it is quoted rather than deleted. **Two mutants survived the whole HTTP suite** — a key handed the wrong constant, and two keys handed the same instance — because the file that would notice had overridden that very key; `limits.test.ts` reads each limiter’s CAPACITY back out instead and kills both. Eleven mutants, each killed by the case written for it; both client branches mutated both ways. Two follow-up findings, both from asking what was still untestable rather than untested: a **429 that sends but does not return** still mints the party (the first `writeHead` wins, so the wire looks identical), and a budget **frozen at one instant** never recovers — both survived the suite, so the stalled-body table became six routes × three questions with the work behind each budget as a SPY. And `/find`’s 429 fell through to *“could not connect — try again”* on a screen whose error state ends in a **Retry button**, which is volume 87’s defect exactly; `MatchRequestError` now carries the status and the arm is checked first. Eighteen mutants across fifteen rows, each killed by the case written for it. Server 1,909 → **1,954**, client 7,208 → **7,221**. `net` `ui` `test` `i18n` `docs`
 
+**[2026-09-22 — group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md)**
+
+- **09-22** [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change) — the owner looked at a shipped screenshot and asked whether eight tap targets on the lobby's card was too many; the count was not the defect, the CARD was — it held three different kinds of control (start playing, prepare, chrome) with nothing in the layout saying so. `LOGIN`/`SETTINGS` moved out of `menuCard` entirely to a chrome row below it (break-even on height: the card's bottom pad dropped from 24 to 12, matching exactly what the row's own 12px gap cost outside it), and a 1px divider inside `LobbyRoutes` now separates "start playing" from "prepare" without dimming either side — design/10's own *"do not dim a door — open it, or take it off the screen"* rule, applied literally to TUTORIAL: `setRecommendTutorial(false)` now hides the row for a player who has seen it, rather than always drawing it and only ever hiding its "NEW HERE?" badge. Taking a route off the screen must not make it unreachable, so `Settings.ts` gained a REPLAY TUTORIAL entry beside MUTE/BACK (not a row of its own — the screen's design height already sat exactly on the 640px floor `viewportFit.test.ts` guards). TUTORIAL also stopped borrowing the account chip's purple, a second and more literal case of the "two adjacent buttons must differ by more than their label" rule the 2026-08-02 LOGIN/SETTINGS fix relied on. The CO-OP/SQUAD relabel the same audit found is left out — it is a copy change gated on an open design question (design/05:152) that a layout pass should not decide by accident in eight locale files. Full client suite green (7,339 tests), driven live at 760×640 and at a phone-landscape viewport across all four states — plain, saved run, maintenance banner, portal build. `ui` `test` `i18n` `docs`
+
 ## The work log — by theme
 
-The same 186 entries, grouped. An entry with more than one tag appears more than once.
+The same 187 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
 
@@ -1666,7 +1670,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(101)*
+**`test`** — coverage sweeps, gates, mutation batteries *(102)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1770,6 +1774,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1817,7 +1822,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(37)*
+**`ui`** — HUD, screens, widgets *(38)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1857,6 +1862,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(20)*
 
@@ -1881,7 +1887,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(105)*
+**`docs`** — design docs and this log itself *(106)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -1988,6 +1994,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(30)*
 
@@ -2022,7 +2029,7 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 
-**`i18n`** — locales and text layout *(15)*
+**`i18n`** — locales and text layout *(16)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2039,4 +2046,4 @@ The same 186 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
-
+- 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/90-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)

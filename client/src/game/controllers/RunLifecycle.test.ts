@@ -97,6 +97,7 @@ function make(over: Partial<RunLifecycleDeps> & {
     forge: { hide: note('forge.hide') } as never,
     loadout: { hide: note('loadout.hide') } as never,
     mainMenu: { hide: note('mainMenu.hide') },
+    settingsScreen: { hide: note('settingsScreen.hide') } as never,
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
     pauseMenu: { hide: note('pauseMenu.hide') } as never,

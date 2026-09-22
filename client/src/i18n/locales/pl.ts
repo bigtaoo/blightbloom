@@ -56,6 +56,7 @@ export const pl: Translations<typeof en> = {
     reduceMotion: 'OGRANICZ RUCH: {mode}',
     on: 'WŁ.',
     off: 'WYŁ.',
+    tutorial: 'POWTÓRZ SAMOUCZEK',
     back: 'WSTECZ',
   },
   forge: {

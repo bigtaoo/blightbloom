@@ -40,6 +40,15 @@ const DISMISSES = /^(back|cancel|leave|quit|saveQuit|resume|close|menu)/i;
  */
 const SILENT_BY_DESIGN = new Set(['screens/StoreScreen.ts:skuRowBtn']);
 
+/**
+ * `Settings.ts` buttons that are neither an option (`ui.toggle`) nor a dismiss (`ui.back`,
+ * caught by `DISMISSES`) — a documented, narrow exception to the "everything is an option"
+ * rule below, same shape as `SILENT_BY_DESIGN`. REPLAY TUTORIAL (2026-09-22) reads/writes no
+ * `SettingsState` field at all: it is a forward action, like a route on the lobby's own card,
+ * that happens to live on this screen because the lobby's TUTORIAL row can now hide.
+ */
+const NOT_AN_OPTION = new Set(['screens/Settings.ts:tutorialBtn']);
+
 const ALLOWED = new Set(['ui.tap', 'ui.back', 'ui.toggle', 'ui.denied', 'silent']);
 
 interface Site {
@@ -106,7 +115,7 @@ describe('every Button in the client declares a cue that matches what it does', 
     // `Settings.ts` except its exit changes a value under the player's finger. This is where a
     // new setting gets added, and where forgetting the cue would be least visible.
     const settings = sites.filter((s) => s.file === 'screens/Settings.ts');
-    const options = settings.filter((s) => !DISMISSES.test(s.name));
+    const options = settings.filter((s) => !DISMISSES.test(s.name) && !NOT_AN_OPTION.has(key(s)));
     for (const s of options) {
       expect(s.sound, `${key(s)} is a settings option`).toBe('ui.toggle');
     }
