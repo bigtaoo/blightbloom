@@ -2540,3 +2540,32 @@ floor's shops, in addition to the draw-shape divergence above.
 
 Golden fixture regenerated. `emberLevel1.test.ts`'s shop-count/placement assertions updated to
 match (2 pieces, 2 floors); `shops.test.ts` rewritten around the new slot mechanics.
+
+v73 (Task 6, 2026-09-23): room-layout randomization. `DungeonConfig` gains an optional
+`floorLayoutVariants: Partial<Record<number, readonly DungeonFloorMap[]>>` — when a floor index
+has an entry, `SpawnSystem.resolveAuthoredFloor` draws one `roomgenPrng.nextInt(variants.length)`
+pick among the pool instead of reading `floorMaps[floorIndex]` directly, the same "one well-scoped
+PRNG choice over otherwise-fixed hand content" shape Task 2's `BOSS_POOL`/`'boss_random'` sentinel
+already established, applied here to floor TOPOLOGY instead of a single spawn point. A floor
+index absent from `floorLayoutVariants` still reads `floorMaps` unchanged and draws nothing extra.
+
+`EMBER_DUNGEON` gives floor index 1 two interchangeable layouts over its same 7-room roster: the
+existing linear `floor2` map (nothing skippable) and the new `EMBER_L1_FLOOR_2_BRANCH` (`r3_span`
+moves to a dead-end spur off `r2_kiln`, and `r2_kiln` gains a direct door straight to `r4_forge`,
+so a run can walk the detour into span for its fight/loot or skip it entirely) — this is the
+level's first real use of `roomgenPrng`, which every floor had left untouched since the level
+became fully hand-authored. Both variants share the exact same room array (same ids, same
+`pieceId`s, same order), so enemy-id allocation and notice-delay tuning never depend on which one
+a run draws — only door connectivity differs. No time-pressure mechanic of any kind was added;
+clearing every room, including the now-optional `r3_span`, stays a player choice.
+
+Any replay that ever reaches floor index 1 of an Ember run diverges from here on (a new
+`roomgenPrng` draw appears at floor-generation time, and the drawn layout may differ from
+before). A run that never reaches floor 1, or any config without `floorLayoutVariants`, is
+byte-identical to before.
+
+Golden fixture regenerated. `emberLevel1.test.ts` gained a "floor 1's branching layout variant"
+suite proving the skip is real (capstone stays reachable with `r3_span` and its doors removed)
+and that the plain layout has no such skip on any of its other mandatory chain rooms;
+`dungeonrun.test.ts` gained a `floorLayoutVariants` draw-semantics suite mirroring the existing
+`boss_random` one.

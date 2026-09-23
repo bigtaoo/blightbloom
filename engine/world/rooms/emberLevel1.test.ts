@@ -20,7 +20,7 @@
  * and it fails here rather than in a run.
  */
 import { describe, expect, it } from 'vitest';
-import { EMBER_L1_FLOORS, EMBER_L1_ROOMS } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_ROOMS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
 import { EMBER_DUNGEON } from './ember';
 import { buildFloorGeometry, placeAuthoredFloor, type DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
@@ -528,6 +528,50 @@ function traversability(map: DungeonFloorMap) {
   return { unreachable, chestsUnreachable, shopsUnreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
 }
 
+/**
+ * The "every door sits on a real shared wall" check, factored out (Task 6) so the
+ * branching-variant block below can run the exact same assertion the per-index
+ * suite already runs, rather than duplicating it by hand for a map that isn't in
+ * `FLOOR_INDICES`.
+ */
+function assertDoorsOnSharedWalls(map: DungeonFloorMap): void {
+  const rect = (id: string) => {
+    const room = map.rooms.find((r) => r.id === id);
+    if (!room) throw new Error(`door references unknown room '${id}'`);
+    const piece = pieceFor(room.pieceId);
+    return { x: room.offsetXGrid, y: room.offsetYGrid, w: piece.sizeGrid.w, h: piece.sizeGrid.h };
+  };
+  for (const door of map.doors) {
+    expect(door.roomA).not.toBe(door.roomB);
+    const a = rect(door.roomA);
+    const b = rect(door.roomB);
+    const p = door.passageGrid;
+    // Whole cells, not half ones. Nine authored passages carried a `.5` until
+    // `ENGINE_VERSION` 44 — see the "no wall run is thinner than one grid cell"
+    // test below for what that actually cost.
+    for (const [field, value] of Object.entries(p)) {
+      expect(Number.isInteger(value), `${door.roomA}/${door.roomB} passageGrid.${field} = ${value}`).toBe(true);
+    }
+    const vertical = a.x + a.w === b.x || b.x + b.w === a.x;
+    const horizontal = a.y + a.h === b.y || b.y + b.h === a.y;
+    expect(vertical || horizontal, `${door.roomA}/${door.roomB} do not touch`).toBe(true);
+    if (vertical) {
+      const boundary = a.x + a.w === b.x ? b.x : a.x;
+      // 2 deep, straddling the boundary — cuts BOTH rooms' 1-thick perimeter walls.
+      expect(p.w).toBe(2);
+      expect(p.x).toBe(boundary - 1);
+      expect(p.y).toBeGreaterThanOrEqual(Math.max(a.y, b.y));
+      expect(p.y + p.h).toBeLessThanOrEqual(Math.min(a.y + a.h, b.y + b.h));
+    } else {
+      const boundary = a.y + a.h === b.y ? b.y : a.y;
+      expect(p.h).toBe(2);
+      expect(p.y).toBe(boundary - 1);
+      expect(p.x).toBeGreaterThanOrEqual(Math.max(a.x, b.x));
+      expect(p.x + p.w).toBeLessThanOrEqual(Math.min(a.x + a.w, b.x + b.w));
+    }
+  }
+}
+
 describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
   const map = floorAt(index);
 
@@ -536,41 +580,7 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
   });
 
   it('every door sits on a real shared wall between the two rooms it names', () => {
-    const rect = (id: string) => {
-      const room = map.rooms.find((r) => r.id === id);
-      if (!room) throw new Error(`door references unknown room '${id}'`);
-      const piece = pieceFor(room.pieceId);
-      return { x: room.offsetXGrid, y: room.offsetYGrid, w: piece.sizeGrid.w, h: piece.sizeGrid.h };
-    };
-    for (const door of map.doors) {
-      expect(door.roomA).not.toBe(door.roomB);
-      const a = rect(door.roomA);
-      const b = rect(door.roomB);
-      const p = door.passageGrid;
-      // Whole cells, not half ones. Nine authored passages carried a `.5` until
-      // `ENGINE_VERSION` 44 — see the "no wall run is thinner than one grid cell"
-      // test below for what that actually cost.
-      for (const [field, value] of Object.entries(p)) {
-        expect(Number.isInteger(value), `${door.roomA}/${door.roomB} passageGrid.${field} = ${value}`).toBe(true);
-      }
-      const vertical = a.x + a.w === b.x || b.x + b.w === a.x;
-      const horizontal = a.y + a.h === b.y || b.y + b.h === a.y;
-      expect(vertical || horizontal, `${door.roomA}/${door.roomB} do not touch`).toBe(true);
-      if (vertical) {
-        const boundary = a.x + a.w === b.x ? b.x : a.x;
-        // 2 deep, straddling the boundary — cuts BOTH rooms' 1-thick perimeter walls.
-        expect(p.w).toBe(2);
-        expect(p.x).toBe(boundary - 1);
-        expect(p.y).toBeGreaterThanOrEqual(Math.max(a.y, b.y));
-        expect(p.y + p.h).toBeLessThanOrEqual(Math.min(a.y + a.h, b.y + b.h));
-      } else {
-        const boundary = a.y + a.h === b.y ? b.y : a.y;
-        expect(p.h).toBe(2);
-        expect(p.y).toBe(boundary - 1);
-        expect(p.x).toBeGreaterThanOrEqual(Math.max(a.x, b.x));
-        expect(p.x + p.w).toBeLessThanOrEqual(Math.min(a.x + a.w, b.x + b.w));
-      }
-    }
+    assertDoorsOnSharedWalls(map);
   });
 
   it('every room is reachable through the door graph from the spawn room', () => {
@@ -647,5 +657,110 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
     const { W, H } = traversability(map);
     expect(W).toBeGreaterThan(0);
     expect(H).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Whether `map`'s capstone is still reachable from its spawn room through the door
+ * GRAPH (topology only, not the physical geometry — `traversability` above already
+ * covers that half) if `excludeRoomId` and every door touching it are removed. This
+ * is the executable form of "some floors put the exit at the end so nothing is
+ * skippable, some floors let a room in the middle be skipped" (Task 6): a room is
+ * genuinely skippable exactly when the capstone stays reachable without it.
+ */
+function reachesCapstoneWithout(map: DungeonFloorMap, excludeRoomId: string): boolean {
+  const spawnId = map.rooms[0]!.id;
+  const capstoneId = map.rooms[map.rooms.length - 1]!.id;
+  const adjacency = new Map<string, string[]>(map.rooms.map((r) => [r.id, []]));
+  for (const door of map.doors) {
+    if (door.roomA === excludeRoomId || door.roomB === excludeRoomId) continue;
+    adjacency.get(door.roomA)?.push(door.roomB);
+    adjacency.get(door.roomB)?.push(door.roomA);
+  }
+  const reached = new Set([spawnId]);
+  const queue = [spawnId];
+  while (queue.length > 0) {
+    for (const next of adjacency.get(queue.shift()!) ?? []) {
+      if (!reached.has(next)) {
+        reached.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return reached.has(capstoneId);
+}
+
+describe("floor 1's branching layout variant (Task 6, room-layout randomization, 2026-09-23)", () => {
+  const linear = floorAt(1);
+  const branch = EMBER_L1_FLOOR_2_BRANCH;
+
+  it("is wired into EMBER_DUNGEON as floor index 1's variant pool, plain layout first", () => {
+    expect(EMBER_DUNGEON.floorLayoutVariants?.[1]).toEqual([linear, branch]);
+  });
+
+  it('keeps the exact same room roster, in the exact same array order, as the plain layout — so enemy-id allocation and notice-delay tuning never depend on which variant a run draws', () => {
+    expect(branch.rooms.map((r) => r.id)).toEqual(linear.rooms.map((r) => r.id));
+    expect(branch.rooms.map((r) => r.pieceId)).toEqual(linear.rooms.map((r) => r.pieceId));
+  });
+
+  it('no two rooms overlap', () => {
+    expect(overlapping(branch)).toEqual([]);
+  });
+
+  it('every door sits on a real shared wall between the two rooms it names', () => {
+    assertDoorsOnSharedWalls(branch);
+  });
+
+  it('every room is reachable through the door graph from the spawn room', () => {
+    const adjacency = new Map<string, string[]>(branch.rooms.map((r) => [r.id, []]));
+    for (const door of branch.doors) {
+      adjacency.get(door.roomA)?.push(door.roomB);
+      adjacency.get(door.roomB)?.push(door.roomA);
+    }
+    const reached = new Set([branch.rooms[0]!.id]);
+    const queue = [branch.rooms[0]!.id];
+    while (queue.length > 0) {
+      for (const next of adjacency.get(queue.shift()!) ?? []) {
+        if (!reached.has(next)) {
+          reached.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    expect(branch.rooms.map((r) => r.id).filter((id) => !reached.has(id))).toEqual([]);
+  });
+
+  it('every entrance and every spawn point is physically walkable from the spawn room', () => {
+    const { unreachable } = traversability(branch);
+    expect(unreachable).toEqual([]);
+  });
+
+  it('every chest stands on walkable ground the run can reach', () => {
+    const { chestsUnreachable } = traversability(branch);
+    expect(chestsUnreachable).toEqual([]);
+  });
+
+  it('the flood fill physically walks into every room — no door is declared but sealed', () => {
+    const { roomsEntered, roomCount } = traversability(branch);
+    expect(roomsEntered).toBe(roomCount);
+  });
+
+  it('genuinely lets r3_span be skipped — the capstone stays reachable with it and its doors removed', () => {
+    expect(reachesCapstoneWithout(branch, 'r3_span')).toBe(true);
+  });
+
+  it('the plain layout has no such skip — removing any single mandatory chain room (not a side room) disconnects the capstone', () => {
+    // b1_cache is already a known, deliberate dead-end detour (design/05 "Chest
+    // rooms") — excluded here because the plain layout was never meant to make
+    // THAT room mandatory in the first place. Every other room on the chain is.
+    const mandatory = linear.rooms.map((r) => r.id).filter((id) => id !== 'b1_cache' && id !== linear.rooms[0]!.id);
+    for (const id of mandatory) {
+      expect(reachesCapstoneWithout(linear, id), `${id} should not be skippable on the plain layout`).toBe(false);
+    }
+  });
+
+  it("does not disturb the plain layout's own room count, chest, or capstone rules", () => {
+    expect(branch.rooms.length).toBe(linear.rooms.length);
+    expect(pieceFor(branch.rooms[branch.rooms.length - 1]!.pieceId).role).toBe('extraction');
   });
 });

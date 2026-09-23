@@ -76,7 +76,7 @@
  */
 import type { AabbGrid, RoomPiece } from '../../content/rooms';
 import type { DungeonConfig } from '../dungeon';
-import { EMBER_L1_FLOORS } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
 
 // Perimeter walls (design/10 legibility fix, 2026-08-02; door gaps moved to generic
 // placement-time carving, design/05 "Room & door model" 2026-08-04): every piece used
@@ -234,6 +234,16 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * they are the fixtures `world/dungeon.test.ts`'s placement/seed-sweep suites drive
  * `placeFloorGraph2d` with, and the module doc above records what those sweeps
  * found — deleting them would delete that coverage, not just the content.
+ *
+ * `floorLayoutVariants` (Task 6, "room-layout randomization", 2026-09-23): floor
+ * index 1 offers TWO interchangeable door graphs over the same 7-room roster — the
+ * plain `floor2` chain (nothing skippable) and `EMBER_L1_FLOOR_2_BRANCH` (a real
+ * fork that lets `r3_span` be skipped) — `SpawnSystem` draws one `roomgenPrng` pick
+ * between them per run, the level's first real use of that stream (every floor was
+ * previously fully authored with zero draws). Every other floor index still has no
+ * entry here, so it keeps reading `floorMaps` directly and costs no extra draw —
+ * this is the first floor to get the treatment, not a claim that every floor needs
+ * two layouts.
  */
 export const EMBER_DUNGEON: DungeonConfig = {
   biomeId: 'ember',
@@ -246,6 +256,7 @@ export const EMBER_DUNGEON: DungeonConfig = {
   bossPieceId: 'ember_l1_boss',
   difficultyCurve: { base: 1, perFloor: 0.25 },
   floorMaps: EMBER_L1_FLOORS,
+  floorLayoutVariants: { 1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH] },
 };
 
 /**
