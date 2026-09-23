@@ -47,7 +47,7 @@ function addCorpse(s: GameState, boss: boolean): EnemyActor {
     radius: BASIC_ENEMY.radius, footprintRadius: BASIC_ENEMY.footprintRadius,
     solidRadius: BASIC_ENEMY.radius,
     alive: true, weapon: null, firing: false, status: freshStatus(),
-    enraged: false, aggroed: false, holding: false,
+    enraged: false, armorBroken: false, aggroed: false, holding: false,
     ...(boss ? { boss: true } : {}),
   } as EnemyActor;
   s.enemies.push(e);

@@ -50,7 +50,27 @@ export class WeaponFireSystem {
     // its damage + attack speed; enemies carry none (NO_BUFFS = identity) UNLESS
     // enraged (design/09 `traits`, ENGINE_VERSION 27) — see enrageBuffs below.
     for (const p of state.players) this.actor(state, p, sumBuffs(p.buffs));
-    for (const e of state.enemies) this.actor(state, e, this.latchEnrage(state, e));
+    for (const e of state.enemies) {
+      this.latchArmorBreak(state, e);
+      this.actor(state, e, this.latchEnrage(state, e));
+    }
+  }
+
+  /**
+   * Boss armor break (design/09 traits, ENGINE_VERSION 70) — the defensive mirror of
+   * `latchEnrage` below: the instant hp first crosses the blueprint's threshold,
+   * REPLACE `resist` with `armorBreak.resist` (one-way, same "enemies never self-heal"
+   * reasoning `latchEnrage` gives) and emit a fx-only event. Runs before `latchEnrage`
+   * so a boss that carried both traits would have its post-break resist already active
+   * for the SAME tick's enrage check — not that any shipped blueprint carries both
+   * (`enemies.test.ts` pins that as a deliberate axis separation, not an oversight).
+   */
+  private latchArmorBreak(state: GameState, e: EnemyActor): void {
+    if (!e.armorBreak || e.armorBroken) return;
+    if (e.hp * 1000 > e.maxHp * e.armorBreak.hpThresholdPermille) return;
+    e.armorBroken = true;
+    e.resist = e.armorBreak.resist;
+    state.events.push({ type: 'armor_break', id: e.id, gx: e.gx, gy: e.gy });
   }
 
   /**

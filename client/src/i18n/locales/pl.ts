@@ -345,6 +345,7 @@ export const pl: Translations<typeof en> = {
     enemygun: { name: 'Karabin najeźdźcy' },
     enemyclaw: { name: 'Pazur najeźdźcy' },
     enemymaul: { name: 'Młot najeźdźcy' },
+    enemynova: { name: 'Nova najeźdźcy' },
     flamer: { name: 'Miotacz ognia' },
     cryobolt: { name: 'Kriobełt' },
     teslagun: { name: 'Działo Tesli' },

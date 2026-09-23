@@ -91,7 +91,6 @@ export class EventReactor {
     // identical events, so we collect the distinct cues here and play each ONCE after
     // the loop (design/11 "coalesce identical cues in the same frame"). fx/score still
     // react per-event below — only sound is deduped.
-    //
     // The COUNT is kept, not just the fact: design/11 asks for ten hits in one frame to
     // become one impact "at higher gain, not ten", and the mixer needs the number to do it.
     const cues = new Map<AudioCue, number>();
@@ -104,7 +103,6 @@ export class EventReactor {
     // meaningless without it: `impact` already says a hit landed somewhere, so a `hurt` that
     // fired for every target would only double it, and in an 8-player PvP match a
     // `death.player` per elimination would announce seven runs that are not this one.
-    //
     // Resolved at most ONCE per frame, and only if an event actually asks. Eager resolution
     // was the first cut and it was wrong twice over: it walks the state on every frame of a
     // menu whose queue holds nothing that needs it, and it makes this reactor — a consumer
@@ -156,7 +154,6 @@ export class EventReactor {
           // or not it connects, so the blade animates over empty air too. It gets a cue for the
           // same reason it gets a clip: a stroke through empty air is a real action the player
           // took, and until 2026-09-02 it was the only one they could not hear.
-          //
           // Both fx below need the swinging WEAPON, which the event deliberately does not carry
           // (design/08 keeps events to what the sim announces, and every client already holds
           // the whole `GameState` — the netcode broadcasts inputs, not entities). Resolved from
@@ -246,6 +243,12 @@ export class EventReactor {
           this.fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.enemy, 40);
           this.fx.addShake(0.35);
           this.fx.pulseChromatic(0.012);
+          cue('shield.break'); // reuse the existing sting; no dedicated cue authored yet
+          break;
+        case 'armor_break':
+          // A boss's armor broke (Task 2) — steel-grey, not enrage's red: easier now, not harder.
+          this.fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.armorBreak, 36);
+          this.fx.addShake(0.2);
           cue('shield.break'); // reuse the existing sting; no dedicated cue authored yet
           break;
         case 'death':
@@ -406,13 +409,11 @@ export class EventReactor {
           // had just bled out heard the victory sting over their own defeat screen. Observed
           // live 2026-09-02: `death.player:1` then `win:1` in ONE frame, `g.phase` already
           // `'defeat'`.
-          //
           // The answer comes from `localSeatWon`, split out of `RunOutcome` (which computes
           // the same thing for the result screen) rather than re-derived here, so the sound
           // and the screen cannot disagree — including on the squad case, where comparing
           // seat identity instead of team membership once made most of a winning squad see
           // DEFEAT (fixed 2026-08-04).
-          //
           // A defeat plays `death.player` rather than a cue of its own, because design/11
           // authored that file AS the counterpart of `win`: same instrument, a descending
           // scale against the jingle's own figure, ranked directly under it and stealable by
@@ -423,7 +424,6 @@ export class EventReactor {
           // single-player wipe, whose only cue is `hurt`), this is the first thing that says
           // the fall was final — which is exactly why `downed` itself must not play it: until
           // this event arrives, a co-op revive is still possible.
-          //
           // With no active state — a menu frame draining a stale queue — NEITHER plays: the
           // same "no local seat, no answer" silence the `hurt` gate above takes, rather than
           // guessing a run we cannot see the outcome of.

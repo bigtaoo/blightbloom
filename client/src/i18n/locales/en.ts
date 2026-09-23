@@ -373,6 +373,7 @@ export const en = {
     enemygun: { name: 'Raider Rifle' },
     enemyclaw: { name: 'Raider Claw' },
     enemymaul: { name: 'Raider Maul' },
+    enemynova: { name: 'Raider Nova' },
     flamer: { name: 'Flamethrower' },
     cryobolt: { name: 'Cryobolt' },
     teslagun: { name: 'Tesla Gun' },

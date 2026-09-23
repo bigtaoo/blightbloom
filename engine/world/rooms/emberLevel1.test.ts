@@ -169,8 +169,11 @@ describe('level 1 room pieces', () => {
     for (const id of SIDE_PIECES) expect(pieceFor(id).role, id).toBeUndefined(); // a side room is a NORMAL room
   });
 
-  it('the boss room opens with the blightlord at spawn point 0', () => {
-    expect(pieceFor('ember_l1_boss').spawns.enemy[0]?.type).toBe('blightlord');
+  it("the boss room opens with the random-boss sentinel at spawn point 0 (Task 2, ENGINE_VERSION 70)", () => {
+    // Was a fixed 'blightlord' through v69 — SpawnSystem now resolves this sentinel to
+    // one of BOSS_POOL's three bosses (`resolveSpawnType`), one `aiPrng` draw the tick
+    // the room activates.
+    expect(pieceFor('ember_l1_boss').spawns.enemy[0]?.type).toBe('boss_random');
   });
 
   it('every piece authors at least two player spawns (a co-op run seats two) and all four exits', () => {

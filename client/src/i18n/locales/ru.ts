@@ -350,6 +350,7 @@ export const ru: Translations<typeof en> = {
     enemygun: { name: 'Винтовка мародёра' },
     enemyclaw: { name: 'Коготь мародёра' },
     enemymaul: { name: 'Молот мародёра' },
+    enemynova: { name: 'Нова мародёра' },
     flamer: { name: 'Огнемёт' },
     cryobolt: { name: 'Криоболт' },
     teslagun: { name: 'Пушка Теслы' },
