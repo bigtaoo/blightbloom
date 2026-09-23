@@ -58,6 +58,9 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
     aliveTicksByFloor: { 0: 1000 },
     energyRefillsTakenByFloor: {},
     finalMaxEnergy: 100,
+    vitalsAtCheckpoint: [],
+    roomsTotalByFloor: {},
+    shopSnapshots: [],
     ...over,
   };
 }
