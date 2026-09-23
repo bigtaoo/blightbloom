@@ -115,6 +115,48 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(1); // left on the floor, not consumed for nothing
   });
 
+  it('energy restores up to maxEnergy, never over, gated the same way heal/shield are', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.energy = p.maxEnergy - 5;
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy); // ENERGY_PICKUP_AMOUNT (30) exceeds every shipped shortfall this small
+    expect(s.pickups).toHaveLength(0);
+  });
+
+  it('a full-energy player leaves an energy pickup on the floor instead of binning it', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.energy = p.maxEnergy;
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy);
+    expect(s.pickups).toHaveLength(1);
+  });
+
+  it("the 'surge' floor card doubles the energy pickup amount (Task 8)", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('surge');
+    p.energy = 0;
+    p.maxEnergy = 999; // wide open so the doubled amount isn't clamped
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(60); // ENERGY_PICKUP_AMOUNT (30) * surge's factor (2)
+  });
+
+  it("the 'aegis' floor card doubles the shield pickup amount (Task 8)", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('aegis');
+    p.shield = 0;
+    p.maxShield = 999; // wide open so the doubled amount isn't clamped
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(20); // SHIELD_PICKUP_AMOUNT (10) * aegis's factor (2)
+  });
+
   it('an emp burst damages every alive enemy in range, shield-first, and is refused with nothing to hit', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;

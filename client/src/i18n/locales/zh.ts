@@ -383,6 +383,10 @@ export const zh: Translations<typeof en> = {
     bulwark: { name: '壁垒', desc: '生命上限 +{value}' },
     precision: { name: '精准', desc: '暴击率 +{value}%' },
     capacitor: { name: '电容', desc: '能量上限 +{value}' },
+    surge: { name: '涌流', desc: '能量价值 {factor} 倍' },
+    aegis: { name: '神盾', desc: '护盾价值 {factor} 倍' },
+    stockpile: { name: '囤积', desc: '材料价值 {factor} 倍' },
+    bounty: { name: '赏金', desc: '每个宝箱 +{count} 把武器' },
   },
   buff: {
     dmg_up: { name: '伤害提升' },

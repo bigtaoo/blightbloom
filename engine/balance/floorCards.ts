@@ -39,11 +39,27 @@
  */
 import { RUN_BUFFS, type RunBuffId } from './runbuffs';
 
-/** What a card does. `buff` reuses `RUN_BUFFS`; the other two are run-scoped. */
+/**
+ * What a card does. `buff` reuses `RUN_BUFFS`; every other kind is run-scoped, in the
+ * same sense `heal_drop_mult`/`coin_mult` already were (design/05 header above): a
+ * property of the RUN, not of a person in it, re-derived on read rather than mirrored
+ * into a mutable counter.
+ *
+ * Task 8 (catalogue expansion, 2026-09-23) adds three more PAYLOAD multipliers —
+ * `energy_pickup_mult`/`shield_pickup_mult`/`material_drop_mult` — each the same shape
+ * as `coin_mult`: they scale a flat pickup amount at the point of collection, never a
+ * drop TABLE weight, so picking one changes no other kind's odds. `chest_bonus_weapons`
+ * is the one genuinely different shape: a flat additive count added to every chest's
+ * payout for the rest of the run, applied in `ChestSystem.open()`.
+ */
 export type FloorCardEffect =
   | { kind: 'buff'; buffId: RunBuffId }
   | { kind: 'heal_drop_mult'; factor: number }
-  | { kind: 'coin_mult'; factor: number };
+  | { kind: 'coin_mult'; factor: number }
+  | { kind: 'energy_pickup_mult'; factor: number }
+  | { kind: 'shield_pickup_mult'; factor: number }
+  | { kind: 'material_drop_mult'; factor: number }
+  | { kind: 'chest_bonus_weapons'; count: number };
 
 interface FloorCardDef {
   effect: FloorCardEffect;
@@ -101,6 +117,35 @@ export const FLOOR_CARDS: Record<string, FloorCardDef> = {
   // place a CONDITIONAL reward belongs — the player holding a 26-cost frame takes it,
   // the player holding a blaster takes `edge` instead, and neither pick is wasted.
   capacitor: { effect: { kind: 'buff', buffId: 'cell_up' }, nameKey: 'card.capacitor.name', descKey: 'card.capacitor.desc' },
+  // Task 8 (catalogue expansion, 2026-09-23) — three more payload multipliers, same
+  // shape as `windfall` above (never a table weight, so none of them touches another
+  // kind's odds), and one flat additive card. Each answers a scarcity `potion_flow`/
+  // `windfall` do not: the ammo economy, the shield-sustain items (Task 4), the forge's
+  // only carry-out currency, and the run's only weapon source that isn't luck-gated.
+  surge: {
+    effect: { kind: 'energy_pickup_mult', factor: 2 },
+    nameKey: 'card.surge.name',
+    descKey: 'card.surge.desc',
+  },
+  aegis: {
+    effect: { kind: 'shield_pickup_mult', factor: 2 },
+    nameKey: 'card.aegis.name',
+    descKey: 'card.aegis.desc',
+  },
+  stockpile: {
+    effect: { kind: 'material_drop_mult', factor: 2 },
+    nameKey: 'card.stockpile.name',
+    descKey: 'card.stockpile.desc',
+  },
+  // +1 extra weapon out of every chest for the rest of the run (ChestSystem.open()) —
+  // the one card here that is a flat count rather than a multiplier, because a chest's
+  // payout (`chestWeaponCount`) is itself already a small integer (1, or 1-per-seat) that
+  // a MULTIPLIER would round back down to unchanged at the common 1-seat case.
+  bounty: {
+    effect: { kind: 'chest_bonus_weapons', count: 1 },
+    nameKey: 'card.bounty.name',
+    descKey: 'card.bounty.desc',
+  },
 };
 
 /** Catalogue ids in a FIXED order — the pool `rollFloorCardOffer` draws from. */
@@ -170,6 +215,19 @@ export interface FloorCardMods {
   /** Product of every `coin_mult` factor. 1 with no such card. Applied to a coin drop's
    *  `qty` at the point of use (`DeathDropsSystem`), never to a table weight. */
   coinMult: number;
+  /** Product of every `energy_pickup_mult` factor (`surge`). 1 with no such card.
+   *  Applied to `ENERGY_PICKUP_AMOUNT` at the point of collection (`PickupSystem`). */
+  energyPickupMult: number;
+  /** Product of every `shield_pickup_mult` factor (`aegis`). 1 with no such card.
+   *  Applied to `SHIELD_PICKUP_AMOUNT` at the point of collection (`PickupSystem`). */
+  shieldPickupMult: number;
+  /** Product of every `material_drop_mult` factor (`stockpile`). 1 with no such card.
+   *  Applied to a material drop's `qty` at the point of use (`DeathDropsSystem`), same
+   *  payload-not-table-weight shape as `coinMult`. */
+  materialDropMult: number;
+  /** Sum of every `chest_bonus_weapons` count (`bounty`). 0 with no such card. Added to
+   *  `chestWeaponCount`'s own result in `ChestSystem.open()`. */
+  chestBonusWeapons: number;
 }
 
 /**
@@ -181,12 +239,39 @@ export interface FloorCardMods {
  * An unknown id is skipped, matching `sumBuffs`' forward-compatibility rule (design/09).
  */
 export function resolveFloorCards(picked: readonly string[]): FloorCardMods {
-  const mods: FloorCardMods = { healDropMult: 1, coinMult: 1 };
+  const mods: FloorCardMods = {
+    healDropMult: 1,
+    coinMult: 1,
+    energyPickupMult: 1,
+    shieldPickupMult: 1,
+    materialDropMult: 1,
+    chestBonusWeapons: 0,
+  };
   for (const id of picked) {
     const def = FLOOR_CARDS[id];
     if (!def) continue;
-    if (def.effect.kind === 'heal_drop_mult') mods.healDropMult *= def.effect.factor;
-    else if (def.effect.kind === 'coin_mult') mods.coinMult *= def.effect.factor;
+    switch (def.effect.kind) {
+      case 'heal_drop_mult':
+        mods.healDropMult *= def.effect.factor;
+        break;
+      case 'coin_mult':
+        mods.coinMult *= def.effect.factor;
+        break;
+      case 'energy_pickup_mult':
+        mods.energyPickupMult *= def.effect.factor;
+        break;
+      case 'shield_pickup_mult':
+        mods.shieldPickupMult *= def.effect.factor;
+        break;
+      case 'material_drop_mult':
+        mods.materialDropMult *= def.effect.factor;
+        break;
+      case 'chest_bonus_weapons':
+        mods.chestBonusWeapons += def.effect.count;
+        break;
+      default:
+        break; // 'buff' — resolved by sumBuffs/applyRunBuff instead, not this function
+    }
   }
   return mods;
 }
@@ -209,8 +294,13 @@ export function floorCardDescVars(cardId: string): Record<string, number> {
   switch (def.effect.kind) {
     case 'heal_drop_mult':
     case 'coin_mult':
+    case 'energy_pickup_mult':
+    case 'shield_pickup_mult':
+    case 'material_drop_mult':
       return { factor: def.effect.factor };
-    default: {
+    case 'chest_bonus_weapons':
+      return { count: def.effect.count };
+    case 'buff': {
       const buff = RUN_BUFFS[def.effect.buffId];
       if (!buff) return {};
       // `flat_*` is already an absolute amount; every other family is stored per-mille

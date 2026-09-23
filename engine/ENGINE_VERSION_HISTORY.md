@@ -2590,3 +2590,23 @@ coincide by chance. Golden fixture regenerated. New `content/weaponRarityByDepth
 partition, the one-draw cost, floor-index clamping, and the measured tier shift itself);
 `chests.test.ts` and `shops.test.ts` each gained a statistical test proving their own call site's
 payout skews toward higher rarity at floor 4 than at floor 0.
+
+v75 (Task 8, 2026-09-23): floor-card catalogue expansion, 7 → 11. `FloorCardEffect` gains three
+more PAYLOAD multipliers — `energy_pickup_mult` (`surge`), `shield_pickup_mult` (`aegis`),
+`material_drop_mult` (`stockpile`) — the same shape as the existing `coin_mult`/`windfall`: each
+scales a flat pickup amount at the point of collection (`PickupSystem`'s energy/shield cases,
+`DeathDropsSystem`'s material case), never a drop-table weight, so picking one never changes any
+other kind's odds. A fourth kind, `chest_bonus_weapons` (`bounty`), is additive rather than
+multiplicative — +1 extra weapon out of every chest for the rest of the run, applied in
+`ChestSystem.open()` on top of `chestWeaponCount`'s own result. `FloorCardMods` gains the matching
+four fields, all re-derived from `state.floorCards` on read, same as every existing field.
+
+Any replay that ever reaches a floor-card checkpoint diverges from here on — `rollFloorCardOffer`
+draws from a pool 4 ids larger, so the SAME `roomgenPrng`-adjacent draw values now land on
+different cards even where the draw count is unchanged. A run with no floor-card checkpoint (an
+arena, or a `waves`-only config) is untouched. Golden fixture regenerated.
+
+New tests: `floorCards.test.ts` gained cases for all four new mods (including the identity-mods
+shape every existing case pins); `pickups.test.ts` gained the energy pickup's own base-case
+coverage (previously untested on its own) plus `surge`/`aegis`; `chests.test.ts` gained `bounty`;
+new `systems/materialDrop.test.ts` mirrors `coinDrop.test.ts`'s `windfall` suite for `stockpile`.

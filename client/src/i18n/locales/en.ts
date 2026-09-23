@@ -412,6 +412,10 @@ export const en = {
     bulwark: { name: 'Bulwark', desc: '+{value} max HP' },
     precision: { name: 'Precision', desc: '+{value}% crit chance' },
     capacitor: { name: 'Capacitor', desc: '+{value} max energy' },
+    surge: { name: 'Surge', desc: 'Energy is worth {factor}x' },
+    aegis: { name: 'Aegis', desc: 'Shields are worth {factor}x' },
+    stockpile: { name: 'Stockpile', desc: 'Materials are worth {factor}x' },
+    bounty: { name: 'Bounty', desc: '+{count} weapon per chest' },
   },
   buff: {
     dmg_up: { name: 'Damage Up' },

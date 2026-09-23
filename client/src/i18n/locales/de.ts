@@ -384,6 +384,10 @@ export const de: Translations<typeof en> = {
     bulwark: { name: 'Bollwerk', desc: '+{value} max. LP' },
     precision: { name: 'Präzision', desc: '+{value}% Kritische Chance' },
     capacitor: { name: 'Kondensator', desc: '+{value} max. Energie' },
+    surge: { name: 'Schub', desc: 'Energie ist {factor}x wert' },
+    aegis: { name: 'Ägide', desc: 'Schilde sind {factor}x wert' },
+    stockpile: { name: 'Vorrat', desc: 'Material ist {factor}x wert' },
+    bounty: { name: 'Beute', desc: '+{count} Waffe pro Kiste' },
   },
   buff: {
     dmg_up: { name: 'Schaden erhöht' },

@@ -143,9 +143,20 @@ describe('tallyCardVote — "whichever card the most people chose"', () => {
   });
 });
 
+// The identity FloorCardMods for a run that picked nothing of a given kind — every
+// multiplier at 1, every additive count at 0 (Task 8 added four more fields).
+const IDENTITY_MODS = {
+  healDropMult: 1,
+  coinMult: 1,
+  energyPickupMult: 1,
+  shieldPickupMult: 1,
+  materialDropMult: 1,
+  chestBonusWeapons: 0,
+};
+
 describe('resolveFloorCards — the run-scoped effects', () => {
   it('is the identity for a run that has picked nothing', () => {
-    expect(resolveFloorCards([])).toEqual({ healDropMult: 1, coinMult: 1 });
+    expect(resolveFloorCards([])).toEqual(IDENTITY_MODS);
   });
 
   it('doubles the heal multiplier per potion card, multiplicatively', () => {
@@ -182,15 +193,47 @@ describe('resolveFloorCards — the run-scoped effects', () => {
     // Buff cards are pushed onto each seat's own `buffs` at pick time, so counting them
     // here as well would apply them twice through two different paths.
     const mods = resolveFloorCards(['edge', 'cadence', 'bulwark', 'precision']);
-    expect(mods).toEqual({ healDropMult: 1, coinMult: 1 });
+    expect(mods).toEqual(IDENTITY_MODS);
   });
 
   it('skips an unknown id instead of throwing (design/09 forward-compat)', () => {
-    expect(resolveFloorCards(['not_a_card', 'potion_flow'])).toEqual({ healDropMult: 2, coinMult: 1 });
+    expect(resolveFloorCards(['not_a_card', 'potion_flow'])).toEqual({ ...IDENTITY_MODS, healDropMult: 2 });
   });
 
   it('mixes kinds without either interfering with the other', () => {
-    expect(resolveFloorCards(['potion_flow', 'windfall', 'edge'])).toEqual({ healDropMult: 2, coinMult: 2 });
+    expect(resolveFloorCards(['potion_flow', 'windfall', 'edge'])).toEqual({ ...IDENTITY_MODS, healDropMult: 2, coinMult: 2 });
+  });
+
+  it('doubles the energy-pickup multiplier per surge card, multiplicatively', () => {
+    expect(resolveFloorCards(['surge']).energyPickupMult).toBe(2);
+    expect(resolveFloorCards(['surge', 'surge']).energyPickupMult).toBe(4);
+  });
+
+  it('doubles the shield-pickup multiplier per aegis card, multiplicatively', () => {
+    expect(resolveFloorCards(['aegis']).shieldPickupMult).toBe(2);
+    expect(resolveFloorCards(['aegis', 'aegis']).shieldPickupMult).toBe(4);
+  });
+
+  it('doubles the material-drop multiplier per stockpile card, multiplicatively', () => {
+    expect(resolveFloorCards(['stockpile']).materialDropMult).toBe(2);
+    expect(resolveFloorCards(['stockpile', 'stockpile']).materialDropMult).toBe(4);
+  });
+
+  it('ADDS bounty cards rather than multiplying them — a flat count, not a rate', () => {
+    expect(resolveFloorCards(['bounty']).chestBonusWeapons).toBe(1);
+    expect(resolveFloorCards(['bounty', 'bounty']).chestBonusWeapons).toBe(2);
+  });
+
+  it('keeps every new Task 8 mod independent of every other kind', () => {
+    const mods = resolveFloorCards(['surge', 'aegis', 'stockpile', 'bounty', 'windfall']);
+    expect(mods).toEqual({
+      ...IDENTITY_MODS,
+      energyPickupMult: 2,
+      shieldPickupMult: 2,
+      materialDropMult: 2,
+      chestBonusWeapons: 1,
+      coinMult: 2,
+    });
   });
 });
 
@@ -229,6 +272,13 @@ describe('floorCardDescVars — the numbers a card description interpolates', ()
   it('reports the run-scoped kinds by their own field name', () => {
     expect(floorCardDescVars('potion_flow')).toEqual({ factor: 2 });
     expect(floorCardDescVars('windfall')).toEqual({ factor: 2 });
+  });
+
+  it("reports Task 8's three new multiplier cards as {factor}, and bounty as {count}", () => {
+    expect(floorCardDescVars('surge')).toEqual({ factor: 2 });
+    expect(floorCardDescVars('aegis')).toEqual({ factor: 2 });
+    expect(floorCardDescVars('stockpile')).toEqual({ factor: 2 });
+    expect(floorCardDescVars('bounty')).toEqual({ count: 1 });
   });
 
   it('returns nothing for an unknown card, or a card naming an unknown buff', () => {

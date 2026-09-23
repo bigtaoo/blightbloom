@@ -25,7 +25,7 @@ import { Graphics, Sprite, Texture, TextureSource } from 'pixi.js';
 import { PLAYER_BASE, SKIN_DEFS, resolveLoadout } from '@dd/engine';
 import { Loadout } from './Loadout';
 import { installFakeTextCanvas } from './fakeTextCanvas';
-import { defaultMetaState } from '../../meta';
+import { defaultMetaState, grantCharacter } from '../../meta';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
 import type { LoadedRigSkin } from '../../render/skinRegistry';
 import { useLocale } from '../../i18n/loadLocale';
@@ -124,7 +124,7 @@ describe('Loadout — the character block', () => {
     const def = SKIN_DEFS[defaultMetaState().selectedSkin]!;
     expect(p.charName.text).toBe('Vanguard');
     expect(p.charStats.text).toBe(`${def.maxHp} HP / ${def.maxShield} SHIELD`);
-    expect(p.charOwned.text).toBe('characters owned: 3');
+    expect(p.charOwned.text).toBe(`characters owned: ${defaultMetaState().ownedCharacters.length}`);
   });
 
   it('puts the text to the RIGHT of the portrait, which is the whole point of the block', () => {
@@ -229,7 +229,9 @@ describe('Loadout — the portrait', () => {
     // underneath the real portrait. Asserted through a card that has actually drawn a disc —
     // on a freshly constructed one the assertion holds either way, which is the vacuity trap
     // the PlayerCard pass hit and recorded.
-    const m = defaultMetaState();
+    // skirmisher is no longer in the free default roster (Task 8) — grant it explicitly
+    // so there are two owned characters to switch the portrait between.
+    const m = grantCharacter(defaultMetaState(), 'skirmisher');
     const [first, second] = m.ownedCharacters;
     withPortraitArt(second!, 64, 64); // only the SECOND has art
 
@@ -264,7 +266,9 @@ describe('Loadout — the portrait', () => {
     // `bindPortrait` is called on every render, and the cycle arrows are the whole point of
     // the block: a portrait that stuck on the first character would leave the picture and
     // the name disagreeing about who is being taken into the run.
-    const m = defaultMetaState();
+    // skirmisher is no longer in the free default roster (Task 8) — grant it explicitly
+    // so there are two owned characters to switch the portrait between.
+    const m = grantCharacter(defaultMetaState(), 'skirmisher');
     const [first, second] = m.ownedCharacters;
     const a = withPortraitArt(first!, 64, 64);
     const b = withPortraitArt(second!, 64, 64);
@@ -283,7 +287,9 @@ describe('Loadout — the portrait', () => {
     // on art"), and the direction that matters is this one: art→no-art. A screen that kept
     // the previous sprite would show the WRONG character's face rather than no face, which is
     // worse than the empty state the rule is written to allow.
-    const m = defaultMetaState();
+    // skirmisher is no longer in the free default roster (Task 8) — grant it explicitly
+    // so there are two owned characters to switch the portrait between.
+    const m = grantCharacter(defaultMetaState(), 'skirmisher');
     const [first, second] = m.ownedCharacters;
     withPortraitArt(first!, 64, 64); // only the first has art
 

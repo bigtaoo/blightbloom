@@ -58,6 +58,7 @@ import { WEAPON_SIM_BY_ID, makeWeapon } from '../content/weapons';
 import { PLAYER_BASE } from '../content/players';
 import { PVP_SCALE_FACTOR, scaleWeaponDamage } from '../balance/build';
 import { applyRunBuff } from './runBuffApply';
+import { resolveFloorCards } from '../balance/floorCards';
 import { applyResist } from '../content/damage';
 import { takeDamage } from './combat';
 import { toFp } from '../math/fixed';
@@ -244,12 +245,14 @@ export class PickupSystem {
       case 'energy':
         // Weapon-energy refill (design/03/05). Clamped to the pool, like heal's clamp to
         // maxHp — the `wouldApply` gate above already refused a full player, so the
-        // clamp here only ever trims a partial top-up.
-        p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT);
+        // clamp here only ever trims a partial top-up. The `surge` floor card (Task 8)
+        // multiplies the flat amount, same payload-not-table-weight shape as `windfall`.
+        p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).energyPickupMult);
         break;
       case 'shield':
-        // Shield battery (Task 4) — same clamp shape as heal/energy.
-        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT);
+        // Shield battery (Task 4) — same clamp shape as heal/energy. `aegis` (Task 8)
+        // multiplies the flat amount the same way `surge` does for energy.
+        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).shieldPickupMult);
         break;
       case 'emp':
         applyEmpBurst(state, p);

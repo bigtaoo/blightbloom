@@ -18,15 +18,18 @@
  * grant id still exists in that catalogue with that source, so deleting or reclassifying
  * a blueprint fails a test rather than leaving a SKU that sells nothing.
  *
- * TWO THINGS HERE ARE PLACEHOLDER, AND SAYING SO IS THE POINT:
+ * THE PRICES ARE PLACEHOLDER, AND SAYING SO IS THE POINT: no price is decided anywhere in
+ * design/14 or design/19 beyond "a committed player tops out around a few thousand RMB".
+ * These are round CNY numbers chosen to be obviously provisional, not a pricing proposal.
  *
- *   - The PRICES. No price is decided anywhere in design/14 or design/19 beyond "a
- *     committed player tops out around a few thousand RMB". These are round CNY numbers
- *     chosen to be obviously provisional, not a pricing proposal.
- *   - There are NO character SKUs yet. design/14 records the free-vs-paid split of the
- *     3-character launch roster as "the store's job, not decided here", and picking which
- *     of three launch characters is paid is a product decision, not this file's. The
- *     `'character'` kind exists so adding one is a single row once that is decided.
+ * CHARACTER SKUs (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event", 2026-09-23):
+ * design/14 left the 3-character launch roster's free-vs-paid split as "the store's job,
+ * not decided here" — this is that decision. `vanguard` stays free (never sold, granted
+ * to every account by `client/src/meta/MetaState.ts FREE_CHARACTERS`); `skirmisher` is
+ * the one paid character SKU below; `juggernaut` is reserved for a future event-earned
+ * path (a time-limited campaign grant, `ENTITLEMENT_SOURCES`'s `'event'`) that is not
+ * built yet, so it is sold nowhere and granted nowhere — deliberately unobtainable this
+ * pass, not an oversight (`server/test/billsvc.skus.test.ts` pins this three-way split).
  */
 
 export type SkuGrantKind = 'blueprint' | 'character';
@@ -49,6 +52,7 @@ export interface SkuDef {
 }
 
 const bp = (id: string): readonly SkuGrant[] => [{ kind: 'blueprint', id }];
+const ch = (id: string): readonly SkuGrant[] => [{ kind: 'character', id }];
 
 /**
  * Keyed by `sku`, so `findSku` is a lookup rather than a scan and a duplicate id is a
@@ -65,6 +69,10 @@ export const SKU_CATALOG: Readonly<Record<string, SkuDef>> = {
   'bp.carom': { sku: 'bp.carom', title: 'Blueprint — Carom', amountCents: 1800, currency: 'CNY', grants: bp('carom') },
   'bp.leech': { sku: 'bp.leech', title: 'Blueprint — Leech', amountCents: 1800, currency: 'CNY', grants: bp('leech') },
   'bp.cinderscatter': { sku: 'bp.cinderscatter', title: 'Blueprint — Cinderscatter', amountCents: 1200, currency: 'CNY', grants: bp('cinderscatter') },
+  // A whole character is PvP-relevant (design/15's fairness wall lets a chosen character
+  // carry in, unlike a weapon blueprint), so it is priced well above a single blueprint —
+  // still a round, obviously-provisional CNY number, same discipline as every price above.
+  'char.skirmisher': { sku: 'char.skirmisher', title: 'Character — Skirmisher', amountCents: 3800, currency: 'CNY', grants: ch('skirmisher') },
 };
 
 /** The store listing. Stable order (catalogue declaration order), so a client can cache it. */
