@@ -21,6 +21,28 @@
 import type { IncomingMessage } from 'node:http';
 
 /**
+ * How many requests, over what window. The shape every named budget in this server is
+ * written in, so a route's ceiling reads as two labelled numbers rather than as two
+ * positional constructor arguments at the far end of the assembly.
+ *
+ * The TYPE lives here, with the mechanism; the NUMBERS never do. Each budget is declared in
+ * the file that owns the route it defends, because the argument for a number is an argument
+ * about that route's traffic and its false positives — `routes/party.ts` on what a refused
+ * join costs a player, `routes/auth.ts` on what a registration costs this process — and a
+ * central table of numbers is a table of numbers with their reasons somewhere else.
+ */
+export interface Budget {
+  readonly requests: number;
+  readonly windowMs: number;
+}
+
+/** A limiter for one budget. Its OWN counter, always — see `routes/limits.ts` for why two
+ *  budgets may never share one. */
+export function limiterFor(budget: Budget): RateLimiter {
+  return new RateLimiter(budget.requests, budget.windowMs);
+}
+
+/**
  * A fixed-window counter per client IP.
  *
  * In-process on purpose: each of these services is one container
@@ -63,6 +85,15 @@ export class RateLimiter {
  * make a per-IP limit trivially evadable. Falls back to the socket address for a direct
  * request (a health probe, a test), and to a constant when even that is absent, which
  * makes the limit stricter rather than looser.
+ *
+ * "Even that is absent" covers a missing SOCKET and not only a missing address (fixed
+ * 2026-09-22). `req.socket.remoteAddress` threw a `TypeError` on a request object without
+ * one, which is the opposite of the documented fallback: a limiter that throws does not
+ * refuse the caller, it takes the whole request down with a 500 from the error boundary —
+ * so the one request shape nobody had thought about would have been the one shape a budget
+ * could not bound. Node always sets `socket` on a real request, and nulls it once the
+ * connection is destroyed, which is exactly the aborted-mid-flight case that reaches a
+ * handler with nothing to read an address from.
  */
 export function clientKey(req: IncomingMessage): string {
   const forwarded = req.headers['x-forwarded-for'];
@@ -71,5 +102,5 @@ export function clientKey(req: IncomingMessage): string {
     .split(',')
     .map((h) => h.trim())
     .filter((h) => h.length > 0);
-  return hops.length > 0 ? hops[hops.length - 1]! : (req.socket.remoteAddress ?? 'unknown');
+  return hops.length > 0 ? hops[hops.length - 1]! : (req.socket?.remoteAddress ?? 'unknown');
 }

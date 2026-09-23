@@ -31,6 +31,8 @@ export const ru: Translations<typeof en> = {
   loading: {
     boot: 'ЗАГРУЗКА',
     art: 'ЗАГРУЗКА ГРАФИКИ',
+    enteringRun: 'ВХОД В ПОДЗЕМЕЛЬЕ',
+    returningToHub: 'ВОЗВРАЩЕНИЕ В ЛОББИ',
   },
   pauseMenu: {
     title: 'ПАУЗА',
@@ -58,6 +60,10 @@ export const ru: Translations<typeof en> = {
     qualityMedium: 'СРЕДНЕЕ',
     qualityAutoMedium: 'АВТО (СРЕДНЕЕ)',
     frameRate: 'ЧАСТОТА КАДРОВ: {fps}',
+    reduceMotion: 'МЕНЬШЕ ТРЯСКИ: {mode}',
+    on: 'ВКЛ.',
+    off: 'ВЫКЛ.',
+    tutorial: 'ПОВТОРИТЬ ОБУЧЕНИЕ',
     back: 'НАЗАД',
   },
   forge: {
@@ -214,6 +220,7 @@ export const ru: Translations<typeof en> = {
     newPasswordPlaceholder: 'НОВЫЙ ПАРОЛЬ',
     loginFailed: 'Не удалось войти — попробуйте снова.',
     registerFailed: 'Не удалось зарегистрироваться — попробуйте снова.',
+    throttled: 'Слишком много попыток — повторите через несколько минут.',
     passwordChanged: 'Пароль изменён.',
     passwordChangeFailed: 'Не удалось изменить пароль.',
     loggedInAs: 'Вход выполнен как {username}',
@@ -241,8 +248,10 @@ export const ru: Translations<typeof en> = {
     back: 'НАЗАД',
     partyClosed: 'Отряд распущен.',
     createFailed: 'Не удалось создать отряд — попробуйте снова.',
+    createThrottled: 'Создано слишком много отрядов — повторите через несколько минут.',
     codePlaceholder: 'КОД',
     invalidCode: 'Неверный код или отряд заполнен.',
+    joinThrottled: 'Слишком много попыток — повторите через несколько минут.',
     startFailed: 'Не удалось начать поиск — попробуйте снова.',
     codeLine: 'КОД: {code}',
     you: 'ты',
@@ -266,6 +275,7 @@ export const ru: Translations<typeof en> = {
     errorTimeout: 'Истекло время ожидания матча.',
     errorCancelled: 'Поиск отменён.',
     errorGeneric: 'Не удалось подключиться — попробуйте снова.',
+    errorThrottled: 'Слишком много попыток — подождите несколько минут перед новым поиском.',
   },
   tutorial: {
     hintMoveKeys: 'Движение — WASD. Удерживайте левую кнопку мыши для атаки: прицеливание автоматическое.',

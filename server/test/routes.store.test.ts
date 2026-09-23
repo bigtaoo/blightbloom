@@ -17,7 +17,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuthService } from '../src/AuthService';
-import { getSkus, postOrder, getOrder, STORE_ORDER_PATH, STORE_TIMEOUT_MS, type StoreRouteDeps } from '../src/routes/store';
+import { getSkus, postOrder, getOrder, STORE_ORDER_PATH, STORE_TIMEOUT_MS, type OrderRouteDeps, type StoreRouteDeps } from '../src/routes/store';
+import { wideLimits } from './limitsHarness';
 
 const ADA = { accountId: 'acct-ada', username: 'ada' };
 const BOB = { accountId: 'acct-bob', username: 'bob' };
@@ -93,8 +94,11 @@ function plane(...answers: Answer[]): Plane {
 
 const json = (v: unknown): Answer => ({ status: 200, body: JSON.stringify(v) });
 
-function deps(p: Plane, over: Partial<StoreRouteDeps['billing']> = {}): StoreRouteDeps {
-  return { auth: fakeAuth(), billing: { url: PLANE, internalKey: 'k', fetchImpl: p.fetchImpl, ...over } };
+function deps(p: Plane, over: Partial<StoreRouteDeps['billing']> = {}): OrderRouteDeps {
+  // `limits` is `postOrder`'s alone (`ORDER_RATE_LIMIT`); the two GETs take `StoreRouteDeps`
+  // and are handed a superset here, which is what `OrderRouteDeps extends StoreRouteDeps`
+  // means. Wide enough that nothing in this file can reach it — the budget has its own file.
+  return { auth: fakeAuth(), billing: { url: PLANE, internalKey: 'k', fetchImpl: p.fetchImpl, ...over }, limits: wideLimits() };
 }
 
 const parsed = (sent: Recorded) => JSON.parse(sent.body) as Record<string, unknown>;

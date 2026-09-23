@@ -92,6 +92,12 @@ const PURE_FILES = [
   // interfaces, so it qualifies — and being here is what makes "does the card offer show
   // on exactly the same condition as the portal" testable with no browser at all.
   'controllers/checkpointOverlays.ts',
+  // The online match's render-interpolation clock, carved out of GameLoop on 2026-09-22 (the
+  // frame-pacing pass). Two numbers and no dependency at all — which is most of the reason it
+  // is a module rather than two fields on GameLoop: "what alpha does a frame 20 ms into a tick
+  // get, and what does a server stall do to it" is a question worth being able to ask without
+  // a renderer. Listed here after this file's own survey named it, which is the survey working.
+  'controllers/onlineInterpolation.ts',
   // The purchase flow (design/19 §4, 2026-09-05). Every dependency it has is injected — the
   // three wire calls, the session read, the platform gate, the ownership refresh and `sleep`
   // — so the whole create → poll → deliver chain, including its timed-out and
@@ -305,7 +311,7 @@ describe('the pure layer', () => {
     }
     // Known and deliberate: these reach no foreign package but are renderer/engine
     // collaborators rather than pure logic — see PURE_FILES' own note on RunLifecycle.
-    const KNOWN = new Set(['ArtGate.ts', 'ForgeActions.ts', 'RunOutcome.ts', 'ScreenFlow.ts',
+    const KNOWN = new Set(['TransitionGate.ts', 'ForgeActions.ts', 'RunOutcome.ts', 'ScreenFlow.ts',
       'AllyController.ts', 'CommandBuilder.ts', 'EventReactor.ts', 'GameLoop.ts',
       'LocalPredictor.ts', 'PvpBotController.ts', 'TutorialHintController.ts',
       'RunLifecycle.ts', 'gameAssembly.ts', 'confirmEdge.ts', 'ai/tactics.ts',

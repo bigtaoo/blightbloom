@@ -22,11 +22,15 @@ export const en = {
     settings: 'SETTINGS',
     greeting: 'Hi, {username}',
   },
-  // The two progress screens (design/12 asset phases): boot waits for the `lobby` pack,
-  // the run gate waits for the `run` ones.
+  // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
+  // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
+  // player is meant to see, held for `MIN_TRANSITION_MS` whether anything is downloading or
+  // not (controllers/TransitionGate.ts).
   loading: {
     boot: 'LOADING',
     art: 'LOADING ART',
+    enteringRun: 'ENTERING THE DUNGEON',
+    returningToHub: 'RETURNING TO THE LOBBY',
   },
   pauseMenu: {
     title: 'PAUSED',
@@ -54,6 +58,10 @@ export const en = {
     qualityMedium: 'MEDIUM',
     qualityAutoMedium: 'AUTO (MEDIUM)',
     frameRate: 'FRAME RATE: {fps}',
+    reduceMotion: 'REDUCE MOTION: {mode}',
+    on: 'ON',
+    off: 'OFF',
+    tutorial: 'REPLAY TUTORIAL',
     back: 'BACK',
   },
   forge: {
@@ -227,6 +235,7 @@ export const en = {
     newPasswordPlaceholder: 'NEW PASSWORD',
     loginFailed: 'Login failed — try again.',
     registerFailed: 'Registration failed — try again.',
+    throttled: 'Too many attempts — try again in a few minutes.',
     passwordChanged: 'Password changed.',
     passwordChangeFailed: 'Could not change password.',
     loggedInAs: 'Logged in as {username}',
@@ -256,8 +265,10 @@ export const en = {
     back: 'BACK',
     partyClosed: 'Party closed.',
     createFailed: 'Could not create a party — try again.',
+    createThrottled: 'Too many parties created — try again in a few minutes.',
     codePlaceholder: 'CODE',
     invalidCode: 'Invalid or full code.',
+    joinThrottled: 'Too many attempts — try again in a few minutes.',
     startFailed: 'Could not start matching — try again.',
     codeLine: 'CODE: {code}',
     you: 'you',
@@ -281,6 +292,7 @@ export const en = {
     errorTimeout: 'Timed out waiting for a match.',
     errorCancelled: 'Matchmaking cancelled.',
     errorGeneric: 'Could not connect — try again.',
+    errorThrottled: 'Too many attempts — wait a few minutes before searching again.',
   },
   tutorial: {
     hintMoveKeys: 'Move with WASD. Hold the left mouse button to attack — aiming is automatic.',

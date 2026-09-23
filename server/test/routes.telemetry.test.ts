@@ -239,6 +239,16 @@ describe('clientKey — which hop the limit is keyed on', () => {
     expect(clientKey({ headers: {}, socket: {} } as unknown as IncomingMessage)).toBe('unknown');
   });
 
+  it('falls back to the same constant when there is no SOCKET either, rather than throwing', () => {
+    // Until 2026-09-22 this threw a `TypeError`, which is the opposite of the fallback above:
+    // a limiter that throws does not refuse a caller, it hands the request to the error
+    // boundary as a 500 — so the one request shape nobody had considered would have been the
+    // shape no budget could bound. Node nulls `socket` once a connection is destroyed, which
+    // is exactly an aborted request still in flight through a handler.
+    expect(clientKey({ headers: {} } as unknown as IncomingMessage)).toBe('unknown');
+    expect(clientKey({ headers: { 'x-forwarded-for': '203.0.113.9' } } as unknown as IncomingMessage)).toBe('203.0.113.9');
+  });
+
   it('ignores an empty or whitespace-only header rather than keying on ""', () => {
     expect(clientKey(req({ 'x-forwarded-for': '  ,  ' }))).toBe('10.0.0.1');
   });

@@ -263,7 +263,7 @@ lie the moment anyone made it lazy. `assetManifest.test.ts` pins that.
 satisfied the 4 MB rule while buying nothing from it — every byte still arrived before the first
 frame, and art still held 2.49 MB of the main package. Now `lobby` is awaited at boot, everything
 else is kicked in the background from the lobby, and the `run`-phase packs are awaited again at the
-run boundary by `game/controllers/ArtGate.ts` behind the same progress screen. Each pack declares
+run boundary by `game/controllers/TransitionGate.ts` behind the same progress screen. Each pack declares
 its `phase` in `assetPacks.json`, so `render/preloadArt.ts` reads the table rather than naming
 packs.
 

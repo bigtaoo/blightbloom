@@ -26,6 +26,8 @@ export const de: Translations<typeof en> = {
   loading: {
     boot: 'LÄDT',
     art: 'LADE GRAFIKEN',
+    enteringRun: 'BETRETE DEN DUNGEON',
+    returningToHub: 'ZURÜCK ZUR LOBBY',
   },
   pauseMenu: {
     title: 'PAUSIERT',
@@ -53,6 +55,10 @@ export const de: Translations<typeof en> = {
     qualityMedium: 'MITTEL',
     qualityAutoMedium: 'AUTO (MITTEL)',
     frameRate: 'BILDRATE: {fps}',
+    reduceMotion: 'BEWEGUNG REDUZIEREN: {mode}',
+    on: 'AN',
+    off: 'AUS',
+    tutorial: 'TUTORIAL WIEDERHOLEN',
     back: 'ZURÜCK',
   },
   forge: {
@@ -209,6 +215,7 @@ export const de: Translations<typeof en> = {
     newPasswordPlaceholder: 'NEUES PASSWORT',
     loginFailed: 'Anmeldung fehlgeschlagen — bitte erneut versuchen.',
     registerFailed: 'Registrierung fehlgeschlagen — bitte erneut versuchen.',
+    throttled: 'Zu viele Versuche — bitte in ein paar Minuten erneut versuchen.',
     passwordChanged: 'Passwort geändert.',
     passwordChangeFailed: 'Passwort konnte nicht geändert werden.',
     loggedInAs: 'Angemeldet als {username}',
@@ -236,8 +243,10 @@ export const de: Translations<typeof en> = {
     back: 'ZURÜCK',
     partyClosed: 'Trupp aufgelöst.',
     createFailed: 'Trupp konnte nicht erstellt werden — bitte erneut versuchen.',
+    createThrottled: 'Zu viele Trupps erstellt — bitte in ein paar Minuten erneut versuchen.',
     codePlaceholder: 'CODE',
     invalidCode: 'Code ungültig oder Trupp voll.',
+    joinThrottled: 'Zu viele Versuche — bitte in ein paar Minuten erneut versuchen.',
     startFailed: 'Suche konnte nicht gestartet werden — bitte erneut versuchen.',
     codeLine: 'CODE: {code}',
     you: 'du',
@@ -261,6 +270,7 @@ export const de: Translations<typeof en> = {
     errorTimeout: 'Zeitüberschreitung bei der Suche nach einem Match.',
     errorCancelled: 'Suche abgebrochen.',
     errorGeneric: 'Verbindung fehlgeschlagen — bitte erneut versuchen.',
+    errorThrottled: 'Zu viele Versuche — warte ein paar Minuten vor der nächsten Suche.',
   },
   tutorial: {
     hintMoveKeys: 'Mit WASD bewegen. Linke Maustaste halten, um anzugreifen — das Zielen läuft automatisch.',

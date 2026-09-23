@@ -34,6 +34,8 @@ function privateOf(s: Settings) {
     controlLayoutBtn: ButtonInternals;
     qualityBtn: ButtonInternals;
     frameRateBtn: ButtonInternals;
+    reduceMotionBtn: ButtonInternals;
+    tutorialBtn: ButtonInternals;
     backBtn: ButtonInternals;
   };
 }
@@ -85,6 +87,32 @@ describe('Settings — back', () => {
     s.onBack = onBack;
     privateOf(s).backBtn.onTap?.();
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Settings — replay tutorial (2026-09-22)', () => {
+  it('tapping it fires onTutorial, and touches no SettingsState field', () => {
+    // Unlike every button above it, this one is a fixed action, not a toggle — the same
+    // shape as `onBack`, and the reason `buttonCueConventions.test.ts` carries it as a
+    // named exception to "every Settings option is ui.toggle".
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    const onTutorial = vi.fn();
+    const onChange = vi.fn();
+    s.onTutorial = onTutorial;
+    s.onChange = onChange;
+    privateOf(s).tutorialBtn.onTap?.();
+    expect(onTutorial).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders the label from the active locale, translated with the rest of the screen', async () => {
+    const s = new Settings();
+    s.show(800, 600, defaultSettingsState());
+    expect(privateOf(s).tutorialBtn.label.text).toBe('REPLAY TUTORIAL');
+    await useLocale('zh');
+    s.show(800, 600, { ...defaultSettingsState(), locale: 'zh' });
+    expect(privateOf(s).tutorialBtn.label.text).toBe('重玩教程');
   });
 });
 
@@ -263,34 +291,38 @@ describe('Settings — button width/centering across locales (autoWidth, 2026-08
     expect(centerOf()).toBeCloseTo(CX, 6);
   });
 
-  it('lays out mute+back as a fixed-gap pair, centered together, at every width', async () => {
+  it('lays out mute+tutorial+back as a fixed-gap row, centered together, at every width', async () => {
+    // TUTORIAL joined this row 2026-09-22 (it used to be MUTE+BACK alone) — see
+    // `Settings.ts`'s `layoutButtons` for why it landed here instead of a row of its own.
     const s = new Settings();
     s.show(800, 600, defaultSettingsState());
     const p = privateOf(s);
     const GAP = 20;
 
-    const assertPairLayout = () => {
-      // Back sits immediately after mute with exactly GAP between them...
-      expect(p.backBtn.view.position.x).toBeCloseTo(p.muteBtn.view.position.x + p.muteBtn.width + GAP, 6);
-      // ...and the pair as a whole is centered under the panel midpoint.
-      const pairLeft = p.muteBtn.view.position.x;
-      const pairRight = p.backBtn.view.position.x + p.backBtn.width;
-      expect((pairLeft + pairRight) / 2).toBeCloseTo(CX, 6);
+    const assertRowLayout = () => {
+      // TUTORIAL sits immediately after MUTE, and BACK immediately after TUTORIAL, exactly
+      // GAP apart each time...
+      expect(p.tutorialBtn.view.position.x).toBeCloseTo(p.muteBtn.view.position.x + p.muteBtn.width + GAP, 6);
+      expect(p.backBtn.view.position.x).toBeCloseTo(p.tutorialBtn.view.position.x + p.tutorialBtn.width + GAP, 6);
+      // ...and the row as a whole is centered under the panel midpoint.
+      const rowLeft = p.muteBtn.view.position.x;
+      const rowRight = p.backBtn.view.position.x + p.backBtn.width;
+      expect((rowLeft + rowRight) / 2).toBeCloseTo(CX, 6);
     };
-    assertPairLayout();
+    assertRowLayout();
 
     // Toggling to UNMUTE swaps in "ВКЛЮЧИТЬ ЗВУК"-length text (here still English, but
-    // exercises the same resize-then-relayout path) — the pair must stay glued together
+    // exercises the same resize-then-relayout path) — the row must stay glued together
     // and centered even though muteBtn's width just changed.
     p.muteBtn.onTap?.();
-    assertPairLayout();
+    assertRowLayout();
 
     await useLocale('ru');
     s.show(800, 600, { ...defaultSettingsState(), locale: 'ru' });
     p.muteBtn.onTap?.(); // -> "ВКЛЮЧИТЬ ЗВУК", noticeably longer than "MUTE"/"БЕЗ ЗВУКА"
     expect(p.muteBtn.label.text).toBe('ВКЛЮЧИТЬ ЗВУК');
     expect(p.muteBtn.width).toBeGreaterThan(120);
-    assertPairLayout();
+    assertRowLayout();
   });
 });
 
@@ -411,5 +443,84 @@ describe('Settings — frame rate', () => {
       const centre = p.frameRateBtn.view.position.x + p.frameRateBtn.width / 2;
       expect(centre, loc).toBeCloseTo(400, 6);
     }
+  });
+});
+
+/**
+ * Reduce motion (2026-09-22) — the accessibility row, and the only button on this screen that
+ * had no case of its own until a mutation battery pointed at the hole. Everything about it is
+ * one boolean, which is exactly why it is worth pinning: a toggle wired to the wrong field
+ * compiles, renders, relabels, and reports the wrong setting forever.
+ */
+describe('Settings — reduce motion', () => {
+  afterEach(() => resetLocaleForTests());
+
+  it('toggles on and off, reporting each state through onChange', () => {
+    const s = new Settings();
+    const seen: SettingsState['reduceMotion'][] = [];
+    s.onChange = (next) => { seen.push(next.reduceMotion); s.show(800, 600, next); };
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: false });
+    const p = privateOf(s);
+    p.reduceMotionBtn.onTap?.();
+    p.reduceMotionBtn.onTap?.();
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('labels the state the player is in, and changes nothing else', () => {
+    // The "nothing else" half is the one that matters: the tap builds a whole new
+    // `SettingsState`, so a spread that dropped a field — or a handler that flipped `muted`
+    // because it was copied from the button above — reports a plausible object either way.
+    const s = new Settings();
+    const p = privateOf(s);
+    const onChange = vi.fn();
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: false });
+    expect(p.reduceMotionBtn.label.text).toBe('REDUCE MOTION: OFF');
+    s.onChange = onChange;
+    p.reduceMotionBtn.onTap?.();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      reduceMotion: true, muted: false, quality: 'auto', frameRate: 60, controlLayout: 'standard',
+    }));
+    expect(p.reduceMotionBtn.label.text).toBe('REDUCE MOTION: ON');
+  });
+
+  it('starts from the persisted value rather than from a default', () => {
+    // A player who turned this on is a player the game made unwell. Showing the screen with it
+    // reading OFF would be worse than the setting not existing.
+    const s = new Settings();
+    s.show(800, 600, { ...defaultSettingsState(), reduceMotion: true });
+    expect(privateOf(s).reduceMotionBtn.label.text).toBe('REDUCE MOTION: ON');
+  });
+
+  it('stays centred and translated in every locale', async () => {
+    const s = new Settings();
+    const p = privateOf(s);
+    for (const loc of LOCALES) {
+      await useLocale(loc);
+      s.show(800, 600, { ...defaultSettingsState(), locale: loc, reduceMotion: true });
+      expect(p.reduceMotionBtn.label.text, loc).not.toContain('{mode}');
+      expect(p.reduceMotionBtn.label.text, loc).not.toBe('settings.reduceMotion');
+      // Every locale has to translate the VALUE too, not just the label — an `ON` left in
+      // English inside a translated row is the usual way a two-part string goes half-done.
+      expect(p.reduceMotionBtn.label.text, loc).not.toContain('{');
+      const centre = p.reduceMotionBtn.view.position.x + p.reduceMotionBtn.width / 2;
+      expect(centre, loc).toBeCloseTo(400, 6);
+    }
+  });
+
+  it('does not overlap the row above it or the pair below', async () => {
+    // The row was inserted between FRAME RATE and MUTE/BACK, and `show()` advances a running
+    // `y` — an insert that forgot to advance it stacks two buttons on the same line, which no
+    // label or state assertion can see.
+    //
+    // BOTH neighbours, and the second half was missing until a mutation battery pointed at it:
+    // deleting the `y += 44` after this row leaves the row itself correctly placed and drops
+    // MUTE/BACK on top of it, so a case that only looked upward passed the mutant while its own
+    // name said it covered the pair below.
+    const s = new Settings();
+    const p = privateOf(s);
+    await useLocale('en');
+    s.show(800, 600, defaultSettingsState());
+    expect(p.reduceMotionBtn.view.position.y).toBeGreaterThan(p.frameRateBtn.view.position.y + 20);
+    expect(p.muteBtn.view.position.y).toBeGreaterThan(p.reduceMotionBtn.view.position.y + 20);
   });
 });

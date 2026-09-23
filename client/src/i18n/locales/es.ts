@@ -26,6 +26,8 @@ export const es: Translations<typeof en> = {
   loading: {
     boot: 'CARGANDO',
     art: 'CARGANDO GRÁFICOS',
+    enteringRun: 'ENTRANDO EN LA MAZMORRA',
+    returningToHub: 'VOLVIENDO AL VESTÍBULO',
   },
   pauseMenu: {
     title: 'PAUSADO',
@@ -53,6 +55,10 @@ export const es: Translations<typeof en> = {
     qualityMedium: 'MEDIA',
     qualityAutoMedium: 'AUTO (MEDIA)',
     frameRate: 'FOTOGRAMAS: {fps}',
+    reduceMotion: 'REDUCIR MOVIMIENTO: {mode}',
+    on: 'SÍ',
+    off: 'NO',
+    tutorial: 'REPETIR TUTORIAL',
     back: 'ATRÁS',
   },
   forge: {
@@ -209,6 +215,7 @@ export const es: Translations<typeof en> = {
     newPasswordPlaceholder: 'NUEVA CONTRASEÑA',
     loginFailed: 'Error al iniciar sesión — inténtalo de nuevo.',
     registerFailed: 'Error al registrarse — inténtalo de nuevo.',
+    throttled: 'Demasiados intentos — inténtalo de nuevo en unos minutos.',
     passwordChanged: 'Contraseña cambiada.',
     passwordChangeFailed: 'No se pudo cambiar la contraseña.',
     loggedInAs: 'Sesión iniciada como {username}',
@@ -236,8 +243,10 @@ export const es: Translations<typeof en> = {
     back: 'ATRÁS',
     partyClosed: 'Escuadra cerrada.',
     createFailed: 'No se pudo crear la escuadra — inténtalo de nuevo.',
+    createThrottled: 'Demasiadas escuadras creadas — inténtalo de nuevo en unos minutos.',
     codePlaceholder: 'CÓDIGO',
     invalidCode: 'Código inválido o escuadra llena.',
+    joinThrottled: 'Demasiados intentos — inténtalo de nuevo en unos minutos.',
     startFailed: 'No se pudo iniciar la búsqueda — inténtalo de nuevo.',
     codeLine: 'CÓDIGO: {code}',
     you: 'tú',
@@ -261,6 +270,7 @@ export const es: Translations<typeof en> = {
     errorTimeout: 'Se agotó el tiempo esperando una partida.',
     errorCancelled: 'Búsqueda cancelada.',
     errorGeneric: 'No se pudo conectar — inténtalo de nuevo.',
+    errorThrottled: 'Demasiados intentos — espera unos minutos antes de volver a buscar.',
   },
   tutorial: {
     hintMoveKeys: 'Muévete con WASD. Mantén el clic izquierdo para atacar: el apuntado es automático.',

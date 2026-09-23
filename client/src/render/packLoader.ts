@@ -12,7 +12,7 @@
 // first-download rule while buying nothing else, because the bytes still all arrived before
 // the first frame. Now the `lobby` pack is awaited at boot and the rest are kicked from the
 // lobby, with the `run`-phase ones awaited again at the run boundary
-// (`game/controllers/ArtGate.ts`).
+// (`game/controllers/TransitionGate.ts`).
 //
 // `ensureAllPacks()` survives as the "everything, now" path: `preloadCoreArt` still offers the
 // old one-call shape, which is what the loader tests and any caller that does not want to

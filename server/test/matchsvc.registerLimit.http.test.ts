@@ -2,14 +2,22 @@
  * `POST /auth/register`'s per-IP budget (design/16-accounts.md, 2026-09-17) — over real
  * HTTP, plus the one thing real HTTP cannot show.
  *
- * Why this route and not the others: register was the only one in this server that was both
- * UNBOUNDED and EXPENSIVE. Every call mints a row and pays a full scrypt hash for it, and
- * nothing — not this process, not Caddy — capped how many a single caller could ask for.
- * `/auth/login` was never in the same position: it already refuses after five failures per
- * username, and a login against a name that does not exist never reaches the hash at all.
+ * Why this route FIRST: register was the loudest case — every call mints a row and pays a
+ * full scrypt hash for it, and nothing, not this process and not Caddy, capped how many a
+ * single caller could ask for.
+ *
+ * This file used to say `/auth/login` "was never in the same position: it already refuses
+ * after five failures per username, and a login against a name that does not exist never
+ * reaches the hash at all". Both halves were true and the conclusion was wrong, which is why
+ * the sentence is quoted here rather than deleted. The per-username lockout is per NAME and
+ * the attack is per LIST, so one guess each against ten thousand usernames never reaches any
+ * name's fifth failure; and "never reaches the hash" is not a saving but an oracle — it is
+ * what makes the response time answer "does this name exist". `/auth/login` got its own
+ * budget on 2026-09-22 (`matchsvc.authLimits.http.test.ts`), with the other four routes that
+ * had been reasoned about the same way.
  *
  * The shipped budget ({@link REGISTER_RATE_LIMIT}) is thirty in ten minutes, which no test
- * can exhaust at a sane runtime — so the server here is built with `authLimiter` injected,
+ * can exhaust at a sane runtime — so the server here is built with an injected limiter,
  * the same reason `matchmaker` timings are injectable. What that injection must not be
  * allowed to hide is that the SHIPPED constant is the one the real server uses, so the last
  * case asserts the default wiring directly.
@@ -34,7 +42,7 @@ beforeAll(async () => {
     secret: 'test-secret',
     // Two per five minutes: small enough to exhaust in a test, and driven by this file's own
     // clock so the window can elapse without anything sleeping.
-    authLimiter: new RateLimiter(2, 5 * 60_000),
+    limits: { register: new RateLimiter(2, 5 * 60_000) },
   });
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
@@ -102,7 +110,7 @@ describe('POST /auth/register — the per-IP budget', () => {
 
 describe('POST /auth/register — the budget is its own', () => {
   it('does not spend the telemetry route\'s budget', async () => {
-    // Two limiters, on purpose (`RegisterRouteDeps.authLimiter`). One shared counter would
+    // Two limiters, on purpose (`routes/limits.ts`: one counter per name). One shared counter would
     // make a chatty client's log batches able to block its own registration, and this file's
     // deliberately tiny auth budget would take `/client/log` down with it.
     await register('limit4a', '203.0.113.4');
@@ -151,7 +159,7 @@ describe('postRegister — the budget is spent before the body is read', () => {
           throw new Error('must not be reached');
         },
       },
-      authLimiter: limiter,
+      limits: { register: limiter },
     } as unknown as RegisterRouteDeps;
 
     // No 'data'/'end' is ever emitted on `req`. If the handler awaited the body first this
@@ -164,7 +172,7 @@ describe('postRegister — the budget is spent before the body is read', () => {
     const limiter = new RateLimiter(1, 60_000);
     const deps = {
       auth: { register: () => Promise.resolve({ accountId: 'a', username: 'u', token: 't' }) },
-      authLimiter: limiter,
+      limits: { register: limiter },
       nowMs: () => now,
     } as unknown as RegisterRouteDeps;
     const call = async () => {

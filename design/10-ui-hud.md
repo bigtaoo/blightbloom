@@ -12,6 +12,14 @@ The player-facing shell around the engine: the **HUD** during play, the **screen
 
 ## Screen flow (shipped, 2026-08-03; the lobby + identity gate, 2026-09-10)
 
+> **The run boundary is the one transition that is HELD (2026-09-22).** Crossing into a map or
+> back out to the lobby shows `ui/loadingScreen.ts` for at least three seconds, whether or not
+> anything is downloading — `controllers/TransitionGate.ts` owns it and `12` has the full account,
+> including the two transitions deliberately left instant. Everything else in this section is as
+> immediate as it reads: the hub screens below are ordinary navigation, and putting a floor on
+> those would make the menu unusable. The BOOT splash is not held either, and the paragraph in
+> `12` records why it briefly was.
+
 The full loop a player can complete start-to-finish — closed the last structural gaps
 (no menu-driven path into online play, no matchmaking feedback, no tutorial) in the
 2026-08-03 pass below, and collapsed the two front-door screens that pass left behind into
@@ -196,6 +204,59 @@ sits until `queueTtlMs`, and can be seated into a room that then never starts. I
 age now in every mode (it was reaped in none of them for PvP before this pass), which bounds it;
 what would remove it is a cancel on the way out of the matchmaking screen, which nothing sends.
 
+### The card grouped by kind, and TUTORIAL taken off the screen rather than dimmed (2026-09-22)
+
+`client/src/game/screens/MainMenu.ts`, `client/src/game/ui/LobbyRoutes.ts`,
+`client/src/game/screens/Settings.ts`, `client/src/game/controllers/{gameWiring,RunLifecycle,
+gameAssembly}.ts`; work log: [volume 91](roadmap/91-2026-09-22-lobby-route-grouping.md). The owner
+looked at a shipped screenshot and asked whether eight tap targets on one card was too many. The
+count was not the defect: the card held three different KINDS of route — start playing
+(CONTINUE/SOLO/CO-OP/PVP), prepare (SQUAD/FORGE/TUTORIAL), chrome (LOGIN/SETTINGS) — with nothing
+in the layout encoding that, so a player scanning it saw eight near-identical dark pills and the
+one green fill.
+
+**LOGIN and SETTINGS left the card entirely**, to a centred row 12px under it with no backing
+panel — they are not routes into the game, and the 2026-08-02 legibility fix that paired them
+side-by-side (design/10 above, this same doc) had already treated them as a different kind of
+control; this pass just stopped drawing them on the same card as the ones that are routes. A 1px
+divider inside `LobbyRoutes` now separates "start playing" from "prepare" — full width, no
+`onTap`, so it is a rule rather than a button and stays invisible to `widgetOverlap.test.ts`'s
+tappable walk without a special case. Height was break-even by construction: the utility row's 42
++ 12px gap that left the card is exactly what the card's bottom pad gave back (24 → 12, sized for
+a button's descender room that is no longer the card's last element), and the divider's own 12px
+of extra room (8 + 1 + 8, replacing a plain 5px row gap) came out of that same pad. Measured at
+the binding case (portal, quick-play + data notice, no save): 630px of 640 before, 630 after.
+
+**This is the "do not dim a door" rule from the 2026-09-17 pass above, taken at its word.**
+Grouping by KIND is not dimming by health — every route below the divider keeps its height, fill,
+border and icon chip, and the fix is a separator, not a lower-contrast fill — but the rule still
+bites on TUTORIAL: `LobbyRoutes.setRecommendTutorial(recommend)` used to drive only the "NEW
+HERE?" badge, with the row itself always on screen regardless of `MetaState.hasSeenTutorial`. It
+now hides the row too when `recommend` is false, which is the letter of "open it, or take it off
+the screen" applied to a route that had been silently dimmed-by-habit rather than styled that
+way — a returning player was never being asked to ignore the badge, they were being asked to
+ignore the whole row, every visit, forever. Taking the row off the screen would make the route
+UNREACHABLE if nothing replaced it, so `screens/Settings.ts` gained a REPLAY TUTORIAL entry (a
+fixed action, not a `SettingsState` field) as the second door onto the same run
+(`RunLifecycle.beginTutorialRun`, now hiding either screen it might have been reached from). It
+joined the existing MUTE/BACK row rather than getting a row of its own: Settings' design height
+already sat exactly on the 640px floor (`viewportFit.test.ts`), so a fresh row would have
+overflowed it by the row's own height, and a row already wide enough for the worst-case Russian
+MUTE/BACK labels had more room to spare than a blank one did.
+
+**TUTORIAL also stopped borrowing the account chip's purple** (`0x6b46c1` → `0x2f6f5f`) — it had
+been reusing `icon_account`'s colour as well as its glyph, a second and more literal violation of
+this doc's own "two adjacent buttons must differ by more than their label" (2026-08-02, cited in
+the 2026-09-17 sweep above). The glyph itself is still borrowed; no dedicated tutorial icon
+exists yet.
+
+**Deliberately out of scope**: relabelling CO-OP/SQUAD, the sharpest remaining confusion the
+audit that prompted this found (they cross two axes — mode and social unit — and neither label
+says which one it differs by). It is a copy change gated on an open design question
+(design/05:152, whether co-op PvE is matchmade or friends-only at launch) that a layout pass
+should not decide by accident in eight locale files; the new divider already puts the two on
+opposite sides of a visible rule, which is most of the confusion this pass could close without it.
+
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 
 `MainMenu.setAccountEntry(boolean)` fuses two decisions that come apart at the first host that has
@@ -294,7 +355,7 @@ The concrete shape of `05`/`04`'s control scheme — one move stick, no aim (v33
   is a confirm/preview step between the lobby's PVP SOLO QUEUE row and Matchmaking, showing the
   real map and the player's PvP-scaled character/weapon via `buildArenaSpecs`. A second
   preset later is additive here, not a rewrite.
-- ~~**Settings** (volume once audio lands `11`, control layout/left-handed mirror, quality tier per `01` roadmap).~~ **Resolved (5.2, shipped):** `client/src/game/screens/Settings.ts` — master/SFX/music sliders + mute, built on the widget kit above, wired to `SettingsState`/`AudioBus`. **Left-handed control layout also resolved (2026-08-03):** `SettingsState.controlLayout`, a `Settings.ts` toggle, and `platform/TouchControls.ts`'s `setMirrored()` (swaps the move-stick and fire-zone halves + the weapon-button corner — "move/aim sides" as this read until 2026-09-03, from before v33 removed aim). **The quality tier shipped 2026-08-25** — this line read "a quality tier remains undesigned" until 2026-09-08, three volumes after it landed: a QUALITY row cycling `auto`/`high`/`medium`/`low`, labelled with what `auto` actually resolved to (`AUTO (MEDIUM)`), see `01`'s quality-tier table. **And a FRAME RATE row, 2026-09-08** (`60`/`30`), the battery knob a quality tier cannot express — 30 is one render frame per 30 Hz sim tick, so it halves what a fight costs without the sim and the screen drifting out of phase (`01`'s power budget, `06`'s tick note). Both rows are presentation-only and neither reaches the sim.
+- ~~**Settings** (volume once audio lands `11`, control layout/left-handed mirror, quality tier per `01` roadmap).~~ **Resolved (5.2, shipped):** `client/src/game/screens/Settings.ts` — master/SFX/music sliders + mute, built on the widget kit above, wired to `SettingsState`/`AudioBus`. **Left-handed control layout also resolved (2026-08-03):** `SettingsState.controlLayout`, a `Settings.ts` toggle, and `platform/TouchControls.ts`'s `setMirrored()` (swaps the move-stick and fire-zone halves + the weapon-button corner — "move/aim sides" as this read until 2026-09-03, from before v33 removed aim). **The quality tier shipped 2026-08-25** — this line read "a quality tier remains undesigned" until 2026-09-08, three volumes after it landed: a QUALITY row cycling `auto`/`high`/`medium`/`low`, labelled with what `auto` actually resolved to (`AUTO (MEDIUM)`), see `01`'s quality-tier table. **And a FRAME RATE row, 2026-09-08** (`60`/`30`), the battery knob a quality tier cannot express — 30 is one render frame per 30 Hz sim tick, so it halves what a fight costs without the sim and the screen drifting out of phase (`01`'s power budget, `06`'s tick note). **And a REDUCE MOTION row, 2026-09-22** (`ON`/`OFF`, `减少画面抖动`), from the dizziness report in `01`'s frame-pacing section: it suppresses camera shake — ±14 px of white noise applied to the whole world layer, re-rolled every render frame — and the chromatic-aberration pulse, and nothing else. Not the vignette (static), not hit-stop (a pause is the opposite of motion), not any animation attached to an object the player is tracking: those either carry information or stay put, and switching them off would be a different setting nobody asked for. Off by default, because the shake is part of how the game is meant to feel — but a player who needs it off needs it off permanently, which is what persisting it is for. All three rows are presentation-only and none reaches the sim.
 - ~~**Result/summary content:** what a run summary shows (drops collected, rooms cleared, time) — ties to `05`'s reward structure.~~ **Resolved, shipped** — see the Screen flow section above.
 
 ## Open questions

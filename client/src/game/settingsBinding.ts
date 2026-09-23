@@ -23,6 +23,7 @@ import { setLocale } from '../i18n';
 import { isExternallyMuted, onExternalMuteChange } from '../audio/externalMute';
 import type { QualitySetting } from '../render/quality';
 import { setPlayFrameCap } from './powerBudget';
+import { setReduceMotion } from '../render/motion';
 
 export interface SettingsBindingDeps {
   audio: { setSfxVolume(v: number): void; setMusicVolume(v: number): void };
@@ -94,5 +95,10 @@ export class SettingsBinding {
     // In `applyAll` and not next to `quality.apply` below, so it lands on BOTH paths — boot and
     // change — which is the bug shape this class was extracted to prevent.
     setPlayFrameCap(this.current.frameRate);
+    // "Reduce motion" (`render/motion.ts`), through its own module mirror on exactly the same
+    // terms and in `applyAll` for exactly the same reason: a setting applied on change but not
+    // at boot is the bug shape this class exists to prevent, and it is invisible — the screen
+    // shows the right value while the game ignores it until the next edit.
+    setReduceMotion(this.current.reduceMotion);
   }
 }

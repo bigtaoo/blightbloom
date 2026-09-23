@@ -297,7 +297,7 @@ describe('the sweep measured what it claims to', () => {
       'PvpPreview: 2',
       'Screens + ad offer: 3',
       'Screens: 3',
-      'Settings: 6',
+      'Settings: 8',
       'StoreScreen: 9',
     ]);
   });

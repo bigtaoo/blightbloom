@@ -55,7 +55,7 @@ import type { Scene } from '../scene/Scene';
 import type { FxController } from '../fx/FxController';
 import type { MatchRecorder } from '../match/MatchRecorder';
 import type { AllyController } from './AllyController';
-import type { ArtGate } from './ArtGate';
+import type { TransitionGate } from './TransitionGate';
 import type { CommandBuilder } from './CommandBuilder';
 import type { EventReactor } from './EventReactor';
 import type { ForgeActions } from './ForgeActions';
@@ -98,7 +98,7 @@ export interface AssemblyParts {
   events: EventReactor;
   runOutcome: RunOutcome;
   tutorialHints: TutorialHintController;
-  artGate: ArtGate;
+  transitions: TransitionGate;
   forgeActions: ForgeActions;
   hud: HudView;
   hudView: Container;
@@ -199,7 +199,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   let net!: OnlineMatch;
 
   const nav = new ScreenNav({
-    run: p.run, layers: p.layers, screenFlow, artGate: p.artGate,
+    run: p.run, layers: p.layers, screenFlow, transitions: p.transitions,
     backdrop: p.backdrop, hud: p.hud, portalPrompt: p.portalPrompt, floorCardPrompt: p.floorCardPrompt,
     mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
     matchmaking: p.matchmaking, partyScreen, loginScreen,
@@ -225,9 +225,10 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   const runs = new RunLifecycle({
     run: p.run, layers: p.layers, scene: p.scene, fx: p.fx,
     roomBuilder: p.roomBuilder, gameLoop, screenFlow,
-    nav, artGate: p.artGate, recorder: p.recorder,
+    nav, transitions: p.transitions, recorder: p.recorder,
     tutorialHints: p.tutorialHints, hud: p.hud, hudView: p.hudView,
-    forge: p.forge, loadout: p.loadout, mainMenu: p.mainMenu, matchmaking: p.matchmaking,
+    forge: p.forge, loadout: p.loadout, mainMenu: p.mainMenu, settingsScreen: p.settingsScreen,
+    matchmaking: p.matchmaking,
     partyScreen, pauseMenu: p.pauseMenu, screens: p.screens,
     allySkinId: () => host.allySkinId(),
   });

@@ -260,6 +260,15 @@ One store for both halves: the backend's logs and the browser's.
   credential namespace, and the identity rule: billsvc's `createOrder` reads `accountId` from the
   request body, which is correct for an internal route and is a "charge somebody else's account"
   parameter the moment a player's client can reach it. See §4's own note on what the proxy settled.
+  **`POST /store/order` also spends a per-IP budget since 2026-09-22** (`ORDER_RATE_LIMIT`, thirty
+  in ten minutes — the same number `/auth/register` uses, because both bound a write into a
+  database that is not this process's). The session gate bounds WHO may reach the billing plane
+  and nothing bounded HOW OFTEN: a session costs one registration and is good for thirty days, so
+  the "requiring a session is what keeps this from being a free unmetered amplifier" argument in
+  the route's own header was load-bearing for *anywhere* and silent about *how much*. The budget
+  is spent before `requireAuth`, since resolving a session is itself a database read any caller
+  can ask for; the two GETs stay unbudgeted, `GET /store/order/:id` because `StorePurchase.poll`
+  calls it on a timer while a player watches a payment resolve.
 - Refund handling is specified only to the extent of "the ledger is append-only and a reversal is
   a new row". What a revoked character does to a ladder history is unanswered.
 - ~~SQLite stays the answer until there are two control-plane processes.~~ **Reversed

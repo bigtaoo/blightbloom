@@ -5,6 +5,10 @@ import { UPDATE_PRIORITY, type Application } from 'pixi.js';
 import { PerfMonitor, type PerfMonitorOptions, type PerfSnapshot } from './PerfMonitor';
 import { PerfOverlay } from './PerfOverlay';
 import { probeFrames, type ProbeOptions, type ProbeResult } from './frameProbe';
+import { probeDisplayRate } from './displayRate';
+import { setDisplayHz } from '../game/powerBudget';
+import { defaultPerfWindowReporter } from '../game/perfReporting';
+import type { FrameWindow } from './frameSampler';
 import {
   attributeDraws,
   formatAttribution,
@@ -20,6 +24,12 @@ export { PerfMonitor, type PerfSnapshot, type PerfMonitorOptions } from './PerfM
 export { PerfOverlay, formatSnapshot } from './PerfOverlay';
 export { FrameSampler, msStats, numFromStorage, type FrameWindow, type MsStats } from './frameSampler';
 export { GlProbe, filterPasses, type GlCounts } from './glProbe';
+export {
+  estimateDisplayHz,
+  probeDisplayRate,
+  type DisplayRateEstimate,
+  type DisplayRateProbeDeps,
+} from './displayRate';
 export {
   AUTO_BATCH_VERTEX_LIMIT,
   attributeDraws,
@@ -110,6 +120,17 @@ export interface InstallPerfOptions extends PerfMonitorOptions {
    *  Off in a normal session: the monitor alone is one ticker bracket and a windowed
    *  counter, the overlay costs a Text and a live-patched GL context. */
   overlay?: boolean;
+  /** The platform's `requestAnimationFrame`, for the display-rate probe. Defaults to the
+   *  global one where there is one; injected by tests, which run with none. */
+  raf?: (cb: (t: number) => void) => unknown;
+  /** Where the measured refresh rate goes. Defaults to `powerBudget`'s mirror, and that
+   *  default is the point: the probe has to be wired in ONE place rather than in each of
+   *  the three entry points, because a per-entry pin only exists where somebody thought of
+   *  it — the same mistake `clientLog`'s `host` label made for weeks (design/19 §10). */
+  onDisplayHz?: (hz: number | null) => void;
+  /** Where each closed window goes for frame-pacing telemetry (`perf/perfReport.ts`). Defaults
+   *  to the real one; injected by tests, and by any host that wants none. */
+  reportWindow?: (w: FrameWindow) => void;
 }
 
 /**
@@ -124,15 +145,30 @@ export interface InstallPerfOptions extends PerfMonitorOptions {
 export function installPerf(app: Application, opts: InstallPerfOptions = {}): InstalledPerf {
   const wantOverlay = opts.overlay ?? false;
   const overlay = wantOverlay ? new PerfOverlay() : null;
+  // Frame-pacing telemetry (2026-09-22). Wired here, once, rather than at each entry point —
+  // `game/perfReporting.ts` carries the argument and the phase test.
+  const reportWindow = opts.reportWindow ?? defaultPerfWindowReporter();
   const monitor = new PerfMonitor({
     ...opts,
     probeGl: opts.probeGl ?? wantOverlay,
     onSnapshot: (s: PerfSnapshot) => {
       overlay?.setSnapshot(s);
+      reportWindow(s.window);
       opts.onSnapshot?.(s);
     },
   });
   monitor.install(app);
+
+  // What refresh rate is this display running at? Nothing else in the client asks, and
+  // `game/powerBudget.ts` cannot apply a frame cap evenly without the answer. Fire-and-
+  // forget, one second, once per session — see `displayRate.ts` for why it is rAF and why
+  // it may legitimately answer `null`.
+  const globalRaf = (globalThis as { requestAnimationFrame?: (cb: (t: number) => void) => unknown })
+    .requestAnimationFrame;
+  probeDisplayRate({
+    raf: opts.raf ?? (globalRaf ? (cb): unknown => globalRaf.call(globalThis, cb) : undefined),
+    onResult: opts.onDisplayHz ?? setDisplayHz,
+  });
 
   let tick: (() => void) | null = null;
   if (overlay) {

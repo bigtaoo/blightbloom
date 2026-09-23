@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { Text } from 'pixi.js';
+import { readFileSync } from 'node:fs';
 import { installFakeTextCanvas } from '../screens/fakeTextCanvas';
 import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_CONTINUE_H } from './LobbyRoutes';
 import { LOCALES, setLocale, resetLocaleForTests, t } from '../../i18n';
@@ -38,7 +39,10 @@ function privateOf(r: LobbyRoutes) {
     continueCaption: { text: string; visible: boolean; position: { x: number; y: number } } & Text;
     soloBtn: Btn;
     coopBtn: Btn;
+    pvpSoloBtn: Btn;
+    squadBtn: Btn;
     tutorialBtn: Btn;
+    divider: { position: { x: number; y: number } };
   };
 }
 
@@ -191,5 +195,68 @@ describe('a locale change reaches the row', () => {
     expect(p.continueBtn.label.text).toBe(t('mainMenu.continueRun'));
     expect(p.continueCaption.text).not.toBe(english);
     expect(p.continueCaption.text).toContain('3'); // still the same run
+  });
+});
+
+describe('the divider between "play now" and "prepare" (2026-09-22)', () => {
+  it('sits below PVP SOLO QUEUE and above SQUAD, and is not a tap target', () => {
+    const r = new LobbyRoutes();
+    r.layout(400, 100);
+    const p = privateOf(r);
+    expect(p.divider.position.y).toBeGreaterThan(p.pvpSoloBtn.view.position.y);
+    expect(p.divider.position.y).toBeLessThan(p.squadBtn.view.position.y);
+    // No `onTap` at all — `widgetOverlap.test.ts`'s tappable walk keys off exactly this,
+    // so a plain `Graphics` with no press handler is already invisible to it.
+    expect('onTap' in (p as unknown as { divider: object }).divider).toBe(false);
+  });
+});
+
+describe('TUTORIAL hides once the player has seen it (2026-09-22)', () => {
+  it('is drawn, at full height, for a caller that never says otherwise — a new player', () => {
+    // The real caller (`ScreenFlow.showMenu`) always calls `setRecommendTutorial` before the
+    // first `show()`; a caller that skips it (every test above this one) gets the row, which
+    // is what this block always drew before it could be hidden at all.
+    const r = new LobbyRoutes();
+    r.layout(400, 100);
+    expect(privateOf(r).tutorialBtn.view.visible).toBe(true);
+    expect(r.height).toBe(LOBBY_ROUTES_H);
+  });
+
+  it('disappears, and gives its row back, once told the player has seen it', () => {
+    const r = new LobbyRoutes();
+    r.setRecommendTutorial(false);
+    r.layout(400, 100);
+    expect(privateOf(r).tutorialBtn.view.visible).toBe(false);
+    // TUTORIAL's own row (42) plus the gap above it (5) — it is the LAST row in the stack,
+    // so nothing else moves.
+    expect(r.height).toBe(LOBBY_ROUTES_H - 47);
+  });
+
+  it('comes back if a later call says the player has NOT seen it after all', () => {
+    // Not a one-way door — same reasoning `setSoloPrimary`'s own "back" case gives: a screen
+    // that could only ever lose a row would be a latent bug in whichever host wires it twice.
+    const r = new LobbyRoutes();
+    r.setRecommendTutorial(false);
+    r.setRecommendTutorial(true);
+    r.layout(400, 100);
+    expect(privateOf(r).tutorialBtn.view.visible).toBe(true);
+    expect(r.height).toBe(LOBBY_ROUTES_H);
+  });
+});
+
+describe("TUTORIAL's chip no longer borrows ACCOUNT's colour (2026-09-22)", () => {
+  // A runtime check would need `Button` to expose a `Graphics` fill back out, which nothing
+  // else here needs — read the source instead, the same way `buttonCueConventions.test.ts`
+  // does for a per-call-site convention. design/10:75's "two adjacent buttons must differ by
+  // more than their label" is the rule; the glyph is still borrowed (no dedicated icon yet),
+  // so the chip colour is the one cue actually doing the work.
+  it('draws a different chip colour than MainMenu’s ACCOUNT button', () => {
+    const routes = readFileSync(new URL('./LobbyRoutes.ts', import.meta.url), 'utf8');
+    const mainMenu = readFileSync(new URL('../screens/MainMenu.ts', import.meta.url), 'utf8');
+    const tutorialChip = /tutorialBtn\.setIcon\([^,]+,\s*(0x[0-9a-f]+)/i.exec(routes)?.[1];
+    const accountChip = /accountBtn\.setIcon\([^,]+,\s*(0x[0-9a-f]+)/i.exec(mainMenu)?.[1];
+    expect(tutorialChip, 'tutorialBtn.setIcon chip colour not found').toBeDefined();
+    expect(accountChip, 'accountBtn.setIcon chip colour not found').toBeDefined();
+    expect(tutorialChip).not.toBe(accountChip);
   });
 });

@@ -29,6 +29,23 @@ export interface FrameWindow {
   busyRatio: number;
   /** Wall-clock time between frames — what the player actually experiences. */
   frame: MsStats;
+  /**
+   * Share (0..1) of sampled frames markedly longer than this window's own median frame —
+   * the JUDDER metric (2026-09-22).
+   *
+   * Everything else here is an average or a percentile, and the 2026-09-22 report is the
+   * demonstration that neither can see the thing being reported: a frame cap dropping 103
+   * frames a minute reads as 58 fps with a p50 of 16.7 and a p95 of 16.7, all of which look
+   * healthy, while the player sees a frame lasting twice as long as its neighbours nearly
+   * twice a second. p95 cannot show it either — at 2.9% of frames the doubled ones are inside
+   * the 5% the percentile discards.
+   *
+   * Measured against the window's own median rather than against a target, so it says nothing
+   * about whether the frame rate is high enough and everything about whether it is STEADY. A
+   * device holding a rock-solid 30 fps reads 0 here, which is correct: 30 fps is a different
+   * complaint from judder, and `fps` is already the field for it.
+   */
+  longFrameRatio: number;
   /** CPU spent in the game's own update (sim step + scene mirroring + fx + hud). */
   update: MsStats;
   /** CPU spent inside `renderer.render` — scene traversal + draw-call submission. */
@@ -60,6 +77,12 @@ const DEFAULT_WINDOW_MS = 2_000;
 const DEFAULT_SUSTAIN_WINDOWS = 5;
 const DEFAULT_MAX_SAMPLES = 300;
 
+/** How much longer than the median a frame has to be to count as a long one. 25%: an
+ *  ordinary vsynced frame varies by a few percent, a frame that waited for one extra display
+ *  interval is at least 25% longer at the slowest rate this client will run at (30 fps on a
+ *  60 Hz panel: 41.7 ms against 33.3), and a dropped frame at 60 fps is 100% longer. */
+export const LONG_FRAME_TOLERANCE = 0.25;
+
 export const FPS_WARN_KEY = 'daydayup.perf.fpsWarn';
 export const BUSY_WARN_KEY = 'daydayup.perf.busyWarn';
 
@@ -83,6 +106,25 @@ export function msStats(samples: readonly number[]): MsStats {
   const sorted = [...samples].sort((a, b) => a - b);
   const at = (q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
   return { p50: at(0.5), p95: at(0.95), max: sorted[sorted.length - 1]! };
+}
+
+/**
+ * Share (0..1) of `samples` longer than `medianMs * (1 + LONG_FRAME_TOLERANCE)`.
+ *
+ * Exported and pure so the metric can be reasoned about on its own — it is the one number in
+ * `FrameWindow` that is a claim rather than a measurement, and the claim ("this is what judder
+ * looks like from inside the client") is worth being able to test directly.
+ *
+ * An empty sample, or a median of zero, is 0 rather than NaN: a window that closed without a
+ * frame is not a juddering window, and a NaN would travel all the way to a dashboard panel as
+ * a gap that reads like an outage.
+ */
+export function longFrameRatio(samples: readonly number[], medianMs: number): number {
+  if (samples.length === 0 || medianMs <= 0) return 0;
+  const limit = medianMs * (1 + LONG_FRAME_TOLERANCE);
+  let long = 0;
+  for (const ms of samples) if (ms > limit) long++;
+  return long / samples.length;
 }
 
 export class FrameSampler {
@@ -150,12 +192,14 @@ export class FrameSampler {
     const windowMs = this.accMs;
     const frames = this.frames;
     const busyRatio = Math.min(1, this.longTaskMs / Math.max(1, windowMs));
+    const frame = msStats(this.frameMs);
     const w: FrameWindow = {
       fps: (frames * 1000) / Math.max(1, windowMs),
       frames,
       windowMs,
       busyRatio: this.longTaskSupported ? busyRatio : 0,
-      frame: msStats(this.frameMs),
+      frame,
+      longFrameRatio: longFrameRatio(this.frameMs, frame.p50),
       update: msStats(this.updateMs),
       render: msStats(this.renderMs),
       discarded: this.hidden,

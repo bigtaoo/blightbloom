@@ -218,22 +218,84 @@ function measureArena(id: ArenaId): GroundGeometry {
   return measure(roomRectsPx(state, w, h), floorRegionsPx(state, w, h), doorRects);
 }
 
-/** N identical rooms on a grid — isolates the per-room rate from any one map's authoring. */
-function synthetic(n: number, side = REF_ROOM_PX): GroundGeometry {
-  const rooms = Array.from({ length: n }, (_, i) => ({
+/**
+ * The room counts every case below needs — 1, 4, 12, 30 and 60 rooms, some of them in more than one
+ * case — used to mean a fresh `measure()` build at each count, four times over (the "grows linearly"
+ * case alone summed to 107 rendered rooms). That was real work: v8 coverage instrumentation was
+ * pushing the largest case's ~28s past vitest's 5s per-test default (found 2026-09-22, from a
+ * coverage-leg-only timeout with the file's own room-render assertions unchanged — see the "grows
+ * linearly" case below for what stays pinned).
+ *
+ * `buildGroundLayer`'s per-room passes (`drawRoomWash`/`drawFloorMottle`/`drawFloorDecals`/
+ * `drawRoomLight`, and the region loop for the floor stamp and grid) each take only that one room's
+ * own rect and a seed hashed off that room's own position — never a sibling room, never the total
+ * count. So room i's five mounted pieces are byte-identical whether it is built alone or alongside
+ * 59 others, and every count these tests want (1, 4, 12, 30, 60) is a PREFIX of the largest one.
+ * Building once at 60 and slicing (`sliceSynthetic` below) cuts the describe block's total rendered
+ * rooms from 192 (107 + 1 + 60 + 12 + 12) to 60.
+ */
+const SYNTHETIC_SERIES_N = 60;
+
+/** Room rects for an N-room synthetic grid — shared by `buildSyntheticSeries` and the control test
+ *  below it, so the two can never silently drift onto different layouts. */
+function syntheticRoomRects(n: number, side = REF_ROOM_PX): RectPx[] {
+  return Array.from({ length: n }, (_, i) => ({
     x: (i % 10) * (side + 88),
     y: Math.floor(i / 10) * (side + 88),
     w: side,
     h: side,
   }));
-  return measure(rooms, rooms);
+}
+
+/** Ground layer geometry, unmeasured and unsorted, for `sliceSynthetic` to slice up. */
+function buildSyntheticSeries(n: number, side = REF_ROOM_PX): { ground: Container; sys: GraphicsContextSystem } {
+  const rooms = syntheticRoomRects(n, side);
+  const ground = new Container();
+  buildGroundLayer(ground, {
+    rooms,
+    floorRegions: rooms,
+    wallRects: [],
+    doorRects: [],
+    palette: biomePalette('ember'),
+    floorTex: tex(256),
+  });
+  return { ground, sys: contextSystem() };
+}
+
+/**
+ * The first `k` rooms of an `n`-room `buildSyntheticSeries`, measured as `measure(rooms.slice(0, k),
+ * ...)` would have measured them alone — see `SYNTHETIC_SERIES_N`'s comment for why that equivalence
+ * holds. Relies on `buildGroundLayer`'s own mount order (its stage comments in groundLayer.ts): with
+ * no doors, `ground.children` is five same-length groups — stamp, dark, light, grid, pool — each in
+ * room order, so the first-`k`-of-each-group slice is exactly what a `k`-room build would mount.
+ */
+function sliceSynthetic(series: { ground: Container; sys: GraphicsContextSystem }, n: number, k: number): GroundGeometry {
+  const { ground, sys } = series;
+  const STAGES = 5;
+  const children: Container[] = [];
+  for (let stage = 0; stage < STAGES; stage++) {
+    for (let i = 0; i < k; i++) children.push(ground.children[stage * n + i]!);
+  }
+  const floats = children.map((c) => floatsOf(c, sys)).sort((a, b) => b - a);
+  const gfx = children.flatMap((c) => [...(c instanceof Graphics ? [c] : []), ...graphicsUnder(c)]);
+  return {
+    rooms: k,
+    floats,
+    total: floats.reduce((a, b) => a + b, 0),
+    largest: floats[0] ?? 0,
+    allBatchForced: gfx.every((c) => c.context.batchMode === 'batch'),
+    allTagged: children.every((c) => groundPieceBounds(c) !== undefined),
+  };
 }
 
 describe('the ground stage is painted PER ROOM, and that is what its cost scales with', () => {
+  const series = buildSyntheticSeries(SYNTHETIC_SERIES_N);
+  const slice = (k: number) => sliceSynthetic(series, SYNTHETIC_SERIES_N, k);
+
   it('grows linearly in room count, at a bounded per-room rate', () => {
     const counts = [1, 4, 12, 30, 60];
     const rates = counts.map((n) => {
-      const m = synthetic(n);
+      const m = slice(n);
       return { n, perRoom: m.total / n };
     });
     for (const { n, perRoom } of rates) {
@@ -252,8 +314,8 @@ describe('the ground stage is painted PER ROOM, and that is what its cost scales
     // used to read "one whole-map Graphics per pass, so the total is the whole map every frame",
     // with `sixty.largest > one.largest * 40` — i.e. it pinned exactly the property that made the
     // layer uncullable. A 60x map now costs 60x the TOTAL and about 1x the largest piece.
-    const one = synthetic(1);
-    const sixty = synthetic(60);
+    const one = slice(1);
+    const sixty = slice(60);
     expect(sixty.total / one.total).toBeGreaterThan(40);
     expect(sixty.largest / one.largest).toBeLessThan(1.2); // measured 1.11
     expect(sixty.floats.length).toBe(one.floats.length * 60);
@@ -263,7 +325,7 @@ describe('the ground stage is painted PER ROOM, and that is what its cost scales
     // If `staticGraphics()` stopped being used here, Pixi's own 400-float cutoff would apply and the
     // geometry would cost draw calls instead of a repack. Either is a real design, but the budgets
     // in this file are written for the batch-forced one.
-    expect(synthetic(12).allBatchForced).toBe(true);
+    expect(slice(12).allBatchForced).toBe(true);
     expect(measureArena('arena_launch').allBatchForced).toBe(true);
     // ...and the pieces are still far past the auto cutoff, which is why the override is
     // load-bearing. Not EVERY piece: a door's worn patch is four ellipses and would batch on its own
@@ -271,16 +333,35 @@ describe('the ground stage is painted PER ROOM, and that is what its cost scales
     // ...and the two variation halves of every room are still far past the auto cutoff, which is
     // what keeps the override load-bearing. NOT every piece: after the split a grid (~120 floats)
     // and a light pool (288) would batch on their own merits, and so would a door's worn patch.
-    const twelve = synthetic(12);
+    const twelve = slice(12);
     const big = twelve.floats.filter((f) => f > AUTO_BATCH_VERTEX_LIMIT);
     expect(big).toHaveLength(24); // 12 rooms x {dark, light}
     expect(Math.min(...big)).toBeGreaterThan(AUTO_BATCH_VERTEX_LIMIT * 5);
   });
 
   it('tags every piece it mounts, or the cull silently leaves it resident', () => {
-    expect(synthetic(12).allTagged).toBe(true);
+    expect(slice(12).allTagged).toBe(true);
     expect(measureArena('arena_launch').allTagged).toBe(true);
     expect(measureArena('landing_basic').allTagged).toBe(true);
+  });
+
+  it('the shared 60-room build matches a fresh build — the control for slicing instead of rebuilding', () => {
+    // Every case above reads its geometry off `slice()`, i.e. off the ONE 60-room `series`, not off a
+    // build of its own. This is the test that would fail if that shortcut were unsound: build 12 rooms
+    // fresh, independently of `series`, and check the slice reports byte-identical geometry. It is the
+    // property `SYNTHETIC_SERIES_N`'s comment claims (a room's pieces don't depend on its neighbours or
+    // on the total room count) and the one `sliceSynthetic`'s group-offset arithmetic assumes (that
+    // `buildGroundLayer`'s mount order is five same-length, room-ordered groups) — either breaking would
+    // leave every other test in this describe block silently measuring the wrong thing, with nothing
+    // here to catch it.
+    const k = 12;
+    const fresh = measure(syntheticRoomRects(k), syntheticRoomRects(k));
+    const sliced = slice(k);
+    expect(sliced.total).toBe(fresh.total);
+    expect(sliced.largest).toBe(fresh.largest);
+    expect(sliced.floats).toEqual(fresh.floats);
+    expect(sliced.allBatchForced).toBe(fresh.allBatchForced);
+    expect(sliced.allTagged).toBe(fresh.allTagged);
   });
 });
 

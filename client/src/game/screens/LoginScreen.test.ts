@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LoginScreen, type AuthApi } from './LoginScreen';
 import { resetSessionCacheForTests, getSession } from '../../net/session';
-import type { AuthResult } from '../../net/auth';
+import { AuthRequestError, type AuthResult } from '../../net/auth';
 import { setLocale, resetLocaleForTests, t } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 
@@ -128,6 +128,70 @@ describe('LoginScreen — register', () => {
     await p.doRegister('alice', 'hunter22');
     expect(p.statusText.text).toMatch(/already taken/i);
     expect(getSession()).toBeNull();
+  });
+});
+
+describe('LoginScreen — a throttled call is the one refusal the server does not get to word', () => {
+  // Four of this screen's routes spend a per-IP budget since 2026-09-22 (`LOGIN_RATE_LIMIT`,
+  // `REGISTER_RATE_LIMIT`, `CHANGE_PASSWORD_RATE_LIMIT`, and `/auth/portal` from elsewhere).
+  // Everything else this screen shows is the server's own prose, deliberately — only the
+  // server knows whether the username was taken or the password too short. A 429 is the
+  // exception in both directions: its prose says nothing the player can act on, and it
+  // arrives in English on a screen the player has in one of eight languages.
+
+  it('a throttled login shows the localised throttle, not the server text', async () => {
+    const api = fakeApi({
+      login: vi.fn().mockRejectedValue(new AuthRequestError('too many login attempts from this address', 429)),
+    });
+    const p = privateOf(makeScreen(api));
+    await p.doLogin('alice', 'hunter22');
+    expect(p.statusText.text).toBe(t('auth.throttled'));
+    expect(p.statusText.text).not.toMatch(/from this address/);
+    expect(getSession()).toBeNull();
+  });
+
+  it('a throttled register and a throttled password change say the same thing', async () => {
+    const api = fakeApi({
+      register: vi.fn().mockRejectedValue(new AuthRequestError('too many accounts created', 429)),
+      changePassword: vi.fn().mockRejectedValue(new AuthRequestError('too many password changes', 429)),
+    });
+    const p = privateOf(makeScreen(api));
+    await p.doRegister('alice', 'hunter22');
+    expect(p.statusText.text).toBe(t('auth.throttled'));
+
+    // `doChangePassword` returns early without a session, so this one logs in first.
+    const q = privateOf(
+      makeScreen(
+        fakeApi({
+          login: vi.fn().mockResolvedValue(SESSION),
+          changePassword: vi.fn().mockRejectedValue(new AuthRequestError('too many password changes', 429)),
+        }),
+      ),
+    );
+    await q.doLogin('alice', 'hunter22');
+    await q.doChangePassword('hunter22', 'hunter333');
+    expect(q.statusText.text).toBe(t('auth.throttled'));
+  });
+
+  it('every other status keeps the server prose — the control', async () => {
+    // Without this, a `failureText` that returned the throttle string for every
+    // `AuthRequestError` would pass the two cases above while hiding "username already taken"
+    // behind "try again in a few minutes", which is advice for a wait that will not help.
+    for (const status of [400, 401, 503]) {
+      const api = fakeApi({ login: vi.fn().mockRejectedValue(new AuthRequestError('invalid username or password', status)) });
+      const p = privateOf(makeScreen(api));
+      await p.doLogin('alice', 'wrong');
+      expect(p.statusText.text).toMatch(/invalid username or password/i);
+    }
+  });
+
+  it('a thrown plain Error still shows its own message', async () => {
+    // An injected double and an offline `fetch` both produce one, so the branch is
+    // `instanceof` rather than a cast — and a status-less failure must not become a throttle.
+    const api = fakeApi({ login: vi.fn().mockRejectedValue(new Error('network down')) });
+    const p = privateOf(makeScreen(api));
+    await p.doLogin('alice', 'hunter22');
+    expect(p.statusText.text).toBe('network down');
   });
 });
 

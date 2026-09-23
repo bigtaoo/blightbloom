@@ -87,7 +87,26 @@ function newGame(settings: Partial<SettingsState> = {}) {
   };
 }
 
+/** The frame interval the ticker is gating on, in whole milliseconds.
+ *
+ *  Asserted instead of `maxFPS` itself since 2026-09-22: what `applyPowerBudget` writes is no
+ *  longer the phase's target but `tickerCapFor`'s translation of it (a hair under a whole
+ *  millisecond, so Pixi's truncating gate can honour it evenly — see `powerBudget.ts`). The
+ *  interval is the honest thing to state here anyway: it is what the player experiences, and
+ *  it stays a plain literal rather than an expression copied from the code under test. */
+const gateMs = (ticker: { maxFPS: number }): number =>
+  ticker.maxFPS === 0 ? 0 : Math.round(1000 / ticker.maxFPS);
+
 describe('Game — power budget wiring', () => {
+  it('the gate intervals the cases below use are the ones the two rates resolve to', () => {
+    // `gateMs` is asserted against plain literals (16 and 33) so that a case cannot agree with
+    // the code under test by being written from the same expression. That only works while the
+    // literals are the RIGHT ones, which is what this ties down: change either rate and this
+    // fails here, naming the reason, instead of failing four cases with a bare number mismatch.
+    expect(Math.ceil(1000 / PLAY_MAX_FPS) - 1).toBe(16);
+    expect(Math.ceil(1000 / IDLE_MAX_FPS) - 1).toBe(33);
+  });
+
   it('stops drawing the world and drops the cap on the first frame of the menu', () => {
     const g = newGame();
     // Before any frame runs, the layer is in Pixi's default state and the ticker uncapped —
@@ -97,7 +116,7 @@ describe('Game — power budget wiring', () => {
 
     g.frame(); // `start()` leaves the game on the main menu
     expect(g.world.renderable).toBe(false);
-    expect(g.ticker.maxFPS).toBe(IDLE_MAX_FPS);
+    expect(gateMs(g.ticker)).toBe(33); // one frame per 33 ms, i.e. IDLE_MAX_FPS
   });
 
   it('draws the world at the play rate once a run is on screen, and stops again after it', () => {
@@ -107,7 +126,7 @@ describe('Game — power budget wiring', () => {
     g.setPhase('playing');
     g.frame();
     expect(g.world.renderable).toBe(true);
-    expect(g.ticker.maxFPS).toBe(PLAY_MAX_FPS);
+    expect(gateMs(g.ticker)).toBe(16); // one frame per 16 ms, i.e. PLAY_MAX_FPS
 
     // ...and back. This is the case that motivated the whole change: the room stays mounted
     // when a run ends (`RunLifecycle.resetRenderState` runs at the START of the next one), so
@@ -115,7 +134,7 @@ describe('Game — power budget wiring', () => {
     g.setPhase('forge');
     g.frame();
     expect(g.world.renderable).toBe(false);
-    expect(g.ticker.maxFPS).toBe(IDLE_MAX_FPS);
+    expect(gateMs(g.ticker)).toBe(33);
   });
 
   it('caps a run at the frame rate the PLAYER picked, not just at the default', () => {
@@ -125,7 +144,7 @@ describe('Game — power budget wiring', () => {
     const g = newGame({ frameRate: 30 });
     g.setPhase('playing');
     g.frame();
-    expect(g.ticker.maxFPS).toBe(30);
+    expect(gateMs(g.ticker)).toBe(33);
 
     // ...and the idle screens do not go back UP. 30 is written out rather than computed from
     // `IDLE_MAX_FPS`: an expected value derived from the same expression as the code under test
@@ -133,7 +152,7 @@ describe('Game — power budget wiring', () => {
     // `powerBudget.test.ts`'s note on the surviving mutant).
     g.setPhase('forge');
     g.frame();
-    expect(g.ticker.maxFPS).toBe(30);
+    expect(gateMs(g.ticker)).toBe(33);
   });
 
   it('keeps the world drawn while a run is PAUSED-adjacent but the phase is still playing', () => {

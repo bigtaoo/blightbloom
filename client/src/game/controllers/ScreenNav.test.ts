@@ -37,14 +37,24 @@ function recorder() {
 function make(over: Partial<ScreenNavDeps> = {}) {
   const run = new RunState(store);
   const flow = recorder();
-  // The art gate: `defer` returning true means "not yet, I'll call you back".
+  // The transition gate: either method returning true means "not yet, I'll call you back".
   let gateOpen = true;
   const deferred: Array<() => void> = [];
-  const artGate = {
-    defer: (retry: () => void) => {
-      if (gateOpen) return false;
-      deferred.push(retry);
-      return true;
+  const hold = (retry: () => void): boolean => {
+    if (gateOpen) return false;
+    deferred.push(retry);
+    return true;
+  };
+  // Which side each held transition said it was crossing. Recorded rather than ignored: the
+  // argument is the caption a player reads, and a stub that drops it lets `leaveRunTo` say
+  // ENTERING THE DUNGEON on the way OUT with the whole suite green (mutation battery,
+  // 2026-09-22).
+  const boundaries: Array<'run' | 'hub'> = [];
+  const transitions = {
+    defer: hold,
+    deferRunBoundary: (into: 'run' | 'hub', retry: () => void) => {
+      boundaries.push(into);
+      return hold(retry);
     },
   };
   const screen = () => ({ show: vi.fn(), resize: vi.fn(), render: vi.fn(), hide: vi.fn() });
@@ -52,7 +62,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     run,
     layers: { menu: { fit: () => ({ w: 800, h: 600 }) } } as never,
     screenFlow: flow.proxy,
-    artGate: artGate as never,
+    transitions: transitions as never,
     backdrop: { resize: vi.fn() } as never,
     hud: { reposition: vi.fn() } as never,
     portalPrompt: { reposition: vi.fn() } as never,
@@ -80,6 +90,7 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     nav,
     run,
     deps,
+    boundaries,
     calls: flow.calls,
     closeGate: () => {
       gateOpen = false;
@@ -90,6 +101,44 @@ function make(over: Partial<ScreenNavDeps> = {}) {
     },
   };
 }
+
+describe('leaveRunTo — the one exit, and the only held hub entry', () => {
+  it('lands on the lobby or the loadout screen, whichever the run asked for', () => {
+    // `showMenu`/`showLoadout` are also plain BACK navigation, so this verb is the only thing
+    // that distinguishes "a run ended" from "a button was pressed" — and swapping its two
+    // destinations sends every finished PvE run to the lobby and every tutorial to the
+    // loadout screen, which is a screen the tutorial never touched.
+    const menu = make();
+    menu.nav.leaveRunTo('menu');
+    expect(menu.run.phase).toBe('menu');
+
+    const loadout = make();
+    loadout.nav.leaveRunTo('loadout');
+    expect(loadout.run.phase).toBe('loadout');
+  });
+
+  it('tells the gate it is crossing OUT of a run, not into one', () => {
+    // The caption is the whole argument, and it is the half of this call a behavioural
+    // assertion cannot see: both directions hold for the same three seconds and land on the
+    // same screen. "ENTERING THE DUNGEON" on the way back to the lobby is a wrong sentence
+    // held in front of the player's face, and nothing else in this suite would say so.
+    const t = make();
+    t.nav.leaveRunTo('loadout');
+    expect(t.boundaries).toEqual(['hub']);
+  });
+
+  it('waits behind the gate rather than arriving early', () => {
+    // The same deferral contract every other gated transition has: nothing happens until the
+    // gate releases, and then it happens exactly once.
+    const t = make();
+    t.closeGate();
+    t.nav.leaveRunTo('loadout');
+    expect(t.run.phase).not.toBe('loadout');
+
+    t.releaseGate();
+    expect(t.run.phase).toBe('loadout');
+  });
+});
 
 describe('the plain transitions', () => {
   it.each([
@@ -173,7 +222,7 @@ describe('the hub hook (deferred meta sync, 2026-09-10)', () => {
   });
 
   it('waits for the art gate — a deferred hub flushes when the art lands, not before', () => {
-    // The ordering the hook is placed after `artGate.defer` for: a flush during the loading
+    // The ordering the hook is placed after `transitions.defer` for: a flush during the loading
     // screen would apply the account's meta while the phase is still the one before it.
     for (const method of ['showLoadout', 'showForge'] as const) {
       const onHubEntered = vi.fn();

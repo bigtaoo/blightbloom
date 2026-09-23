@@ -4,6 +4,7 @@ import { Layers } from '../scene/layers';
 import { Terrain } from '../scene/Terrain';
 import { makeLightBuffer } from './lighting';
 import { resetActiveQuality, setActiveQuality } from '../../render/quality';
+import { resetReduceMotion, setReduceMotion } from '../../render/motion';
 import { Container, type Sprite } from 'pixi.js';
 import { tagGroundPiece } from '../scene/groundCulling';
 import { resetSlashArcPool, slashArcPoolSize, type SlashArcPose } from './slashArc';
@@ -782,5 +783,81 @@ describe('FxController.worldView', () => {
     } finally {
       resetActiveQuality();
     }
+  });
+});
+
+// ---- reduce motion (2026-09-22) ----
+//
+// `render/motion.ts` is a module mirror, so these cases reset it in an `afterEach` of their
+// own: both values are legal, and a leak into the next file's cases would not look like a
+// failure, it would look like a shake that stopped working.
+
+describe('FxController under "reduce motion"', () => {
+  afterEach(() => resetReduceMotion());
+
+  /** Where the camera put the world layer, with trauma at full and the setting either way. */
+  function shakenOffsets(reduce: boolean): { x: number; y: number }[] {
+    setReduceMotion(reduce);
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.addShake(1);
+    const seen: { x: number; y: number }[] = [];
+    // Several frames: the offset is re-rolled from `Math.random()` every call, so one frame
+    // landing near zero by chance is a real possibility and a single sample would make this
+    // case pass for the wrong reason roughly one time in a hundred.
+    for (let i = 0; i < 30; i++) {
+      fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 2000, h: 2000 }, fakePlayer(1000, 1000));
+      seen.push({ x: layers.world.x, y: layers.world.y });
+    }
+    return seen;
+  }
+
+  it('holds the camera perfectly still where it would otherwise shake', () => {
+    const still = shakenOffsets(true);
+    const first = still[0]!;
+    for (const p of still) expect(p).toEqual(first);
+
+    // The control, and it is the half that matters: with the setting OFF the same trauma moves
+    // the camera, so the case above is passing because the setting works and not because the
+    // fixture never shook in the first place.
+    const shaking = shakenOffsets(false);
+    expect(shaking.some((p) => p.x !== shaking[0]!.x || p.y !== shaking[0]!.y)).toBe(true);
+  });
+
+  it('leaves trauma itself untouched, so the setting is a pure output filter', () => {
+    // Read through the one observable: turn the setting off mid-decay and the shake resumes at
+    // the trauma the fight had actually built up, rather than at zero. That is what makes the
+    // setting safe to flip while playing.
+    setReduceMotion(true);
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.addShake(1);
+    fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 2000, h: 2000 }, fakePlayer(1000, 1000));
+    const held = { x: layers.world.x, y: layers.world.y };
+
+    setReduceMotion(false);
+    let moved = false;
+    for (let i = 0; i < 30; i++) {
+      fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 2000, h: 2000 }, fakePlayer(1000, 1000));
+      if (layers.world.x !== held.x || layers.world.y !== held.y) moved = true;
+    }
+    expect(moved).toBe(true);
+  });
+
+  it('refuses the chromatic pulse instead of letting it decay from a peak', () => {
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    const amount = (): number => (fx.chromatic as unknown as { amount: number }).amount;
+
+    setReduceMotion(false);
+    fx.pulseChromatic(0.02);
+    expect(amount()).toBeGreaterThan(0);
+
+    fx.updateFx(1000, 0, undefined); // decay it back to rest
+    expect(amount()).toBe(0);
+
+    setReduceMotion(true);
+    fx.pulseChromatic(0.02);
+    expect(amount()).toBe(0);
   });
 });

@@ -11,6 +11,30 @@ export interface PartyInfo {
   matching: boolean;
 }
 
+/**
+ * A refused `/party/*` call, carrying the status the server answered with.
+ *
+ * A plain `Error` was enough while every refusal meant the same thing to the player — a bad
+ * code, a full party, a server that was not there — and `PartyScreen` answered all of them
+ * with "invalid or full code". `/party/join` gained a per-IP budget on 2026-09-22
+ * (`server/src/routes/party.ts`'s `JOIN_RATE_LIMIT`), and its 429 is the one refusal that is
+ * NOT about the code. Telling a throttled player their code is wrong is both false and
+ * actively harmful: the only thing it suggests is to type it again, which spends more of the
+ * budget they have already run out of.
+ *
+ * It carries the STATUS rather than the parsed message, because the message is the server's
+ * prose and a client that branches on prose breaks the day the prose is reworded.
+ */
+export class PartyRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'PartyRequestError';
+  }
+}
+
 export interface PartyCallOptions {
   /** Injected for tests; defaults to the global fetch. */
   fetch?: typeof fetch;
@@ -24,7 +48,9 @@ async function post(baseUrl: string, path: string, body: unknown, opts: PartyCal
     body: JSON.stringify(body),
   });
   const json = (await res.json()) as (PartyInfo & { error?: string }) | null;
-  if (!res.ok || json?.error) throw new Error(json?.error ?? `party request failed (${res.status})`);
+  if (!res.ok || json?.error) {
+    throw new PartyRequestError(json?.error ?? `party request failed (${res.status})`, res.status);
+  }
   return json; // null only for /party/leave dissolving the party — a real response, not an error
 }
 
@@ -54,6 +80,8 @@ export async function getParty(baseUrl: string, partyId: string, opts: PartyCall
   const res = await doFetch(`${baseUrl}/party/${encodeURIComponent(partyId)}`);
   if (res.status === 404) return null;
   const json = (await res.json()) as PartyInfo & { error?: string };
-  if (!res.ok || json.error) throw new Error(json.error ?? `party request failed (${res.status})`);
+  if (!res.ok || json.error) {
+    throw new PartyRequestError(json.error ?? `party request failed (${res.status})`, res.status);
+  }
   return json;
 }

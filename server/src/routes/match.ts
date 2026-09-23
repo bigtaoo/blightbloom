@@ -14,8 +14,35 @@
  * "put a gameserver id inside the ticket" sketch). `ticket.ts` is untouched by 8.6.
  */
 import type { Matchmaker, MatchTicket } from '../Matchmaker';
+import type { Budget } from '../rateLimit';
 import { signTicket, verifyTicket, type MatchMode, type TicketPayload } from '../ticket';
+import { spendBudget, type BudgetDeps } from './limits';
 import { readJsonBody, send, type RouteHandler } from './http';
+
+/**
+ * The per-IP budget for ENTERING THE QUEUE (2026-09-22). A hundred and twenty in ten minutes.
+ *
+ * `POST /find` is the cheapest request in this server that reaches furthest. It writes a
+ * waiter into `Matchmaker`, and a waiter is not inert: when enough of the same shape are
+ * present the matchmaker FORMS A ROOM out of them, on a real gameserver, with bots filling
+ * whatever seats are left. So an unbounded caller does not merely grow a map that TTLs out
+ * after thirty seconds — it manufactures matches on the data plane at whatever rate it likes,
+ * and any real player who queues during that window is grouped into one of them.
+ *
+ * The queue TTL is what makes 120 enough. A waiter is gone thirty seconds after it arrives,
+ * so what a budget has to bound is the arrival RATE rather than any accumulated total: twelve
+ * a minute per address, against a legitimate rate of one per matchmaking attempt (a squad of
+ * four is four, once, because each member POSTs for itself) followed by minutes of actually
+ * playing. A player who queues, cancels and requeues every five seconds for a solid minute is
+ * still inside it.
+ *
+ * `GET /find/:queueId` is deliberately left unbudgeted, and it is the clearest case in this
+ * server for leaving one alone: the real client polls it every 500ms for up to ninety seconds
+ * — around 180 requests per attempt, per player — so any ceiling low enough to inconvenience
+ * an attacker refuses the four players in one living room first. It writes nothing, it needs
+ * a `queueId` the caller cannot guess, and what it costs is one map lookup.
+ */
+export const FIND_RATE_LIMIT: Budget = { requests: 120, windowMs: 10 * 60_000 };
 
 export interface MatchRouteDeps {
   matchmaker: Matchmaker;
@@ -42,6 +69,13 @@ export interface MatchRouteDeps {
    */
   auth?: { verifySession(token: unknown): Promise<{ accountId: string; username: string } | null> };
 }
+
+/**
+ * `postFind`'s own deps — the one handler in this group with a budget ({@link
+ * FIND_RATE_LIMIT}). `getFindPoll` and `postResume` take plain {@link MatchRouteDeps} and so
+ * cannot reach a limiter at all, which is the statement this split exists to make.
+ */
+export interface FindRouteDeps extends MatchRouteDeps, BudgetDeps<'find'> {}
 
 /**
  * What every route here answers when `pickGameserver` comes back empty. 503 and not 500:
@@ -74,8 +108,15 @@ function bearerToken(header: string | undefined): string | undefined {
   return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
 }
 
-export const postFind: RouteHandler<MatchRouteDeps> = async (req, res, _url, deps) => {
+export const postFind: RouteHandler<FindRouteDeps> = async (req, res, _url, deps) => {
   {
+    // Before the body, like every budget in this server — `routes/limits.ts`'s `spendBudget`
+    // has the reason, and it applies here with one extra edge: the enqueue that follows can
+    // form a room synchronously, so the request this refuses is one that would have reached
+    // the data plane, not merely this process.
+    if (!spendBudget(deps.limits.find, req, res, (deps.nowMs ?? Date.now)(), 'too many matchmaking requests from this address — try again later')) {
+      return;
+    }
     const body = await readJsonBody(req);
     const playerCount = Number((body as { playerCount?: unknown })?.playerCount);
     // 'pvp' opts into the battle-royale queue (design/15); anything else (absent,

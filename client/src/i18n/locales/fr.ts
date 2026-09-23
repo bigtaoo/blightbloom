@@ -26,6 +26,8 @@ export const fr: Translations<typeof en> = {
   loading: {
     boot: 'CHARGEMENT',
     art: 'CHARGEMENT DES GRAPHISMES',
+    enteringRun: 'ENTRÉE DANS LE DONJON',
+    returningToHub: 'RETOUR AU HALL',
   },
   pauseMenu: {
     title: 'EN PAUSE',
@@ -53,6 +55,10 @@ export const fr: Translations<typeof en> = {
     qualityMedium: 'MOYENNE',
     qualityAutoMedium: 'AUTO (MOYENNE)',
     frameRate: 'FRÉQUENCE : {fps}',
+    reduceMotion: 'RÉDUIRE LES MOUVEMENTS : {mode}',
+    on: 'OUI',
+    off: 'NON',
+    tutorial: 'REVOIR LE TUTORIEL',
     back: 'RETOUR',
   },
   forge: {
@@ -209,6 +215,7 @@ export const fr: Translations<typeof en> = {
     newPasswordPlaceholder: 'NOUVEAU MOT DE PASSE',
     loginFailed: 'Échec de la connexion — réessayez.',
     registerFailed: "Échec de l'inscription — réessayez.",
+    throttled: 'Trop de tentatives — réessayez dans quelques minutes.',
     passwordChanged: 'Mot de passe changé.',
     passwordChangeFailed: 'Impossible de changer le mot de passe.',
     loggedInAs: 'Connecté en tant que {username}',
@@ -236,8 +243,10 @@ export const fr: Translations<typeof en> = {
     back: 'RETOUR',
     partyClosed: 'Escouade dissoute.',
     createFailed: "Impossible de créer l'escouade — réessayez.",
+    createThrottled: "Trop d'escouades créées — réessayez dans quelques minutes.",
     codePlaceholder: 'CODE',
     invalidCode: 'Code invalide ou escouade complète.',
+    joinThrottled: 'Trop de tentatives — réessayez dans quelques minutes.',
     startFailed: 'Impossible de lancer la recherche — réessayez.',
     codeLine: 'CODE : {code}',
     you: 'toi',
@@ -261,6 +270,7 @@ export const fr: Translations<typeof en> = {
     errorTimeout: "Délai d'attente dépassé pour trouver un match.",
     errorCancelled: 'Recherche annulée.',
     errorGeneric: 'Connexion impossible — réessayez.',
+    errorThrottled: 'Trop de tentatives — attendez quelques minutes avant de rechercher à nouveau.',
   },
   tutorial: {
     hintMoveKeys: 'Déplacez-vous avec ZQSD. Maintenez le clic gauche pour attaquer — la visée est automatique.',

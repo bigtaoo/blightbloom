@@ -35,7 +35,7 @@ import type { LoginScreen } from '../screens/LoginScreen';
 import type { Settings } from '../screens/Settings';
 import type { PauseMenu } from '../screens/PauseMenu';
 import type { CoopSession } from '../../net/CoopSession';
-import type { ArtGate } from './ArtGate';
+import type { TransitionGate } from './TransitionGate';
 import type { ScreenFlow } from './ScreenFlow';
 import type { ForgeReturnPhase, RunState } from '../runState';
 
@@ -43,7 +43,7 @@ export interface ScreenNavDeps {
   run: RunState;
   layers: Layers;
   screenFlow: ScreenFlow;
-  artGate: ArtGate;
+  transitions: TransitionGate;
   backdrop: Backdrop;
   hud: HudView;
   portalPrompt: PortalPrompt;
@@ -114,7 +114,7 @@ export class ScreenNav {
    * Does NOT run for the squad path — see phase.ts's doc comment on 'pvpPreview' for why.
    */
   showPvpPreview(): void {
-    if (this.deps.artGate.defer(() => this.showPvpPreview())) return; // character art (design/12)
+    if (this.deps.transitions.defer(() => this.showPvpPreview())) return; // character art (design/12)
     this.deps.run.phase = 'pvpPreview';
     const { w, h } = this.fit();
     this.deps.screenFlow.showPvpPreview(w, h, this.deps.run.meta.selectedSkin);
@@ -150,7 +150,7 @@ export class ScreenNav {
     // The run-art boundary (design/12): this is where a player CHOOSES with weapon art, so
     // it is gated rather than START RUN. Returns false — and costs nothing — once the art
     // is in.
-    if (this.deps.artGate.defer(() => this.showLoadout())) return;
+    if (this.deps.transitions.defer(() => this.showLoadout())) return;
     // AFTER the art gate, not before: a deferred call re-enters this method once the art
     // lands, and flushing on the way past would run the sync while the loading screen is
     // still up and the phase is still whatever it was.
@@ -170,12 +170,34 @@ export class ScreenNav {
    * draws a grid of weapon art, so it is the one that must not open half-drawn.
    */
   showForge(from: ForgeReturnPhase = 'menu'): void {
-    if (this.deps.artGate.defer(() => this.showForge(from))) return;
+    if (this.deps.transitions.defer(() => this.showForge(from))) return;
     this.deps.onHubEntered();
     this.deps.run.forgeReturnPhase = from;
     this.deps.run.phase = 'forge';
     const { w, h } = this.fit();
     this.deps.screenFlow.showForge(w, h, this.deps.run.meta);
+  }
+
+  /**
+   * The way OUT of a run, and the only lobby/loadout entry that is HELD (2026-09-22).
+   *
+   * `showMenu` and `showLoadout` above are also plain UI navigation — the loadout screen's
+   * BACK, the party screen's BACK, a cancelled queue — and putting a three-second floor on
+   * those would make the menu unusable. What earns the wait is crossing a run boundary, which
+   * is the same thing `RunLifecycle`'s entry points do in the other direction. So it is a
+   * separate verb, called by the three places a run actually ends: `RunLifecycle.leaveRun`
+   * (quit and save-and-quit), `Game.confirm` on the victory/defeat screen, and that screen's
+   * own MENU button.
+   *
+   * Safe to hold because the sim is already stopped at every one of those call sites — the
+   * pause menu runs at phase `paused` and the outcome screen at `victory`/`defeat`, neither
+   * of which `GameLoop` advances. A gate here while the phase was still `playing` would be
+   * three seconds of a player being hit by things they cannot see.
+   */
+  leaveRunTo(hub: 'menu' | 'loadout'): void {
+    if (this.deps.transitions.deferRunBoundary('hub', () => this.leaveRunTo(hub))) return;
+    if (hub === 'menu') this.showMenu();
+    else this.showLoadout();
   }
 
   /** BACK on the forge — the lobby or the loadout screen, whichever opened it. */
@@ -203,7 +225,7 @@ export class ScreenNav {
    * to.
    */
   showMatchmaking(): void {
-    if (this.deps.artGate.defer(() => this.showMatchmaking())) return; // the run on the far side
+    if (this.deps.transitions.defer(() => this.showMatchmaking())) return; // the run on the far side
     this.deps.run.phase = 'matchmaking';
     const { w, h } = this.fit();
     this.deps.screenFlow.showMatchmaking(w, h, (signal) => this.deps.connect(signal));

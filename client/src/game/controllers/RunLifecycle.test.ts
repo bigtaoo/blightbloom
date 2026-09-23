@@ -61,9 +61,18 @@ function make(over: Partial<RunLifecycleDeps> & {
       resetOnlinePrediction: note('gameLoop.resetPrediction'),
     } as never,
     screenFlow: { hideSettingsButton: note('screenFlow.hideSettingsButton') } as never,
-    nav: { showMenu: note('nav.showMenu'), showLoadout: note('nav.showLoadout') } as never,
-    artGate: {
+    nav: {
+      showMenu: note('nav.showMenu'),
+      showLoadout: note('nav.showLoadout'),
+      leaveRunTo: (hub: 'menu' | 'loadout') => note(`nav.leaveRunTo ${hub}`)(),
+    } as never,
+    transitions: {
       defer: (retry: () => void) => {
+        if (gateOpen) return false;
+        deferred.push(retry);
+        return true;
+      },
+      deferRunBoundary: (_into: 'run' | 'hub', retry: () => void) => {
         if (gateOpen) return false;
         deferred.push(retry);
         return true;
@@ -97,6 +106,7 @@ function make(over: Partial<RunLifecycleDeps> & {
     forge: { hide: note('forge.hide') } as never,
     loadout: { hide: note('loadout.hide') } as never,
     mainMenu: { hide: note('mainMenu.hide') },
+    settingsScreen: { hide: note('settingsScreen.hide') } as never,
     matchmaking: { hide: note('matchmaking.hide') } as never,
     partyScreen: { hide: note('partyScreen.hide') } as never,
     pauseMenu: { hide: note('pauseMenu.hide') } as never,
@@ -232,6 +242,18 @@ describe('the primed entry points', () => {
     expect(t.order).not.toContain('loadout.hide');
   });
 
+  it('the tutorial also hides SETTINGS — its second door since 2026-09-22', () => {
+    // `LobbyRoutes`' own TUTORIAL row can now hide (`setRecommendTutorial(false)`, once
+    // `MetaState.hasSeenTutorial`), so `Settings.ts`'s REPLAY TUTORIAL button is a second way
+    // to reach this same method — one this test's OWN screen stub cannot tell apart from the
+    // lobby's, which is exactly why both must be hidden unconditionally rather than by asking
+    // which door the player came through.
+    const t = make();
+    t.runs.beginTutorialRun();
+    expect(t.order).toContain('mainMenu.hide');
+    expect(t.order).toContain('settingsScreen.hide');
+  });
+
   it('the arena demo primes the room and hides the loadout screen', () => {
     const t = make();
     t.run.arenaDemo = 'landing_basic';
@@ -322,7 +344,10 @@ describe('quitRun', () => {
     t.run.phase = 'paused';
     t.runs.quitRun();
     expect(t.order).toContain('pauseMenu.hide');
-    expect(t.order).toContain('nav.showLoadout');
+    // `leaveRunTo`, not `showLoadout` — the exit is a held run boundary since 2026-09-22
+    // (controllers/TransitionGate.ts), and the two are not interchangeable: `showLoadout`
+    // here would be the one exit out of four that jump-cuts.
+    expect(t.order).toContain('nav.leaveRunTo loadout');
   });
 
   it('a tutorial SKIP marks it seen and returns to the lobby instead', () => {
@@ -332,8 +357,8 @@ describe('quitRun', () => {
     t.run.tutorialActive = true;
     t.runs.quitRun();
     expect(t.run.meta.hasSeenTutorial).toBe(true);
-    expect(t.order).toContain('nav.showMenu');
-    expect(t.order).not.toContain('nav.showLoadout');
+    expect(t.order).toContain('nav.leaveRunTo menu');
+    expect(t.order).not.toContain('nav.leaveRunTo loadout');
   });
 
   it('leaves the run state consistent for whatever comes next', () => {
@@ -474,7 +499,7 @@ describe('saveAndQuitRun', () => {
     expect(saved.floorIndex).toBe(2);
     expect(saved.score).toBe(340);
     expect(saved.commands).toHaveLength(5);
-    expect(t.deps.nav.showLoadout).toHaveBeenCalled();
+    expect(t.order).toContain('nav.leaveRunTo loadout');
     expect(t.run.engine).toBeNull(); // the run really ended
   });
 
@@ -648,7 +673,7 @@ describe('resumeSavedRun', () => {
 
     expect(t.run.engine).toBeNull();
     expect(loadSavedRun()).toBeNull(); // so the screen stops offering it
-    expect(t.deps.nav.showLoadout).toHaveBeenCalled(); // re-rendered without the button
+    expect(t.order).toContain('nav.showLoadout'); // re-rendered without the button
     expect(t.deps.hud.toast).toHaveBeenCalled();
   });
 

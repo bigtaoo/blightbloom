@@ -10,6 +10,7 @@ function snapshot(over: Partial<PerfSnapshot> = {}): PerfSnapshot {
       windowMs: 2000,
       busyRatio: 0,
       frame: { p50: 16.7, p95: 20, max: 40 },
+      longFrameRatio: 0,
       update: { p50: 1.3, p95: 4, max: 9 },
       render: { p50: 5.1, p95: 12, max: 30 },
       discarded: false,

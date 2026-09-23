@@ -4,7 +4,7 @@
  * grouping/expiry behavior; this just pins the client's request/response shapes.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { createParty, joinParty, leaveParty, startPartyMatching, getParty } from './party';
+import { createParty, joinParty, leaveParty, startPartyMatching, getParty, PartyRequestError } from './party';
 
 const PARTY = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice'], matching: false };
 
@@ -61,6 +61,31 @@ describe('party client calls', () => {
     // route's JSON shape. The status alone has to be enough, or `!res.ok` is decorative.
     const fetch = fakeFetch(502, {});
     await expect(createParty('http://mm', 'alice', { fetch })).rejects.toThrow(/502/);
+  });
+
+  it('carries the status, so the screen can tell a THROTTLED join from a wrong code', async () => {
+    // `/party/join` gained a per-IP budget on 2026-09-22 and answers 429 when it is spent.
+    // Every refusal used to be indistinguishable here, and `PartyScreen.doJoin` rendered
+    // `party.invalidCode` for all of them — which for a 429 is both untrue and the worst
+    // possible advice, since retyping the code spends more of an exhausted budget. The
+    // status is what lets the screen say something else, so it is pinned at this layer.
+    const fetch = fakeFetch(429, { error: 'too many join attempts from this address' });
+    await expect(joinParty('http://mm', 'bob', '482913', { fetch })).rejects.toBeInstanceOf(PartyRequestError);
+    const err = await joinParty('http://mm', 'bob', '482913', { fetch }).catch((e: unknown) => e);
+    expect((err as PartyRequestError).status).toBe(429);
+    expect((err as PartyRequestError).message).toMatch(/too many/i);
+  });
+
+  it('carries the status on the refusals that are NOT throttling', async () => {
+    // The control for the case above. If `status` were hard-coded — or only set on the 429
+    // path — the screen's `=== 429` test would still pass while every other refusal silently
+    // became a throttle message.
+    for (const status of [400, 404, 503]) {
+      const err = await joinParty('http://mm', 'bob', '000000', { fetch: fakeFetch(status, { error: 'nope' }) }).catch(
+        (e: unknown) => e,
+      );
+      expect((err as PartyRequestError).status).toBe(status);
+    }
   });
 
   it('startPartyMatching posts partyId+playerId', async () => {

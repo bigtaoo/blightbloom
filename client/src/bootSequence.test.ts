@@ -59,10 +59,11 @@ describe('the splash comes down last, and only after a frame exists', () => {
   });
 
   it.each(DOM_ENTRIES)('%s: hides the splash after everything else boot() installs', (entry) => {
-    // `hideBootSplash` is a WAIT — up to the full `bootHold.ts` floor — so anything queued
-    // behind it is delayed by that much. On web that is the deploy auto-reload; on both it is
-    // the debugging handle. Neither is visible on screen, which is exactly why nothing would
-    // report it.
+    // The reveal is the last statement of the boot, so that nothing the player can use is
+    // queued behind it — on web that is the deploy auto-reload, on both it is the debugging
+    // handle. It used to be a three-second wait and this assertion mattered by seconds; it is
+    // a frame and a fade now and the assertion matters by a frame, which is still the right
+    // order and still nothing any screen would report.
     const src = source(entry);
     const stmt = statementLocator(entry);
     const hide = stmt('await hideBootSplash();');
@@ -107,12 +108,43 @@ describe('nothing optional shares the pipe with the one download the player wait
 });
 
 describe('the WeChat entry, which has no DOM to put a splash in', () => {
-  it('awaits its Pixi progress screen down rather than dropping the promise', () => {
-    // `showBootLoading(...).done()` returns a promise now, because it owes the player
-    // `bootHold.ts`'s floor before it destroys the screen. A bare `loading.done();` still
-    // compiles, still type-checks (the return is ignorable), and takes the screen down
-    // immediately on exactly the fast boots the floor exists for.
-    const at = locator('main.wechat.ts');
-    expect(at('await loading.done();')).toBeGreaterThan(-1);
+  it('takes its Pixi progress screen down before Game builds its own layer tree', () => {
+    // `showBootLoading` parks the screen on `app.stage` directly, because there is no `Game`
+    // — and therefore no `Layers` — until the `lobby` pack has landed. Moving `done()` below
+    // `new Game(...)` leaves a full-viewport interactive scrim sitting over the menu the game
+    // just built, which is a dead front door and not a rendering glitch anything would catch.
+    // `statementLocator`, not `locator`: both needles appear in the comments above their own
+    // code in this file, which is the trap this file's own header spends a paragraph on.
+    const stmt = statementLocator('main.wechat.ts');
+    expect(stmt('loading.done();')).toBeLessThan(stmt('const game = new Game(app, input, audio);'));
+  });
+
+  it('holds nothing in front of that teardown', () => {
+    // The regression this file exists to stop coming back (2026-09-22): `done()` was `async`
+    // and awaited a three-second floor, on the one screen a player has no reason to look at.
+    // An `await` here is how that comes back, and it type-checks either way — `done()` is
+    // declared `void`, and awaiting a non-promise is legal.
+    const src = source('main.wechat.ts');
+    expect(src).not.toContain('await loading.done()');
+  });
+});
+
+describe('a boot entry waits for events, never for a clock', () => {
+  it.each(ALL_ENTRIES)('%s: contains no timer at all', (entry) => {
+    // The floor came off `bootSplash.ts` and `showBootLoading` on 2026-09-22, and both
+    // removals are pinned by their own unit tests — but a floor does not have to live in
+    // either. `await new Promise((r) => setTimeout(r, 3000))` as its own statement in an
+    // entry point reproduces it exactly, and survived the whole suite when a mutation battery
+    // tried it (2026-09-22).
+    //
+    // So the rule is stated about the entry points rather than about the splash: everything
+    // `boot()` waits for is a real event — a download settling, a frame the renderer drew, an
+    // identity answer — and none of those is a duration. All three entries hold to that today
+    // (0 timers between them), which is what makes the absence assertable rather than
+    // aspirational. `bootSplash.ts`'s fade and `afterFirstRenderedFrame`'s timeout are the two
+    // real timers in this boot, and they live in the module that owns them, behind an injected
+    // `sleep` their tests drive.
+    const src = source(entry);
+    expect(src).not.toMatch(/setTimeout|setInterval/);
   });
 });

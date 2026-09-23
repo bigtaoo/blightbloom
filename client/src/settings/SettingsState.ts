@@ -34,6 +34,13 @@ export interface SettingsState {
    * sim tick. Presentation-only for the same reason the tier is — the sim runs off its own
    * fixed accumulator, so two clients capped differently stay byte-identical (design/06). */
   frameRate: FrameRateSetting;
+  /** Suppress whole-screen decorative motion — camera shake and the chromatic-aberration
+   * pulse (`render/motion.ts`, 2026-09-22). The accessibility half of the frame-pacing work:
+   * a player who reports dizziness has two independent causes to rule out, and only one of
+   * them was a bug. Off by default, because the shake is part of how the game is meant to
+   * feel; a player who needs it off needs it off permanently, which is what persisting it is
+   * for. Presentation-only, like every other field here. */
+  reduceMotion: boolean;
 }
 
 export function defaultSettingsState(): SettingsState {
@@ -41,7 +48,7 @@ export function defaultSettingsState(): SettingsState {
   // them (2026-09-06 balance pass — the equal 0.5/0.5 default read as too loud relative to
   // the SFX bus). A save that already stores an explicit `music` value keeps it —
   // `store.ts`'s `migrate()` only falls back to this default when the field is absent.
-  return { master: 1, sfx: 0.5, music: 0.25, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto', frameRate: PLAY_MAX_FPS };
+  return { master: 1, sfx: 0.5, music: 0.25, muted: false, locale: DEFAULT_LOCALE, controlLayout: 'standard', quality: 'auto', frameRate: PLAY_MAX_FPS, reduceMotion: false };
 }
 
 /** The effective 0..1 gain to hand the AudioBus for a given slider — `muted` zeroes

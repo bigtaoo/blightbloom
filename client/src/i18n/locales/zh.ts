@@ -26,6 +26,8 @@ export const zh: Translations<typeof en> = {
   loading: {
     boot: '加载中',
     art: '正在加载素材',
+    enteringRun: '正在进入地图',
+    returningToHub: '正在返回大厅',
   },
   pauseMenu: {
     title: '已暂停',
@@ -53,6 +55,10 @@ export const zh: Translations<typeof en> = {
     qualityMedium: '中',
     qualityAutoMedium: '自动 (中)',
     frameRate: '帧率: {fps}',
+    reduceMotion: '减少画面抖动: {mode}',
+    on: '开',
+    off: '关',
+    tutorial: '重玩教程',
     back: '返回',
   },
   forge: {
@@ -209,6 +215,7 @@ export const zh: Translations<typeof en> = {
     newPasswordPlaceholder: '新密码',
     loginFailed: '登录失败，请重试。',
     registerFailed: '注册失败，请重试。',
+    throttled: '尝试次数过多，请几分钟后再试。',
     passwordChanged: '密码已修改。',
     passwordChangeFailed: '无法修改密码。',
     loggedInAs: '已登录：{username}',
@@ -235,8 +242,10 @@ export const zh: Translations<typeof en> = {
     back: '返回',
     partyClosed: '队伍已解散。',
     createFailed: '创建队伍失败，请重试。',
+    createThrottled: '创建队伍过于频繁，请几分钟后再试。',
     codePlaceholder: '邀请码',
     invalidCode: '邀请码无效或队伍已满。',
+    joinThrottled: '尝试次数过多，请几分钟后再试。',
     startFailed: '开始匹配失败，请重试。',
     codeLine: '邀请码：{code}',
     you: '你',
@@ -260,6 +269,7 @@ export const zh: Translations<typeof en> = {
     errorTimeout: '匹配等待超时。',
     errorCancelled: '匹配已取消。',
     errorGeneric: '连接失败，请重试。',
+    errorThrottled: '尝试次数过多，请等几分钟后再开始匹配。',
   },
   tutorial: {
     hintMoveKeys: '用 WASD 移动。按住鼠标左键攻击——自动瞄准。',

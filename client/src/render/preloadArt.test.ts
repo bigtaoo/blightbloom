@@ -99,7 +99,7 @@ beforeAll(async () => {
 beforeEach(() => {
   // Every loader takes its best-effort warn branch here (see the header). That is the behaviour
   // under test elsewhere; here it is only noise, and a suite whose output is noise is a suite
-  // nobody reads. Same convention as controllers/ArtGate.test.ts.
+  // nobody reads. Same convention as controllers/TransitionGate.test.ts.
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   resetPreloadArt();
   resetPackLoader();

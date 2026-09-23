@@ -3,13 +3,28 @@ import { Panel, Button } from '../ui/widgets';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import type { CoopSession } from '../../net/CoopSession';
+import { MatchRequestError } from '../../net/matchmaking';
 
 /** Cooperative cancel token — the same shape `findMatch`'s `signal` option already
  * accepts (`net/matchmaking.ts`), just owned by this screen instead of a caller. */
 export type MatchmakingSignal = { cancelled: boolean };
 export type MatchmakingConnect = (signal: MatchmakingSignal) => Promise<CoopSession>;
 
+/**
+ * Which of the four messages this screen shows.
+ *
+ * The 429 is checked FIRST and on the STATUS, never on prose (2026-09-22, when `POST /find`
+ * gained a per-IP budget). Every other arm here reads a message, which is tolerable only
+ * because those strings are the CLIENT's own — `connectOnlineSession` writes "timed out" and
+ * the cancel path writes "cancelled". A server's prose is a different thing to match on: it
+ * is reworded without a client release, which is why `net/matchmaking.ts` carries the status.
+ *
+ * And a throttled player must not be told what the generic arm tells them. This screen's
+ * error state ends in a RETRY button; "could not connect — try again" points straight at it,
+ * and a retry is the one action that spends more of a budget they have already run out of.
+ */
 function classifyError(e: unknown): string {
+  if (e instanceof MatchRequestError && e.status === 429) return t('matchmaking.errorThrottled');
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.includes('cancelled')) return t('matchmaking.errorCancelled');
   if (msg.includes('timed out') || msg.includes('expired')) return t('matchmaking.errorTimeout');
