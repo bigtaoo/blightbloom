@@ -153,12 +153,20 @@ describe('every SKU sells something that actually exists', () => {
     }
   });
 
-  it('sells no character yet, because design/14 leaves the free/paid split to the store', () => {
-    // Not a permanent property — it is the CURRENT state, pinned so adding a character SKU
-    // is a deliberate edit that has to come back through here and through design/14.
+  it('sells exactly one character — skirmisher (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event", 2026-09-23)', () => {
+    // Pinned so a roster change (a 4th character, or a different paid pick) is a
+    // deliberate edit that has to come back through here and through design/14.
     const characters = listSkus().flatMap((s) => s.grants.filter((g) => g.kind === 'character'));
-    expect(characters).toEqual([]);
+    expect(characters.map((g) => g.id)).toEqual(['skirmisher']);
     expect(Object.keys(SKIN_DEFS).length).toBe(3);
+  });
+
+  it('never sells vanguard (the free default) or juggernaut (reserved for an unbuilt event path)', () => {
+    const soldCharacterIds = new Set(
+      listSkus().flatMap((s) => s.grants.filter((g) => g.kind === 'character').map((g) => g.id)),
+    );
+    expect(soldCharacterIds.has('vanguard')).toBe(false);
+    expect(soldCharacterIds.has('juggernaut')).toBe(false);
   });
 
   it('grants each blueprint from at most one SKU', () => {

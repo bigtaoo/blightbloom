@@ -7,8 +7,12 @@ import { defaultMetaState, FREE_CHARACTERS } from './MetaState';
 import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, SKIN_DEFS } from '@dd/engine';
 
 describe('FREE_CHARACTERS', () => {
-  it('is every SkinDef currently in the catalog (no paid roster yet)', () => {
-    expect(FREE_CHARACTERS).toEqual(Object.keys(SKIN_DEFS));
+  it('is exactly vanguard (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event", 2026-09-23)', () => {
+    expect(FREE_CHARACTERS).toEqual([DEFAULT_SKIN_ID]);
+  });
+
+  it('is a strict subset of the real roster, never a name the catalog does not carry', () => {
+    for (const id of FREE_CHARACTERS) expect(SKIN_DEFS[id]).toBeDefined();
   });
 
   it('is non-empty', () => {

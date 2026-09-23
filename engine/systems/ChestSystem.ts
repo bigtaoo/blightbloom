@@ -52,6 +52,7 @@
 import { CHEST_MECHANISM_RADIUS_GRID, CHEST_OPEN_RANGE_GRID } from '../config';
 import { chestWeaponCount } from '../content/chests';
 import { rollWeaponId } from '../content/weaponRarityByDepth';
+import { resolveFloorCards } from '../balance/floorCards';
 import { toFpGrid } from '../content/convert';
 import { dropClearance } from '../state/actorRadius';
 import type { GameState } from '../state/GameState';
@@ -127,7 +128,11 @@ export class ChestSystem {
    */
   private open(state: GameState, chest: Chest): void {
     chest.opened = true;
-    const count = chestWeaponCount(chest.kind, state.players.length);
+    // The `bounty` floor card (Task 8, "chest_bonus_weapons") adds a flat count on top —
+    // re-derived from the run's picked cards, not mirrored into a counter, same as every
+    // other floor-card mod (`balance/floorCards.ts`'s own header).
+    const bonus = resolveFloorCards(state.floorCards).chestBonusWeapons;
+    const count = chestWeaponCount(chest.kind, state.players.length) + bonus;
     // Clamped by the PLAYER's clearance, not the pickup's — the thing that has to reach this
     // spot is a player's body (`state/actorRadius.ts dropClearance`), and a chest can
     // legitimately be authored flush against a wall.

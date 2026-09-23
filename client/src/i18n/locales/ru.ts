@@ -389,6 +389,10 @@ export const ru: Translations<typeof en> = {
     bulwark: { name: 'Бастион', desc: '+{value} к макс. ЗД' },
     precision: { name: 'Точность', desc: '+{value}% шанса крита' },
     capacitor: { name: 'Конденсатор', desc: '+{value} к макс. энергии' },
+    surge: { name: 'Импульс', desc: 'Энергия стоит {factor}x' },
+    aegis: { name: 'Эгида', desc: 'Щиты стоят {factor}x' },
+    stockpile: { name: 'Запас', desc: 'Материалы стоят {factor}x' },
+    bounty: { name: 'Добыча', desc: '+{count} оружия за сундук' },
   },
   buff: {
     dmg_up: { name: 'Урон увеличен' },

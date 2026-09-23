@@ -522,6 +522,15 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
     }
   });
 
+  it("the 'bounty' floor card adds a flat extra weapon per chest (Task 8)", () => {
+    const s = state();
+    s.floorCards.push('bounty');
+    addPlayer(s, 10, 10);
+    addChest(s, 'small', 10, 10);
+    sys.tick(s);
+    expect(s.pickups.filter((q) => q.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS + 1);
+  });
+
   it('gives every weapon in one payout its own id', () => {
     const s = state();
     addPlayer(s, 10, 10);

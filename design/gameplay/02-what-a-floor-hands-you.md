@@ -364,11 +364,22 @@ against `13`'s one — is never built.
 ### Floor cards: the reward becomes a choice
 
 The checkpoint offers **three cards** (`balance/floorCards.ts`), drawn distinct from a
-catalogue of seven by a dedicated `cardPrng`. Five wrap existing `RUN_BUFFS` ids so a card is
-exactly as strong as the same buff picked off the floor and `BUFF_CAPS` bounds both together;
-the other two are properties of the RUN rather than of a player — `potion_flow` (doubles the
-heal weight, stacking to `HEAL_DROP_MULT_CAP` in three picks) and `arsenal` (+1 to every later
-floor's weapon allowance).
+catalogue of **11** by a dedicated `cardPrng` (expanded from 7, Task 8, 2026-09-23). Five wrap
+existing `RUN_BUFFS` ids so a card is exactly as strong as the same buff picked off the floor
+and `BUFF_CAPS` bounds both together; the other six are properties of the RUN rather than of a
+player, each a payload multiplier (never a drop-table weight, so picking one never changes
+another kind's odds) except the last, which is a flat additive count:
+
+- `potion_flow` — doubles the heal TABLE WEIGHT, stacking to `HEAL_DROP_MULT_CAP` in three picks.
+- `windfall` — doubles a coin drop's payload (replaced the old `arsenal` "+1 weapon allowance"
+  card on 2026-09-14, once weapons moved behind chests/boss/shop and there was no allowance
+  left for a card to raise — see `content/drops.ts`'s own header).
+- `surge` — doubles `ENERGY_PICKUP_AMOUNT` (Task 8), the ammo economy's own scarcity valve.
+- `aegis` — doubles `SHIELD_PICKUP_AMOUNT` (Task 8), the shield-battery item's own valve.
+- `stockpile` — doubles `MATERIAL_DROP_QTY` (Task 8), the run's only carry-out currency.
+- `bounty` — +1 extra weapon out of every chest for the rest of the run (Task 8), the one card
+  here that adds rather than multiplies: a chest's payout is already a small integer (1, or
+  1-per-seat), which a multiplier would round back down to unchanged at the common 1-seat case.
 
 **One of the five is card-ONLY, and that is the interesting part** (`ENGINE_VERSION` 60).
 `capacitor` grants `cell_up`, the `flat_energy` family that raises the weapon-energy pool

@@ -384,6 +384,10 @@ export const es: Translations<typeof en> = {
     bulwark: { name: 'Baluarte', desc: '+{value} PV máximos' },
     precision: { name: 'Precisión', desc: '+{value}% de prob. crítica' },
     capacitor: { name: 'Condensador', desc: '+{value} de energía máxima' },
+    surge: { name: 'Sobrecarga', desc: 'La energía vale {factor}x' },
+    aegis: { name: 'Égida', desc: 'Los escudos valen {factor}x' },
+    stockpile: { name: 'Acopio', desc: 'Los materiales valen {factor}x' },
+    bounty: { name: 'Botín', desc: '+{count} arma por cofre' },
   },
   buff: {
     dmg_up: { name: 'Daño aumentado' },

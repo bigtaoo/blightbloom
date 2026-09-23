@@ -104,7 +104,9 @@ export class DeathDropsSystem {
       if (drop.kind === 'buff') item.buffId = drop.buffId;
       if (drop.kind === 'material') {
         item.materialId = drop.materialId;
-        item.qty = drop.qty;
+        // The `stockpile` floor card (Task 8) multiplies the payload, same
+        // payload-not-table-weight shape as `windfall`'s `coinMult` two lines below.
+        item.qty = drop.qty * (cards?.materialDropMult ?? 1);
         item.tier = drop.tier;
       }
       // The `windfall` floor card is applied HERE rather than inside `rollDrop`, which is
