@@ -211,6 +211,20 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * deepest floor from ×3 to ×5 purely as a side effect of adding floors. ×0.5 keeps
  * the same ×3 ceiling, now reached over five floors instead of three.
  *
+ * **Retuned again to `perFloor: 0.25` (Task 2, `ENGINE_VERSION` 69, 2026-09-23)** —
+ * a second, independent axis of depth difficulty exists now that did not when the
+ * ×0.5 value above was chosen: each authored floor's own room roster already shifts
+ * toward tougher TYPES with depth (`ironclad`/`galvanist` first appear floor 2,
+ * `ravager` count climbs 1→2→3→6→7 floor 0→4 — see `emberLevel1.ts`'s per-floor
+ * spawn lists), a gradient this file's own curve knows nothing about and never
+ * accounted for. Leaving the flat HP multiplier at ×0.5/floor stacked BOTH axes: a
+ * floor-4 `ironclad` was simultaneously the highest-HP variant AND paying the
+ * curve's full ×3, compounding two independently-authored sources of "harder
+ * deeper" into one. Halving it again keeps the curve as a real but secondary
+ * contributor (×2 ceiling by floor 4, down from ×3) and lets the room-authored type
+ * gradient carry the larger share of the job — which is also the one a future
+ * room-content pass can retune directly, without touching this global multiplier.
+ *
  * `layout: 'graph2d'` (design/05, 2026-08-05 follow-up; was `'linear'`) — the
  * module doc above lists which pieces actually make a floor bend now. Only the
  * fallback path reads it at all, since every floor here is authored.
@@ -230,7 +244,7 @@ export const EMBER_DUNGEON: DungeonConfig = {
   layout: 'graph2d',
   extractionPieceId: 'ember_l1_extraction',
   bossPieceId: 'ember_l1_boss',
-  difficultyCurve: { base: 1, perFloor: 0.5 },
+  difficultyCurve: { base: 1, perFloor: 0.25 },
   floorMaps: EMBER_L1_FLOORS,
 };
 

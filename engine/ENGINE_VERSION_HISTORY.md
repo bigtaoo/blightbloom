@@ -2454,3 +2454,19 @@ prefers a permanent recipe when both exist for the same weaponId, so a stacked s
 never silently spent on a weapon the account already owns outright — see `meta/forge.ts`'s own
 header for the full account, including why today's catalog can never actually present that
 choice.
+
+v69 (Task 2, 2026-09-23): retunes `EMBER_DUNGEON.difficultyCurve` from `perFloor: 0.5` to
+`perFloor: 0.25` (`world/rooms/ember.ts`) — halving the flat enemy-maxHp multiplier `curveAt`
+applies per floor of depth, so any dungeon replay that ever reaches floor 1+ diverges (every
+non-dungeon config, and floor 0 of a dungeon config, still resolve to `curve.base` — untouched).
+
+Not a difficulty-direction change on its own so much as a REDUNDANCY fix: the shipped level's
+own room-authored garrison already shifts toward tougher enemy TYPES with depth (`ironclad`/
+`galvanist` first appear floor 2, `ravager` count climbs 1 -> 2 -> 3 -> 6 -> 7 across floors
+0-4 — `world/dungeons/ember/`'s per-floor JSON), a gradient the flat curve was never designed
+against and stacked on top of regardless. Halving the curve keeps it a real but secondary
+contributor (×2 ceiling by floor 4, down from ×3) and leaves the room-authored type mix to
+carry the larger share of "harder deeper," which is also the lever a future content-only pass
+can retune without touching this global multiplier.
+
+`emberLevel1.test.ts`'s own curve-ceiling assertion moves from 3 to 2 in the same change.

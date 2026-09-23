@@ -73,9 +73,13 @@ describe('EMBER_DUNGEON is the authored 5-floor level 1', () => {
     expect(pieceFor(EMBER_DUNGEON.bossPieceId).role).toBe('boss');
   });
 
-  it('keeps the same enemy-HP ceiling as the old 3-floor curve now that there are 5 floors', () => {
+  it("halves the curve's ceiling again now that the room-authored type gradient shoulders part of the depth scaling (Task 2, ENGINE_VERSION 69)", () => {
+    // Was `perFloor: 0.5` / ceiling ×3 — see `world/rooms/ember.ts`'s own doc comment
+    // on why stacking the flat HP curve on top of an ALREADY depth-scaled room
+    // roster (ironclad/galvanist arriving floor 2+, ravager count climbing with
+    // depth) double-counted "harder deeper" onto the same enemies.
     const { base, perFloor } = EMBER_DUNGEON.difficultyCurve;
-    expect(base + perFloor * (EMBER_DUNGEON.floorCount - 1)).toBe(3);
+    expect(base + perFloor * (EMBER_DUNGEON.floorCount - 1)).toBe(2);
   });
 });
 
