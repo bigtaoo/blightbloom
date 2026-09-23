@@ -51,7 +51,7 @@
  */
 import { CHEST_MECHANISM_RADIUS_GRID, CHEST_OPEN_RANGE_GRID } from '../config';
 import { chestWeaponCount } from '../content/chests';
-import { WEAPON_DROP_POOL } from '../content/drops';
+import { rollWeaponId } from '../content/weaponRarityByDepth';
 import { toFpGrid } from '../content/convert';
 import { dropClearance } from '../state/actorRadius';
 import type { GameState } from '../state/GameState';
@@ -136,7 +136,7 @@ export class ChestSystem {
       state.pickups.push({
         id: state.nextId(),
         kind: 'weapon',
-        weaponId: WEAPON_DROP_POOL[state.dropPrng.nextInt(WEAPON_DROP_POOL.length)]!,
+        weaponId: rollWeaponId(state.dropPrng, state.floorIndex),
         gx: pos.gx,
         gy: pos.gy,
         spawnTick: state.tick,
