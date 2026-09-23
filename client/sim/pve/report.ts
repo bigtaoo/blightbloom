@@ -18,6 +18,9 @@ import { round1, round2, round3 } from './reportRound';
 // The ammo-consumption half of the report lives next door; re-exported so this path stays
 // the single import site for callers (CLAUDE.md: the split is invisible to them).
 export * from './reportFire';
+// Task 0's four measurements (survivability, rarity, shop power, room-skip) — see that
+// file's own header for why it was split off from the start rather than grown into this one.
+export * from './reportBalance';
 
 export interface RoomStats {
   key: string; // `${floorIndex}:${roomId}`

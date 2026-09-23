@@ -24,14 +24,22 @@ import { runLevel, type RunMetrics } from './pve/levelSim';
 import {
   floorDropStats,
   floorFireStats,
+  floorVitalsStats,
   formatDropTable,
   formatFireTable,
+  formatRarityTable,
   formatRoomTable,
+  formatShopPowerTable,
+  formatSkipTable,
   formatSummary,
+  formatVitalsTable,
   formatWeaponFireTable,
+  roomSkipStats,
   roomStats,
+  shopPowerStats,
   summarize,
   weaponFireStats,
+  weaponRarityStats,
 } from './pve/report';
 
 /**
@@ -114,6 +122,62 @@ describe('PvE level 1 balance sim (bot-driven real runs — first-signal data, n
     // trigger would print clean zeroes that read like a finding (design/18).
     const anyFires = runs('careful').reduce((a, r) => a + r.fires.length, 0);
     expect(anyFires, 'the sweep fired nothing at all — the table below measures nothing').toBeGreaterThan(100);
+  }, 600_000);
+
+  // ── Task 0 (2026-09-23): instrumentation added ahead of the content-expansion pass —
+  // per-floor HP/shield remaining, weapon rarity distribution, shop purchasing power,
+  // room-skip rate. All four are REPORTS, not gates: there is no threshold to hold yet,
+  // only a baseline to compare Task 2/5/6/7's numbers against once they ship.
+
+  it("reports what a floor LEAVES the player with — HP/shield remaining at each checkpoint", () => {
+    for (const p of PROFILES) {
+      // eslint-disable-next-line no-console
+      console.log(`\n--- profile=${p}: vitals at checkpoint ---`);
+      // eslint-disable-next-line no-console
+      console.log(formatVitalsTable(floorVitalsStats(runs(p))));
+    }
+    const anyCheckpoints = runs('careful').reduce((a, r) => a + r.vitalsAtCheckpoint.length, 0);
+    expect(anyCheckpoints, 'no run ever reached a checkpoint — the table below measures nothing').toBeGreaterThan(0);
+  }, 600_000);
+
+  it('reports the weapon rarity distribution by floor', () => {
+    // No anti-vacuity floor here, unlike the loot-economy table above: a weapon comes
+    // only from a chest, a boss or a shop (design/09 "the kill table stops paying in
+    // guns"), and this level's only chest on floors 0-2 (`b1_cache`) sits off the
+    // critical path while the boss and both shops sit on floors 3-4 — floors this
+    // 40-seed careful sweep does not reach (avg floor reached ~0.6). Reading zero here
+    // is the current, correct answer, not a broken measurement; Task 2's difficulty
+    // retune is what should move it.
+    for (const p of PROFILES) {
+      // eslint-disable-next-line no-console
+      console.log(`\n--- profile=${p}: weapon rarity by floor ---`);
+      // eslint-disable-next-line no-console
+      console.log(formatRarityTable(weaponRarityStats(runs(p))));
+    }
+    expect(weaponRarityStats(runs('careful'))).toBeInstanceOf(Array);
+  }, 600_000);
+
+  it("reports each shop's purchasing power — coins on hand vs. the counter's price", () => {
+    // Same absence, same reason as the rarity table above: both shops this level ships
+    // (`ember_l1_market`/`ember_l1_vault`) sit on floors 3-4, past this sweep's reach.
+    for (const p of PROFILES) {
+      // eslint-disable-next-line no-console
+      console.log(`\n--- profile=${p}: shop purchasing power ---`);
+      // eslint-disable-next-line no-console
+      console.log(formatShopPowerTable(shopPowerStats(runs(p))));
+    }
+    expect(shopPowerStats(runs('careful'))).toBeInstanceOf(Array);
+  }, 600_000);
+
+  it('reports the room-skip rate per floor — the baseline Task 6 is meant to move', () => {
+    for (const p of PROFILES) {
+      // eslint-disable-next-line no-console
+      console.log(`\n--- profile=${p}: room-skip rate ---`);
+      // eslint-disable-next-line no-console
+      console.log(formatSkipTable(roomSkipStats(runs(p))));
+    }
+    const anyCheckpoints = runs('careful').reduce((a, r) => a + r.checkpointFloors.length, 0);
+    expect(anyCheckpoints, 'no run ever reached a checkpoint — the table below measures nothing').toBeGreaterThan(0);
   }, 600_000);
 
   // ── Balance gates (design/05 "Room encounter budget") ────────────────────────
