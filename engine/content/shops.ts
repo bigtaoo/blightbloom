@@ -31,13 +31,17 @@ import {
   SHOP_PRICE_WEAPON,
   SHOP_STOCK_SIZE,
 } from '../config';
-import { BUFF_DROP_POOL, WEAPON_DROP_POOL } from './drops';
+import { BUFF_DROP_POOL } from './drops';
+import { rollWeaponId } from './weaponRarityByDepth';
 import type { ShopOffer } from '../state/entities';
 
 /** The slice of `Prng` stocking a shop needs — narrowed like `DropPrng` next door, so a test
- *  can hand it a recording stub and assert the exact draw sequence. */
+ *  can hand it a recording stub and assert the exact draw sequence. `weightedIndex` was added
+ *  alongside `nextInt` for Task 7's `rollWeaponId` (weapon rarity by floor depth) — still one
+ *  draw either way, so the "always two draws per slot" shape below is unaffected. */
 export interface ShopPrng {
   nextInt(max: number): number;
+  weightedIndex(weights: readonly number[]): number;
 }
 
 /**
@@ -87,10 +91,10 @@ function rollSlotCategory(prng: ShopPrng): 'weapon' | 'item' | 'buff' {
  * for the same reason: a variable draw count would make every later loot roll on the floor
  * depend on what this shop's stock happened to be).
  */
-function rollSlot(prng: ShopPrng, mkId: () => number): ShopOffer {
+function rollSlot(prng: ShopPrng, mkId: () => number, floorIndex: number): ShopOffer {
   const category = rollSlotCategory(prng);
   if (category === 'weapon') {
-    const weaponId = WEAPON_DROP_POOL[prng.nextInt(WEAPON_DROP_POOL.length)]!;
+    const weaponId = rollWeaponId(prng, floorIndex);
     return { id: mkId(), kind: 'weapon', weaponId, price: SHOP_PRICES.weapon, sold: false };
   }
   if (category === 'buff') {
@@ -111,9 +115,13 @@ function rollSlot(prng: ShopPrng, mkId: () => number): ShopOffer {
  * before that floor's enemies spawn, and an entity id there would shift every later enemy id
  * — which sets its opening-volley delay (`AIDecideSystem.noticeDelayTicks`). Adding a prop to
  * a room must not retune the room's difficulty.
+ *
+ * `floorIndex` (Task 7, weapon rarity by depth) only ever reaches a weapon slot's
+ * `rollWeaponId` — passing it through for buff/item slots that never read it costs
+ * nothing and keeps `rollSlot`'s signature uniform across categories.
  */
-export function rollShopStock(prng: ShopPrng, mkId: () => number): ShopOffer[] {
-  return [rollSlot(prng, mkId), rollSlot(prng, mkId), rollSlot(prng, mkId)];
+export function rollShopStock(prng: ShopPrng, mkId: () => number, floorIndex: number): ShopOffer[] {
+  return [rollSlot(prng, mkId, floorIndex), rollSlot(prng, mkId, floorIndex), rollSlot(prng, mkId, floorIndex)];
 }
 
 /** Compile-time proof that the slot count above and the configured stock size agree.

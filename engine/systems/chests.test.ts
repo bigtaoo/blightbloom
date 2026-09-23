@@ -28,6 +28,7 @@ import type { Chest, PlayerActor } from '@dd/engine/state/entities';
 import { ChestSystem } from '@dd/engine/systems';
 import { chestWeaponCount, mechanismRing } from '@dd/engine/content/chests';
 import { WEAPON_DROP_POOL } from '@dd/engine/content/drops';
+import { WEAPON_SPECS } from '@dd/engine/content/weaponSpecs';
 import { dropClearance } from '@dd/engine/state/actorRadius';
 import { clampToWalkable } from '@dd/engine/systems/geom';
 import {
@@ -557,6 +558,33 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
       return s.pickups.map((q) => q.weaponId);
     };
     expect(payout()).toEqual(payout());
+  });
+
+  it('threads state.floorIndex into the payout roll — a deep-floor chest skews toward higher rarity (Task 7)', () => {
+    // Independent samples across many seeds at each floor index — NOT paired per-seed,
+    // since WEAPON_DROP_POOL interleaves tiers in an arbitrary order, so a fixed raw roll
+    // can land on a different (not necessarily higher-tier) WEAPON at a shifted weight
+    // table even though the POPULATION-level tier probabilities are exactly the authored
+    // per-floor percentages by construction. The pooled average across many independent
+    // payouts is what the shift actually claims, and is what this checks.
+    const rank: Record<string, number> = { common: 0, fine: 1, epic: 2, legend: 3, legendary: 4 };
+    const tiersAt = (floorIndex: number, seed: number): number[] => {
+      const s = createGameState({ ...CFG, seed });
+      s.players.length = 0;
+      s.floorIndex = floorIndex;
+      addPlayer(s, 10, 10);
+      addChest(s, 'small', 10, 10); // one weapon per payout; sampled across many seeds below
+      sys.tick(s);
+      return s.pickups.map((q) => rank[WEAPON_SPECS[q.weaponId!]!.rarity]!);
+    };
+    const pooledAverage = (floorIndex: number, seeds: number): number => {
+      const all: number[] = [];
+      for (let seed = 0; seed < seeds; seed++) all.push(...tiersAt(floorIndex, seed));
+      return all.reduce((sum, t) => sum + t, 0) / all.length;
+    };
+    const avg0 = pooledAverage(0, 300);
+    const avg4 = pooledAverage(4, 300);
+    expect(avg4).toBeGreaterThan(avg0 + 0.5); // comfortably outside sampling noise
   });
 
   it('drops the pile clear of the stone a chest was authored against', () => {

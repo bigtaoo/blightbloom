@@ -2569,3 +2569,24 @@ suite proving the skip is real (capstone stays reachable with `r3_span` and its 
 and that the plain layout has no such skip on any of its other mandatory chain rooms;
 `dungeonrun.test.ts` gained a `floorLayoutVariants` draw-semantics suite mirroring the existing
 `boss_random` one.
+
+v74 (Task 7, 2026-09-23): weapon rarity distribution shifting toward higher tiers with floor
+depth. New `content/weaponRarityByDepth.ts rollWeaponId(prng, floorIndex)` replaces
+`WEAPON_DROP_POOL`'s old flat, depth-blind `nextInt(pool.length)` pick at all three of its call
+sites — `ChestSystem`'s chest payout, `DeathDropsSystem`'s boss-kill weapon drop, and
+`content/shops.ts rollSlot`'s weapon slot — with a single `weightedIndex` draw (still exactly one
+draw, so no caller's own draw-count contract changes) over a per-floor-index rarity-tier weight
+table (`RARITY_WEIGHTS_BY_FLOOR`, hand-authored 0→4, `common`/`fine` integer-percent weight
+falling and `legend`/`legendary` climbing monotonically end to end; `epic`, the pool's biggest
+bucket, rises through the middle floors and gives ground back at floor 4). `WEAPON_POOL_BY_RARITY`
+partitions `WEAPON_DROP_POOL` by each weapon's own intrinsic `rarity` (`balance/rarity.ts`,
+DERIVED from `WEAPON_SPECS`, never hand-duplicated), and every weapon within a tier is still
+picked uniformly — only the tier-to-tier proportions move with depth. PvP's `rollArenaDrop`
+weapon roll is deliberately untouched: an arena has no floor depth at all.
+
+Any replay that ever rolls a chest, a shop's weapon slot, or a boss kill diverges from here on —
+which is effectively every real PvE run, since the old flat pick and the new weighted one only
+coincide by chance. Golden fixture regenerated. New `content/weaponRarityByDepth.test.ts` (the
+partition, the one-draw cost, floor-index clamping, and the measured tier shift itself);
+`chests.test.ts` and `shops.test.ts` each gained a statistical test proving their own call site's
+payout skews toward higher rarity at floor 4 than at floor 0.

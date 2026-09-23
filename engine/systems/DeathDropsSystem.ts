@@ -9,7 +9,8 @@
  * fix), float px → fp. Score is not tracked in the engine; render derives it from
  * the death/pickup/wave_clear events (design/08 "events are the only channel").
  */
-import { rollDrop, rollArenaDrop, WEAPON_DROP_POOL } from '../content/drops';
+import { rollDrop, rollArenaDrop } from '../content/drops';
+import { rollWeaponId } from '../content/weaponRarityByDepth';
 import { buildEnemyActor } from '../content/enemies';
 import { BOSS_WEAPON_DROPS, DOWNED_BLEEDOUT_TICKS } from '../config';
 import { toFp, addFp, mulFp } from '../math/fixed';
@@ -196,8 +197,10 @@ export class DeathDropsSystem {
    *
    * Gated on `e.boss` like the blueprint roll above, and it runs in BOTH modes on purpose: an
    * arena has no boss actor, so the flag is simply never set there and this costs a field
-   * read. It spends `dropPrng` (one draw per weapon) — the same stream and the same pool a
-   * chest pays from, so a boss and a chest cannot disagree about what a weapon find is.
+   * read. It spends `dropPrng` (one draw per weapon) — the same stream and the same
+   * rarity-by-depth roll (`rollWeaponId`, Task 7) a chest pays from, so a boss and a chest
+   * cannot disagree about what a weapon find is. The boss room is always the deepest floor,
+   * so this is where the depth shift toward higher tiers reads most.
    */
   private dropBossWeapons(state: GameState, e: EnemyActor): void {
     if (e.boss !== true) return;
@@ -208,7 +211,7 @@ export class DeathDropsSystem {
       state.pickups.push({
         id: state.nextId(),
         kind: 'weapon',
-        weaponId: WEAPON_DROP_POOL[state.dropPrng.nextInt(WEAPON_DROP_POOL.length)]!,
+        weaponId: rollWeaponId(state.dropPrng, state.floorIndex),
         gx: pos.gx,
         gy: pos.gy,
         spawnTick: state.tick,

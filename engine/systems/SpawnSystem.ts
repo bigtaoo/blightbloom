@@ -335,7 +335,7 @@ export class SpawnSystem {
           roomId: room.id,
           gx: at.gx,
           gy: at.gy,
-          stock: rollShopStock(state.dropPrng, () => state.nextShopId()),
+          stock: rollShopStock(state.dropPrng, () => state.nextShopId(), state.floorIndex),
         });
       }
     }

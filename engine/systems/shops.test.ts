@@ -33,6 +33,7 @@ import {
   type ShopPrng,
 } from '@dd/engine/content/shops';
 import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
+import { WEAPON_SPECS } from '@dd/engine/content/weaponSpecs';
 import { SHOP_INTERACT_RANGE_GRID, SHOP_STOCK_SIZE } from '@dd/engine/config';
 import { Prng } from '@dd/engine/math/prng';
 import { buildEnemyActor } from '@dd/engine/content/enemies';
@@ -111,6 +112,17 @@ class FixedRoll implements ShopPrng {
     if (v === undefined) throw new Error('FixedRoll: ran out of scripted draws');
     return v;
   }
+  // Mirrors the real Prng.weightedIndex exactly, but consumes the next SCRIPTED value
+  // as the roll rather than drawing nextInt(total) internally — a test can still script
+  // an exact "roll" and see exactly which weight bucket it lands in.
+  weightedIndex(weights: readonly number[]): number {
+    let roll = this.nextInt();
+    for (let i = 0; i < weights.length; i++) {
+      roll -= weights[i]!;
+      if (roll < 0) return i;
+    }
+    return weights.length - 1;
+  }
 }
 
 describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_VERSION 72)', () => {
@@ -118,14 +130,14 @@ describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_V
     // Roll 0 is inside every category's own range at its low edge, so three (category,
     // sub-pick) pairs of (0, 0) forces all three slots to weapon — the case the OLD fixed
     // weapon/buff/supply composition could never produce at all.
-    const stock = rollShopStock(new FixedRoll([0, 0, 0, 0, 0, 0]), ids());
+    const stock = rollShopStock(new FixedRoll([0, 0, 0, 0, 0, 0]), ids(), 0);
     expect(stock.map((o) => o.kind)).toEqual(['weapon', 'weapon', 'weapon']);
   });
 
   it("the category boundaries are exactly 0-59 weapon / 60-89 item / 90-99 buff", () => {
     // Only slot 0 is inspected; slots 1-2 are scripted identically so `rollShopStock`'s fixed
     // six-draw shape has values to consume without affecting what is being asserted.
-    const categoryOf = (roll: number): string => rollShopStock(new FixedRoll([roll, 0, roll, 0, roll, 0]), ids())[0]!.kind;
+    const categoryOf = (roll: number): string => rollShopStock(new FixedRoll([roll, 0, roll, 0, roll, 0]), ids(), 0)[0]!.kind;
     expect(categoryOf(0)).toBe('weapon');
     expect(categoryOf(SHOP_SLOT_WEIGHT_WEAPON - 1)).toBe('weapon'); // 59
     expect(['heal', 'energy', 'shield', 'emp']).toContain(categoryOf(SHOP_SLOT_WEIGHT_WEAPON)); // 60 — first item roll
@@ -142,7 +154,7 @@ describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_V
     const categories = new Set<string>();
     const itemKinds = new Set<string>();
     for (let seed = 0; seed < 200; seed++) {
-      for (const offer of rollShopStock(new Prng(seed), ids())) {
+      for (const offer of rollShopStock(new Prng(seed), ids(), 0)) {
         categories.add(offer.kind === 'weapon' || offer.kind === 'buff' ? offer.kind : 'item');
         if (offer.kind !== 'weapon' && offer.kind !== 'buff') itemKinds.add(offer.kind);
       }
@@ -156,7 +168,7 @@ describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_V
     // variable number would make every later loot roll on the floor depend on its shelves.
     for (const seed of [1, 7, 99, 12345]) {
       const p = new Prng(seed);
-      rollShopStock(p, ids());
+      rollShopStock(p, ids(), 0);
       const control = new Prng(seed);
       for (let i = 0; i < 6; i++) control.nextInt(2);
       expect(p.peek()).toBe(control.peek());
@@ -164,28 +176,46 @@ describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_V
   });
 
   it('prices each line from SHOP_PRICES, so no number is written twice', () => {
-    const stock = rollShopStock(new Prng(3), ids());
+    const stock = rollShopStock(new Prng(3), ids(), 0);
     for (const o of stock) expect(o.price).toBe(SHOP_PRICES[o.kind]);
   });
 
   it('gives every line a DISTINCT id', () => {
     // The id is what a tap addresses. Two lines sharing one would make a tap ambiguous, and
     // `Array.find` would silently resolve it to whichever came first.
-    const stock = rollShopStock(new Prng(5), ids());
+    const stock = rollShopStock(new Prng(5), ids(), 0);
     expect(new Set(stock.map((o) => o.id)).size).toBe(stock.length);
   });
 
   it('always stocks exactly SHOP_STOCK_SIZE lines, whatever the categories', () => {
     for (let seed = 0; seed < 20; seed++) {
-      expect(rollShopStock(new Prng(seed), ids())).toHaveLength(SHOP_STOCK_SIZE);
+      expect(rollShopStock(new Prng(seed), ids(), 0)).toHaveLength(SHOP_STOCK_SIZE);
     }
   });
 
   it('a weapon slot draws from WEAPON_DROP_POOL and a buff slot from BUFF_DROP_POOL', () => {
-    const weaponOffer = rollShopStock(new FixedRoll([0, 3, 0, 3, 0, 3]), ids())[0]!;
+    const weaponOffer = rollShopStock(new FixedRoll([0, 3, 0, 3, 0, 3]), ids(), 0)[0]!;
     expect(WEAPON_DROP_POOL).toContain(weaponOffer.weaponId);
-    const buffOffer = rollShopStock(new FixedRoll([99, 1, 99, 1, 99, 1]), ids())[0]!;
+    const buffOffer = rollShopStock(new FixedRoll([99, 1, 99, 1, 99, 1]), ids(), 0)[0]!;
     expect(BUFF_DROP_POOL).toContain(buffOffer.buffId);
+  });
+
+  it("a weapon slot's rarity shifts with floorIndex (Task 7, weapon rarity by floor depth)", () => {
+    // Roll 0 forces the category to 'weapon' every slot; only the second value of each
+    // pair (the weightedIndex roll) varies across seeds, forcing the category roll fixed
+    // so every sample is a weapon whose TIER is what's actually under test.
+    const rank: Record<string, number> = { common: 0, fine: 1, epic: 2, legend: 3, legendary: 4 };
+    const pooledAverage = (floorIndex: number, rolls: number): number => {
+      let total = 0;
+      for (let roll = 0; roll < rolls; roll++) {
+        const offer = rollShopStock(new FixedRoll([0, roll, 0, roll, 0, roll]), ids(), floorIndex)[0]!;
+        total += rank[WEAPON_SPECS[offer.weaponId!]!.rarity]!;
+      }
+      return total / rolls;
+    };
+    const avg0 = pooledAverage(0, 1800);
+    const avg4 = pooledAverage(4, 1800);
+    expect(avg4).toBeGreaterThan(avg0 + 0.5); // comfortably outside sampling noise
   });
 });
 
