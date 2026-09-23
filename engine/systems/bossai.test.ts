@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
-import { buildEnemyActor, BLIGHTLORD, BASIC_ENEMY } from '@dd/engine/content/enemies';
+import { buildEnemyActor, BLIGHTLORD, BASIC_ENEMY, IRONWARDEN } from '@dd/engine/content/enemies';
 import { pxToFp } from '@dd/engine/content/convert';
 import { DeathDropsSystem, WeaponFireSystem } from '@dd/engine/systems';
 import type { DungeonConfig } from '@dd/engine/world/dungeon';
@@ -132,6 +132,53 @@ describe('enrage (WeaponFireSystem, design/09 traits)', () => {
     new WeaponFireSystem().tick(s);
     expect(e.enraged).toBe(false);
     expect(s.events.some((ev) => ev.type === 'enrage')).toBe(false);
+  });
+});
+
+describe('armor break (WeaponFireSystem, design/09 traits — Task 2, ENGINE_VERSION 70)', () => {
+  it("latches ONCE the tick hp first crosses the threshold, REPLACING resist with the broken profile", () => {
+    const s = state();
+    const e = buildEnemyActor(s, pxToFp(400), pxToFp(400), 'ironwarden');
+    s.enemies.push(e);
+    const fire = new WeaponFireSystem();
+    const armoredResist = IRONWARDEN.resist;
+    const brokenResist = IRONWARDEN.armorBreak!.resist;
+
+    // Above the 50% threshold: still armored.
+    e.hp = Math.ceil(e.maxHp * 0.6);
+    s.clearEvents();
+    fire.tick(s);
+    expect(e.armorBroken).toBe(false);
+    expect(e.resist).toEqual(armoredResist);
+    expect(s.events.some((ev) => ev.type === 'armor_break')).toBe(false);
+
+    // Drop to/under the threshold: latches immediately, resist swaps, event fires.
+    e.hp = Math.floor((e.maxHp * IRONWARDEN.armorBreak!.hpThresholdPermille) / 1000);
+    s.clearEvents();
+    fire.tick(s);
+    expect(e.armorBroken).toBe(true);
+    expect(e.resist).toEqual(brokenResist);
+    expect(s.events.some((ev) => ev.type === 'armor_break' && ev.id === e.id)).toBe(true);
+
+    // One-way latch: ticking again does not re-emit, and resist stays the broken map
+    // even if hp somehow rose back above the threshold (enemies never self-heal today).
+    e.hp = e.maxHp;
+    s.clearEvents();
+    fire.tick(s);
+    expect(e.resist).toEqual(brokenResist);
+    expect(s.events.some((ev) => ev.type === 'armor_break')).toBe(false);
+  });
+
+  it('a mob with no armorBreak trait never latches or touches resist, regardless of hp', () => {
+    const s = state();
+    const e = buildEnemyActor(s, pxToFp(400), pxToFp(400), 'ironclad');
+    s.enemies.push(e);
+    const originalResist = e.resist;
+    e.hp = 1;
+    new WeaponFireSystem().tick(s);
+    expect(e.armorBroken).toBe(false);
+    expect(e.resist).toEqual(originalResist);
+    expect(s.events.some((ev) => ev.type === 'armor_break')).toBe(false);
   });
 });
 

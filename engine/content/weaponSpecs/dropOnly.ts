@@ -79,6 +79,37 @@ export const DROP_ONLY_WEAPON_SPECS: Record<string, WeaponSpec> = {
     bulletZ: 0.5,
   },
 
+  // ── Enemy nova (Pyrefang boss loadout — Task 2, ENGINE_VERSION 70, not player-
+  // selectable) ────────────────────────────────────────────────────────────────
+  // The boss's entire threat, not a burst option like the player-facing `novaburst`
+  // it copies the pattern from: an even ring of fire pellets, deterministic (no
+  // spread PRNG, same as `novaburst`), so standing still to trade hits is the losing
+  // play regardless of where the boss is facing. A fuller ring (12 vs 10) and a
+  // slower cooldown than `novaburst` — the boss telegraphs a whole volley rather than
+  // spending a burst resource, so the ring itself is the cost.
+  enemynova: {
+    id: 'enemynova',
+    kind: 'ranged',
+    nameKey: 'weapon.enemynova.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.6, // 48 ticks — a full volley to react to and reposition around
+    bullets: 12, // a fuller ring than novaburst's 10 — boss-scale
+    spreadDeg: 0, // unused by radial (the ring is even, not jittered)
+    pattern: 'radial',
+    bulletSpeed: 9,
+    damage: 1, // per pellet — the threat is standing in several, not one big hit
+    damageType: 'fire', // PYREFANG's element (design/07 payload → on-hit burn status)
+    ballistic: 'straight',
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 1.2,
+    bulletRadius: 0.16,
+    muzzleGrid: 0.875, // grid (28px/32) — PYREFANG's own radius
+    bulletZ: 0.5,
+  },
+
   // ── Enemy melee loadouts (ENGINE_VERSION 59, design/05/09) ──────────────────
   // The roster had NO melee mob at all until now: every one of the eight blueprints
   // carried `ENEMY_GUN_SIM`, and `EnemyBlueprint.weapon` was typed `RangedSimSpec`, so

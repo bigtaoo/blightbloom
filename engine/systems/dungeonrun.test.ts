@@ -25,7 +25,7 @@ import { makeCommand } from '@dd/engine/state/input';
 import type { Brad } from '@dd/engine/math/trig';
 import { toFp } from '@dd/engine/math/fixed';
 import { toFpGrid } from '@dd/engine/content/convert';
-import { buildEnemyActor } from '@dd/engine/content/enemies';
+import { buildEnemyActor, BOSS_POOL, ENEMY_BLUEPRINTS } from '@dd/engine/content/enemies';
 import { NOTICE_DELAY_TICKS, NOTICE_SPREAD_TICKS } from '@dd/engine/balance/encounter';
 import { ENEMY_TEAM_ID, type Projectile } from '@dd/engine/state/entities';
 import type { RoomPiece } from '@dd/engine/content/rooms';
@@ -559,6 +559,77 @@ describe('Dungeon mode — hand-authored floors override generation for that flo
     expect(s.roomgenPrng.peek()).not.toBe(roomgenBefore); // procedural generation DID draw
     expect(s.dungeonRooms.length).toBe(2);
     expect(s.dungeonRooms[1]!.piece.role).toBe('boss'); // floor 1 is the last → TEST_LIB's boss capstone
+  });
+});
+
+describe("Dungeon mode — the 'boss_random' spawn sentinel resolves to one of BOSS_POOL (Task 2, ENGINE_VERSION 70)", () => {
+  const BOSS_LIB: RoomPiece[] = [
+    {
+      id: 'auth_boss_start',
+      sizeGrid: { w: 20, h: 16 },
+      solids: [],
+      spawns: { player: [{ x: 2, y: 8 }], enemy: [{ x: 10, y: 8, type: 'boss_random' }] },
+      exits: [],
+    },
+  ];
+  const BOSS_FLOOR: DungeonFloorMap = {
+    id: 'floor0',
+    rooms: [{ id: 'start', pieceId: 'auth_boss_start', offsetXGrid: 0, offsetYGrid: 0 }],
+    doors: [],
+  };
+  const cfg: EngineConfig = {
+    ...DUN_CFG,
+    dungeon: { config: { ...TEST_DUN, floorMaps: { 0: BOSS_FLOOR } }, library: [...TEST_LIB, ...BOSS_LIB] },
+  };
+
+  // EnemyActor carries no `type` field at runtime (only the blueprint LOOKUP uses one,
+  // buildEnemyActor) — maxHp is unique across BOSS_POOL's three entries, so it doubles
+  // as a reverse identifier here.
+  const bossTypeByMaxHp = new Map(BOSS_POOL.map((type) => [ENEMY_BLUEPRINTS[type]!.maxHp, type]));
+
+  it('resolves to a real boss blueprint from BOSS_POOL, not the literal sentinel string', () => {
+    const eng = createGameEngine(cfg);
+    eng.step([idle(1)]); // floor places
+    eng.step([idle(2)]); // entrance room's roomId now resolves → activates
+    expect(eng.state.enemies).toHaveLength(1);
+    const spawned = eng.state.enemies[0]!;
+    expect(bossTypeByMaxHp.has(spawned.maxHp)).toBe(true);
+    expect(spawned.boss).toBe(true); // every BOSS_POOL entry is a real boss blueprint
+  });
+
+  it('is a single one-time draw — a fresh engine on the SAME seed resolves the SAME boss', () => {
+    const a = createGameEngine(cfg);
+    a.step([idle(1)]);
+    a.step([idle(2)]);
+    const b = createGameEngine(cfg);
+    b.step([idle(1)]);
+    b.step([idle(2)]);
+    expect(b.state.enemies[0]!.maxHp).toBe(a.state.enemies[0]!.maxHp);
+  });
+
+  it('a room with an ordinary (non-sentinel) type is unaffected — no draw, same type spawns', () => {
+    const ordinaryLib: RoomPiece[] = [
+      {
+        id: 'auth_basic_start',
+        sizeGrid: { w: 20, h: 16 },
+        solids: [],
+        spawns: { player: [{ x: 2, y: 8 }], enemy: [{ x: 10, y: 8, type: 'basic' }] },
+        exits: [],
+      },
+    ];
+    const ordinaryFloor: DungeonFloorMap = { id: 'floor0', rooms: [{ id: 'start', pieceId: 'auth_basic_start', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+    const ordinaryCfg: EngineConfig = {
+      ...DUN_CFG,
+      dungeon: { config: { ...TEST_DUN, floorMaps: { 0: ordinaryFloor } }, library: [...TEST_LIB, ...ordinaryLib] },
+    };
+    const eng = createGameEngine(ordinaryCfg);
+    eng.step([idle(1)]); // floor places
+    const aiPrngBefore = eng.state.aiPrng.peek();
+    eng.step([idle(2)]); // entrance room's roomId now resolves → activates
+    expect(eng.state.enemies[0]!.maxHp).toBe(ENEMY_BLUEPRINTS.basic!.maxHp);
+    // One aiPrng draw for the fire-phase jitter every spawn pays regardless of type
+    // (buildEnemyActor) — but NOT a second one for a boss-pool roll it never asked for.
+    expect(eng.state.aiPrng.peek()).not.toBe(aiPrngBefore);
   });
 });
 

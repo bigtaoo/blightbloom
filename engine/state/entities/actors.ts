@@ -229,6 +229,16 @@ export interface EnemyActor extends Actor {
   // enemy so the field always has a stable false default.
   enrage?: EnrageSim;
   enraged: boolean;
+  // Boss AI depth, a THIRD axis alongside enrage/onDeathSpawn (Task 2's boss pass,
+  // ENGINE_VERSION 70). Config, copied from the blueprint at spawn like enrage above;
+  // undefined = no armor-break trait. `armorBroken` is the RUNTIME flag
+  // `WeaponFireSystem.latchArmorBreak` sets the tick hp first crosses the threshold —
+  // one-way like `enraged`, but it REPLACES `resist` (below) with `armorBreak.resist`
+  // rather than granting a buff, so a broken boss's new resist profile is read by
+  // every later hit through the SAME `resist` field every other enemy uses — no
+  // separate "is this armor broken" branch anywhere damage gets resolved.
+  armorBreak?: { hpThresholdPermille: number; resist: ResistMap };
+  armorBroken: boolean;
   // Boss AI depth (design/09 aspirational `onDeathSpawn`). Config, copied from the
   // blueprint at spawn; DeathDropsSystem reads it the tick this enemy dies to spawn
   // `count` minions of `type` around its death position. undefined = no adds.

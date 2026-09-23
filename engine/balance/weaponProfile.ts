@@ -41,7 +41,7 @@ import type { MeleeSpec, RangedSpec, WeaponSpec } from '../content/weaponTypes';
  * neither, and collapsing them would hide that. `weaponBalance.test.ts` asserts the two
  * agree on the current roster, so the divergence has to be deliberate to survive.
  */
-export const NON_PLAYER_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul'];
+export const NON_PLAYER_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul', 'enemynova'];
 
 export interface WeaponProfile {
   readonly id: string;

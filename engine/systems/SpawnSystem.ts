@@ -14,7 +14,7 @@ import { SIM } from '../sim.config';
 import { mechanismRing } from '../content/chests';
 import { rollShopStock } from '../content/shops';
 import { pxToFp, toFpGrid } from '../content/convert';
-import { buildEnemyActor } from '../content/enemies';
+import { buildEnemyActor, BOSS_POOL } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
 import type { ArenaRoom } from '../content/arenas';
 import {
@@ -128,6 +128,21 @@ export class SpawnSystem {
     return enemy;
   }
 
+  /**
+   * The `'boss_random'` sentinel (Task 2, ENGINE_VERSION 70): a room's authored spawn
+   * point can name this instead of a real blueprint id, and the FIRST time that room's
+   * schedule is built (room activation, `tickDungeon` above — never re-rolled on a
+   * later tick of the same room) it resolves to one draw off `BOSS_POOL`. Every other
+   * type passes through unchanged and costs no draw at all, so a floor with no random
+   * boss room is byte-identical to before this existed. One `aiPrng` draw, same stream
+   * `buildEnemyActor` already spends a per-spawn fire-phase draw from — a boss room's
+   * schedule is built once, so this cannot shift by which OTHER mob spawns alongside it.
+   */
+  private resolveSpawnType(state: GameState, type: string | undefined): string | undefined {
+    if (type !== 'boss_random') return type;
+    return BOSS_POOL[state.aiPrng.nextInt(BOSS_POOL.length)];
+  }
+
   // ── Dungeon mode (design/05 "Room & door model", 2026-08-04 — co-resident) ──────
 
   /**
@@ -161,7 +176,7 @@ export class SpawnSystem {
         rt.schedule = expandEncounter(
           room.piece.encounter,
           room.piece.spawns.enemy.length,
-          (idx) => room.piece.spawns.enemy[idx]?.type,
+          (idx) => this.resolveSpawnType(state, room.piece.spawns.enemy[idx]?.type),
         );
         rt.cursor = 0;
         state.events.push({ type: 'room_enter', floorIndex: state.floorIndex, roomId: room.id });

@@ -2470,3 +2470,34 @@ carry the larger share of "harder deeper," which is also the lever a future cont
 can retune without touching this global multiplier.
 
 `emberLevel1.test.ts`'s own curve-ceiling assertion moves from 3 to 2 in the same change.
+
+v70 (Task 3, 2026-09-23): two new bosses, `PYREFANG` and `IRONWARDEN` (`content/enemies.ts`),
+and a third boss AI trait alongside `enrage`/`onDeathSpawn`: `armorBreak`, a DEFENSIVE
+threshold latch that REPLACES `resist` with a weaker profile the instant hp first crosses it
+(the mirror image of `enrage`'s offensive one — `WeaponFireSystem.latchArmorBreak`, run before
+`latchEnrage` each tick). `EnemyActor` gains `armorBreak?`/`armorBroken: boolean` (the latter
+required, same "stable false default" convention `enraged` follows); every hand-built
+`EnemyActor` literal across the test suite gained `armorBroken: false`.
+
+PYREFANG (fire, an omnidirectional ring attack via the new `enemynova` weapon spec — a mob-only
+radial loadout, `MOB_WEAPON_IDS`/`NON_PLAYER_WEAPON_IDS` both updated) tests the "keep moving"
+axis: `enrage` alone, no `onDeathSpawn`, faster and wider-perceiving than the roster default so
+it can reposition between volleys. IRONWARDEN (physical/armoured, `armorBreak` alone) tests the
+"burst to the break-point, then finish" axis: heavily resistant until hp crosses 50%, then a
+much weaker resist profile takes over, permanently. Neither carries an `element` badge — like
+`BLIGHTLORD`/`BRUTE`/`RAVAGER`, a boss/body-form variant is deliberately not one of design/13's
+four locked elemental variants even where its resist profile echoes one.
+
+The boss room (`world/dungeons/ember/pieces/ember_l1_boss.json`, floor 5's capstone) now spawns
+the `'boss_random'` sentinel at spawn point 0 instead of a fixed `'blightlord'`: `SpawnSystem`'s
+new `resolveSpawnType` resolves it to one draw off `BOSS_POOL` (`['blightlord', 'pyrefang',
+'ironwarden']`) off the same `aiPrng` stream `buildEnemyActor` already spends a per-spawn draw
+from, the FIRST tick that room's schedule is built (room activation) — never re-rolled. Every
+other spawn type passes through unchanged and costs no draw, so any floor with no random-boss
+room is byte-identical to before. A new `armor_break` fx-only event (steel-grey pulse, distinct
+from `enrage`'s red one) is the only new client-visible surface; `EventReactorHost` needed no
+new method since both new traits fire through the existing per-tick event stream.
+
+Any dungeon replay whose seed ever resolves floor 5's boss diverges (a different boss, a
+different `aiPrng` stream position from here on); every replay that never reaches that room is
+untouched, and every non-dungeon config is untouched entirely. Golden fixture regenerated.
