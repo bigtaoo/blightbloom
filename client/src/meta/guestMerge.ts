@@ -33,6 +33,10 @@
  * between the button and the Forge — but it is not a promise this layer can keep, and
  * granting a real entitlement from the client is precisely the free-money hole 8.2 closed.
  *
+ * `blueprintStock` (design/14, ENGINE_VERSION 68) ADDS, exactly like `materialBank` — a
+ * one-time schematic is stackable count, not a set, so unioning it would silently drop
+ * duplicates a guest legitimately earned from more than one boss kill.
+ *
  * `loadout` and `selectedSkin` are the ACCOUNT's: they are a staged choice rather than an
  * accumulation, two of them cannot be added, and "the account is the truth" has to mean
  * something. `hasSeenTutorial` is OR'd instead, because `MetaState` describes it as
@@ -48,7 +52,10 @@ import { FREE_CHARACTERS, type MetaState } from './MetaState';
 export interface GuestMergeOffer {
   /** Total quantity across every bank key the guest holds. Additive, so all of it survives. */
   materials: number;
-  /** Blueprints unlocked locally and not owned on the account. */
+  /** Blueprints unlocked locally and not owned on the account, PLUS every banked one-time
+   *  schematic (design/14, ENGINE_VERSION 68) — the two are folded into one count here
+   *  rather than adding a second number to a one-time confirmation screen, since both read
+   *  the same to a player: "blueprint-ish things this merge would bring over." */
   blueprints: number;
   /** Characters owned locally and not on the account. */
   characters: number;
@@ -79,6 +86,7 @@ export function hasGuestProgress(m: MetaState): boolean {
   if (bankTotal(m.materialBank) > 0) return true;
   if (m.loadout.length > 0) return true;
   if (m.unlockedBlueprints.some((id) => !STARTER_BLUEPRINTS.includes(id))) return true;
+  if (Object.values(m.blueprintStock).some((qty) => (qty ?? 0) > 0)) return true;
   return m.ownedCharacters.some((id) => !FREE_CHARACTERS.includes(id));
 }
 
@@ -86,9 +94,10 @@ export function hasGuestProgress(m: MetaState): boolean {
 export function guestMergeOffer(guest: MetaState, account: MetaState): GuestMergeOffer {
   const ownedBp = new Set(account.unlockedBlueprints);
   const ownedCh = new Set(account.ownedCharacters);
+  const schematicCount = Object.values(guest.blueprintStock).reduce((n, qty) => n + (qty ?? 0), 0);
   return {
     materials: bankTotal(guest.materialBank),
-    blueprints: guest.unlockedBlueprints.filter((id) => !ownedBp.has(id)).length,
+    blueprints: guest.unlockedBlueprints.filter((id) => !ownedBp.has(id)).length + schematicCount,
     characters: guest.ownedCharacters.filter((id) => !ownedCh.has(id)).length,
   };
 }
@@ -107,9 +116,17 @@ export function mergeGuestIntoAccount(guest: MetaState, account: MetaState): Met
   for (const [key, qty] of Object.entries(guest.materialBank)) {
     materialBank[key] = (materialBank[key] ?? 0) + (qty ?? 0);
   }
+  // Additive like `materialBank` above, not a union like `unlockedBlueprints` below — a
+  // schematic is a stackable count (design/14, ENGINE_VERSION 68), so combining two devices'
+  // stock must not collapse "one on each side" into "one total".
+  const blueprintStock: Record<string, number> = { ...account.blueprintStock };
+  for (const [id, qty] of Object.entries(guest.blueprintStock)) {
+    blueprintStock[id] = (blueprintStock[id] ?? 0) + (qty ?? 0);
+  }
   return {
     ...account,
     materialBank,
+    blueprintStock,
     unlockedBlueprints: union(account.unlockedBlueprints, guest.unlockedBlueprints),
     ownedCharacters: union(account.ownedCharacters, guest.ownedCharacters),
     hasSeenTutorial: account.hasSeenTutorial || guest.hasSeenTutorial,

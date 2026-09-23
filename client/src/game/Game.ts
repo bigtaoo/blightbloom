@@ -2,7 +2,8 @@ import { Application, Container } from 'pixi.js';
 import { SKIN_DEFS, type GameEngine, type GameState } from '@dd/engine';
 import { CoopSession } from '../net/CoopSession';
 import { MatchRecorder } from './match/MatchRecorder';
-import { bankMaterials, unlockBlueprint, createAccountSyncMetaStore, type MetaStore } from '../meta';
+import { createAccountSyncMetaStore, type MetaStore } from '../meta';
+import { grantRunCarryOut, grantWeaponPickup } from './controllers/metaGrants';
 import type { SettingsState } from '../settings';
 import { Layers } from './scene/layers';
 import { Scene } from './scene/Scene';
@@ -376,9 +377,8 @@ export class Game {
     this.hudView.visible = false;
   }
 
-  bankRunCarryOut(s: GameState): void {
-    this.run.meta = bankMaterials(this.run.meta, s.bankedMaterials);
-    if (s.runBlueprint !== null) this.run.meta = unlockBlueprint(this.run.meta, s.runBlueprint);
+  bankRunCarryOut(s: GameState, includeBlueprint = true): void {
+    this.run.meta = grantRunCarryOut(this.run.meta, s, this.run.localOwner, includeBlueprint);
     this.store.save(this.run.meta);
   }
 
@@ -422,10 +422,10 @@ export class Game {
   }
 
   onWeaponPickup(weaponId: string): void {
-    if (!this.run.meta.unlockedBlueprints.includes(weaponId)) {
-      this.run.meta = unlockBlueprint(this.run.meta, weaponId);
-      this.store.save(this.run.meta);
-    }
+    const next = grantWeaponPickup(this.run.meta, weaponId);
+    if (next === this.run.meta) return; // no-op grant (already owned, non-earnable) — no save
+    this.run.meta = next;
+    this.store.save(this.run.meta);
   }
 
   actorAt(id: number): ReturnType<EventReactorHost['actorAt']> {

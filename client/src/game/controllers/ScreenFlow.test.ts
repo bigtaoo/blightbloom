@@ -278,6 +278,7 @@ function defaultMetaLike() {
   return {
     materialBank: {},
     unlockedBlueprints: [],
+    blueprintStock: {},
     ownedCharacters: [],
     loadout: [],
     selectedSkin: 'default',

@@ -130,10 +130,10 @@ describe('what each consumer is told', () => {
   it('tells the popup when it is the LAST floor, so it can hide Descend', () => {
     const t = fakeDeps();
     updateCheckpointOverlays(state({ floorIndex: 2, floorCount: 3 }), 0, t.deps);
-    expect(t.portalPrompt.update.mock.calls.at(-1)![2]).toBe(true);
+    expect(t.portalPrompt.update.mock.calls.at(-1)![3]).toBe(true);
     const mid = fakeDeps();
     updateCheckpointOverlays(state({ floorIndex: 0, floorCount: 3 }), 0, mid.deps);
-    expect(mid.portalPrompt.update.mock.calls.at(-1)![2]).toBe(false);
+    expect(mid.portalPrompt.update.mock.calls.at(-1)![3]).toBe(false);
   });
 
   it('tells the card panel which seat is LOCAL, so it highlights the right vote', () => {

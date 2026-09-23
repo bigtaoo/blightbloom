@@ -19,7 +19,7 @@ import { BASIC_ENEMY } from '@dd/engine/content/enemies';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import { ENEMY_TEAM_ID, type EnemyActor } from '@dd/engine/state/entities';
-import { DeathDropsSystem } from '@dd/engine/systems';
+import { DeathDropsSystem, PickupSystem } from '@dd/engine/systems';
 import { EARNABLE_BLUEPRINTS, STARTER_BLUEPRINTS } from '@dd/engine/content/blueprints';
 import { BLUEPRINT_DROP_PERMILLE, BOSS_WEAPON_DROPS } from '@dd/engine/config';
 import { WEAPON_DROP_POOL } from '@dd/engine/content/drops';
@@ -28,6 +28,12 @@ const sys = new DeathDropsSystem();
 
 function state(seed: number): GameState {
   return createGameState({ seed, worldW: 1600, worldH: 1600, waves: [] });
+}
+
+/** The weaponId a boss's roll produced this tick, or `null` — reads the physical ground
+ *  pickup (ENGINE_VERSION 68), replacing the old `state.runBlueprint` flag. */
+function rolledSchematic(s: GameState): string | null {
+  return s.pickups.find((i) => i.kind === 'schematic')?.weaponId ?? null;
 }
 
 /** A corpse: `hp <= 0` and still `alive`, which is exactly what `DeathDropsSystem` looks for. */
@@ -56,7 +62,7 @@ function dropRate(trials: number): number {
     const s = state(seed);
     addCorpse(s, true);
     sys.tick(s);
-    if (s.runBlueprint !== null) hits++;
+    if (rolledSchematic(s) !== null) hits++;
   }
   return hits / trials;
 }
@@ -66,22 +72,24 @@ describe('who rolls', () => {
     const s = state(3);
     for (let i = 0; i < 50; i++) addCorpse(s, false);
     sys.tick(s);
-    expect(s.runBlueprint).toBeNull();
-    expect(s.events.filter((e) => e.type === 'blueprint_drop')).toEqual([]);
+    expect(rolledSchematic(s)).toBeNull();
+    expect(s.pickups.filter((i) => i.kind === 'schematic')).toEqual([]);
   });
 
   it('rolls for a boss', () => {
     // A seed picked BECAUSE it drops — the control for it is the rate measurement below, which
-    // is what proves this is not simply "always drops".
+    // is what proves this is not simply "always drops". A ground pickup fires no event of its
+    // own at drop time (same as `dropBossWeapons`'s weapons two describes down) — the `pickup`
+    // event only fires once a player actually collects it (`PickupSystem`, not run here).
     let found: GameState | null = null;
     for (let seed = 1; seed <= 200 && !found; seed++) {
       const s = state(seed);
       addCorpse(s, true);
       sys.tick(s);
-      if (s.runBlueprint !== null) found = s;
+      if (rolledSchematic(s) !== null) found = s;
     }
     expect(found).not.toBeNull();
-    expect(found!.events.some((e) => e.type === 'blueprint_drop')).toBe(true);
+    expect(found!.pickups.some((i) => i.kind === 'schematic')).toBe(true);
   });
 
   it('lands near BLUEPRINT_DROP_PERMILLE over many seeds', () => {
@@ -103,10 +111,11 @@ describe('what it awards', () => {
       const s = state(seed);
       addCorpse(s, true);
       sys.tick(s);
-      if (s.runBlueprint === null) continue;
+      const won = rolledSchematic(s);
+      if (won === null) continue;
       checked++;
-      expect(EARNABLE_BLUEPRINTS).toContain(s.runBlueprint);
-      expect(STARTER_BLUEPRINTS).not.toContain(s.runBlueprint);
+      expect(EARNABLE_BLUEPRINTS).toContain(won);
+      expect(STARTER_BLUEPRINTS).not.toContain(won);
     }
     expect(checked).toBeGreaterThan(0);
   });
@@ -121,20 +130,20 @@ describe('what it awards', () => {
       addCorpse(s, true);
       addCorpse(s, true);
       sys.tick(s);
-      if (s.runBlueprint === null) continue;
+      if (rolledSchematic(s) === null) continue;
       seen++;
-      expect(s.events.filter((e) => e.type === 'blueprint_drop')).toHaveLength(1);
+      expect(s.pickups.filter((i) => i.kind === 'schematic')).toHaveLength(1);
     }
     expect(seen).toBeGreaterThan(0);
   });
 
-  it('does not re-roll once a run already holds one', () => {
+  it('does not re-roll once a run already rolled (schematicRolled guard)', () => {
     const s = state(1);
-    s.runBlueprint = 'already_held';
+    s.schematicRolled = true; // simulates an earlier boss kill already having settled the roll
     addCorpse(s, true);
     sys.tick(s);
-    expect(s.runBlueprint).toBe('already_held');
-    expect(s.events.filter((e) => e.type === 'blueprint_drop')).toEqual([]);
+    expect(rolledSchematic(s)).toBeNull();
+    expect(s.pickups.filter((i) => i.kind === 'schematic')).toEqual([]);
     // That a suppressed roll also costs no DRAW — the part that would silently shift every
     // later loot roll of the run — is the cursor case below, which is the only shape that can
     // assert it: the ordinary death-drop roll draws too, so a before/after on one state cannot
@@ -154,7 +163,7 @@ describe('the draw itself', () => {
 
     const t = state(9);
     addCorpse(t, true);
-    t.runBlueprint = 'held'; // blocks the blueprint roll without changing anything else
+    t.schematicRolled = true; // blocks the blueprint roll without changing anything else
     sys.tick(t);
 
     // A boss also drops `BOSS_WEAPON_DROPS` guaranteed weapons (2026-09-14), one `nextInt`
@@ -183,5 +192,38 @@ describe('the draw itself', () => {
     addCorpse(mob, false);
     sys.tick(mob);
     expect(mob.pickups.filter((i) => i.kind === 'weapon')).toHaveLength(0);
+  });
+});
+
+describe('collecting the schematic (design/14, ENGINE_VERSION 68 — per-seat, not squad-wide)', () => {
+  const pickupSys = new PickupSystem();
+
+  it('a player who walks over the drop carries it — a teammate standing elsewhere does not', () => {
+    let s: GameState | null = null;
+    for (let seed = 1; seed <= 200 && !s; seed++) {
+      const t = state(seed);
+      // A second seat, its own bags — not a shallow spread of seat 0, which would share
+      // `floorMaterials`/`bankedMaterials` object references between "two" players.
+      t.players.push({ ...t.players[0]!, id: t.nextId(), floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null });
+      addCorpse(t, true);
+      sys.tick(t);
+      if (rolledSchematic(t) !== null) s = t;
+    }
+    expect(s).not.toBeNull();
+    const drop = s!.pickups.find((i) => i.kind === 'schematic')!;
+    const [a, b] = s!.players;
+    a!.gx = drop.gx;
+    a!.gy = drop.gy; // only seat A walks onto it
+    b!.gx = toFpGrid(500);
+    b!.gy = toFpGrid(500);
+    s!.tick += 1; // past the drop's own spawnTick — PickupSystem's same-tick guard (design/08)
+
+    pickupSys.tick(s!);
+
+    expect(a!.blueprintPickup).toBe(drop.weaponId);
+    expect(b!.blueprintPickup).toBeNull();
+    const ev = s!.events.find((e) => e.type === 'pickup' && e.kind === 'schematic');
+    expect(ev).toBeDefined();
+    expect((ev as { by: number }).by).toBe(a!.id);
   });
 });

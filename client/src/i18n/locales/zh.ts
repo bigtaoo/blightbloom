@@ -76,6 +76,7 @@ export const zh: Translations<typeof en> = {
     lockedFind: '未解锁（需寻获）',
     lockedSource: '未解锁（{source}）',
     craftable: '可打造',
+    craftableSchematic: '可打造（图纸 ×{count}）',
     needMaterials: '材料不足',
     kindTaken: '该类型已占用',
     stagedTag: '  ▸已装备×{count}',
@@ -306,6 +307,7 @@ export const zh: Translations<typeof en> = {
   toast: {
     heal: '+1 生命',
     newWeapon: '新武器',
+    schematicFound: '图纸：{weapon}',
     buffNamed: '增益：{id}',
     buffGeneric: '增益',
     materialQty: '+{qty} {material}',

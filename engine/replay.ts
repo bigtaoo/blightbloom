@@ -150,6 +150,14 @@ export function serializeState(s: GameState): unknown {
       // Floor-card vote (ENGINE_VERSION 58): persistent per-seat state that decides
       // which card a descend applies, so a desync in the tally has to surface here.
       p.cardVote,
+      // Per-seat carry-out (design/05/14, ENGINE_VERSION 68): moved off shared GameState
+      // onto each seat, so hashing them here (not at the top level any more) is what
+      // catches a per-seat divergence — two clients disagreeing about WHICH seat picked
+      // up a drop is exactly the class of desync this hash exists to surface early.
+      // Sorted by key for the same reason `sortedEntries` exists at the top level: two
+      // independently-constructed-but-equal states must hash equal regardless of
+      // Object.entries' insertion order.
+      sortedEntries(p.floorMaterials), sortedEntries(p.bankedMaterials), p.blueprintPickup ?? '',
       // Resolved spec fields: a weapon drop swaps the active slot's spec, so include
       // the numbers (not just name) to catch a loadout divergence.
       p.weapons.map((w) => [
@@ -213,13 +221,13 @@ export function serializeState(s: GameState): unknown {
     // positions and is what the all-plates test reads.
     chests: s.chests.map((c) => [c.id, c.opened, c.mechanisms.map((m) => m.occupied)]),
     shops: s.shops.map((sh) => [sh.id, sh.stock.map((o) => [o.id, o.kind, o.price, o.sold])]),
-    // Extraction / materials-banking (design/05, ROADMAP 1.4/1.5). floorIndex is a
-    // plain number; the two material maps are sorted by key so the hash doesn't depend
-    // on Object.entries' (already-deterministic) insertion order matching between two
-    // independently-constructed-but-equal states.
+    // Extraction / materials-banking (design/05, ROADMAP 1.4/1.5). floorIndex is a plain
+    // number; the per-seat material bags moved onto `players` above (ENGINE_VERSION 68).
     floorIndex: s.floorIndex,
-    floorMaterials: sortedEntries(s.floorMaterials),
-    bankedMaterials: sortedEntries(s.bankedMaterials),
+    // The boss schematic roll guard (design/14, ENGINE_VERSION 68) — a re-entered
+    // `rollBlueprint` after the run's one roll must stay a no-op on every client, so this
+    // is hashed the same way any other one-shot decision flag is.
+    schematicRolled: s.schematicRolled,
     // Floor cards (design/05, ENGINE_VERSION 58). The picked list drives the run's
     // heal-drop and coin multipliers (`resolveFloorCards`), and the open
     // offer decides what a descend can even apply — both are read back into sim

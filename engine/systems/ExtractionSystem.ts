@@ -33,9 +33,10 @@
  *     "cash out early". Both directions of the old choice are still reachable; what
  *     is not reachable any more is banking materials without beating the boss.
  *
- * Both resolutions bank state.floorMaterials into state.bankedMaterials (design/05
- * "materials so far are locked in" on descend; "keep materials" on extract) — a
- * run-ending DEATH never reaches here, so the floor buffer is simply never merged.
+ * Both resolutions bank each seat's own floorMaterials into its own bankedMaterials
+ * (design/05 "materials so far are locked in" on descend; "keep materials" on extract,
+ * per-seat since ENGINE_VERSION 68 — design/14) — a run-ending DEATH never reaches
+ * here, so no seat's floor buffer is ever merged.
  *
  * That is only HALF the forfeit rule, and this comment used to name the wrong half
  * ("forfeit only this floor's un-banked buffer" — design/05's own locked wipe rule
@@ -129,13 +130,17 @@ export class ExtractionSystem {
     return rt !== undefined && rt.activated && !rt.hasLiveEnemy;
   }
 
-  /** Merge this floor's buffer into the run's carry-out bag and reset it. Insertion
-   * order (= pickup order) is deterministic, so the merge is replay-stable (design/06). */
+  /** Merge every seat's own floor buffer into its own carry-out bag and reset it
+   * (per-seat since ENGINE_VERSION 68 — design/14). Iteration order is `state.players`'
+   * fixed array order and insertion order within each seat's bag is pickup order, so the
+   * merge is replay-stable (design/06) regardless of seat count. */
   private bankFloorMaterials(state: GameState): void {
-    for (const [id, qty] of Object.entries(state.floorMaterials)) {
-      state.bankedMaterials[id] = (state.bankedMaterials[id] ?? 0) + (qty ?? 0);
+    for (const p of state.players) {
+      for (const [id, qty] of Object.entries(p.floorMaterials)) {
+        p.bankedMaterials[id] = (p.bankedMaterials[id] ?? 0) + (qty ?? 0);
+      }
+      p.floorMaterials = {};
     }
-    state.floorMaterials = {};
   }
 
   private resolveExtract(state: GameState): void {

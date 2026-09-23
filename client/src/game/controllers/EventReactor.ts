@@ -292,10 +292,8 @@ export class EventReactor {
               this.fx.flash(fpToPx(e.gx), fpToPx(e.gy), c, 24);
               cue('pickup.weapon');
               this.hud.toast(spec ? tName(spec.nameKey) : t('toast.newWeapon'), c);
-              // Finding a catalogued weapon permanently unlocks its forge blueprint
-              // (design/14 "2–3 common blueprints drop from runs") — first-pass: any
-              // catalogued pickup grants it. Meta is separate from the sim, so this
-              // mid-run write can't affect determinism.
+              // A catalogued weapon found grants its blueprint too — permanent, or a
+              // stacked schematic for the earnable pool (`Game.onWeaponPickup`, ENGINE_VERSION 68).
               if (e.weaponId && BLUEPRINT_CATALOG[e.weaponId]) this.host.onWeaponPickup(e.weaponId);
               break;
             }
@@ -311,6 +309,13 @@ export class EventReactor {
                 this.hud.toast(label ? t('toast.buffNamed', { id: label }) : t('toast.buffGeneric'), THEME.colors.pickupBuff);
               }
               break;
+            case 'schematic': { // a boss's one-time drop (ENGINE_VERSION 68) — cosmetic only
+              const spec = e.weaponId ? WEAPON_SIM_BY_ID[e.weaponId] : undefined;
+              this.fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.pickupSchematic, 26);
+              cue('pickup.buff'); // reuses buff's cue — no recorded asset for a new one
+              this.hud.toast(t('toast.schematicFound', { weapon: spec ? tName(spec.nameKey) : (e.weaponId ?? '') }), THEME.colors.pickupSchematic);
+              break;
+            }
             default: { // material
               this.host.addScore(SCORE.material);
               this.fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.pickupMaterial, 16);

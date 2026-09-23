@@ -20,11 +20,16 @@ const BTN_TEXT_W = BTN_W - 20;
  * so a player standing here is deciding about the WHOLE run's materials, and design/05's
  * locked wipe rule says the bag is at risk right up to this press (`RunOutcome.lose()`
  * never hands it over). Naming the smaller half would understate what the button pays.
+ *
+ * Per-seat since ENGINE_VERSION 68 (design/14) — this shows THIS local seat's own bags,
+ * which now genuinely differ from a teammate's.
  */
-function totalCarryOut(s: GameState): number {
+function totalCarryOut(s: GameState, localOwner: number): number {
   let n = 0;
-  for (const v of Object.values(s.floorMaterials)) n += v ?? 0;
-  for (const v of Object.values(s.bankedMaterials)) n += v ?? 0;
+  const p = s.players[localOwner];
+  if (!p) return 0;
+  for (const v of Object.values(p.floorMaterials)) n += v ?? 0;
+  for (const v of Object.values(p.bankedMaterials)) n += v ?? 0;
   return n;
 }
 
@@ -124,13 +129,13 @@ export class PortalPrompt {
    *  death drops). The interior floors LOSING their Extract button is ENGINE_VERSION 61 —
    *  the title still names the extraction that is coming, one floor at a time, and the
    *  run's own exit is now the boss. */
-  update(s: GameState, show: boolean, isLastFloor = false): void {
+  update(s: GameState, show: boolean, localOwner: number, isLastFloor = false): void {
     this._isOpen = show;
     this.view.visible = show;
     if (!show) return;
     const nextFloor = s.floorIndex + 2; // 1-based display, one floor further than current
     this.titleText.text = t(isLastFloor ? 'hud.portalTitleBoss' : 'hud.portalTitle');
-    this.extractBtn.setText(t('hud.portalExtract', { pending: totalCarryOut(s) }));
+    this.extractBtn.setText(t('hud.portalExtract', { pending: totalCarryOut(s, localOwner) }));
     this.descendBtn.setText(t('hud.portalDescend', { floor: nextFloor }));
     this.extractBtn.view.visible = isLastFloor;
     this.descendBtn.view.visible = !isLastFloor;
