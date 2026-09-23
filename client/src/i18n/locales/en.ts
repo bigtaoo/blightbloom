@@ -79,6 +79,7 @@ export const en = {
     lockedFind: 'locked (find it)',
     lockedSource: 'locked ({source})',
     craftable: 'craftable',
+    craftableSchematic: 'craftable (schematic ×{count})',
     needMaterials: 'need materials',
     kindTaken: 'slot kind taken',
     stagedTag: '  ▸staged×{count}',
@@ -329,6 +330,7 @@ export const en = {
   toast: {
     heal: '+1 HP',
     newWeapon: 'New weapon',
+    schematicFound: 'Schematic: {weapon}',
     buffNamed: 'Buff: {id}',
     buffGeneric: 'Buff',
     materialQty: '+{qty} {material}',

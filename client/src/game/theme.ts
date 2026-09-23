@@ -48,6 +48,10 @@ export const THEME = {
     // distinct hue was the alternative and it is the worse one — a currency that does not
     // look like money is a tutorial nobody gets.
     pickupCoin: 0xffc94a,
+    // A boss's one-time blueprint schematic (design/14, ENGINE_VERSION 68) — rose, the one
+    // hue in the set that reads as "rare find" rather than "resource," since at most one of
+    // these exists in an entire run (unlike every other pickup here, which is routine loot).
+    pickupSchematic: 0xf687b3,
     // Elemental status fx (design/03/07) — flashed on the 'status' event, and now
     // also the bullet-trail + lingering-aura colours (per-element render polish).
     statusBurn: 0xff7043, // fire — orange flame

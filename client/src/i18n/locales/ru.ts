@@ -81,6 +81,7 @@ export const ru: Translations<typeof en> = {
     lockedFind: 'заблокировано (нужно найти)',
     lockedSource: 'заблокировано ({source})',
     craftable: 'можно скрафтить',
+    craftableSchematic: 'можно скрафтить (схема ×{count})',
     needMaterials: 'не хватает материалов',
     kindTaken: 'тип уже занят',
     stagedTag: '  ▸экипировано×{count}',
@@ -312,6 +313,7 @@ export const ru: Translations<typeof en> = {
   toast: {
     heal: '+1 ОЗ',
     newWeapon: 'Новое оружие',
+    schematicFound: 'Схема: {weapon}',
     buffNamed: 'Бафф: {id}',
     buffGeneric: 'Бафф',
     materialQty: '+{qty} {material}',

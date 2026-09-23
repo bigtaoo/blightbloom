@@ -955,7 +955,7 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
 
     loop.update(16);
 
-    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), true);
+    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), 0, true);
   });
 
   it('drives the floor-card offer off the SAME show condition as the portal popup', () => {

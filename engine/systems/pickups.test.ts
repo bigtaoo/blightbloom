@@ -105,15 +105,31 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     sys.tick(s);
 
     expect(s.pickups).toHaveLength(0);
-    expect(s.floorMaterials.mat_fire).toBe(1);
+    expect(p.floorMaterials.mat_fire).toBe(1);
+  });
+
+  it('a material goes into the COLLECTOR\u2019s own floor buffer, not a shared one (ENGINE_VERSION 68)', () => {
+    // Per-seat since ENGINE_VERSION 68, exactly like `coin` already was \u2014 asserted against
+    // a teammate standing on the same tile, because "went to the right bag" and "went to A
+    // bag" are different claims.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    b.gx = a.gx;
+    b.gy = a.gy;
+    dropOnPlayer(s, { kind: 'material', materialId: 'mat_fire', qty: 5, tier: 0 });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(a.floorMaterials.mat_fire).toBe(5);
+    expect(b.floorMaterials.mat_fire).toBeUndefined();
   });
 
   it('a coin goes into the COLLECTOR\u2019s wallet, not a shared floor buffer', () => {
-    // The difference from `material` one test up, and the whole per-seat-purse decision:
-    // a material lands in `state.floorMaterials` (the run's, banked at a checkpoint), a coin
-    // lands on the player who walked over it and is never seen again by anything outside the
-    // run. Asserted against a teammate standing on the same tile, because "went to the right
-    // wallet" and "went to A wallet" are different claims.
+    // The whole per-seat-purse decision, now shared by `material` too (the test above) \u2014 a
+    // coin is never banked/carried out at all, unlike material, which is the rest of the
+    // difference between the two. Asserted against a teammate standing on the same tile,
+    // because "went to the right wallet" and "went to A wallet" are different claims.
     const s = createGameState({ ...CFG, players: [{}, {}] });
     const [a, b] = [s.players[0]!, s.players[1]!];
     b.gx = a.gx;
@@ -125,8 +141,37 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(0);
     expect(a.coins).toBe(5);
     expect(b.coins).toBe(0);
-    expect(s.floorMaterials).toEqual({});
-    expect(s.bankedMaterials).toEqual({});
+    expect(a.floorMaterials).toEqual({});
+    expect(a.bankedMaterials).toEqual({});
+  });
+
+  it('a schematic goes to the COLLECTOR’s own blueprintPickup, not every seat (ENGINE_VERSION 68)', () => {
+    // Replaces the old squad-wide `state.runBlueprint` flag — whichever seat's actor is
+    // standing on it is the one who carries it out, exactly like `material` above.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    b.gx = a.gx;
+    b.gy = a.gy;
+    dropOnPlayer(s, { kind: 'schematic', weaponId: 'flamer' });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(a.blueprintPickup).toBe('flamer');
+    expect(b.blueprintPickup).toBeNull();
+  });
+
+  it('a second schematic pickup this tick does not overwrite an already-carried one', () => {
+    // Defensive: only one schematic ever exists in a run today (one boss, one roll), so
+    // this guards a future where that stops being true rather than a reachable case now.
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.blueprintPickup = 'spear';
+    dropOnPlayer(s, { kind: 'schematic', weaponId: 'flamer' });
+
+    sys.tick(s);
+
+    expect(p.blueprintPickup).toBe('spear');
   });
 
   it('the event names the COLLECTOR, not the item and not the first seat (render reads `by`)', () => {

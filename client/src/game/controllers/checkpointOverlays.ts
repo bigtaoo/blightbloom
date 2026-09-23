@@ -55,7 +55,7 @@ export function updateCheckpointOverlays(s: GameState, localOwner: number, d: Ch
   const nearPortal =
     !!p && !!portalPx && Math.hypot(fpToPx(p.gx) - portalPx.x, fpToPx(p.gy) - portalPx.y) <= PORTAL_PROMPT_RADIUS_PX;
 
-  d.portalPrompt.update(s, eligible && nearPortal, isLastFloor);
+  d.portalPrompt.update(s, eligible && nearPortal, localOwner, isLastFloor);
   d.floorCardPrompt.update(s, eligible && nearPortal, localOwner);
   d.suppressFire(d.portalPrompt.isOpen);
 }

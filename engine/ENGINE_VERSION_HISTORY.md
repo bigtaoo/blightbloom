@@ -2423,3 +2423,34 @@ and pins the no-exact-budget-tie constraint that 3.2 was invented to satisfy. An
 deliberate**" flips to "**no float at all**": that exemption existed solely because of this
 pool, its own note warned that the first `*` or `/` on the field would turn it into a real
 desync, and the whole serialized state is now integral with the exemption deleted.
+
+v68 (design/14, 2026-09-23): materials and the boss's one-time blueprint schematic move
+from shared `GameState` fields to per-seat `PlayerActor` fields (`floorMaterials`,
+`bankedMaterials`, `blueprintPickup`), and the schematic itself becomes a real ground pickup
+(`PickupKind` gains `'schematic'`) instead of an automatic squad-wide grant the moment a boss
+died. Every seat's client used to apply the SAME shared total to its own account regardless of
+who physically collected which drop; now whichever seat's actor overlaps a `material`/
+`schematic` pickup is the one whose own bag grows — the same rule `coins` and every weapon
+pickup already followed. `state.runBlueprint` is gone; `state.schematicRolled` replaces it as
+the roll's one-shot guard (WHETHER the roll happened, never WHO ends up carrying the result).
+`blueprint_drop` (a render-only event fired at drop time) is deleted — the `pickup` event
+already carries `kind`/`weaponId`/`by`, so a schematic collection is an ordinary pickup event
+like every other kind, firing on COLLECTION rather than on drop.
+
+**A v67 stream diverges immediately**: the hashed state moved off a handful of top-level fields
+onto each player's own record (`replay.ts`), so even a run that never touches a chest/shop/boss
+hashes differently from tick 0 (the new `schematicRolled` guard field alone).
+
+**Solo play is unaffected in outcome** — one seat's own bag is the same number the old shared
+pool would have handed it. **Squad play is not**: a floor's material yield used to be handed to
+every seat in full regardless of who walked over what; it is now genuinely split by physical
+collection, which is a real economy change (and, design/05 would say, the mechanical payoff
+for its own "squadmates can split up to loot different rooms in parallel" line — proximity now
+has a reason to matter for progression, not just for combat).
+
+The meta layer (`client/src/meta`) gains a third tier alongside the existing permanent
+`unlockedBlueprints`: `blueprintStock` (a stackable one-time schematic count). `craft()` now
+prefers a permanent recipe when both exist for the same weaponId, so a stacked schematic is
+never silently spent on a weapon the account already owns outright — see `meta/forge.ts`'s own
+header for the full account, including why today's catalog can never actually present that
+choice.

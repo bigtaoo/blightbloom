@@ -17,9 +17,22 @@ export interface MetaState {
    * is folded in here on a successful extraction. The sole crafting currency (design/14);
    * a recipe's minTier is enforced against these tiered keys (see meta/forge). */
   materialBank: Record<string, number>;
-  /** Permanently unlocked weapon blueprints (weaponIds into BLUEPRINT_CATALOG). Account-
-   * level, never lost — distinct from a crafted instance, which is one run (design/14). */
+  /** Permanently unlocked weapon blueprints (weaponIds into BLUEPRINT_CATALOG) — never
+   * spent by a craft, and never lost. Two sources, treated identically (design/14,
+   * revised ENGINE_VERSION 68): the starter grant every account is created with, and a
+   * store purchase — a registration grant is not a trial, it behaves exactly like a
+   * purchase. Distinct from a crafted instance (one run, design/05) and from
+   * `blueprintStock` below (a boss's one-time schematic drop, consumed by the craft
+   * that spends it). */
   unlockedBlueprints: string[];
+  /** One-time blueprint SCHEMATICS on hand (weaponId → count), from a boss's rare drop
+   * (design/14, ENGINE_VERSION 68). Stackable — a squad's boss can pay out at most one
+   * per run, but nothing stops several runs' drops from piling up unused. Crafting a
+   * weaponId already in `unlockedBlueprints` never touches this: the permanent recipe
+   * is checked first, so a stacked schematic for a weapon you also own outright is
+   * simply not spent (design/14 "a schematic for a weapon you already own permanently
+   * is a real, accepted dud — see `content/blueprints.ts`'s boss-roll doc comment"). */
+  blueprintStock: Record<string, number>;
   /** Characters the account owns (skinIds). Free roster today; paid roster is 2.3/2.4. */
   ownedCharacters: string[];
   /** Up to WEAPON_SLOTS crafted weaponIds staged for the next run (design/05/14). Consumed
@@ -44,6 +57,7 @@ export function defaultMetaState(): MetaState {
   return {
     materialBank: {},
     unlockedBlueprints: [...STARTER_BLUEPRINTS],
+    blueprintStock: {},
     ownedCharacters: [...FREE_CHARACTERS],
     loadout: [],
     selectedSkin: DEFAULT_SKIN_ID,

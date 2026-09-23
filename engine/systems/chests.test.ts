@@ -67,6 +67,7 @@ function addPlayer(s: GameState, gx: number, gy: number): PlayerActor {
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),
+    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null,
   };
   s.players.push(p);
   return p;

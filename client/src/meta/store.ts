@@ -74,7 +74,7 @@ export function migrate(parsed: unknown): MetaState {
   // verbatim; materialBank didn't, so a corrupted/hand-edited entry (e.g. a string qty)
   // passed straight through and broke forge.ts's `sum + e.qty` reduce (string
   // concatenation instead of addition) instead of failing safe like everything else.
-  const materialBank = (saved: unknown): Record<string, number> => {
+  const numberRecord = (saved: unknown): Record<string, number> => {
     if (!saved || typeof saved !== 'object') return {};
     const out: Record<string, number> = {};
     for (const [k, v] of Object.entries(saved as Record<string, unknown>)) {
@@ -83,8 +83,13 @@ export function migrate(parsed: unknown): MetaState {
     return out;
   };
   return {
-    materialBank: materialBank(p.materialBank),
+    materialBank: numberRecord(p.materialBank),
     unlockedBlueprints: union(d.unlockedBlueprints, p.unlockedBlueprints),
+    // blueprintStock (design/14, ENGINE_VERSION 68) is a count like materialBank, not a
+    // permanent right like unlockedBlueprints — absent from an older save (predates this
+    // field) migrates to empty, same as a fresh account, rather than unioning in a default
+    // that does not exist (there is no starter schematic stock to backfill).
+    blueprintStock: numberRecord(p.blueprintStock),
     ownedCharacters: union(d.ownedCharacters, p.ownedCharacters),
     loadout: Array.isArray(p.loadout) ? p.loadout.filter((x): x is string => typeof x === 'string') : [],
     selectedSkin: typeof p.selectedSkin === 'string' ? p.selectedSkin : d.selectedSkin,

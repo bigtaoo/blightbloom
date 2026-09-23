@@ -169,6 +169,28 @@ export interface PlayerActor extends Actor {
   // PvE's free channel. Picked up from the arena's `{kind:'bandage'}` drop (PvP-only,
   // content/drops.ts). Always 0 in PvE — nothing grants or reads it there.
   bandages: number;
+  // ── Per-seat carry-out (design/05/14, ENGINE_VERSION 68) ────────────────────
+  // Materials and the boss's one-time schematic used to be a single SHARED bag on
+  // `GameState` — every seat's client applied the same total to its own account
+  // regardless of who physically walked over which drop. Moved per-seat: whichever
+  // player's actor overlaps a `material`/`schematic` pickup is the one whose own bag
+  // grows, matching how `coins` (above, already per-seat) and every weapon pickup
+  // (click-driven, always the clicking player's own loadout) already worked. A run
+  // that ends in defeat forfeits every seat's bags identically — the merge simply
+  // never runs, same mechanism as before, just per-seat now.
+  /** This floor's un-banked material buffer (materialId+tier bank-key → qty), auto-
+   *  collected by `PickupSystem`, merged into `bankedMaterials` on EXTRACT/DESCEND
+   *  (`ExtractionSystem`), forfeited on a run-ending death. */
+  floorMaterials: Partial<Record<string, number>>;
+  /** This seat's carry-out bag — the ONLY thing (besides `blueprintPickup`) that
+   *  leaves a run for this seat. Never wiped by death; only ever grows, at an
+   *  extraction checkpoint. */
+  bankedMaterials: Partial<Record<string, number>>;
+  /** The weaponId of the boss's one-time schematic drop, if THIS seat is the one who
+   *  walked over it — `null` otherwise, including for every other seat in the same
+   *  run. At most one exists per run (one boss, one roll), so a plain nullable field
+   *  is enough; forfeited on a run-ending death exactly like `bankedMaterials`. */
+  blueprintPickup: string | null;
 }
 
 /** A player who is downed (incapacitated, revivable) — not a valid target and cannot act.

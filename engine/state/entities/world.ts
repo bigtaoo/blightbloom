@@ -71,6 +71,13 @@ export interface AABB {
 // into the COLLECTING PLAYER's own wallet rather than a shared floor buffer: a coin is
 // never banked, never carried out and never seen by the meta layer, so there is nothing for
 // `ExtractionSystem` to merge and nothing for a death to forfeit beyond the run itself.
+// 'schematic' (design/14, ENGINE_VERSION 68) is a boss kill's one-time blueprint drop — a
+// physical ground item like every other carry-out, replacing the old auto-grant-to-the-
+// whole-run `state.runBlueprint` flag. Auto-collected like `material`, and into the
+// COLLECTING PLAYER's own per-seat carry-out bag (`PlayerActor.schematicStock`), not a
+// shared one: whichever seat walks over it is the one whose account gets it, exactly like
+// `material` now works (see `PlayerActor.floorMaterials`'s own doc comment for why the carry-
+// out model moved from "whole squad shares one pool" to "per seat, first to touch keeps it").
 export type PickupKind =
   | 'heal'
   | 'material'
@@ -79,7 +86,8 @@ export type PickupKind =
   | 'buff'
   | 'crate'
   | 'bandage'
-  | 'energy';
+  | 'energy'
+  | 'schematic';
 
 /**
  * A chest's kind (design/05 "Chest rooms"). The two differ in WHO can open one and in

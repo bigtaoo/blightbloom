@@ -121,6 +121,18 @@ describe('EventReactor — pickup toasts', () => {
     expect(toast).toHaveBeenCalledWith('New weapon', expect.anything());
   });
 
+  it('a schematic pickup toasts the translated weapon name (ENGINE_VERSION 68)', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'schematic', weaponId: 'flamer' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('Schematic: Flamethrower', expect.anything());
+  });
+
+  it('an unrecognized schematic weapon id falls back to the raw id', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'schematic', weaponId: 'no-such-weapon' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('Schematic: no-such-weapon', expect.anything());
+  });
+
   it('a recognized buff toasts "Buff: {translated name}"', () => {
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'buff', buffId: 'dmg_up' }] as GameEvent[]);
@@ -1305,11 +1317,12 @@ describe('a chest opening', () => {
 /**
  * The events nothing on the client reacts to yet.
  *
- * `DeathDropsSystem` pushes an event the render layer never reads (`blueprint_drop`,
- * ENGINE_VERSION 63) — the one earn-by-playing blueprint in the meta lands with no cue at all.
- * `chest_open` was on this list beside it until 2026-09-15 and is the example of the list
- * working: it sat here for a day as "a chest pays out in silence", the silence was then
- * reported from real play as the mechanic being broken, and it is now wired to `chest.open`.
+ * `blueprint_drop` was on this list (ENGINE_VERSION 63) until it was DELETED, not wired up
+ * (ENGINE_VERSION 68): the boss schematic is now a real ground pickup, so its cue is an
+ * ordinary `pickup`/`'schematic'` case like every other kind, not a second event type.
+ * `chest_open` was on this list until 2026-09-15 and is the example of the list working: it
+ * sat here for a day as "a chest pays out in silence", the silence was then reported from
+ * real play as the mechanic being broken, and it is now wired to `chest.open`.
  * The shrinking zone's three events have been in the same position for longer, and
  * `EventReactor.ts`'s own comment on `zone_damage` says so ("this reactor has never handled
  * [it], and wiring that up is its own decision").
@@ -1326,7 +1339,6 @@ describe('engine events the client deliberately does not react to', () => {
 
   /** Every engine event with no `case` in the reactor, and the reason each one is here. */
   const UNWIRED: Record<string, string> = {
-    blueprint_drop: 'the drop is reported on the results screen (RunOutcome), not in-run',
     zone_warn: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
     zone_close: 'PvP zone UI is unbuilt (ROADMAP 4.2d)',
     zone_damage: 'the hurt cue fires on `hit`; zone ticks arrive here instead and are their own decision',
@@ -1348,21 +1360,4 @@ describe('engine events the client deliberately does not react to', () => {
     expect([...reacted].filter((t) => !declared.includes(t) && !pickupKinds.includes(t))).toEqual([]);
   });
 
-  it('drains a blueprint drop without a cue, a toast or a crash', () => {
-    // What "unwired" means at runtime, so the list above is not the only thing saying it.
-    const fx = fakeFx();
-    const audio = fakeAudio();
-    const hud = new HudView();
-    hud.build(new Layers(), { w: 1280, h: 720 });
-    const toast = vi.spyOn(hud, 'toast');
-    const reactor = new EventReactor(fx, hud, audio, fakeHost());
-
-    reactor.consume([
-      { type: 'blueprint_drop', weaponId: 'scattergun', gx: pxToFp(100), gy: pxToFp(100) } as GameEvent,
-    ]);
-
-    expect(toast).not.toHaveBeenCalled();
-    expect(audio.play).not.toHaveBeenCalled();
-    expect(fx.flash).not.toHaveBeenCalled();
-  });
 });
