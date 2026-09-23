@@ -157,6 +157,30 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(p.shield).toBe(20); // SHIELD_PICKUP_AMOUNT (10) * aegis's factor (2)
   });
 
+  // The two tests above both keep the pool wide open so the doubled amount is never clamped —
+  // which leaves the clamp UN-exercised for a carded pickup. `Math.min(max, cur + AMOUNT * mult)`
+  // and `cur + Math.min(max - cur, AMOUNT * mult)` agree everywhere the tests above look and
+  // disagree exactly at the boundary a real near-full player actually sits at.
+  it("'surge' still clamps to maxEnergy for a near-full player — the doubled amount does not overshoot", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('surge');
+    p.energy = p.maxEnergy - 5; // the UN-doubled amount (30) would already overfill this
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy);
+  });
+
+  it("'aegis' still clamps to maxShield for a near-full player, the same way", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('aegis');
+    p.shield = p.maxShield - 3;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield);
+  });
+
   it('an emp burst damages every alive enemy in range, shield-first, and is refused with nothing to hit', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;

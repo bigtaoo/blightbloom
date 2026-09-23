@@ -531,6 +531,34 @@ describe('ChestSystem — the pile a chest leaves behind', () => {
     expect(s.pickups.filter((q) => q.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS + 1);
   });
 
+  it("'bounty' adds ONE weapon regardless of party size, not one per seat (Task 8)", () => {
+    // `chestWeaponCount('big', seats)` already pays one weapon PER SEAT — bounty's count is
+    // added on top of that result (`resolveFloorCards(...).chestBonusWeapons`), not folded into
+    // the per-seat rate, so a 3-seat big chest should gain exactly +1, not +3. A regression that
+    // multiplied the bonus by seat count would still pass the single-seat test above.
+    const s = state();
+    s.floorCards.push('bounty');
+    addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
+    addPlayer(s, 10, 10);
+    const c = addChest(s, 'big', 10, 10, 3);
+    for (const m of c.mechanisms) {
+      m.gx = toFpGrid(10);
+      m.gy = toFpGrid(10);
+    }
+    sys.tick(s);
+    expect(s.pickups).toHaveLength(4); // 3 seats' worth + bounty's flat +1
+  });
+
+  it("two 'bounty' picks add two extra weapons, not four (additive, not multiplicative)", () => {
+    const s = state();
+    s.floorCards.push('bounty', 'bounty');
+    addPlayer(s, 10, 10);
+    addChest(s, 'small', 10, 10);
+    sys.tick(s);
+    expect(s.pickups.filter((q) => q.kind === 'weapon')).toHaveLength(CHEST_SMALL_WEAPONS + 2);
+  });
+
   it('gives every weapon in one payout its own id', () => {
     const s = state();
     addPlayer(s, 10, 10);
