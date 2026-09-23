@@ -87,7 +87,13 @@ export type PickupKind =
   | 'crate'
   | 'bandage'
   | 'energy'
-  | 'schematic';
+  | 'schematic'
+  // Instant items (Task 4, ENGINE_VERSION 71) — auto-apply on overlap like `heal`/
+  // `energy`, the two other capped-pool instants (`PickupSystem.pickupWouldApply`'s
+  // own doc comment anticipated exactly this: "if a shield/temp-buff instant item is
+  // ever added, this is the one place it needs a clause").
+  | 'shield' // restores PlayerActor.shield toward maxShield — no instant shield refill existed before this; shield otherwise only recovers via idle regen.
+  | 'emp'; // instant burst: lightning damage to every alive enemy within EMP_RADIUS_FP of the collector — the roster's first offensive (not self-restoring) instant item.
 
 /**
  * A chest's kind (design/05 "Chest rooms"). The two differ in WHO can open one and in
@@ -152,7 +158,7 @@ export interface ShopOffer {
   /** From `GameState.nextShopId()`, a separate id space (see there). Compared only against
    *  `PlayerCommand.shopBuyId`, never against an entity or pickup id. */
   id: number;
-  kind: 'weapon' | 'buff' | 'heal' | 'energy';
+  kind: 'weapon' | 'buff' | 'heal' | 'energy' | 'shield' | 'emp';
   weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
   buffId?: string; // kind 'buff' → id into RUN_BUFFS
   price: number; // in coins (PlayerActor.coins)

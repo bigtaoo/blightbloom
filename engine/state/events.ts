@@ -98,7 +98,7 @@ export type GameEvent =
       type: 'shop_buy';
       id: number;
       buyer: number;
-      kind: 'weapon' | 'buff' | 'heal' | 'energy';
+      kind: 'weapon' | 'buff' | 'heal' | 'energy' | 'shield' | 'emp';
       price: number;
       gx: Fp;
       gy: Fp;

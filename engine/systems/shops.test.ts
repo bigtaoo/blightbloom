@@ -26,9 +26,10 @@ import type { GameState } from '@dd/engine/state/GameState';
 import type { PlayerActor, Shop, ShopOffer } from '@dd/engine/state/entities';
 import { ShopSystem } from '@dd/engine/systems';
 import { rollShopStock, SHOP_PRICES } from '@dd/engine/content/shops';
-import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT } from '@dd/engine/content/drops';
+import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
 import { SHOP_INTERACT_RANGE_GRID, SHOP_STOCK_SIZE } from '@dd/engine/config';
 import { Prng } from '@dd/engine/math/prng';
+import { buildEnemyActor } from '@dd/engine/content/enemies';
 
 const CFG = { seed: 11, worldW: 2400, worldH: 2400, waves: [] as const };
 const sys = new ShopSystem();
@@ -99,19 +100,19 @@ describe('rollShopStock — the counter is composed, not rolled', () => {
       expect(stock).toHaveLength(SHOP_STOCK_SIZE);
       expect(stock[0]!.kind).toBe('weapon');
       expect(stock[1]!.kind).toBe('buff');
-      expect(['heal', 'energy']).toContain(stock[2]!.kind);
+      expect(['heal', 'energy', 'shield', 'emp']).toContain(stock[2]!.kind);
       expect(WEAPON_DROP_POOL).toContain(stock[0]!.weaponId);
       expect(BUFF_DROP_POOL).toContain(stock[1]!.buffId);
     }
   });
 
-  it('rolls BOTH supply kinds across seeds, so the third slot is a real coin flip', () => {
-    // The control on the test above: `toContain(['heal','energy'])` passes for a shop that
-    // only ever stocks potions, which is what a `nextInt(2) === 0` mistyped as `!== 1` would
-    // still be — and a supply slot that never rolls energy is a silently deleted half.
+  it('rolls all FOUR supply kinds across seeds (Task 4 widened the slot from a coin flip)', () => {
+    // The control on the test above: `toContain([...])` passes for a shop that only ever
+    // stocks one kind, which is what a mistyped `nextInt` would still be — and a supply
+    // slot that never rolls one of its four kinds is a silently deleted quarter.
     const kinds = new Set<string>();
     for (let seed = 0; seed < 50; seed++) kinds.add(rollShopStock(new Prng(seed), ids())[2]!.kind);
-    expect(kinds).toEqual(new Set(['heal', 'energy']));
+    expect(kinds).toEqual(new Set(['heal', 'energy', 'shield', 'emp']));
   });
 
   it('spends exactly three draws whatever it rolls', () => {
@@ -185,6 +186,27 @@ describe('ShopSystem — what a tap buys', () => {
     sys.tick(s);
     expect(p.energy).toBe(Math.min(p.maxEnergy, ENERGY_PICKUP_AMOUNT));
     expect(p.coins).toBe(76);
+  });
+
+  it('recharges the shield and bursts every enemy in range (Task 4), clamped/gated the same way', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    p.maxShield = 8; // the fixture's own default is 0 — give it a real pool to restore into
+    p.shield = p.maxShield - 5;
+    const near = buildEnemyActor(s, p.gx, p.gy, 'basic');
+    s.enemies.push(near);
+    const startingHp = near.hp;
+    const shop = addShop(s, 10, 10, [
+      { kind: 'shield', price: SHOP_PRICES.shield },
+      { kind: 'emp', price: SHOP_PRICES.emp },
+    ]);
+    p.shopBuyId = shop.stock[0]!.id;
+    sys.tick(s);
+    expect(p.shield).toBe(Math.min(p.maxShield, p.maxShield - 5 + SHIELD_PICKUP_AMOUNT));
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(near.hp).toBeLessThan(startingHp);
+    expect(p.coins).toBe(100 - SHOP_PRICES.shield - SHOP_PRICES.emp);
   });
 
   it('emits shop_buy naming the BUYER, so a client can tell a confirmation from an explanation', () => {
@@ -274,6 +296,32 @@ describe('ShopSystem — the refusals', () => {
     p.shopBuyId = shop.stock[0]!.id;
     sys.tick(s);
     expect(p.coins).toBe(88);
+  });
+
+  it('applies the same instant-item refusal to shield (full) and emp (nothing in range)', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    p.maxShield = 8; // the fixture's own default is 0 — give it a real pool to gate on
+    p.shield = p.maxShield;
+    const shop = addShop(s, 10, 10, [
+      { kind: 'shield', price: SHOP_PRICES.shield },
+      { kind: 'emp', price: SHOP_PRICES.emp },
+    ]);
+    p.shopBuyId = shop.stock[0]!.id;
+    refused(s, p, shop, 100);
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(shop.stock[1]!.sold).toBe(false); // no enemy anywhere yet
+    expect(p.coins).toBe(100);
+
+    p.shield = 0;
+    p.shopBuyId = shop.stock[0]!.id;
+    sys.tick(s);
+    expect(shop.stock[0]!.sold).toBe(true);
+    s.enemies.push(buildEnemyActor(s, p.gx, p.gy, 'basic'));
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(shop.stock[1]!.sold).toBe(true);
   });
 
   it('does NOT apply that rule to a weapon or a buff', () => {

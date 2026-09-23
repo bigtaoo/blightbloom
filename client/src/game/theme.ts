@@ -52,6 +52,15 @@ export const THEME = {
     // hue in the set that reads as "rare find" rather than "resource," since at most one of
     // these exists in an entire run (unlike every other pickup here, which is routine loot).
     pickupSchematic: 0xf687b3,
+    // Shield battery (Task 4) — reuses `shield`'s own cyan rather than a new hue: it is
+    // the exact pool that colour already means everywhere else (the HUD bar, the
+    // shield-break burst), so a fifth distinct hue here would separate two readouts of
+    // the SAME pool for no reason.
+    pickupShield: 0x76e4f7,
+    // EMP grenade (Task 4) — reuses the lightning status hue (`statusShock`): the item
+    // IS a burst of that element, same "colour follows the damage type" rule the four
+    // elemental enemy variants already carry.
+    pickupEmp: 0xfff176,
     armorBreak: 0x90a4ae, // steel grey — IRONWARDEN's own tint (Task 2), a boss's armored phase breaking
     // Elemental status fx (design/03/07) — flashed on the 'status' event, and now
     // also the bullet-trail + lingering-aura colours (per-element render polish).

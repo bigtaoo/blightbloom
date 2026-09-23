@@ -133,6 +133,8 @@ export const pl: Translations<typeof en> = {
       sold: 'SPRZEDANE',
       heal: 'Mikstura leczenia',
       energy: 'Ogniwo energii',
+      shield: 'Bateria tarczy',
+      emp: 'Granat EMP',
     },
     chest: {
       bigTitle: 'Duża skrzynia',
@@ -307,6 +309,8 @@ export const pl: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 PŻ',
+    shield: 'Tarcza naładowana',
+    emp: 'Wybuch EMP',
     newWeapon: 'Nowa broń',
     schematicFound: 'Schemat: {weapon}',
     buffNamed: 'Wzmocnienie: {id}',

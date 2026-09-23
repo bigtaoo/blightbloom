@@ -259,10 +259,12 @@ floor is placed, and gone when the floor is. That last part is the economy's onl
 pressure: **coins saved for a deeper shop are a bet that a deeper shop exists**, and you cannot
 walk back.
 
-- **Three lines, and their KINDS are fixed** — a weapon, a buff, and a supply (heal or energy).
-  Not three draws from one pool: the shop's job is to be the recoverable half of taking weapons
-  off the kill table, and a counter that can roll three potions cannot do that job. Fixing the
-  slots is also what lets each line carry one price instead of a price band.
+- **Three lines, and their KINDS are fixed** — a weapon, a buff, and a supply (heal, energy,
+  shield, or emp — Task 4, `ENGINE_VERSION` 71, widened the draw once the last two instant
+  items existed; see below). Not three draws from one pool: the shop's job is to be the
+  recoverable half of taking weapons off the kill table, and a counter that can roll three
+  potions cannot do that job. Fixing the slots is also what lets each line carry one price
+  instead of a price band.
 - **Priced against a measured floor, not a feel.** At 23.8% of kills and `COIN_DROP_QTY` 5, the
   measured level (34.6 kills on floor 0, 52 on floor 2) yields roughly **40-60 coins a floor**.
   The first-pass prices — weapon 45, buff 30, supply 12 — mean a floor's whole income buys the
@@ -274,13 +276,22 @@ walk back.
   one of the things in reach": the ground-weapon panel's click-to-collect (`03`). A shop tap is
   the same one-shot latch on its own command field, and the panel is non-blocking for the same
   reason that one is — lockstep cannot stop for one player (`06`).
-- **A bought weapon lands on the floor; a bought buff/heal/energy applies to the buyer.** That
-  split is this doc's own pickup rule, not a new one: a weapon is a *choice* (which slot to
-  overwrite) and stays click-driven, while the other three are pure upside. Dropping those as
-  pickups would have let a teammate walk off with something somebody else paid for.
+- **A bought weapon lands on the floor; a bought buff/heal/energy/shield/emp applies to the
+  buyer.** That split is this doc's own pickup rule, not a new one: a weapon is a *choice*
+  (which slot to overwrite) and stays click-driven, while the other five are pure upside.
+  Dropping those as pickups would have let a teammate walk off with something somebody else
+  paid for.
+- **Two more instant items (Task 4, `ENGINE_VERSION` 71): a shield battery and an EMP
+  grenade.** Both apply the instant a purchase/pickup resolves, same as heal/energy — a
+  shield battery restores up to `maxShield` (no instant shield-refill existed before this;
+  otherwise shield only recovers via idle regen), and an EMP grenade is the roster's first
+  OFFENSIVE instant item: a burst of lightning damage to every alive enemy within a fixed
+  radius of the collector, rather than restoring the collector's own pool.
 - **An instant item that would do nothing is refused before the coins move**, through the same
   `pickupWouldApply` predicate that leaves a potion on the floor at full HP — so the counter and
-  the floor can never disagree about what "would do something" means. A buff is deliberately
+  the floor can never disagree about what "would do something" means. Heal/energy/shield are
+  gated on their own capped pool sitting below the cap; emp is gated differently — on there
+  being an alive enemy in range at all, since it has no pool of its own. A buff is deliberately
   exempt, exactly as it is exempt from that rule on the floor: its cap is applied Σ-then-clamp
   at *use* time, so "already wasted" is not a question the purchase site can answer.
 - **Stock is shared, wallets are per-seat.** First come, first served — a small chest's rule

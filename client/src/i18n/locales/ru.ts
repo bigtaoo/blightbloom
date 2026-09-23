@@ -138,6 +138,8 @@ export const ru: Translations<typeof en> = {
       sold: 'ПРОДАНО',
       heal: 'Зелье лечения',
       energy: 'Энергоячейка',
+      shield: 'Батарея щита',
+      emp: 'Граната ЭМИ',
     },
     chest: {
       bigTitle: 'Большой сундук',
@@ -312,6 +314,8 @@ export const ru: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 ОЗ',
+    shield: 'Щит перезаряжен',
+    emp: 'Взрыв ЭМИ',
     newWeapon: 'Новое оружие',
     schematicFound: 'Схема: {weapon}',
     buffNamed: 'Бафф: {id}',

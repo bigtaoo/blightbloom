@@ -23,6 +23,8 @@ const PICKUP_GLOW: Record<PickupKind, number> = {
   energy: THEME.colors.pickupEnergy, // its own hue — see the theme entry for why it is the cool one
   coin: THEME.colors.pickupCoin, // gold; separated from `material` by shape, not hue (see the theme entry)
   schematic: THEME.colors.pickupSchematic, // rose — a boss's one-time blueprint drop (design/14)
+  shield: THEME.colors.pickupShield, // cyan — the same hue the shield bar/break burst already use
+  emp: THEME.colors.pickupEmp, // lightning yellow — the item IS a burst of that element
 };
 
 // Ambient hover, deliberately in the same band as the scene's other idle loops —
@@ -208,6 +210,28 @@ export class Pickup extends Entity {
       gfx.roundRect(-8, -3, 16, 6, 3).fill({ color });
       gfx.circle(-8, 0, 3).fill({ color: 0xfff0f6, alpha: 0.85 });
       gfx.circle(8, 0, 3).fill({ color: 0xfff0f6, alpha: 0.85 });
+    } else if (kind === 'shield') {
+      // A shield silhouette — the shield-battery instant item (Task 4). No sprite ships
+      // for this kind yet, same "Graphics is the drawn form" note as `energy`/`coin`
+      // above. Shaped as the actual pool's own icon language (a pointed shield, not a
+      // ring or crystal) so it never reads as another `energy` at a glance.
+      const color = THEME.colors.pickupShield;
+      gfx.poly([0, -9, 7, -5, 7, 2, 0, 9, -7, 2, -7, -5]).fill({ color, alpha: 0.85 });
+      gfx.poly([0, -9, 7, -5, 7, 2, 0, 9, -7, 2, -7, -5]).stroke({ color: 0xffffff, width: 1, alpha: 0.5 });
+    } else if (kind === 'emp') {
+      // A radiating burst — the EMP grenade instant item (Task 4), the roster's first
+      // OFFENSIVE pickup. Eight short spokes from a hollow centre, distinct from
+      // `energy`'s single bolt-in-ring: this one hits an AREA, not a pool.
+      const color = THEME.colors.pickupEmp;
+      gfx.circle(0, 0, 3).stroke({ color, width: 1.5, alpha: 0.9 });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const x0 = Math.cos(a) * 5;
+        const y0 = Math.sin(a) * 5;
+        const x1 = Math.cos(a) * 9;
+        const y1 = Math.sin(a) * 9;
+        gfx.moveTo(x0, y0).lineTo(x1, y1).stroke({ color, width: 2, alpha: 0.85 });
+      }
     } else {
       // material — a small crystal (the run's carry-out currency, design/14)
       const color = THEME.colors.pickupMaterial;

@@ -180,8 +180,12 @@ export class ShopPrompt {
         return offer.buffId ? t(RUN_BUFFS[offer.buffId]?.nameKey as never) : '?';
       case 'heal':
         return t('hud.shop.heal');
-      default:
+      case 'energy':
         return t('hud.shop.energy');
+      case 'shield':
+        return t('hud.shop.shield');
+      default: // emp
+        return t('hud.shop.emp');
     }
   }
 }

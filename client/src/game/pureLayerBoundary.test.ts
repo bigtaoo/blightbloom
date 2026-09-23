@@ -128,6 +128,12 @@ const PURE_FILES = [
   // a `GameState`/weaponId, with no renderer dependency at all — form-(1) free functions per
   // CLAUDE.md's split priority. Listed here after this file's own survey named it.
   'controllers/metaGrants.ts',
+  // Carved out of EventReactor.ts on 2026-09-23 (Task 4's instant items) — the pickup-kind
+  // reaction table is a free function over its own narrow `PickupHost` (not the full
+  // `EventReactorHost`, to avoid importing the shell back) plus injected `FxController`/
+  // `HudView`, with no renderer dependency of its own. Listed here after this file's own
+  // survey named it.
+  'controllers/pickupReactions.ts',
 ] as const;
 
 /**
