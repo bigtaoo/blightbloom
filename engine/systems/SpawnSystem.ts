@@ -25,6 +25,7 @@ import {
   buildFloorGeometry,
   toFpAabbGrid,
   type PlacedRoom,
+  type DungeonFloorMap,
 } from '../world/dungeon';
 import type { EnemyActor, PickupItem } from '../state/entities';
 import type { ArenaRoomRuntime, DungeonRoomRuntime, GameState, WaveDef } from '../state/GameState';
@@ -200,6 +201,21 @@ export class SpawnSystem {
    * `entranceGrid` instead, since spreading players out is a floor-start-only
    * concern.
    */
+  /**
+   * Resolves this floor's hand-authored map (Task 6, "room-layout randomization",
+   * 2026-09-23) — `floorLayoutVariants[floorIndex]`, when authored, offers a POOL of
+   * interchangeable door-graph layouts for the same room roster (mirroring
+   * `content/enemies.ts`'s `BOSS_POOL`/`'boss_random'` sentinel: one well-scoped
+   * `roomgenPrng` draw over otherwise-fixed hand content). A floor index without a
+   * variant pool falls back to `floorMaps[floorIndex]` unchanged, costing zero extra
+   * draws — exactly the pre-Task-6 behavior for every floor that doesn't opt in.
+   */
+  private resolveAuthoredFloor(state: GameState): DungeonFloorMap | undefined {
+    const variants = state.dungeonConfig!.floorLayoutVariants?.[state.floorIndex];
+    if (variants && variants.length > 0) return variants[state.roomgenPrng.nextInt(variants.length)];
+    return state.dungeonConfig!.floorMaps?.[state.floorIndex];
+  }
+
   private generateAndPlaceFloor(state: GameState): void {
     // Hand-authored floors (design/05 "Hand-authored PvE floors", 2026-08-05) take
     // priority over procedural generation for this floor index — zero roomgenPrng
@@ -210,7 +226,7 @@ export class SpawnSystem {
     // `placeFloorGraph2d` instead of `placeFloor`'s west→east-only spine; a
     // 'graph2d' config never forks (`generateFloor` only forks for 'branching'), so
     // `stages` here is always plain `RoomPiece[]`, never a fork-array `FloorStage`.
-    const authored = state.dungeonConfig!.floorMaps?.[state.floorIndex];
+    const authored = this.resolveAuthoredFloor(state);
     const generated = authored
       ? undefined
       : generateFloor(state.dungeonConfig!, state.floorIndex, state.roomgenPrng, state.roomLibrary);

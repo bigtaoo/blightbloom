@@ -562,6 +562,53 @@ describe('Dungeon mode — hand-authored floors override generation for that flo
   });
 });
 
+describe('Dungeon mode — floorLayoutVariants draws exactly one roomgenPrng pick among an authored pool (Task 6, room-layout randomization, 2026-09-23)', () => {
+  const VARIANT_LIB: RoomPiece[] = [
+    { id: 'auth_variant_a', role: 'extraction', sizeGrid: { w: 12, h: 10 }, solids: [], spawns: { player: [{ x: 6, y: 5 }], enemy: [] }, exits: [] },
+    { id: 'auth_variant_b', role: 'extraction', sizeGrid: { w: 14, h: 12 }, solids: [], spawns: { player: [{ x: 7, y: 6 }], enemy: [] }, exits: [] },
+  ];
+  const VARIANT_A: DungeonFloorMap = { id: 'floor0a', rooms: [{ id: 'onlyRoom', pieceId: 'auth_variant_a', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+  const VARIANT_B: DungeonFloorMap = { id: 'floor0b', rooms: [{ id: 'onlyRoom', pieceId: 'auth_variant_b', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+  const cfg: EngineConfig = {
+    ...DUN_CFG,
+    dungeon: {
+      config: { ...TEST_DUN, floorLayoutVariants: { 0: [VARIANT_A, VARIANT_B] } },
+      library: [...TEST_LIB, ...VARIANT_LIB],
+    },
+  };
+
+  it('draws roomgenPrng to pick among the two variants and places whichever it drew', () => {
+    const eng = createGameEngine(cfg);
+    const s = eng.state;
+    const before = s.roomgenPrng.peek();
+    eng.step([idle(1)]);
+    expect(s.roomgenPrng.peek()).not.toBe(before); // the variant pick DID draw
+    expect(s.dungeonRooms).toHaveLength(1);
+    expect(['auth_variant_a', 'auth_variant_b']).toContain(s.dungeonRooms[0]!.piece.id);
+  });
+
+  it('is a single one-time draw — a fresh engine on the SAME seed resolves the SAME variant', () => {
+    const a = createGameEngine(cfg);
+    a.step([idle(1)]);
+    const b = createGameEngine(cfg);
+    b.step([idle(1)]);
+    expect(b.state.dungeonRooms[0]!.piece.id).toBe(a.state.dungeonRooms[0]!.piece.id);
+  });
+
+  it('a floor index absent from floorLayoutVariants still reads floorMaps directly, zero extra draws — unchanged from before Task 6', () => {
+    const cfgNoVariants: EngineConfig = {
+      ...DUN_CFG,
+      dungeon: { config: { ...TEST_DUN, floorMaps: { 0: VARIANT_A } }, library: [...TEST_LIB, ...VARIANT_LIB] },
+    };
+    const eng = createGameEngine(cfgNoVariants);
+    const s = eng.state;
+    const before = s.roomgenPrng.peek();
+    eng.step([idle(1)]);
+    expect(s.roomgenPrng.peek()).toBe(before);
+    expect(s.dungeonRooms[0]!.piece.id).toBe('auth_variant_a');
+  });
+});
+
 describe("Dungeon mode — the 'boss_random' spawn sentinel resolves to one of BOSS_POOL (Task 2, ENGINE_VERSION 70)", () => {
   const BOSS_LIB: RoomPiece[] = [
     {
