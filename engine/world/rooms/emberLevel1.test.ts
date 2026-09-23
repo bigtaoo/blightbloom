@@ -296,21 +296,25 @@ describe('level 1 shops', () => {
   const withShops = EMBER_L1_ROOMS.filter((p) => (p.shops?.length ?? 0) > 0);
   const everyShop = EMBER_L1_ROOMS.flatMap((p) => (p.shops ?? []).map((sh) => ({ piece: p, sh })));
 
-  it('one piece carries one counter — the market side room', () => {
+  it('two pieces carry one counter each — the vault and the market side rooms (Task 5)', () => {
     // Until 2026-09-14 the counter rode `forge` (floors 0-1) and `crucible` (floors 2-4), so
     // every floor had one because every floor drew one of those two pieces. The owner's call
     // that day put the run's shop on ONE floor, which a per-piece placement cannot express.
-    expect(withShops.map((p) => p.id)).toEqual(['ember_l1_market']);
-    expect(everyShop).toHaveLength(1);
+    // Task 5's "改为两个商店可以的" reopened it: `ember_l1_vault` (already a big-chest room on
+    // floor 3) gained a second, independent counter — no new room, no new door, so the run's
+    // existing connectivity is untouched.
+    expect(withShops.map((p) => p.id).sort()).toEqual(['ember_l1_market', 'ember_l1_vault']);
+    expect(everyShop).toHaveLength(2);
   });
 
-  it('stocks exactly one floor — floor 3, the floor before the boss', () => {
-    // Coins are run-scoped and never banked (design/05 "Coins"), so a single counter this
-    // deep is the whole economy's pressure: everything a run has saved is spendable once,
-    // one floor before the run's only exit.
+  it('stocks exactly two floors — index 2 (the vault) and index 3 (the market, the floor before the boss)', () => {
+    // Coins are run-scoped and never banked (design/05 "Coins"), so two counters spread
+    // across the back half of the run is the whole economy's pressure: everything saved by
+    // floor 2 is spendable there, and everything saved after is spendable once more before
+    // the run's only exit.
     const shopsOn = (i: number): number =>
       floorAt(i).rooms.reduce((n, r) => n + (pieceFor(r.pieceId).shops?.length ?? 0), 0);
-    expect(FLOOR_INDICES.map(shopsOn)).toEqual([0, 0, 0, 1, 0]);
+    expect(FLOOR_INDICES.map(shopsOn)).toEqual([0, 0, 1, 1, 0]);
   });
 
   it('puts the counter inside its own piece, clear of the perimeter wall', () => {

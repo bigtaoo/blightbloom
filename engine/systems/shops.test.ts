@@ -25,7 +25,13 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { PlayerActor, Shop, ShopOffer } from '@dd/engine/state/entities';
 import { ShopSystem } from '@dd/engine/systems';
-import { rollShopStock, SHOP_PRICES } from '@dd/engine/content/shops';
+import {
+  rollShopStock,
+  SHOP_PRICES,
+  SHOP_SLOT_WEIGHT_WEAPON,
+  SHOP_SLOT_WEIGHT_ITEM,
+  type ShopPrng,
+} from '@dd/engine/content/shops';
 import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
 import { SHOP_INTERACT_RANGE_GRID, SHOP_STOCK_SIZE } from '@dd/engine/config';
 import { Prng } from '@dd/engine/math/prng';
@@ -92,39 +98,67 @@ function addShop(s: GameState, gx: number, gy: number, stock: Partial<ShopOffer>
   return shop;
 }
 
-describe('rollShopStock — the counter is composed, not rolled', () => {
-  it('always stocks weapon / buff / supply, in that order', () => {
-    // Across many seeds, because the claim is about every shop and not about a lucky one.
-    for (let seed = 0; seed < 50; seed++) {
-      const stock = rollShopStock(new Prng(seed), ids());
-      expect(stock).toHaveLength(SHOP_STOCK_SIZE);
-      expect(stock[0]!.kind).toBe('weapon');
-      expect(stock[1]!.kind).toBe('buff');
-      expect(['heal', 'energy', 'shield', 'emp']).toContain(stock[2]!.kind);
-      expect(WEAPON_DROP_POOL).toContain(stock[0]!.weaponId);
-      expect(BUFF_DROP_POOL).toContain(stock[1]!.buffId);
+/** A controllable stand-in for `Prng` — returns exactly the values it is given, in order,
+ *  regardless of `max` (every call site here only ever needs the value, never the modulus
+ *  it was drawn against). Lets the category-boundary test below assert the EXACT roll each
+ *  bucket edge belongs to, deterministically, rather than hoping a seed sweep happens to
+ *  land on it. */
+class FixedRoll implements ShopPrng {
+  private i = 0;
+  constructor(private readonly values: readonly number[]) {}
+  nextInt(): number {
+    const v = this.values[this.i++];
+    if (v === undefined) throw new Error('FixedRoll: ran out of scripted draws');
+    return v;
+  }
+}
+
+describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_VERSION 72)', () => {
+  it('draws each slot independently — all three can land on the same category', () => {
+    // Roll 0 is inside every category's own range at its low edge, so three (category,
+    // sub-pick) pairs of (0, 0) forces all three slots to weapon — the case the OLD fixed
+    // weapon/buff/supply composition could never produce at all.
+    const stock = rollShopStock(new FixedRoll([0, 0, 0, 0, 0, 0]), ids());
+    expect(stock.map((o) => o.kind)).toEqual(['weapon', 'weapon', 'weapon']);
+  });
+
+  it("the category boundaries are exactly 0-59 weapon / 60-89 item / 90-99 buff", () => {
+    // Only slot 0 is inspected; slots 1-2 are scripted identically so `rollShopStock`'s fixed
+    // six-draw shape has values to consume without affecting what is being asserted.
+    const categoryOf = (roll: number): string => rollShopStock(new FixedRoll([roll, 0, roll, 0, roll, 0]), ids())[0]!.kind;
+    expect(categoryOf(0)).toBe('weapon');
+    expect(categoryOf(SHOP_SLOT_WEIGHT_WEAPON - 1)).toBe('weapon'); // 59
+    expect(['heal', 'energy', 'shield', 'emp']).toContain(categoryOf(SHOP_SLOT_WEIGHT_WEAPON)); // 60 — first item roll
+    expect(['heal', 'energy', 'shield', 'emp']).toContain(
+      categoryOf(SHOP_SLOT_WEIGHT_WEAPON + SHOP_SLOT_WEIGHT_ITEM - 1), // 89 — last item roll
+    );
+    expect(categoryOf(SHOP_SLOT_WEIGHT_WEAPON + SHOP_SLOT_WEIGHT_ITEM)).toBe('buff'); // 90 — first buff roll
+    expect(categoryOf(99)).toBe('buff'); // 99 — last possible roll
+  });
+
+  it('rolls all three categories, and all four item kinds within the item category, across seeds', () => {
+    // Across many seeds, because the claim is about the draw itself and not about one lucky
+    // shop. A category or item kind that never appears is a silently deleted branch.
+    const categories = new Set<string>();
+    const itemKinds = new Set<string>();
+    for (let seed = 0; seed < 200; seed++) {
+      for (const offer of rollShopStock(new Prng(seed), ids())) {
+        categories.add(offer.kind === 'weapon' || offer.kind === 'buff' ? offer.kind : 'item');
+        if (offer.kind !== 'weapon' && offer.kind !== 'buff') itemKinds.add(offer.kind);
+      }
     }
+    expect(categories).toEqual(new Set(['weapon', 'item', 'buff']));
+    expect(itemKinds).toEqual(new Set(['heal', 'energy', 'shield', 'emp']));
   });
 
-  it('rolls all FOUR supply kinds across seeds (Task 4 widened the slot from a coin flip)', () => {
-    // The control on the test above: `toContain([...])` passes for a shop that only ever
-    // stocks one kind, which is what a mistyped `nextInt` would still be — and a supply
-    // slot that never rolls one of its four kinds is a silently deleted quarter.
-    const kinds = new Set<string>();
-    for (let seed = 0; seed < 50; seed++) kinds.add(rollShopStock(new Prng(seed), ids())[2]!.kind);
-    expect(kinds).toEqual(new Set(['heal', 'energy', 'shield', 'emp']));
-  });
-
-  it('spends exactly three draws whatever it rolls', () => {
+  it('spends exactly six draws whatever it rolls — two per slot, three slots', () => {
     // design/06: a PRNG's draw COUNT is as load-bearing as its values. A shop that spent a
     // variable number would make every later loot roll on the floor depend on its shelves.
     for (const seed of [1, 7, 99, 12345]) {
       const p = new Prng(seed);
       rollShopStock(p, ids());
       const control = new Prng(seed);
-      control.nextInt(2);
-      control.nextInt(2);
-      control.nextInt(2);
+      for (let i = 0; i < 6; i++) control.nextInt(2);
       expect(p.peek()).toBe(control.peek());
     }
   });
@@ -139,6 +173,19 @@ describe('rollShopStock — the counter is composed, not rolled', () => {
     // `Array.find` would silently resolve it to whichever came first.
     const stock = rollShopStock(new Prng(5), ids());
     expect(new Set(stock.map((o) => o.id)).size).toBe(stock.length);
+  });
+
+  it('always stocks exactly SHOP_STOCK_SIZE lines, whatever the categories', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      expect(rollShopStock(new Prng(seed), ids())).toHaveLength(SHOP_STOCK_SIZE);
+    }
+  });
+
+  it('a weapon slot draws from WEAPON_DROP_POOL and a buff slot from BUFF_DROP_POOL', () => {
+    const weaponOffer = rollShopStock(new FixedRoll([0, 3, 0, 3, 0, 3]), ids())[0]!;
+    expect(WEAPON_DROP_POOL).toContain(weaponOffer.weaponId);
+    const buffOffer = rollShopStock(new FixedRoll([99, 1, 99, 1, 99, 1]), ids())[0]!;
+    expect(BUFF_DROP_POOL).toContain(buffOffer.buffId);
   });
 });
 
