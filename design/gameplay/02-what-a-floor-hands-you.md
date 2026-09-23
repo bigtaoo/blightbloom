@@ -259,12 +259,16 @@ floor is placed, and gone when the floor is. That last part is the economy's onl
 pressure: **coins saved for a deeper shop are a bet that a deeper shop exists**, and you cannot
 walk back.
 
-- **Three lines, and their KINDS are fixed** — a weapon, a buff, and a supply (heal, energy,
-  shield, or emp — Task 4, `ENGINE_VERSION` 71, widened the draw once the last two instant
-  items existed; see below). Not three draws from one pool: the shop's job is to be the
-  recoverable half of taking weapons off the kill table, and a counter that can roll three
-  potions cannot do that job. Fixing the slots is also what lets each line carry one price
-  instead of a price band.
+- **Three lines, each an INDEPENDENT weighted draw** (Task 5, `ENGINE_VERSION` 72 — through
+  v71 the three were fixed by POSITION: always weapon, then buff, then supply). Every slot
+  draws from the same three categories at **60% weapon / 30% item / 10% buff**, "item" being
+  heal/energy/shield/emp (Task 4's four instant items) together, a second independent draw
+  deciding which. A shop can come up all three weapons, or — rarely, ~2.7% — all three items;
+  neither is re-rolled or padded away. The weights still favor weapons because the shop's
+  original job stands: it is the recoverable half of taking weapons off the kill table, and a
+  counter that leans potion cannot do that job as its most likely outcome. Fixing each slot to
+  ONE category per roll (not three independent draws from one flat pool) is also what lets
+  every line carry one price instead of a price band.
 - **Priced against a measured floor, not a feel.** At 23.8% of kills and `COIN_DROP_QTY` 5, the
   measured level (34.6 kills on floor 0, 52 on floor 2) yields roughly **40-60 coins a floor**.
   The first-pass prices — weapon 45, buff 30, supply 12 — mean a floor's whole income buys the
@@ -311,6 +315,13 @@ spendable exactly once, one floor before the boss — *"coins saved for a deeper
 that a deeper shop exists"* stops being a bet spread over five floors and becomes one decision.
 Nothing in `SHOP_PRICE_*` was retuned for it; whether 87 coins for all three lines is the right
 ask against a five-floor purse is the first thing to measure once this has been played.
+
+**A second counter, floor index 2 (Task 5, `ENGINE_VERSION` 72) — "改为两个商店可以的".** The
+`ember_l1_vault` room (floor index 2's big-chest room, "Chest rooms" above) gained its own shop
+alongside the chest it already has: no new room or door, since the piece was already placed and
+one room can carry both a mechanism and a counter. Two purses-spendable-once now exist instead
+of one, spread across the back half of the run rather than concentrated at the last floor before
+the boss.
 
 **What this does not yet answer** is `ROADMAP` B2's harder half. A shop offers a buff, so the
 in-run power layer is no longer delivered *only* by a 6/84 weight on the kill table — but one

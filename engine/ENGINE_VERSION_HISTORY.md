@@ -2522,3 +2522,21 @@ Golden fixture regenerated. `ShopOffer`/pickup `kind` unions, the `shop_buy` eve
 field, `SHOP_PRICES`, `PICKUP_GLOW` (client), and `ShopPrompt.rowLabel` all widened to match —
 each is a compile-time-enforced lookup keyed by the union, so a kind missing from any of them
 fails to compile rather than silently pricing/drawing/rendering as something else.
+
+v72 (Task 5, 2026-09-23): the shop reweight. `rollShopStock` (`content/shops.ts`) replaces its
+fixed weapon/buff/supply-in-that-order composition with three INDEPENDENT slots, each drawn
+from the same three categories at 60% weapon / 30% item / 10% buff (`SHOP_SLOT_WEIGHT_*`) — a
+shop can now come up all weapons, or (rarely, ~2.7%) all items, and is never re-rolled or padded
+to avoid either. Draw shape changed from 3 draws (one per fixed line) to 6 (a category roll +
+a specific-value roll, per slot, always) — any recorded replay whose stream ever reaches a shop
+diverges from here on, same as it did for Task 4's supply-domain widening.
+
+`world/dungeons/ember/pieces/ember_l1_vault.json` (floor index 2's big-chest room) gains a
+second shop counter alongside its existing chest — "改为两个商店可以的": the run now has two
+shops (floor 2's vault, floor 3's market) instead of one, with no new room or door needed since
+the piece was already placed and a room may carry both a chest and a shop. Any dungeon replay
+that ever places floor 2 (every real run does) diverges the moment `SpawnSystem` rolls that
+floor's shops, in addition to the draw-shape divergence above.
+
+Golden fixture regenerated. `emberLevel1.test.ts`'s shop-count/placement assertions updated to
+match (2 pieces, 2 floors); `shops.test.ts` rewritten around the new slot mechanics.
