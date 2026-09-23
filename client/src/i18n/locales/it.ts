@@ -133,6 +133,8 @@ export const it: Translations<typeof en> = {
       sold: 'VENDUTO',
       heal: 'Pozione curativa',
       energy: 'Cella energetica',
+      shield: 'Batteria scudo',
+      emp: 'Granata EMP',
     },
     chest: {
       bigTitle: 'Forziere grande',
@@ -307,6 +309,8 @@ export const it: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 PV',
+    shield: 'Scudo ricaricato',
+    emp: 'Esplosione EMP',
     newWeapon: 'Nuova arma',
     schematicFound: 'Schema: {weapon}',
     buffNamed: 'Bonus: {id}',

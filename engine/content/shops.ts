@@ -10,7 +10,8 @@
  * ## The composition is FIXED; only the contents roll
  *
  * Every shop stocks exactly three lines, in this order: a **weapon**, a **buff**, and a
- * **supply** (heal or energy). The alternative — three independent draws from one pool — was
+ * **supply** (heal, energy, shield, or emp — Task 4 widened the pool once the last two instant
+ * items existed). The alternative — three independent draws from one pool — was
  * rejected, and the reason is the job the shop was given: it is the recoverable half of a
  * design that took weapons off the kill table (`content/drops.ts`, 2026-09-14). A floor whose
  * chests rolled badly is meant to be fixable by buying, and a shop that can roll three potions
@@ -24,6 +25,7 @@
  */
 import {
   SHOP_PRICE_BUFF,
+  SHOP_PRICE_EMP,
   SHOP_PRICE_SUPPLY,
   SHOP_PRICE_WEAPON,
   SHOP_STOCK_SIZE,
@@ -47,16 +49,27 @@ export const SHOP_PRICES: Record<ShopOffer['kind'], number> = {
   buff: SHOP_PRICE_BUFF,
   heal: SHOP_PRICE_SUPPLY,
   energy: SHOP_PRICE_SUPPLY,
+  shield: SHOP_PRICE_SUPPLY,
+  emp: SHOP_PRICE_EMP,
 };
+
+/** The supply slot's own pool (Task 4, `ENGINE_VERSION` 71) — widened from a heal/energy
+ *  coin flip to the full set of instant items once `shield`/`emp` existed, so both are
+ *  reachable from a shop and not just from a kill. Kept as its own list (not derived from
+ *  `SHOP_PRICES`, which also carries `weapon`/`buff`) for the same reason `WEAPON_DROP_POOL`
+ *  is its own list rather than every `WEAPON_SPECS` key. */
+const SUPPLY_KINDS: readonly ShopOffer['kind'][] = ['heal', 'energy', 'shield', 'emp'];
 
 /**
  * Roll one shop's stock.
  *
  * **Draw count is FIXED at three regardless of what comes up** — one for the weapon id, one
- * for the buff id, one to pick heal-or-energy — which is the same discipline `rollFloorCardOffer`
+ * for the buff id, one to pick the supply kind — which is the same discipline `rollFloorCardOffer`
  * follows and for the same reason (design/06: a PRNG's draw COUNT is as load-bearing as its
  * values). A shop that spent a variable number of draws would make every later loot roll on
- * the floor depend on what its own shelves happened to contain.
+ * the floor depend on what its own shelves happened to contain. The supply draw's DOMAIN grew
+ * from 2 to 4 (Task 4) — still one draw, but `nextInt(4)` is a different call than `nextInt(2)`,
+ * so any recorded replay whose stream ever reaches a shop diverges from here on.
  *
  * `mkId` mints each offer's id. It is passed in rather than taken off a `GameState` so this
  * stays pure — and the caller passes `GameState.nextShopId`, a SEPARATE id space from
@@ -68,7 +81,7 @@ export const SHOP_PRICES: Record<ShopOffer['kind'], number> = {
 export function rollShopStock(prng: ShopPrng, mkId: () => number): ShopOffer[] {
   const weaponId = WEAPON_DROP_POOL[prng.nextInt(WEAPON_DROP_POOL.length)]!;
   const buffId = BUFF_DROP_POOL[prng.nextInt(BUFF_DROP_POOL.length)]!;
-  const supply: ShopOffer['kind'] = prng.nextInt(2) === 0 ? 'heal' : 'energy';
+  const supply = SUPPLY_KINDS[prng.nextInt(SUPPLY_KINDS.length)]!;
   return [
     { id: mkId(), kind: 'weapon', weaponId, price: SHOP_PRICES.weapon, sold: false },
     { id: mkId(), kind: 'buff', buffId, price: SHOP_PRICES.buff, sold: false },

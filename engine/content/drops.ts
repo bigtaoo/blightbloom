@@ -62,6 +62,21 @@ export type DropResult =
 /** How much a heal pickup restores (design/05 MVP loop, flat +1 HP). */
 export const HEAL_PICKUP_AMOUNT = 1;
 
+/** How much a shield-battery instant item restores (Task 4, ENGINE_VERSION 71) — sized
+ *  above every shipped character's `maxShield` (4-8) so it reads as a full recharge
+ *  today, the same "flat amount, clamped to the pool" shape `HEAL_PICKUP_AMOUNT`/
+ *  `ENERGY_PICKUP_AMOUNT` use rather than a hardcoded `p.shield = p.maxShield`
+ *  assignment, so a future higher-`maxShield` character gets a partial top-up instead
+ *  of a silently-still-full recharge. */
+export const SHIELD_PICKUP_AMOUNT = 10;
+
+/** EMP grenade instant item's flat damage per enemy caught in `SIM.empRadius` (Task 4,
+ *  ENGINE_VERSION 71), before resist — `lightning`-typed (design/07), which is what
+ *  makes it the answer to `IRONCLAD`/`IRONWARDEN`'s armour (both are weak to shock).
+ *  Comparable to one `ENEMY_GUN_SIM` hit's worth of damage per target, not a wipe —
+ *  its value is hitting EVERYTHING nearby at once, not out-damaging aimed fire. */
+export const EMP_DAMAGE = 2;
+
 /** Material quantity per drop (design/09; depth-scaled amounts are 1.5 to-come). */
 export const MATERIAL_DROP_QTY = 1;
 

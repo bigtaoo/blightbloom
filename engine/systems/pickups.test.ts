@@ -4,6 +4,7 @@ import type { GameState } from '@dd/engine/state/GameState';
 import type { PickupItem, RangedSimSpec } from '@dd/engine/state/entities';
 import type { Fp } from '@dd/engine/math/fixed';
 import { PickupSystem } from '@dd/engine/systems';
+import { buildEnemyActor } from '@dd/engine/content/enemies';
 import { toFpGrid } from '@dd/engine/content/convert';
 import { createGameEngine } from '@dd/engine/GameEngine';
 import { makeCommand } from '@dd/engine/state/input';
@@ -94,8 +95,46 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(0);
   });
 
-  // Only `heal` is gated (see `wouldApply`'s own doc): the other auto kinds accumulate
-  // with no local cap, so "would it do something" is always yes for them.
+  it('shield restores up to maxShield, never over, gated the same way heal is', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.shield = p.maxShield - 3;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield); // SHIELD_PICKUP_AMOUNT (10) exceeds every shipped maxShield
+    expect(s.pickups).toHaveLength(0);
+  });
+
+  it('a full-shield player leaves a shield battery on the floor instead of binning it', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.shield = p.maxShield;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield);
+    expect(s.pickups).toHaveLength(1); // left on the floor, not consumed for nothing
+  });
+
+  it('an emp burst damages every alive enemy in range, shield-first, and is refused with nothing to hit', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    // Refused first, with no enemy anywhere: nothing to hit, so left on the floor.
+    dropOnPlayer(s, { kind: 'emp' });
+    sys.tick(s);
+    expect(s.pickups).toHaveLength(1);
+
+    const near = buildEnemyActor(s, p.gx, p.gy, 'basic');
+    near.shield = 1;
+    s.enemies.push(near);
+    const startingHp = near.hp;
+    sys.tick(s); // the same still-alive pickup, now with an enemy in range
+    expect(s.pickups).toHaveLength(0); // an enemy was in range — collected
+    expect(near.shield).toBe(0); // shield absorbs first (design/07 two-pool takeDamage)
+    expect(near.hp).toBeLessThan(startingHp);
+  });
+
+  // Only `heal`/`energy`/`shield`/`emp` are gated (see `wouldApply`'s own doc): the other
+  // auto kinds accumulate with no local cap, so "would it do something" is always yes.
   it('a material is still collected at any state — the rule is heal-specific', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;

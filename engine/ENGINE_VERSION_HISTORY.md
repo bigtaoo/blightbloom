@@ -2501,3 +2501,24 @@ new method since both new traits fire through the existing per-tick event stream
 Any dungeon replay whose seed ever resolves floor 5's boss diverges (a different boss, a
 different `aiPrng` stream position from here on); every replay that never reaches that room is
 untouched, and every non-dungeon config is untouched entirely. Golden fixture regenerated.
+
+v71 (Task 4, 2026-09-23): two new instant-use items — `shield` (a shield-battery pickup,
+restoring up to `maxShield`) and `emp` (an EMP grenade: instant burst lightning damage to every
+alive enemy within `SIM.empRadius` of the collector, `PickupSystem.applyEmpBurst`, reusing
+`applyResist`/`takeDamage` directly). Both are `PickupKind` values, auto-apply on overlap like
+`heal`/`energy` (the anticipated third/fourth capped-pool-or-target-gated instants
+`pickupWouldApply`'s own comment called out in advance), and both are also `ShopOffer` kinds:
+the shop's fixed third "supply" slot widens from a `heal`/`energy` coin flip (`nextInt(2)`) to a
+four-way draw (`nextInt(4)`) over `SUPPLY_KINDS`. `pickupWouldApply` gained a third parameter
+(`state: GameState`) so `emp`'s gate — "is there an enemy in range at all" — can be answered;
+every call site (`PickupSystem`, `ShopSystem`, `PickupDebugOverlay`) updated.
+
+Any replay whose stream ever rolls a shop's supply slot diverges from here on (the draw's
+domain changed even where it happens to land on `heal`/`energy` again); any replay where a
+player ever collects or buys a `shield`/`emp` diverges further still. A run with no shop and no
+`shield`/`emp` pickup anywhere in it is byte-identical to before.
+
+Golden fixture regenerated. `ShopOffer`/pickup `kind` unions, the `shop_buy` event's own kind
+field, `SHOP_PRICES`, `PICKUP_GLOW` (client), and `ShopPrompt.rowLabel` all widened to match —
+each is a compile-time-enforced lookup keyed by the union, so a kind missing from any of them
+fails to compile rather than silently pricing/drawing/rendering as something else.

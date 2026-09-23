@@ -140,6 +140,9 @@ export const SHOP_STOCK_SIZE = 3;
 export const SHOP_PRICE_WEAPON = 45;
 export const SHOP_PRICE_BUFF = 30;
 export const SHOP_PRICE_SUPPLY = 12;
+// The offensive instant item (Task 4) prices above the passive pool-restores — an
+// AoE nuke on demand is worth more than topping up a bar.
+export const SHOP_PRICE_EMP = 20;
 
 // ── Co-op downed / revive (design/05/07, ROADMAP 3.2). Whole ticks @30Hz. A lethal
 // hit sends a player `downed`; a teammate revives via a sustained INTERACT channel.

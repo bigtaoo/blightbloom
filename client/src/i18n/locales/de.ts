@@ -133,6 +133,8 @@ export const de: Translations<typeof en> = {
       sold: 'VERKAUFT',
       heal: 'Heiltrank',
       energy: 'Energiezelle',
+      shield: 'Schildbatterie',
+      emp: 'EMP-Granate',
     },
     chest: {
       bigTitle: 'Große Truhe',
@@ -307,6 +309,8 @@ export const de: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 LP',
+    shield: 'Schild aufgeladen',
+    emp: 'EMP-Explosion',
     newWeapon: 'Neue Waffe',
     schematicFound: 'Bauplan: {weapon}',
     buffNamed: 'Buff: {id}',

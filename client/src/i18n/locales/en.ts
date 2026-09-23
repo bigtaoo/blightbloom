@@ -141,6 +141,8 @@ export const en = {
       sold: 'SOLD',
       heal: 'Health potion',
       energy: 'Energy cell',
+      shield: 'Shield battery',
+      emp: 'EMP grenade',
     },
     // Big-chest caption (ui/ChestPrompt.ts, design/05 "Chest rooms"). The only place the game
     // says that a big chest wants every mechanism plate covered at once — a rule a player
@@ -329,6 +331,8 @@ export const en = {
   },
   toast: {
     heal: '+1 HP',
+    shield: 'Shield recharged',
+    emp: 'EMP burst',
     newWeapon: 'New weapon',
     schematicFound: 'Schematic: {weapon}',
     buffNamed: 'Buff: {id}',

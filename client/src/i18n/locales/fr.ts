@@ -133,6 +133,8 @@ export const fr: Translations<typeof en> = {
       sold: 'VENDU',
       heal: 'Potion de soin',
       energy: "Cellule d'énergie",
+      shield: 'Batterie de bouclier',
+      emp: 'Grenade EMP',
     },
     chest: {
       bigTitle: 'Grand coffre',
@@ -307,6 +309,8 @@ export const fr: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 PV',
+    shield: 'Bouclier rechargé',
+    emp: 'Explosion EMP',
     newWeapon: 'Nouvelle arme',
     schematicFound: 'Schéma : {weapon}',
     buffNamed: 'Bonus : {id}',

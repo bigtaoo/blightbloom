@@ -133,6 +133,8 @@ export const zh: Translations<typeof en> = {
       sold: '已售出',
       heal: '治疗药水',
       energy: '能量电池',
+      shield: '护盾电池',
+      emp: '电磁脉冲手雷',
     },
     chest: {
       bigTitle: '大宝箱',
@@ -306,6 +308,8 @@ export const zh: Translations<typeof en> = {
   },
   toast: {
     heal: '+1 生命',
+    shield: '护盾已充能',
+    emp: '电磁脉冲爆发',
     newWeapon: '新武器',
     schematicFound: '图纸：{weapon}',
     buffNamed: '增益：{id}',
