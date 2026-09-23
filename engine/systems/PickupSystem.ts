@@ -12,9 +12,10 @@
  *              because there is no item bag to hold one in; it went unimplemented
  *              until `ENGINE_VERSION` 54, so the ONE item that restores the one
  *              pool nothing else restores was silently binned at full HP.
- *   material — added to this floor's un-banked buffer (state.floorMaterials,
- *              design/05, ROADMAP 1.4/1.5); banked at an extraction checkpoint
- *              (ExtractionSystem), forfeited on a run-ending death. Auto, on overlap.
+ *   material — added to the COLLECTOR's own un-banked buffer (PlayerActor.floorMaterials,
+ *              design/05/14, ROADMAP 1.4/1.5, per-seat since ENGINE_VERSION 68); banked
+ *              at an extraction checkpoint (ExtractionSystem), forfeited on a run-ending
+ *              death. Auto, on overlap.
  *   weapon   — design/03 "NOT auto-picked-up... click-driven" (ENGINE_VERSION 32,
  *              replacing v21's INTERACT gesture): overlap alone does nothing; the
  *              player must have clicked this exact item this tick (`pickupTargetId`
@@ -33,6 +34,10 @@
  *              maxEnergy. Auto, on overlap, and under the SAME `wouldApply` gate `heal`
  *              is under, for the same reason — it is an instant item with no bag to
  *              hold it in, so a full player must leave it on the floor for later.
+ *   schematic — a boss's one-time blueprint drop (design/14, ENGINE_VERSION 68). Into
+ *              the COLLECTOR's own `blueprintPickup`, not a shared bag — same per-seat
+ *              rule `material` follows now, replacing the old squad-wide auto-grant.
+ *              Auto, on overlap; at most one exists per run.
  *
  * Ports Game.ts updatePickups(): float px → fp, squared-distance overlap. The
  * render-only hover bob is dropped (visual, not sim).
@@ -162,9 +167,18 @@ export class PickupSystem {
         if (item.materialId) {
           // Key by (material, rolled tier) so a recipe's minTier can gate it later
           // (design/14). Tier 0 keeps the flat key — byte-identical to pre-tier drops.
+          // Into the COLLECTOR's own floor buffer (ENGINE_VERSION 68) — a per-seat bag
+          // like `coins`, not a shared one every seat's client used to apply in full.
           const key = bankKey(item.materialId, item.tier ?? 0);
-          state.floorMaterials[key] = (state.floorMaterials[key] ?? 0) + (item.qty ?? 0);
+          p.floorMaterials[key] = (p.floorMaterials[key] ?? 0) + (item.qty ?? 0);
         }
+        break;
+      case 'schematic':
+        // A boss's one-time blueprint drop (design/14, ENGINE_VERSION 68) — the collector's
+        // own carry-out, exactly like `material` above. At most one exists per run
+        // (`DeathDropsSystem.rollBlueprint`), so a plain overwrite is safe; the `if` guard
+        // is defensive rather than load-bearing.
+        if (item.weaponId && p.blueprintPickup === null) p.blueprintPickup = item.weaponId;
         break;
       case 'coin':
         // In-run currency (design/05 "Shops"). Into the COLLECTOR's own wallet, not a

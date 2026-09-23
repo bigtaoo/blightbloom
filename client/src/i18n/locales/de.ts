@@ -76,6 +76,7 @@ export const de: Translations<typeof en> = {
     lockedFind: 'gesperrt (erst finden)',
     lockedSource: 'gesperrt ({source})',
     craftable: 'herstellbar',
+    craftableSchematic: 'herstellbar (Bauplan ×{count})',
     needMaterials: 'Materialien fehlen',
     kindTaken: 'Waffenart belegt',
     stagedTag: '  ▸ausgerüstet×{count}',
@@ -307,6 +308,7 @@ export const de: Translations<typeof en> = {
   toast: {
     heal: '+1 LP',
     newWeapon: 'Neue Waffe',
+    schematicFound: 'Bauplan: {weapon}',
     buffNamed: 'Buff: {id}',
     buffGeneric: 'Buff',
     materialQty: '+{qty} {material}',

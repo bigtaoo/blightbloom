@@ -206,7 +206,7 @@ describe('Dungeon mode — DESCEND generates the next floor', () => {
   it('a CONFIRM_DESCEND press at the floor-0 checkpoint banks, advances the floor index, and regenerates', () => {
     const eng = createGameEngine(DUN_CFG);
     const s = eng.state;
-    s.floorMaterials.mat_fire = 2; // pretend we picked up some material this floor
+    s.players[0]!.floorMaterials.mat_fire = 2; // pretend we picked up some material this floor
 
     eng.step([idle(1)]); // floor places
     eng.step([idle(2)]); // room 0 activates (empty)
@@ -216,7 +216,7 @@ describe('Dungeon mode — DESCEND generates the next floor', () => {
     eng.step([confirmDescend(4)]); // one-shot press — resolves immediately
     expect(s.floorIndex).toBe(1);
     expect(s.dungeonRooms.length).toBe(0); // marked for regeneration
-    expect(s.bankedMaterials.mat_fire).toBe(2); // floor buffer banked
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(2); // floor buffer banked
     expect(s.phase).not.toBe('gameover');
 
     eng.step([idle(5)]); // SpawnSystem generates + places floor 1
@@ -443,7 +443,7 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     // different lifetime — the run IS the player.
     const eng = createGameEngine(STRAND_CFG);
     const s = eng.state;
-    s.floorMaterials.mat_fire = 4;
+    s.players[0]!.floorMaterials.mat_fire = 4;
     runToStrandedCheckpoint(eng);
     const p = s.players[0]!;
     const weaponBefore = p.weapon?.spec.name;
@@ -456,7 +456,7 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     expect(p.hp).toBeGreaterThan(0); // (exact hp is combat's business — the stranded pair shoots)
     expect(p.maxHp).toBe(maxHpBefore);
     expect(p.weapon?.spec.name).toBe(weaponBefore);
-    expect(s.bankedMaterials.mat_fire).toBe(4); // the floor buffer still banks normally
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(4); // the floor buffer still banks normally
   });
 
   it('stays byte-identical across two engines on the same seed, wipe and all', () => {

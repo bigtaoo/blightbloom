@@ -52,7 +52,7 @@ describe('ExtractionSystem — no-op unless floorsEnabled', () => {
 describe('ExtractionSystem — DESCEND (explicit confirmDescend press)', () => {
   it('banks the floor buffer, advances the floor, and reloads its waves', () => {
     const s = createGameState(FLOORS_CFG);
-    s.floorMaterials.mat_fire = 3;
+    s.players[0]!.floorMaterials.mat_fire = 3;
     atCheckpoint(s);
     const p = s.players[0]!;
 
@@ -67,8 +67,8 @@ describe('ExtractionSystem — DESCEND (explicit confirmDescend press)', () => {
     expect(s.waves).toEqual(FLOORS_CFG.floors![0]);
     expect(s.waveIndex).toBe(-1);
     expect(s.wavesExhausted).toBe(false);
-    expect(s.bankedMaterials.mat_fire).toBe(3);
-    expect(s.floorMaterials).toEqual({});
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(3);
+    expect(s.players[0]!.floorMaterials).toEqual({});
     expect(s.events.some((e) => e.type === 'descend' && e.floorIndex === 1)).toBe(true);
     expect(s.phase).not.toBe('gameover');
   });
@@ -114,7 +114,7 @@ describe('ExtractionSystem — EXTRACT (explicit confirmExtract press)', () => {
   it('banks the floor buffer and ends the run as a win, without advancing the floor', () => {
     const s = createGameState(FLOORS_CFG);
     s.floorIndex = 1; // the last floor — the only floor that can end a run (v61)
-    s.floorMaterials.mat_ice = 2;
+    s.players[0]!.floorMaterials.mat_ice = 2;
     atCheckpoint(s);
     const p = s.players[0]!;
     p.confirmExtract = true;
@@ -123,7 +123,7 @@ describe('ExtractionSystem — EXTRACT (explicit confirmExtract press)', () => {
     expect(s.phase).toBe('gameover');
     expect(s.winner).toBe(0);
     expect(s.floorIndex).toBe(1); // never descended
-    expect(s.bankedMaterials.mat_ice).toBe(2);
+    expect(s.players[0]!.bankedMaterials.mat_ice).toBe(2);
     expect(s.events.some((e) => e.type === 'win' && e.winner === 0)).toBe(true);
   });
 
@@ -152,7 +152,7 @@ describe('ExtractionSystem — EXTRACT (explicit confirmExtract press)', () => {
 describe('ExtractionSystem — an interior floor cannot end the run at all (v61)', () => {
   it('ignores confirmExtract on a non-last floor: no win, no descend, nothing banked', () => {
     const s = createGameState(FLOORS_CFG);
-    s.floorMaterials.mat_ice = 2;
+    s.players[0]!.floorMaterials.mat_ice = 2;
     atCheckpoint(s); // floorIndex 0, and extraFloors.length is 1 — not the last floor
     const p = s.players[0]!;
     p.confirmExtract = true;
@@ -161,8 +161,8 @@ describe('ExtractionSystem — an interior floor cannot end the run at all (v61)
     expect(s.phase).not.toBe('gameover');
     expect(s.winner).toBe(null);
     expect(s.floorIndex).toBe(0); // an ignored EXTRACT is NOT quietly turned into a descend
-    expect(s.bankedMaterials.mat_ice).toBeUndefined(); // the buffer is untouched
-    expect(s.floorMaterials.mat_ice).toBe(2);
+    expect(s.players[0]!.bankedMaterials.mat_ice).toBeUndefined(); // the buffer is untouched
+    expect(s.players[0]!.floorMaterials.mat_ice).toBe(2);
   });
 
   it('an interior confirmExtract does not consume the descend the same tick offers', () => {
@@ -203,14 +203,14 @@ describe('ExtractionSystem — the last floor still needs an explicit CONFIRM_EX
   it('an explicit confirmExtract press on the last floor ends the run as a win', () => {
     const s = createGameState(FLOORS_CFG);
     s.floorIndex = 1;
-    s.floorMaterials.mat_poison = 4;
+    s.players[0]!.floorMaterials.mat_poison = 4;
     atCheckpoint(s);
     const p = s.players[0]!;
     p.confirmExtract = true;
     new ExtractionSystem().tick(s);
     expect(s.phase).toBe('gameover');
     expect(s.winner).toBe(0);
-    expect(s.bankedMaterials.mat_poison).toBe(4);
+    expect(s.players[0]!.bankedMaterials.mat_poison).toBe(4);
   });
 
   it('a confirmDescend press on the last floor is ignored — no next floor to descend to', () => {
@@ -252,32 +252,32 @@ describe('ExtractionSystem — the last floor still needs an explicit CONFIRM_EX
     // Still out of pickupRadius — PickupSystem must not vacuum it from a distance.
     new PickupSystem().tick(s);
     expect(s.pickups).toHaveLength(1);
-    expect(s.floorMaterials.mat_fire).toBeUndefined();
+    expect(s.players[0]!.floorMaterials.mat_fire).toBeUndefined();
 
     // The player walks over to it.
     p.gx = drop.gx;
     p.gy = drop.gy;
     new PickupSystem().tick(s);
     expect(s.pickups).toHaveLength(0);
-    expect(s.floorMaterials.mat_fire).toBe(3);
+    expect(s.players[0]!.floorMaterials.mat_fire).toBe(3);
 
     // Only now does the player choose to leave.
     p.confirmExtract = true;
     new ExtractionSystem().tick(s);
     expect(s.phase).toBe('gameover');
-    expect(s.bankedMaterials.mat_fire).toBe(3);
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(3);
   });
 });
 
 describe('Death forfeits only the current floor\'s un-banked buffer', () => {
   it('a run-ending death never merges floorMaterials into bankedMaterials', () => {
     const s = createGameState(FLOORS_CFG);
-    s.floorMaterials.mat_fire = 5;
+    s.players[0]!.floorMaterials.mat_fire = 5;
     s.players[0]!.alive = false; // simulate DeathDropsSystem having downed the player
     new WinConditionSystem().tick(s); // death check runs BEFORE the floorsEnabled guard
     expect(s.winner).toBe('enemies');
-    expect(s.bankedMaterials.mat_fire).toBeUndefined();
-    expect(s.floorMaterials.mat_fire).toBe(5); // still there — simply never banked
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBeUndefined();
+    expect(s.players[0]!.floorMaterials.mat_fire).toBe(5); // still there — simply never banked
   });
 });
 
@@ -298,8 +298,8 @@ describe('PickupSystem — materials accumulate into the floor buffer', () => {
       { id: s.nextId(), kind: 'material', gx: p.gx, gy: p.gy, spawnTick: 0, alive: true, materialId: 'mat_ice', qty: 1 },
     );
     new PickupSystem().tick(s);
-    expect(s.floorMaterials.mat_fire).toBe(2);
-    expect(s.floorMaterials.mat_ice).toBe(1);
+    expect(s.players[0]!.floorMaterials.mat_fire).toBe(2);
+    expect(s.players[0]!.floorMaterials.mat_ice).toBe(1);
   });
 });
 

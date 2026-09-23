@@ -259,7 +259,9 @@ export class HudView {
       this.chips.get('floor')!.set(t('hud.chips.floor'), `${s.floorIndex + 1}/${totalFloorCount(s)}`);
       this.chips.get('room')!.set(t('hud.chips.room'), `${Math.max(1, roomIndex + 1)}/${rooms}`);
       this.chips.get('enemies')!.set(t('hud.chips.enemies'), `${s.enemies.length}`);
-      this.chips.get('banked')!.set(t('hud.chips.banked'), `${totalBanked(s)}`);
+      // Per-seat since ENGINE_VERSION 68 (design/14) — same rule the coins chip's own
+      // comment below already states: this reads the LOCAL seat's own bag, not a squad sum.
+      this.chips.get('banked')!.set(t('hud.chips.banked'), `${totalBanked(p)}`);
       // Coins are PER-SEAT (design/05 "Shops"), so this reads the LOCAL seat's wallet and
       // not a sum over the party — a chip showing the squad's total would be a number the
       // player cannot spend.
@@ -426,8 +428,8 @@ export class HudView {
   }
 }
 
-function totalBanked(s: GameState): number {
+function totalBanked(p: GameState['players'][number] | undefined): number {
   let n = 0;
-  for (const v of Object.values(s.bankedMaterials)) n += v ?? 0;
+  for (const v of Object.values(p?.bankedMaterials ?? {})) n += v ?? 0;
   return n;
 }

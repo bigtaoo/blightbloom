@@ -123,6 +123,11 @@ const PURE_FILES = [
   // decision. The survey case at the bottom of this file only walks `controllers/`, so
   // nothing under `match/` has ever been offered up for listing.
   'match/roomCode.ts',
+  // Carved out of Game.ts on 2026-09-23 (the blueprint two-tier pass, ENGINE_VERSION 68):
+  // the run-carry-out and weapon-pickup grants are `MetaState -> MetaState` transforms over
+  // a `GameState`/weaponId, with no renderer dependency at all — form-(1) free functions per
+  // CLAUDE.md's split priority. Listed here after this file's own survey named it.
+  'controllers/metaGrants.ts',
 ] as const;
 
 /**

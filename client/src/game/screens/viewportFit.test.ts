@@ -135,7 +135,7 @@ function realOutcome(kind: 'arenaWin' | 'arenaLoss' | 'pveWin' | 'pveLoss'): Out
     else { s.winner = 7; s.placements.push(1, 2, 3, 4, 5, 6, 0); }
   } else {
     s.floorIndex = 2;
-    s.bankedMaterials = { fire: 3, ice: 2 };
+    s.players[0]!.bankedMaterials = { fire: 3, ice: 2 };
     if (kind === 'pveLoss') s.winner = 'enemies';
   }
   let shown: Outcome | undefined;

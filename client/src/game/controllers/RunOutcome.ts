@@ -20,14 +20,17 @@ export interface RunOutcomeHost {
   currentScore(): number;
   setPhase(phase: 'victory' | 'defeat'): void;
   hideHud(): void;
-  /** Hand the run's whole carry-out to the persistent account (design/05/14): the banked
-   *  materials, AND the blueprint a boss kill rolled (design/14, ENGINE_VERSION 63). One
-   *  method rather than two, because there is exactly one moment either may leave a run and
-   *  the rules governing them are identical — a death forfeits both by never calling this.
-   *  Called a SECOND time, with the same state, to pay the rewarded-ad bonus (see
-   *  `doubleOffer`); the blueprint grant is idempotent, so the repeat pays materials twice
-   *  and the blueprint once, which is what both designs ask for. */
-  bankRunCarryOut(s: GameState): void;
+  /** Hand this seat's own carry-out to the persistent account (design/05/14, per-seat since
+   *  ENGINE_VERSION 68): its banked materials, and — only when `includeBlueprint` (default
+   *  true) — the one-time schematic a boss kill may have dropped INTO THIS SEAT (design/14).
+   *  One method rather than two, because there is exactly one moment either may leave a run
+   *  and the rules governing them are identical — a death forfeits both by never calling
+   *  this. Called a SECOND time, with the same state and `includeBlueprint: false`, to pay
+   *  the rewarded-ad bonus (see `doubleOffer`): materials double, but a schematic is not
+   *  itself a `Partial<Record<string,number>>` bag `bankMaterials` can safely re-add from —
+   *  unlike the OLD permanent `unlockBlueprint` this replaced, granting a stacked schematic
+   *  is NOT idempotent, so the caller must say explicitly whether this call should touch it. */
+  bankRunCarryOut(s: GameState, includeBlueprint?: boolean): void;
   /** Whether this run is a networked match. Read only to suppress the ad offer: an ad
    *  freezes this client, which a lockstep session cannot survive (design/06), so
    *  `AdController` refuses one outright and a button that cannot work must not be drawn. */
@@ -38,26 +41,28 @@ export interface RunOutcomeHost {
   showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer?: ResultOffer | null): void;
 }
 
-/** Total materials safely banked so far this run (design/05 carry-out bag). */
-function totalBanked(s: GameState): number {
+/** Total materials safely banked so far this run, for THIS local seat (design/05 carry-out
+ * bag, per-seat since ENGINE_VERSION 68 — each seat's own results screen shows its own haul,
+ * which now genuinely differs seat to seat rather than mirroring a shared squad total). */
+function totalBanked(s: GameState, localOwner: number): number {
   let n = 0;
-  for (const v of Object.values(s.bankedMaterials)) n += v ?? 0;
+  for (const v of Object.values(s.players[localOwner]?.bankedMaterials ?? {})) n += v ?? 0;
   return n;
 }
 
 /**
- * Everything a run-ending death costs (design/05's locked wipe rule): BOTH tiers — this
- * floor's un-banked buffer AND the carry-out bag descending folded it into. The bag is not
- * the safe half: it only ever leaves the sim when `bankRunCarryOut` hands it to the meta
- * layer, and `lose()` below deliberately never calls that.
+ * Everything a run-ending death costs THIS local seat (design/05's locked wipe rule): BOTH
+ * tiers — this floor's un-banked buffer AND the carry-out bag descending folded it into. The
+ * bag is not the safe half: it only ever leaves the sim when `bankRunCarryOut` hands it to
+ * the meta layer, and `lose()` below deliberately never calls that.
  *
  * Worth a named function rather than reusing `totalBanked`: the defeat line used to read
  * "The floor's materials were lost", which named the smaller of the two pools and matched a
  * claim design/05 had already superseded (corrected 2026-09-03, together with the docs).
  */
-function totalForfeited(s: GameState): number {
-  let n = totalBanked(s);
-  for (const v of Object.values(s.floorMaterials)) n += v ?? 0;
+function totalForfeited(s: GameState, localOwner: number): number {
+  let n = totalBanked(s, localOwner);
+  for (const v of Object.values(s.players[localOwner]?.floorMaterials ?? {})) n += v ?? 0;
   return n;
 }
 
@@ -147,7 +152,7 @@ export class RunOutcome {
 
   private win(s: GameState): void {
     const floor = s.floorIndex + 1;
-    const carried = totalBanked(s);
+    const carried = totalBanked(s, this.host.localOwner);
     // A death (lose) never reaches here, so its floor buffer is simply forfeited, no
     // extra code — banking the carry-out is the only thing that leaves a run.
     this.host.bankRunCarryOut(s);
@@ -157,12 +162,15 @@ export class RunOutcome {
     // The stat block as a function of its materials row, because the ad bonus rewrites
     // that one row and has to leave the other three exactly as they were — re-deriving
     // them later would re-read `currentScore()` after some other screen had moved it.
-    // The blueprint row only exists when one dropped — a permanently-present "no blueprint"
-    // line would make the 5% look like a failure every run instead of like a rare win.
+    // The blueprint row only exists when THIS SEAT is the one who picked one up (design/14,
+    // per-seat since ENGINE_VERSION 68) — a permanently-present "no blueprint" line would
+    // make the rare drop look like a failure every run instead of like a rare win, and a
+    // teammate's pickup is simply not this seat's line to show.
+    const pickedUp = s.players[this.host.localOwner]?.blueprintPickup ?? null;
     const blueprint =
-      s.runBlueprint === null
+      pickedUp === null
         ? []
-        : [t('results.blueprintLine', { weapon: tName(WEAPON_SPECS[s.runBlueprint]?.nameKey ?? s.runBlueprint) })];
+        : [t('results.blueprintLine', { weapon: tName(WEAPON_SPECS[pickedUp]?.nameKey ?? pickedUp) })];
     const lines = (materials: string): readonly string[] => [
       t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
       materials,
@@ -224,7 +232,9 @@ export class RunOutcome {
         // pressed, which is the only version of the number worth having.
         if (!(await ad.show())) return lines(t('results.adNotFilled', { count: carried }));
         track('ad_completed');
-        this.host.bankRunCarryOut(s);
+        // Materials only — the schematic (if any) was already granted by `win()`'s own
+        // call above, and granting it a second time would double-stock it for one ad view.
+        this.host.bankRunCarryOut(s, false);
         return lines(t('results.materialsDoubled', { count: carried * 2 }));
       },
     };
@@ -236,7 +246,7 @@ export class RunOutcome {
     this.host.hideHud();
     this.host.showOutcomeScreen(false, t('results.defeatTitle'), [
       t('results.fellOnFloor', { floor, floorCount: totalFloorCount(s) }),
-      t('results.materialsLost', { count: totalForfeited(s) }),
+      t('results.materialsLost', { count: totalForfeited(s, this.host.localOwner) }),
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
     ]);

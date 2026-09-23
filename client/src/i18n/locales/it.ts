@@ -76,6 +76,7 @@ export const it: Translations<typeof en> = {
     lockedFind: 'bloccato (da trovare)',
     lockedSource: 'bloccato ({source})',
     craftable: 'forgiabile',
+    craftableSchematic: 'forgiabile (schema ×{count})',
     needMaterials: 'materiali insufficienti',
     kindTaken: 'tipo già occupato',
     stagedTag: '  ▸equipaggiato×{count}',
@@ -307,6 +308,7 @@ export const it: Translations<typeof en> = {
   toast: {
     heal: '+1 PV',
     newWeapon: 'Nuova arma',
+    schematicFound: 'Schema: {weapon}',
     buffNamed: 'Bonus: {id}',
     buffGeneric: 'Bonus',
     materialQty: '+{qty} {material}',

@@ -206,10 +206,12 @@ export class GameState {
   readonly floorsEnabled: boolean;
   readonly extraFloors: readonly (readonly WaveDef[])[]; // config.floors ?? []
   floorIndex = 0; // 0-based; floor 0 is the original `waves`, floor k>=1 is extraFloors[k-1]
-  // This floor's un-banked buffer (materialId → qty) — auto-collected on pickup
-  // (PickupSystem), merged into `bankedMaterials` on EXTRACT/DESCEND, and silently
-  // discarded on a run-ending death (forfeit is just "never merged" — no extra code).
-  floorMaterials: Partial<Record<string, number>> = {};
+  // Materials and the boss's one-time schematic drop used to carry a per-run buffer
+  // here (design/05/09, ROADMAP 1.4/1.5) — moved to per-seat fields on `PlayerActor`
+  // (ENGINE_VERSION 68, design/05/14): whichever seat's actor overlaps the pickup is
+  // the one whose own bag grows, matching how `coins` and every weapon pickup already
+  // worked, rather than a shared pool every seat's client applied identically to its
+  // own account. See `PlayerActor.floorMaterials`/`bankedMaterials`/`blueprintPickup`.
 
   // ── Floor cards (design/05, ENGINE_VERSION 58) ──────────────────────────────
   // The checkpoint's "pick one of three". `floorCardOffer` holds THIS checkpoint's
@@ -226,15 +228,12 @@ export class GameState {
   floorCardOffer: string[] = [];
   /** Every card this run has picked, in pick order. Run-scoped, never carries out. */
   floorCards: string[] = [];
-  // The run's carry-out bag — the ONLY thing that leaves a run (design/05). Never
-  // wiped by death; only ever grows, at an extraction checkpoint.
-  bankedMaterials: Partial<Record<string, number>> = {};
-  /** The blueprint this run's boss kill rolled, or null (design/14, ENGINE_VERSION 63). The
-   *  materials bag's companion and the SECOND thing that can leave a run — carried the same
-   *  way and forfeited the same way, because nothing hands it to the meta layer unless the run
-   *  is won. At most one per run: the roll is skipped once this is set, so a boss with adds
-   *  that re-enters the branch cannot pay twice. */
-  runBlueprint: string | null = null;
+  /** Guards the boss's one-time schematic roll to at most once per run (design/14,
+   *  ENGINE_VERSION 68) — a boss with `onDeathSpawn` adds re-entering `rollBlueprint`'s
+   *  branch must not pay twice. Purely a roll guard: WHO ends up carrying the dropped
+   *  schematic out is `PlayerActor.blueprintPickup`, not this flag — this only remembers
+   *  that the roll already happened (win or lose), even before anyone has walked over it. */
+  schematicRolled = false;
 
   // Seeded dungeon mode (design/05/09, ROADMAP 1.3 wired live). All inert unless
   // `dungeonEnabled` (EngineConfig.dungeon was provided) — see SpawnSystem's dungeon
@@ -465,6 +464,12 @@ export class GameState {
       bleedoutTicks: 0,
       reviveProgressTicks: 0,
       bandages: 0, // PvP squad revive (design/05/15) — starts empty, picked up in-arena
+      // Per-seat carry-out (design/05/14, ENGINE_VERSION 68) — starts empty for every
+      // mode; `floorMaterials`/`bankedMaterials` are no-ops unless floorsEnabled (like
+      // the field they replaced), and `blueprintPickup` only a dungeon boss ever sets.
+      floorMaterials: {},
+      bankedMaterials: {},
+      blueprintPickup: null,
       prevButtons: 0,
       status: freshStatus(),
       shieldBreak: skin.shieldBreak ? toShieldBreakSim(skin.shieldBreak) : undefined,

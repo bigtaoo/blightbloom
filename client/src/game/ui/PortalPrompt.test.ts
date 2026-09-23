@@ -32,7 +32,7 @@ describe('PortalPrompt — visibility follows the caller-computed `show` flag', 
   it('is hidden when show is false, regardless of state content', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, false);
+    prompt.update(s, false, 0);
     expect(prompt.view.visible).toBe(false);
     expect(prompt.isOpen).toBe(false);
   });
@@ -41,9 +41,9 @@ describe('PortalPrompt — visibility follows the caller-computed `show` flag', 
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
     s.floorIndex = 0; // floor 1 of 3
-    s.floorMaterials = { mat_fire: 5, mat_ice: 2 }; // pending = 7
+    s.players[0]!.floorMaterials = { mat_fire: 5, mat_ice: 2 }; // pending = 7
 
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
 
     expect(prompt.view.visible).toBe(true);
     expect(prompt.isOpen).toBe(true);
@@ -54,9 +54,9 @@ describe('PortalPrompt — visibility follows the caller-computed `show` flag', 
   it('hides again the next update() once show flips back to false', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     expect(prompt.view.visible).toBe(true);
-    prompt.update(s, false);
+    prompt.update(s, false, 0);
     expect(prompt.view.visible).toBe(false);
   });
 });
@@ -77,7 +77,7 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('an interior floor offers Descend and no Extract', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     const p = privateOf(prompt);
     expect(p.descendBtn.view.visible).toBe(true);
     expect(p.extractBtn.view.visible).toBe(false);
@@ -86,7 +86,7 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('the last floor offers Extract and no Descend', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, true);
+    prompt.update(s, true, 0, true);
     const p = privateOf(prompt);
     expect(p.descendBtn.view.visible).toBe(false);
     expect(p.extractBtn.view.visible).toBe(true);
@@ -95,11 +95,11 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('swaps back and forth across updates rather than latching', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, true);
-    prompt.update(s, true, false);
+    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, false);
     expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
     expect(privateOf(prompt).extractBtn.view.visible).toBe(false);
-    prompt.update(s, true, true);
+    prompt.update(s, true, 0, true);
     expect(privateOf(prompt).extractBtn.view.visible).toBe(true);
   });
 
@@ -110,9 +110,9 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
     // the fallback arm (CLAUDE.md's note on branch coverage being the column that bites).
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    s.floorMaterials = { mat_fire: 3, mat_ice: undefined };
-    s.bankedMaterials = { mat_poison: undefined };
-    prompt.update(s, true, true);
+    s.players[0]!.floorMaterials = { mat_fire: 3, mat_ice: undefined };
+    s.players[0]!.bankedMaterials = { mat_poison: undefined };
+    prompt.update(s, true, 0, true);
     expect(privateOf(prompt).extractBtn.label.text).toContain('3');
     expect(privateOf(prompt).extractBtn.label.text).not.toContain('NaN');
   });
@@ -120,9 +120,9 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('titles the two cases differently — the boss floor is where the run ends', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, false);
+    prompt.update(s, true, 0, false);
     const interior = privateOf(prompt).titleText.text;
-    prompt.update(s, true, true);
+    prompt.update(s, true, 0, true);
     expect(privateOf(prompt).titleText.text).not.toBe(interior);
   });
 
@@ -133,9 +133,9 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
     // everything the earlier floors' descends had folded in.
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    s.floorMaterials = { mat_fire: 5 };
-    s.bankedMaterials = { mat_ice: 12 };
-    prompt.update(s, true, true);
+    s.players[0]!.floorMaterials = { mat_fire: 5 };
+    s.players[0]!.bankedMaterials = { mat_ice: 12 };
+    prompt.update(s, true, 0, true);
     const label = privateOf(prompt).extractBtn.label.text;
     expect(label).toContain('17');
     expect(label).not.toContain('5 materials');
@@ -156,7 +156,7 @@ describe('PortalPrompt — callbacks', () => {
   it('tapping each button fires its own callback, not the other one', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     const calls: string[] = [];
     prompt.onExtract = () => calls.push('extract');
     prompt.onDescend = () => calls.push('descend');
@@ -173,7 +173,7 @@ describe('PortalPrompt — i18n (design/17-i18n.md)', () => {
   it('defaults to English copy', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     expect(privateOf(prompt).titleText.text).not.toBe('');
   });
 
@@ -181,10 +181,10 @@ describe('PortalPrompt — i18n (design/17-i18n.md)', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
     await useLocale('zh');
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     const zhTitle = privateOf(prompt).titleText.text;
     setLocale('en');
-    prompt.update(s, true);
+    prompt.update(s, true, 0);
     const enTitle = privateOf(prompt).titleText.text;
     expect(zhTitle).not.toBe(enTitle);
   });

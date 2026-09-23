@@ -146,7 +146,9 @@ describe('floor cards fit their card', () => {
 // --------------------------------------------------------------- portal popup
 
 function portalState(): GameState {
-  return { floorIndex: 0, floorMaterials: { alloy: 12 }, bankedMaterials: {} } as unknown as GameState;
+  // Per-seat since ENGINE_VERSION 68 (design/14) — the carry-out bags live on `players[0]`,
+  // not at the top level.
+  return { floorIndex: 0, players: [{ floorMaterials: { alloy: 12 }, bankedMaterials: {} }] } as unknown as GameState;
 }
 
 function portalLabels(p: PortalPrompt): string[] {
@@ -164,7 +166,7 @@ describe('the portal popup’s buttons fit their box', () => {
       await useLocale(locale);
       const p = new PortalPrompt();
       for (const isLastFloor of [true, false]) {
-        p.update(portalState(), true, isLastFloor);
+        p.update(portalState(), true, 0, isLastFloor);
         for (const label of portalLabels(p)) {
           const worst = widest(label, BTN_FONT);
           expect(worst.px, `[${locale}] "${worst.line}"`).toBeLessThanOrEqual(MAX_W);
