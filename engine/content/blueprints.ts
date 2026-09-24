@@ -18,8 +18,12 @@ import type { DamageType } from './damage';
 import { DAMAGE_TYPES } from './damage';
 import { WEAPON_SPECS } from './weapons';
 
-/** How blueprints are obtained (design/14). 'drop' = falls from runs (2–3 common,
- * permanent the moment obtained); 'purchase' = RMB store; 'event' = time-limited. */
+/** How blueprints are obtained (design/14). 'drop' = falls from runs — a one-time SCHEMATIC
+ * (a boss kill, or finding one on the floor), stackable, consumed by the craft that spends
+ * it, revised ENGINE_VERSION 68 (was: permanent the moment obtained); 'purchase' = RMB
+ * store; 'event' = time-limited. Both 'purchase' and 'event' grant PERMANENTLY, exactly
+ * like the STARTER_BLUEPRINTS signup grant below — see `meta/forge.ts`'s own header for the
+ * two-/three-layer split this drives in the meta layer. */
 export type BlueprintSource = 'drop' | 'purchase' | 'event';
 
 /** One material requirement of a recipe: how much of which elemental material. */

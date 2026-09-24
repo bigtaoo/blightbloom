@@ -69,6 +69,7 @@ export type GameEvent =
   // `traits`, now real). Fires ONCE, the tick it first triggers — fx/audio only,
   // never read back into sim decisions (the enraged bonus itself lives on the actor).
   | { type: 'enrage'; id: number; gx: Fp; gy: Fp }
+  | { type: 'armor_break'; id: number; gx: Fp; gy: Fp }
   // Co-op downed/revive (design/05/07/08, ROADMAP 3.2). A player was incapacitated
   // (revivable, not dead) / brought back up by a teammate's revive channel. fx-only.
   | { type: 'downed'; id: number; gx: Fp; gy: Fp }
@@ -88,9 +89,6 @@ export type GameEvent =
   // it paid, so the render layer can size its burst off the event instead of counting
   // pickups that appeared the same tick for other reasons.
   | { type: 'chest_open'; id: number; kind: 'small' | 'big'; gx: Fp; gy: Fp; weapons: number }
-  // A boss kill rolled a blueprint (design/14, ENGINE_VERSION 63). The GRANT happens in the
-  // meta layer on a won run, never here — this is the render layer's cue to say so.
-  | { type: 'blueprint_drop'; weaponId: string; gx: Fp; gy: Fp }
   // A shop line was bought (design/05 "Shops", 2026-09-14). `buyer` is the seat's actor id,
   // so a client can tell "you bought this" from "someone else did" — which is the whole
   // difference between a confirmation and an explanation of why the row went grey. `price`
@@ -100,7 +98,7 @@ export type GameEvent =
       type: 'shop_buy';
       id: number;
       buyer: number;
-      kind: 'weapon' | 'buff' | 'heal' | 'energy';
+      kind: 'weapon' | 'buff' | 'heal' | 'energy' | 'shield' | 'emp';
       price: number;
       gx: Fp;
       gy: Fp;

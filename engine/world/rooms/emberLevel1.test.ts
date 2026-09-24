@@ -20,7 +20,7 @@
  * and it fails here rather than in a run.
  */
 import { describe, expect, it } from 'vitest';
-import { EMBER_L1_FLOORS, EMBER_L1_ROOMS } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_ROOMS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
 import { EMBER_DUNGEON } from './ember';
 import { buildFloorGeometry, placeAuthoredFloor, type DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
@@ -73,9 +73,13 @@ describe('EMBER_DUNGEON is the authored 5-floor level 1', () => {
     expect(pieceFor(EMBER_DUNGEON.bossPieceId).role).toBe('boss');
   });
 
-  it('keeps the same enemy-HP ceiling as the old 3-floor curve now that there are 5 floors', () => {
+  it("halves the curve's ceiling again now that the room-authored type gradient shoulders part of the depth scaling (Task 2, ENGINE_VERSION 69)", () => {
+    // Was `perFloor: 0.5` / ceiling ×3 — see `world/rooms/ember.ts`'s own doc comment
+    // on why stacking the flat HP curve on top of an ALREADY depth-scaled room
+    // roster (ironclad/galvanist arriving floor 2+, ravager count climbing with
+    // depth) double-counted "harder deeper" onto the same enemies.
     const { base, perFloor } = EMBER_DUNGEON.difficultyCurve;
-    expect(base + perFloor * (EMBER_DUNGEON.floorCount - 1)).toBe(3);
+    expect(base + perFloor * (EMBER_DUNGEON.floorCount - 1)).toBe(2);
   });
 });
 
@@ -165,8 +169,11 @@ describe('level 1 room pieces', () => {
     for (const id of SIDE_PIECES) expect(pieceFor(id).role, id).toBeUndefined(); // a side room is a NORMAL room
   });
 
-  it('the boss room opens with the blightlord at spawn point 0', () => {
-    expect(pieceFor('ember_l1_boss').spawns.enemy[0]?.type).toBe('blightlord');
+  it("the boss room opens with the random-boss sentinel at spawn point 0 (Task 2, ENGINE_VERSION 70)", () => {
+    // Was a fixed 'blightlord' through v69 — SpawnSystem now resolves this sentinel to
+    // one of BOSS_POOL's three bosses (`resolveSpawnType`), one `aiPrng` draw the tick
+    // the room activates.
+    expect(pieceFor('ember_l1_boss').spawns.enemy[0]?.type).toBe('boss_random');
   });
 
   it('every piece authors at least two player spawns (a co-op run seats two) and all four exits', () => {
@@ -289,21 +296,25 @@ describe('level 1 shops', () => {
   const withShops = EMBER_L1_ROOMS.filter((p) => (p.shops?.length ?? 0) > 0);
   const everyShop = EMBER_L1_ROOMS.flatMap((p) => (p.shops ?? []).map((sh) => ({ piece: p, sh })));
 
-  it('one piece carries one counter — the market side room', () => {
+  it('two pieces carry one counter each — the vault and the market side rooms (Task 5)', () => {
     // Until 2026-09-14 the counter rode `forge` (floors 0-1) and `crucible` (floors 2-4), so
     // every floor had one because every floor drew one of those two pieces. The owner's call
     // that day put the run's shop on ONE floor, which a per-piece placement cannot express.
-    expect(withShops.map((p) => p.id)).toEqual(['ember_l1_market']);
-    expect(everyShop).toHaveLength(1);
+    // Task 5's "改为两个商店可以的" reopened it: `ember_l1_vault` (already a big-chest room on
+    // floor 3) gained a second, independent counter — no new room, no new door, so the run's
+    // existing connectivity is untouched.
+    expect(withShops.map((p) => p.id).sort()).toEqual(['ember_l1_market', 'ember_l1_vault']);
+    expect(everyShop).toHaveLength(2);
   });
 
-  it('stocks exactly one floor — floor 3, the floor before the boss', () => {
-    // Coins are run-scoped and never banked (design/05 "Coins"), so a single counter this
-    // deep is the whole economy's pressure: everything a run has saved is spendable once,
-    // one floor before the run's only exit.
+  it('stocks exactly two floors — index 2 (the vault) and index 3 (the market, the floor before the boss)', () => {
+    // Coins are run-scoped and never banked (design/05 "Coins"), so two counters spread
+    // across the back half of the run is the whole economy's pressure: everything saved by
+    // floor 2 is spendable there, and everything saved after is spendable once more before
+    // the run's only exit.
     const shopsOn = (i: number): number =>
       floorAt(i).rooms.reduce((n, r) => n + (pieceFor(r.pieceId).shops?.length ?? 0), 0);
-    expect(FLOOR_INDICES.map(shopsOn)).toEqual([0, 0, 0, 1, 0]);
+    expect(FLOOR_INDICES.map(shopsOn)).toEqual([0, 0, 1, 1, 0]);
   });
 
   it('puts the counter inside its own piece, clear of the perimeter wall', () => {
@@ -517,6 +528,50 @@ function traversability(map: DungeonFloorMap) {
   return { unreachable, chestsUnreachable, shopsUnreachable, roomsEntered, roomCount: placed.length, doorCount: doors.length, W, H };
 }
 
+/**
+ * The "every door sits on a real shared wall" check, factored out (Task 6) so the
+ * branching-variant block below can run the exact same assertion the per-index
+ * suite already runs, rather than duplicating it by hand for a map that isn't in
+ * `FLOOR_INDICES`.
+ */
+function assertDoorsOnSharedWalls(map: DungeonFloorMap): void {
+  const rect = (id: string) => {
+    const room = map.rooms.find((r) => r.id === id);
+    if (!room) throw new Error(`door references unknown room '${id}'`);
+    const piece = pieceFor(room.pieceId);
+    return { x: room.offsetXGrid, y: room.offsetYGrid, w: piece.sizeGrid.w, h: piece.sizeGrid.h };
+  };
+  for (const door of map.doors) {
+    expect(door.roomA).not.toBe(door.roomB);
+    const a = rect(door.roomA);
+    const b = rect(door.roomB);
+    const p = door.passageGrid;
+    // Whole cells, not half ones. Nine authored passages carried a `.5` until
+    // `ENGINE_VERSION` 44 — see the "no wall run is thinner than one grid cell"
+    // test below for what that actually cost.
+    for (const [field, value] of Object.entries(p)) {
+      expect(Number.isInteger(value), `${door.roomA}/${door.roomB} passageGrid.${field} = ${value}`).toBe(true);
+    }
+    const vertical = a.x + a.w === b.x || b.x + b.w === a.x;
+    const horizontal = a.y + a.h === b.y || b.y + b.h === a.y;
+    expect(vertical || horizontal, `${door.roomA}/${door.roomB} do not touch`).toBe(true);
+    if (vertical) {
+      const boundary = a.x + a.w === b.x ? b.x : a.x;
+      // 2 deep, straddling the boundary — cuts BOTH rooms' 1-thick perimeter walls.
+      expect(p.w).toBe(2);
+      expect(p.x).toBe(boundary - 1);
+      expect(p.y).toBeGreaterThanOrEqual(Math.max(a.y, b.y));
+      expect(p.y + p.h).toBeLessThanOrEqual(Math.min(a.y + a.h, b.y + b.h));
+    } else {
+      const boundary = a.y + a.h === b.y ? b.y : a.y;
+      expect(p.h).toBe(2);
+      expect(p.y).toBe(boundary - 1);
+      expect(p.x).toBeGreaterThanOrEqual(Math.max(a.x, b.x));
+      expect(p.x + p.w).toBeLessThanOrEqual(Math.min(a.x + a.w, b.x + b.w));
+    }
+  }
+}
+
 describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
   const map = floorAt(index);
 
@@ -525,41 +580,7 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
   });
 
   it('every door sits on a real shared wall between the two rooms it names', () => {
-    const rect = (id: string) => {
-      const room = map.rooms.find((r) => r.id === id);
-      if (!room) throw new Error(`door references unknown room '${id}'`);
-      const piece = pieceFor(room.pieceId);
-      return { x: room.offsetXGrid, y: room.offsetYGrid, w: piece.sizeGrid.w, h: piece.sizeGrid.h };
-    };
-    for (const door of map.doors) {
-      expect(door.roomA).not.toBe(door.roomB);
-      const a = rect(door.roomA);
-      const b = rect(door.roomB);
-      const p = door.passageGrid;
-      // Whole cells, not half ones. Nine authored passages carried a `.5` until
-      // `ENGINE_VERSION` 44 — see the "no wall run is thinner than one grid cell"
-      // test below for what that actually cost.
-      for (const [field, value] of Object.entries(p)) {
-        expect(Number.isInteger(value), `${door.roomA}/${door.roomB} passageGrid.${field} = ${value}`).toBe(true);
-      }
-      const vertical = a.x + a.w === b.x || b.x + b.w === a.x;
-      const horizontal = a.y + a.h === b.y || b.y + b.h === a.y;
-      expect(vertical || horizontal, `${door.roomA}/${door.roomB} do not touch`).toBe(true);
-      if (vertical) {
-        const boundary = a.x + a.w === b.x ? b.x : a.x;
-        // 2 deep, straddling the boundary — cuts BOTH rooms' 1-thick perimeter walls.
-        expect(p.w).toBe(2);
-        expect(p.x).toBe(boundary - 1);
-        expect(p.y).toBeGreaterThanOrEqual(Math.max(a.y, b.y));
-        expect(p.y + p.h).toBeLessThanOrEqual(Math.min(a.y + a.h, b.y + b.h));
-      } else {
-        const boundary = a.y + a.h === b.y ? b.y : a.y;
-        expect(p.h).toBe(2);
-        expect(p.y).toBe(boundary - 1);
-        expect(p.x).toBeGreaterThanOrEqual(Math.max(a.x, b.x));
-        expect(p.x + p.w).toBeLessThanOrEqual(Math.min(a.x + a.w, b.x + b.w));
-      }
-    }
+    assertDoorsOnSharedWalls(map);
   });
 
   it('every room is reachable through the door graph from the spawn room', () => {
@@ -636,5 +657,110 @@ describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
     const { W, H } = traversability(map);
     expect(W).toBeGreaterThan(0);
     expect(H).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Whether `map`'s capstone is still reachable from its spawn room through the door
+ * GRAPH (topology only, not the physical geometry — `traversability` above already
+ * covers that half) if `excludeRoomId` and every door touching it are removed. This
+ * is the executable form of "some floors put the exit at the end so nothing is
+ * skippable, some floors let a room in the middle be skipped" (Task 6): a room is
+ * genuinely skippable exactly when the capstone stays reachable without it.
+ */
+function reachesCapstoneWithout(map: DungeonFloorMap, excludeRoomId: string): boolean {
+  const spawnId = map.rooms[0]!.id;
+  const capstoneId = map.rooms[map.rooms.length - 1]!.id;
+  const adjacency = new Map<string, string[]>(map.rooms.map((r) => [r.id, []]));
+  for (const door of map.doors) {
+    if (door.roomA === excludeRoomId || door.roomB === excludeRoomId) continue;
+    adjacency.get(door.roomA)?.push(door.roomB);
+    adjacency.get(door.roomB)?.push(door.roomA);
+  }
+  const reached = new Set([spawnId]);
+  const queue = [spawnId];
+  while (queue.length > 0) {
+    for (const next of adjacency.get(queue.shift()!) ?? []) {
+      if (!reached.has(next)) {
+        reached.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return reached.has(capstoneId);
+}
+
+describe("floor 1's branching layout variant (Task 6, room-layout randomization, 2026-09-23)", () => {
+  const linear = floorAt(1);
+  const branch = EMBER_L1_FLOOR_2_BRANCH;
+
+  it("is wired into EMBER_DUNGEON as floor index 1's variant pool, plain layout first", () => {
+    expect(EMBER_DUNGEON.floorLayoutVariants?.[1]).toEqual([linear, branch]);
+  });
+
+  it('keeps the exact same room roster, in the exact same array order, as the plain layout — so enemy-id allocation and notice-delay tuning never depend on which variant a run draws', () => {
+    expect(branch.rooms.map((r) => r.id)).toEqual(linear.rooms.map((r) => r.id));
+    expect(branch.rooms.map((r) => r.pieceId)).toEqual(linear.rooms.map((r) => r.pieceId));
+  });
+
+  it('no two rooms overlap', () => {
+    expect(overlapping(branch)).toEqual([]);
+  });
+
+  it('every door sits on a real shared wall between the two rooms it names', () => {
+    assertDoorsOnSharedWalls(branch);
+  });
+
+  it('every room is reachable through the door graph from the spawn room', () => {
+    const adjacency = new Map<string, string[]>(branch.rooms.map((r) => [r.id, []]));
+    for (const door of branch.doors) {
+      adjacency.get(door.roomA)?.push(door.roomB);
+      adjacency.get(door.roomB)?.push(door.roomA);
+    }
+    const reached = new Set([branch.rooms[0]!.id]);
+    const queue = [branch.rooms[0]!.id];
+    while (queue.length > 0) {
+      for (const next of adjacency.get(queue.shift()!) ?? []) {
+        if (!reached.has(next)) {
+          reached.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    expect(branch.rooms.map((r) => r.id).filter((id) => !reached.has(id))).toEqual([]);
+  });
+
+  it('every entrance and every spawn point is physically walkable from the spawn room', () => {
+    const { unreachable } = traversability(branch);
+    expect(unreachable).toEqual([]);
+  });
+
+  it('every chest stands on walkable ground the run can reach', () => {
+    const { chestsUnreachable } = traversability(branch);
+    expect(chestsUnreachable).toEqual([]);
+  });
+
+  it('the flood fill physically walks into every room — no door is declared but sealed', () => {
+    const { roomsEntered, roomCount } = traversability(branch);
+    expect(roomsEntered).toBe(roomCount);
+  });
+
+  it('genuinely lets r3_span be skipped — the capstone stays reachable with it and its doors removed', () => {
+    expect(reachesCapstoneWithout(branch, 'r3_span')).toBe(true);
+  });
+
+  it('the plain layout has no such skip — removing any single mandatory chain room (not a side room) disconnects the capstone', () => {
+    // b1_cache is already a known, deliberate dead-end detour (design/05 "Chest
+    // rooms") — excluded here because the plain layout was never meant to make
+    // THAT room mandatory in the first place. Every other room on the chain is.
+    const mandatory = linear.rooms.map((r) => r.id).filter((id) => id !== 'b1_cache' && id !== linear.rooms[0]!.id);
+    for (const id of mandatory) {
+      expect(reachesCapstoneWithout(linear, id), `${id} should not be skippable on the plain layout`).toBe(false);
+    }
+  });
+
+  it("does not disturb the plain layout's own room count, chest, or capstone rules", () => {
+    expect(branch.rooms.length).toBe(linear.rooms.length);
+    expect(pieceFor(branch.rooms[branch.rooms.length - 1]!.pieceId).role).toBe('extraction');
   });
 });

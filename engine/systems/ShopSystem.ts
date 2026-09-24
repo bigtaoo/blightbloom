@@ -14,17 +14,17 @@
  * cannot stop for one player (design/06), so the counter is a non-blocking panel exactly like
  * the weapon one.
  *
- * ## What a purchase actually does, and why the four kinds split two ways
+ * ## What a purchase actually does, and why the six kinds split two ways
  *
  * A bought **weapon** lands on the floor as an ordinary `weapon` pickup. Not swapped straight
  * into a slot: which of the two slots to overwrite is a decision (design/05's pickup rules
  * call weapons "click-driven" for exactly this reason), and the panel that makes it already
  * exists. Buying it puts it on the counter; picking it up is still a second, separate choice.
  *
- * A bought **buff / heal / energy** applies directly to the BUYER. These are design/05's
- * "pure upside, no choice" class, and dropping them as pickups would have made a paid reward
- * collectable by whoever walked past first — tolerable for a chest's free pile, not for
- * something a teammate spent their own coins on.
+ * A bought **buff / heal / energy / shield / emp** applies directly to the BUYER. These are
+ * design/05's "pure upside, no choice" class, and dropping them as pickups would have made a
+ * paid reward collectable by whoever walked past first — tolerable for a chest's free pile,
+ * not for something a teammate spent their own coins on.
  *
  * That split is also what makes the refusal rule below possible: an instant item that would
  * do nothing is refused BEFORE the coins move, so a full-HP player cannot buy a potion they
@@ -37,15 +37,19 @@
  * same rule a small chest runs on, and the reason a party cannot each buy the one weapon.
  */
 import { ENERGY_PICKUP_AMOUNT } from '../balance/energy';
-import { HEAL_PICKUP_AMOUNT } from '../content/drops';
+import { HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '../content/drops';
 import { SHOP_INTERACT_RANGE_GRID } from '../config';
 import { toFpGrid } from '../content/convert';
 import { dropClearance } from '../state/actorRadius';
 import type { GameState } from '../state/GameState';
 import type { PlayerActor, Shop, ShopOffer } from '../state/entities';
 import { clampToWalkable } from './geom';
-import { pickupWouldApply } from './PickupSystem';
+import { applyEmpBurst, pickupWouldApply } from './PickupSystem';
 import { applyRunBuff } from './runBuffApply';
+
+/** The instant-item kinds whose purchase is refused outright if it would do nothing —
+ *  `pickupWouldApply`'s own gate, reused rather than re-stated (see the header). */
+const INSTANT_KINDS: readonly ShopOffer['kind'][] = ['heal', 'energy', 'shield', 'emp'];
 
 const INTERACT_RANGE_FP = toFpGrid(SHOP_INTERACT_RANGE_GRID) as number;
 
@@ -79,7 +83,7 @@ export class ShopSystem {
     // the player may still decline, and a buff's cap is applied Sigma-then-clamp at USE time,
     // so "already wasted" is not a question this site can answer (design/05's pickup rules
     // make exactly this exception for the buff drop).
-    if ((offer.kind === 'heal' || offer.kind === 'energy') && !pickupWouldApply(p, { kind: offer.kind } as never)) {
+    if (INSTANT_KINDS.includes(offer.kind) && !pickupWouldApply(p, { kind: offer.kind } as never, state)) {
       return;
     }
 
@@ -124,6 +128,12 @@ export class ShopSystem {
         break;
       case 'energy':
         p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT);
+        break;
+      case 'shield':
+        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT);
+        break;
+      case 'emp':
+        applyEmpBurst(state, p);
         break;
     }
   }

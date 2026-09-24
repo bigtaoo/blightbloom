@@ -25,7 +25,7 @@ import { makeCommand } from '@dd/engine/state/input';
 import type { Brad } from '@dd/engine/math/trig';
 import { toFp } from '@dd/engine/math/fixed';
 import { toFpGrid } from '@dd/engine/content/convert';
-import { buildEnemyActor } from '@dd/engine/content/enemies';
+import { buildEnemyActor, BOSS_POOL, ENEMY_BLUEPRINTS } from '@dd/engine/content/enemies';
 import { NOTICE_DELAY_TICKS, NOTICE_SPREAD_TICKS } from '@dd/engine/balance/encounter';
 import { ENEMY_TEAM_ID, type Projectile } from '@dd/engine/state/entities';
 import type { RoomPiece } from '@dd/engine/content/rooms';
@@ -206,7 +206,7 @@ describe('Dungeon mode — DESCEND generates the next floor', () => {
   it('a CONFIRM_DESCEND press at the floor-0 checkpoint banks, advances the floor index, and regenerates', () => {
     const eng = createGameEngine(DUN_CFG);
     const s = eng.state;
-    s.floorMaterials.mat_fire = 2; // pretend we picked up some material this floor
+    s.players[0]!.floorMaterials.mat_fire = 2; // pretend we picked up some material this floor
 
     eng.step([idle(1)]); // floor places
     eng.step([idle(2)]); // room 0 activates (empty)
@@ -216,7 +216,7 @@ describe('Dungeon mode — DESCEND generates the next floor', () => {
     eng.step([confirmDescend(4)]); // one-shot press — resolves immediately
     expect(s.floorIndex).toBe(1);
     expect(s.dungeonRooms.length).toBe(0); // marked for regeneration
-    expect(s.bankedMaterials.mat_fire).toBe(2); // floor buffer banked
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(2); // floor buffer banked
     expect(s.phase).not.toBe('gameover');
 
     eng.step([idle(5)]); // SpawnSystem generates + places floor 1
@@ -443,7 +443,7 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     // different lifetime — the run IS the player.
     const eng = createGameEngine(STRAND_CFG);
     const s = eng.state;
-    s.floorMaterials.mat_fire = 4;
+    s.players[0]!.floorMaterials.mat_fire = 4;
     runToStrandedCheckpoint(eng);
     const p = s.players[0]!;
     const weaponBefore = p.weapon?.spec.name;
@@ -456,7 +456,7 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     expect(p.hp).toBeGreaterThan(0); // (exact hp is combat's business — the stranded pair shoots)
     expect(p.maxHp).toBe(maxHpBefore);
     expect(p.weapon?.spec.name).toBe(weaponBefore);
-    expect(s.bankedMaterials.mat_fire).toBe(4); // the floor buffer still banks normally
+    expect(s.players[0]!.bankedMaterials.mat_fire).toBe(4); // the floor buffer still banks normally
   });
 
   it('stays byte-identical across two engines on the same seed, wipe and all', () => {
@@ -559,6 +559,124 @@ describe('Dungeon mode — hand-authored floors override generation for that flo
     expect(s.roomgenPrng.peek()).not.toBe(roomgenBefore); // procedural generation DID draw
     expect(s.dungeonRooms.length).toBe(2);
     expect(s.dungeonRooms[1]!.piece.role).toBe('boss'); // floor 1 is the last → TEST_LIB's boss capstone
+  });
+});
+
+describe('Dungeon mode — floorLayoutVariants draws exactly one roomgenPrng pick among an authored pool (Task 6, room-layout randomization, 2026-09-23)', () => {
+  const VARIANT_LIB: RoomPiece[] = [
+    { id: 'auth_variant_a', role: 'extraction', sizeGrid: { w: 12, h: 10 }, solids: [], spawns: { player: [{ x: 6, y: 5 }], enemy: [] }, exits: [] },
+    { id: 'auth_variant_b', role: 'extraction', sizeGrid: { w: 14, h: 12 }, solids: [], spawns: { player: [{ x: 7, y: 6 }], enemy: [] }, exits: [] },
+  ];
+  const VARIANT_A: DungeonFloorMap = { id: 'floor0a', rooms: [{ id: 'onlyRoom', pieceId: 'auth_variant_a', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+  const VARIANT_B: DungeonFloorMap = { id: 'floor0b', rooms: [{ id: 'onlyRoom', pieceId: 'auth_variant_b', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+  const cfg: EngineConfig = {
+    ...DUN_CFG,
+    dungeon: {
+      config: { ...TEST_DUN, floorLayoutVariants: { 0: [VARIANT_A, VARIANT_B] } },
+      library: [...TEST_LIB, ...VARIANT_LIB],
+    },
+  };
+
+  it('draws roomgenPrng to pick among the two variants and places whichever it drew', () => {
+    const eng = createGameEngine(cfg);
+    const s = eng.state;
+    const before = s.roomgenPrng.peek();
+    eng.step([idle(1)]);
+    expect(s.roomgenPrng.peek()).not.toBe(before); // the variant pick DID draw
+    expect(s.dungeonRooms).toHaveLength(1);
+    expect(['auth_variant_a', 'auth_variant_b']).toContain(s.dungeonRooms[0]!.piece.id);
+  });
+
+  it('is a single one-time draw — a fresh engine on the SAME seed resolves the SAME variant', () => {
+    const a = createGameEngine(cfg);
+    a.step([idle(1)]);
+    const b = createGameEngine(cfg);
+    b.step([idle(1)]);
+    expect(b.state.dungeonRooms[0]!.piece.id).toBe(a.state.dungeonRooms[0]!.piece.id);
+  });
+
+  it('a floor index absent from floorLayoutVariants still reads floorMaps directly, zero extra draws — unchanged from before Task 6', () => {
+    const cfgNoVariants: EngineConfig = {
+      ...DUN_CFG,
+      dungeon: { config: { ...TEST_DUN, floorMaps: { 0: VARIANT_A } }, library: [...TEST_LIB, ...VARIANT_LIB] },
+    };
+    const eng = createGameEngine(cfgNoVariants);
+    const s = eng.state;
+    const before = s.roomgenPrng.peek();
+    eng.step([idle(1)]);
+    expect(s.roomgenPrng.peek()).toBe(before);
+    expect(s.dungeonRooms[0]!.piece.id).toBe('auth_variant_a');
+  });
+});
+
+describe("Dungeon mode — the 'boss_random' spawn sentinel resolves to one of BOSS_POOL (Task 2, ENGINE_VERSION 70)", () => {
+  const BOSS_LIB: RoomPiece[] = [
+    {
+      id: 'auth_boss_start',
+      sizeGrid: { w: 20, h: 16 },
+      solids: [],
+      spawns: { player: [{ x: 2, y: 8 }], enemy: [{ x: 10, y: 8, type: 'boss_random' }] },
+      exits: [],
+    },
+  ];
+  const BOSS_FLOOR: DungeonFloorMap = {
+    id: 'floor0',
+    rooms: [{ id: 'start', pieceId: 'auth_boss_start', offsetXGrid: 0, offsetYGrid: 0 }],
+    doors: [],
+  };
+  const cfg: EngineConfig = {
+    ...DUN_CFG,
+    dungeon: { config: { ...TEST_DUN, floorMaps: { 0: BOSS_FLOOR } }, library: [...TEST_LIB, ...BOSS_LIB] },
+  };
+
+  // EnemyActor carries no `type` field at runtime (only the blueprint LOOKUP uses one,
+  // buildEnemyActor) — maxHp is unique across BOSS_POOL's three entries, so it doubles
+  // as a reverse identifier here.
+  const bossTypeByMaxHp = new Map(BOSS_POOL.map((type) => [ENEMY_BLUEPRINTS[type]!.maxHp, type]));
+
+  it('resolves to a real boss blueprint from BOSS_POOL, not the literal sentinel string', () => {
+    const eng = createGameEngine(cfg);
+    eng.step([idle(1)]); // floor places
+    eng.step([idle(2)]); // entrance room's roomId now resolves → activates
+    expect(eng.state.enemies).toHaveLength(1);
+    const spawned = eng.state.enemies[0]!;
+    expect(bossTypeByMaxHp.has(spawned.maxHp)).toBe(true);
+    expect(spawned.boss).toBe(true); // every BOSS_POOL entry is a real boss blueprint
+  });
+
+  it('is a single one-time draw — a fresh engine on the SAME seed resolves the SAME boss', () => {
+    const a = createGameEngine(cfg);
+    a.step([idle(1)]);
+    a.step([idle(2)]);
+    const b = createGameEngine(cfg);
+    b.step([idle(1)]);
+    b.step([idle(2)]);
+    expect(b.state.enemies[0]!.maxHp).toBe(a.state.enemies[0]!.maxHp);
+  });
+
+  it('a room with an ordinary (non-sentinel) type is unaffected — no draw, same type spawns', () => {
+    const ordinaryLib: RoomPiece[] = [
+      {
+        id: 'auth_basic_start',
+        sizeGrid: { w: 20, h: 16 },
+        solids: [],
+        spawns: { player: [{ x: 2, y: 8 }], enemy: [{ x: 10, y: 8, type: 'basic' }] },
+        exits: [],
+      },
+    ];
+    const ordinaryFloor: DungeonFloorMap = { id: 'floor0', rooms: [{ id: 'start', pieceId: 'auth_basic_start', offsetXGrid: 0, offsetYGrid: 0 }], doors: [] };
+    const ordinaryCfg: EngineConfig = {
+      ...DUN_CFG,
+      dungeon: { config: { ...TEST_DUN, floorMaps: { 0: ordinaryFloor } }, library: [...TEST_LIB, ...ordinaryLib] },
+    };
+    const eng = createGameEngine(ordinaryCfg);
+    eng.step([idle(1)]); // floor places
+    const aiPrngBefore = eng.state.aiPrng.peek();
+    eng.step([idle(2)]); // entrance room's roomId now resolves → activates
+    expect(eng.state.enemies[0]!.maxHp).toBe(ENEMY_BLUEPRINTS.basic!.maxHp);
+    // One aiPrng draw for the fire-phase jitter every spawn pays regardless of type
+    // (buildEnemyActor) — but NOT a second one for a boss-pool roll it never asked for.
+    expect(eng.state.aiPrng.peek()).not.toBe(aiPrngBefore);
   });
 });
 

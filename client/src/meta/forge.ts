@@ -1,9 +1,19 @@
 /**
  * Forge transactions (design/14) — pure functions over MetaState. Each returns a NEW
- * state (no mutation), so callers can preview/undo and tests stay trivial. Two layers,
- * per design/14: UNLOCK a blueprint (permanent account right) and CRAFT an instance from
- * an unlocked blueprint by spending banked materials, staging it into the next run's
- * loadout (≤ WEAPON_SLOTS; each crafted weapon lasts exactly one run, design/05).
+ * state (no mutation), so callers can preview/undo and tests stay trivial. THREE layers,
+ * revised ENGINE_VERSION 68 (was two): UNLOCK a blueprint permanently (account right, from
+ * signup or purchase — the two are identical), BANK a one-time schematic (a boss's rare
+ * drop, stackable), and CRAFT an instance from either by spending banked materials,
+ * staging it into the next run's loadout (≤ WEAPON_SLOTS; each crafted weapon lasts
+ * exactly one run, design/05). A craft always spends materials regardless of which of the
+ * two owns it — a permanent recipe's only advantage is that it is never itself spent.
+ *
+ * **Which one a craft spends is not a choice — it is a fixed order.** `craft()` prefers
+ * the permanent recipe when both exist for the same weaponId, so a stacked schematic is
+ * never silently burned for a weapon the account already owns outright; it stays banked
+ * for a run where the account does not. Today's catalog never actually presents that
+ * choice (a permanent recipe and an earnable schematic never name the same weaponId — see
+ * `content/blueprints.ts`), but the order costs nothing to get right now rather than later.
  *
  * Crafting currency is the five elemental materials (content/materials.ts), banked per
  * (element, ROLLED tier) via `bankKey` — so a recipe's `minTier` is ENFORCED: a cost of
@@ -25,14 +35,40 @@ export function bankMaterials(m: MetaState, banked: Partial<Record<string, numbe
   return { ...m, materialBank };
 }
 
+/** Does the account permanently own this weapon's recipe? (Signup grant or purchase —
+ * the two are identical, design/14.) `canCraft` below is the fuller question — this one
+ * matters on its own because a permanent recipe is what `craft()` prefers to spend from. */
 export function isUnlocked(m: MetaState, weaponId: string): boolean {
   return m.unlockedBlueprints.includes(weaponId);
 }
 
-/** Grant a blueprint (from a drop / purchase / event). Idempotent; ignores unknown ids. */
+/** How many one-time schematics of this weapon the account is holding (0 if none). */
+export function schematicCount(m: MetaState, weaponId: string): number {
+  return m.blueprintStock[weaponId] ?? 0;
+}
+
+/** Can the forge craft this weapon at all — permanently, or off a banked schematic? This
+ * is the gate `craft()` checks; `isUnlocked` alone would refuse a schematic-only weapon. */
+export function canCraft(m: MetaState, weaponId: string): boolean {
+  return isUnlocked(m, weaponId) || schematicCount(m, weaponId) > 0;
+}
+
+/** Grant a blueprint PERMANENTLY (signup / purchase / event — design/14, revised
+ * ENGINE_VERSION 68: a registration grant behaves exactly like a purchase, never spent by
+ * a craft). Idempotent; ignores unknown ids. Distinct from `addSchematic` below, which
+ * banks a one-time, craft-consumed copy instead. */
 export function unlockBlueprint(m: MetaState, weaponId: string): MetaState {
   if (!BLUEPRINT_CATALOG[weaponId] || isUnlocked(m, weaponId)) return m;
   return { ...m, unlockedBlueprints: [...m.unlockedBlueprints, weaponId] };
+}
+
+/** Bank a one-time blueprint schematic (a boss kill's rare drop, design/14, ENGINE_VERSION
+ * 68) — stackable, unlike `unlockBlueprint`. A schematic for a weapon the account already
+ * owns permanently still banks: the roll cannot see the account (design/06), and `craft()`
+ * simply never spends a stacked copy it does not need (see this module's own header). */
+export function addSchematic(m: MetaState, weaponId: string): MetaState {
+  if (!BLUEPRINT_CATALOG[weaponId]) return m;
+  return { ...m, blueprintStock: { ...m.blueprintStock, [weaponId]: schematicCount(m, weaponId) + 1 } };
 }
 
 /** Bank keys that satisfy a cost's (element, minTier), lowest tier first — the draw order
@@ -80,8 +116,10 @@ export function kindAlreadyStaged(m: MetaState, weaponId: string): boolean {
 }
 
 /** Craft one instance of `weaponId` into the staged loadout: requires the blueprint to
- * exist, be unlocked, a free loadout slot **of a kind not already staged**, and enough
- * materials — spends them on success.
+ * exist and be CRAFTABLE (a permanent recipe, or a banked schematic — `canCraft`), a
+ * free loadout slot **of a kind not already staged**, and enough materials. Always spends
+ * the materials; spends one schematic too, UNLESS the account also holds the permanent
+ * recipe, in which case the schematic stays banked (this module's own header).
  *
  * **The kind check is what makes design/03/05's central claim true** — *"every loadout
  * carries one gun and one melee weapon, so parry is always OWNED"* (`ENGINE_VERSION` 45).
@@ -98,7 +136,8 @@ export function kindAlreadyStaged(m: MetaState, weaponId: string): boolean {
 export function craft(m: MetaState, weaponId: string): CraftResult {
   const bp = BLUEPRINT_CATALOG[weaponId];
   if (!bp) return { ok: false, reason: 'unknown' };
-  if (!isUnlocked(m, weaponId)) return { ok: false, reason: 'locked' };
+  const permanent = isUnlocked(m, weaponId);
+  if (!permanent && schematicCount(m, weaponId) <= 0) return { ok: false, reason: 'locked' };
   if (m.loadout.length >= PLAYER_BASE.weaponSlots) return { ok: false, reason: 'loadout-full' };
   if (kindAlreadyStaged(m, weaponId)) return { ok: false, reason: 'kind-taken' };
   if (!canAfford(m, bp)) return { ok: false, reason: 'unaffordable' };
@@ -117,7 +156,16 @@ export function craft(m: MetaState, weaponId: string): CraftResult {
       owed -= spend;
     }
   }
-  return { ok: true, meta: { ...m, materialBank, loadout: [...m.loadout, weaponId] } };
+  // The permanent recipe is preferred and is never itself spent (this module's own
+  // header); only a craft with NO permanent recipe touches the schematic stack, and it
+  // always spends exactly one — `canCraft`'s guard above already proved one is banked.
+  const blueprintStock = permanent ? m.blueprintStock : { ...m.blueprintStock };
+  if (!permanent) {
+    const left = schematicCount(m, weaponId) - 1;
+    if (left > 0) blueprintStock[weaponId] = left;
+    else delete blueprintStock[weaponId];
+  }
+  return { ok: true, meta: { ...m, materialBank, blueprintStock, loadout: [...m.loadout, weaponId] } };
 }
 
 /** Clear the staged loadout (e.g. after a run consumes it, or the player reconsiders).

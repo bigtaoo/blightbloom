@@ -379,9 +379,9 @@ describe('PickupSystem — the energy refill (design/05 "only when useful")', ()
     const p = s.players[0]!;
     const item = energyPickup(s, 0, 0);
     p.energy = p.maxEnergy;
-    expect(pickupWouldApply(p, item)).toBe(false);
+    expect(pickupWouldApply(p, item, s)).toBe(false);
     p.energy = p.maxEnergy - 1;
-    expect(pickupWouldApply(p, item)).toBe(true);
+    expect(pickupWouldApply(p, item, s)).toBe(true);
   });
 
   it('is per-PLAYER: a full teammate does not deny it to an empty one', () => {

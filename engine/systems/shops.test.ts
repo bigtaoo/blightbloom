@@ -25,10 +25,18 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { PlayerActor, Shop, ShopOffer } from '@dd/engine/state/entities';
 import { ShopSystem } from '@dd/engine/systems';
-import { rollShopStock, SHOP_PRICES } from '@dd/engine/content/shops';
-import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT } from '@dd/engine/content/drops';
+import {
+  rollShopStock,
+  SHOP_PRICES,
+  SHOP_SLOT_WEIGHT_WEAPON,
+  SHOP_SLOT_WEIGHT_ITEM,
+  type ShopPrng,
+} from '@dd/engine/content/shops';
+import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
+import { WEAPON_SPECS } from '@dd/engine/content/weaponSpecs';
 import { SHOP_INTERACT_RANGE_GRID, SHOP_STOCK_SIZE } from '@dd/engine/config';
 import { Prng } from '@dd/engine/math/prng';
+import { buildEnemyActor } from '@dd/engine/content/enemies';
 
 const CFG = { seed: 11, worldW: 2400, worldH: 2400, waves: [] as const };
 const sys = new ShopSystem();
@@ -63,6 +71,7 @@ function addPlayer(s: GameState, gx: number, gy: number, coins = 1000): PlayerAc
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),
+    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null,
   };
   s.players.push(p);
   return p;
@@ -90,53 +99,123 @@ function addShop(s: GameState, gx: number, gy: number, stock: Partial<ShopOffer>
   return shop;
 }
 
-describe('rollShopStock — the counter is composed, not rolled', () => {
-  it('always stocks weapon / buff / supply, in that order', () => {
-    // Across many seeds, because the claim is about every shop and not about a lucky one.
-    for (let seed = 0; seed < 50; seed++) {
-      const stock = rollShopStock(new Prng(seed), ids());
-      expect(stock).toHaveLength(SHOP_STOCK_SIZE);
-      expect(stock[0]!.kind).toBe('weapon');
-      expect(stock[1]!.kind).toBe('buff');
-      expect(['heal', 'energy']).toContain(stock[2]!.kind);
-      expect(WEAPON_DROP_POOL).toContain(stock[0]!.weaponId);
-      expect(BUFF_DROP_POOL).toContain(stock[1]!.buffId);
+/** A controllable stand-in for `Prng` — returns exactly the values it is given, in order,
+ *  regardless of `max` (every call site here only ever needs the value, never the modulus
+ *  it was drawn against). Lets the category-boundary test below assert the EXACT roll each
+ *  bucket edge belongs to, deterministically, rather than hoping a seed sweep happens to
+ *  land on it. */
+class FixedRoll implements ShopPrng {
+  private i = 0;
+  constructor(private readonly values: readonly number[]) {}
+  nextInt(): number {
+    const v = this.values[this.i++];
+    if (v === undefined) throw new Error('FixedRoll: ran out of scripted draws');
+    return v;
+  }
+  // Mirrors the real Prng.weightedIndex exactly, but consumes the next SCRIPTED value
+  // as the roll rather than drawing nextInt(total) internally — a test can still script
+  // an exact "roll" and see exactly which weight bucket it lands in.
+  weightedIndex(weights: readonly number[]): number {
+    let roll = this.nextInt();
+    for (let i = 0; i < weights.length; i++) {
+      roll -= weights[i]!;
+      if (roll < 0) return i;
     }
+    return weights.length - 1;
+  }
+}
+
+describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_VERSION 72)', () => {
+  it('draws each slot independently — all three can land on the same category', () => {
+    // Roll 0 is inside every category's own range at its low edge, so three (category,
+    // sub-pick) pairs of (0, 0) forces all three slots to weapon — the case the OLD fixed
+    // weapon/buff/supply composition could never produce at all.
+    const stock = rollShopStock(new FixedRoll([0, 0, 0, 0, 0, 0]), ids(), 0);
+    expect(stock.map((o) => o.kind)).toEqual(['weapon', 'weapon', 'weapon']);
   });
 
-  it('rolls BOTH supply kinds across seeds, so the third slot is a real coin flip', () => {
-    // The control on the test above: `toContain(['heal','energy'])` passes for a shop that
-    // only ever stocks potions, which is what a `nextInt(2) === 0` mistyped as `!== 1` would
-    // still be — and a supply slot that never rolls energy is a silently deleted half.
-    const kinds = new Set<string>();
-    for (let seed = 0; seed < 50; seed++) kinds.add(rollShopStock(new Prng(seed), ids())[2]!.kind);
-    expect(kinds).toEqual(new Set(['heal', 'energy']));
+  it("the category boundaries are exactly 0-59 weapon / 60-89 item / 90-99 buff", () => {
+    // Only slot 0 is inspected; slots 1-2 are scripted identically so `rollShopStock`'s fixed
+    // six-draw shape has values to consume without affecting what is being asserted.
+    const categoryOf = (roll: number): string => rollShopStock(new FixedRoll([roll, 0, roll, 0, roll, 0]), ids(), 0)[0]!.kind;
+    expect(categoryOf(0)).toBe('weapon');
+    expect(categoryOf(SHOP_SLOT_WEIGHT_WEAPON - 1)).toBe('weapon'); // 59
+    expect(['heal', 'energy', 'shield', 'emp']).toContain(categoryOf(SHOP_SLOT_WEIGHT_WEAPON)); // 60 — first item roll
+    expect(['heal', 'energy', 'shield', 'emp']).toContain(
+      categoryOf(SHOP_SLOT_WEIGHT_WEAPON + SHOP_SLOT_WEIGHT_ITEM - 1), // 89 — last item roll
+    );
+    expect(categoryOf(SHOP_SLOT_WEIGHT_WEAPON + SHOP_SLOT_WEIGHT_ITEM)).toBe('buff'); // 90 — first buff roll
+    expect(categoryOf(99)).toBe('buff'); // 99 — last possible roll
   });
 
-  it('spends exactly three draws whatever it rolls', () => {
+  it('rolls all three categories, and all four item kinds within the item category, across seeds', () => {
+    // Across many seeds, because the claim is about the draw itself and not about one lucky
+    // shop. A category or item kind that never appears is a silently deleted branch.
+    const categories = new Set<string>();
+    const itemKinds = new Set<string>();
+    for (let seed = 0; seed < 200; seed++) {
+      for (const offer of rollShopStock(new Prng(seed), ids(), 0)) {
+        categories.add(offer.kind === 'weapon' || offer.kind === 'buff' ? offer.kind : 'item');
+        if (offer.kind !== 'weapon' && offer.kind !== 'buff') itemKinds.add(offer.kind);
+      }
+    }
+    expect(categories).toEqual(new Set(['weapon', 'item', 'buff']));
+    expect(itemKinds).toEqual(new Set(['heal', 'energy', 'shield', 'emp']));
+  });
+
+  it('spends exactly six draws whatever it rolls — two per slot, three slots', () => {
     // design/06: a PRNG's draw COUNT is as load-bearing as its values. A shop that spent a
     // variable number would make every later loot roll on the floor depend on its shelves.
     for (const seed of [1, 7, 99, 12345]) {
       const p = new Prng(seed);
-      rollShopStock(p, ids());
+      rollShopStock(p, ids(), 0);
       const control = new Prng(seed);
-      control.nextInt(2);
-      control.nextInt(2);
-      control.nextInt(2);
+      for (let i = 0; i < 6; i++) control.nextInt(2);
       expect(p.peek()).toBe(control.peek());
     }
   });
 
   it('prices each line from SHOP_PRICES, so no number is written twice', () => {
-    const stock = rollShopStock(new Prng(3), ids());
+    const stock = rollShopStock(new Prng(3), ids(), 0);
     for (const o of stock) expect(o.price).toBe(SHOP_PRICES[o.kind]);
   });
 
   it('gives every line a DISTINCT id', () => {
     // The id is what a tap addresses. Two lines sharing one would make a tap ambiguous, and
     // `Array.find` would silently resolve it to whichever came first.
-    const stock = rollShopStock(new Prng(5), ids());
+    const stock = rollShopStock(new Prng(5), ids(), 0);
     expect(new Set(stock.map((o) => o.id)).size).toBe(stock.length);
+  });
+
+  it('always stocks exactly SHOP_STOCK_SIZE lines, whatever the categories', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      expect(rollShopStock(new Prng(seed), ids(), 0)).toHaveLength(SHOP_STOCK_SIZE);
+    }
+  });
+
+  it('a weapon slot draws from WEAPON_DROP_POOL and a buff slot from BUFF_DROP_POOL', () => {
+    const weaponOffer = rollShopStock(new FixedRoll([0, 3, 0, 3, 0, 3]), ids(), 0)[0]!;
+    expect(WEAPON_DROP_POOL).toContain(weaponOffer.weaponId);
+    const buffOffer = rollShopStock(new FixedRoll([99, 1, 99, 1, 99, 1]), ids(), 0)[0]!;
+    expect(BUFF_DROP_POOL).toContain(buffOffer.buffId);
+  });
+
+  it("a weapon slot's rarity shifts with floorIndex (Task 7, weapon rarity by floor depth)", () => {
+    // Roll 0 forces the category to 'weapon' every slot; only the second value of each
+    // pair (the weightedIndex roll) varies across seeds, forcing the category roll fixed
+    // so every sample is a weapon whose TIER is what's actually under test.
+    const rank: Record<string, number> = { common: 0, fine: 1, epic: 2, legend: 3, legendary: 4 };
+    const pooledAverage = (floorIndex: number, rolls: number): number => {
+      let total = 0;
+      for (let roll = 0; roll < rolls; roll++) {
+        const offer = rollShopStock(new FixedRoll([0, roll, 0, roll, 0, roll]), ids(), floorIndex)[0]!;
+        total += rank[WEAPON_SPECS[offer.weaponId!]!.rarity]!;
+      }
+      return total / rolls;
+    };
+    const avg0 = pooledAverage(0, 1800);
+    const avg4 = pooledAverage(4, 1800);
+    expect(avg4).toBeGreaterThan(avg0 + 0.5); // comfortably outside sampling noise
   });
 });
 
@@ -184,6 +263,27 @@ describe('ShopSystem — what a tap buys', () => {
     sys.tick(s);
     expect(p.energy).toBe(Math.min(p.maxEnergy, ENERGY_PICKUP_AMOUNT));
     expect(p.coins).toBe(76);
+  });
+
+  it('recharges the shield and bursts every enemy in range (Task 4), clamped/gated the same way', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    p.maxShield = 8; // the fixture's own default is 0 — give it a real pool to restore into
+    p.shield = p.maxShield - 5;
+    const near = buildEnemyActor(s, p.gx, p.gy, 'basic');
+    s.enemies.push(near);
+    const startingHp = near.hp;
+    const shop = addShop(s, 10, 10, [
+      { kind: 'shield', price: SHOP_PRICES.shield },
+      { kind: 'emp', price: SHOP_PRICES.emp },
+    ]);
+    p.shopBuyId = shop.stock[0]!.id;
+    sys.tick(s);
+    expect(p.shield).toBe(Math.min(p.maxShield, p.maxShield - 5 + SHIELD_PICKUP_AMOUNT));
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(near.hp).toBeLessThan(startingHp);
+    expect(p.coins).toBe(100 - SHOP_PRICES.shield - SHOP_PRICES.emp);
   });
 
   it('emits shop_buy naming the BUYER, so a client can tell a confirmation from an explanation', () => {
@@ -273,6 +373,32 @@ describe('ShopSystem — the refusals', () => {
     p.shopBuyId = shop.stock[0]!.id;
     sys.tick(s);
     expect(p.coins).toBe(88);
+  });
+
+  it('applies the same instant-item refusal to shield (full) and emp (nothing in range)', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    p.maxShield = 8; // the fixture's own default is 0 — give it a real pool to gate on
+    p.shield = p.maxShield;
+    const shop = addShop(s, 10, 10, [
+      { kind: 'shield', price: SHOP_PRICES.shield },
+      { kind: 'emp', price: SHOP_PRICES.emp },
+    ]);
+    p.shopBuyId = shop.stock[0]!.id;
+    refused(s, p, shop, 100);
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(shop.stock[1]!.sold).toBe(false); // no enemy anywhere yet
+    expect(p.coins).toBe(100);
+
+    p.shield = 0;
+    p.shopBuyId = shop.stock[0]!.id;
+    sys.tick(s);
+    expect(shop.stock[0]!.sold).toBe(true);
+    s.enemies.push(buildEnemyActor(s, p.gx, p.gy, 'basic'));
+    p.shopBuyId = shop.stock[1]!.id;
+    sys.tick(s);
+    expect(shop.stock[1]!.sold).toBe(true);
   });
 
   it('does NOT apply that rule to a weapon or a buff', () => {

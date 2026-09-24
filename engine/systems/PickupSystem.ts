@@ -12,9 +12,10 @@
  *              because there is no item bag to hold one in; it went unimplemented
  *              until `ENGINE_VERSION` 54, so the ONE item that restores the one
  *              pool nothing else restores was silently binned at full HP.
- *   material — added to this floor's un-banked buffer (state.floorMaterials,
- *              design/05, ROADMAP 1.4/1.5); banked at an extraction checkpoint
- *              (ExtractionSystem), forfeited on a run-ending death. Auto, on overlap.
+ *   material — added to the COLLECTOR's own un-banked buffer (PlayerActor.floorMaterials,
+ *              design/05/14, ROADMAP 1.4/1.5, per-seat since ENGINE_VERSION 68); banked
+ *              at an extraction checkpoint (ExtractionSystem), forfeited on a run-ending
+ *              death. Auto, on overlap.
  *   weapon   — design/03 "NOT auto-picked-up... click-driven" (ENGINE_VERSION 32,
  *              replacing v21's INTERACT gesture): overlap alone does nothing; the
  *              player must have clicked this exact item this tick (`pickupTargetId`
@@ -33,31 +34,74 @@
  *              maxEnergy. Auto, on overlap, and under the SAME `wouldApply` gate `heal`
  *              is under, for the same reason — it is an instant item with no bag to
  *              hold it in, so a full player must leave it on the floor for later.
+ *   schematic — a boss's one-time blueprint drop (design/14, ENGINE_VERSION 68). Into
+ *              the COLLECTOR's own `blueprintPickup`, not a shared bag — same per-seat
+ *              rule `material` follows now, replacing the old squad-wide auto-grant.
+ *              Auto, on overlap; at most one exists per run.
+ *   shield   — shield-battery instant item (design/05, ENGINE_VERSION 71): restore up
+ *              to maxShield. Auto, on overlap, same `wouldApply` gate as heal/energy —
+ *              the third and last capped-pool instant this engine has a pool for.
+ *   emp      — EMP grenade instant item (design/05, ENGINE_VERSION 71): burst lightning
+ *              damage to every alive enemy within `SIM.empRadius` of the collector
+ *              (`applyEmpBurst`). Auto, on overlap, gated on there being an enemy in
+ *              range at all rather than on a pool — the roster's first OFFENSIVE
+ *              instant item.
  *
  * Ports Game.ts updatePickups(): float px → fp, squared-distance overlap. The
  * render-only hover bob is dropped (visual, not sim).
  */
 import { SIM } from '../sim.config';
-import { HEAL_PICKUP_AMOUNT, rollArenaDrop } from '../content/drops';
+import { EMP_DAMAGE, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT, rollArenaDrop } from '../content/drops';
 import { ENERGY_PICKUP_AMOUNT } from '../balance/energy';
 import { bankKey } from '../content/materials';
 import { WEAPON_SIM_BY_ID, makeWeapon } from '../content/weapons';
 import { PLAYER_BASE } from '../content/players';
 import { PVP_SCALE_FACTOR, scaleWeaponDamage } from '../balance/build';
 import { applyRunBuff } from './runBuffApply';
+import { resolveFloorCards } from '../balance/floorCards';
+import { applyResist } from '../content/damage';
+import { takeDamage } from './combat';
 import { toFp } from '../math/fixed';
 import type { GameState } from '../state/GameState';
-import type { PickupItem, PlayerActor, WeaponSimSpec } from '../state/entities';
+import type { EnemyActor, PickupItem, PlayerActor, WeaponSimSpec } from '../state/entities';
 import { dropClearance } from '../state/actorRadius';
 import { circlesOverlap, clampToWalkable, retainAlive } from './geom';
+
+/** Every alive enemy within `SIM.empRadius` of `p` — shared by `pickupWouldApply` (is
+ *  there anything to hit at all) and `applyEmpBurst` (the actual damage pass), so the
+ *  two can never disagree about what counts as "in range". */
+function enemiesInEmpRange(state: GameState, p: PlayerActor): EnemyActor[] {
+  return state.enemies.filter((e) => e.alive && circlesOverlap(p.gx, p.gy, SIM.empRadius, e.gx, e.gy, e.radius));
+}
+
+/**
+ * EMP grenade (Task 4, ENGINE_VERSION 71) — the roster's first OFFENSIVE instant item:
+ * every other one restores the collector's own pool, this damages everyone else's.
+ * Reuses `applyResist`/`takeDamage` directly rather than going through
+ * `HitResolveSystem` (a private class method, and built around a projectile/swing's
+ * own hit-list bookkeeping this burst has none of) — the same two free functions a
+ * bullet or DoT tick ultimately bottoms out at, so shield-first absorb and the
+ * `shield_break` event fire exactly as they would for any other lightning hit.
+ * Exported so `ShopSystem.deliver` (a bought EMP applies straight to the buyer, no
+ * ground pickup) can call the same pass rather than a second copy of the loop.
+ */
+export function applyEmpBurst(state: GameState, p: PlayerActor): void {
+  for (const e of enemiesInEmpRange(state, p)) {
+    const dmg = applyResist(EMP_DAMAGE, 'lightning', e.resist);
+    takeDamage(state, e, dmg, 'player', 'lightning');
+  }
+}
 
 /**
  * Would collecting `item` change `p`'s state at all? design/05's *"consumables —
  * auto-apply, but only when useful"*: with no item bag, an instant item collected at
  * full effect is destroyed for nothing, so the pickup radius must not trigger for it.
  *
- * **Only the two INSTANT items — `heal` and `energy` — have a condition, deliberately.**
- * `material`/`bandage` accumulate with no cap, so they always do something. `buff` looks like a candidate and is not one: the
+ * **Four INSTANT items have a condition, deliberately.** `heal`/`energy`/`shield` all
+ * restore a capped pool, so each is gated on that pool sitting below its cap. `emp` is
+ * gated differently — it has no pool of its own, so "useful" means "would hit at least
+ * one alive enemy" (`enemiesInEmpRange`). `material`/`bandage` accumulate with no cap,
+ * so they always do something. `buff` looks like a candidate and is not one: the
  * `mult_*` families are Σ-then-clamped at USE time (`sumBuffs`, read by WeaponFire /
  * HitResolve), so "is this buff already at its cap" is not a question this call site can
  * answer without duplicating that arithmetic — and a run buff is a permanent stack entry,
@@ -74,13 +118,18 @@ import { circlesOverlap, clampToWalkable, retainAlive } from './geom';
  * this predicate would be exactly the drift design/18's G6 is about. It called this out by
  * failing the moment the gate landed.
  */
-export function pickupWouldApply(p: PlayerActor, item: PickupItem): boolean {
+export function pickupWouldApply(p: PlayerActor, item: PickupItem, state: GameState): boolean {
   if (item.kind === 'heal') return p.hp < p.maxHp;
   // Weapon energy (ENGINE_VERSION 59) is the second instant item, and the first one
   // this rule was written in anticipation of ("if a shield/temp-buff instant item is
   // ever added, this is the one place it needs a clause"). Same shape as heal: it
   // restores a capped pool, so at the cap it would be destroyed for nothing.
   if (item.kind === 'energy') return p.energy < p.maxEnergy;
+  // Shield battery (Task 4) — the anticipated third capped-pool instant.
+  if (item.kind === 'shield') return p.shield < p.maxShield;
+  // EMP grenade (Task 4) — the roster's first instant with no pool of its own to cap;
+  // "useful" means "there is something here to hit".
+  if (item.kind === 'emp') return enemiesInEmpRange(state, p).length > 0;
   return true;
 }
 
@@ -107,7 +156,7 @@ export class PickupSystem {
         const p = state.players[i]!;
         if (!p.alive) continue;
         if (isWeapon && p.pickupTargetId !== item.id) continue; // must have clicked THIS item this tick
-        if (!pickupWouldApply(p, item)) continue; // design/05: no-op consumables stay on the floor
+        if (!pickupWouldApply(p, item, state)) continue; // design/05: no-op consumables stay on the floor
         if (!circlesOverlap(item.gx, item.gy, radius, p.gx, p.gy, p.radius)) continue;
         this.apply(state, p, item);
         item.alive = false;
@@ -162,9 +211,18 @@ export class PickupSystem {
         if (item.materialId) {
           // Key by (material, rolled tier) so a recipe's minTier can gate it later
           // (design/14). Tier 0 keeps the flat key — byte-identical to pre-tier drops.
+          // Into the COLLECTOR's own floor buffer (ENGINE_VERSION 68) — a per-seat bag
+          // like `coins`, not a shared one every seat's client used to apply in full.
           const key = bankKey(item.materialId, item.tier ?? 0);
-          state.floorMaterials[key] = (state.floorMaterials[key] ?? 0) + (item.qty ?? 0);
+          p.floorMaterials[key] = (p.floorMaterials[key] ?? 0) + (item.qty ?? 0);
         }
+        break;
+      case 'schematic':
+        // A boss's one-time blueprint drop (design/14, ENGINE_VERSION 68) — the collector's
+        // own carry-out, exactly like `material` above. At most one exists per run
+        // (`DeathDropsSystem.rollBlueprint`), so a plain overwrite is safe; the `if` guard
+        // is defensive rather than load-bearing.
+        if (item.weaponId && p.blueprintPickup === null) p.blueprintPickup = item.weaponId;
         break;
       case 'coin':
         // In-run currency (design/05 "Shops"). Into the COLLECTOR's own wallet, not a
@@ -187,8 +245,17 @@ export class PickupSystem {
       case 'energy':
         // Weapon-energy refill (design/03/05). Clamped to the pool, like heal's clamp to
         // maxHp — the `wouldApply` gate above already refused a full player, so the
-        // clamp here only ever trims a partial top-up.
-        p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT);
+        // clamp here only ever trims a partial top-up. The `surge` floor card (Task 8)
+        // multiplies the flat amount, same payload-not-table-weight shape as `windfall`.
+        p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).energyPickupMult);
+        break;
+      case 'shield':
+        // Shield battery (Task 4) — same clamp shape as heal/energy. `aegis` (Task 8)
+        // multiplies the flat amount the same way `surge` does for energy.
+        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).shieldPickupMult);
+        break;
+      case 'emp':
+        applyEmpBurst(state, p);
         break;
     }
   }

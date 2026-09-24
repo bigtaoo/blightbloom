@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOMAdapter } from 'pixi.js';
-import { defaultMetaState, purchasableBlueprints, MemoryMetaStore, type MetaState } from '../../meta';
+import { defaultMetaState, purchasableBlueprints, grantCharacter, MemoryMetaStore, type MetaState } from '../../meta';
 import { Forge } from '../screens/Forge';
 import { Loadout } from '../screens/Loadout';
 import { ForgeActions } from './ForgeActions';
@@ -86,8 +86,11 @@ describe('ForgeActions', () => {
     const loadout = new Loadout();
     const store = new MemoryMetaStore();
     const actions = new ForgeActions({ forge, loadout, store });
-    const meta = defaultMetaState();
-    expect(meta.ownedCharacters.length).toBeGreaterThan(1); // the free roster has more than one
+    // skirmisher is no longer in the free default roster (Task 8) — grant it explicitly,
+    // the same way a completed character-SKU purchase would, so there is more than one
+    // owned character to cycle between.
+    const meta = grantCharacter(defaultMetaState(), 'skirmisher');
+    expect(meta.ownedCharacters.length).toBeGreaterThan(1);
 
     const next = actions.cycleCharacter(meta, 800, 600);
 

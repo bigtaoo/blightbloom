@@ -79,6 +79,7 @@ export const en = {
     lockedFind: 'locked (find it)',
     lockedSource: 'locked ({source})',
     craftable: 'craftable',
+    craftableSchematic: 'craftable (schematic ×{count})',
     needMaterials: 'need materials',
     kindTaken: 'slot kind taken',
     stagedTag: '  ▸staged×{count}',
@@ -140,6 +141,8 @@ export const en = {
       sold: 'SOLD',
       heal: 'Health potion',
       energy: 'Energy cell',
+      shield: 'Shield battery',
+      emp: 'EMP grenade',
     },
     // Big-chest caption (ui/ChestPrompt.ts, design/05 "Chest rooms"). The only place the game
     // says that a big chest wants every mechanism plate covered at once — a rule a player
@@ -328,7 +331,10 @@ export const en = {
   },
   toast: {
     heal: '+1 HP',
+    shield: 'Shield recharged',
+    emp: 'EMP burst',
     newWeapon: 'New weapon',
+    schematicFound: 'Schematic: {weapon}',
     buffNamed: 'Buff: {id}',
     buffGeneric: 'Buff',
     materialQty: '+{qty} {material}',
@@ -371,6 +377,7 @@ export const en = {
     enemygun: { name: 'Raider Rifle' },
     enemyclaw: { name: 'Raider Claw' },
     enemymaul: { name: 'Raider Maul' },
+    enemynova: { name: 'Raider Nova' },
     flamer: { name: 'Flamethrower' },
     cryobolt: { name: 'Cryobolt' },
     teslagun: { name: 'Tesla Gun' },
@@ -405,6 +412,10 @@ export const en = {
     bulwark: { name: 'Bulwark', desc: '+{value} max HP' },
     precision: { name: 'Precision', desc: '+{value}% crit chance' },
     capacitor: { name: 'Capacitor', desc: '+{value} max energy' },
+    surge: { name: 'Surge', desc: 'Energy is worth {factor}x' },
+    aegis: { name: 'Aegis', desc: 'Shields are worth {factor}x' },
+    stockpile: { name: 'Stockpile', desc: 'Materials are worth {factor}x' },
+    bounty: { name: 'Bounty', desc: '+{count} weapon per chest' },
   },
   buff: {
     dmg_up: { name: 'Damage Up' },

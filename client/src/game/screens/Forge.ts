@@ -4,7 +4,7 @@ import {
   resolveLoadout, type WeaponBlueprint,
 } from '@dd/engine';
 import type { MetaState } from '../../meta';
-import { bankTotal, canAfford, isUnlocked, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
+import { bankTotal, canAfford, isUnlocked, schematicCount, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
 import { Panel, Button } from '../ui/widgets';
 import { BlueprintCard } from '../ui/BlueprintCard';
 import { CompareCard, buildCompareRows, equippedSpecOfKind } from '../ui/compareCard';
@@ -237,7 +237,14 @@ export class Forge {
       }
       card.view.visible = true;
       const bp = BLUEPRINT_CATALOG[id]!;
-      const unlocked = isUnlocked(m, id);
+      // Two independent ways to be craftable now (design/14, ENGINE_VERSION 68): a
+      // permanent recipe, or a banked one-time schematic — `permanent` is which one this
+      // card has, `craftable` is whether it has either. A card with ONLY schematic stock
+      // says so on the status line (`craftableSchematic`) rather than reading as
+      // permanently `craftable`, because crafting it spends the last thing making it true.
+      const permanent = isUnlocked(m, id);
+      const stock = schematicCount(m, id);
+      const craftable = permanent || stock > 0;
       const staged = m.loadout.filter((x) => x === id).length;
       const affordable = canAfford(m, bp);
       // A blueprint whose weapon KIND is already staged cannot be crafted however much
@@ -245,18 +252,19 @@ export class Forge {
       // `meta/forge.ts craft`). Say so on the card: without this the press just plays
       // `ui.denied` on an unlocked, affordable weapon, which reads as a lost input rather
       // than as a rule.
-      const kindTaken = unlocked && kindAlreadyStaged(m, id);
-      const status = !unlocked
+      const kindTaken = craftable && kindAlreadyStaged(m, id);
+      const status = !craftable
         ? (bp.source === 'drop' ? t('forge.lockedFind') : t('forge.lockedSource', { source: t(SOURCE_KEY[bp.source]) }))
         : kindTaken ? t('forge.kindTaken')
-        : affordable ? t('forge.craftable') : t('forge.needMaterials');
-      const statusColor = !unlocked || kindTaken ? 0x718096 : affordable ? 0x68d391 : 0xf6ad55;
+        : !affordable ? t('forge.needMaterials')
+        : permanent ? t('forge.craftable') : t('forge.craftableSchematic', { count: stock });
+      const statusColor = !craftable || kindTaken ? 0x718096 : affordable ? 0x68d391 : 0xf6ad55;
       const key = i < 9 ? `${i + 1}` : '·'; // only the first 9 have a digit-key shortcut
       const spec = WEAPON_SPECS[bp.weaponId];
       const borderColor = spec ? RARITY_COLORS[RARITY_TIERS[spec.rarity].colorKey] : 0x4c566a;
       card.set({
         key, name: spec ? tName(spec.nameKey) : id, cost: this.costText(bp.cost), status, statusColor, borderColor,
-        selected: i === this.selectedIndex, staged, locked: !unlocked,
+        selected: i === this.selectedIndex, staged, locked: !craftable,
         icon: spec && getWeaponTexture(spec.id, spec.kind),
       });
     });

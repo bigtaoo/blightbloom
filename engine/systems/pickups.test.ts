@@ -4,6 +4,7 @@ import type { GameState } from '@dd/engine/state/GameState';
 import type { PickupItem, RangedSimSpec } from '@dd/engine/state/entities';
 import type { Fp } from '@dd/engine/math/fixed';
 import { PickupSystem } from '@dd/engine/systems';
+import { buildEnemyActor } from '@dd/engine/content/enemies';
 import { toFpGrid } from '@dd/engine/content/convert';
 import { createGameEngine } from '@dd/engine/GameEngine';
 import { makeCommand } from '@dd/engine/state/input';
@@ -94,8 +95,112 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(0);
   });
 
-  // Only `heal` is gated (see `wouldApply`'s own doc): the other auto kinds accumulate
-  // with no local cap, so "would it do something" is always yes for them.
+  it('shield restores up to maxShield, never over, gated the same way heal is', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.shield = p.maxShield - 3;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield); // SHIELD_PICKUP_AMOUNT (10) exceeds every shipped maxShield
+    expect(s.pickups).toHaveLength(0);
+  });
+
+  it('a full-shield player leaves a shield battery on the floor instead of binning it', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.shield = p.maxShield;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield);
+    expect(s.pickups).toHaveLength(1); // left on the floor, not consumed for nothing
+  });
+
+  it('energy restores up to maxEnergy, never over, gated the same way heal/shield are', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.energy = p.maxEnergy - 5;
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy); // ENERGY_PICKUP_AMOUNT (30) exceeds every shipped shortfall this small
+    expect(s.pickups).toHaveLength(0);
+  });
+
+  it('a full-energy player leaves an energy pickup on the floor instead of binning it', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.energy = p.maxEnergy;
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy);
+    expect(s.pickups).toHaveLength(1);
+  });
+
+  it("the 'surge' floor card doubles the energy pickup amount (Task 8)", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('surge');
+    p.energy = 0;
+    p.maxEnergy = 999; // wide open so the doubled amount isn't clamped
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(60); // ENERGY_PICKUP_AMOUNT (30) * surge's factor (2)
+  });
+
+  it("the 'aegis' floor card doubles the shield pickup amount (Task 8)", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('aegis');
+    p.shield = 0;
+    p.maxShield = 999; // wide open so the doubled amount isn't clamped
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(20); // SHIELD_PICKUP_AMOUNT (10) * aegis's factor (2)
+  });
+
+  // The two tests above both keep the pool wide open so the doubled amount is never clamped —
+  // which leaves the clamp UN-exercised for a carded pickup. `Math.min(max, cur + AMOUNT * mult)`
+  // and `cur + Math.min(max - cur, AMOUNT * mult)` agree everywhere the tests above look and
+  // disagree exactly at the boundary a real near-full player actually sits at.
+  it("'surge' still clamps to maxEnergy for a near-full player — the doubled amount does not overshoot", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('surge');
+    p.energy = p.maxEnergy - 5; // the UN-doubled amount (30) would already overfill this
+    dropOnPlayer(s, { kind: 'energy' });
+    sys.tick(s);
+    expect(p.energy).toBe(p.maxEnergy);
+  });
+
+  it("'aegis' still clamps to maxShield for a near-full player, the same way", () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    s.floorCards.push('aegis');
+    p.shield = p.maxShield - 3;
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    expect(p.shield).toBe(p.maxShield);
+  });
+
+  it('an emp burst damages every alive enemy in range, shield-first, and is refused with nothing to hit', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    // Refused first, with no enemy anywhere: nothing to hit, so left on the floor.
+    dropOnPlayer(s, { kind: 'emp' });
+    sys.tick(s);
+    expect(s.pickups).toHaveLength(1);
+
+    const near = buildEnemyActor(s, p.gx, p.gy, 'basic');
+    near.shield = 1;
+    s.enemies.push(near);
+    const startingHp = near.hp;
+    sys.tick(s); // the same still-alive pickup, now with an enemy in range
+    expect(s.pickups).toHaveLength(0); // an enemy was in range — collected
+    expect(near.shield).toBe(0); // shield absorbs first (design/07 two-pool takeDamage)
+    expect(near.hp).toBeLessThan(startingHp);
+  });
+
+  // Only `heal`/`energy`/`shield`/`emp` are gated (see `wouldApply`'s own doc): the other
+  // auto kinds accumulate with no local cap, so "would it do something" is always yes.
   it('a material is still collected at any state — the rule is heal-specific', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;
@@ -105,15 +210,31 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     sys.tick(s);
 
     expect(s.pickups).toHaveLength(0);
-    expect(s.floorMaterials.mat_fire).toBe(1);
+    expect(p.floorMaterials.mat_fire).toBe(1);
+  });
+
+  it('a material goes into the COLLECTOR\u2019s own floor buffer, not a shared one (ENGINE_VERSION 68)', () => {
+    // Per-seat since ENGINE_VERSION 68, exactly like `coin` already was \u2014 asserted against
+    // a teammate standing on the same tile, because "went to the right bag" and "went to A
+    // bag" are different claims.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    b.gx = a.gx;
+    b.gy = a.gy;
+    dropOnPlayer(s, { kind: 'material', materialId: 'mat_fire', qty: 5, tier: 0 });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(a.floorMaterials.mat_fire).toBe(5);
+    expect(b.floorMaterials.mat_fire).toBeUndefined();
   });
 
   it('a coin goes into the COLLECTOR\u2019s wallet, not a shared floor buffer', () => {
-    // The difference from `material` one test up, and the whole per-seat-purse decision:
-    // a material lands in `state.floorMaterials` (the run's, banked at a checkpoint), a coin
-    // lands on the player who walked over it and is never seen again by anything outside the
-    // run. Asserted against a teammate standing on the same tile, because "went to the right
-    // wallet" and "went to A wallet" are different claims.
+    // The whole per-seat-purse decision, now shared by `material` too (the test above) \u2014 a
+    // coin is never banked/carried out at all, unlike material, which is the rest of the
+    // difference between the two. Asserted against a teammate standing on the same tile,
+    // because "went to the right wallet" and "went to A wallet" are different claims.
     const s = createGameState({ ...CFG, players: [{}, {}] });
     const [a, b] = [s.players[0]!, s.players[1]!];
     b.gx = a.gx;
@@ -125,8 +246,37 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(0);
     expect(a.coins).toBe(5);
     expect(b.coins).toBe(0);
-    expect(s.floorMaterials).toEqual({});
-    expect(s.bankedMaterials).toEqual({});
+    expect(a.floorMaterials).toEqual({});
+    expect(a.bankedMaterials).toEqual({});
+  });
+
+  it('a schematic goes to the COLLECTOR’s own blueprintPickup, not every seat (ENGINE_VERSION 68)', () => {
+    // Replaces the old squad-wide `state.runBlueprint` flag — whichever seat's actor is
+    // standing on it is the one who carries it out, exactly like `material` above.
+    const s = createGameState({ ...CFG, players: [{}, {}] });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    b.gx = a.gx;
+    b.gy = a.gy;
+    dropOnPlayer(s, { kind: 'schematic', weaponId: 'flamer' });
+
+    sys.tick(s);
+
+    expect(s.pickups).toHaveLength(0);
+    expect(a.blueprintPickup).toBe('flamer');
+    expect(b.blueprintPickup).toBeNull();
+  });
+
+  it('a second schematic pickup this tick does not overwrite an already-carried one', () => {
+    // Defensive: only one schematic ever exists in a run today (one boss, one roll), so
+    // this guards a future where that stops being true rather than a reachable case now.
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.blueprintPickup = 'spear';
+    dropOnPlayer(s, { kind: 'schematic', weaponId: 'flamer' });
+
+    sys.tick(s);
+
+    expect(p.blueprintPickup).toBe('spear');
   });
 
   it('the event names the COLLECTOR, not the item and not the first seat (render reads `by`)', () => {

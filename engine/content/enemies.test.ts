@@ -77,19 +77,22 @@ describe('buildEnemyActor — perception radius (ENGINE_VERSION 42)', () => {
     expect(BASIC_ENEMY.aggroRangeFp).toBeUndefined(); // really took the fallback branch
   });
 
-  it('exactly one blueprint authors its own radius — the rusher, and it is WIDER', () => {
+  it('exactly two blueprints author their own radius — both WIDER than the roster default', () => {
     // Through ENGINE_VERSION 58 this read "no per-mob perception authored yet" and
     // asserted `toBeUndefined()` for every blueprint. `STALKER` (v59) is the first mob to
     // want its own: a rusher woken at the same distance as a shooter spends its whole
     // approach inside the notice delay and arrives as one more body in the crowd.
+    // `PYREFANG` (Task 2, v70) is the second, for the same reason applied to a kiting
+    // boss rather than a rusher: it has to notice and start repositioning before the
+    // player is already standing in range of its next ring.
     //
     // The list is named rather than the assertion loosened to "undefined OR a number":
     // the point of the original test was that the knob stays UNUSED unless someone means
     // it, and a test that accepts any value has stopped saying that. Wider is asserted
-    // too — a rusher with a SHORTER radius than a shooter would be a typo the type
+    // too — a mob with a SHORTER radius than the roster default would be a typo the type
     // system cannot see.
     const authored = Object.entries(ENEMY_BLUEPRINTS).filter(([, bp]) => bp.aggroRangeFp !== undefined);
-    expect(authored.map(([type]) => type)).toEqual(['stalker']);
+    expect(authored.map(([type]) => type).sort()).toEqual(['pyrefang', 'stalker']);
     for (const [type, bp] of authored) {
       expect(bp.aggroRangeFp!, `${type} must notice from further out than the roster default`)
         .toBeGreaterThan(DEFAULT_ENEMY_AGGRO_RANGE_FP as number);

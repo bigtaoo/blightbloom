@@ -42,7 +42,7 @@ function addEnemy(s: GameState, xpx: number, ypx: number, hp: number = BASIC_ENE
     // an EnemyActor by hand rather than through buildEnemyActor (for direct control over spawn
     // position), so it has to track that formula itself rather than silently drifting from it.
     footprintRadius: BASIC_ENEMY.footprintRadius, solidRadius: BASIC_ENEMY.radius,
-    alive: true, weapon: null, firing: false, status: freshStatus(), enraged: false, aggroed: false, holding: false,
+    alive: true, weapon: null, firing: false, status: freshStatus(), enraged: false, armorBroken: false, aggroed: false, holding: false,
   };
   s.enemies.push(e);
   return e;

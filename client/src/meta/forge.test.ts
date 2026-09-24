@@ -220,7 +220,9 @@ describe('loadout & character selection', () => {
     expect(clearLoadout(m).loadout).toEqual([]);
   });
   it('selectCharacter switches to an owned character and ignores an unowned one', () => {
-    const m = defaultMetaState();
+    // skirmisher is no longer in the free default roster (Task 8) — grant it first, the
+    // same way a completed character-SKU purchase would, then select it.
+    const m = grantCharacter(defaultMetaState(), 'skirmisher');
     expect(selectCharacter(m, 'skirmisher').selectedSkin).toBe('skirmisher');
     expect(selectCharacter(m, 'paid_hero_not_owned').selectedSkin).toBe(m.selectedSkin);
   });

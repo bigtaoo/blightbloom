@@ -40,6 +40,21 @@ export interface DungeonConfig {
    * to before this field existed — fully additive, no `ENGINE_VERSION` bump (no
    * shipped config sets it, and it changes nothing for one that doesn't). */
   floorMaps?: Partial<Record<number, DungeonFloorMap>>;
+  /** Optional per-floor-index pool of interchangeable hand-authored layouts (Task 6,
+   * "room-layout randomization", 2026-09-23): when `floorIndex` has an entry here,
+   * `SpawnSystem` draws ONE `roomgenPrng.nextInt(variants.length)` pick among them
+   * instead of reading `floorMaps[floorIndex]` directly — the same "one well-scoped
+   * PRNG choice over otherwise-fixed hand content" shape `content/enemies.ts`'s
+   * `BOSS_POOL`/`'boss_random'` sentinel already established for boss rooms, applied
+   * here to floor TOPOLOGY instead of a single spawn point. A floor index absent
+   * here still reads `floorMaps` directly and costs zero extra draws, unchanged from
+   * before this field existed. Every variant for a given index is expected to share
+   * the same room roster (same `pieceId`s, same array order) so enemy-id allocation
+   * order (`state.nextId()`, spawn-order-driven) and notice-delay tuning stay
+   * identical across variants — only door connectivity (and therefore which rooms a
+   * run can skip) is meant to differ; see `emberLevel1.ts`'s
+   * `EMBER_L1_FLOOR_2_BRANCH` for the shipped example. */
+  floorLayoutVariants?: Partial<Record<number, readonly DungeonFloorMap[]>>;
 }
 
 /** One resolved stage: normally a single `RoomPiece`; a `RoomPiece[]` (length

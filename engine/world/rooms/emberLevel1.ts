@@ -75,6 +75,7 @@ import vault from '../../../world/dungeons/ember/pieces/ember_l1_vault.json';
 
 import floor1 from '../../../world/dungeons/ember/ember_l1_floor_1.json';
 import floor2 from '../../../world/dungeons/ember/ember_l1_floor_2.json';
+import floor2Branch from '../../../world/dungeons/ember/ember_l1_floor_2_branch.json';
 import floor3 from '../../../world/dungeons/ember/ember_l1_floor_3.json';
 import floor4 from '../../../world/dungeons/ember/ember_l1_floor_4.json';
 import floor5 from '../../../world/dungeons/ember/ember_l1_floor_5.json';
@@ -112,3 +113,20 @@ export const EMBER_L1_FLOORS: Partial<Record<number, DungeonFloorMap>> = {
   3: floor4 as DungeonFloorMap,
   4: floor5 as DungeonFloorMap,
 };
+
+/**
+ * Floor index 1's alternate door-graph layout (Task 6, "room-layout randomization",
+ * 2026-09-23 — user request: some floors keep their exit at the very end of a
+ * strictly linear chain, so nothing is skippable; some put a real fork in the
+ * middle, so a room can be skipped, with no time-pressure mechanic attached
+ * either way — clearing every room stays a player choice, never a clock). Same 7
+ * rooms, same pieces, same array order as `floor2` above (so enemy-id allocation
+ * and notice-delay tuning are byte-identical whichever variant a run draws) — only
+ * `r3_span`'s position and the door graph differ: `r2_kiln` gets a direct door
+ * straight to `r4_forge`, and `r3_span` moves to a dead-end spur off `r2_kiln`
+ * instead of sitting on the only path through. A run can walk kiln → span → back
+ * out → forge (fighting span for its loot) or kiln → forge directly (skipping it)
+ * — both real, both valid; `emberLevel1.test.ts`'s "branching layout variant" block
+ * proves the skip exists here and does not exist on the plain `floor2` map above.
+ */
+export const EMBER_L1_FLOOR_2_BRANCH: DungeonFloorMap = floor2Branch as DungeonFloorMap;

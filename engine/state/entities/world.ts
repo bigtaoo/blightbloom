@@ -71,6 +71,13 @@ export interface AABB {
 // into the COLLECTING PLAYER's own wallet rather than a shared floor buffer: a coin is
 // never banked, never carried out and never seen by the meta layer, so there is nothing for
 // `ExtractionSystem` to merge and nothing for a death to forfeit beyond the run itself.
+// 'schematic' (design/14, ENGINE_VERSION 68) is a boss kill's one-time blueprint drop — a
+// physical ground item like every other carry-out, replacing the old auto-grant-to-the-
+// whole-run `state.runBlueprint` flag. Auto-collected like `material`, and into the
+// COLLECTING PLAYER's own per-seat carry-out bag (`PlayerActor.schematicStock`), not a
+// shared one: whichever seat walks over it is the one whose account gets it, exactly like
+// `material` now works (see `PlayerActor.floorMaterials`'s own doc comment for why the carry-
+// out model moved from "whole squad shares one pool" to "per seat, first to touch keeps it").
 export type PickupKind =
   | 'heal'
   | 'material'
@@ -79,7 +86,14 @@ export type PickupKind =
   | 'buff'
   | 'crate'
   | 'bandage'
-  | 'energy';
+  | 'energy'
+  | 'schematic'
+  // Instant items (Task 4, ENGINE_VERSION 71) — auto-apply on overlap like `heal`/
+  // `energy`, the two other capped-pool instants (`PickupSystem.pickupWouldApply`'s
+  // own doc comment anticipated exactly this: "if a shield/temp-buff instant item is
+  // ever added, this is the one place it needs a clause").
+  | 'shield' // restores PlayerActor.shield toward maxShield — no instant shield refill existed before this; shield otherwise only recovers via idle regen.
+  | 'emp'; // instant burst: lightning damage to every alive enemy within EMP_RADIUS_FP of the collector — the roster's first offensive (not self-restoring) instant item.
 
 /**
  * A chest's kind (design/05 "Chest rooms"). The two differ in WHO can open one and in
@@ -144,7 +158,7 @@ export interface ShopOffer {
   /** From `GameState.nextShopId()`, a separate id space (see there). Compared only against
    *  `PlayerCommand.shopBuyId`, never against an entity or pickup id. */
   id: number;
-  kind: 'weapon' | 'buff' | 'heal' | 'energy';
+  kind: 'weapon' | 'buff' | 'heal' | 'energy' | 'shield' | 'emp';
   weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
   buffId?: string; // kind 'buff' → id into RUN_BUFFS
   price: number; // in coins (PlayerActor.coins)

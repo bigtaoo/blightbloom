@@ -76,7 +76,7 @@
  */
 import type { AabbGrid, RoomPiece } from '../../content/rooms';
 import type { DungeonConfig } from '../dungeon';
-import { EMBER_L1_FLOORS } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
 
 // Perimeter walls (design/10 legibility fix, 2026-08-02; door gaps moved to generic
 // placement-time carving, design/05 "Room & door model" 2026-08-04): every piece used
@@ -211,6 +211,20 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * deepest floor from ×3 to ×5 purely as a side effect of adding floors. ×0.5 keeps
  * the same ×3 ceiling, now reached over five floors instead of three.
  *
+ * **Retuned again to `perFloor: 0.25` (Task 2, `ENGINE_VERSION` 69, 2026-09-23)** —
+ * a second, independent axis of depth difficulty exists now that did not when the
+ * ×0.5 value above was chosen: each authored floor's own room roster already shifts
+ * toward tougher TYPES with depth (`ironclad`/`galvanist` first appear floor 2,
+ * `ravager` count climbs 1→2→3→6→7 floor 0→4 — see `emberLevel1.ts`'s per-floor
+ * spawn lists), a gradient this file's own curve knows nothing about and never
+ * accounted for. Leaving the flat HP multiplier at ×0.5/floor stacked BOTH axes: a
+ * floor-4 `ironclad` was simultaneously the highest-HP variant AND paying the
+ * curve's full ×3, compounding two independently-authored sources of "harder
+ * deeper" into one. Halving it again keeps the curve as a real but secondary
+ * contributor (×2 ceiling by floor 4, down from ×3) and lets the room-authored type
+ * gradient carry the larger share of the job — which is also the one a future
+ * room-content pass can retune directly, without touching this global multiplier.
+ *
  * `layout: 'graph2d'` (design/05, 2026-08-05 follow-up; was `'linear'`) — the
  * module doc above lists which pieces actually make a floor bend now. Only the
  * fallback path reads it at all, since every floor here is authored.
@@ -220,6 +234,16 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * they are the fixtures `world/dungeon.test.ts`'s placement/seed-sweep suites drive
  * `placeFloorGraph2d` with, and the module doc above records what those sweeps
  * found — deleting them would delete that coverage, not just the content.
+ *
+ * `floorLayoutVariants` (Task 6, "room-layout randomization", 2026-09-23): floor
+ * index 1 offers TWO interchangeable door graphs over the same 7-room roster — the
+ * plain `floor2` chain (nothing skippable) and `EMBER_L1_FLOOR_2_BRANCH` (a real
+ * fork that lets `r3_span` be skipped) — `SpawnSystem` draws one `roomgenPrng` pick
+ * between them per run, the level's first real use of that stream (every floor was
+ * previously fully authored with zero draws). Every other floor index still has no
+ * entry here, so it keeps reading `floorMaps` directly and costs no extra draw —
+ * this is the first floor to get the treatment, not a claim that every floor needs
+ * two layouts.
  */
 export const EMBER_DUNGEON: DungeonConfig = {
   biomeId: 'ember',
@@ -230,8 +254,9 @@ export const EMBER_DUNGEON: DungeonConfig = {
   layout: 'graph2d',
   extractionPieceId: 'ember_l1_extraction',
   bossPieceId: 'ember_l1_boss',
-  difficultyCurve: { base: 1, perFloor: 0.5 },
+  difficultyCurve: { base: 1, perFloor: 0.25 },
   floorMaps: EMBER_L1_FLOORS,
+  floorLayoutVariants: { 1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH] },
 };
 
 /**

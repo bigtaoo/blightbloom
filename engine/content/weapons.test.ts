@@ -452,8 +452,8 @@ describe('WEAPON_SIM_BY_ID — one conversion per weapon, at load (design/09 loa
       expect(WEAPON_SIM_BY_ID[id], `${id} must not be reachable as a drop`).toBeUndefined();
     }
     // Named explicitly so ADDING a mob loadout is a decision that shows up in this diff,
-    // rather than one the filter absorbs silently (ENGINE_VERSION 59 added two).
-    expect([...MOB_WEAPON_IDS].sort()).toEqual(['enemyclaw', 'enemygun', 'enemymaul']);
+    // rather than one the filter absorbs silently (ENGINE_VERSION 59 added two, v70 a third).
+    expect([...MOB_WEAPON_IDS].sort()).toEqual(['enemyclaw', 'enemygun', 'enemymaul', 'enemynova']);
   });
 
   it('hands out the SAME object every time — conversion is not re-run per lookup', () => {

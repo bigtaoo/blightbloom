@@ -42,6 +42,12 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   icon_card_bulwark: '/ui/icon_card_bulwark.png',
   icon_card_precision: '/ui/icon_card_precision.png',
   icon_card_capacitor: '/ui/icon_card_capacitor.png',
+  // Task 8 (catalogue expansion, 2026-09-23) — four more cards, same "text-only until
+  // art exists" fallback as every entry above.
+  icon_card_surge: '/ui/icon_card_surge.png',
+  icon_card_aegis: '/ui/icon_card_aegis.png',
+  icon_card_stockpile: '/ui/icon_card_stockpile.png',
+  icon_card_bounty: '/ui/icon_card_bounty.png',
   // The Forge outpost NPC (design/13's "Outpost/hub" NPC gap — a forger character
   // standing in the loadout screen). Sprite, not a button icon — Forge.ts positions
   // it directly rather than going through Button.setIcon.

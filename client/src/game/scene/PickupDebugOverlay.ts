@@ -53,7 +53,7 @@ export function pickupDebugGate(state: GameState, item: PickupItem): { nearestPx
     // Asking the engine's own predicate rather than restating it is the point — this file's
     // parity test runs the real PickupSystem beside this readout, and caught the gap the
     // day the rule landed.
-    if (d <= pickupGatePx(item, p) && pickupWouldApply(p, item)) collectible = true;
+    if (d <= pickupGatePx(item, p) && pickupWouldApply(p, item, state)) collectible = true;
   }
   return { nearestPx, collectible };
 }

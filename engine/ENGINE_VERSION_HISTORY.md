@@ -2423,3 +2423,190 @@ and pins the no-exact-budget-tie constraint that 3.2 was invented to satisfy. An
 deliberate**" flips to "**no float at all**": that exemption existed solely because of this
 pool, its own note warned that the first `*` or `/` on the field would turn it into a real
 desync, and the whole serialized state is now integral with the exemption deleted.
+
+v68 (design/14, 2026-09-23): materials and the boss's one-time blueprint schematic move
+from shared `GameState` fields to per-seat `PlayerActor` fields (`floorMaterials`,
+`bankedMaterials`, `blueprintPickup`), and the schematic itself becomes a real ground pickup
+(`PickupKind` gains `'schematic'`) instead of an automatic squad-wide grant the moment a boss
+died. Every seat's client used to apply the SAME shared total to its own account regardless of
+who physically collected which drop; now whichever seat's actor overlaps a `material`/
+`schematic` pickup is the one whose own bag grows — the same rule `coins` and every weapon
+pickup already followed. `state.runBlueprint` is gone; `state.schematicRolled` replaces it as
+the roll's one-shot guard (WHETHER the roll happened, never WHO ends up carrying the result).
+`blueprint_drop` (a render-only event fired at drop time) is deleted — the `pickup` event
+already carries `kind`/`weaponId`/`by`, so a schematic collection is an ordinary pickup event
+like every other kind, firing on COLLECTION rather than on drop.
+
+**A v67 stream diverges immediately**: the hashed state moved off a handful of top-level fields
+onto each player's own record (`replay.ts`), so even a run that never touches a chest/shop/boss
+hashes differently from tick 0 (the new `schematicRolled` guard field alone).
+
+**Solo play is unaffected in outcome** — one seat's own bag is the same number the old shared
+pool would have handed it. **Squad play is not**: a floor's material yield used to be handed to
+every seat in full regardless of who walked over what; it is now genuinely split by physical
+collection, which is a real economy change (and, design/05 would say, the mechanical payoff
+for its own "squadmates can split up to loot different rooms in parallel" line — proximity now
+has a reason to matter for progression, not just for combat).
+
+The meta layer (`client/src/meta`) gains a third tier alongside the existing permanent
+`unlockedBlueprints`: `blueprintStock` (a stackable one-time schematic count). `craft()` now
+prefers a permanent recipe when both exist for the same weaponId, so a stacked schematic is
+never silently spent on a weapon the account already owns outright — see `meta/forge.ts`'s own
+header for the full account, including why today's catalog can never actually present that
+choice.
+
+v69 (Task 2, 2026-09-23): retunes `EMBER_DUNGEON.difficultyCurve` from `perFloor: 0.5` to
+`perFloor: 0.25` (`world/rooms/ember.ts`) — halving the flat enemy-maxHp multiplier `curveAt`
+applies per floor of depth, so any dungeon replay that ever reaches floor 1+ diverges (every
+non-dungeon config, and floor 0 of a dungeon config, still resolve to `curve.base` — untouched).
+
+Not a difficulty-direction change on its own so much as a REDUNDANCY fix: the shipped level's
+own room-authored garrison already shifts toward tougher enemy TYPES with depth (`ironclad`/
+`galvanist` first appear floor 2, `ravager` count climbs 1 -> 2 -> 3 -> 6 -> 7 across floors
+0-4 — `world/dungeons/ember/`'s per-floor JSON), a gradient the flat curve was never designed
+against and stacked on top of regardless. Halving the curve keeps it a real but secondary
+contributor (×2 ceiling by floor 4, down from ×3) and leaves the room-authored type mix to
+carry the larger share of "harder deeper," which is also the lever a future content-only pass
+can retune without touching this global multiplier.
+
+`emberLevel1.test.ts`'s own curve-ceiling assertion moves from 3 to 2 in the same change.
+
+v70 (Task 3, 2026-09-23): two new bosses, `PYREFANG` and `IRONWARDEN` (`content/enemies.ts`),
+and a third boss AI trait alongside `enrage`/`onDeathSpawn`: `armorBreak`, a DEFENSIVE
+threshold latch that REPLACES `resist` with a weaker profile the instant hp first crosses it
+(the mirror image of `enrage`'s offensive one — `WeaponFireSystem.latchArmorBreak`, run before
+`latchEnrage` each tick). `EnemyActor` gains `armorBreak?`/`armorBroken: boolean` (the latter
+required, same "stable false default" convention `enraged` follows); every hand-built
+`EnemyActor` literal across the test suite gained `armorBroken: false`.
+
+PYREFANG (fire, an omnidirectional ring attack via the new `enemynova` weapon spec — a mob-only
+radial loadout, `MOB_WEAPON_IDS`/`NON_PLAYER_WEAPON_IDS` both updated) tests the "keep moving"
+axis: `enrage` alone, no `onDeathSpawn`, faster and wider-perceiving than the roster default so
+it can reposition between volleys. IRONWARDEN (physical/armoured, `armorBreak` alone) tests the
+"burst to the break-point, then finish" axis: heavily resistant until hp crosses 50%, then a
+much weaker resist profile takes over, permanently. Neither carries an `element` badge — like
+`BLIGHTLORD`/`BRUTE`/`RAVAGER`, a boss/body-form variant is deliberately not one of design/13's
+four locked elemental variants even where its resist profile echoes one.
+
+The boss room (`world/dungeons/ember/pieces/ember_l1_boss.json`, floor 5's capstone) now spawns
+the `'boss_random'` sentinel at spawn point 0 instead of a fixed `'blightlord'`: `SpawnSystem`'s
+new `resolveSpawnType` resolves it to one draw off `BOSS_POOL` (`['blightlord', 'pyrefang',
+'ironwarden']`) off the same `aiPrng` stream `buildEnemyActor` already spends a per-spawn draw
+from, the FIRST tick that room's schedule is built (room activation) — never re-rolled. Every
+other spawn type passes through unchanged and costs no draw, so any floor with no random-boss
+room is byte-identical to before. A new `armor_break` fx-only event (steel-grey pulse, distinct
+from `enrage`'s red one) is the only new client-visible surface; `EventReactorHost` needed no
+new method since both new traits fire through the existing per-tick event stream.
+
+Any dungeon replay whose seed ever resolves floor 5's boss diverges (a different boss, a
+different `aiPrng` stream position from here on); every replay that never reaches that room is
+untouched, and every non-dungeon config is untouched entirely. Golden fixture regenerated.
+
+v71 (Task 4, 2026-09-23): two new instant-use items — `shield` (a shield-battery pickup,
+restoring up to `maxShield`) and `emp` (an EMP grenade: instant burst lightning damage to every
+alive enemy within `SIM.empRadius` of the collector, `PickupSystem.applyEmpBurst`, reusing
+`applyResist`/`takeDamage` directly). Both are `PickupKind` values, auto-apply on overlap like
+`heal`/`energy` (the anticipated third/fourth capped-pool-or-target-gated instants
+`pickupWouldApply`'s own comment called out in advance), and both are also `ShopOffer` kinds:
+the shop's fixed third "supply" slot widens from a `heal`/`energy` coin flip (`nextInt(2)`) to a
+four-way draw (`nextInt(4)`) over `SUPPLY_KINDS`. `pickupWouldApply` gained a third parameter
+(`state: GameState`) so `emp`'s gate — "is there an enemy in range at all" — can be answered;
+every call site (`PickupSystem`, `ShopSystem`, `PickupDebugOverlay`) updated.
+
+Any replay whose stream ever rolls a shop's supply slot diverges from here on (the draw's
+domain changed even where it happens to land on `heal`/`energy` again); any replay where a
+player ever collects or buys a `shield`/`emp` diverges further still. A run with no shop and no
+`shield`/`emp` pickup anywhere in it is byte-identical to before.
+
+Golden fixture regenerated. `ShopOffer`/pickup `kind` unions, the `shop_buy` event's own kind
+field, `SHOP_PRICES`, `PICKUP_GLOW` (client), and `ShopPrompt.rowLabel` all widened to match —
+each is a compile-time-enforced lookup keyed by the union, so a kind missing from any of them
+fails to compile rather than silently pricing/drawing/rendering as something else.
+
+v72 (Task 5, 2026-09-23): the shop reweight. `rollShopStock` (`content/shops.ts`) replaces its
+fixed weapon/buff/supply-in-that-order composition with three INDEPENDENT slots, each drawn
+from the same three categories at 60% weapon / 30% item / 10% buff (`SHOP_SLOT_WEIGHT_*`) — a
+shop can now come up all weapons, or (rarely, ~2.7%) all items, and is never re-rolled or padded
+to avoid either. Draw shape changed from 3 draws (one per fixed line) to 6 (a category roll +
+a specific-value roll, per slot, always) — any recorded replay whose stream ever reaches a shop
+diverges from here on, same as it did for Task 4's supply-domain widening.
+
+`world/dungeons/ember/pieces/ember_l1_vault.json` (floor index 2's big-chest room) gains a
+second shop counter alongside its existing chest — "改为两个商店可以的": the run now has two
+shops (floor 2's vault, floor 3's market) instead of one, with no new room or door needed since
+the piece was already placed and a room may carry both a chest and a shop. Any dungeon replay
+that ever places floor 2 (every real run does) diverges the moment `SpawnSystem` rolls that
+floor's shops, in addition to the draw-shape divergence above.
+
+Golden fixture regenerated. `emberLevel1.test.ts`'s shop-count/placement assertions updated to
+match (2 pieces, 2 floors); `shops.test.ts` rewritten around the new slot mechanics.
+
+v73 (Task 6, 2026-09-23): room-layout randomization. `DungeonConfig` gains an optional
+`floorLayoutVariants: Partial<Record<number, readonly DungeonFloorMap[]>>` — when a floor index
+has an entry, `SpawnSystem.resolveAuthoredFloor` draws one `roomgenPrng.nextInt(variants.length)`
+pick among the pool instead of reading `floorMaps[floorIndex]` directly, the same "one well-scoped
+PRNG choice over otherwise-fixed hand content" shape Task 2's `BOSS_POOL`/`'boss_random'` sentinel
+already established, applied here to floor TOPOLOGY instead of a single spawn point. A floor
+index absent from `floorLayoutVariants` still reads `floorMaps` unchanged and draws nothing extra.
+
+`EMBER_DUNGEON` gives floor index 1 two interchangeable layouts over its same 7-room roster: the
+existing linear `floor2` map (nothing skippable) and the new `EMBER_L1_FLOOR_2_BRANCH` (`r3_span`
+moves to a dead-end spur off `r2_kiln`, and `r2_kiln` gains a direct door straight to `r4_forge`,
+so a run can walk the detour into span for its fight/loot or skip it entirely) — this is the
+level's first real use of `roomgenPrng`, which every floor had left untouched since the level
+became fully hand-authored. Both variants share the exact same room array (same ids, same
+`pieceId`s, same order), so enemy-id allocation and notice-delay tuning never depend on which one
+a run draws — only door connectivity differs. No time-pressure mechanic of any kind was added;
+clearing every room, including the now-optional `r3_span`, stays a player choice.
+
+Any replay that ever reaches floor index 1 of an Ember run diverges from here on (a new
+`roomgenPrng` draw appears at floor-generation time, and the drawn layout may differ from
+before). A run that never reaches floor 1, or any config without `floorLayoutVariants`, is
+byte-identical to before.
+
+Golden fixture regenerated. `emberLevel1.test.ts` gained a "floor 1's branching layout variant"
+suite proving the skip is real (capstone stays reachable with `r3_span` and its doors removed)
+and that the plain layout has no such skip on any of its other mandatory chain rooms;
+`dungeonrun.test.ts` gained a `floorLayoutVariants` draw-semantics suite mirroring the existing
+`boss_random` one.
+
+v74 (Task 7, 2026-09-23): weapon rarity distribution shifting toward higher tiers with floor
+depth. New `content/weaponRarityByDepth.ts rollWeaponId(prng, floorIndex)` replaces
+`WEAPON_DROP_POOL`'s old flat, depth-blind `nextInt(pool.length)` pick at all three of its call
+sites — `ChestSystem`'s chest payout, `DeathDropsSystem`'s boss-kill weapon drop, and
+`content/shops.ts rollSlot`'s weapon slot — with a single `weightedIndex` draw (still exactly one
+draw, so no caller's own draw-count contract changes) over a per-floor-index rarity-tier weight
+table (`RARITY_WEIGHTS_BY_FLOOR`, hand-authored 0→4, `common`/`fine` integer-percent weight
+falling and `legend`/`legendary` climbing monotonically end to end; `epic`, the pool's biggest
+bucket, rises through the middle floors and gives ground back at floor 4). `WEAPON_POOL_BY_RARITY`
+partitions `WEAPON_DROP_POOL` by each weapon's own intrinsic `rarity` (`balance/rarity.ts`,
+DERIVED from `WEAPON_SPECS`, never hand-duplicated), and every weapon within a tier is still
+picked uniformly — only the tier-to-tier proportions move with depth. PvP's `rollArenaDrop`
+weapon roll is deliberately untouched: an arena has no floor depth at all.
+
+Any replay that ever rolls a chest, a shop's weapon slot, or a boss kill diverges from here on —
+which is effectively every real PvE run, since the old flat pick and the new weighted one only
+coincide by chance. Golden fixture regenerated. New `content/weaponRarityByDepth.test.ts` (the
+partition, the one-draw cost, floor-index clamping, and the measured tier shift itself);
+`chests.test.ts` and `shops.test.ts` each gained a statistical test proving their own call site's
+payout skews toward higher rarity at floor 4 than at floor 0.
+
+v75 (Task 8, 2026-09-23): floor-card catalogue expansion, 7 → 11. `FloorCardEffect` gains three
+more PAYLOAD multipliers — `energy_pickup_mult` (`surge`), `shield_pickup_mult` (`aegis`),
+`material_drop_mult` (`stockpile`) — the same shape as the existing `coin_mult`/`windfall`: each
+scales a flat pickup amount at the point of collection (`PickupSystem`'s energy/shield cases,
+`DeathDropsSystem`'s material case), never a drop-table weight, so picking one never changes any
+other kind's odds. A fourth kind, `chest_bonus_weapons` (`bounty`), is additive rather than
+multiplicative — +1 extra weapon out of every chest for the rest of the run, applied in
+`ChestSystem.open()` on top of `chestWeaponCount`'s own result. `FloorCardMods` gains the matching
+four fields, all re-derived from `state.floorCards` on read, same as every existing field.
+
+Any replay that ever reaches a floor-card checkpoint diverges from here on — `rollFloorCardOffer`
+draws from a pool 4 ids larger, so the SAME `roomgenPrng`-adjacent draw values now land on
+different cards even where the draw count is unchanged. A run with no floor-card checkpoint (an
+arena, or a `waves`-only config) is untouched. Golden fixture regenerated.
+
+New tests: `floorCards.test.ts` gained cases for all four new mods (including the identity-mods
+shape every existing case pins); `pickups.test.ts` gained the energy pickup's own base-case
+coverage (previously untested on its own) plus `surge`/`aegis`; `chests.test.ts` gained `bounty`;
+new `systems/materialDrop.test.ts` mirrors `coinDrop.test.ts`'s `windfall` suite for `stockpile`.

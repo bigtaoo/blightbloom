@@ -22,4 +22,12 @@ export const SIM = {
   // client's own ground-compare-card ring (game/HudView.ts reads this same constant)
   // so the card never lags a step behind an already-resolved pickup.
   lootRevealRadius: toFpGrid(2.5),
+  // EMP grenade instant item (Task 4, ENGINE_VERSION 71) — burst radius from the
+  // COLLECTOR's own position, centred on them rather than on the pickup (it is
+  // consumed instantly on overlap, so by the time it fires the two positions are the
+  // same anyway). ~3.5 grid: wider than any weapon's engage range in this roster
+  // (STALKER's 32px/1 grid is the closest, RAVAGER's 40px/1.25 grid the widest) so it
+  // reliably catches whatever the player was about to be swarmed by, without reaching
+  // clear across a whole authored room (12-24 grid span).
+  empRadius: toFpGrid(3.5),
 } as const;

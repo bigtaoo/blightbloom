@@ -259,10 +259,16 @@ floor is placed, and gone when the floor is. That last part is the economy's onl
 pressure: **coins saved for a deeper shop are a bet that a deeper shop exists**, and you cannot
 walk back.
 
-- **Three lines, and their KINDS are fixed** — a weapon, a buff, and a supply (heal or energy).
-  Not three draws from one pool: the shop's job is to be the recoverable half of taking weapons
-  off the kill table, and a counter that can roll three potions cannot do that job. Fixing the
-  slots is also what lets each line carry one price instead of a price band.
+- **Three lines, each an INDEPENDENT weighted draw** (Task 5, `ENGINE_VERSION` 72 — through
+  v71 the three were fixed by POSITION: always weapon, then buff, then supply). Every slot
+  draws from the same three categories at **60% weapon / 30% item / 10% buff**, "item" being
+  heal/energy/shield/emp (Task 4's four instant items) together, a second independent draw
+  deciding which. A shop can come up all three weapons, or — rarely, ~2.7% — all three items;
+  neither is re-rolled or padded away. The weights still favor weapons because the shop's
+  original job stands: it is the recoverable half of taking weapons off the kill table, and a
+  counter that leans potion cannot do that job as its most likely outcome. Fixing each slot to
+  ONE category per roll (not three independent draws from one flat pool) is also what lets
+  every line carry one price instead of a price band.
 - **Priced against a measured floor, not a feel.** At 23.8% of kills and `COIN_DROP_QTY` 5, the
   measured level (34.6 kills on floor 0, 52 on floor 2) yields roughly **40-60 coins a floor**.
   The first-pass prices — weapon 45, buff 30, supply 12 — mean a floor's whole income buys the
@@ -274,13 +280,22 @@ walk back.
   one of the things in reach": the ground-weapon panel's click-to-collect (`03`). A shop tap is
   the same one-shot latch on its own command field, and the panel is non-blocking for the same
   reason that one is — lockstep cannot stop for one player (`06`).
-- **A bought weapon lands on the floor; a bought buff/heal/energy applies to the buyer.** That
-  split is this doc's own pickup rule, not a new one: a weapon is a *choice* (which slot to
-  overwrite) and stays click-driven, while the other three are pure upside. Dropping those as
-  pickups would have let a teammate walk off with something somebody else paid for.
+- **A bought weapon lands on the floor; a bought buff/heal/energy/shield/emp applies to the
+  buyer.** That split is this doc's own pickup rule, not a new one: a weapon is a *choice*
+  (which slot to overwrite) and stays click-driven, while the other five are pure upside.
+  Dropping those as pickups would have let a teammate walk off with something somebody else
+  paid for.
+- **Two more instant items (Task 4, `ENGINE_VERSION` 71): a shield battery and an EMP
+  grenade.** Both apply the instant a purchase/pickup resolves, same as heal/energy — a
+  shield battery restores up to `maxShield` (no instant shield-refill existed before this;
+  otherwise shield only recovers via idle regen), and an EMP grenade is the roster's first
+  OFFENSIVE instant item: a burst of lightning damage to every alive enemy within a fixed
+  radius of the collector, rather than restoring the collector's own pool.
 - **An instant item that would do nothing is refused before the coins move**, through the same
   `pickupWouldApply` predicate that leaves a potion on the floor at full HP — so the counter and
-  the floor can never disagree about what "would do something" means. A buff is deliberately
+  the floor can never disagree about what "would do something" means. Heal/energy/shield are
+  gated on their own capped pool sitting below the cap; emp is gated differently — on there
+  being an alive enemy in range at all, since it has no pool of its own. A buff is deliberately
   exempt, exactly as it is exempt from that rule on the floor: its cap is applied Σ-then-clamp
   at *use* time, so "already wasted" is not a question the purchase site can answer.
 - **Stock is shared, wallets are per-seat.** First come, first served — a small chest's rule
@@ -300,6 +315,13 @@ spendable exactly once, one floor before the boss — *"coins saved for a deeper
 that a deeper shop exists"* stops being a bet spread over five floors and becomes one decision.
 Nothing in `SHOP_PRICE_*` was retuned for it; whether 87 coins for all three lines is the right
 ask against a five-floor purse is the first thing to measure once this has been played.
+
+**A second counter, floor index 2 (Task 5, `ENGINE_VERSION` 72) — "改为两个商店可以的".** The
+`ember_l1_vault` room (floor index 2's big-chest room, "Chest rooms" above) gained its own shop
+alongside the chest it already has: no new room or door, since the piece was already placed and
+one room can carry both a mechanism and a counter. Two purses-spendable-once now exist instead
+of one, spread across the back half of the run rather than concentrated at the last floor before
+the boss.
 
 **What this does not yet answer** is `ROADMAP` B2's harder half. A shop offers a buff, so the
 in-run power layer is no longer delivered *only* by a 6/84 weight on the kill table — but one
@@ -342,11 +364,22 @@ against `13`'s one — is never built.
 ### Floor cards: the reward becomes a choice
 
 The checkpoint offers **three cards** (`balance/floorCards.ts`), drawn distinct from a
-catalogue of seven by a dedicated `cardPrng`. Five wrap existing `RUN_BUFFS` ids so a card is
-exactly as strong as the same buff picked off the floor and `BUFF_CAPS` bounds both together;
-the other two are properties of the RUN rather than of a player — `potion_flow` (doubles the
-heal weight, stacking to `HEAL_DROP_MULT_CAP` in three picks) and `arsenal` (+1 to every later
-floor's weapon allowance).
+catalogue of **11** by a dedicated `cardPrng` (expanded from 7, Task 8, 2026-09-23). Five wrap
+existing `RUN_BUFFS` ids so a card is exactly as strong as the same buff picked off the floor
+and `BUFF_CAPS` bounds both together; the other six are properties of the RUN rather than of a
+player, each a payload multiplier (never a drop-table weight, so picking one never changes
+another kind's odds) except the last, which is a flat additive count:
+
+- `potion_flow` — doubles the heal TABLE WEIGHT, stacking to `HEAL_DROP_MULT_CAP` in three picks.
+- `windfall` — doubles a coin drop's payload (replaced the old `arsenal` "+1 weapon allowance"
+  card on 2026-09-14, once weapons moved behind chests/boss/shop and there was no allowance
+  left for a card to raise — see `content/drops.ts`'s own header).
+- `surge` — doubles `ENERGY_PICKUP_AMOUNT` (Task 8), the ammo economy's own scarcity valve.
+- `aegis` — doubles `SHIELD_PICKUP_AMOUNT` (Task 8), the shield-battery item's own valve.
+- `stockpile` — doubles `MATERIAL_DROP_QTY` (Task 8), the run's only carry-out currency.
+- `bounty` — +1 extra weapon out of every chest for the rest of the run (Task 8), the one card
+  here that adds rather than multiplies: a chest's payout is already a small integer (1, or
+  1-per-seat), which a multiplier would round back down to unchanged at the common 1-seat case.
 
 **One of the five is card-ONLY, and that is the interesting part** (`ENGINE_VERSION` 60).
 `capacitor` grants `cell_up`, the `flat_energy` family that raises the weapon-energy pool

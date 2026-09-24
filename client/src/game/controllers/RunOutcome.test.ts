@@ -71,9 +71,10 @@ function mockHost(localOwner = 0): RecordedHost {
     currentScore: () => score,
     setPhase: (p) => { phaseSet.push(p); },
     hideHud: () => { hudHidden = true; },
-    bankRunCarryOut: (s) => {
+    bankRunCarryOut: (s, includeBlueprint = true) => {
       banked.push(s);
-      if (s.runBlueprint !== null) granted.push(s.runBlueprint);
+      const pickup = s.players[localOwner]?.blueprintPickup ?? null;
+      if (includeBlueprint && pickup !== null) granted.push(pickup);
     },
     isOnline() { return this.online; },
     showOutcomeScreen: (won, title, lines, o) => { shown = { won, title, lines }; offer = o; },
@@ -92,7 +93,7 @@ describe('RunOutcome — PvE extraction/death', () => {
   it('win (extract): banks materials, victory phase, shows floor/materials/time/score', () => {
     const s = pveState();
     s.floorIndex = 2; // floor 3
-    s.bankedMaterials = { fire: 3, ice: 2 };
+    s.players[0]!.bankedMaterials = { fire: 3, ice: 2 };
     s.tick = TICK_RATE * 97 + 15; // 1:37, ticks past the minute boundary ignored
 
     const host = mockHost();
@@ -117,7 +118,7 @@ describe('RunOutcome — PvE extraction/death', () => {
   it('grants the boss blueprint on a win, and shows a line naming the weapon', () => {
     const s = pveState();
     s.floorIndex = 4;
-    s.runBlueprint = 'scattergun';
+    s.players[0]!.blueprintPickup = 'scattergun';
     const host = mockHost();
     new RunOutcome(host).handle(s);
     expect(host.granted).toEqual(['scattergun']);
@@ -138,7 +139,7 @@ describe('RunOutcome — PvE extraction/death', () => {
     // that is deliberate — moving the call up into `handle` would compile and pass everything
     // else in this file.
     const s = pveState();
-    s.runBlueprint = 'scattergun';
+    s.players[0]!.blueprintPickup = 'scattergun';
     s.winner = 'enemies';
     const host = mockHost();
     new RunOutcome(host).handle(s);
@@ -149,7 +150,7 @@ describe('RunOutcome — PvE extraction/death', () => {
   it('lose (death): no banking, no score, shows floor/loss/time/score', () => {
     const s = pveState();
     s.floorIndex = 0; // floor 1
-    s.bankedMaterials = { fire: 9 }; // forfeited — never reaches bankRunCarryOut
+    s.players[0]!.bankedMaterials = { fire: 9 }; // forfeited — never reaches bankRunCarryOut
     s.winner = 'enemies';
     s.tick = 0;
 
@@ -180,8 +181,8 @@ describe('RunOutcome — PvE extraction/death', () => {
   // drift back to naming one of them.
   it('lose (death): the reported loss counts BOTH the floor buffer and the banked bag', () => {
     const s = pveState();
-    s.bankedMaterials = { fire: 4, ice: 2 }; // descended past two floors with these
-    s.floorMaterials = { poison: 3 }; // picked up on the floor they died on
+    s.players[0]!.bankedMaterials = { fire: 4, ice: 2 }; // descended past two floors with these
+    s.players[0]!.floorMaterials = { poison: 3 }; // picked up on the floor they died on
     s.winner = 'enemies';
 
     const host = mockHost();
@@ -353,7 +354,7 @@ describe('RunOutcome — i18n (design/17-i18n.md)', () => {
     await useLocale('zh');
     const s = pveState();
     s.floorIndex = 2;
-    s.bankedMaterials = { fire: 3, ice: 2 };
+    s.players[0]!.bankedMaterials = { fire: 3, ice: 2 };
     s.tick = TICK_RATE * 97 + 15;
 
     const host = mockHost();
@@ -453,7 +454,7 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
   function extractedState(): GameState {
     const s = pveState();
     s.floorIndex = 0;
-    s.bankedMaterials = { fire: 4 };
+    s.players[0]!.bankedMaterials = { fire: 4 };
     return s;
   }
 
@@ -507,6 +508,24 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
     expect(lines[0]).toBe(host.shown!.lines[0]);
     expect(lines[2]).toBe(host.shown!.lines[2]);
     expect(lines[3]).toBe(host.shown!.lines[3]);
+  });
+
+  it('claiming a PLAYED ad does NOT double-grant a picked-up schematic (ENGINE_VERSION 68)', async () => {
+    // Unlike the old permanent `unlockBlueprint`, stacking a schematic is not idempotent —
+    // this is the test that would fail if `bankRunCarryOut`'s repeat call forgot to pass
+    // `includeBlueprint: false`.
+    const ad = stubAd({ plays: true });
+    const host = mockHost();
+    const s = extractedState();
+    s.players[0]!.blueprintPickup = 'flamer';
+    new RunOutcome(host).handle(s);
+
+    expect(host.granted).toEqual(['flamer']); // granted once, by win()
+
+    await host.offer!.claim();
+    expect(ad.requests()).toBe(1);
+
+    expect(host.granted).toEqual(['flamer']); // still once, after the ad's repeat call
   });
 
   it('an UNFILLED ad banks nothing more, keeps the baseline, and says the materials are safe', async () => {
@@ -600,7 +619,7 @@ describe('RunOutcome — rewarded-ad materials bonus', () => {
     stubAd();
     const host = mockHost();
     const s = pveState();
-    s.bankedMaterials = {};
+    s.players[0]!.bankedMaterials = {};
     new RunOutcome(host).handle(s);
 
     expect(host.offer).toBeNull();

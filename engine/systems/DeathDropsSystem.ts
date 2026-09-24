@@ -9,7 +9,8 @@
  * fix), float px → fp. Score is not tracked in the engine; render derives it from
  * the death/pickup/wave_clear events (design/08 "events are the only channel").
  */
-import { rollDrop, rollArenaDrop, WEAPON_DROP_POOL } from '../content/drops';
+import { rollDrop, rollArenaDrop } from '../content/drops';
+import { rollWeaponId } from '../content/weaponRarityByDepth';
 import { buildEnemyActor } from '../content/enemies';
 import { BOSS_WEAPON_DROPS, DOWNED_BLEEDOUT_TICKS } from '../config';
 import { toFp, addFp, mulFp } from '../math/fixed';
@@ -103,7 +104,9 @@ export class DeathDropsSystem {
       if (drop.kind === 'buff') item.buffId = drop.buffId;
       if (drop.kind === 'material') {
         item.materialId = drop.materialId;
-        item.qty = drop.qty;
+        // The `stockpile` floor card (Task 8) multiplies the payload, same
+        // payload-not-table-weight shape as `windfall`'s `coinMult` two lines below.
+        item.qty = drop.qty * (cards?.materialDropMult ?? 1);
         item.tier = drop.tier;
       }
       // The `windfall` floor card is applied HERE rather than inside `rollDrop`, which is
@@ -136,38 +139,50 @@ export class DeathDropsSystem {
   }
 
   /**
-   * A boss kill rolls a blueprint at `BLUEPRINT_DROP_PERMILLE` (design/14, 2026-09-14) — the
-   * earn-by-playing half of the meta, and `ROADMAP` B5's answer.
+   * A boss kill rolls a one-time blueprint SCHEMATIC at `BLUEPRINT_DROP_PERMILLE` (design/14,
+   * 2026-09-14, reworked ENGINE_VERSION 68) — the earn-by-playing half of the meta, and
+   * `ROADMAP` B5's answer.
    *
-   * **Why it lands on the carry-out bag instead of on the floor.** A blueprint is
-   * ACCOUNT-level: it must survive the run, which the "weapons are ephemeral" rule forbids
-   * for a pickup, and it is not a material so `bankedMaterials` cannot carry it either. Since
-   * 2026-09-14 the boss kill IS the extraction (design/05 "the boss is the only exit"), so the
-   * roll lands at the one moment a run is already handing its carry-out to the meta layer, and
-   * `state.runBlueprint` rides that same handover. It is forfeited by a death exactly like the
-   * materials are, for the same reason and by the same mechanism: nothing hands it over unless
-   * the run is WON.
+   * **A physical ground pickup, like `dropBossWeapons` two methods down** — no longer a
+   * state-wide flag every seat's client applied to its own account identically. Whichever
+   * seat's actor walks over it is the one who carries it out (design/14, "a one-time
+   * schematic, first to touch keeps it" — same per-seat rule `material` now follows), so in
+   * a squad a seat that already owns every earnable blueprint can simply leave it for a
+   * teammate who does not. `PickupSystem`'s `'schematic'` case sets the collector's own
+   * `PlayerActor.blueprintPickup`, forfeited on a run-ending death exactly like
+   * `bankedMaterials`, because nothing hands either to the meta layer unless the run is WON.
    *
    * **`EnemyActor.boss` becomes a field the sim reads.** It was render-only ("like `tint`"),
    * and this is the change that ends that — see its own doc comment in `state/entities/actors.ts`.
    *
-   * **What this deliberately does NOT know: what the player already owns.** That is account
+   * **What this deliberately does NOT know: what any account already owns.** That is account
    * state, and account state may never enter the sim (design/06) — so the roll picks from the
-   * whole earnable pool and the meta layer's `unlockBlueprint` is idempotent. A player who
-   * already owns all three earnable blueprints can therefore win a roll that grants nothing.
-   * That is a real (and known) dud, filed rather than fixed: fixing it means either telling the
-   * sim about the account or re-rolling outside it, and both are worse than a rare no-op on a
-   * pool this small.
+   * whole earnable pool regardless of who is playing, and the meta layer's craft transaction
+   * (`meta/forge.ts`) is what actually spends the resulting schematic. A player who already
+   * owns every earnable blueprint permanently can still pick this up and bank a schematic
+   * that duplicates it — by design (see `meta/forge.ts`'s own doc comment): the roll cannot
+   * see the account, so a genuinely wasted pickup (or a squad passing it to whoever needs it)
+   * is the mechanism, not a bug.
    */
   private rollBlueprint(state: GameState, e: EnemyActor): void {
-    if (e.boss !== true || state.runBlueprint !== null) return;
+    if (e.boss !== true || state.schematicRolled) return;
     // Guard BEFORE the draw, not after: an empty pool must cost zero `dropPrng` draws, or the
     // stream would depend on content that awards nothing. (`validateBlueprints` refuses an
     // empty pool outright, so this is belt-and-braces for a hand-built test catalog.)
     if (EARNABLE_BLUEPRINTS.length === 0) return;
+    state.schematicRolled = true;
     if (state.dropPrng.nextInt(1000) >= BLUEPRINT_DROP_PERMILLE) return;
-    state.runBlueprint = EARNABLE_BLUEPRINTS[state.dropPrng.nextInt(EARNABLE_BLUEPRINTS.length)]!;
-    state.events.push({ type: 'blueprint_drop', weaponId: state.runBlueprint, gx: e.gx, gy: e.gy });
+    const weaponId = EARNABLE_BLUEPRINTS[state.dropPrng.nextInt(EARNABLE_BLUEPRINTS.length)]!;
+    const pos = clampToWalkable(e.gx, e.gy, dropClearance(), state);
+    state.pickups.push({
+      id: state.nextId(),
+      kind: 'schematic',
+      weaponId,
+      gx: pos.gx,
+      gy: pos.gy,
+      spawnTick: state.tick,
+      alive: true,
+    });
   }
 
   /**
@@ -184,8 +199,10 @@ export class DeathDropsSystem {
    *
    * Gated on `e.boss` like the blueprint roll above, and it runs in BOTH modes on purpose: an
    * arena has no boss actor, so the flag is simply never set there and this costs a field
-   * read. It spends `dropPrng` (one draw per weapon) — the same stream and the same pool a
-   * chest pays from, so a boss and a chest cannot disagree about what a weapon find is.
+   * read. It spends `dropPrng` (one draw per weapon) — the same stream and the same
+   * rarity-by-depth roll (`rollWeaponId`, Task 7) a chest pays from, so a boss and a chest
+   * cannot disagree about what a weapon find is. The boss room is always the deepest floor,
+   * so this is where the depth shift toward higher tiers reads most.
    */
   private dropBossWeapons(state: GameState, e: EnemyActor): void {
     if (e.boss !== true) return;
@@ -196,7 +213,7 @@ export class DeathDropsSystem {
       state.pickups.push({
         id: state.nextId(),
         kind: 'weapon',
-        weaponId: WEAPON_DROP_POOL[state.dropPrng.nextInt(WEAPON_DROP_POOL.length)]!,
+        weaponId: rollWeaponId(state.dropPrng, state.floorIndex),
         gx: pos.gx,
         gy: pos.gy,
         spawnTick: state.tick,

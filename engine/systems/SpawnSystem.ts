@@ -14,7 +14,7 @@ import { SIM } from '../sim.config';
 import { mechanismRing } from '../content/chests';
 import { rollShopStock } from '../content/shops';
 import { pxToFp, toFpGrid } from '../content/convert';
-import { buildEnemyActor } from '../content/enemies';
+import { buildEnemyActor, BOSS_POOL } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
 import type { ArenaRoom } from '../content/arenas';
 import {
@@ -25,6 +25,7 @@ import {
   buildFloorGeometry,
   toFpAabbGrid,
   type PlacedRoom,
+  type DungeonFloorMap,
 } from '../world/dungeon';
 import type { EnemyActor, PickupItem } from '../state/entities';
 import type { ArenaRoomRuntime, DungeonRoomRuntime, GameState, WaveDef } from '../state/GameState';
@@ -128,6 +129,21 @@ export class SpawnSystem {
     return enemy;
   }
 
+  /**
+   * The `'boss_random'` sentinel (Task 2, ENGINE_VERSION 70): a room's authored spawn
+   * point can name this instead of a real blueprint id, and the FIRST time that room's
+   * schedule is built (room activation, `tickDungeon` above — never re-rolled on a
+   * later tick of the same room) it resolves to one draw off `BOSS_POOL`. Every other
+   * type passes through unchanged and costs no draw at all, so a floor with no random
+   * boss room is byte-identical to before this existed. One `aiPrng` draw, same stream
+   * `buildEnemyActor` already spends a per-spawn fire-phase draw from — a boss room's
+   * schedule is built once, so this cannot shift by which OTHER mob spawns alongside it.
+   */
+  private resolveSpawnType(state: GameState, type: string | undefined): string | undefined {
+    if (type !== 'boss_random') return type;
+    return BOSS_POOL[state.aiPrng.nextInt(BOSS_POOL.length)];
+  }
+
   // ── Dungeon mode (design/05 "Room & door model", 2026-08-04 — co-resident) ──────
 
   /**
@@ -161,7 +177,7 @@ export class SpawnSystem {
         rt.schedule = expandEncounter(
           room.piece.encounter,
           room.piece.spawns.enemy.length,
-          (idx) => room.piece.spawns.enemy[idx]?.type,
+          (idx) => this.resolveSpawnType(state, room.piece.spawns.enemy[idx]?.type),
         );
         rt.cursor = 0;
         state.events.push({ type: 'room_enter', floorIndex: state.floorIndex, roomId: room.id });
@@ -185,6 +201,21 @@ export class SpawnSystem {
    * `entranceGrid` instead, since spreading players out is a floor-start-only
    * concern.
    */
+  /**
+   * Resolves this floor's hand-authored map (Task 6, "room-layout randomization",
+   * 2026-09-23) — `floorLayoutVariants[floorIndex]`, when authored, offers a POOL of
+   * interchangeable door-graph layouts for the same room roster (mirroring
+   * `content/enemies.ts`'s `BOSS_POOL`/`'boss_random'` sentinel: one well-scoped
+   * `roomgenPrng` draw over otherwise-fixed hand content). A floor index without a
+   * variant pool falls back to `floorMaps[floorIndex]` unchanged, costing zero extra
+   * draws — exactly the pre-Task-6 behavior for every floor that doesn't opt in.
+   */
+  private resolveAuthoredFloor(state: GameState): DungeonFloorMap | undefined {
+    const variants = state.dungeonConfig!.floorLayoutVariants?.[state.floorIndex];
+    if (variants && variants.length > 0) return variants[state.roomgenPrng.nextInt(variants.length)];
+    return state.dungeonConfig!.floorMaps?.[state.floorIndex];
+  }
+
   private generateAndPlaceFloor(state: GameState): void {
     // Hand-authored floors (design/05 "Hand-authored PvE floors", 2026-08-05) take
     // priority over procedural generation for this floor index — zero roomgenPrng
@@ -195,7 +226,7 @@ export class SpawnSystem {
     // `placeFloorGraph2d` instead of `placeFloor`'s west→east-only spine; a
     // 'graph2d' config never forks (`generateFloor` only forks for 'branching'), so
     // `stages` here is always plain `RoomPiece[]`, never a fork-array `FloorStage`.
-    const authored = state.dungeonConfig!.floorMaps?.[state.floorIndex];
+    const authored = this.resolveAuthoredFloor(state);
     const generated = authored
       ? undefined
       : generateFloor(state.dungeonConfig!, state.floorIndex, state.roomgenPrng, state.roomLibrary);
@@ -304,7 +335,7 @@ export class SpawnSystem {
           roomId: room.id,
           gx: at.gx,
           gy: at.gy,
-          stock: rollShopStock(state.dropPrng, () => state.nextShopId()),
+          stock: rollShopStock(state.dropPrng, () => state.nextShopId(), state.floorIndex),
         });
       }
     }
