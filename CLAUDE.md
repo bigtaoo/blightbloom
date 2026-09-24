@@ -20,17 +20,21 @@ Adopted 2026-09-10 from the sibling project `funny` (its `CLAUDE.md` "分支与�
    Task work still gets its own worktree + branch (`.claude/worktrees/<slug>` on
    `feat/<slug>`, branched off the daily branch) and merges back `--no-ff`; a small
    doc-level fix can be committed straight onto the daily branch in the shared tree.
-3. **One PR per daily branch, `<DD.MM.YYYY>` → `main` — and the *user* opens it.**
-   Revised 2026-09-21: the user creates the day's PR themselves once the day's work is
-   done. A session pushes the daily branch and stops; it does not run `gh pr create`, and
-   it does not ask to. The cost is known and accepted: `check.yml` only triggers on
-   `pull_request` and on pushes to `main`, so until that PR exists the daily branch is
-   running **no CI at all** — say so when reporting a push, and keep the local gates
-   (`npm run check`, the full test suite, `tsc --noEmit`) as the only signal there is.
-   Title and body in English like everything else here (see "Language policy"). Once the
-   PR is open, merge it when the four checks are green; a red check is the answer, not an
-   obstacle to route around. Merging is also what deploys — `client-deploy` /
-   `server-deploy` and friends trigger on push to `main`.
+3. **One PR per daily branch, `<DD.MM.YYYY>` → `main`.**
+   Revised 2026-09-24 (corrects the 2026-09-21 wording, which read as a blanket ban and
+   wasn't): opening the day's PR is **not part of** finishing a task or pushing the daily
+   branch — a session that just merged work and pushed stops there, without running
+   `gh pr create` and without asking whether to. That default is scoped to that moment,
+   not to the tool. When the user explicitly asks for a PR — in this session or any other
+   — open it; "explicit" means the user's own words in chat, not something inferred from
+   the diff or from having just pushed. The cost of the default is known and accepted:
+   `check.yml` only triggers on `pull_request` and on pushes to `main`, so until a PR
+   exists the daily branch is running **no CI at all** — say so when reporting a push
+   with no PR yet, and keep the local gates (`npm run check`, the full test suite,
+   `tsc --noEmit`) as the only signal there is. Title and body in English like everything
+   else here (see "Language policy"). Once the PR is open, merge it when the four checks
+   are green; a red check is the answer, not an obstacle to route around. Merging is also
+   what deploys — `client-deploy` / `server-deploy` and friends trigger on push to `main`.
 
 ```bash
 git fetch origin && git switch -c 10.09.2026 origin/main   # start the day
@@ -63,18 +67,21 @@ When the user says **"结束任务"**, run this exact sequence, in this exact or
    now-redundant worktree and delete the branch.
 4. **Commit last** — the final commit should capture the fully-merged, fully-cleaned-up
    state, not an intermediate one.
-5. **Push the daily branch** — `git push` and stop there. **Do not create the PR**: the
-   user opens one PR per day themselves, once the day's work is done (adopted 2026-09-21).
-   Report what was pushed, and say plainly that the branch is running no CI until that PR
-   exists. If the day's PR is already open, the push updates it — report the state of the
-   four required checks, and leave a red one red rather than reaching for the admin bypass.
+5. **Push the daily branch** — `git push` and stop there. **"结束任务" does not open a
+   PR** by itself (see "Branches, the daily branch, and pull requests" — this is the
+   scoped default, not a blanket ban): report what was pushed, and say plainly that the
+   branch is running no CI until a PR exists. If the day's PR is already open, the push
+   updates it — report the state of the four required checks, and leave a red one red
+   rather than reaching for the admin bypass. If the user separately, explicitly asks for
+   the PR (now or later, in the same message as "结束任务" or a different one), open it;
+   that's a normal request like any other, not something this command overrides.
 
 If any step finds nothing to do (e.g. no unmerged branch exists, or nothing new to
 push), skip it silently rather than asking. Treat "结束任务" as a distinct trigger phrase
 from an ordinary "commit this" or "merge this" request — it means run the full five-step
-sequence, not just whichever single step the wording most resembles. It does **not** mean
-"open the PR"; that is the user's own end-of-day step, and asking whether to open one is
-just as wrong as opening it.
+sequence, not just whichever single step the wording most resembles. On its own it does
+**not** include opening the PR, and asking whether to open one is just as wrong as opening
+it unasked — but an explicit ask for a PR, whenever it comes, is always honored.
 
 ## Code organization: 500-line file convention
 
