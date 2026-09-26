@@ -22,6 +22,8 @@ import { listAppleOrders, verifyAppleReceipt } from './apple';
 import { listGoogleOrders, verifyGoogleReceipt } from './google';
 import { listWechatOrders, verifyWechatReceipt } from './wechat';
 import { listStripeOrders, verifyStripeReceipt } from './stripe';
+import { listPaddleOrders, verifyPaddleReceipt } from './paddle';
+import { readPaddleConfig } from '../paddle/config';
 import { DevStubOrderBook, isDevStubReceipt, verifyDevStubReceipt } from './devStub';
 import type {
   IapPlatform,
@@ -72,6 +74,9 @@ export function createReceiptVerifier(env: BillingEnv = process.env): ReceiptVer
         return verifyWechatReceipt(receipt, wechat);
       case 'stripe':
         return verifyStripeReceipt(receipt, stripe);
+      case 'paddle':
+        // Push-only (ROADMAP 9.1): settles through its signed webhook, never a receipt.
+        return verifyPaddleReceipt();
       case 'dev':
         // Reached only when the stub is disabled, or when the receipt is malformed for it.
         return stub
@@ -119,6 +124,9 @@ function readCredentials(env: BillingEnv) {
 export function createPlatformOrderLister(env: BillingEnv = process.env, book?: DevStubOrderBook): PlatformOrderLister {
   const stub = devStubEnabled(env);
   const creds = readCredentials(env);
+  // Read through the SAME function the webhook reads, so the lister and the webhook cannot
+  // disagree about which price ids exist (`paddle/config.ts`).
+  const paddle = readPaddleConfig(env);
 
   return async (platform: IapPlatform, sinceMs: number, untilMs: number): Promise<PlatformOrderListing> => {
     switch (platform) {
@@ -130,6 +138,8 @@ export function createPlatformOrderLister(env: BillingEnv = process.env, book?: 
         return listWechatOrders(sinceMs, untilMs, creds.wechat);
       case 'stripe':
         return listStripeOrders(sinceMs, untilMs, creds.stripe);
+      case 'paddle':
+        return listPaddleOrders(sinceMs, untilMs, paddle);
       case 'dev':
         if (!stub) return { ok: false, reason: 'dev: the dev stub is disabled in this environment' };
         if (!book) return { ok: false, reason: 'dev: no order book configured — nothing to reconcile against' };

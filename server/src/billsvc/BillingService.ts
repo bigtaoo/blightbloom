@@ -50,36 +50,15 @@
  */
 import type { Db } from 'mongodb';
 import { randomUUID } from 'node:crypto';
-import { billingStore, type BillingStore, type LedgerDoc, type OrderDoc } from '../billing/collections';
+import { billingStore, type BillingStore } from '../billing/collections';
 import { findSku, listSkus, type SkuDef } from './skus';
 import { paymentParamsFor, type PaymentParams } from './paymentParams';
 import { ledgerOnlyDelivery, type EntitlementDelivery } from './delivery';
 import { asIapPlatform, type IapPlatform, type IapVerifyResult, type ReceiptVerifier } from './iap/types';
+import type { PaddlePriceTable } from './paddle/config';
+import { chargedFields, toLedgerView, toOrderView, type LedgerView, type OrderView } from './orderViews';
 
-export type OrderState = 'created' | 'settled' | 'failed';
-
-export interface OrderView {
-  id: string;
-  accountId: string;
-  sku: string;
-  platform: IapPlatform;
-  amountCents: number;
-  currency: string;
-  state: OrderState;
-  platformTxnId: string | null;
-  createdAt: number;
-  settledAt: number | null;
-}
-
-export interface LedgerView {
-  id: string;
-  accountId: string;
-  sku: string;
-  orderId: string | null;
-  receiptId: string | null;
-  kind: string;
-  ts: number;
-}
+export type { LedgerView, OrderState, OrderView } from './orderViews';
 
 export type CreateOrderResult =
   | { ok: true; order: OrderView; payment: PaymentParams }
@@ -125,6 +104,8 @@ export interface BillingServiceDeps {
   newOrderId?: () => string;
   /** `devStubEnabled(env)`, forwarded to `paymentParamsFor`. Defaults to off. */
   devStubOn?: boolean;
+  /** Paddle's sku ↔ price id table (`paddle/config.ts`), for `createOrder`'s payment block. */
+  paddlePrices?: Pick<PaddlePriceTable, 'priceFor'>;
 }
 
 /** Thrown inside the settlement transaction to roll it back with a named reason.
@@ -148,6 +129,7 @@ export class BillingService {
   private readonly now: () => number;
   private readonly newOrderId: () => string;
   private readonly devStubOn: boolean;
+  private readonly paddlePrices?: Pick<PaddlePriceTable, 'priceFor'>;
 
   constructor(deps: BillingServiceDeps) {
     this.db = deps.db;
@@ -157,6 +139,7 @@ export class BillingService {
     this.now = deps.nowMs ?? (() => Date.now());
     this.newOrderId = deps.newOrderId ?? (() => randomUUID());
     this.devStubOn = deps.devStubOn ?? false;
+    this.paddlePrices = deps.paddlePrices;
   }
 
   listSkus(): readonly SkuDef[] {
@@ -204,7 +187,7 @@ export class BillingService {
       createdAt,
       settledAt: null,
     };
-    return { ok: true, order, payment: paymentParamsFor(platform, order, this.devStubOn) };
+    return { ok: true, order, payment: paymentParamsFor(platform, order, this.devStubOn, this.paddlePrices?.priceFor(def.sku)) };
   }
 
   /** The `GET /order/:id` poll view. Says what the SERVER believes, which is the only input. */
@@ -264,7 +247,56 @@ export class BillingService {
       return { ok: false, code: 'verification-failed', reason: `${input.platform}: ${(e as Error).message}` };
     }
     if (!verified.ok) return { ok: false, code: 'verification-failed', reason: verified.reason };
+    return this.commit({
+      platform: input.platform,
+      orderId,
+      receipt,
+      product: verified.product,
+      txnId: verified.platformTxnId ?? bodyTxnId,
+    });
+  }
 
+  /**
+   * The settlement entry for a PUSH platform whose callback body is itself signed — Paddle
+   * (ROADMAP 9.1). The route has already verified the signature over the raw bytes, so there
+   * is no receipt to verify and §4's AMENDMENT 1 relaxes here, and only here: the body's
+   * transaction id is trustworthy BECAUSE the body is signed, and it is the natural
+   * `platformTxnId`. The claims are unchanged — the transaction id doubles as the receipt,
+   * so the receipt document (`paddle:<txn>`) and the ledger document
+   * (`purchase:paddle:<txn>`) are both claimed exactly as for any other platform, which is
+   * what makes Paddle's at-least-once retries replays rather than second deliveries.
+   *
+   * `charged` is what the platform says it took. Recorded on the order, NEVER compared here:
+   * a Merchant of Record owns the price actually charged (9.2), and refusing money already
+   * taken would turn a bookkeeping difference into an undelivered purchase.
+   */
+  async settleSigned(input: {
+    platform: IapPlatform;
+    orderId: string;
+    txnId: string;
+    product: string;
+    charged?: { amountCents?: number; currency?: string };
+  }): Promise<SettleResult> {
+    const orderId = input.orderId.trim();
+    const txnId = input.txnId.trim();
+    if (!orderId || !txnId || !input.product) {
+      return { ok: false, code: 'bad-request', reason: 'orderId, txnId and product are all required' };
+    }
+    return this.commit({ platform: input.platform, orderId, receipt: txnId, product: input.product, txnId, charged: input.charged });
+  }
+
+  /** Everything after verification: rule 5, then the two claims and the grant in one
+   *  transaction. Shared by `settle` (receipt platforms) and `settleSigned` (Paddle). */
+  private async commit(input: {
+    platform: IapPlatform;
+    orderId: string;
+    receipt: string;
+    product: string;
+    txnId: string;
+    charged?: { amountCents?: number; currency?: string };
+  }): Promise<SettleResult> {
+    const { orderId, receipt, txnId } = input;
+    const verified = { product: input.product };
     const order = await this.getOrder(orderId);
     if (!order) return { ok: false, code: 'unknown-order', reason: `no order '${orderId}'` };
 
@@ -282,7 +314,6 @@ export class BillingService {
     // on why a retried callback must not be able to mint a different id or a different clock
     // reading than the attempt before it.
     const receiptId = `${input.platform}:${receipt}`;
-    const txnId = verified.platformTxnId ?? bodyTxnId;
     const ledgerId = `purchase:${input.platform}:${txnId}`;
     const ts = this.now();
     // The catalogue can change between booking an order and settling it, so this may be
@@ -370,7 +401,7 @@ export class BillingService {
 
         const settled = await this.store.orders.updateOne(
           { _id: orderId, state: 'created' },
-          { $set: { platformTxnId: txnId, state: 'settled', settledAt: ts } },
+          { $set: { platformTxnId: txnId, state: 'settled', settledAt: ts, ...chargedFields(input.charged) } },
           { session },
         );
         if (settled.modifiedCount !== 1) {
@@ -423,29 +454,3 @@ export class BillingService {
   }
 }
 
-function toOrderView(doc: OrderDoc): OrderView {
-  return {
-    id: doc._id,
-    accountId: doc.accountId,
-    sku: doc.sku,
-    platform: doc.platform as IapPlatform,
-    amountCents: doc.amountCents,
-    currency: doc.currency,
-    state: doc.state as OrderState,
-    platformTxnId: doc.platformTxnId ?? null,
-    createdAt: doc.createdAt,
-    settledAt: doc.settledAt ?? null,
-  };
-}
-
-function toLedgerView(doc: LedgerDoc): LedgerView {
-  return {
-    id: doc._id,
-    accountId: doc.accountId,
-    sku: doc.sku,
-    orderId: doc.orderId ?? null,
-    receiptId: doc.receiptId ?? null,
-    kind: doc.kind,
-    ts: doc.ts,
-  };
-}

@@ -53,6 +53,11 @@ export interface OrderDoc {
   platformTxnId?: string;
   createdAt: number;
   settledAt?: number;
+  /** What the platform says it CHARGED, when its settlement callback says so (Paddle, ROADMAP
+   *  9.2). A record beside `amountCents`, never an authority over it: a difference is a
+   *  reconciliation finding. ABSENT for every receipt platform. */
+  chargedAmountCents?: number;
+  chargedCurrency?: string;
 }
 
 /** One verified receipt, keyed `${platform}:${receipt}`. `product` is what the receipt
@@ -110,6 +115,14 @@ export interface DeliveryDoc {
   receiptId: string;
   /** `pending` | `delivered` | `failed`, enforced by the validator in `schema.ts`. */
   state: string;
+  /**
+   * `revoke` for a refund's entitlement REVOCATION (ROADMAP 9.3, `paddle/refunds.ts`); ABSENT
+   * means `grant`, which is every row written before 9.3 and every purchase since. The pump
+   * posts a revoke row to the control plane's revoke route instead of its grant route. Same
+   * outbox, same at-least-once drain, same review-on-terminal-refusal — a revocation is an
+   * obligation that must survive a crash exactly as a grant is.
+   */
+  action?: 'grant' | 'revoke';
   attempts: number;
   createdAt: number;
   /** ABSENT unless `state` is `delivered`. `failed` means we gave up, which is a different

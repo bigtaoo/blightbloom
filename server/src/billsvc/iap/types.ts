@@ -13,10 +13,14 @@
  * economy gets imported by accident (design/19 §8).
  */
 
-/** Platforms the dispatch knows. `'dev'` is the local stub, never a real merchant. */
-export type IapPlatform = 'apple' | 'google' | 'wechat' | 'stripe' | 'dev';
+/**
+ * Platforms the dispatch knows. `'dev'` is the local stub, never a real merchant. `'paddle'`
+ * (ROADMAP 9.1) is PUSH-only: it has no client-held receipt, so it never settles through
+ * `ReceiptVerifier` — its signed webhook has a route of its own (`paddle/webhook.ts`).
+ */
+export type IapPlatform = 'apple' | 'google' | 'wechat' | 'stripe' | 'paddle' | 'dev';
 
-const PLATFORMS: readonly string[] = ['apple', 'google', 'wechat', 'stripe', 'dev'];
+const PLATFORMS: readonly string[] = ['apple', 'google', 'wechat', 'stripe', 'paddle', 'dev'];
 
 /** Narrows an arbitrary path/body string to a known platform, or `undefined`. */
 export function asIapPlatform(value: unknown): IapPlatform | undefined {

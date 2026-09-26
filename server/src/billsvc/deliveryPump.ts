@@ -63,10 +63,27 @@ import type { Db } from 'mongodb';
 import { internalFetch, type InternalFetchResult, type RetryPolicy } from '../internalFetch';
 import type { SkuGrant } from './skus';
 import { countAttempt, markDelivered, markFailed, pendingDeliveries, type DeliveryRecord } from './outbox';
-import { fileReview, moneyTakenId } from './reviewQueue';
+import { fileReview, moneyTakenId, revocationFailedId } from './reviewQueue';
 
 /** The control-plane route this pump POSTs to (`server/src/routes/internalEntitlements.ts`). */
 export const GRANT_PATH = '/internal/entitlements/grant';
+/** Where a refund's `action: 'revoke'` row goes instead (ROADMAP 9.3). Same body shape. */
+export const REVOKE_PATH = '/internal/entitlements/revoke';
+
+/**
+ * What a terminal row MEANS, by action — the words in the log line and the review case. A
+ * failed grant is money taken with nothing granted; a failed revocation is money refunded
+ * with the entitlement still held. Different facts, different queue kinds.
+ */
+function consequence(row: DeliveryRecord): string {
+  return row.action === 'revoke'
+    ? `account '${row.accountId}' was refunded for '${row.sku}' (order '${row.orderId}') and STILL HOLDS it`
+    : `account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING`;
+}
+
+function remedy(row: DeliveryRecord): string {
+  return row.action === 'revoke' ? 'Needs a manual revocation; filed for review.' : 'Needs a manual grant; filed for review.';
+}
 
 /** What one sweep did. Every field is a branch with its own test. */
 export interface PumpResult {
@@ -150,6 +167,7 @@ export function parseGrants(grantsJson: string): SkuGrant[] | null {
 export class DeliveryPump {
   private readonly db: Db;
   private readonly url: string;
+  private readonly revokeUrl: string;
   private readonly now: () => number;
   private readonly batchSize: number;
   private readonly intervalMs: number;
@@ -164,6 +182,7 @@ export class DeliveryPump {
     this.now = deps.nowMs ?? (() => Date.now());
     this.batchSize = deps.batchSize ?? DEFAULT_BATCH_SIZE;
     this.intervalMs = deps.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.revokeUrl = this.url.slice(0, -GRANT_PATH.length) + REVOKE_PATH;
   }
 
   /**
@@ -189,8 +208,7 @@ export class DeliveryPump {
         result.failed += 1;
         console.error(
           `[blightbloom] billsvc: delivery '${row.id}' has unreadable grants_json and can never be delivered — ` +
-            `account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING. ` +
-            'Needs a manual grant; filed for review.',
+            `${consequence(row)}. ${remedy(row)}`,
         );
         continue;
       }
@@ -215,8 +233,7 @@ export class DeliveryPump {
         result.failed += 1;
         console.error(
           `[blightbloom] billsvc: the control plane REFUSED delivery '${row.id}' with ${outcome.status} — ` +
-            `account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING. ` +
-            'Needs a manual grant; filed for review.',
+            `${consequence(row)}. ${remedy(row)}`,
         );
         continue;
       }
@@ -258,14 +275,13 @@ export class DeliveryPump {
         await markFailed(this.db, row.id, session);
         await fileReview(
           this.db,
-          moneyTakenId(row.id),
+          row.action === 'revoke' ? revocationFailedId(row.id) : moneyTakenId(row.id),
           {
-            kind: 'money-taken-nothing-granted',
+            kind: row.action === 'revoke' ? 'revocation-failed' : 'money-taken-nothing-granted',
             accountId: row.accountId,
             // No day key: this is an event, not a day's worth of behaviour.
             dayKey: null,
-            summary:
-              `${summary} — account '${row.accountId}' paid for '${row.sku}' (order '${row.orderId}') and has NOTHING`,
+            summary: `${summary} — ${consequence(row)}`,
             evidence: {
               deliveryId: row.id,
               accountId: row.accountId,
@@ -294,7 +310,7 @@ export class DeliveryPump {
       grants,
       ts: row.createdAt,
     };
-    return internalFetch(this.url, {
+    return internalFetch(row.action === 'revoke' ? this.revokeUrl : this.url, {
       method: 'POST',
       json: body,
       internalKey: this.deps.internalKey,

@@ -153,6 +153,17 @@ describe('diffOrders — the three difference classes', () => {
     expect(report.differences[0]!.detail).toContain(' 1 ');
   });
 
+  it('a CURRENCY difference is an amount-mismatch too (ROADMAP 9.2: Paddle charges in local currency)', () => {
+    // Same number, different currency — the SKU table is a record, not an authority, so this
+    // is a finding and never a settlement refusal.
+    const report = diffOrders('paddle', [local({ platform: 'paddle' })], [remote({ currency: 'USD' })]);
+    expect(report.differences.map((d) => d.kind)).toEqual(['amount-mismatch']);
+    expect(report.differences[0]!.detail).toContain('USD');
+    // A currency difference with NO reported amount still says so, without inventing a number.
+    const noAmount = diffOrders('paddle', [local()], [remote({ amountCents: undefined, currency: 'USD' })]);
+    expect(noAmount.differences[0]!.detail).toContain('(no amount) USD');
+  });
+
   it('reports BOTH when the amount and the SKU disagree at once', () => {
     // Two findings rather than one combined "mismatch": they mean different things to whoever
     // reads them, and a SKU disagreement with a matching price is a different incident from a
@@ -252,7 +263,7 @@ describe('reconcileWindow — and what it refuses to claim', () => {
     const report = await reconcileWindow({ db, listOrders }, 0, DAY_MS);
 
     expect(report.platforms.map((p) => p.platform)).toEqual(['dev']);
-    expect(report.unreconciled.map((u) => u.platform)).toEqual(['apple', 'google', 'wechat', 'stripe']);
+    expect(report.unreconciled.map((u) => u.platform)).toEqual(['apple', 'google', 'wechat', 'stripe', 'paddle']);
     expect(report.complete).toBe(false);
     // The trap this whole module is shaped around: zero differences AND not reconciled.
     expect(report.differenceCount).toBe(0);
@@ -266,14 +277,14 @@ describe('reconcileWindow — and what it refuses to claim', () => {
   });
 
   it('a port that THROWS is one unreconciled platform, not an abandoned run', async () => {
-    // A real adapter is an HTTPS call; one platform's DNS failure must not lose the other four.
+    // A real adapter is an HTTPS call; one platform's DNS failure must not lose the others.
     // Same reasoning as `BillingService.settle`'s try around the verifier.
     const listOrders: PlatformOrderLister = async (platform) => {
       if (platform === 'wechat') throw new Error('getaddrinfo ENOTFOUND');
       return { ok: true, orders: [] };
     };
     const report = await reconcileWindow({ db, listOrders }, 0, DAY_MS);
-    expect(report.platforms).toHaveLength(4);
+    expect(report.platforms).toHaveLength(RECONCILED_PLATFORMS.length - 1);
     expect(report.unreconciled).toHaveLength(1);
     expect(report.unreconciled[0]!.reason).toContain('ENOTFOUND');
     expect(report.complete).toBe(false);
@@ -521,8 +532,8 @@ describe('windows, formatting and argument parsing', () => {
     // The first line is the one a human skims, and "0 differences" from a run that asked
     // nothing is the misreading this whole module is shaped to prevent.
     expect(lines[0]).toContain('INCOMPLETE');
-    expect(lines[0]).toContain('5 platform(s) could not be asked');
-    expect(lines.filter((l) => l.includes('not reconciled'))).toHaveLength(5);
+    expect(lines[0]).toContain('6 platform(s) could not be asked');
+    expect(lines.filter((l) => l.includes('not reconciled'))).toHaveLength(6);
   });
 
   it('formatReconcileReport lists each difference under its platform', () => {

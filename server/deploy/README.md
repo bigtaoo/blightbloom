@@ -144,6 +144,17 @@ Editing `.env` over `ssh` is best done with an editor on the box rather than a o
 a pasted placeholder survives a copy, and PowerShell expands `$` inside double quotes, which
 silently truncates an Atlas password containing one.
 
+**Paddle (ROADMAP Phase 9) — four optional names, no values here.** billsvc reads
+`BB_PADDLE_WEBHOOK_SECRET` (the notification destination's secret), `BB_PADDLE_API_KEY`
+(reconciliation's `GET /transactions`), `BB_PADDLE_ENVIRONMENT` (`sandbox` or unset = live)
+and `BB_PADDLE_PRICE_IDS` (`sku=pri_…` pairs). They come from the secrets store into `.env`,
+which billsvc already loads through `env_file: .env` — so `docker-compose.yml` does not list
+them, and must not inline them. Unset, billsvc runs exactly as before and answers every
+`POST /webhook/paddle` with a 503 (Paddle retries). Paddle's destination needs a public URL
+that reaches billsvc's `/webhook/paddle`, and **billsvc is not reachable through Caddy today**
+(`caddy/Caddyfile` has no billsvc route; it is internal-only by design) — so exposing exactly
+that one path is part of the go-live step, not something this repo does yet. `.env.example` documents each variable.
+
 `BB_MONGO_DB_PREFIX` is optional and unset in production. Setting it (`staging`, say) moves
 the four databases to `staging_accounts` and friends, so one cluster can host a second
 environment without a second bill.

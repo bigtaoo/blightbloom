@@ -741,7 +741,7 @@ Loki/Alloy/Grafana stack, and the social/auction/world services.
 
 ---
 
-## Phase 9 — Payments go live: Paddle 🔴 (planned 2026-09-05)
+## Phase 9 — Payments go live: Paddle 🟡 (planned 2026-09-05; 9.1–9.3 code shipped 2026-09-26, not live)
 
 Phase 8 built a billing plane that works end to end **against a dev stub**: a `product:<sku>`
 receipt walks create → webhook → settle → outbox → `entitlements` → the Forge, and every real
@@ -752,7 +752,8 @@ cannot own for itself. The recorded loser is Stripe, which is the cheapest platf
 *reconciliation* logic against (a single paged `GET /v1/checkout/sessions`); that is a
 reconciliation cost, and it lost to a tax-and-compliance argument.
 
-- **9.1 🔴 The Paddle adapter, which does not fit the shape 8.4 shipped.** Four structural
+- **9.1 🟡 The Paddle adapter, which does not fit the shape 8.4 shipped.** *Code shipped
+  2026-09-26; not live — see the note at the end of this item.* Four structural
   differences, in `design/19-server-platform.md` §9 in full. It is **push, not pull**: every 8.4
   adapter answers `verifyReceipt(platform, receipt)` against a client-held receipt, and Paddle
   has none — it sends a signed `transaction.completed` webhook, landing on the one path 8.1's
@@ -765,19 +766,44 @@ reconciliation cost, and it lost to a tax-and-compliance argument.
   tolerance bounds replay. And 8.3's AMENDMENT 1 **relaxes here and only here**: it prefers the
   verifier's transaction id over the callback body's *because the body is unauthenticated*, and a
   Paddle body is signed.
-- **9.2 🔴 Merchant of Record partly inverts 8.3's price rule.** "Price comes from a server-side
+  **Shipped 2026-09-26:** `POST /webhook/paddle` (`server/src/billsvc/paddle/webhook.ts`) reads
+  the body through `billsvc/http.ts`'s raw reader, never `readJson`; `paddle/signature.ts`
+  checks `ts=…;h1=…` (any of several h1, constant-time, 5 s tolerance each way — Paddle's
+  documented default) BEFORE parsing; the signed transaction id settles through
+  `BillingService.settleSigned` (same two claims, so Paddle's retries are replays). No secret =
+  503 and nothing recorded; a bad signature = 401, logged, not recorded. The test vector is
+  self-computed from the documented algorithm — Paddle publishes none. **Owner-only:** the
+  notification destination and its secret (`BB_PADDLE_WEBHOOK_SECRET`), a public route to
+  billsvc (it is internal-only today), and the first real sandbox notification.
+- **9.2 🟡 Merchant of Record partly inverts 8.3's price rule.** *Code shipped 2026-09-26.* "Price comes from a server-side
   SKU table" holds for what we OFFER, but Paddle owns localised pricing, currency and tax and
   alone knows what was CHARGED. A SKU gains a Paddle price id, `server/src/billsvc/skus.ts`'s
   `amountCents` becomes a record rather than an authority, and a mismatch is an 8.5 reconciliation
   finding — **never a rejection**, because refusing money already taken converts a bookkeeping
   discrepancy into an undelivered purchase. Its order lister replaces one of the four INCOMPLETE
   rows an 8.5 reconciliation run currently reports.
-- **9.3 🔴 Refunds stop being hypothetical.** A Merchant of Record handles chargebacks, so Paddle
+  **Shipped 2026-09-26:** `SkuDef.paddlePriceId` (unset everywhere) overridden per environment by
+  `BB_PADDLE_PRICE_IDS` (`paddle/config.ts`); an unknown price id is REFUSED; the charged
+  amount/currency is stored on the order (`chargedAmountCents`/`chargedCurrency`) and never
+  compared at settlement; a currency OR amount difference is an 8.5 `amount-mismatch`. The lister
+  (`iap/paddle.ts`) is a real paged `GET /transactions`, fake-fetch tested, refusing without
+  `BB_PADDLE_API_KEY`. **Owner-only:** the eleven Paddle Prices and their ids, and the API key.
+  Expect every Paddle order to report an amount-mismatch until the SKU records match Paddle's
+  base prices — the table is CNY placeholder.
+- **9.3 🟡 Refunds stop being hypothetical.** *Code shipped 2026-09-26.* A Merchant of Record handles chargebacks, so Paddle
   sends refund events, which makes `design/19-server-platform.md` §9's refund bullet a dependency
   of this phase rather than a parallel question. The floor is that every refund event reaches
   8.5's review queue with its money joined to it. **Whether an entitlement is actually revoked,
   and what a revoked character does to a ladder history, is undecided and is a product call** —
   9.1/9.2 must not settle it by accident.
+  **DECIDED by the owner 2026-09-26 and shipped:** an approved `refund`/`chargeback` adjustment
+  (`adjustment.created`/`adjustment.updated`) REVOKES the entitlement and files a `refund` case
+  with both sides' money; ladder/PvP history is NOT changed. `paddle/refunds.ts` appends a
+  `reversal:` ledger row, queues an `action: 'revoke'` outbox row the pump drains to the new
+  `POST /internal/entitlements/revoke`, which removes only an entitlement held BECAUSE OF that
+  order. `pending_approval`/`rejected`/`chargeback_warning` are recorded and not acted on; an
+  approved `chargeback_reverse` files a case and re-grants nothing. A refused revocation files
+  `revocation-failed`. **Owner-only:** the first real refund through a sandbox.
 - **9.4 🟡 Credentials, and what "done" means without them.** A Paddle account, a notification
   destination secret and a price id per SKU are inputs this repository cannot produce. Until they
   exist, 9.1–9.3 land the same way 8.4's four adapters did: the real call each would make, written
@@ -1078,7 +1104,7 @@ Phase 8 (server platform) DONE (✅ 2026-09-05, design/19-server-platform.md) �
                         rather than clean when a platform cannot be asked, and a non-purchase grant audit that FILES and never revokes — plus a review queue that
                         finally gives 8.7's "money taken, nothing granted" record somewhere to go. 8.6 shipped 2026-09-05 as GameRegistry's static
                         single-instance branch only — /find's wsUrl is a lookup that travels in the response, never in the ticket. Depends on nothing in Phases 0-7; 8.2 depends on 8.1’s internal key, 8.3 on both, 8.7 on all three.
-Phase 9 (payments live)  PLANNED (🔴, design/19-server-platform.md §5/§9) — Paddle, decided 2026-09-05. Phase 8 works end to end against a DEV STUB;
+Phase 9 (payments live)  CODE SHIPPED, NOT LIVE (🟡 2026-09-26, design/19-server-platform.md §5/§9) — Paddle, decided 2026-09-05. Phase 8 works end to end against a DEV STUB;
                         this is the one platform that turns it into money. Paddle is a Merchant of Record (it owns VAT/tax/chargebacks, which a solo-operated
                         project cannot) — the recorded loser is Stripe, cheapest to prove 8.5's RECONCILIATION against, which lost to a tax argument.
                         It does NOT fit 8.4's adapter shape: PUSH not pull (a signed webhook, no client-held receipt), verification needs the RAW body
@@ -1089,6 +1115,9 @@ Phase 9 (payments live)  PLANNED (🔴, design/19-server-platform.md §5/§9) �
                         entitlement is REVOKED is a product call this phase must not settle by accident. Depends on all of Phase 8; blocked on credentials
                         this repo cannot produce, so without them it lands the way 8.4's four adapters did — written, fixture-tested, failing closed,
                         honestly reported as unverified. The signature verifier is the exception and must be tested for real.
+                        2026-09-26: 9.1–9.3 landed exactly that way — signed-webhook adapter over the RAW body, price-id map failing closed,
+                        a real GET /transactions lister, refunds that REVOKE and file a review case (the owner settled the product call).
+                        Still owner-only: price ids, the destination secret, a public route to billsvc, and the first real sandbox round trip.
 Documentation           DONE (✅ 2026-08-02) — all 19 design docs + every README audited against the code; stale top-of-file Status blocks rewritten (12/10/client/art READMEs and this file's own header), design/README index completed, engine/README written, art/ UUID filenames + duplicate files cleaned up. Docs-only, no code change.
 Repo structure          DONE (✅ 2026-08-02) — engine/ hoisted to its own top-level package (DOM-free, self-only paths: the determinism rule is now compile-enforced); client/src/game/ split into screens|scene|controllers|match; root npm workspace with a single `npm run check` across all 5 packages; game/config.ts deleted (dead pre-engine duplicates) and split into theme.ts + score.ts. 931 tests before and after, zero behaviour change.
 Test coverage audit     DONE (✅ 2026-08-05) — full test-coverage sweep across all 7 workspaces; zero dead/obsolete tests found (nothing to delete); ~50 previously-untested files closed, 1736 → 2627 tests. See the Test coverage audit pass section above.

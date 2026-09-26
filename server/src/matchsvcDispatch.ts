@@ -23,6 +23,7 @@ import * as partyRoutes from './routes/party';
 import * as authRoutes from './routes/auth';
 import * as accountRoutes from './routes/account';
 import * as internalEntitlementRoutes from './routes/internalEntitlements';
+import * as internalRevocationRoutes from './routes/internalRevocations';
 import * as storeRoutes from './routes/store';
 import * as telemetryRoutes from './routes/telemetry';
 
@@ -148,6 +149,10 @@ export function dispatch(req: IncomingMessage, res: ServerResponse, ctx: Dispatc
   // outbox pump POSTs a settled purchase here over ROADMAP 8.1's internal key.
   if (req.method === 'POST' && path === internalEntitlementRoutes.INTERNAL_GRANT_PATH) {
     return internalEntitlementRoutes.postGrant(req, res, url, ctx.deps);
+  }
+  // Its mirror (ROADMAP 9.3): a refund's revocation, drained from the same outbox.
+  if (req.method === 'POST' && path === internalRevocationRoutes.INTERNAL_REVOKE_PATH) {
+    return internalRevocationRoutes.postRevoke(req, res, url, ctx.deps);
   }
 
   send(res, 404, { error: 'not found' });

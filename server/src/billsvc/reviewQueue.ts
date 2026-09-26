@@ -13,10 +13,12 @@
  * Concretely, and these are constraints on the whole module rather than commentary: nothing
  * here revokes an entitlement, nothing here changes an order, nothing here is reachable from
  * a request handler that could be driven by a player, and a finding is a document a person
- * reads — not an action taken on their behalf. `EntitlementService.revoke` exists and is
- * deliberately called by nothing in this server.
+ * reads — not an action taken on their behalf. (ROADMAP 9.3 added ONE automatic revocation to
+ * this plane — a platform-approved refund or chargeback, decided by the owner 2026-09-26 — and
+ * it lives in `paddle/refunds.ts`, not here: money the platform has already given back is
+ * evidence, not suspicion. It files its case here like every other producer.)
  *
- * TWO PRODUCERS, ONE COLLECTION, and they share it because they are the same question — "a
+ * SEVERAL PRODUCERS, ONE COLLECTION, and they share it because they are the same question — "a
  * human has to look at this account":
  *
  *   'grant-anomaly'                too many non-`purchase` entitlement grants for one account
@@ -27,6 +29,11 @@
  *                                  moved and the player got nothing, and before this it
  *                                  existed ONLY as a `console.error` — which has no owner, no
  *                                  second reader and no memory across a restart.
+ *   'refund'                       a platform-approved refund or chargeback (ROADMAP 9.3,
+ *                                  `paddle/refunds.ts`), with the money on both sides joined:
+ *                                  what the order recorded and what the platform gave back.
+ *   'revocation-failed'            the control plane refused that refund's revocation, so the
+ *                                  account still holds what was refunded (`deliveryPump.ts`).
  *
  * IDEMPOTENCY IS THE PRODUCER'S KEY, NOT A GENERATED ID. `reviewId` below mints it and it is
  * the document's `_id`; the write is an upsert whose payload is entirely `$setOnInsert`. An
@@ -41,7 +48,7 @@
 import type { ClientSession, Db } from 'mongodb';
 import { billingStore, type ReviewDoc } from '../billing/collections';
 
-export const REVIEW_KINDS = ['grant-anomaly', 'money-taken-nothing-granted'] as const;
+export const REVIEW_KINDS = ['grant-anomaly', 'money-taken-nothing-granted', 'refund', 'revocation-failed'] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export type ReviewState = 'open' | 'reviewed';
@@ -92,6 +99,20 @@ export function grantAnomalyId(accountId: string, dayKey: string): string {
 /** `money-taken-nothing-granted:<deliveryId>`. */
 export function moneyTakenId(deliveryId: string): string {
   return reviewId('money-taken-nothing-granted', deliveryId);
+}
+
+/**
+ * `refund:<platform>:<adjustmentId>` (ROADMAP 9.3). Keyed per ADJUSTMENT, not per
+ * transaction: two partial refunds on one purchase are two amounts of money, and each gets
+ * its own case, while the revocation they share is claimed once per transaction.
+ */
+export function refundReviewId(platform: string, adjustmentId: string): string {
+  return reviewId('refund', `${platform}:${adjustmentId}`);
+}
+
+/** `revocation-failed:<deliveryId>` — the control plane refused a refund's revocation. */
+export function revocationFailedId(deliveryId: string): string {
+  return reviewId('revocation-failed', deliveryId);
 }
 
 /**

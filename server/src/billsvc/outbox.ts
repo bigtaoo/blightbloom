@@ -44,6 +44,9 @@ export interface DeliveryRecord {
   attempts: number;
   createdAt: number;
   deliveredAt: number | null;
+  /** `grant` for every purchase; `revoke` for a refund's revocation (ROADMAP 9.3). An absent
+   *  field reads as `grant` — every row written before 9.3 is one. */
+  action: 'grant' | 'revoke';
 }
 
 function toRecord(d: DeliveryDoc): DeliveryRecord {
@@ -58,6 +61,7 @@ function toRecord(d: DeliveryDoc): DeliveryRecord {
     attempts: d.attempts,
     createdAt: d.createdAt,
     deliveredAt: d.deliveredAt ?? null,
+    action: d.action === 'revoke' ? 'revoke' : 'grant',
   };
 }
 

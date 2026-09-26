@@ -61,6 +61,8 @@ const ORDER_VALIDATOR: Record<string, unknown> = {
       platformTxnId: { bsonType: 'string' },
       createdAt: { bsonType: 'number' },
       settledAt: { bsonType: 'number' },
+      chargedAmountCents: { bsonType: 'number' },
+      chargedCurrency: { bsonType: 'string' },
     },
   },
 };
@@ -106,6 +108,8 @@ const LEDGER_VALIDATOR: Record<string, unknown> = {
  *  invisible to `pendingDeliveries` forever — the loudest reason this is a server-side
  *  enum rather than a TypeScript union. */
 export const DELIVERY_STATES = ['pending', 'delivered', 'failed'] as const;
+/** What a delivery row asks the control plane to do (ROADMAP 9.3). */
+export const DELIVERY_ACTIONS = ['grant', 'revoke'] as const;
 
 const DELIVERY_VALIDATOR: Record<string, unknown> = {
   $jsonSchema: {
@@ -121,6 +125,9 @@ const DELIVERY_VALIDATOR: Record<string, unknown> = {
       orderId: { bsonType: 'string' },
       receiptId: { bsonType: 'string' },
       state: { enum: [...DELIVERY_STATES] },
+      // Optional; absent means 'grant' (ROADMAP 9.3). An enum for the same reason `state` is:
+      // a hand-typed 'revoked' would otherwise be drained as a GRANT.
+      action: { enum: [...DELIVERY_ACTIONS] },
       attempts: { bsonType: 'number' },
       createdAt: { bsonType: 'number' },
       deliveredAt: { bsonType: 'number' },
@@ -128,8 +135,10 @@ const DELIVERY_VALIDATOR: Record<string, unknown> = {
   },
 };
 
-/** The two producers of the review queue, and nothing else. */
-export const REVIEW_KIND_VALUES = ['grant-anomaly', 'money-taken-nothing-granted'] as const;
+/** The review queue's producers, and nothing else: the grant audit, the delivery pump, and
+ *  since ROADMAP 9.3 the refund path (`refund`) and a revocation the control plane refused
+ *  (`revocation-failed`). */
+export const REVIEW_KIND_VALUES = ['grant-anomaly', 'money-taken-nothing-granted', 'refund', 'revocation-failed'] as const;
 export const REVIEW_STATE_VALUES = ['open', 'reviewed'] as const;
 
 const REVIEW_VALIDATOR: Record<string, unknown> = {
