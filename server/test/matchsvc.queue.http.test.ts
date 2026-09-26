@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { createMatchsvcServer, type MatchsvcServerOptions } from '../src/matchsvc';
+import { createMatchsvcServer, SEED_SPACE, type MatchsvcServerOptions } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
 import type { BotClientOptions } from '../src/BotClient';
 import { defaultFlags, type FlagName, type FlagValue, type FlagValues } from '../src/flags/defs';
@@ -138,6 +138,31 @@ describe('POST /find', () => {
 
       const payload = verifyTicket(match.token as string, SECRET, Date.now());
       expect(payload).toMatchObject({ roomId: match.roomId, owner: 0, seed: match.seed });
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // design/15, decided 2026-09-26. The seed used to be a counter that started at the clock and
+  // stepped by one per room, so each room's seed was the previous room's plus one — the
+  // property a player needs to simulate a match's drops ahead of time. The consecutive-step
+  // assertion is what that counter fails; a CSPRNG fails it with odds of about 7 in 2^31.
+  it('draws each room seed from the whole 31-bit space, never one more than the last', async () => {
+    const ctx = await start();
+    try {
+      const seeds: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        const { body } = await post(ctx.url, '/find', { playerCount: 1 });
+        seeds.push((body.match as { seed: number }).seed);
+      }
+      for (const seed of seeds) {
+        expect(Number.isInteger(seed)).toBe(true);
+        expect(seed).toBeGreaterThanOrEqual(0);
+        expect(seed).toBeLessThan(SEED_SPACE);
+      }
+      const steps = seeds.slice(1).map((s, i) => s - seeds[i]!);
+      expect(steps.filter((d) => d === 1)).toEqual([]);
+      expect(new Set(seeds).size).toBe(seeds.length);
     } finally {
       await ctx.close();
     }

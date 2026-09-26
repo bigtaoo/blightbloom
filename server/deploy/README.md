@@ -113,7 +113,7 @@ browser `ERR_SSL_...` with nothing useful in the server logs (a sibling project 
 Generate once, keep in a local `server/.env` (never committed — see `.env.example`):
 
 ```bash
-openssl rand -hex 32   # BB_TICKET_SECRET
+openssl rand -hex 32   # BB_TICKET_SECRET  (required: production refuses to start without it, design/15)
 openssl rand -hex 32   # BB_INTERNAL_KEY
 openssl rand -hex 16   # BB_ADMIN_PASSWORD  (the ops console's login, design/21 §3.3)
 openssl rand -hex 16   # BB_GRAFANA_ADMIN_PASSWORD

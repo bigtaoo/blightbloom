@@ -140,16 +140,17 @@ for dir in backups; do
 done
 
 # ── The values this script cannot supply ──
-# docker-compose.yml declares four `${VAR:?}` interpolations — the two login passwords
-# (Grafana's and the ops console's, design/21 §3.3) and the two cluster connection strings
+# docker-compose.yml declares five `${VAR:?}` interpolations — the two login passwords
+# (Grafana's and the ops console's, design/21 §3.3), the two cluster connection strings
 # (design/16-accounts.md; `BB_ADMIN_MONGO_URI` is the console's READ-ONLY database user and
-# is deliberately a different value from the one every other service uses) — and `.env` is
+# is deliberately a different value from the one every other service uses), and the ticket
+# secret, which production refuses to start without since 2026-09-26 (design/15) — and `.env` is
 # the file this key deliberately cannot write. So a box whose `.env` predates any of them
 # fails `compose up` for EVERY service, not just the one — a loud stop rather than a public
 # admin/admin or a service pointed at nothing, but one whose real cause ("compose refused to
 # interpolate") reads like a broken compose file. Named here so the deploy log says which
 # it is. server/deploy/README.md §2 has the one-liner that fixes it.
-for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD BB_MONGO_URI BB_ADMIN_MONGO_URI; do
+for var in BB_GRAFANA_ADMIN_PASSWORD BB_ADMIN_PASSWORD BB_MONGO_URI BB_ADMIN_MONGO_URI BB_TICKET_SECRET; do
   if ! grep -q "^$var=..*" .env; then
     echo "$var is missing or empty in ~/blightbloom/.env." >&2
     echo "compose will refuse to start ANY service until it is set — see deploy/README.md section 2." >&2

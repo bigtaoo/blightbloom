@@ -18,6 +18,7 @@ import { matchsvcMetrics } from './matchsvcMetrics';
 import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
 import * as matchRoutes from './routes/match';
 import * as ratingRoutes from './routes/rating';
+import * as integrityRoutes from './routes/integrity';
 import * as partyRoutes from './routes/party';
 import * as authRoutes from './routes/auth';
 import * as accountRoutes from './routes/account';
@@ -34,13 +35,14 @@ import * as telemetryRoutes from './routes/telemetry';
  * bundle — not a second interface to keep in step with the first.
  */
 export interface DispatchContext {
-  // Nine of these fourteen entries are a handler that asks for MORE than its siblings — its
+  // Nine of these fifteen entries are a handler that asks for MORE than its siblings — its
   // own per-IP budget, a `Pick` of one key of `Limiters` (`routes/limits.ts`). The
   // intersection is derived from the handlers rather than re-declared precisely so that a
   // widening shows up here: a route that starts spending a budget, or spends a different one,
   // fails to compile at the one place that builds the bundle instead of at none.
   deps: Parameters<typeof matchRoutes.postFind>[3] &
     Parameters<typeof ratingRoutes.postReport>[3] &
+    Parameters<typeof integrityRoutes.postIntegrityReport>[3] &
     Parameters<typeof partyRoutes.postCreate>[3] &
     Parameters<typeof partyRoutes.postJoin>[3] &
     Parameters<typeof authRoutes.postRegister>[3] &
@@ -99,6 +101,9 @@ export function dispatch(req: IncomingMessage, res: ServerResponse, ctx: Dispatc
   if (req.method === 'POST' && path === '/resume') return matchRoutes.postResume(req, res, url, ctx.deps);
 
   if (req.method === 'POST' && path === '/rating/report') return ratingRoutes.postReport(req, res, url, ctx.deps);
+  if (req.method === 'POST' && path === '/integrity/report') {
+    return integrityRoutes.postIntegrityReport(req, res, url, ctx.deps);
+  }
   if (req.method === 'GET' && ratingRoutes.RATING_LOOKUP_PATH.test(path)) {
     return ratingRoutes.getRating(req, res, url, ctx.deps);
   }

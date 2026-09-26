@@ -1557,9 +1557,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change) — *“update the stale Backlog status first”*: the 2026-09-23/24 content expansion (`ENGINE_VERSION` 68→75) moved three of five Backlog entries, edited none, and **wrote no work-log volume** — the gap `checkRoadmapIndex` cannot see. B2's buff is now rolled on ~27% of counters rather than stocked on all; B3's skip exists on one floor via `floorLayoutVariants`, which also proved its *“a bypass alone changes nothing”* wrong; B4's depth curve exists for weapon rarity only, as a content table. Five owner decisions recorded where each question lives: a pick-one-of-three buff line, B3's interior capstone dropped, co-op both matchmade and friends, a generated sprite atlas for damage numbers (none are drawn today), PvP seed-and-consensus hardening with no replay, juggernaut as a 1% boss drop. `docs`
 
+**[2026-09-26 — settlement becomes a per-seat vote](roadmap/93-2026-09-26-pvp-settlement-vote.md)**
+
+- **09-26** [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change) — step 1 of volume 92's plan, the owner's *“seed verification only, like funny's; no server replay yet”*. The seed stops being a clock-started counter (each room's was the last one's plus one) and becomes a `crypto.randomInt` draw; production refuses to start without `BB_TICKET_SECRET` instead of falling back to the dev secret published in `config.ts`. `MatchRoom.reportResult` used to require every hash to match and then copy `winner`/`placements` from the FIRST reporter, so a seat with the right hash and forged placements decided the ladder by being quick, and one divergent seat voided it for all eight. It is now one vote per seat over the whole tuple (a strict majority that also reaches the quorum; unanimity at or below it), then a bounds check — the winner must be its squad's representative, placements exactly the other squads, and the match at least 450 frames, half the fastest of 180 measured bot matches. Dissenters, checkpoint-kicked seats and the input log go to a new internal `POST /integrity/report`, stored once per room with a per-account suspicion count and shown in a new ops-console tab; nothing acts on it. No consensus names nobody, so an honest player's count does not rise for sharing a match with a cheater. Not closed: a withheld report still holds the room open, and a coordinated majority still wins. +107 server cases. `net` `test` `docs`
+
 ## The work log — by theme
 
-The same 189 entries, grouped. An entry with more than one tag appears more than once.
+The same 190 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
 
@@ -1732,7 +1736,7 @@ The same 189 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(103)*
+**`test`** — coverage sweeps, gates, mutation batteries *(104)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1827,6 +1831,7 @@ The same 189 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
@@ -1952,7 +1957,7 @@ The same 189 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(108)*
+**`docs`** — design docs and this log itself *(109)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2062,8 +2067,9 @@ The same 189 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 - 09-26 [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(30)*
+**`net`** — matchmaking, sockets, reconnect *(31)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2095,6 +2101,7 @@ The same 189 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 
 **`i18n`** — locales and text layout *(17)*
 
