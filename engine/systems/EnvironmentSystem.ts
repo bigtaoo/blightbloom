@@ -32,7 +32,9 @@ export class EnvironmentSystem {
     for (const p of state.players) {
       if (!p.alive) continue;
       this.updateRoomId(p, rects);
-      if (zone) {
+      // Downed = invulnerable (design/07, 3.2). The zone used to keep ticking on a downed body
+      // for its whole bleedout — HP ran to -46 and floating numbers kept rising off it (v77).
+      if (zone && !p.downed) {
         this.applyZoneDamage(state, p, zone);
         this.applyTraitDamage(state, p);
       }
