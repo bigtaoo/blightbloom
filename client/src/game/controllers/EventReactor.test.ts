@@ -46,6 +46,7 @@ function fakeFx(): FxController {
     addShake: vi.fn(),
     addHitStop: vi.fn(),
     pulseChromatic: vi.fn(),
+    numbers: { spawn: vi.fn() },
     particles: {
       muzzleFlame: vi.fn(), shellCasing: vi.fn(), explosionDebris: vi.fn(), shieldShards: vi.fn(),
     },
@@ -1386,4 +1387,29 @@ describe('engine events the client deliberately does not react to', () => {
     expect([...reacted].filter((t) => !declared.includes(t) && !pickupKinds.includes(t))).toEqual([]);
   });
 
+});
+
+describe('EventReactor — damage numbers (design/10)', () => {
+  function reactorWithFx() {
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const fx = fakeFx();
+    return { fx, reactor: new EventReactor(fx, hud, fakeAudio(), fakeHost()) };
+  }
+
+  it('a hit spawns its number', () => {
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([{ type: 'hit', target: 9, faction: 'player', gx: pxToFp(0), gy: pxToFp(0), damage: 21, damageType: 'physical' }]);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 21, expect.any(Number), expect.any(Number), expect.any(Number));
+  });
+
+  it('a zone tick is numbered once, through its hit, and never again through zone_damage', () => {
+    // EnvironmentSystem pushes both for one tick: the `hit` from takeDamage, then `zone_damage`.
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([
+      { type: 'hit', target: 9, faction: 'environment', gx: pxToFp(0), gy: pxToFp(0), damage: 3, damageType: 'physical' },
+      { type: 'zone_damage', target: 9, dmg: 3 },
+    ]);
+    expect(fx.numbers.spawn).toHaveBeenCalledTimes(1);
+  });
 });

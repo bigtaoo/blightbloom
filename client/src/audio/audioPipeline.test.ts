@@ -122,6 +122,7 @@ function fakeFx(): FxController {
     addShake: vi.fn(),
     addHitStop: vi.fn(),
     pulseChromatic: vi.fn(),
+    numbers: { spawn: vi.fn() },
     particles: {
       muzzleFlame: vi.fn(), shellCasing: vi.fn(), explosionDebris: vi.fn(), shieldShards: vi.fn(),
     },
