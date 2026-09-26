@@ -7,7 +7,7 @@ so the index stays readable. Kept verbatim; it is prose, not a spec.
 > `ENGINE_VERSION_HISTORY.md` is the per-version account. The number in the paragraph below has
 > drifted before. When the two disagree, the code wins.
 >
-> **It is drifting right now: the prose below stops at 51, and the shipped version is 66.**
+> **It is drifting right now: the prose below stops at 51, and the shipped version is 75.**
 > Not corrected in place, deliberately, and the reason has held up over three separate passes
 > since — the missing bumps belong to different pieces of work (52/53 the melee attack and its
 > hit window; 54 the heal-at-full-HP rule; 55/56 mob standing volume and approach slots; 57/58
@@ -18,7 +18,7 @@ so the index stays readable. Kept verbatim; it is prose, not a spec.
 > line above naming it is history now; 65 the chests and the counter moving onto three dedicated
 > enemy-free SIDE rooms, one dead-end branch per floor, which takes level 1 to 6/7/8/8/6 rooms and
 > makes the "5/6/7/6/5" line below history too; 66 a small chest opening on APPROACH instead of on a
-> held INTERACT, which also deleted the chest/revive button arbitration v63 had added), and rewriting another pass's paragraph from outside it is how this file got
+> held INTERACT, which also deleted the chest/revive button arbitration v63 had added; 67 the vanguard's shield becoming an integer, with PvP's own authored pools; and the 2026-09-23 content expansion, 68–75 — per-seat schematic and material pickups (68), a halved enemy-HP depth curve (69), two new bosses and the `boss_random` pool (70), the shield-battery and EMP items (71), three independent shop slots and a second counter (72), a skippable floor-layout variant (73), weapon rarity by depth (74), and eleven floor cards (75) — which wrote no work-log volume, see [volume 92](92-2026-09-26-backlog-resync.md)), and rewriting another pass's paragraph from outside it is how this file got
 > long in the first place. Each has a full account in `ENGINE_VERSION_HISTORY.md` and a work-log
 > entry; read those, not this heading. The number above is the only thing kept current here.
 

@@ -848,7 +848,8 @@ turns on.
    **That content landed the same day** (`ENGINE_VERSION` 65): three enemy-free side rooms
    (`cache` / `vault` / `market`), one hung off each floor's chain as a dead end, carrying the
    whole distribution the owner asked for — a small chest on floors 1/2/4/5, the big chest on
-   floor 3, the run's one shop counter on floor 4. So level 1 now mixes fights with rooms that are
+   floor 3, the run's one shop counter on floor 4 (a second counter joined floor 3's vault on
+   2026-09-23 — see B2). So level 1 now mixes fights with rooms that are
    a search, and a chest is the first room in it a player may choose not to enter.
    **Sharpened the same day** (`ENGINE_VERSION` 64): a kill no longer drops a weapon at all, so a
    chest's payout IS the floor's weapon supply rather than a re-routing of loot the floor already
@@ -908,6 +909,15 @@ four survived this long. Each doc sentence was corrected in the same pass to poi
 None is a bug: nothing regressed, and the loop is playable without them. They are the gap
 between the loop as designed and the loop as shipped.
 
+**Status as of 2026-09-26** (resynced against the code in
+[volume 92](roadmap/92-2026-09-26-backlog-resync.md); the heading above is kept for the links that
+land on it, and no longer describes all five): **B1 and B5 shipped** (2026-09-14); **B2, B3 and B4
+are each partly built** — B2's buff is a paid offer but never a choice, B3's skip exists on one
+floor of five, B4's depth curve exists for weapon rarity only and is a content table rather than a
+`DungeonConfig` field. The 2026-09-23/24 content-expansion commits (`ENGINE_VERSION` 68→75) moved
+three of the five entries below and did not edit this section; each entry now carries a dated
+correction naming the commit that moved it.
+
 - **B1 ✅ Chests — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** design/05's core-loop diagram says
   the player *opens chests*, its controls section says *"an `INTERACT` button opens chests"*, and
   design/07 step 9 says a chest rolls the drop table. There is no chest entity anywhere in the
@@ -941,6 +951,16 @@ between the loop as designed and the loop as shipped.
   `balance/runbuffs.ts`'s own module doc concedes the shipped reality (*"the demo drops them off
   the DROP_TABLE"*). So the in-run power layer that replaced the affix system is delivered
   entirely by a 6/84 weight on the kill table — never chosen, never offered, never a decision.
+
+  **Corrected 2026-09-26 — the "every counter stocks a buff" premise above stopped holding on
+  2026-09-23** (`9c5cc0c`, `ENGINE_VERSION` 72). `rollShopStock` no longer fills three fixed
+  weapon/buff/supply lines: each of its three slots is an independent draw at
+  **60% weapon / 30% item / 10% buff** (`SHOP_SLOT_WEIGHT_*`, `content/shops.ts`), so a counter
+  carries a buff only ~27% of the time, and a run now has **two** counters (floor 3's
+  `ember_l1_vault` beside its big chest, floor 4's `ember_l1_market`). The structural half is
+  therefore weaker than "closed": a buff CAN be bought, but most counters do not offer one.
+  **The choice half is DECIDED, not built**: the shop's buff line becomes a pick-one-of-three at
+  the line's price, reusing the floor-card offer (not a chest — chests stay the weapon supply).
 - **B3 🟡 A capstone that is not always last.** *(Filed as "an extraction room that is not always
   last"; since 2026-09-14 an interior capstone only descends, so what a mid-floor one buys is
   rooms left unfought on the way down — never leaving the RUN early, which no floor offers any
@@ -955,6 +975,19 @@ between the loop as designed and the loop as shipped.
   (design/05 records that under "Open, deliberately left for editor tuning"). Needs BOTH a
   capstone that can sit at an interior index AND a floor with a bypass route; either alone
   changes nothing.
+
+  **Corrected 2026-09-26 — PARTLY SHIPPED 2026-09-23** (`565aade`, `ENGINE_VERSION` 73), and the
+  "either alone changes nothing" line above turned out wrong. A bypass alone is enough when the
+  skipped room is moved OFF the chain: `DungeonConfig.floorLayoutVariants` lets a floor index
+  offer a pool of door graphs over the same room roster, drawn once from `roomgenPrng`, and floor
+  2 (index 1) now has two — the plain chain, and a branch where `r3_span` hangs as a dead-end
+  spur off `r2_kiln`, which gains a direct door to `r4_forge`. On that draw a player may leave
+  `r3_span` unfought, with the capstone still last. **What is still open:** floors 1, 3, 4 and 5
+  have no variant, so four floors in five skip nothing, and the branch comes up on roughly half
+  of runs. **Decided:** the interior-capstone half is dropped, not deferred — since 2026-09-14
+  the capstone of the last floor IS the boss and extraction, and an interior capstone elsewhere
+  only descends, so the spur buys the same decision with no change to the placement rule. B3
+  closes when floors 3–4 (index 2–3) also carry a skippable variant.
 - **B4 🟢 `dropTableByDepth` / `materialTierByDepth`.** design/09's `DungeonConfig` schema lists
   both. Neither field exists on the real interface (`world/dungeon/types.ts`) — they were never
   added, not added-and-unwired, which is what design/09 and 1.5 above both said for a year.
@@ -962,6 +995,16 @@ between the loop as designed and the loop as shipped.
   `rollDrop`, which is enough to make `minTier` recipes demand deeper floors; the missing half is
   a configurable curve and a per-depth drop POOL (better weapons/buffs deeper, not just better
   materials).
+
+  **Corrected 2026-09-26 — the weapon half is PARTLY SHIPPED 2026-09-23** (`909add7`,
+  `ENGINE_VERSION` 74). `content/weaponRarityByDepth.ts`'s `rollWeaponId(prng, floorIndex)` now
+  feeds all three weapon-find sites (chest payout, boss drop, shop weapon slot) from a
+  per-floor rarity-tier weight table — common/fine fall and legend/legendary climb floor 1→5.
+  So "better weapons deeper" exists. It is **a content table, not a `DungeonConfig` field**: a
+  second dungeon cannot carry its own curve. Still open: `materialTierByDepth` (material tier is
+  still the `tier = floorIndex` identity at `DeathDropsSystem`'s `rollDrop` call) and any depth
+  shaping of the buff/heal/coin pool. **Decided:** both curves move onto `DungeonConfig` as
+  optional fields defaulting to today's behaviour; the buff pool stays depth-blind.
 - **B5 ✅ Blueprints that drop from runs — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** A boss kill
   rolls a blueprint at 5% (`BLUEPRINT_DROP_PERMILLE`, a first-pass number, `design/14`). Since 2026-09-14 the
   boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
@@ -996,11 +1039,12 @@ between the loop as designed and the loop as shipped.
 ## Dependency summary
 
 ```
-Backlog (B1-B5)  designed in prose, never built — chests, the run-buff offering flow, a
-                 mid-floor checkpoint (nothing is skippable today), the two depth-curve
-                 DungeonConfig fields that were never actually added, and blueprints dropping
-                 from runs. B1 and B5 were DECIDED 2026-09-14 (chest rooms; a 5% boss drop) and
-                 are the two Stage 1 closeout items — see "Product stages" above. See the
+Backlog (B1-B5)  filed 2026-09-03 as designed-in-prose, never built. As of 2026-09-26:
+                 B1 chests ✅ and B5 run blueprints ✅ (2026-09-14, the two Stage 1 closeout
+                 items); B2 buff offer 🟡 (a shop line, rolled on ~27% of counters, never a
+                 choice — pick-one-of-three decided), B3 skippable rooms 🟡 (one floor of five
+                 has a bypass variant), B4 depth curves 🟡 (weapon rarity by depth as a content
+                 table; material tier still floorIndex, neither a DungeonConfig field). See the
                  Backlog section; each is filed, none is a regression.
 Phase 0 (sync)  ─┬─ 0.1 affix removal ──┬─ 0.2 rarity
                  │                       └─ 0.3 run-buffs ── 0.6 pickup names
@@ -1509,9 +1553,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-22** [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change) — the owner looked at a shipped screenshot and asked whether eight tap targets on the lobby's card was too many; the count was not the defect, the CARD was — it held three different kinds of control (start playing, prepare, chrome) with nothing in the layout saying so. `LOGIN`/`SETTINGS` moved out of `menuCard` entirely to a chrome row below it (break-even on height: the card's bottom pad dropped from 24 to 12, matching exactly what the row's own 12px gap cost outside it), and a 1px divider inside `LobbyRoutes` now separates "start playing" from "prepare" without dimming either side — design/10's own *"do not dim a door — open it, or take it off the screen"* rule, applied literally to TUTORIAL: `setRecommendTutorial(false)` now hides the row for a player who has seen it, rather than always drawing it and only ever hiding its "NEW HERE?" badge. Taking a route off the screen must not make it unreachable, so `Settings.ts` gained a REPLAY TUTORIAL entry beside MUTE/BACK (not a row of its own — the screen's design height already sat exactly on the 640px floor `viewportFit.test.ts` guards). TUTORIAL also stopped borrowing the account chip's purple, a second and more literal case of the "two adjacent buttons must differ by more than their label" rule the 2026-08-02 LOGIN/SETTINGS fix relied on. The CO-OP/SQUAD relabel the same audit found is left out — it is a copy change gated on an open design question (design/05:152) that a layout pass should not decide by accident in eight locale files. Full client suite green (7,343 tests), driven live at 760×640 and at a phone-landscape viewport across all four states — plain, saved run, maintenance banner, portal build. `ui` `test` `i18n` `docs`
 
+**[2026-09-26 — the Backlog, resynced against the code](roadmap/92-2026-09-26-backlog-resync.md)**
+
+- **09-26** [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change) — *“update the stale Backlog status first”*: the 2026-09-23/24 content expansion (`ENGINE_VERSION` 68→75) moved three of five Backlog entries, edited none, and **wrote no work-log volume** — the gap `checkRoadmapIndex` cannot see. B2's buff is now rolled on ~27% of counters rather than stocked on all; B3's skip exists on one floor via `floorLayoutVariants`, which also proved its *“a bypass alone changes nothing”* wrong; B4's depth curve exists for weapon rarity only, as a content table. Five owner decisions recorded where each question lives: a pick-one-of-three buff line, B3's interior capstone dropped, co-op both matchmade and friends, a generated sprite atlas for damage numbers (none are drawn today), PvP seed-and-consensus hardening with no replay, juggernaut as a 1% boss drop. `docs`
+
 ## The work log — by theme
 
-The same 188 entries, grouped. An entry with more than one tag appears more than once.
+The same 189 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
 
@@ -1904,7 +1952,7 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(107)*
+**`docs`** — design docs and this log itself *(108)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2013,6 +2061,7 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change)
 
 **`net`** — matchmaking, sockets, reconnect *(30)*
 
