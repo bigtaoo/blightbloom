@@ -38,6 +38,9 @@
  *              the COLLECTOR's own `blueprintPickup`, not a shared bag — same per-seat
  *              rule `material` follows now, replacing the old squad-wide auto-grant.
  *              Auto, on overlap; at most one exists per run.
+ *   character — a boss's rare character unlock (design/14, 2026-09-26). The schematic's
+ *              twin: into the COLLECTOR's own `characterPickup`, auto, on overlap, at most
+ *              one per run.
  *   shield   — shield-battery instant item (design/05, ENGINE_VERSION 71): restore up
  *              to maxShield. Auto, on overlap, same `wouldApply` gate as heal/energy —
  *              the third and last capped-pool instant this engine has a pool for.
@@ -169,6 +172,7 @@ export class PickupSystem {
           weaponId: item.weaponId,
           buffId: item.buffId,
           materialId: item.materialId,
+          skinId: item.skinId,
           qty: item.qty,
           tier: item.tier,
         });
@@ -223,6 +227,11 @@ export class PickupSystem {
         // (`DeathDropsSystem.rollBlueprint`), so a plain overwrite is safe; the `if` guard
         // is defensive rather than load-bearing.
         if (item.weaponId && p.blueprintPickup === null) p.blueprintPickup = item.weaponId;
+        break;
+      case 'character':
+        // The boss's rare character drop (design/14, 2026-09-26) — the schematic's twin, into
+        // the collector's own carry-out. At most one exists per run.
+        if (item.skinId && p.characterPickup === null) p.characterPickup = item.skinId;
         break;
       case 'coin':
         // In-run currency (design/05 "Shops"). Into the COLLECTOR's own wallet, not a

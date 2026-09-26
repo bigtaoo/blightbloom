@@ -32,7 +32,12 @@ vi.mock('../../render/environmentSprites', () => ({
 // COLOUR on purpose (same "restore" family) but has had its own sprite since 2026-08-20;
 // its Graphics fallback is still the crystal shape, which is what these tests exercise
 // unless a texture is mocked in.
-const ALL_KINDS: PickupKind[] = ['heal', 'material', 'weapon', 'buff', 'crate', 'bandage'];
+// The six drawn-only kinds joined 2026-09-26 with the character drop: until then this list held
+// the first six and every shape added since (energy onwards) had no render test at all.
+const ALL_KINDS: PickupKind[] = [
+  'heal', 'material', 'weapon', 'buff', 'crate', 'bandage',
+  'energy', 'coin', 'schematic', 'shield', 'emp', 'character',
+];
 
 // Children are appended in this fixed order in the constructor — glow first (so the
 // crisp shape draws on top of it), then the shape itself. No public API for either

@@ -157,7 +157,7 @@ export function serializeState(s: GameState): unknown {
       // Sorted by key for the same reason `sortedEntries` exists at the top level: two
       // independently-constructed-but-equal states must hash equal regardless of
       // Object.entries' insertion order.
-      sortedEntries(p.floorMaterials), sortedEntries(p.bankedMaterials), p.blueprintPickup ?? '',
+      sortedEntries(p.floorMaterials), sortedEntries(p.bankedMaterials), p.blueprintPickup ?? '', p.characterPickup ?? '',
       // Resolved spec fields: a weapon drop swaps the active slot's spec, so include
       // the numbers (not just name) to catch a loadout divergence.
       p.weapons.map((w) => [
@@ -220,7 +220,9 @@ export function serializeState(s: GameState): unknown {
     // carry no independent information, but `occupied` is recomputed every tick from player
     // positions and is what the all-plates test reads.
     chests: s.chests.map((c) => [c.id, c.opened, c.mechanisms.map((m) => m.occupied)]),
-    shops: s.shops.map((sh) => [sh.id, sh.stock.map((o) => [o.id, o.kind, o.price, o.sold])]),
+    // A buff line's choices and the one taken (ROADMAP B2): two clients disagreeing about
+    // what a counter offered, or which buff a sale took, is a divergence like any other.
+    shops: s.shops.map((sh) => [sh.id, sh.stock.map((o) => [o.id, o.kind, o.price, o.sold, o.buffId ?? '', (o.choices ?? []).map((c) => [c.id, c.buffId])])]),
     // Extraction / materials-banking (design/05, ROADMAP 1.4/1.5). floorIndex is a plain
     // number; the per-seat material bags moved onto `players` above (ENGINE_VERSION 68).
     floorIndex: s.floorIndex,

@@ -84,7 +84,7 @@ export type GameEvent =
   // two players overlap — which is when the flight is most visible. Additive and inert for the
   // sim (events are never read back by a later system and never enter `serializeState`/
   // `hashState`), so no ENGINE_VERSION bump — see the header above.
-  | { type: 'pickup'; kind: PickupKind; by: number; gx: Fp; gy: Fp; weaponId?: string; buffId?: string; materialId?: string; qty?: number; tier?: number }
+  | { type: 'pickup'; kind: PickupKind; by: number; gx: Fp; gy: Fp; weaponId?: string; buffId?: string; materialId?: string; skinId?: string; qty?: number; tier?: number }
   // A chest just opened (design/05 "Chest rooms"). `weapons` is how many weapon pickups
   // it paid, so the render layer can size its burst off the event instead of counting
   // pickups that appeared the same tick for other reasons.
@@ -102,6 +102,8 @@ export type GameEvent =
       price: number;
       gx: Fp;
       gy: Fp;
+      // Which buff a buff line's buyer chose (ROADMAP B2, 2026-09-26); unset for other kinds.
+      buffId?: string;
     }
   | { type: 'wave_clear'; wave: number }
   // A floor's checkpoint resolved to DESCEND (design/05, ROADMAP 1.4) — the floor

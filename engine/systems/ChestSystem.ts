@@ -141,7 +141,7 @@ export class ChestSystem {
       state.pickups.push({
         id: state.nextId(),
         kind: 'weapon',
-        weaponId: rollWeaponId(state.dropPrng, state.floorIndex),
+        weaponId: rollWeaponId(state.dropPrng, state.floorIndex, state.dungeonConfig?.weaponRarityByDepth),
         gx: pos.gx,
         gy: pos.gy,
         spawnTick: state.tick,

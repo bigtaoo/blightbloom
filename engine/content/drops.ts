@@ -244,6 +244,17 @@ export const CARD_ONLY_BUFF_IDS: readonly string[] = ['cell_up'];
  * potion are interchangeable in the stream, so re-weighting between them moves no later
  * drop in the run.
  */
+/**
+ * The material tier a kill on `floorIndex` rolls at (ROADMAP B4, 2026-09-26). A dungeon's own
+ * `materialTierByDepth` curve when it has one — clamped to its last entry past the end, so a
+ * short curve plateaus instead of reading `undefined` — and otherwise the `tier = floorIndex`
+ * identity every config shipped with before the field existed.
+ */
+export function materialTierForFloor(byDepth: readonly number[] | undefined, floorIndex: number): number {
+  if (!byDepth || byDepth.length === 0) return floorIndex;
+  return byDepth[Math.max(0, Math.min(byDepth.length - 1, floorIndex))]!;
+}
+
 export function rollDrop(prng: DropPrng, tier = 0, opts: DropOpts = {}): DropResult {
   const entry = DROP_TABLE[prng.weightedIndex(effectiveWeights(opts.healMult ?? 1))]!;
   switch (entry.kind) {

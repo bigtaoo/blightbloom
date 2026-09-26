@@ -7,6 +7,7 @@
  * untouched.
  */
 import type { RoomPiece } from '../../content/rooms';
+import type { RarityWeightRow } from '../../content/weaponRarityByDepth';
 import type { Door, RoomId } from '../../content/arenas';
 
 /** A tag against `RoomPiece.tags` — which pool a biome draws its normal rooms from. */
@@ -55,6 +56,19 @@ export interface DungeonConfig {
    * run can skip) is meant to differ; see `emberLevel1.ts`'s
    * `EMBER_L1_FLOOR_2_BRANCH` for the shipped example. */
   floorLayoutVariants?: Partial<Record<number, readonly DungeonFloorMap[]>>;
+  /** Optional per-floor weapon rarity curve (design/09 `dropTableByDepth`'s weapon half,
+   * ROADMAP B4, 2026-09-26): one `RarityWeightRow` per floor index, integer percent points
+   * summing to 100 (`rarityTableProblems`), read by every weapon find — chest payout, boss
+   * drop, shop weapon slot. A floor past the last row uses the last row. Absent, the
+   * level-1 table (`DEFAULT_WEAPON_RARITY_BY_DEPTH`) applies, so a config without the field
+   * rolls exactly what it did before the field existed. Buffs, heals and coins stay
+   * depth-blind by decision. */
+  weaponRarityByDepth?: readonly RarityWeightRow[];
+  /** Optional per-floor material tier curve (design/09 `materialTierByDepth`, ROADMAP B4):
+   * entry `i` is the instance tier a material dropped on floor index `i` rolls at, clamped to
+   * the last entry past the end (`materialTierForFloor`). Absent, the tier is the floor index
+   * itself — the identity curve every config shipped with. */
+  materialTierByDepth?: readonly number[];
 }
 
 /** One resolved stage: normally a single `RoomPiece`; a `RoomPiece[]` (length

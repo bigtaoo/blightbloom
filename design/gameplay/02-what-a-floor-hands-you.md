@@ -326,7 +326,10 @@ the boss.
 **What this does not yet answer** is `ROADMAP` B2's harder half. A shop offers a buff, so the
 in-run power layer is no longer delivered *only* by a 6/84 weight on the kill table — but one
 line at a fixed price is an offer, not the CHOICE between buffs the floor cards are. Whether a
-chest or a counter should hand over a pick-one-of-three stays open.
+chest or a counter should hand over a pick-one-of-three stays open. **Answered and built 2026-09-26
+([volume 97](../roadmap/97-2026-09-26-backlog-close-juggernaut.md), `ENGINE_VERSION` 76):** the counter.
+A buff line offers three distinct buffs (card-only `cell_up` included) at its one price; the panel
+draws them as rows under the price, each with its floor card's icon, and a tap on a choice buys it.
 
 **And a second thing, opened 2026-09-14 by the game's owner describing the shop as something it
 was not yet:** *“商店是通过房间里的 npc 打开的，不是随时可以打开的。”* **There was no shopkeeper.** The

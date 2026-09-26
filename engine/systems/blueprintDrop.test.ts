@@ -164,6 +164,7 @@ describe('the draw itself', () => {
     const t = state(9);
     addCorpse(t, true);
     t.schematicRolled = true; // blocks the blueprint roll without changing anything else
+    t.characterRolled = true; // and the character roll beside it (2026-09-26), for the same reason
     sys.tick(t);
 
     // A boss also drops `BOSS_WEAPON_DROPS` guaranteed weapons (2026-09-14), one `nextInt`

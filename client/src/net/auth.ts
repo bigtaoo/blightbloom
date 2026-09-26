@@ -164,3 +164,23 @@ export async function saveAccountMeta(baseUrl: string, token: string, data: unkn
     opts,
   );
 }
+
+/**
+ * Claim a boss's rare character drop for the signed-in account (`POST /account/claim-drop`,
+ * 2026-09-26). Ownership is the server's answer, so a drop granted only locally would vanish
+ * at the next login; see `meta/accountSync.ts` for when this is sent. Resolves whether a row
+ * landed (`false`: the account already owned it).
+ */
+export async function claimAccountDrop(baseUrl: string, token: string, skinId: string, opts: MetaCallOptions = {}): Promise<boolean> {
+  const res = await call<{ granted: boolean }>(
+    baseUrl,
+    '/account/claim-drop',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ skinId }),
+    },
+    opts,
+  );
+  return res.granted;
+}

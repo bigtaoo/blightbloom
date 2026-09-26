@@ -27,12 +27,15 @@ import type { PlayerActor, Shop, ShopOffer } from '@dd/engine/state/entities';
 import { ShopSystem } from '@dd/engine/systems';
 import {
   rollShopStock,
+  combinationAt,
+  SHOP_BUFF_POOL,
+  SHOP_BUFF_COMBINATIONS,
   SHOP_PRICES,
   SHOP_SLOT_WEIGHT_WEAPON,
   SHOP_SLOT_WEIGHT_ITEM,
   type ShopPrng,
 } from '@dd/engine/content/shops';
-import { WEAPON_DROP_POOL, BUFF_DROP_POOL, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
+import { WEAPON_DROP_POOL, BUFF_DROP_POOL, CARD_ONLY_BUFF_IDS, HEAL_PICKUP_AMOUNT, SHIELD_PICKUP_AMOUNT } from '@dd/engine/content/drops';
 import { WEAPON_SPECS } from '@dd/engine/content/weaponSpecs';
 import { SHOP_INTERACT_RANGE_GRID, SHOP_STOCK_SIZE } from '@dd/engine/config';
 import { Prng } from '@dd/engine/math/prng';
@@ -71,7 +74,7 @@ function addPlayer(s: GameState, gx: number, gy: number, coins = 1000): PlayerAc
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),
-    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null,
+    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null, characterPickup: null,
   };
   s.players.push(p);
   return p;
@@ -193,11 +196,13 @@ describe('rollShopStock — three independently-weighted slots (Task 5, ENGINE_V
     }
   });
 
-  it('a weapon slot draws from WEAPON_DROP_POOL and a buff slot from BUFF_DROP_POOL', () => {
+  it('a weapon slot draws from WEAPON_DROP_POOL and a buff slot offers three buffs from the shop pool', () => {
     const weaponOffer = rollShopStock(new FixedRoll([0, 3, 0, 3, 0, 3]), ids(), 0)[0]!;
     expect(WEAPON_DROP_POOL).toContain(weaponOffer.weaponId);
     const buffOffer = rollShopStock(new FixedRoll([99, 1, 99, 1, 99, 1]), ids(), 0)[0]!;
-    expect(BUFF_DROP_POOL).toContain(buffOffer.buffId);
+    expect(buffOffer.buffId).toBeUndefined(); // written at the sale, not on the counter
+    expect(buffOffer.choices).toHaveLength(3);
+    for (const c of buffOffer.choices!) expect(SHOP_BUFF_POOL).toContain(c.buffId);
   });
 
   it("a weapon slot's rarity shifts with floorIndex (Task 7, weapon rarity by floor depth)", () => {
@@ -474,5 +479,113 @@ describe('ShopSystem — the no-op guarantee', () => {
     sys.tick(s);
     expect(shop.stock[0]!.sold).toBe(false);
     expect(p.coins).toBe(100);
+  });
+});
+
+describe('the buff line is a pick-one-of-three (ROADMAP B2, 2026-09-26)', () => {
+  /** A buff line on a shop at (10,10), with three hand-picked choices. */
+  function buffLine(s: GameState, buffs: readonly string[], price = 30): { shop: Shop; offer: ShopOffer } {
+    const shop = addShop(s, 10, 10, [{ kind: 'buff', price }]);
+    const offer = shop.stock[0]!;
+    offer.choices = buffs.map((buffId) => ({ id: s.nextShopId(), buffId }));
+    return { shop, offer };
+  }
+
+  it('offers every run buff — card-only cell_up included — so ten distinct lines exist', () => {
+    expect(SHOP_BUFF_POOL).toEqual([...BUFF_DROP_POOL, ...CARD_ONLY_BUFF_IDS]);
+    expect(SHOP_BUFF_POOL).toContain('cell_up');
+    expect(SHOP_BUFF_COMBINATIONS).toBe(10); // C(5,3)
+  });
+
+  it('combinationAt walks every 3-subset exactly once, in lexicographic order', () => {
+    const all = Array.from({ length: SHOP_BUFF_COMBINATIONS }, (_, i) => combinationAt(SHOP_BUFF_POOL, 3, i));
+    const keys = all.map((c) => c.join('+'));
+    expect(new Set(keys).size).toBe(10);
+    for (const c of all) expect(new Set(c).size).toBe(3);
+    expect(all[0]).toEqual(SHOP_BUFF_POOL.slice(0, 3));
+    expect(all[9]).toEqual(SHOP_BUFF_POOL.slice(2));
+    // Small pools, both directions, so the walk is not only right for five-choose-three.
+    expect([0, 1, 2].map((i) => combinationAt(['a', 'b', 'c'], 2, i))).toEqual([['a', 'b'], ['a', 'c'], ['b', 'c']]);
+    expect(combinationAt(['a', 'b'], 2, 0)).toEqual(['a', 'b']);
+  });
+
+  it('still costs exactly two draws per slot, and mints the line id first, then three choice ids', () => {
+    let draws = 0;
+    const counting: ShopPrng = {
+      nextInt: (max) => {
+        draws++;
+        return max - 1; // category 99 → buff; within it, the last combination
+      },
+      weightedIndex: () => {
+        throw new Error('a buff slot must not roll a weapon');
+      },
+    };
+    const stock = rollShopStock(counting, ids(), 0);
+    expect(draws).toBe(6);
+    expect(stock.map((o) => o.id)).toEqual([1, 5, 9]);
+    expect(stock[0]!.choices!.map((c) => c.id)).toEqual([2, 3, 4]);
+    expect(stock[0]!.choices!.map((c) => c.buffId)).toEqual(SHOP_BUFF_POOL.slice(2));
+  });
+
+  it('buying a choice charges the line price once, applies THAT buff, and records which', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    const { offer } = buffLine(s, ['dmg_up', 'rof_up', 'cell_up']);
+    p.shopBuyId = offer.choices![2]!.id;
+    sys.tick(s);
+    expect(p.coins).toBe(70);
+    expect(p.buffs).toEqual(['cell_up']);
+    expect(offer.sold).toBe(true);
+    expect(offer.buffId).toBe('cell_up');
+    expect(s.events).toContainEqual(expect.objectContaining({ type: 'shop_buy', id: offer.id, buyer: p.id, buffId: 'cell_up' }));
+  });
+
+  it("a tap on the line's own id buys nothing and charges nothing — it names no buff", () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    const { offer } = buffLine(s, ['dmg_up', 'rof_up', 'vit_up']);
+    p.shopBuyId = offer.id;
+    sys.tick(s);
+    expect(p.coins).toBe(100);
+    expect(p.buffs).toEqual([]);
+    expect(offer.sold).toBe(false);
+    expect(s.events.filter((e) => e.type === 'shop_buy')).toEqual([]);
+  });
+
+  it('one line, one sale: a teammate tapping another choice the same tick gets nothing', () => {
+    const s = state();
+    const first = addPlayer(s, 10, 10, 100);
+    const second = addPlayer(s, 10, 10, 100);
+    const { offer } = buffLine(s, ['dmg_up', 'rof_up', 'vit_up']);
+    first.shopBuyId = offer.choices![0]!.id;
+    second.shopBuyId = offer.choices![1]!.id;
+    sys.tick(s);
+    expect(first.buffs).toEqual(['dmg_up']);
+    expect(second.buffs).toEqual([]);
+    expect(second.coins).toBe(100);
+    expect(offer.buffId).toBe('dmg_up');
+  });
+
+  it('a choice still has to be affordable and in reach, like any other line', () => {
+    const s = state();
+    const poor = addPlayer(s, 10, 10, 5);
+    const far = addPlayer(s, 40, 40, 100);
+    const { offer } = buffLine(s, ['dmg_up', 'rof_up', 'vit_up']);
+    poor.shopBuyId = offer.choices![0]!.id;
+    far.shopBuyId = offer.choices![1]!.id;
+    sys.tick(s);
+    expect(offer.sold).toBe(false);
+    expect([poor.coins, far.coins]).toEqual([5, 100]);
+  });
+
+  it('non-buff sales leave buffId off the event', () => {
+    const s = state();
+    const p = addPlayer(s, 10, 10, 100);
+    const shop = addShop(s, 10, 10, [{ kind: 'weapon', weaponId: WEAPON_DROP_POOL[0], price: 40 }]);
+    p.shopBuyId = shop.stock[0]!.id;
+    sys.tick(s);
+    const ev = s.events.find((e) => e.type === 'shop_buy') as { buffId?: string } | undefined;
+    expect(ev).toBeDefined();
+    expect(ev!.buffId).toBeUndefined();
   });
 });

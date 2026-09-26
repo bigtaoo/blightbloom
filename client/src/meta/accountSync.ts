@@ -20,11 +20,15 @@
 import { createWebMetaStore, migrate, type MetaStore } from './store';
 import type { MetaState } from './MetaState';
 import { getSession } from '../net/session';
-import { saveAccountMeta } from '../net/auth';
+import { DROP_CHARACTERS } from '@dd/engine';
+import { claimAccountDrop, saveAccountMeta } from '../net/auth';
 import { ACCOUNT_UNAUTHORIZED, entitlementOwnership, fetchAccountState, type Entitlement } from '../net/entitlements';
 
 export function createAccountSyncMetaStore(getBaseUrl: () => string): MetaStore {
   const local = createWebMetaStore();
+  // Drop characters already claimed for a given session token, so a juggernaut owner's every
+  // later save does not re-send the claim. Keyed by token: a different login claims afresh.
+  const claimed = new Set<string>();
   return {
     load(): MetaState {
       return local.load();
@@ -36,6 +40,15 @@ export function createAccountSyncMetaStore(getBaseUrl: () => string): MetaStore 
       saveAccountMeta(getBaseUrl(), session.token, m).catch(() => {
         /* best-effort — a dropped sync never blocks or retries local play */
       });
+      // A boss's character drop (2026-09-26) lands in `ownedCharacters`, which the server
+      // strips from the blob above — so it is claimed separately, once per session. A failed
+      // claim is forgotten rather than retried in a loop; the next save tries again.
+      for (const skinId of m.ownedCharacters) {
+        const key = `${session.token}|${skinId}`;
+        if (!DROP_CHARACTERS.includes(skinId) || claimed.has(key)) continue;
+        claimed.add(key);
+        claimAccountDrop(getBaseUrl(), session.token, skinId).catch(() => claimed.delete(key));
+      }
     },
   };
 }

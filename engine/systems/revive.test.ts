@@ -44,7 +44,7 @@ function addPlayer(s: GameState, xpx: number, ypx: number): PlayerActor {
     firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),
-    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null,
+    floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null, characterPickup: null,
   };
   s.players.push(p);
   return p;

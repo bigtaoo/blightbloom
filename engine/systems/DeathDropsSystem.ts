@@ -9,7 +9,7 @@
  * fix), float px → fp. Score is not tracked in the engine; render derives it from
  * the death/pickup/wave_clear events (design/08 "events are the only channel").
  */
-import { rollDrop, rollArenaDrop } from '../content/drops';
+import { materialTierForFloor, rollDrop, rollArenaDrop } from '../content/drops';
 import { rollWeaponId } from '../content/weaponRarityByDepth';
 import { buildEnemyActor } from '../content/enemies';
 import { BOSS_WEAPON_DROPS, DOWNED_BLEEDOUT_TICKS } from '../config';
@@ -21,7 +21,8 @@ import { blockingRadius, dropClearance } from '../state/actorRadius';
 import { clampToWalkable, retainAlive } from './geom';
 import { resolveFloorCards } from '../balance/floorCards';
 import { EARNABLE_BLUEPRINTS } from '../content/blueprints';
-import { BLUEPRINT_DROP_PERMILLE } from '../config';
+import { BLUEPRINT_DROP_PERMILLE, CHARACTER_DROP_PERMILLE } from '../config';
+import { DROP_CHARACTERS } from '../content/skins';
 
 export class DeathDropsSystem {
   tick(state: GameState): void {
@@ -30,6 +31,7 @@ export class DeathDropsSystem {
       e.alive = false;
       state.events.push({ type: 'death', id: e.id, faction: 'enemy', gx: e.gx, gy: e.gy, r: e.radius });
       this.rollBlueprint(state, e);
+      this.rollCharacter(state, e);
       // Boss adds (design/09 aspirational `onDeathSpawn`, ENGINE_VERSION 27, funny's
       // own onDeathSpawn design/07 already named as the intended home for this).
       // Ringed evenly around the dying boss's own body radius — PRNG-free, same even-
@@ -69,13 +71,13 @@ export class DeathDropsSystem {
       }
       // Arena mode rolls its own table (design/15, ROADMAP 4.3) — never `material`,
       // zero connection to the PvE account/materials economy. Depth signal for the
-      // PvE material tier (design/09 materialTierByDepth, ROADMAP 1.5): state.floorIndex
-      // is 0 for every config without floors, so this is identical to the old no-arg
-      // call for every existing config.
+      // PvE material tier (design/09 materialTierByDepth, ROADMAP 1.5/B4): the dungeon's
+      // own curve when it has one, else the `tier = floorIndex` identity — and floorIndex
+      // is 0 for every config without floors.
       const cards = state.zoneEnabled ? undefined : resolveFloorCards(state.floorCards);
       const drop = state.zoneEnabled
         ? rollArenaDrop(state.dropPrng)
-        : rollDrop(state.dropPrng, state.floorIndex, {
+        : rollDrop(state.dropPrng, materialTierForFloor(state.dungeonConfig?.materialTierByDepth, state.floorIndex), {
             // The `potion_flow` floor card, re-derived from the run's picked cards
             // rather than mirrored into a counter (design/05, ENGINE_VERSION 58).
             // `effectiveWeights` clamps it to HEAL_DROP_MULT_CAP and pays for it out
@@ -186,6 +188,35 @@ export class DeathDropsSystem {
   }
 
   /**
+   * A boss kill drops a character unlock at `CHARACTER_DROP_PERMILLE` (design/14, the owner's
+   * 1%, 2026-09-26) — `rollBlueprint`'s twin in shape and for the same reasons: a physical
+   * pickup whoever touches first carries out, rolled at most once per run, blind to what any
+   * account owns (design/06). A player who already owns juggernaut can leave it for a
+   * teammate; picking it up anyway grants nothing (`grantCharacter` is idempotent).
+   *
+   * Its own guard and its own draws, after the schematic's, so neither roll's odds depend on
+   * the other's outcome. Always exactly one `nextInt(1000)` draw per run when the pool is
+   * non-empty, plus the pick when it hits.
+   */
+  private rollCharacter(state: GameState, e: EnemyActor): void {
+    if (e.boss !== true || state.characterRolled) return;
+    if (DROP_CHARACTERS.length === 0) return; // an empty pool costs zero draws, as above
+    state.characterRolled = true;
+    if (state.dropPrng.nextInt(1000) >= CHARACTER_DROP_PERMILLE) return;
+    const skinId = DROP_CHARACTERS[state.dropPrng.nextInt(DROP_CHARACTERS.length)]!;
+    const pos = clampToWalkable(e.gx, e.gy, dropClearance(), state);
+    state.pickups.push({
+      id: state.nextId(),
+      kind: 'character',
+      skinId,
+      gx: pos.gx,
+      gy: pos.gy,
+      spawnTick: state.tick,
+      alive: true,
+    });
+  }
+
+  /**
    * A boss kill puts `BOSS_WEAPON_DROPS` weapons on the ground, over and above whatever its
    * ordinary table roll produced (design/05, 2026-09-14).
    *
@@ -213,7 +244,7 @@ export class DeathDropsSystem {
       state.pickups.push({
         id: state.nextId(),
         kind: 'weapon',
-        weaponId: rollWeaponId(state.dropPrng, state.floorIndex),
+        weaponId: rollWeaponId(state.dropPrng, state.floorIndex, state.dungeonConfig?.weaponRarityByDepth),
         gx: pos.gx,
         gy: pos.gy,
         spawnTick: state.tick,

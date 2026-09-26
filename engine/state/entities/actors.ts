@@ -191,6 +191,10 @@ export interface PlayerActor extends Actor {
    *  run. At most one exists per run (one boss, one roll), so a plain nullable field
    *  is enough; forfeited on a run-ending death exactly like `bankedMaterials`. */
   blueprintPickup: string | null;
+  /** The skinId of the boss's rare character drop, if THIS seat picked it up (design/14,
+   *  2026-09-26) — `blueprintPickup`'s twin: at most one per run, forfeited on a run-ending
+   *  death, handed to the account only by a won run. */
+  characterPickup: string | null;
 }
 
 /** A player who is downed (incapacitated, revivable) — not a valid target and cannot act.
