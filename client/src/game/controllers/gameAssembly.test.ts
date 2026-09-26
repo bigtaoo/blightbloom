@@ -33,6 +33,7 @@ import { assembleGame, type AssemblyParts, type GameShellHost } from './gameAsse
 import { MainMenu } from '../screens/MainMenu';
 import { Forge } from '../screens/Forge';
 import { Loadout } from '../screens/Loadout';
+import { Matchmaking } from '../screens/Matchmaking';
 import { RunState } from '../runState';
 import { defaultMetaState, MemoryMetaStore } from '../../meta';
 import { packRunSave, type SavedRun } from '../match/runSave';
@@ -61,7 +62,7 @@ function freshSave(): SavedRun {
   return packRunSave({ config, commands: [], ticks: 120, floorIndex: 2, score: 5, nowMs: 42 });
 }
 
-function build() {
+function build(over: { matchmaking?: unknown } = {}) {
   const mainMenu = new MainMenu();
   const loadout = new Loadout();
   const stub = { view: {} };
@@ -73,7 +74,7 @@ function build() {
     forge: new Forge(),
     settingsBtn: stub,
     pvpPreview: stub,
-    matchmaking: stub,
+    matchmaking: over.matchmaking ?? stub,
     screens: stub,
     settingsScreen: stub,
     pauseMenu: stub,
@@ -85,8 +86,8 @@ function build() {
     confirm: () => {},
     endRunAsDefeat: () => {},
   } as unknown as GameShellHost;
-  assembleGame(parts, host);
-  return { mainMenu, loadout };
+  const assembled = assembleGame(parts, host);
+  return { mainMenu, loadout, assembled };
 }
 
 let store: ReturnType<typeof memRunSaveStore>;
@@ -147,5 +148,28 @@ describe('the lobby and the loadout screen cannot disagree about a saved run', (
     writeSavedRun(freshSave(), store);
     expect(mainMenu.resumableRun()).not.toBeNull();
     expect(loadout.savedRun()).not.toBeNull();
+  });
+});
+
+describe('the per-frame lobby clocks', () => {
+  it("drives the Matchmaking screen — its elapsed time and backfill countdown move", () => {
+    // The 2026-09-26 defect: `Matchmaking.update` existed and was tested, and nothing in the
+    // product ever called it, so the queue read "0s elapsed" for as long as it lasted.
+    // `GameLoop.test.ts` pins that the loop ticks whatever `lobbyScreens` holds; this pins
+    // that the assembly actually puts the Matchmaking screen (and the party lobby) in it.
+    const matchmaking = new Matchmaking();
+    const { assembled } = build({ matchmaking });
+    let report!: (p: { botFillInMs?: number }) => void;
+    matchmaking.show(800, 600, (_s, onQueued) => {
+      report = onQueued!;
+      return new Promise(() => {});
+    });
+    report({ botFillInMs: 5_000 });
+    const lobbyScreens = (assembled.gameLoop as unknown as { deps: { lobbyScreens: { update(dt: number): void }[] } }).deps.lobbyScreens;
+    expect(lobbyScreens).toContain(assembled.partyScreen);
+    for (const screen of lobbyScreens) screen.update(2_500);
+    const view = matchmaking as unknown as { statusText: { text: string }; hintText: { text: string } };
+    expect(view.statusText.text).toBe('2s elapsed');
+    expect(view.hintText.text).toBe('AI players fill empty seats in 3s');
   });
 });
