@@ -1611,9 +1611,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76) — step 4, the engine half, one bump (`ENGINE_VERSION` 76). **B2**: a shop's buff line offers three distinct buffs from ONE draw (`combinationAt`), the buyer taps one at the line's price; `shopBuyId` names the choice, so the command format is unchanged, and card-only `cell_up` joins the pool. **B3**: floors 3 and 4 gain a branch variant with a fight on a dead-end spur (`r5_bastion`; `r4_rampart` and the cache behind it), and `emberLevel1.test.ts` runs its whole passability suite over every variant. **B4**: `DungeonConfig.weaponRarityByDepth` / `.materialTierByDepth`, both optional and default-identical. **Juggernaut** drops from the boss at 1% as a `'character'` pickup, the schematic's twin; since `ownedCharacters` is server-owned, a new `POST /account/claim-drop` (droppable ids only, source `drop`) makes it survive a login — trusting the client exactly as far as materials already do. Found on the way: consecutive seeds give a fresh `Prng` correlated early draws (a 1% roll read 0.35% over seeds 1..6000). `engine` `content` `ui` `net` `i18n` `test` `docs`
 
+**[2026-09-26 — the Paddle adapter](roadmap/98-2026-09-26-paddle-adapter.md)**
+
+- **09-26** [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change) — step 4's payments item, ROADMAP 9.1–9.3 landed the way 9.4 requires without credentials. A raw-body `POST /webhook/paddle` verified by HMAC-SHA256 over `${ts}:${rawBody}` (any `h1`, constant time, Paddle's 5 s window), 503 without the secret so Paddle retries, and `settleSigned` trusting the signed transaction id (AMENDMENT 1). Price ids map through `BB_PADDLE_PRICE_IDS`, an unknown one is refused, and a charged-amount difference is a reconciliation finding, never a rejection; `GET /transactions` is a real paged lister. Approved refunds and chargebacks revoke only the entitlement that order granted, through a `reversal` ledger row, a revoke outbox row and a new internal revoke route, and file a `refund` review case; ladder history untouched. Signature vector self-computed (Paddle publishes none). Price ids, the secret, the API key, a public route and a real sandbox round trip are the owner's. `net` `test` `docs`
+
 ## The work log — by theme
 
-The same 194 entries, grouped. An entry with more than one tag appears more than once.
+The same 195 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1790,7 +1794,7 @@ The same 194 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(108)*
+**`test`** — coverage sweeps, gates, mutation batteries *(109)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1900,6 +1904,7 @@ The same 194 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -2018,7 +2023,7 @@ The same 194 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`docs`** — design docs and this log itself *(113)*
+**`docs`** — design docs and this log itself *(114)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2133,8 +2138,9 @@ The same 194 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(34)*
+**`net`** — matchmaking, sockets, reconnect *(35)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2170,6 +2176,7 @@ The same 194 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 
 **`i18n`** — locales and text layout *(19)*
 
