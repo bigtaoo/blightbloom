@@ -24,6 +24,7 @@ import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg } from '@dd/engine';
 import { RoomManager } from './RoomManager';
+import { nodeScheduler } from './nodeScheduler';
 import { Phase, type RoomConnection, type SettledMatch } from './MatchRoom';
 import { buildRatingReportBody } from './ladderReport';
 import { buildIntegrityReportBody } from './integrityReport';
@@ -258,11 +259,9 @@ export function gameserverMetrics(manager: RoomManager): Metric[] {
  */
 export function createGameserver(opts: GameserverOptions = {}): { server: Server; wss: WebSocketServer; manager: RoomManager } {
   const manager = new RoomManager({
-    // Node timers are the metronome clock in production; the tests inject a fake.
-    scheduler: {
-      setInterval: (fn, ms) => setInterval(fn, ms),
-      clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
-    },
+    // Node timers are the metronome clock and the settlement timeout in production; the tests
+    // inject a fake.
+    scheduler: nodeScheduler,
     // design/15, ROADMAP 4.6 — ladder rating report; plus the integrity record (2026-09-26)
     onSettled: (match) => onMatchSettled(match),
   });

@@ -93,6 +93,7 @@ function toDoc(body: IntegrityReportBody, receivedAt: number): IntegrityReportDo
     engineVersion: body.engineVersion,
     settleFrame: body.settleFrame,
     suspects: body.suspects,
+    absent: body.absent,
     // BSON document keys are strings; the seat index survives as one.
     seatAccounts: Object.fromEntries(Object.entries(body.seatAccounts)),
     ...(body.logGzipB64 !== undefined ? { log: new Binary(Buffer.from(body.logGzipB64, 'base64')) } : {}),

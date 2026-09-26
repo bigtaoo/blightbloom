@@ -449,7 +449,8 @@ One page, three sections, all read-only:
   cleanly (`integrityReports`) and the accounts most often named in one (`suspicion`), both on the
   `accounts` database through the same read-only handle. It shows counts and never acts on them:
   "record, never auto-ban" is the owner's decision, and a console with a ban button would be the
-  first write to player data this process has. `adminsvc/views/integrity.ts`,
+  first write to player data this process has. A seat that hit the 30 s settlement timeout is
+  shown as "no report (offline)" and is never named. `adminsvc/views/integrity.ts`,
   `adminsvc/page/integrity.ts`.
 
 ### 3.3 Auth on a panel that is on the public internet

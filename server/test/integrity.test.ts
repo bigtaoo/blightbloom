@@ -35,6 +35,7 @@ function body(roomId: string, over: Partial<IntegrityReportBody> = {}): Integrit
       { seat: 1, accountId: `${roomId}-one`, dissented: true, kicked: true },
       { seat: 3, dissented: true, kicked: false },
     ],
+    absent: [],
     seatAccounts: { 1: `${roomId}-one`, 2: `${roomId}-two` },
     logGzipB64: gzipSync('[]').toString('base64'),
     ...over,
@@ -87,6 +88,15 @@ describe.each(BACKENDS)('IntegrityStore %s', (_label, open) => {
     expect(await s.recordOnce(body('room-d', { verdict: 'no_consensus', suspects: [] }))).toBe(true);
     expect(await s.suspicionCount('room-d-one')).toBe(0);
   });
+
+  it('counts nothing against a seat that only timed out', async () => {
+    // `absent` is not `suspects`: a dropped connection is not a cheat, and a player whose
+    // wifi died at the end of every match must not climb the most-named list for it.
+    const s = new IntegrityStore(await open());
+    const partial = body('room-p', { verdict: 'partial', suspects: [], absent: [1] }); // seat 1 is room-p-one
+    expect(await s.recordOnce(partial)).toBe(true);
+    expect(await s.suspicionCount('room-p-one')).toBe(0);
+  });
 });
 
 describe('IntegrityStore on the cluster — the stored document', () => {
@@ -102,6 +112,7 @@ describe('IntegrityStore on the cluster — the stored document', () => {
       seed: 11,
       engineVersion: 75,
       seatAccounts: { '1': 'room-doc-one', '2': 'room-doc-two' },
+      absent: [],
     });
     expect(Buffer.from(doc.log!.buffer).equals(gzipSync('[]'))).toBe(true);
     expect(doc.logDropped).toBeUndefined();
@@ -130,6 +141,7 @@ describe('isIntegrityReportBody', () => {
   it('accepts a well-formed body, with or without the optional fields', () => {
     expect(isIntegrityReportBody(body('ok'))).toBe(true);
     expect(isIntegrityReportBody(body('ok', { logGzipB64: undefined, logDropped: true, bounds: 'too_short' }))).toBe(true);
+    expect(isIntegrityReportBody(body('ok', { verdict: 'partial', suspects: [], absent: [0, 3] }))).toBe(true);
   });
 
   it.each([
@@ -146,6 +158,10 @@ describe('isIntegrityReportBody', () => {
     ['a suspect with no seat', { ...body('x'), suspects: [{ dissented: true, kicked: false }] }],
     ['a suspect with a numeric account', { ...body('x'), suspects: [{ seat: 0, accountId: 5, dissented: true, kicked: false }] }],
     ['a suspect with a string flag', { ...body('x'), suspects: [{ seat: 0, dissented: 'yes', kicked: false }] }],
+    ['no absent list', { ...body('x'), absent: undefined }],
+    ['absent not an array', { ...body('x'), absent: 3 }],
+    ['a negative absent seat', { ...body('x'), absent: [-1] }],
+    ['a string absent seat', { ...body('x'), absent: ['2'] }],
     ['a null seat map', { ...body('x'), seatAccounts: null }],
     ['an array seat map', { ...body('x'), seatAccounts: [] }],
     ['a seat map with a number', { ...body('x'), seatAccounts: { 0: 1 } }],

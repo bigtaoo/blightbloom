@@ -6,7 +6,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import { CHECKPOINT_QUORUM } from '@dd/engine';
-import { checkPvpBounds, MIN_PVP_SETTLE_FRAME, voteSettlement, type SeatReport } from '../src/settlement';
+import {
+  checkPvpBounds,
+  judgeSettlement,
+  MIN_PVP_SETTLE_FRAME,
+  SETTLE_TIMEOUT_MS,
+  voteSettlement,
+  type SeatReport,
+  type SettlementContext,
+} from '../src/settlement';
 
 const A: SeatReport = { hash: 0xa, winner: 0, placements: [3, 2, 1] };
 const B: SeatReport = { hash: 0xb, winner: 0, placements: [3, 2, 1] };
@@ -135,5 +143,69 @@ describe('checkPvpBounds — squads (8 seats, two squads of 4)', () => {
 
   it('fails placements that include a member of the winning squad', () => {
     expect(checkPvpBounds({ hash: 1, winner: 0, placements: [7, 6, 5, 1] }, 8, 900)).toBe('placements_mismatch');
+  });
+});
+
+describe('judgeSettlement — the verdict, and the vote over the seats that reported', () => {
+  const ctx = (over: Partial<SettlementContext> = {}): SettlementContext => ({
+    mode: 'pvp',
+    playerCount: 4,
+    settleFrame: MIN_PVP_SETTLE_FRAME,
+    kicked: [],
+    absent: [],
+    ...over,
+  });
+  /** Only the listed seats reported, each with the given tuple. */
+  const some = (entries: [number, SeatReport][]): Map<number, SeatReport> => new Map(entries);
+
+  it('pins the 30 s timeout the owner decided', () => {
+    expect(SETTLE_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it('is clean when every seat reported the same tuple', () => {
+    expect(judgeSettlement(reports(A, A, A, A), ctx())).toEqual({ agreed: A, dissenters: [], bounds: null, hashOk: true, verdict: 'clean' });
+  });
+
+  it('is partial, and still rates, when the seats that reported agree and one never did', () => {
+    const j = judgeSettlement(some([[0, A], [1, A], [2, A]]), ctx({ absent: [3] }));
+    expect(j).toEqual({ agreed: A, dissenters: [], bounds: null, hashOk: true, verdict: 'partial' });
+  });
+
+  it('votes over the reporters only: three agreeing seats of eight settle, the five silent ones do not dilute them', () => {
+    // Above the quorum by player count, but only three voters — so unanimity among them, which
+    // they have. Against the full eight the same three would be a minority and settle nothing.
+    const three = some([[0, A], [4, A], [5, A]]);
+    expect(voteSettlement(three, 8).agreed).toBeNull();
+    const j = judgeSettlement(three, ctx({ playerCount: 8, absent: [1, 2, 3, 6, 7], mode: 'coop' }));
+    expect(j.agreed).toEqual(A);
+    expect(j.verdict).toBe('partial');
+  });
+
+  it('settles on a lone reporter — the withholding seat cannot keep the result off the ladder', () => {
+    const j = judgeSettlement(some([[0, { hash: 1, winner: 0, placements: [1] }]]), ctx({ playerCount: 2, absent: [1] }));
+    expect(j.hashOk).toBe(true);
+    expect(j.verdict).toBe('partial');
+  });
+
+  it('still needs the reporters to agree: two of four reporting different tuples settle nothing', () => {
+    const j = judgeSettlement(some([[0, A], [1, B]]), ctx({ absent: [2, 3] }));
+    expect(j).toEqual({ agreed: null, dissenters: [], bounds: null, hashOk: false, verdict: 'no_consensus' });
+  });
+
+  it('ranks dissent above partial, and a kick counts as dissent', () => {
+    expect(judgeSettlement(some([[0, A], [1, A], [2, A], [3, B]]), ctx()).verdict).toBe('dissent');
+    expect(judgeSettlement(some([[0, A], [1, A], [2, A], [3, B]]), ctx({ absent: [] })).dissenters).toEqual([3]);
+    expect(judgeSettlement(some([[0, A], [1, A], [2, A]]), ctx({ absent: [3], kicked: [1] })).verdict).toBe('dissent');
+  });
+
+  it('ranks bounds above dissent and partial, and a failed bounds check never rates', () => {
+    const j = judgeSettlement(some([[0, A], [1, A], [2, A]]), ctx({ absent: [3], kicked: [2], settleFrame: 1 }));
+    expect(j).toMatchObject({ agreed: A, bounds: 'too_short', hashOk: false, verdict: 'bounds' });
+  });
+
+  it('never bounds-checks a co-op result', () => {
+    const coop: SeatReport = { hash: 1, winner: null };
+    const j = judgeSettlement(reports(coop, coop), ctx({ mode: 'coop', playerCount: 2, settleFrame: 0 }));
+    expect(j).toEqual({ agreed: coop, dissenters: [], bounds: null, hashOk: true, verdict: 'clean' });
   });
 });

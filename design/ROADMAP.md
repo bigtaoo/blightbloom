@@ -1559,11 +1559,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 **[2026-09-26 — settlement becomes a per-seat vote](roadmap/93-2026-09-26-pvp-settlement-vote.md)**
 
-- **09-26** [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change) — step 1 of volume 92's plan, the owner's *“seed verification only, like funny's; no server replay yet”*. The seed stops being a clock-started counter (each room's was the last one's plus one) and becomes a `crypto.randomInt` draw; production refuses to start without `BB_TICKET_SECRET` instead of falling back to the dev secret published in `config.ts`. `MatchRoom.reportResult` used to require every hash to match and then copy `winner`/`placements` from the FIRST reporter, so a seat with the right hash and forged placements decided the ladder by being quick, and one divergent seat voided it for all eight. It is now one vote per seat over the whole tuple (a strict majority that also reaches the quorum; unanimity at or below it), then a bounds check — the winner must be its squad's representative, placements exactly the other squads, and the match at least 450 frames, half the fastest of 180 measured bot matches. Dissenters, checkpoint-kicked seats and the input log go to a new internal `POST /integrity/report`, stored once per room with a per-account suspicion count and shown in a new ops-console tab; nothing acts on it. No consensus names nobody, so an honest player's count does not rise for sharing a match with a cheater. Not closed: a withheld report still holds the room open, and a coordinated majority still wins. +107 server cases. `net` `test` `docs`
+- **09-26** [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change) — step 1 of volume 92's plan, the owner's *“seed verification only, like funny's; no server replay yet”*. The seed stops being a clock-started counter (each room's was the last one's plus one) and becomes a `crypto.randomInt` draw; production refuses to start without `BB_TICKET_SECRET` instead of falling back to the dev secret published in `config.ts`. `MatchRoom.reportResult` used to require every hash to match and then copy `winner`/`placements` from the FIRST reporter, so a seat with the right hash and forged placements decided the ladder by being quick, and one divergent seat voided it for all eight. It is now one vote per seat over the whole tuple (a strict majority that also reaches the quorum; unanimity at or below it), then a bounds check — the winner must be its squad's representative, placements exactly the other squads, and the match at least 450 frames, half the fastest of 180 measured bot matches. Dissenters, checkpoint-kicked seats and the input log go to a new internal `POST /integrity/report`, stored once per room with a per-account suspicion count and shown in a new ops-console tab; nothing acts on it. No consensus names nobody, so an honest player's count does not rise for sharing a match with a cheater. Not closed: a withheld report still holds the room open, and a coordinated majority still wins **(both answered the same day, [volume 94](roadmap/94-2026-09-26-settle-timeout.md))**. +107 server cases. `net` `test` `docs`
+
+**[2026-09-26 — a silent seat times out](roadmap/94-2026-09-26-settle-timeout.md)**
+
+- **09-26** [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change) — the owner's answer to the two gaps volume 93 left open. *“Settle after 30 seconds; a player who never reports is handled as offline.”* The first `result` arms `SETTLE_TIMEOUT_MS`. When it runs out, the vote runs over the seats that reported, so a loser closing the tab no longer keeps a 1v1 off the ladder. A new `partial` verdict still rates and is recorded, and the silent seat is listed as absent, never as a suspect. A room whose last seat leaves after a report now settles instead of throwing the reports away. The coordinated-majority gap is out of scope by the owner's call: a forged tuple needs identically modified clients, and that is the deferred replay's job. `BB_TICKET_SECRET` was already on the box; the hand-installed `ci-deploy.sh` was re-synced. +35 server cases. `net` `test` `docs`
 
 ## The work log — by theme
 
-The same 190 entries, grouped. An entry with more than one tag appears more than once.
+The same 191 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
 
@@ -1736,7 +1740,7 @@ The same 190 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(104)*
+**`test`** — coverage sweeps, gates, mutation batteries *(105)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1832,6 +1836,7 @@ The same 190 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
@@ -1957,7 +1962,7 @@ The same 190 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 
-**`docs`** — design docs and this log itself *(109)*
+**`docs`** — design docs and this log itself *(110)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2068,8 +2073,9 @@ The same 190 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 - 09-26 [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change)
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(31)*
+**`net`** — matchmaking, sockets, reconnect *(32)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2102,6 +2108,7 @@ The same 190 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 
 **`i18n`** — locales and text layout *(17)*
 
