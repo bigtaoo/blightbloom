@@ -191,3 +191,38 @@ describe('ticketSecret — unset (dev fallback)', () => {
     expect(ticketWarnings(warn)).toHaveLength(1);
   });
 });
+
+/**
+ * Production refuses to start without a secret (design/15, decided 2026-09-26). The throw is
+ * what makes `createGameserver`/`createMatchsvcServer` fail at boot instead of seating players
+ * on a secret published in `config.ts`. The env var is stubbed per case and restored by
+ * `vi.unstubAllEnvs`, so no case leaks `NODE_ENV=production` into the rest of the file.
+ */
+describe('ticketSecret — production', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('throws, and never falls back, when the secret is unset', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.BB_TICKET_SECRET;
+    const { ticketSecret, warn } = await freshConfig();
+    expect(() => ticketSecret()).toThrow(/BB_TICKET_SECRET unset in production/);
+    // The throw is the signal; the dev-fallback warning would be a second, contradictory one.
+    expect(ticketWarnings(warn)).toEqual([]);
+  });
+
+  it('treats an empty secret as unset', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BB_TICKET_SECRET', '');
+    const { ticketSecret } = await freshConfig();
+    expect(() => ticketSecret()).toThrow(/refusing to start/);
+  });
+
+  it('returns a configured secret as usual', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BB_TICKET_SECRET', 'a-real-production-secret');
+    const { ticketSecret } = await freshConfig();
+    expect(ticketSecret()).toEqual({ secret: 'a-real-production-secret', isDev: false });
+  });
+});

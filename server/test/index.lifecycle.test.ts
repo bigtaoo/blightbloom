@@ -61,6 +61,7 @@ const settled = (over: Partial<SettledMatch> = {}): SettledMatch => ({
   placements: [3, 2, 1],
   playerCount: 4,
   hashOk: true,
+  integrity: { verdict: 'clean', dissenters: [], kicked: [], settleFrame: 900, seed: 7 },
   ...over,
 });
 

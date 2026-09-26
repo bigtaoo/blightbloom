@@ -160,10 +160,11 @@ describe('the shell', () => {
 });
 
 describe('tabFrom', () => {
-  it('accepts the four tab names and falls back to players for anything else', () => {
+  it('accepts the five tab names and falls back to players for anything else', () => {
     // A mistyped tab in a bookmark should open the console, not 404 it.
-    expect(TABS).toEqual(['players', 'commerce', 'retention', 'flags']);
+    expect(TABS).toEqual(['players', 'commerce', 'retention', 'integrity', 'flags']);
     expect(tabFrom('commerce')).toBe('commerce');
+    expect(tabFrom('integrity')).toBe('integrity');
     expect(tabFrom('retention')).toBe('retention');
     expect(tabFrom('flags')).toBe('flags');
     expect(tabFrom('players')).toBe('players');

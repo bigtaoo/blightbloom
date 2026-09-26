@@ -17,12 +17,14 @@ import {
   FrameBroadcast,
   CHECKPOINT_QUORUM,
   INTEGRITY_KICK_STREAK,
+  type FrameCmds,
   type PlayerCommand,
   type SeatNames,
   type ServerMsg,
   type Winner,
 } from '@dd/engine';
 import type { MatchMode } from './ticket';
+import { checkPvpBounds, voteSettlement, type BoundsFailure, type SeatReport } from './settlement';
 
 /** A per-seat sink — one connected client. The transport wraps a socket as this. */
 export interface RoomConnection {
@@ -49,6 +51,37 @@ export type IntervalHandle = unknown;
  * doesn't already legitimately know. `mode` and `hashOk` together are the
  * "checkpoint/hash-verified PvP result" gate design/15 requires before a placement
  * can affect the ladder; a caller should ignore this callback unless BOTH hold. */
+/**
+ * How a match settled, for the integrity record (design/15, "PvP integrity", 2026-09-26).
+ *
+ * - `clean`: a tuple carried the vote, no seat dissented, none was kicked, bounds passed.
+ * - `dissent`: a tuple carried the vote, but some seat voted otherwise or was kicked for a
+ *   checkpoint divergence. The match still rates; the named seats are suspects.
+ * - `no_consensus`: no tuple carried the vote. Nothing rates, and nobody is named — without
+ *   a settled answer there is no side to call wrong.
+ * - `bounds`: a tuple carried the vote but describes an impossible PvP match. Nothing rates.
+ */
+export type IntegrityVerdict = 'clean' | 'dissent' | 'no_consensus' | 'bounds';
+
+export interface MatchIntegrity {
+  verdict: IntegrityVerdict;
+  /** Seats outside the agreed tuple, ascending. */
+  dissenters: number[];
+  /** Seats `reportCheckpoint` kicked at any point in the match, ascending — even ones that
+   *  reconnected and then voted with the majority, since the divergence still happened. */
+  kicked: number[];
+  /** Set only when `verdict` is `bounds`. */
+  bounds?: BoundsFailure;
+  /** The server's broadcast frame when the last report landed. */
+  settleFrame: number;
+  /** The room's seed, so an archived match can be re-run later. */
+  seed: number;
+  /** The whole input log (non-empty frames). Present only when `verdict` is not `clean` — a
+   *  clean match has nothing to judge, and every PvP match carrying it would be a payload
+   *  nobody reads. Shared by reference with the room, which is destroyed right after. */
+  log?: readonly FrameCmds[];
+}
+
 export interface SettledMatch {
   roomId: string;
   /**
@@ -69,7 +102,11 @@ export interface SettledMatch {
    * OTHER members (design/15's squad-aware ladder follow-up), since `placements`
    * only ever holds LOSING seats and `winner` names just one representative. */
   playerCount: number;
+  /** True only when a tuple carried the settlement vote AND (for PvP) passed the bounds
+   *  check — the one condition under which a result may move a rating. The name predates the
+   *  vote, when it meant "every end hash matched". */
   hashOk: boolean;
+  integrity: MatchIntegrity;
   /** seat owner index → accountId (design/16-accounts.md), for whichever seats were
    * logged in. Omits guest/bot seats entirely — `ladderReport.ts` falls back to its
    * scaffold accountId for any seat missing here. */
@@ -120,7 +157,7 @@ export class MatchRoom {
   private readonly broadcast: FrameBroadcast;
   private readonly batchMs: number;
   private metronome: IntervalHandle | null = null;
-  private readonly results = new Map<number, { hash: number; winner: Winner; placements?: readonly number[] }>();
+  private readonly results = new Map<number, SeatReport>();
   private settled = false;
   // Anti-cheat periodic checkpoints (design/15, ROADMAP 4.4): tick -> (owner -> hash),
   // evaluated (and discarded) the instant every seat has reported for that tick — the
@@ -128,6 +165,8 @@ export class MatchRoom {
   // consecutive-mismatch streak drives the kick rule (a clean report resets it).
   private readonly checkpoints = new Map<number, Map<number, number>>();
   private readonly integrityStrikes = new Map<number, number>();
+  /** Every seat ever kicked for divergence, kept for settlement (see `MatchIntegrity.kicked`). */
+  private readonly kicked = new Set<number>();
 
   private readonly mode: MatchMode;
 
@@ -361,6 +400,7 @@ export class MatchRoom {
     });
     seat.conn = null;
     this.integrityStrikes.delete(owner);
+    this.kicked.add(owner);
     // Same shape as `onDisconnect`, and the phase check is likewise unreachable here (the
     // only caller, reportCheckpoint, refuses outside IN_MATCH) — symmetry with the ordinary
     // disconnect path is worth more than deleting a branch the coverage report will keep
@@ -374,8 +414,9 @@ export class MatchRoom {
   /**
    * A client reports its end-of-match state (the deterministic hash + the outcome).
    * Once every seat has reported, the room settles: it broadcasts `match_over` and
-   * destroys itself. Divergent hashes are flagged (design/06: the authoritative
-   * backstop is a server-side runHeadless re-judge, not realtime trust).
+   * destroys itself. What the reports agree on is a per-seat vote (`settlement.ts`), and
+   * a PvP result is bounds-checked before it can rate; how it went is recorded in
+   * `SettledMatch.integrity` (design/15, 2026-09-26). No replay judges it yet.
    *
    * `placements` (design/15, ROADMAP 4.2e) is present only for a PvP match (a config
    * with `arena` set — GameState.placements); its presence, not the room's own
@@ -392,10 +433,19 @@ export class MatchRoom {
     this.results.set(owner, { hash: stateHash, winner, placements });
     if (this.results.size < this.playerCount) return;
 
-    const reports = [...this.results.values()];
-    const hashOk = reports.every((r) => r.hash === reports[0]!.hash);
-    const agreedWinner = reports[0]!.winner;
-    const agreedPlacements = reports[0]!.placements;
+    const { agreed, dissenters } = voteSettlement(this.results, this.playerCount);
+    const settleFrame = this.broadcast.frame;
+    const bounds = agreed !== null && this.mode === 'pvp' ? checkPvpBounds(agreed, this.playerCount, settleFrame) : null;
+    const hashOk = agreed !== null && bounds === null;
+    const kicked = [...this.kicked].sort((a, b) => a - b);
+    const verdict: IntegrityVerdict =
+      agreed === null ? 'no_consensus' : bounds !== null ? 'bounds' : dissenters.length + kicked.length > 0 ? 'dissent' : 'clean';
+    // With no settled tuple the broadcast still needs SOMETHING for the client's end screen;
+    // seat 0's (or the first reporter's) is cosmetic there, and `hashOk` false keeps it off
+    // the ladder.
+    const shown = agreed ?? this.results.get(0) ?? [...this.results.values()][0]!;
+    const agreedWinner = shown.winner;
+    const agreedPlacements = shown.placements;
     this.settled = true;
     this.stopMetronome();
     this.phase = Phase.OVER;
@@ -414,6 +464,15 @@ export class MatchRoom {
       placements: agreedPlacements,
       playerCount: this.playerCount,
       hashOk,
+      integrity: {
+        verdict,
+        dissenters,
+        kicked,
+        ...(bounds !== null ? { bounds } : {}),
+        settleFrame,
+        seed: this.seed,
+        ...(verdict !== 'clean' ? { log: this.broadcast.log } : {}),
+      },
       // Omitted entirely when no seat was logged in — keeps the pre-account SettledMatch
       // shape byte-identical for every guest-only match (and every existing test).
       ...(Object.keys(seatAccounts).length > 0 ? { seatAccounts } : {}),
