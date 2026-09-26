@@ -68,6 +68,14 @@ export interface MatchRouteDeps {
    * against whatever the caller claimed.
    */
   auth?: { verifySession(token: unknown): Promise<{ accountId: string; username: string } | null> };
+  /**
+   * The party lookup, for the two things `/find` needs to know about a `partyId`
+   * (2026-09-26, co-op room codes): how many members it has, so `Matchmaker` waits for all of
+   * them before seating anyone, and which mode it was made for. Narrowed to `get` for the
+   * same reason as `auth`. Optional: without it a `partyId` is a bare grouping tag, which is
+   * what it was before this existed — every member counted as present on arrival.
+   */
+  parties?: { get(partyId: string): { members: readonly string[]; mode: MatchMode } | null };
 }
 
 /**
@@ -129,6 +137,14 @@ export const postFind: RouteHandler<FindRouteDeps> = async (req, res, _url, deps
     // one squad chunk. Absent (every pre-party caller) → plain FIFO, unaffected.
     const rawGroupId = (body as { partyId?: unknown })?.partyId;
     const groupId = typeof rawGroupId === 'string' && rawGroupId ? rawGroupId : undefined;
+    // The party itself, when the id names a live one. An unknown or expired id is NOT refused
+    // — it degrades to a grouping tag with nobody to wait for, which is exactly what a party
+    // that dissolved between START and this request should do: let the member play.
+    const party = groupId ? (deps.parties?.get(groupId) ?? null) : null;
+    // A party queues for the mode it was MADE for. A squad asking for a co-op room (or the
+    // reverse) is a client bug, and seating it would put friends in a room shaped for the
+    // other game — refused rather than quietly re-moded, so the bug surfaces.
+    if (party && party.mode !== mode) return send(res, 400, { error: 'party is for a different mode' });
     // Who this seat belongs to. ONE source, and that is the whole point (design/16 hole 3,
     // closed 2026-09-17; design/20 for the name).
     //
@@ -160,8 +176,10 @@ export const postFind: RouteHandler<FindRouteDeps> = async (req, res, _url, deps
       // room — on a request it is about to refuse anyway.
       const gs = deps.pickGameserver();
       if (!gs) return send(res, 503, NO_GAMESERVER);
-      const { queueId, ticket } = deps.matchmaker.enqueue(playerCount, mode, groupId, accountId, name);
-      send(res, 200, { queueId, match: ticket ? withUrl(ticket, gs.wsUrl) : undefined });
+      const { queueId, ticket, botFillInMs } = deps.matchmaker.enqueue(
+        playerCount, mode, groupId, accountId, name, party?.members.length,
+      );
+      send(res, 200, { queueId, match: ticket ? withUrl(ticket, gs.wsUrl) : undefined, botFillInMs });
     } catch (e) {
       send(res, 400, { error: (e as Error).message });
     }

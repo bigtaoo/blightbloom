@@ -134,7 +134,7 @@ export function wireScreens(d: WiringDeps): void {
   d.matchmaking.onConnected = (session) => d.runs.finalizeOnlineRun(session);
   d.matchmaking.onCancelled = () => d.net.onCancelled();
   d.partyScreen.onBack = () => d.nav.showMenu();
-  d.partyScreen.onStartMatch = (partyId) => d.net.beginSquadMatch(partyId);
+  d.partyScreen.onStartMatch = (partyId, mode) => d.net.beginPartyMatch(partyId, mode);
   // The two multiplayer doors a HOST can push the game through (design/20's multiplayer
   // requirements): "put me in a match" and "put me in this friend's party". Installed for
   // every target because the registry is inert unless something calls it, and only a portal

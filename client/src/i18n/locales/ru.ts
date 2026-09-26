@@ -245,6 +245,7 @@ export const ru: Translations<typeof en> = {
   party: {
     title: 'ОТРЯД',
     create: 'СОЗДАТЬ ОТРЯД',
+    createCoop: 'СОЗДАТЬ КООП-ГРУППУ',
     join: 'ВСТУПИТЬ ПО КОДУ',
     startMatching: 'НАЧАТЬ ПОИСК',
     leave: 'ПОКИНУТЬ ОТРЯД',
@@ -258,6 +259,8 @@ export const ru: Translations<typeof en> = {
     startFailed: 'Не удалось начать поиск — попробуйте снова.',
     codeLine: 'КОД: {code}',
     you: 'ты',
+    headerCoop: 'КООП · {count}/{capacity}',
+    headerSquad: 'PVP-ОТРЯД · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'PVP-МАТЧ',
@@ -270,6 +273,8 @@ export const ru: Translations<typeof en> = {
     searching: 'Поиск матча…',
     connecting: 'Подключение…',
     elapsed: 'прошло {seconds}с',
+    botSoon: 'ИИ-игроки займут свободные места через {seconds}с',
+    botNow: 'Свободные места занимают ИИ-игроки…',
     partyMembers: 'в отряде: {count}',
     cancel: 'ОТМЕНА',
     errorTitle: 'МАТЧ НЕ СОСТОЯЛСЯ',

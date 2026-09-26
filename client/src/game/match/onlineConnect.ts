@@ -1,6 +1,7 @@
 import { CoopSession } from '../../net/CoopSession';
 import { WebSocketTransport, LaggyTransport, type Transport } from '../../net/transport';
-import { findMatch } from '../../net/matchmaking';
+import { findMatch, type QueueProgress } from '../../net/matchmaking';
+import { COOP_SEATS } from './partyShape';
 import { driveReconnect } from '../../net/reconnect';
 import { buildOnlineConfig } from './matchConfig';
 
@@ -19,6 +20,8 @@ export interface OnlineConnectOptions {
    * straight into `findMatch`'s own `signal`. Checked once per poll; setting
    * `cancelled = true` rejects with `'matchmaking cancelled'`. */
   signal?: { cancelled: boolean };
+  /** The queue countdown while waiting — forwarded to `findMatch`'s own `onQueued`. */
+  onQueued?: (progress: QueueProgress) => void;
   /**
    * How long to wait for `match_start` after the socket exists before giving up
    * (default 20s). Before this existed there was NO bound at all here — a bad ticket
@@ -72,10 +75,11 @@ export interface OnlineConnectOptions {
  */
 export async function connectOnlineSession(opts: OnlineConnectOptions): Promise<CoopSession> {
   const info = await findMatch(opts.matchBaseUrl, {
-    playerCount: opts.pvp ? opts.pvpSeats : 2,
+    playerCount: opts.pvp ? opts.pvpSeats : COOP_SEATS,
     mode: opts.pvp ? 'pvp' : 'coop',
     partyId: opts.partyId,
     signal: opts.signal,
+    onQueued: opts.onQueued,
     fetch: opts.fetch,
     sleep: opts.sleep,
   });

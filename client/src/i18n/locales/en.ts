@@ -261,7 +261,8 @@ export const en = {
   },
   party: {
     title: 'SQUAD',
-    create: 'CREATE PARTY',
+    create: 'CREATE PVP SQUAD',
+    createCoop: 'CREATE CO-OP PARTY',
     join: 'JOIN WITH CODE',
     startMatching: 'START MATCHING',
     leave: 'LEAVE PARTY',
@@ -275,6 +276,8 @@ export const en = {
     startFailed: 'Could not start matching — try again.',
     codeLine: 'CODE: {code}',
     you: 'you',
+    headerCoop: 'CO-OP · {count}/{capacity}',
+    headerSquad: 'PVP SQUAD · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'PVP MATCH',
@@ -287,6 +290,8 @@ export const en = {
     searching: 'Finding a match…',
     connecting: 'Connecting…',
     elapsed: '{seconds}s elapsed',
+    botSoon: 'AI players fill empty seats in {seconds}s',
+    botNow: 'Filling empty seats with AI players…',
     partyMembers: '{count} in party',
     cancel: 'CANCEL',
     errorTitle: 'MATCH FAILED',

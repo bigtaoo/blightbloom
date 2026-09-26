@@ -24,6 +24,8 @@ import { getInstallId } from '../../net/identity';
 import { getSession, setSession } from '../../net/session';
 import { notifySessionChanged } from '../../platform/sessionEvents';
 import type { CoopSession } from '../../net/CoopSession';
+import type { QueueProgress } from '../../net/matchmaking';
+import type { PartyMode } from '../match/partyShape';
 import { connectOnlineSession } from '../match/onlineConnect';
 import type { MatchmakingSignal, Matchmaking } from '../screens/Matchmaking';
 import type { HudView } from '../ui/HudView';
@@ -61,7 +63,7 @@ export class OnlineMatch {
   constructor(private readonly deps: OnlineMatchDeps) {}
 
   /** The Matchmaking screen's injected connect function. */
-  connect(signal: MatchmakingSignal): Promise<CoopSession> {
+  connect(signal: MatchmakingSignal, onQueued?: (progress: QueueProgress) => void): Promise<CoopSession> {
     const d = this.deps;
     return connectOnlineSession({
       matchBaseUrl: d.run.matchBaseUrl,
@@ -70,6 +72,7 @@ export class OnlineMatch {
       lagMs: d.run.lagMs,
       partyId: d.run.partyId,
       signal,
+      onQueued,
       onMatchStart: (localOwner) => {
         d.run.localOwner = localOwner;
       },
@@ -139,8 +142,27 @@ export class OnlineMatch {
   }
 
   /**
-   * The party leader tapped START (or a member's poll saw the leader already had) — hand off
-   * to the SAME online/PvP connect path `?pvp=1` uses, with this run's squad size forced to
+   * The party leader tapped START (or a member's poll saw the leader already had) — the
+   * PartyScreen's one exit into a match, for either kind of party (2026-09-26). A squad goes
+   * to {@link beginSquadMatch}; a co-op party queues for a co-op room with its `partyId`
+   * attached, so `Matchmaker` seats both friends together. Neither shows the PvP preview —
+   * every member's poll auto-advances here, so a confirm gate would strand the followers.
+   */
+  beginPartyMatch(partyId: string, mode: PartyMode): void {
+    if (mode === 'pvp') {
+      this.beginSquadMatch(partyId);
+      return;
+    }
+    const d = this.deps;
+    d.run.online = true;
+    d.run.pvp = false;
+    d.run.partyId = partyId;
+    d.run.matchmakingReturnPhase = 'squad';
+    d.nav.showMatchmaking();
+  }
+
+  /**
+   * A squad party's START — hand off to the SAME online/PvP connect path `?pvp=1` uses, with this run's squad size forced to
    * `SQUAD_MATCH_SEATS` and `partyId` attached so every member's `POST /find` groups into one
    * squad instead of a stranger's.
    */

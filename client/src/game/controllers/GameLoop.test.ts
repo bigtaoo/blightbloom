@@ -110,6 +110,7 @@ function buildDeps(extra: Partial<GameLoopDeps> = {}) {
   const floorCardPrompt = fakePortalPrompt(); // same shape: an `update` spy plus `isOpen`
   const touchControlsView = { update: vi.fn() };
   const partyScreen = { update: vi.fn() };
+  const matchmaking = { update: vi.fn() };
   const input = fakeInput();
   const builder = new CommandBuilder(input);
   const ally = new AllyController();
@@ -123,13 +124,13 @@ function buildDeps(extra: Partial<GameLoopDeps> = {}) {
   const ticker = { maxFPS: 0 };
 
   const deps: GameLoopDeps = {
-    scene, fx, hud, touchControlsView, portalPrompt, floorCardPrompt, roomBuilder, partyScreen,
+    scene, fx, hud, touchControlsView, portalPrompt, floorCardPrompt, roomBuilder, lobbyScreens: [partyScreen, matchmaking],
     builder, ally, input, events, runOutcome, tutorialHints, world, ticker,
     pickupDebugOverlay: null,
     ...extra,
   } as unknown as GameLoopDeps;
 
-  return { deps, scene, fx, hud, roomBuilder, portalPrompt, floorCardPrompt, touchControlsView, partyScreen, input, builder, ally, events, runOutcome, tutorialHints, world, ticker };
+  return { deps, scene, fx, hud, roomBuilder, portalPrompt, floorCardPrompt, touchControlsView, partyScreen, matchmaking, input, builder, ally, events, runOutcome, tutorialHints, world, ticker };
 }
 
 function buildHost(overrides: Partial<GameLoopHost> = {}): GameLoopHost & { localOwner: number } {
@@ -284,7 +285,7 @@ describe('GameLoop.update — top-level phase dispatch', () => {
     // Confirm is driven entirely by Screens.ts's own CONFIRM/MAIN MENU Button taps now
     // (2026-08-17, see GameLoop's class doc comment) — GameLoop's idle branch has no
     // raw-input confirm path left to test; holding fire here must do nothing.
-    const { deps, input, partyScreen } = buildDeps();
+    const { deps, input, partyScreen, matchmaking } = buildDeps();
     const host = buildHost({ getPhase: () => 'victory' });
     const loop = new GameLoop(deps, host);
 
@@ -293,6 +294,9 @@ describe('GameLoop.update — top-level phase dispatch', () => {
     loop.update(16);
 
     expect(partyScreen.update).toHaveBeenCalledWith(16);
+    // The Matchmaking screen's clock (2026-09-26): never driven before, so its elapsed time
+    // and backfill countdown stood still for the whole queue.
+    expect(matchmaking.update).toHaveBeenCalledWith(16);
     expect(host.confirm).not.toHaveBeenCalled();
   });
 

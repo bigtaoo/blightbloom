@@ -240,6 +240,7 @@ export const es: Translations<typeof en> = {
   party: {
     title: 'ESCUADRA',
     create: 'CREAR ESCUADRA',
+    createCoop: 'CREAR GRUPO COOP.',
     join: 'UNIRSE CON CÓD.',
     startMatching: 'BUSCAR PARTIDA',
     leave: 'ABANDONAR ESCUADRA',
@@ -253,6 +254,8 @@ export const es: Translations<typeof en> = {
     startFailed: 'No se pudo iniciar la búsqueda — inténtalo de nuevo.',
     codeLine: 'CÓDIGO: {code}',
     you: 'tú',
+    headerCoop: 'COOP. · {count}/{capacity}',
+    headerSquad: 'ESCUADRA PVP · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'PARTIDA PVP',
@@ -265,6 +268,8 @@ export const es: Translations<typeof en> = {
     searching: 'Buscando partida…',
     connecting: 'Conectando…',
     elapsed: '{seconds}s transcurridos',
+    botSoon: 'Jugadores IA ocuparán los huecos en {seconds}s',
+    botNow: 'Ocupando los huecos con jugadores IA…',
     partyMembers: '{count} en la escuadra',
     cancel: 'CANCELAR',
     errorTitle: 'PARTIDA FALLIDA',

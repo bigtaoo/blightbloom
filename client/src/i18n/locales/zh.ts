@@ -238,7 +238,8 @@ export const zh: Translations<typeof en> = {
   },
   party: {
     title: '组队',
-    create: '创建队伍',
+    create: '创建 PvP 小队',
+    createCoop: '创建合作队伍',
     join: '输入邀请码加入',
     startMatching: '开始匹配',
     leave: '离开队伍',
@@ -252,6 +253,8 @@ export const zh: Translations<typeof en> = {
     startFailed: '开始匹配失败，请重试。',
     codeLine: '邀请码：{code}',
     you: '你',
+    headerCoop: '合作 · {count}/{capacity}',
+    headerSquad: 'PvP 小队 · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'PVP 对战',
@@ -264,6 +267,8 @@ export const zh: Translations<typeof en> = {
     searching: '正在匹配对局…',
     connecting: '正在连接…',
     elapsed: '已等待 {seconds} 秒',
+    botSoon: '{seconds} 秒后由 AI 补满空位',
+    botNow: '正在由 AI 补满空位…',
     partyMembers: '队伍 {count} 人',
     cancel: '取消',
     errorTitle: '匹配失败',

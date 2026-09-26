@@ -52,6 +52,25 @@ describe('findMatch', () => {
     expect((fetch.mock.calls[1]![0] as string)).toBe('http://mm/find/q1');
   });
 
+  it('reports the queue countdown after the POST and after every still-queued poll', async () => {
+    // The Matchmaking screen's "AI players fill empty seats in N s" line (2026-09-26).
+    const fetch = fakeFetch([
+      { queueId: 'q1', botFillInMs: 5_000 },
+      { status: 'queued', botFillInMs: 4_500 },
+      { status: 'queued' }, // a server that predates the field
+      { status: 'matched', match: MATCH },
+    ]);
+    const onQueued = vi.fn();
+    await findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep, onQueued });
+    expect(onQueued.mock.calls).toEqual([[{ botFillInMs: 5_000 }], [{ botFillInMs: 4_500 }], [{ botFillInMs: undefined }]]);
+  });
+
+  it('never reports a countdown for a match formed inline', async () => {
+    const onQueued = vi.fn();
+    await findMatch('http://mm', { playerCount: 2, fetch: fakeFetch([{ queueId: 'q1', match: MATCH }]), sleep: noSleep, onQueued });
+    expect(onQueued).not.toHaveBeenCalled();
+  });
+
   it('rejects when the server expires the request', async () => {
     const fetch = fakeFetch([{ queueId: 'q1' }, { status: 'expired' }]);
     await expect(findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep })).rejects.toThrow(/expired/);

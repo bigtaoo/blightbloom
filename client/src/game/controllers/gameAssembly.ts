@@ -208,7 +208,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     pauseMenu: p.pauseMenu, accountPrompt,
     screenSize: () => host.screenSize(),
     settings: () => host.settingsState(),
-    connect: (signal) => net.connect(signal),
+    connect: (signal, onQueued) => net.connect(signal, onQueued),
     onHubEntered: () => net.flushPendingMetaSync(),
   });
 
@@ -216,7 +216,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     scene: p.scene, roomBuilder: p.roomBuilder, fx: p.fx, hud: p.hud,
     touchControlsView: p.touchControlsView, portalPrompt: p.portalPrompt,
     floorCardPrompt: p.floorCardPrompt,
-    partyScreen, builder: p.builder, ally: p.ally,
+    lobbyScreens: [partyScreen, p.matchmaking], builder: p.builder, ally: p.ally,
     world: p.layers.world, ticker: p.ticker,
     input: p.input, events: p.events, runOutcome: p.runOutcome,
     tutorialHints: p.tutorialHints, pickupDebugOverlay: p.pickupDebugOverlay,

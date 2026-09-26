@@ -111,7 +111,7 @@ function make() {
   };
   const net = {
     beginSoloQueue: vi.fn((pvp: boolean) => void called.push(`net.beginSoloQueue(${pvp})`)),
-    beginSquadMatch: track('net.beginSquadMatch'), onCancelled: track('net.onCancelled'),
+    beginPartyMatch: vi.fn((partyId: string, mode: string) => void called.push(`net.beginPartyMatch(${partyId},${mode})`)), onCancelled: track('net.onCancelled'),
     syncMetaWithSession: vi.fn(() => Promise.resolve()),
   };
   const forgeInput = {
@@ -199,7 +199,7 @@ describe('wireScreens', () => {
     fire('mainMenu', 'onTutorial');
     fire('mainMenu', 'onAccount');
     fire('pvpPreview', 'onQueue');
-    fire('partyScreen', 'onStartMatch', 'p1');
+    fire('partyScreen', 'onStartMatch', 'p1', 'coop');
     fire('pauseMenu', 'onQuit');
     fire('pauseMenu', 'onResume');
     fire('pauseMenu', 'onSaveQuit');
@@ -209,7 +209,7 @@ describe('wireScreens', () => {
     expect(t.called).toEqual([
       'nav.showLoadout', 'net.beginSoloQueue(false)', 'net.beginSoloQueue(true)',
       'nav.showSquad', 'nav.showForge(menu)', 'runs.beginTutorialRun', 'nav.showAccount',
-      'nav.showMatchmaking', 'net.beginSquadMatch',
+      'nav.showMatchmaking', 'net.beginPartyMatch(p1,coop)',
       'runs.quitRun', 'nav.resume',
       'runs.saveAndQuitRun', 'runs.resumeSavedRun', 'nav.showForge(loadout)',
       // The settings screen's own door onto the same run (2026-09-22) — same verb as the

@@ -240,6 +240,7 @@ export const pl: Translations<typeof en> = {
   party: {
     title: 'DRUŻYNA',
     create: 'UTWÓRZ DRUŻYNĘ',
+    createCoop: 'UTWÓRZ GRUPĘ CO-OP',
     join: 'DOŁĄCZ KODEM',
     startMatching: 'SZUKAJ MECZU',
     leave: 'OPUŚĆ DRUŻYNĘ',
@@ -253,6 +254,8 @@ export const pl: Translations<typeof en> = {
     startFailed: 'Nie udało się rozpocząć wyszukiwania — spróbuj ponownie.',
     codeLine: 'KOD: {code}',
     you: 'ty',
+    headerCoop: 'CO-OP · {count}/{capacity}',
+    headerSquad: 'DRUŻYNA PVP · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'MECZ PVP',
@@ -265,6 +268,8 @@ export const pl: Translations<typeof en> = {
     searching: 'Szukanie meczu…',
     connecting: 'Łączenie…',
     elapsed: 'upłynęło {seconds}s',
+    botSoon: 'Gracze SI zajmą wolne miejsca za {seconds}s',
+    botNow: 'Wolne miejsca zajmują gracze SI…',
     partyMembers: '{count} w drużynie',
     cancel: 'ANULUJ',
     errorTitle: 'MECZ NIEUDANY',

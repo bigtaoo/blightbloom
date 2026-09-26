@@ -27,7 +27,7 @@
  * SHAPE belongs to whoever supplies `newCode` (six digits, `routes/party.ts`); what belongs
  * here is that it is UNIQUE across every live party — see {@link CODE_DRAW_ATTEMPTS}.
  */
-import { SQUAD_SIZE } from './config';
+import { SQUAD_SIZE, partyCapacity, type PartyMode } from './config';
 
 export interface PartyServiceDeps {
   nowMs(): number;
@@ -43,14 +43,21 @@ export interface PartyInfo {
   code: string;
   leaderId: string;
   members: readonly string[];
+  /** What the party queues for (2026-09-26): a PvP squad, or a co-op room. Fixed at
+   *  creation — a joiner joins whatever the leader made — and it sets {@link capacity}. */
+  mode: PartyMode;
+  /** How many members this party may hold: `partyCapacity(mode)`. Sent rather than left for
+   *  the client to derive so the lobby's `1/2` and the join refusal read one answer. */
+  capacity: number;
   /** Set once the leader calls `startMatching` — other members' polls observe this
    * flip and each independently call their own `POST /find` with this `partyId`. */
   matching: boolean;
 }
 
-/** The squad-size ceiling (design/05/15) — re-exported from the same `SQUAD_SIZE`
- * `Matchmaker`'s per-squad chunking uses (via `@dd/game/match/pvpConfig`), so a party can
- * never grow larger than the squad it's meant to fill. */
+/** The largest party of ANY mode (design/05/15) — the same `SQUAD_SIZE` `Matchmaker`'s
+ * per-squad chunking uses (via `@dd/game/match/pvpConfig`). A given party's own ceiling is
+ * `partyCapacity(mode)`, which is this for a squad and `COOP_SEATS` for a co-op party
+ * (2026-09-26): a party can never grow larger than the room or squad it is meant to fill. */
 export const MAX_PARTY_SIZE = SQUAD_SIZE;
 
 /**
@@ -101,6 +108,7 @@ export class CodeSpaceExhausted extends Error {
 
 interface Party {
   code: string;
+  mode: PartyMode;
   leaderId: string;
   members: string[];
   matching: boolean;
@@ -119,18 +127,19 @@ export class PartyService {
     this.ttlMs = ttlMs;
   }
 
-  /** Create a new party with `playerId` as its sole member and leader.
+  /** Create a new party with `playerId` as its sole member and leader. `mode` defaults to
+   * `'pvp'`, the only kind of party there was before co-op room codes (2026-09-26).
    *
    * @throws {CodeSpaceExhausted} when {@link CODE_DRAW_ATTEMPTS} draws all collide. The
    * sweep above runs FIRST, so an expired party's code is already back in the pool before
    * any of those draws — the throw means the LIVE set is saturated, not that the map has
    * been filling up with corpses.
    */
-  create(playerId: string): PartyInfo {
+  create(playerId: string, mode: PartyMode = 'pvp'): PartyInfo {
     this.sweepExpired();
     const partyId = this.deps.newPartyId();
     const code = this.drawFreeCode();
-    const party: Party = { code, leaderId: playerId, members: [playerId], matching: false, updatedAt: this.deps.nowMs() };
+    const party: Party = { code, mode, leaderId: playerId, members: [playerId], matching: false, updatedAt: this.deps.nowMs() };
     this.parties.set(partyId, party);
     this.codeToPartyId.set(code, partyId);
     return this.toInfo(partyId, party);
@@ -144,7 +153,7 @@ export class PartyService {
     const party = partyId ? this.parties.get(partyId) : undefined;
     if (!partyId || !party) return null;
     if (!party.members.includes(playerId)) {
-      if (party.members.length >= MAX_PARTY_SIZE) return null;
+      if (party.members.length >= partyCapacity(party.mode)) return null;
       party.members.push(playerId);
     }
     party.updatedAt = this.deps.nowMs();
@@ -197,7 +206,15 @@ export class PartyService {
   }
 
   private toInfo(partyId: string, party: Party): PartyInfo {
-    return { partyId, code: party.code, leaderId: party.leaderId, members: [...party.members], matching: party.matching };
+    return {
+      partyId,
+      code: party.code,
+      leaderId: party.leaderId,
+      members: [...party.members],
+      mode: party.mode,
+      capacity: partyCapacity(party.mode),
+      matching: party.matching,
+    };
   }
 
   private sweepExpired(): void {

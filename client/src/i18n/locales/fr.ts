@@ -240,6 +240,7 @@ export const fr: Translations<typeof en> = {
   party: {
     title: 'ESCOUADE',
     create: 'CRÉER UNE ÉQUIPE',
+    createCoop: 'CRÉER UN GROUPE COOP',
     join: 'REJOINDRE AVEC UN CODE',
     startMatching: 'LANCER LA RECHERCHE',
     leave: "QUITTER L'ESCOUADE",
@@ -253,6 +254,8 @@ export const fr: Translations<typeof en> = {
     startFailed: 'Impossible de lancer la recherche — réessayez.',
     codeLine: 'CODE : {code}',
     you: 'toi',
+    headerCoop: 'COOP · {count}/{capacity}',
+    headerSquad: 'ESCOUADE JCJ · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'MATCH PVP',
@@ -265,6 +268,8 @@ export const fr: Translations<typeof en> = {
     searching: "Recherche d'un match…",
     connecting: 'Connexion…',
     elapsed: '{seconds}s écoulées',
+    botSoon: 'Des joueurs IA rejoignent dans {seconds}s',
+    botNow: 'Ajout de joueurs IA aux places libres…',
     partyMembers: '{count} dans l\'escouade',
     cancel: 'ANNULER',
     errorTitle: 'ÉCHEC DU MATCH',
