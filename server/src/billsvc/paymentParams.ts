@@ -38,13 +38,30 @@ const NOT_CONFIGURED = (platform: string, fields: readonly string[]): PaymentPar
 /**
  * @param devStubOn `devStubEnabled(env)` from `iap/factory.ts` — passed in rather than
  * read here so this file stays a pure dispatch and the policy lives in exactly one place.
+ * @param paddlePriceId the SKU's Paddle price id (`paddle/config.ts`), when one is
+ * configured. Same reasoning: resolved by the caller, so this file reads no env.
  */
 export function paymentParamsFor(
   platform: IapPlatform,
   order: { id: string; sku: string; amountCents: number; currency: string },
   devStubOn: boolean,
+  paddlePriceId?: string,
 ): PaymentParams {
   switch (platform) {
+    case 'paddle':
+      // Paddle.js opens an overlay checkout from a price id and `customData`; nothing here is
+      // signed, so unlike the other platforms a real block CAN be produced without a
+      // credential. It is still `configured: false` until the SKU has a price id — a
+      // checkout for a price nobody mapped would be refused by the webhook anyway
+      // (ROADMAP 9.2: an unknown price id fails closed). `orderId` rides in `customData`
+      // and comes back on the signed `transaction.completed` as `custom_data.orderId`,
+      // the join back to this order (design/19 §9, funny trap 2 — snake_case on the wire).
+      if (!paddlePriceId) return NOT_CONFIGURED('paddle', ['priceId', 'customData.orderId']);
+      return {
+        configured: true,
+        params: { priceId: paddlePriceId, customDataOrderId: order.id },
+        note: 'paddle: open Paddle.js checkout with items [{ priceId, quantity: 1 }] and customData { orderId }',
+      };
     case 'dev':
       if (!devStubOn) {
         return { configured: false, params: {}, note: 'dev: the dev stub is disabled in this environment' };

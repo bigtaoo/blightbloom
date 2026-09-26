@@ -129,8 +129,9 @@ One store for both halves: the backend's logs and the browser's.
   it lost to a tax-and-compliance argument: Paddle is a **Merchant of Record**, so it owns VAT,
   sales tax and chargebacks, which a solo-operated project cannot own for itself.
 
-  Paddle is **not built**, and four things about it do not fit the shape §5 shipped — which is
-  why it is filed here rather than as a fifth row in an existing table:
+  ~~Paddle is **not built**~~ — **its code shipped 2026-09-26 (ROADMAP 9.1–9.3), and it is not
+  live**; see "What shipped on 2026-09-26" below. Four things about it do not fit the shape §5
+  shipped — which is why it is filed here rather than as a fifth row in an existing table:
 
   1. **It is push, not pull.** Every adapter in §5 answers
      `verifyReceipt(platform, receipt)`: the client holds a receipt and the server verifies it
@@ -165,6 +166,39 @@ One store for both halves: the backend's logs and the browser's.
   refunds stop being hypothetical: a Merchant of Record handles chargebacks, so Paddle will send
   refund events, which makes the refund bullet below a dependency of this work rather than a
   parallel question.
+
+  **What shipped on 2026-09-26 (ROADMAP 9.1–9.3), and what is still owner-only.** All four
+  differences above are now code, under `server/src/billsvc/paddle/` plus `iap/paddle.ts`:
+
+  - *Push, raw body, signature.* `POST /webhook/paddle` is routed ahead of the generic webhook
+    and read through `billsvc/http.ts`'s `readRaw` — the bytes, never a parsed object.
+    `paddle/signature.ts` implements Paddle's documented check: `ts=<s>;h1=<hex>`,
+    HMAC-SHA256 over `${ts}:${rawBody}`, any of several h1 (secret rotation), constant-time,
+    and a **5-second tolerance each way** — Paddle's documented default, kept rather than
+    widened because a refused push is re-sent by Paddle with a fresh signature, so clock skew
+    costs a loud log line, not a payment. Order of checks: no `BB_PADDLE_WEBHOOK_SECRET` → 503
+    (fail closed, nothing recorded); bad signature → 401 (logged, not recorded — an unsigned
+    body must not be able to write evidence rows); only then is the body parsed and every
+    outcome recorded, keyed by Paddle's `event_id`. Paddle publishes no complete test vector,
+    so the verifier's test computes its own from the documented algorithm and says so.
+  - *AMENDMENT 1's relaxation.* A signed `transaction.completed` settles through
+    `BillingService.settleSigned` with its own transaction id as `platform_txn_id`; the
+    receipt claim (`paddle:<txn>`) and ledger claim (`purchase:paddle:<txn>`) are unchanged,
+    so Paddle's retries are replays. `custom_data.orderId` carries billsvc's order id round
+    trip.
+  - *The price rule.* `SkuDef.paddlePriceId` (unset for every SKU) is overridden per
+    environment by `BB_PADDLE_PRICE_IDS`; an unmapped price id is REFUSED (Paddle retries, so
+    fixing the map settles it). The charged amount/currency is stored on the order and never
+    compared at settlement; `reconcile.ts` reports an amount OR currency difference as
+    `amount-mismatch`. The order lister is a real paged `GET /transactions`, tested against a
+    fake `fetch`, refusing without `BB_PADDLE_API_KEY`.
+  - *Refunds — decided by the owner 2026-09-26.* See the refund bullet below.
+
+  **Owner-only, still:** the eleven Paddle Products/Prices and their ids, the notification
+  destination (subscribed to every event) and its secret, the API key, a public route from
+  Caddy to billsvc's `/webhook/paddle` (billsvc is internal-only today), the client's Paddle.js
+  checkout (the web store still offers `stripe`, `platform/storePlatform.ts`), and the first real
+  sandbox purchase and refund end to end.
 
   **THE PRECONDITION, found 2026-09-05 — RESOLVED 2026-09-07: billsvc now has a public address.**
   A Paddle webhook is a server-to-server POST to a public HTTPS URL, and until this date the
@@ -269,8 +303,18 @@ One store for both halves: the backend's logs and the browser's.
   is spent before `requireAuth`, since resolving a session is itself a database read any caller
   can ask for; the two GETs stay unbudgeted, `GET /store/order/:id` because `StorePurchase.poll`
   calls it on a timer while a player watches a payment resolve.
-- Refund handling is specified only to the extent of "the ledger is append-only and a reversal is
-  a new row". What a revoked character does to a ladder history is unanswered.
+- ~~Refund handling is specified only to the extent of "the ledger is append-only and a reversal is
+  a new row". What a revoked character does to a ladder history is unanswered.~~ **DECIDED
+  2026-09-26 (owner) and shipped for Paddle (ROADMAP 9.3):** an approved refund or chargeback
+  REVOKES the entitlement it paid for AND files a `refund` case into §7's review queue with the
+  money on both sides joined; **existing ladder/PvP history is not changed.** The reversal IS a
+  new row — `reversal:<platform>:<txn>` in `ledger`, claimed once per transaction — and the
+  revocation is an outbox row (`action: 'revoke'`) drained to the control plane's
+  `POST /internal/entitlements/revoke`, which deletes only an entitlement held because of THAT
+  order (`EntitlementService.revokePurchase`), so a blueprint also earned from a drop survives.
+  Pending, rejected and warning adjustments are recorded and not acted on; a reversed chargeback
+  files a case and re-grants nothing automatically; a revocation the control plane refuses files
+  `revocation-failed`.
 - ~~SQLite stays the answer until there are two control-plane processes.~~ **Reversed
   2026-09-15** (`design/16-accounts.md`, volumes 66–67): the owner's call moved all four stores
   to a MongoDB Atlas cluster. The argument below was never refuted — its PREMISE was replaced,

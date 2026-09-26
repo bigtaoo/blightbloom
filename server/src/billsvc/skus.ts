@@ -45,10 +45,25 @@ export interface SkuDef {
   sku: string;
   /** Operator/store-facing label. The client renders its own localised name from `grants`. */
   title: string;
-  /** Minor units of `currency`. Authoritative — never read from a request or a receipt. */
+  /**
+   * Minor units of `currency`. Never read from a request or a receipt — what we OFFER is
+   * decided here. Since ROADMAP 9.2 it is a RECORD rather than an authority for Paddle: a
+   * Merchant of Record owns localised pricing, currency and tax, so it alone knows what was
+   * CHARGED, and a charged amount that differs from this one is a reconciliation finding
+   * (`reconcile.ts`), never a reason to refuse a settlement.
+   */
   amountCents: number;
   currency: 'CNY';
   grants: readonly SkuGrant[];
+  /**
+   * The Paddle price id this SKU is sold under (ROADMAP 9.2), as a static DEFAULT. Unset for
+   * every SKU today — no Paddle Product/Price exists for this project yet (design/19 §9: ten
+   * blueprint prices plus one character, each with quantity adjustment OFF). The per-
+   * environment source is `BB_PADDLE_PRICE_IDS` (`paddle/config.ts`), which overrides this,
+   * because sandbox and live price ids differ. A SKU with no price id in either place cannot
+   * be bought on Paddle, and a webhook naming an unknown price id is REFUSED (fail closed).
+   */
+  paddlePriceId?: string;
 }
 
 const bp = (id: string): readonly SkuGrant[] => [{ kind: 'blueprint', id }];

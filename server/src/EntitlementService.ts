@@ -224,11 +224,27 @@ export class EntitlementService {
    * Remove one SKU. Returns whether a row was actually deleted.
    *
    * Manual-only: design/19 §7's anomaly audit FILES rather than acts ("with no evidence,
-   * skip — never convict"), so nothing in this server calls this on its own. It exists so
+   * skip — never convict"), so nothing in this server calls this on its own; the one automatic
+   * removal (a platform-approved refund, ROADMAP 9.3) goes through `revokePurchase` below,
+   * which cannot remove an entitlement held for any other reason. This exists so
    * that a support correction is a supported operation rather than a hand-written DELETE.
    */
   async revoke(accountId: string, sku: string): Promise<boolean> {
     const result = await this.store.entitlements.deleteOne({ accountId, sku });
+    return result.deletedCount > 0;
+  }
+
+  /**
+   * Remove one SKU ONLY IF it is held because of THAT purchase — `source: 'purchase'` and the
+   * same `orderId` (ROADMAP 9.3, a platform-approved refund). Returns whether a row went.
+   *
+   * The filter is the whole point. `entitlements` keeps the FIRST grant (`grant` above), so an
+   * account that earned a blueprint from a boss drop and then also bought it holds a `drop`
+   * row, and the purchase was delivered as "already owned". Refunding that purchase must not
+   * take away the drop — the refund gives back the money, not something earned for free.
+   */
+  async revokePurchase(accountId: string, sku: string, orderId: string, session?: ClientSession): Promise<boolean> {
+    const result = await this.store.entitlements.deleteOne({ accountId, sku, source: 'purchase', orderId }, { session });
     return result.deletedCount > 0;
   }
 

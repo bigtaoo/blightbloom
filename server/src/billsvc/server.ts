@@ -13,6 +13,8 @@
  *   GET  /skus                                              → { skus }                       (public)
  *   POST /order/create   { accountId, sku, platform }        → { order, payment } | 400 | 401 (internal)
  *   GET  /order/:id                                         → { order } | 404 | 401          (internal)
+ *   POST /webhook/paddle  <raw Paddle event, Paddle-Signature header>
+ *                                                           → 200 | 400 | 401 | 404 | 503    (Paddle-signed, ROADMAP 9.1)
  *   POST /webhook/:platform { orderId, receipt, txnId, event? }
  *                                                           → { delivered } | 400 | 404      (platform-signed)
  *
@@ -74,15 +76,9 @@ import { DeliveryPump, type DeliveryPumpDeps } from './deliveryPump';
 import { recordWebhookEvent, webhookEventType, type WebhookOutcome } from './webhookLog';
 import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from '../metrics';
 import { pendingDeliveries } from './outbox';
-
-const CORS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET,POST,OPTIONS',
-  // `x-internal-key` is deliberately NOT advertised here. Every internal route is called
-  // process-to-process, never from a browser, so a preflight never needs it — and listing
-  // it would invite a client to try. `internalAuth.ts`'s own header note says the same.
-  'access-control-allow-headers': 'content-type',
-};
+import { readJson, readRaw, send } from './http';
+import { readPaddleConfig } from './paddle/config';
+import { handlePaddleWebhook, PADDLE_WEBHOOK_PATH } from './paddle/webhook';
 
 /**
  * What billsvc calls the process on the other end of an internal call, for audit lines.
@@ -203,6 +199,10 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
   // ONE adapter set over one environment, so the verifier and the reconciliation lister cannot
   // disagree about which platforms are configured or share a dev order book with nobody.
   const adapters = createBillingAdapters(env);
+  // Paddle's secret and price table, read by the SAME function the lister reads through.
+  // A refused `BB_PADDLE_PRICE_IDS` entry is an error at boot, not at the first purchase.
+  const paddle = readPaddleConfig(env);
+  for (const problem of paddle.priceErrors) console.error(`[blightbloom] billsvc: ${problem}`);
   const billing =
     opts.billing ??
     new BillingService({
@@ -216,6 +216,7 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
       nowMs: now,
       newOrderId: opts.newOrderId,
       devStubOn: devStubEnabled(env),
+      paddlePrices: paddle.prices,
     });
   const pump = new DeliveryPump({
     matchsvcUrl: controlPlaneUrl(),
@@ -292,6 +293,19 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
         .getOrder(decodeURIComponent(orderLookup[1]!))
         .then((order) => (order ? send(res, 200, { order }) : send(res, 404, { error: 'not found' })))
         .catch((e: unknown) => send(res, 500, { error: (e as Error).message }));
+    }
+
+    // Paddle BEFORE the generic webhook, and on the RAW reader: its signature is over the
+    // exact bytes, so this path must never go through `readJson` (design/19 §9, item 2).
+    if (req.method === 'POST' && url.pathname === PADDLE_WEBHOOK_PATH) {
+      return readRaw(req, res, async (raw) => {
+        const reply = await handlePaddleWebhook(
+          { db, billing, config: paddle, now, schedule: () => pump.schedule() },
+          req.headers,
+          raw,
+        );
+        send(res, reply.status, reply.body);
+      });
     }
 
     const webhook = url.pathname.match(/^\/webhook\/([^/]+)$/);
@@ -407,78 +421,4 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
   });
 
   return { server, billing, db, pump, listOrders: adapters.listOrders, devOrderBook: adapters.devOrderBook };
-}
-
-function send(res: ServerResponse, status: number, body: unknown): void {
-  const json = status === 204 ? '' : JSON.stringify(body);
-  res.writeHead(status, { ...CORS, 'content-type': 'application/json' });
-  res.end(json);
-}
-
-/**
- * Read a JSON request body (bounded), then invoke `done`. Malformed/oversized → `{}`.
- * Same shape as `matchsvc.ts`'s, with a larger cap: an Apple receipt is a base64 blob of
- * several kilobytes, so matchsvc's 4 KB find-request ceiling would silently truncate a
- * real webhook body into a parse failure.
- *
- * `done` may be async, and `res` is taken so that a handler which REJECTS still produces a
- * response. Every route body became a promise in the MongoDB port, and a lost one is the one
- * failure mode that is not a wrong answer but NO answer — the platform's request then hangs
- * until its own timeout, which tells it nothing. A 500 tells it to retry.
- */
-function readJson(
-  req: IncomingMessage,
-  res: ServerResponse,
-  done: (body: unknown, raw: string) => void | Promise<void>,
-): void {
-  const invoke = (body: unknown, raw: string): void => {
-    try {
-      const maybe = done(body, raw);
-      if (maybe) void maybe.catch((e: unknown) => send(res, 500, { error: (e as Error).message, code: 'internal' }));
-    } catch (e) {
-      send(res, 500, { error: (e as Error).message, code: 'internal' });
-    }
-  };
-  const chunks: Buffer[] = [];
-  let size = 0;
-  let overflow = false;
-  req.on('data', (c: Buffer) => {
-    size += c.length;
-    if (size > 256 * 1024) {
-      overflow = true;
-      return;
-    }
-    chunks.push(c);
-  });
-  req.on('end', () => {
-    // `raw` is a SECOND argument rather than something the caller re-derives, and it is why
-    // this helper changed shape at all (ROADMAP 8.5): the webhook event log stores the bytes
-    // as they arrived, and a payload that did not parse is exactly the one whose bytes are
-    // worth the most. Re-serialising the parsed body would lose the unparsable case entirely
-    // and silently reorder every other one.
-    if (overflow) {
-      // The body is DISCARDED past the cap, so there is no verbatim payload to store. Say so,
-      // rather than storing a truncated prefix that would later read like the whole thing.
-      return invoke({}, `<oversized body discarded: >${size} bytes>`);
-    }
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let parsed: unknown = {};
-    try {
-      parsed = chunks.length ? JSON.parse(raw) : {};
-    } catch {
-      parsed = {};
-    }
-    invoke(parsed, raw);
-  });
-  // UNOBSERVABLE, AND KEPT ANYWAY — recorded here so the next reader does not have to
-  // re-derive it. A 2026-09-04 mutation battery deleted this line and all 221 tests stayed
-  // green. That is not a test gap: probed directly on node v26, an aborted request emits
-  // 'aborted' and 'error' on `req` and never emits 'end', but with NO 'error' listener node
-  // routes it internally — no uncaughtException, process unharmed. So there is no behaviour
-  // for a test to pin, and `done({})` here only ever writes to a socket that is already
-  // gone. It stays for two reasons: it is the same idiom `matchsvc.ts`'s `readJson` uses, and
-  // node's "unhandled 'error' throws" rule is a runtime detail this file should not depend
-  // on. `billsvc.http.test.ts`'s mid-upload-disconnect case covers the OUTCOME that matters
-  // either way (the process keeps serving and books nothing); it does not cover this line.
-  req.on('error', () => invoke({}, ''));
 }
