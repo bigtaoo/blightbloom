@@ -2660,3 +2660,20 @@ v77 (2026-09-26, ROADMAP step 4 — the PvP balance pass). Three rule changes, a
 
 Any arena replay diverges (a downed seat's hp, a parried shot's damage, the juggernaut's seat).
 Golden fixture regenerated.
+
+v78 (2026-09-26 — the PRNG mixes its seed and its output). `Prng` (`math/prng.ts`) keeps its
+full-period LCG state but now hashes the seed on construction and every output before it is
+reduced, both with MurmurHash3's 32-bit finalizer (`mix32`). The bare LCG had two measured
+defects:
+- `nextInt(max)` reduced the raw state mod `max`, and an LCG's low k bits cycle with period
+  2^k: `nextInt(2)` strictly alternated 0101…, `nextInt(4)` cycled with period 4. Every coin
+  flip in the engine (spread-shot side, flee direction, …) read the same pattern.
+- Nearby seeds gave correlated first draws. Seeds i and i+1 produced first `nextInt(1000)`
+  values whose difference was the same residue 19993 times in 20000, so over seeds 1..6000 a
+  1% roll that is an early draw hit a third of its rate (the boss character drop read 0.35%).
+  GameState derives each stream as `seed ^ constant`, which did not break this.
+- Together they starved `shuffle`: within ONE stream, however long, Fisher-Yates reached 3 of
+  the 6 orders of three items, 12 of 24 for four and 15 of 120 for five. Every engine shuffle
+  (room generation among them) drew from that fraction.
+
+Every seeded run diverges from its first draw. Golden fixture regenerated.
