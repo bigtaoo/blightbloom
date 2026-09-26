@@ -143,3 +143,109 @@ describe('checkInvariants', () => {
     expect(v).toEqual(['b (coopParty) ended expired']);
   });
 });
+
+describe('the driver can see a failure', () => {
+  // Every run against the real matchsvc above ends all-matched, so on its own it cannot say
+  // whether the driver would ever report anything else. These drive it against a scripted
+  // `fetch` and a fake clock: each way a seat can be stranded must come back as that status,
+  // never as a hang and never as `matched`.
+  type Reply = { status?: number; body?: unknown; raw?: string } | Error;
+
+  function scripted(route: (method: string, path: string) => Reply) {
+    let now = 0;
+    const calls: string[] = [];
+    const fakeFetch = (async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      const path = new URL(url).pathname;
+      calls.push(`${method} ${path}`);
+      const r = route(method, path);
+      if (r instanceof Error) throw r;
+      return new Response(r.raw ?? JSON.stringify(r.body ?? {}), { status: r.status ?? 200 });
+    }) as unknown as typeof fetch;
+    return {
+      calls,
+      opts: {
+        baseUrl: 'http://load.test/',
+        fetch: fakeFetch,
+        sleep: async (ms: number) => { now += ms; },
+        now: () => now,
+        pollMs: 100,
+        timeoutMs: 1_000,
+        staggerMs: 0,
+      },
+    };
+  }
+  const solo = { coop: 1, pvp: 0, coopParties: 0, squads: 0 };
+  const queued = { status: 200, body: { queueId: 'q1', status: 'queued' } };
+
+  it('a queue that never answers ends `timeout` at the deadline instead of polling forever', async () => {
+    const s = scripted((m) => (m === 'POST' ? queued : { body: { status: 'queued' } }));
+    const report = await runMatchLoad({ ...s.opts, plan: solo });
+    expect(report.byStatus).toEqual({ matched: 0, expired: 0, timeout: 1, refused: 0, error: 0 });
+    expect(report.seats[0]!.waitedMs).toBe(1_000);
+    expect(s.calls.filter((c) => c.startsWith('GET'))).toHaveLength(10); // one poll per 100 ms
+    expect(report.violations).toEqual(['c1@10.0.0.1 (coop) ended timeout']);
+    expect(report.waitMs).toEqual({ p50: 0, p95: 0, max: 0 }); // nothing matched to measure
+    expect(report.rooms).toBe(0);
+  });
+
+  it('a queue entry the server expired ends `expired`', async () => {
+    const s = scripted((m) => (m === 'POST' ? queued : { body: { status: 'expired' } }));
+    const report = await runMatchLoad({ ...s.opts, plan: solo });
+    expect(report.seats[0]).toMatchObject({ status: 'expired', waitedMs: 100 });
+  });
+
+  it('polls the queueId it was given, URL-encoded', async () => {
+    const s = scripted((m) =>
+      m === 'POST' ? { body: { queueId: 'a/b' } } : { body: { status: 'matched', match: { roomId: 'r', owner: 0, teamId: 0, playerCount: 2 } } },
+    );
+    const report = await runMatchLoad({ ...s.opts, plan: solo });
+    expect(s.calls).toEqual(['POST /find', 'GET /find/a%2Fb']);
+    expect(report.seats[0]).toMatchObject({ status: 'matched', roomId: 'r', waitedMs: 100 });
+  });
+
+  it('a 5xx is an `error` with its status, and only a 429 counts as `refused`', async () => {
+    const e500 = await runMatchLoad({ ...scripted(() => ({ status: 500, body: { error: 'boom' } })).opts, plan: solo });
+    expect(e500.seats[0]).toMatchObject({ status: 'error', httpStatus: 500 });
+    const e429 = await runMatchLoad({ ...scripted(() => ({ status: 429 })).opts, plan: solo });
+    expect(e429.seats[0]).toMatchObject({ status: 'refused', httpStatus: 429 });
+  });
+
+  it('a non-JSON answer and a dropped connection are errors, not crashes', async () => {
+    const html = await runMatchLoad({ ...scripted(() => ({ status: 502, raw: '<html>bad gateway</html>' })).opts, plan: solo });
+    expect(html.seats[0]).toMatchObject({ status: 'error', httpStatus: 502 });
+    const dropped = await runMatchLoad({ ...scripted(() => new TypeError('fetch failed')).opts, plan: solo });
+    expect(dropped.seats[0]!.status).toBe('error');
+    expect(dropped.seats[0]!.httpStatus).toBeUndefined();
+  });
+
+  it('a party the lobby refuses fails every member, without queueing any of them', async () => {
+    const s = scripted((_m, path) => (path === '/party/join' ? { status: 500, body: { error: 'x' } } : { body: { partyId: 'p', code: '123456' } }));
+    const report = await runMatchLoad({ ...s.opts, plan: { coop: 0, pvp: 0, coopParties: 0, squads: 1 } });
+    expect(report.seats.map((x) => x.status)).toEqual(['error', 'error', 'error', 'error']);
+    expect(report.seats.every((x) => x.httpStatus === 500 && x.unit === 'squad-0')).toBe(true);
+    expect(s.calls).toEqual(['POST /party/create', 'POST /party/join']);
+    const dropped = await runMatchLoad({ ...scripted(() => new TypeError('fetch failed')).opts, plan: { coop: 0, pvp: 0, coopParties: 1, squads: 0 } });
+    expect(dropped.seats.map((x) => [x.status, x.httpStatus])).toEqual([['error', undefined], ['error', undefined]]);
+  });
+
+  it('sends each unit the body the real client sends', async () => {
+    const bodies: unknown[] = [];
+    const base = scripted(() => ({}));
+    const fakeFetch = (async (url: string, init?: RequestInit) => {
+      if (init?.body) bodies.push({ path: new URL(url).pathname, ip: (init.headers as Record<string, string>)['x-forwarded-for'], ...JSON.parse(init.body as string) });
+      const path = new URL(url).pathname;
+      const body = path === '/find'
+        ? { match: { roomId: 'r', owner: bodies.length, teamId: 0, playerCount: 8 } }
+        : { partyId: 'p1', code: '123456' };
+      return new Response(JSON.stringify(body));
+    }) as unknown as typeof fetch;
+    await runMatchLoad({ ...base.opts, fetch: fakeFetch, pvpSeats: 6, plan: { coop: 0, pvp: 1, coopParties: 1, squads: 0 } });
+    expect(bodies).toEqual(expect.arrayContaining([
+      { path: '/find', ip: '10.0.0.1', playerCount: 6, mode: 'pvp' },
+      { path: '/party/create', ip: '10.0.0.2', playerId: 'c2@10.0.0.2', mode: 'coop' },
+      { path: '/party/join', ip: '10.0.0.3', playerId: 'c3@10.0.0.3', code: '123456' },
+      { path: '/find', ip: '10.0.0.3', playerCount: 2, mode: 'coop', partyId: 'p1' },
+    ]));
+  });
+});
