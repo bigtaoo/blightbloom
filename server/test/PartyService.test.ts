@@ -106,6 +106,32 @@ describe('PartyService — create/join/leave', () => {
   });
 });
 
+describe('PartyService — mode (2026-09-26, co-op room codes)', () => {
+  it('defaults to a PvP squad, the only party that existed before the field', () => {
+    const { svc } = make();
+    expect(svc.create('alice')).toMatchObject({ mode: 'pvp', capacity: MAX_PARTY_SIZE });
+  });
+
+  it('caps a co-op party at the two seats of a co-op room', () => {
+    const { svc } = make();
+    const p = svc.create('alice', 'coop');
+    expect(p).toMatchObject({ mode: 'coop', capacity: 2 });
+    expect(svc.join(p.code, 'bob')).toMatchObject({ members: ['alice', 'bob'], mode: 'coop' });
+    expect(svc.join(p.code, 'carol')).toBeNull();
+    // Control for the cap: the same third join succeeds on a squad.
+    const squad = svc.create('dave');
+    svc.join(squad.code, 'erin');
+    expect(svc.join(squad.code, 'frank')).not.toBeNull();
+  });
+
+  it('a rejoin by an existing member of a full co-op party is still idempotent', () => {
+    const { svc } = make();
+    const p = svc.create('alice', 'coop');
+    svc.join(p.code, 'bob');
+    expect(svc.join(p.code, 'bob')!.members).toEqual(['alice', 'bob']);
+  });
+});
+
 describe('PartyService — code uniqueness', () => {
   it('redraws a code already in use instead of handing out a duplicate', () => {
     // The whole point of server-side dedup, and the reason `newCode` is injected. The

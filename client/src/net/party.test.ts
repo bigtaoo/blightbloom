@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createParty, joinParty, leaveParty, startPartyMatching, getParty, PartyRequestError } from './party';
 
-const PARTY = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice'], matching: false };
+const PARTY = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice'], mode: 'pvp', capacity: 4, matching: false };
 
 function fakeFetch(status: number, body: unknown) {
   return vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({ ok: status < 400, status, json: async () => body }) as Response);
@@ -15,11 +15,20 @@ function fakeFetch(status: number, body: unknown) {
 describe('party client calls', () => {
   it('createParty posts playerId and returns the PartyInfo', async () => {
     const fetch = fakeFetch(200, PARTY);
-    const info = await createParty('http://mm', 'alice', { fetch });
+    const info = await createParty('http://mm', 'alice', 'pvp', { fetch });
     expect(info).toEqual(PARTY);
     const [url, init] = fetch.mock.calls[0]!;
     expect(url).toBe('http://mm/party/create');
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ playerId: 'alice' });
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ playerId: 'alice', mode: 'pvp' });
+  });
+
+  it('createParty sends the mode it is given, and defaults to a squad', async () => {
+    const fetch = fakeFetch(200, { ...PARTY, mode: 'coop', capacity: 2 });
+    await createParty('http://mm', 'alice', 'coop', { fetch });
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toEqual({ playerId: 'alice', mode: 'coop' });
+    const fetch2 = fakeFetch(200, PARTY);
+    await createParty('http://mm', 'alice', undefined, { fetch: fetch2 });
+    expect(JSON.parse((fetch2.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({ mode: 'pvp' });
   });
 
   it('joinParty posts playerId+code', async () => {
@@ -53,14 +62,14 @@ describe('party client calls', () => {
     // the screen would take `undefined` as its `PartyInfo` and crash in `refresh()` reading
     // `.code` off it. A rejection is what makes that `!` honest, and nothing else says so.
     const fetch = fakeFetch(503, { error: 'no room code available' });
-    await expect(createParty('http://mm', 'alice', { fetch })).rejects.toThrow(/no room code available/);
+    await expect(createParty('http://mm', 'alice', 'pvp', { fetch })).rejects.toThrow(/no room code available/);
   });
 
   it('rejects a non-ok response that carries no error field at all', async () => {
     // A proxy or a load balancer answering for the service sends an HTML/empty body, not the
     // route's JSON shape. The status alone has to be enough, or `!res.ok` is decorative.
     const fetch = fakeFetch(502, {});
-    await expect(createParty('http://mm', 'alice', { fetch })).rejects.toThrow(/502/);
+    await expect(createParty('http://mm', 'alice', 'pvp', { fetch })).rejects.toThrow(/502/);
   });
 
   it('carries the status, so the screen can tell a THROTTLED join from a wrong code', async () => {

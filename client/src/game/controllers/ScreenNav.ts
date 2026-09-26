@@ -29,12 +29,11 @@ import type { Loadout } from '../screens/Loadout';
 import type { StoreScreen } from '../screens/StoreScreen';
 import type { MainMenu } from '../screens/MainMenu';
 import type { PvpPreview } from '../screens/PvpPreview';
-import type { Matchmaking, MatchmakingSignal } from '../screens/Matchmaking';
+import type { Matchmaking, MatchmakingConnect } from '../screens/Matchmaking';
 import type { PartyScreen } from '../screens/PartyScreen';
 import type { LoginScreen } from '../screens/LoginScreen';
 import type { Settings } from '../screens/Settings';
 import type { PauseMenu } from '../screens/PauseMenu';
-import type { CoopSession } from '../../net/CoopSession';
 import type { TransitionGate } from './TransitionGate';
 import type { ScreenFlow } from './ScreenFlow';
 import type { ForgeReturnPhase, RunState } from '../runState';
@@ -69,7 +68,7 @@ export interface ScreenNavDeps {
   /** The live settings, for the screens that render them. */
   settings: () => SettingsState;
   /** The Matchmaking screen's injected connect function — supplied by `OnlineMatch`. */
-  connect: (signal: MatchmakingSignal) => Promise<CoopSession>;
+  connect: MatchmakingConnect;
   /**
    * Run anything the meta layer deferred until the player was between runs — supplied by
    * `OnlineMatch.flushPendingMetaSync`, and injected for exactly the reason `connect` above
@@ -228,7 +227,7 @@ export class ScreenNav {
     if (this.deps.transitions.defer(() => this.showMatchmaking())) return; // the run on the far side
     this.deps.run.phase = 'matchmaking';
     const { w, h } = this.fit();
-    this.deps.screenFlow.showMatchmaking(w, h, (signal) => this.deps.connect(signal));
+    this.deps.screenFlow.showMatchmaking(w, h, (signal, onQueued) => this.deps.connect(signal, onQueued));
   }
 
   /**

@@ -3,12 +3,18 @@ import { Panel, Button } from '../ui/widgets';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import type { CoopSession } from '../../net/CoopSession';
-import { MatchRequestError } from '../../net/matchmaking';
+import { MatchRequestError, type QueueProgress } from '../../net/matchmaking';
 
 /** Cooperative cancel token — the same shape `findMatch`'s `signal` option already
  * accepts (`net/matchmaking.ts`), just owned by this screen instead of a caller. */
 export type MatchmakingSignal = { cancelled: boolean };
-export type MatchmakingConnect = (signal: MatchmakingSignal) => Promise<CoopSession>;
+/** `onQueued` (2026-09-26) is how the queue's backfill countdown reaches this screen — the
+ *  connect closure forwards it to `findMatch`. Optional so a connect that cannot report one
+ *  (a test double, an older path) still works; the screen then shows no countdown. */
+export type MatchmakingConnect = (
+  signal: MatchmakingSignal,
+  onQueued?: (progress: QueueProgress) => void,
+) => Promise<CoopSession>;
 
 /**
  * Which of the four messages this screen shows.
@@ -41,6 +47,13 @@ function classifyError(e: unknown): string {
  * so this screen stays mode-agnostic) and a cooperative cancel signal already supported
  * by `findMatch`/`connectOnlineSession`, just not wired to any UI before now.
  *
+ * While connecting, a second line counts down to the queue's BACKFILL point (2026-09-26):
+ * "AI players fill empty seats in 4s", then "Filling empty seats with AI players…". The
+ * number is the control plane's own (`botFillInMs` on every queued answer), re-synced on
+ * each poll and ticked down locally between them, so an operator who changes the backfill
+ * flag moves the countdown too. Nobody queueing for a co-op room waits long in silence —
+ * the line says what is about to happen rather than leaving an empty queue to look stuck.
+ *
  * Two internal states (same "internal state, not a separate phase" convention
  * LoginScreen uses for logged-in/out): 'connecting' (elapsed-time text + Cancel) and
  * 'error' (message + Retry + Back). No network call is made directly here — `connect`
@@ -51,6 +64,7 @@ export class Matchmaking {
   private panel = new Panel({ alpha: 0.85, background: 'hub' });
   private title: Text;
   private statusText: Text;
+  private hintText: Text;
   private cancelBtn: Button;
   private retryBtn: Button;
   private backBtn: Button;
@@ -60,6 +74,8 @@ export class Matchmaking {
   private state: 'connecting' | 'error' = 'connecting';
   private errorText = '';
   private elapsedMs = 0;
+  /** Time left to the backfill point, or `null` before the queue has said (or never will). */
+  private botFillLeftMs: number | null = null;
   // Guards a stale attempt's resolve/reject from landing after cancel/retry/hide —
   // incremented on every state-ending action, checked when the promise settles.
   private attemptToken = 0;
@@ -74,6 +90,8 @@ export class Matchmaking {
     this.title.anchor.set(0.5, 0);
     this.statusText = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 16, fontFamily: 'monospace', padding: 16 } });
     this.statusText.anchor.set(0.5, 0);
+    this.hintText = new Text({ text: '', style: { fill: 0xa0aec0, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
+    this.hintText.anchor.set(0.5, 0);
 
     this.cancelBtn = new Button(t('matchmaking.cancel'), { w: 160, h: 40, fontSize: 14, color: 0x742a2a, sound: 'ui.back' });
     this.cancelBtn.onTap = () => this.cancel();
@@ -83,7 +101,7 @@ export class Matchmaking {
     this.backBtn.onTap = () => this.cancel();
     this.backBtn.setIcon(getUiTexture('icon_back'));
 
-    this.view.addChild(this.panel.view, this.title, this.statusText, this.cancelBtn.view, this.retryBtn.view, this.backBtn.view);
+    this.view.addChild(this.panel.view, this.title, this.statusText, this.hintText, this.cancelBtn.view, this.retryBtn.view, this.backBtn.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -94,9 +112,10 @@ export class Matchmaking {
     const cy = h / 2;
     this.title.position.set(cx, cy - 80);
     this.statusText.position.set(cx, cy - 10);
-    this.cancelBtn.view.position.set(cx - 80, cy + 40);
-    this.retryBtn.view.position.set(cx - 170, cy + 40);
-    this.backBtn.view.position.set(cx + 10, cy + 40);
+    this.hintText.position.set(cx, cy + 16);
+    this.cancelBtn.view.position.set(cx - 80, cy + 48);
+    this.retryBtn.view.position.set(cx - 170, cy + 48);
+    this.backBtn.view.position.set(cx + 10, cy + 48);
   }
 
   /** Begin (or resume showing) a matchmaking attempt. `connect` is called immediately —
@@ -125,16 +144,23 @@ export class Matchmaking {
   update(dt: number): void {
     if (!this.view.visible || this.state !== 'connecting') return;
     this.elapsedMs += dt;
+    if (this.botFillLeftMs !== null) this.botFillLeftMs = Math.max(0, this.botFillLeftMs - dt);
     this.refreshStatusText();
   }
 
   private beginAttempt(): void {
     this.state = 'connecting';
     this.elapsedMs = 0;
+    this.botFillLeftMs = null;
     this.signal = { cancelled: false };
     const token = ++this.attemptToken;
     this.refresh();
-    this.connectFn!(this.signal)
+    const onQueued = (progress: QueueProgress): void => {
+      if (token !== this.attemptToken || this.state !== 'connecting') return; // a stale attempt's poll
+      this.botFillLeftMs = progress.botFillInMs ?? null;
+      this.refreshStatusText();
+    };
+    this.connectFn!(this.signal, onQueued)
       .then((session) => {
         if (token !== this.attemptToken) return; // cancelled/retried/hidden since
         this.onConnected?.(session);
@@ -166,13 +192,24 @@ export class Matchmaking {
   private refreshStatusText(): void {
     if (this.state === 'connecting') {
       this.statusText.text = t('matchmaking.elapsed', { seconds: Math.floor(this.elapsedMs / 1000) });
+      this.hintText.text = this.hintLine();
     }
+  }
+
+  /** The backfill line: a countdown in whole seconds (rounded UP, so it never reads 0 while
+   *  a second is still left), then "filling now" once it has run out, and nothing at all
+   *  until the queue has reported. */
+  private hintLine(): string {
+    if (this.botFillLeftMs === null) return '';
+    if (this.botFillLeftMs <= 0) return t('matchmaking.botNow');
+    return t('matchmaking.botSoon', { seconds: Math.ceil(this.botFillLeftMs / 1000) });
   }
 
   private refresh(): void {
     const connecting = this.state === 'connecting';
     this.title.text = connecting ? t('matchmaking.searching') : t('matchmaking.errorTitle');
     this.statusText.text = connecting ? t('matchmaking.elapsed', { seconds: 0 }) : this.errorText;
+    this.hintText.text = connecting ? this.hintLine() : '';
     this.cancelBtn.view.visible = connecting;
     this.retryBtn.view.visible = !connecting;
     this.backBtn.view.visible = !connecting;

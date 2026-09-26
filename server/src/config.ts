@@ -28,6 +28,10 @@ export { SQUAD_SIZE, squadSizeForPlayerCount, teamIdForOwner } from '@dd/game/ma
 // into a field five wide with both suites green. See `@dd/game/match/roomCode`'s header.
 export { ROOM_CODE_LENGTH, ROOM_CODE_DIGITS, ROOM_CODE_PATTERN, isRoomCode, normalizeRoomCode } from '@dd/game/match/roomCode';
 
+// A party's size cap per mode (2026-09-26, co-op room codes), through the same seam: the cap
+// `PartyService` refuses a join by and the `1/2` the client draws must be one number.
+export { COOP_SEATS, partyCapacity, parsePartyMode, type PartyMode } from '@dd/game/match/partyShape';
+
 import type { InternalCaller } from './internalAuth';
 
 let warned = false;

@@ -1569,9 +1569,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change) — step 3 of the plan: *“generate the digit atlas in code”*. A Pillow script renders Rubik Bold (OFL) into a 15 kB white-fill, dark-outline sheet plus its glyph table, both committed; every `hit` prints over the target as pooled `Sprite`s tinted by what took it (shield cyan, self red, environment slate, else the element), merged per target and colour within 150 ms, sized in screen px, capped by a new quality knob (40/28/16) that reuses the oldest. The zone is covered through its own `hit`, which also showed a comment claiming zone ticks never reached `case 'hit'` was wrong. +55 client tests, the three new modules at 100%/100%. `ui` `render` `art` `tools` `test` `docs`
 
+**[2026-09-26 — co-op room codes and whole-party matching](roadmap/96-2026-09-26-coop-party-matchmaking.md)**
+
+- **09-26** [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change) — step 2 of the plan, the owner's *“automatic matchmaking is required at launch”*, read as both: the public queue as it was, plus friends by room code. A party now has a mode (`partyShape.ts`, shared with the server): CREATE CO-OP PARTY makes a two-member party, the lobby title reads `CO-OP · 1/2`, and START queues a co-op room with the `partyId`. Building it exposed a split: members `POST /find` a poll apart, and a co-op room's squad size of 1 paired the first with any waiting stranger (PvP squads had the smaller version). `Matchmaker` now seats a party only once every member is live, unless a member's own wait passes the backfill delay. The queue screen counts down to the AI fill from a new `botFillInMs`, and its elapsed time finally runs — nothing had ever called `Matchmaking.update`. A load driver (`scripts/matchLoad.ts`, CLI `loadtest:match`) plays dozens of clients under the production per-IP limiters in CI: 49 mixed clients all matched with nothing refused; one shared address is refused only past 120 queue entries or 60 parties per ten minutes. `net` `ui` `i18n` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 192 entries, grouped. An entry with more than one tag appears more than once.
+The same 193 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1746,7 +1750,7 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(106)*
+**`test`** — coverage sweeps, gates, mutation batteries *(107)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1854,6 +1858,7 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1902,7 +1907,7 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(40)*
+**`ui`** — HUD, screens, widgets *(41)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1944,8 +1949,9 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(21)*
+**`tools`** — sims, profilers, editors, build scripts *(22)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -1968,8 +1974,9 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`docs`** — design docs and this log itself *(111)*
+**`docs`** — design docs and this log itself *(112)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2082,8 +2089,9 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`net`** — matchmaking, sockets, reconnect *(32)*
+**`net`** — matchmaking, sockets, reconnect *(33)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2117,8 +2125,9 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`i18n`** — locales and text layout *(17)*
+**`i18n`** — locales and text layout *(18)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2137,3 +2146,4 @@ The same 192 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)

@@ -33,7 +33,8 @@ function fakeApi(overrides: Partial<PartyApi> = {}): PartyApi {
   };
 }
 
-const PARTY: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'me', members: ['me'], matching: false };
+const PARTY: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'me', members: ['me'], mode: 'pvp', capacity: 4, matching: false };
+const COOP_PARTY: PartyInfo = { ...PARTY, mode: 'coop', capacity: 2 };
 
 function makeScreen(api: PartyApi, playerId = 'me') {
   const screen = new PartyScreen({ matchBaseUrl: 'http://mm', playerId, api });
@@ -47,7 +48,8 @@ function makeScreen(api: PartyApi, playerId = 'me') {
 function privateOf(s: PartyScreen) {
   return s as unknown as {
     title: { text: string };
-    createBtn: { view: { visible: boolean }; label: { text: string } };
+    createBtn: { view: { visible: boolean }; label: { text: string }; onTap: () => void };
+    createCoopBtn: { view: { visible: boolean }; label: { text: string }; onTap: () => void };
     joinBtn: { view: { visible: boolean }; label: { text: string } };
     startBtn: { view: { visible: boolean }; label: { text: string } };
     leaveBtn: { view: { visible: boolean }; label: { text: string } };
@@ -56,7 +58,7 @@ function privateOf(s: PartyScreen) {
     openJoinInput(): void;
     membersText: { text: string };
     statusText: { text: string };
-    doCreate(): Promise<void>;
+    doCreate(mode?: 'coop' | 'pvp'): Promise<void>;
     doJoin(code: string): Promise<void>;
     doStart(): Promise<void>;
     doLeave(): Promise<void>;
@@ -115,8 +117,9 @@ describe('PartyScreen — create', () => {
     const api = fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) });
     const s = makeScreen(api);
     const p = privateOf(s);
-    await p.doCreate();
-    expect(api.createParty).toHaveBeenCalledWith('http://mm', 'me');
+    p.createBtn.onTap();
+    await vi.waitFor(() => expect(api.createParty).toHaveBeenCalledWith('http://mm', 'me', 'pvp'));
+    await vi.waitFor(() => expect(p.codeText.text).toContain('482913'));
     expect(p.codeText.text).toContain('482913');
     expect(p.startBtn.view.visible).toBe(true); // leader
     expect(p.leaveBtn.view.visible).toBe(true);
@@ -164,7 +167,7 @@ describe('PartyScreen — create', () => {
 
 describe('PartyScreen — join', () => {
   it('joining shows the roster and hides start (not leader)', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'] , matching: false };
+    const joined: PartyInfo = { ...PARTY, leaderId: 'alice', members: ['alice', 'me'] };
     const api = fakeApi({ joinParty: vi.fn().mockResolvedValue(joined) });
     const s = makeScreen(api, 'me');
     const p = privateOf(s);
@@ -216,6 +219,65 @@ describe('PartyScreen — join', () => {
   });
 });
 
+describe('PartyScreen — co-op parties (2026-09-26)', () => {
+  it('the co-op button creates a CO-OP party, and both create buttons hide once in one', async () => {
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue(COOP_PARTY) });
+    const s = makeScreen(api);
+    const p = privateOf(s);
+    expect(p.createCoopBtn.view.visible).toBe(true);
+    p.createCoopBtn.onTap();
+    await vi.waitFor(() => expect(api.createParty).toHaveBeenCalledWith('http://mm', 'me', 'coop'));
+    await vi.waitFor(() => expect(p.createCoopBtn.view.visible).toBe(false));
+    expect(p.createBtn.view.visible).toBe(false);
+  });
+
+  it('titles the lobby with the mode and head-count, and restores the title once out', async () => {
+    const api = fakeApi({
+      createParty: vi.fn().mockResolvedValue(COOP_PARTY),
+      leaveParty: vi.fn().mockResolvedValue(null),
+    });
+    const s = makeScreen(api);
+    const p = privateOf(s);
+    expect(p.title.text).toBe('SQUAD');
+    await p.doCreate('coop');
+    expect(p.title.text).toBe('CO-OP · 1/2');
+    await p.doLeave();
+    expect(p.title.text).toBe('SQUAD');
+  });
+
+  it('titles a squad as one', async () => {
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue({ ...PARTY, members: ['me', 'b'] }) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate('pvp');
+    expect(privateOf(s).title.text).toBe('PVP SQUAD · 2/4');
+  });
+
+  it('hands the CO-OP mode to onStartMatch, from the leader and from a polling member alike', async () => {
+    const leaderApi = fakeApi({
+      createParty: vi.fn().mockResolvedValue(COOP_PARTY),
+      startPartyMatching: vi.fn().mockResolvedValue({ ...COOP_PARTY, matching: true }),
+    });
+    const leader = makeScreen(leaderApi);
+    const onLeader = vi.fn();
+    leader.onStartMatch = onLeader;
+    await privateOf(leader).doCreate('coop');
+    await privateOf(leader).doStart();
+    expect(onLeader).toHaveBeenCalledWith('p1', 'coop');
+
+    const joined: PartyInfo = { ...COOP_PARTY, leaderId: 'alice', members: ['alice', 'me'] };
+    const memberApi = fakeApi({
+      joinParty: vi.fn().mockResolvedValue(joined),
+      getParty: vi.fn().mockResolvedValue({ ...joined, matching: true }),
+    });
+    const member = makeScreen(memberApi);
+    const onMember = vi.fn();
+    member.onStartMatch = onMember;
+    await privateOf(member).doJoin('482913');
+    await privateOf(member).pollOnce();
+    expect(onMember).toHaveBeenCalledWith('p1', 'coop');
+  });
+});
+
 describe('PartyScreen — start matching', () => {
   it('the leader starting matching fires onStartMatch with the partyId', async () => {
     const api = fakeApi({
@@ -229,11 +291,11 @@ describe('PartyScreen — start matching', () => {
     await p.doCreate();
     await p.doStart();
     expect(api.startPartyMatching).toHaveBeenCalledWith('http://mm', 'p1', 'me');
-    expect(onStart).toHaveBeenCalledWith('p1');
+    expect(onStart).toHaveBeenCalledWith('p1', 'pvp');
   });
 
   it('a non-leader polling and seeing matching flip to true also fires onStartMatch, without tapping anything', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'], matching: false };
+    const joined: PartyInfo = { ...PARTY, leaderId: 'alice', members: ['alice', 'me'] };
     const nowMatching: PartyInfo = { ...joined, matching: true };
     const api = fakeApi({
       joinParty: vi.fn().mockResolvedValue(joined),
@@ -245,7 +307,7 @@ describe('PartyScreen — start matching', () => {
     s.onStartMatch = onStart;
     await p.doJoin('482913');
     await p.pollOnce(); // simulates the periodic poll observing the leader's flip
-    expect(onStart).toHaveBeenCalledWith('p1');
+    expect(onStart).toHaveBeenCalledWith('p1', 'pvp');
   });
 
   it('polling again after already-matching does not re-fire onStartMatch', async () => {
@@ -326,7 +388,7 @@ describe('PartyScreen — staleness guard (backing out mid-request never lands a
   });
 
   it('pollOnce: hiding the screen mid-poll discards the result and never fires onStartMatch', async () => {
-    const joined: PartyInfo = { partyId: 'p1', code: '482913', leaderId: 'alice', members: ['alice', 'me'], matching: false };
+    const joined: PartyInfo = { ...PARTY, leaderId: 'alice', members: ['alice', 'me'] };
     const d = deferred<PartyInfo>();
     const api = fakeApi({
       joinParty: vi.fn().mockResolvedValue(joined),
@@ -388,7 +450,8 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
     s.show(800, 600);
     const p = privateOf(s);
     expect(p.title.text).toBe('组队');
-    expect(p.createBtn.label.text).toBe('创建队伍');
+    expect(p.createBtn.label.text).toBe('创建 PvP 小队');
+    expect(p.createCoopBtn.label.text).toBe('创建合作队伍');
     expect(p.joinBtn.label.text).toBe('输入邀请码加入');
   });
 
@@ -458,6 +521,16 @@ describe('PartyScreen — declaring the squad to the host (design/20)', () => {
     const s = makeScreen(api);
     await privateOf(s).doCreate();
     expect(getPartyPresence()?.joinable).toBe(false);
+  });
+
+  it('declares a CO-OP party closed at two — where a two-member squad is still open', async () => {
+    const coopFull = fakeApi({ createParty: vi.fn().mockResolvedValue({ ...COOP_PARTY, members: ['me', 'b'] }) });
+    await privateOf(makeScreen(coopFull)).doCreate('coop');
+    expect(getPartyPresence()?.joinable).toBe(false);
+    // Control: the same head-count in a squad is joinable, so the answer is the mode's cap.
+    const squad = fakeApi({ createParty: vi.fn().mockResolvedValue({ ...PARTY, members: ['me', 'b'] }) });
+    await privateOf(makeScreen(squad)).doCreate('pvp');
+    expect(getPartyPresence()?.joinable).toBe(true);
   });
 
   it('withdraws the declaration on leave', async () => {

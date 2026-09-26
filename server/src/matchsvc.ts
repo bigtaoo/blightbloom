@@ -165,8 +165,10 @@ export interface MatchsvcServerOptions {
    * backfill is a 30-SECOND wait by default, so `onBotFill` below — the block that mints a
    * ticket per empty seat and is the entire PvP-with-bots path players actually hit — could
    * not be reached by any test at a sane runtime, and was at 0% until 2026-09-03.
+   * `coopBotFillMs` joined it on 2026-09-26 for the load driver's test, which plays dozens of
+   * co-op clients through rounds of backfill and has no reason to wait 5 s per round.
    */
-  matchmaker?: { pvpBotFillMs?: number; queueTtlMs?: number; ticketTtlMs?: number };
+  matchmaker?: { pvpBotFillMs?: number; coopBotFillMs?: number; queueTtlMs?: number; ticketTtlMs?: number };
   /**
    * Topology override (ROADMAP 8.6, design/19 §6). Defaults to a registry holding only
    * the configured static single instance — the one branch that is reachable today,

@@ -240,6 +240,7 @@ export const de: Translations<typeof en> = {
   party: {
     title: 'TRUPP',
     create: 'TRUPP ERSTELLEN',
+    createCoop: 'KOOP-GRUPPE ERSTELLEN',
     join: 'CODE BEITRETEN',
     startMatching: 'SUCHE STARTEN',
     leave: 'TRUPP VERLASSEN',
@@ -253,6 +254,8 @@ export const de: Translations<typeof en> = {
     startFailed: 'Suche konnte nicht gestartet werden — bitte erneut versuchen.',
     codeLine: 'CODE: {code}',
     you: 'du',
+    headerCoop: 'KOOP · {count}/{capacity}',
+    headerSquad: 'PVP-TRUPP · {count}/{capacity}',
   },
   pvpPreview: {
     title: 'PVP-MATCH',
@@ -265,6 +268,8 @@ export const de: Translations<typeof en> = {
     searching: 'Suche nach einem Match…',
     connecting: 'Verbindung wird hergestellt…',
     elapsed: '{seconds}s vergangen',
+    botSoon: 'KI-Spieler füllen freie Plätze in {seconds}s',
+    botNow: 'Freie Plätze werden mit KI-Spielern gefüllt…',
     partyMembers: '{count} im Trupp',
     cancel: 'ABBRECHEN',
     errorTitle: 'MATCH FEHLGESCHLAGEN',

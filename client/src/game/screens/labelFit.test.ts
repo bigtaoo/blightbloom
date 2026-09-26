@@ -292,7 +292,7 @@ describe('the sweep measured what it claims to', () => {
       'MainMenu: 10',
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
-      'PartyScreen: 5',
+      'PartyScreen: 6',
       'PauseMenu: 4',
       'PvpPreview: 2',
       'Screens + ad offer: 3',

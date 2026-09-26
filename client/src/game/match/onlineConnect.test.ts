@@ -103,7 +103,7 @@ describe('connectOnlineSession — success', () => {
 
   it('asks for TWO seats in co-op and `pvpSeats` in pvp — the request, not the ticket', async () => {
     /**
-     * `playerCount: opts.pvp ? opts.pvpSeats : 2` is the only place the co-op match SIZE is
+     * `playerCount: opts.pvp ? opts.pvpSeats : COOP_SEATS` is the only place the co-op match SIZE is
      * decided, and the server's co-op bot backfill rests on it: `Matchmaker.formWithBots`
      * fills every seat the real waiters did not take, so "co-op gets exactly one AI ally"
      * is a fact about this line and nothing else (design/10, 2026-09-17). Dropping the
@@ -139,6 +139,23 @@ describe('connectOnlineSession — success', () => {
     await flush();
     const pvpBody = JSON.parse(pvpFetch.mock.calls[0]![1]!.body as string);
     expect(pvpBody).toMatchObject({ playerCount: 8, mode: 'pvp' });
+  });
+
+  it('hands the queue countdown through to the caller, and a co-op party id with it', async () => {
+    const fetch = fakeFetch([{ queueId: 'q1', botFillInMs: 5_000 }, { status: 'matched', match: MATCH }]);
+    const onQueued = vi.fn();
+    await connectOnlineSession({
+      matchBaseUrl: 'http://mm', pvp: false, pvpSeats: 8, lagMs: 0, partyId: 'party-3',
+      onMatchStart: () => {},
+      onQueued,
+      fetch,
+      sleep: noSleep,
+      createTransport: () => new FakeTransport(),
+      matchStartTimeoutMs: 1,
+    }).catch(() => {});
+    await flush();
+    expect(onQueued).toHaveBeenCalledWith({ botFillInMs: 5_000 });
+    expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject({ playerCount: 2, mode: 'coop', partyId: 'party-3' });
   });
 
   it('joins the room with the seat/seed/playerCount the ticket assigned', async () => {
