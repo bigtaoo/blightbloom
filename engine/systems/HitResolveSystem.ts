@@ -47,7 +47,7 @@ import {
   burnDamageFor,
 } from '../content/damage';
 import { buffedDamage, critDamage, enrageBuffs, rollCrit, sumBuffs, type BuffSums } from '../balance/runbuffs';
-import { takeDamage } from './combat';
+import { restoreHp, takeDamage } from './combat';
 import { circlesOverlap, retainAlive } from './geom';
 
 /** Alive members of `group` other than `exclude`, in original array order — the
@@ -84,7 +84,7 @@ export class HitResolveSystem {
         // of ever reaching the second one 20px away — this guard is why it doesn't).
         if (b.hitIds?.includes(t.id)) continue;
         if (!circlesOverlap(b.gx, b.gy, b.radius, t.gx, t.gy, t.radius)) continue;
-        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille);
+        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille, b.crit === true);
         // Bullet fate after a connecting hit (design/07): ricochet retargets first if
         // it has bounces left (ENGINE_VERSION 28) and another target is in range; else
         // piercing keeps it flying past this body; else it expires — the original,
@@ -148,7 +148,7 @@ export class HitResolveSystem {
         const dy = (t.gy - b.gy) as number;
         const reach = (b.blastRadius + t.radius) as number;
         if (dx * dx + dy * dy > reach * reach) continue;
-        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille);
+        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille, b.crit === true);
       }
       b.alive = false;
     }
@@ -171,7 +171,7 @@ export class HitResolveSystem {
       const range = b.beamRange ?? (0 as Projectile['radius']);
       for (const t of targets) {
         if (!inBeamLine(b.gx, b.gy, dir, range, t.gx, t.gy, t.radius)) continue;
-        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille);
+        this.applyHit(state, t, b.damage, b.damageType, b.faction, targets, b.ownerId, b.lifestealPermille, b.crit === true);
       }
     }
   }
@@ -195,10 +195,11 @@ export class HitResolveSystem {
     group: readonly Actor[],
     sourceOwnerId?: number,
     lifestealPermille?: number,
+    crit = false,
   ): void {
     const dmg = applyResist(rawDamage, type, target.resist);
     // Shield-first absorb + hit event + shield_break (design/07 two-pool takeDamage).
-    takeDamage(state, target, dmg, attacker, type);
+    takeDamage(state, target, dmg, attacker, type, true, crit);
     if (lifestealPermille) this.applyLifesteal(state, sourceOwnerId, dmg, lifestealPermille);
     // Status magnitude keys off the resisted hit, independent of how it split shield/hp.
     this.applyStatus(state, target, dmg, type, group);
@@ -213,8 +214,7 @@ export class HitResolveSystem {
     if (sourceOwnerId === undefined) return;
     const owner = state.players.find((p) => p.id === sourceOwnerId);
     if (!owner || !owner.alive) return;
-    const heal = Math.max(1, Math.trunc((dmg * permille) / 1000));
-    owner.hp = Math.min(owner.maxHp, owner.hp + heal);
+    restoreHp(state, owner, Math.max(1, Math.trunc((dmg * permille) / 1000)));
   }
 
   /** k_ricochet (design/03/09, ENGINE_VERSION 28): redirect `b` toward the nearest
@@ -344,6 +344,7 @@ export class HitResolveSystem {
       // the window existed, on the same tick, so the `combatPrng` cursor is untouched.
       const isCrit = rollCrit(buffs, state.combatPrng);
       w.swingDamage = critDamage(buffedDamage(spec.damage, buffs), isCrit);
+      w.swingCrit = isCrit;
     }
     const damage = w.swingDamage;
     const targets = hostileTargets(state, p);
@@ -361,7 +362,7 @@ export class HitResolveSystem {
       // The damage SOURCE faction is the attacker's own (ENGINE_VERSION 59) — it was
       // hardcoded 'player' while players were the only thing that could swing, which
       // would have coloured a mob's own hit fx as if the player had dealt it.
-      this.applyHit(state, t, damage, spec.damageType, p.faction, targets, p.id, spec.lifestealPermille);
+      this.applyHit(state, t, damage, spec.damageType, p.faction, targets, p.id, spec.lifestealPermille, w.swingCrit === true);
       // Melee knockback (design/07 v25): shove the target outward along the same
       // attacker→target direction already computed for the arc test, into its
       // knockVx/knockVy (MovementSystem integrates + decays it; never vx/vy directly —

@@ -12,7 +12,9 @@ import { Container, Rectangle, Sprite, Texture } from 'pixi.js';
 import { DAMAGE_DIGIT_ATLAS as ATLAS } from '../../render/damageDigitAtlas';
 import { getUiTexture } from '../../render/uiSkins';
 import { activeQuality } from '../../render/quality';
-import { DamageNumberBook, digitOffsets, digitsOf, magnitudeScale, poseAt, NUMBER_PX, type DamageNumber } from './damageNumberModel';
+import {
+  DamageNumberBook, glyphOffsets, glyphsOf, magnitudeScale, poseAt, styleScale, NUMBER_PX, type DamageNumber, type NumberStyle,
+} from './damageNumberModel';
 
 /** The `UI_ASSETS` key the atlas loads under. */
 export const DAMAGE_DIGITS_KEY = 'damage_digits';
@@ -37,12 +39,13 @@ export class DamageNumbers {
   }
 
   /**
-   * Show `value` over `target`, anchored at world px (`x`, `y`). Draws nothing until the atlas
-   * has loaded: like every other piece of UI art, a missing file leaves the game as it was.
+   * Show `value` over `target`, anchored at world px (`x`, `y`), as a plain hit, a crit or a heal.
+   * Draws nothing until the atlas has loaded: like every other piece of UI art, a missing file
+   * leaves the game as it was.
    */
-  spawn(target: number, value: number, tint: number, x: number, y: number): void {
+  spawn(target: number, value: number, tint: number, x: number, y: number, style: NumberStyle = 'hit'): void {
     if (!this.ensureGlyphs()) return;
-    const n = this.book.add(target, tint, value, x, y, activeQuality().damageNumbers, () => this.acquire());
+    const n = this.book.add(target, tint, value, x, y, activeQuality().damageNumbers, () => this.acquire(), style);
     if (n) this.view.addChild(n.view);
   }
 
@@ -64,26 +67,26 @@ export class DamageNumbers {
     const pose = poseAt(n.age, n.popAge);
     const v = n.view;
     v.position.set(n.x + n.drift / zoom, n.y - pose.rise / zoom);
-    v.scale.set((NUMBER_PX / ATLAS.cellH) * magnitudeScale(n.value) * pose.pop / zoom);
+    v.scale.set((NUMBER_PX / ATLAS.cellH) * magnitudeScale(n.value) * styleScale(n.style) * pose.pop / zoom);
     v.alpha = pose.alpha;
   }
 
-  /** Re-cut the digits of a number whose value changed (a new one, or a merge). */
+  /** Re-cut the glyphs of a number whose value changed (a new one, or a merge). */
   private layout(n: DamageNumber<NumberView>): void {
-    const digits = digitsOf(n.value);
-    const offsets = digitOffsets(digits.length);
+    const glyphs = glyphsOf(n.value, n.style);
+    const offsets = glyphOffsets(glyphs, ATLAS.advance, ATLAS.bangAdvance);
     const v = n.view;
-    while (v.children.length < digits.length) {
+    while (v.children.length < glyphs.length) {
       const s = new Sprite(this.glyphs![0]);
       s.anchor.set(0.5);
       v.addChild(s);
     }
     v.children.forEach((s, i) => {
-      s.visible = i < digits.length;
+      s.visible = i < glyphs.length;
       if (!s.visible) return;
-      s.texture = this.glyphs![digits[i]!]!;
+      s.texture = this.glyphs![glyphs[i]!]!;
       s.tint = n.tint;
-      s.x = offsets[i]! * ATLAS.advance;
+      s.x = offsets[i]!;
     });
     n.dirty = false;
   }
@@ -97,7 +100,7 @@ export class DamageNumbers {
     this.pool.push(v);
   }
 
-  /** Cut the ten digit frames out of the sheet, once it exists. */
+  /** Cut the glyph frames (ten digits, "+", "!") out of the sheet, once it exists. */
   private ensureGlyphs(): boolean {
     if (this.glyphs) return true;
     const sheet = this.atlas();

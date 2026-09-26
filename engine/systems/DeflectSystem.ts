@@ -61,6 +61,7 @@ export class DeflectSystem {
         // read BEFORE the faction flip below, which makes every deflected bullet a player's.
         if (b.faction === 'player') b.damage = deflectedPlayerDamage(b.damage);
         b.faction = 'player';
+        delete b.crit; // the deflector rolled nothing; the rebound is not a crit of theirs
         b.teamId = p.teamId; // now hostile to the ORIGINAL owner's team, not the deflector's
         b.lifeTicks = DEFLECT_LIFE_TICKS;
         state.events.push({ type: 'deflect', gx: b.gx, gy: b.gy });

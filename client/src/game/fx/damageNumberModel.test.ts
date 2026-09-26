@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DamageNumberBook, digitsOf, digitOffsets, magnitudeScale, poseAt,
-  MERGE_MS, LIFE_MS, FADE_MS, POP_MS, POP_SCALE, RISE_PX, DRIFT_PX,
+  DamageNumberBook, digitsOf, glyphOffsets, glyphsOf, magnitudeScale, poseAt, styleScale,
+  BANG_GLYPH, CRIT_SCALE, PLUS_GLYPH, MERGE_MS, LIFE_MS, FADE_MS, POP_MS, POP_SCALE, RISE_PX, DRIFT_PX,
 } from './damageNumberModel';
 
 /** A view stub that records which spawn built it, so reuse is observable. */
@@ -25,11 +25,41 @@ describe('digitsOf', () => {
   });
 });
 
-describe('digitOffsets', () => {
-  it('centres a number on its anchor whatever its length', () => {
-    expect(digitOffsets(1)).toEqual([0]);
-    expect(digitOffsets(2)).toEqual([-0.5, 0.5]);
-    expect(digitOffsets(3)).toEqual([-1, 0, 1]);
+describe('glyphsOf', () => {
+  it('is the bare digits for a plain hit', () => {
+    expect(glyphsOf(305, 'hit')).toEqual([3, 0, 5]);
+  });
+
+  it('leads a heal with "+" and closes a crit with "!"', () => {
+    expect(glyphsOf(12, 'heal')).toEqual([PLUS_GLYPH, 1, 2]);
+    expect(glyphsOf(48, 'crit')).toEqual([4, 8, BANG_GLYPH]);
+  });
+
+  it('draws no bare mark for a value with no digits', () => {
+    for (const style of ['hit', 'crit', 'heal'] as const) expect(glyphsOf(0, style)).toEqual([]);
+  });
+});
+
+describe('glyphOffsets', () => {
+  it('spaces digits one advance apart, centred on the anchor, whatever the length', () => {
+    expect(glyphOffsets([7], 10, 4)).toEqual([0]);
+    expect(glyphOffsets([1, 2], 10, 4)).toEqual([-5, 5]);
+    expect(glyphOffsets([1, 2, 3], 10, 4)).toEqual([-10, 0, 10]);
+    expect(glyphOffsets([PLUS_GLYPH, 1, 2], 10, 4)).toEqual([-10, 0, 10]); // "+" is digit-wide
+  });
+
+  it('packs the narrow "!" against the number instead of giving it a whole digit slot', () => {
+    // "48!": widths 10, 10, 4 → total 24, left edge -12.
+    expect(glyphOffsets([4, 8, BANG_GLYPH], 10, 4)).toEqual([-7, 3, 10]);
+  });
+});
+
+describe('styleScale', () => {
+  it('prints only a crit bigger', () => {
+    expect(styleScale('crit')).toBe(CRIT_SCALE);
+    expect(CRIT_SCALE).toBeGreaterThan(1);
+    expect(styleScale('hit')).toBe(1);
+    expect(styleScale('heal')).toBe(1);
   });
 });
 
@@ -105,6 +135,21 @@ describe('DamageNumberBook', () => {
     book.add(2, 0xfff, 1, 0, 0, 10, v.make);
     book.add(1, 0xf00, 1, 0, 0, 10, v.make);
     expect(book.live).toHaveLength(3);
+  });
+
+  it('never merges across styles, even in one colour: a crit stands apart from the stream', () => {
+    const book = new DamageNumberBook<{ id: number }>();
+    const v = views();
+    const plain = book.add(1, 0xfff, 4, 0, 0, 10, v.make)!;
+    const crit = book.add(1, 0xfff, 8, 0, 0, 10, v.make, 'crit')!;
+    book.add(1, 0xfff, 8, 0, 0, 10, v.make, 'crit'); // joins the crit, not the plain number
+    expect(plain).not.toBe(crit);
+    expect(book.live.map((n) => [n.style, n.value])).toEqual([['hit', 4], ['crit', 16]]);
+  });
+
+  it('a plain add defaults to the hit style', () => {
+    const book = new DamageNumberBook<{ id: number }>();
+    expect(book.add(1, 0xfff, 4, 0, 0, 10, views().make)!.style).toBe('hit');
   });
 
   it('cycles new numbers through the drift offsets, and a merge does not advance the cycle', () => {

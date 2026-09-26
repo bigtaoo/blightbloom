@@ -1623,9 +1623,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78) — `ENGINE_VERSION` 78. The bare LCG reduced its raw state, so `nextInt(2)` alternated 0101…, and neighbouring seeds gave correlated first draws (a 1% roll read 0.35% over seeds 1..6000). Together they let `shuffle` reach only 15 of the 120 orders of five items, within any one stream. The seed and every output now pass through MurmurHash3's finalizer; the state is still the LCG. 15 new tests, 11 of which fail on the old generator. `engine` `test` `docs`
 
+**[2026-09-26 — crit and heal numbers](roadmap/101-2026-09-26-crit-heal-numbers.md)**
+
+- **09-26** [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash) — volume 95 said crits and heals had no numbers because the events did not carry them. The owner pointed out that a potion is a heal with an amount and the crit buff lands crits. The flag is now frozen beside the roll (`Projectile.crit`, `WeaponState.swingCrit`) and copied onto `hit`. A new `heal` event reports what `restoreHp`/`restoreShield` actually restored after the clamp; it is wired to the potion, the battery, the shop's two lines and lifesteal, and deliberately not to regen or revive. Neither fact is hashed and the golden gate did not move, so there is no `ENGINE_VERSION` bump. On screen a crit is gold, 1.4x bigger and ends in "!"; a heal is "+N" in the pool's colour, over the local seat only. The atlas grew "+" and "!" without moving a digit. Verified on a real extracted frame. Engine 1781 → 1791, client 7536 → 7554, a 13-mutant battery 13/13. `engine` `ui` `test` `docs`
+
 ## The work log — by theme
 
-The same 197 entries, grouped. An entry with more than one tag appears more than once.
+The same 198 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1739,7 +1743,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(36)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(37)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1777,6 +1781,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
 **`arena`** — the PvP launch map and its audit *(8)*
 
@@ -1805,7 +1810,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(111)*
+**`test`** — coverage sweeps, gates, mutation batteries *(112)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1918,6 +1923,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1966,7 +1972,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(42)*
+**`ui`** — HUD, screens, widgets *(43)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2010,6 +2016,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
 **`tools`** — sims, profilers, editors, build scripts *(23)*
 
@@ -2037,7 +2044,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`docs`** — design docs and this log itself *(116)*
+**`docs`** — design docs and this log itself *(117)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2155,6 +2162,7 @@ The same 197 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
