@@ -30,8 +30,15 @@ describe('hasGuestProgress', () => {
     ['a staged loadout', { loadout: ['smg'] }],
     ['a blueprint beyond the starters', { unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cryobolt'] }],
     ['a character beyond the free roster', { ownedCharacters: [...FREE_CHARACTERS, 'paid_hero'] }],
+    ['a banked schematic (design/14, ENGINE_VERSION 68)', { blueprintStock: { flamer: 1 } }],
   ])('is true for %s', (_name, over) => {
     expect(hasGuestProgress(state(over))).toBe(true);
+  });
+
+  it('is false for a blueprintStock entry whose quantity is zero', () => {
+    // Same shape as the empty-bank case above: a zero-qty key can exist in the record
+    // (e.g. left behind by a craft that spent the last one) without meaning "progress".
+    expect(hasGuestProgress(state({ blueprintStock: { flamer: 0 } }))).toBe(false);
   });
 
   it.each([
@@ -50,6 +57,13 @@ describe('hasGuestProgress', () => {
     const bank = { mat_fire: undefined, mat_ice: 4 } as unknown as Record<string, number>;
     expect(hasGuestProgress(state({ materialBank: bank }))).toBe(true);
     expect(guestMergeOffer(state({ materialBank: bank }), defaultMetaState()).materials).toBe(4);
+  });
+
+  it('counts a blueprintStock key whose quantity is missing as nothing, not as NaN', () => {
+    // Same `?? 0` fallback as the materialBank case above, for the newer field.
+    const stock = { flamer: undefined, spear: 2 } as unknown as Record<string, number>;
+    expect(hasGuestProgress(state({ blueprintStock: stock }))).toBe(true);
+    expect(guestMergeOffer(state({ blueprintStock: stock }), defaultMetaState()).blueprints).toBe(2);
   });
 });
 
@@ -75,12 +89,32 @@ describe('guestMergeOffer', () => {
     const account = state({ unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cryobolt'] });
     expect(guestMergeOffer(defaultMetaState(), account)).toEqual({ materials: 0, blueprints: 0, characters: 0 });
   });
+
+  it('folds banked schematics into the blueprints count, on top of unlocked-only deltas (design/14)', () => {
+    // `blueprintStock` (a boss-drop schematic, ENGINE_VERSION 68) reads to a player as
+    // "a blueprint-ish thing this merge would bring over" exactly like an unlocked
+    // permanent — one combined number, not a second count on the confirmation screen.
+    const guest = state({
+      unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cryobolt'],
+      blueprintStock: { flamer: 2, spear: 1 },
+    });
+    expect(guestMergeOffer(guest, defaultMetaState()).blueprints).toBe(4); // 1 unlocked + 3 schematics
+  });
+
+  it('counts every schematic, even for a weapon the account already holds permanently', () => {
+    // A schematic is stackable count, not membership (unlike unlockedBlueprints) — so it
+    // is never subtracted against what the account already owns, only summed.
+    const guest = state({ blueprintStock: { cryobolt: 3 } });
+    const account = state({ unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cryobolt'] });
+    expect(guestMergeOffer(guest, account).blueprints).toBe(3);
+  });
 });
 
 describe('mergeGuestIntoAccount', () => {
   const guest = state({
     materialBank: { mat_fire: 5, mat_ice: 2 },
     unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cryobolt'],
+    blueprintStock: { flamer: 1, spear: 2 },
     ownedCharacters: [...FREE_CHARACTERS, 'guest_hero'],
     loadout: ['guest_smg'],
     selectedSkin: 'guest_skin',
@@ -89,6 +123,7 @@ describe('mergeGuestIntoAccount', () => {
   const account = state({
     materialBank: { mat_fire: 10, mat_poison: 1 },
     unlockedBlueprints: [...STARTER_BLUEPRINTS, 'cannon'],
+    blueprintStock: { flamer: 3, scattergun: 1 },
     ownedCharacters: [...FREE_CHARACTERS, 'account_hero'],
     loadout: ['account_rifle'],
     selectedSkin: 'account_skin',
@@ -100,6 +135,13 @@ describe('mergeGuestIntoAccount', () => {
     // `POST /account/meta` stores verbatim. A union (rather than a sum) would silently drop
     // whichever side was smaller on a shared key.
     expect(mergeGuestIntoAccount(guest, account).materialBank).toEqual({ mat_fire: 15, mat_ice: 2, mat_poison: 1 });
+  });
+
+  it('ADDS blueprintStock per key, keeping keys only one side has (design/14, ENGINE_VERSION 68)', () => {
+    // Additive like materialBank, NOT a union like unlockedBlueprints below — a schematic
+    // is a stackable count, so combining two devices' stock must not collapse "one on
+    // each side" into "one total" (that would lose real progress a guest earned).
+    expect(mergeGuestIntoAccount(guest, account).blueprintStock).toEqual({ flamer: 4, spear: 2, scattergun: 1 });
   });
 
   it('UNIONS blueprints and characters, with no duplicates', () => {
@@ -145,5 +187,11 @@ describe('mergeGuestIntoAccount', () => {
     const bank = { mat_fire: undefined } as unknown as Record<string, number>;
     const merged = mergeGuestIntoAccount(state({ materialBank: bank }), state({ materialBank: { mat_fire: 3 } }));
     expect(merged.materialBank['mat_fire']).toBe(3);
+  });
+
+  it('treats a present-but-undefined guest schematic quantity as zero rather than NaN', () => {
+    const stock = { flamer: undefined } as unknown as Record<string, number>;
+    const merged = mergeGuestIntoAccount(state({ blueprintStock: stock }), state({ blueprintStock: { flamer: 3 } }));
+    expect(merged.blueprintStock['flamer']).toBe(3);
   });
 });

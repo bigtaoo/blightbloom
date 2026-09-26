@@ -121,6 +121,14 @@ describe('EventReactor — pickup toasts', () => {
     expect(toast).toHaveBeenCalledWith('New weapon', expect.anything());
   });
 
+  it('a weapon pickup with no weaponId at all also falls back to "New weapon"', () => {
+    // Same defensive shape as the buff/material toasts below — `weaponId` is absent rather
+    // than merely uncatalogued, which the "unrecognized id" case above does not exercise.
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'weapon' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('New weapon', expect.anything());
+  });
+
   it('a schematic pickup toasts the translated weapon name (ENGINE_VERSION 68)', () => {
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'schematic', weaponId: 'flamer' }] as GameEvent[]);
@@ -131,6 +139,24 @@ describe('EventReactor — pickup toasts', () => {
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'schematic', weaponId: 'no-such-weapon' }] as GameEvent[]);
     expect(toast).toHaveBeenCalledWith('Schematic: no-such-weapon', expect.anything());
+  });
+
+  it('a schematic pickup with no weaponId at all falls back to an empty name', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'schematic' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('Schematic: ', expect.anything());
+  });
+
+  it('a shield-battery pickup toasts "Shield recharged" (Task 4 instant item)', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'shield' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('Shield recharged', expect.anything());
+  });
+
+  it('an EMP-grenade pickup toasts "EMP burst" (Task 4 instant item)', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'emp' }] as GameEvent[]);
+    expect(toast).toHaveBeenCalledWith('EMP burst', expect.anything());
   });
 
   it('a recognized buff toasts "Buff: {translated name}"', () => {
