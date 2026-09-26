@@ -26,7 +26,7 @@ const settled = (over: Partial<SettledMatch> = {}): SettledMatch => ({
   placements: [3, 2, 1],
   playerCount: 4,
   hashOk: true,
-  integrity: { verdict: 'dissent', dissenters: [2], kicked: [], settleFrame: 900, seed: 7, log: [] },
+  integrity: { verdict: 'dissent', dissenters: [2], kicked: [], absent: [], settleFrame: 900, seed: 7, log: [] },
   seatAccounts: { 2: 'acct-two' },
   ...over,
 });
@@ -61,7 +61,7 @@ describe('reportIntegrity', () => {
 
   it.each([
     ['no matchsvc configured', undefined, settled()],
-    ['a clean match', 'http://matchsvc.test', settled({ integrity: { verdict: 'clean', dissenters: [], kicked: [], settleFrame: 900, seed: 7 } })],
+    ['a clean match', 'http://matchsvc.test', settled({ integrity: { verdict: 'clean', dissenters: [], kicked: [], absent: [], settleFrame: 900, seed: 7 } })],
     ['a co-op room', 'http://matchsvc.test', settled({ mode: 'coop' })],
   ])('skips: %s', async (_label, url, match) => {
     const { mod, fetchMock } = await withMatchsvc(url);
@@ -72,7 +72,7 @@ describe('reportIntegrity', () => {
   it('warns, naming the room and the verdict, when every attempt fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { mod } = await withMatchsvc('http://matchsvc.test', 503);
-    mod.reportIntegrity(settled({ integrity: { verdict: 'bounds', bounds: 'too_short', dissenters: [], kicked: [], settleFrame: 3, seed: 7, log: [] } }), { sleep: noSleep });
+    mod.reportIntegrity(settled({ integrity: { verdict: 'bounds', bounds: 'too_short', dissenters: [], kicked: [], absent: [], settleFrame: 3, seed: 7, log: [] } }), { sleep: noSleep });
     await vi.waitFor(() => {
       const lines = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('integrity report'));
       expect(lines).toHaveLength(1);
@@ -110,7 +110,7 @@ describe('onMatchSettled — both reports, independently', () => {
   it('a match with no consensus is recorded and NOT rated', async () => {
     const { mod, calls } = await withMatchsvc('http://matchsvc.test');
     mod.onMatchSettled(
-      settled({ hashOk: false, integrity: { verdict: 'no_consensus', dissenters: [], kicked: [], settleFrame: 900, seed: 7, log: [] } }),
+      settled({ hashOk: false, integrity: { verdict: 'no_consensus', dissenters: [], kicked: [], absent: [], settleFrame: 900, seed: 7, log: [] } }),
       { sleep: noSleep },
     );
     expect(calls.map((c) => c.url)).toEqual(['http://matchsvc.test/integrity/report']);
@@ -118,7 +118,7 @@ describe('onMatchSettled — both reports, independently', () => {
 
   it('a clean match is rated and NOT recorded', async () => {
     const { mod, calls } = await withMatchsvc('http://matchsvc.test');
-    mod.onMatchSettled(settled({ integrity: { verdict: 'clean', dissenters: [], kicked: [], settleFrame: 900, seed: 7 } }), { sleep: noSleep });
+    mod.onMatchSettled(settled({ integrity: { verdict: 'clean', dissenters: [], kicked: [], absent: [], settleFrame: 900, seed: 7 } }), { sleep: noSleep });
     expect(calls.map((c) => c.url)).toEqual(['http://matchsvc.test/rating/report']);
   });
 });

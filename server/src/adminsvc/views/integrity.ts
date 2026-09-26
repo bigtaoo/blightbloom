@@ -27,6 +27,8 @@ export interface IntegrityReportRow {
   engineVersion: number;
   settleFrame: number;
   suspects: { seat: number; accountId: string | null; name: string | null; dissented: boolean; kicked: boolean }[];
+  /** Seats that never reported before the settlement timeout. */
+  absent: number[];
   /** Bytes of gzipped log archived; null when the sender dropped it for size. */
   logBytes: number | null;
 }
@@ -90,6 +92,7 @@ export async function integrityView(accounts: Db, limit: number = INTEGRITY_PAGE
         dissented: s.dissented,
         kicked: s.kicked,
       })),
+      absent: r.absent,
       logBytes: r.log === undefined ? null : r.log.length(),
     })),
     suspects: suspicion.map((s) => ({

@@ -19,7 +19,7 @@ import { readJsonBodyUpTo, send, type RouteHandler } from './http';
 /** The sender's log cap, base64-inflated (4/3), plus room for everything else in the body. */
 export const INTEGRITY_BODY_LIMIT = Math.ceil((MAX_LOG_GZIP_BYTES * 4) / 3) + 64 * 1024;
 
-const VERDICTS = new Set(['dissent', 'no_consensus', 'bounds']);
+const VERDICTS = new Set(['partial', 'dissent', 'no_consensus', 'bounds']);
 
 export interface IntegrityRouteDeps {
   integrity: IntegrityStore;
@@ -50,6 +50,7 @@ export function isIntegrityReportBody(body: unknown): body is IntegrityReportBod
     if (!isSeat(r.seat) || typeof r.dissented !== 'boolean' || typeof r.kicked !== 'boolean') return false;
     if (r.accountId !== undefined && typeof r.accountId !== 'string') return false;
   }
+  if (!Array.isArray(b.absent) || !(b.absent as unknown[]).every(isSeat)) return false;
   if (b.seatAccounts === null || typeof b.seatAccounts !== 'object' || Array.isArray(b.seatAccounts)) return false;
   if (!Object.values(b.seatAccounts).every((v) => typeof v === 'string')) return false;
   if (b.logGzipB64 !== undefined && typeof b.logGzipB64 !== 'string') return false;

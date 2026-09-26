@@ -37,6 +37,7 @@ function report(roomId: string, over: Partial<IntegrityReportBody> = {}): Integr
     engineVersion: 75,
     settleFrame: 900,
     suspects: [],
+    absent: [],
     seatAccounts: {},
     ...over,
   };
@@ -47,7 +48,9 @@ describe('integrityView', () => {
     await db.collection<AccountDoc>('accounts').insertMany([account('a1', 'zoe'), account('a2', 'cg:9', 'Portal Pat')]);
     let now = 100;
     const store = new IntegrityStore(accountsStore(db), () => now);
-    await store.recordOnce(report('r-old', { suspects: [{ seat: 0, accountId: 'a2', dissented: true, kicked: false }] }));
+    await store.recordOnce(
+      report('r-old', { suspects: [{ seat: 0, accountId: 'a2', dissented: true, kicked: false }], absent: [3] }),
+    );
     now = 200;
     await store.recordOnce(
       report('r-new', {
@@ -65,7 +68,8 @@ describe('integrityView', () => {
     const view = await integrityView(db);
     expect(view.reports.map((r) => r.roomId)).toEqual(['r-new', 'r-old']);
     expect(view.reports[0]).toMatchObject({ verdict: 'bounds', bounds: 'too_short', receivedAtMs: 200, logBytes: 5 });
-    expect(view.reports[1]).toMatchObject({ bounds: null, logBytes: null });
+    expect(view.reports[1]).toMatchObject({ bounds: null, logBytes: null, absent: [3] });
+    expect(view.reports[0]!.absent).toEqual([]);
     expect(view.reports[0]!.suspects).toEqual([
       { seat: 0, accountId: 'a2', name: 'Portal Pat', dissented: false, kicked: true }, // display name wins
       { seat: 1, accountId: 'gone', name: null, dissented: true, kicked: false }, // no such account
@@ -116,6 +120,7 @@ describe('integritySection', () => {
             { seat: 0, accountId: 'a1', name: '<b>zoe</b>', dissented: true, kicked: true },
             { seat: 2, accountId: null, name: null, dissented: true, kicked: false },
           ],
+          absent: [],
           logBytes: 42,
         },
         {
@@ -128,6 +133,7 @@ describe('integritySection', () => {
           engineVersion: 75,
           settleFrame: 10,
           suspects: [],
+          absent: [1],
           logBytes: null,
         },
       ],
@@ -142,5 +148,8 @@ describe('integritySection', () => {
     expect(html).toContain('<code>too_short</code>');
     expect(html).toContain('>42<');
     expect(html).toContain('dropped');
+    // Only the record with a timed-out seat says so, and it names the seat.
+    expect(html.match(/no report \(offline\)/g)).toHaveLength(1);
+    expect(html).toContain('no report (offline): seat 1');
   });
 });

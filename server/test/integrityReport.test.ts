@@ -18,7 +18,7 @@ function match(integrity: Partial<MatchIntegrity>, over: Partial<SettledMatch> =
     placements: [3, 2, 1],
     playerCount: 4,
     hashOk: true,
-    integrity: { verdict: 'dissent', dissenters: [], kicked: [], settleFrame: 900, seed: 77, log: LOG, ...integrity },
+    integrity: { verdict: 'dissent', dissenters: [], kicked: [], absent: [], settleFrame: 900, seed: 77, log: LOG, ...integrity },
     ...over,
   };
 }
@@ -32,7 +32,7 @@ describe('buildIntegrityReportBody — whether there is a record', () => {
     expect(buildIntegrityReportBody(match({ verdict: 'no_consensus' }, { mode: 'coop' }))).toBeNull();
   });
 
-  it.each(['dissent', 'no_consensus', 'bounds'] as const)('is a record for a PvP %s', (verdict) => {
+  it.each(['partial', 'dissent', 'no_consensus', 'bounds'] as const)('is a record for a PvP %s', (verdict) => {
     expect(buildIntegrityReportBody(match({ verdict }))?.verdict).toBe(verdict);
   });
 });
@@ -49,6 +49,15 @@ describe('buildIntegrityReportBody — who is named', () => {
     ]);
     // Every logged-in seat is carried, suspect or not.
     expect(body.seatAccounts).toEqual({ 0: 'acct-0', 1: 'acct-1', 2: 'acct-2' });
+  });
+
+  it('carries the seats that timed out as absent, and never as suspects', () => {
+    const body = buildIntegrityReportBody(
+      match({ verdict: 'partial', absent: [1, 3] }, { seatAccounts: { 1: 'acct-1', 3: 'acct-3' } }),
+    )!;
+    expect(body.absent).toEqual([1, 3]);
+    expect(body.suspects).toEqual([]);
+    expect(body.seatAccounts).toEqual({ 1: 'acct-1', 3: 'acct-3' }); // still there to read the record against
   });
 
   it('carries an empty seat map for a guest-only room rather than omitting it', () => {

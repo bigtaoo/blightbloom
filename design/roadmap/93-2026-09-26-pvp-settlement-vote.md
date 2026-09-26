@@ -50,10 +50,12 @@ per-seat vote, bounds, and a record"; this volume records what building it settl
 
 - **A seat that never reports still holds the room open.** Settlement waits for every seat, as it
   always has. A withheld report now blocks a vote instead of a hash comparison, and nothing times
-  it out.
+  it out. **(Closed the same day, [volume 94](94-2026-09-26-settle-timeout.md): a 30 s timeout,
+  and a silent seat is treated as offline.)**
 - **A coordinated majority wins the vote.** That is the limit of any consensus without a
   server-side simulation. The seed, `engineVersion` and gzipped input log archived with each
   record are for the replay judge that would close it, and which the owner has deferred.
+  **(Ruled out of scope by the owner the same day, [volume 94](94-2026-09-26-settle-timeout.md).)**
 - **Clean matches archive nothing.** Only a non-clean PvP match carries its log, so a replay
   cannot later be run against an ordinary match for comparison. Deliberate: a clean match has
   nothing to judge, and every match carrying its log is a payload nobody reads.

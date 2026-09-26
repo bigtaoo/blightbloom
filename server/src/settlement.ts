@@ -28,9 +28,15 @@
  * (the lowest seat index, which is what `WinConditionSystem.tickPlacement` names), the
  * placements must be exactly the seats outside the winning squad, each once, and the match
  * must have lasted long enough to be real.
+ *
+ * ## The timeout
+ *
+ * The room does not wait forever for the last report: `SETTLE_TIMEOUT_MS` after the first one
+ * it settles on what it has, and a silent seat is treated as offline (`judgeSettlement`).
  */
 import { CHECKPOINT_QUORUM, type Winner } from '@dd/engine';
 import { teamIdForOwner } from './config';
+import type { MatchMode } from './ticket';
 
 /** One seat's end-of-match report. */
 export interface SeatReport {
@@ -48,6 +54,16 @@ export interface VoteOutcome {
 }
 
 /**
+ * How long a room waits, from the FIRST end-of-match report, for the rest (decided
+ * 2026-09-26). A seat still silent when it runs out is treated as offline: it casts no vote,
+ * and the room settles on the reports it has. Before this a seat that never reported held the
+ * room open forever, which let a losing player keep a PvP result off the ladder by closing
+ * the tab. Every client ends on the same deterministic frame, so an honest seat reports within
+ * its own network lag of the first one; 30 s is far past that.
+ */
+export const SETTLE_TIMEOUT_MS = 30_000;
+
+/**
  * The fewest frames a PvP match can plausibly last. The 2026-09-26 bot sweep
  * (`client/sim/pvpBalanceSim.sim.ts`, 180 matches over 2–8 seats) never saw one end before
  * frame 954 (about 32 s at 30 Hz); this floor is half of that. The frame compared against it
@@ -59,6 +75,58 @@ export const MIN_PVP_SETTLE_FRAME = 450;
 /** Why a bounds check failed, for the integrity record. */
 export type BoundsFailure = 'winner_out_of_range' | 'winner_not_representative' | 'placements_mismatch' | 'too_short';
 
+/**
+ * How a match settled, for the integrity record (design/15, "PvP integrity", 2026-09-26),
+ * most serious first:
+ * - `no_consensus`: no tuple carried the vote, so no result — and no seat is named, since with
+ *   no settled answer there is no side to call wrong.
+ * - `bounds`: a PvP tuple carried the vote but describes an impossible match.
+ * - `dissent`: a tuple carried the vote, but some seat voted otherwise or was kicked for a
+ *   checkpoint divergence. It still rates.
+ * - `partial`: a tuple carried the vote of every seat that reported, but some seat never
+ *   reported before `SETTLE_TIMEOUT_MS` ran out. It still rates.
+ * - `clean`: every seat reported the same tuple, none was kicked, bounds passed.
+ */
+export type IntegrityVerdict = 'clean' | 'partial' | 'dissent' | 'no_consensus' | 'bounds';
+
+/** Everything `judgeSettlement` decides about a room's reports. */
+export interface SettlementJudgement {
+  agreed: SeatReport | null;
+  dissenters: number[];
+  bounds: BoundsFailure | null;
+  /** A tuple carried the vote and (for PvP) passed the bounds check — the one condition under
+   *  which a result may move a rating. */
+  hashOk: boolean;
+  verdict: IntegrityVerdict;
+}
+
+/** What `judgeSettlement` needs besides the reports. */
+export interface SettlementContext {
+  mode: MatchMode;
+  playerCount: number;
+  settleFrame: number;
+  /** Every seat a checkpoint divergence ever severed. */
+  kicked: readonly number[];
+  /** Every seat that never reported — non-empty only when the timeout settled the room. */
+  absent: readonly number[];
+}
+
+/**
+ * The vote, the bounds check and the verdict in one pass over what a room collected. The vote
+ * runs over the seats that DID report, so a seat that timed out neither blocks nor dilutes it;
+ * `kicked` and `absent` only shape the verdict.
+ */
+export function judgeSettlement(reports: ReadonlyMap<number, SeatReport>, ctx: SettlementContext): SettlementJudgement {
+  const { agreed, dissenters } = voteSettlement(reports, reports.size);
+  const bounds = agreed !== null && ctx.mode === 'pvp' ? checkPvpBounds(agreed, ctx.playerCount, ctx.settleFrame) : null;
+  let verdict: IntegrityVerdict = 'clean';
+  if (agreed === null) verdict = 'no_consensus';
+  else if (bounds !== null) verdict = 'bounds';
+  else if (dissenters.length + ctx.kicked.length > 0) verdict = 'dissent';
+  else if (ctx.absent.length > 0) verdict = 'partial';
+  return { agreed, dissenters, bounds, hashOk: agreed !== null && bounds === null, verdict };
+}
+
 /** The canonical key of a tuple. JSON over a fixed-order array, so no field can bleed into
  *  another, and an absent `placements` differs from an empty one. */
 function tupleKey(r: SeatReport): string {
@@ -66,7 +134,8 @@ function tupleKey(r: SeatReport): string {
 }
 
 /**
- * Vote over `reports` (seat → report; every seat of the room). See the file header for the
+ * Vote over `reports` (seat → report; every seat that reported). `playerCount` is the number
+ * of voters — `judgeSettlement` passes `reports.size`, so a seat that timed out is not one. See the file header for the
  * rule. `quorum` is a parameter so the tests can state the boundary they are testing; every
  * production caller passes nothing.
  */
@@ -87,8 +156,8 @@ export function voteSettlement(
   for (const entry of byKey.values()) {
     if (best === null || entry.seats.length > best.seats.length) best = entry;
   }
-  // `reports` is never empty from MatchRoom (it settles only once every seat has reported),
-  // but an empty map is a caller mistake that should settle nothing rather than throw.
+  // `reports` is never empty from MatchRoom (it settles on a report, or on a timeout a report
+  // armed), but an empty map is a caller mistake that should settle nothing rather than throw.
   if (best === null) return { agreed: null, dissenters: [] };
 
   const votes = best.seats.length;

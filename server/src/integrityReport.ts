@@ -42,6 +42,9 @@ export interface IntegrityReportBody {
   engineVersion: number;
   settleFrame: number;
   suspects: IntegritySuspect[];
+  /** Seats that never reported and were treated as offline (`MatchIntegrity.absent`). Not
+   *  suspects, and counted against nobody. */
+  absent: number[];
   /** Every logged-in seat, suspect or not, so a record can be read against the players who
    *  were there. Same shape as `SettledMatch.seatAccounts`. */
   seatAccounts: Record<number, string>;
@@ -82,6 +85,7 @@ export function buildIntegrityReportBody(
     engineVersion: ENGINE_VERSION,
     settleFrame: integrity.settleFrame,
     suspects,
+    absent: integrity.absent,
     seatAccounts,
     ...log,
   };

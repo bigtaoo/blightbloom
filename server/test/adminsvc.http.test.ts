@@ -309,6 +309,7 @@ describe('the console, signed in', () => {
       engineVersion: 75,
       settleFrame: 900,
       suspects: [{ seat: 1, accountId: 'a1', dissented: true, kicked: false }],
+      absent: [],
       seatAccounts: { 1: 'a1' },
       logDropped: true,
     });

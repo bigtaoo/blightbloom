@@ -40,13 +40,15 @@ function reportsTable(rows: readonly IntegrityReportRow[]): string {
                 return `seat ${s.seat}: ${who(s.accountId, s.name)} <span class="dim">(${why})</span>`;
               })
               .join('<br>');
+      const absent =
+        r.absent.length === 0 ? '' : `<br><span class="dim">no report (offline): seat ${r.absent.join(', ')}</span>`;
       return `<tr>
 <td>${fmtTime(r.receivedAtMs)}</td>
 <td><code>${esc(r.roomId)}</code></td>
 <td><span class="pill">${esc(r.verdict)}</span>${r.bounds === null ? '' : ` <code>${esc(r.bounds)}</code>`}</td>
 <td class="num">${r.playerCount}</td>
 <td class="num">${r.settleFrame}</td>
-<td class="wrap">${named}</td>
+<td class="wrap">${named}${absent}</td>
 <td class="num">${r.seed}</td>
 <td class="num">${r.engineVersion}</td>
 <td class="num">${r.logBytes === null ? `<span class="dim" title="dropped by the sender for size">dropped</span>` : String(r.logBytes)}</td>
@@ -63,6 +65,6 @@ export function integritySection(view: IntegrityView): string {
 <p class="dim">A count of PvP records naming the account — a dissenting vote or a checkpoint kick. Nothing acts on it; it is here to be noticed.</p>
 ${suspectsTable(view.suspects)}</div>
 <div class="card"><h2>Recent records</h2>
-<p class="dim">PvP matches that did not settle cleanly. <b>dissent</b> still rated; <b>no_consensus</b> and <b>bounds</b> rated nothing. Seed, engine version and the archived input log are kept for a replay that does not exist yet.</p>
+<p class="dim">PvP matches that did not settle cleanly. <b>partial</b> (a seat never reported and was treated as offline) and <b>dissent</b> still rated; <b>no_consensus</b> and <b>bounds</b> rated nothing. Seed, engine version and the archived input log are kept for a replay that does not exist yet.</p>
 ${reportsTable(view.reports)}</div>`;
 }

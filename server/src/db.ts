@@ -159,13 +159,15 @@ export interface RatingReportDoc {
 export interface IntegrityReportDoc {
   _id: string;
   receivedAt: number;
-  verdict: 'dissent' | 'no_consensus' | 'bounds';
+  verdict: 'partial' | 'dissent' | 'no_consensus' | 'bounds';
   bounds?: string;
   playerCount: number;
   seed: number;
   engineVersion: number;
   settleFrame: number;
   suspects: { seat: number; accountId?: string; dissented: boolean; kicked: boolean }[];
+  /** Seats that never reported before the settlement timeout — offline, not suspects. */
+  absent: number[];
   seatAccounts: Record<string, string>;
   /** The gzipped JSON frame log, archived for a later replay; absent when the sender dropped
    *  it for size (`logDropped`). */
