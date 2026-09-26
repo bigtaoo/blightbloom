@@ -63,7 +63,7 @@ import { PVP_SCALE_FACTOR, scaleWeaponDamage } from '../balance/build';
 import { applyRunBuff } from './runBuffApply';
 import { resolveFloorCards } from '../balance/floorCards';
 import { applyResist } from '../content/damage';
-import { takeDamage } from './combat';
+import { restoreHp, restoreShield, takeDamage } from './combat';
 import { toFp } from '../math/fixed';
 import type { GameState } from '../state/GameState';
 import type { EnemyActor, PickupItem, PlayerActor, WeaponSimSpec } from '../state/entities';
@@ -209,7 +209,7 @@ export class PickupSystem {
   private apply(state: GameState, p: PlayerActor, item: PickupItem): void {
     switch (item.kind) {
       case 'heal':
-        p.hp = Math.min(p.maxHp, p.hp + HEAL_PICKUP_AMOUNT);
+        restoreHp(state, p, HEAL_PICKUP_AMOUNT);
         break;
       case 'material':
         if (item.materialId) {
@@ -261,7 +261,7 @@ export class PickupSystem {
       case 'shield':
         // Shield battery (Task 4) — same clamp shape as heal/energy. `aegis` (Task 8)
         // multiplies the flat amount the same way `surge` does for energy.
-        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).shieldPickupMult);
+        restoreShield(state, p, SHIELD_PICKUP_AMOUNT * resolveFloorCards(state.floorCards).shieldPickupMult);
         break;
       case 'emp':
         applyEmpBurst(state, p);

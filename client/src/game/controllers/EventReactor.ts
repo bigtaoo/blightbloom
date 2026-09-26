@@ -6,7 +6,7 @@ import { facingFromAngle } from '../../render/facing';
 import { swingSchedule, type AttackTrigger } from '../../render/rigAttackMotion';
 import { byId, specOf, shotShapeOf, swingShapeOf } from './attackShapes';
 import { reactToPickup } from './pickupReactions';
-import { reactToHitNumber } from './damageNumberReactions';
+import { reactToHealNumber, reactToHitNumber } from './damageNumberReactions';
 import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
 import type { AudioBus, AudioCue } from '../../platform/types';
@@ -202,6 +202,11 @@ export class EventReactor {
           // The number itself (design/10) — which hits get one, and in what colour, is
           // `damageNumberReactions.ts`.
           reactToHitNumber(e, this.fx.numbers, this.host, isLocalSeat);
+          break;
+        case 'heal':
+          // A potion, a battery, a shop line or a lifesteal hit (design/10) — "+N" over your own
+          // head, in the restored pool's colour. Who gets one is `damageNumberReactions.ts`.
+          reactToHealNumber(e, this.fx.numbers, this.host, isLocalSeat);
           break;
         case 'shield_break':
           // A shattered shield — a bright cyan burst (design/07 two-pool break).

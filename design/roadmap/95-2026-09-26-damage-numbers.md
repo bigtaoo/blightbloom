@@ -138,7 +138,9 @@ the HTML fallback.
 
 ### Not done
 
-- **Critical hits and heals get no number**, because neither exists as an event field. A heal is
-  already a toast.
+- ~~**Critical hits and heals get no number**, because neither exists as an event field. A heal is
+  already a toast.~~ **Closed the same day in [volume 101](101-2026-09-26-crit-heal-numbers.md).**
+  The reason given here was wrong: the crit roll and the restored amount both existed inside the
+  sim, they just never reached an event.
 - **Nobody has looked at it on a phone.** 22 px was chosen on a desktop pane; `04`'s device
   checklist is where legibility at 390 logical px gets confirmed.

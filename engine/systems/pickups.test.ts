@@ -105,6 +105,23 @@ describe('PickupSystem — the in-run power ramp (design/05)', () => {
     expect(s.pickups).toHaveLength(0);
   });
 
+  // design/10 "Damage numbers" (2026-09-26): the "+N" over a head is what went IN, after the
+  // clamp — so a potion one point short of full reads "+1", not the pickup's face value.
+  it('a heal or battery announces what it actually restored, as a heal event', () => {
+    const s = createGameState(CFG);
+    const p = s.players[0]!;
+    p.hp = p.maxHp - 1;
+    p.shield = p.maxShield - 3;
+    dropOnPlayer(s, { kind: 'heal' });
+    dropOnPlayer(s, { kind: 'shield' });
+    sys.tick(s);
+    const heals = s.events.filter((e) => e.type === 'heal');
+    expect(heals).toEqual([
+      { type: 'heal', target: p.id, gx: p.gx, gy: p.gy, amount: 1, pool: 'hp' },
+      { type: 'heal', target: p.id, gx: p.gx, gy: p.gy, amount: 3, pool: 'shield' },
+    ]);
+  });
+
   it('a full-shield player leaves a shield battery on the floor instead of binning it', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;

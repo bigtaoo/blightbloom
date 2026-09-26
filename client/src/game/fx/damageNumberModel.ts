@@ -4,6 +4,10 @@
  * `fx/DamageNumbers.ts` owns the sprites and reads every answer from here, so all of it is
  * testable without Pixi (`pureLayerBoundary.test.ts` lists this file).
  *
+ * Three styles share the machinery (2026-09-26): a plain hit, a crit (gold, bigger, with a
+ * trailing "!"), and a heal ("+N" in the restored pool's colour). A style is part of what a
+ * merge must match, so a crit never folds into the plain stream beside it.
+ *
  * Numbers are measured in SCREEN px, not world px: the world is zoomed up to 4.5x
  * (`FxController.updateCamera`), and a number that grew with the camera would be a quarter of the
  * screen tall in a small room. The view divides by the zoom when it places one.
@@ -29,10 +33,22 @@ export const NUMBER_PX = 22;
  *  a test can name the offset a spawn gets. */
 export const DRIFT_PX: readonly number[] = [0, 9, -9, 16, -16];
 
+/** What a number is: an ordinary hit, a crit, or a heal. */
+export type NumberStyle = 'hit' | 'crit' | 'heal';
+
+/** A crit prints this much bigger than a plain hit of the same value. */
+export const CRIT_SCALE = 1.4;
+
+/** Glyph indices past the digits in the atlas — mirrored from `render/damageDigitAtlas.ts`
+ *  (`plus` / `bang`), which this pure module does not import; a test holds the two equal. */
+export const PLUS_GLYPH = 10;
+export const BANG_GLYPH = 11;
+
 /** One live number. `V` is whatever the view hangs off it (a Pixi container, or a stub). */
 export interface DamageNumber<V> {
   target: number;
   tint: number;
+  style: NumberStyle;
   value: number;
   /** World px, fixed at spawn: the number stays where the hit was rather than riding the actor. */
   x: number;
@@ -54,10 +70,35 @@ export function digitsOf(value: number): number[] {
   return String(n).split('').map(Number);
 }
 
-/** Each digit's centre, as a multiple of the atlas advance, so the number is centred on its
- *  anchor whatever its length. */
-export function digitOffsets(count: number): number[] {
-  return Array.from({ length: count }, (_, i) => i - (count - 1) / 2);
+/** The glyphs a number draws: its digits, led by "+" for a heal and closed by "!" for a crit.
+ *  Empty whenever `digitsOf` is, so a hit that rounds to nothing still draws nothing at all. */
+export function glyphsOf(value: number, style: NumberStyle): number[] {
+  const digits = digitsOf(value);
+  if (digits.length === 0) return digits;
+  if (style === 'heal') return [PLUS_GLYPH, ...digits];
+  if (style === 'crit') return [...digits, BANG_GLYPH];
+  return digits;
+}
+
+/**
+ * Each glyph's centre, in atlas px, so the whole number is centred on its anchor. A digit or
+ * "+" takes `advance`; the narrow "!" takes `bangAdvance`, and two neighbours sit half of each
+ * one's share apart — for digits alone that is the plain tabular `advance` spacing.
+ */
+export function glyphOffsets(glyphs: readonly number[], advance: number, bangAdvance: number): number[] {
+  const widths = glyphs.map((g) => (g === BANG_GLYPH ? bangAdvance : advance));
+  const total = widths.reduce((a, w) => a + w, 0);
+  let x = -total / 2;
+  return widths.map((w) => {
+    const centre = x + w / 2;
+    x += w;
+    return centre;
+  });
+}
+
+/** How much bigger a style prints than a plain hit — only a crit differs. */
+export function styleScale(style: NumberStyle): number {
+  return style === 'crit' ? CRIT_SCALE : 1;
 }
 
 /** Bigger hits print bigger: 1 up to 10, rising to 1.35 at 1000 and capped there. */
@@ -94,16 +135,25 @@ export class DamageNumberBook<V> {
   private spawned = 0;
 
   /**
-   * Add a hit. Joins a number already rising over the same target in the same colour if it is
-   * younger than `MERGE_MS`; otherwise starts a new one, reusing the oldest when `cap` numbers are
+   * Add a hit. Joins a number already rising over the same target in the same colour and style if
+   * it is younger than `MERGE_MS`; otherwise starts a new one, reusing the oldest when `cap` numbers are
    * already up. Returns the number that now carries the hit, or undefined when `cap` is 0 or the
    * hit has no digits.
    */
-  add(target: number, tint: number, value: number, x: number, y: number, cap: number, makeView: () => V): DamageNumber<V> | undefined {
+  add(
+    target: number,
+    tint: number,
+    value: number,
+    x: number,
+    y: number,
+    cap: number,
+    makeView: () => V,
+    style: NumberStyle = 'hit',
+  ): DamageNumber<V> | undefined {
     if (digitsOf(value).length === 0) return undefined;
     for (let i = this.live.length - 1; i >= 0; i--) {
       const n = this.live[i]!;
-      if (n.target === target && n.tint === tint && n.age < MERGE_MS) {
+      if (n.target === target && n.tint === tint && n.style === style && n.age < MERGE_MS) {
         n.value += value;
         n.popAge = 0;
         n.dirty = true;
@@ -113,7 +163,7 @@ export class DamageNumberBook<V> {
     if (cap <= 0) return undefined;
     const drift = DRIFT_PX[this.spawned++ % DRIFT_PX.length]!;
     const reused = this.live.length >= cap ? this.live.shift() : undefined;
-    const n: DamageNumber<V> = { target, tint, value, x, y, drift, age: 0, popAge: 0, dirty: true, view: reused ? reused.view : makeView() };
+    const n: DamageNumber<V> = { target, tint, style, value, x, y, drift, age: 0, popAge: 0, dirty: true, view: reused ? reused.view : makeView() };
     this.live.push(n);
     return n;
   }

@@ -1410,7 +1410,27 @@ describe('EventReactor — damage numbers (design/10)', () => {
   it('a hit spawns its number', () => {
     const { fx, reactor } = reactorWithFx();
     reactor.consume([{ type: 'hit', target: 9, faction: 'player', gx: pxToFp(0), gy: pxToFp(0), damage: 21, damageType: 'physical' }]);
-    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 21, expect.any(Number), expect.any(Number), expect.any(Number));
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 21, expect.any(Number), expect.any(Number), expect.any(Number), 'hit');
+  });
+
+  it('a crit hit spawns a crit number', () => {
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([{ type: 'hit', target: 9, faction: 'player', gx: pxToFp(0), gy: pxToFp(0), damage: 42, damageType: 'physical', crit: true }]);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 42, expect.any(Number), expect.any(Number), expect.any(Number), 'crit');
+  });
+
+  it("a heal on the local seat spawns a heal number; another seat's does not", () => {
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const fx = fakeFx();
+    const seats = { players: [{ id: 5, radius: pxToFp(16) }, { id: 6, radius: pxToFp(16) }], enemies: [] } as unknown as GameState;
+    const reactor = new EventReactor(fx, hud, fakeAudio(), { ...fakeHost(), activeState: () => seats });
+    reactor.consume([
+      { type: 'heal', target: 5, gx: pxToFp(0), gy: pxToFp(0), amount: 1, pool: 'hp' },
+      { type: 'heal', target: 6, gx: pxToFp(0), gy: pxToFp(0), amount: 1, pool: 'hp' },
+    ]);
+    expect(fx.numbers.spawn).toHaveBeenCalledTimes(1);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(5, 1, expect.any(Number), expect.any(Number), expect.any(Number), 'heal');
   });
 
   it('a zone tick is numbered once, through its hit, and never again through zone_damage', () => {

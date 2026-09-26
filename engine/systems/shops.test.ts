@@ -264,6 +264,10 @@ describe('ShopSystem — what a tap buys', () => {
     p.shopBuyId = shop.stock[0]!.id;
     sys.tick(s);
     expect(p.hp).toBe(3 + HEAL_PICKUP_AMOUNT);
+    // The "+N" the buyer sees (design/10) — the heal line reports what it restored.
+    expect(s.events.filter((e) => e.type === 'heal')).toEqual([
+      { type: 'heal', target: p.id, gx: p.gx, gy: p.gy, amount: HEAL_PICKUP_AMOUNT, pool: 'hp' },
+    ]);
     p.shopBuyId = shop.stock[1]!.id;
     sys.tick(s);
     expect(p.energy).toBe(Math.min(p.maxEnergy, ENERGY_PICKUP_AMOUNT));
@@ -285,6 +289,9 @@ describe('ShopSystem — what a tap buys', () => {
     p.shopBuyId = shop.stock[0]!.id;
     sys.tick(s);
     expect(p.shield).toBe(Math.min(p.maxShield, p.maxShield - 5 + SHIELD_PICKUP_AMOUNT));
+    expect(s.events.filter((e) => e.type === 'heal')).toEqual([
+      expect.objectContaining({ target: p.id, amount: 5, pool: 'shield' }),
+    ]);
     p.shopBuyId = shop.stock[1]!.id;
     sys.tick(s);
     expect(near.hp).toBeLessThan(startingHp);

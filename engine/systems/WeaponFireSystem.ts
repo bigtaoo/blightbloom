@@ -189,6 +189,7 @@ export class WeaponFireSystem {
       vy: mulFp(sin, spec.bulletSpeed),
       radius: spec.bulletRadius,
       damage: critDamage(buffedDamage(spec.damage, buffs), isCrit), // buffs + crit frozen at fire time
+      ...(isCrit ? { crit: true as const } : {}),
       damageType: spec.damageType, // frozen onto the bullet (design/07 payload)
       lifeTicks: spec.bulletLifeTicks,
       alive: true,

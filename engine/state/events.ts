@@ -43,7 +43,18 @@ export type GameEvent =
   | { type: 'melee_swing'; ownerId: number; faction: Faction; gx: Fp; gy: Fp; facing: Brad }
   // `faction` is a DamageSrc, not just Faction — zone/hazard-tile damage (design/15,
   // ROADMAP 4.2d) reports 'environment' here, since there is no attacker on the other side.
-  | { type: 'hit'; target: number; faction: DamageSrc; gx: Fp; gy: Fp; damage: number; damageType: DamageType; shieldRemaining?: number }
+  //
+  // `crit` is set (and only ever to `true`) when the damage carried a crit roll — frozen onto the
+  // bullet at fire time or onto the swing at swing time, exactly where the roll itself lives
+  // (design/07 "one frozen payload"). Absent on every other hit, so a build without a crit buff
+  // produces the same events it always did. Render-only: the damage number prints it bigger.
+  | { type: 'hit'; target: number; faction: DamageSrc; gx: Fp; gy: Fp; damage: number; damageType: DamageType; shieldRemaining?: number; crit?: true }
+  // A pool was topped up by something the player DID — a heal or shield pickup, a shop's heal or
+  // shield line, a lifesteal hit — never the shield's idle regen, which ticks every few frames and
+  // would print a "+1" forever. `amount` is what actually went in after the clamp to the cap, so
+  // a potion drunk at 9/10 HP reports 1; a restore that changed nothing emits no event at all.
+  // Render-only, like `hit`: the floating number layer prints it as "+N".
+  | { type: 'heal'; target: number; gx: Fp; gy: Fp; amount: number; pool: 'hp' | 'shield' }
   // A hit (or DoT) that emptied a non-zero shield pool (design/07 two-pool). Render
   // plays a break fx; the sim uses it to fire a character's shield-break passive (0.5).
   | { type: 'shield_break'; id: number; gx: Fp; gy: Fp }

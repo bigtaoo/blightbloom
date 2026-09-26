@@ -4,13 +4,13 @@ import { DamageNumbers, DAMAGE_DIGITS_KEY } from './DamageNumbers';
 import { DAMAGE_DIGIT_ATLAS as ATLAS, DAMAGE_DIGITS_PATH } from '../../render/damageDigitAtlas';
 import { UI_ASSETS } from '../../render/uiSkins';
 import { qualityProfile, resetActiveQuality, setActiveQuality } from '../../render/quality';
-import { LIFE_MS, NUMBER_PX, POP_MS, POP_SCALE, DRIFT_PX } from './damageNumberModel';
+import { BANG_GLYPH, CRIT_SCALE, LIFE_MS, magnitudeScale, NUMBER_PX, PLUS_GLYPH, POP_MS, POP_SCALE, DRIFT_PX } from './damageNumberModel';
 
 // Sprites and containers only, like `Particles.test.ts` — no renderer is needed to build or
 // place them. The sheet is a blank source the size the glyph table describes, so every frame
 // the view cuts out of it is in bounds.
 function sheet(): Texture {
-  const w = ATLAS.frameX[9]! + ATLAS.cellW + ATLAS.frameY;
+  const w = ATLAS.frameX.at(-1)! + ATLAS.cellW + ATLAS.frameY;
   return new Texture({ source: new TextureSource({ width: w, height: ATLAS.cellH + 2 * ATLAS.frameY }) });
 }
 
@@ -20,11 +20,15 @@ function numbers(): { dn: DamageNumbers; views: () => Container<Sprite>[] } {
   return { dn, views: () => dn.view.children as Container<Sprite>[] };
 }
 
-/** The digits a view currently shows, read back off the sprite frames. */
+/** The glyphs a view currently shows, read back off the sprite frames. */
 function shown(v: Container<Sprite>): string {
+  const marks: Record<number, string> = { [ATLAS.plus]: '+', [ATLAS.bang]: '!' };
   return v.children
     .filter((s) => s.visible)
-    .map((s) => ATLAS.frameX.indexOf(s.texture.frame.x))
+    .map((s) => {
+      const i = ATLAS.frameX.indexOf(s.texture.frame.x);
+      return marks[i] ?? String(i);
+    })
     .join('');
 }
 
@@ -59,6 +63,37 @@ describe('DamageNumbers', () => {
     expect(shown(v!)).toBe('305');
     expect(v!.children.map((s) => s.tint)).toEqual([0xff8800, 0xff8800, 0xff8800]);
     expect(v!.children.map((s) => s.x)).toEqual([-ATLAS.advance, 0, ATLAS.advance]);
+  });
+
+  it('the pure model names the same "+" and "!" frames the generated atlas does', () => {
+    expect(PLUS_GLYPH).toBe(ATLAS.plus);
+    expect(BANG_GLYPH).toBe(ATLAS.bang);
+    expect(ATLAS.frameX).toHaveLength(12); // ten digits and both marks are really on the sheet
+    expect(ATLAS.bangAdvance).toBeLessThan(ATLAS.advance);
+  });
+
+  it('prints a crit as "N!", the "!" packed against the digits, and bigger', () => {
+    const { dn, views } = numbers();
+    dn.spawn(7, 48, 0xffb020, 0, 0, 'crit');
+    dn.spawn(8, 48, 0xffb020, 0, 0);
+    dn.update(POP_MS, 1);
+    const [crit, plain] = views();
+    expect(shown(crit!)).toBe('48!');
+    const half = (2 * ATLAS.advance + ATLAS.bangAdvance) / 2;
+    expect(crit!.children.map((s) => s.x)).toEqual([
+      -half + ATLAS.advance / 2, -half + ATLAS.advance * 1.5, half - ATLAS.bangAdvance / 2,
+    ]);
+    expect(crit!.scale.x).toBeCloseTo(plain!.scale.x * CRIT_SCALE);
+  });
+
+  it('prints a heal as "+N" at the plain size', () => {
+    const { dn, views } = numbers();
+    dn.spawn(7, 12, 0x68d391, 0, 0, 'heal');
+    dn.update(POP_MS, 1);
+    const [v] = views();
+    expect(shown(v!)).toBe('+12');
+    expect(v!.children.map((s) => s.x)).toEqual([-ATLAS.advance, 0, ATLAS.advance]);
+    expect(v!.scale.x).toBeCloseTo((NUMBER_PX / ATLAS.cellH) * magnitudeScale(12));
   });
 
   it('re-lays the digits in place when a hit merges into it', () => {

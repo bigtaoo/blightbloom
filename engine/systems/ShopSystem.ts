@@ -44,6 +44,7 @@ import { dropClearance } from '../state/actorRadius';
 import type { GameState } from '../state/GameState';
 import type { PlayerActor, Shop, ShopOffer } from '../state/entities';
 import { clampToWalkable } from './geom';
+import { restoreHp, restoreShield } from './combat';
 import { applyEmpBurst, pickupWouldApply } from './PickupSystem';
 import { applyRunBuff } from './runBuffApply';
 
@@ -132,13 +133,13 @@ export class ShopSystem {
         if (offer.buffId) applyRunBuff(p, offer.buffId);
         break;
       case 'heal':
-        p.hp = Math.min(p.maxHp, p.hp + HEAL_PICKUP_AMOUNT);
+        restoreHp(state, p, HEAL_PICKUP_AMOUNT);
         break;
       case 'energy':
         p.energy = Math.min(p.maxEnergy, p.energy + ENERGY_PICKUP_AMOUNT);
         break;
       case 'shield':
-        p.shield = Math.min(p.maxShield, p.shield + SHIELD_PICKUP_AMOUNT);
+        restoreShield(state, p, SHIELD_PICKUP_AMOUNT);
         break;
       case 'emp':
         applyEmpBurst(state, p);
