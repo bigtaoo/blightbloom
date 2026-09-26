@@ -28,7 +28,8 @@
  * A run is still fully reproducible, since that memory only ever advances from
  * state the engine already decided.
  */
-import { Button, makeCommand, quantizeMove, FP_SCALE, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, makeCommand, quantizeMove, FP_SCALE, RARITY_ORDER, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { profileForWeaponId } from './weaponStandoff';
 import { checkpointReached, totalFloorCount } from '../../src/game/match/floorCount';
 import { bfsPath, capstoneRoomId, doorCentre, pointInRect, rectCentre, roomIdAt, roomRect, roomRuntime, type Vec } from './pveNav';
 
@@ -53,6 +54,15 @@ export interface BotProfile {
    * left it with.
    */
   restsBetweenRooms: boolean;
+  /**
+   * Walk to a better GUN lying in a quiet room and take it (2026-09-26). Without this the bot
+   * fought every floor with the starter blaster, so `weaponFireStats` read `blaster 100%` on
+   * every sweep and the energy economy's whole reason to exist — a strong frame running its
+   * pool dry — was never exercised by play, only by staged `loadout` runs. "Better" is a
+   * strictly higher intrinsic rarity; ranged only, since the bot never swings its blade. The
+   * bot then stands where the new gun can connect from (`weaponStandoff.ts`).
+   */
+  swapsWeapons: boolean;
 }
 
 /**
@@ -63,8 +73,8 @@ export interface BotProfile {
  * game's own existing bot considers normal.
  */
 export const BOT_PROFILES: Record<'careful' | 'aggressive', BotProfile> = {
-  careful: { standoffFp: g(7.5), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.7, restsBetweenRooms: true },
-  aggressive: { standoffFp: g(4), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.5, restsBetweenRooms: false },
+  careful: { standoffFp: g(7.5), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.7, restsBetweenRooms: true, swapsWeapons: true },
+  aggressive: { standoffFp: g(4), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.5, restsBetweenRooms: false, swapsWeapons: true },
 };
 
 /** Enemies further than this are somebody else's problem — keeps the bot from
@@ -101,6 +111,9 @@ export class PveBotController {
   private lastPos: Vec = { x: 0, y: 0 };
   private unstickUntil = -1;
   private unstickSign = 1;
+  private readonly spacingCache = new Map<string, BotProfile>();
+  /** The gun in hand the first time the bot fought — the one that keeps the base spacing. */
+  private startingWeapon: string | undefined;
 
   constructor(private readonly profile: BotProfile = BOT_PROFILES.careful) {}
 
@@ -149,6 +162,15 @@ export class PveBotController {
     // that case; here the room is quiet, so seek it directly).
     const heal = this.healToSeek(s, self, here);
     if (heal) return this.withUnstick(owner, tick, self, quantizeMove(heal.x - self.x, heal.y - self.y), 0);
+    const chest = this.chestToOpen(s, here);
+    if (chest) return this.withUnstick(owner, tick, self, quantizeMove(chest.x - self.x, chest.y - self.y), 0);
+    const upgrade = this.weaponToTake(s, owner, here);
+    if (upgrade) {
+      const close = Math.hypot(upgrade.x - self.x, upgrade.y - self.y) <= (SIM.lootRevealRadius as number);
+      // Walk onto it, and click it once inside the panel's reveal radius — exactly the
+      // tap a player makes (`PlayerCommand.pickupTargetId`); the swap itself is the sim's.
+      return this.withUnstick(owner, tick, self, quantizeMove(upgrade.x - self.x, upgrade.y - self.y), 0, close ? upgrade.id : 0);
+    }
     if (this.shouldRest(self)) {
       this.restedTicks++;
       return this.idle(owner, tick);
@@ -164,7 +186,8 @@ export class PveBotController {
     const dx = target.x - me.x;
     const dy = target.y - me.y;
     const dist = Math.hypot(dx, dy);
-    const buttons = dist <= this.profile.fireRangeFp ? Button.FIRE : 0;
+    const spacing = this.spacingFor(s.players[owner]?.weapon?.spec.name);
+    const buttons = dist <= spacing.fireRangeFp ? Button.FIRE : 0;
 
     // A heal on the floor outranks spacing discipline — it is the only in-run
     // sustain there is (design/05 power ramp), and walking over it is free damage
@@ -173,8 +196,71 @@ export class PveBotController {
       ? quantizeMove(heal.x - me.x, heal.y - me.y)
       : this.orbiting(s, tick)
         ? quantizeMove(-dy, dx) // perpendicular: circle the target to clear the shot
-        : this.spacingMove(dx, dy, dist);
+        : this.spacingMove(spacing, dx, dy, dist);
     return this.withUnstick(owner, tick, me, move, buttons);
+  }
+
+  /** The profile re-spaced for the gun in hand (`weaponStandoff.ts`), cached per weapon id —
+   *  but only once the bot has actually SWAPPED. The gun a run starts with keeps the base
+   *  profile, so a run that never swaps plays exactly as before the bot could. (Re-spacing the
+   *  starter blaster too pulled the careful bot in from 7.5 to ~6 grid and took its average
+   *  depth from floor 0.5 to 0 with no swap at all — measured, 2026-09-26.) */
+  private spacingFor(weaponId: string | undefined): BotProfile {
+    if (weaponId !== undefined && this.startingWeapon === undefined) this.startingWeapon = weaponId;
+    if (!this.profile.swapsWeapons || weaponId === undefined || weaponId === this.startingWeapon) return this.profile;
+    let p = this.spacingCache.get(weaponId);
+    if (!p) {
+      p = profileForWeaponId(this.profile, weaponId);
+      this.spacingCache.set(weaponId, p);
+    }
+    return p;
+  }
+
+  /**
+   * Where to stand to open an unopened chest in the bot's own room (2026-09-26), or null. A
+   * small chest opens on approach, so the chest itself; a big one opens while every plate is
+   * occupied, so the nearest plate (solo, a big chest has exactly one). Gated on
+   * `swapsWeapons`, because a chest pays weapons and a bot that cannot use one has no reason
+   * to walk to it — keeping the flag-off bot byte-identical to the one every earlier sweep ran.
+   */
+  private chestToOpen(s: GameState, room: string | undefined): Vec | null {
+    if (!this.profile.swapsWeapons || room === undefined) return null;
+    for (const c of s.chests) {
+      if (c.opened || c.roomId !== room) continue;
+      if (c.kind === 'small') return { x: c.gx, y: c.gy };
+      const plate = c.mechanisms.find((m) => !m.occupied) ?? c.mechanisms[0];
+      if (plate) return { x: plate.gx, y: plate.gy };
+    }
+    return null;
+  }
+
+  /**
+   * A ranged weapon on the floor of the bot's own room whose intrinsic rarity beats the gun
+   * it holds, nearest first — or null. Own room only, for the reason `healToSeek` gives: a
+   * pickup behind a combat-locked door is not reachable. Strictly higher rarity, so the gun
+   * the swap drops back on the floor (always the worse one) can never lure it back.
+   */
+  private weaponToTake(s: GameState, owner: number, room: string | undefined): (Vec & { id: number }) | null {
+    if (!this.profile.swapsWeapons) return null;
+    const me = s.players[owner];
+    if (!me) return null;
+    const held = me.weapons.find((w) => w.spec.kind === 'ranged');
+    const heldRank = held ? rarityRank(held.spec.name) : -1;
+    let best = Infinity;
+    let found: (Vec & { id: number }) | null = null;
+    for (const item of s.pickups) {
+      if (!item.alive || item.kind !== 'weapon' || !item.weaponId) continue;
+      if (WEAPON_SPECS[item.weaponId]?.kind !== 'ranged' || rarityRank(item.weaponId) <= heldRank) continue;
+      if (room !== undefined && roomIdAt(s, item.gx, item.gy) !== room) continue;
+      const dx = item.gx - me.gx;
+      const dy = item.gy - me.gy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        found = { x: item.gx, y: item.gy, id: item.id };
+      }
+    }
+    return found;
   }
 
   /**
@@ -197,8 +283,8 @@ export class PveBotController {
   }
 
   /** Hold `standoffFp`: close when outside the band, back off when inside it. */
-  private spacingMove(dx: number, dy: number, dist: number): { moveBrad: Brad; moveMag: number } {
-    const { standoffFp, hysteresisFp } = this.profile;
+  private spacingMove(spacing: BotProfile, dx: number, dy: number, dist: number): { moveBrad: Brad; moveMag: number } {
+    const { standoffFp, hysteresisFp } = spacing;
     if (dist > standoffFp + hysteresisFp) return quantizeMove(dx, dy);
     if (dist < standoffFp - hysteresisFp) return quantizeMove(-dx, -dy);
     return { moveBrad: 0 as Brad, moveMag: 0 };
@@ -285,16 +371,23 @@ export class PveBotController {
 
   /** The room worth walking to next: the nearest one still holding live enemies or
    *  never activated at all, else the capstone (so a fully-cleared floor still
-   *  converges on the portal). */
+   *  converges on the portal).
+   *
+   *  The capstone is never that "nearest unvisited room" while any other is left
+   *  (2026-09-26). It used to be: entering it ends the floor, and since the chest rooms
+   *  hang off the chain as dead ends, the capstone was usually nearer — so the bot never
+   *  opened a chest, never saw a weapon, and every sweep read `blaster 100%`. A player
+   *  sweeps the floor for its chest before taking the portal, and so does the bot now. */
   private nextObjectiveRoom(s: GameState): string | undefined {
     const from = this.currentRoom;
     if (from === undefined) return undefined;
+    const capstone = capstoneRoomId(s);
     const path = bfsPath(s, from, (id) => {
-      if (id === from) return false; // never "arrive" where we already are
+      if (id === from || id === capstone) return false; // never "arrive" where we already are
       const rt = roomRuntime(s, id);
       return rt !== undefined && (!rt.activated || rt.hasLiveEnemy);
     });
-    return path?.[path.length - 1] ?? capstoneRoomId(s);
+    return path?.[path.length - 1] ?? capstone;
   }
 
   /** Walk toward `goal` one door at a time: aim at the shared passage until we are
@@ -331,7 +424,7 @@ export class PveBotController {
    * hasn't, strafe perpendicular for a fixed burst. Direction alternates off the
    * tick the stall was detected — deterministic, no PRNG (design/06).
    */
-  private withUnstick(owner: number, tick: number, me: Vec, move: { moveBrad: Brad; moveMag: number }, buttons: number): PlayerCommand {
+  private withUnstick(owner: number, tick: number, me: Vec, move: { moveBrad: Brad; moveMag: number }, buttons: number, pickupTargetId = 0): PlayerCommand {
     const moved = Math.hypot(me.x - this.lastPos.x, me.y - this.lastPos.y);
     if (move.moveMag > 0 && moved < STUCK_EPSILON_FP / STUCK_WINDOW) this.stuckSince++;
     else this.stuckSince = 0;
@@ -345,12 +438,18 @@ export class PveBotController {
     if (tick <= this.unstickUntil && move.moveMag > 0) {
       // Rotate the intended direction a quarter turn (brad is a 16-bit circle).
       const turned = ((move.moveBrad + this.unstickSign * 16384 + 65536) % 65536) as Brad;
-      return makeCommand({ owner, tick, moveBrad: turned, moveMag: move.moveMag, buttons });
+      return makeCommand({ owner, tick, moveBrad: turned, moveMag: move.moveMag, buttons, pickupTargetId });
     }
-    return makeCommand({ owner, tick, moveBrad: move.moveBrad, moveMag: move.moveMag, buttons });
+    return makeCommand({ owner, tick, moveBrad: move.moveBrad, moveMag: move.moveMag, buttons, pickupTargetId });
   }
 
   private idle(owner: number, tick: number): PlayerCommand {
     return makeCommand({ owner, tick, moveBrad: 0 as Brad, moveMag: 0, buttons: 0 });
   }
+}
+
+/** A weapon id's intrinsic rarity as a rank (`RARITY_ORDER` index); -1 for an unknown id. */
+function rarityRank(weaponId: string): number {
+  const spec = WEAPON_SPECS[weaponId];
+  return spec ? RARITY_ORDER.indexOf(spec.rarity) : -1;
 }

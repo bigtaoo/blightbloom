@@ -216,6 +216,11 @@ export interface WeaponFireStats {
   bulletsPerPull: number;
   /** Share of every pull in the sweep this weapon accounts for. */
   share: number;
+  /** Share of the live ticks this (ranged) weapon was held on which its pull could not be
+   *  paid for; 0 for a melee weapon or one never held. The per-gun half of the floor
+   *  table's `dry%`, which is what the energy economy's "a strong frame runs dry" claim
+   *  needs once the bot swaps guns (2026-09-26). */
+  dryShare: number;
 }
 
 export function weaponFireStats(runs: readonly RunMetrics[]): { rows: WeaponFireStats[]; unattributed: number } {
@@ -236,15 +241,22 @@ export function weaponFireStats(runs: readonly RunMetrics[]): { rows: WeaponFire
       acc.set(key, e);
     }
   }
+  const held = (id: string, field: 'heldTicksByWeapon' | 'dryTicksByWeapon') =>
+    runs.reduce((a, r) => a + (r[field]?.[id] ?? 0), 0);
   const rows = [...acc.entries()]
-    .map(([key, e]) => ({
-      weapon: key.slice(key.indexOf(':') + 1),
-      kind: e.kind,
-      pulls: e.pulls,
-      bullets: e.bullets,
-      bulletsPerPull: e.pulls === 0 ? 0 : round1(e.bullets / e.pulls),
-      share: total === 0 ? 0 : round3(e.pulls / total),
-    }))
+    .map(([key, e]) => {
+      const weapon = key.slice(key.indexOf(':') + 1);
+      const heldTicks = e.kind === 'ranged' ? held(weapon, 'heldTicksByWeapon') : 0;
+      return {
+        weapon,
+        kind: e.kind,
+        pulls: e.pulls,
+        bullets: e.bullets,
+        bulletsPerPull: e.pulls === 0 ? 0 : round1(e.bullets / e.pulls),
+        share: total === 0 ? 0 : round3(e.pulls / total),
+        dryShare: heldTicks === 0 ? 0 : round3(held(weapon, 'dryTicksByWeapon') / heldTicks),
+      };
+    })
     .sort((a, b) => b.pulls - a.pulls || a.weapon.localeCompare(b.weapon));
   return { rows, unattributed };
 }
@@ -266,11 +278,11 @@ export function formatFireTable(rows: readonly FloorFireStats[]): string {
 }
 
 export function formatWeaponFireTable(stats: { rows: readonly WeaponFireStats[]; unattributed: number }): string {
-  const head = 'weapon                kind     pulls   bullets  bul/pull  share%';
+  const head = 'weapon                kind     pulls   bullets  bul/pull  share%  dry%';
   const body = stats.rows.map(
     (r) =>
       `${r.weapon.padEnd(22)}${r.kind.padEnd(9)}${String(r.pulls).padEnd(8)}${String(r.bullets).padEnd(9)}` +
-      `${String(r.bulletsPerPull).padEnd(10)}${Math.round(r.share * 100)}`,
+      `${String(r.bulletsPerPull).padEnd(10)}${String(Math.round(r.share * 100)).padEnd(8)}${Math.round(r.dryShare * 100)}`,
   );
   return [head, ...body, `(unattributed pulls — fired on a weapon-pickup tick: ${stats.unattributed})`].join('\n');
 }

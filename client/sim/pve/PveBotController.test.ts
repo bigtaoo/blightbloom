@@ -9,7 +9,7 @@
  * where a real generated floor would hide it.
  */
 import { describe, expect, it } from 'vitest';
-import { Button, FP_SCALE, type GameState } from '@dd/engine';
+import { Button, FP_SCALE, WEAPON_SPECS, SIM, type GameState } from '@dd/engine';
 import { BOT_PROFILES, PveBotController } from './PveBotController';
 
 const g = (grid: number): number => grid * FP_SCALE;
@@ -26,6 +26,11 @@ interface FixtureOpts {
   doors?: [string, string, { x: number; y: number; w: number; h: number }][];
   floorIndex?: number;
   floorCount?: number;
+  /** [gx, gy, weaponId] per weapon lying on the floor, in grid units (2026-09-26). */
+  floorWeapons?: [number, number, string][];
+  /** Weapon ids in the seat's slots; the first is the one in hand. Default: none. */
+  held?: string[];
+  chests?: { roomId: string; kind: 'small' | 'big'; at: [number, number]; opened?: boolean; plates?: [number, number, boolean][] }[];
 }
 
 /** Two 10x10 rooms side by side joined by a doorway at their shared edge — the
@@ -59,8 +64,19 @@ function fixture(o: FixtureOpts): GameState {
         maxHp: 6,
         shield: o.shield ?? 3.2,
         maxShield: 3.2,
+        weapons: (o.held ?? []).map((id) => ({ spec: { name: id, kind: WEAPON_SPECS[id]?.kind ?? 'ranged' } })),
+        weapon: o.held?.[0] ? { spec: { name: o.held[0], kind: WEAPON_SPECS[o.held[0]]?.kind ?? 'ranged' } } : undefined,
       },
     ],
+    chests: (o.chests ?? []).map((c, i) => ({
+      id: 80 + i,
+      roomId: c.roomId,
+      kind: c.kind,
+      gx: g(c.at[0]),
+      gy: g(c.at[1]),
+      opened: c.opened ?? false,
+      mechanisms: (c.plates ?? []).map(([x, y, occupied]) => ({ gx: g(x), gy: g(y), occupied })),
+    })),
     enemies: (o.enemies ?? []).map(([gx, gy, roomId, alive], i) => ({
       id: 10 + i,
       alive: alive ?? true,
@@ -68,7 +84,10 @@ function fixture(o: FixtureOpts): GameState {
       gy: g(gy),
       roomId,
     })),
-    pickups: (o.heals ?? []).map(([gx, gy], i) => ({ id: 50 + i, alive: true, kind: 'heal', gx: g(gx), gy: g(gy) })),
+    pickups: [
+      ...(o.heals ?? []).map(([gx, gy], i) => ({ id: 50 + i, alive: true, kind: 'heal', gx: g(gx), gy: g(gy) })),
+      ...(o.floorWeapons ?? []).map(([gx, gy, weaponId], i) => ({ id: 60 + i, alive: true, kind: 'weapon', weaponId, gx: g(gx), gy: g(gy) })),
+    ],
     dungeonRooms: rooms.map((r) => ({ id: r.id })),
     dungeonRoomRects: rooms.map((r) => ({ id: r.id, rect: { x: r.x, y: r.y, w: r.w, h: r.h } })),
     dungeonRoomRuntime: rooms.map((r) => ({
@@ -488,5 +507,129 @@ describe('PveBotController — the room, not a scan radius, is what bounds the s
       heals: [[12, 9]], // same room, due south
     });
     expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeGreaterThan(0.9);
+  });
+});
+
+
+/**
+ * Chests and better guns (2026-09-26). Until then the bot fought every floor with the starter
+ * blaster: the capstone was usually nearer than the dead-end chest room, it never walked up to
+ * a chest, and it had no notion of a better gun — so `weaponFireStats` read `blaster 100%` on
+ * every sweep and nothing measured a looted frame running its pool dry.
+ */
+describe('PveBotController — chests and better guns', () => {
+  const rank = (id: string) => ['common', 'fine', 'epic', 'legend', 'legendary'].indexOf(WEAPON_SPECS[id]!.rarity);
+  const ranged = Object.keys(WEAPON_SPECS).filter((id) => WEAPON_SPECS[id]!.kind === 'ranged');
+  const better = ranged.find((id) => rank(id) > rank('blaster'))!;
+  const same = ranged.find((id) => id !== 'blaster' && rank(id) === rank('blaster'));
+
+  it('walks to an unopened small chest in its quiet room', () => {
+    const s = fixture({ playerAt: [2, 2], held: ['blaster'], chests: [{ roomId: 'a', kind: 'small', at: [8, 8] }] });
+    const d = dir(bot().build(s, 0, 501).moveBrad);
+    expect(d.x).toBeGreaterThan(0.5);
+    expect(d.y).toBeGreaterThan(0.5);
+  });
+
+  it("stands on a big chest's free plate, not on the chest", () => {
+    const s = fixture({
+      playerAt: [5, 5],
+      held: ['blaster'],
+      chests: [{ roomId: 'a', kind: 'big', at: [8, 5], plates: [[5, 1, false]] }],
+    });
+    expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeLessThan(-0.9); // straight up to the plate
+  });
+
+  it('ignores an opened chest and one in another room', () => {
+    const s = fixture({
+      playerAt: [5, 5],
+      held: ['blaster'],
+      chests: [
+        { roomId: 'a', kind: 'small', at: [1, 1], opened: true },
+        { roomId: 'b', kind: 'small', at: [15, 5] },
+      ],
+    });
+    const cmd = bot().build(s, 0, 501);
+    expect(cmd.pickupTargetId).toBe(0);
+    // With nothing left here it travels (the only door is east), never toward the opened chest.
+    expect(dir(cmd.moveBrad).x).toBeGreaterThan(0.5);
+  });
+
+  it("walks to a better gun and clicks it once inside the pickup panel's reach", () => {
+    const far = bot().build(fixture({ playerAt: [1, 5], held: ['blaster'], floorWeapons: [[8, 5, better]] }), 0, 501);
+    expect(dir(far.moveBrad).x).toBeGreaterThan(0.9);
+    expect(far.pickupTargetId).toBe(0); // out of reach: walk, do not click yet
+    const reach = (SIM.lootRevealRadius as number) / FP_SCALE;
+    const near = bot().build(fixture({ playerAt: [8 - reach / 2, 5], held: ['blaster'], floorWeapons: [[8, 5, better]] }), 0, 501);
+    expect(near.pickupTargetId).toBe(60);
+  });
+
+  it('never takes a gun that is not strictly better, so the one a swap drops cannot lure it back', () => {
+    expect(same).toBeDefined();
+    const s = fixture({ playerAt: [8, 5], held: ['blaster'], floorWeapons: [[8.5, 5, same!]] });
+    expect(bot().build(s, 0, 501).pickupTargetId).toBe(0);
+  });
+
+  it('never takes a melee weapon, since it never swings its blade', () => {
+    const blade = Object.keys(WEAPON_SPECS).find((id) => WEAPON_SPECS[id]!.kind === 'melee' && rank(id) > 0)!;
+    const s = fixture({ playerAt: [8, 5], held: ['blaster'], floorWeapons: [[8.5, 5, blade]] });
+    expect(bot().build(s, 0, 501).pickupTargetId).toBe(0);
+  });
+
+  it('fights first: a gun on the floor waits until the room is quiet', () => {
+    const s = fixture({ playerAt: [5, 5], held: ['blaster'], enemies: [[5, 8, 'a']], floorWeapons: [[5.5, 5, better]] });
+    const cmd = bot().build(s, 0, 501);
+    expect(cmd.pickupTargetId).toBe(0);
+    expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('with swapsWeapons off, ignores both chests and guns: the pre-2026-09-26 bot exactly', () => {
+    const off = { ...BOT_PROFILES.careful, swapsWeapons: false };
+    const s = fixture({
+      playerAt: [8, 5],
+      held: ['blaster'],
+      floorWeapons: [[8.5, 5, better]],
+      chests: [{ roomId: 'a', kind: 'small', at: [1, 1] }],
+    });
+    const cmd = bot(off).build(s, 0, 501);
+    expect(cmd.pickupTargetId).toBe(0);
+    expect(dir(cmd.moveBrad).x).toBeGreaterThan(0.5); // straight on toward the door, as before
+  });
+
+  it('keeps the base spacing for the gun it started with, and re-spaces only after a swap', () => {
+    // The shortest-reach ranged gun: re-spacing pulls its fire range in, which the trigger shows.
+    const reachOf = (id: string) => {
+      const sp = WEAPON_SPECS[id]!;
+      return sp.kind === 'ranged' ? sp.bulletSpeed * sp.lifespanSec : 99;
+    };
+    const shortGun = ranged.filter((id) => id !== 'blaster').sort((x, y) => reachOf(x) - reachOf(y))[0]!;
+    const b = bot();
+    // First fight: blaster in hand, so it becomes the starting gun and fires at the base 11 grid.
+    const blaster = fixture({ playerAt: [5, 0.5], held: ['blaster'], enemies: [[5, 9.5, 'a']] });
+    expect(b.build(blaster, 0, 501).buttons & Button.FIRE).toBe(Button.FIRE);
+    // Same bot, now holding the swapped-in short gun at the same 9-grid distance: its re-spaced
+    // fire range is the gun's own short reach, so it closes instead of firing.
+    const swapped = fixture({ playerAt: [5, 0.5], held: [shortGun], enemies: [[5, 9.5, 'a']] });
+    const cmd = b.build(swapped, 0, 502);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+    expect(dir(cmd.moveBrad).y).toBeGreaterThan(0.9);
+  });
+});
+
+describe('PveBotController — the capstone is the last objective', () => {
+  it('sweeps a nearer unvisited side room before walking into the capstone', () => {
+    // a to b (the capstone, placed last) and a to c (a side room): both adjacent, c unvisited.
+    const s = fixture({
+      playerAt: [5, 5],
+      rooms: [
+        { id: 'a', x: 0, y: 0, w: g(10), h: g(10) },
+        { id: 'c', x: 0, y: g(10), w: g(10), h: g(10), activated: false },
+        { id: 'b', x: g(10), y: 0, w: g(10), h: g(10), activated: false },
+      ],
+      doors: [
+        ['a', 'b', { x: g(9.5), y: g(4), w: g(1), h: g(2) }],
+        ['a', 'c', { x: g(4), y: g(9.5), w: g(2), h: g(1) }],
+      ],
+    });
+    expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeGreaterThan(0.9); // south to c, not east to b
   });
 });

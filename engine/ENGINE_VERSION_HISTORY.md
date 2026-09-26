@@ -2642,3 +2642,21 @@ kill spends a new draw, a shop's buff slot mints three more ids, and floors 2-3 
 Golden fixture regenerated. New `systems/characterDrop.test.ts`, `content/depthCurves.test.ts`;
 `shops.test.ts` gained the pick-one-of-three suite; `emberLevel1.test.ts` now runs its full
 passability suite over every branch variant.
+
+v77 (2026-09-26, ROADMAP step 4 — the PvP balance pass). Three rule changes, all PvP-facing:
+
+- **A parried rival player's bullet keeps half its damage** (`PVP_DEFLECT_DAMAGE_PERMILLE` 500,
+  `deflectedPlayerDamage`, `balance/build.ts`). `DeflectSystem` scales the bullet before flipping
+  its faction; an enemy's bullet is untouched, so PvE and a co-op run are unchanged in behaviour.
+  The 500 is the starting number, not a measured one: the PvP bot never swings a blade, so the
+  balance sim records zero deflects and cannot price it.
+- **Downed players take no zone or hazard-tile damage** (`EnvironmentSystem`). "Downed =
+  invulnerable" (design/07, 3.2) held for bullets, blades and status effects but not the zone,
+  which kept ticking on a downed body for its whole bleedout — HP ran to -46 and damage numbers
+  kept rising off it. It changed no outcome (only bleedout ends a downed player), but it put the
+  zone at ~74% of all damage in the balance sim.
+- **Juggernaut's arena pool 55/0 → 75/0** (`SkinDef.pvp`), from 540 zone-aware bot matches: its
+  win share 17% → 21%; 85 and 95 bought nothing more.
+
+Any arena replay diverges (a downed seat's hp, a parried shot's damage, the juggernaut's seat).
+Golden fixture regenerated.

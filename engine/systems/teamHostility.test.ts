@@ -15,6 +15,7 @@ import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import { ENEMY_TEAM_ID, isHostile, type Projectile } from '@dd/engine/state/entities';
 import { makeWeapon, openSwing, SABER_SIM } from '@dd/engine/content/weapons';
+import { deflectedPlayerDamage, PVP_DEFLECT_DAMAGE_PERMILLE } from '@dd/engine/balance/build';
 import {
   DeflectSystem,
   HitResolveSystem,
@@ -128,6 +129,41 @@ describe('PvP: seats on different teamIds can damage each other', () => {
     new DeflectSystem().tick(s);
     expect(allyBullet.vx).toBe(velBefore.vx); // untouched — same team, never a deflect candidate
     expect(allyBullet.vy).toBe(velBefore.vy);
+  });
+
+  it("a parried rival PLAYER's bullet comes back at PVP_DEFLECT_DAMAGE_PERMILLE, an enemy's at full", () => {
+    const s = createGameState({
+      ...CFG,
+      players: [
+        { start: [400, 400], teamId: 0 },
+        { start: [420, 400], teamId: 1 },
+      ],
+    });
+    const swinger = s.players[0]!;
+    swinger.weapon = makeWeapon(SABER_SIM);
+    swinger.weapons = [swinger.weapon];
+    openSwing(swinger.weapon);
+    swinger.facing = 0 as Brad;
+
+    const rivalShot = bulletOn(s, { gx: swinger.gx, gy: swinger.gy }, 1);
+    rivalShot.damage = 25; // a PvP-scaled blaster shot
+    const mobShot = bulletOn(s, { gx: swinger.gx, gy: swinger.gy }, ENEMY_TEAM_ID);
+    mobShot.faction = 'enemy';
+    mobShot.damage = 25;
+    new DeflectSystem().tick(s);
+    expect(rivalShot.teamId).toBe(0); // both were parried…
+    expect(mobShot.teamId).toBe(0);
+    expect(rivalShot.damage).toBe(deflectedPlayerDamage(25)); // …only the rival's is weakened
+    expect(rivalShot.damage).toBe(Math.round((25 * PVP_DEFLECT_DAMAGE_PERMILLE) / 1000));
+    expect(rivalShot.damage).toBeLessThan(25);
+    expect(mobShot.damage).toBe(25);
+  });
+
+  it('deflectedPlayerDamage rounds to the nearest point and never drops a shot below 1', () => {
+    expect(deflectedPlayerDamage(1)).toBe(1);
+    expect(deflectedPlayerDamage(0)).toBe(1);
+    expect(deflectedPlayerDamage(1000)).toBe(PVP_DEFLECT_DAMAGE_PERMILLE);
+    expect(deflectedPlayerDamage(3)).toBe(Math.round((3 * PVP_DEFLECT_DAMAGE_PERMILLE) / 1000));
   });
 
   it('two rival bullets clash and cancel; two same-team bullets pass through each other', () => {

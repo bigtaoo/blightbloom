@@ -107,3 +107,45 @@ describe('two-seat run: the bot actually drives its seat through step()', () => 
     expect(eng.state.players[0]!.gx).toBe(startX); // held position — no opponent to chase
   });
 });
+
+/**
+ * The zone comes first (2026-09-26, `ai/zoneRetreat.ts`). Three rooms side by side, 10 grid
+ * (320 px) each: A | B | C. Seats are placed in pixels and their `roomId` set by hand, the
+ * way `EnvironmentSystem` would have left it.
+ */
+describe('PvpBotController — the closing zone', () => {
+  const map = {
+    id: 'corridor', sizeGrid: { w: 30, h: 20 }, spawns: [], eyeCandidates: [],
+    rooms: ['A', 'B', 'C'].map((id, i) => ({ id, rectGrid: { x: i * 10, y: 0, w: 10, h: 20 }, solids: [] })),
+    doors: [
+      { roomA: 'A', roomB: 'B', passageGrid: { x: 10, y: 11, w: 1, h: 2 } },
+      { roomA: 'B', roomB: 'C', passageGrid: { x: 20, y: 11, w: 1, h: 2 } },
+    ],
+  };
+  function arena(meAt: [number, number], meRoom: string, themAt: [number, number], themRoom: string, safe: string[]) {
+    const s = createGameState({ ...CFG, players: [{ start: meAt, teamId: 0 }, { start: themAt, teamId: 1 }] });
+    (s as { arenaMap: unknown }).arenaMap = map; // read-only on GameState; set once at build
+    s.zone = { eye: 'A', stage: 1, phase: 'hold', ticksToPhaseEnd: 100, safe, closing: [], escalation: 0 } as typeof s.zone;
+    s.players[0]!.roomId = meRoom as never;
+    s.players[1]!.roomId = themRoom as never;
+    return s;
+  }
+
+  it('walks out of a closed room before it fights, even with an opponent to chase', () => {
+    // Me in C (closed); the opponent is EAST of me, the way out is WEST.
+    const cmd = bot.build(arena([800, 400], 'C', [920, 400], 'C', ['A', 'B']), 0, 5);
+    expect(cmd.moveMag).toBeGreaterThan(0);
+    expect(Math.cos((cmd.moveBrad / BRAD_FULL) * Math.PI * 2)).toBeLessThan(0); // west, away from them
+    expect(cmd.buttons & Button.FIRE).toBeTruthy(); // still shooting on the way
+  });
+
+  it('shoots at an opponent standing in the storm but does not follow them into it', () => {
+    // Me in B (safe), the opponent ~6 grid east in C (closed): in range, outside spacing.
+    const into = bot.build(arena([500, 400], 'B', [700, 400], 'C', ['A', 'B']), 0, 5);
+    expect(into.buttons & Button.FIRE).toBeTruthy();
+    expect(into.moveMag).toBe(0);
+    // Control: the same geometry with C still safe, and it advances as before.
+    const chase = bot.build(arena([500, 400], 'B', [700, 400], 'C', ['A', 'B', 'C']), 0, 5);
+    expect(chase.moveMag).toBeGreaterThan(0);
+  });
+});

@@ -1615,9 +1615,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change) — step 4's payments item, ROADMAP 9.1–9.3 landed the way 9.4 requires without credentials. A raw-body `POST /webhook/paddle` verified by HMAC-SHA256 over `${ts}:${rawBody}` (any `h1`, constant time, Paddle's 5 s window), 503 without the secret so Paddle retries, and `settleSigned` trusting the signed transaction id (AMENDMENT 1). Price ids map through `BB_PADDLE_PRICE_IDS`, an unknown one is refused, and a charged-amount difference is a reconciliation finding, never a rejection; `GET /transactions` is a real paged lister. Approved refunds and chargebacks revoke only the entitlement that order granted, through a `reversal` ledger row, a revoke outbox row and a new internal revoke route, and file a `refund` review case; ladder history untouched. Signature vector self-computed (Paddle publishes none). Price ids, the secret, the API key, a public route and a real sandbox round trip are the owner's. `net` `test` `docs`
 
+**[2026-09-26 — the PvP balance pass](roadmap/99-2026-09-26-pvp-balance-bot-guns.md)**
+
+- **09-26** [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77) — step 4's balance item, one bump (`ENGINE_VERSION` 77). The PvE bot now opens chests and swaps to a strictly better ranged gun, so the per-weapon `dry%` column finally has data (blaster 5%, frostseeker 59%). The PvP bot now leaves the closing zone. The zone also stops ticking on downed bodies, which it had done for their whole bleedout. With both fixes the zone deals ~2.5% of damage, not ~74%. Juggernaut's arena pool goes 55/0 → 75/0 (17% → 21% of wins over 540 matches; more buys nothing). `PVP_SCALE_FACTOR` 5 and the zone curve are kept on data. A parried rival player's bullet keeps 50% of its damage — unmeasured, because the bot never parries. `engine` `arena` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 195 entries, grouped. An entry with more than one tag appears more than once.
+The same 196 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1731,7 +1735,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(34)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(35)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1767,8 +1771,9 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`arena`** — the PvP launch map and its audit *(7)*
+**`arena`** — the PvP launch map and its audit *(8)*
 
 - 08-25 [The launch arena is a placeholder that passes validation](roadmap/06-2026-08-25.md#the-launch-arena-is-a-placeholder-that-passes-validation-2026-08-25-tooling--audit)
 - 08-25 [The Seven Districts: the launch arena gets authored](roadmap/06-2026-08-25.md#the-seven-districts-the-launch-arena-gets-authored-2026-08-25-content)
@@ -1777,6 +1782,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The arena's passages reach the clip rule](roadmap/08-2026-08-26-arena.md#the-arenas-passages-reach-the-clip-rule-2026-08-26)
 - 08-26 [The arena in front of a camera, and the audit becomes a gate](roadmap/08-2026-08-26-arena.md#the-arena-in-front-of-a-camera-and-the-audit-becomes-a-gate-2026-08-26-client--engine)
 - 08-26 [The arena finally has a frame time, and it was not the walls](roadmap/08-2026-08-26-arena.md#the-arena-finally-has-a-frame-time-and-it-was-not-the-walls-2026-08-26-client-only)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
 **`content`** — authored rooms, pieces, props, loot *(13)*
 
@@ -1794,7 +1800,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(109)*
+**`test`** — coverage sweeps, gates, mutation batteries *(110)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1905,6 +1911,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1998,7 +2005,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`tools`** — sims, profilers, editors, build scripts *(22)*
+**`tools`** — sims, profilers, editors, build scripts *(23)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2022,8 +2029,9 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`docs`** — design docs and this log itself *(114)*
+**`docs`** — design docs and this log itself *(115)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2139,6 +2147,7 @@ The same 195 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

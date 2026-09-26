@@ -142,6 +142,10 @@ export interface RunMetrics {
    *  from "the bot never empties the bar in the first place". Counted on the same
    *  `observe()` pass as everything else, so it shares the run's tick denominator. */
   dryTicksByFloor: Record<number, number>;
+  /** Live ticks each ranged weapon was the one held, and of those, the ticks it could not be
+   *  afforded — `dryTicksByFloor` split by gun (2026-09-26, once the bot started swapping). */
+  heldTicksByWeapon?: Record<string, number>;
+  dryTicksByWeapon?: Record<string, number>;
   /** Live ticks per floor, the denominator `dryTicksByFloor` is a fraction of. */
   aliveTicksByFloor: Record<number, number>;
   /** Energy refills per floor the player actually WALKED OVER, as opposed to the ones

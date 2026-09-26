@@ -92,6 +92,22 @@ export const ARENA_PRESET_IDS: readonly ArenaPresetId[] = Object.keys(ARENA_PRES
  */
 export const PVP_SCALE_FACTOR = 5;
 
+/**
+ * What a parried RIVAL-PLAYER bullet keeps of its damage, per mille (ROADMAP step 4,
+ * 2026-09-26). A parry turns the shooter's own shot around at them, and at full damage that
+ * makes a melee swing a free counter to any ranged player in a duel. Half is the owner's
+ * starting number; an enemy's bullet (PvE, or a PvP arena's mobs) is untouched, so this is a
+ * PvP-only rule by construction: only in an arena is a player's bullet ever hostile to
+ * another player. Integer per mille like every probability here (design/06).
+ */
+export const PVP_DEFLECT_DAMAGE_PERMILLE = 500;
+
+/** A deflected bullet's damage when it was a player's: `damage` scaled by
+ *  `PVP_DEFLECT_DAMAGE_PERMILLE`, rounded, never below 1 — a parried shot always still hurts. */
+export function deflectedPlayerDamage(damage: number): number {
+  return Math.max(1, Math.round((damage * PVP_DEFLECT_DAMAGE_PERMILLE) / 1000));
+}
+
 /** A weapon's PvP-scaled copy — only `damage` moves; the authored WEAPON_SIM_BY_ID
  * constants are never mutated (PvE reads the same objects). Fire rate/handling are
  * untouched: matching PvE's time-to-kill FEEL only requires damage-vs-HP to scale
