@@ -2610,3 +2610,35 @@ New tests: `floorCards.test.ts` gained cases for all four new mods (including th
 shape every existing case pins); `pickups.test.ts` gained the energy pickup's own base-case
 coverage (previously untested on its own) plus `surge`/`aegis`; `chests.test.ts` gained `bounty`;
 new `systems/materialDrop.test.ts` mirrors `coinDrop.test.ts`'s `windfall` suite for `stockpile`.
+
+v76 (ROADMAP step 4, 2026-09-26): three Backlog items and a character route, one bump.
+
+- **B2 — the shop's buff line is a pick-one-of-three.** A buff slot (`content/shops.ts rollSlot`)
+  no longer rolls one buff: it offers three distinct ones as `ShopOffer.choices`, each with its
+  own id from `nextShopId()`, and the buyer takes one at the line's single price. The three come
+  out of ONE draw (`combinationAt` over `SHOP_BUFF_POOL`, C(5,3) = 10 lines), so every slot still
+  costs exactly two draws whatever its category. The pool gains card-only `cell_up`, on the
+  floor-card file's own argument that a pick-one-of-three is where a conditional reward belongs.
+  `PlayerCommand.shopBuyId` now names a CHOICE id for a buff line; the line's own id buys nothing.
+  The command format is unchanged. `shop_buy` carries the chosen `buffId`, and `hashState`'s shop
+  tuple now carries the choices and the taken buff.
+- **B3 — floors 3 and 4 get a skippable variant.** `floorLayoutVariants` gains indices 2 and 3
+  (`ember_l1_floor_3_branch.json` / `_4_branch.json`): same rosters, same door count and order,
+  one fight moved onto a dead-end spur (`r5_bastion`; `r4_rampart` with the cache behind it). One
+  extra `roomgenPrng` draw per run for each.
+- **B4 — both depth curves are `DungeonConfig` fields.** `weaponRarityByDepth` (read by the chest,
+  boss and shop weapon rolls) and `materialTierByDepth` (read by `DeathDropsSystem`'s `rollDrop`
+  tier). Both optional, and absent they reproduce the pre-field behaviour exactly — so B4 alone
+  moves no hash. `EMBER_DUNGEON` sets neither.
+- **Juggernaut drops from the boss at 1%** (`CHARACTER_DROP_PERMILLE` 10, `DROP_CHARACTERS`). A new
+  `'character'` pickup kind carrying `skinId`, auto-collected into the collector's own
+  `PlayerActor.characterPickup` — the schematic's twin, with its own once-per-run guard
+  (`GameState.characterRolled`) and one extra `dropPrng` draw per boss kill (two on a hit), after
+  the schematic's. `hashState` hashes the new per-seat field, which is why EVERY golden scenario
+  moved, arenas included: the hash input grew, not their behaviour.
+
+Any replay diverges: the state hash has a new per-seat field and a new shop tuple shape, a boss
+kill spends a new draw, a shop's buff slot mints three more ids, and floors 2-3 draw a layout.
+Golden fixture regenerated. New `systems/characterDrop.test.ts`, `content/depthCurves.test.ts`;
+`shops.test.ts` gained the pick-one-of-three suite; `emberLevel1.test.ts` now runs its full
+passability suite over every branch variant.

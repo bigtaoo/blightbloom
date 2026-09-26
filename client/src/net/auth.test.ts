@@ -11,7 +11,7 @@
  * them is `net/entitlements.ts`'s 401-as-a-value, on a route the boot path already calls.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { register, login, portalLogin, logout, changePassword, claimGuestMerge, saveAccountMeta, AuthRequestError } from './auth';
+import { register, login, portalLogin, logout, changePassword, claimGuestMerge, saveAccountMeta, claimAccountDrop, AuthRequestError } from './auth';
 
 const RESULT = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -178,5 +178,21 @@ describe('auth client calls — non-JSON error bodies (a proxy 502/504 HTML page
   it('every other auth call already had this guard via call() — confirms the same shape applies here too', async () => {
     const fetch = fakeFetchNonJsonBody(500);
     await expect(login('http://mm', 'alice', 'hunter22', { fetch })).rejects.toThrow(/auth request failed \(500\)/);
+  });
+});
+
+describe('claimAccountDrop (2026-09-26)', () => {
+  it('posts the skin id with a bearer token and reports whether a row landed', async () => {
+    const fetch = fakeFetch(200, { granted: true });
+    await expect(claimAccountDrop('http://mm', 'tok-1', 'juggernaut', { fetch })).resolves.toBe(true);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe('http://mm/account/claim-drop');
+    expect((init as RequestInit).headers).toMatchObject({ authorization: 'Bearer tok-1' });
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ skinId: 'juggernaut' });
+    await expect(claimAccountDrop('http://mm', 'tok-1', 'juggernaut', { fetch: fakeFetch(200, { granted: false }) })).resolves.toBe(false);
+  });
+
+  it('rejects on a refusal, so the caller can try again later', async () => {
+    await expect(claimAccountDrop('http://mm', 'tok-1', 'vanguard', { fetch: fakeFetch(400, { error: 'not a droppable character' }) })).rejects.toThrow();
   });
 });

@@ -1,4 +1,4 @@
-import { TICK_RATE, WEAPON_SPECS, type GameState } from '@dd/engine';
+import { SKIN_DEFS, TICK_RATE, WEAPON_SPECS, type GameState } from '@dd/engine';
 import { SCORE } from '../score';
 import { t, tName } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
@@ -171,10 +171,14 @@ export class RunOutcome {
       pickedUp === null
         ? []
         : [t('results.blueprintLine', { weapon: tName(WEAPON_SPECS[pickedUp]?.nameKey ?? pickedUp) })];
+    const character = s.players[this.host.localOwner]?.characterPickup ?? null;
+    const characterLine =
+      character === null ? [] : [t('results.characterLine', { character: tName(SKIN_DEFS[character]?.nameKey ?? character) })];
     const lines = (materials: string): readonly string[] => [
       t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
       materials,
       ...blueprint,
+      ...characterLine,
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),
     ];

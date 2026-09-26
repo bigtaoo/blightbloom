@@ -25,7 +25,7 @@ import type { AuthService } from '../src/AuthService';
 import type { AccountsStore } from '../src/db';
 import { freshAccounts } from './mongoHarness';
 import { EntitlementService, blueprintSku, characterSku } from '../src/EntitlementService';
-import { getMeta, postGuestMerge, postMeta, GUEST_ID_HEADER, type AccountRouteDeps } from '../src/routes/account';
+import { getMeta, postClaimDrop, postGuestMerge, postMeta, GUEST_ID_HEADER, type AccountRouteDeps } from '../src/routes/account';
 
 const ACCOUNT = 'acct-1';
 const SESSION = { accountId: ACCOUNT, username: 'ada' };
@@ -389,5 +389,59 @@ describe('GET /account/meta — guestMerged', () => {
     await getMeta(authed(), res, url, deps());
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+/**
+ * `POST /account/claim-drop` (2026-09-26) — how a boss's rare character drop reaches a
+ * signed-in account, since `ownedCharacters` is an ownership field a client write cannot set.
+ * The route trusts the client's word that the drop happened (no PvE replay exists to check
+ * it), so what these pin is what that word is ALLOWED to buy: a droppable character, once,
+ * recorded as a drop.
+ */
+async function claimDrop(body: unknown, headers: Record<string, string> = { authorization: 'Bearer tok-1' }): Promise<Recorded> {
+  const req = fakeReq(headers);
+  const { res, sent } = fakeRes();
+  const done = postClaimDrop(req, res, url, deps());
+  await Promise.resolve();
+  req.emit('data', Buffer.from(JSON.stringify(body)));
+  req.emit('end');
+  await done;
+  return sent;
+}
+
+describe('POST /account/claim-drop', () => {
+  it('401s without a session, and grants nothing', async () => {
+    const sent = await claimDrop({ skinId: 'juggernaut' }, {});
+    expect(sent.status).toBe(401);
+    expect(await ents.list(ACCOUNT)).toEqual([]);
+  });
+
+  it('grants a droppable character once, recorded with source "drop", and answers false after', async () => {
+    expect(parsed(await claimDrop({ skinId: 'juggernaut' }))).toEqual({ granted: true });
+    expect(parsed(await claimDrop({ skinId: 'juggernaut' }))).toEqual({ granted: false });
+    const rows = await ents.list(ACCOUNT);
+    expect(rows.map((r) => [r.sku, r.source])).toEqual([[characterSku('juggernaut'), 'drop']]);
+  });
+
+  it('then shows up as owned on the next GET — the whole reason this is a server write', async () => {
+    await post({ data: { ownedCharacters: ['vanguard'] } });
+    await claimDrop({ skinId: 'juggernaut' });
+    const req = authed();
+    const { res, sent } = fakeRes();
+    await getMeta(req, res, url, deps());
+    expect((parsed(sent).data as { ownedCharacters: string[] }).ownedCharacters).toEqual(['juggernaut']);
+  });
+
+  it.each([
+    ['the paid character', { skinId: 'skirmisher' }],
+    ['the free default', { skinId: 'vanguard' }],
+    ['an unknown id', { skinId: 'dragon' }],
+    ['a non-string', { skinId: 7 }],
+    ['nothing', {}],
+  ])('400s %s, and grants nothing', async (_label, body) => {
+    const sent = await claimDrop(body);
+    expect(sent.status).toBe(400);
+    expect(await ents.list(ACCOUNT)).toEqual([]);
   });
 });

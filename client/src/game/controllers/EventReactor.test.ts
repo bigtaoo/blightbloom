@@ -148,6 +148,16 @@ describe('EventReactor — pickup toasts', () => {
     expect(toast).toHaveBeenCalledWith('Schematic: ', expect.anything());
   });
 
+  it('a character pickup toasts the translated character name, falling back to the raw id or nothing (2026-09-26)', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character', skinId: 'juggernaut' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: Juggernaut', expect.anything());
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character', skinId: 'no-such-skin' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: no-such-skin', expect.anything());
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: ', expect.anything());
+  });
+
   it('a shield-battery pickup toasts "Shield recharged" (Task 4 instant item)', () => {
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'shield' }] as GameEvent[]);

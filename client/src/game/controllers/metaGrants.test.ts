@@ -14,9 +14,9 @@ const PERMANENT_ONLY = 'cryobolt'; // a purchase-only blueprint, never in EARNAB
 
 /** Only the two fields `grantRunCarryOut` reads off a seat — a minimal fake, same
  *  "cast a plain object" convention `EventReactor.test.ts`'s `fakeFx`/`fakeHost` use. */
-function stateWithPlayer(over: { bankedMaterials?: Record<string, number>; blueprintPickup?: string | null }): GameState {
+function stateWithPlayer(over: { bankedMaterials?: Record<string, number>; blueprintPickup?: string | null; characterPickup?: string | null }): GameState {
   return {
-    players: [{ bankedMaterials: {}, blueprintPickup: null, ...over }],
+    players: [{ bankedMaterials: {}, blueprintPickup: null, characterPickup: null, ...over }],
   } as unknown as GameState;
 }
 
@@ -101,5 +101,24 @@ describe('grantWeaponPickup', () => {
     const meta = defaultMetaState();
     const next = grantWeaponPickup(meta, 'no-such-weapon');
     expect(next).toEqual(meta);
+  });
+});
+
+describe('grantRunCarryOut — the boss character drop (design/14, 2026-09-26)', () => {
+  it('grants the picked-up character to the account', () => {
+    const next = grantRunCarryOut(defaultMetaState(), stateWithPlayer({ characterPickup: 'juggernaut' }), 0);
+    expect(next.ownedCharacters).toContain('juggernaut');
+  });
+
+  it('is idempotent — the rewarded-ad repeat call (includeBlueprint false) grants it once, not twice', () => {
+    const s = stateWithPlayer({ characterPickup: 'juggernaut' });
+    const once = grantRunCarryOut(defaultMetaState(), s, 0);
+    const twice = grantRunCarryOut(once, s, 0, false);
+    expect(twice.ownedCharacters.filter((c) => c === 'juggernaut')).toHaveLength(1);
+  });
+
+  it('grants nothing without a pickup', () => {
+    const meta = defaultMetaState();
+    expect(grantRunCarryOut(meta, stateWithPlayer({}), 0).ownedCharacters).toEqual(meta.ownedCharacters);
   });
 });

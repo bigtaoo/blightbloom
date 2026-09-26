@@ -40,6 +40,7 @@
  *   GET  /account/meta      (Bearer token, x-guest-id) -> { data: MetaState | null, entitlements, guestMerged } | 401
  *   POST /account/meta      (Bearer token) { data }        -> { ok: true } | 400/401    routes/account
  *   POST /account/guest-merge (Bearer token) { guestId }   -> { claimed } | 400/401
+ *   POST /account/claim-drop (Bearer token) { skinId }     -> { granted } | 400/401
  *   GET  /store/skus        (Bearer token)  -> { skus } | 401/502                       routes/store
  *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502 | 429
  *   GET  /store/order/:id   (Bearer token)  -> { order } | 401/404/502

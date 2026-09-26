@@ -912,9 +912,10 @@ between the loop as designed and the loop as shipped.
 **Status as of 2026-09-26** (resynced against the code in
 [volume 92](roadmap/92-2026-09-26-backlog-resync.md); the heading above is kept for the links that
 land on it, and no longer describes all five): **B1 and B5 shipped** (2026-09-14); **B2, B3 and B4
-are each partly built** — B2's buff is a paid offer but never a choice, B3's skip exists on one
+were each partly built** — B2's buff is a paid offer but never a choice, B3's skip exists on one
 floor of five, B4's depth curve exists for weapon rarity only and is a content table rather than a
-`DungeonConfig` field. The 2026-09-23/24 content-expansion commits (`ENGINE_VERSION` 68→75) moved
+`DungeonConfig` field. **All three closed later the same day** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md), `ENGINE_VERSION` 76), so
+**all five Backlog items are shipped**. The 2026-09-23/24 content-expansion commits (`ENGINE_VERSION` 68→75) moved
 three of the five entries below and did not edit this section; each entry now carries a dated
 correction naming the commit that moved it.
 
@@ -938,7 +939,7 @@ correction naming the commit that moved it.
   each a dead-end branch off its floor's chain. Level 1 mixes fights with searches, and which
   floor holds what is a floor-map decision rather than a consequence of the piece draw. Note what
   this is NOT: a dead end routes around no garrison, so **B3 below is untouched**.
-- **B2 🟡 A real run-buff offering flow — HALF SHIPPED 2026-09-14 (`ENGINE_VERSION` 64).** The
+- **B2 ✅ A real run-buff offering flow — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): the shop's buff line offers three buffs, the buyer takes one at the line's price.** Half shipped 2026-09-14 (`ENGINE_VERSION` 64). The
   third of design/05's *"chests / rooms / shop"* routes now exists: every shop counter stocks a
   buff as one of its three fixed lines, so a buff can be **chosen and paid for** rather than
   only falling off a 6/84 weight on the kill table. That closes the structural half of this
@@ -961,7 +962,10 @@ correction naming the commit that moved it.
   therefore weaker than "closed": a buff CAN be bought, but most counters do not offer one.
   **The choice half is DECIDED, not built**: the shop's buff line becomes a pick-one-of-three at
   the line's price, reusing the floor-card offer (not a chest — chests stay the weapon supply).
-- **B3 🟡 A capstone that is not always last.** *(Filed as "an extraction room that is not always
+  **Built 2026-09-26** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `ShopOffer.choices`, three distinct buffs from one draw, card-only
+  `cell_up` in the pool; the panel draws them as rows under the line's price rather than as the
+  checkpoint popup. A counter still carries a buff line on ~27% of rolls — the weights did not move.
+- **B3 ✅ A capstone that is not always last — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): floors 2, 3 and 4 each have a skippable branch variant.** *(Filed as "an extraction room that is not always
   last"; since 2026-09-14 an interior capstone only descends, so what a mid-floor one buys is
   rooms left unfought on the way down — never leaving the RUN early, which no floor offers any
   more.)* design/05: *"You need not clear a
@@ -987,8 +991,10 @@ correction naming the commit that moved it.
   of runs. **Decided:** the interior-capstone half is dropped, not deferred — since 2026-09-14
   the capstone of the last floor IS the boss and extraction, and an interior capstone elsewhere
   only descends, so the spur buys the same decision with no change to the placement rule. B3
-  closes when floors 3–4 (index 2–3) also carry a skippable variant.
-- **B4 🟢 `dropTableByDepth` / `materialTierByDepth`.** design/09's `DungeonConfig` schema lists
+  closes when floors 3–4 (index 2–3) also carry a skippable variant. **They do since 2026-09-26**
+  ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `r5_bastion` on floor 3 and `r4_rampart` (with the cache behind it) on floor 4 hang off
+  the chain on their branch draws. The opener and the boss floor keep one layout each.
+- **B4 ✅ `dropTableByDepth` / `materialTierByDepth` — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `DungeonConfig.weaponRarityByDepth` and `.materialTierByDepth`, both optional, both defaulting to the shipped behaviour.** design/09's `DungeonConfig` schema lists
   both. Neither field exists on the real interface (`world/dungeon/types.ts`) — they were never
   added, not added-and-unwired, which is what design/09 and 1.5 above both said for a year.
   Depth→material quality currently works via a straight `tier = floorIndex` identity in
@@ -1004,7 +1010,8 @@ correction naming the commit that moved it.
   second dungeon cannot carry its own curve. Still open: `materialTierByDepth` (material tier is
   still the `tier = floorIndex` identity at `DeathDropsSystem`'s `rollDrop` call) and any depth
   shaping of the buff/heal/coin pool. **Decided:** both curves move onto `DungeonConfig` as
-  optional fields defaulting to today's behaviour; the buff pool stays depth-blind.
+  optional fields defaulting to today's behaviour; the buff pool stays depth-blind. **Built
+  2026-09-26** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)), exactly that; `EMBER_DUNGEON` sets neither, so level 1 rolls what it did.
 - **B5 ✅ Blueprints that drop from runs — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** A boss kill
   rolls a blueprint at 5% (`BLUEPRINT_DROP_PERMILLE`, a first-pass number, `design/14`). Since 2026-09-14 the
   boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
@@ -1041,11 +1048,9 @@ correction naming the commit that moved it.
 ```
 Backlog (B1-B5)  filed 2026-09-03 as designed-in-prose, never built. As of 2026-09-26:
                  B1 chests ✅ and B5 run blueprints ✅ (2026-09-14, the two Stage 1 closeout
-                 items); B2 buff offer 🟡 (a shop line, rolled on ~27% of counters, never a
-                 choice — pick-one-of-three decided), B3 skippable rooms 🟡 (one floor of five
-                 has a bypass variant), B4 depth curves 🟡 (weapon rarity by depth as a content
-                 table; material tier still floorIndex, neither a DungeonConfig field). See the
-                 Backlog section; each is filed, none is a regression.
+                 items); B2 buff pick-one-of-three ✅, B3 skippable rooms ✅ (floors 2-4
+                 each have a bypass variant) and B4 depth curves ✅ (both DungeonConfig fields)
+                 closed 2026-09-26, ENGINE_VERSION 76 (volume 97). See the Backlog section.
 Phase 0 (sync)  ─┬─ 0.1 affix removal ──┬─ 0.2 rarity
                  │                       └─ 0.3 run-buffs ── 0.6 pickup names
                  └─ 0.4 shield ── 0.5 characters
@@ -1573,9 +1578,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change) — step 2 of the plan, the owner's *“automatic matchmaking is required at launch”*, read as both: the public queue as it was, plus friends by room code. A party now has a mode (`partyShape.ts`, shared with the server): CREATE CO-OP PARTY makes a two-member party, the lobby title reads `CO-OP · 1/2`, and START queues a co-op room with the `partyId`. Building it exposed a split: members `POST /find` a poll apart, and a co-op room's squad size of 1 paired the first with any waiting stranger (PvP squads had the smaller version). `Matchmaker` now seats a party only once every member is live, unless a member's own wait passes the backfill delay. The queue screen counts down to the AI fill from a new `botFillInMs`, and its elapsed time finally runs — nothing had ever called `Matchmaking.update`. A load driver (`scripts/matchLoad.ts`, CLI `loadtest:match`) plays dozens of clients under the production per-IP limiters in CI: 49 mixed clients all matched with nothing refused; one shared address is refused only past 120 queue entries or 60 parties per ten minutes. `net` `ui` `i18n` `tools` `test` `docs`
 
+**[2026-09-26 — B2, B3, B4 closed; juggernaut drops](roadmap/97-2026-09-26-backlog-close-juggernaut.md)**
+
+- **09-26** [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76) — step 4, the engine half, one bump (`ENGINE_VERSION` 76). **B2**: a shop's buff line offers three distinct buffs from ONE draw (`combinationAt`), the buyer taps one at the line's price; `shopBuyId` names the choice, so the command format is unchanged, and card-only `cell_up` joins the pool. **B3**: floors 3 and 4 gain a branch variant with a fight on a dead-end spur (`r5_bastion`; `r4_rampart` and the cache behind it), and `emberLevel1.test.ts` runs its whole passability suite over every variant. **B4**: `DungeonConfig.weaponRarityByDepth` / `.materialTierByDepth`, both optional and default-identical. **Juggernaut** drops from the boss at 1% as a `'character'` pickup, the schematic's twin; since `ownedCharacters` is server-owned, a new `POST /account/claim-drop` (droppable ids only, source `drop`) makes it survive a login — trusting the client exactly as far as materials already do. Found on the way: consecutive seeds give a fresh `Prng` correlated early draws (a 1% roll read 0.35% over seeds 1..6000). `engine` `content` `ui` `net` `i18n` `test` `docs`
+
 ## The work log — by theme
 
-The same 193 entries, grouped. An entry with more than one tag appears more than once.
+The same 194 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1689,7 +1698,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(33)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(34)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1724,6 +1733,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
 **`arena`** — the PvP launch map and its audit *(7)*
 
@@ -1735,7 +1745,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The arena in front of a camera, and the audit becomes a gate](roadmap/08-2026-08-26-arena.md#the-arena-in-front-of-a-camera-and-the-audit-becomes-a-gate-2026-08-26-client--engine)
 - 08-26 [The arena finally has a frame time, and it was not the walls](roadmap/08-2026-08-26-arena.md#the-arena-finally-has-a-frame-time-and-it-was-not-the-walls-2026-08-26-client-only)
 
-**`content`** — authored rooms, pieces, props, loot *(12)*
+**`content`** — authored rooms, pieces, props, loot *(13)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1749,8 +1759,9 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Chests, and the id that retuned a floor](roadmap/56-2026-09-14-chests.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(107)*
+**`test`** — coverage sweeps, gates, mutation batteries *(108)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1859,6 +1870,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1907,7 +1919,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(41)*
+**`ui`** — HUD, screens, widgets *(42)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1950,6 +1962,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
 **`tools`** — sims, profilers, editors, build scripts *(22)*
 
@@ -1976,7 +1989,7 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 
-**`docs`** — design docs and this log itself *(112)*
+**`docs`** — design docs and this log itself *(113)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2090,8 +2103,9 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`net`** — matchmaking, sockets, reconnect *(33)*
+**`net`** — matchmaking, sockets, reconnect *(34)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2126,8 +2140,9 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`i18n`** — locales and text layout *(18)*
+**`i18n`** — locales and text layout *(19)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2147,3 +2162,4 @@ The same 193 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)

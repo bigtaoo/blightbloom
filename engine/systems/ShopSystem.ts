@@ -59,9 +59,11 @@ export class ShopSystem {
     for (const p of state.players) {
       if (p.shopBuyId === 0 || !p.alive || p.downed) continue;
       for (const shop of state.shops) {
-        const offer = shop.stock.find((o) => o.id === p.shopBuyId);
+        // An id names either a line or, on a buff line, one of its choices (ROADMAP B2) —
+        // both from the one `nextShopId()` space, so at most one thing on one shop matches.
+        const offer = shop.stock.find((o) => o.id === p.shopBuyId || o.choices?.some((c) => c.id === p.shopBuyId));
         if (offer === undefined) continue;
-        this.buy(state, shop, p, offer);
+        this.buy(state, shop, p, offer, offer.choices?.find((c) => c.id === p.shopBuyId)?.buffId);
         break; // an offer id belongs to exactly one shop
       }
     }
@@ -73,8 +75,12 @@ export class ShopSystem {
    * through `ui.denied`. Ordered cheapest-check-first, and affordability LAST of the three
    * so that "you cannot reach it" never reads as "you cannot afford it".
    */
-  private buy(state: GameState, shop: Shop, p: PlayerActor, offer: ShopOffer): void {
+  private buy(state: GameState, shop: Shop, p: PlayerActor, offer: ShopOffer, chosenBuff: string | undefined): void {
     if (offer.sold) return;
+    // A buff line with choices is bought by naming ONE of them (ROADMAP B2). Its own id names
+    // no buff at all, so a tap on it — an older client, a stale panel — buys nothing and
+    // charges nothing, rather than guessing which of three the player meant.
+    if (offer.choices && chosenBuff === undefined) return;
     if (!this.roomActive(state, shop)) return;
     if (!within(p, shop.gx as number, shop.gy as number, INTERACT_RANGE_FP + (p.radius as number))) return;
     if (p.coins < offer.price) return;
@@ -89,6 +95,7 @@ export class ShopSystem {
 
     p.coins -= offer.price;
     offer.sold = true;
+    if (chosenBuff !== undefined) offer.buffId = chosenBuff;
     this.deliver(state, shop, p, offer);
     state.events.push({
       type: 'shop_buy',
@@ -98,6 +105,7 @@ export class ShopSystem {
       price: offer.price,
       gx: shop.gx,
       gy: shop.gy,
+      buffId: offer.kind === 'buff' ? offer.buffId : undefined,
     });
   }
 

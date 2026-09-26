@@ -23,6 +23,7 @@ const PICKUP_GLOW: Record<PickupKind, number> = {
   energy: THEME.colors.pickupEnergy, // its own hue — see the theme entry for why it is the cool one
   coin: THEME.colors.pickupCoin, // gold; separated from `material` by shape, not hue (see the theme entry)
   schematic: THEME.colors.pickupSchematic, // rose — a boss's one-time blueprint drop (design/14)
+  character: THEME.colors.pickupCharacter, // violet — a boss's rare character unlock (design/14)
   shield: THEME.colors.pickupShield, // cyan — the same hue the shield bar/break burst already use
   emp: THEME.colors.pickupEmp, // lightning yellow — the item IS a burst of that element
 };
@@ -210,6 +211,15 @@ export class Pickup extends Entity {
       gfx.roundRect(-8, -3, 16, 6, 3).fill({ color });
       gfx.circle(-8, 0, 3).fill({ color: 0xfff0f6, alpha: 0.85 });
       gfx.circle(8, 0, 3).fill({ color: 0xfff0f6, alpha: 0.85 });
+    } else if (kind === 'character') {
+      // A bust — head over shoulders — for the boss's rare character unlock (design/14,
+      // 2026-09-26). Drawn, like the schematic, and shaped as a PERSON so it can never read
+      // as another resource at a glance; it can drop beside the schematic, so the two differ
+      // in form as well as hue.
+      const color = THEME.colors.pickupCharacter;
+      gfx.circle(0, -4, 4).fill({ color });
+      gfx.poly([-8, 8, -5, 1, 5, 1, 8, 8]).fill({ color });
+      gfx.circle(0, -4, 4).stroke({ color: 0xfaf5ff, width: 1, alpha: 0.8 });
     } else if (kind === 'shield') {
       // A shield silhouette — the shield-battery instant item (Task 4). No sprite ships
       // for this kind yet, same "Graphics is the drawn form" note as `energy`/`coin`

@@ -77,7 +77,9 @@ import floor1 from '../../../world/dungeons/ember/ember_l1_floor_1.json';
 import floor2 from '../../../world/dungeons/ember/ember_l1_floor_2.json';
 import floor2Branch from '../../../world/dungeons/ember/ember_l1_floor_2_branch.json';
 import floor3 from '../../../world/dungeons/ember/ember_l1_floor_3.json';
+import floor3Branch from '../../../world/dungeons/ember/ember_l1_floor_3_branch.json';
 import floor4 from '../../../world/dungeons/ember/ember_l1_floor_4.json';
+import floor4Branch from '../../../world/dungeons/ember/ember_l1_floor_4_branch.json';
 import floor5 from '../../../world/dungeons/ember/ember_l1_floor_5.json';
 
 /** The level-1 piece library — 15 normal pieces (tagged `'ember_l1'`, three of them the
@@ -130,3 +132,20 @@ export const EMBER_L1_FLOORS: Partial<Record<number, DungeonFloorMap>> = {
  * proves the skip exists here and does not exist on the plain `floor2` map above.
  */
 export const EMBER_L1_FLOOR_2_BRANCH: DungeonFloorMap = floor2Branch as DungeonFloorMap;
+
+/**
+ * Floor indices 2 and 3's alternate layouts (`ROADMAP` B3, 2026-09-26) — the same treatment
+ * as floor 1's above, which is what closes B3: every floor between the first and the boss now
+ * has a draw on which a fight can be left unfought. Same rosters, same array order, same door
+ * COUNT and door order as the plain maps — only room offsets and the door graph move.
+ *
+ *  - **Floor index 2:** `r5_bastion` becomes a dead-end spur off `r4_furnace`, which gains a
+ *    direct door to `r6_crucible` (moved under it, with the capstone under that). The vault
+ *    side room stays off `r3_court`.
+ *  - **Floor index 3:** `r4_rampart` becomes a spur off `r3_crucible`, which gains a direct
+ *    door to `r5_caldera` (moved above it). The cache side room stays behind the rampart, so
+ *    skipping that fight also walks past the floor's chest — the "greed for the last chest vs.
+ *    leave safe" call design/05 describes, on the floor before the boss.
+ */
+export const EMBER_L1_FLOOR_3_BRANCH: DungeonFloorMap = floor3Branch as DungeonFloorMap;
+export const EMBER_L1_FLOOR_4_BRANCH: DungeonFloorMap = floor4Branch as DungeonFloorMap;

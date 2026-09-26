@@ -194,6 +194,8 @@ function shopStock(): ShopOffer[] {
   }));
   return [
     ...buffs,
+    // A pick-one-of-three buff line (ROADMAP B2): its header is a string of its own.
+    { id: 80, kind: 'buff', price: 40, sold: false, choices: [{ id: 81, buffId: 'dmg_up' }, { id: 82, buffId: 'cell_up' }, { id: 83, buffId: 'crit_up' }] },
     { id: 90, kind: 'heal', price: 12, sold: false },
     { id: 91, kind: 'energy', price: 12, sold: false },
   ];

@@ -234,6 +234,9 @@ export class GameState {
    *  schematic out is `PlayerActor.blueprintPickup`, not this flag — this only remembers
    *  that the roll already happened (win or lose), even before anyone has walked over it. */
   schematicRolled = false;
+  /** The character drop's own once-per-run guard (design/14, 2026-09-26) — separate from
+   *  `schematicRolled` so each roll's draw is decided by its own gate alone. */
+  characterRolled = false;
 
   // Seeded dungeon mode (design/05/09, ROADMAP 1.3 wired live). All inert unless
   // `dungeonEnabled` (EngineConfig.dungeon was provided) — see SpawnSystem's dungeon
@@ -470,6 +473,7 @@ export class GameState {
       floorMaterials: {},
       bankedMaterials: {},
       blueprintPickup: null,
+      characterPickup: null,
       prevButtons: 0,
       status: freshStatus(),
       shieldBreak: skin.shieldBreak ? toShieldBreakSim(skin.shieldBreak) : undefined,

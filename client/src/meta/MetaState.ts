@@ -49,8 +49,8 @@ export interface MetaState {
 /** The free character roster (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event",
  * 2026-09-23 — the free-vs-paid split ROADMAP 2.3/2.4 deferred to "the store's job").
  * `vanguard` is the only one granted to every account by default; `skirmisher` is sold
- * via a character SKU (`server/src/billsvc/skus.ts`); `juggernaut` is reserved for a
- * future event-earned path that is not built yet, so it is deliberately in NEITHER
+ * via a character SKU (`server/src/billsvc/skus.ts`); `juggernaut` is a 1% boss drop since
+ * 2026-09-26 (engine `DROP_CHARACTERS`, claimed by `meta/accountSync.ts`), so it is in NEITHER
  * list — there is no way to own it this pass. A save that already owns skirmisher or
  * juggernaut from before this change keeps them: `meta/store.ts migrate()` only UNIONS
  * this list into a save's `ownedCharacters`, never subtracts from it. */

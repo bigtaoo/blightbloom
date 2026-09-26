@@ -20,7 +20,7 @@
  * and it fails here rather than in a run.
  */
 import { describe, expect, it } from 'vitest';
-import { EMBER_L1_FLOORS, EMBER_L1_ROOMS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_ROOMS, EMBER_L1_FLOOR_2_BRANCH, EMBER_L1_FLOOR_3_BRANCH, EMBER_L1_FLOOR_4_BRANCH } from './emberLevel1';
 import { EMBER_DUNGEON } from './ember';
 import { buildFloorGeometry, placeAuthoredFloor, type DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
@@ -572,8 +572,23 @@ function assertDoorsOnSharedWalls(map: DungeonFloorMap): void {
   }
 }
 
-describe.each(FLOOR_INDICES)('floor %i door passability', (index) => {
-  const map = floorAt(index);
+/**
+ * Every layout a run can draw — the five plain floors and each branch variant — goes through
+ * the same passability suite. A variant is a separately authored file, so "the plain floor
+ * passes" says nothing about it; until 2026-09-26 the one variant carried a hand-copied subset
+ * of these checks (no wall-thickness, shop-ring or extent check).
+ */
+const BRANCH_VARIANTS = [
+  { index: 1, map: EMBER_L1_FLOOR_2_BRANCH, skippable: ['r3_span'] },
+  { index: 2, map: EMBER_L1_FLOOR_3_BRANCH, skippable: ['r5_bastion'] },
+  { index: 3, map: EMBER_L1_FLOOR_4_BRANCH, skippable: ['r4_rampart', 'b1_cache'] },
+] as const;
+const LAYOUTS = [
+  ...FLOOR_INDICES.map((i) => ({ name: `floor ${i}`, map: floorAt(i) })),
+  ...BRANCH_VARIANTS.map((v) => ({ name: `floor ${v.index} branch`, map: v.map as DungeonFloorMap })),
+];
+
+describe.each(LAYOUTS)('$name door passability', ({ map }) => {
 
   it('no two rooms overlap', () => {
     expect(overlapping(map)).toEqual([]);
@@ -690,77 +705,44 @@ function reachesCapstoneWithout(map: DungeonFloorMap, excludeRoomId: string): bo
   return reached.has(capstoneId);
 }
 
-describe("floor 1's branching layout variant (Task 6, room-layout randomization, 2026-09-23)", () => {
-  const linear = floorAt(1);
-  const branch = EMBER_L1_FLOOR_2_BRANCH;
+describe.each(BRANCH_VARIANTS)("floor $index's branching layout variant (Task 6 2026-09-23; floors 2-3 ROADMAP B3 2026-09-26)", ({ index, map: branch, skippable }) => {
+  const linear = floorAt(index);
+  // The side rooms each plain floor already hangs off its chain (design/05 "Chest rooms") —
+  // never mandatory on either layout, so they say nothing about whether a FIGHT is skippable.
+  const sideRooms = new Set(linear.rooms.filter((r) => SIDE_PIECES.has(r.pieceId)).map((r) => r.id));
 
-  it("is wired into EMBER_DUNGEON as floor index 1's variant pool, plain layout first", () => {
-    expect(EMBER_DUNGEON.floorLayoutVariants?.[1]).toEqual([linear, branch]);
+  it("is wired into EMBER_DUNGEON as this floor index's variant pool, plain layout first", () => {
+    expect(EMBER_DUNGEON.floorLayoutVariants?.[index]).toEqual([linear, branch]);
   });
 
-  it('keeps the exact same room roster, in the exact same array order, as the plain layout — so enemy-id allocation and notice-delay tuning never depend on which variant a run draws', () => {
+  it('keeps the exact same room roster and door count, in the same order, as the plain layout — so enemy-id allocation and notice-delay tuning never depend on which variant a run draws', () => {
     expect(branch.rooms.map((r) => r.id)).toEqual(linear.rooms.map((r) => r.id));
     expect(branch.rooms.map((r) => r.pieceId)).toEqual(linear.rooms.map((r) => r.pieceId));
+    expect(branch.doors.length).toBe(linear.doors.length);
   });
 
-  it('no two rooms overlap', () => {
-    expect(overlapping(branch)).toEqual([]);
+  it('genuinely lets a FIGHT be skipped — the capstone stays reachable with that room and its doors removed', () => {
+    const fights = skippable.filter((id) => !sideRooms.has(id));
+    expect(fights.length).toBeGreaterThan(0); // a skippable side room alone would prove nothing
+    for (const id of skippable) expect(reachesCapstoneWithout(branch, id), `${id} should be skippable`).toBe(true);
   });
 
-  it('every door sits on a real shared wall between the two rooms it names', () => {
-    assertDoorsOnSharedWalls(branch);
+  it('skips nothing else — every other room between spawn and capstone is still on the only path', () => {
+    const mandatory = branch.rooms
+      .map((r) => r.id)
+      .filter((id) => id !== branch.rooms[0]!.id && id !== branch.rooms[branch.rooms.length - 1]!.id)
+      .filter((id) => !sideRooms.has(id) && !(skippable as readonly string[]).includes(id));
+    for (const id of mandatory) expect(reachesCapstoneWithout(branch, id), `${id} should be mandatory`).toBe(false);
   });
 
-  it('every room is reachable through the door graph from the spawn room', () => {
-    const adjacency = new Map<string, string[]>(branch.rooms.map((r) => [r.id, []]));
-    for (const door of branch.doors) {
-      adjacency.get(door.roomA)?.push(door.roomB);
-      adjacency.get(door.roomB)?.push(door.roomA);
-    }
-    const reached = new Set([branch.rooms[0]!.id]);
-    const queue = [branch.rooms[0]!.id];
-    while (queue.length > 0) {
-      for (const next of adjacency.get(queue.shift()!) ?? []) {
-        if (!reached.has(next)) {
-          reached.add(next);
-          queue.push(next);
-        }
-      }
-    }
-    expect(branch.rooms.map((r) => r.id).filter((id) => !reached.has(id))).toEqual([]);
-  });
-
-  it('every entrance and every spawn point is physically walkable from the spawn room', () => {
-    const { unreachable } = traversability(branch);
-    expect(unreachable).toEqual([]);
-  });
-
-  it('every chest stands on walkable ground the run can reach', () => {
-    const { chestsUnreachable } = traversability(branch);
-    expect(chestsUnreachable).toEqual([]);
-  });
-
-  it('the flood fill physically walks into every room — no door is declared but sealed', () => {
-    const { roomsEntered, roomCount } = traversability(branch);
-    expect(roomsEntered).toBe(roomCount);
-  });
-
-  it('genuinely lets r3_span be skipped — the capstone stays reachable with it and its doors removed', () => {
-    expect(reachesCapstoneWithout(branch, 'r3_span')).toBe(true);
-  });
-
-  it('the plain layout has no such skip — removing any single mandatory chain room (not a side room) disconnects the capstone', () => {
-    // b1_cache is already a known, deliberate dead-end detour (design/05 "Chest
-    // rooms") — excluded here because the plain layout was never meant to make
-    // THAT room mandatory in the first place. Every other room on the chain is.
-    const mandatory = linear.rooms.map((r) => r.id).filter((id) => id !== 'b1_cache' && id !== linear.rooms[0]!.id);
+  it('the plain layout has no such skip — removing any single chain room (not a side room) disconnects the capstone', () => {
+    const mandatory = linear.rooms.map((r) => r.id).filter((id) => !sideRooms.has(id) && id !== linear.rooms[0]!.id);
     for (const id of mandatory) {
       expect(reachesCapstoneWithout(linear, id), `${id} should not be skippable on the plain layout`).toBe(false);
     }
   });
 
-  it("does not disturb the plain layout's own room count, chest, or capstone rules", () => {
-    expect(branch.rooms.length).toBe(linear.rooms.length);
+  it("keeps the plain layout's capstone last", () => {
     expect(pieceFor(branch.rooms[branch.rooms.length - 1]!.pieceId).role).toBe('extraction');
   });
 });

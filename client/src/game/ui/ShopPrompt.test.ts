@@ -155,3 +155,67 @@ describe('ShopPrompt — locale', () => {
     expect(privateOf(p).rows[0]!.label.text).not.toBe(before);
   });
 });
+
+describe('ShopPrompt — a buff line is a pick-one-of-three (ROADMAP B2, 2026-09-26)', () => {
+  const buffLine = (over: Partial<ShopOffer> = {}): ShopOffer =>
+    offer({
+      id: 10,
+      kind: 'buff',
+      price: 40,
+      choices: [
+        { id: 11, buffId: 'dmg_up' },
+        { id: 12, buffId: 'rof_up' },
+        { id: 13, buffId: 'cell_up' },
+      ],
+      ...over,
+    });
+
+  it('draws a header carrying the one price, then one row per choice', () => {
+    const p = new ShopPrompt();
+    p.update(shop([buffLine()]), 100);
+    const { rows, priceLabels } = privateOf(p);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]!.label.text).toBe(t('hud.shop.buffPick'));
+    expect(priceLabels.map((l) => l.text)).toEqual([t('hud.shop.price', { price: 40 })]); // once, not per choice
+  });
+
+  it('a tap on a choice buys THAT choice — the header buys nothing', () => {
+    const p = new ShopPrompt();
+    const bought: number[] = [];
+    p.onBuy = (id) => bought.push(id);
+    p.update(shop([buffLine()]), 100);
+    const { rows } = privateOf(p);
+    expect(rows[0]!.onTap).toBeNull();
+    rows[3]!.onTap!();
+    rows[1]!.onTap!();
+    expect(bought).toEqual([13, 11]);
+  });
+
+  it('names each choice by its buff', () => {
+    const p = new ShopPrompt();
+    p.update(shop([buffLine()]), 100);
+    const labels = privateOf(p).rows.slice(1).map((r) => r.label.text);
+    expect(new Set(labels).size).toBe(3);
+    for (const l of labels) expect(l).not.toMatch(/^(dmg_up|rof_up|cell_up)$/); // translated, not the raw id
+  });
+
+  it('collapses to one SOLD row once the line is bought', () => {
+    const p = new ShopPrompt();
+    p.update(shop([buffLine({ sold: true, buffId: 'rof_up' })]), 100);
+    const { rows, priceLabels } = privateOf(p);
+    expect(rows.map((r) => r.label.text)).toEqual([t('hud.shop.sold')]);
+    expect(priceLabels).toEqual([]);
+  });
+
+  it('sits beside ordinary lines without shifting their taps', () => {
+    const p = new ShopPrompt();
+    const bought: number[] = [];
+    p.onBuy = (id) => bought.push(id);
+    p.update(shop([offer({ id: 1 }), buffLine(), offer({ id: 2 })]), 100);
+    const { rows } = privateOf(p);
+    expect(rows).toHaveLength(6);
+    rows[0]!.onTap!();
+    rows[5]!.onTap!();
+    expect(bought).toEqual([1, 2]);
+  });
+});
