@@ -79,15 +79,14 @@ describe('who rolls, and how often', () => {
   });
 
   it('lands near CHARACTER_DROP_PERMILLE over many seeds', () => {
-    // SPREAD seeds, not 1..N. Measured while writing this: across consecutive seeds a fresh
-    // `Prng`'s first few draws are correlated (the second `nextInt(1000)` landed under 10 in
-    // 20 of 6000 seeds 1..6000, a third of the 1% it should), so a 1% roll that happens to be
-    // an early draw reads as 0.35%. A real run's seed is a crypto draw (matchsvc) and the boss
-    // dies thousands of draws in, so the spread is what describes play.
+    // Consecutive seeds 1..6000, the window that found the bug: until engine v78 a fresh
+    // `Prng`'s early draws were correlated across nearby seeds, and this read 0.35% (the test
+    // then spread its seeds to dodge it). v78 mixes the seed and the output, so the plain
+    // window now reads the rate — and `math/prng.test.ts` pins that it keeps doing so.
     let hits = 0;
     const trials = 6000;
     for (let i = 1; i <= trials; i++) {
-      const s = state((i * 2654435761) >>> 0);
+      const s = state(i);
       addCorpse(s, true);
       sys.tick(s);
       hits += dropped(s).length;

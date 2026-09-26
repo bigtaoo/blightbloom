@@ -9,13 +9,23 @@
  * Injected per-concern, never global (design/06/08): roomgenPrng, aiPrng,
  * combatPrng, dropPrng — each `new Prng(seed ^ <distinct constant>)` so the
  * streams never alias.
+ *
+ * Seed and output both go through `mix32` (2026-09-26, engine v78). The bare LCG
+ * had two measured defects: `nextInt(max)` reduces the RAW state mod `max`, and an
+ * LCG's low k bits cycle with period 2^k, so `nextInt(2)` strictly alternated
+ * 0101... and `nextInt(4)` cycled with period 4; and seeds that differ by a little
+ * (1..N, or `seed ^ constant` over 1..N) gave correlated first draws (the second
+ * `nextInt(1000) < 10` hit 20 times in 6000 seeds instead of ~60). Together they
+ * starved `shuffle`, which reached 15 of the 120 orders of five items. Hashing the seed
+ * spreads nearby seeds across the state space; hashing each output makes every
+ * bit usable. The state itself is still the full-period LCG.
  */
 export class Prng {
   private state: number;
 
   constructor(seed: number) {
-    // Ensure uint32; guard against 0 (LCG with state=0 stays 0 for mult=0)
-    this.state = (seed >>> 0) || 1;
+    // uint32 after mixing; 0 is still mapped to 1 so the guard reads the same as before.
+    this.state = mix32(seed >>> 0) || 1;
   }
 
   /**
@@ -27,11 +37,11 @@ export class Prng {
     return this.state >>> 0;
   }
 
-  /** Advance state and return next uint32 */
+  /** Advance state and return the next uint32, hashed so its low bits are as good as its high ones. */
   private next(): number {
     // state = (1664525 × state + 1013904223) mod 2^32
     this.state = (Math.imul(1664525, this.state) + 1013904223) >>> 0;
-    return this.state;
+    return mix32(this.state);
   }
 
   /** Return integer in [0, max). max must be a positive integer. */
@@ -68,4 +78,19 @@ export class Prng {
     }
     return arr;
   }
+}
+
+/**
+ * MurmurHash3's 32-bit finalizer: a bijection on uint32 with full avalanche, so
+ * every input bit flips each output bit with probability ~1/2. Integer-only
+ * (`Math.imul`, shifts), so it is exact on every JS engine.
+ */
+export function mix32(x: number): number {
+  let h = x >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
 }
