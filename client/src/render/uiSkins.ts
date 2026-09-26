@@ -8,6 +8,7 @@
 // asset list this key set expects.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';
+import { DAMAGE_DIGITS_PATH } from './damageDigitAtlas';
 
 /** Exported so the WeChat package checks can enumerate the real FILES this loader asks
  *  for — see biomeTiles.ts's BIOME_TILE_ASSETS for the full note. */
@@ -52,6 +53,11 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   // standing in the loadout screen). Sprite, not a button icon — Forge.ts positions
   // it directly rather than going through Button.setIcon.
   npc_forger: '/ui/npc_forger.png',
+  // The floating damage-number digits (design/10, 2026-09-26) — GENERATED, not drawn: see
+  // tools/digit-atlas/gen_damage_digits.py and the glyph table it writes beside
+  // `render/damageDigitAtlas.ts`. In the lobby pack with the rest of `ui/`, so it is resident
+  // long before the first hit; 15 kB.
+  damage_digits: DAMAGE_DIGITS_PATH,
 };
 
 const textures = new Map<string, Texture>();

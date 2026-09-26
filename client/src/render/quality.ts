@@ -46,6 +46,11 @@ export interface QualityProfile {
    *  applies on top — this only ever lowers it, never raises it above what the platform
    *  chose (`WebPlatform`/`WeChatPlatform` both cap at 2 already). */
   readonly resolutionCap: number;
+  /** Most floating damage numbers on screen at once (`fx/DamageNumbers.ts`). Each is one to
+   *  five Sprites off one atlas, so they batch into a single draw; what the cap buys back on a
+   *  weak device is per-sprite CPU and, more, legibility — forty numbers over one fight read as
+   *  noise on a phone screen well before they cost a frame. A full screen reuses its oldest. */
+  readonly damageNumbers: number;
 }
 
 const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
@@ -57,6 +62,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     actorShaders: true,
     particleBudget: 1,
     resolutionCap: 2,
+    damageNumbers: 40,
   },
   // The battery tier (2026-09-08, added with `game/powerBudget.ts` for the phone/iPad drain
   // report). It keeps the ONE thing that carries the game's look — the scene-lighting pass —
@@ -80,6 +86,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     actorShaders: false,
     particleBudget: 0.6,
     resolutionCap: 2,
+    damageNumbers: 28,
   },
   // Everything that costs a render-target pass is off, and the frame is drawn at 1x. This is
   // roughly the game as it looked before design/01's milestones 2-5 landed: flat, unlit,
@@ -92,6 +99,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     actorShaders: false,
     particleBudget: 0.35,
     resolutionCap: 1,
+    damageNumbers: 16,
   },
 };
 

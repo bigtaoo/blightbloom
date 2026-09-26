@@ -41,9 +41,15 @@ export class Layers {
   // wall the occlusion x-ray only PARTIALLY fades (design/01 "Limits of fake 3D" — a health bar
   // is a HUD readout riding in world space, not a body part; it should never share the body's
   // "reads through translucent stone" treatment, which stays legible for a near-white body but
-  // washes out the bar's own dark contour/track, live report *"血条被墙挡住了"*). Drawn last
-  // among `world`'s children, so it is unconditionally in front of every wall/pillar/door/actor.
+  // washes out the bar's own dark contour/track, live report *"血条被墙挡住了"*). Drawn after
+  // every other `world` child but `numbers`, so it is unconditionally in front of every wall/pillar/door/actor.
   readonly hud = new Container();
+  // Floating damage numbers (`fx/DamageNumbers.ts`, design/10). World-space and never blurred for
+  // the same reasons as `hud`, and above it so a number rising off a target is never cut by that
+  // target's own health bar. A layer of its own rather than children of `hud`: numbers come and
+  // go on every hit, and `hud` is a render group precisely because it almost never changes — one
+  // number spawning inside it would rebuild every health bar's instructions with it.
+  readonly numbers = new Container();
   readonly ui = new Container();
 
   // `ui` splits into exactly three screen-space sub-layers, in this paint order:
@@ -82,7 +88,7 @@ export class Layers {
     this.entities.sortableChildren = true;
 
     this.lit.addChild(this.ground, this.shadow, this.entities);
-    this.world.addChild(this.terrain, this.lit, this.fx, this.hud);
+    this.world.addChild(this.terrain, this.lit, this.fx, this.hud, this.numbers);
     this.root.addChild(this.backdrop, this.world, this.ui);
     this.ui.addChild(this.hudOverlay, this.menu, this.overlay);
 

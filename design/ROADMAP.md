@@ -1565,11 +1565,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-26** [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change) — the owner's answer to the two gaps volume 93 left open. *“Settle after 30 seconds; a player who never reports is handled as offline.”* The first `result` arms `SETTLE_TIMEOUT_MS`. When it runs out, the vote runs over the seats that reported, so a loser closing the tab no longer keeps a 1v1 off the ladder. A new `partial` verdict still rates and is recorded, and the silent seat is listed as absent, never as a suspect. A room whose last seat leaves after a report now settles instead of throwing the reports away. The coordinated-majority gap is out of scope by the owner's call: a forged tuple needs identically modified clients, and that is the deferred replay's job. `BB_TICKET_SECRET` was already on the box; the hand-installed `ci-deploy.sh` was re-synced. +35 server cases. `net` `test` `docs`
 
+**[2026-09-26 — floating damage numbers](roadmap/95-2026-09-26-damage-numbers.md)**
+
+- **09-26** [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change) — step 3 of the plan: *“generate the digit atlas in code”*. A Pillow script renders Rubik Bold (OFL) into a 15 kB white-fill, dark-outline sheet plus its glyph table, both committed; every `hit` prints over the target as pooled `Sprite`s tinted by what took it (shield cyan, self red, environment slate, else the element), merged per target and colour within 150 ms, sized in screen px, capped by a new quality knob (40/28/16) that reuses the oldest. The zone is covered through its own `hit`, which also showed a comment claiming zone ticks never reached `case 'hit'` was wrong. +55 client tests, the three new modules at 100%/100%. `ui` `render` `art` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 191 entries, grouped. An entry with more than one tag appears more than once.
+The same 192 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1640,8 +1644,9 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
 - 09-21 [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
-**`art`** — authored assets and the art pipeline *(19)*
+**`art`** — authored assets and the art pipeline *(20)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1662,6 +1667,7 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The two mob blades get their own art](roadmap/39-2026-09-06-energy-card-capacity.md#the-third-gap-prompts-then-pixels-same-day)
 - 09-14 [Somebody is standing behind the counter](roadmap/59-2026-09-14-shop-npc.md#somebody-is-standing-behind-the-counter-2026-09-14-client--art--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(13)*
 
@@ -1740,7 +1746,7 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(105)*
+**`test`** — coverage sweeps, gates, mutation batteries *(106)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1835,9 +1841,6 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
-- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
-- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
-
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
@@ -1848,6 +1851,9 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1896,7 +1902,7 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(39)*
+**`ui`** — HUD, screens, widgets *(40)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1929,7 +1935,6 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [The account's untested halves, and the two decisions hiding in them](roadmap/75-2026-09-17-account-test-gaps.md#the-accounts-untested-halves-and-the-two-decisions-hiding-in-them-2026-09-17-server--client--test)
 - 09-20 [The tutorial froze, and the seam every green suite stubbed](roadmap/76-2026-09-20-run-clock-freeze.md#the-tutorial-froze-and-the-seam-every-green-suite-stubbed-2026-09-20--09-21-client--test--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
-
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
@@ -1938,8 +1943,9 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(20)*
+**`tools`** — sims, profilers, editors, build scripts *(21)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -1961,8 +1967,9 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
-**`docs`** — design docs and this log itself *(110)*
+**`docs`** — design docs and this log itself *(111)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2074,6 +2081,7 @@ The same 191 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change)
 - 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
 - 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(32)*
 

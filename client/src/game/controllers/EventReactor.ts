@@ -6,6 +6,7 @@ import { facingFromAngle } from '../../render/facing';
 import { swingSchedule, type AttackTrigger } from '../../render/rigAttackMotion';
 import { byId, specOf, shotShapeOf, swingShapeOf } from './attackShapes';
 import { reactToPickup } from './pickupReactions';
+import { reactToHitNumber } from './damageNumberReactions';
 import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
 import type { AudioBus, AudioCue } from '../../platform/types';
@@ -191,13 +192,16 @@ export class EventReactor {
           // answer different questions: the shake fires when a player took it (a PvP rival's
           // hit is `faction: 'player'` and shakes nobody's screen today), while this one has
           // to fire whenever THIS player took it, from any source that reaches this event —
-          // an enemy, a PvP rival, or a hazard tile (`faction: 'environment'`). The shrinking
-          // zone's own ticks are NOT one of them: those arrive as `zone_damage`, which this
-          // reactor has never handled, and wiring that up is its own decision, not a
-          // side-effect of this one. `hurt`'s file is light glass to `shield.break`'s heavy
+          // an enemy, a PvP rival, a hazard tile or a shrinking-zone tick (both
+          // `faction: 'environment'` — the zone deals its tick through `takeDamage` like
+          // everything else and pushes `zone_damage` after it, so that event needs no case
+          // here and gets none; see `damageNumberReactions.ts`). `hurt`'s file is light glass to `shield.break`'s heavy
           // glass, an octave above `impact`'s thud, so the pair layers into "a hit landed,
           // and it was on you".
           if (isLocalSeat(e.target)) cue('hurt');
+          // The number itself (design/10) — which hits get one, and in what colour, is
+          // `damageNumberReactions.ts`.
+          reactToHitNumber(e, this.fx.numbers, this.host, isLocalSeat);
           break;
         case 'shield_break':
           // A shattered shield — a bright cyan burst (design/07 two-pool break).

@@ -263,7 +263,7 @@ describe('FxController scene-light sync', () => {
     const layers = new Layers();
     new FxController(layers).attach();
     expect(layers.lit.children).toEqual([layers.ground, layers.shadow, layers.entities]);
-    expect(layers.world.children).toEqual([layers.terrain, layers.lit, layers.fx, layers.hud]);
+    expect(layers.world.children).toEqual([layers.terrain, layers.lit, layers.fx, layers.hud, layers.numbers]);
   });
 
   it('hands the pass the world rect the camera is actually showing', () => {
