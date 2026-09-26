@@ -192,4 +192,5 @@ export function closeSwing(w: WeaponState): void {
   w.swingTicksLeft = 0;
   w.swingHitIds.length = 0;
   w.swingDamage = 0;
+  w.swingCrit = false;
 }

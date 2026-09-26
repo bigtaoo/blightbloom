@@ -23,7 +23,8 @@
 import { describe, it, expect, afterEach, beforeEach, inject, vi } from 'vitest';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { ensureAccountsIndexes } from '../src/db';
+import { accountsStore, ensureAccountsIndexes } from '../src/db';
+import { IntegrityStore } from '../src/integrity';
 import { billingStore, ensureBillingIndexes } from '../src/billingDb';
 import { ensureAnalyticsIndexes } from '../src/analytics/db';
 import {
@@ -297,6 +298,29 @@ describe('the console, signed in', () => {
     expect(html).toContain('No rollup rows for any day');
   });
 
+  it('serves the integrity tab from the accounts database', async () => {
+    // design/15, 2026-09-26. Seeded through the real store so the document shape is the one
+    // matchsvc writes, not a hand-rolled copy of it.
+    await new IntegrityStore(accountsStore(ctx.db('accounts')), () => 1_757_000_000_000).recordOnce({
+      roomId: 'room-seen',
+      verdict: 'dissent',
+      playerCount: 4,
+      seed: 5,
+      engineVersion: 75,
+      settleFrame: 900,
+      suspects: [{ seat: 1, accountId: 'a1', dissented: true, kicked: false }],
+      absent: [],
+      seatAccounts: { 1: 'a1' },
+      logDropped: true,
+    });
+    const { base } = await startConsole();
+    const { cookie } = await signIn(base);
+    const html = await (await fetch(`${base}/admin/?tab=integrity`, { headers: { cookie } })).text();
+    expect(html).toContain('room-seen');
+    expect(html).toContain('zoe'); // the suspect resolved to its username
+    expect(html).toContain('dissented');
+  });
+
   it('falls back to the players tab for an unknown tab name', async () => {
     const { base } = await startConsole();
     const { cookie } = await signIn(base);
@@ -491,7 +515,7 @@ describe('the per-section unavailable states', () => {
     vi.stubEnv('BB_MONGO_URI', 'mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=200&connectTimeoutMS=200');
     const { base } = await startConsole({ dbs: { analyticsEnabled: true } });
     const { cookie } = await signIn(base);
-    for (const tab of ['', '?tab=commerce', '?tab=retention']) {
+    for (const tab of ['', '?tab=commerce', '?tab=retention', '?tab=integrity']) {
       expect((await (await fetch(`${base}/admin/${tab}`, { headers: { cookie } })).text()), tab).toContain(
         'Unavailable',
       );

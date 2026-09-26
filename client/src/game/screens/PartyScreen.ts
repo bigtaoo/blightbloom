@@ -7,7 +7,7 @@ import { getPlayerId } from '../../net/identity';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { setPartyPresence } from '../../platform/partyPresence';
-import { SQUAD_SIZE } from '../match/pvpConfig';
+import type { PartyMode } from '../match/partyShape';
 import { ROOM_CODE_LENGTH, normalizeRoomCode } from '../match/roomCode';
 
 /** The party network calls this screen needs — injected (default: the real
@@ -22,10 +22,14 @@ export interface PartyApi {
 }
 
 /**
- * PvP pre-formed squad lobby (design/05/15's squad follow-up — the never-built
- * "friends queue together" front door). Pure presentation + its own polling loop,
- * same shape as Forge.ts/Screens.ts: Game.ts owns what `onStartMatch` actually does
- * (hand off to the existing `connectOnlineSession` PvP path with this partyId).
+ * The friends lobby (design/05/15's squad follow-up — the never-built "friends queue
+ * together" front door). Pure presentation + its own polling loop, same shape as
+ * Forge.ts/Screens.ts: Game.ts owns what `onStartMatch` actually does (hand off to
+ * `connectOnlineSession` with this partyId).
+ *
+ * Two kinds of party since 2026-09-26: a PvP SQUAD (up to `SQUAD_SIZE`) and a CO-OP party
+ * (the two seats of a co-op room). The creator picks one with the button they tap; a joiner
+ * gets whatever the code names, and the header line says which — `PartyInfo.mode`.
  *
  * Playing in a squad needs NO LOGIN (audited 2026-09-21, and it is a decision rather than a
  * gap — design/16's "logging in is never required to play"). `playerId` is `getPlayerId()`,
@@ -48,6 +52,7 @@ export class PartyScreen {
   private membersText: Text;
   private statusText: Text;
   private createBtn: Button;
+  private createCoopBtn: Button;
   private joinBtn: Button;
   private startBtn: Button;
   private leaveBtn: Button;
@@ -70,9 +75,9 @@ export class PartyScreen {
 
   onBack: (() => void) | null = null;
   /** Fired once — either the leader tapping START, or a non-leader member's poll
-   * observing the leader already started. Game.ts hands off to the same online-PvP
-   * connect path the `?pvp=1` URL flag uses, with this partyId attached. */
-  onStartMatch: ((partyId: string) => void) | null = null;
+   * observing the leader already started. Game.ts hands off to the online connect path
+   * for `mode` (a co-op room, or the PvP queue `?pvp=1` uses), with this partyId attached. */
+  onStartMatch: ((partyId: string, mode: PartyMode) => void) | null = null;
 
   constructor(opts: { matchBaseUrl: string; playerId?: string; api?: PartyApi }) {
     this.matchBaseUrl = opts.matchBaseUrl;
@@ -89,8 +94,11 @@ export class PartyScreen {
     this.statusText.anchor.set(0.5, 0);
 
     this.createBtn = new Button(t('party.create'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
-    this.createBtn.onTap = () => void this.doCreate();
+    this.createBtn.onTap = () => void this.doCreate('pvp');
     this.createBtn.setIcon(getUiTexture('icon_party_create'));
+    this.createCoopBtn = new Button(t('party.createCoop'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
+    this.createCoopBtn.onTap = () => void this.doCreate('coop');
+    this.createCoopBtn.setIcon(getUiTexture('icon_party_create'));
     this.joinBtn = new Button(t('party.join'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
     this.joinBtn.onTap = () => this.openJoinInput();
     this.joinBtn.setIcon(getUiTexture('icon_party_join'));
@@ -106,7 +114,7 @@ export class PartyScreen {
 
     this.view.addChild(
       this.panel.view, this.title, this.codeText, this.membersText, this.statusText,
-      this.createBtn.view, this.joinBtn.view, this.startBtn.view, this.leaveBtn.view, this.backBtn.view,
+      this.createCoopBtn.view, this.createBtn.view, this.joinBtn.view, this.startBtn.view, this.leaveBtn.view, this.backBtn.view,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -125,6 +133,7 @@ export class PartyScreen {
   private retext(): void {
     this.title.text = t('party.title');
     this.createBtn.setText(t('party.create'));
+    this.createCoopBtn.setText(t('party.createCoop'));
     this.joinBtn.setText(t('party.join'));
     this.startBtn.setText(t('party.startMatching'));
     this.leaveBtn.setText(t('party.leave'));
@@ -164,6 +173,8 @@ export class PartyScreen {
     // documents for the same reason. There is room: these are stacked rows on a 760-wide
     // design space, so a wider button costs nothing but its own centring.
     const centred = (b: Button, y: number) => b.view.position.set(cx - b.width / 2, y);
+    // Co-op first: it is the mode a pair of friends most often means by "play together".
+    centred(this.createCoopBtn, cy - 74);
     centred(this.createBtn, cy - 20);
     centred(this.joinBtn, cy + 34);
     centred(this.startBtn, cy - 20);
@@ -186,7 +197,7 @@ export class PartyScreen {
       const wasMatching = this.party.matching;
       this.party = info;
       this.refresh();
-      if (info.matching && !wasMatching) this.onStartMatch?.(info.partyId);
+      if (info.matching && !wasMatching) this.onStartMatch?.(info.partyId, info.mode);
     } catch {
       /* transient network hiccup — next poll retries, no need to surface every miss */
     }
@@ -196,13 +207,13 @@ export class PartyScreen {
     return this.party?.leaderId === this.playerId;
   }
 
-  private async doCreate(): Promise<void> {
+  private async doCreate(mode: PartyMode): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     this.statusText.text = '';
     const token = this.attemptToken;
     try {
-      const party = await this.api.createParty(this.matchBaseUrl, this.playerId);
+      const party = await this.api.createParty(this.matchBaseUrl, this.playerId, mode);
       if (token === this.attemptToken) this.party = party; // else: backed out — discard
     } catch (e) {
       // The same carve-out `doJoin` makes below, for the budget `/party/create` gained on
@@ -285,7 +296,7 @@ export class PartyScreen {
       const info = await this.api.startPartyMatching(this.matchBaseUrl, this.party.partyId, this.playerId);
       if (token !== this.attemptToken) return; // backed out before matching actually started
       this.party = info;
-      this.onStartMatch?.(info.partyId);
+      this.onStartMatch?.(info.partyId, info.mode);
     } catch {
       if (token === this.attemptToken) this.statusText.text = t('party.startFailed');
     } finally {
@@ -320,18 +331,24 @@ export class PartyScreen {
             code: this.party.code,
             // Not `!matching` alone: a FULL party is not joinable either, and the platform
             // draws a join affordance off this answer — so a join that would be refused
-            // must not be advertised. `SQUAD_SIZE` and not a local constant: the server's
-            // own `PartyService.MAX_PARTY_SIZE` is an alias of this same export
-            // (`@dd/game/match/pvpConfig`), so the cap the join is refused by and the cap
-            // drawn from here cannot drift.
-            joinable: !this.party.matching && this.party.members.length < SQUAD_SIZE,
+            // must not be advertised. `capacity` is the server's own answer for this
+            // party's mode (`partyCapacity`, 2026-09-26) — a co-op party is full at two,
+            // which a `SQUAD_SIZE` read here would have advertised as open.
+            joinable: !this.party.matching && this.party.members.length < this.party.capacity,
           }
         : null,
     );
     if (!this.party) {
+      this.title.text = t('party.title');
       this.codeText.text = '';
       this.membersText.text = '';
     } else {
+      // The mode and head-count take the TITLE's place rather than a line above the members:
+      // a full squad's four rows already reach the START button, and a fifth would cover it.
+      this.title.text = t(this.party.mode === 'coop' ? 'party.headerCoop' : 'party.headerSquad', {
+        count: this.party.members.length,
+        capacity: this.party.capacity,
+      });
       this.codeText.text = t('party.codeLine', { code: this.party.code });
       this.membersText.text = this.party.members
         .map((m) => `${m === this.party!.leaderId ? '★' : ' '} ${m === this.playerId ? t('party.you') : m.slice(0, 8)}`)
@@ -343,6 +360,7 @@ export class PartyScreen {
   private refreshButtons(): void {
     const inParty = this.party !== null;
     this.createBtn.view.visible = !inParty;
+    this.createCoopBtn.view.visible = !inParty;
     this.joinBtn.view.visible = !inParty;
     this.leaveBtn.view.visible = inParty;
     this.startBtn.view.visible = inParty && this.isLeader();

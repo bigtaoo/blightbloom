@@ -221,6 +221,12 @@ above did not say.
 
 ### The ladder gate stops asking the players — SHIPPED 2026-09-05
 
+> **2026-09-26:** the `reports[0]` described below is gone. Settlement is now a per-seat vote over
+> the whole `{hash, winner, placements}` tuple, and a PvP tuple is bounds-checked before `hashOk`
+> can be true (`server/src/settlement.ts`; design/15, "Settlement: a per-seat vote, bounds, and a
+> record"). The argument below about `mode` is unchanged: a vote decides what the seats agree on,
+> never what kind of match it was.
+
 The other half of "who may move a rating", and the one the key does not cover. Authentication
 settled *who* may call `/rating/report`. It did not settle *which settlements the gameserver
 sends*, and until 2026-09-05 that was decided by data the clients supply.

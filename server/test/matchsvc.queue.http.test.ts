@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { createMatchsvcServer, type MatchsvcServerOptions } from '../src/matchsvc';
+import { createMatchsvcServer, SEED_SPACE, type MatchsvcServerOptions } from '../src/matchsvc';
 import { verifyTicket } from '../src/ticket';
 import type { BotClientOptions } from '../src/BotClient';
 import { defaultFlags, type FlagName, type FlagValue, type FlagValues } from '../src/flags/defs';
@@ -143,6 +143,31 @@ describe('POST /find', () => {
     }
   });
 
+  // design/15, decided 2026-09-26. The seed used to be a counter that started at the clock and
+  // stepped by one per room, so each room's seed was the previous room's plus one — the
+  // property a player needs to simulate a match's drops ahead of time. The consecutive-step
+  // assertion is what that counter fails; a CSPRNG fails it with odds of about 7 in 2^31.
+  it('draws each room seed from the whole 31-bit space, never one more than the last', async () => {
+    const ctx = await start();
+    try {
+      const seeds: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        const { body } = await post(ctx.url, '/find', { playerCount: 1 });
+        seeds.push((body.match as { seed: number }).seed);
+      }
+      for (const seed of seeds) {
+        expect(Number.isInteger(seed)).toBe(true);
+        expect(seed).toBeGreaterThanOrEqual(0);
+        expect(seed).toBeLessThan(SEED_SPACE);
+      }
+      const steps = seeds.slice(1).map((s, i) => s - seeds[i]!);
+      expect(steps.filter((d) => d === 1)).toEqual([]);
+      expect(new Set(seeds).size).toBe(seeds.length);
+    } finally {
+      await ctx.close();
+    }
+  });
+
   it('queues a request that cannot form a room yet, with no ticket', async () => {
     const ctx = await start();
     try {
@@ -242,7 +267,11 @@ describe('GET /find/:queueId', () => {
       const { body } = await post(ctx.url, '/find', { playerCount: 4 });
       const polled = await get(ctx.url, `/find/${body.queueId as string}`);
       expect(polled.status).toBe(200);
-      expect(polled.body).toEqual({ status: 'queued' });
+      // The countdown the Matchmaking screen draws (2026-09-26): a real clock, so a range —
+      // at most the 5 s default backfill delay, and not yet run out.
+      expect(polled.body).toEqual({ status: 'queued', botFillInMs: expect.any(Number) });
+      expect(polled.body.botFillInMs).toBeGreaterThan(0);
+      expect(polled.body.botFillInMs).toBeLessThanOrEqual(5_000);
     } finally {
       await ctx.close();
     }
@@ -656,6 +685,67 @@ describe('/party/*', () => {
       expect(typeof queued.body.queueId).toBe('string');
 
       expect((await post(ctx.url, '/party/leave', { partyId, playerId: 'guest-b' })).status).toBe(200);
+    } finally {
+      await ctx.close();
+    }
+  });
+});
+
+describe('co-op room codes (2026-09-26)', () => {
+  it('creates a co-op party capped at two, and reads an unknown mode as a squad', async () => {
+    const ctx = await start();
+    try {
+      const coop = await post(ctx.url, '/party/create', { playerId: 'a', mode: 'coop' });
+      expect(coop.body).toMatchObject({ mode: 'coop', capacity: 2 });
+      const code = coop.body.code as string;
+      expect((await post(ctx.url, '/party/join', { playerId: 'b', code })).status).toBe(200);
+      expect((await post(ctx.url, '/party/join', { playerId: 'c', code })).status).toBe(404);
+
+      const odd = await post(ctx.url, '/party/create', { playerId: 'd', mode: 'duel' });
+      expect(odd.body).toMatchObject({ mode: 'pvp', capacity: 4 });
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('seats both co-op friends together even with a stranger queued between them', async () => {
+    const ctx = await start();
+    try {
+      const created = await post(ctx.url, '/party/create', { playerId: 'a', mode: 'coop' });
+      const partyId = created.body.partyId as string;
+      await post(ctx.url, '/party/join', { playerId: 'b', code: created.body.code });
+      await post(ctx.url, '/party/start', { partyId, playerId: 'a' });
+
+      const a = await post(ctx.url, '/find', { playerCount: 2, mode: 'coop', partyId });
+      const stranger = await post(ctx.url, '/find', { playerCount: 2, mode: 'coop' });
+      expect(stranger.body.match).toBeUndefined(); // not given friend b's seat
+      const b = await post(ctx.url, '/find', { playerCount: 2, mode: 'coop', partyId });
+      const room = (b.body.match as Record<string, unknown>).roomId;
+      const polledA = await get(ctx.url, `/find/${a.body.queueId as string}`);
+      expect((polledA.body.match as Record<string, unknown>).roomId).toBe(room);
+      expect((await get(ctx.url, `/find/${stranger.body.queueId as string}`)).body.status).toBe('queued');
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('400s a party queueing for the mode it was not made for', async () => {
+    const ctx = await start();
+    try {
+      const created = await post(ctx.url, '/party/create', { playerId: 'a', mode: 'coop' });
+      const res = await post(ctx.url, '/find', { playerCount: 8, mode: 'pvp', partyId: created.body.partyId });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('party is for a different mode');
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('returns the backfill countdown with a queued POST /find', async () => {
+    const ctx = await start();
+    try {
+      const res = await post(ctx.url, '/find', { playerCount: 4 });
+      expect(res.body.botFillInMs).toBe(5_000);
     } finally {
       await ctx.close();
     }

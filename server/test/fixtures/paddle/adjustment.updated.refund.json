@@ -1,0 +1,39 @@
+{
+  "event_id": "evt_01hvgfdfepj8eaevsjh5g4swbe",
+  "event_type": "adjustment.updated",
+  "occurred_at": "2026-09-27T08:54:10.646377Z",
+  "notification_id": "ntf_01hvgfdfhwncqrrjz1nz5eky9a",
+  "data": {
+    "id": "adj_01hvgf2s84dr6reszzg29zbvcm",
+    "action": "refund",
+    "type": "full",
+    "reason": "error",
+    "status": "approved",
+    "transaction_id": "txn_01hv8wptq8987qeep44cyrewp9",
+    "customer_id": "ctm_01hv6y1jedq4p1n0yqn5ba3ky4",
+    "subscription_id": null,
+    "credit_applied_to_balance": null,
+    "currency_code": "USD",
+    "items": [
+      {
+        "id": "adjitm_01hvgf2s8a24ftmj7n2wm1ghbz",
+        "item_id": "txnitm_01hv8wt98jahpbm1t1tzr06z6n",
+        "type": "full",
+        "amount": "296",
+        "proration": null,
+        "totals": { "subtotal": "249", "tax": "47", "total": "296" }
+      }
+    ],
+    "totals": {
+      "subtotal": "249",
+      "tax": "47",
+      "total": "296",
+      "fee": "39",
+      "earnings": "210",
+      "currency_code": "USD"
+    },
+    "payout_totals": null,
+    "created_at": "2026-09-27T08:48:20.239695Z",
+    "updated_at": "2026-09-27T08:54:10.646377Z"
+  }
+}

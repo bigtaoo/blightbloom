@@ -40,6 +40,7 @@ describe('quality profiles', () => {
       // saving on one knob.
       expect(here.particleBudget, `${here.tier}.particleBudget`).toBeLessThanOrEqual(above.particleBudget);
       expect(here.resolutionCap, `${here.tier}.resolutionCap`).toBeLessThanOrEqual(above.resolutionCap);
+      expect(here.damageNumbers, `${here.tier}.damageNumbers`).toBeLessThanOrEqual(above.damageNumbers);
     }
     // ...and the two ends are strictly apart, so a table whose rungs are all EQUAL — which
     // satisfies every `<=` above — still fails here.
@@ -47,6 +48,7 @@ describe('quality profiles', () => {
     const lo = qualityProfile('low');
     expect(lo.particleBudget).toBeLessThan(hi.particleBudget);
     expect(lo.resolutionCap).toBeLessThan(hi.resolutionCap);
+    expect(lo.damageNumbers).toBeLessThan(hi.damageNumbers);
   });
 
   it('spends the medium rung on the three passes stacked ABOVE the lighting, not on lighting', () => {
@@ -65,6 +67,9 @@ describe('quality profiles', () => {
     // 0 is a legal budget for the ParticleSystem (see its `scaled`), but a tier that ships it
     // would silently delete muzzle flashes, which carry information about who is shooting.
     expect(qualityProfile('low').particleBudget).toBeGreaterThan(0);
+    // Same for damage numbers: a cap of 0 is legal for the book and would silently hide every
+    // number on the devices most likely to be on this rung.
+    expect(qualityProfile('low').damageNumbers).toBeGreaterThan(0);
   });
 
   it('reports its own tier back, so a profile is self-describing', () => {

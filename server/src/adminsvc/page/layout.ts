@@ -128,11 +128,12 @@ ${error === null ? '' : `<p class="err">${esc(error)}</p>`}
   );
 }
 
-export type Tab = 'players' | 'commerce' | 'retention' | 'flags';
-/** Tab order, which is also reading order: three read-only views first, then the one tab
+export type Tab = 'players' | 'commerce' | 'retention' | 'integrity' | 'flags';
+/** Tab order, which is also reading order: the read-only views first, then the one tab
  *  that changes something (design/21 §4). `flags` is last for the same reason Phase C is
- *  last — it is the only write in the whole design. */
-export const TABS: readonly Tab[] = ['players', 'commerce', 'retention', 'flags'];
+ *  last — it is the only write in the whole design. `integrity` (design/15, 2026-09-26) is
+ *  read-only and sits with the other views. */
+export const TABS: readonly Tab[] = ['players', 'commerce', 'retention', 'integrity', 'flags'];
 
 /** Whether a query-string value names a tab. Anything else falls back to `players` rather
  *  than 404ing — a mistyped tab in a bookmark should open the console, not break it. */

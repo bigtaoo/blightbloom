@@ -35,6 +35,7 @@ export function takeDamage(
   src: DamageSrc,
   type: DamageType,
   firePassive = true,
+  crit = false,
 ): void {
   target.ticksSinceHit = 0;
   const hadShield = target.shield > 0;
@@ -53,11 +54,36 @@ export function takeDamage(
     damage: dmg,
     damageType: type,
     shieldRemaining: target.shield,
+    ...(crit ? { crit: true as const } : {}),
   });
   if (hadShield && target.shield === 0) {
     state.events.push({ type: 'shield_break', id: target.id, gx: target.gx, gy: target.gy });
     if (firePassive && target.shieldBreak) fireShieldBreak(state, target, target.shieldBreak);
   }
+}
+
+/**
+ * Top up `target`'s health by up to `amount`, clamped to `maxHp`, and announce what actually went
+ * in as a `heal` event (design/10 "Damage numbers"). Returns that amount; 0 means nothing changed
+ * and nothing was announced. The one legal way for a player-visible heal to land, so the number
+ * over a head can never disagree with the bar under it.
+ */
+export function restoreHp(state: GameState, target: Actor, amount: number): number {
+  const gained = Math.max(0, Math.min(target.maxHp, target.hp + amount) - target.hp);
+  if (gained <= 0) return 0;
+  target.hp += gained;
+  state.events.push({ type: 'heal', target: target.id, gx: target.gx, gy: target.gy, amount: gained, pool: 'hp' });
+  return gained;
+}
+
+/** `restoreHp`'s twin for the shield pool (a battery or a shop's shield line). Not used by the
+ *  idle regen in `StatusEffectSystem`, which is ambient rather than something the player did. */
+export function restoreShield(state: GameState, target: Actor, amount: number): number {
+  const gained = Math.max(0, Math.min(target.maxShield, target.shield + amount) - target.shield);
+  if (gained <= 0) return 0;
+  target.shield += gained;
+  state.events.push({ type: 'heal', target: target.id, gx: target.gx, gy: target.gy, amount: gained, pool: 'shield' });
+  return gained;
 }
 
 /**

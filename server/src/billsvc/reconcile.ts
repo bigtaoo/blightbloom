@@ -34,7 +34,7 @@
  *                            why this class is reported even though it is the rarest.
  *   'platform-not-local'     the platform charged and this server has nothing. THE tear §4
  *                            leaves open: the player paid and owns nothing. Loudest class.
- *   'amount-mismatch'        same transaction, different money.
+ *   'amount-mismatch'        same transaction, different money (amount or currency).
  *   'sku-mismatch'           same transaction, different product. A receipt redeemed against
  *                            the wrong SKU is exactly what design/19 §4's rule 5 exists to
  *                            stop at settlement time; this is the same question asked later,
@@ -205,7 +205,14 @@ export function diffOrders(
     // reconciliation that always fires is one nobody reads. `undefined` means "not asked and
     // not answered", which is silence, not agreement — recorded here because the two are easy
     // to confuse and only one of them is a bug.
-    if (remote.amountCents !== undefined && remote.amountCents !== row.amountCents) {
+    //
+    // A CURRENCY that differs is the same finding (ROADMAP 9.2): Paddle, a Merchant of Record,
+    // charges in the buyer's localised currency, so the SKU table's `amountCents` is a record
+    // of what was offered, not an authority — and a difference is reported here, never refused
+    // at settlement.
+    const amountDiffers = remote.amountCents !== undefined && remote.amountCents !== row.amountCents;
+    const currencyDiffers = remote.currency !== undefined && remote.currency !== row.currency;
+    if (amountDiffers || currencyDiffers) {
       differences.push({
         kind: 'amount-mismatch',
         platform,
@@ -214,7 +221,7 @@ export function diffOrders(
         accountId: row.accountId,
         detail:
           `transaction '${row.platformTxnId}': local ${row.amountCents} ${row.currency}, ` +
-          `platform ${remote.amountCents}${remote.currency === undefined ? '' : ` ${remote.currency}`}`,
+          `platform ${remote.amountCents ?? '(no amount)'}${remote.currency === undefined ? '' : ` ${remote.currency}`}`,
       });
     }
   }
@@ -248,7 +255,7 @@ export interface ReconcileDeps {
 }
 
 /** Every platform `asIapPlatform` accepts, in a stable order so a report diffs cleanly. */
-export const RECONCILED_PLATFORMS: readonly IapPlatform[] = ['apple', 'google', 'wechat', 'stripe', 'dev'];
+export const RECONCILED_PLATFORMS: readonly IapPlatform[] = ['apple', 'google', 'wechat', 'stripe', 'paddle', 'dev'];
 
 /**
  * Run one window across every platform. `[sinceMs, untilMs)`, half-open, matching the port's

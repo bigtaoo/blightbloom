@@ -22,7 +22,7 @@ import { CodeSpaceExhausted, type PartyService } from '../PartyService';
 // Through `../config`, not `@dd/game/...` directly — the same indirection `PartyService.ts`
 // uses for `SQUAD_SIZE`, so the list of things this server borrows from the client's pure
 // layer is readable in one place.
-import { ROOM_CODE_DIGITS, ROOM_CODE_LENGTH, isRoomCode, normalizeRoomCode } from '../config';
+import { ROOM_CODE_DIGITS, ROOM_CODE_LENGTH, isRoomCode, normalizeRoomCode, parsePartyMode } from '../config';
 import type { Logger } from '../log';
 import type { Budget } from '../rateLimit';
 import { spendBudget, type BudgetDeps } from './limits';
@@ -161,8 +161,12 @@ export const postCreate: RouteHandler<CreateRouteDeps> = (req, res, _url, deps) 
   readJson(req, (body) => {
     const playerId = (body as { playerId?: unknown })?.playerId;
     if (typeof playerId !== 'string' || !playerId) return send(res, 400, { error: 'playerId required' });
+    // Absent or unknown is a PvP squad, the only party a client older than 2026-09-26 knows
+    // how to ask for — `parsePartyMode` never refuses, for the same reason `/find` reads its
+    // own `mode` leniently.
+    const mode = parsePartyMode((body as { mode?: unknown }).mode);
     try {
-      send(res, 200, deps.parties.create(playerId));
+      send(res, 200, deps.parties.create(playerId, mode));
     } catch (e) {
       // Caught HERE rather than left to `matchsvc.ts`'s error boundary, and that is not a
       // stylistic choice: `readJson` invokes this callback from inside a `.then()`, so a

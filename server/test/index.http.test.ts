@@ -6,11 +6,12 @@
  * real WebSocket handshake (both the ticket-mandatory and the dev-fallback legacy
  * raw-param path), and a real end-to-end `match_start` once a playerCount:1 room fills.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { WebSocket, type WebSocketServer } from 'ws';
 import { createGameserver } from '../src/index';
+import { createMatchsvcServer } from '../src/matchsvc';
 import { signTicket, type TicketPayload } from '../src/ticket';
 import type { RoomManager } from '../src/RoomManager';
 
@@ -155,5 +156,28 @@ describe('gameserver WS — dev fallback (no secret configured)', () => {
     } finally {
       await ctx.close();
     }
+  });
+});
+
+// design/15, decided 2026-09-26: both halves of the ticket handshake refuse to BUILD in
+// production without the secret, rather than coming up on the dev one. `config.test.ts`
+// pins `ticketSecret()` itself; these pin that the two builders really call it at build time,
+// which is what turns the throw into a refusal to start.
+describe('production without BB_TICKET_SECRET refuses to start', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('createGameserver throws when no secret is configured or injected', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BB_TICKET_SECRET', '');
+    expect(() => createGameserver()).toThrow(/refusing to start/);
+  });
+
+  it('createMatchsvcServer throws when no secret is configured or injected', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BB_TICKET_SECRET', '');
+    // No store: the throw has to come before anything touches one.
+    expect(() => createMatchsvcServer({} as Parameters<typeof createMatchsvcServer>[0])).toThrow(/refusing to start/);
   });
 });

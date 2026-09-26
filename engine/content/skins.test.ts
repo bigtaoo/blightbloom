@@ -187,6 +187,13 @@ describe('SKIN_DEFS — characters as balanced defensive identities (design/14)'
     expect(new Set(budgets).size, `budgets collide: ${budgets.join(', ')}`).toBe(ALL.length);
   });
 
+  // Same constraint at the arena scale: the PvP columns are authored, not derived (v67), so
+  // nothing about the PvE budgets guarantees theirs are distinct.
+  it('no two characters share an exact arena (hp + shield) budget', () => {
+    const budgets = ALL.map((s) => s.pvp.maxHp + s.pvp.maxShield);
+    expect(new Set(budgets).size, `arena budgets collide: ${budgets.join(', ')}`).toBe(ALL.length);
+  });
+
   // A shield-break passive is only meaningful on a character that HAS a shield to break
   // (design/14): a zero-shield body must not carry an inert passive.
   it('only shielded characters carry a shield-break passive', () => {

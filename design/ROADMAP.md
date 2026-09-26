@@ -741,7 +741,7 @@ Loki/Alloy/Grafana stack, and the social/auction/world services.
 
 ---
 
-## Phase 9 — Payments go live: Paddle 🔴 (planned 2026-09-05)
+## Phase 9 — Payments go live: Paddle 🟡 (planned 2026-09-05; 9.1–9.3 code shipped 2026-09-26, not live)
 
 Phase 8 built a billing plane that works end to end **against a dev stub**: a `product:<sku>`
 receipt walks create → webhook → settle → outbox → `entitlements` → the Forge, and every real
@@ -752,7 +752,8 @@ cannot own for itself. The recorded loser is Stripe, which is the cheapest platf
 *reconciliation* logic against (a single paged `GET /v1/checkout/sessions`); that is a
 reconciliation cost, and it lost to a tax-and-compliance argument.
 
-- **9.1 🔴 The Paddle adapter, which does not fit the shape 8.4 shipped.** Four structural
+- **9.1 🟡 The Paddle adapter, which does not fit the shape 8.4 shipped.** *Code shipped
+  2026-09-26; not live — see the note at the end of this item.* Four structural
   differences, in `design/19-server-platform.md` §9 in full. It is **push, not pull**: every 8.4
   adapter answers `verifyReceipt(platform, receipt)` against a client-held receipt, and Paddle
   has none — it sends a signed `transaction.completed` webhook, landing on the one path 8.1's
@@ -765,19 +766,44 @@ reconciliation cost, and it lost to a tax-and-compliance argument.
   tolerance bounds replay. And 8.3's AMENDMENT 1 **relaxes here and only here**: it prefers the
   verifier's transaction id over the callback body's *because the body is unauthenticated*, and a
   Paddle body is signed.
-- **9.2 🔴 Merchant of Record partly inverts 8.3's price rule.** "Price comes from a server-side
+  **Shipped 2026-09-26:** `POST /webhook/paddle` (`server/src/billsvc/paddle/webhook.ts`) reads
+  the body through `billsvc/http.ts`'s raw reader, never `readJson`; `paddle/signature.ts`
+  checks `ts=…;h1=…` (any of several h1, constant-time, 5 s tolerance each way — Paddle's
+  documented default) BEFORE parsing; the signed transaction id settles through
+  `BillingService.settleSigned` (same two claims, so Paddle's retries are replays). No secret =
+  503 and nothing recorded; a bad signature = 401, logged, not recorded. The test vector is
+  self-computed from the documented algorithm — Paddle publishes none. **Owner-only:** the
+  notification destination and its secret (`BB_PADDLE_WEBHOOK_SECRET`), a public route to
+  billsvc (it is internal-only today), and the first real sandbox notification.
+- **9.2 🟡 Merchant of Record partly inverts 8.3's price rule.** *Code shipped 2026-09-26.* "Price comes from a server-side
   SKU table" holds for what we OFFER, but Paddle owns localised pricing, currency and tax and
   alone knows what was CHARGED. A SKU gains a Paddle price id, `server/src/billsvc/skus.ts`'s
   `amountCents` becomes a record rather than an authority, and a mismatch is an 8.5 reconciliation
   finding — **never a rejection**, because refusing money already taken converts a bookkeeping
   discrepancy into an undelivered purchase. Its order lister replaces one of the four INCOMPLETE
   rows an 8.5 reconciliation run currently reports.
-- **9.3 🔴 Refunds stop being hypothetical.** A Merchant of Record handles chargebacks, so Paddle
+  **Shipped 2026-09-26:** `SkuDef.paddlePriceId` (unset everywhere) overridden per environment by
+  `BB_PADDLE_PRICE_IDS` (`paddle/config.ts`); an unknown price id is REFUSED; the charged
+  amount/currency is stored on the order (`chargedAmountCents`/`chargedCurrency`) and never
+  compared at settlement; a currency OR amount difference is an 8.5 `amount-mismatch`. The lister
+  (`iap/paddle.ts`) is a real paged `GET /transactions`, fake-fetch tested, refusing without
+  `BB_PADDLE_API_KEY`. **Owner-only:** the eleven Paddle Prices and their ids, and the API key.
+  Expect every Paddle order to report an amount-mismatch until the SKU records match Paddle's
+  base prices — the table is CNY placeholder.
+- **9.3 🟡 Refunds stop being hypothetical.** *Code shipped 2026-09-26.* A Merchant of Record handles chargebacks, so Paddle
   sends refund events, which makes `design/19-server-platform.md` §9's refund bullet a dependency
   of this phase rather than a parallel question. The floor is that every refund event reaches
   8.5's review queue with its money joined to it. **Whether an entitlement is actually revoked,
   and what a revoked character does to a ladder history, is undecided and is a product call** —
   9.1/9.2 must not settle it by accident.
+  **DECIDED by the owner 2026-09-26 and shipped:** an approved `refund`/`chargeback` adjustment
+  (`adjustment.created`/`adjustment.updated`) REVOKES the entitlement and files a `refund` case
+  with both sides' money; ladder/PvP history is NOT changed. `paddle/refunds.ts` appends a
+  `reversal:` ledger row, queues an `action: 'revoke'` outbox row the pump drains to the new
+  `POST /internal/entitlements/revoke`, which removes only an entitlement held BECAUSE OF that
+  order. `pending_approval`/`rejected`/`chargeback_warning` are recorded and not acted on; an
+  approved `chargeback_reverse` files a case and re-grants nothing. A refused revocation files
+  `revocation-failed`. **Owner-only:** the first real refund through a sandbox.
 - **9.4 🟡 Credentials, and what "done" means without them.** A Paddle account, a notification
   destination secret and a price id per SKU are inputs this repository cannot produce. Until they
   exist, 9.1–9.3 land the same way 8.4's four adapters did: the real call each would make, written
@@ -848,7 +874,8 @@ turns on.
    **That content landed the same day** (`ENGINE_VERSION` 65): three enemy-free side rooms
    (`cache` / `vault` / `market`), one hung off each floor's chain as a dead end, carrying the
    whole distribution the owner asked for — a small chest on floors 1/2/4/5, the big chest on
-   floor 3, the run's one shop counter on floor 4. So level 1 now mixes fights with rooms that are
+   floor 3, the run's one shop counter on floor 4 (a second counter joined floor 3's vault on
+   2026-09-23 — see B2). So level 1 now mixes fights with rooms that are
    a search, and a chest is the first room in it a player may choose not to enter.
    **Sharpened the same day** (`ENGINE_VERSION` 64): a kill no longer drops a weapon at all, so a
    chest's payout IS the floor's weapon supply rather than a re-routing of loot the floor already
@@ -908,6 +935,16 @@ four survived this long. Each doc sentence was corrected in the same pass to poi
 None is a bug: nothing regressed, and the loop is playable without them. They are the gap
 between the loop as designed and the loop as shipped.
 
+**Status as of 2026-09-26** (resynced against the code in
+[volume 92](roadmap/92-2026-09-26-backlog-resync.md); the heading above is kept for the links that
+land on it, and no longer describes all five): **B1 and B5 shipped** (2026-09-14); **B2, B3 and B4
+were each partly built** — B2's buff is a paid offer but never a choice, B3's skip exists on one
+floor of five, B4's depth curve exists for weapon rarity only and is a content table rather than a
+`DungeonConfig` field. **All three closed later the same day** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md), `ENGINE_VERSION` 76), so
+**all five Backlog items are shipped**. The 2026-09-23/24 content-expansion commits (`ENGINE_VERSION` 68→75) moved
+three of the five entries below and did not edit this section; each entry now carries a dated
+correction naming the commit that moved it.
+
 - **B1 ✅ Chests — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** design/05's core-loop diagram says
   the player *opens chests*, its controls section says *"an `INTERACT` button opens chests"*, and
   design/07 step 9 says a chest rolls the drop table. There is no chest entity anywhere in the
@@ -928,7 +965,7 @@ between the loop as designed and the loop as shipped.
   each a dead-end branch off its floor's chain. Level 1 mixes fights with searches, and which
   floor holds what is a floor-map decision rather than a consequence of the piece draw. Note what
   this is NOT: a dead end routes around no garrison, so **B3 below is untouched**.
-- **B2 🟡 A real run-buff offering flow — HALF SHIPPED 2026-09-14 (`ENGINE_VERSION` 64).** The
+- **B2 ✅ A real run-buff offering flow — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): the shop's buff line offers three buffs, the buyer takes one at the line's price.** Half shipped 2026-09-14 (`ENGINE_VERSION` 64). The
   third of design/05's *"chests / rooms / shop"* routes now exists: every shop counter stocks a
   buff as one of its three fixed lines, so a buff can be **chosen and paid for** rather than
   only falling off a 6/84 weight on the kill table. That closes the structural half of this
@@ -941,7 +978,20 @@ between the loop as designed and the loop as shipped.
   `balance/runbuffs.ts`'s own module doc concedes the shipped reality (*"the demo drops them off
   the DROP_TABLE"*). So the in-run power layer that replaced the affix system is delivered
   entirely by a 6/84 weight on the kill table — never chosen, never offered, never a decision.
-- **B3 🟡 A capstone that is not always last.** *(Filed as "an extraction room that is not always
+
+  **Corrected 2026-09-26 — the "every counter stocks a buff" premise above stopped holding on
+  2026-09-23** (`9c5cc0c`, `ENGINE_VERSION` 72). `rollShopStock` no longer fills three fixed
+  weapon/buff/supply lines: each of its three slots is an independent draw at
+  **60% weapon / 30% item / 10% buff** (`SHOP_SLOT_WEIGHT_*`, `content/shops.ts`), so a counter
+  carries a buff only ~27% of the time, and a run now has **two** counters (floor 3's
+  `ember_l1_vault` beside its big chest, floor 4's `ember_l1_market`). The structural half is
+  therefore weaker than "closed": a buff CAN be bought, but most counters do not offer one.
+  **The choice half is DECIDED, not built**: the shop's buff line becomes a pick-one-of-three at
+  the line's price, reusing the floor-card offer (not a chest — chests stay the weapon supply).
+  **Built 2026-09-26** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `ShopOffer.choices`, three distinct buffs from one draw, card-only
+  `cell_up` in the pool; the panel draws them as rows under the line's price rather than as the
+  checkpoint popup. A counter still carries a buff line on ~27% of rolls — the weights did not move.
+- **B3 ✅ A capstone that is not always last — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): floors 2, 3 and 4 each have a skippable branch variant.** *(Filed as "an extraction room that is not always
   last"; since 2026-09-14 an interior capstone only descends, so what a mid-floor one buys is
   rooms left unfought on the way down — never leaving the RUN early, which no floor offers any
   more.)* design/05: *"You need not clear a
@@ -955,13 +1005,39 @@ between the loop as designed and the loop as shipped.
   (design/05 records that under "Open, deliberately left for editor tuning"). Needs BOTH a
   capstone that can sit at an interior index AND a floor with a bypass route; either alone
   changes nothing.
-- **B4 🟢 `dropTableByDepth` / `materialTierByDepth`.** design/09's `DungeonConfig` schema lists
+
+  **Corrected 2026-09-26 — PARTLY SHIPPED 2026-09-23** (`565aade`, `ENGINE_VERSION` 73), and the
+  "either alone changes nothing" line above turned out wrong. A bypass alone is enough when the
+  skipped room is moved OFF the chain: `DungeonConfig.floorLayoutVariants` lets a floor index
+  offer a pool of door graphs over the same room roster, drawn once from `roomgenPrng`, and floor
+  2 (index 1) now has two — the plain chain, and a branch where `r3_span` hangs as a dead-end
+  spur off `r2_kiln`, which gains a direct door to `r4_forge`. On that draw a player may leave
+  `r3_span` unfought, with the capstone still last. **What is still open:** floors 1, 3, 4 and 5
+  have no variant, so four floors in five skip nothing, and the branch comes up on roughly half
+  of runs. **Decided:** the interior-capstone half is dropped, not deferred — since 2026-09-14
+  the capstone of the last floor IS the boss and extraction, and an interior capstone elsewhere
+  only descends, so the spur buys the same decision with no change to the placement rule. B3
+  closes when floors 3–4 (index 2–3) also carry a skippable variant. **They do since 2026-09-26**
+  ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `r5_bastion` on floor 3 and `r4_rampart` (with the cache behind it) on floor 4 hang off
+  the chain on their branch draws. The opener and the boss floor keep one layout each.
+- **B4 ✅ `dropTableByDepth` / `materialTierByDepth` — CLOSED 2026-09-26 (`ENGINE_VERSION` 76, [volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)): `DungeonConfig.weaponRarityByDepth` and `.materialTierByDepth`, both optional, both defaulting to the shipped behaviour.** design/09's `DungeonConfig` schema lists
   both. Neither field exists on the real interface (`world/dungeon/types.ts`) — they were never
   added, not added-and-unwired, which is what design/09 and 1.5 above both said for a year.
   Depth→material quality currently works via a straight `tier = floorIndex` identity in
   `rollDrop`, which is enough to make `minTier` recipes demand deeper floors; the missing half is
   a configurable curve and a per-depth drop POOL (better weapons/buffs deeper, not just better
   materials).
+
+  **Corrected 2026-09-26 — the weapon half is PARTLY SHIPPED 2026-09-23** (`909add7`,
+  `ENGINE_VERSION` 74). `content/weaponRarityByDepth.ts`'s `rollWeaponId(prng, floorIndex)` now
+  feeds all three weapon-find sites (chest payout, boss drop, shop weapon slot) from a
+  per-floor rarity-tier weight table — common/fine fall and legend/legendary climb floor 1→5.
+  So "better weapons deeper" exists. It is **a content table, not a `DungeonConfig` field**: a
+  second dungeon cannot carry its own curve. Still open: `materialTierByDepth` (material tier is
+  still the `tier = floorIndex` identity at `DeathDropsSystem`'s `rollDrop` call) and any depth
+  shaping of the buff/heal/coin pool. **Decided:** both curves move onto `DungeonConfig` as
+  optional fields defaulting to today's behaviour; the buff pool stays depth-blind. **Built
+  2026-09-26** ([volume 97](roadmap/97-2026-09-26-backlog-close-juggernaut.md)), exactly that; `EMBER_DUNGEON` sets neither, so level 1 rolls what it did.
 - **B5 ✅ Blueprints that drop from runs — SHIPPED 2026-09-14 (`ENGINE_VERSION` 63).** A boss kill
   rolls a blueprint at 5% (`BLUEPRINT_DROP_PERMILLE`, a first-pass number, `design/14`). Since 2026-09-14 the
   boss kill IS the extraction, so the drop lands at the moment a run already hands its carry-out
@@ -996,12 +1072,11 @@ between the loop as designed and the loop as shipped.
 ## Dependency summary
 
 ```
-Backlog (B1-B5)  designed in prose, never built — chests, the run-buff offering flow, a
-                 mid-floor checkpoint (nothing is skippable today), the two depth-curve
-                 DungeonConfig fields that were never actually added, and blueprints dropping
-                 from runs. B1 and B5 were DECIDED 2026-09-14 (chest rooms; a 5% boss drop) and
-                 are the two Stage 1 closeout items — see "Product stages" above. See the
-                 Backlog section; each is filed, none is a regression.
+Backlog (B1-B5)  filed 2026-09-03 as designed-in-prose, never built. As of 2026-09-26:
+                 B1 chests ✅ and B5 run blueprints ✅ (2026-09-14, the two Stage 1 closeout
+                 items); B2 buff pick-one-of-three ✅, B3 skippable rooms ✅ (floors 2-4
+                 each have a bypass variant) and B4 depth curves ✅ (both DungeonConfig fields)
+                 closed 2026-09-26, ENGINE_VERSION 76 (volume 97). See the Backlog section.
 Phase 0 (sync)  ─┬─ 0.1 affix removal ──┬─ 0.2 rarity
                  │                       └─ 0.3 run-buffs ── 0.6 pickup names
                  └─ 0.4 shield ── 0.5 characters
@@ -1029,7 +1104,7 @@ Phase 8 (server platform) DONE (✅ 2026-09-05, design/19-server-platform.md) �
                         rather than clean when a platform cannot be asked, and a non-purchase grant audit that FILES and never revokes — plus a review queue that
                         finally gives 8.7's "money taken, nothing granted" record somewhere to go. 8.6 shipped 2026-09-05 as GameRegistry's static
                         single-instance branch only — /find's wsUrl is a lookup that travels in the response, never in the ticket. Depends on nothing in Phases 0-7; 8.2 depends on 8.1’s internal key, 8.3 on both, 8.7 on all three.
-Phase 9 (payments live)  PLANNED (🔴, design/19-server-platform.md §5/§9) — Paddle, decided 2026-09-05. Phase 8 works end to end against a DEV STUB;
+Phase 9 (payments live)  CODE SHIPPED, NOT LIVE (🟡 2026-09-26, design/19-server-platform.md §5/§9) — Paddle, decided 2026-09-05. Phase 8 works end to end against a DEV STUB;
                         this is the one platform that turns it into money. Paddle is a Merchant of Record (it owns VAT/tax/chargebacks, which a solo-operated
                         project cannot) — the recorded loser is Stripe, cheapest to prove 8.5's RECONCILIATION against, which lost to a tax argument.
                         It does NOT fit 8.4's adapter shape: PUSH not pull (a signed webhook, no client-held receipt), verification needs the RAW body
@@ -1040,6 +1115,9 @@ Phase 9 (payments live)  PLANNED (🔴, design/19-server-platform.md §5/§9) �
                         entitlement is REVOKED is a product call this phase must not settle by accident. Depends on all of Phase 8; blocked on credentials
                         this repo cannot produce, so without them it lands the way 8.4's four adapters did — written, fixture-tested, failing closed,
                         honestly reported as unverified. The signature verifier is the exception and must be tested for real.
+                        2026-09-26: 9.1–9.3 landed exactly that way — signed-webhook adapter over the RAW body, price-id map failing closed,
+                        a real GET /transactions lister, refunds that REVOKE and file a review case (the owner settled the product call).
+                        Still owner-only: price ids, the destination secret, a public route to billsvc, and the first real sandbox round trip.
 Documentation           DONE (✅ 2026-08-02) — all 19 design docs + every README audited against the code; stale top-of-file Status blocks rewritten (12/10/client/art READMEs and this file's own header), design/README index completed, engine/README written, art/ UUID filenames + duplicate files cleaned up. Docs-only, no code change.
 Repo structure          DONE (✅ 2026-08-02) — engine/ hoisted to its own top-level package (DOM-free, self-only paths: the determinism rule is now compile-enforced); client/src/game/ split into screens|scene|controllers|match; root npm workspace with a single `npm run check` across all 5 packages; game/config.ts deleted (dead pre-engine duplicates) and split into theme.ts + score.ts. 931 tests before and after, zero behaviour change.
 Test coverage audit     DONE (✅ 2026-08-05) — full test-coverage sweep across all 7 workspaces; zero dead/obsolete tests found (nothing to delete); ~50 previously-untested files closed, 1736 → 2627 tests. See the Test coverage audit pass section above.
@@ -1509,11 +1587,51 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-22** [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change) — the owner looked at a shipped screenshot and asked whether eight tap targets on the lobby's card was too many; the count was not the defect, the CARD was — it held three different kinds of control (start playing, prepare, chrome) with nothing in the layout saying so. `LOGIN`/`SETTINGS` moved out of `menuCard` entirely to a chrome row below it (break-even on height: the card's bottom pad dropped from 24 to 12, matching exactly what the row's own 12px gap cost outside it), and a 1px divider inside `LobbyRoutes` now separates "start playing" from "prepare" without dimming either side — design/10's own *"do not dim a door — open it, or take it off the screen"* rule, applied literally to TUTORIAL: `setRecommendTutorial(false)` now hides the row for a player who has seen it, rather than always drawing it and only ever hiding its "NEW HERE?" badge. Taking a route off the screen must not make it unreachable, so `Settings.ts` gained a REPLAY TUTORIAL entry beside MUTE/BACK (not a row of its own — the screen's design height already sat exactly on the 640px floor `viewportFit.test.ts` guards). TUTORIAL also stopped borrowing the account chip's purple, a second and more literal case of the "two adjacent buttons must differ by more than their label" rule the 2026-08-02 LOGIN/SETTINGS fix relied on. The CO-OP/SQUAD relabel the same audit found is left out — it is a copy change gated on an open design question (design/05:152) that a layout pass should not decide by accident in eight locale files. Full client suite green (7,343 tests), driven live at 760×640 and at a phone-landscape viewport across all four states — plain, saved run, maintenance banner, portal build. `ui` `test` `i18n` `docs`
 
+**[2026-09-26 — the Backlog, resynced against the code](roadmap/92-2026-09-26-backlog-resync.md)**
+
+- **09-26** [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change) — *“update the stale Backlog status first”*: the 2026-09-23/24 content expansion (`ENGINE_VERSION` 68→75) moved three of five Backlog entries, edited none, and **wrote no work-log volume** — the gap `checkRoadmapIndex` cannot see. B2's buff is now rolled on ~27% of counters rather than stocked on all; B3's skip exists on one floor via `floorLayoutVariants`, which also proved its *“a bypass alone changes nothing”* wrong; B4's depth curve exists for weapon rarity only, as a content table. Five owner decisions recorded where each question lives: a pick-one-of-three buff line, B3's interior capstone dropped, co-op both matchmade and friends, a generated sprite atlas for damage numbers (none are drawn today), PvP seed-and-consensus hardening with no replay, juggernaut as a 1% boss drop. `docs`
+
+**[2026-09-26 — settlement becomes a per-seat vote](roadmap/93-2026-09-26-pvp-settlement-vote.md)**
+
+- **09-26** [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change) — step 1 of volume 92's plan, the owner's *“seed verification only, like funny's; no server replay yet”*. The seed stops being a clock-started counter (each room's was the last one's plus one) and becomes a `crypto.randomInt` draw; production refuses to start without `BB_TICKET_SECRET` instead of falling back to the dev secret published in `config.ts`. `MatchRoom.reportResult` used to require every hash to match and then copy `winner`/`placements` from the FIRST reporter, so a seat with the right hash and forged placements decided the ladder by being quick, and one divergent seat voided it for all eight. It is now one vote per seat over the whole tuple (a strict majority that also reaches the quorum; unanimity at or below it), then a bounds check — the winner must be its squad's representative, placements exactly the other squads, and the match at least 450 frames, half the fastest of 180 measured bot matches. Dissenters, checkpoint-kicked seats and the input log go to a new internal `POST /integrity/report`, stored once per room with a per-account suspicion count and shown in a new ops-console tab; nothing acts on it. No consensus names nobody, so an honest player's count does not rise for sharing a match with a cheater. Not closed: a withheld report still holds the room open, and a coordinated majority still wins **(both answered the same day, [volume 94](roadmap/94-2026-09-26-settle-timeout.md))**. +107 server cases. `net` `test` `docs`
+
+**[2026-09-26 — a silent seat times out](roadmap/94-2026-09-26-settle-timeout.md)**
+
+- **09-26** [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change) — the owner's answer to the two gaps volume 93 left open. *“Settle after 30 seconds; a player who never reports is handled as offline.”* The first `result` arms `SETTLE_TIMEOUT_MS`. When it runs out, the vote runs over the seats that reported, so a loser closing the tab no longer keeps a 1v1 off the ladder. A new `partial` verdict still rates and is recorded, and the silent seat is listed as absent, never as a suspect. A room whose last seat leaves after a report now settles instead of throwing the reports away. The coordinated-majority gap is out of scope by the owner's call: a forged tuple needs identically modified clients, and that is the deferred replay's job. `BB_TICKET_SECRET` was already on the box; the hand-installed `ci-deploy.sh` was re-synced. +35 server cases. `net` `test` `docs`
+
+**[2026-09-26 — floating damage numbers](roadmap/95-2026-09-26-damage-numbers.md)**
+
+- **09-26** [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change) — step 3 of the plan: *“generate the digit atlas in code”*. A Pillow script renders Rubik Bold (OFL) into a 15 kB white-fill, dark-outline sheet plus its glyph table, both committed; every `hit` prints over the target as pooled `Sprite`s tinted by what took it (shield cyan, self red, environment slate, else the element), merged per target and colour within 150 ms, sized in screen px, capped by a new quality knob (40/28/16) that reuses the oldest. The zone is covered through its own `hit`, which also showed a comment claiming zone ticks never reached `case 'hit'` was wrong. +55 client tests, the three new modules at 100%/100%. `ui` `render` `art` `tools` `test` `docs`
+
+**[2026-09-26 — co-op room codes and whole-party matching](roadmap/96-2026-09-26-coop-party-matchmaking.md)**
+
+- **09-26** [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change) — step 2 of the plan, the owner's *“automatic matchmaking is required at launch”*, read as both: the public queue as it was, plus friends by room code. A party now has a mode (`partyShape.ts`, shared with the server): CREATE CO-OP PARTY makes a two-member party, the lobby title reads `CO-OP · 1/2`, and START queues a co-op room with the `partyId`. Building it exposed a split: members `POST /find` a poll apart, and a co-op room's squad size of 1 paired the first with any waiting stranger (PvP squads had the smaller version). `Matchmaker` now seats a party only once every member is live, unless a member's own wait passes the backfill delay. The queue screen counts down to the AI fill from a new `botFillInMs`, and its elapsed time finally runs — nothing had ever called `Matchmaking.update`. A load driver (`scripts/matchLoad.ts`, CLI `loadtest:match`) plays dozens of clients under the production per-IP limiters in CI: 49 mixed clients all matched with nothing refused; one shared address is refused only past 120 queue entries or 60 parties per ten minutes. `net` `ui` `i18n` `tools` `test` `docs`
+
+**[2026-09-26 — B2, B3, B4 closed; juggernaut drops](roadmap/97-2026-09-26-backlog-close-juggernaut.md)**
+
+- **09-26** [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76) — step 4, the engine half, one bump (`ENGINE_VERSION` 76). **B2**: a shop's buff line offers three distinct buffs from ONE draw (`combinationAt`), the buyer taps one at the line's price; `shopBuyId` names the choice, so the command format is unchanged, and card-only `cell_up` joins the pool. **B3**: floors 3 and 4 gain a branch variant with a fight on a dead-end spur (`r5_bastion`; `r4_rampart` and the cache behind it), and `emberLevel1.test.ts` runs its whole passability suite over every variant. **B4**: `DungeonConfig.weaponRarityByDepth` / `.materialTierByDepth`, both optional and default-identical. **Juggernaut** drops from the boss at 1% as a `'character'` pickup, the schematic's twin; since `ownedCharacters` is server-owned, a new `POST /account/claim-drop` (droppable ids only, source `drop`) makes it survive a login — trusting the client exactly as far as materials already do. Found on the way: consecutive seeds give a fresh `Prng` correlated early draws (a 1% roll read 0.35% over seeds 1..6000). `engine` `content` `ui` `net` `i18n` `test` `docs`
+
+**[2026-09-26 — the Paddle adapter](roadmap/98-2026-09-26-paddle-adapter.md)**
+
+- **09-26** [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change) — step 4's payments item, ROADMAP 9.1–9.3 landed the way 9.4 requires without credentials. A raw-body `POST /webhook/paddle` verified by HMAC-SHA256 over `${ts}:${rawBody}` (any `h1`, constant time, Paddle's 5 s window), 503 without the secret so Paddle retries, and `settleSigned` trusting the signed transaction id (AMENDMENT 1). Price ids map through `BB_PADDLE_PRICE_IDS`, an unknown one is refused, and a charged-amount difference is a reconciliation finding, never a rejection; `GET /transactions` is a real paged lister. Approved refunds and chargebacks revoke only the entitlement that order granted, through a `reversal` ledger row, a revoke outbox row and a new internal revoke route, and file a `refund` review case; ladder history untouched. Signature vector self-computed (Paddle publishes none). Price ids, the secret, the API key, a public route and a real sandbox round trip are the owner's. `net` `test` `docs`
+
+**[2026-09-26 — the PvP balance pass](roadmap/99-2026-09-26-pvp-balance-bot-guns.md)**
+
+- **09-26** [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77) — step 4's balance item, one bump (`ENGINE_VERSION` 77). The PvE bot now opens chests and swaps to a strictly better ranged gun, so the per-weapon `dry%` column finally has data (blaster 5%, frostseeker 59%). The PvP bot now leaves the closing zone. The zone also stops ticking on downed bodies, which it had done for their whole bleedout. With both fixes the zone deals ~2.5% of damage, not ~74%. Juggernaut's arena pool goes 55/0 → 75/0 (17% → 21% of wins over 540 matches; more buys nothing). `PVP_SCALE_FACTOR` 5 and the zone curve are kept on data. A parried rival player's bullet keeps 50% of its damage — unmeasured, because the bot never parries. `engine` `arena` `tools` `test` `docs`
+
+**[2026-09-26 — the PRNG fix](roadmap/100-2026-09-26-prng-mixing.md)**
+
+- **09-26** [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78) — `ENGINE_VERSION` 78. The bare LCG reduced its raw state, so `nextInt(2)` alternated 0101…, and neighbouring seeds gave correlated first draws (a 1% roll read 0.35% over seeds 1..6000). Together they let `shuffle` reach only 15 of the 120 orders of five items, within any one stream. The seed and every output now pass through MurmurHash3's finalizer; the state is still the LCG. 15 new tests, 11 of which fail on the old generator. `engine` `test` `docs`
+
+**[2026-09-26 — crit and heal numbers](roadmap/101-2026-09-26-crit-heal-numbers.md)**
+
+- **09-26** [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash) — volume 95 said crits and heals had no numbers because the events did not carry them. The owner pointed out that a potion is a heal with an amount and the crit buff lands crits. The flag is now frozen beside the roll (`Projectile.crit`, `WeaponState.swingCrit`) and copied onto `hit`. A new `heal` event reports what `restoreHp`/`restoreShield` actually restored after the clamp; it is wired to the potion, the battery, the shop's two lines and lifesteal, and deliberately not to regen or revive. Neither fact is hashed and the golden gate did not move, so there is no `ENGINE_VERSION` bump. On screen a crit is gold, 1.4x bigger and ends in "!"; a heal is "+N" in the pool's colour, over the local seat only. The atlas grew "+" and "!" without moving a digit. Verified on a real extracted frame. Engine 1781 → 1791, client 7536 → 7554, a 13-mutant battery 13/13. `engine` `ui` `test` `docs`
+
 ## The work log — by theme
 
-The same 188 entries, grouped. An entry with more than one tag appears more than once.
+The same 198 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(69)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1584,8 +1702,9 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
 - 09-21 [The health bar stops riding the hover](roadmap/85-2026-09-21-health-bar-pinned.md#the-health-bar-stops-riding-the-hover-2026-09-21-client--test--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
-**`art`** — authored assets and the art pipeline *(19)*
+**`art`** — authored assets and the art pipeline *(20)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1606,6 +1725,7 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The two mob blades get their own art](roadmap/39-2026-09-06-energy-card-capacity.md#the-third-gap-prompts-then-pixels-same-day)
 - 09-14 [Somebody is standing behind the counter](roadmap/59-2026-09-14-shop-npc.md#somebody-is-standing-behind-the-counter-2026-09-14-client--art--docs-no-engine-change)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(13)*
 
@@ -1623,7 +1743,7 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(33)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(37)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1658,8 +1778,12 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
+- 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
-**`arena`** — the PvP launch map and its audit *(7)*
+**`arena`** — the PvP launch map and its audit *(8)*
 
 - 08-25 [The launch arena is a placeholder that passes validation](roadmap/06-2026-08-25.md#the-launch-arena-is-a-placeholder-that-passes-validation-2026-08-25-tooling--audit)
 - 08-25 [The Seven Districts: the launch arena gets authored](roadmap/06-2026-08-25.md#the-seven-districts-the-launch-arena-gets-authored-2026-08-25-content)
@@ -1668,8 +1792,9 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 08-26 [The arena's passages reach the clip rule](roadmap/08-2026-08-26-arena.md#the-arenas-passages-reach-the-clip-rule-2026-08-26)
 - 08-26 [The arena in front of a camera, and the audit becomes a gate](roadmap/08-2026-08-26-arena.md#the-arena-in-front-of-a-camera-and-the-audit-becomes-a-gate-2026-08-26-client--engine)
 - 08-26 [The arena finally has a frame time, and it was not the walls](roadmap/08-2026-08-26-arena.md#the-arena-finally-has-a-frame-time-and-it-was-not-the-walls-2026-08-26-client-only)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`content`** — authored rooms, pieces, props, loot *(12)*
+**`content`** — authored rooms, pieces, props, loot *(13)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1683,8 +1808,9 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Chests, and the id that retuned a floor](roadmap/56-2026-09-14-chests.md#chests-and-the-id-that-retuned-a-floor-2026-09-14-engine--client--content-engine_version-6263)
 - 09-14 [The kill table stops paying in guns](roadmap/57-2026-09-14-kill-table.md#the-kill-table-stops-paying-in-guns-2026-09-14-engine--client--content-engine_version-6364)
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(103)*
+**`test`** — coverage sweeps, gates, mutation batteries *(112)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1779,7 +1905,6 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A design number with a remainder in it: the vanguard's shield becomes an integer](roadmap/78-2026-09-21-integer-design-numbers.md#a-design-number-with-a-remainder-in-it-the-vanguards-shield-becomes-an-integer-2026-09-21-engine--test--docs-engine_version-66-to-67)
 - 09-21 [Loot that accelerates into the body, and the floor that was backwards](roadmap/79-2026-09-21-pickup-flight-accel.md#loot-that-accelerates-into-the-body-and-the-floor-that-was-backwards-2026-09-21-client--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
-
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [Twice the chest, and the size nothing was watching](roadmap/84-2026-09-21-chest-size.md#twice-the-chest-and-the-size-nothing-was-watching-2026-09-21-client--test--docs-no-engine-change)
@@ -1790,6 +1915,15 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
+- 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1838,7 +1972,7 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(39)*
+**`ui`** — HUD, screens, widgets *(43)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -1871,7 +2005,6 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-17 [The account's untested halves, and the two decisions hiding in them](roadmap/75-2026-09-17-account-test-gaps.md#the-accounts-untested-halves-and-the-two-decisions-hiding-in-them-2026-09-17-server--client--test)
 - 09-20 [The tutorial froze, and the seam every green suite stubbed](roadmap/76-2026-09-20-run-clock-freeze.md#the-tutorial-froze-and-the-seam-every-green-suite-stubbed-2026-09-20--09-21-client--test--docs-no-engine-change)
 - 09-21 [One screen was answering two questions: the loadout leaves the forge](roadmap/80-2026-09-21-loadout-forge-split.md#one-screen-was-answering-two-questions-the-loadout-leaves-the-forge-2026-09-21-client--docs-no-engine-change)
-
 - 09-21 [The branch the test environment hid: the HUD card's portrait](roadmap/81-2026-09-21-playercard-portrait-tests.md#the-branch-the-test-environment-hid-the-hud-cards-portrait-2026-09-21-client--test-no-engine-change)
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
@@ -1880,8 +2013,12 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
-**`tools`** — sims, profilers, editors, build scripts *(20)*
+**`tools`** — sims, profilers, editors, build scripts *(23)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -1903,8 +2040,11 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-06 [The BGM gets quieter and slower, and the tempo turns out to live in the file](roadmap/39-2026-09-06-energy-card-capacity.md#the-bgm-gets-quieter-and-slower-and-the-tempo-turns-out-to-live-in-the-file-2026-09-06-client--tools--docs-no-engine-change)
 - 09-11 [The clock was the whole supply](roadmap/54-2026-09-11-ammo-regen-line.md#the-clock-was-the-whole-supply-2026-09-11-engine--client--docs-engine_version-6162)
 - 09-15 [The two docs over the ceiling, and the index check becomes a gate](roadmap/65-2026-09-15-doc-splits-and-index-gate.md#the-two-docs-over-the-ceiling-and-the-index-check-becomes-a-gate-2026-09-15-docs--build-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`docs`** — design docs and this log itself *(107)*
+**`docs`** — design docs and this log itself *(117)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2013,8 +2153,18 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [The Backlog, resynced against the code, and five open questions answered](roadmap/92-2026-09-26-backlog-resync.md#the-backlog-resynced-against-the-code-and-five-open-questions-answered-2026-09-26-docs-only-no-code-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
+- 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
+- 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
+- 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
-**`net`** — matchmaking, sockets, reconnect *(30)*
+**`net`** — matchmaking, sockets, reconnect *(35)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2046,8 +2196,13 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [Six digits, deduped, with one home for the shape](roadmap/82-2026-09-21-numeric-room-code.md#six-digits-deduped-with-one-home-for-the-shape-2026-09-21-net--ui--test--docs-no-engine-change)
 - 09-22 [A ceiling on the room-code walk](roadmap/87-2026-09-22-party-join-rate-limit.md#a-ceiling-on-the-room-code-walk-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Settlement becomes a per-seat vote, and a match that does not settle cleanly is recorded](roadmap/93-2026-09-26-pvp-settlement-vote.md#settlement-becomes-a-per-seat-vote-and-a-match-that-does-not-settle-cleanly-is-recorded-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [A silent seat times out after 30 seconds](roadmap/94-2026-09-26-settle-timeout.md#a-silent-seat-times-out-after-30-seconds-2026-09-26-net--test--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
+- 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 
-**`i18n`** — locales and text layout *(17)*
+**`i18n`** — locales and text layout *(19)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2066,3 +2221,5 @@ The same 188 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [Every route that was unbounded, in one pass](roadmap/89-2026-09-22-rate-limit-sweep.md#every-route-that-was-unbounded-in-one-pass-2026-09-22-net--ui--test--i18n--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 09-22 [Group the lobby by kind, and take a door off the screen instead of dimming it](roadmap/91-2026-09-22-lobby-route-grouping.md#group-the-lobby-by-kind-and-take-a-door-off-the-screen-instead-of-dimming-it-2026-09-22-client--ui--test--i18n--docs-no-engine-change)
+- 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
+- 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)

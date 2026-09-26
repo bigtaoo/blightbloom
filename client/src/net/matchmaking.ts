@@ -50,6 +50,17 @@ export class MatchRequestError extends Error {
   }
 }
 
+/**
+ * What the queue says while a request waits (2026-09-26) — handed to
+ * {@link FindMatchOptions.onQueued} after the POST and after every still-queued poll.
+ * `botFillInMs` is the control plane's countdown to its backfill point (`Matchmaker`'s
+ * `PollResult`): how long until AI players fill the empty seats. Absent from a server that
+ * predates it, in which case the screen simply shows no countdown.
+ */
+export interface QueueProgress {
+  botFillInMs?: number;
+}
+
 export interface FindMatchOptions {
   playerCount: number;
   /** PvE co-op vs. PvP arena (design/15). Default 'coop' — the field predates PvP, so
@@ -86,6 +97,8 @@ export interface FindMatchOptions {
   timeoutMs?: number;
   /** Cooperative cancel — checked each poll; when true, throws `matchmaking cancelled`. */
   signal?: { cancelled: boolean };
+  /** Called with the queue's countdown while waiting — see {@link QueueProgress}. */
+  onQueued?: (progress: QueueProgress) => void;
 }
 
 const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -119,12 +132,13 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
       partyId: opts.partyId,
     }),
   });
-  const found = (await findRes.json()) as { queueId?: string; match?: MatchInfo; error?: string };
+  const found = (await findRes.json()) as { queueId?: string; match?: MatchInfo; error?: string; botFillInMs?: number };
   if (!findRes.ok || found.error) {
     throw new MatchRequestError(found.error ?? `matchmaking failed (${findRes.status})`, findRes.status);
   }
   if (found.match) return found.match; // this arrival completed the group
   if (!found.queueId) throw new Error('matchmaking: no queueId returned');
+  opts.onQueued?.({ botFillInMs: found.botFillInMs });
 
   const deadline = timeoutMs; // relative budget, tracked by elapsed polls below
   let elapsed = 0;
@@ -134,11 +148,12 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
     elapsed += pollIntervalMs;
 
     const pollRes = await doFetch(`${baseUrl}/find/${encodeURIComponent(found.queueId)}`);
-    const status = (await pollRes.json()) as { status?: string; match?: MatchInfo };
+    const status = (await pollRes.json()) as { status?: string; match?: MatchInfo; botFillInMs?: number };
     if (status.status === 'matched' && status.match) return status.match;
     if (status.status === 'expired') throw new Error('matchmaking: request expired');
     if (elapsed >= deadline) throw new Error('matchmaking: timed out waiting for a match');
     // otherwise 'queued' → keep polling
+    opts.onQueued?.({ botFillInMs: status.botFillInMs });
   }
 }
 

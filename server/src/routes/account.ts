@@ -38,13 +38,29 @@
  * id is the analytics cohort key (design/21 A2). `routes/http.ts`'s `CORS` block lists the
  * header for the same reason it lists `authorization` — a browser refuses the request at
  * preflight otherwise, with no server log at all.
+ *
+ * ## Claiming a run drop (2026-09-26)
+ *
+ * `POST /account/claim-drop` is how a boss's rare character drop (engine `DROP_CHARACTERS`,
+ * design/14) reaches a signed-in account. It has to be a server write because `ownedCharacters`
+ * is an ownership field: a client-side grant would be stripped on the next `POST` and
+ * overwritten on the next `GET`, so the drop would last exactly until the next login.
+ *
+ * What it trusts is stated plainly: **the client's word that the drop happened.** The server
+ * cannot re-run a PvE run (replay verification is deliberately not built), which is the same
+ * trust every material and schematic in `meta_state` already rests on. The route bounds what
+ * that word can buy — only a `DROP_CHARACTERS` id, never a paid character, and one row per
+ * account however often it is called (`grant` is an idempotent upsert) — and records it under
+ * source `drop`, which `grantAudit`'s counted sources already include, so an account that
+ * claims without ever finishing a run is visible to the anomaly audit rather than invisible.
  */
 import type { IncomingMessage } from 'node:http';
 import type { AccountsStore } from '../db';
 import type { AuthService } from '../AuthService';
 import { readJsonBody, send, type RouteHandler } from './http';
 import { requireAuth } from './auth';
-import { EntitlementService, applyOwnership, stripOwnership } from '../EntitlementService';
+import { DROP_CHARACTERS } from '@dd/engine';
+import { EntitlementService, applyOwnership, characterSku, stripOwnership } from '../EntitlementService';
 
 /** The `GET /account/meta` header carrying this browser's guest install id. */
 export const GUEST_ID_HEADER = 'x-guest-id';
@@ -152,4 +168,20 @@ export const postGuestMerge: RouteHandler<AccountRouteDeps> = async (req, res, _
     { $addToSet: { mergedGuestIds: guestId } },
   );
   send(res, 200, { claimed: result.modifiedCount === 1 });
+};
+
+/**
+ * Claim a run drop (see the header's last section). Answers `{ granted }` — `false` when the
+ * account already owned it, which is an ordinary answer, not an error.
+ */
+export const postClaimDrop: RouteHandler<AccountRouteDeps> = async (req, res, _url, deps) => {
+  const session = await requireAuth(req, deps.auth);
+  if (!session) return send(res, 401, { error: 'invalid or expired session' });
+  const body = await readJsonBody(req);
+  const skinId = (body as { skinId?: unknown })?.skinId;
+  if (typeof skinId !== 'string' || !DROP_CHARACTERS.includes(skinId)) {
+    return send(res, 400, { error: 'not a droppable character' });
+  }
+  const granted = await entitlementsOf(deps).grant(session.accountId, characterSku(skinId), 'drop');
+  send(res, 200, { granted });
 };

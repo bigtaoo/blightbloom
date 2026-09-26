@@ -76,7 +76,7 @@
  */
 import type { AabbGrid, RoomPiece } from '../../content/rooms';
 import type { DungeonConfig } from '../dungeon';
-import { EMBER_L1_FLOORS, EMBER_L1_FLOOR_2_BRANCH } from './emberLevel1';
+import { EMBER_L1_FLOORS, EMBER_L1_FLOOR_2_BRANCH, EMBER_L1_FLOOR_3_BRANCH, EMBER_L1_FLOOR_4_BRANCH } from './emberLevel1';
 
 // Perimeter walls (design/10 legibility fix, 2026-08-02; door gaps moved to generic
 // placement-time carving, design/05 "Room & door model" 2026-08-04): every piece used
@@ -244,6 +244,10 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * entry here, so it keeps reading `floorMaps` directly and costs no extra draw —
  * this is the first floor to get the treatment, not a claim that every floor needs
  * two layouts.
+ *
+ * **Extended 2026-09-26 (`ROADMAP` B3):** floor indices 2 and 3 carry a branch variant too
+ * (`EMBER_L1_FLOOR_3_BRANCH`/`_4_BRANCH`), each one more `roomgenPrng` draw per run. The first
+ * floor (the tutorial-length opener) and the boss floor keep a single layout.
  */
 export const EMBER_DUNGEON: DungeonConfig = {
   biomeId: 'ember',
@@ -256,7 +260,11 @@ export const EMBER_DUNGEON: DungeonConfig = {
   bossPieceId: 'ember_l1_boss',
   difficultyCurve: { base: 1, perFloor: 0.25 },
   floorMaps: EMBER_L1_FLOORS,
-  floorLayoutVariants: { 1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH] },
+  floorLayoutVariants: {
+    1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH],
+    2: [EMBER_L1_FLOORS[2]!, EMBER_L1_FLOOR_3_BRANCH],
+    3: [EMBER_L1_FLOORS[3]!, EMBER_L1_FLOOR_4_BRANCH],
+  },
 };
 
 /**

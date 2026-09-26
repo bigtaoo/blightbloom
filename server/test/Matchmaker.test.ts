@@ -31,7 +31,7 @@ describe('Matchmaker — grouping', () => {
     const { mm } = make();
     const a = mm.enqueue(2);
     expect(a.ticket).toBeUndefined(); // first of two — still waiting
-    expect(mm.poll(a.queueId)).toEqual({ status: 'queued' });
+    expect(mm.poll(a.queueId)).toEqual({ status: 'queued', botFillInMs: 5_000 });
     expect(mm.waiting(2)).toBe(1);
 
     const b = mm.enqueue(2);
@@ -231,7 +231,7 @@ describe('Matchmaker — PvP practice-bot backfill (design/15 follow-up)', () =>
     expect(botFills).toEqual([{ roomId: (polledPvp as { ticket: { roomId: string } }).ticket.roomId, seed: expect.any(Number), playerCount: 4, mode: 'pvp', botOwners: [1, 2, 3] }]);
 
     // The coop waiter is untouched: its own delay has not come round yet.
-    expect(mm.poll(coop.queueId)).toEqual({ status: 'queued' });
+    expect(mm.poll(coop.queueId)).toEqual({ status: 'queued', botFillInMs: 90_000 });
     expect(botFills).toHaveLength(1);
   });
 
@@ -302,7 +302,7 @@ describe('Matchmaker — co-op ally backfill (design/10 front-door audit)', () =
     const { mm, advance } = make({ onBotFill: (info) => botFills.push(info) });
 
     const a = mm.enqueue(2); // the lobby's CO-OP button: playerCount 2, mode 'coop'
-    expect(mm.poll(a.queueId)).toEqual({ status: 'queued' }); // nothing yet at t=0
+    expect(mm.poll(a.queueId)).toEqual({ status: 'queued', botFillInMs: 5_000 }); // nothing yet at t=0
 
     advance(5_000); // the default coopBotFillMs
     const polled = mm.poll(a.queueId);
@@ -392,7 +392,7 @@ describe('Matchmaker — co-op ally backfill (design/10 front-door audit)', () =
     const { mm, advance } = make({ coopBotFillMs: () => delay });
     const a = mm.enqueue(2);
     advance(10_000);
-    expect(mm.poll(a.queueId)).toEqual({ status: 'queued' }); // 10 s < 60 s
+    expect(mm.poll(a.queueId)).toEqual({ status: 'queued', botFillInMs: 50_000 }); // 10 s < 60 s
 
     delay = 5_000; // operator lowers it mid-wait
     expect(mm.poll(a.queueId).status).toBe('matched'); // the SAME waiter, no re-enqueue
@@ -566,5 +566,120 @@ describe('Matchmaker — the arms a well-formed queue never reaches', () => {
     expect(mm.poll(a.queueId).status).toBe('matched');
     expect(fills).toHaveLength(1);
     expect([...fills[0]!.botOwners]).toEqual([1, 2, 3]);
+  });
+});
+
+/**
+ * A party is matched WHOLE (2026-09-26, co-op room codes). Members POST `/find` one at a time
+ * off their own party polls, so for about a second a party is partly queued. Before
+ * `groupSize`, a co-op party (squad size 1) was split the moment a stranger was waiting: the
+ * first member was paired with the stranger and the second member went to another room.
+ */
+describe('Matchmaker — whole parties', () => {
+  it("never seats a stranger in a co-op party member's chair while that member is on the way", () => {
+    const { mm } = make();
+    const a1 = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    const stranger = mm.enqueue(2, 'coop');
+    // Control: two solo waiters would have formed a room here. The party member is held back.
+    expect(a1.ticket).toBeUndefined();
+    expect(stranger.ticket).toBeUndefined();
+    expect(mm.waiting(2, 'coop')).toBe(2);
+
+    const a2 = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    expect(a2.ticket).toBeDefined();
+    const polled = mm.poll(a1.queueId);
+    expect(polled.status).toBe('matched');
+    expect((polled as { ticket: { roomId: string } }).ticket.roomId).toBe(a2.ticket!.roomId);
+    expect(mm.poll(stranger.queueId).status).toBe('queued'); // still waiting for its own match
+  });
+
+  it('holds a partly-queued PvP squad back even when the seat count is already met', () => {
+    const { mm } = make();
+    const party = [mm.enqueue(8, 'pvp', 'squad', undefined, undefined, 4), mm.enqueue(8, 'pvp', 'squad', undefined, undefined, 4)];
+    const solos = Array.from({ length: 6 }, () => mm.enqueue(8, 'pvp'));
+    // Eight live waiters, but only six of them may be seated — no room yet.
+    expect([...party, ...solos].every((r) => r.ticket === undefined)).toBe(true);
+
+    party.push(mm.enqueue(8, 'pvp', 'squad', undefined, undefined, 4));
+    const last = mm.enqueue(8, 'pvp', 'squad', undefined, undefined, 4);
+    expect(last.ticket).toBeDefined();
+    const seats = party.map((r) => (mm.poll(r.queueId) as { ticket: { teamId: number; roomId: string } }).ticket);
+    // All four in the SAME room and the SAME squad.
+    expect(new Set([...seats.map((t) => t.roomId), last.ticket!.roomId]).size).toBe(1);
+    expect(new Set([...seats.map((t) => t.teamId), last.ticket!.teamId]).size).toBe(1);
+  });
+
+  it("a stranger's backfill does not sweep up a party whose second member is one poll away", () => {
+    const fills: { botOwners: readonly number[] }[] = [];
+    const { mm, advance } = make({ onBotFill: (i) => fills.push(i) });
+    const stranger = mm.enqueue(2, 'coop');
+    advance(4_000);
+    const a1 = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    advance(1_000); // the stranger's 5 s backfill point; a1 has waited 1 s
+
+    expect(mm.poll(stranger.queueId).status).toBe('matched');
+    expect(fills).toEqual([expect.objectContaining({ botOwners: [1] })]); // an ally, not a1
+    expect(mm.poll(a1.queueId).status).toBe('queued');
+  });
+
+  it("plays with a bot once the party member's OWN wait passes the backfill delay", () => {
+    const fills: { botOwners: readonly number[] }[] = [];
+    const { mm, advance } = make({ onBotFill: (i) => fills.push(i) });
+    const a1 = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    advance(4_999);
+    expect(mm.poll(a1.queueId)).toEqual({ status: 'queued', botFillInMs: 1 });
+    advance(1); // the friend never came
+    expect(mm.poll(a1.queueId).status).toBe('matched');
+    expect(fills).toEqual([expect.objectContaining({ botOwners: [1] })]);
+  });
+
+  it('pairs a friendless party member with a waiting STRANGER, not a bot, once it ages in', () => {
+    const fills: unknown[] = [];
+    const { mm, advance } = make({ onBotFill: (i) => fills.push(i) });
+    const a1 = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    advance(1_000);
+    const stranger = mm.enqueue(2, 'coop'); // held apart: a1's friend may still come
+    expect(stranger.ticket).toBeUndefined();
+    advance(4_000); // a1's own backfill point — the friend is not coming
+
+    const polled = mm.poll(a1.queueId) as { ticket: { roomId: string } };
+    const other = mm.poll(stranger.queueId) as { ticket: { roomId: string } };
+    expect(other.ticket.roomId).toBe(polled.ticket.roomId);
+    expect(fills).toEqual([]); // a full room of humans — no bot minted
+  });
+
+  it('treats a groupId with no groupSize as whole — the pre-2026-09-26 shape', () => {
+    const { mm } = make();
+    mm.enqueue(2, 'coop', 'party-A');
+    expect(mm.enqueue(2, 'coop').ticket).toBeDefined();
+  });
+
+  it('a poller whose backfill seats OTHERS first stays queued, and its next poll seats it', () => {
+    // Three friendless party members, one per party, all past the delay. The last to arrive
+    // polls first: its backfill forms a room from the queue in arrival order — the two older
+    // waiters — and it does not fit. It must stay in the queue (not expire, not be dropped)
+    // and get the next room, with a bot, on its following poll.
+    const fills: { botOwners: readonly number[] }[] = [];
+    const { mm, advance } = make({ onBotFill: (i) => fills.push(i) });
+    const a = mm.enqueue(2, 'coop', 'party-A', undefined, undefined, 2);
+    const c = mm.enqueue(2, 'coop', 'party-C', undefined, undefined, 2);
+    const e = mm.enqueue(2, 'coop', 'party-E', undefined, undefined, 2);
+    advance(5_000);
+
+    expect(mm.poll(e.queueId)).toEqual({ status: 'queued', botFillInMs: 0 });
+    const ta = (mm.poll(a.queueId) as { ticket: { roomId: string } }).ticket;
+    const tc = (mm.poll(c.queueId) as { ticket: { roomId: string } }).ticket;
+    expect(ta.roomId).toBe(tc.roomId);
+    expect(fills).toEqual([]); // two humans — no bot yet
+
+    const te = (mm.poll(e.queueId) as { ticket: { roomId: string } }).ticket;
+    expect(te.roomId).not.toBe(ta.roomId);
+    expect(fills).toEqual([expect.objectContaining({ botOwners: [1] })]);
+  });
+
+  it('reports the backfill countdown only while queued', () => {
+    const { mm } = make({ coopBotFillMs: 7_000 });
+    expect(mm.enqueue(2, 'coop').botFillInMs).toBe(7_000);
+    expect(mm.enqueue(2, 'coop')).not.toHaveProperty('botFillInMs'); // matched inline
   });
 });

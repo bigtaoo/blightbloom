@@ -38,6 +38,8 @@ import { AdminSessionStore, ADMIN_COOKIE_PATH, clearCookieHeader, cookieHeader, 
 import { readFormBody, redirect, sendHtml, sendJson } from './http';
 import { document, esc, loginPage, shell, tabFrom, unavailable } from './page/layout';
 import { commerceSection, playersSection, retentionSection } from './page/sections';
+import { integritySection } from './page/integrity';
+import { integrityView } from './views/integrity';
 import { searchPlayers } from './views/players';
 import { commerceSnapshot } from './views/commerce';
 import { cohortGrid } from './views/retention';
@@ -97,7 +99,7 @@ export function authed(req: IncomingMessage, deps: AdminRouteDeps): boolean {
 /**
  * `GET /admin/` — the whole console, or the login form.
  *
- * One handler for all three tabs rather than three routes: the tab is a query parameter, so
+ * One handler for every tab rather than one route each: the tab is a query parameter, so
  * a bookmark keeps its search term, and there is exactly one place that decides whether the
  * caller is signed in. Three routes would be three places, and the one that forgot would
  * not look different from the outside.
@@ -128,6 +130,11 @@ export async function getPage(
       deps.dbs.analytics === null
         ? unavailable('Retention', deps.dbs.errors.analytics)
         : retentionSection(await cohortGrid(deps.dbs.analytics));
+  } else if (tab === 'integrity') {
+    body =
+      deps.dbs.accounts === null
+        ? unavailable('Integrity', deps.dbs.errors.accounts)
+        : integritySection(await integrityView(deps.dbs.accounts));
   } else if (tab === 'flags') {
     // The one tab whose database is WRITABLE, and the one whose absence is a configuration
     // state rather than a fault — see `flagsUnavailable`.

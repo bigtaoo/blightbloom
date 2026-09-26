@@ -61,6 +61,10 @@ services:
       NODE_ENV: production
       BB_LOG_LEVEL: info
       BB_MATCHSVC_URL: http://matchsvc:8788
+      # Required, not merely read from .env: under NODE_ENV=production both halves of the
+      # ticket handshake refuse to start without it (design/15, 2026-09-26). `:?` turns that
+      # into a named compose error instead of two containers restart-looping.
+      BB_TICKET_SECRET: ${BB_TICKET_SECRET:?set BB_TICKET_SECRET in .env (openssl rand -hex 32), same value for gameserver and matchsvc}
     expose:
       - "8787"
     networks:
@@ -89,6 +93,8 @@ services:
       MATCH_PORT: "8788"
       NODE_ENV: production
       BB_LOG_LEVEL: info
+      # See the gameserver's copy of this line.
+      BB_TICKET_SECRET: ${BB_TICKET_SECRET:?set BB_TICKET_SECRET in .env (openssl rand -hex 32), same value for gameserver and matchsvc}
       # Where `POST /client/log` forwards a browser's log batch (src/lokiPush.ts). Unset is
       # a real state and a quiet one — the route still answers 200, the client sees no
       # error, and the dashboards stay empty in a way that looks exactly like a quiet week.

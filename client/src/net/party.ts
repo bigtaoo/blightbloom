@@ -3,11 +3,17 @@
  * matchsvc's /party/* routes, same injected-fetch shape as matchmaking.ts so both are
  * unit-testable without a network.
  */
+import type { PartyMode } from '../game/match/partyShape';
+
 export interface PartyInfo {
   partyId: string;
   code: string;
   leaderId: string;
   members: readonly string[];
+  /** What the party queues for (2026-09-26) — fixed by whoever created it. */
+  mode: PartyMode;
+  /** The server's member cap for `mode` (`partyCapacity`), drawn as the lobby's `1/2`. */
+  capacity: number;
   matching: boolean;
 }
 
@@ -57,8 +63,13 @@ async function post(baseUrl: string, path: string, body: unknown, opts: PartyCal
 // create/join/start never legitimately return null per the API contract (only
 // /party/leave does, when it dissolves the party) — asserted here so callers that
 // only ever hit these three don't have to null-check a case that can't happen.
-export async function createParty(baseUrl: string, playerId: string, opts: PartyCallOptions = {}): Promise<PartyInfo> {
-  return (await post(baseUrl, '/party/create', { playerId }, opts))!;
+export async function createParty(
+  baseUrl: string,
+  playerId: string,
+  mode: PartyMode = 'pvp',
+  opts: PartyCallOptions = {},
+): Promise<PartyInfo> {
+  return (await post(baseUrl, '/party/create', { playerId, mode }, opts))!;
 }
 
 export async function joinParty(baseUrl: string, playerId: string, code: string, opts: PartyCallOptions = {}): Promise<PartyInfo> {

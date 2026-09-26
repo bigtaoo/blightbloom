@@ -11,7 +11,7 @@
  * interface from `EventReactor.ts` would make this file import the shell that imports
  * it, exactly the cycle CLAUDE.md's split rules forbid.
  */
-import { BLUEPRINT_CATALOG, MATERIAL_DEFS, RUN_BUFFS, WEAPON_SIM_BY_ID, type GameEvent } from '@dd/engine';
+import { BLUEPRINT_CATALOG, MATERIAL_DEFS, RUN_BUFFS, SKIN_DEFS, WEAPON_SIM_BY_ID, type GameEvent } from '@dd/engine';
 import { THEME, rarityColor } from '../theme';
 import { SCORE } from '../score';
 import { fpToPx } from '../coords';
@@ -64,6 +64,13 @@ export function reactToPickup(e: PickupEvent, fx: FxController, hud: HudView, ho
       fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.pickupSchematic, 26);
       cue('pickup.buff'); // reuses buff's cue — no recorded asset for a new one
       hud.toast(t('toast.schematicFound', { weapon: spec ? tName(spec.nameKey) : (e.weaponId ?? '') }), THEME.colors.pickupSchematic);
+      break;
+    }
+    case 'character': { // a boss's rare character unlock (design/14, 2026-09-26)
+      const skin = e.skinId ? SKIN_DEFS[e.skinId] : undefined;
+      fx.flash(fpToPx(e.gx), fpToPx(e.gy), THEME.colors.pickupCharacter, 28);
+      cue('pickup.buff'); // reuses buff's cue — no recorded asset for a new one
+      hud.toast(t('toast.characterFound', { character: skin ? tName(skin.nameKey) : (e.skinId ?? '') }), THEME.colors.pickupCharacter);
       break;
     }
     case 'shield': // shield-battery instant item (Task 4) — same shape as heal, own hue

@@ -52,7 +52,7 @@ export interface InternalEntitlementRouteDeps {
 /** One `(kind, id)` pair off the wire, narrowed. `null` for anything this route will not
  *  turn into an entitlement sku — an unknown kind included, because silently skipping one
  *  would deliver a partial purchase and report success. */
-function entitlementSkuFor(grant: unknown): string | null {
+export function entitlementSkuFor(grant: unknown): string | null {
   if (typeof grant !== 'object' || grant === null) return null;
   const { kind, id } = grant as { kind?: unknown; id?: unknown };
   if (typeof id !== 'string' || id.length === 0) return null;

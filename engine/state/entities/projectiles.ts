@@ -67,4 +67,10 @@ export interface Projectile {
   // still overlapping a body it just hit doesn't hit it again every subsequent tick
   // (mirrors why a melee swing tracks "hit ids on the swing", same root cause).
   hitIds?: number[];
+  // The crit roll that went into `damage` came up (design/07 "one frozen payload"). Only ever
+  // `true` or absent; read by nothing in the sim — `HitResolveSystem` copies it onto the `hit`
+  // event so the damage number can print it as a crit. Not in `serializeState`, like `damageType`:
+  // the roll's outcome is already hashed through `damage` and the `combatPrng` cursor. Cleared
+  // on a deflect, because the deflector rolled nothing.
+  crit?: true;
 }

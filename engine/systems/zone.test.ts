@@ -130,6 +130,29 @@ describe('EnvironmentSystem — zone damage', () => {
     expect(hitEvent).toBeDefined();
   });
 
+  it('leaves a downed player alone in a closed room (downed = invulnerable, design/07 3.2; v77)', () => {
+    const s = arenaState();
+    const zoneSys = new ZoneSystem();
+    zoneSys.tick(s);
+    tickUntil(zoneSys, s, () => s.zone!.stage === 1);
+    const p = s.players[0]!;
+    p.gx = toFpGrid(25); // room C, poisoned
+    p.gy = toFpGrid(5);
+    p.downed = true;
+    p.hp = 0;
+    const shieldBefore = p.shield;
+    new EnvironmentSystem().tick(s);
+    expect(p.hp).toBe(0);
+    expect(p.shield).toBe(shieldBefore);
+    expect(s.events.some((e) => e.type === 'zone_damage' || e.type === 'hit')).toBe(false);
+    expect(p.roomId).toBe('C'); // still tracked: a revive can stand them back up in there
+    // Control: the same body, stood back up, is damaged on the very next tick.
+    p.downed = false;
+    p.hp = 5;
+    new EnvironmentSystem().tick(s);
+    expect(s.events.some((e) => e.type === 'zone_damage' && e.target === p.id)).toBe(true);
+  });
+
   it('updates roomId as an actor crosses from one room into the next', () => {
     const s = arenaState();
     new ZoneSystem().tick(s);

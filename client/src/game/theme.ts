@@ -52,6 +52,9 @@ export const THEME = {
     // hue in the set that reads as "rare find" rather than "resource," since at most one of
     // these exists in an entire run (unlike every other pickup here, which is routine loot).
     pickupSchematic: 0xf687b3,
+    // A boss's rare character unlock (design/14, 2026-09-26) — violet, the floor-card hue: the
+    // other "rare find" colour beside the schematic's rose, and the two can drop together.
+    pickupCharacter: 0xb794f4,
     // Shield battery (Task 4) — reuses `shield`'s own cyan rather than a new hue: it is
     // the exact pool that colour already means everywhere else (the HUD bar, the
     // shield-break burst), so a fifth distinct hue here would separate two readouts of

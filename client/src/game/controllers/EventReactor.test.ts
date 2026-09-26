@@ -46,6 +46,7 @@ function fakeFx(): FxController {
     addShake: vi.fn(),
     addHitStop: vi.fn(),
     pulseChromatic: vi.fn(),
+    numbers: { spawn: vi.fn() },
     particles: {
       muzzleFlame: vi.fn(), shellCasing: vi.fn(), explosionDebris: vi.fn(), shieldShards: vi.fn(),
     },
@@ -145,6 +146,16 @@ describe('EventReactor — pickup toasts', () => {
     const { reactor, toast } = newReactor();
     reactor.consume([{ ...PICKUP_BASE, kind: 'schematic' }] as GameEvent[]);
     expect(toast).toHaveBeenCalledWith('Schematic: ', expect.anything());
+  });
+
+  it('a character pickup toasts the translated character name, falling back to the raw id or nothing (2026-09-26)', () => {
+    const { reactor, toast } = newReactor();
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character', skinId: 'juggernaut' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: Juggernaut', expect.anything());
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character', skinId: 'no-such-skin' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: no-such-skin', expect.anything());
+    reactor.consume([{ ...PICKUP_BASE, kind: 'character' }] as GameEvent[]);
+    expect(toast).toHaveBeenLastCalledWith('New character: ', expect.anything());
   });
 
   it('a shield-battery pickup toasts "Shield recharged" (Task 4 instant item)', () => {
@@ -1386,4 +1397,49 @@ describe('engine events the client deliberately does not react to', () => {
     expect([...reacted].filter((t) => !declared.includes(t) && !pickupKinds.includes(t))).toEqual([]);
   });
 
+});
+
+describe('EventReactor — damage numbers (design/10)', () => {
+  function reactorWithFx() {
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const fx = fakeFx();
+    return { fx, reactor: new EventReactor(fx, hud, fakeAudio(), fakeHost()) };
+  }
+
+  it('a hit spawns its number', () => {
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([{ type: 'hit', target: 9, faction: 'player', gx: pxToFp(0), gy: pxToFp(0), damage: 21, damageType: 'physical' }]);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 21, expect.any(Number), expect.any(Number), expect.any(Number), 'hit');
+  });
+
+  it('a crit hit spawns a crit number', () => {
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([{ type: 'hit', target: 9, faction: 'player', gx: pxToFp(0), gy: pxToFp(0), damage: 42, damageType: 'physical', crit: true }]);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(9, 42, expect.any(Number), expect.any(Number), expect.any(Number), 'crit');
+  });
+
+  it("a heal on the local seat spawns a heal number; another seat's does not", () => {
+    const hud = new HudView();
+    hud.build(new Layers(), { w: 1280, h: 720 });
+    const fx = fakeFx();
+    const seats = { players: [{ id: 5, radius: pxToFp(16) }, { id: 6, radius: pxToFp(16) }], enemies: [] } as unknown as GameState;
+    const reactor = new EventReactor(fx, hud, fakeAudio(), { ...fakeHost(), activeState: () => seats });
+    reactor.consume([
+      { type: 'heal', target: 5, gx: pxToFp(0), gy: pxToFp(0), amount: 1, pool: 'hp' },
+      { type: 'heal', target: 6, gx: pxToFp(0), gy: pxToFp(0), amount: 1, pool: 'hp' },
+    ]);
+    expect(fx.numbers.spawn).toHaveBeenCalledTimes(1);
+    expect(fx.numbers.spawn).toHaveBeenCalledWith(5, 1, expect.any(Number), expect.any(Number), expect.any(Number), 'heal');
+  });
+
+  it('a zone tick is numbered once, through its hit, and never again through zone_damage', () => {
+    // EnvironmentSystem pushes both for one tick: the `hit` from takeDamage, then `zone_damage`.
+    const { fx, reactor } = reactorWithFx();
+    reactor.consume([
+      { type: 'hit', target: 9, faction: 'environment', gx: pxToFp(0), gy: pxToFp(0), damage: 3, damageType: 'physical' },
+      { type: 'zone_damage', target: 9, dmg: 3 },
+    ]);
+    expect(fx.numbers.spawn).toHaveBeenCalledTimes(1);
+  });
 });

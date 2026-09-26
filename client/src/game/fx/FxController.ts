@@ -8,6 +8,7 @@ import { activeQuality } from '../../render/quality';
 import { cullGroundLayer } from '../scene/groundCulling';
 import { acquireSlashArc, releaseSlashArc, type SlashArc, type SlashArcPose } from './slashArc';
 import { motionReduced } from '../../render/motion';
+import { DamageNumbers } from './DamageNumbers';
 
 const FX_LIFE_MS = 170; // flash/trail lifetime (the default for a `_life`-tagged fx child)
 /** Muzzle-flare lifetime. Much shorter than a flash: a gun's flare is a single frame of real
@@ -76,6 +77,8 @@ export interface CameraFrame {
  */
 export class FxController {
   readonly particles = new ParticleSystem();
+  /** Floating damage numbers (design/10), on `layers.numbers` — see `DamageNumbers`. */
+  readonly numbers = new DamageNumbers();
   readonly vignette = new VignetteFilter();
   readonly chromatic = new ChromaticAberrationFilter(0);
   /** Dynamic point lights (design/01 milestone 2) — the local-player glow (registered
@@ -114,6 +117,7 @@ export class FxController {
   /** Wire post-processing filters + mount the particle view — call once from Game.start(). */
   attach(): void {
     this.layers.fx.addChild(this.particles.view);
+    this.layers.numbers.addChild(this.numbers.view);
     // One lighting pass over ground+shadow+entities (see Layers.lit for what is deliberately
     // left out of it). `filterArea` is mandatory here, not an optimisation: this filter opts
     // out of Pixi's viewport clip, so without an area the region would be the whole dungeon
@@ -271,6 +275,7 @@ export class FxController {
     }
 
     this.particles.update(dt, dustRate, dustBounds);
+    this.numbers.update(dt, this.zoom);
     this.lights.update(dt);
 
     // Chromatic-aberration pulse decays back to 0 — a hit reaction, never a permanent look.
@@ -460,6 +465,7 @@ export class FxController {
    *  itself, which is a persistent child of layers.fx mounted once in attach(). */
   resetForNewRun(): void {
     this.particles.clear();
+    this.numbers.clear();
     this.lights.clear();
     // A `_life` glow is small and gone in 170 ms, so those are left to expire across a run
     // boundary; a sector arc is the size of a weapon's whole reach and lasts longer, and one

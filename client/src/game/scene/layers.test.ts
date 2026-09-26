@@ -20,7 +20,7 @@ describe('Layers', () => {
     // is exactly the void — and the scene-light pass must not touch it, since that pass is what
     // was darkening everything beyond the player's room to near-black in the first place.
     const layers = new Layers();
-    expect(layers.world.children).toEqual([layers.terrain, layers.lit, layers.fx, layers.hud]);
+    expect(layers.world.children).toEqual([layers.terrain, layers.lit, layers.fx, layers.hud, layers.numbers]);
   });
 
   it('lit contains ground, shadow, entities in that paint order', () => {
@@ -94,6 +94,13 @@ describe('Layers', () => {
     expect(idx(layers.hud)).toBeGreaterThan(idx(layers.fx));
   });
 
+  it('numbers are drawn after hud, and are not a render group (they churn on every hit)', () => {
+    const layers = new Layers();
+    const idx = (c: unknown) => layers.world.children.indexOf(c as never);
+    expect(idx(layers.numbers)).toBeGreaterThan(idx(layers.hud));
+    expect(layers.numbers.isRenderGroup).toBe(false);
+  });
+
   it('walls and actors still share ONE sorted container — the depth model is unchanged', () => {
     // The lit grouping wraps `entities`; it must never split it. A standing wall block and
     // a character Y-sort against each other as one set (RoomBuilder mounts wall segments
@@ -155,8 +162,8 @@ describe('Layers', () => {
     expect(layers.lit.children).toContain(layers.entities);
     // Nothing else may sit in that slot pretending to be `entities`.
     expect(layers.lit.children).toHaveLength(3);
-    // 4 since 2026-08-28: terrain, lit, fx, hud.
-    expect(layers.world.children).toHaveLength(4);
+    // 5 since 2026-09-26: terrain, lit, fx, hud, numbers.
+    expect(layers.world.children).toHaveLength(5);
   });
 });
 

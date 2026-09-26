@@ -1,9 +1,11 @@
 /**
  * The CONTROL PLANE's store (design/16-accounts.md) — accounts, sessions, ratings, meta
- * state, entitlements and the ladder's exactly-once claims.
+ * state, entitlements, the ladder's exactly-once claims, and (since 2026-09-26) the PvP
+ * integrity records with their per-account suspicion counts.
  *
- * Six collections on the `accounts` logical database (`mongo.ts`), replacing the six tables
- * of the `node:sqlite` file this module owned until 2026-09-15. Shapes are unchanged; what
+ * Six collections on the `accounts` logical database (`mongo.ts`) replaced the six tables
+ * of the `node:sqlite` file this module owned until 2026-09-15; the two integrity
+ * collections came later and have no SQLite ancestor. Shapes are unchanged; what
  * changed is where each of the old schema's guarantees now lives, and that is the only
  * interesting thing about this file.
  *
@@ -51,7 +53,7 @@
  * enum and "a purchase-sourced entitlement must carry an order id" are enforced by the
  * server against every writer, that same `mongosh` prompt included.
  */
-import type { Collection, Db, MongoClient, ObjectId } from 'mongodb';
+import type { Binary, Collection, Db, MongoClient, ObjectId } from 'mongodb';
 
 /** One account. `_id` is the account id the rest of the server passes around as a string. */
 export interface AccountDoc {
@@ -146,6 +148,43 @@ export interface RatingReportDoc {
   appliedAt: number;
 }
 
+/**
+ * One PvP match that did not settle cleanly (design/15, "PvP integrity", 2026-09-26), as
+ * `integrityReport.ts` built it. Keyed by room id, which is also the exactly-once claim: a
+ * retried report finds the document already there and counts nothing a second time.
+ *
+ * A RECORD, never a verdict on a player. Nothing reads it but the ops console, and nothing
+ * acts on it automatically.
+ */
+export interface IntegrityReportDoc {
+  _id: string;
+  receivedAt: number;
+  verdict: 'partial' | 'dissent' | 'no_consensus' | 'bounds';
+  bounds?: string;
+  playerCount: number;
+  seed: number;
+  engineVersion: number;
+  settleFrame: number;
+  suspects: { seat: number; accountId?: string; dissented: boolean; kicked: boolean }[];
+  /** Seats that never reported before the settlement timeout — offline, not suspects. */
+  absent: number[];
+  seatAccounts: Record<string, string>;
+  /** The gzipped JSON frame log, archived for a later replay; absent when the sender dropped
+   *  it for size (`logDropped`). */
+  log?: Binary;
+  logDropped?: boolean;
+}
+
+/** How often an account has been named a suspect in an integrity record. Only real accounts
+ *  get one — a guest or bot seat is recorded in the report and counts against nobody. */
+export interface SuspicionDoc {
+  /** The account id. */
+  _id: string;
+  count: number;
+  lastRoomId: string;
+  lastAt: number;
+}
+
 /** The control plane's collections, typed. Handed to every store that reads them, the way a
  *  `DatabaseSync` used to be — see `test/mongoHarness.ts` on why nothing reaches for a
  *  process-wide handle instead. */
@@ -161,6 +200,8 @@ export interface AccountsStore {
   metaState: Collection<MetaStateDoc>;
   entitlements: Collection<EntitlementDoc>;
   ratingReports: Collection<RatingReportDoc>;
+  integrityReports: Collection<IntegrityReportDoc>;
+  suspicion: Collection<SuspicionDoc>;
 }
 
 /**
@@ -183,6 +224,8 @@ export function accountsStore(db: Db): AccountsStore {
     metaState: db.collection<MetaStateDoc>('metaState'),
     entitlements: db.collection<EntitlementDoc>('entitlements'),
     ratingReports: db.collection<RatingReportDoc>('ratingReports'),
+    integrityReports: db.collection<IntegrityReportDoc>('integrityReports'),
+    suspicion: db.collection<SuspicionDoc>('suspicion'),
   };
 }
 
@@ -246,6 +289,10 @@ export async function ensureAccountsIndexes(db: Db): Promise<void> {
   // `WHERE sku LIKE 'character:%'` covered both namespaces out of one table at a `sqlite3`
   // prompt; design/19 §7's daily audit groups by this one.
   await s.entitlements.createIndex({ grantedAt: 1 }, { name: 'entitlements_granted_at' });
+
+  // The ops console's two integrity lists: newest records first, most-named accounts first.
+  await s.integrityReports.createIndex({ receivedAt: -1 }, { name: 'integrity_received' });
+  await s.suspicion.createIndex({ count: -1 }, { name: 'suspicion_count' });
 }
 
 /** Installs a collection validator whether or not the collection exists yet. `createCollection`

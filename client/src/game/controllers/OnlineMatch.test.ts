@@ -131,7 +131,37 @@ describe('beginSquadMatch', () => {
   });
 });
 
+describe('beginPartyMatch (2026-09-26, co-op room codes)', () => {
+  it('queues a CO-OP party for a co-op room, with its party id, skipping the preview', () => {
+    const t = make();
+    t.run.pvp = true; // left over from an earlier PvP visit — must not leak into co-op
+    t.net.beginPartyMatch('party-3', 'coop');
+    expect(t.run.online).toBe(true);
+    expect(t.run.pvp).toBe(false);
+    expect(t.run.partyId).toBe('party-3');
+    expect(t.run.matchmakingReturnPhase).toBe('squad'); // CANCEL returns to the lobby it came from
+    expect(t.nav.showMatchmaking).toHaveBeenCalled();
+    expect(t.nav.showPvpPreview).not.toHaveBeenCalled();
+  });
+
+  it('sends a squad party down the squad path', () => {
+    const t = make();
+    t.net.beginPartyMatch('party-7', 'pvp');
+    expect(t.run.pvp).toBe(true);
+    expect(t.run.pvpSeats).toBe(SQUAD_MATCH_SEATS);
+    expect(t.run.partyId).toBe('party-7');
+  });
+});
+
 describe('connect', () => {
+  it('forwards the queue countdown callback to onlineConnect', () => {
+    const spy = vi.spyOn(onlineConnect, 'connectOnlineSession').mockResolvedValue({} as never);
+    const t = make();
+    const onQueued = vi.fn();
+    void t.net.connect({} as never, onQueued);
+    expect(spy.mock.calls[0]![0].onQueued).toBe(onQueued);
+  });
+
   it('passes the live run shape into onlineConnect', () => {
     const spy = vi.spyOn(onlineConnect, 'connectOnlineSession').mockResolvedValue({} as never);
     const t = make();

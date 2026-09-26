@@ -17,12 +17,16 @@ import {
   FrameBroadcast,
   CHECKPOINT_QUORUM,
   INTEGRITY_KICK_STREAK,
+  type FrameCmds,
   type PlayerCommand,
   type SeatNames,
   type ServerMsg,
   type Winner,
 } from '@dd/engine';
 import type { MatchMode } from './ticket';
+import { judgeSettlement, SETTLE_TIMEOUT_MS, type BoundsFailure, type IntegrityVerdict, type SeatReport } from './settlement';
+
+export type { IntegrityVerdict } from './settlement';
 
 /** A per-seat sink — one connected client. The transport wraps a socket as this. */
 export interface RoomConnection {
@@ -37,12 +41,39 @@ export interface RoomConnection {
   send(msg: ServerMsg): void;
 }
 
-/** The metronome clock, injected so tests can drive it by hand (no real timers). */
+/** The metronome clock and the settlement timeout, injected so tests can drive both by hand
+ *  (no real timers). */
 export interface Scheduler {
   setInterval(fn: () => void, ms: number): IntervalHandle;
   clearInterval(handle: IntervalHandle): void;
+  setTimeout(fn: () => void, ms: number): IntervalHandle;
+  clearTimeout(handle: IntervalHandle): void;
 }
 export type IntervalHandle = unknown;
+
+/** How a match settled, for the integrity record (design/15, "PvP integrity", 2026-09-26);
+ *  the verdicts are defined beside the rule that picks them, `settlement.ts`. */
+export interface MatchIntegrity {
+  verdict: IntegrityVerdict;
+  /** Seats outside the agreed tuple, ascending. */
+  dissenters: number[];
+  /** Seats `reportCheckpoint` kicked at any point in the match, ascending — even ones that
+   *  reconnected and then voted with the majority, since the divergence still happened. */
+  kicked: number[];
+  /** Seats that never reported before `SETTLE_TIMEOUT_MS` ran out, ascending — treated as
+   *  offline, so they cast no vote. Not suspects: a dropped connection is not a cheat. */
+  absent: number[];
+  /** Set only when `verdict` is `bounds`. */
+  bounds?: BoundsFailure;
+  /** The server's broadcast frame when the room settled (the last report, or the timeout). */
+  settleFrame: number;
+  /** The room's seed, so an archived match can be re-run later. */
+  seed: number;
+  /** The whole input log (non-empty frames). Present only when `verdict` is not `clean` — a
+   *  clean match has nothing to judge, and every PvP match carrying it would be a payload
+   *  nobody reads. Shared by reference with the room, which is destroyed right after. */
+  log?: readonly FrameCmds[];
+}
 
 /** A settled match's outcome, handed to `MatchRoomDeps.onSettled` (design/15,
  * ROADMAP 4.6) — everything the ladder-rating caller needs, and nothing MatchRoom
@@ -69,7 +100,11 @@ export interface SettledMatch {
    * OTHER members (design/15's squad-aware ladder follow-up), since `placements`
    * only ever holds LOSING seats and `winner` names just one representative. */
   playerCount: number;
+  /** True only when a tuple carried the settlement vote AND (for PvP) passed the bounds
+   *  check — the one condition under which a result may move a rating. The name predates the
+   *  vote, when it meant "every end hash matched". */
   hashOk: boolean;
+  integrity: MatchIntegrity;
   /** seat owner index → accountId (design/16-accounts.md), for whichever seats were
    * logged in. Omits guest/bot seats entirely — `ladderReport.ts` falls back to its
    * scaffold accountId for any seat missing here. */
@@ -120,14 +155,18 @@ export class MatchRoom {
   private readonly broadcast: FrameBroadcast;
   private readonly batchMs: number;
   private metronome: IntervalHandle | null = null;
-  private readonly results = new Map<number, { hash: number; winner: Winner; placements?: readonly number[] }>();
+  private readonly results = new Map<number, SeatReport>();
   private settled = false;
+  /** Armed by the first end-of-match report; settles the room with whoever has reported. */
+  private settleTimer: IntervalHandle | null = null;
   // Anti-cheat periodic checkpoints (design/15, ROADMAP 4.4): tick -> (owner -> hash),
   // evaluated (and discarded) the instant every seat has reported for that tick — the
   // server never needs to remember a tick again once it's been compared. Per-seat
   // consecutive-mismatch streak drives the kick rule (a clean report resets it).
   private readonly checkpoints = new Map<number, Map<number, number>>();
   private readonly integrityStrikes = new Map<number, number>();
+  /** Every seat ever kicked for divergence, kept for settlement (see `MatchIntegrity.kicked`). */
+  private readonly kicked = new Set<number>();
 
   private readonly mode: MatchMode;
 
@@ -277,14 +316,21 @@ export class MatchRoom {
   /**
    * A connection dropped. Free its seat and pause the metronome (the shared clock
    * cannot advance past a player who can't receive it — co-op is latency-tolerant, so
-   * it waits for a reconnect rather than forfeiting). If every seat is gone, destroy.
+   * it waits for a reconnect rather than forfeiting). If every seat is gone, `abandon`.
    */
   onDisconnect(conn: RoomConnection): void {
     const seat = this.seats[conn.owner];
     if (!seat || seat.conn !== conn) return; // already replaced by a newer connection
     seat.conn = null;
     if (this.phase === Phase.IN_MATCH) this.stopMetronome();
-    if (this.seats.every((s) => s.conn === null)) this.destroy();
+    if (this.seats.every((s) => s.conn === null)) this.abandon();
+  }
+
+  /** The last seat left. A room some seat already reported a result for settles on those
+   *  reports now — waiting out the timeout would change nothing — and any other just goes. */
+  private abandon(): void {
+    if (this.results.size > 0 && !this.settled) this.settle();
+    else this.destroy();
   }
 
   // ───────────────────────── anti-cheat checkpoints (design/15, ROADMAP 4.4) ─────────────────────────
@@ -361,41 +407,48 @@ export class MatchRoom {
     });
     seat.conn = null;
     this.integrityStrikes.delete(owner);
-    // Same shape as `onDisconnect`, and the phase check is likewise unreachable here (the
-    // only caller, reportCheckpoint, refuses outside IN_MATCH) — symmetry with the ordinary
-    // disconnect path is worth more than deleting a branch the coverage report will keep
-    // showing. The destroy arm below is NOT dead: a kick can take the room's last seat.
+    this.kicked.add(owner);
+    // Same shape as `onDisconnect`; the phase check is unreachable here (reportCheckpoint
+    // refuses outside IN_MATCH) and kept for symmetry. A kick CAN take the room's last seat.
     if (this.phase === Phase.IN_MATCH) this.stopMetronome();
-    if (this.seats.every((s) => s.conn === null)) this.destroy();
+    if (this.seats.every((s) => s.conn === null)) this.abandon();
   }
 
   // ───────────────────────── settlement ─────────────────────────
 
   /**
    * A client reports its end-of-match state (the deterministic hash + the outcome).
-   * Once every seat has reported, the room settles: it broadcasts `match_over` and
-   * destroys itself. Divergent hashes are flagged (design/06: the authoritative
-   * backstop is a server-side runHeadless re-judge, not realtime trust).
+   * Once every seat has reported — or `SETTLE_TIMEOUT_MS` after the first report, with
+   * any seat still silent treated as offline — the room settles: it broadcasts
+   * `match_over` and destroys itself. What the reports agree on is a per-seat vote (`settlement.ts`), and
+   * a PvP result is bounds-checked before it can rate; how it went is recorded in
+   * `SettledMatch.integrity` (design/15, 2026-09-26). No replay judges it yet.
    *
-   * `placements` (design/15, ROADMAP 4.2e) is present only for a PvP match (a config
-   * with `arena` set — GameState.placements); its presence, not the room's own
-   * knowledge of match type, is what selects the `'placement'` reason — MatchRoom
-   * stays generic infrastructure, same as it already is for co-op vs. solo. That is
-   * still true of the client-facing `reason` string, which is cosmetic. It is NOT true
-   * of `SettledMatch`, which now carries the room's own `mode` precisely so a consumer
-   * with real consequences attached (the ladder) gates on something no seat can
-   * fabricate — see `SettledMatch.mode`.
+   * `placements` (design/15, ROADMAP 4.2e) is present only for a PvP match (a config with
+   * `arena` set); its presence selects the cosmetic `'placement'` reason. Anything with real
+   * consequences (the ladder) gates on the room's own `SettledMatch.mode` instead, which no
+   * seat can fabricate.
    */
   reportResult(owner: number, stateHash: number, winner: Winner, placements?: readonly number[]): void {
     if (this.phase !== Phase.IN_MATCH || this.settled) return;
     if (!this.seats[owner]) return;
     this.results.set(owner, { hash: stateHash, winner, placements });
-    if (this.results.size < this.playerCount) return;
+    if (this.results.size === this.playerCount) this.settle();
+    else this.settleTimer ??= this.deps.scheduler.setTimeout(() => this.settle(), SETTLE_TIMEOUT_MS);
+  }
 
-    const reports = [...this.results.values()];
-    const hashOk = reports.every((r) => r.hash === reports[0]!.hash);
-    const agreedWinner = reports[0]!.winner;
-    const agreedPlacements = reports[0]!.placements;
+  private settle(): void {
+    this.clearSettleTimer();
+    const settleFrame = this.broadcast.frame;
+    const kicked = [...this.kicked].sort((a, b) => a - b);
+    const absent = this.seats.map((s) => s.owner).filter((o) => !this.results.has(o));
+    const ctx = { mode: this.mode, playerCount: this.playerCount, settleFrame, kicked, absent };
+    const { agreed, dissenters, bounds, hashOk, verdict } = judgeSettlement(this.results, ctx);
+    // With no settled tuple the end screen still needs SOMETHING; seat 0's (or the first
+    // reporter's) is cosmetic there, and `hashOk` false keeps it off the ladder.
+    const shown = agreed ?? this.results.get(0) ?? [...this.results.values()][0]!;
+    const agreedWinner = shown.winner;
+    const agreedPlacements = shown.placements;
     this.settled = true;
     this.stopMetronome();
     this.phase = Phase.OVER;
@@ -414,6 +467,16 @@ export class MatchRoom {
       placements: agreedPlacements,
       playerCount: this.playerCount,
       hashOk,
+      integrity: {
+        verdict,
+        dissenters,
+        kicked,
+        absent,
+        ...(bounds !== null ? { bounds } : {}),
+        settleFrame,
+        seed: this.seed,
+        ...(verdict !== 'clean' ? { log: this.broadcast.log } : {}),
+      },
       // Omitted entirely when no seat was logged in — keeps the pre-account SettledMatch
       // shape byte-identical for every guest-only match (and every existing test).
       ...(Object.keys(seatAccounts).length > 0 ? { seatAccounts } : {}),
@@ -421,8 +484,16 @@ export class MatchRoom {
     this.destroy();
   }
 
+  private clearSettleTimer(): void {
+    if (this.settleTimer !== null) {
+      this.deps.scheduler.clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+  }
+
   destroy(): void {
     this.stopMetronome();
+    this.clearSettleTimer();
     this.deps.onDestroy(this.roomId);
   }
 }

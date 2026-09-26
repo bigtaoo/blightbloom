@@ -36,6 +36,24 @@ class FakeScheduler implements Scheduler {
   clearInterval(h: IntervalHandle): void {
     this.fns = this.fns.filter((f) => f !== h);
   }
+  /** Settlement timeouts: never fired by `pulse`, only by `expire`. */
+  private timeouts: Array<() => void> = [];
+  setTimeout(fn: () => void): IntervalHandle {
+    this.timeouts.push(fn);
+    return fn;
+  }
+  clearTimeout(h: IntervalHandle): void {
+    this.timeouts = this.timeouts.filter((f) => f !== h);
+  }
+  /** Fire every pending timeout, as if its full delay had passed. */
+  expire(): void {
+    const due = this.timeouts;
+    this.timeouts = [];
+    for (const f of due) f();
+  }
+  get pendingTimeouts(): number {
+    return this.timeouts.length;
+  }
   pulse(): void {
     for (const f of [...this.fns]) f();
   }

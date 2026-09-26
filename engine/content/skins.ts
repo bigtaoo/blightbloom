@@ -97,6 +97,14 @@ export interface SkinDef {
 /** The free default character (design/14 free roster). */
 export const DEFAULT_SKIN_ID: SkinId = 'vanguard';
 
+/**
+ * The characters a boss kill can DROP (design/14, 2026-09-26 — `CHARACTER_DROP_PERMILLE`).
+ * Juggernaut only: vanguard is free and skirmisher is the one paid character SKU, and a
+ * paid character that could also drop would be selling a coin flip. An explicit list rather
+ * than "every non-free, non-paid skin" so that adding a skin never silently makes it droppable.
+ */
+export const DROP_CHARACTERS: readonly string[] = ['juggernaut'];
+
 export const SKIN_DEFS: Record<string, SkinDef> = {
   // Vanguard — the balanced default: a solid HP body with a moderate shield and a
   // short defensive burst when that shield shatters.
@@ -184,7 +192,11 @@ export const SKIN_DEFS: Record<string, SkinDef> = {
     animRef: 'humanoid',
     maxHp: 11,
     maxShield: 0,
-    pvp: { maxHp: 55, maxShield: 0 },
+    // 55 -> 75 (ENGINE_VERSION 77), measured over 540 zone-aware bot matches once the PvP bot
+    // stopped dying in the storm: juggernaut 17% -> 21% of wins, vanguard/skirmisher 36/46 ->
+    // 35/44. 85 and 95 bought nothing more — the same 21% plus ties and timeouts — so the
+    // remaining gap is the no-regen identity in a multi-fight FFA, not the pool size.
+    pvp: { maxHp: 75, maxShield: 0 },
     // -30% pool (ENGINE_VERSION 60) — the counterweight to the biggest body in the
     // roster. This is the character whose fights are long by construction (no shield, no
     // regen, it stands and trades), and length is exactly the regime where capacity stops

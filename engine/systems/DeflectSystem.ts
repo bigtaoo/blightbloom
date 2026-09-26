@@ -31,6 +31,7 @@ import type { GameState } from '../state/GameState';
 import type { MeleeSimSpec } from '../state/entities';
 import { isHostile } from '../state/entities';
 import { nearestHostile } from './targeting';
+import { deflectedPlayerDamage } from '../balance/build';
 
 const DEFLECT_LIFE_TICKS = 90; // redirected bullet gets a fresh lifespan (demo reset)
 
@@ -56,7 +57,11 @@ export class DeflectSystem {
           : p.facing;
         b.vx = mulFp(cosFp(a), spec.deflectSpeed);
         b.vy = mulFp(sinFp(a), spec.deflectSpeed);
+        // A rival PLAYER's shot comes back weaker (`PVP_DEFLECT_DAMAGE_PERMILLE`, 2026-09-26);
+        // read BEFORE the faction flip below, which makes every deflected bullet a player's.
+        if (b.faction === 'player') b.damage = deflectedPlayerDamage(b.damage);
         b.faction = 'player';
+        delete b.crit; // the deflector rolled nothing; the rebound is not a crit of theirs
         b.teamId = p.teamId; // now hostile to the ORIGINAL owner's team, not the deflector's
         b.lifeTicks = DEFLECT_LIFE_TICKS;
         state.events.push({ type: 'deflect', gx: b.gx, gy: b.gy });

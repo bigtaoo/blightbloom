@@ -91,6 +91,12 @@ export const BOSS_WEAPON_DROPS = 1;
 // platform could disagree).
 export const BLUEPRINT_DROP_PERMILLE = 50;
 
+// ── Character drop (design/14, ROADMAP step 4, 2026-09-26) ────────────────────
+// The chance a BOSS kill drops a `DROP_CHARACTERS` unlock, per mille. 10 = 1%, the owner's
+// number (2026-09-26): juggernaut shipped "reserved for an event path" with no way to own it,
+// and a rare boss drop is that path. Same integer-against-integer rule as the blueprint above.
+export const CHARACTER_DROP_PERMILLE = 10;
+
 // ── Chest rooms (design/05 "Chest rooms", ENGINE_VERSION 63) ──────────────────
 // How close a player must be for a small chest to open, and how far out a big chest's
 // mechanisms sit.

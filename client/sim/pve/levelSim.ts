@@ -94,6 +94,8 @@ export function runLevel(opts: RunOptions): RunMetrics {
     killsByFloor: tracker.killsByFloor,
     checkpointFloors: tracker.checkpointFloors,
     dryTicksByFloor: tracker.dryTicksByFloor,
+    heldTicksByWeapon: tracker.heldTicksByWeapon,
+    dryTicksByWeapon: tracker.dryTicksByWeapon,
     aliveTicksByFloor: tracker.aliveTicksByFloor,
     energyRefillsTakenByFloor: tracker.energyRefillsTakenByFloor,
     finalMaxEnergy: tracker.finalMaxEnergy,

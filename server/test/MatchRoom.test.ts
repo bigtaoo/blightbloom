@@ -20,6 +20,24 @@ class FakeScheduler implements Scheduler {
   clearInterval(h: IntervalHandle): void {
     this.fns = this.fns.filter((f) => f !== h);
   }
+  /** Settlement timeouts: never fired by `pulse`, only by `expire`. */
+  private timeouts: Array<() => void> = [];
+  setTimeout(fn: () => void): IntervalHandle {
+    this.timeouts.push(fn);
+    return fn;
+  }
+  clearTimeout(h: IntervalHandle): void {
+    this.timeouts = this.timeouts.filter((f) => f !== h);
+  }
+  /** Fire every pending timeout, as if its full delay had passed. */
+  expire(): void {
+    const due = this.timeouts;
+    this.timeouts = [];
+    for (const f of due) f();
+  }
+  get pendingTimeouts(): number {
+    return this.timeouts.length;
+  }
   /** Fire every live metronome once (one broadcast pulse). */
   pulse(): void {
     for (const f of [...this.fns]) f();
@@ -202,7 +220,7 @@ describe('MatchRoom — settlement', () => {
     r.join(a); r.join(b);
     r.reportResult(0, 0xabc, 1, [0]);
     r.reportResult(1, 0xabc, 1, [0]); // matching hash
-    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 1, placements: [0], playerCount: 2, hashOk: true }]);
+    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 1, placements: [0], playerCount: 2, hashOk: true, integrity: { verdict: 'clean', dissenters: [], kicked: [], absent: [], settleFrame: 0, seed: 99 } }]);
   });
 
   it('onSettled reports hashOk: false on a divergent-hash settlement, never crashing the caller', () => {
@@ -218,7 +236,9 @@ describe('MatchRoom — settlement', () => {
     r.join(a); r.join(b);
     r.reportResult(0, 0x111, 0);
     r.reportResult(1, 0x222, 0); // divergent hash
-    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: undefined, playerCount: 2, hashOk: false }]);
+    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: undefined, playerCount: 2, hashOk: false,
+      // Two seats is under the quorum, so it takes unanimity and a split settles nothing.
+      integrity: { verdict: 'no_consensus', dissenters: [], kicked: [], absent: [], settleFrame: 0, seed: 99, log: [] } }]);
   });
 
   it('onSettled includes seatAccounts (design/16-accounts.md) for whichever seats were logged in', () => {
@@ -234,7 +254,7 @@ describe('MatchRoom — settlement', () => {
     r.join(a); r.join(b);
     r.reportResult(0, 0xabc, 0, [1]);
     r.reportResult(1, 0xabc, 0, [1]);
-    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: [1], playerCount: 2, hashOk: true, seatAccounts: { 0: 'acct-alice' } }]);
+    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: [1], playerCount: 2, hashOk: true, integrity: { verdict: 'clean', dissenters: [], kicked: [], absent: [], settleFrame: 0, seed: 99 }, seatAccounts: { 0: 'acct-alice' } }]);
   });
 
   // `mode` joined this shape on 2026-09-05 (the ladder gate stopped trusting client-supplied
@@ -253,7 +273,7 @@ describe('MatchRoom — settlement', () => {
     r.join(a); r.join(b);
     r.reportResult(0, 0xabc, 0, [1]);
     r.reportResult(1, 0xabc, 0, [1]);
-    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: [1], playerCount: 2, hashOk: true }]);
+    expect(settled).toEqual([{ roomId: 'r1', mode: 'coop', winner: 0, placements: [1], playerCount: 2, hashOk: true, integrity: { verdict: 'clean', dissenters: [], kicked: [], absent: [], settleFrame: 0, seed: 99 } }]);
   });
 
   it('reports \'placement\' (design/15, ROADMAP 4.2e) when the reported result carries a placements array', () => {

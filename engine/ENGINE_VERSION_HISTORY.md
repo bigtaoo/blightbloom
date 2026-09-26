@@ -2610,3 +2610,70 @@ New tests: `floorCards.test.ts` gained cases for all four new mods (including th
 shape every existing case pins); `pickups.test.ts` gained the energy pickup's own base-case
 coverage (previously untested on its own) plus `surge`/`aegis`; `chests.test.ts` gained `bounty`;
 new `systems/materialDrop.test.ts` mirrors `coinDrop.test.ts`'s `windfall` suite for `stockpile`.
+
+v76 (ROADMAP step 4, 2026-09-26): three Backlog items and a character route, one bump.
+
+- **B2 — the shop's buff line is a pick-one-of-three.** A buff slot (`content/shops.ts rollSlot`)
+  no longer rolls one buff: it offers three distinct ones as `ShopOffer.choices`, each with its
+  own id from `nextShopId()`, and the buyer takes one at the line's single price. The three come
+  out of ONE draw (`combinationAt` over `SHOP_BUFF_POOL`, C(5,3) = 10 lines), so every slot still
+  costs exactly two draws whatever its category. The pool gains card-only `cell_up`, on the
+  floor-card file's own argument that a pick-one-of-three is where a conditional reward belongs.
+  `PlayerCommand.shopBuyId` now names a CHOICE id for a buff line; the line's own id buys nothing.
+  The command format is unchanged. `shop_buy` carries the chosen `buffId`, and `hashState`'s shop
+  tuple now carries the choices and the taken buff.
+- **B3 — floors 3 and 4 get a skippable variant.** `floorLayoutVariants` gains indices 2 and 3
+  (`ember_l1_floor_3_branch.json` / `_4_branch.json`): same rosters, same door count and order,
+  one fight moved onto a dead-end spur (`r5_bastion`; `r4_rampart` with the cache behind it). One
+  extra `roomgenPrng` draw per run for each.
+- **B4 — both depth curves are `DungeonConfig` fields.** `weaponRarityByDepth` (read by the chest,
+  boss and shop weapon rolls) and `materialTierByDepth` (read by `DeathDropsSystem`'s `rollDrop`
+  tier). Both optional, and absent they reproduce the pre-field behaviour exactly — so B4 alone
+  moves no hash. `EMBER_DUNGEON` sets neither.
+- **Juggernaut drops from the boss at 1%** (`CHARACTER_DROP_PERMILLE` 10, `DROP_CHARACTERS`). A new
+  `'character'` pickup kind carrying `skinId`, auto-collected into the collector's own
+  `PlayerActor.characterPickup` — the schematic's twin, with its own once-per-run guard
+  (`GameState.characterRolled`) and one extra `dropPrng` draw per boss kill (two on a hit), after
+  the schematic's. `hashState` hashes the new per-seat field, which is why EVERY golden scenario
+  moved, arenas included: the hash input grew, not their behaviour.
+
+Any replay diverges: the state hash has a new per-seat field and a new shop tuple shape, a boss
+kill spends a new draw, a shop's buff slot mints three more ids, and floors 2-3 draw a layout.
+Golden fixture regenerated. New `systems/characterDrop.test.ts`, `content/depthCurves.test.ts`;
+`shops.test.ts` gained the pick-one-of-three suite; `emberLevel1.test.ts` now runs its full
+passability suite over every branch variant.
+
+v77 (2026-09-26, ROADMAP step 4 — the PvP balance pass). Three rule changes, all PvP-facing:
+
+- **A parried rival player's bullet keeps half its damage** (`PVP_DEFLECT_DAMAGE_PERMILLE` 500,
+  `deflectedPlayerDamage`, `balance/build.ts`). `DeflectSystem` scales the bullet before flipping
+  its faction; an enemy's bullet is untouched, so PvE and a co-op run are unchanged in behaviour.
+  The 500 is the starting number, not a measured one: the PvP bot never swings a blade, so the
+  balance sim records zero deflects and cannot price it.
+- **Downed players take no zone or hazard-tile damage** (`EnvironmentSystem`). "Downed =
+  invulnerable" (design/07, 3.2) held for bullets, blades and status effects but not the zone,
+  which kept ticking on a downed body for its whole bleedout — HP ran to -46 and damage numbers
+  kept rising off it. It changed no outcome (only bleedout ends a downed player), but it put the
+  zone at ~74% of all damage in the balance sim.
+- **Juggernaut's arena pool 55/0 → 75/0** (`SkinDef.pvp`), from 540 zone-aware bot matches: its
+  win share 17% → 21%; 85 and 95 bought nothing more.
+
+Any arena replay diverges (a downed seat's hp, a parried shot's damage, the juggernaut's seat).
+Golden fixture regenerated.
+
+v78 (2026-09-26 — the PRNG mixes its seed and its output). `Prng` (`math/prng.ts`) keeps its
+full-period LCG state but now hashes the seed on construction and every output before it is
+reduced, both with MurmurHash3's 32-bit finalizer (`mix32`). The bare LCG had two measured
+defects:
+- `nextInt(max)` reduced the raw state mod `max`, and an LCG's low k bits cycle with period
+  2^k: `nextInt(2)` strictly alternated 0101…, `nextInt(4)` cycled with period 4. Every coin
+  flip in the engine (spread-shot side, flee direction, …) read the same pattern.
+- Nearby seeds gave correlated first draws. Seeds i and i+1 produced first `nextInt(1000)`
+  values whose difference was the same residue 19993 times in 20000, so over seeds 1..6000 a
+  1% roll that is an early draw hit a third of its rate (the boss character drop read 0.35%).
+  GameState derives each stream as `seed ^ constant`, which did not break this.
+- Together they starved `shuffle`: within ONE stream, however long, Fisher-Yates reached 3 of
+  the 6 orders of three items, 12 of 24 for four and 15 of 120 for five. Every engine shuffle
+  (room generation among them) drew from that fraction.
+
+Every seeded run diverges from its first draw. Golden fixture regenerated.

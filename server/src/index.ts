@@ -24,8 +24,10 @@ import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg } from '@dd/engine';
 import { RoomManager } from './RoomManager';
+import { nodeScheduler } from './nodeScheduler';
 import { Phase, type RoomConnection, type SettledMatch } from './MatchRoom';
 import { buildRatingReportBody } from './ladderReport';
+import { buildIntegrityReportBody } from './integrityReport';
 import { verifyTicket, type MatchMode } from './ticket';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
@@ -124,6 +126,44 @@ export function reportSettledMatch(match: SettledMatch, opts: InternalFetchInit 
   });
 }
 
+/**
+ * Record a PvP match that did not settle cleanly (design/15, "PvP integrity", 2026-09-26) —
+ * `integrityReport.ts` builds the body and decides whether there is one. Same delivery as
+ * the ladder report above: fire-and-forget over `internalFetch` with the settlement retry
+ * budget, which is safe to retry because matchsvc claims the room id before it counts
+ * anything (`IntegrityStore.recordOnce`).
+ *
+ * Independent of the ladder report on purpose. A `dissent` match both rates AND is
+ * recorded; a `no_consensus` or `bounds` match is recorded and rates nothing. Neither call
+ * waits for the other, and neither's failure stops the other.
+ */
+export function reportIntegrity(match: SettledMatch, opts: InternalFetchInit = {}): void {
+  if (!MATCHSVC_URL) return;
+  const body = buildIntegrityReportBody(match);
+  if (!body) return;
+  void internalFetch(`${MATCHSVC_URL}/integrity/report`, {
+    method: 'POST',
+    json: body,
+    internalKey: internalKeyFor(INTERNAL_CALLER_GAMESERVER),
+    caller: INTERNAL_CALLER_GAMESERVER,
+    retry: SETTLEMENT_RETRY,
+    ...opts,
+  }).then((result) => {
+    if (result.ok) return;
+    console.warn(
+      `[blightbloom] integrity report for room ${match.roomId} (${body.verdict}) failed after ` +
+        `${result.attempts} attempt(s): ${result.failure}${result.status === undefined ? '' : ` ${result.status}`}` +
+        `${result.error === undefined ? '' : ` (${result.error})`}`,
+    );
+  });
+}
+
+/** Everything a settled match is reported to. `RoomManager` takes one callback. */
+export function onMatchSettled(match: SettledMatch, opts: InternalFetchInit = {}): void {
+  reportSettledMatch(match, opts);
+  reportIntegrity(match, opts);
+}
+
 /** A live socket presented to the room layer as a seat sink. */
 class SocketConnection implements RoomConnection {
   constructor(
@@ -219,12 +259,11 @@ export function gameserverMetrics(manager: RoomManager): Metric[] {
  */
 export function createGameserver(opts: GameserverOptions = {}): { server: Server; wss: WebSocketServer; manager: RoomManager } {
   const manager = new RoomManager({
-    // Node timers are the metronome clock in production; the tests inject a fake.
-    scheduler: {
-      setInterval: (fn, ms) => setInterval(fn, ms),
-      clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
-    },
-    onSettled: reportSettledMatch, // design/15, ROADMAP 4.6 — ladder rating report
+    // Node timers are the metronome clock and the settlement timeout in production; the tests
+    // inject a fake.
+    scheduler: nodeScheduler,
+    // design/15, ROADMAP 4.6 — ladder rating report; plus the integrity record (2026-09-26)
+    onSettled: (match) => onMatchSettled(match),
   });
 
   const http = createServer((req, res) => {

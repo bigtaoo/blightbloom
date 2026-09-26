@@ -12,6 +12,7 @@
     "adminsvc": "node --import tsx/esm src/adminsvc/main.ts",
     "reconcile": "node --import tsx/esm scripts/reconcile.ts",
     "audit:grants": "node --import tsx/esm scripts/grantAudit.ts",
+    "loadtest:match": "node --import tsx/esm scripts/loadtestMatchmaking.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

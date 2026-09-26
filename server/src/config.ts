@@ -7,7 +7,8 @@
  * Posture: a real `BB_TICKET_SECRET` → production signing. Unset → a shared, well-known
  * DEV secret so the online path works out of the box locally, with a loud warning; in that
  * dev mode the gameserver also still honours the legacy raw-param handshake for manual
- * testing. Setting a real secret makes a valid ticket mandatory.
+ * testing. Setting a real secret makes a valid ticket mandatory, and under
+ * `NODE_ENV=production` an unset one refuses to start (see `ticketSecret`).
  */
 const DEV_SECRET = 'dev-insecure-secret-do-not-use-in-prod';
 
@@ -27,13 +28,36 @@ export { SQUAD_SIZE, squadSizeForPlayerCount, teamIdForOwner } from '@dd/game/ma
 // into a field five wide with both suites green. See `@dd/game/match/roomCode`'s header.
 export { ROOM_CODE_LENGTH, ROOM_CODE_DIGITS, ROOM_CODE_PATTERN, isRoomCode, normalizeRoomCode } from '@dd/game/match/roomCode';
 
+// A party's size cap per mode (2026-09-26, co-op room codes), through the same seam: the cap
+// `PartyService` refuses a join by and the `1/2` the client draws must be one number.
+export { COOP_SEATS, partyCapacity, parsePartyMode, type PartyMode } from '@dd/game/match/partyShape';
+
 import type { InternalCaller } from './internalAuth';
 
 let warned = false;
 
+/**
+ * The ticket secret, or the DEV fallback outside production.
+ *
+ * Under `NODE_ENV=production` an unset secret THROWS (design/15, decided 2026-09-26). It used
+ * to warn and fall back, and the fallback is published in this file — so a production
+ * gameserver missing one env var accepted tickets anybody could sign AND the legacy raw-param
+ * handshake, which lets a client name its own seat and seed. Both callers
+ * (`createGameserver`, `createMatchsvcServer`) call this at build time, so the throw is a
+ * refusal to START, not a per-request failure. `internalKeys()` below fails closed per call
+ * instead, and the difference is deliberate: an unkeyed internal route can reject each
+ * request and stay up, while a gameserver with no trustworthy ticket has no correct way to
+ * seat anybody.
+ */
 export function ticketSecret(): { secret: string; isDev: boolean } {
   const env = process.env.BB_TICKET_SECRET;
   if (env && env.length > 0) return { secret: env, isDev: false };
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[blightbloom] BB_TICKET_SECRET unset in production — refusing to start. The dev secret is ' +
+        'public, and would admit forged tickets and the raw-param handshake.',
+    );
+  }
   if (!warned) {
     warned = true;
     console.warn(

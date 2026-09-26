@@ -68,7 +68,7 @@
  *     provably cannot.
  */
 import { describe, it, expect } from 'vitest';
-import { addFp, mulFp, toFp } from '../math/fixed';
+import { FP_SCALE, addFp, mulFp, toFp } from '../math/fixed';
 import { cosFp, sinFp, normBrad, type Brad } from '../math/trig';
 import { createGameState, type GameState } from '../state/GameState';
 import { createGameEngine } from '../GameEngine';
@@ -209,7 +209,13 @@ describe('FREEZE — one shot, and every pellet carries its own spec (design/07 
         const dx = (b.gx - p.gx) as number;
         const dy = (b.gy - p.gy) as number;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        expect(Math.abs(dist - (spec.muzzleOffset as number)), `${id} muzzle distance ${dist}`).toBeLessThan(2);
+        // Derived, not picked: sinFp/cosFp are in 1/FP_SCALE units and err by up to ~1.5 of
+        // them (table rounding plus interpolation truncation), scaled by the offset, and each
+        // mulFp truncates up to 1 more per axis. The flat 2 this replaced held only until a
+        // v78 PRNG stream jittered a cinderscatter pellet onto a heading 2.01 off.
+        const offset = spec.muzzleOffset as number;
+        const bound = Math.SQRT2 * (1 + (1.5 * offset) / FP_SCALE);
+        expect(Math.abs(dist - offset), `${id} muzzle distance ${dist}`).toBeLessThan(bound);
       }
     }
   });

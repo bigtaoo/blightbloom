@@ -31,8 +31,8 @@ import {
   SHOP_PRICE_WEAPON,
   SHOP_STOCK_SIZE,
 } from '../config';
-import { BUFF_DROP_POOL } from './drops';
-import { rollWeaponId } from './weaponRarityByDepth';
+import { BUFF_DROP_POOL, CARD_ONLY_BUFF_IDS } from './drops';
+import { rollWeaponId, type RarityWeightRow } from './weaponRarityByDepth';
 import type { ShopOffer } from '../state/entities';
 
 /** The slice of `Prng` stocking a shop needs — narrowed like `DropPrng` next door, so a test
@@ -85,21 +85,67 @@ function rollSlotCategory(prng: ShopPrng): 'weapon' | 'item' | 'buff' {
 }
 
 /**
+ * The buff line's pick-one-of-three (ROADMAP B2, decided and built 2026-09-26): the line offers
+ * three DISTINCT buffs and the buyer takes one at the line's single price — the floor card's
+ * shape, at a counter. The pool is every run buff, card-only `cell_up` included: it was kept
+ * off the kill table because +max energy is worthless to a player on the starter blaster, and
+ * `balance/floorCards.ts` names a pick-one-of-three as exactly where such a conditional reward
+ * belongs. This is one.
+ */
+export const SHOP_BUFF_POOL: readonly string[] = [...BUFF_DROP_POOL, ...CARD_ONLY_BUFF_IDS];
+export const SHOP_BUFF_CHOICES = 3;
+
+function binomial(n: number, k: number): number {
+  let r = 1;
+  for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i;
+  return Math.round(r);
+}
+
+/** How many distinct three-buff lines the pool can produce — the range of the ONE draw below. */
+export const SHOP_BUFF_COMBINATIONS = binomial(SHOP_BUFF_POOL.length, SHOP_BUFF_CHOICES);
+
+/**
+ * The `index`-th `k`-subset of `pool`, in lexicographic order of positions, `0 <= index <
+ * C(pool.length, k)`. How the three choices come out of a SINGLE draw: every slot still costs
+ * exactly two draws whatever its category (see `rollSlot`), which three independent picks with
+ * re-draws on a repeat could never promise. Pure integer arithmetic, so every platform agrees.
+ */
+export function combinationAt<T>(pool: readonly T[], k: number, index: number): T[] {
+  const out: T[] = [];
+  let rest = index;
+  let start = 0;
+  for (let slot = 0; slot < k; slot++) {
+    for (let i = start; i < pool.length; i++) {
+      const block = binomial(pool.length - i - 1, k - slot - 1);
+      if (rest < block) {
+        out.push(pool[i]!);
+        start = i + 1;
+        break;
+      }
+      rest -= block;
+    }
+  }
+  return out;
+}
+
+/**
  * One slot: a category draw, then a SECOND draw picking the specific id/kind within it —
  * always two draws, whichever category comes up, so a shop's total draw count never depends
  * on what its own shelves happened to roll (same discipline `rollFloorCardOffer` follows, and
  * for the same reason: a variable draw count would make every later loot roll on the floor
  * depend on what this shop's stock happened to be).
  */
-function rollSlot(prng: ShopPrng, mkId: () => number, floorIndex: number): ShopOffer {
+function rollSlot(prng: ShopPrng, mkId: () => number, floorIndex: number, byDepth?: readonly RarityWeightRow[]): ShopOffer {
   const category = rollSlotCategory(prng);
   if (category === 'weapon') {
-    const weaponId = rollWeaponId(prng, floorIndex);
+    const weaponId = rollWeaponId(prng, floorIndex, byDepth);
     return { id: mkId(), kind: 'weapon', weaponId, price: SHOP_PRICES.weapon, sold: false };
   }
   if (category === 'buff') {
-    const buffId = BUFF_DROP_POOL[prng.nextInt(BUFF_DROP_POOL.length)]!;
-    return { id: mkId(), kind: 'buff', buffId, price: SHOP_PRICES.buff, sold: false };
+    const id = mkId();
+    const picked = combinationAt(SHOP_BUFF_POOL, SHOP_BUFF_CHOICES, prng.nextInt(SHOP_BUFF_COMBINATIONS));
+    const choices = picked.map((buffId) => ({ id: mkId(), buffId }));
+    return { id, kind: 'buff', choices, price: SHOP_PRICES.buff, sold: false };
   }
   const kind = ITEM_KINDS[prng.nextInt(ITEM_KINDS.length)]!;
   return { id: mkId(), kind, price: SHOP_PRICES[kind], sold: false };
@@ -120,8 +166,13 @@ function rollSlot(prng: ShopPrng, mkId: () => number, floorIndex: number): ShopO
  * `rollWeaponId` — passing it through for buff/item slots that never read it costs
  * nothing and keeps `rollSlot`'s signature uniform across categories.
  */
-export function rollShopStock(prng: ShopPrng, mkId: () => number, floorIndex: number): ShopOffer[] {
-  return [rollSlot(prng, mkId, floorIndex), rollSlot(prng, mkId, floorIndex), rollSlot(prng, mkId, floorIndex)];
+export function rollShopStock(
+  prng: ShopPrng,
+  mkId: () => number,
+  floorIndex: number,
+  byDepth?: readonly RarityWeightRow[],
+): ShopOffer[] {
+  return [rollSlot(prng, mkId, floorIndex, byDepth), rollSlot(prng, mkId, floorIndex, byDepth), rollSlot(prng, mkId, floorIndex, byDepth)];
 }
 
 /** Compile-time proof that the slot count above and the configured stock size agree.

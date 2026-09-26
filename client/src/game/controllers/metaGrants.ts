@@ -5,11 +5,12 @@
  * `this.run.meta = grantXxx(...)` — plus the `this.store.save` every meta write already needs.
  */
 import { EARNABLE_BLUEPRINTS, type GameState } from '@dd/engine';
-import { bankMaterials, unlockBlueprint, addSchematic, type MetaState } from '../../meta';
+import { bankMaterials, unlockBlueprint, addSchematic, grantCharacter, type MetaState } from '../../meta';
 
 /**
- * A finished run's carry-out (design/05/14): this seat's own banked materials, and — only
- * when `includeBlueprint` (default true) — its one-time schematic pickup, if any.
+ * A finished run's carry-out (design/05/14): this seat's own banked materials, its character
+ * drop if it picked one up, and — only when `includeBlueprint` (default true) — its one-time
+ * schematic pickup, if any.
  *
  * Per-seat since ENGINE_VERSION 68 — only THIS client's own local seat's bags leave the sim;
  * a teammate's client applies its own local seat's bags the same way, on its own call to this
@@ -26,6 +27,11 @@ export function grantRunCarryOut(meta: MetaState, s: GameState, localOwner: numb
   if (!p) return meta;
   let next = bankMaterials(meta, p.bankedMaterials);
   if (includeBlueprint && p.blueprintPickup !== null) next = addSchematic(next, p.blueprintPickup);
+  // The boss's rare character drop (design/14, 2026-09-26). Idempotent, so the rewarded-ad's
+  // repeat call may run it again harmlessly — no `includeBlueprint`-style gate needed. For a
+  // signed-in account this local grant is what the account-sync store turns into a server
+  // claim (`meta/accountSync.ts`), because ownership there is the server's answer.
+  if (p.characterPickup !== null) next = grantCharacter(next, p.characterPickup);
   return next;
 }
 

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   session: null as Session | null,
   fetchAccountState: vi.fn(),
   saveAccountMeta: vi.fn(),
+  claimAccountDrop: vi.fn(),
 }));
 
 vi.mock('../net/session', () => ({
@@ -26,6 +27,7 @@ vi.mock('../net/session', () => ({
 
 vi.mock('../net/auth', () => ({
   saveAccountMeta: mocks.saveAccountMeta,
+  claimAccountDrop: mocks.claimAccountDrop,
 }));
 
 vi.mock('../net/entitlements', async (importOriginal) => ({
@@ -74,6 +76,7 @@ beforeEach(() => {
   mocks.session = null;
   mocks.fetchAccountState.mockReset();
   mocks.saveAccountMeta.mockReset();
+  mocks.claimAccountDrop.mockReset();
 });
 
 describe('createAccountSyncMetaStore — load()', () => {
@@ -304,5 +307,75 @@ describe('pullAccountSnapshot', () => {
     // session check, so neither should be handed a status it would have to interpret.
     mocks.fetchAccountState.mockResolvedValue(ACCOUNT_UNAUTHORIZED);
     await expect(pullAccountMeta('http://mm', 'expired')).rejects.toThrow(/401/);
+  });
+});
+
+describe('createAccountSyncMetaStore — claiming a boss character drop (2026-09-26)', () => {
+  // `ownedCharacters` is stripped from the pushed blob server-side, so a drop only survives the
+  // next login if it is claimed through its own route. These pin when that claim goes out.
+  const withJuggernaut = () => ({ ...defaultMetaState(), ownedCharacters: [...defaultMetaState().ownedCharacters, 'juggernaut'] });
+  /** `withFakeLocalStorage`, but held across awaits — the sync one removes the shim before an
+   *  async body resumes. */
+  async function withStorageAsync(fn: () => Promise<void>): Promise<void> {
+    const data = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => data.set(k, v),
+      removeItem: (k: string) => data.delete(k),
+    };
+    try {
+      await fn();
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  }
+
+  it('claims a droppable character once per session, however many saves follow', async () => {
+    await withStorageAsync(async () => {
+      mocks.session = ALICE;
+      mocks.saveAccountMeta.mockResolvedValue(undefined);
+      mocks.claimAccountDrop.mockResolvedValue(true);
+      const store = createAccountSyncMetaStore(() => 'http://mm');
+      store.save(withJuggernaut());
+      store.save(withJuggernaut());
+      await Promise.resolve();
+      expect(mocks.claimAccountDrop).toHaveBeenCalledTimes(1);
+      expect(mocks.claimAccountDrop).toHaveBeenCalledWith('http://mm', 'tok-1', 'juggernaut');
+    });
+  });
+
+  it('never claims a free or paid character — only DROP_CHARACTERS', () => {
+    withFakeLocalStorage(() => {
+      mocks.session = ALICE;
+      mocks.saveAccountMeta.mockResolvedValue(undefined);
+      const store = createAccountSyncMetaStore(() => 'http://mm');
+      store.save({ ...defaultMetaState(), ownedCharacters: ['vanguard', 'skirmisher'] });
+      expect(mocks.claimAccountDrop).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a guest claims nothing — there is no account to claim for', () => {
+    withFakeLocalStorage(() => {
+      mocks.session = null;
+      createAccountSyncMetaStore(() => 'http://mm').save(withJuggernaut());
+      expect(mocks.claimAccountDrop).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a failed claim is retried on the next save, and a new login claims afresh', async () => {
+    await withStorageAsync(async () => {
+      mocks.session = ALICE;
+      mocks.saveAccountMeta.mockResolvedValue(undefined);
+      mocks.claimAccountDrop.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(true);
+      const store = createAccountSyncMetaStore(() => 'http://mm');
+      store.save(withJuggernaut());
+      await new Promise((r) => setTimeout(r, 0)); // let the rejection's catch run
+      store.save(withJuggernaut());
+      expect(mocks.claimAccountDrop).toHaveBeenCalledTimes(2);
+      mocks.session = { ...ALICE, token: 'tok-2' };
+      store.save(withJuggernaut());
+      expect(mocks.claimAccountDrop).toHaveBeenLastCalledWith('http://mm', 'tok-2', 'juggernaut');
+      expect(mocks.claimAccountDrop).toHaveBeenCalledTimes(3);
+    });
   });
 });

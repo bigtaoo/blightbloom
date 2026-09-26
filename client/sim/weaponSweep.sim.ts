@@ -69,9 +69,10 @@
  * mode a static test genuinely cannot see.
  */
 import { describe, expect, it } from 'vitest';
-import { FP_SCALE, WEAPON_SPECS, resolveLoadout, weaponProfiles, type WeaponProfile } from '@dd/engine';
+import { WEAPON_SPECS, resolveLoadout, weaponProfiles, type WeaponProfile } from '@dd/engine';
 import { BOT_PROFILES, type BotProfile } from './pve/PveBotController';
 import { runLevel, type RunMetrics } from './pve/levelSim';
+import { profileForWeapon as standoffFor } from './pve/weaponStandoff';
 
 const SEEDS = [101, 202, 303, 404, 505, 606, 707, 808];
 
@@ -84,34 +85,14 @@ const SEEDS = [101, 202, 303, 404, 505, 606, 707, 808];
  */
 const MAX_TICKS = 6000;
 
-const g = (grid: number): number => Math.round(grid * FP_SCALE);
-
-/** Flight budget: how long a shot may be in the air before a non-leading bot starts to
- *  miss a walking mob. Half a second at ~3 grid/s of target movement is ~1.5 grid of lead
- *  error, which is about the largest a blast/bullet radius in this roster forgives. */
-const FLIGHT_BUDGET_SEC = 0.5;
-/** Never closer than this, whatever the numbers say — the bot still has to have somewhere
- *  to stand, and solid push-out makes anything tighter a wrestling match. */
-const MIN_STANDOFF_GRID = 0.8;
-
 /**
- * A bot profile matched to one weapon. The standoff is the TIGHTEST of three bounds — the
- * shipped `careful` spacing, a fraction of the weapon's reach envelope, and half a second
- * of projectile flight — so the bot stands somewhere the weapon can actually connect from.
- * See the header for the two false readings that each of the latter two bounds fixed.
- *
- * `speedGridPerSec` of 0 means the weapon does not travel (`beam` is hitscan, `orbit` is
- * driven off the owner), so the flight bound does not apply to it.
+ * A bot profile matched to one weapon — the shared rule in `pve/weaponStandoff.ts` (moved
+ * there 2026-09-26 when `PveBotController` started swapping guns and needed the same answer),
+ * over the shipped `careful` spacing. See the header for the two false readings its reach and
+ * flight bounds each fixed.
  */
 export function profileForWeapon(reachGrid: number, speedGridPerSec: number): BotProfile {
-  const base = BOT_PROFILES.careful;
-  const bounds = [base.standoffFp / FP_SCALE, reachGrid * 0.55];
-  if (speedGridPerSec > 0) bounds.push(speedGridPerSec * FLIGHT_BUDGET_SEC);
-  const standoff = Math.max(MIN_STANDOFF_GRID, Math.min(...bounds));
-  // A weapon already played at the shipped spacing keeps the shipped profile byte-for-byte,
-  // so its row stays directly comparable with `pveLevelSim`'s `careful` numbers.
-  if (standoff >= base.standoffFp / FP_SCALE) return base;
-  return { ...base, standoffFp: g(standoff), hysteresisFp: g(0.4), fireRangeFp: g(reachGrid) };
+  return standoffFor(BOT_PROFILES.careful, reachGrid, speedGridPerSec);
 }
 
 interface WeaponRow {

@@ -123,6 +123,9 @@ const PURE_FILES = [
   // decision. The survey case at the bottom of this file only walks `controllers/`, so
   // nothing under `match/` has ever been offered up for listing.
   'match/roomCode.ts',
+  // The per-mode party cap (2026-09-26, co-op room codes) — imported by the server through
+  // the same `server/src/config.ts` seam as `roomCode.ts`, so the same argument applies.
+  'match/partyShape.ts',
   // Carved out of Game.ts on 2026-09-23 (the blueprint two-tier pass, ENGINE_VERSION 68):
   // the run-carry-out and weapon-pickup grants are `MetaState -> MetaState` transforms over
   // a `GameState`/weaponId, with no renderer dependency at all — form-(1) free functions per
@@ -134,6 +137,14 @@ const PURE_FILES = [
   // `HudView`, with no renderer dependency of its own. Listed here after this file's own
   // survey named it.
   'controllers/pickupReactions.ts',
+  // The floating damage numbers (design/10, 2026-09-26), both halves that carry a rule: which
+  // hit gets a number in which colour (a narrow host plus a one-method sink, carved out of
+  // EventReactor the same way as pickupReactions), and the merge window, the quality cap and
+  // the animation curve. Their Pixi half, `fx/DamageNumbers.ts`, is deliberately NOT here: it
+  // builds the sprites, and being able to decide "does a merged hit steal the oldest number?"
+  // without one is the reason the book is its own file.
+  'controllers/damageNumberReactions.ts',
+  'fx/damageNumberModel.ts',
 ] as const;
 
 /**

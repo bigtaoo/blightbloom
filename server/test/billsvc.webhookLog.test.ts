@@ -82,6 +82,9 @@ describe('webhookEventType', () => {
     // into `settle`, so a `refunded` callback would have been treated as a purchase.
     expect(webhookEventType('refunded')).toBe('unknown');
     expect(webhookEventType('chargeback')).toBe('unknown');
+    // `refund` IS a member of the type (ROADMAP 9.3) but only the SIGNED Paddle route writes it;
+    // on the unauthenticated generic body it must stay unknown, or anyone could file one.
+    expect(webhookEventType('refund')).toBe('unknown');
     expect(webhookEventType('canceled')).toBe('unknown'); // one 'l' — a real platform spelling
     expect(webhookEventType(42)).toBe('unknown');
     expect(webhookEventType({ event: 'purchase' })).toBe('unknown');

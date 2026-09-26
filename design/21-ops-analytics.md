@@ -445,6 +445,13 @@ One page, three sections, all read-only:
 - **Retention** — the `daily_rollup` cohort table rendered as a proper D1–D7 grid, which is
   A5's answer to Prometheus's 15-day window and the one number that genuinely needs a bespoke
   page.
+- **Integrity** — added 2026-09-26 (design/15, "Settlement"). The PvP matches that did not settle
+  cleanly (`integrityReports`) and the accounts most often named in one (`suspicion`), both on the
+  `accounts` database through the same read-only handle. It shows counts and never acts on them:
+  "record, never auto-ban" is the owner's decision, and a console with a ban button would be the
+  first write to player data this process has. A seat that hit the 30 s settlement timeout is
+  shown as "no report (offline)" and is never named. `adminsvc/views/integrity.ts`,
+  `adminsvc/page/integrity.ts`.
 
 ### 3.3 Auth on a panel that is on the public internet
 

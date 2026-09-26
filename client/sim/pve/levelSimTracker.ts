@@ -24,6 +24,8 @@ export class EncounterTracker {
   readonly killsByFloor: Record<number, number> = {};
   readonly checkpointFloors: number[] = [];
   readonly dryTicksByFloor: Record<number, number> = {};
+  readonly heldTicksByWeapon: Record<string, number> = {};
+  readonly dryTicksByWeapon: Record<string, number> = {};
   readonly aliveTicksByFloor: Record<number, number> = {};
   readonly energyRefillsTakenByFloor: Record<number, number> = {};
   readonly vitalsAtCheckpoint: FloorVitals[] = [];
@@ -233,8 +235,13 @@ export class EncounterTracker {
     this.aliveTicksByFloor[floor] = (this.aliveTicksByFloor[floor] ?? 0) + 1;
     const ranged = p.weapons.find((w) => w.spec.kind === 'ranged');
     if (!ranged || ranged.spec.kind !== 'ranged') return;
+    const id = ranged.spec.name;
+    this.heldTicksByWeapon[id] = (this.heldTicksByWeapon[id] ?? 0) + 1;
     if (p.energy < ranged.spec.energyCost) {
       this.dryTicksByFloor[floor] = (this.dryTicksByFloor[floor] ?? 0) + 1;
+      // Per GUN as well as per floor (2026-09-26): once the bot swaps into a looted frame,
+      // "which weapon runs its pool dry" is the question, and a floor total cannot say.
+      this.dryTicksByWeapon[id] = (this.dryTicksByWeapon[id] ?? 0) + 1;
     }
   }
 

@@ -110,4 +110,8 @@ export interface WeaponState {
   swingTicksLeft: number; // > 0 = ACTIVE; the gate BOTH DeflectSystem (6) and HitResolve (7) read
   swingHitIds: number[]; // bodies already hit — design/07's "at most once per swing", not per tick
   swingDamage: number; // buffs + crit frozen on the START tick, reused all window (07 "one frozen payload")
+  // Whether `swingDamage` carries a crit — the melee twin of `Projectile.crit`, and like it read
+  // only to mark the swing's `hit` events. Optional so a WeaponState built anywhere else still
+  // type-checks; unhashed for the same reason `Projectile.crit` is.
+  swingCrit?: boolean;
 }

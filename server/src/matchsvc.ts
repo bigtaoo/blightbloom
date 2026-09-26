@@ -25,6 +25,7 @@
  *   POST /resume            { token }                     -> { match } | 401 (ROADMAP reconnect)
  *   POST /rating/report     { accountIds, places, teamIds? } -> { changes: [{accountId,before,after}] }
  *   GET  /rating/:accountId                               -> { accountId, rating }    routes/rating
+ *   POST /integrity/report  IntegrityReportBody (internal) -> { recorded }            routes/integrity
  *   POST /party/create      { playerId }                 -> PartyInfo | 429            routes/party
  *   POST /party/join        { playerId, code }           -> PartyInfo | 404 | 429
  *   POST /party/leave       { partyId, playerId }        -> PartyInfo | null
@@ -39,6 +40,7 @@
  *   GET  /account/meta      (Bearer token, x-guest-id) -> { data: MetaState | null, entitlements, guestMerged } | 401
  *   POST /account/meta      (Bearer token) { data }        -> { ok: true } | 400/401    routes/account
  *   POST /account/guest-merge (Bearer token) { guestId }   -> { claimed } | 400/401
+ *   POST /account/claim-drop (Bearer token) { skinId }     -> { granted } | 400/401
  *   GET  /store/skus        (Bearer token)  -> { skus } | 401/502                       routes/store
  *   POST /store/order       (Bearer token) { sku, platform } -> { order, payment } | 400/401/502 | 429
  *   GET  /store/order/:id   (Bearer token)  -> { order } | 401/404/502
@@ -65,11 +67,12 @@
  * the ticket payload — the ticket is a seat authorization and knows no topology.
  */
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { Db } from 'mongodb';
 import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
+import { IntegrityStore } from './integrity';
 import { PartyService } from './PartyService';
 import { signTicket, type TicketPayload } from './ticket';
 import {
@@ -102,6 +105,10 @@ import type { BillingPlaneConfig } from './routes/store';
 
 const PORT = Number(process.env.MATCH_PORT ?? 8788);
 const HOST = process.env.HOST ?? '0.0.0.0';
+
+/** Match seeds are drawn uniformly from `[0, SEED_SPACE)` — the non-negative 31-bit range the
+ *  old counter masked to, which is what every ticket and replay file already carries. */
+export const SEED_SPACE = 0x80000000;
 
 export interface MatchsvcServerOptions {
   /**
@@ -159,8 +166,10 @@ export interface MatchsvcServerOptions {
    * backfill is a 30-SECOND wait by default, so `onBotFill` below — the block that mints a
    * ticket per empty seat and is the entire PvP-with-bots path players actually hit — could
    * not be reached by any test at a sane runtime, and was at 0% until 2026-09-03.
+   * `coopBotFillMs` joined it on 2026-09-26 for the load driver's test, which plays dozens of
+   * co-op clients through rounds of backfill and has no reason to wait 5 s per round.
    */
-  matchmaker?: { pvpBotFillMs?: number; queueTtlMs?: number; ticketTtlMs?: number };
+  matchmaker?: { pvpBotFillMs?: number; coopBotFillMs?: number; queueTtlMs?: number; ticketTtlMs?: number };
   /**
    * Topology override (ROADMAP 8.6, design/19 §6). Defaults to a registry holding only
    * the configured static single instance — the one branch that is reachable today,
@@ -214,9 +223,6 @@ export interface MatchsvcServerOptions {
  */
 export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   const secret = opts.secret ?? ticketSecret().secret;
-  // Seeds only need to differ per room (the engine derives all determinism from seed +
-  // inputs); a counter off the start time avoids Math.random and cross-restart collision.
-  let seedCounter = Date.now() & 0x7fffffff;
   const spawnBot = opts.spawnBot ?? spawnBotClient;
   const registry = opts.registry ?? new GameRegistry();
   // Hoisted above the matchmaker (it used to sit further down) because the flag client
@@ -237,7 +243,12 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     coopBotFillMs: () => flags.get('match.coopBotBackfillDelayMs'),
     ...opts.matchmaker,
     nowMs: () => Date.now(),
-    nextSeed: () => (seedCounter = (seedCounter + 1) & 0x7fffffff),
+    // A CSPRNG draw, not a counter (design/15, decided 2026-09-26). The engine derives every
+    // roll from seed + inputs, so a seed a player can predict is a match whose drops, spawns
+    // and zone they can simulate ahead of time. The counter this replaces started at
+    // `Date.now()` and stepped by one per room — signed into the ticket, but guessable from
+    // the clock and the previous match. The range is the engine's 31-bit seed space.
+    nextSeed: () => randomInt(SEED_SPACE),
     newRoomId: () => randomUUID(),
     sign: (payload) => signTicket(payload, secret),
     // Practice-bot backfill (design/15 follow-up; extended to co-op 2026-09-17): a queue
@@ -284,6 +295,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
   const pickGameserver = () => registry.pick();
   const store = opts.store;
   const ratings = new RatingStore(store);
+  const integrity = new IntegrityStore(store);
   const parties = new PartyService({
     nowMs: () => Date.now(),
     newPartyId: () => randomUUID(),
@@ -319,6 +331,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     pickGameserver,
     secret,
     ratings,
+    integrity,
     parties,
     auth,
     store,

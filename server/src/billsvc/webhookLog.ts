@@ -63,8 +63,12 @@ import { billingStore, type WebhookEventDoc } from '../billing/collections';
  * `unknown` is a real member rather than a parse failure: a platform that starts sending
  * `refunded` or `chargeback` must be RECORDED and not acted on, and the row is how anyone
  * finds out it started.
+ *
+ * `refund` (ROADMAP 9.3) is written ONLY by the Paddle route, from a SIGNED adjustment event.
+ * It is deliberately not in `KNOWN_EVENTS`: the generic `/webhook/:platform` body is
+ * unauthenticated, so an `event: 'refund'` there stays `unknown` and revokes nothing.
  */
-export type WebhookEventType = 'purchase' | 'failed' | 'cancelled' | 'unknown';
+export type WebhookEventType = 'purchase' | 'failed' | 'cancelled' | 'refund' | 'unknown';
 
 const KNOWN_EVENTS: readonly string[] = ['purchase', 'failed', 'cancelled'];
 
@@ -96,6 +100,10 @@ export type WebhookOutcome =
   | 'no-change'
   /** Recognised as a callback, deliberately not acted on (an unknown event type). */
   | 'ignored'
+  /** A refund/chargeback that queued the entitlement's revocation and filed a case (9.3). */
+  | 'revoked'
+  /** A refund-class event that filed a review case and revoked nothing new (9.3). */
+  | 'filed'
   /** Refused: a `SettleRejectionCode`, an unknown order, or a missing field. */
   | 'rejected';
 

@@ -88,6 +88,11 @@ export type PickupKind =
   | 'bandage'
   | 'energy'
   | 'schematic'
+  // A boss kill's rare character unlock (design/14, 2026-09-26): `skinId` names one of
+  // `DROP_CHARACTERS`. The schematic's twin in every respect — auto-collected, into the
+  // COLLECTOR's own `PlayerActor.characterPickup`, and only handed to the account if the run
+  // is won.
+  | 'character'
   // Instant items (Task 4, ENGINE_VERSION 71) — auto-apply on overlap like `heal`/
   // `energy`, the two other capped-pool instants (`PickupSystem.pickupWouldApply`'s
   // own doc comment anticipated exactly this: "if a shield/temp-buff instant item is
@@ -160,9 +165,22 @@ export interface ShopOffer {
   id: number;
   kind: 'weapon' | 'buff' | 'heal' | 'energy' | 'shield' | 'emp';
   weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
-  buffId?: string; // kind 'buff' → id into RUN_BUFFS
+  // kind 'buff' → id into RUN_BUFFS. Since the pick-one-of-three (ROADMAP B2, 2026-09-26) it
+  // is unset on the counter and written at the sale: WHICH of `choices` was bought.
+  buffId?: string;
+  /** kind 'buff' only (ROADMAP B2, 2026-09-26): the three buffs this line offers, one of which
+   *  the buyer takes at the line's one price. Each carries its own id from the same
+   *  `nextShopId()` space, and that id — not the offer's — is what `PlayerCommand.shopBuyId`
+   *  names to buy it, so the choice rides the existing one-number command unchanged. */
+  choices?: ShopBuffChoice[];
   price: number; // in coins (PlayerActor.coins)
   sold: boolean;
+}
+
+/** One of a buff line's three choices (ROADMAP B2). */
+export interface ShopBuffChoice {
+  id: number;
+  buffId: string;
 }
 
 /**
@@ -197,6 +215,7 @@ export interface PickupItem {
   weaponId?: string; // kind 'weapon' → id into WEAPON_SPECS
   buffId?: string; // kind 'buff' → id into RUN_BUFFS (design/14)
   materialId?: string; // kind 'material' → id into MATERIAL_DEFS (design/09)
+  skinId?: string; // kind 'character' → id into SKIN_DEFS, one of DROP_CHARACTERS (design/14)
   qty?: number; // kind 'material' → amount dropped; kind 'coin' → coins in this pile
   // kind 'material' → the ROLLED instance tier (design/09 materialTierByDepth,
   // ROADMAP 1.5), distinct from MaterialDef.tier (the catalog's static base — always

@@ -603,8 +603,16 @@ describe('compose env vars', () => {
     // The ticket secret and the internal-auth key are the two credentials that make every
     // trust boundary in the server real. A tracked compose file is the wrong place for
     // either, and `env_file: .env` (asserted above) is how they arrive instead.
-    expect(compose).not.toContain('BB_TICKET_SECRET');
     expect(compose).not.toContain('BB_INTERNAL_KEY');
+    // Since 2026-09-26 the ticket secret IS named — as a `:?` interpolation of the .env, on the
+    // two services that refuse to start without it in production (design/15). Named only that
+    // way: every mention must be the interpolation, never a value.
+    const ticketLines = [...compose.matchAll(/^\s*BB_TICKET_SECRET:\s*(.+)$/gm)].map((m) => m[1]!);
+    expect(ticketLines).toHaveLength(2);
+    for (const value of ticketLines) expect(value).toMatch(/^\$\{BB_TICKET_SECRET:\?/);
+    expect(compose).not.toMatch(/BB_TICKET_SECRET\s*=/); // the list form, `- BB_TICKET_SECRET=...`
+    expect(services.gameserver!.env.BB_TICKET_SECRET).toMatch(/^\$\{BB_TICKET_SECRET:\?/);
+    expect(services.matchsvc!.env.BB_TICKET_SECRET).toMatch(/^\$\{BB_TICKET_SECRET:\?/);
     // Grafana's admin password is the third credential, and the only one compose mentions
     // by name at all. It must appear ONLY as an interpolation of the untracked .env — and
     // with `:?`, which makes a missing value refuse the deploy rather than boot the

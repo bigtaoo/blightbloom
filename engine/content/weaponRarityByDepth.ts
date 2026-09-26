@@ -53,7 +53,10 @@ const TIER_POOL_SCALE = RARITY_ORDER.reduce((scale, tier) => {
  * through the middle floors and gives ground back at floor 4 as `legend`/`legendary`
  * take its share — a moving distribution, not every column climbing at once.
  */
-const RARITY_WEIGHTS_BY_FLOOR: readonly (readonly [number, number, number, number, number])[] = [
+/** One floor's tier weights, in `RARITY_ORDER`: common, fine, epic, legend, legendary. */
+export type RarityWeightRow = readonly [number, number, number, number, number];
+
+export const DEFAULT_WEAPON_RARITY_BY_DEPTH: readonly RarityWeightRow[] = [
   [25, 35, 25, 12, 3], // floor 0 — common, fine, epic, legend, legendary
   [18, 32, 30, 16, 4], // floor 1
   [12, 26, 33, 22, 7], // floor 2
@@ -61,20 +64,51 @@ const RARITY_WEIGHTS_BY_FLOOR: readonly (readonly [number, number, number, numbe
   [2, 10, 28, 38, 22], // floor 4
 ];
 
-/** Per-floor, per-`WEAPON_DROP_POOL`-index weight arrays for `weightedIndex`, built
- *  once at module load. Every weapon in a tier shares that tier's per-weapon weight, so
- *  the pick is uniform WITHIN a tier and shaped BETWEEN tiers by the table above. */
-const WEAPON_WEIGHTS_BY_FLOOR: readonly (readonly number[])[] = RARITY_WEIGHTS_BY_FLOOR.map((tierWeights) => {
-  const perTierWeaponWeight = RARITY_ORDER.map((tier, i) => {
-    const size = WEAPON_POOL_BY_RARITY[tier].length;
-    return size > 0 ? (tierWeights[i]! * TIER_POOL_SCALE) / size : 0;
+/** A tier-weight table expanded into per-floor, per-`WEAPON_DROP_POOL`-index weight arrays
+ *  for `weightedIndex`. Every weapon in a tier shares that tier's per-weapon weight, so the
+ *  pick is uniform WITHIN a tier and shaped BETWEEN tiers by the table. */
+function expand(byDepth: readonly RarityWeightRow[]): readonly (readonly number[])[] {
+  return byDepth.map((tierWeights) => {
+    const perTierWeaponWeight = RARITY_ORDER.map((tier, i) => {
+      const size = WEAPON_POOL_BY_RARITY[tier].length;
+      return size > 0 ? (tierWeights[i]! * TIER_POOL_SCALE) / size : 0;
+    });
+    return WEAPON_DROP_POOL.map((id) => perTierWeaponWeight[RARITY_ORDER.indexOf(WEAPON_SPECS[id]!.rarity)]!);
   });
-  return WEAPON_DROP_POOL.map((id) => perTierWeaponWeight[RARITY_ORDER.indexOf(WEAPON_SPECS[id]!.rarity)]!);
-});
+}
 
-function weightsForFloor(floorIndex: number): readonly number[] {
-  const clamped = Math.max(0, Math.min(WEAPON_WEIGHTS_BY_FLOOR.length - 1, floorIndex));
-  return WEAPON_WEIGHTS_BY_FLOOR[clamped]!;
+/** Expansions keyed by table IDENTITY, so a `DungeonConfig`'s table (ROADMAP B4, 2026-09-26)
+ *  is expanded once per config rather than on every roll. Pure cache — the expansion is a
+ *  function of the table alone, so it cannot change what any roll returns. */
+const EXPANDED = new WeakMap<readonly RarityWeightRow[], readonly (readonly number[])[]>();
+
+function weightsForFloor(byDepth: readonly RarityWeightRow[], floorIndex: number): readonly number[] {
+  let weights = EXPANDED.get(byDepth);
+  if (!weights) {
+    weights = expand(byDepth);
+    EXPANDED.set(byDepth, weights);
+  }
+  const clamped = Math.max(0, Math.min(weights.length - 1, floorIndex));
+  return weights[clamped]!;
+}
+
+/**
+ * Why a rarity table is unusable, in words — empty when it is fine. For a config's own
+ * `weaponRarityByDepth` (ROADMAP B4): at least one row, every weight a non-negative integer
+ * (design/06), each row summing to 100 so the table reads as the percentages it claims, and
+ * no row that could only roll from an empty tier.
+ */
+export function rarityTableProblems(byDepth: readonly RarityWeightRow[]): string[] {
+  const out: string[] = [];
+  if (byDepth.length === 0) out.push('no rows');
+  byDepth.forEach((row, floor) => {
+    if (row.some((w) => !Number.isInteger(w) || w < 0)) out.push(`floor ${floor}: weights must be non-negative integers`);
+    const sum = row.reduce((a, b) => a + b, 0);
+    if (sum !== 100) out.push(`floor ${floor}: weights sum to ${sum}, not 100`);
+    const live = RARITY_ORDER.some((tier, i) => row[i]! > 0 && WEAPON_POOL_BY_RARITY[tier].length > 0);
+    if (!live) out.push(`floor ${floor}: every weighted tier is empty`);
+  });
+  return out;
 }
 
 /** Slice of `Prng` this needs — same narrowing convention as `DropPrng`/`ShopPrng`. */
@@ -85,10 +119,17 @@ export interface WeaponRollPrng {
 /**
  * Roll one weapon id, weighted toward higher rarity tiers the deeper the floor — a
  * single `weightedIndex` draw, same draw cost as the flat pick this replaces.
- * `floorIndex` is clamped to the authored table's range, so a config with more or
- * fewer floors than level 1's five still gets a sane (floor-0 or floor-4) weighting
- * rather than an out-of-bounds read.
+ * `floorIndex` is clamped to the table's range, so a config with more or fewer floors
+ * than rows still gets a sane (first- or last-row) weighting rather than an
+ * out-of-bounds read.
+ *
+ * `byDepth` is the dungeon's own curve (`DungeonConfig.weaponRarityByDepth`, ROADMAP B4,
+ * 2026-09-26); a config without one — and every non-dungeon caller — gets the level-1 table.
  */
-export function rollWeaponId(prng: WeaponRollPrng, floorIndex: number): string {
-  return WEAPON_DROP_POOL[prng.weightedIndex(weightsForFloor(floorIndex))]!;
+export function rollWeaponId(
+  prng: WeaponRollPrng,
+  floorIndex: number,
+  byDepth: readonly RarityWeightRow[] = DEFAULT_WEAPON_RARITY_BY_DEPTH,
+): string {
+  return WEAPON_DROP_POOL[prng.weightedIndex(weightsForFloor(byDepth, floorIndex))]!;
 }

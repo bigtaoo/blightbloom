@@ -65,7 +65,7 @@ funny's units advance along grid columns, so it barely needs trig. **Blightbloom
 
 ### Deterministic RNG
 
-funny's `math/prng.ts`: an LCG (`Math.imul`-based, uint32), `Math.random()` banned in logic. Reused as-is. **Injected instances** (each subsystem/roomgen holds its own seeded `Prng`), never a global — so drop tables, bullet-spread jitter, and dungeon generation are all reproducible from `seed + input stream`.
+funny's `math/prng.ts`: an LCG (`Math.imul`-based, uint32), `Math.random()` banned in logic. Reused as-is until engine v78 (2026-09-26), which hashes the seed and every output with MurmurHash3's finalizer: the bare LCG's low bits cycled (`nextInt(2)` alternated) and neighbouring seeds drew alike, which let `shuffle` reach 15 of 120 orders of five items ([volume 100](roadmap/100-2026-09-26-prng-mixing.md)). **Injected instances** (each subsystem/roomgen holds its own seeded `Prng`), never a global — so drop tables, bullet-spread jitter, and dungeon generation are all reproducible from `seed + input stream`.
 
 ### Fixed tick + the loop
 

@@ -313,6 +313,27 @@ describe('matchsvc HTTP — /account/guest-merge', () => {
   });
 });
 
+describe('matchsvc HTTP — /account/claim-drop (2026-09-26)', () => {
+  it('is routed: a boss character drop claimed over HTTP is owned on the next GET /account/meta', async () => {
+    const { body } = await register('httpdrop1', 'hunter22');
+    const auth = { authorization: `Bearer ${body.token as string}` };
+    await fetch(`${baseUrl}/account/meta`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ data: { ownedCharacters: ['vanguard'] } }),
+    });
+    const claim = await fetch(`${baseUrl}/account/claim-drop`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ skinId: 'juggernaut' }),
+    });
+    expect(claim.status).toBe(200);
+    expect(await claim.json()).toEqual({ granted: true });
+    const meta = await fetch(`${baseUrl}/account/meta`, { headers: auth });
+    expect(((await meta.json()) as { data: { ownedCharacters: string[] } }).data.ownedCharacters).toContain('juggernaut');
+  });
+});
+
 describe('matchsvc HTTP — /rating/report and /rating/:accountId', () => {
   it('GET on an unknown account returns the DEFAULT_RATING', async () => {
     const res = await fetch(`${baseUrl}/rating/never-seen-before`);

@@ -27,6 +27,7 @@ function privateOf(m: Matchmaking) {
   return m as unknown as {
     title: { text: string };
     statusText: { text: string };
+    hintText: { text: string };
     cancelBtn: { view: { visible: boolean }; onTap: (() => void) | null };
     retryBtn: { view: { visible: boolean }; onTap: (() => void) | null };
     backBtn: { view: { visible: boolean }; onTap: (() => void) | null };
@@ -59,6 +60,106 @@ describe('Matchmaking — connecting state', () => {
     await d.promise;
     await Promise.resolve(); // let the .then() microtask run
     expect(calls).toEqual([FAKE_SESSION]);
+  });
+});
+
+describe('Matchmaking — the backfill countdown (2026-09-26)', () => {
+  /** Show the screen with a connect that captures its `onQueued`, and never settles. */
+  function showCapturing() {
+    const m = new Matchmaking();
+    let onQueued: ((p: { botFillInMs?: number }) => void) | undefined;
+    m.show(800, 600, (_signal, q) => {
+      onQueued = q;
+      return deferred<CoopSession>().promise;
+    });
+    return { m, p: privateOf(m), report: (botFillInMs?: number) => onQueued!({ botFillInMs }) };
+  }
+
+  it('says nothing until the queue has reported, while the elapsed time still runs', () => {
+    const { m, p } = showCapturing();
+    expect(p.hintText.text).toBe('');
+    expect(p.statusText.text).toBe('0s elapsed');
+    m.update(1_999);
+    expect(p.statusText.text).toBe('1s elapsed'); // whole seconds, rounded down
+    expect(p.hintText.text).toBe(''); // no countdown was ever reported, so none is invented
+  });
+
+  it('stops both clocks once the attempt has failed, and restarts them on Retry', async () => {
+    const m = new Matchmaking();
+    const first = deferred<CoopSession>();
+    let onQueued!: (p: { botFillInMs?: number }) => void;
+    let calls = 0;
+    m.show(800, 600, (_s, q) => {
+      onQueued = q!;
+      return calls++ === 0 ? first.promise : deferred<CoopSession>().promise;
+    });
+    onQueued({ botFillInMs: 5_000 });
+    m.update(3_000);
+    first.reject(new Error('boom'));
+    await first.promise.catch(() => {});
+    await Promise.resolve();
+    const p = privateOf(m);
+    const frozen = p.statusText.text;
+    m.update(10_000);
+    expect(p.statusText.text).toBe(frozen); // the error text is not overwritten by a clock
+    p.retryBtn.onTap!();
+    expect(p.statusText.text).toBe('0s elapsed');
+    expect(p.hintText.text).toBe(''); // the old countdown does not carry into the new attempt
+  });
+
+  it('a hidden screen does not tick', () => {
+    const { m, p } = showCapturing();
+    m.hide();
+    m.update(5_000);
+    expect(p.statusText.text).toBe('0s elapsed');
+  });
+
+  it('counts down from the reported value, rounding UP, then says the fill is happening', () => {
+    const { m, p, report } = showCapturing();
+    report(4_200);
+    expect(p.hintText.text).toBe('AI players fill empty seats in 5s');
+    m.update(1_200);
+    expect(p.hintText.text).toBe('AI players fill empty seats in 3s');
+    m.update(2_999);
+    expect(p.hintText.text).toBe('AI players fill empty seats in 1s'); // 1 ms left is not 0
+    m.update(1);
+    expect(p.hintText.text).toBe('Filling empty seats with AI players…');
+    m.update(5_000);
+    expect(p.hintText.text).toBe('Filling empty seats with AI players…'); // clamped, never negative
+  });
+
+  it('re-syncs to each poll rather than trusting its own clock', () => {
+    const { m, p, report } = showCapturing();
+    report(5_000);
+    m.update(1_000);
+    report(30_000); // an operator raised the backfill flag mid-wait
+    expect(p.hintText.text).toBe('AI players fill empty seats in 30s');
+  });
+
+  it('a server without the field leaves the line blank', () => {
+    const { p, report } = showCapturing();
+    report(undefined);
+    expect(p.hintText.text).toBe('');
+  });
+
+  it('ignores a report from an attempt that was retried away', async () => {
+    const m = new Matchmaking();
+    const reports: ((p: { botFillInMs?: number }) => void)[] = [];
+    const first = deferred<CoopSession>();
+    let calls = 0;
+    m.show(800, 600, (_s, q) => {
+      reports.push(q!);
+      return calls++ === 0 ? first.promise : deferred<CoopSession>().promise;
+    });
+    first.reject(new Error('boom'));
+    await first.promise.catch(() => {});
+    await Promise.resolve();
+    expect(privateOf(m).hintText.text).toBe(''); // the error state carries no countdown
+    reports[0]!({ botFillInMs: 3_000 }); // the dead attempt's late poll
+    expect(privateOf(m).hintText.text).toBe('');
+    privateOf(m).retryBtn.onTap!();
+    reports[1]!({ botFillInMs: 3_000 });
+    expect(privateOf(m).hintText.text).toBe('AI players fill empty seats in 3s');
   });
 });
 

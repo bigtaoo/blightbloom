@@ -125,6 +125,18 @@ describe('RunOutcome — PvE extraction/death', () => {
     expect(host.shown!.lines).toContain('Blueprint recovered: Scattergun');
   });
 
+  it('names a picked-up character on the win screen, and says nothing when there is none', () => {
+    const s = pveState();
+    s.floorIndex = 4;
+    s.players[0]!.characterPickup = 'juggernaut';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.shown!.lines).toContain('Character unlocked: Juggernaut');
+    const plain = mockHost();
+    new RunOutcome(plain).handle(pveState());
+    expect(plain.shown!.lines.some((l) => l.includes('Character'))).toBe(false);
+  });
+
   it('shows NO blueprint line when the roll missed — a 5% chance must not read as a failure', () => {
     const s = pveState();
     const host = mockHost();

@@ -24,7 +24,6 @@ import type { PortalPrompt } from '../ui/PortalPrompt';
 import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import { updateCheckpointOverlays } from './checkpointOverlays';
 import { buildHudContext } from './hudContext';
-import type { PartyScreen } from '../screens/PartyScreen';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
 import { applyPowerBudget, type FrameRateLike, type WorldLayerLike } from '../powerBudget';
 import { reportFrame, trackedRunFrom } from '../analyticsTracking';
@@ -44,7 +43,8 @@ export interface GameLoopDeps {
   touchControlsView: TouchControlsView;
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
-  partyScreen: PartyScreen;
+  /** Screens with their own per-frame clock outside a run (party poll, Matchmaking timers). */
+  lobbyScreens: readonly { update(dt: number): void }[];
   /** `layers.world` and the app ticker, each narrowed to the one knob `powerBudget.ts`
    *  writes: the world is not DRAWN outside a run, and the render rate is capped. */
   world: WorldLayerLike;
@@ -197,11 +197,11 @@ export class GameLoop {
     } else {
       // Menu / result / squad lobby: freeze the last frame, keep fx fading. Confirm is
       // now driven entirely by Screens.ts's own Button taps (Game.ts wires them), not
-      // polled here. `partyScreen.update` no-ops when hidden, so it's safe to call
-      // unconditionally rather than gating on `phase === 'squad'` here too.
+      // polled here. Each `lobbyScreens` entry no-ops when hidden. (Matchmaking was never
+      // driven until 2026-09-26 — its "Ns elapsed" sat at 0s for the whole queue.)
       this.updateFx(dt);
       this.deps.scene.interpolate(1, dt);
-      this.deps.partyScreen.update(dt);
+      for (const screen of this.deps.lobbyScreens) screen.update(dt);
     }
   }
 

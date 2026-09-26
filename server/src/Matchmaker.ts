@@ -122,9 +122,12 @@ export interface MatchTicket {
   token: string;
 }
 
-export type EnqueueResult = { queueId: string; ticket?: MatchTicket };
+/** `botFillInMs` (2026-09-26): how long until this waiter's backfill point — what the
+ *  Matchmaking screen counts down as "AI players join in N s". `0` means the next poll forms
+ *  the room. Informational only: nothing trusts it, and an operator's flag change moves it. */
+export type EnqueueResult = { queueId: string; ticket?: MatchTicket; botFillInMs?: number };
 export type PollResult =
-  | { status: 'queued' }
+  | { status: 'queued'; botFillInMs: number }
   | { status: 'matched'; ticket: MatchTicket }
   | { status: 'expired' };
 
@@ -149,6 +152,12 @@ interface Waiter {
    * sits in the queue. `undefined` (every pre-party caller) behaves exactly as before:
    * plain FIFO, each waiter its own one-person "group". */
   groupId?: string;
+  /** How many members `groupId`'s party had when this waiter joined the queue (2026-09-26,
+   * co-op room codes). Members POST `/find` one at a time — each on its own party poll —
+   * so for a second or so a party is PARTLY queued, and grouping it then seats a stranger
+   * in the missing friend's chair. A party is therefore only matched once this many of its
+   * members are live ({@link Matchmaker.partyPresent}). `undefined` counts as whole. */
+  groupSize?: number;
   /** The logged-in account this seat belongs to (design/16-accounts.md), carried into
    * the signed ticket so a settled PvP match can credit real ladder rating. `undefined`
    * for guests/bots — falls back to `ladderReport.ts`'s scaffold accountId. */
@@ -206,6 +215,7 @@ export class Matchmaker {
    * too. Throws a RangeError for an out-of-bounds playerCount (the shell maps it to
    * HTTP 400). `accountId` (design/16-accounts.md) is the logged-in caller's real
    * account id, if any — carried into the signed ticket for ladder-rating attribution.
+   * `groupSize` is how many members that party has — see `Waiter.groupSize`.
    */
   enqueue(
     playerCount: number,
@@ -213,19 +223,20 @@ export class Matchmaker {
     groupId?: string,
     accountId?: string,
     name?: string,
+    groupSize?: number,
   ): EnqueueResult {
     if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > MAX_PLAYERS) {
       throw new RangeError(`playerCount must be an integer in [1, ${MAX_PLAYERS}]`);
     }
     const queueId = `q${++this.counter}`;
     const waiter: Waiter = {
-      queueId, playerCount, mode, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, accountId, name,
+      queueId, playerCount, mode, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, groupSize, accountId, name,
     };
     this.waiters.set(queueId, waiter);
     this.liveQueue(playerCount, mode).push(queueId);
 
     this.formIfReady(playerCount, mode);
-    return waiter.ticket ? { queueId, ticket: waiter.ticket } : { queueId };
+    return waiter.ticket ? { queueId, ticket: waiter.ticket } : { queueId, botFillInMs: this.botFillMs[mode]() };
   }
 
   /** Poll a queued request. `matched` is one-shot — the entry is dropped after it's read. */
@@ -244,7 +255,8 @@ export class Matchmaker {
     // way out of the queue but expiry: a solo player who tapped CO-OP with nobody else
     // online waited out `queueTtlMs` and was told the request expired, which is the game
     // refusing to start a mode it can already play (design/10's front-door audit).
-    if (waited >= this.botFillMs[waiter.mode]()) {
+    const botFillMs = this.botFillMs[waiter.mode]();
+    if (waited >= botFillMs) {
       this.formWithBots(waiter.playerCount, waiter.mode, queueId);
       if (waiter.ticket) {
         this.waiters.delete(queueId);
@@ -255,7 +267,7 @@ export class Matchmaker {
       this.dropWaiting(waiter);
       return { status: 'expired' };
     }
-    return { status: 'queued' };
+    return { status: 'queued', botFillInMs: Math.max(0, botFillMs - waited) };
   }
 
   // ───────────────────────── internals ─────────────────────────
@@ -301,7 +313,10 @@ export class Matchmaker {
   /** Form a match while the (playerCount, mode) shape has a full group of live waiters.
    * Fills seats in squad-sized chunks (design/05/15) — see `pullChunk`. */
   private formIfReady(playerCount: number, mode: MatchMode): void {
-    const q = this.liveQueue(playerCount, mode);
+    const live = this.liveQueue(playerCount, mode);
+    // Only whole parties — see `Waiter.groupSize`. A filtered COPY: `pullChunk` consumes it,
+    // and a granted waiter leaves the real queue on the next `liveQueue` by carrying a ticket.
+    const q = live.filter((id) => this.partyPresent(id, live));
     const squadSize = squadSizeForPlayerCount(playerCount);
     while (q.length >= playerCount) {
       const group: string[] = [];
@@ -313,24 +328,44 @@ export class Matchmaker {
   /**
    * Form a room right now from every currently-live waiter of this (playerCount, mode)
    * shape — however many that is (at least 1; `poll` never calls this on an empty
-   * queue) — and report the leftover seats as `botOwners` via `onBotFill`. A no-op if
-   * the shape somehow already has a full group (that's `formIfReady`'s job, and it
-   * already ran synchronously on the most recent `enqueue`). Real waiters still fill
+   * queue) — and report the leftover seats as `botOwners` via `onBotFill`. When the
+   * eligible waiters already fill a room (a partly-queued party just aged in — see below),
+   * the room forms with no bots and `onBotFill` is not called. Real waiters still fill
    * squad chunks together first (a party gets bots only to top up ITS OWN squad, not
    * scattered across others) via the same `pullChunk` grouping `formIfReady` uses.
    */
   private formWithBots(playerCount: number, mode: MatchMode, keepId?: string): void {
-    const q = this.liveQueue(playerCount, mode, keepId);
-    if (q.length === 0 || q.length >= playerCount) return;
+    const live = this.liveQueue(playerCount, mode, keepId);
+    // A partly-queued party still waits for its missing member — until one of ITS OWN
+    // waiters has sat through the backfill delay, at which point that friend is not coming
+    // and the party plays with a bot instead. Without this, any solo waiter's backfill
+    // would sweep up a party whose second member is one poll away.
+    const now = this.deps.nowMs();
+    const delay = this.botFillMs[mode]();
+    const q = live.filter((id) => this.partyPresent(id, live) || now - this.waiters.get(id)!.enqueuedAt >= delay);
+    // Counted AFTER that filter, not before: the live queue can already hold a seat's worth
+    // of waiters only because a party is still arriving, and bailing out on that count would
+    // leave a stranger who has waited out the delay with no room at all. The same filter can
+    // also leave a full room's worth (a party just aged in) — then the room forms bot-free.
+    if (q.length === 0) return;
     const squadSize = squadSizeForPlayerCount(playerCount);
     const group: string[] = [];
-    while (q.length > 0) group.push(...this.pullChunk(q, squadSize));
+    while (q.length > 0 && group.length < playerCount) group.push(...this.pullChunk(q, squadSize));
     const { roomId, seed } = this.grantGroup(group, playerCount, mode);
     const botOwners: number[] = [];
     for (let owner = group.length; owner < playerCount; owner++) botOwners.push(owner);
     if (botOwners.length > 0) {
       this.deps.onBotFill?.({ roomId, seed, playerCount, mode, botOwners });
     }
+  }
+
+  /** Whether `id`'s whole party is among the live `q` — always true for a solo waiter. */
+  private partyPresent(id: string, q: readonly string[]): boolean {
+    const w = this.waiters.get(id)!;
+    if (!w.groupId) return true;
+    let present = 0;
+    for (const other of q) if (this.waiters.get(other)?.groupId === w.groupId) present++;
+    return present >= (w.groupSize ?? 1);
   }
 
   /**

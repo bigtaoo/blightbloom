@@ -1,9 +1,10 @@
 import { Container, Text } from 'pixi.js';
-import { WEAPON_SIM_BY_ID, RUN_BUFFS, type Shop, type ShopOffer } from '@dd/engine';
+import { FLOOR_CARDS, WEAPON_SIM_BY_ID, RUN_BUFFS, type Shop, type ShopOffer } from '@dd/engine';
 import { getWeaponTexture } from '../../render/weaponSkins';
+import { getUiTexture } from '../../render/uiSkins';
 import { rarityColor, THEME } from '../theme';
 import { Panel, Button } from './widgets';
-import { t, getLocale } from '../../i18n';
+import { t, tName, getLocale } from '../../i18n';
 
 const ROW_W = 250;
 const ROW_H = 34;
@@ -48,6 +49,14 @@ const HEADER_H = 30;
  *
  * Prices come off the offer, never off `SHOP_PRICES`: the offer is what the sim will charge,
  * and a panel that re-derived the number would be a second source of truth for it.
+ *
+ * ## A buff line is a pick-one-of-three (ROADMAP B2, 2026-09-26)
+ *
+ * Drawn as a header row carrying the line's one price, then its three choices as their own
+ * rows — each with the floor card's icon for that buff, since a card and a bought buff are the
+ * same `RUN_BUFFS` entry. Tapping a CHOICE is the purchase (its id is what `ShopSystem` reads);
+ * the header is not a button to press. Inline rather than the floor-card popup: that panel is
+ * the checkpoint's vote, and this stays the non-blocking counter the rest of the shop is.
  */
 export class ShopPrompt {
   readonly view = new Container();
@@ -116,21 +125,24 @@ export class ShopPrompt {
 
     this.titleText.text = t('hud.shop.title', { coins });
 
-    const n = shop.stock.length;
+    const lines = shop.stock.flatMap((offer) => this.linesOf(offer));
+    const n = lines.length;
     const h = HEADER_H + (n ? n * (ROW_H + ROW_GAP) - ROW_GAP + PAD : 0) + PAD;
     this.panel.layout(ROW_W + PAD * 2, h);
 
-    shop.stock.forEach((offer, i) => {
+    lines.forEach((line, i) => {
+      const { offer } = line;
       const affordable = coins >= offer.price;
+      const choice = line.choiceBuff !== undefined;
       // A sold row is not a button that happens to be disabled — it is a different label in a
       // different colour, so `sold` is checked first and everything below reads as "the row
       // you could still buy".
-      const row = new Button(this.rowLabel(offer), {
+      const row = new Button(line.label, {
         w: ROW_W,
         h: ROW_H,
         fontSize: ROW_FONT,
         wrapWidth: ROW_TEXT_W,
-        color: offer.sold ? 0x1a1f28 : affordable ? 0x2a3140 : 0x20242e,
+        color: offer.sold ? 0x1a1f28 : choice ? (affordable ? 0x2d2a42 : 0x221f30) : affordable ? 0x2a3140 : 0x20242e,
         textColor: offer.sold ? 0x4a5568 : affordable ? 0xe2e8f0 : 0x8a93a3,
         // Silent unless it will actually do something — the forge's craft rows already
         // established this: only the transaction knows whether a press did anything, so the
@@ -142,13 +154,17 @@ export class ShopPrompt {
         const spec = WEAPON_SIM_BY_ID[offer.weaponId];
         if (spec) row.setIcon(getWeaponTexture(offer.weaponId, spec.kind), rarityColor(spec));
       }
+      if (line.choiceBuff !== undefined) {
+        const card = cardForBuff(line.choiceBuff);
+        row.setIcon(card ? getUiTexture(`icon_card_${card}`) : undefined);
+      }
       row.view.position.set(PAD, HEADER_H + i * (ROW_H + ROW_GAP));
-      const id = offer.id;
-      row.onTap = () => this.onBuy?.(id);
+      const id = line.tapId;
+      if (id !== null) row.onTap = () => this.onBuy?.(id);
       this.rows.push(row);
       this.view.addChild(row.view);
 
-      if (!offer.sold) {
+      if (!offer.sold && line.showPrice) {
         const price = new Text({
           text: t('hud.shop.price', { price: offer.price }),
           style: {
@@ -166,6 +182,24 @@ export class ShopPrompt {
         this.view.addChild(price);
       }
     });
+  }
+
+  /** The rows one offer draws. Every line but an unsold buff line with choices is one row; that
+   *  one is its header (the price, not tappable) and a row per choice (tappable, no price). */
+  private linesOf(offer: ShopOffer): ShopRow[] {
+    if (offer.sold || !offer.choices || offer.choices.length === 0) {
+      return [{ offer, label: this.rowLabel(offer), tapId: offer.id, showPrice: true }];
+    }
+    return [
+      { offer, label: t('hud.shop.buffPick'), tapId: null, showPrice: true },
+      ...offer.choices.map((c) => ({
+        offer,
+        label: tName(RUN_BUFFS[c.buffId]?.nameKey ?? c.buffId),
+        tapId: c.id,
+        showPrice: false,
+        choiceBuff: c.buffId,
+      })),
+    ];
   }
 
   /** What one row says. Data-driven values (a weapon's name, a buff's family) come from the
@@ -188,4 +222,23 @@ export class ShopPrompt {
         return t('hud.shop.emp');
     }
   }
+}
+
+/** One drawn row: which offer it belongs to, what it says, and what a tap buys (`null`: the
+ *  buff line's header, which buys nothing). */
+interface ShopRow {
+  offer: ShopOffer;
+  label: string;
+  tapId: number | null;
+  showPrice: boolean;
+  choiceBuff?: string;
+}
+
+/** The floor card that grants `buffId` — whose icon a shop choice borrows. `undefined` for a
+ *  buff no card wraps, which `setIcon` draws as no icon. */
+function cardForBuff(buffId: string): string | undefined {
+  return Object.keys(FLOOR_CARDS).find((id) => {
+    const e = FLOOR_CARDS[id]!.effect;
+    return e.kind === 'buff' && e.buffId === buffId;
+  });
 }
