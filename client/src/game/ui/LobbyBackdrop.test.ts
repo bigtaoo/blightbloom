@@ -13,7 +13,7 @@ vi.mock('../../render/uiSkins', async (importOriginal) => ({
   getUiTexture: (key: string) => mocks.textures.get(key),
 }));
 
-import { LobbyBackdrop, DAIS_U, DAIS_V } from './LobbyBackdrop';
+import { LobbyBackdrop, DAIS_U, DAIS_V, SKY_ROCKS } from './LobbyBackdrop';
 
 const PAINTING = new Texture({ source: new TextureSource({ width: 1920, height: 1080 }) });
 const HUB = new Texture({ source: new TextureSource({ width: 384, height: 288 }) });
@@ -120,5 +120,117 @@ describe('LobbyBackdrop — the crystal and the vignette', () => {
     expect(v.minX).toBeGreaterThan(0);
     b.setFocus(null);
     expect(internals(b).vignette.getLocalBounds().width).toBe(0);
+  });
+});
+
+describe('LobbyBackdrop — the drifting sky rocks', () => {
+  const ROCK = new Texture({ source: new TextureSource({ width: 48, height: 52 }) });
+  const rocksOf = (b: LobbyBackdrop) => (b as unknown as { rocks: { visible: boolean; children: Sprite[] } }).rocks;
+  const withRocks = () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    for (const r of SKY_ROCKS) mocks.textures.set(r.key, ROCK);
+  };
+
+  it('puts each rock at its measured home in the cropped painting, at the painting\'s scale', () => {
+    withRocks();
+    const b = new LobbyBackdrop();
+    b.layout(1920, 1080); // the painting 1:1, no crop — home is exactly u*W, v*H
+    const rocks = rocksOf(b);
+    expect(rocks.visible).toBe(true);
+    SKY_ROCKS.forEach((r, i) => {
+      const s = rocks.children[i]!;
+      expect(s.visible).toBe(true);
+      expect(s.height).toBeCloseTo(r.hFrac * 1080, 5);
+      // Within its drift of home (the clock is at 0, so the offset is the phase's own).
+      expect(Math.abs(s.x - r.u * 1920)).toBeLessThanOrEqual(r.drift * 1080 * 0.35 + 1e-6);
+      expect(Math.abs(s.y - r.v * 1080)).toBeLessThanOrEqual(r.drift * 1080 + 1e-6);
+    });
+  });
+
+  it('follows the crop: a rock stays on the same stone of sky when the dais target moves', () => {
+    withRocks();
+    const a = new LobbyBackdrop();
+    // 800x600 draws the painting 1067 wide, so the crop has 267px to move in.
+    a.setDaisTarget(0.2);
+    a.layout(800, 600);
+    const b = new LobbyBackdrop();
+    b.setDaisTarget(0.4);
+    b.layout(800, 600);
+    // Same painting scale, different crop: every rock moved by exactly the dais's shift.
+    const shift = b.dais.x - a.dais.x;
+    expect(shift).not.toBe(0);
+    rocksOf(a).children.forEach((s, i) => expect(rocksOf(b).children[i]!.x - s.x).toBeCloseTo(shift, 5));
+  });
+
+  it('drifts over time, each rock on its own period, and stays within its amplitude', () => {
+    withRocks();
+    const b = new LobbyBackdrop();
+    b.layout(1920, 1080);
+    const at = () => rocksOf(b).children.map((s) => s.y);
+    const start = at();
+    const seen = SKY_ROCKS.map(() => ({ min: Infinity, max: -Infinity }));
+    for (let t = 0; t < 9000; t += 50) {
+      b.update(50);
+      at().forEach((y, i) => { seen[i]!.min = Math.min(seen[i]!.min, y); seen[i]!.max = Math.max(seen[i]!.max, y); });
+    }
+    SKY_ROCKS.forEach((r, i) => {
+      const amp = r.drift * 1080;
+      // It really moves (most of its range over a full period) and never past its amplitude.
+      expect(seen[i]!.max - seen[i]!.min).toBeGreaterThan(amp * 1.8);
+      expect(seen[i]!.max).toBeLessThanOrEqual(r.v * 1080 + amp + 1e-6);
+      expect(seen[i]!.min).toBeGreaterThanOrEqual(r.v * 1080 - amp - 1e-6);
+    });
+    // Not in step: after the same elapsed time the rocks are at different points of their bob.
+    const offsets = at().map((y, i) => (y - SKY_ROCKS[i]!.v * 1080) / (SKY_ROCKS[i]!.drift * 1080));
+    expect(new Set(offsets.map((o) => o.toFixed(2))).size).toBe(SKY_ROCKS.length);
+    expect(start).not.toEqual(at());
+  });
+
+  it('mirrors a reused sprite where asked, at the same size', () => {
+    withRocks();
+    const b = new LobbyBackdrop();
+    b.layout(1920, 1080);
+    SKY_ROCKS.forEach((r, i) => {
+      const s = rocksOf(b).children[i]!;
+      expect(Math.sign(s.scale.x), r.key).toBe(r.flip ? -1 : 1);
+      expect(Math.abs(s.scale.x)).toBeCloseTo(s.scale.y, 9);
+    });
+    expect(SKY_ROCKS.some((r) => r.flip)).toBe(true);
+  });
+
+  it('places the open-sky copies clear of the lifted homes, which the UI covers at 16:9', () => {
+    // Each copy at least a rock's height away from every home, so none reads as a double.
+    const homes = SKY_ROCKS.filter((r) => r.lifted);
+    for (const r of SKY_ROCKS.filter((x) => !x.lifted)) {
+      for (const h of homes) expect(Math.hypot((r.u - h.u) * 16 / 9, r.v - h.v)).toBeGreaterThan(h.hFrac * 2);
+    }
+  });
+
+  it('the far rock drifts least', () => {
+    const far = SKY_ROCKS.find((r) => r.key === 'lobby_rock_c')!;
+    for (const r of SKY_ROCKS) if (r !== far) expect(far.drift).toBeLessThan(r.drift);
+  });
+
+  it('leaves a rock out when its texture is missing, and all of them over the fallback art', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    mocks.textures.set('lobby_rock_a', ROCK);
+    const b = new LobbyBackdrop();
+    b.layout(1280, 720);
+    expect(rocksOf(b).children.map((s) => s.visible)).toEqual(SKY_ROCKS.map((r) => r.key === 'lobby_rock_a'));
+
+    mocks.textures.clear();
+    mocks.textures.set('hub', HUB);
+    for (const r of SKY_ROCKS) mocks.textures.set(r.key, ROCK);
+    b.layout(1280, 720);
+    // The hub art has its own rocks painted in; drawing the lobby's over it would double them.
+    expect(rocksOf(b).visible).toBe(false);
+  });
+
+  it('sits under the vignette, so a rock behind the column darkens with its sky', () => {
+    withRocks();
+    const b = new LobbyBackdrop();
+    const view = b.view;
+    expect(view.getChildIndex(rocksOf(b) as never)).toBeLessThan(view.getChildIndex(internals(b).vignette));
+    expect(view.getChildIndex(rocksOf(b) as never)).toBeGreaterThan(0);
   });
 });

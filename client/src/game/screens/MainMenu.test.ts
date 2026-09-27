@@ -43,7 +43,12 @@ function privateOf(m: MainMenu) {
       height: number;
       recommendedTag: { text: string; visible: boolean; position: { x: number; y: number } };
     };
-    accountBtn: Btn;
+    accountBtn: Btn & {
+      hint: { text: string; visible: boolean };
+      initial: { text: string; visible: boolean };
+      iconSprite: { visible: boolean };
+      disc: Graphics;
+    };
     settingsBtn: Btn;
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
@@ -55,7 +60,6 @@ function privateOf(m: MainMenu) {
     logo: { visible: boolean };
     hero: { view: { visible: boolean } };
     resources: { view: { visible: boolean }; labels: Array<{ text: string }> };
-    guestHint: { text: string; visible: boolean };
     privacyLink: {
       text: string;
       visible: boolean;
@@ -243,14 +247,44 @@ describe('MainMenu — account label', () => {
       .toBeLessThan(screenBox(privateOf(wide).settingsBtn).x);
   });
 
-  it('tells a guest why logging in is worth a tap, and stops once signed in', () => {
+  it('tells a guest why logging in is worth a tap, and a player that their progress syncs', () => {
+    // The line lives INSIDE the card now (2026-09-27): it used to hang loose under the chip,
+    // where it pushed the header down and read as a second, unrelated caption.
     const m = new MainMenu();
     m.show(800, 600);
-    expect(privateOf(m).guestHint.visible).toBe(true);
-    expect(privateOf(m).guestHint.text.length).toBeGreaterThan(0);
+    const card = privateOf(m).accountBtn;
+    expect(card.hint.visible).toBe(true);
+    expect(card.hint.text).toBe('Log in to save progress');
     setSession(ALICE);
     m.show(800, 600);
-    expect(privateOf(m).guestHint.visible).toBe(false);
+    expect(card.hint.text).toBe('Progress synced');
+  });
+
+  it('draws the guest glyph as a guest and the name’s initial once signed in', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    const card = privateOf(m).accountBtn;
+    expect(card.initial.visible).toBe(false);
+    setSession(ALICE);
+    m.show(800, 600);
+    expect(card.initial.visible).toBe(true);
+    expect(card.initial.text).toBe('A');
+    expect(card.iconSprite.visible).toBe(false);
+    // ...and back to the glyph on logout, not a stale initial.
+    resetSessionCacheForTests();
+    m.refreshAccountLabel();
+    expect(card.initial.visible).toBe(false);
+  });
+
+  it('keeps the header in the same place for a guest and a signed-in player', () => {
+    // The loose guest line used to push the header down 16px for a guest only; the card
+    // holds both lines in one row, so the scene no longer shifts on login.
+    const guest = new MainMenu();
+    guest.show(800, 600);
+    setSession(ALICE);
+    const alice = new MainMenu();
+    alice.show(800, 600);
+    expect(privateOf(alice).header.position.y).toBe(privateOf(guest).header.position.y);
   });
 
   it('show() re-reads the session, so a login after construction still surfaces', () => {

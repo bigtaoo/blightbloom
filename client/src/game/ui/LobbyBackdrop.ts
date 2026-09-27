@@ -19,6 +19,20 @@
 // clamped to the painting, and it is taken through the texture's FRAME so the sprite is
 // exactly the viewport — nothing sticks out past the design space a layout sweep measures,
 // and `menuCoversWorld.test.ts` still finds one opaque sprite covering the world.
+//
+// ## The drifting rocks
+//
+// The painting's three sky rocks are not in the shipped painting: they were lifted out into
+// their own sprites (`lobby_rock_*`) and the sky painted back under them, so they can bob in
+// place instead of a code-drawn rock being floated over a painted one. Each sits at its
+// measured home in the painting and drifts a fraction of the painting's height around it —
+// less for the far, haze-faded one, which is what makes it read as far. A missing rock texture
+// just leaves that rock out; the sky under it is whole.
+//
+// At 16:9 all three homes land under the lobby's own UI (the logo, the hero, the column), which
+// is where the painting's composition brief asked for calm sky and where the UI then went. So
+// the same three sprites are also placed, smaller and sometimes mirrored, in the open sky the
+// UI leaves: the painting's own rock art, never magnified past the size it was cut at.
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getUiTexture } from '../../render/uiSkins';
 
@@ -44,6 +58,33 @@ const VIGNETTE_BANDS = 8;
 const VIGNETTE_BAND_ALPHA = 0.045;
 const VIGNETTE_STEP = 8;
 
+/** The sky rocks, at their home in the painting — MEASURED off `lobby_bg_raw.png` by the
+ *  script that lifted them out (`art/ui/prompts.md`, "The drifting rocks"): centre as
+ *  fractions of the image, height as a fraction of its height. `drift` is the bob's amplitude
+ *  as a fraction of the painting's height, and `periodMs` its period — all three different,
+ *  so the rocks never move in step. */
+export interface SkyRock {
+  key: string;
+  u: number;
+  v: number;
+  hFrac: number;
+  drift: number;
+  periodMs: number;
+  /** A rock the painting itself had here, lifted out: its `hFrac` is the sprite's own size. */
+  lifted?: boolean;
+  /** Drawn mirrored, so a reused sprite does not read as a copy. */
+  flip?: boolean;
+}
+export const SKY_ROCKS: ReadonlyArray<SkyRock> = [
+  { key: 'lobby_rock_a', u: 0.2156, v: 0.1712, hFrac: 69 / 1440, drift: 0.009, periodMs: 5200, lifted: true },
+  { key: 'lobby_rock_b', u: 0.3896, v: 0.4653, hFrac: 60 / 1440, drift: 0.008, periodMs: 6300, lifted: true },
+  { key: 'lobby_rock_c', u: 0.7379, v: 0.7594, hFrac: 117 / 1440, drift: 0.004, periodMs: 8100, lifted: true },
+  // In the open sky: between the logo and the corner chips, and between the hero and the column.
+  { key: 'lobby_rock_b', u: 0.505, v: 0.135, hFrac: 0.032, drift: 0.007, periodMs: 5800, flip: true },
+  { key: 'lobby_rock_a', u: 0.585, v: 0.385, hFrac: 0.040, drift: 0.009, periodMs: 4700 },
+  { key: 'lobby_rock_b', u: 0.625, v: 0.555, hFrac: 0.024, drift: 0.006, periodMs: 7000 },
+];
+
 export interface DaisPoint {
   /** The dais crystal's centre, in screen (design-space) px. */
   x: number;
@@ -59,6 +100,9 @@ export class LobbyBackdrop {
   readonly view = new Container();
   /** Child 0 — the opaque cover. `menuCoversWorld.test.ts` reads it by that position. */
   private cover = new Sprite(Texture.WHITE);
+  private rocks = new Container();
+  /** Each rock's home in screen px, and its drift amplitude — set by `layout`. */
+  private rockHomes: Array<{ x: number; y: number; amp: number }> = [];
   private vignette = new Graphics();
   private glow = new Graphics();
   private motes = new Graphics();
@@ -74,7 +118,14 @@ export class LobbyBackdrop {
   constructor() {
     this.glow.blendMode = 'add';
     this.motes.blendMode = 'add';
-    this.view.addChild(this.cover, this.vignette, this.glow, this.motes);
+    for (const rock of SKY_ROCKS) {
+      const sprite = new Sprite(Texture.EMPTY);
+      sprite.anchor.set(0.5);
+      sprite.label = rock.key;
+      this.rocks.addChild(sprite);
+    }
+    // Under the vignette, so a rock behind the column is darkened with the sky around it.
+    this.view.addChild(this.cover, this.rocks, this.vignette, this.glow, this.motes);
   }
 
   get dais(): DaisPoint {
@@ -100,6 +151,7 @@ export class LobbyBackdrop {
       this.cover.width = w;
       this.cover.height = h;
       this.point = { x: w * this.daisTargetU, y: h * 0.72, paintingH: h };
+      this.placeRocks(0, 0, 0, 0);
       this.drawGlow();
       return;
     }
@@ -118,7 +170,39 @@ export class LobbyBackdrop {
     this.cover.width = w;
     this.cover.height = h;
     this.point = { x: DAIS_U * drawnW - cropX, y: DAIS_V * drawnH - cropY, paintingH: drawnH };
+    this.placeRocks(drawnW, drawnH, cropX, cropY);
     this.drawGlow();
+  }
+
+  /** Put each rock at its home in the cropped painting — or hide them all when the painting
+   *  drawn is not the lobby's (the fallback hub art has its own rocks, painted in). */
+  private placeRocks(drawnW: number, drawnH: number, cropX: number, cropY: number): void {
+    this.rocks.visible = this.painted;
+    this.rockHomes = SKY_ROCKS.map((rock, i) => {
+      const sprite = this.rocks.children[i] as Sprite;
+      const texture = this.painted ? getUiTexture(rock.key) : undefined;
+      sprite.visible = !!texture;
+      if (texture) {
+        sprite.texture = texture;
+        const height = rock.hFrac * drawnH;
+        const scale = height / texture.height;
+        sprite.scale.set(rock.flip ? -scale : scale, scale);
+      }
+      const home = { x: rock.u * drawnW - cropX, y: rock.v * drawnH - cropY, amp: rock.drift * drawnH };
+      sprite.position.set(home.x, home.y);
+      return home;
+    });
+    this.driftRocks();
+  }
+
+  private driftRocks(): void {
+    SKY_ROCKS.forEach((rock, i) => {
+      const home = this.rockHomes[i];
+      if (!home) return;
+      const phase = (this.clockMs / rock.periodMs) * Math.PI * 2 + i * 2.1;
+      const sprite = this.rocks.children[i] as Sprite;
+      sprite.position.set(home.x + Math.cos(phase * 0.5) * home.amp * 0.35, home.y + Math.sin(phase) * home.amp);
+    });
   }
 
   /** The one darkened area on the painting: a soft plate behind the action column. `null`
@@ -139,6 +223,7 @@ export class LobbyBackdrop {
     this.clockMs = (this.clockMs + dtMs) % (PULSE_MS * MOTE_RISE_MS);
     this.glow.alpha = 0.7 + 0.3 * Math.sin((this.clockMs / PULSE_MS) * Math.PI * 2);
     this.drawMotes();
+    this.driftRocks();
   }
 
   /** The crystal's glow: annuli on a squared falloff (the `roomLight` band idiom), additive,

@@ -284,7 +284,11 @@ Each of the three had a cause in the code rather than in taste:
   middle of the room left of the column, with no scrim. Contrast is bought locally instead: the
   route cards carry their own art and frames, the corner chips their own backing, and the only
   darkening on the painting is one soft vignette behind the column. Code draws the dais crystal's
-  breathing glow and the motes rising off it, in design/13's purified-crystal cyan. The other menu
+  breathing glow and the motes rising off it, in design/13's purified-crystal cyan, and drifts the
+  painting's floating rocks: its three sky rocks were lifted out into sprites with the sky painted
+  back under them, and bob around their homes. At 16:9 all three homes sit under the logo, the hero
+  and the column, so the same sprites are also placed, smaller, in the open sky the UI leaves —
+  never drawn larger than the size they were cut at. The other menu
   screens keep `Panel` and the hub art; they are dense with text and the painting's composition is
   built around the lobby's layout.
 - **The player's own character hovering on the dais** (`LobbyHero`), a painted portrait per
@@ -301,8 +305,13 @@ Each of the three had a cause in the code rather than in taste:
      width, each with a one-line description;
   3. SQUAD, FORGE, TUTORIAL — a dock of small icon-over-label buttons. It re-divides its row when
      TUTORIAL goes, so no hole is left.
-- **Chrome pinned to the real viewport corners**: account top-left (with a "log in to save
-  progress" line for a guest), one material chip per element plus SETTINGS top-right.
+- **Chrome pinned to the real viewport corners**: the account card top-left, one material chip
+  per element plus SETTINGS top-right. The card (`AccountCard`) is an avatar disc, the name, and
+  one line under it: "log in to save progress" for a guest, "progress synced" once signed in
+  (`meta/accountSync.ts` pushes every save). There are no uploaded pictures, so a signed-in
+  player's avatar is their initial on a disc whose hue is hashed from the name — theirs, and the
+  same on every device; a guest gets the account glyph. Both lines live inside the card, so the
+  header no longer shifts down for a guest.
 
 **One lobby scale.** The column, header and corner chrome are multiplied by `lobbyScale(w, h)`:
 1 at the 760x640 design size, growing with the viewport to 1.5. Only the lobby does this. Text in

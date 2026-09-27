@@ -2,6 +2,7 @@ import { Container, Sprite, Text } from 'pixi.js';
 import { Button } from '../ui/widgets';
 import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H } from '../ui/LobbyRoutes';
 import { LobbyCard } from '../ui/LobbyCard';
+import { AccountCard } from '../ui/AccountCard';
 import { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { LobbyHero } from '../ui/LobbyHero';
 import { LobbyResources, type MaterialCounts } from '../ui/LobbyResources';
@@ -82,9 +83,9 @@ export class MainMenu {
   private routes = new LobbyRoutes();
   private topLeft = new Container();
   private topRight = new Container();
-  private accountBtn: Button;
-  /** Under the account chip for a guest: why logging in is worth a tap. */
-  private guestHint: Text;
+  /** Who the player is: avatar, name, and a line under it (for a guest, why logging in is
+   *  worth a tap). */
+  private accountBtn: AccountCard;
   private settingsBtn: Button;
   private resources = new LobbyResources();
   /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
@@ -159,16 +160,14 @@ export class MainMenu {
 
     // `autoWidth` because signed in it carries a PLAYER'S NAME, and every fixed width fails
     // some name in some script.
-    this.accountBtn = new Button(t('mainMenu.account'), { w: 110, h: CHROME_H, fontSize: 14, color: 0x1f2532, borderColor: 0xb794f4, autoWidth: true });
+    this.accountBtn = new AccountCard(t('mainMenu.account'), CHROME_H);
     this.accountBtn.onTap = () => this.onAccount?.();
-    this.accountBtn.setIcon(getUiTexture('icon_account'), 0x6b46c1);
-    this.guestHint = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold', padding: 10, stroke: { color: 0x1a202c, width: 3 } } });
-    this.guestHint.position.set(2, CHROME_H + 5);
+    this.accountBtn.setIcon(getUiTexture('icon_account'));
     this.accountLabel = new Text({ text: '', style: { fill: 0xffffff, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', padding: 16, stroke: { color: 0x1a202c, width: 4 } } });
     this.accountLabel.anchor.set(0, 0.5);
     this.accountLabel.position.set(0, CHROME_H / 2);
     this.accountLabel.visible = false;
-    this.topLeft.addChild(this.accountBtn.view, this.guestHint, this.accountLabel);
+    this.topLeft.addChild(this.accountBtn.view, this.accountLabel);
 
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 120, h: CHROME_H, fontSize: 13, color: 0x1f2532, borderColor: 0x718096, autoWidth: true });
     this.settingsBtn.onTap = () => this.onSettings?.();
@@ -342,10 +341,7 @@ export class MainMenu {
     this.header.scale.set(k);
     const half = (LOGO_W * k) / 2;
     const headerX = Math.min(Math.max(dais.x, half + 16), Math.max(half + 16, leftRoom - half));
-    // Under the guest hint too when it is drawn: it hangs below the account chip, and the
-    // header is centred over the dais, which on a narrow screen puts it over that corner.
-    const hintH = this.guestHint.visible ? 16 * k : 0;
-    const headerTop = chromeBottom + 10 + hintH + reserve;
+    const headerTop = chromeBottom + 10 + reserve;
     this.header.position.set(headerX, headerTop);
     const headerBottom = headerTop + headerH * k;
 
@@ -382,8 +378,8 @@ export class MainMenu {
     // The BUTTON gets the bare name, the label gets the greeting: a chip cannot hold
     // "Cześć, {username}" — measured, six of eight locales overflowed with a five-letter name.
     this.accountBtn.setText(session ? clipName(session.username) : t('mainMenu.account'));
-    this.guestHint.text = t('mainMenu.guestHint');
-    this.guestHint.visible = this.accountEntry && session === null;
+    this.accountBtn.setHint(session ? t('mainMenu.syncedHint') : t('mainMenu.guestHint'));
+    this.accountBtn.setAvatar(session?.username ?? null);
     // Without an account entry there is no "log in" state to advertise, so a guest gets no
     // label at all rather than a prompt the player cannot act on.
     this.accountLabel.text = session ? t('mainMenu.greeting', { username: session.username }) : '';

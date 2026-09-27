@@ -27,6 +27,7 @@ export const de: Translations<typeof en> = {
     coopHint: 'Mit anderen Spielern los',
     pvpHint: 'Kampf gegen andere Spieler',
     guestHint: 'Anmelden, um zu speichern',
+    syncedHint: 'Fortschritt synchronisiert',
   },
   loading: {
     boot: 'LÄDT',
