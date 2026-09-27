@@ -24,19 +24,23 @@ interface Btn {
   view: { visible: boolean; position: { x: number; y: number }; children: unknown[] };
 }
 
+/** A positioned, scaled container. */
+interface Pt { position: { x: number; y: number }; scale: { x: number; y: number } }
+
 function privateOf(m: MainMenu) {
   return m as unknown as {
     title: { text: string };
     subtitle: { text: string };
     playBtn: Btn;
     routes: {
-      continueBtn: Btn;
-      continueCaption: { text: string; visible: boolean };
+      continueBtn: Btn & { hint: { text: string; visible: boolean } };
       soloBtn: Btn;
       coopBtn: Btn;
       pvpSoloBtn: Btn;
       squadBtn: Btn;
+      forgeBtn: Btn;
       tutorialBtn: Btn;
+      height: number;
       recommendedTag: { text: string; visible: boolean; position: { x: number; y: number } };
     };
     accountBtn: Btn;
@@ -44,7 +48,14 @@ function privateOf(m: MainMenu) {
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
     banner: { text: string; visible: boolean; anchor: { x: number; y: number }; position: { x: number; y: number } };
-    menuCard: { h: number; view: { position: { x: number; y: number } } };
+    topLeft: Pt;
+    topRight: Pt;
+    header: Pt;
+    column: Pt;
+    logo: { visible: boolean };
+    hero: { view: { visible: boolean } };
+    resources: { view: { visible: boolean }; labels: Array<{ text: string }> };
+    guestHint: { text: string; visible: boolean };
     privacyLink: {
       text: string;
       visible: boolean;
@@ -54,6 +65,19 @@ function privateOf(m: MainMenu) {
       emit: (event: string) => void;
     };
   };
+}
+
+/** A route's FILL: a `Button` keeps it as `color`, a `LobbyCard` in its style. */
+function fillOf(btn: unknown): number {
+  const b = btn as { color?: number; style?: { fill: number } };
+  return b.color ?? b.style!.fill;
+}
+
+/** A widget's press box in SCREEN space — child 0's world bounds, so the column's scale and
+ *  position are included. */
+function screenBox(btn: { view: { children: unknown[] } }) {
+  const b = (btn.view.children[0] as Graphics).getBounds();
+  return { x: b.minX, y: b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY };
 }
 
 /** A button's own box: its `bg` Graphics is always child 0. Measuring the whole `view`
@@ -129,28 +153,34 @@ describe('MainMenu — the maintenance banner (design/21 §9)', () => {
     expect(privateOf(m).banner.text).toBe('');
   });
 
-  it('sits ABOVE the title and never moves the menu block', () => {
-    // The layout property the field's own comment claims, asserted rather than described.
-    // A banner that added a row would change the geometry `viewportFit.test.ts` measures
-    // every other screen against — depending on whether an operator had typed something.
+  it('hangs under the corner row and pushes the header down, never the corners', () => {
+    // The banner is full width, so it cannot share a row with the corner chips; it hangs
+    // under them and the header (logo + tagline) moves down by the room it is owed. The
+    // corners are pinned to the viewport and must not move for it.
     const plain = new MainMenu();
     plain.show(800, 600);
-    // x/y only: a Pixi `ObservablePoint` carries an internal uid, so comparing the objects
-    // would fail on two identical layouts.
-    const pos = (m: MainMenu): [number, number] => [privateOf(m).routes.soloBtn.view.position.x, privateOf(m).routes.soloBtn.view.position.y];
-    const before = pos(plain);
-
     withBanner('x'.repeat(BANNER_MAX_LENGTH));
     const withIt = new MainMenu();
     withIt.show(800, 600);
-    expect(pos(withIt)).toEqual(before);
-    // Anchored at its BOTTOM edge, so wrapping grows it upward and its last line stays a
-    // fixed distance above the title instead of pushing into it.
-    expect(privateOf(withIt).banner.anchor.y).toBe(1);
-    expect(privateOf(withIt).banner.position.y).toBeLessThan(
-      (privateOf(withIt).title as unknown as { position: { y: number } }).position.y,
-    );
-    expect(privateOf(withIt).banner.position.y).toBeGreaterThan(0);
+    const a = privateOf(plain);
+    const b = privateOf(withIt);
+    expect(b.banner.anchor.y).toBe(0); // grows DOWN as it wraps, into the room reserved for it
+    expect(b.banner.position.y).toBeGreaterThan(b.topLeft.position.y + 40);
+    expect(b.header.position.y).toBeGreaterThan(a.header.position.y);
+    expect([b.topLeft.position.x, b.topLeft.position.y]).toEqual([a.topLeft.position.x, a.topLeft.position.y]);
+    expect([b.topRight.position.x, b.topRight.position.y]).toEqual([a.topRight.position.x, a.topRight.position.y]);
+  });
+
+  it('re-lays the screen out when a banner arrives while the lobby is up', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    const before = privateOf(m).header.position.y;
+    withBanner('going down in 20 minutes');
+    m.refreshBanner();
+    expect(privateOf(m).header.position.y).toBeGreaterThan(before);
+    setPublicFlags(null);
+    m.refreshBanner();
+    expect(privateOf(m).header.position.y).toBe(before);
   });
 
   it('is positioned even while hidden, so a later refresh needs no re-layout', () => {
@@ -195,32 +225,32 @@ describe('MainMenu — account label', () => {
     expect(text.startsWith('a-very-long')).toBe(true);
   });
 
-  it('grows the chip for the name and keeps the pair centred as a pair', () => {
-    // What `autoWidth` costs if a caller forgets it: the pair is positioned from measured
-    // widths, so SETTINGS moves right instead of being overlapped. Asserted as a relation
-    // between the two boxes rather than as pixel positions, which are layout constants.
+  it('grows the chip for the name without moving it off its corner', () => {
+    // What `autoWidth` buys: the chip widens for the name, and since it is pinned top-left
+    // it grows AWAY from the edge rather than off it.
     const short = new MainMenu();
     setSession({ ...ALICE, username: 'al' });
     short.show(800, 600);
     const wide = new MainMenu();
     // A CJK name, because `estimateMonoWidth` counts one of those as a full em where a
-    // Latin character is 0.6 — so this is the case that actually outgrows a 135px box
-    // within the 12-character clip, and it is also the realistic one.
+    // Latin character is 0.6 — the case that actually outgrows the chip within the clip.
     setSession({ ...ALICE, username: '一二三四五六七八九十' });
     wide.show(800, 600);
-
-    const gapOf = (m: MainMenu) => {
-      const p = privateOf(m);
-      const account = p.accountBtn.view.position.x + bgOf(p.accountBtn).width;
-      return p.settingsBtn.view.position.x - account;
-    };
-    const midOf = (m: MainMenu) => {
-      const p = privateOf(m);
-      return (p.accountBtn.view.position.x + p.settingsBtn.view.position.x + bgOf(p.settingsBtn).width) / 2;
-    };
     expect(bgOf(privateOf(wide).accountBtn).width).toBeGreaterThan(bgOf(privateOf(short).accountBtn).width);
-    expect(gapOf(wide)).toBeCloseTo(gapOf(short), 0); // no overlap, and no drifting apart
-    expect(midOf(wide)).toBeCloseTo(midOf(short), 0); // still centred on the same axis
+    expect(screenBox(privateOf(wide).accountBtn).x).toBe(screenBox(privateOf(short).accountBtn).x);
+    // ...and it stays clear of the top-right chrome.
+    expect(screenBox(privateOf(wide).accountBtn).x + screenBox(privateOf(wide).accountBtn).w)
+      .toBeLessThan(screenBox(privateOf(wide).settingsBtn).x);
+  });
+
+  it('tells a guest why logging in is worth a tap, and stops once signed in', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).guestHint.visible).toBe(true);
+    expect(privateOf(m).guestHint.text.length).toBeGreaterThan(0);
+    setSession(ALICE);
+    m.show(800, 600);
+    expect(privateOf(m).guestHint.visible).toBe(false);
   });
 
   it('show() re-reads the session, so a login after construction still surfaces', () => {
@@ -276,186 +306,178 @@ describe('MainMenu — callbacks', () => {
 });
 
 describe('MainMenu — show()', () => {
-  it('centers the title on the given viewport and becomes visible', () => {
+  it('becomes visible', () => {
     const m = new MainMenu();
     m.show(800, 600);
     expect(m.view.visible).toBe(true);
   });
 });
 
-// Button hierarchy + backing card (design/10 legibility fix, 2026-08-02): there is exactly
-// ONE primary action and it must read as visibly bigger than everything else — SOLO since
-// the 2026-09-10 merge, or the quick-play PLAY above it on a portal. ACCOUNT and SETTINGS
-// sit side by side rather than stacked so their near-identical icons at small scale stop
-// inviting a misclick between two stacked targets.
-describe('MainMenu — button hierarchy and layout', () => {
-  // Bounds come off each button's `bg` Graphics (view.children[0]), not the whole
-  // `view` — `view` also holds the label Text, and measuring a Text's bounds needs a
-  // real canvas, which this repo's plain-node vitest doesn't have.
-  const bgBounds = bgOf;
-
-  it('sizes SOLO as the biggest route, the rest below it, ACCOUNT/SETTINGS smallest', () => {
+// Hierarchy (design/10, 2026-08-02, and the 2026-09-27 redesign): exactly ONE primary
+// action, visibly the biggest thing in the column, then the other two ways to play, then the
+// "prepare" dock — and the corner chrome smaller than any of them.
+describe('MainMenu — hierarchy and layout', () => {
+  it('draws three tiers of decreasing size, and the corner chrome smallest', () => {
     const m = new MainMenu();
+    m.show(800, 600);
     const p = privateOf(m);
-    const soloB = bgBounds(p.routes.soloBtn);
-    const squadB = bgBounds(p.routes.squadBtn);
-    const coopB = bgBounds(p.routes.coopBtn);
-    const accountB = bgBounds(p.accountBtn);
-    const settingsB = bgBounds(p.settingsBtn);
-
-    expect(soloB.height).toBeGreaterThan(coopB.height);
-    expect(coopB.height).toBeGreaterThan(squadB.height);
-    expect(squadB.height).toBeGreaterThanOrEqual(accountB.height);
-    expect(accountB.height).toBe(settingsB.height);
-    // Every route is full width — see LobbyRoutes' header for the half-width pair that was
+    const solo = bgOf(p.routes.soloBtn);
+    const coop = bgOf(p.routes.coopBtn);
+    const squad = bgOf(p.routes.squadBtn);
+    expect(solo.height).toBeGreaterThan(coop.height);
+    expect(coop.height).toBeGreaterThan(squad.height);
+    expect(squad.height).toBeGreaterThan(bgOf(p.accountBtn).height);
+    expect(bgOf(p.accountBtn).height).toBe(bgOf(p.settingsBtn).height);
+    // CO-OP and PVP full width — see LobbyRoutes' header for the half-width pair that was
     // tried first and what measuring it in eight locales said about it.
-    expect(soloB.width).toBe(coopB.width);
-    expect(soloB.width).toBeGreaterThan(accountB.width);
+    expect(coop.width).toBe(solo.width);
+    expect(bgOf(p.routes.pvpSoloBtn).width).toBe(solo.width);
+    expect(squad.width).toBeLessThan(solo.width / 2);
   });
 
-
-  it('gives the card exactly one green primary, and hands it over under quick play', () => {
+  it('gives the screen exactly one green primary, and hands it over under quick play', () => {
     // The failure this exists for is the one design/10 recorded on 2026-08-02: two controls
-    // of equal weight on one card, reported as clicks landing on the wrong page when the
-    // routing was correct all along. The fill is the ranking, so the fill is the assertion.
+    // of equal weight, reported as clicks landing on the wrong page when the routing was
+    // correct all along. The fill is the ranking, so the fill is the assertion.
     const plain = new MainMenu();
     const quick = new MainMenu();
     quick.setQuickPlay(true);
     const GREEN = 0x2f855a;
-    expect(privateOf(plain).routes.soloBtn.color).toBe(GREEN);
-    expect(privateOf(quick).routes.soloBtn.color).not.toBe(GREEN);
-    expect(privateOf(quick).playBtn.color).toBe(GREEN);
-    // ...and back, because the switch is a setter and not a one-way door: a screen that
-    // could only ever LOSE its primary would be a latent bug in whichever host wires it
-    // twice, and it is one line of implementation either way.
+    expect(fillOf(privateOf(plain).routes.soloBtn)).toBe(GREEN);
+    expect(fillOf(privateOf(quick).routes.soloBtn)).not.toBe(GREEN);
+    expect(fillOf(privateOf(quick).playBtn)).toBe(GREEN);
+    // SOLO demoted is the slim bar, not a second banner.
+    expect(bgOf(privateOf(quick).routes.soloBtn).height).toBeLessThan(bgOf(privateOf(quick).playBtn).height);
+    // ...and back: the switch is a setter, not a one-way door.
     quick.setQuickPlay(false);
-    expect(privateOf(quick).routes.soloBtn.color).toBe(GREEN);
+    expect(fillOf(privateOf(quick).routes.soloBtn)).toBe(GREEN);
   });
 
-  it('stacks the five routes in order, then the utility row', () => {
+  it('stacks the routes in one column, in order, with the dock last', () => {
     const m = new MainMenu();
     m.show(800, 600);
-    const p = privateOf(m);
-    expect(p.routes.soloBtn.view.position.y).toBeLessThan(p.routes.coopBtn.view.position.y);
-    // One column: every route starts at the same x, and no two share a y.
-    expect(p.routes.coopBtn.view.position.x).toBe(p.routes.soloBtn.view.position.x);
-    expect(p.routes.pvpSoloBtn.view.position.x).toBe(p.routes.soloBtn.view.position.x);
-    expect(p.routes.coopBtn.view.position.y).toBeLessThan(p.routes.pvpSoloBtn.view.position.y);
-    expect(p.routes.pvpSoloBtn.view.position.y).toBeLessThan(p.routes.squadBtn.view.position.y);
-    expect(p.routes.squadBtn.view.position.y).toBeLessThan(p.routes.tutorialBtn.view.position.y);
-    expect(p.routes.tutorialBtn.view.position.y).toBeLessThan(p.accountBtn.view.position.y);
-    // Side by side, not stacked: same row (y), different column (x).
-    expect(p.accountBtn.view.position.y).toBe(p.settingsBtn.view.position.y);
-    expect(p.accountBtn.view.position.x).toBeLessThan(p.settingsBtn.view.position.x);
+    const r = privateOf(m).routes;
+    const box = (b: Btn) => screenBox(b);
+    expect(box(r.coopBtn).x).toBe(box(r.soloBtn).x);
+    expect(box(r.pvpSoloBtn).x).toBe(box(r.soloBtn).x);
+    expect(box(r.soloBtn).y + box(r.soloBtn).h).toBeLessThanOrEqual(box(r.coopBtn).y);
+    expect(box(r.coopBtn).y + box(r.coopBtn).h).toBeLessThanOrEqual(box(r.pvpSoloBtn).y);
+    expect(box(r.pvpSoloBtn).y + box(r.pvpSoloBtn).h).toBeLessThanOrEqual(box(r.squadBtn).y);
+    // The dock is one row: SQUAD, FORGE, TUTORIAL left to right.
+    expect(box(r.forgeBtn).y).toBe(box(r.squadBtn).y);
+    expect(box(r.tutorialBtn).y).toBe(box(r.squadBtn).y);
+    expect(box(r.squadBtn).x).toBeLessThan(box(r.forgeBtn).x);
+    expect(box(r.forgeBtn).x).toBeLessThan(box(r.tutorialBtn).x);
   });
 
-  it('keeps every route inside the card behind it', () => {
-    const m = new MainMenu();
-    m.show(800, 600);
-    const p = privateOf(m) as unknown as {
-      menuCard: { view: { position: { x: number }; children: unknown[] } };
-      routes: Record<string, { view: { position: { x: number }; children: unknown[] } }>;
-    };
-    const cardLeft = p.menuCard.view.position.x;
-    const cardRight = cardLeft + (p.menuCard.view.children[0] as Graphics).getLocalBounds().width;
-    for (const name of ['soloBtn', 'coopBtn', 'pvpSoloBtn', 'squadBtn', 'tutorialBtn']) {
-      const btn = p.routes[name]!;
-      const left = btn.view.position.x;
-      expect(left, name).toBeGreaterThan(cardLeft);
-      expect(left + bgBounds(btn).width, name).toBeLessThan(cardRight);
-    }
-  });
-
-  it('backs the button cluster with a card sized to fully contain the ROUTES — the utility row moved out of it (2026-09-22)', () => {
-    const m = new MainMenu();
-    m.show(800, 600);
-    const p = privateOf(m) as unknown as {
-      menuCard: { view: { position: { x: number; y: number }; children: unknown[] } };
-      routes: {
-        soloBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
-        tutorialBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
-      };
-      settingsBtn: { view: { position: { x: number; y: number }; children: unknown[] } };
-    };
-    const card = p.menuCard.view;
-    // Panel's own scrim Graphics is children[0] too (see ui/widgets.test.ts's Panel
-    // suite for the same convention).
-    const cardBounds = (card.children[0] as Graphics).getLocalBounds();
-    const playTop = p.routes.soloBtn.view.position.y;
-    // TUTORIAL, not SETTINGS: the card's last row is a ROUTE now, since the utility pair
-    // (ACCOUNT/SETTINGS) no longer sits inside it at all — see the assertion below.
-    const tutorialBottom = p.routes.tutorialBtn.view.position.y + bgBounds(p.routes.tutorialBtn).height;
-
-    expect(card.position.y).toBeLessThanOrEqual(playTop);
-    expect(card.position.y + cardBounds.height).toBeGreaterThanOrEqual(tutorialBottom);
-    // The utility row sits BELOW the card, not inside it (design/10 "do not dim a door",
-    // read as: a control that is not a route into the game does not belong on the card
-    // that holds the ones that are).
-    expect(p.settingsBtn.view.position.y).toBeGreaterThan(card.position.y + cardBounds.height);
-  });
-
-  it('keeps the utility row outside the card in every state (2026-09-22)', () => {
-    const CASES: Array<[string, () => MainMenu]> = [
-      ['plain', () => { const m = new MainMenu(); m.show(800, 600); return m; }],
-      ['portal', () => {
-        const m = new MainMenu();
-        m.setQuickPlay(true);
-        m.setAccountEntry(false);
-        m.show(800, 600);
-        return m;
-      }],
-      ['saved run', () => {
-        const m = new MainMenu();
-        m.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
-        m.show(800, 600);
-        return m;
-      }],
-      ['signed in', () => {
-        setSession(ALICE);
-        const m = new MainMenu();
-        m.show(800, 600);
-        return m;
-      }],
+  it('pins ACCOUNT top-left and SETTINGS top-right, on one row above the column', () => {
+    const CASES: Array<[string, number, number, (m: MainMenu) => void]> = [
+      ['plain', 800, 600, () => {}],
+      ['portal', 800, 600, (m) => m.setQuickPlay(true)],
+      ['saved run', 800, 600, (m) => { m.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 }); }],
+      ['wide desktop', 1920, 1080, () => {}],
     ];
-    for (const [name, build] of CASES) {
-      const m = build();
-      const p = privateOf(m) as unknown as {
-        menuCard: { view: { position: { y: number }; children: unknown[] } };
-        settingsBtn: { view: { position: { y: number } } };
-      };
-      const cardBottom = p.menuCard.view.position.y
-        + (p.menuCard.view.children[0] as Graphics).getLocalBounds().height;
-      expect(p.settingsBtn.view.position.y, name).toBeGreaterThan(cardBottom);
-      setSession(null);
+    for (const [name, w, h, setup] of CASES) {
+      const m = new MainMenu();
+      setup(m);
+      m.show(w, h);
+      const p = privateOf(m);
+      const account = screenBox(p.accountBtn);
+      const settings = screenBox(p.settingsBtn);
+      expect(account.y, name).toBe(settings.y);
+      expect(account.x, name).toBeLessThan(40);
+      expect(settings.x + settings.w, name).toBeGreaterThan(w - 40);
+      expect(settings.x + settings.w, name).toBeLessThanOrEqual(w);
+      const first = p.playBtn.view.visible ? p.playBtn
+        : p.routes.continueBtn.view.visible ? p.routes.continueBtn : p.routes.soloBtn;
+      expect(screenBox(first).y, name).toBeGreaterThan(settings.y + settings.h);
     }
   });
 
-  it('shrinks the card and pulls the utility row up when TUTORIAL hides (2026-09-22)', () => {
-    // The same "grows/shrinks the card by the row it (dis)owns" property `CONTINUE RUN`'s
-    // own test pins above, on the other end: TUTORIAL is the LAST row in the card, so hiding
-    // it for a returning player (`hasSeenTutorial`) must shrink the card and pull everything
-    // below it — the utility row included — up by exactly the row it gave back.
+  it('keeps the column on screen and right of the dais', () => {
+    for (const [w, h] of [[800, 600], [1386, 640], [1920, 1080], [760, 1646]] as const) {
+      const m = new MainMenu();
+      m.show(w, h);
+      const r = privateOf(m).routes;
+      const top = screenBox(r.soloBtn);
+      const dock = screenBox(r.squadBtn);
+      expect(top.x + top.w, `${w}x${h}`).toBeLessThanOrEqual(w);
+      expect(dock.y + dock.h, `${w}x${h}`).toBeLessThanOrEqual(h);
+      const dais = (m as unknown as { panel: { dais: { x: number } } }).panel.dais;
+      expect(dais.x, `${w}x${h}`).toBeLessThan(top.x);
+      expect(dais.x, `${w}x${h}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('scales the lobby up on a big viewport rather than leaving it at its phone size', () => {
+    const small = new MainMenu();
+    small.show(760, 640);
+    const big = new MainMenu();
+    big.show(1920, 1080);
+    expect(privateOf(small).column.scale.x).toBe(1);
+    expect(privateOf(big).column.scale.x).toBe(1.5);
+    expect(privateOf(big).topLeft.scale.x).toBe(1.5);
+    expect(privateOf(big).header.scale.x).toBe(1.5);
+  });
+
+  it('re-divides the dock between SQUAD and FORGE when TUTORIAL hides', () => {
+    // "Open it, or take it off the screen" (design/10) — and leave no hole where it was.
     const shown = new MainMenu();
     shown.setRecommendTutorial(true);
     shown.show(800, 600);
     const hidden = new MainMenu();
     hidden.setRecommendTutorial(false);
     hidden.show(800, 600);
+    const a = privateOf(shown).routes;
+    const b = privateOf(hidden).routes;
+    expect(b.tutorialBtn.view.visible).toBe(false);
+    expect(bgOf(b.squadBtn).width).toBeGreaterThan(bgOf(a.squadBtn).width);
+    // FORGE's right edge lands where TUTORIAL's did: the row is still full width.
+    expect(screenBox(b.forgeBtn).x + screenBox(b.forgeBtn).w)
+      .toBeCloseTo(screenBox(a.tutorialBtn).x + screenBox(a.tutorialBtn).w, 5);
+  });
+});
 
-    const a = privateOf(shown);
-    const b = privateOf(hidden);
-    expect(b.menuCard.h).toBeLessThan(a.menuCard.h);
-    expect(b.settingsBtn.view.position.y).toBeLessThan(a.settingsBtn.view.position.y);
-    // TUTORIAL's own row (42) plus the gap above it (5) — the same 47 `LobbyRoutes.test.ts`
-    // pins on `LobbyRoutes.height` directly; asserted again here because that number has to
-    // reach all the way through `MainMenu.show()`'s own arithmetic, not just `routes.height`.
-    const shrink = a.menuCard.h - b.menuCard.h;
-    expect(shrink).toBe(47);
-    // Only HALF of that reaches the utility row's absolute position, not all of it: the whole
-    // title-to-utility-row block is CENTRED (`show()`'s own `top` arithmetic), so a shorter
-    // card also pulls the block's TOP down as it pulls the bottom up — the same "grew in BOTH
-    // directions" property the quick-play centring test above asserts for PLAY's own row.
-    expect(a.settingsBtn.view.position.y - b.settingsBtn.view.position.y).toBe(shrink / 2);
+describe('MainMenu — the scene (hero, logo, materials)', () => {
+  it('draws an empty dais and no material chips with no profile, which is the default', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).hero.view.visible).toBe(false);
+    expect(privateOf(m).resources.view.visible).toBe(false);
+  });
+
+  it("shows the profile's materials, one chip per element", () => {
+    const m = new MainMenu();
+    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: { fire: 12, ice: 3, poison: 12345 } });
+    m.show(800, 600);
+    const p = privateOf(m);
+    expect(p.resources.view.visible).toBe(true);
+    const texts = p.resources.labels.map((l) => l.text);
+    expect(texts).toContain('12');
+    expect(texts).toContain('3');
+    expect(texts).toContain('12k');
+  });
+
+  it('draws the text title where the logo art is missing', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).logo.visible).toBe(false);
+    expect((privateOf(m).title as unknown as { visible: boolean }).visible).toBe(true);
+  });
+
+  it('animates only while it is on screen', () => {
+    const m = new MainMenu();
+    m.update(16); // hidden: a no-op, and must not throw on a screen never laid out
+    m.show(800, 600);
+    const glow = (privateOf(m).routes.soloBtn as unknown as { glow: { alpha: number } }).glow;
+    m.update(600);
+    const a = glow.alpha;
+    m.update(600);
+    expect(glow.alpha).not.toBe(a);
+    m.hide();
+    const frozen = glow.alpha;
+    m.update(600);
+    expect(glow.alpha).toBe(frozen);
   });
 });
 
@@ -538,74 +560,51 @@ describe('MainMenu — quick play', () => {
     expect(fired).toEqual(['play', 'solo']);
   });
 
-  it('makes room for the extra row instead of overlapping the ones below it', () => {
-    // The layout is hand-computed from a card top plus fixed row heights, so an added row
-    // is exactly the kind of change that silently lands a button on top of another. Asserted
-    // as "every row is below the previous one by at least its own height".
+  it('makes room for the extra card instead of overlapping the ones below it', () => {
+    // The layout is arithmetic on fixed heights, so an added card is exactly the kind of
+    // change that silently lands one button on another.
     const m = new MainMenu();
     m.setQuickPlay(true);
     m.show(800, 600);
     const p = privateOf(m);
-    const play = p.playBtn.view.position.y;
-    const solo = p.routes.soloBtn.view.position.y;
-    const coop = p.routes.coopBtn.view.position.y;
-    const squad = p.routes.squadBtn.view.position.y;
-    const account = p.accountBtn.view.position.y;
-    const pvp = p.routes.pvpSoloBtn.view.position.y;
-    expect(solo - play).toBeGreaterThanOrEqual(60);
-    expect(coop - solo).toBeGreaterThanOrEqual(48);
-    expect(pvp - coop).toBeGreaterThanOrEqual(44);
-    expect(squad - pvp).toBeGreaterThanOrEqual(44);
-    expect(account - squad).toBeGreaterThanOrEqual(42);
+    const play = screenBox(p.playBtn);
+    const solo = screenBox(p.routes.soloBtn);
+    const coop = screenBox(p.routes.coopBtn);
+    expect(play.y + play.h).toBeLessThanOrEqual(solo.y);
+    expect(solo.y + solo.h).toBeLessThanOrEqual(coop.y);
   });
 
-  it('keeps the block centred rather than pushing it off the bottom', () => {
-    // `menuLayer.ts`'s fit-scale handles a block that is too tall for the viewport, but only
-    // if it is still centred — a block that grows downward only would sit low on a landscape
-    // phone even after scaling.
-    // 800 tall, not 600: below ~640 the banner reserve (see MainMenu's own constant) puts a
-    // floor under the block and the growth stops being symmetric. That floor is deliberate
-    // and is asserted on its own below; this test is about the centring above it.
+  it('keeps the column centred rather than pushing it off the bottom', () => {
+    // The column is centred in the room under the corner row, so a taller one (PLAY above a
+    // slim SOLO) grows in both directions around the same middle.
+    const mid = (m: MainMenu) => {
+      const p = privateOf(m);
+      return p.column.position.y + (p.routes.height * p.column.scale.y) / 2;
+    };
     const plain = new MainMenu();
     plain.show(800, 800);
     const quick = new MainMenu();
     quick.setQuickPlay(true);
     quick.show(800, 800);
-    // The FIRST row of each layout — which is SOLO by default and PLAY once quick play adds
-    // one above it. Comparing SOLO to SOLO would measure the wrong thing: it is pushed DOWN
-    // by the new row even while the block as a whole grows upward.
-    const firstRow = (m: MainMenu, quickPlay: boolean) =>
-      (quickPlay ? privateOf(m).playBtn : privateOf(m).routes.soloBtn).view.position.y;
-    const mid = (m: MainMenu, quickPlay: boolean) =>
-      (firstRow(m, quickPlay) + privateOf(m).accountBtn.view.position.y) / 2;
-    const plainTop = firstRow(plain, false);
-    const quickTop = firstRow(quick, true);
-    // Grew in BOTH directions by half the added row, which is what "still centred" means
-    // here: the first route moved UP and the utility row moved DOWN.
-    expect(quickTop).toBeLessThan(plainTop);
-    expect(privateOf(quick).accountBtn.view.position.y)
-      .toBeGreaterThan(privateOf(plain).accountBtn.view.position.y);
-    expect(mid(quick, true)).toBeCloseTo(mid(plain, false), 5);
+    expect(privateOf(quick).routes.height).toBeGreaterThan(privateOf(plain).routes.height);
+    expect(mid(quick)).toBeCloseTo(mid(plain), 5);
   });
 
-  it('never centres the block so high that a full-length banner would be off screen', () => {
-    // The tallest configuration there is — a portal build, so quick play AND the data notice
-    // under the card — on the shortest design height `menuLayer.fit` ever hands back. The
-    // banner is not part of the centred block (it must not move the layout), so the layout
-    // owes it room instead, and this is that floor.
+  it('fits the tallest lobby there is — portal, notice, full banner — on the shortest design height', () => {
+    // A portal build (quick play AND the data notice under the column) with the longest
+    // legal banner, on the height `menuLayer.fit` hands back for the 844x390 mini-game phone.
     const m = new MainMenu();
     m.setQuickPlay(true);
     m.setAccountEntry(false);
     withBanner('M'.repeat(BANNER_MAX_LENGTH));
-    m.show(1386, 640); // 844x390, the mini-game phone, through the fit-scale
+    m.show(1386, 640);
     const p = privateOf(m);
     expect(p.banner.visible).toBe(true);
-    // The worst legal banner measures 55px tall against the real font at this wrap width
-    // (see BANNER_RESERVE, which was measured rather than guessed), and it hangs upward
-    // from here.
-    expect(p.banner.position.y).toBeGreaterThanOrEqual(55);
-    // ...and the other end still fits: the policy link is the lowest thing on the screen.
-    expect(p.privacyLink.position.y).toBeLessThan(640);
+    // The banner's reserved room (55px measured, see BANNER_RESERVE) ends above the column.
+    expect(p.banner.position.y + 55).toBeLessThanOrEqual(p.column.position.y);
+    // ...and the lowest thing on the screen, the policy link, still fits on it.
+    const linkY = p.column.position.y + p.privacyLink.position.y * p.column.scale.y;
+    expect(linkY + 18).toBeLessThan(640);
   });
 });
 
@@ -665,29 +664,27 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(privateOf(m).accountLabel.visible).toBe(false);
   });
 
-  it('centres SETTINGS across the row its pair used to share', () => {
+  it('keeps SETTINGS pinned top-right whether or not ACCOUNT is drawn', () => {
     const paired = new MainMenu();
     paired.show(800, 600);
     const alone = new MainMenu();
     alone.setAccountEntry(false);
     alone.show(800, 600);
-    // 800/2 - 67 = 333: the row's centre, rather than the right-hand half it sat in.
-    expect(privateOf(alone).settingsBtn.view.position.x).toBe(333);
-    expect(privateOf(paired).settingsBtn.view.position.x).toBe(405);
+    expect(screenBox(privateOf(alone).settingsBtn)).toEqual(screenBox(privateOf(paired).settingsBtn));
   });
 
-  it('shows the data notice, below the card and not over the banner', () => {
-    // The point of collection moved: nobody types anything on a portal, so the one screen
-    // they do see has to say what is stored. `BannerHost` owns the bottom of the viewport,
-    // so this sits under the menu card instead.
+  it('shows the data notice under the column, not at the bottom edge the banner ad owns', () => {
+    // Nobody types anything on a portal, so the one screen they do see has to say what is
+    // stored. `BannerHost` owns the bottom of the viewport, so this sits under the routes.
     const m = new MainMenu();
     m.setAccountEntry(false);
     m.show(800, 600);
-    const notice = privateOf(m).dataNotice;
+    const p = privateOf(m);
+    const notice = p.dataNotice;
     expect(notice.visible).toBe(true);
     expect(notice.text).toContain('CrazyGames');
-    expect(notice.position.y).toBeGreaterThan(privateOf(m).settingsBtn.view.position.y);
-    expect(notice.position.y).toBeLessThan(600);
+    expect(notice.position.y).toBeGreaterThan(p.routes.height);
+    expect(p.column.position.y + notice.position.y * p.column.scale.y).toBeLessThan(600);
   });
 
   it('translates the notice with the rest of the screen', async () => {
@@ -767,7 +764,6 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     const m = new MainMenu();
     m.show(800, 600);
     expect(privateOf(m).routes.continueBtn.view.visible).toBe(false);
-    expect(privateOf(m).routes.continueCaption.visible).toBe(false);
   });
 
   it('draws the row, and asks the provider again on every show', () => {
@@ -783,7 +779,7 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     saved = { floorIndex: 2, ticks: 9000, savedAtMs: 0 };
     m.show(800, 600);
     expect(privateOf(m).routes.continueBtn.view.visible).toBe(true);
-    expect(privateOf(m).routes.continueCaption.text).toContain('3'); // floor, 1-based
+    expect(privateOf(m).routes.continueBtn.hint.text).toContain('3'); // floor, 1-based
 
     saved = null;
     m.show(800, 600);
@@ -802,26 +798,20 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(hits).toEqual(['continue']);
   });
 
-  it('grows the card and the whole block by the row it added, keeping both on screen', () => {
+  it('grows the column by the card it added, keeping it on screen', () => {
     const plain = new MainMenu();
     plain.show(800, 600);
     const saved = new MainMenu();
     saved.resumableRun = () => ({ floorIndex: 2, ticks: 9000, savedAtMs: 0 });
     saved.show(800, 600);
-
     const a = privateOf(plain);
     const b = privateOf(saved);
-    // The card is sized off the routes block, so a row that is drawn but not accounted for
-    // would hang past its bottom edge — the exact shape of the Forge overlap
-    // `viewportFit.test.ts`'s own header records.
-    expect(b.menuCard.h).toBeGreaterThan(a.menuCard.h);
-    expect(b.accountBtn.view.position.y).toBeGreaterThan(a.accountBtn.view.position.y);
-    expect(b.routes.continueBtn.view.position.y).toBeGreaterThan(b.menuCard.view.position.y);
-    // ACCOUNT sits below the card (2026-09-22 — the utility row is chrome now, not a route,
-    // so it moved out of `menuCard` entirely), and it moves down WITH the card as CONTINUE
-    // grows it, rather than landing back inside it.
-    expect(b.accountBtn.view.position.y)
-      .toBeGreaterThan(b.menuCard.view.position.y + b.menuCard.h);
+    expect(b.routes.height).toBeGreaterThan(a.routes.height);
+    const cont = screenBox(b.routes.continueBtn);
+    const solo = screenBox(b.routes.soloBtn);
+    expect(cont.y + cont.h).toBeLessThanOrEqual(solo.y);
+    const dock = screenBox(b.routes.squadBtn);
+    expect(dock.y + dock.h).toBeLessThanOrEqual(600);
   });
 
   it('gives the portal CONTINUE instead of PLAY, never both', () => {
@@ -841,7 +831,7 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(m['playBtn'].view.visible).toBe(false);
     expect(privateOf(m).routes.continueBtn.view.visible).toBe(true);
     // ...and the green goes with the slot, so the card still has exactly one primary.
-    expect(privateOf(m).routes.continueBtn.color).toBe(GREEN);
-    expect(privateOf(m).routes.soloBtn.color).not.toBe(GREEN);
+    expect(fillOf(privateOf(m).routes.continueBtn)).toBe(GREEN);
+    expect(fillOf(privateOf(m).routes.soloBtn)).not.toBe(GREEN);
   });
 });

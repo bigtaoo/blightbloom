@@ -280,14 +280,15 @@ describe('the sweep can actually fail', () => {
 
   it('does NOT report two rows that merely sit next to each other', () => {
     // The other half of the harness: a rule that fires on adjacency would flag every stacked
-    // control in the project and would be turned off within a week. The lobby's rows are 5px
+    // control in the project and would be turned off within a week. The lobby's cards are 8px
     // apart, so this is the real spacing rather than a contrived one.
     const m = new MainMenu();
     m.show(MENU_DESIGN_W, MENU_DESIGN_H);
     const routes = (m as unknown as { routes: Record<string, Tappable> }).routes;
-    const solo = boxOf(routes.soloBtn!);
+    // CO-OP and PVP, the two cards of one tier: 8px apart since the 2026-09-27 redesign.
     const coop = boxOf(routes.coopBtn!);
-    expect(coop.y - (solo.y + solo.h), 'the rows really are adjacent').toBeLessThanOrEqual(6);
+    const pvp = boxOf(routes.pvpSoloBtn!);
+    expect(pvp.y - (coop.y + coop.h), 'the rows really are adjacent').toBeLessThanOrEqual(8);
     expect(overlapsOn(m)).toEqual([]);
   });
 

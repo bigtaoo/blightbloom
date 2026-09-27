@@ -608,7 +608,7 @@ describe('the design space is sized to the content, not picked arbitrarily', () 
 });
 
 interface ButtonLike {
-  setIcon(t: Texture): void;
+  setIcon(t: Texture, chip?: number, placement?: 'left' | 'top'): void;
   view: { children: Array<{ text?: string; x: number; width: number; anchor: { x: number } }> };
 }
 
@@ -638,8 +638,16 @@ describe('a label that spills out of its own button (2026-09-10)', () => {
     const r = p.routes;
     return {
       PLAY: p.playBtn, SOLO: r.soloBtn, 'CO-OP': r.coopBtn, PVP: r.pvpSoloBtn,
-      SQUAD: r.squadBtn, TUTORIAL: r.tutorialBtn, ACCOUNT: p.accountBtn, SETTINGS: p.settingsBtn,
+      SQUAD: r.squadBtn, FORGE: r.forgeBtn, TUTORIAL: r.tutorialBtn,
+      ACCOUNT: p.accountBtn, SETTINGS: p.settingsBtn,
     } as Record<string, ButtonLike>;
+  }
+
+  /** The dock's buttons carry their icon ABOVE the label (2026-09-27), so the sweep has to
+   *  install it there too — beside the label is a layout no player sees. */
+  const TOP_ICON = new Set(['SQUAD', 'FORGE', 'TUTORIAL']);
+  function placementOf(name: string): 'left' | 'top' {
+    return TOP_ICON.has(name) ? 'top' : 'left';
   }
 
   for (const locale of LOCALES) {
@@ -653,7 +661,7 @@ describe('a label that spills out of its own button (2026-09-10)', () => {
         // the label centres itself, and this sweep would measure a layout no player ever
         // sees — the centred one fits in places the real one does not, because the real one
         // starts after the chip. `Texture.WHITE` needs no GPU and no art pack.
-        btn.setIcon(Texture.WHITE);
+        btn.setIcon(Texture.WHITE, undefined, placementOf(name));
         const kids = btn.view.children;
         const box = (kids[0] as unknown as Container).getLocalBounds().width;
         const label = kids.find((c) => typeof c.text === 'string');

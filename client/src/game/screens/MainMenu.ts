@@ -1,20 +1,22 @@
-import { Container, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
-import { LobbyRoutes, LOBBY_ROUTES_W } from '../ui/LobbyRoutes';
+import { Container, Sprite, Text } from 'pixi.js';
+import { Button } from '../ui/widgets';
+import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H } from '../ui/LobbyRoutes';
+import { LobbyCard } from '../ui/LobbyCard';
+import { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { LobbyHero } from '../ui/LobbyHero';
+import { LobbyResources, type MaterialCounts } from '../ui/LobbyResources';
+import { lobbyScale, sharpenText } from '../ui/lobbyScale';
 import type { SavedRunSummary } from '../match/runSave';
 import { getSession } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
-import { t } from '../../i18n';
+import { t, getLocale } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
 
 /**
- * Longest name the account chip will draw, in characters, before it ellipsises.
- *
- * A bound rather than a fit: the box grows to whatever it is given (`autoWidth`), so this
- * only stops one absurd name from pushing the pair wider than the card. 12 is comfortably
- * more than any name this project has seen and comfortably less than a CrazyGames display
- * name's own limit.
+ * Longest name the account chip will draw, in characters, before it ellipsises — a bound
+ * rather than a fit: the chip grows to whatever it is given (`autoWidth`), so this only stops
+ * one absurd name from pushing it into the logo.
  */
 const NAME_MAX = 12;
 
@@ -22,134 +24,102 @@ function clipName(name: string): string {
   return name.length <= NAME_MAX ? name : `${name.slice(0, NAME_MAX - 1)}…`;
 }
 
-/** The quick-play button's height — a row this screen only has on a portal. */
-const PLAY_H = 60;
-/** Title top → card top: the title, the subtitle under it, and the gap. */
-const HEADER_H = 88;
-/** ACCOUNT/SETTINGS' own height, and the gap between the card and the row they sit on below
- *  it (2026-09-22: pulled OUT of `menuCard` entirely — design/10 "do not dim a door", read
- *  literally: they are not routes into the game at all, so they no longer share the card
- *  that holds the ones that are). The gap matches the card's own top pad, now that the last
- *  thing inside the card is a route row rather than this pair — see `cardH`. */
-const UTILITY_ROW_H = 42;
-const UTILITY_GAP = 12;
-/** What the portal's data notice + policy link occupy under the utility row. */
-const NOTICE_BLOCK_H = 14 + 44 + 18;
+/** The corner chrome's inset from the viewport edge, and its row height (unscaled). */
+const EDGE = 14;
+const CHROME_H = 40;
 /**
- * Room kept above the title for a maintenance banner that is not part of the centred block.
- *
- * MEASURED rather than derived, on a real page with the real font (2026-09-10): the tallest
- * legal banner is 140 characters (`@dd/net/publicFlags`), and the worst of those is 140 `M`s,
- * which wraps to three lines and 55px at the 700px width below. A realistic sentence is 38px.
- * It hangs upward from 16px above the title, so 16 + 55 is the floor. Note what the unit
- * suite cannot tell you here — `fakeTextCanvas` measures 0.6em per character, so the same
- * string is two lines and fits under any floor at all. Without this the tallest
- * CONFIGURATION — a portal build, so quick-play plus the data notice — centres high enough
- * that those three lines start above y=0, which is off screen at every viewport
- * `viewportFit.test.ts` sweeps.
+ * Room kept under the corner row for a maintenance banner. MEASURED on a real page with the
+ * real font (2026-09-10): the worst legal banner (140 `M`s, `@dd/net/publicFlags`) wraps to
+ * three lines and 55px at a 700px wrap. `fakeTextCanvas` measures 0.6em per character and
+ * would call the same string two lines, so this is a floor the unit suite cannot derive.
  */
 const BANNER_RESERVE = 72;
+/** The logo's width in the lobby's own units, and the tagline's room under it. */
+const LOGO_W = 300;
+const TAGLINE_H = 24;
+/** What the portal's data notice + policy link occupy under the column. */
+const NOTICE_BLOCK_H = 12 + 44 + 18;
 
 /**
- * The LOBBY — the boot front door and the branch point, one screen (design/10 screen flow).
+ * The LOBBY — the boot front door and the branch point (design/10 screen flow). Still called
+ * `MainMenu`, and the phase is still `'menu'`: the `Phase` union and every call site in
+ * `ScreenNav` speak that word. The docs call it the lobby; this comment is the mapping.
  *
- * Still called `MainMenu`, and the phase is still `'menu'`: the 2026-09-10 merge changed what
- * this screen CONTAINS, not what it is called, because the `Phase` union and every call site
- * in `ScreenNav` already speak that word. The docs call it the lobby, the code calls it the
- * menu, and this comment is the mapping.
+ * ## The layout (design/10 "The lobby, redesigned", 2026-09-27)
  *
- * What merged, and why. Until 2026-09-10 this screen was PLAY · SQUAD · LOGIN · SETTINGS and
- * PLAY opened a second screen (`ModeSelect.ts`, now deleted) holding SOLO · CO-OP · PVP SOLO
- * QUEUE · TUTORIAL. That split put the two doors into multiplayer on two different screens —
- * SQUAD here, CO-OP and PVP one level deeper — which is the incoherence the report that
- * prompted the merge circled. Folding them together removes a layer rather than adding one:
- * four screens to a run became three.
+ * The report was that the old centred card "looks empty, the hierarchy is unclear, and the
+ * whole screen is too dark". The answer is a scene rather than a menu:
  *
- * Pure presentation, same shape as PauseMenu.ts/Settings.ts: `gameWiring.ts` owns what each
- * route actually does. `ui/LobbyRoutes.ts` owns the six routes and their layout; everything
- * here is the shell — title, maintenance banner, the account chip, SETTINGS, and (on a game
- * portal only) the one-click PLAY button above the routes and the data notice below them.
- * Which of those top rows is actually drawn is `applyPrimary`'s call, not `setQuickPlay`'s.
+ *  - the painted outpost at full value (`LobbyBackdrop` — no scrim), with the player's own
+ *    character hovering on its dais (`LobbyHero`) and the logo above it;
+ *  - the ways into the game as one column on the right, in three visibly different tiers
+ *    (`LobbyRoutes`), with a soft vignette behind it and nothing else darkened;
+ *  - account (top-left) and materials + SETTINGS (top-right) pinned to the real viewport
+ *    corners, because they are chrome and not doors.
  *
- * One thing the shell does own about the routes, since 2026-09-17: whether there is an
- * unfinished run to continue (`resumableRun`). The lobby was audited as a front door and the
- * returning player's first need turned out to be one screen deep — CONTINUE RUN lived in the
- * Forge, behind SOLO PvE, so a player who stopped on floor 3 last night met a lobby that said
- * nothing about it (design/10). The row itself is `LobbyRoutes`'; the question is the shell's,
- * because a save is host state and this is the screen with a provider to read it through.
+ * Everything in the column, header and corners is multiplied by one lobby scale `k`
+ * (`lobbyScale`): the menu layer never scales UP (`menuLayer.ts`), so on a desktop window the
+ * old lobby sat at its phone size in a sea of background — the other half of "looks empty".
+ *
+ * Pure presentation, same shape as every screen here: `gameWiring.ts` owns what each route
+ * does. The shell owns two questions about the routes — whether there is a run to continue
+ * (`resumableRun`) and whether a portal wants its one-click PLAY (`applyPrimary`) — plus the
+ * profile the hero and the material chips draw (`lobbyProfile`).
  */
 export class MainMenu {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.82, background: 'hub' });
-  // A dedicated card behind the nav buttons (design/10 legibility fix, 2026-08-02):
-  // the hub art's brightness varies a lot behind where the buttons sit, so relying on
-  // the button fill alone for contrast made them nearly disappear over the lighter
-  // stonework. A flat, consistently-dark backing card guarantees contrast regardless
-  // of what's in the art underneath.
-  private menuCard = new Panel({ radius: 18, color: 0x05070c, alpha: 0.62, borderColor: 0x3a4a5c, borderAlpha: 0.5 });
+  /** Named `panel` like every other screen's backdrop, so `menuCoversWorld.test.ts` finds it. */
+  private panel = new LobbyBackdrop();
+  private hero = new LobbyHero();
+  private header = new Container();
+  private logo = new Sprite();
+  /** The text title, drawn only when the logo art is missing. */
   private title: Text;
   private subtitle: Text;
+  private column = new Container();
   /** One-click play, and ONLY on a host that requires it — see `setQuickPlay`. */
-  private playBtn: Button;
+  private playBtn: LobbyCard;
   private routes = new LobbyRoutes();
+  private topLeft = new Container();
+  private topRight = new Container();
   private accountBtn: Button;
+  /** Under the account chip for a guest: why logging in is worth a tap. */
+  private guestHint: Text;
   private settingsBtn: Button;
+  private resources = new LobbyResources();
   /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
-   *  `setAccountEntry`. Never interactive: it states who the player is, it does not offer
-   *  to change it. */
+   *  `setAccountEntry`. It states who the player is; it does not offer to change it. */
   private accountLabel: Text;
-  /** The data notice a host may require at the point of collection — see `setAccountEntry`.
-   *  One line, under the menu card, never over gameplay: the platform's own wording for
-   *  what it wants is "unobtrusive rather than blocking". */
+  /** The data notice a host may require at the point of collection — see `setAccountEntry`. */
   private dataNotice: Text;
-  /** The hosted-policy link that goes WITH the notice above. Rendered only where a URL
-   *  actually exists (`policyLinks.ts`), because a link to nowhere is worse than none. */
+  /** The hosted-policy link that goes WITH the notice — only where a URL actually exists. */
   private privacyLink: Text;
   /**
-   * The operator's maintenance notice (design/21 §4's `ui.maintenanceBanner`, delivered by
-   * `GET /client/flags`). Empty means no banner, and empty is the shipped default, so the
-   * ordinary lobby is exactly what it was.
-   *
-   * Read from the flag store rather than passed in, the way `refreshAccountLabel` already
-   * reads `getSession()` — the value changes at runtime and no constructor argument can
-   * carry that. Three properties worth stating because each one is a decision:
-   *
-   *  - **It does not affect the layout.** It hangs at a fixed offset ABOVE the title rather
-   *    than adding a row the way quick-play's PLAY button does, so a banner arriving while
-   *    the lobby is already on screen needs no re-layout. What the layout does owe it is
-   *    ROOM: `show()` never places the title higher than `BANNER_RESERVE`, so the tallest
-   *    legal banner still lands on screen (see that constant).
-   *  - **It is not localised, and cannot be.** The value is one line an operator typed;
-   *    there is no key to look up. That is the honest cost of a switch that must work
-   *    without a deploy, and it is why the flag is capped at 140 characters and refuses
-   *    markup and control characters (`@dd/net/publicFlags`) rather than being a rich
-   *    message with a schema.
-   *  - **It is stroked, not carded.** A backing `Panel` would have to be sized from
-   *    `Text.height`, and reading that forces a canvas text measurement — the thing every
-   *    position in this file already avoids, and the reason these screens are unit-testable
-   *    with no `document`. A dark stroke buys the same contrast over the hub art for free.
+   * The operator's maintenance notice (design/21 §4's `ui.maintenanceBanner`). Empty means no
+   * banner, the shipped default. Not localised and cannot be (it is one line an operator
+   * typed), hence the 140-character cap in `@dd/net/publicFlags`. It hangs under the corner
+   * row and pushes the header down by `BANNER_RESERVE` when shown, so `refreshBanner` re-lays
+   * the screen out when it appears or goes while the lobby is up.
    */
   private banner: Text;
   private quickPlay = false;
   private accountEntry = true;
-  /** The resumable run `show()` last read off `resumableRun`. Cached because `applyPrimary`
-   *  is also reachable from `setQuickPlay`, which the assembly calls before the first show. */
+  /** The resumable run `show()` last read — `applyPrimary` is also reachable from
+   *  `setQuickPlay`, which the assembly calls before the first show. */
   private saved: SavedRunSummary | null = null;
+  private size: { w: number; h: number } | null = null;
 
   /**
-   * Whether this lobby has an unfinished run to offer, and which one (design/10, 2026-09-17).
-   *
-   * A PROVIDER rather than a value, and the same shape — and the same reasoning — as
-   * `Forge.savedRun`: `show()` is called on every entry to the lobby and on every relayout,
-   * and a field would have to be re-pushed at each of them. Defaulted to "nothing", which is
-   * the fail-closed direction: a caller that forgets to set it draws no CONTINUE row, rather
-   * than one that leads nowhere.
-   *
-   * What it must be wired to is `match/resumableRun.ts`, not `savedRunSummary` — the row is
-   * an offer, and an offer this build cannot honour has no business on the front door. The
-   * assembly wires both screens to the same function for exactly that reason.
+   * Whether this lobby has an unfinished run to offer (design/10, 2026-09-17). A provider,
+   * asked on every `show()`, and defaulted to "nothing" — the fail-closed direction. Must be
+   * wired to `match/resumableRun.ts`: the row is an offer, and one this build cannot honour
+   * has no business on the front door.
    */
   resumableRun: () => SavedRunSummary | null = () => null;
+
+  /** The selected character and the banked materials — a provider for the same reason as
+   *  `resumableRun`. `null` (the default) draws an empty dais and no material chips. */
+  lobbyProfile: () => { skinId: string; materials: MaterialCounts } | null = () => null;
 
   /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
@@ -159,31 +129,24 @@ export class MainMenu {
   onCoop: (() => void) | null = null;
   onPvpSolo: (() => void) | null = null;
   onSquad: (() => void) | null = null;
-  /** FORGE — the crafting page's lobby door (2026-09-21). The row lives on `routes`; this
-   *  is the shell's passthrough, same as every other route on it. */
   onForge: (() => void) | null = null;
   onTutorial: (() => void) | null = null;
   onAccount: (() => void) | null = null;
   onSettings: (() => void) | null = null;
 
   constructor() {
-    // `padding` guards against a real observed font-metrics clipping bug (see
-    // widgets.ts's Button — same mitigation, needed here too since these aren't Buttons).
-    this.title = new Text({ text: t('mainMenu.title'), style: { fill: 0xf7fafc, fontSize: 46, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
+    // `padding` guards against a real observed font-metrics clipping bug (see Button).
+    this.title = new Text({ text: t('mainMenu.title'), style: { fill: 0xf7fafc, fontSize: 46, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16, stroke: { color: 0x1a202c, width: 6 } } });
     this.title.anchor.set(0.5, 0);
-    this.subtitle = new Text({ text: t('mainMenu.subtitle'), style: { fill: 0x90cdf4, fontSize: 16, fontFamily: 'monospace', padding: 26 } });
+    this.subtitle = new Text({ text: t('mainMenu.subtitle'), style: { fill: 0xffffff, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', padding: 20, stroke: { color: 0x1a202c, width: 4 } } });
     this.subtitle.anchor.set(0.5, 0);
+    this.logo.anchor.set(0.5, 0);
+    this.header.addChild(this.logo, this.title, this.subtitle);
 
-    // Hierarchy (design/10 legibility fix, 2026-08-02, and it survived the merge intact):
-    // exactly ONE primary action, filled with the "go" green every other screen in this
-    // project uses for its primary — which is SOLO on `routes` by default, and this button
-    // instead on a portal. ACCOUNT/SETTINGS are tertiary utility, sized down and placed side
-    // by side (not stacked) so their near-identical badge-style icons at small scale don't
-    // invite a misclick between two vertically-adjacent targets; distinct chip colors give
-    // each a second cue.
-    this.playBtn = new Button(t('mainMenu.play'), { w: LOBBY_ROUTES_W, h: PLAY_H, fontSize: 24, color: 0x2f855a, borderColor: 0x68d391 });
+    // The portal's PLAY takes the primary slot at the top of the column, drawn exactly like
+    // the SOLO banner it demotes — see `setQuickPlay`.
+    this.playBtn = new LobbyCard(t('mainMenu.play'), LOBBY_ROUTES_W, LOBBY_PRIMARY_H, { art: 'lobby_card_descend', fill: 0x2f855a, frame: 0x9ae6b4, fontSize: 30, glow: true });
     this.playBtn.onTap = () => this.onPlay?.();
-    this.playBtn.setIcon(getUiTexture('icon_play'));
     this.playBtn.view.visible = false;
 
     this.routes.onContinue = () => this.onContinue?.();
@@ -194,69 +157,56 @@ export class MainMenu {
     this.routes.onForge = () => this.onForge?.();
     this.routes.onTutorial = () => this.onTutorial?.();
 
-    // `autoWidth`, alone among this screen's buttons, because it is the only one whose label
-    // is not ours to choose: signed in it carries a PLAYER'S NAME. Every fixed width that
-    // fits "LOGIN" fails some name, and `estimateMonoWidth` counts a CJK glyph as a full em,
-    // so growing the box is the only answer that holds in every script. `show()` lays the
-    // pair out from the measured widths for the same reason.
-    this.accountBtn = new Button(t('mainMenu.account'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096, autoWidth: true });
+    // `autoWidth` because signed in it carries a PLAYER'S NAME, and every fixed width fails
+    // some name in some script.
+    this.accountBtn = new Button(t('mainMenu.account'), { w: 110, h: CHROME_H, fontSize: 14, color: 0x1f2532, borderColor: 0xb794f4, autoWidth: true });
     this.accountBtn.onTap = () => this.onAccount?.();
     this.accountBtn.setIcon(getUiTexture('icon_account'), 0x6b46c1);
-    this.settingsBtn = new Button(t('mainMenu.settings'), { w: 135, h: 42, fontSize: 14, borderColor: 0x718096 });
+    this.guestHint = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold', padding: 10, stroke: { color: 0x1a202c, width: 3 } } });
+    this.guestHint.position.set(2, CHROME_H + 5);
+    this.accountLabel = new Text({ text: '', style: { fill: 0xffffff, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', padding: 16, stroke: { color: 0x1a202c, width: 4 } } });
+    this.accountLabel.anchor.set(0, 0.5);
+    this.accountLabel.position.set(0, CHROME_H / 2);
+    this.accountLabel.visible = false;
+    this.topLeft.addChild(this.accountBtn.view, this.guestHint, this.accountLabel);
+
+    this.settingsBtn = new Button(t('mainMenu.settings'), { w: 120, h: CHROME_H, fontSize: 13, color: 0x1f2532, borderColor: 0x718096, autoWidth: true });
     this.settingsBtn.onTap = () => this.onSettings?.();
     this.settingsBtn.setIcon(getUiTexture('icon_settings'), 0x4a5568);
-    this.accountLabel = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 14, fontFamily: 'monospace', padding: 16 } });
-    this.accountLabel.anchor.set(0.5, 0.5);
-    this.accountLabel.visible = false;
-    this.dataNotice = new Text({ text: '', style: { fill: 0x718096, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: 420 } });
+    this.topRight.addChild(this.resources.view, this.settingsBtn.view);
+
+    this.dataNotice = new Text({ text: '', style: { fill: 0xe2e8f0, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: LOBBY_ROUTES_W, stroke: { color: 0x1a202c, width: 3 } } });
     this.dataNotice.anchor.set(0.5, 0);
     this.dataNotice.visible = false;
-    // Underlined and link-coloured because it is the one thing under the card that is
-    // tappable, and nothing else on this row is.
-    this.privacyLink = new Text({ text: '', style: { fill: 0x63b3ed, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center' } });
+    this.privacyLink = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', stroke: { color: 0x1a202c, width: 3 } } });
     this.privacyLink.anchor.set(0.5, 0);
     this.privacyLink.visible = false;
     this.privacyLink.eventMode = 'static';
     this.privacyLink.cursor = 'pointer';
     this.privacyLink.on('pointertap', () => openPolicy('privacy'));
+    this.column.addChild(this.playBtn.view, this.routes.view, this.dataNotice, this.privacyLink);
 
-    // `breakWords` alongside `wordWrap`, and it is not belt-and-braces: `wordWrap` alone
-    // breaks at spaces, so a 140-character banner with none — a URL, a long compound word,
-    // or `MMMM…` — cannot wrap at all and runs off both edges of the screen. That is a legal
-    // value (`@dd/net/publicFlags` refuses markup and control characters, not long words),
-    // and `viewportFit.test.ts`'s banner entry is what caught it: the sweep failed at five
-    // of seven viewports the moment the case was actually put in front of it. The 700 is
-    // 2026-09-10: at 480 the longest legal banner needed three lines, and the room for the
-    // third had to come out of the lobby's own rows (`BANNER_RESERVE`). It stays well inside
-    // the 760 design width, which is the narrowest this layer ever hands a screen.
+    // `breakWords` alongside `wordWrap`: a 140-character banner with no spaces (a URL, `MMMM…`)
+    // is a legal value and cannot wrap at spaces at all (`viewportFit.test.ts` caught it).
     this.banner = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 15, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 16, align: 'center', wordWrap: true, wordWrapWidth: 700, breakWords: true, stroke: { color: 0x1a202c, width: 4 } } });
-    this.banner.anchor.set(0.5, 1);
+    this.banner.anchor.set(0.5, 0);
     this.banner.visible = false;
 
     this.view.addChild(
-      this.panel.view, this.menuCard.view, this.banner, this.title, this.subtitle,
-      this.playBtn.view, this.routes.view, this.accountBtn.view, this.settingsBtn.view,
-      this.accountLabel, this.dataNotice, this.privacyLink,
+      this.panel.view, this.hero.view, this.header, this.column,
+      this.topLeft, this.topRight, this.banner,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
 
   /**
-   * Turn on the one-click PLAY button above the routes, and demote SOLO to an ordinary one.
+   * Turn on the one-click PLAY card at the top of the column, and demote SOLO to the slim bar.
    *
    * A game portal requires that a first-time visitor reach gameplay in at most one click
-   * (`docs.crazygames.com/requirements/gameplay`), and SOLO — the default primary — goes to
-   * the forge first. Rather than delete the forge route, which is the between-run decision
-   * this game is built around, this adds a direct one above it and hands the green to the new
-   * button (`LobbyRoutes.setSoloPrimary`), so the card still has exactly one primary action.
-   *
-   * Called once during assembly, from the host branch in `gameWiring.ts`. Not a constructor
-   * argument because `Screens`/`PauseMenu`/every other screen here takes none, and one screen
-   * with a different construction signature is how that convention starts to rot.
-   *
-   * It is a REQUEST, not the final answer, since 2026-09-17 — see `applyPrimary`, which is
-   * where quick-play and a resumable run are reconciled.
+   * (`docs.crazygames.com/requirements/gameplay`), and SOLO goes to the loadout first. Called
+   * once during assembly, from the host branch in `gameWiring.ts`. A REQUEST, not the final
+   * answer — `applyPrimary` reconciles it with a resumable run.
    */
   setQuickPlay(enabled: boolean): void {
     this.quickPlay = enabled;
@@ -264,25 +214,11 @@ export class MainMenu {
   }
 
   /**
-   * Exactly one primary on the card, and it is the topmost row that puts the player into a
-   * run in one click.
-   *
-   * With a resumable save that is always CONTINUE — including on a portal, where it takes
-   * quick-play's slot rather than sitting under it. Both buttons answer "start playing now",
-   * the save is the better answer for the player who has one, and the platform requirement
-   * behind PLAY is about a FIRST-time visitor reaching gameplay in one click
-   * (`docs.crazygames.com/requirements/gameplay`) — a player with an unfinished run is by
-   * definition not one, and CONTINUE is one click into gameplay by the same measure.
-   *
-   * Note what this deliberately is not: PLAY re-pointed at the resume. Two rows with two
-   * labels, one of which is drawn at a time, is a different thing from one row that changes
-   * what it does — the latter is how a player loses a run they meant to keep, which is the
-   * rule that keeps SAVE & QUIT and QUIT as separate rows in the pause menu (design/10).
-   *
-   * The 2026-09-17 sweep is what forced the choice rather than taste: the tallest legal
-   * lobby — portal quick-play, the data notice, a 140-character maintenance banner AND the
-   * CONTINUE block — measured 702px against a 640px design height in all eight locales
-   * (`viewportFit.test.ts`). Stacking both was never going to fit.
+   * Exactly one primary on the screen: with a resumable save it is always CONTINUE, including
+   * on a portal, where it takes PLAY's slot rather than sitting under it — the platform rule
+   * behind PLAY is about a FIRST-time visitor, which a player with a save is not. PLAY is
+   * never re-pointed at the resume: two buttons with two labels, one drawn at a time, is how a
+   * player keeps a run they meant to keep (design/10).
    */
   private applyPrimary(): void {
     const showPlay = this.quickPlay && this.saved === null;
@@ -290,130 +226,44 @@ export class MainMenu {
     this.routes.setSoloPrimary(!showPlay);
   }
 
-  /** Call before `show()` so the TUTORIAL badge reflects `!MetaState.hasSeenTutorial` — the
-   *  flag `ScreenFlow.showMenu` now carries in, as it already did for `ModeSelect`. */
+  /** Call before `show()` so TUTORIAL reflects `!MetaState.hasSeenTutorial`. */
   setRecommendTutorial(recommend: boolean): void {
     this.routes.setRecommendTutorial(recommend);
   }
 
   /**
-   * Whether this lobby offers a way INTO the account screen.
-   *
-   * `false` on a game portal, and the reason is policy rather than taste: that platform
-   * forbids a game's own credential login outright (its account rules name email login,
-   * a logout that leads back to one, and a login button as a primary call to action —
-   * `docs.crazygames.com/requirements/account-integration`), and a portal player is signed
-   * in silently instead (`platform/crazygames/portalAuth.ts`). So there is nothing for this
-   * button to open and nothing for the player to do.
-   *
-   * What replaces it is a plain LABEL, not a disabled button: the platform also requires
-   * that the CrazyGames username be shown, and `storePlatform.ts`'s own precedent here is
-   * "a build that may not sell renders no entry at all" rather than one that is drawn and
-   * refuses. Same shape as `setQuickPlay`, called from the same host branch in
-   * `gameWiring.ts`.
+   * Whether this lobby offers a way INTO the account screen. `false` on a game portal: that
+   * platform forbids a game's own credential login (`docs.crazygames.com/requirements/
+   * account-integration`) and signs the player in silently instead. What replaces the button
+   * is a plain LABEL naming the player (the platform requires the username be shown), plus the
+   * data notice — nobody typed anything, so the one screen they do see has to say what is
+   * stored.
    */
   setAccountEntry(enabled: boolean): void {
     this.accountEntry = enabled;
     this.accountBtn.view.visible = enabled;
-    // The notice comes WITH the silent login rather than as a second switch, because it is
-    // the same fact from the player's side: nobody typed anything, so nobody was shown what
-    // it stores, so the one screen they do see has to say it. `LoginScreen` carries the
-    // equivalent line on every other target, at its own point of collection.
     this.dataNotice.visible = !enabled;
-    // Same gate as the notice, AND a URL has to exist — design/20's rule that nothing
-    // renders a link until one does.
+    // Same gate as the notice, AND a URL has to exist — design/20's rule that nothing renders
+    // a link until one does.
     this.privacyLink.visible = !enabled && policyUrl('privacy') !== null;
+    this.refreshAccountLabel();
   }
 
   show(w: number, h: number) {
+    this.size = { w, h };
     this.retext();
-    // BEFORE the layout below, not after: the account chip is `autoWidth`, so its box is
-    // whatever the current session's name makes it, and the pair cannot be placed until the
-    // text that sizes it is in.
-    this.refreshAccountLabel();
-    // Also before the layout, and for the same kind of reason: the CONTINUE row changes the
-    // routes block's HEIGHT, which the card below is sized from. Asked on every show rather
-    // than cached, so a run saved from the pause menu is on the front door the moment the
-    // player lands back on it.
+    // Asked on every show rather than cached, so a run saved from the pause menu is on the
+    // front door the moment the player lands back on it — and before the layout, because the
+    // CONTINUE card changes the column's height.
     this.saved = this.resumableRun();
     this.routes.setContinue(this.saved);
     this.applyPrimary();
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-
-    // The whole block is CENTRED as one unit, so a host that adds a row (quick-play) or a
-    // paragraph (the portal's data notice) stays centred instead of drifting down — and
-    // `menuLayer.ts`'s fit-scale then keeps it inside a landscape phone's viewport.
-    // Off `playBtn.view.visible`, not off `quickPlay`: a portal lobby with a resumable run
-    // draws CONTINUE in that slot instead, and reserving a row for a hidden button would
-    // leave a gap the size of PLAY at the top of the card (see `applyPrimary`).
-    const extra = this.playBtn.view.visible ? PLAY_H + 12 : 0;
-    // `routes.height`, not the `LOBBY_ROUTES_H` constant: the block grows by a row and a
-    // caption when it has a resumable run to offer (2026-09-17).
-    const routesH = this.routes.height;
-    // Top pad, the routes block, bottom pad — and nothing else: the utility row (ACCOUNT/
-    // SETTINGS) moved OUT of the card (2026-09-22), so this no longer owes it the 42+24 it
-    // used to. The bottom pad drops from 24 to 12 to match, for the same reason: 24 was sized
-    // for a 42px button's descender room, and the last thing in the card is a route row now.
-    const cardH = 12 + extra + routesH + 12;
-    // The utility row is ALWAYS below the card now, whether or not it is a pair — only the
-    // portal's notice+link block is conditional on that.
-    const below = UTILITY_GAP + UTILITY_ROW_H + (this.accountEntry ? 0 : NOTICE_BLOCK_H);
-    // ...but never so high that a maintenance banner would be drawn off the top. The banner
-    // is deliberately not part of the block (see its own comment), so the block owes it room
-    // rather than a row.
-    const top = Math.max(BANNER_RESERVE, cy - (HEADER_H + cardH + below) / 2);
-
-    this.title.position.set(cx, top);
-    this.subtitle.position.set(cx, top + 50);
-    // Anchored (0.5, 1) — BOTTOM-centre — so it grows UPWARD as it wraps and its last line
-    // always sits the same 16px above the title, instead of a two-line notice pushing into
-    // it. Positioned unconditionally, hidden or not, which is what lets `refreshBanner`
-    // change only the text and the visibility while the lobby is already on screen.
-    this.banner.position.set(cx, top - 16);
-    this.refreshBanner();
-
-    // The card itself is back to a constant width — it no longer has to grow for the utility
-    // pair, which sits below it now and centres itself independently (see `pairW` below).
-    const cardW = LOBBY_ROUTES_W + 40;
-    const cardTop = top + HEADER_H;
-    this.menuCard.layout(cardW, cardH);
-    this.menuCard.view.position.set(cx - cardW / 2, cardTop);
-
-    if (this.playBtn.view.visible) this.playBtn.view.position.set(cx - LOBBY_ROUTES_W / 2, cardTop + 12);
-    this.routes.layout(cx, cardTop + 12 + extra);
-
-    // The utility row — chrome, not a route, so it sits UNDER the card rather than inside it
-    // (design/10 "do not dim a door", read as: a control that is not a door does not belong
-    // on the same card as the ones that are). Same `autoWidth`-measured centring as before,
-    // only the y changed.
-    const pairW = this.accountEntry ? this.accountBtn.width + 10 + this.settingsBtn.width : this.settingsBtn.width;
-    const tertiaryY = cardTop + cardH + UTILITY_GAP;
-    if (this.accountEntry) {
-      // Centred as a PAIR from the measured widths, so a long name pushes SETTINGS right
-      // instead of overlapping it.
-      this.accountBtn.view.position.set(cx - pairW / 2, tertiaryY);
-      this.settingsBtn.view.position.set(cx - pairW / 2 + this.accountBtn.width + 10, tertiaryY);
-    } else {
-      // SETTINGS takes the whole row rather than staying in its half, so it does not read as
-      // one button that lost its pair.
-      this.settingsBtn.view.position.set(cx - 67, tertiaryY);
-      // The same slot SETTINGS sits in, not a separate one above the card — the two states
-      // (a button, or a label) occupy one row instead of two.
-      this.accountLabel.position.set(cx, tertiaryY + UTILITY_ROW_H / 2);
-      // Below the utility row, not at the screen bottom: `BannerHost` owns the bottom centre
-      // of a portal page, and a notice underneath an ad is a notice nobody reads.
-      this.dataNotice.position.set(cx, tertiaryY + UTILITY_ROW_H + 14);
-      // Under the notice it belongs to, not beside it: the notice wraps to two lines on a
-      // narrow portal frame and a link on the same row would collide with the second.
-      //
-      // A FIXED offset rather than `dataNotice.height`, which every other position in this
-      // file also avoids: reading `.height` on a Pixi `Text` forces a canvas text
-      // measurement, and these screens are unit-tested with no `document` at all. 44px
-      // clears three wrapped lines at this font size, one more than the longest locale needs.
-      this.privacyLink.position.set(cx, tertiaryY + UTILITY_ROW_H + 14 + 44);
-    }
+    const profile = this.lobbyProfile();
+    this.hero.setCharacter(profile?.skinId ?? null);
+    this.resources.set(profile?.materials ?? {});
+    this.resources.view.visible = profile !== null;
+    this.refreshBanner(false);
+    this.layout(w, h);
     this.view.visible = true;
   }
 
@@ -421,47 +271,138 @@ export class MainMenu {
     this.view.visible = false;
   }
 
+  /** Per-frame: the crystal, the hero's hover, the primary card's glow. Driven from the main
+   *  loop's `lobbyScreens` list, and a no-op while the lobby is hidden. */
+  update(dtMs: number): void {
+    if (!this.view.visible) return;
+    this.panel.update(dtMs);
+    this.hero.update(dtMs);
+    this.playBtn.update(dtMs);
+    this.routes.update(dtMs);
+  }
+
+  private layout(w: number, h: number): void {
+    const k = lobbyScale(w, h);
+    const edge = EDGE * k;
+
+    // Corners — pinned to the real viewport edges (the design space IS the viewport here,
+    // divided by the layer's fit scale).
+    this.topLeft.scale.set(k);
+    this.topLeft.position.set(edge, edge);
+    this.topRight.scale.set(k);
+    const settingsW = this.settingsBtn.width;
+    this.settingsBtn.view.position.set(-settingsW, 0);
+    this.resources.view.position.set(-settingsW - 10 - this.resources.width, (CHROME_H - this.resources.height) / 2);
+    this.topRight.position.set(w - edge, edge);
+
+    // The banner hangs under the corner row, full width, and owes the header its room.
+    const chromeBottom = edge + CHROME_H * k;
+    this.banner.style.wordWrapWidth = Math.min(700, w - 32);
+    this.banner.position.set(w / 2, chromeBottom + 8);
+    const reserve = this.banner.visible ? BANNER_RESERVE : 0;
+
+    // The column: right-aligned, below the corner row (and the banner), centred in what is
+    // left. Its height includes the portal's notice block when that is shown.
+    const colW = LOBBY_ROUTES_W * k;
+    const noticeH = this.accountEntry ? 0 : NOTICE_BLOCK_H;
+    const colH = this.routes.height + noticeH;
+    const colX = w - Math.max(20, w * 0.035) - colW;
+    const colTopMin = chromeBottom + 14 + reserve;
+    const colTop = colTopMin + Math.max(0, (h - 16 - colTopMin - colH * k) / 2);
+    this.column.scale.set(k);
+    this.column.position.set(colX, colTop);
+    this.playBtn.view.position.set(0, 0);
+    this.routes.layout();
+    this.routes.view.position.set(0, 0);
+    this.dataNotice.position.set(LOBBY_ROUTES_W / 2, this.routes.height + 12);
+    this.privacyLink.position.set(LOBBY_ROUTES_W / 2, this.routes.height + 12 + 44);
+    this.panel.setFocus({ x: colX, y: colTop, w: colW, h: colH * k });
+
+    // The painting, cropped so the dais sits in the middle of the room left of the column.
+    const leftRoom = colX - 16;
+    this.panel.setDaisTarget(Math.min(0.42, (leftRoom / 2) / w));
+    this.panel.layout(w, h);
+    const dais = this.panel.dais;
+
+    // The header — logo (or the text title) and the tagline — centred over the dais, kept
+    // clear of both screen edges and of the column.
+    const logoTex = getUiTexture(getLocale() === 'zh' ? 'lobby_logo_zh' : 'lobby_logo_en');
+    this.logo.visible = !!logoTex;
+    this.title.visible = !logoTex;
+    let headerH: number;
+    if (logoTex) {
+      this.logo.texture = logoTex;
+      this.logo.scale.set(LOGO_W / logoTex.width);
+      headerH = logoTex.height * (LOGO_W / logoTex.width);
+    } else {
+      headerH = 56;
+    }
+    this.subtitle.position.set(0, headerH + 2);
+    headerH += TAGLINE_H;
+    this.header.scale.set(k);
+    const half = (LOGO_W * k) / 2;
+    const headerX = Math.min(Math.max(dais.x, half + 16), Math.max(half + 16, leftRoom - half));
+    // Under the guest hint too when it is drawn: it hangs below the account chip, and the
+    // header is centred over the dais, which on a narrow screen puts it over that corner.
+    const hintH = this.guestHint.visible ? 16 * k : 0;
+    const headerTop = chromeBottom + 10 + hintH + reserve;
+    this.header.position.set(headerX, headerTop);
+    const headerBottom = headerTop + headerH * k;
+
+    // The hero, standing on the dais: sized against the painting so it stays in proportion
+    // to the stone, and never taller than the room between the header and the dais.
+    const room = (dais.y - headerBottom - 6) / (1 + 0.14);
+    const heroH = Math.max(0, Math.min(dais.paintingH * 0.3, w * 0.36, room));
+    const captionY = Math.min(dais.y + dais.paintingH * 0.075, h - 48 * k);
+    this.hero.layout(dais.x, dais.y, heroH, captionY, k);
+
+    sharpenText(this.view, k);
+  }
+
   /**
    * Re-read the maintenance flag and show or hide the notice. Called by `show()`, and
    * subscribed to the flag store by `gameWiring.ts` so a banner an operator sets while a
-   * player is sitting in this lobby appears without them having to navigate away and back —
-   * which is exactly the player the banner exists for.
-   *
-   * Nothing here re-lays anything out; see the field's own comment on why it cannot need to.
+   * player is sitting in this lobby appears without them navigating away — which is exactly
+   * the player it exists for. Re-lays the screen out when the banner comes or goes.
    */
-  refreshBanner() {
+  refreshBanner(relayout = true) {
     const text = publicFlag('ui.maintenanceBanner');
+    const wasVisible = this.banner.visible;
     this.banner.text = text;
-    // An empty banner is hidden rather than drawn as an empty `Text`: a zero-height node in
-    // the middle of the lobby is invisible either way, but a hidden one cannot be measured,
-    // hit-tested or picked up by a future layout that reads children.
+    // Hidden rather than an empty `Text`: a hidden node cannot be measured, hit-tested or
+    // picked up by a layout that reads children.
     this.banner.visible = text.length > 0;
+    if (relayout && this.size && this.banner.visible !== wasVisible) this.layout(this.size.w, this.size.h);
   }
 
-  /** Call after a login/register/logout so the chip reflects the current session
-   * without needing to re-`show()` the whole lobby. */
+  /** Call after a login/register/logout so the chip reflects the current session without
+   *  re-`show()`ing the whole lobby. */
   refreshAccountLabel() {
     const session = getSession();
-    const greeting = session ? t('mainMenu.greeting', { username: session.username }) : t('mainMenu.account');
-    // The BUTTON gets the bare name, the label gets the sentence. A chip 135px wide cannot
-    // hold "Cześć, {username}" in any locale that greets with more than a word — measured:
-    // six of the eight overflowed it with a five-letter name — and the greeting word is the
-    // part that carries no information the icon does not already give.
+    // The BUTTON gets the bare name, the label gets the greeting: a chip cannot hold
+    // "Cześć, {username}" — measured, six of eight locales overflowed with a five-letter name.
     this.accountBtn.setText(session ? clipName(session.username) : t('mainMenu.account'));
+    this.guestHint.text = t('mainMenu.guestHint');
+    this.guestHint.visible = this.accountEntry && session === null;
     // Without an account entry there is no "log in" state to advertise, so a guest gets no
-    // label at all — an empty row rather than a prompt the player cannot act on.
-    this.accountLabel.text = session ? greeting : '';
+    // label at all rather than a prompt the player cannot act on.
+    this.accountLabel.text = session ? t('mainMenu.greeting', { username: session.username }) : '';
     this.accountLabel.visible = !this.accountEntry && session !== null;
+    if (this.size) {
+      const k = lobbyScale(this.size.w, this.size.h);
+      sharpenText(this.topLeft, k);
+    }
   }
 
-  /** Re-apply every static label from the active locale — called on `show()` so a
-   * language change made in Settings (design/17-i18n.md) takes effect the next time
-   * this screen is opened, without needing a global re-render hook. */
+  /** Re-apply every static label from the active locale — called on `show()` so a language
+   *  change made in Settings (design/17) takes effect the next time the lobby opens. */
   private retext() {
     this.title.text = t('mainMenu.title');
     this.subtitle.text = t('mainMenu.subtitle');
     this.playBtn.setText(t('mainMenu.play'));
+    this.playBtn.setHint(t('mainMenu.playHint'));
     this.routes.retext();
+    this.hero.retext();
     this.settingsBtn.setText(t('mainMenu.settings'));
     this.dataNotice.text = t('auth.portalDataNotice');
     this.privacyLink.text = t('auth.privacyLink');

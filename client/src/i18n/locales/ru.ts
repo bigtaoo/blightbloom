@@ -27,6 +27,11 @@ export const ru: Translations<typeof en> = {
     account: 'ВХОД',
     settings: 'НАСТРОЙКИ',
     greeting: 'Привет, {username}',
+    playHint: 'Сразу в забег',
+    soloHint: 'В одиночку в глубины',
+    coopHint: 'Играйте с другими',
+    pvpHint: 'Бой с другими игроками',
+    guestHint: 'Войдите, чтобы сохранить',
   },
   loading: {
     boot: 'ЗАГРУЗКА',
