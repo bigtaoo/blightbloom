@@ -1,11 +1,15 @@
-import { Container, Sprite, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import {
-  BLUEPRINT_CATALOG, DAMAGE_TYPES, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS,
+  BLUEPRINT_CATALOG, PLAYER_BASE, WEAPON_SPECS, RARITY_TIERS,
   resolveLoadout, type WeaponBlueprint,
 } from '@dd/engine';
 import type { MetaState } from '../../meta';
-import { bankTotal, canAfford, isUnlocked, schematicCount, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
-import { Panel, Button } from '../ui/widgets';
+import { canAfford, isUnlocked, schematicCount, kindAlreadyStaged, purchasableBlueprints } from '../../meta';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import { MaterialBank } from '../ui/MaterialBank';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { BlueprintCard } from '../ui/BlueprintCard';
 import { CompareCard, buildCompareRows, equippedSpecOfKind } from '../ui/compareCard';
 import { pageCount, pageStartForIndex, clampPageStart, wrapIndex } from '../ui/paging';
@@ -14,20 +18,17 @@ import { getWeaponTexture } from '../../render/weaponSkins';
 import { getUiTexture } from '../../render/uiSkins';
 import { t, tName } from '../../i18n';
 import { ELEMENT_SHORT_KEY, SOURCE_KEY } from '../../i18n/contentKeys';
+import {
+  NARROW_SHEET_W, PAGER_H, PAGE_SIZE, SIDE_W, STORE_H, WIDE_SHEET_W,
+  compareCardW, forgeIsWide, layoutForgeSheet, type ForgeSheetParts,
+} from './forgeSheet';
 
-/** Cards shown at once (`BLUEPRINT_CATALOG` has more entries than fit above the fixed
- * bottom action bar — a real overflow found while wiring up real Buttons, since the old
- * text board just let everything spill past the screen uncorrected). Paged, not
- * scrolled — simpler, and the existing arrow-key browse cursor already gives a
- * keyboard-only way to reach any entry (it flips pages to keep the cursor visible).
- * `GRID_COLS` fills PAGE_SIZE into a 4×2 icon-card grid (below), not a vertical list. */
-const PAGE_SIZE = 8;
-const GRID_COLS = 4;
-const GRID_GAP_X = 14;
-const GRID_GAP_Y = 14;
-const GRID_ROWS = Math.ceil(PAGE_SIZE / GRID_COLS);
-const GRID_W = GRID_COLS * BlueprintCard.W + (GRID_COLS - 1) * GRID_GAP_X;
-const GRID_H = GRID_ROWS * BlueprintCard.H + (GRID_ROWS - 1) * GRID_GAP_Y;
+/** A blueprint's player-facing name: its weapon's, translated (design/09 — the catalogue id
+ *  is an asset key, never display text). */
+function blueprintName(id: string): string {
+  const spec = WEAPON_SPECS[BLUEPRINT_CATALOG[id]?.weaponId ?? id];
+  return spec ? tName(spec.nameKey) : id;
+}
 
 /**
  * The forge outpost (design/14, ROADMAP 2.2/2.3) — the page where the player spends
@@ -44,6 +45,14 @@ const GRID_H = GRID_ROWS * BlueprintCard.H + (GRID_ROWS - 1) * GRID_GAP_Y;
  * at the end of the loadout screen's weapon row. BACK returns to whichever one that was
  * (`RunState.forgeReturnPhase`), not to a fixed screen.
  *
+ * ## The sheet (design/10 "One shell for every menu", 2026-09-27)
+ *
+ * BACK is the shell's corner chip and everything else is one framed sheet: the material bank
+ * over the paged grid on the left, and a side column with what the run carries, the compare
+ * card, the forger and the store entry. Before, the same widgets floated on the backdrop in
+ * one centred stack, the compare card hid whenever the viewport was short, and the forger sat
+ * in the viewport's corner, shown only on a wide one. `forgeSheet.ts` holds the geometry.
+ *
  * Pure presentation: it reads a MetaState and renders it; all mutation goes through the
  * meta/forge transactions, driven via the `onX` callbacks below (same pattern as
  * PauseMenu.ts/Settings.ts) — the keyboard path (`ForgeInput`) drives the exact same
@@ -52,25 +61,31 @@ const GRID_H = GRID_ROWS * BlueprintCard.H + (GRID_ROWS - 1) * GRID_GAP_Y;
  */
 export class Forge {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.82, background: 'hub' });
-  private title: Text;
-  private infoText: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private rules = new Graphics();
+  private bank: MaterialBank;
+  private blueprintsHeading: Text;
+  private carryingHeading: Text;
+  /** The weapons the run would carry, by name — what decides whether a craft is a swap. */
+  private carryingText: Text;
+  private compareHeading: Text;
+  private storeCaption: Text;
   private hint: Text;
   private pageLabel: Text;
-  private backBtn: Button;
   private storeBtn: Button;
   private prevPageBtn: Button;
   private nextPageBtn: Button;
   /** Fixed pool of PAGE_SIZE icon cards, reused across pages (relabeled + shown/hidden
    * per render) rather than one card per catalog entry — keeps the widget count
-   * bounded regardless of how many blueprints exist. Laid out as a `GRID_COLS`-wide
-   * grid, not a vertical list (design/14 icon-card pass). */
+   * bounded regardless of how many blueprints exist. Laid out as a grid (design/14
+   * icon-card pass). */
   private rowCards: BlueprintCard[];
   private compareCard = new CompareCard();
-  /** The forger NPC (design/13's "Outpost/hub" NPC gap) — decorative, corner-anchored
-   * art, hidden until its texture is generated (uiSkins.ts's non-blocking preload) and
-   * hidden again on any viewport too narrow to fit it beside the centered row column
-   * without overlapping (mirrors renderCompareCard's own no-room-hide check below). */
+  /** The forger NPC (design/13's "Outpost/hub" NPC gap) — decorative art standing in the
+   * side column's free space, hidden until its texture is generated (uiSkins.ts's
+   * non-blocking preload) and whenever the column has too little room left for it. */
   private npcSprite = new Sprite();
 
   // Cached from the last render() call so the page-nav buttons (pure browse, no meta
@@ -108,27 +123,22 @@ export class Forge {
   storeEnabled = false;
 
   constructor() {
-    // `padding` guards against a real observed font-metrics clipping bug (see
-    // widgets.ts's Button doc comment for the full explanation).
-    this.title = new Text({ text: t('forge.title'), style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    // wordWrap: the buyable-blueprint list appended below (`Store (demo: free): ...`)
-    // has no fixed length — without wrapping it was a real bug, running off both
-    // edges of the screen as one unbroken line instead of staying inside the panel.
-    // breakWords: defense-in-depth for CJK locales (design/17-i18n.md) — Pixi's
-    // wordWrap only breaks at whitespace, so a translated line with no natural break
-    // point would otherwise overflow instead of wrapping; today's actual copy is
-    // already length-capped (see `buyableText` below) so this isn't a live bug, but
-    // costs nothing to guard against a future longer translated line doing the same.
-    this.infoText = new Text({ text: '', style: { fill: 0xcbd5e0, fontSize: 14, fontFamily: 'monospace', lineHeight: 20, align: 'center', padding: 24, wordWrap: true, wordWrapWidth: 760, breakWords: true } });
-    this.infoText.anchor.set(0.5, 0);
-    this.hint = new Text({ text: t('forge.hint'), style: { fill: 0x90cdf4, fontSize: 12, fontFamily: 'monospace', padding: 10 } });
-    this.hint.anchor.set(0.5, 1);
-    this.pageLabel = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 12, fontFamily: 'monospace', padding: 14 } });
-    this.pageLabel.anchor.set(0.5);
+    this.shell = new MenuShell({ title: t('forge.title'), back: t('forge.backButton') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
 
-    this.backBtn = new Button(t('forge.backButton'), { w: 90, h: 30, fontSize: 12, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
+    this.bank = new MaterialBank(t('forge.sectionMaterials'));
+    this.blueprintsHeading = new Text({ text: t('forge.sectionBlueprints'), style: menuText('heading') });
+    this.carryingHeading = new Text({ text: '', style: menuText('heading') });
+    this.carryingText = new Text({ text: '', style: menuText('body', { fill: MENU_COLORS.text }) });
+    this.compareHeading = new Text({ text: t('forge.sectionCompare'), style: menuText('heading') });
+    // The shelf line has no fixed length (it names up to three blueprints), so it wraps —
+    // and force-breaks, since a CJK translation has no spaces for Pixi's wrap to break at.
+    this.storeCaption = new Text({ text: '', style: menuText('caption') });
+    this.hint = new Text({ text: t('forge.hint'), style: menuText('caption', { wordWrap: false, align: 'center' }) });
+    this.hint.anchor.set(0.5, 0);
+    this.pageLabel = new Text({ text: '', style: menuText('label', { fill: MENU_COLORS.accent, fontSize: 12 }) });
+    this.pageLabel.anchor.set(0.5);
 
     this.rowCards = Array.from({ length: PAGE_SIZE }, (_, slot) => {
       const c = new BlueprintCard();
@@ -139,28 +149,29 @@ export class Forge {
       return c;
     });
 
-    this.prevPageBtn = new Button(t('forge.pagePrevButton'), { w: 80, h: 26, fontSize: 11 });
+    this.prevPageBtn = new Button(t('forge.pagePrevButton'), { w: 96, h: PAGER_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.prevPageBtn.onTap = () => this.turnPage(-1);
-    this.nextPageBtn = new Button(t('forge.pageNextButton'), { w: 80, h: 26, fontSize: 11 });
+    this.nextPageBtn = new Button(t('forge.pageNextButton'), { w: 96, h: PAGER_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.nextPageBtn.onTap = () => this.turnPage(1);
 
     // Plain `ui.tap`, unlike the craft rows: opening a screen always does something, so
     // there is no outcome for a `silent` widget to wait on. The cues that DEPEND on a
     // transaction now live one screen further in, on the store's own rows.
-    this.storeBtn = new Button(t('forge.storeButton'), { w: 160, h: 30, fontSize: 12 });
+    this.storeBtn = new Button(t('forge.storeButton'), { w: SIDE_W, h: STORE_H, fontSize: 14, ...MENU_BUTTONS.secondary });
     this.storeBtn.onTap = () => this.onStore?.();
 
     this.npcSprite.anchor.set(0.5, 1);
     this.npcSprite.visible = false;
 
-    this.view.addChild(
-      this.panel.view, this.npcSprite, this.title, this.backBtn.view,
-      this.infoText, this.storeBtn.view,
+    this.shell.content.addChild(
+      this.rules, this.bank.view, this.blueprintsHeading,
       ...this.rowCards.map((c) => c.view),
       this.prevPageBtn.view, this.pageLabel, this.nextPageBtn.view,
-      this.compareCard.view,
+      this.carryingHeading, this.carryingText, this.compareHeading, this.compareCard.view,
+      this.npcSprite, this.storeCaption, this.storeBtn.view,
       this.hint,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -186,42 +197,38 @@ export class Forge {
     this.lastMeta = m;
     this.lastW = w;
     this.lastH = h;
-    this.panel.layout(w, h);
 
     // Re-apply every label that isn't already rebuilt below on each call, so a
     // language change (design/17-i18n.md) takes effect next time the forge re-renders.
-    this.title.text = t('forge.title');
+    this.shell.setTitle(t('forge.title'));
+    this.shell.setBack(t('forge.backButton'));
+    this.bank.setTitle(t('forge.sectionMaterials'));
+    this.blueprintsHeading.text = t('forge.sectionBlueprints');
+    this.compareHeading.text = t('forge.sectionCompare');
     this.hint.text = t('forge.hint');
-    this.backBtn.setText(t('forge.backButton'));
     this.prevPageBtn.setText(t('forge.pagePrevButton'));
     this.nextPageBtn.setText(t('forge.pageNextButton'));
     this.storeBtn.setText(t('forge.storeButton'));
 
     // Material bank — the five elemental kinds (design/14), summed across every rolled tier.
-    const bank = DAMAGE_TYPES.map((e) => `${t(ELEMENT_SHORT_KEY[e])} ${bankTotal(m, e)}`).join('   ');
+    this.bank.render(m);
 
-    // Empty board text names the ACTUAL default pair (resolveLoadout's fill-by-kind
-    // rule, ENGINE_VERSION 45) instead of the old "(none → auto pistol)" — that string
-    // outlived the behaviour it described, and it was the only place the forge told the
-    // player what an empty loadout means.
-    const loadout = m.loadout.length
-      ? m.loadout.join(', ')
+    // An empty loadout names the ACTUAL default pair (resolveLoadout's fill-by-kind rule,
+    // ENGINE_VERSION 45) rather than reading as "nothing" — the one place the forge tells
+    // the player what an empty loadout means.
+    this.carryingHeading.text = t('forge.sectionCarrying', { count: m.loadout.length, max: PLAYER_BASE.weaponSlots });
+    this.carryingText.text = m.loadout.length
+      ? m.loadout.map(blueprintName).join(' + ')
       : t('forge.noneStarterPair', { weapons: PLAYER_BASE.startWeapons.map((w) => tName(w.nameKey)).join(' + ') });
+
+    // Named only when short; past 3 it collapses to a bare count — `buyable` can list every
+    // unlocked-but-uncrafted blueprint at once (a real bug: unbounded, it used to run off
+    // both edges of the screen as one line). A content-independent worst-case length is
+    // safer than trusting wordWrap alone, given the Pixi measurement quirk widgets.ts's
+    // Button `padding` comment records.
     const buyable = purchasableBlueprints(m);
-    // Named only when short; past 3 it collapses to a bare count instead of trying to
-    // fit a variable-length name list — `buyable` can list every unlocked-but-uncrafted
-    // blueprint at once (a real bug: unbounded, it used to run off both edges of the
-    // screen as one line). A length cap alone isn't enough of a guarantee here: this
-    // codebase has already hit a real Pixi word-wrap measurement quirk in this exact
-    // sandboxed environment (see widgets.ts's Button `padding` comment) where Pixi's
-    // own width numbers under-report what the glyphs actually render at, so a fixed,
-    // content-independent worst-case length is safer than trusting wordWrap to clip a
-    // longer line to its declared width.
-    const buyableText = buyable.length <= 3 ? buyable.join(', ') : t('forge.moreAvailable', { count: buyable.length });
-    this.infoText.text =
-      t('forge.materialsLine', { bank }) + '\n' +
-      t('forge.loadoutLine', { loadout, count: m.loadout.length, max: PLAYER_BASE.weaponSlots }) +
-      (buyable.length ? '\n' + t('forge.storeLine', { items: buyableText }) : '');
+    const buyableText = buyable.length <= 3 ? buyable.map(blueprintName).join(', ') : t('forge.moreAvailable', { count: buyable.length });
+    this.storeCaption.text = t('forge.storeCaption', { items: buyableText });
 
     // Blueprint cards — icon, name, cost, status. The browse cursor (moveSelection /
     // a card tap) is a bright border instead of the old leading '»' glyph (design/14
@@ -270,74 +277,27 @@ export class Forge {
     });
     this.pageLabel.text = t('forge.pageLabel', { current: Math.floor(this.pageStart / PAGE_SIZE) + 1, total: pageCount(this.order.length, PAGE_SIZE) });
 
-    // Layout: title top, back button top-left corner, info block, paged blueprint rows
-    // filling the middle, and a hint line pinned to the bottom. The hint is anchored to
-    // `h` rather than flowed down from the grid above it — a flowed bottom row, merely
-    // clamped once it overflowed, is what drew START RUN on top of the still-there weapon
-    // cards on a landscape phone (the "screen is a mess" report; `viewportFit.test.ts`'s
-    // header has the whole account). The compare card hides itself if there is no longer
-    // room for it above that line, rather than overlapping it.
-    const cx = w / 2;
-    const halfGrid = GRID_W / 2;
-    let y = Math.max(20, h * 0.05);
-    this.title.position.set(cx, y);
-    this.backBtn.view.position.set(16, 16);
-    y += 44;
-    this.infoText.style.wordWrapWidth = Math.min(760, w - 80);
-    this.infoText.position.set(cx, y);
-    y += this.infoText.height + 14;
     // Store button: shown only where this build may sell AND there is something left to
-    // buy. Right-aligned with the grid below it — reserves its own row so it never
-    // overlaps the first blueprint card.
+    // buy (its caption goes with it).
     this.storeBtn.view.visible = this.storeEnabled && buyable.length > 0;
-    if (this.storeBtn.view.visible) {
-      this.storeBtn.view.position.set(cx + halfGrid - 160, y);
-      y += 36;
-    }
-    // Blueprint grid — `GRID_COLS` cards per row, wrapping into `GRID_ROWS` (design/14
-    // icon-card pass, replaces the old one-Button-per-row vertical list).
-    this.rowCards.forEach((card, slot) => {
-      const col = slot % GRID_COLS;
-      const row = Math.floor(slot / GRID_COLS);
-      card.view.position.set(
-        cx - halfGrid + col * (BlueprintCard.W + GRID_GAP_X),
-        y + row * (BlueprintCard.H + GRID_GAP_Y),
-      );
-    });
-    y += GRID_H + 8;
-    this.prevPageBtn.view.position.set(cx - halfGrid, y);
-    this.pageLabel.position.set(cx, y + 13);
-    this.nextPageBtn.view.position.set(cx + halfGrid - 80, y);
-    y += 40;
+    const wide = forgeIsWide(w);
+    this.renderCompareCard(m, compareCardW(wide));
 
-    // The bottom of this screen is the hint line and nothing else since the START RUN bar
-    // moved to `Loadout.ts` — but the reservation it used to make is still worth keeping,
-    // because the compare card below flows down into whatever is left.
-    const footerY = h - 34;
-    this.hint.position.set(cx, h - 6);
-
-    // Forger NPC — corner decoration, right of the centered blueprint grid. Only
-    // shown once its art exists AND the viewport is wide enough to fit it without
-    // overlapping the grid (same "hide if no room" shape as the compare card).
-    const npcTex = getUiTexture('npc_forger');
-    const npcRightMargin = w - (cx + 300);
-    if (npcTex && npcRightMargin > 130) {
-      this.npcSprite.texture = npcTex;
-      const targetH = Math.min(220, h * 0.32);
-      this.npcSprite.scale.set(targetH / npcTex.height);
-      this.npcSprite.position.set(w - 24 - (npcTex.width * this.npcSprite.scale.x) / 2, footerY - 6);
-      this.npcSprite.visible = true;
-    } else {
-      this.npcSprite.visible = false;
-    }
-
-    const cardShown = this.renderCompareCard(m, cx, y);
-    // Measured against the hint line, which is the lowest thing this screen draws — a card
-    // that no longer fits above it hides rather than overlapping it, the same "give way
-    // instead of stacking" rule the action bar used to get.
-    if (cardShown && y + this.compareCard.view.height + 16 > footerY) this.compareCard.hide();
-
+    this.shell.layout(w, h, wide ? WIDE_SHEET_W : NARROW_SHEET_W, layoutForgeSheet(this.parts(), wide));
     this.view.visible = true;
+  }
+
+  /** The widgets `layoutForgeSheet` places. */
+  private parts(): ForgeSheetParts {
+    return {
+      bank: this.bank, blueprintsHeading: this.blueprintsHeading, cards: this.rowCards,
+      prevPageBtn: this.prevPageBtn, nextPageBtn: this.nextPageBtn, pageLabel: this.pageLabel,
+      carryingHeading: this.carryingHeading, carryingText: this.carryingText,
+      compareHeading: this.compareHeading, compareCard: this.compareCard,
+      npc: this.npcSprite, npcTexture: getUiTexture('npc_forger'),
+      storeCaption: this.storeCaption, storeBtn: this.storeBtn,
+      hint: this.hint, rules: this.rules,
+    };
   }
 
   /** design/10's loadout-detail decision: the browse cursor's blueprint vs whichever
@@ -347,7 +307,7 @@ export class Forge {
    * slot, instead of hiding the card as if that slot were empty. Hidden only when there
    * genuinely is no same-kind comparator (a loadout holding two of the OTHER kind) —
    * nothing useful to diff against. */
-  private renderCompareCard(m: MetaState, cx: number, y: number): boolean {
+  private renderCompareCard(m: MetaState, cardW: number): void {
     const candidateId = this.order[this.selectedIndex];
     const candidate = candidateId ? WEAPON_SPECS[BLUEPRINT_CATALOG[candidateId]!.weaponId] : undefined;
     const effectiveLoadout = resolveLoadout(m.loadout).map((w) => w.name);
@@ -356,18 +316,22 @@ export class Forge {
 
     if (!candidate || !equipped || !rows) {
       this.compareCard.hide();
-      return false;
+      return;
     }
     this.compareCard.set({
-      w: Math.min(420, cx * 2 - 48),
+      w: cardW,
       leftName: t('forge.equippedHeader', { id: tName(equipped.nameKey) }),
       leftColor: RARITY_COLORS[RARITY_TIERS[equipped.rarity].colorKey],
       rightName: t('forge.candidateHeader', { id: tName(candidate.nameKey) }),
       rightColor: RARITY_COLORS[RARITY_TIERS[candidate.rarity].colorKey],
       rows,
     });
-    this.compareCard.view.position.set(cx - this.compareCard.view.width / 2, y);
-    return true;
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide() {

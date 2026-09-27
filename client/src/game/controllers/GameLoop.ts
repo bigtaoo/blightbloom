@@ -45,6 +45,9 @@ export interface GameLoopDeps {
   floorCardPrompt: FloorCardPrompt;
   /** Screens with their own per-frame clock outside a run (party poll, Matchmaking timers). */
   lobbyScreens: readonly { update(dt: number): void }[];
+  /** Every other full-screen menu, for its backdrop's motion (`ui/MenuShell.ts`) — also
+   *  while paused, since the pause menu is one. Each no-ops while hidden. */
+  menuScreens: readonly { animate(dt: number): void }[];
   /** `layers.world` and the app ticker, each narrowed to the one knob `powerBudget.ts`
    *  writes: the world is not DRAWN outside a run, and the render rate is capped. */
   world: WorldLayerLike;
@@ -187,22 +190,18 @@ export class GameLoop {
     if (phase === 'playing') {
       if (this.host.isOnline()) this.advanceOnline(dt);
       else this.advanceSim(dt);
-    } else if (phase === 'paused') {
-      // Genuinely frozen (offline-only, see Game.pause()'s doc comment): advanceSim/
-      // advanceOnline are never called, so `acc` simply doesn't move — the same
-      // no-catch-up-burst property hitStopMs already relies on. fx keeps fading so
-      // the frozen frame doesn't look inert.
-      this.updateFx(dt);
-      this.deps.scene.interpolate(1, dt);
-    } else {
-      // Menu / result / squad lobby: freeze the last frame, keep fx fading. Confirm is
-      // now driven entirely by Screens.ts's own Button taps (Game.ts wires them), not
-      // polled here. Each `lobbyScreens` entry no-ops when hidden. (Matchmaking was never
-      // driven until 2026-09-26 — its "Ns elapsed" sat at 0s for the whole queue.)
-      this.updateFx(dt);
-      this.deps.scene.interpolate(1, dt);
-      for (const screen of this.deps.lobbyScreens) screen.update(dt);
+      return;
     }
+    // Paused is genuinely frozen (offline-only, see Game.pause()'s doc comment): advanceSim/
+    // advanceOnline never run, so `acc` does not move — the no-catch-up-burst property
+    // hitStopMs relies on. Menu / result / squad lobby freeze the last frame the same way.
+    // fx keeps fading so the frozen frame doesn't look inert, and every menu backdrop moves.
+    this.updateFx(dt);
+    this.deps.scene.interpolate(1, dt);
+    for (const screen of this.deps.menuScreens) screen.animate(dt);
+    // Lobby clocks run outside a run only. Confirm is driven by Screens.ts's own Button taps,
+    // not polled here. (Matchmaking was never driven until 2026-09-26 — "0s elapsed" forever.)
+    if (phase !== 'paused') for (const screen of this.deps.lobbyScreens) screen.update(dt);
   }
 
   private advanceSim(dt: number): void {

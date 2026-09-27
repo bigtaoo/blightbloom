@@ -11,6 +11,10 @@ import { PartyRequestError, type PartyInfo } from '../../net/party';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { getPartyPresence, resetPartyPresence } from '../../platform/partyPresence';
 import { useLocale } from '../../i18n/loadLocale';
+import { installFakeTextCanvas } from './fakeTextCanvas';
+
+// The sheet measures its wrapped lines (`Text.height`), which needs a 2D context.
+installFakeTextCanvas();
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -46,8 +50,8 @@ function makeScreen(api: PartyApi, playerId = 'me') {
 // Pixi widgets with no public getters — `as any` on a private-only surface, never on
 // engine/sim state.
 function privateOf(s: PartyScreen) {
-  return s as unknown as {
-    title: { text: string };
+  const shell = (s as unknown as { shell: { sheet: { title: { text: string } }; backBtn: { onTap: (() => void) | null } } }).shell;
+  const self = s as unknown as {
     createBtn: { view: { visible: boolean }; label: { text: string }; onTap: () => void };
     createCoopBtn: { view: { visible: boolean }; label: { text: string }; onTap: () => void };
     joinBtn: { view: { visible: boolean }; label: { text: string } };
@@ -56,7 +60,10 @@ function privateOf(s: PartyScreen) {
     codeText: { text: string };
     inputOverlay: { open(opts: Record<string, unknown>): void };
     openJoinInput(): void;
-    membersText: { text: string };
+    codeHeading: { text: string; visible: boolean };
+    seatTexts: { text: string; visible: boolean }[];
+    waitingText: { text: string; visible: boolean };
+    introText: { text: string; visible: boolean };
     statusText: { text: string };
     doCreate(mode?: 'coop' | 'pvp'): Promise<void>;
     doJoin(code: string): Promise<void>;
@@ -64,6 +71,14 @@ function privateOf(s: PartyScreen) {
     doLeave(): Promise<void>;
     pollOnce(): Promise<void>;
   };
+  // Defined on the screen itself rather than on a wrapper: the private methods above are called
+  // through this object, and must write their state to the screen, not to a stand-in.
+  return Object.defineProperties(self, {
+    title: { get: () => shell.sheet.title, configurable: true },
+    backBtn: { get: () => shell.backBtn, configurable: true },
+    // The seat rows showing, one line each: what the old single roster text held.
+    membersText: { get: () => ({ text: self.seatTexts.filter((t) => t.visible).map((t) => t.text).join('\n') }), configurable: true },
+  }) as typeof self & { title: { text: string }; backBtn: { onTap: (() => void) | null }; membersText: { text: string } };
 }
 
 afterEach(() => resetLocaleForTests());
@@ -461,7 +476,8 @@ describe('PartyScreen — i18n (design/17-i18n.md)', () => {
     const s = makeScreen(api);
     await privateOf(s).doCreate();
     const p = privateOf(s);
-    expect(p.codeText.text).toBe('邀请码：482913');
+    expect(p.codeHeading.text).toBe('邀请码');
+    expect(p.codeText.text).toBe('482913');
     expect(p.membersText.text).toContain('你');
   });
 
@@ -594,5 +610,82 @@ describe('PartyScreen.joinWithCode — an accepted portal invite', () => {
     makeScreen(api).joinWithCode('   ');
     await Promise.resolve();
     expect(api.joinParty).not.toHaveBeenCalled();
+  });
+});
+
+describe('PartyScreen — the sheet (design/10 "One shell for every menu")', () => {
+  type Box = { view: { visible: boolean; position: { x: number; y: number } }; width: number };
+  type Seat = { text: string; visible: boolean; position: { x: number; y: number }; style: { fill: unknown } };
+  const sheetOf = (s: PartyScreen) => s as unknown as {
+    shell: { sheet: { height: number }; backBtn: { onTap: (() => void) | null } };
+    createCoopBtn: Box; createBtn: Box; joinBtn: Box; startBtn: Box; leaveBtn: Box;
+    seatTexts: Seat[]; waitingText: { visible: boolean }; introText: { visible: boolean; text: string };
+    codeText: { visible: boolean };
+  };
+
+  it('out of a party: says what the screen is for, then the three ways in, full width and stacked', () => {
+    const q = sheetOf(makeScreen(fakeApi()));
+    expect(q.introText.visible).toBe(true);
+    expect(q.introText.text).toContain('friends');
+    expect(q.codeText.visible).toBe(false);
+    const order = [q.createCoopBtn, q.createBtn, q.joinBtn];
+    for (const b of order) expect(b.width).toBe(order[0]!.width);
+    for (let i = 1; i < order.length; i++) expect(order[i]!.view.position.y).toBeGreaterThan(order[i - 1]!.view.position.y);
+  });
+
+  it('BACK is the shell chip, and fires onBack', () => {
+    const s = makeScreen(fakeApi());
+    const back = vi.fn();
+    s.onBack = back;
+    sheetOf(s).shell.backBtn.onTap!();
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws a row per seat, the empty ones as open, and lays a squad two by two', async () => {
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue({ ...PARTY, members: ['me', 'bob'] }) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate('pvp');
+    const seats = sheetOf(s).seatTexts;
+    expect(seats.filter((t) => t.visible)).toHaveLength(4);
+    expect(seats.map((t) => t.text)).toEqual(['\u2605 you', '  bob', 'open seat', 'open seat']);
+    // Two columns: seats 0/1 share a row, seat 2 starts the next one under seat 0.
+    expect(seats[1]!.position.y).toBe(seats[0]!.position.y);
+    expect(seats[1]!.position.x).toBeGreaterThan(seats[0]!.position.x);
+    expect(seats[2]!.position.x).toBe(seats[0]!.position.x);
+    expect(seats[2]!.position.y).toBeGreaterThan(seats[0]!.position.y);
+    // Open seats read quieter than taken ones.
+    expect(seats[2]!.style.fill).not.toBe(seats[1]!.style.fill);
+  });
+
+  it('a co-op room is two seats in one column', async () => {
+    const api = fakeApi({ createParty: vi.fn().mockResolvedValue(COOP_PARTY) });
+    const s = makeScreen(api);
+    await privateOf(s).doCreate('coop');
+    const seats = sheetOf(s).seatTexts;
+    expect(seats.filter((t) => t.visible)).toHaveLength(2);
+    expect(seats[1]!.position.x).toBe(seats[0]!.position.x);
+    expect(seats[1]!.position.y).toBeGreaterThan(seats[0]!.position.y);
+  });
+
+  it('a member sees who the room waits on where the leader sees START', async () => {
+    const joined: PartyInfo = { ...PARTY, leaderId: 'alice', members: ['alice', 'me'] };
+    const member = makeScreen(fakeApi({ joinParty: vi.fn().mockResolvedValue(joined) }));
+    await privateOf(member).doJoin('482913');
+    expect(sheetOf(member).waitingText.visible).toBe(true);
+    expect(sheetOf(member).startBtn.view.visible).toBe(false);
+
+    const leader = makeScreen(fakeApi({ createParty: vi.fn().mockResolvedValue(PARTY) }));
+    await privateOf(leader).doCreate('pvp');
+    expect(sheetOf(leader).waitingText.visible).toBe(false);
+    expect(sheetOf(leader).startBtn.view.visible).toBe(true);
+    expect(sheetOf(leader).leaveBtn.view.position.y).toBeGreaterThan(sheetOf(leader).startBtn.view.position.y);
+  });
+
+  it('a one-line error does not resize the sheet', async () => {
+    const s = makeScreen(fakeApi({ joinParty: vi.fn().mockRejectedValue(new Error('not found')) }));
+    const before = sheetOf(s).shell.sheet.height;
+    await privateOf(s).doJoin('000000');
+    expect(privateOf(s).statusText.text).toBe('Invalid or full code.');
+    expect(sheetOf(s).shell.sheet.height).toBe(before);
   });
 });

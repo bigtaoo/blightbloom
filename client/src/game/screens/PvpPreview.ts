@@ -1,6 +1,10 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import { buildArenaSpecs, PVP_SCALE_FACTOR, type SkinId } from '@dd/engine';
-import { Panel, Button } from '../ui/widgets';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { SHEET_PAD, SHEET_TITLE_H, placeHeading } from '../ui/MenuSheet';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { PlayerCard } from '../ui/PlayerCard';
 import { WeaponCard } from '../ui/WeaponCard';
 import { WeaponSlotChip } from '../ui/WeaponSlotChip';
@@ -22,6 +26,13 @@ const ARENA_DISPLAY_NAME: Record<ArenaId, string> = {
 // show it honestly rather than guessing.
 const REAL_ARENA_ID: ArenaId = 'arena_launch';
 
+/** The sheet's width and content width; the build box's inset, and the QUEUE button. */
+const SHEET_W = 440;
+const CONTENT_W = SHEET_W - SHEET_PAD * 2;
+const BOX_PAD = 14;
+const BUILD_BOX_H = BOX_PAD + PlayerCard.HEIGHT + 12 + WeaponCard.HEIGHT + BOX_PAD;
+const QUEUE_H = 50;
+
 /**
  * PvP match preview (design/10 open question "PvP preset-pick has no UI yet", 15) —
  * shown between the lobby's PVP SOLO QUEUE row and the Matchmaking screen, so a
@@ -32,12 +43,22 @@ const REAL_ARENA_ID: ArenaId = 'arena_launch';
  * rather than an actual picker; the map/weapon cards it reuses are exactly the widgets
  * a real picker would need, so adding a second preset later is additive here, not a
  * rewrite. Pure presentation: Game owns what QUEUE/BACK actually do.
+ *
+ * Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+ * sheet: ARENA (the map and its size), YOUR BUILD (the character and the whole kit, in a box of
+ * their own), the fairness note, then QUEUE across the sheet in the lobby's PvP red. BACK is the
+ * shell's corner chip.
  */
 export class PvpPreview {
   readonly view = new Container();
-  private readonly panel = new Panel({ alpha: 0.82, background: 'hub' });
-  private readonly card = new Panel({ radius: 18, color: 0x05070c, alpha: 0.62, borderColor: 0x3a4a5c, borderAlpha: 0.5 });
-  private readonly title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private readonly rules = new Graphics();
+  /** The box the build sits in — drawn, not pressed. */
+  private readonly buildBox = new Graphics();
+  private readonly arenaHeading: Text;
+  private readonly buildHeading: Text;
   private readonly mapLine: Text;
   private readonly fairnessNote: Text;
   private readonly playerCard = new PlayerCard();
@@ -48,31 +69,28 @@ export class PvpPreview {
   // only `weapons[0]` would now under-report the kit by half.
   private readonly weaponSlotChip = new WeaponSlotChip();
   private readonly queueBtn: Button;
-  private readonly backBtn: Button;
 
   onQueue: (() => void) | null = null;
   onBack: (() => void) | null = null;
 
   constructor() {
-    this.title = new Text({ text: '', style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 12 } });
-    this.title.anchor.set(0.5, 0);
-    this.mapLine = new Text({ text: '', style: { fill: 0xcbd5e0, fontSize: 15, fontFamily: 'monospace', padding: 6 } });
-    this.mapLine.anchor.set(0.5, 0);
-    this.fairnessNote = new Text({
-      text: '',
-      style: { fill: 0x94a3b8, fontSize: 12, fontFamily: 'monospace', align: 'center', wordWrap: true, wordWrapWidth: 340, breakWords: true, padding: 6 },
-    });
+    this.shell = new MenuShell({ title: t('pvpPreview.title'), back: t('pvpPreview.back') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
+    this.arenaHeading = new Text({ text: '', style: menuText('heading') });
+    this.buildHeading = new Text({ text: '', style: menuText('heading') });
+    this.mapLine = new Text({ text: '', style: menuText('value') });
+    this.fairnessNote = new Text({ text: '', style: menuText('caption', { fontSize: 12, lineHeight: 16, align: 'center', wordWrapWidth: CONTENT_W }) });
     this.fairnessNote.anchor.set(0.5, 0);
 
-    this.queueBtn = new Button('', { w: 220, h: 48, fontSize: 18, color: 0x9b2c2c, borderColor: 0xfc8181 });
+    this.queueBtn = new Button('', { w: CONTENT_W, h: QUEUE_H, fontSize: 18, ...MENU_BUTTONS.pvp });
     this.queueBtn.onTap = () => this.onQueue?.();
-    this.backBtn = new Button('', { w: 140, h: 34, fontSize: 13, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
 
-    this.view.addChild(
-      this.panel.view, this.card.view, this.title, this.mapLine, this.fairnessNote,
-      this.playerCard.view, this.weaponCard.view, this.weaponSlotChip.view, this.queueBtn.view, this.backBtn.view,
+    this.shell.content.addChild(
+      this.rules, this.buildBox, this.arenaHeading, this.mapLine, this.buildHeading,
+      this.playerCard.view, this.weaponCard.view, this.weaponSlotChip.view, this.fairnessNote, this.queueBtn.view,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -83,35 +101,41 @@ export class PvpPreview {
    *  them with (`buildArenaSpecs`, the exact function GameState.buildSeat calls). */
   show(w: number, h: number, skinId: string): void {
     this.retext(skinId);
-    this.panel.layout(w, h);
+    this.shell.layout(w, h, SHEET_W, this.layout());
+    this.view.visible = true;
+  }
 
-    const cx = w / 2;
-    let y = Math.max(30, h * 0.08);
-    this.title.position.set(cx, y);
-    y += 46;
-    this.mapLine.position.set(cx, y);
-    y += 28;
+  /** Flow the sheet top to bottom and return its height (title plate and padding included). */
+  private layout(): number {
+    this.rules.clear();
+    let y = placeHeading(this.arenaHeading, this.rules, 0, 0, CONTENT_W);
+    this.mapLine.position.set(0, y);
+    y += 26 + 12;
 
-    const cardW = Math.min(360, w - 40);
-    const cardTop = y;
-    const cardH = 16 + PlayerCard.HEIGHT + 12 + WeaponCard.HEIGHT + 16;
-    this.card.layout(cardW, cardH);
-    this.card.view.position.set(cx - cardW / 2, cardTop);
-    this.playerCard.view.position.set(cx - cardW / 2 + 16, cardTop + 16);
-    const weaponRowY = cardTop + 16 + PlayerCard.HEIGHT + 12;
-    this.weaponCard.view.position.set(cx - cardW / 2 + 16, weaponRowY);
+    y = placeHeading(this.buildHeading, this.rules, 0, y, CONTENT_W);
+    const c = MENU_COLORS;
+    this.buildBox.clear()
+      .roundRect(0, y, CONTENT_W, BUILD_BOX_H, 10).fill({ color: c.field, alpha: 0.9 })
+      .roundRect(0, y, CONTENT_W, BUILD_BOX_H, 10).stroke({ color: c.fieldBorder, width: 1 });
+    this.playerCard.view.position.set(BOX_PAD, y + BOX_PAD);
+    const weaponRowY = y + BOX_PAD + PlayerCard.HEIGHT + 12;
+    this.weaponCard.view.position.set(BOX_PAD, weaponRowY);
     // Right of the active card, same row and same gap as HudView's own idle-slot chip
     // (+2 to line up with the WeaponCard's icon chip, which starts at local y=2).
-    this.weaponSlotChip.view.position.set(cx - cardW / 2 + 16 + this.weaponCard.estimatedWidth() + 10, weaponRowY + 2);
-    y = cardTop + cardH + 16;
+    this.weaponSlotChip.view.position.set(BOX_PAD + this.weaponCard.estimatedWidth() + 10, weaponRowY + 2);
+    y += BUILD_BOX_H + 12;
 
-    this.fairnessNote.position.set(cx, y);
-    y += 50;
-    this.queueBtn.view.position.set(cx - 110, y);
-    y += 64;
-    this.backBtn.view.position.set(cx - 70, y);
+    this.fairnessNote.position.set(CONTENT_W / 2, y);
+    y += Math.max(32, this.fairnessNote.height) + 12;
+    this.queueBtn.view.position.set(0, y);
+    y += QUEUE_H;
+    return SHEET_TITLE_H + 18 + y + SHEET_PAD;
+  }
 
-    this.view.visible = true;
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide(): void {
@@ -122,11 +146,13 @@ export class PvpPreview {
     const built = buildArenaSpecs('landing_basic', skinId as SkinId);
     const rooms = ARENA_CATALOG[REAL_ARENA_ID].rooms.length;
 
-    this.title.text = t('pvpPreview.title');
+    this.shell.setTitle(t('pvpPreview.title'));
+    this.shell.setBack(t('pvpPreview.back'));
+    this.arenaHeading.text = t('pvpPreview.sectionArena');
+    this.buildHeading.text = t('pvpPreview.sectionBuild');
     this.mapLine.text = t('pvpPreview.map', { name: ARENA_DISPLAY_NAME[REAL_ARENA_ID], rooms });
     this.fairnessNote.text = t('pvpPreview.fairnessNote', { factor: PVP_SCALE_FACTOR });
     this.queueBtn.setText(t('pvpPreview.queue'));
-    this.backBtn.setText(t('pvpPreview.back'));
 
     // Full pools (this IS the character's PvP-scaled max, not a live run) — the same
     // scaled build GameState.buildSeat gives a real arena seat.

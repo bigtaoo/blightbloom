@@ -1,6 +1,12 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { ControlLayout, SettingsState } from '../../settings';
-import { Panel, Slider, Button } from '../ui/widgets';
+import { Button } from '../ui/widgets';
+import { Slider } from '../ui/Slider';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
+import { SHEET_W, COL_W, CHIP_H, WIDE_BUTTON_H, layoutSettingsSheet, type OptionRow, type SliderRow } from './settingsSheet';
+import { getUiTexture } from '../../render/uiSkins';
 import { t, LOCALES, type Locale } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 import { QUALITY_SETTINGS, activeQuality, type QualitySetting } from '../../render/quality';
@@ -10,7 +16,7 @@ function nextControlLayout(current: ControlLayout): ControlLayout {
   return current === 'standard' ? 'mirrored' : 'standard';
 }
 
-/** Same tap-to-cycle shape as the language and control-layout buttons — four values, so a
+/** Same tap-to-cycle shape as the language and control-layout chips — four values, so a
  *  picker widget would be more ceremony than the setting is worth (see `nextLocale`). */
 function nextQuality(current: QualitySetting): QualitySetting {
   const i = QUALITY_SETTINGS.indexOf(current);
@@ -25,13 +31,13 @@ function nextFrameRate(current: FrameRateSetting): FrameRateSetting {
 }
 
 /**
- * The button's value half. `'auto'` reports what auto actually RESOLVED to, not just that it is
- * auto: a player whose phone was downgraded by the frame watchdog (`render/qualityWatchdog.ts`)
+ * The quality chip's value. `'auto'` reports what auto actually RESOLVED to, not just that it
+ * is auto: a player whose phone was downgraded by the frame watchdog (`render/qualityWatchdog.ts`)
  * would otherwise see "AUTO" on a screen that is visibly running the low tier, with nothing
  * anywhere connecting the two. The live mirror is the only place that knows — the setting alone
  * cannot answer it.
  */
-function qualityLabel(setting: QualitySetting): string {
+function qualityValue(setting: QualitySetting): string {
   if (setting === 'high') return t('settings.qualityHigh');
   if (setting === 'medium') return t('settings.qualityMedium');
   if (setting === 'low') return t('settings.qualityLow');
@@ -41,7 +47,7 @@ function qualityLabel(setting: QualitySetting): string {
   return t('settings.qualityAuto');
 }
 
-/** Display name for the LANGUAGE toggle — always shown in that language's own name
+/** Display name for the LANGUAGE chip — always shown in that language's own name
  * (not translated), same convention most apps use for a language picker. */
 const LOCALE_NAMES: Record<Locale, string> = {
   en: 'English',
@@ -64,23 +70,49 @@ function nextLocale(current: Locale): Locale {
   return LOCALES[(i + 1) % LOCALES.length]!;
 }
 
+/** Minimum width of a value chip — `autoWidth` grows it for a longer translated value. */
+const CHIP_MIN_W = 132;
+
 /**
- * The settings screen (design/10 "Settings incl. SFX/music volume"). Pure
- * presentation: it renders a `SettingsState` and reports changes via `onChange`; Game
- * owns persistence (SettingsStore) and applying volume to the AudioBus. Reached from
- * the forge outpost only — there's no in-run pause menu yet (design/10 open question).
+ * The settings screen (design/10 "Settings incl. SFX/music volume"), on the menu shell
+ * (design/10 "One shell for every menu", 2026-09-27). Pure presentation: it renders a
+ * `SettingsState` and reports changes via `onChange`; Game owns persistence (SettingsStore) and
+ * applying volume to the AudioBus. Reached from the lobby's corner chip and the pause menu.
+ *
+ * ## The layout
+ *
+ * One framed sheet, two columns of titled sections: AUDIO on the left (three volumes and MUTE),
+ * DISPLAY and GAME on the right. Every option is a ROW — its name on the left, its current value
+ * on a chip on the right that cycles when tapped — so the name and the value are two things the
+ * eye can find separately (`settingsSheet.ts` places them).
+ *
+ * It replaced one centred stack of eleven buttons that each read "NAME: VALUE", where a label
+ * and a value were one string and nothing grouped the device knobs apart from the taste ones.
  */
 export class Settings {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.88, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private readonly rules = new Graphics();
+  private audioHeading: Text;
+  private displayHeading: Text;
+  private gameHeading: Text;
   private masterLabel: Text;
   private sfxLabel: Text;
   private musicLabel: Text;
+  private masterValue: Text;
+  private sfxValue: Text;
+  private musicValue: Text;
   private masterSlider: Slider;
   private sfxSlider: Slider;
   private musicSlider: Slider;
   private muteBtn: Button;
+  private languageLabel: Text;
+  private controlLayoutLabel: Text;
+  private qualityLabel: Text;
+  private frameRateLabel: Text;
+  private reduceMotionLabel: Text;
   private languageBtn: Button;
   private controlLayoutBtn: Button;
   private qualityBtn: Button;
@@ -91,7 +123,6 @@ export class Settings {
    *  take it off the screen" rather than dim it), and a route may not become fully
    *  unreachable, so this is where a returning player who wants to see it again finds it. */
   private tutorialBtn: Button;
-  private backBtn: Button;
 
   onChange: ((s: SettingsState) => void) | null = null;
   onBack: (() => void) | null = null;
@@ -104,117 +135,128 @@ export class Settings {
     master: 1, sfx: 0.5, music: 0.5, muted: false, locale: 'en', controlLayout: 'standard',
     quality: 'auto', frameRate: 60, reduceMotion: false,
   };
-
-  // Screen-space anchors for the buttons below, captured by `show()` and reused by
-  // `layoutButtons()` on every locale/state change — `update()` (a mute/language/control
-  // tap) doesn't re-run `show()`, but with `autoWidth` buttons a text change can still
-  // change their width, so it must still re-run the positioning math to stay centered.
-  private cx = 0;
-  private languageY = 0;
-  private controlY = 0;
-  private qualityY = 0;
-  private frameRateY = 0;
-  private reduceMotionY = 0;
-  private pairY = 0;
+  private size: { w: number; h: number } | null = null;
 
   constructor() {
-    this.title = new Text({ text: t('settings.title'), style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif' } });
-    this.title.anchor.set(0.5, 0);
+    this.shell = new MenuShell({ title: t('settings.title'), back: t('settings.back') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
 
-    const labelStyle = { fill: 0xcbd5e0, fontSize: 16, fontFamily: 'monospace' as const };
-    this.masterLabel = new Text({ text: '', style: labelStyle });
-    this.sfxLabel = new Text({ text: '', style: labelStyle });
-    this.musicLabel = new Text({ text: '', style: labelStyle });
+    const heading = () => new Text({ text: '', style: menuText('heading') });
+    this.audioHeading = heading();
+    this.displayHeading = heading();
+    this.gameHeading = heading();
+
+    const name = () => {
+      const text = new Text({ text: '', style: menuText('label', { fontSize: 14, wordWrap: true, breakWords: true }) });
+      text.anchor.set(0, 0.5);
+      return text;
+    };
+    const volumeName = () => new Text({ text: '', style: menuText('label', { fontSize: 14 }) });
+    const percent = () => {
+      const text = new Text({ text: '', style: menuText('value', { fontSize: 14, fill: MENU_COLORS.accent }) });
+      text.anchor.set(1, 0);
+      return text;
+    };
+    this.masterLabel = volumeName();
+    this.sfxLabel = volumeName();
+    this.musicLabel = volumeName();
+    this.masterValue = percent();
+    this.sfxValue = percent();
+    this.musicValue = percent();
 
     // Full-view eventMode is already 'static' below (needed for the sliders' drag
     // surface, design/10 "no DOM widgets" — everything is a Pixi hit-area).
-    this.masterSlider = new Slider({ w: 260, dragSurface: this.view });
-    this.sfxSlider = new Slider({ w: 260, dragSurface: this.view });
-    this.musicSlider = new Slider({ w: 260, dragSurface: this.view });
+    this.masterSlider = new Slider({ w: COL_W, dragSurface: this.view });
+    this.sfxSlider = new Slider({ w: COL_W, dragSurface: this.view });
+    this.musicSlider = new Slider({ w: COL_W, dragSurface: this.view });
     this.masterSlider.onChange = (v) => this.update({ ...this.state, master: v });
     this.sfxSlider.onChange = (v) => this.update({ ...this.state, sfx: v });
     this.musicSlider.onChange = (v) => this.update({ ...this.state, music: v });
 
-    // `autoWidth: true` on every button below — their labels are translated (design/17-
-    // i18n.md) and a fixed pixel width sized for English overflows once a locale's
-    // string runs longer (e.g. Russian "ВКЛЮЧИТЬ ЗВУК", "УПРАВЛЕНИЕ: ЛЕВША"); the `w`
-    // passed here becomes a minimum, not a fixed size — see widgets.ts's Button.
-    this.muteBtn = new Button('', { w: 120, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    this.muteBtn = new Button('', { w: COL_W, h: WIDE_BUTTON_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.toggle' });
     this.muteBtn.onTap = () => this.update({ ...this.state, muted: !this.state.muted });
 
-    // Language cycle button (design/17-i18n.md) — same tappable pattern as muteBtn
-    // (design/10 "no DOM widgets"), stepping through `LOCALES` in declared order on
-    // each tap.
+    // Every value chip is `autoWidth` — its value is translated (design/17-i18n.md), and a
+    // width sized for English overflows once a locale's string runs longer (Russian
+    // "ЛЕВША", "АВТО (СРЕДНЕЕ)"); the `w` passed here is a minimum, not a fixed size.
+    // Each construction still spells out its own `sound` (`buttonCueConventions.test.ts` reads
+    // the source line by line).
+    const chip = { w: CHIP_MIN_W, h: CHIP_H, fontSize: 14, autoWidth: true, ...MENU_BUTTONS.secondary };
+    this.languageLabel = name();
+    this.controlLayoutLabel = name();
+    this.qualityLabel = name();
+    this.frameRateLabel = name();
+    this.reduceMotionLabel = name();
+
+    // Language (design/17-i18n.md), stepping through `LOCALES` in declared order on each tap.
     //
     // `useLocale`, not `setLocale`, since 2026-09-21: the table is its own chunk now
     // (i18n/loadLocale.ts), and switching to one that has not landed would redraw this screen
     // in English and leave it there until something else re-rendered it. `useLocale` loads
-    // first and switches second, so this button's own next `syncWidgets()` still reads in the
-    // new language — the property the old comment claimed and `setLocale` alone no longer has.
-    // In practice the await is already settled: the entry points prefetch every table once the
-    // lobby is up. `this.state` is read INSIDE the callback so a change that landed while the
-    // chunk was in flight is not overwritten by a stale copy.
-    this.languageBtn = new Button('', { w: 160, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    // first and switches second, so this chip's own next `syncWidgets()` still reads in the
+    // new language. In practice the await is already settled: the entry points prefetch every
+    // table once the lobby is up. `this.state` is read INSIDE the callback so a change that
+    // landed while the chunk was in flight is not overwritten by a stale copy.
+    this.languageBtn = new Button('', { ...chip, sound: 'ui.toggle' });
     this.languageBtn.onTap = () => {
       const next = nextLocale(this.state.locale);
       void useLocale(next).then(() => this.update({ ...this.state, locale: next }));
     };
 
-    // Left-handed control-layout toggle (design/10 open question) — same tap-to-cycle
-    // pattern as languageBtn; only meaningfully affects touch play (TouchControls'
-    // stick/button geometry), but lives here rather than being hidden behind a touch-
-    // only check, since a desktop player may still be setting this up for later.
-    this.controlLayoutBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    // Left-handed control layout (design/10 open question) — only meaningfully affects touch
+    // play (TouchControls' stick/button geometry), but lives here rather than being hidden
+    // behind a touch-only check, since a desktop player may still be setting this up for later.
+    this.controlLayoutBtn = new Button('', { ...chip, sound: 'ui.toggle' });
     this.controlLayoutBtn.onTap = () => {
-      const next = nextControlLayout(this.state.controlLayout);
-      this.update({ ...this.state, controlLayout: next });
+      this.update({ ...this.state, controlLayout: nextControlLayout(this.state.controlLayout) });
     };
 
     // Render quality (design/04 items 3/6, `render/quality.ts`) — the one setting here that is
-    // about the DEVICE rather than about taste, which is why 'auto' is the default and is
-    // listed first: most players should never have to think about it, and the ones on hardware
-    // that cannot hold 60fps get the drop without asking for it.
-    this.qualityBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    // about the DEVICE rather than about taste, which is why 'auto' is the default: most
+    // players should never have to think about it, and the ones on hardware that cannot hold
+    // 60fps get the drop without asking for it.
+    this.qualityBtn = new Button('', { ...chip, sound: 'ui.toggle' });
     this.qualityBtn.onTap = () => {
       this.update({ ...this.state, quality: nextQuality(this.state.quality) });
     };
 
     // In-run frame rate (`game/powerBudget.ts`) — the battery knob the quality tier cannot
-    // express, and the one directly below it here because a player looking for either is
-    // looking for the same thing. No 'auto': see `FrameRateSetting`'s note on why a second
-    // policy must not also be steering off the frame-rate stream.
-    this.frameRateBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    // express, and the row directly under it because a player looking for either is looking
+    // for the same thing. No 'auto': see `FrameRateSetting`'s note on why a second policy must
+    // not also be steering off the frame-rate stream.
+    this.frameRateBtn = new Button('', { ...chip, sound: 'ui.toggle' });
     this.frameRateBtn.onTap = () => {
       this.update({ ...this.state, frameRate: nextFrameRate(this.state.frameRate) });
     };
 
-    // Reduce motion (`render/motion.ts`, 2026-09-22) — under the two device knobs above it
-    // because a player who came to this screen because the game made them feel unwell will try
-    // all three, and directly above them is where the eye lands last. An on/off toggle rather
-    // than a cycle: there are two states and no third one worth inventing.
-    this.reduceMotionBtn = new Button('', { w: 200, h: 34, autoWidth: true, sound: 'ui.toggle' });
+    // Reduce motion (`render/motion.ts`, 2026-09-22) — under the two device knobs because a
+    // player who came to this screen because the game made them feel unwell will try all
+    // three. An on/off switch rather than a cycle: there are two states and no third one worth
+    // inventing, and its chip turns go-green while it is on, so the state reads at a glance.
+    this.reduceMotionBtn = new Button('', { ...chip, sound: 'ui.toggle' });
     this.reduceMotionBtn.onTap = () => {
       this.update({ ...this.state, reduceMotion: !this.state.reduceMotion });
     };
 
-    // REPLAY TUTORIAL (2026-09-22) — a fixed action, same shape as `backBtn`: it does not
-    // read or write `SettingsState`, it only fires a passthrough (see `onTutorial`'s own
-    // comment on why this screen is not the one that knows how to start a run). Joins the
-    // MUTE/BACK row rather than getting a row of its own — see `layoutButtons`.
-    this.tutorialBtn = new Button(t('settings.tutorial'), { w: 200, h: 34, autoWidth: true, sound: 'ui.tap' });
+    // REPLAY TUTORIAL (2026-09-22) — a fixed action: it does not read or write
+    // `SettingsState`, it only fires a passthrough (see `onTutorial`). Closes the GAME section.
+    this.tutorialBtn = new Button(t('settings.tutorial'), { w: COL_W, h: WIDE_BUTTON_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.tap' });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
+    this.tutorialBtn.setIcon(getUiTexture('icon_play'));
 
-    this.backBtn = new Button(t('settings.back'), { w: 120, h: 34, autoWidth: true, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
-
-    this.view.addChild(
-      this.panel.view, this.title,
-      this.masterLabel, this.masterSlider.view,
-      this.sfxLabel, this.sfxSlider.view,
-      this.musicLabel, this.musicSlider.view,
-      this.muteBtn.view, this.languageBtn.view, this.controlLayoutBtn.view, this.qualityBtn.view,
-      this.frameRateBtn.view, this.reduceMotionBtn.view, this.tutorialBtn.view, this.backBtn.view,
+    this.shell.content.addChild(
+      this.rules, this.audioHeading, this.displayHeading, this.gameHeading,
+      this.masterLabel, this.masterValue, this.masterSlider.view,
+      this.sfxLabel, this.sfxValue, this.sfxSlider.view,
+      this.musicLabel, this.musicValue, this.musicSlider.view,
+      this.muteBtn.view,
+      this.qualityLabel, this.qualityBtn.view, this.frameRateLabel, this.frameRateBtn.view,
+      this.reduceMotionLabel, this.reduceMotionBtn.view,
+      this.languageLabel, this.languageBtn.view, this.controlLayoutLabel, this.controlLayoutBtn.view,
+      this.tutorialBtn.view,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -226,91 +268,84 @@ export class Settings {
   }
 
   private syncWidgets() {
-    // Re-applies static labels too (not just the ones that vary with `state`) — same
-    // "resync on every call" convention as the rest of this method, so a language
-    // change (design/17-i18n.md) takes effect the next time this screen is shown.
-    this.title.text = t('settings.title');
-    this.backBtn.setText(t('settings.back'));
+    // Re-applies static labels too (not just the ones that vary with `state`), so a language
+    // change (design/17-i18n.md) takes effect on the tap that made it.
+    this.shell.setTitle(t('settings.title'));
+    this.shell.setBack(t('settings.back'));
+    this.audioHeading.text = t('settings.sectionAudio');
+    this.displayHeading.text = t('settings.sectionDisplay');
+    this.gameHeading.text = t('settings.sectionGame');
     this.tutorialBtn.setText(t('settings.tutorial'));
-    this.masterSlider.set(this.state.master);
-    this.sfxSlider.set(this.state.sfx);
-    this.musicSlider.set(this.state.music);
-    // `padEnd` (not a literal-spaces template) so the value column still lines up
-    // regardless of how long the translated label word is.
-    this.masterLabel.text = `${t('settings.master').padEnd(9)}${pct(this.state.master)}`;
-    this.sfxLabel.text = `${t('settings.sfx').padEnd(9)}${pct(this.state.sfx)}`;
-    this.musicLabel.text = `${t('settings.music').padEnd(9)}${pct(this.state.music)}`;
+
+    const volumes: Array<[Text, Text, Slider, string, number]> = [
+      [this.masterLabel, this.masterValue, this.masterSlider, t('settings.master'), this.state.master],
+      [this.sfxLabel, this.sfxValue, this.sfxSlider, t('settings.sfx'), this.state.sfx],
+      [this.musicLabel, this.musicValue, this.musicSlider, t('settings.music'), this.state.music],
+    ];
+    for (const [label, value, slider, text, v] of volumes) {
+      label.text = text;
+      value.text = pct(v);
+      slider.set(v);
+      // Muted, the three volumes are kept but not in force — drawn faded, still draggable.
+      slider.view.alpha = this.state.muted ? 0.45 : 1;
+      value.alpha = this.state.muted ? 0.45 : 1;
+    }
     this.muteBtn.setText(this.state.muted ? t('settings.unmute') : t('settings.mute'));
-    this.languageBtn.setText(t('settings.language', { name: LOCALE_NAMES[this.state.locale] }));
-    const modeKey = this.state.controlLayout === 'mirrored' ? 'settings.controlLayoutMirrored' : 'settings.controlLayoutStandard';
-    this.controlLayoutBtn.setText(t('settings.controlLayout', { mode: t(modeKey) }));
-    this.qualityBtn.setText(t('settings.quality', { mode: qualityLabel(this.state.quality) }));
-    this.frameRateBtn.setText(t('settings.frameRate', { fps: String(this.state.frameRate) }));
-    this.reduceMotionBtn.setText(t('settings.reduceMotion', {
-      mode: this.state.reduceMotion ? t('settings.on') : t('settings.off'),
-    }));
-    this.layoutButtons();
+
+    this.languageLabel.text = t('settings.language');
+    this.languageBtn.setText(LOCALE_NAMES[this.state.locale]);
+    this.controlLayoutLabel.text = t('settings.controlLayout');
+    this.controlLayoutBtn.setText(t(this.state.controlLayout === 'mirrored' ? 'settings.controlLayoutMirrored' : 'settings.controlLayoutStandard'));
+    this.qualityLabel.text = t('settings.quality');
+    this.qualityBtn.setText(qualityValue(this.state.quality));
+    this.frameRateLabel.text = t('settings.frameRate');
+    this.frameRateBtn.setText(t('settings.fps', { fps: String(this.state.frameRate) }));
+    this.reduceMotionLabel.text = t('settings.reduceMotion');
+    this.reduceMotionBtn.setText(this.state.reduceMotion ? t('settings.on') : t('settings.off'));
+    this.reduceMotionBtn.setFill(this.state.reduceMotion ? MENU_COLORS.go : MENU_COLORS.second);
+    this.reduceMotionBtn.setBorder(this.state.reduceMotion ? MENU_COLORS.goBorder : MENU_COLORS.secondBorder);
+    this.layout();
   }
 
-  /** Positions the `autoWidth` buttons from their current (post-`setText`) widths,
-   * not the fixed-pixel halves this used to be (`cx - 80`, `cx - 100`, `cx - 130`) —
-   * those assumed the English string length and left longer translations off-center or
-   * overflowing their box. Runs after every `syncWidgets()` — the anchors themselves
-   * (`cx`/`languageY`/`controlY`/`pairY`) only change on `show()`, since only a resize
-   * moves the rows, but a locale/mute/control-layout tap changes a label's width without
-   * re-running `show()`. */
-  private layoutButtons() {
-    const cx = this.cx;
-    this.languageBtn.view.position.set(cx - this.languageBtn.width / 2, this.languageY);
-    this.controlLayoutBtn.view.position.set(cx - this.controlLayoutBtn.width / 2, this.controlY);
-    this.qualityBtn.view.position.set(cx - this.qualityBtn.width / 2, this.qualityY);
-    this.frameRateBtn.view.position.set(cx - this.frameRateBtn.width / 2, this.frameRateY);
-    this.reduceMotionBtn.view.position.set(cx - this.reduceMotionBtn.width / 2, this.reduceMotionY);
-    // MUTE + TUTORIAL + BACK sit side-by-side as a triple, centered as a unit under `cx`
-    // (was a pair — reproduced here from each button's actual width, same as the pair
-    // always was, so a fourth button would extend the same way). TUTORIAL joined the row
-    // rather than getting one of its own (2026-09-22): this screen's design height already
-    // had no headroom left (`viewportFit.test.ts` — the last row landed exactly on the
-    // 640px design floor), and a row already this wide had far more of it to spare than a
-    // fresh 44px did.
-    const gap = 20;
-    const tripleW = this.muteBtn.width + gap + this.tutorialBtn.width + gap + this.backBtn.width;
-    const tripleX = cx - tripleW / 2;
-    this.muteBtn.view.position.set(tripleX, this.pairY);
-    this.tutorialBtn.view.position.set(tripleX + this.muteBtn.width + gap, this.pairY);
-    this.backBtn.view.position.set(tripleX + this.muteBtn.width + gap + this.tutorialBtn.width + gap, this.pairY);
+  /** Re-flow the sheet — on `show()` and after every change, since a chip's `autoWidth` can
+   *  move with its value or the locale. */
+  private layout() {
+    if (!this.size) return;
+    this.shell.layout(this.size.w, this.size.h, SHEET_W, layoutSettingsSheet(this.parts()));
+  }
+
+  private parts() {
+    const volume: SliderRow[] = [
+      { label: this.masterLabel, value: this.masterValue, slider: this.masterSlider },
+      { label: this.sfxLabel, value: this.sfxValue, slider: this.sfxSlider },
+      { label: this.musicLabel, value: this.musicValue, slider: this.musicSlider },
+    ];
+    const display: OptionRow[] = [
+      { label: this.qualityLabel, btn: this.qualityBtn },
+      { label: this.frameRateLabel, btn: this.frameRateBtn },
+      { label: this.reduceMotionLabel, btn: this.reduceMotionBtn },
+    ];
+    const game: OptionRow[] = [
+      { label: this.languageLabel, btn: this.languageBtn },
+      { label: this.controlLayoutLabel, btn: this.controlLayoutBtn },
+    ];
+    return {
+      audioHeading: this.audioHeading, displayHeading: this.displayHeading, gameHeading: this.gameHeading,
+      rules: this.rules, volume, muteBtn: this.muteBtn, display, game, tutorialBtn: this.tutorialBtn,
+    };
   }
 
   show(w: number, h: number, s: SettingsState) {
     this.state = s;
-    this.panel.layout(w, h);
-    this.cx = w / 2;
-    const rowX = this.cx - 130;
-    let y = Math.max(40, h * 0.15);
-    this.title.position.set(this.cx, y);
-    y += 70;
-    for (const [label, slider] of [
-      [this.masterLabel, this.masterSlider] as const,
-      [this.sfxLabel, this.sfxSlider] as const,
-      [this.musicLabel, this.musicSlider] as const,
-    ]) {
-      label.position.set(rowX, y);
-      slider.view.position.set(rowX, y + 30);
-      y += 70;
-    }
-    this.languageY = y + 10;
-    y += 44;
-    this.controlY = y + 10;
-    y += 44;
-    this.qualityY = y + 10;
-    y += 44;
-    this.frameRateY = y + 10;
-    y += 44;
-    this.reduceMotionY = y + 10;
-    y += 44;
-    this.pairY = y + 10;
+    this.size = { w, h };
     this.syncWidgets();
     this.view.visible = true;
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide() {

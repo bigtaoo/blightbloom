@@ -51,8 +51,8 @@ interface Tappable { view: { emit: (event: string) => void } }
 interface PickupItem { id: number; weaponId?: string }
 interface GameScreens {
   mainMenu: { playBtn: Tappable; settingsBtn: Tappable; routes: { soloBtn: Tappable } };
-  settingsScreen: { muteBtn: Tappable; backBtn: Tappable };
-  forge: { backBtn: Tappable; storeBtn: Tappable; rowCards: Tappable[] };
+  settingsScreen: { muteBtn: Tappable; shell: { backBtn: Tappable } }; // BACK is the menu shell's since 2026-09-27
+  forge: { shell: { backBtn: Tappable }; storeBtn: Tappable; rowCards: Tappable[] };
   loadout: { backBtn: Tappable; startBtn: Tappable; clearBtn: Tappable };
   pauseMenu: { resumeBtn: Tappable };
   hud: { pauseBtn: Tappable; weaponPickupPrompt: {
@@ -60,7 +60,7 @@ interface GameScreens {
     rows: Tappable[];
     update(nearby: readonly PickupItem[]): void;
   } };
-  screens: { confirmBtn: Tappable; menuBtn: Tappable };
+  screens: { confirmBtn: Tappable; shell: { backBtn: Tappable } }; // MAIN MENU is the shell's chip since 2026-09-27
   portalPrompt: { extractBtn: Tappable; descendBtn: Tappable };
 }
 
@@ -105,8 +105,8 @@ describe('Game — every screen it builds carries the right UI cue', () => {
     // The distinction is the point of having two cues: forward and back must not sound alike,
     // because on a small screen they are often the same finger in nearly the same place.
     const { cues, screens } = newGame();
-    tap(screens.settingsScreen.backBtn);
-    tap(screens.forge.backBtn);
+    tap(screens.settingsScreen.shell.backBtn);
+    tap(screens.forge.shell.backBtn);
     tap(screens.pauseMenu.resumeBtn); // dismissing the pause overlay is also "leaving"
     expect(cues).toEqual(['ui.back', 'ui.back', 'ui.back']);
   });
@@ -114,7 +114,7 @@ describe('Game — every screen it builds carries the right UI cue', () => {
   it('plays ui.toggle for a settings option, and ui.back for its exit', () => {
     const { cues, screens } = newGame();
     tap(screens.settingsScreen.muteBtn);
-    tap(screens.settingsScreen.backBtn);
+    tap(screens.settingsScreen.shell.backBtn);
     expect(cues).toEqual(['ui.toggle', 'ui.back']);
   });
 
@@ -160,7 +160,7 @@ describe('Game — every screen it builds carries the right UI cue', () => {
   it('sounds the result screen — the other moment on that list', () => {
     const { cues, screens } = newGame();
     tap(screens.screens.confirmBtn);
-    tap(screens.screens.menuBtn); // the secondary exit is a "leaving" press
+    tap(screens.screens.shell.backBtn); // the secondary exit is a "leaving" press
     expect(cues).toEqual(['ui.tap', 'ui.back']);
   });
 

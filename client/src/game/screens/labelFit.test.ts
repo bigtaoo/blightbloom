@@ -285,7 +285,7 @@ describe('the sweep measured what it claims to', () => {
       'Forge: 4',
       'Loadout (saved run): 6',
       'Loadout: 6',
-      'LoginScreen: 5',
+      'LoginScreen: 6',
       'MainMenu (portal): 10',
       'MainMenu (saved run): 10',
       'MainMenu (signed in): 10',
@@ -293,7 +293,7 @@ describe('the sweep measured what it claims to', () => {
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
       'PartyScreen: 6',
-      'PauseMenu: 4',
+      'PauseMenu: 5', // + the shell's RESUME chip (2026-09-27)
       'PvpPreview: 2',
       'Screens + ad offer: 3',
       'Screens: 3',

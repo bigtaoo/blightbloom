@@ -24,21 +24,23 @@ function deferred<T>() {
 const FAKE_SESSION = {} as CoopSession;
 
 function privateOf(m: Matchmaking) {
-  return m as unknown as {
-    title: { text: string };
+  const shell = (m as unknown as { shell: { sheet: { title: { text: string } }; backBtn: { view: { visible: boolean }; onTap: (() => void) | null } } }).shell;
+  const self = m as unknown as {
     statusText: { text: string };
     hintText: { text: string };
     cancelBtn: { view: { visible: boolean }; onTap: (() => void) | null };
     retryBtn: { view: { visible: boolean }; onTap: (() => void) | null };
-    backBtn: { view: { visible: boolean }; onTap: (() => void) | null };
+    spinner: { visible: boolean; rotation: number };
+    failMark: { visible: boolean };
     signal: MatchmakingSignal | null;
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn });
 }
 
 afterEach(() => resetLocaleForTests());
 
 describe('Matchmaking — connecting state', () => {
-  it('calls connect immediately on show() and shows Cancel only', () => {
+  it('calls connect immediately on show() and shows Cancel, not Retry', () => {
     const connect = vi.fn().mockReturnValue(deferred<CoopSession>().promise);
     const m = new Matchmaking();
     m.show(800, 600, connect);
@@ -46,7 +48,10 @@ describe('Matchmaking — connecting state', () => {
     const p = privateOf(m);
     expect(p.cancelBtn.view.visible).toBe(true);
     expect(p.retryBtn.view.visible).toBe(false);
-    expect(p.backBtn.view.visible).toBe(false);
+    // BACK is the shell's corner chip in both states — it means what CANCEL means.
+    expect(p.backBtn.view.visible).toBe(true);
+    expect(p.spinner.visible).toBe(true);
+    expect(p.failMark.visible).toBe(false);
   });
 
   it('resolves to onConnected', async () => {
@@ -164,7 +169,7 @@ describe('Matchmaking — the backfill countdown (2026-09-26)', () => {
 });
 
 describe('Matchmaking — error state', () => {
-  it('a rejection switches to Retry/Back and hides Cancel', async () => {
+  it('a rejection switches to Retry and hides Cancel and the spinner', async () => {
     const d = deferred<CoopSession>();
     const connect = vi.fn().mockReturnValue(d.promise);
     const m = new Matchmaking();
@@ -176,6 +181,8 @@ describe('Matchmaking — error state', () => {
     expect(p.cancelBtn.view.visible).toBe(false);
     expect(p.retryBtn.view.visible).toBe(true);
     expect(p.backBtn.view.visible).toBe(true);
+    expect(p.spinner.visible).toBe(false);
+    expect(p.failMark.visible).toBe(true);
     expect(p.statusText.text).toBe('Timed out waiting for a match.');
   });
 
@@ -307,5 +314,55 @@ describe('Matchmaking — i18n (design/17-i18n.md)', () => {
     await useLocale('zh');
     m.show(800, 600, connect);
     expect(privateOf(m).title.text).toBe('正在匹配对局…');
+  });
+});
+
+describe('Matchmaking — the sheet (design/10 "One shell for every menu")', () => {
+  type Btn = { view: { visible: boolean; position: { x: number; y: number } } };
+  const sheetOf = (m: Matchmaking) => m as unknown as {
+    shell: { sheet: { height: number } };
+    cancelBtn: Btn; retryBtn: Btn;
+    spinner: { visible: boolean; rotation: number };
+  };
+
+  it('RETRY lands exactly where CANCEL was, on a sheet that keeps its size', async () => {
+    const d = deferred<CoopSession>();
+    const m = new Matchmaking();
+    m.show(800, 600, vi.fn().mockReturnValue(d.promise));
+    const q = sheetOf(m);
+    const cancelAt = { x: q.cancelBtn.view.position.x, y: q.cancelBtn.view.position.y };
+    const height = q.shell.sheet.height;
+    d.reject(new Error('boom'));
+    await d.promise.catch(() => {});
+    await Promise.resolve();
+    expect(q.retryBtn.view.visible).toBe(true);
+    expect({ x: q.retryBtn.view.position.x, y: q.retryBtn.view.position.y }).toEqual(cancelAt);
+    expect(q.shell.sheet.height).toBe(height);
+  });
+
+  it('turns the spinner while searching, and only while visible', () => {
+    const m = new Matchmaking();
+    const q = sheetOf(m);
+    m.animate(400);
+    expect(q.spinner.rotation).toBe(0); // hidden: nothing moves
+    m.show(800, 600, vi.fn().mockReturnValue(deferred<CoopSession>().promise));
+    m.animate(400);
+    expect(q.spinner.rotation).toBeGreaterThan(0);
+    const turned = q.spinner.rotation;
+    m.animate(400);
+    expect(q.spinner.rotation).toBeGreaterThan(turned);
+  });
+
+  it('holds the spinner still once the attempt has failed', async () => {
+    const d = deferred<CoopSession>();
+    const m = new Matchmaking();
+    m.show(800, 600, vi.fn().mockReturnValue(d.promise));
+    d.reject(new Error('boom'));
+    await d.promise.catch(() => {});
+    await Promise.resolve();
+    const q = sheetOf(m);
+    const at = q.spinner.rotation;
+    m.animate(400);
+    expect(q.spinner.rotation).toBe(at);
   });
 });

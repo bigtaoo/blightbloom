@@ -1,7 +1,20 @@
-import { Container, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
+import { Container, Graphics } from 'pixi.js';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { SHEET_PAD, SHEET_TITLE_H } from '../ui/MenuSheet';
+import { MENU_BUTTONS, MENU_COLORS } from '../ui/menuTheme';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
+
+/** The sheet's width and content width; the rows' heights and the gaps between them. */
+const SHEET_W = 360;
+const CONTENT_W = SHEET_W - SHEET_PAD * 2;
+const RESUME_H = 48;
+const ROW_H = 44;
+const GAP = 10;
+/** The room the hairline between "stay in the run" and "leave it" takes. */
+const DIVIDER_H = 22;
 
 /**
  * The in-run pause menu (design/10 open question, now resolved) — resume / open
@@ -15,11 +28,19 @@ import { t } from '../../i18n';
  * button stays put beside it rather than being replaced, because the two are different
  * decisions: one keeps the run, the other throws it away. Collapsing them into one button
  * whose meaning depends on the mode is how a player loses a run they meant to keep.
+ *
+ * Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+ * sheet in two groups under a hairline: RESUME (the primary, green) and SETTINGS stay in the
+ * run; SAVE & QUIT and QUIT (red, the one that throws the run away) leave it. The shell's
+ * corner chip is a second RESUME, in the corner every other screen's way back sits.
  */
 export class PauseMenu {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.82, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting (`MenuShell`'s header has why). Named `panel` for
+   *  `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private readonly rules = new Graphics();
   private resumeBtn: Button;
   private settingsBtn: Button;
   private saveQuitBtn: Button;
@@ -31,24 +52,26 @@ export class PauseMenu {
   onQuit: (() => void) | null = null;
 
   constructor() {
-    this.title = new Text({ text: t('pauseMenu.title'), style: { fill: 0xf7fafc, fontSize: 34, fontWeight: 'bold', fontFamily: 'sans-serif' } });
-    this.title.anchor.set(0.5, 0);
+    this.shell = new MenuShell({ title: t('pauseMenu.title'), back: t('pauseMenu.resume') });
+    this.shell.onBack = () => this.onResume?.();
+    this.panel = this.shell.backdrop;
 
-    this.resumeBtn = new Button(t('pauseMenu.resume'), { w: 200, h: 40, sound: 'ui.back' });
+    this.resumeBtn = new Button(t('pauseMenu.resume'), { w: CONTENT_W, h: RESUME_H, fontSize: 16, sound: 'ui.back', ...MENU_BUTTONS.primary });
     this.resumeBtn.onTap = () => this.onResume?.();
     this.resumeBtn.setIcon(getUiTexture('icon_play'));
-    this.settingsBtn = new Button(t('pauseMenu.settings'), { w: 200, h: 40 });
+    this.settingsBtn = new Button(t('pauseMenu.settings'), { w: CONTENT_W, h: ROW_H, ...MENU_BUTTONS.secondary });
     this.settingsBtn.onTap = () => this.onSettings?.();
     this.settingsBtn.setIcon(getUiTexture('icon_settings'));
-    this.saveQuitBtn = new Button(t('pauseMenu.saveQuit'), { w: 200, h: 40, sound: 'ui.back' });
+    this.saveQuitBtn = new Button(t('pauseMenu.saveQuit'), { w: CONTENT_W, h: ROW_H, sound: 'ui.back', ...MENU_BUTTONS.secondary });
     this.saveQuitBtn.onTap = () => this.onSaveQuit?.();
     this.saveQuitBtn.setIcon(getUiTexture('icon_play'));
-    this.quitBtn = new Button(t('pauseMenu.quit'), { w: 200, h: 40, sound: 'ui.back' });
+    this.quitBtn = new Button(t('pauseMenu.quit'), { w: CONTENT_W, h: ROW_H, sound: 'ui.back', ...MENU_BUTTONS.danger });
     this.quitBtn.onTap = () => this.onQuit?.();
     this.quitBtn.setIcon(getUiTexture('icon_quit'));
 
-    this.view.addChild(this.panel.view, this.title, this.resumeBtn.view, this.settingsBtn.view,
+    this.shell.content.addChild(this.rules, this.resumeBtn.view, this.settingsBtn.view,
       this.saveQuitBtn.view, this.quitBtn.view);
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -63,23 +86,38 @@ export class PauseMenu {
   show(w: number, h: number, quitLabelText?: string, savable = false) {
     // Re-apply static labels so a language change (design/17-i18n.md) takes effect the
     // next time this screen opens, same convention as MainMenu.ts's `retext()`.
-    this.title.text = t('pauseMenu.title');
+    this.shell.setTitle(t('pauseMenu.title'));
+    this.shell.setBack(t('pauseMenu.resume'));
     this.resumeBtn.setText(t('pauseMenu.resume'));
     this.settingsBtn.setText(t('pauseMenu.settings'));
     this.saveQuitBtn.setText(t('pauseMenu.saveQuit'));
     this.quitBtn.setText(quitLabelText ?? t('pauseMenu.quit'));
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    // The stack keeps its centre whether it is three rows or four, so RESUME does not jump
-    // between a savable and a non-savable run — the rows grow downward from a fixed top.
-    this.title.position.set(cx, cy - 130);
-    this.resumeBtn.view.position.set(cx - 100, cy - 60);
-    this.settingsBtn.view.position.set(cx - 100, cy - 5);
     this.saveQuitBtn.view.visible = savable;
-    this.saveQuitBtn.view.position.set(cx - 100, cy + 50);
-    this.quitBtn.view.position.set(cx - 100, savable ? cy + 105 : cy + 50);
+    this.shell.layout(w, h, SHEET_W, SHEET_TITLE_H + 18 + this.flow(savable) + SHEET_PAD);
     this.view.visible = true;
+  }
+
+  /** Stack the two groups and return the content's height. The rows grow downward from a
+   *  fixed top, so RESUME and SETTINGS sit at the same place in the sheet whether it is
+   *  three rows or four, and QUIT takes the row under SAVE & QUIT rather than its slot. */
+  private flow(savable: boolean): number {
+    let y = 0;
+    this.resumeBtn.view.position.set(0, y);
+    y += RESUME_H + GAP;
+    this.settingsBtn.view.position.set(0, y);
+    y += ROW_H;
+    this.rules.clear().rect(0, y + DIVIDER_H / 2, CONTENT_W, 1).fill({ color: MENU_COLORS.frame, alpha: 0.35 });
+    y += DIVIDER_H;
+    this.saveQuitBtn.view.position.set(0, y);
+    if (savable) y += ROW_H + GAP;
+    this.quitBtn.view.position.set(0, y);
+    return y + ROW_H;
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide() {

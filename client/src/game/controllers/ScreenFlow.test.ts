@@ -178,17 +178,23 @@ describe('ScreenFlow', () => {
     expect(passedConnect).toBe(connect); // same function reference reaches Matchmaking.show
   });
 
-  it('showLoadout: turns the settings button ON and positions it (the one show*() that does)', () => {
+  it('showLoadout: turns the settings button ON (the one show*() that does), pinned top-right by the render', () => {
     const w = buildWidgets();
+    // The assembly's one-time hand-over (gameAssembly.ts); ScreenFlow itself never places it.
+    w.loadout.setCornerChip(w.settingsBtn);
     showEverything(w);
     w.settingsBtn.view.visible = false;
+    w.settingsBtn.view.position.set(0, 600);
 
     new ScreenFlow(w).showLoadout(800, 600, { ...defaultMetaLike() });
 
     expect(w.loadout.view.visible).toBe(true);
     expect(w.settingsBtn.view.visible).toBe(true);
-    expect(w.settingsBtn.view.position.x).toBe(800 - 130);
-    expect(w.settingsBtn.view.position.y).toBe(600 - 50);
+    // Top-right, opposite BACK: its right edge near the viewport's, its top at the chrome inset.
+    const right = w.settingsBtn.view.x + w.settingsBtn.width * w.settingsBtn.view.scale.x;
+    expect(right).toBeGreaterThan(780);
+    expect(right).toBeLessThanOrEqual(800);
+    expect(w.settingsBtn.view.y).toBeLessThan(40);
     expect(w.mainMenu.view.visible).toBe(false);
     expect(w.forge.view.visible).toBe(false);
   });
@@ -255,19 +261,6 @@ describe('ScreenFlow', () => {
     w.settingsBtn.view.visible = true;
     new ScreenFlow(w).hideSettingsButton();
     expect(w.settingsBtn.view.visible).toBe(false);
-  });
-
-  it('repositionSettingsButtonIfLoadout: repositions only when told the phase is loadout', () => {
-    const w = buildWidgets();
-    w.settingsBtn.view.position.set(0, 0);
-    const flow = new ScreenFlow(w);
-
-    flow.repositionSettingsButtonIfLoadout(false, 800, 600);
-    expect(w.settingsBtn.view.position.x).toBe(0);
-
-    flow.repositionSettingsButtonIfLoadout(true, 800, 600);
-    expect(w.settingsBtn.view.position.x).toBe(800 - 130);
-    expect(w.settingsBtn.view.position.y).toBe(600 - 50);
   });
 });
 
