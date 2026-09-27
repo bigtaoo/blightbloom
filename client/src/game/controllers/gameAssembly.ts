@@ -28,7 +28,7 @@
 // person does not have to rediscover it by reordering two lines and getting `undefined`.
 import type { InputSource } from '../../platform/types';
 import type { SettingsState } from '../../settings';
-import type { GameState } from '@dd/engine';
+import { DAMAGE_TYPES, type GameState } from '@dd/engine';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PartyScreen } from '../screens/PartyScreen';
 import { StoreScreen } from '../screens/StoreScreen';
@@ -72,6 +72,7 @@ import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
 import { resumableRunSummary } from '../match/resumableRun';
 import { pullAccountMeta } from '../../meta/accountSync';
+import { bankTotal } from '../../meta';
 import { getSession } from '../../net/session';
 import type { RunState } from '../runState';
 
@@ -171,6 +172,14 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // header has the rest, including the memo that keeps it free per render.
   p.loadout.savedRun = () => resumableRunSummary();
   p.mainMenu.resumableRun = () => resumableRunSummary();
+  // The lobby's hero and material chips (design/10, 2026-09-27) — read off the live meta on
+  // every show, so a character picked or a material banked is on the front door when the
+  // player lands back on it.
+  p.mainMenu.lobbyProfile = () => ({
+    skinId: p.run.meta.selectedSkin,
+    materials: Object.fromEntries(DAMAGE_TYPES.map((e) => [e, bankTotal(p.run.meta, e)])),
+    bestFloor: p.run.meta.bestFloor,
+  });
 
   // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the
   // expired-session notice. Its `size` thunk is `ScreenNav.fit()`'s own body, because both
@@ -216,7 +225,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     scene: p.scene, roomBuilder: p.roomBuilder, fx: p.fx, hud: p.hud,
     touchControlsView: p.touchControlsView, portalPrompt: p.portalPrompt,
     floorCardPrompt: p.floorCardPrompt,
-    lobbyScreens: [partyScreen, p.matchmaking], builder: p.builder, ally: p.ally,
+    lobbyScreens: [partyScreen, p.matchmaking, p.mainMenu], builder: p.builder, ally: p.ally,
     world: p.layers.world, ticker: p.ticker,
     input: p.input, events: p.events, runOutcome: p.runOutcome,
     tutorialHints: p.tutorialHints, pickupDebugOverlay: p.pickupDebugOverlay,

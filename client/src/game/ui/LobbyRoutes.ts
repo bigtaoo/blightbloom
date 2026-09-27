@@ -1,146 +1,101 @@
-// The lobby's ROUTES — one of the two halves of `MainMenu.ts` (design/10, 2026-09-10).
-// The shell around this owns the title, the maintenance banner, the account chip and
-// SETTINGS; everything that leads OUT of the lobby and into a mode lives here.
+// The lobby's ROUTES — the action column on the right of `MainMenu.ts` (design/10).
+// The shell around this owns the backdrop, the hero, the logo, the corner chrome and the
+// maintenance banner; everything that leads OUT of the lobby and into a mode lives here.
 //
 // ## Why this is its own file
 //
-// The 2026-09-10 merge folded `ModeSelect.ts`'s four routes into the menu, and the menu was
-// already 303 lines. Composition rather than one longer screen, per CLAUDE.md's split order:
-// the cross-boundary call list is exactly one direction and four calls (`layout`, `retext`,
+// Composition rather than one longer screen, per CLAUDE.md's split order: the cross-boundary
+// call list is one direction and short (`layout`, `retext`, `update`, `setContinue`,
 // `setRecommendTutorial`, `setSoloPrimary`), which is what that rule means by countable.
 //
-// ## Five rows — six with a saved run (2026-09-17)
+// ## Three tiers, drawn as three different kinds of object (2026-09-27)
 //
-// CONTINUE RUN joined the top of the stack when the lobby was audited as a front door
-// (design/10): the row is drawn only for a save `match/resumableRun.ts` says this build can
-// actually rebuild, so the front door either says nothing about a saved run or offers one
-// that works. It takes the green from SOLO when it is there — see `applyHierarchy` for the
-// ladder and for the portal case, where it takes nothing.
+// The 2026-09-22 restructure split "start playing" from "prepare" with a 1px divider inside a
+// stack of six same-looking rows, and the report that prompted this redesign was that it
+// still did not read: the page looked empty and nothing on it was more important than
+// anything else. Hierarchy is now carried by SIZE and MATERIAL, not by one fill colour and a
+// hairline:
 //
-// ## Four full-width rows, one two-up row, and the two-up row that was measured and rejected
+//  1. **The primary** — one painted banner card, the biggest thing in the column, with a
+//     breathing glow: SOLO by default, CONTINUE RUN when there is a save (see
+//     `applyHierarchy`). On a portal `MainMenu`'s own PLAY card takes this slot.
+//  2. **The other two ways to play** — CO-OP and PVP SOLO QUEUE, smaller banner cards with
+//     their own route colours (teal, coral), full width because `PVP SOLO QUEUE` runs to 187px
+//     in Polish (the two-up version of this row was measured and rejected on 2026-09-10).
+//  3. **Prepare** — SQUAD, FORGE and TUTORIAL as a dock of small icon-over-label buttons.
 //
-// The first version put CO-OP and PVP QUEUE side by side at half width, to buy back the
-// vertical space five stacked rows cost against the portal layout's budget (`MainMenu.show`).
-// It looked right in English at a glance and it was wrong: measured live, `PVP SOLO QUEUE`
-// draws 115 px of label starting 54 px in — past the right edge of a 135 px button — and the
-// same holds in **seven of the eight locales** (Polish `KOLEJKA PVP SOLO` runs to 187 px,
-// Russian to 186; only Chinese fits). CO-OP overflowed too, in Spanish and Polish.
+// When SOLO is not the primary it is still one of the ways to play, so it drops to a slim
+// plain bar directly under the primary rather than disappearing — one widget in two sizes,
+// so its tap target never changes identity (`LobbyCard.resize`).
 //
-// Worth recording HOW that got past the tests, because the same hole is still open for the
-// next screen: `viewportFit.test.ts` sweeps all eight locales, and it passed. It asserts that
-// nothing lands outside the design space — a label spilling out of its own button into the
-// gap beside it is still comfortably inside the screen. Its own header says to read it as
-// "nothing is off screen", never as "nothing collides", and this is that sentence collecting.
-// What found it was reading the label widths off a running page. `screens/labelFit.test.ts`
-// exists because of it, and it is what makes the two-up row below checkable rather than a
-// second guess.
+// ## CONTINUE and SOLO stay two buttons
 //
-// So CO-OP and PVP QUEUE are full width, and the height came out of the header instead
-// (`HEADER_H`) and out of a banner that now wraps wider before it wraps taller.
+// A save does not re-point SOLO: two rows with two labels, one of which is the primary, is
+// a different thing from one row that changes what it does — the latter is how a player loses
+// a run they meant to keep (the rule that keeps SAVE & QUIT and QUIT apart in the pause menu).
 //
-// ## The divider, and TUTORIAL hiding once seen (2026-09-22)
+// ## TUTORIAL hides once seen
 //
-// Nothing in the five/six-row stack encoded that it held three different KINDS of route —
-// start playing, prepare, chrome — so a player scanning it saw only one signal, the single
-// green fill. The lobby restructure (design/10) pulls LOGIN/SETTINGS out of this block
-// entirely (`MainMenu.show` owns that half now) and draws a 1px rule inside what is left,
-// between PVP SOLO QUEUE and the SQUAD|FORGE row, splitting "start playing" from "prepare".
-// It is a plain `Graphics`, not a `Button` — no `onTap`, so it is invisible to
-// `widgetOverlap.test.ts`'s tappable walk without needing to say so.
-//
-// TUTORIAL additionally disappears once `MetaState.hasSeenTutorial` — "open it, or take it
-// off the screen" (design/10), not dimmed — with a second door onto the same run added to
-// `screens/Settings.ts` so the route never becomes fully unreachable. `setRecommendTutorial`
-// already carried the exact boolean this needs (`!hasSeenTutorial`); it only drove the badge
-// before, and now drives the row's visibility too.
-//
-// ## Why SQUAD and FORGE share a row (2026-09-21)
-//
-// FORGE is a sixth route: the crafting page has its own screen now (`screens/Forge.ts`) and
-// the lobby is its front door, beside the loadout screen that SOLO opens. A sixth FULL-WIDTH
-// row would not have fitted — the tallest legal lobby (a portal build's quick-play row and
-// data notice, the longest maintenance banner, and a resumable save) already measures 630 of
-// a 640-px design height in all eight locales, so there was 10 px to spend and a row costs
-// 47. What makes the pair safe where CO-OP/PVP QUEUE was not is the labels: the longest of
-// the eight is 8 characters (`SCHMIEDE`, `ESCOUADE`) against a budget of ~87 px, where
-// `PVP SOLO QUEUE` needed 169. `labelFit.test.ts` checks that claim in every locale rather
-// than leaving it as arithmetic in a comment.
-import { Container, Graphics, Text } from 'pixi.js';
+// "Open it, or take it off the screen" (design/10), not dimmed; `screens/Settings.ts` holds a
+// second door so the route never becomes unreachable. The dock re-divides its width between
+// SQUAD and FORGE when it goes, so no hole is left where it was.
+import { Container, Text } from 'pixi.js';
 import { Button } from './widgets';
+import { LobbyCard } from './LobbyCard';
 import { getUiTexture } from '../../render/uiSkins';
 import { TICK_RATE } from '@dd/engine';
 import type { SavedRunSummary } from '../match/runSave';
 import { t } from '../../i18n';
 
-/** The block's width — the same 280 every other stacked control in the menu uses. */
-export const LOBBY_ROUTES_W = 280;
-const GAP = 5;
-/** The gap between the two halves of the SQUAD/FORGE row, and each half's width. */
-const PAIR_GAP = 6;
-const PAIR_W = (LOBBY_ROUTES_W - PAIR_GAP) / 2;
-const SOLO_H = 48;
-/** CONTINUE RUN, when there is one: SOLO's own height, because it is the same tier of
- *  action — "start playing" — and the one the returning player came for. */
-const CONTINUE_H = 48;
-/** The caption under CONTINUE (floor + elapsed) plus the gap above it. A `Text`, not a
- *  button, so it is not a second tap target competing with the row it describes. */
-const CONTINUE_CAPTION_H = 18;
-/** CO-OP and PVP QUEUE: still a tier of their own, one step down from SOLO. */
-const QUEUE_H = 44;
-const ROW_H = 42;
-/** The divider's own thickness, and the room kept on each side of it — replaces the plain
- *  `GAP` that used to separate PVP SOLO QUEUE from the SQUAD|FORGE row (2026-09-22). Wider
- *  than a row gap on purpose: this is the one break in the stack that means something, and
- *  it has to read as one even next to the tighter 5px rhythm the ordinary rows keep. */
-const DIVIDER_GAP = 8;
-const DIVIDER_H = 1;
-/** What `MainMenu.show` reserves for this block WITHOUT a resumable run and WITH TUTORIAL on
- *  screen. A constant rather than a measurement: every position in these screens is
- *  arithmetic on constants precisely so that laying one out needs no canvas and no
- *  `Text.height` (see `screens/fakeTextCanvas.ts`). The saved-run row adds to it, and a
- *  returning player's hidden TUTORIAL row subtracts from it — see `height`. */
-export const LOBBY_ROUTES_H =
-  SOLO_H + GAP + QUEUE_H + GAP + QUEUE_H + DIVIDER_GAP + DIVIDER_H + DIVIDER_GAP + ROW_H + GAP + ROW_H;
-/** What the CONTINUE row and its caption add when one is offered. */
-export const LOBBY_CONTINUE_H = CONTINUE_H + CONTINUE_CAPTION_H + GAP;
-/** What hiding TUTORIAL for a returning player gives back: its own row plus the gap above
- *  it — the row is the LAST one in the stack, so nothing below it has to move. */
-const TUTORIAL_BLOCK_H = GAP + ROW_H;
+/** The column's width, in the lobby's own (unscaled) units. */
+export const LOBBY_ROUTES_W = 272;
+/** The primary banner card — also the size of `MainMenu`'s portal PLAY card. */
+export const LOBBY_PRIMARY_H = 96;
+/** SOLO when it is not the primary: a slim bar, one tier down. */
+const SOLO_SLIM_H = 44;
+/** CO-OP and PVP SOLO QUEUE. */
+const SECONDARY_H = 62;
+/** The dock's buttons: an icon over a short label. */
+const DOCK_H = 56;
+/** The gap between two items of one tier, and the wider gap between two tiers. */
+export const LOBBY_GAP = 8;
+const TIER_GAP = 14;
+const DOCK_GAP = 8;
+
+/** The block's height when SOLO is the primary (no save, not a portal). */
+export const LOBBY_ROUTES_H = LOBBY_PRIMARY_H + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
+/** The block's height when something above SOLO holds the primary — CONTINUE here, or
+ *  `MainMenu`'s PLAY — and SOLO is the slim bar. Includes that primary's own slot. */
+export const LOBBY_ROUTES_DEMOTED_H = LOBBY_PRIMARY_H + LOBBY_GAP + SOLO_SLIM_H + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
 
 /** The "go" green every primary action in this project uses, and its brighter border. */
 const PRIMARY_FILL = 0x2f855a;
-const PRIMARY_BORDER = 0x68d391;
+const PRIMARY_FRAME = 0x9ae6b4;
 const PLAIN_FILL = 0x2a3140;
-const PLAIN_BORDER = 0x718096;
+const PLAIN_FRAME = 0x718096;
+/** CO-OP's and PVP's route colours — the same teal/coral their banners were painted in. */
+const COOP_FRAME = 0x4fd1c5;
+const PVP_FRAME = 0xfc8181;
 
 export class LobbyRoutes {
   readonly view = new Container();
   /** CONTINUE RUN — drawn only for a save `resumableRun.ts` says this build can rebuild. */
-  private continueBtn: Button;
-  private continueCaption: Text;
-  private soloBtn: Button;
-  private coopBtn: Button;
-  private pvpSoloBtn: Button;
-  /** The rule between "start playing" and "prepare" (2026-09-22) — see the file header. Not
-   *  a `Button`: no `onTap`, so it draws no press target at all. */
-  private divider = new Graphics();
+  private continueBtn: LobbyCard;
+  private soloBtn: LobbyCard;
+  private coopBtn: LobbyCard;
+  private pvpSoloBtn: LobbyCard;
   private squadBtn: Button;
-  /** The crafting page's lobby door (2026-09-21) — half a row, beside SQUAD. */
+  /** The crafting page's lobby door (2026-09-21). */
   private forgeBtn: Button;
   private tutorialBtn: Button;
   private recommendedTag: Text;
-  /** Both "badge this row NEW HERE?" and, since 2026-09-22, "draw this row at all" — a
-   *  returning player (`!MetaState.hasSeenTutorial` is false) gets neither. Defaults to
-   *  `true` rather than `false`: the real caller (`ScreenFlow.showMenu`) always calls
-   *  `setRecommendTutorial` before the first `show()`, so this default only reaches a
-   *  screen through a test that skips it, and what it shipped before this row could be
-   *  hidden at all was "always on screen" — the safer default to fall back to. */
+  /** Both "badge TUTORIAL as NEW HERE?" and "draw TUTORIAL at all". Defaults to `true`: the
+   *  real caller (`ScreenFlow.showMenu`) always sets it before the first `show()`, and
+   *  "always on screen" is the safer fallback for a test that skips it. */
   private recommendTutorial = true;
-  /** The resumable save this block is currently offering, or null. Kept so `retext()` can
-   *  rebuild the caption in the new locale without the caller re-supplying it. */
+  /** The resumable save on offer, or null — kept so `retext()` can rebuild its hint. */
   private saved: SavedRunSummary | null = null;
-  /** False on a game portal, where `MainMenu`'s own PLAY button holds the green — see
-   *  `setSoloPrimary` and `applyHierarchy`. */
+  /** False on a game portal, where `MainMenu`'s own PLAY card holds the primary. */
   private ownsPrimary = true;
 
   onContinue: (() => void) | null = null;
@@ -152,69 +107,46 @@ export class LobbyRoutes {
   onTutorial: (() => void) | null = null;
 
   constructor() {
-    // Hidden until `setContinue` is handed a save, and hidden again the moment it is handed
-    // null: the whole point of routing this through `checkResumable` is that a row which is
-    // on screen can always be walked through.
-    this.continueBtn = new Button(t('mainMenu.continueRun'), { w: LOBBY_ROUTES_W, h: CONTINUE_H, fontSize: 22, color: PRIMARY_FILL, borderColor: PRIMARY_BORDER });
+    this.continueBtn = new LobbyCard(t('mainMenu.continueRun'), LOBBY_ROUTES_W, LOBBY_PRIMARY_H, { art: 'lobby_card_descend', fill: PRIMARY_FILL, frame: PRIMARY_FRAME, fontSize: 24, glow: true });
     this.continueBtn.onTap = () => this.onContinue?.();
-    this.continueBtn.setIcon(getUiTexture('icon_play'));
     this.continueBtn.view.visible = false;
-    // Which run, in one line. A bare CONTINUE tells a player who has been away a week that
-    // SOMETHING is saved, which is the half of the report this row exists for; the floor and
-    // the elapsed time are the other half. Deliberately NOT in the button's own label: the
-    // one measured version of that ran 316px of Russian into a 280px button (design/10,
-    // 2026-09-17), and this caption is mostly digits in every locale.
-    this.continueCaption = new Text({ text: '', style: { fill: 0x9ae6b4, fontSize: 11, fontFamily: 'monospace', padding: 10 } });
-    this.continueCaption.anchor.set(0.5, 0);
-    this.continueCaption.visible = false;
 
-    this.soloBtn = new Button(t('mainMenu.solo'), { w: LOBBY_ROUTES_W, h: SOLO_H, fontSize: 22, color: PRIMARY_FILL, borderColor: PRIMARY_BORDER });
+    this.soloBtn = new LobbyCard(t('mainMenu.solo'), LOBBY_ROUTES_W, LOBBY_PRIMARY_H, { art: 'lobby_card_descend', fill: PRIMARY_FILL, frame: PRIMARY_FRAME, fontSize: 26, glow: true });
     this.soloBtn.onTap = () => this.onSolo?.();
-    this.soloBtn.setIcon(getUiTexture('icon_play'));
 
-    this.coopBtn = new Button(t('mainMenu.coop'), { w: LOBBY_ROUTES_W, h: QUEUE_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    this.coopBtn = new LobbyCard(t('mainMenu.coop'), LOBBY_ROUTES_W, SECONDARY_H, { art: 'lobby_card_coop', fill: 0x234e52, frame: COOP_FRAME, fontSize: 19 });
     this.coopBtn.onTap = () => this.onCoop?.();
-    this.coopBtn.setIcon(getUiTexture('icon_party_join'), 0x2c5282);
 
-    this.pvpSoloBtn = new Button(t('mainMenu.pvpSolo'), { w: LOBBY_ROUTES_W, h: QUEUE_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    this.pvpSoloBtn = new LobbyCard(t('mainMenu.pvpSolo'), LOBBY_ROUTES_W, SECONDARY_H, { art: 'lobby_card_pvp', fill: 0x63171b, frame: PVP_FRAME, fontSize: 19 });
     this.pvpSoloBtn.onTap = () => this.onPvpSolo?.();
-    this.pvpSoloBtn.setIcon(getUiTexture('icon_squad'), 0x742a2a);
 
-    // Fixed geometry, drawn once — `layout()` only ever moves it, same as every position in
-    // this file being arithmetic on constants rather than a measurement (see `LOBBY_ROUTES_H`).
-    this.divider.rect(0, 0, LOBBY_ROUTES_W, DIVIDER_H).fill({ color: 0x3a4a5c, alpha: 0.5 });
-
-    this.squadBtn = new Button(t('mainMenu.squad'), { w: PAIR_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    // The dock: icon over label ('top' placement), because three labels up to nine
+    // characters long do not fit beside a chip in a third of the column.
+    const dockW = this.dockWidth(3);
+    this.squadBtn = new Button(t('mainMenu.squad'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: PLAIN_FRAME });
     this.squadBtn.onTap = () => this.onSquad?.();
-    this.squadBtn.setIcon(getUiTexture('icon_party_create'), 0x2c5282);
+    this.squadBtn.setIcon(getUiTexture('icon_party_create'), undefined, 'top');
 
-    // The forger NPC's own art as the chip, rather than a new icon nobody has drawn yet:
-    // it is the character this route leads to, and the forge screen already shows him.
-    this.forgeBtn = new Button(t('mainMenu.forge'), { w: PAIR_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    // The forger NPC's own art as the icon: it is the character this route leads to.
+    this.forgeBtn = new Button(t('mainMenu.forge'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: PLAIN_FRAME });
     this.forgeBtn.onTap = () => this.onForge?.();
-    this.forgeBtn.setIcon(getUiTexture('npc_forger'), 0x744210);
+    this.forgeBtn.setIcon(getUiTexture('npc_forger'), undefined, 'top');
 
-    this.tutorialBtn = new Button(t('mainMenu.tutorial'), { w: LOBBY_ROUTES_W, h: ROW_H, fontSize: 16, borderColor: PLAIN_BORDER });
+    this.tutorialBtn = new Button(t('mainMenu.tutorial'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: 0xfbd38d });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
-    // Its own chip colour, not the account glyph's purple (design/10:75 "two adjacent buttons
-    // must differ by more than their label" — 2026-09-22, until a dedicated icon exists: the
-    // glyph is still borrowed, but the chip is the cue that fix already relied on once). Not
-    // one of the other rows' colours either — purple is ACCOUNT, blue is CO-OP/SQUAD, red is
-    // PVP, brown is FORGE.
-    this.tutorialBtn.setIcon(getUiTexture('icon_account'), 0x2f6f5f);
+    this.tutorialBtn.setIcon(getUiTexture('icon_account'), undefined, 'top');
 
-    // Never forced — the same "never required" convention `LoginScreen` follows, and the
-    // badge `ModeSelect` carried before the merge. Hidden the moment the player has completed
-    // OR skipped the tutorial once (`MetaState.hasSeenTutorial`).
-    this.recommendedTag = new Text({ text: t('mainMenu.recommended'), style: { fill: 0xfbd38d, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold', padding: 10 } });
-    this.recommendedTag.anchor.set(1, 0.5);
+    // Never forced — the same "never required" convention `LoginScreen` follows. A tag on
+    // the dock button's top edge rather than inside it: the button is too small to share.
+    this.recommendedTag = new Text({ text: t('mainMenu.recommended'), style: { fill: 0x1a202c, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold', padding: 8, stroke: { color: 0xfbd38d, width: 5 } } });
+    this.recommendedTag.anchor.set(0.5, 0.5);
     this.recommendedTag.visible = false;
 
     this.view.addChild(
-      this.continueBtn.view, this.continueCaption,
-      this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view, this.divider,
+      this.continueBtn.view, this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view,
       this.squadBtn.view, this.forgeBtn.view, this.tutorialBtn.view, this.recommendedTag,
     );
+    this.applyHierarchy();
   }
 
   /**
@@ -222,29 +154,27 @@ export class LobbyRoutes {
    *
    * The caller passes `resumableRun.ts`'s answer, never `savedRunSummary()`'s: "a save
    * exists" and "a save this build can rebuild" are different questions, and only the second
-   * one may draw a button (that module's header has what the first one shipped).
+   * one may draw a button.
    */
   setContinue(saved: SavedRunSummary | null): void {
     this.saved = saved;
     this.continueBtn.view.visible = saved !== null;
-    this.continueCaption.visible = saved !== null;
     this.retextContinue();
     this.applyHierarchy();
   }
 
-  /** What this block occupies vertically, which is state-dependent since 2026-09-17 (a
-   *  resumable save) and since 2026-09-22 (TUTORIAL hidden for a player who has seen it) —
-   *  `MainMenu.show` sizes the card off this rather than off `LOBBY_ROUTES_H` alone. */
+  /** What this block occupies vertically — the primary's slot included when SOLO is demoted
+   *  by something `MainMenu` draws above it (portal PLAY), so the shell can size the column
+   *  the same way in every state. */
   get height(): number {
-    const routesH = LOBBY_ROUTES_H - (this.recommendTutorial ? 0 : TUTORIAL_BLOCK_H);
-    return routesH + (this.saved ? LOBBY_CONTINUE_H : 0);
+    return this.soloIsPrimary() ? LOBBY_ROUTES_H : LOBBY_ROUTES_DEMOTED_H;
   }
 
-  /** Call before `layout()` so TUTORIAL reflects `!MetaState.hasSeenTutorial` — since
-   *  2026-09-22 that means whether the row is drawn AT ALL, not just its "NEW HERE?" badge
-   *  (design/10 "do not dim a door — open it, or take it off the screen"; `screens/
-   *  Settings.ts` is the second door this relies on, so the route stays reachable either
-   *  way). */
+  /** Whether the TOP slot of this block is empty and owed to `MainMenu`'s PLAY card. */
+  get reservesPrimarySlot(): boolean {
+    return !this.soloIsPrimary() && this.saved === null;
+  }
+
   setRecommendTutorial(recommend: boolean): void {
     this.recommendTutorial = recommend;
     this.recommendedTag.visible = recommend;
@@ -252,108 +182,108 @@ export class LobbyRoutes {
   }
 
   /**
-   * Whether this block owns the lobby's primary action at all.
-   *
-   * It does, everywhere except a game portal: there `MainMenu`'s own PLAY button sits above
-   * this block and starts a run in one click (design/20), so every row here — including
-   * CONTINUE — demotes to an ordinary route. Two green buttons on one card is the hierarchy
-   * failure design/10 recorded on 2026-08-02, from a report that said clicks were landing on
-   * the wrong page when in fact the routing was correct and the ranking was not.
-   *
-   * Still named for SOLO because that is what `MainMenu.setQuickPlay` is deciding and what
-   * every existing caller passes; WHICH of this block's rows takes the green when it does own
-   * one is `applyHierarchy`'s business, not the caller's.
+   * Whether this block owns the lobby's primary action at all — it does everywhere except a
+   * game portal without a save, where `MainMenu`'s PLAY sits in the top slot and starts a run
+   * in one click (design/20). Still named for SOLO because that is what every caller passes.
    */
   setSoloPrimary(primary: boolean): void {
     this.ownsPrimary = primary;
     this.applyHierarchy();
   }
 
-  /**
-   * Exactly one green button on the card, and it is the topmost row that starts play.
-   *
-   * With a resumable save that is CONTINUE, and SOLO — which goes to the forge first — steps
-   * down beside CO-OP. On a portal it is neither: `MainMenu`'s PLAY holds the green, because
-   * the platform's one-click-to-gameplay requirement is about the button a first-time visitor
-   * lands on and a saved run is by definition not a first visit.
-   *
-   * What this deliberately does NOT do is re-point PLAY at the resume when a save exists.
-   * One button whose meaning depends on the state is how a player loses a run they meant to
-   * keep — the same rule that keeps SAVE & QUIT and QUIT as two rows in the pause menu
-   * (design/10's HUD table) rather than one that changes its mind.
-   */
-  private applyHierarchy(): void {
-    const continuePrimary = this.ownsPrimary && this.saved !== null;
-    const soloPrimary = this.ownsPrimary && this.saved === null;
-    this.continueBtn.setFill(continuePrimary ? PRIMARY_FILL : PLAIN_FILL);
-    this.continueBtn.setBorder(continuePrimary ? PRIMARY_BORDER : PLAIN_BORDER);
-    this.soloBtn.setFill(soloPrimary ? PRIMARY_FILL : PLAIN_FILL);
-    this.soloBtn.setBorder(soloPrimary ? PRIMARY_BORDER : PLAIN_BORDER);
+  private soloIsPrimary(): boolean {
+    return this.ownsPrimary && this.saved === null;
   }
 
-  /** Lay the block out with its top-left at (`cx` - half the width, `top`). */
-  layout(cx: number, top: number): void {
-    const left = cx - LOBBY_ROUTES_W / 2;
-    // CONTINUE sits ABOVE SOLO, and the rows below simply start lower when it is there —
-    // no row shares a slot with another, so a tap aimed at SOLO on a save-less lobby can
-    // never land on CONTINUE on a saved one (the `PauseMenu`'s SAVE & QUIT rule, one screen
-    // out). The caption hangs in the gap the row's own block reserves for it.
-    let y = top;
+  /**
+   * Exactly one primary on the screen, and it is the topmost card that starts play: CONTINUE
+   * with a save, SOLO without one, and neither on a portal (`MainMenu`'s PLAY). SOLO demoted
+   * becomes the slim plain bar; CONTINUE never drops below the primary size, because the only
+   * state that would demote it — a portal with a save — draws it as the primary instead.
+   */
+  private applyHierarchy(): void {
+    const soloPrimary = this.soloIsPrimary();
+    this.soloBtn.resize(LOBBY_ROUTES_W, soloPrimary ? LOBBY_PRIMARY_H : SOLO_SLIM_H);
+    this.soloBtn.setArt(soloPrimary ? 'lobby_card_descend' : undefined);
+    this.soloBtn.setFill(soloPrimary ? PRIMARY_FILL : PLAIN_FILL);
+    this.soloBtn.setFrame(soloPrimary ? PRIMARY_FRAME : PLAIN_FRAME);
+    this.soloBtn.setGlow(soloPrimary);
+    this.retextSolo();
+    const continuePrimary = this.ownsPrimary && this.saved !== null;
+    this.continueBtn.setFill(continuePrimary ? PRIMARY_FILL : PLAIN_FILL);
+    this.continueBtn.setFrame(continuePrimary ? PRIMARY_FRAME : PLAIN_FRAME);
+    this.continueBtn.setGlow(continuePrimary);
+  }
+
+  private dockWidth(n: number): number {
+    return (LOBBY_ROUTES_W - DOCK_GAP * (n - 1)) / n;
+  }
+
+  /** Lay the block out from its own top-left at (0, 0) — `MainMenu` positions and scales
+   *  the column it sits in. */
+  layout(): void {
+    let y = 0;
     if (this.saved) {
-      this.continueBtn.view.position.set(left, y);
-      this.continueCaption.position.set(cx, y + CONTINUE_H + 2);
-      y += LOBBY_CONTINUE_H;
+      this.continueBtn.view.position.set(0, y);
+      y += LOBBY_PRIMARY_H + LOBBY_GAP;
+    } else if (!this.soloIsPrimary()) {
+      // The portal's PLAY card is drawn here by the shell.
+      y += LOBBY_PRIMARY_H + LOBBY_GAP;
     }
-    const soloY = y;
-    this.soloBtn.view.position.set(left, soloY);
-    const coopY = soloY + SOLO_H + GAP;
-    this.coopBtn.view.position.set(left, coopY);
-    const pvpY = coopY + QUEUE_H + GAP;
-    this.pvpSoloBtn.view.position.set(left, pvpY);
-    // The rule between "start playing" and "prepare" — see the file header.
-    const dividerY = pvpY + QUEUE_H + DIVIDER_GAP;
-    this.divider.position.set(left, dividerY);
-    const squadY = dividerY + DIVIDER_H + DIVIDER_GAP;
-    this.squadBtn.view.position.set(left, squadY);
-    this.forgeBtn.view.position.set(left + PAIR_W + PAIR_GAP, squadY);
-    // Positioned even when hidden (a returning player) — same convention as the banner in
-    // `MainMenu.show`: an invisible node costs nothing, and it is one fewer branch to keep
-    // in sync with `height`'s own condition.
-    const tutorialY = squadY + ROW_H + GAP;
-    this.tutorialBtn.view.position.set(left, tutorialY);
+    this.soloBtn.view.position.set(0, y);
+    y += this.soloBtn.height + TIER_GAP;
+    this.coopBtn.view.position.set(0, y);
+    y += SECONDARY_H + LOBBY_GAP;
+    this.pvpSoloBtn.view.position.set(0, y);
+    y += SECONDARY_H + TIER_GAP;
+
+    // The dock: three across, or two across once TUTORIAL has been seen.
+    const n = this.recommendTutorial ? 3 : 2;
+    const dockW = this.dockWidth(n);
+    const dock = [this.squadBtn, this.forgeBtn, this.tutorialBtn].slice(0, n);
+    dock.forEach((b, i) => {
+      b.setWidth(dockW);
+      b.view.position.set(i * (dockW + DOCK_GAP), y);
+    });
+    // Positioned even when hidden, same as every invisible node in these screens.
     this.tutorialBtn.view.visible = this.recommendTutorial;
-    // Inside the button's own right edge, not out past it: the badge sat to the RIGHT of the
-    // row on `ModeSelect`, where the block was the widest thing on the screen. Here the card
-    // is only 40px wider than the row, so an outside badge would have crossed its border.
-    this.recommendedTag.position.set(left + LOBBY_ROUTES_W - 10, tutorialY + ROW_H / 2);
+    this.recommendedTag.position.set(2 * (dockW + DOCK_GAP) + dockW / 2, y);
     this.recommendedTag.visible = this.recommendTutorial;
   }
 
-  /** The CONTINUE row's label and caption, in the active locale. Split out of `retext` so
-   *  `setContinue` can refresh the caption without re-applying five other labels. */
+  /** Advance the primary card's glow. */
+  update(dtMs: number): void {
+    this.continueBtn.update(dtMs);
+    this.soloBtn.update(dtMs);
+  }
+
+  /** CONTINUE's label and its floor/time hint, in the active locale. */
   private retextContinue(): void {
     this.continueBtn.setText(t('mainMenu.continueRun'));
     const saved = this.saved;
-    if (!saved) {
-      this.continueCaption.text = '';
-      return;
-    }
-    // Same arithmetic and the same 1-based floor the Forge's own saved-run line uses
-    // (`Forge.render`), so the two readouts of one save cannot disagree about which floor it
-    // is on.
-    this.continueCaption.text = t('mainMenu.continueRunAt', {
+    // Same arithmetic and the same 1-based floor the Loadout screen's saved-run line uses, so
+    // the two readouts of one save cannot disagree about which floor it is on.
+    this.continueBtn.setHint(saved ? t('mainMenu.continueRunAt', {
       floor: saved.floorIndex + 1,
       m: Math.floor(saved.ticks / TICK_RATE / 60),
       ss: String(Math.floor(saved.ticks / TICK_RATE) % 60).padStart(2, '0'),
-    });
+    }) : '');
+  }
+
+  /** SOLO's description only while it is the banner — the slim bar has no room for one. */
+  private retextSolo(): void {
+    this.soloBtn.setText(t('mainMenu.solo'));
+    this.soloBtn.setHint(this.soloIsPrimary() ? t('mainMenu.soloHint') : '');
   }
 
   /** Re-apply every label from the active locale — `MainMenu.retext` calls this. */
   retext(): void {
     this.retextContinue();
-    this.soloBtn.setText(t('mainMenu.solo'));
+    this.retextSolo();
     this.coopBtn.setText(t('mainMenu.coop'));
+    this.coopBtn.setHint(t('mainMenu.coopHint'));
     this.pvpSoloBtn.setText(t('mainMenu.pvpSolo'));
+    this.pvpSoloBtn.setHint(t('mainMenu.pvpHint'));
     this.squadBtn.setText(t('mainMenu.squad'));
     this.forgeBtn.setText(t('mainMenu.forge'));
     this.tutorialBtn.setText(t('mainMenu.tutorial'));

@@ -58,6 +58,28 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   // `render/damageDigitAtlas.ts`. In the lobby pack with the rest of `ui/`, so it is resident
   // long before the first hit; 15 kB.
   damage_digits: DAMAGE_DIGITS_PATH,
+  // The lobby redesign (design/10, 2026-09-27) — its painting, the two logos (one per script;
+  // `MainMenu` picks by locale), a portrait per playable character (`LobbyHero`) and the three
+  // route-card banners (`LobbyRoutes`). The painting and the banners are OPAQUE, so they ship
+  // as JPEG: the painting is 187 kB at 1920x1080 as JPEG and would be several MB as PNG, in the
+  // one pack the boot waits for. Raws and prompts: `art/ui/lobby_*_raw.png`, `art/ui/prompts.md`.
+  lobby_bg: '/ui/lobby_bg.jpg',
+  lobby_logo_en: '/ui/lobby_logo_en.png',
+  lobby_logo_zh: '/ui/lobby_logo_zh.png',
+  lobby_hero_orb: '/ui/lobby_hero_orb.png',
+  lobby_hero_skirmisher: '/ui/lobby_hero_skirmisher.png',
+  lobby_hero_juggernaut: '/ui/lobby_hero_juggernaut.png',
+  lobby_card_descend: '/ui/lobby_card_descend.jpg',
+  lobby_card_coop: '/ui/lobby_card_coop.jpg',
+  lobby_card_pvp: '/ui/lobby_card_pvp.jpg',
+  // The painting's three sky rocks, lifted out of it (the sky painted back under them) so
+  // `LobbyBackdrop` can drift them. `art/ui/prompts.md`, "The drifting rocks".
+  lobby_rock_a: '/ui/lobby_rock_a.png',
+  lobby_rock_b: '/ui/lobby_rock_b.png',
+  lobby_rock_c: '/ui/lobby_rock_c.png',
+  // One weapon orbiting the lobby hero: a copy of `weapons/gun_cryobolt.png`, because the
+  // weapon art ships in the `forge` pack, which only arrives at the run phase.
+  lobby_weapon: '/ui/lobby_weapon.png',
 };
 
 const textures = new Map<string, Texture>();

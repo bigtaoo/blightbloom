@@ -22,6 +22,13 @@ export const de: Translations<typeof en> = {
     account: 'ANMELDEN',
     settings: 'OPTIONEN',
     greeting: 'Hallo, {username}',
+    playHint: 'Direkt in einen Lauf',
+    soloHint: 'Allein hinab in die Tiefe',
+    coopHint: 'Mit anderen Spielern los',
+    pvpHint: 'Kampf gegen andere Spieler',
+    guestHint: 'Anmelden, um zu speichern',
+    syncedHint: 'Fortschritt synchronisiert',
+    bestFloor: 'Bestwert: Ebene {floor}',
   },
   loading: {
     boot: 'LÄDT',

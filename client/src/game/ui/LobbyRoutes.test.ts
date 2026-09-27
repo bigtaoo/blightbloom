@@ -1,21 +1,21 @@
 /**
- * The lobby's route rows, and in particular the CONTINUE row added 2026-09-17 (design/10).
+ * The lobby's route column (design/10): the CONTINUE card added 2026-09-17, and the three-tier
+ * layout of the 2026-09-27 redesign.
  *
- * Three paths the acceptance for that row named, all here: the row APPEARS for a resumable
+ * Three paths the CONTINUE acceptance named are all here: the card APPEARS for a resumable
  * save, it is GONE when there is none, and the hierarchy it changes resolves to exactly one
- * green button in each of the four states (save × portal). `MainMenu.test.ts` covers the
- * shell's half — the provider, the card growing, and which top row a portal draws.
+ * green primary in each of the four states (save × portal). `MainMenu.test.ts` covers the
+ * shell's half — the provider, the column's placement, and which top card a portal draws.
  *
  * `installFakeTextCanvas` for the same reason every screen test here uses it: Pixi's `Text`
- * wants a canvas to measure glyphs and there is none, and the caption assertion below is a
- * width measurement. Read a passing `zh` width as "not evidence" — the fake charges 0.6em
- * per character and CJK is nearer a full em (`screens/labelFit.test.ts` has the table).
+ * wants a canvas to measure glyphs and there is none. Read a passing `zh` width as "not
+ * evidence" — the fake charges 0.6em per character and CJK is nearer a full em.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { Text } from 'pixi.js';
-import { readFileSync } from 'node:fs';
+import type { Graphics } from 'pixi.js';
 import { installFakeTextCanvas } from '../screens/fakeTextCanvas';
-import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_CONTINUE_H } from './LobbyRoutes';
+import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_ROUTES_DEMOTED_H, LOBBY_PRIMARY_H } from './LobbyRoutes';
+import { MainMenu } from '../screens/MainMenu';
 import { LOCALES, setLocale, resetLocaleForTests, t } from '../../i18n';
 import type { SavedRunSummary } from '../match/runSave';
 import { useLocale } from '../../i18n/loadLocale';
@@ -29,58 +29,63 @@ const SAVED: SavedRunSummary = { floorIndex: 2, ticks: 9000, savedAtMs: 0 };
 interface Btn {
   label: { text: string };
   onTap: (() => void) | null;
-  color: number;
-  view: { visible: boolean; position: { x: number; y: number } };
+  view: { visible: boolean; position: { x: number; y: number }; children: unknown[] };
+}
+
+interface Card extends Btn {
+  hint: { text: string; visible: boolean; width: number; x: number };
+  style: { fill: number; frame: number; art?: string; glow?: boolean };
 }
 
 function privateOf(r: LobbyRoutes) {
   return r as unknown as {
-    continueBtn: Btn;
-    continueCaption: { text: string; visible: boolean; position: { x: number; y: number } } & Text;
-    soloBtn: Btn;
-    coopBtn: Btn;
-    pvpSoloBtn: Btn;
-    squadBtn: Btn;
+    continueBtn: Card;
+    soloBtn: Card;
+    coopBtn: Card;
+    pvpSoloBtn: Card;
+    squadBtn: Btn & { borderColor: number };
+    forgeBtn: Btn;
     tutorialBtn: Btn;
-    divider: { position: { x: number; y: number } };
+    recommendedTag: { visible: boolean; position: { x: number; y: number } };
   };
 }
 
-const GREEN = 0x2f855a;
+function boxOf(b: Btn) {
+  return (b.view.children[0] as Graphics).getLocalBounds();
+}
 
-describe('the CONTINUE row appears only for a run this build can resume', () => {
+const GREEN = 0x2f855a;
+/** A box's local bounds include half its border stroke; sub-pixel noise, not layout. */
+const SLACK = 1;
+
+describe('the CONTINUE card appears only for a run this build can resume', () => {
   it('is hidden with no save — which is the default, so a caller that never sets it is safe', () => {
     const r = new LobbyRoutes();
-    r.layout(400, 100);
-    const p = privateOf(r);
-    expect(p.continueBtn.view.visible).toBe(false);
-    expect(p.continueCaption.visible).toBe(false);
+    r.layout();
+    expect(privateOf(r).continueBtn.view.visible).toBe(false);
     expect(r.height).toBe(LOBBY_ROUTES_H);
   });
 
-  it('appears, with a caption naming the floor and the time played', () => {
+  it('appears, with a hint naming the floor and the time played', () => {
     const r = new LobbyRoutes();
     r.setContinue(SAVED);
-    r.layout(400, 100);
+    r.layout();
     const p = privateOf(r);
     expect(p.continueBtn.view.visible).toBe(true);
-    expect(p.continueCaption.visible).toBe(true);
-    // 1-based floor and mm:ss off 9000 ticks at 30 Hz — the same arithmetic the Forge's own
-    // saved-run line does, asserted on the OUTPUT so the two cannot drift apart silently.
-    expect(p.continueCaption.text).toBe(t('mainMenu.continueRunAt', { floor: 3, m: 5, ss: '00' }));
-    expect(p.continueCaption.text).toContain('3');
-    expect(p.continueCaption.text).toContain('5:00');
+    expect(p.continueBtn.hint.visible).toBe(true);
+    // 1-based floor and mm:ss off 9000 ticks at 30 Hz — the same arithmetic the Loadout
+    // screen's saved-run line does, asserted on the OUTPUT so the two cannot drift apart.
+    expect(p.continueBtn.hint.text).toBe(t('mainMenu.continueRunAt', { floor: 3, m: 5, ss: '00' }));
   });
 
   it('goes away again when the offer is withdrawn', () => {
     const r = new LobbyRoutes();
     r.setContinue(SAVED);
     r.setContinue(null);
-    r.layout(400, 100);
+    r.layout();
     const p = privateOf(r);
     expect(p.continueBtn.view.visible).toBe(false);
-    expect(p.continueCaption.visible).toBe(false);
-    expect(p.continueCaption.text).toBe(''); // not a stale line under a hidden button
+    expect(p.continueBtn.hint.visible).toBe(false); // not a stale line on a hidden card
     expect(r.height).toBe(LOBBY_ROUTES_H);
   });
 
@@ -95,14 +100,13 @@ describe('the CONTINUE row appears only for a run this build can resume', () => 
   });
 });
 
-describe('exactly one primary, and it is the topmost row that starts a run', () => {
-  /** [has a save, this block owns the primary] → which row is green. */
+describe('exactly one primary, and it is the topmost card that starts a run', () => {
+  /** [has a save, this block owns the primary] → which card is green. */
   const CASES: Array<[string, SavedRunSummary | null, boolean, 'continue' | 'solo' | 'neither']> = [
     ['no save, ordinary build', null, true, 'solo'],
     ['saved run, ordinary build', SAVED, true, 'continue'],
     // On a portal the shell's own PLAY holds the green when there is nothing to continue;
-    // when there IS, the shell hides PLAY and hands this block the primary back, which is
-    // why there is no fourth row here where both are plain.
+    // when there IS, the shell hides PLAY and hands this block the primary back.
     ['no save, portal', null, false, 'neither'],
     ['saved run, portal-with-PLAY-still-up', SAVED, false, 'neither'],
   ];
@@ -112,151 +116,152 @@ describe('exactly one primary, and it is the topmost row that starts a run', () 
     r.setSoloPrimary(ownsPrimary);
     r.setContinue(saved);
     const p = privateOf(r);
-    expect(p.continueBtn.color === GREEN).toBe(expected === 'continue');
-    expect(p.soloBtn.color === GREEN).toBe(expected === 'solo');
-    // Never two. The 2026-08-02 report this rule comes from read as "the click went to the
-    // wrong page" when the routing had been correct all along.
-    expect([p.continueBtn.color, p.soloBtn.color].filter((c) => c === GREEN).length)
-      .toBeLessThanOrEqual(1);
+    expect(p.continueBtn.style.fill === GREEN).toBe(expected === 'continue');
+    expect(p.soloBtn.style.fill === GREEN).toBe(expected === 'solo');
+    // The glow goes with the green — one breathing card on the screen, never two.
+    expect(!!p.continueBtn.style.glow).toBe(expected === 'continue');
+    expect(!!p.soloBtn.style.glow).toBe(expected === 'solo');
   });
 
   it('re-resolves when the offer arrives AFTER the host has been decided', () => {
-    // The real call order: the assembly calls `setSoloPrimary` once at boot, and `show()`
-    // pushes a save in on every entry to the lobby. A hierarchy computed only in the first
-    // of those would leave SOLO green under a CONTINUE row.
+    // The real call order: `setSoloPrimary` once at boot, a save pushed in on every show.
     const r = new LobbyRoutes();
     r.setSoloPrimary(true);
-    expect(privateOf(r).soloBtn.color).toBe(GREEN);
+    expect(privateOf(r).soloBtn.style.fill).toBe(GREEN);
     r.setContinue(SAVED);
-    expect(privateOf(r).soloBtn.color).not.toBe(GREEN);
-    expect(privateOf(r).continueBtn.color).toBe(GREEN);
+    expect(privateOf(r).soloBtn.style.fill).not.toBe(GREEN);
+    expect(privateOf(r).continueBtn.style.fill).toBe(GREEN);
+  });
+
+  it('draws SOLO as the banner when it is the primary, and as the slim plain bar when not', () => {
+    const r = new LobbyRoutes();
+    expect(boxOf(privateOf(r).soloBtn).height).toBe(LOBBY_PRIMARY_H);
+    expect(privateOf(r).soloBtn.style.art).toBe('lobby_card_descend');
+    expect(privateOf(r).soloBtn.hint.visible).toBe(true);
+    r.setContinue(SAVED);
+    expect(boxOf(privateOf(r).soloBtn).height).toBeLessThan(LOBBY_PRIMARY_H);
+    expect(privateOf(r).soloBtn.style.art).toBeUndefined();
+    expect(privateOf(r).soloBtn.hint.visible).toBe(false);
   });
 });
 
-describe('the rows below it move down rather than sharing its slot', () => {
-  it('pushes every other route down by exactly the block it adds', () => {
+describe('no card shares another card\'s slot', () => {
+  it('stacks CONTINUE above a slim SOLO and moves the rest down by the difference', () => {
     const plain = new LobbyRoutes();
-    plain.layout(400, 100);
+    plain.layout();
     const saved = new LobbyRoutes();
     saved.setContinue(SAVED);
-    saved.layout(400, 100);
-
+    saved.layout();
     const a = privateOf(plain);
     const b = privateOf(saved);
-    expect(saved.height).toBe(LOBBY_ROUTES_H + LOBBY_CONTINUE_H);
-    // CONTINUE takes the slot SOLO used to sit in, and SOLO — with everything under it —
-    // moves down a whole block. Nothing lands where a different row was, which is the
-    // mis-tap the pause menu's SAVE & QUIT row is laid out to avoid.
+    expect(saved.height).toBe(LOBBY_ROUTES_DEMOTED_H);
+    // CONTINUE takes the top slot; SOLO sits under it — never in the slot SOLO had, which is
+    // the mis-tap the pause menu's SAVE & QUIT row is laid out to avoid.
     expect(b.continueBtn.view.position.y).toBe(a.soloBtn.view.position.y);
-    expect(b.soloBtn.view.position.y).toBe(a.soloBtn.view.position.y + LOBBY_CONTINUE_H);
-    expect(b.coopBtn.view.position.y).toBe(a.coopBtn.view.position.y + LOBBY_CONTINUE_H);
-    expect(b.tutorialBtn.view.position.y).toBe(a.tutorialBtn.view.position.y + LOBBY_CONTINUE_H);
+    expect(b.soloBtn.view.position.y).toBeGreaterThanOrEqual(LOBBY_PRIMARY_H);
+    const shift = LOBBY_ROUTES_DEMOTED_H - LOBBY_ROUTES_H;
+    expect(b.coopBtn.view.position.y).toBe(a.coopBtn.view.position.y + shift);
+    expect(b.squadBtn.view.position.y).toBe(a.squadBtn.view.position.y + shift);
   });
 
-  it('draws the caption inside the block it reserved, not over the row below', () => {
+  it('leaves the top slot empty for the portal PLAY card, and says so', () => {
     const r = new LobbyRoutes();
+    r.setSoloPrimary(false);
+    r.layout();
+    expect(r.reservesPrimarySlot).toBe(true);
+    expect(privateOf(r).soloBtn.view.position.y).toBeGreaterThanOrEqual(LOBBY_PRIMARY_H);
     r.setContinue(SAVED);
-    r.layout(400, 100);
+    expect(r.reservesPrimarySlot).toBe(false); // CONTINUE fills it
+  });
+
+  it('keeps every card inside the column width', () => {
+    const r = new LobbyRoutes();
+    r.layout();
     const p = privateOf(r);
-    const capTop = p.continueCaption.position.y;
-    expect(capTop).toBeGreaterThan(p.continueBtn.view.position.y);
-    expect(capTop + p.continueCaption.height).toBeLessThanOrEqual(p.soloBtn.view.position.y);
+    for (const b of [p.soloBtn, p.coopBtn, p.pvpSoloBtn, p.squadBtn, p.forgeBtn, p.tutorialBtn]) {
+      expect(b.view.position.x).toBeGreaterThanOrEqual(0);
+      expect(b.view.position.x + boxOf(b).width).toBeLessThanOrEqual(LOBBY_ROUTES_W + SLACK);
+    }
   });
 });
 
-describe('the caption fits the card in every locale', () => {
-  // `labelFit.test.ts` sweeps BUTTONS; this is a `Text` and would be invisible to it. It is
-  // one unwrapped line by design (wrapping would make the block's height a measurement, which
-  // these screens cannot afford — see `LOBBY_ROUTES_H`), so it has to fit on its own.
+describe('the hint fits its card in every locale', () => {
+  // `labelFit.test.ts` sweeps the LABEL of every press target; the hint is a second `Text` and
+  // invisible to it. It is fitted (and at worst ellipsised) to the room its card has.
   it.each(LOCALES)('%s', async (locale) => {
     await useLocale(locale);
-    const r = new LobbyRoutes();
-    // The widest plausible readout: a two-digit floor and an hour-long run.
-    r.setContinue({ floorIndex: 11, ticks: 30 * 60 * 99 + 30 * 59, savedAtMs: 0 });
-    r.layout(400, 100);
-    const cap = privateOf(r).continueCaption;
-    expect(cap.text).not.toBe('');
-    expect(cap.width, `${locale}: "${cap.text}" is wider than the row it sits under`)
-      .toBeLessThanOrEqual(LOBBY_ROUTES_W);
+    const m = new MainMenu();
+    // The widest plausible CONTINUE readout: a two-digit floor and an hour-long run.
+    m.resumableRun = () => ({ floorIndex: 11, ticks: 30 * 60 * 99 + 30 * 59, savedAtMs: 0 });
+    m.show(760, 640);
+    const r = privateOf((m as unknown as { routes: LobbyRoutes }).routes);
+    for (const card of [r.continueBtn, r.coopBtn, r.pvpSoloBtn]) {
+      expect(card.hint.text).not.toBe('');
+      expect(card.hint.x + card.hint.width, `${locale}: "${card.hint.text}" runs past its card`)
+        .toBeLessThanOrEqual(boxOf(card).width);
+    }
   });
 });
 
-describe('a locale change reaches the row', () => {
-  it('retexts the button AND the caption, without being handed the save again', async () => {
+describe('a locale change reaches the column', () => {
+  it('retexts the card AND its hint, without being handed the save again', async () => {
     const r = new LobbyRoutes();
     setLocale('en');
     r.setContinue(SAVED);
     const p = privateOf(r);
     expect(p.continueBtn.label.text).toBe(t('mainMenu.continueRun'));
-    const english = p.continueCaption.text;
+    const english = p.continueBtn.hint.text;
 
     await useLocale('ru');
     r.retext();
     expect(p.continueBtn.label.text).toBe(t('mainMenu.continueRun'));
-    expect(p.continueCaption.text).not.toBe(english);
-    expect(p.continueCaption.text).toContain('3'); // still the same run
-  });
-});
-
-describe('the divider between "play now" and "prepare" (2026-09-22)', () => {
-  it('sits below PVP SOLO QUEUE and above SQUAD, and is not a tap target', () => {
-    const r = new LobbyRoutes();
-    r.layout(400, 100);
-    const p = privateOf(r);
-    expect(p.divider.position.y).toBeGreaterThan(p.pvpSoloBtn.view.position.y);
-    expect(p.divider.position.y).toBeLessThan(p.squadBtn.view.position.y);
-    // No `onTap` at all — `widgetOverlap.test.ts`'s tappable walk keys off exactly this,
-    // so a plain `Graphics` with no press handler is already invisible to it.
-    expect('onTap' in (p as unknown as { divider: object }).divider).toBe(false);
+    expect(p.continueBtn.hint.text).not.toBe(english);
+    expect(p.continueBtn.hint.text).toContain('3'); // still the same run
   });
 });
 
 describe('TUTORIAL hides once the player has seen it (2026-09-22)', () => {
-  it('is drawn, at full height, for a caller that never says otherwise — a new player', () => {
-    // The real caller (`ScreenFlow.showMenu`) always calls `setRecommendTutorial` before the
-    // first `show()`; a caller that skips it (every test above this one) gets the row, which
-    // is what this block always drew before it could be hidden at all.
+  it('is drawn, badged, for a caller that never says otherwise — a new player', () => {
     const r = new LobbyRoutes();
-    r.layout(400, 100);
+    r.layout();
     expect(privateOf(r).tutorialBtn.view.visible).toBe(true);
-    expect(r.height).toBe(LOBBY_ROUTES_H);
+    expect(privateOf(r).recommendedTag.visible).toBe(true);
   });
 
-  it('disappears, and gives its row back, once told the player has seen it', () => {
+  it('disappears, and the dock closes the gap, once told the player has seen it', () => {
     const r = new LobbyRoutes();
     r.setRecommendTutorial(false);
-    r.layout(400, 100);
-    expect(privateOf(r).tutorialBtn.view.visible).toBe(false);
-    // TUTORIAL's own row (42) plus the gap above it (5) — it is the LAST row in the stack,
-    // so nothing else moves.
-    expect(r.height).toBe(LOBBY_ROUTES_H - 47);
+    r.layout();
+    const p = privateOf(r);
+    expect(p.tutorialBtn.view.visible).toBe(false);
+    expect(p.recommendedTag.visible).toBe(false);
+    // Two across now: FORGE ends at the column's right edge.
+    expect(Math.abs(p.forgeBtn.view.position.x + boxOf(p.forgeBtn).width - LOBBY_ROUTES_W)).toBeLessThanOrEqual(SLACK);
+    // The dock is still one row, so the column's height does not change.
+    expect(r.height).toBe(LOBBY_ROUTES_H);
   });
 
   it('comes back if a later call says the player has NOT seen it after all', () => {
-    // Not a one-way door — same reasoning `setSoloPrimary`'s own "back" case gives: a screen
-    // that could only ever lose a row would be a latent bug in whichever host wires it twice.
     const r = new LobbyRoutes();
     r.setRecommendTutorial(false);
+    r.layout();
     r.setRecommendTutorial(true);
-    r.layout(400, 100);
-    expect(privateOf(r).tutorialBtn.view.visible).toBe(true);
-    expect(r.height).toBe(LOBBY_ROUTES_H);
+    r.layout();
+    const p = privateOf(r);
+    expect(p.tutorialBtn.view.visible).toBe(true);
+    expect(Math.abs(p.tutorialBtn.view.position.x + boxOf(p.tutorialBtn).width - LOBBY_ROUTES_W)).toBeLessThanOrEqual(SLACK);
   });
 });
 
-describe("TUTORIAL's chip no longer borrows ACCOUNT's colour (2026-09-22)", () => {
-  // A runtime check would need `Button` to expose a `Graphics` fill back out, which nothing
-  // else here needs — read the source instead, the same way `buttonCueConventions.test.ts`
-  // does for a per-call-site convention. design/10:75's "two adjacent buttons must differ by
-  // more than their label" is the rule; the glyph is still borrowed (no dedicated icon yet),
-  // so the chip colour is the one cue actually doing the work.
-  it('draws a different chip colour than MainMenu’s ACCOUNT button', () => {
-    const routes = readFileSync(new URL('./LobbyRoutes.ts', import.meta.url), 'utf8');
-    const mainMenu = readFileSync(new URL('../screens/MainMenu.ts', import.meta.url), 'utf8');
-    const tutorialChip = /tutorialBtn\.setIcon\([^,]+,\s*(0x[0-9a-f]+)/i.exec(routes)?.[1];
-    const accountChip = /accountBtn\.setIcon\([^,]+,\s*(0x[0-9a-f]+)/i.exec(mainMenu)?.[1];
-    expect(tutorialChip, 'tutorialBtn.setIcon chip colour not found').toBeDefined();
-    expect(accountChip, 'accountBtn.setIcon chip colour not found').toBeDefined();
-    expect(tutorialChip).not.toBe(accountChip);
+describe("TUTORIAL does not borrow ACCOUNT's colour (2026-09-22)", () => {
+  // design/10:75's "two adjacent buttons must differ by more than their label". The glyph is
+  // still borrowed (no dedicated icon yet); in the dock it has no chip, so the border colour
+  // is the cue doing the work, and it must not be ACCOUNT's purple.
+  it('draws a different border than MainMenu’s ACCOUNT button', () => {
+    const m = new MainMenu();
+    const tutorial = (m as unknown as { routes: { tutorialBtn: { borderColor: number } } }).routes.tutorialBtn;
+    const account = (m as unknown as { accountBtn: { borderColor: number } }).accountBtn;
+    expect(tutorial.borderColor).toBeDefined();
+    expect(tutorial.borderColor).not.toBe(account.borderColor);
   });
 });

@@ -22,6 +22,13 @@ export const pl: Translations<typeof en> = {
     account: 'LOGOWANIE',
     settings: 'USTAWIENIA',
     greeting: 'Cześć, {username}',
+    playHint: 'Od razu do wyprawy',
+    soloHint: 'Zejdź samotnie w głębiny',
+    coopHint: 'Graj z innymi graczami',
+    pvpHint: 'Walcz z innymi graczami',
+    guestHint: 'Zaloguj się, by zapisać postęp',
+    syncedHint: 'Postęp zsynchronizowany',
+    bestFloor: 'Rekord: piętro {floor}',
   },
   loading: {
     boot: 'WCZYTYWANIE',

@@ -283,5 +283,6 @@ function defaultMetaLike() {
     loadout: [],
     selectedSkin: 'default',
     hasSeenTutorial: false,
+    bestFloor: 0,
   };
 }

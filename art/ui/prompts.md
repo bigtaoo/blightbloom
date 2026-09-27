@@ -217,3 +217,153 @@ Measured against that card fill, over solid (alpha >= 250) pixels only:
 the background it was drawn on, which is why only its lit edge survived. Judge a dark-on-dark
 icon this way rather than by eye — a generation viewed on the white background it was made
 against always looks fine.
+
+# The lobby redesign (2026-09-27 pass)
+
+Nine images for the redesigned lobby (design/10 "The lobby, redesigned"): the painting, two
+logos, one portrait per playable character and three route-card banners. Generated with GPT
+Image 2; every prompt carries the full style and composition brief on its own, so a batch
+cannot drift. The material chips, crystal glow, rising motes and the column's vignette are
+drawn in code and needed no art.
+
+## `lobby_bg` — the painting (2560x1440, opaque)
+
+```
+A wide 16:9 background illustration for a mobile/web game lobby screen, 2560x1440.
+
+STYLE: flat-cel 2D game art — bold clean dark outlines, flat solid colour fills, simple two-tone cel shadows, minimal texture, strong readable shapes. Like a modern stylised mobile game's key art, NOT painterly, NOT a 3D render, NOT isometric. Camera: a slightly elevated front view with gentle perspective.
+
+SCENE: a floating stone outpost platform drifting in an open sky — a circular plaza of worn, pale warm-grey stone with carved rings, the edges breaking into floating rock chunks below. In the plaza's centre sits a round raised dais ringed with softly glowing cyan-white crystal inlays: the mouth of the descent shaft, a calm glowing opening. On the far LEFT, a cosy forge workshop built into a rock outcrop: a canvas awning, an anvil, a hanging crystal lantern, pipes and a round hatch door. On the far right, only distant, low-contrast silhouettes of another floating rock and a thin crane tower, fading into haze. Small pale cyan-white crystals grow from the stonework here and there. A few small rocks float in the sky.
+
+COMPOSITION (strict — UI is placed on top of this image):
+- The central dais is centred at about 38% of the image width and 68% of its height. It is the brightest, most focused point in the image, with clear empty space directly above it (a character will float there).
+- The right 35% of the image is calm and low-detail: soft sky, haze and the distant silhouettes only. No strong edges, no bright spots, no structures in the foreground there.
+- The top-centre is open sky with no detail (a logo goes there). The top-left and top-right corners are simple sky.
+- Keep every important element between 12% and 88% of the image height, because wide screens crop the top and bottom.
+
+LIGHT AND COLOUR: bright, clear, mid-to-high key daylight — a warm late-afternoon sun from the upper left, a soft light blue-grey sky with warm haze near the horizon. Overall brightness is mid-tone to light: NOT dark, NOT night, NOT gloomy, NOT moody. The stone and environment are low-saturation warm neutrals (beige, warm grey, sand). The only saturated accent is the cyan-white crystal glow. Do NOT use green, red, orange-fire or purple anywhere as an accent colour.
+
+No characters, no creatures, no text, no letters, no logo, no UI, no frame or border.
+```
+
+Accepted first try, mean luma 197. **The dais landed at 33%/72%, not the 38%/68% asked for** —
+the code follows the painting (`LobbyBackdrop.DAIS_U`/`DAIS_V`), per the standing rule that a
+stated composition is a request, not a spec.
+
+## `lobby_logo_en` / `lobby_logo_zh` (2048x640, transparent)
+
+```
+A game logo wordmark reading exactly "BLIGHTBLOOM" — one word, eleven letters, spelled B-L-I-G-H-T-B-L-O-O-M. No other text.
+
+STYLE: flat-cel 2D game logo — chunky, bold, slightly rounded display letters that look carved from pale warm-grey stone, with a thick clean dark outline around the whole word and simple two-tone cel shading. Small bright cyan-white crystal clusters "bloom" out of the letters — sprouting from the top of the two O's and from the tip of the T — and a few thin dark cracks run through the stone, hinting at blight. Flat and graphic like a modern mobile game logo, NOT a 3D render, NOT a metallic bevel, NOT painterly. No gradients beyond the two-tone cel shade.
+
+Horizontal layout, the word centred with even padding on all sides, about 2048x640. It must stay legible at 400px wide over a light sky background.
+
+Background: REAL transparency (alpha = 0) around the logo. Do NOT draw a grey-and-white checkerboard or any other pattern to represent transparency; a painted checkerboard is a defect. No backdrop, no banner, no shadow plate behind the word.
+```
+
+The Chinese logo is the same brief with the first paragraph naming the two characters of the
+game's Chinese title (left to right, "no pinyin, no English"), the crystals asked for from the three
+"sun" components of the second character, and one added sentence: "Both characters must be
+written correctly and fully legible, with no extra or missing strokes." Both accepted first
+try; every letter and stroke was checked by eye at full size.
+
+## `lobby_hero_*` — portraits (1024x1024, transparent)
+
+One template, `<NAME>` = `the Orb Core` / `the Juggernaut Core` / `the Skirmisher Core`, with
+the character's rig art attached as the reference:
+
+```
+Using the attached reference image as the EXACT character design, draw this same character as a large, high-resolution showcase illustration for a game lobby. Keep its shape, proportions, colours, markings, eye and crystal belly chamber identical to the reference; do not redesign it, and do not add any accessories that are not in the reference.
+
+Character: <NAME>, a small hovering spherical crystal-core creature. It has no arms and no legs, and it floats in the air.
+
+POSE: hovering, turned in a three-quarter view angled slightly toward the RIGHT of the frame, looking confident and friendly, with its single large eye bright and alert. The crystal in its belly chamber glows cyan-white.
+
+STYLE: flat-cel 2D game art — bold clean dark outline, flat solid colour fills, simple two-tone cel shadows, minimal internal detail, a strong readable silhouette. Flat like a modern mobile game character, NOT painterly, NOT a 3D render. Lit by warm light from the upper left.
+
+Do NOT draw any weapons, tethers, energy arcs, ground, ground shadow, platform, glow halo, background scenery or text.
+
+Centred with about 10% empty margin on every side, 1024x1024.
+Background: REAL transparency (alpha = 0). Do NOT draw a grey-and-white checkerboard or any other pattern to represent transparency; a painted checkerboard is a defect.
+```
+
+All three accepted first try (they came back 1254x1254). **Use these portraits, not
+`skins/<id>/shell.png`, as the reference for any future image of our characters**: the rig's eye
+is a separate bone, so `shell.png` has an EMPTY eye socket, and the generator faithfully drew
+blank grey eyes from it (`lobby_card_coop_alt2.png` is that rejection).
+
+## `lobby_card_*` — route banners (1536x512, opaque)
+
+```
+A wide 3:1 banner illustration used as the background art of a game menu button, 1536x512.
+
+STYLE: flat-cel 2D game art — bold clean dark outlines, flat colour fills, simple two-tone cel shadows, minimal texture. NOT painterly, NOT a 3D render.
+
+LAYOUT (strict): the left 40% of the banner is a calm, simple, low-detail area of soft dark-to-mid tone (a label is placed there), with no objects or bright spots. All the subject matter sits in the right 60%.
+
+SUBJECT: <SUBJECT>
+
+COLOUR: warm, low-saturation stone neutrals, with bright cyan-white crystal light as the only strong accent. Mid-tone overall brightness, not dark.
+
+No text, no letters, no UI, no frame, no border, no rounded corners. The image fills the whole canvas edge to edge.
+```
+
+- **descend** — *Looking down into a deep circular stone shaft that spirals downward, ringed with
+  glowing cyan-white crystals that get brighter toward the depths, with floating rock fragments
+  drifting down into it — a feeling of an inviting descent.* Accepted (left luma 78).
+- **pvp** — *Two small hovering spherical crystal-core creatures (round shells, a single large eye
+  each, no arms or legs) facing each other from the two sides of the right area, with a bright
+  spark burst of crystal shards clashing between them, over a stone arena floor.* Accepted with a
+  caveat: generic creatures and a left luma of ~128, which `LobbyCard`'s left-to-right legibility
+  shade covers.
+- **coop** — the first generation (`lobby_card_coop_alt.png`: a flat tan field at luma 128 with
+  generic creatures) was rejected. The re-roll that shipped attached two character references
+  and asked for the left 40% to be "a calm, simple, DARK area (a deep blue-grey sky fading into
+  shadow)" with "real depth and value variation — NOT a single flat colour": it landed at left
+  luma 31. It drew the same character twice where two different ones were asked for, which is
+  fine for "two teammates". To get two DIFFERENT characters, name them by position: *"the LEFT
+  character is the first reference image, the RIGHT character is the second reference image ...
+  do not draw the same character twice."*
+
+## Workflow for this batch
+
+WebP to lossless PNG raws with Pillow (`art/ui/lobby_*_raw.png`, rejected ones as `_alt*`), then:
+
+- **portraits and logos** — drop alpha components that are not the body (the Skirmisher came
+  with ~61k faint haze pixels far from it), clamp alpha (floor 8 / ceiling 250, the
+  `alphaClamp.mjs` defaults), then `compress.mjs --long-axis=384` (portraits) or
+  `--long-axis=768` (logos). Both trim; none of it is rig art, so trimming is right.
+- **painting and banners** — opaque, so **JPEG**, not PNG: the painting is 187 kB at 1920x1080
+  (q82) and would be several MB as PNG, in the one pack the boot waits for. Banners at 768x256
+  (q85, ~30 kB each).
+
+`client/src/game/ui/lobbyArt.test.ts` decodes the shipped files and pins the clamp, the trim, the
+sizes and the byte budget; the raw portrait fails its clamp assertions, so the test discriminates.
+
+## The drifting rocks (no generation)
+
+The painting's three floating rocks (two small ones in the blue sky, one large and haze-faded on
+the right) were cut out of `lobby_bg_raw.png` rather than generated, so the lobby can drift them:
+
+1. Around each rock, fit a per-channel quadratic surface to an 8 px ring (robustly: drop the ring
+   pixels furthest from the fit and refit, because rock b's ring clips a cloud edge).
+2. The rock is every pixel far enough from that surface (12/255 in the blue sky, 5/255 for the
+   faded one), its largest component plus any component within 14 px (rock c's dangling tip),
+   holes filled.
+3. Fill the dilated mask harmonically (repeated 4-neighbour averaging) from its own boundary. A
+   quadratic fill left a visible ghost at rock b; the harmonic one meets its surroundings exactly.
+4. Un-mix the rock's soft edge against that fill (`fg = (pixel - (1 - a) * fill) / a`), so the
+   sprite carries no sky fringe and recomposites to the original.
+
+Outputs: `lobby_bg_clean.png` (the painting with the sky whole — the shipped `lobby_bg.jpg` is made
+from it, 1920x1080 q82) and `lobby_rock_{a,b,c}_raw.png`, then `alphaClamp.mjs` and
+`compress.mjs --long-axis=52/45/88` (the painting's own 0.75 scale). The homes the code reads
+(`LobbyBackdrop.SKY_ROCKS`) are the cut-outs' centres as fractions of the painting.
+
+## The orbiting weapon (no generation)
+
+`client/public/ui/lobby_weapon.png` is a byte-for-byte copy of `client/public/weapons/gun_cryobolt.png`
+(160x148). A copy rather than a reference because the weapons ship in the `forge` pack, which only
+arrives at the run phase; the lobby may only draw what the `lobby` pack holds. If the cryobolt's
+art is ever regenerated, copy it again.

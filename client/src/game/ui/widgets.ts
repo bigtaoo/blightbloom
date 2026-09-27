@@ -191,12 +191,10 @@ export class Button {
   private iconPlacement: 'left' | 'top' = 'left';
   private w: number;
   private readonly h: number;
-  private readonly minW: number;
+  private minW: number;
   private readonly fontSize: number;
-  // Not `readonly`, for the same reason `borderColor` below is not: `setFill` re-colours it
-  // at runtime. Its one caller is `LobbyRoutes.setSoloPrimary` — whether SOLO is the lobby's
-  // primary action depends on the HOST, which is declared after the screens are constructed
-  // (`gameWiring.ts`), so the fill cannot be a constructor argument.
+  // Not `readonly`: `setFill` re-colours it at runtime (a primary/ordinary state that
+  // depends on the host, declared after the screens are constructed — `gameWiring.ts`).
   private color: number;
   // Not `readonly`: `setBorder` re-colours it at runtime for a SELECTED state
   // (FloorCardPrompt's picked card). Border rather than fill, matching the
@@ -275,17 +273,14 @@ export class Button {
     this.view.on('pointerdown', (e) => e.stopPropagation());
   }
 
-  /** Redraws `bg` at the current width and re-centers the label — called at
-   * construction and, for `autoWidth` buttons, on every `setText`. Text measurement
-   * uses `estimateMonoWidth` rather than Pixi's `Text.width` (see textWidth.ts): the
-   * label is `fontFamily: 'monospace'`, so the estimate is accurate, and unlike
-   * `Text.width` it needs no real canvas — same convention as StatChip/WeaponCard. */
   /** The label text this button actually draws: wrapped to `wrapWidth` when the caller asked
    *  for it, and the caller's own string otherwise. */
   private fit(text: string): string {
     return this.wrapWidth === undefined ? text : wrapMono(text, this.fontSize, this.wrapWidth).join('\n');
   }
 
+  /** Redraws `bg` at the current width and re-places the label. Measures with the monospace
+   * estimate (textWidth.ts), not `Text.width`, so it needs no real canvas. */
   private redraw() {
     // `widestMonoLine`, not `estimateMonoWidth`: a label may now carry newlines (a
     // `wrapWidth` button, or a caller that composed its own two-line string like
@@ -360,18 +355,22 @@ export class Button {
     if (this.autoWidth) this.redraw();
   }
 
-  /** Re-colour the box's border, for a selected/unselected state. A no-op on a button
-   *  that was constructed without one — a border cannot be added later, only changed,
-   *  so a caller that wants this has to opt in with `borderColor` at construction. */
-  /** Re-colour the FILL — the primary/ordinary distinction, not a selected state. Border
-   *  alone cannot carry it: design/10's 2026-08-02 legibility pass settled that a primary
-   *  action on these screens is the filled green one. */
+  /** Re-colour the FILL — the primary/ordinary distinction (design/10, 2026-08-02). */
   setFill(color: number): void {
     if (this.color === color) return;
     this.color = color;
     this.redraw();
   }
 
+  /** Re-size a fixed-width button — the lobby dock re-divides its row once TUTORIAL goes. */
+  setWidth(w: number): void {
+    if (this.minW === w) return;
+    this.minW = w;
+    this.redraw();
+    if (this.iconSprite && this.iconPlacement === 'top') this.iconSprite.x = this.w / 2;
+  }
+
+  /** Re-colour the border (a selected state). A no-op on a button built without one. */
   setBorder(color: number): void {
     if (this.borderColor === undefined || this.borderColor === color) return;
     this.borderColor = color;

@@ -118,6 +118,17 @@ describe('migrate()', () => {
     expect(migrate(rest).hasSeenTutorial).toBe(defaultMetaState().hasSeenTutorial);
   });
 
+  it('keeps a saved best floor, and backfills 0 for a save from before it existed or a bad value', () => {
+    expect(migrate({ ...defaultMetaState(), bestFloor: 6 }).bestFloor).toBe(6);
+    const { bestFloor, ...older } = defaultMetaState();
+    void bestFloor;
+    expect(migrate(older).bestFloor).toBe(0);
+    for (const bad of [-2, Number.NaN, '7', null]) {
+      expect(migrate({ ...defaultMetaState(), bestFloor: bad }).bestFloor, String(bad)).toBe(0);
+    }
+    expect(migrate({ ...defaultMetaState(), bestFloor: 4.7 }).bestFloor).toBe(4);
+  });
+
   it('unions unlockedBlueprints with the current defaults rather than replacing them', () => {
     const saved = { ...defaultMetaState(), unlockedBlueprints: ['custom_bp'] };
     const result = migrate(saved).unlockedBlueprints;

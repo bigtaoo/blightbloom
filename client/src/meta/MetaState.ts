@@ -44,6 +44,10 @@ export interface MetaState {
    * (design/10 screen-flow gap). Guest-local, account-independent — it only gates the
    * "recommended" badge the lobby shows on its TUTORIAL row, never blocks play. */
   hasSeenTutorial: boolean;
+  /** The deepest dungeon floor (1-based) any PvE run has reached, win or lose; 0 before the
+   * first one ends. Drawn under the lobby's hero (design/10, 2026-09-27). Only ever rises —
+   * see `recordFloorReached`. The tutorial, the PvP arena and replays never write it. */
+  bestFloor: number;
 }
 
 /** The free character roster (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event",
@@ -67,5 +71,13 @@ export function defaultMetaState(): MetaState {
     loadout: [],
     selectedSkin: DEFAULT_SKIN_ID,
     hasSeenTutorial: false,
+    bestFloor: 0,
   };
+}
+
+/** `m` with `floor` folded into `bestFloor` — the same object back when it is no deeper, so a
+ * caller can skip the save. */
+export function recordFloorReached(m: MetaState, floor: number): MetaState {
+  if (!Number.isFinite(floor) || floor <= m.bestFloor) return m;
+  return { ...m, bestFloor: Math.floor(floor) };
 }

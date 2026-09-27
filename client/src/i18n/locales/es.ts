@@ -22,6 +22,13 @@ export const es: Translations<typeof en> = {
     account: 'ACCEDER',
     settings: 'AJUSTES',
     greeting: 'Hola, {username}',
+    playHint: 'Empieza una partida ya',
+    soloHint: 'Desciende solo a las profundidades',
+    coopHint: 'Forma equipo con otros',
+    pvpHint: 'Lucha contra otros jugadores',
+    guestHint: 'Inicia sesión para guardar',
+    syncedHint: 'Progreso sincronizado',
+    bestFloor: 'Récord: piso {floor}',
   },
   loading: {
     boot: 'CARGANDO',
