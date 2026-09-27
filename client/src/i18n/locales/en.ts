@@ -26,6 +26,8 @@ export const en = {
     coopHint: 'Team up with other players',
     pvpHint: 'Battle other players',
     guestHint: 'Log in to save progress',
+    syncedHint: 'Progress synced',
+    bestFloor: 'Best: floor {floor}',
   },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the

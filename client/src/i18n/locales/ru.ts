@@ -32,6 +32,8 @@ export const ru: Translations<typeof en> = {
     coopHint: 'Играйте с другими',
     pvpHint: 'Бой с другими игроками',
     guestHint: 'Войдите, чтобы сохранить',
+    syncedHint: 'Прогресс сохранён',
+    bestFloor: 'Рекорд: этаж {floor}',
   },
   loading: {
     boot: 'ЗАГРУЗКА',

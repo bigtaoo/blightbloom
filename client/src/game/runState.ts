@@ -29,7 +29,7 @@
 // cannot (see that file's header for why a percentage can never guard a boundary).
 import type { GameEngine, GameState } from '@dd/engine';
 import type { CoopSession } from '../net/CoopSession';
-import { defaultMetaState, selectCharacter, type MetaState, type MetaStore } from '../meta';
+import { defaultMetaState, recordFloorReached, selectCharacter, type MetaState, type MetaStore } from '../meta';
 import type { ArenaId } from './match/arenaCatalog';
 import type { GameQueryParams } from './match/gameQueryParams';
 import type { Phase } from './phase';
@@ -230,6 +230,26 @@ export class RunState {
   }
 
   /**
+   * Fold the floor the live run has reached into `MetaState.bestFloor` (the lobby's "best
+   * floor" caption, design/10, 2026-09-27). Called at both ends a run can have: a result
+   * screen (`settleOutcome`) and a quit or save-and-quit (`endRun`) — a player who walked
+   * away from floor 4 still reached floor 4. Only a real dungeon counts: not the tutorial's
+   * fixed level, not a PvP arena (it has no floors), not a replay someone else played.
+   */
+  noteFloorReached(): void {
+    const s = this.activeState();
+    if (!s || this.tutorialActive || this.replayUrl !== null || s.zoneEnabled) return;
+    const next = recordFloorReached(this.meta, s.floorIndex + 1);
+    if (next !== this.meta) this.setMeta(next);
+  }
+
+  /** A run reached its result screen (`RunOutcomeHost.setPhase`). */
+  settleOutcome(phase: 'victory' | 'defeat'): void {
+    this.phase = phase;
+    this.noteFloorReached();
+  }
+
+  /**
    * The state half of a voluntary quit: drop whichever run handle is live and clear the
    * per-run flags. Returns whether the run being abandoned was the tutorial, because the
    * caller routes to a different screen for it (the lobby, not Forge — a tutorial run
@@ -241,6 +261,7 @@ export class RunState {
    * was already closed.
    */
   endRun(): { wasTutorial: boolean } {
+    this.noteFloorReached();
     if (this.online) {
       this.session?.close();
       this.session = null;

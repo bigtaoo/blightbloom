@@ -27,6 +27,8 @@ export const it: Translations<typeof en> = {
     coopHint: 'Fai squadra con altri',
     pvpHint: 'Sfida altri giocatori',
     guestHint: 'Accedi per salvare i progressi',
+    syncedHint: 'Progressi sincronizzati',
+    bestFloor: 'Record: piano {floor}',
   },
   loading: {
     boot: 'CARICAMENTO',

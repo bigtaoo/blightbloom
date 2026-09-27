@@ -178,6 +178,7 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   p.mainMenu.lobbyProfile = () => ({
     skinId: p.run.meta.selectedSkin,
     materials: Object.fromEntries(DAMAGE_TYPES.map((e) => [e, bankTotal(p.run.meta, e)])),
+    bestFloor: p.run.meta.bestFloor,
   });
 
   // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the

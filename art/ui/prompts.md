@@ -340,3 +340,30 @@ WebP to lossless PNG raws with Pillow (`art/ui/lobby_*_raw.png`, rejected ones a
 
 `client/src/game/ui/lobbyArt.test.ts` decodes the shipped files and pins the clamp, the trim, the
 sizes and the byte budget; the raw portrait fails its clamp assertions, so the test discriminates.
+
+## The drifting rocks (no generation)
+
+The painting's three floating rocks (two small ones in the blue sky, one large and haze-faded on
+the right) were cut out of `lobby_bg_raw.png` rather than generated, so the lobby can drift them:
+
+1. Around each rock, fit a per-channel quadratic surface to an 8 px ring (robustly: drop the ring
+   pixels furthest from the fit and refit, because rock b's ring clips a cloud edge).
+2. The rock is every pixel far enough from that surface (12/255 in the blue sky, 5/255 for the
+   faded one), its largest component plus any component within 14 px (rock c's dangling tip),
+   holes filled.
+3. Fill the dilated mask harmonically (repeated 4-neighbour averaging) from its own boundary. A
+   quadratic fill left a visible ghost at rock b; the harmonic one meets its surroundings exactly.
+4. Un-mix the rock's soft edge against that fill (`fg = (pixel - (1 - a) * fill) / a`), so the
+   sprite carries no sky fringe and recomposites to the original.
+
+Outputs: `lobby_bg_clean.png` (the painting with the sky whole — the shipped `lobby_bg.jpg` is made
+from it, 1920x1080 q82) and `lobby_rock_{a,b,c}_raw.png`, then `alphaClamp.mjs` and
+`compress.mjs --long-axis=52/45/88` (the painting's own 0.75 scale). The homes the code reads
+(`LobbyBackdrop.SKY_ROCKS`) are the cut-outs' centres as fractions of the painting.
+
+## The orbiting weapon (no generation)
+
+`client/public/ui/lobby_weapon.png` is a byte-for-byte copy of `client/public/weapons/gun_cryobolt.png`
+(160x148). A copy rather than a reference because the weapons ship in the `forge` pack, which only
+arrives at the run phase; the lobby may only draw what the `lobby` pack holds. If the cryobolt's
+art is ever regenerated, copy it again.

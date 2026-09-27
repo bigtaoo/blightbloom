@@ -72,6 +72,14 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   lobby_card_descend: '/ui/lobby_card_descend.jpg',
   lobby_card_coop: '/ui/lobby_card_coop.jpg',
   lobby_card_pvp: '/ui/lobby_card_pvp.jpg',
+  // The painting's three sky rocks, lifted out of it (the sky painted back under them) so
+  // `LobbyBackdrop` can drift them. `art/ui/prompts.md`, "The drifting rocks".
+  lobby_rock_a: '/ui/lobby_rock_a.png',
+  lobby_rock_b: '/ui/lobby_rock_b.png',
+  lobby_rock_c: '/ui/lobby_rock_c.png',
+  // One weapon orbiting the lobby hero: a copy of `weapons/gun_cryobolt.png`, because the
+  // weapon art ships in the `forge` pack, which only arrives at the run phase.
+  lobby_weapon: '/ui/lobby_weapon.png',
 };
 
 const textures = new Map<string, Texture>();

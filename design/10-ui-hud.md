@@ -284,7 +284,11 @@ Each of the three had a cause in the code rather than in taste:
   middle of the room left of the column, with no scrim. Contrast is bought locally instead: the
   route cards carry their own art and frames, the corner chips their own backing, and the only
   darkening on the painting is one soft vignette behind the column. Code draws the dais crystal's
-  breathing glow and the motes rising off it, in design/13's purified-crystal cyan. The other menu
+  breathing glow and the motes rising off it, in design/13's purified-crystal cyan, and drifts the
+  painting's floating rocks: its three sky rocks were lifted out into sprites with the sky painted
+  back under them, and bob around their homes. At 16:9 all three homes sit under the logo, the hero
+  and the column, so the same sprites are also placed, smaller, in the open sky the UI leaves —
+  never drawn larger than the size they were cut at. The other menu
   screens keep `Panel` and the hub art; they are dense with text and the painting's composition is
   built around the lobby's layout.
 - **The player's own character hovering on the dais** (`LobbyHero`), a painted portrait per
@@ -301,8 +305,13 @@ Each of the three had a cause in the code rather than in taste:
      width, each with a one-line description;
   3. SQUAD, FORGE, TUTORIAL — a dock of small icon-over-label buttons. It re-divides its row when
      TUTORIAL goes, so no hole is left.
-- **Chrome pinned to the real viewport corners**: account top-left (with a "log in to save
-  progress" line for a guest), one material chip per element plus SETTINGS top-right.
+- **Chrome pinned to the real viewport corners**: the account card top-left, one material chip
+  per element plus SETTINGS top-right. The card (`AccountCard`) is an avatar disc, the name, and
+  one line under it: "log in to save progress" for a guest, "progress synced" once signed in
+  (`meta/accountSync.ts` pushes every save). There are no uploaded pictures, so a signed-in
+  player's avatar is their initial on a disc whose hue is hashed from the name — theirs, and the
+  same on every device; a guest gets the account glyph. Both lines live inside the card, so the
+  header no longer shifts down for a guest.
 
 **One lobby scale.** The column, header and corner chrome are multiplied by `lobbyScale(w, h)`:
 1 at the 760x640 design size, growing with the viewport to 1.5. Only the lobby does this. Text in
@@ -316,10 +325,13 @@ bitmap.
   under it, never in SOLO's old slot.
 - *One click to gameplay on a portal* (design/20): PLAY takes the top slot when there is no save.
 - *The host's account rules* (design/16, design/20): the label instead of the button, and the data
-  notice + policy link now sit under the column, clear of the bottom edge the portal's banner ad
-  owns.
-- *The maintenance banner's room*: it hangs under the corner row and pushes the header down by the
-  measured 72px; `refreshBanner` now re-lays the screen out when it arrives or goes.
+  notice + policy link, now in the notice strip below.
+- *The notice strip* (the owner's call, 2026-09-27): the maintenance banner and the portal's data
+  notice + policy link share one translucent band across the scene, left of the column, centred on
+  the top third of the screen — not the bottom edge, which the portal's banner ad owns. Nothing
+  else moves for it any more: the banner used to hang under the corner row and push the header
+  down 72px. The band is sized from the lines' measured heights; `refreshBanner` still re-lays
+  the screen out when a banner arrives or goes.
 - *Labels fit in eight locales*: a banner card fits its label to the room it has (and ellipsises
   its description as a last resort); the dock's longest label is 9 characters in a third of the
   column. `labelFit`, `viewportFit` and `widgetOverlap` sweep the new layout unchanged in shape:
@@ -329,8 +341,15 @@ bitmap.
 from 1 MB to 2 MB, recorded in `assetPacks.json`; opaque art ships as JPEG to keep it there.
 `main`, WeChat's first download, is untouched.
 
-**Not built:** weapons orbiting the hero (their textures load at the run phase, so a cold boot
-would draw them only sometimes), and a best-floor caption (`MetaState` records no such number).
+**The orbiting weapon and the best floor** (added the same day). One weapon laps the hero on a
+flattened ellipse, in front of the body on the near half and behind it, smaller and dimmer, on the
+far half. It is always the cryobolt (`lobby_weapon`, 25 kB, a copy of `weapons/gun_cryobolt.png`):
+the weapon art is in the `forge` pack, which only arrives at the run phase, so the lobby carries
+its own copy of one — and the player's loadout is empty on the lobby anyway. Under the stats, once
+any dungeon run has ended, the deepest floor reached: `MetaState.bestFloor`, written by
+`RunState.noteFloorReached` on a result screen and on a quit or save-and-quit (not the tutorial,
+not the arena, not a replay), only ever rising, migrated to 0 for an older save and merged as the
+maximum of the two sides on a guest merge. It rides in the account's meta blob, so it syncs.
 
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 

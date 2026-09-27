@@ -177,6 +177,65 @@ describe('endRun', () => {
   });
 });
 
+describe('the best floor (MetaState.bestFloor, the lobby caption)', () => {
+  const dungeon = (floorIndex: number) => ({ state: { floorIndex, zoneEnabled: false } }) as never;
+
+  it('records the floor a result screen was reached on, and saves it', () => {
+    const f = fakeStore();
+    const s = new RunState(f.store);
+    s.engine = dungeon(3);
+    s.settleOutcome('defeat');
+    expect(s.phase).toBe('defeat');
+    expect(s.meta.bestFloor).toBe(4); // floorIndex is 0-based; the caption is not
+    expect(f.held().bestFloor).toBe(4);
+  });
+
+  it('records a quit too — walking away from floor 2 still reached floor 2', () => {
+    const s = new RunState(fakeStore().store);
+    s.engine = dungeon(1);
+    s.endRun();
+    expect(s.meta.bestFloor).toBe(2);
+  });
+
+  it('reads the SESSION online', () => {
+    const s = new RunState(fakeStore().store);
+    s.online = true;
+    s.session = { state: { floorIndex: 4, zoneEnabled: false }, close: () => {} } as never;
+    s.endRun();
+    expect(s.meta.bestFloor).toBe(5);
+  });
+
+  it('only ever rises, and a shallower run costs no save', () => {
+    const f = fakeStore();
+    const s = new RunState(f.store);
+    s.engine = dungeon(4);
+    s.settleOutcome('victory');
+    const saves = f.saves.length;
+    s.engine = dungeon(0);
+    s.settleOutcome('defeat');
+    expect(s.meta.bestFloor).toBe(5);
+    expect(f.saves.length).toBe(saves);
+  });
+
+  it('ignores the tutorial, a PvP arena, a replay, and no run at all', () => {
+    const s = new RunState(fakeStore().store);
+    s.noteFloorReached();
+    s.tutorialActive = true;
+    s.engine = dungeon(2);
+    s.noteFloorReached();
+    s.tutorialActive = false;
+    s.engine = { state: { floorIndex: 2, zoneEnabled: true } } as never;
+    s.noteFloorReached();
+    s.engine = dungeon(2);
+    s.replayUrl = '/r.json';
+    s.noteFloorReached();
+    expect(s.meta.bestFloor).toBe(0);
+    s.replayUrl = null; // the control: the same run, counted
+    s.noteFloorReached();
+    expect(s.meta.bestFloor).toBe(3);
+  });
+});
+
 describe('applyQueryParams', () => {
   it('applies the boolean flags straight through', () => {
     const s = new RunState(fakeStore().store);

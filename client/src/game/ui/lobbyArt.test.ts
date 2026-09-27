@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';
 import { decodePNG } from '../../../../tools/png-pipeline/pngCodec.mjs';
+import { SKY_ROCKS } from './LobbyBackdrop';
 
 interface Img { width: number; height: number; data: Uint8Array }
 
@@ -38,6 +39,12 @@ const SPRITES: Array<[string, number]> = [
   ['lobby_hero_juggernaut.png', 384],
   ['lobby_logo_en.png', 768],
   ['lobby_logo_zh.png', 768],
+  // The sky rocks lifted out of the painting, at the painting's own 0.75 (2560 -> 1920).
+  ['lobby_rock_a.png', 52],
+  ['lobby_rock_b.png', 45],
+  ['lobby_rock_c.png', 88],
+  // A byte-for-byte copy of weapons/gun_cryobolt.png (LobbyHero's orbiting weapon).
+  ['lobby_weapon.png', 160],
 ];
 
 describe('the lobby portraits and logos', () => {
@@ -65,6 +72,28 @@ describe('the lobby portraits and logos', () => {
     expect(minY).toBeLessThanOrEqual(1);
     expect(maxX).toBeGreaterThanOrEqual(img.width - 2);
     expect(maxY).toBeGreaterThanOrEqual(img.height - 2);
+  });
+});
+
+describe('the sky rocks', () => {
+  it.each(SKY_ROCKS.filter((r) => r.lifted).map((r) => [r.key, r.hFrac] as const))(
+    '%s ships at the height LobbyBackdrop draws it at, so it is never magnified', (key, hFrac) => {
+      // `hFrac` is the rock's height in the painting; the file must be that height at the
+      // shipped painting's 1080 rows (within a texel of the resample), or the backdrop would
+      // be scaling it up or down against the sky it was cut from.
+      expect(Math.abs(png(`${key}.png`).height - hFrac * 1080)).toBeLessThanOrEqual(1);
+    },
+  );
+});
+
+describe('the sky rocks, reused', () => {
+  it('draws every open-sky copy no larger than the rock it was cut from', () => {
+    // A copy is the same sprite placed again; drawn bigger than its source, it would be the
+    // one magnified thing in a painting that is otherwise at its own resolution.
+    const lifted = new Map(SKY_ROCKS.filter((r) => r.lifted).map((r) => [r.key, r.hFrac]));
+    const copies = SKY_ROCKS.filter((r) => !r.lifted);
+    expect(copies.length).toBeGreaterThan(0);
+    for (const r of copies) expect(r.hFrac, r.key).toBeLessThanOrEqual(lifted.get(r.key)!);
   });
 });
 

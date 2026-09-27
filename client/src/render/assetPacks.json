@@ -79,7 +79,7 @@
       "root": "packs/lobby",
       "phase": "lobby",
       "limitBytes": 2097152,
-      "note": "ui/* — the one pack a player waits for. Everything the login/menu/mode-select/settings/party/account screens draw, so all of them are fully dressed before `new Game(...)`. Raised 1 MB -> 2 MB on 2026-09-27 for the lobby redesign (design/10): its painting, two logos, three character portraits and three route banners add 1.00 MB to the 0.65 MB the pack already held (1.65 MB total). The opaque ones ship as JPEG and the portraits at 384 px to keep it there; the first-download ceiling this pack does NOT affect is `main`'s, which stays code only."
+      "note": "ui/* — the one pack a player waits for. Everything the login/menu/mode-select/settings/party/account screens draw, so all of them are fully dressed before `new Game(...)`. Raised 1 MB -> 2 MB on 2026-09-27 for the lobby redesign (design/10): its painting, two logos, three character portraits and three route banners add 1.00 MB to the 0.65 MB the pack already held (1.65 MB total); the three sky rocks lifted out of the painting add 10 kB, and the hero's orbiting weapon (a copy of one forge-pack weapon) 25 kB. The opaque ones ship as JPEG and the portraits at 384 px to keep it there; the first-download ceiling this pack does NOT affect is `main`'s, which stays code only."
     },
     {
       "name": "music",

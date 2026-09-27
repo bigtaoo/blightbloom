@@ -94,5 +94,6 @@ export function migrate(parsed: unknown): MetaState {
     loadout: Array.isArray(p.loadout) ? p.loadout.filter((x): x is string => typeof x === 'string') : [],
     selectedSkin: typeof p.selectedSkin === 'string' ? p.selectedSkin : d.selectedSkin,
     hasSeenTutorial: typeof p.hasSeenTutorial === 'boolean' ? p.hasSeenTutorial : d.hasSeenTutorial,
+    bestFloor: typeof p.bestFloor === 'number' && Number.isFinite(p.bestFloor) && p.bestFloor > 0 ? Math.floor(p.bestFloor) : d.bestFloor,
   };
 }
