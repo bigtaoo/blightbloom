@@ -21,6 +21,11 @@ export const en = {
     account: 'LOGIN',
     settings: 'SETTINGS',
     greeting: 'Hi, {username}',
+    playHint: 'Jump straight into a run',
+    soloHint: 'Descend alone into the depths',
+    coopHint: 'Team up with other players',
+    pvpHint: 'Battle other players',
+    guestHint: 'Log in to save progress',
   },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the

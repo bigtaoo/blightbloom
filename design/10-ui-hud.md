@@ -206,6 +206,10 @@ what would remove it is a cancel on the way out of the matchmaking screen, which
 
 ### The card grouped by kind, and TUTORIAL taken off the screen rather than dimmed (2026-09-22)
 
+> **⚠️ Layout superseded 2026-09-27** — see "The lobby becomes a scene" below: the card, the
+> divider and the centred LOGIN/SETTINGS row are gone. TUTORIAL hiding once seen, and Settings'
+> REPLAY TUTORIAL door, are unchanged.
+
 `client/src/game/screens/MainMenu.ts`, `client/src/game/ui/LobbyRoutes.ts`,
 `client/src/game/screens/Settings.ts`, `client/src/game/controllers/{gameWiring,RunLifecycle,
 gameAssembly}.ts`; work log: [volume 91](roadmap/91-2026-09-22-lobby-route-grouping.md). The owner
@@ -256,6 +260,77 @@ says which one it differs by). It is a copy change gated on an open design quest
 (design/05:152, whether co-op PvE is matchmade or friends-only at launch) that a layout pass
 should not decide by accident in eight locale files; the new divider already puts the two on
 opposite sides of a visible rule, which is most of the confusion this pass could close without it.
+
+### The lobby becomes a scene (2026-09-27)
+
+`client/src/game/screens/MainMenu.ts`, `client/src/game/ui/{LobbyRoutes,LobbyCard,LobbyBackdrop,
+LobbyHero,LobbyResources,lobbyScale}.ts`; art and prompts in `art/ui/` (`prompts.md`, "The lobby
+redesign"); work log: [volume 102](roadmap/102-2026-09-27-lobby-scene.md). **Supersedes the layout
+of the 2026-09-22 section above** — the card, the divider and the centred utility row are gone.
+TUTORIAL hiding once seen, and its second door in Settings, are unchanged.
+
+The report: *the page looks empty, the hierarchy is unclear, and the whole screen is too dark*.
+Each of the three had a cause in the code rather than in taste:
+
+| Complaint | Cause |
+| --- | --- |
+| too dark | `Panel`'s 55% near-black scrim over the shared 384x288 hub art, plus the lobby's own 62% card on top |
+| empty | `menuLayer.ts` scales screens down and never up, so on a desktop window the 280px column sat at phone size in a sea of background |
+| no hierarchy | six same-height dark pills with one green fill, and a 1px divider as the only grouping |
+
+**The answer is a scene, not a menu.** The lobby now draws:
+
+- **The painted outpost at full value** (`LobbyBackdrop`), cover-cropped so the dais lands in the
+  middle of the room left of the column, with no scrim. Contrast is bought locally instead: the
+  route cards carry their own art and frames, the corner chips their own backing, and the only
+  darkening on the painting is one soft vignette behind the column. Code draws the dais crystal's
+  breathing glow and the motes rising off it, in design/13's purified-crystal cyan. The other menu
+  screens keep `Panel` and the hub art; they are dense with text and the painting's composition is
+  built around the lobby's layout.
+- **The player's own character hovering on the dais** (`LobbyHero`), a painted portrait per
+  character (not the rig, which is built for a 16-40 px body), with its name and pools under it.
+  A character with no portrait leaves the dais empty rather than showing a wrong one.
+- **The logo above the hero**, one per script (`lobby_logo_zh` in Chinese, `lobby_logo_en`
+  otherwise), with the text title as the fallback when the art is missing.
+- **The ways into the game as one column on the right, in three tiers that differ in SIZE and
+  MATERIAL, not just fill** (`LobbyRoutes`):
+  1. the primary — one painted banner card with a breathing glow: SOLO, or CONTINUE RUN with a
+     save, or the portal's PLAY. When something else holds the slot, SOLO drops to a slim plain
+     bar under it (one widget in two sizes, so its tap target never changes identity);
+  2. CO-OP and PVP SOLO QUEUE — smaller banner cards in their route colours (teal, coral), full
+     width, each with a one-line description;
+  3. SQUAD, FORGE, TUTORIAL — a dock of small icon-over-label buttons. It re-divides its row when
+     TUTORIAL goes, so no hole is left.
+- **Chrome pinned to the real viewport corners**: account top-left (with a "log in to save
+  progress" line for a guest), one material chip per element plus SETTINGS top-right.
+
+**One lobby scale.** The column, header and corner chrome are multiplied by `lobbyScale(w, h)`:
+1 at the 760x640 design size, growing with the viewport to 1.5. Only the lobby does this. Text in
+a scaled container is re-rasterised at the drawn size (`sharpenText`), or it would be a magnified
+bitmap.
+
+**What had to survive, and where it went:**
+
+- *Exactly one primary* (2026-08-02): asserted per state in `LobbyRoutes.test.ts`, glow included.
+- *CONTINUE and SOLO are two buttons* (2026-09-17): a save puts CONTINUE in the top slot and SOLO
+  under it, never in SOLO's old slot.
+- *One click to gameplay on a portal* (design/20): PLAY takes the top slot when there is no save.
+- *The host's account rules* (design/16, design/20): the label instead of the button, and the data
+  notice + policy link now sit under the column, clear of the bottom edge the portal's banner ad
+  owns.
+- *The maintenance banner's room*: it hangs under the corner row and pushes the header down by the
+  measured 72px; `refreshBanner` now re-lays the screen out when it arrives or goes.
+- *Labels fit in eight locales*: a banner card fits its label to the room it has (and ellipsises
+  its description as a last resort); the dock's longest label is 9 characters in a third of the
+  column. `labelFit`, `viewportFit` and `widgetOverlap` sweep the new layout unchanged in shape:
+  `LobbyCard` keeps `Button`'s child order on purpose.
+
+**Budget.** The new art is 1.00 MB in the `lobby` pack, the one the boot waits for. Its guard went
+from 1 MB to 2 MB, recorded in `assetPacks.json`; opaque art ships as JPEG to keep it there.
+`main`, WeChat's first download, is untouched.
+
+**Not built:** weapons orbiting the hero (their textures load at the run phase, so a cold boot
+would draw them only sometimes), and a best-floor caption (`MetaState` records no such number).
 
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 

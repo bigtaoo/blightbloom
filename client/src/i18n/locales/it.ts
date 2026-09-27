@@ -22,6 +22,11 @@ export const it: Translations<typeof en> = {
     account: 'ACCEDI',
     settings: 'OPZIONI',
     greeting: 'Ciao, {username}',
+    playHint: 'Inizia subito una partita',
+    soloHint: 'Scendi da solo negli abissi',
+    coopHint: 'Fai squadra con altri',
+    pvpHint: 'Sfida altri giocatori',
+    guestHint: 'Accedi per salvare i progressi',
   },
   loading: {
     boot: 'CARICAMENTO',

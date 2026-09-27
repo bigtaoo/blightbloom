@@ -22,6 +22,11 @@ export const fr: Translations<typeof en> = {
     account: 'CONNEXION',
     settings: 'PARAMÈTRES',
     greeting: 'Salut, {username}',
+    playHint: 'Lancer une partie tout de suite',
+    soloHint: 'Descendre seul dans les profondeurs',
+    coopHint: 'Faire équipe avec d’autres',
+    pvpHint: 'Affronter d’autres joueurs',
+    guestHint: 'Connexion pour sauvegarder',
   },
   loading: {
     boot: 'CHARGEMENT',
