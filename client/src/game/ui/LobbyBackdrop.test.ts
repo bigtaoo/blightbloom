@@ -234,3 +234,50 @@ describe('LobbyBackdrop — the drifting sky rocks', () => {
     expect(view.getChildIndex(rocksOf(b) as never)).toBeGreaterThan(0);
   });
 });
+
+describe('LobbyBackdrop — the dimmed mode every other menu draws (2026-09-27)', () => {
+  function wash(b: LobbyBackdrop): Graphics {
+    return (b as unknown as { wash: Graphics }).wash;
+  }
+
+  it('the lobby itself draws no wash', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    const b = new LobbyBackdrop();
+    b.layout(1280, 720);
+    expect(wash(b).visible).toBe(false);
+  });
+
+  it('washes the painting and its rocks, under the crystal glow — the place stays lit', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    const b = new LobbyBackdrop({ dim: 0.5 });
+    b.layout(1280, 720);
+    const w = wash(b);
+    expect(w.visible).toBe(true);
+    const kids = b.view.children;
+    const i = kids.indexOf(w);
+    expect(i).toBeGreaterThan(kids.indexOf(internals(b).cover));
+    expect(i).toBeGreaterThan(kids.indexOf((b as unknown as { rocks: Graphics }).rocks));
+    expect(i).toBeLessThan(kids.indexOf(internals(b).glow));
+    // It spans exactly the viewport it was laid out for.
+    const bounds = w.getLocalBounds();
+    expect([bounds.x, bounds.y, bounds.width, bounds.height]).toEqual([0, 0, 1280, 720]);
+    b.layout(844, 390);
+    const again = w.getLocalBounds();
+    expect([again.width, again.height]).toEqual([844, 390]);
+  });
+
+  it('keeps the cover opaque and the viewport\'s size, so the world stays covered', () => {
+    mocks.textures.set('hub', HUB);
+    const b = new LobbyBackdrop({ dim: 0.5 });
+    b.layout(1280, 720);
+    const cover = internals(b).cover;
+    expect([cover.x, cover.y, cover.width, cover.height, cover.alpha]).toEqual([0, 0, 1280, 720, 1]);
+  });
+
+  it('centres the dais when asked to, until `setDaisTarget` says otherwise', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    const b = new LobbyBackdrop({ dim: 0.5, daisU: 0.5 });
+    b.layout(760, 1646);
+    expect(b.dais.x).toBeCloseTo(760 * 0.5, 5);
+  });
+});

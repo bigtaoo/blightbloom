@@ -11,12 +11,18 @@
  *
  * That action bar lives on `Loadout.ts` since the 2026-09-21 split, and so do the cases
  * that were about it (the character line, START RUN / CLEAR / CONTINUE). What is left here
- * is the grid, the store entry, the compare card and the hint line this screen still owns —
- * plus the "give way rather than overlap" rule, now measured against that hint line.
+ * is the grid, the store entry, the compare card and the hint line this screen still owns.
+ *
+ * Since the menu shell (2026-09-27) all of it sits in one sheet the shell scales to fit, so
+ * the old "pinned to `h`, give way on a short viewport" cases became "placed in the sheet, the
+ * same at every viewport" ones — plus the two layouts (`forgeSheet.ts`): the side panel beside
+ * the grid where the wide sheet fits, under it where it does not.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { Forge } from './Forge';
+import { GRID_W, NARROW_SHEET_W, WIDE_SHEET_W, forgeIsWide, layoutForgeSheet, type ForgeSheetParts } from './forgeSheet';
 import { installFakeTextCanvas } from './fakeTextCanvas';
+import { BlueprintCard } from '../ui/BlueprintCard';
 import { defaultMetaState, acquireBlueprint, purchasableBlueprints } from '../../meta';
 import type { MetaState } from '../../meta';
 import { setLocale, resetLocaleForTests } from '../../i18n';
@@ -27,6 +33,7 @@ import { useLocale } from '../../i18n/loadLocale';
 interface TestButton {
   view: { visible: boolean; position: { x: number; y: number } };
   label: { text: string };
+  width: number;
   onTap: (() => void) | null;
 }
 
@@ -46,23 +53,35 @@ interface TestCard {
 // approximate glyph metrics are fine for every assertion below.
 installFakeTextCanvas();
 
+type Pos = { position: { x: number; y: number } };
+
+/** The screen's widgets, plus the title the menu shell owns. */
 function privateOf(f: Forge) {
-  return f as unknown as {
-    title: { text: string };
-    infoText: { text: string; style: { wordWrap: boolean; breakWords: boolean } };
+  const shell = (f as unknown as { shell: { sheet: { title: { text: string } }; backBtn: TestButton } }).shell;
+  const self = f as unknown as {
+    bank: { heading: { text: string }; cells: Array<{ name: { text: string }; count: { text: string } }> };
+    carryingHeading: { text: string };
+    carryingText: { text: string } & Pos;
+    storeCaption: { text: string; visible: boolean; style: { wordWrap: boolean; breakWords: boolean } } & Pos;
     rowCards: TestCard[];
     storeBtn: TestButton;
     prevPageBtn: TestButton;
-    hint: { position: { x: number; y: number }; text: string };
+    nextPageBtn: TestButton;
+    hint: { text: string } & Pos;
     compareCard: {
       view: { visible: boolean; position: { x: number; y: number }; height: number };
       leftName: { text: string };
       rightName: { text: string };
     };
+    parts(): ForgeSheetParts;
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn });
 }
 
 afterEach(() => resetLocaleForTests());
+
+/** One page's worth of browse steps: enough to flip the grid to page 2. */
+const PAGE_FLIP = 8;
 
 // Buys down the shelf to `max` or fewer remaining purchasable blueprints (defaultMetaState
 // starts with 17 — see forge.test.ts's own purchasableBlueprints assertion).
@@ -74,55 +93,83 @@ function withFewBuyable(max: number): MetaState {
   return m;
 }
 
-describe('Forge — infoText buyable-list bound', () => {
+/** `storeEnabled` is what the assembly sets from `platform/storePlatform.ts`. */
+function sellingForge(): Forge {
+  const f = new Forge();
+  f.storeEnabled = true;
+  return f;
+}
+
+describe('Forge — the store caption\'s buyable-list bound', () => {
   it('collapses a long shelf to a bare count instead of joining every name', () => {
-    const f = new Forge();
+    const f = sellingForge();
     const m = defaultMetaState();
     expect(purchasableBlueprints(m).length).toBeGreaterThan(3); // the case that used to overflow
     f.render(m, 1280, 720);
-    const text = privateOf(f).infoText.text;
+    const text = privateOf(f).storeCaption.text;
     expect(text).toContain(`${purchasableBlueprints(m).length} more available`);
-    // None of the shelf's own blueprint ids should leak into the collapsed line — only
-    // the count should. (A regression here would mean the old unbounded join is back.)
-    for (const id of purchasableBlueprints(m).slice(3)) expect(text).not.toContain(id);
+    // Only the count — a regression here would mean the old unbounded join is back.
+    expect(text).not.toContain(',');
   });
 
-  it('still lists names when the shelf is short enough to matter', () => {
-    const f = new Forge();
+  it('still lists names when the shelf is short enough to matter — the weapons\' names, not ids', () => {
+    const f = sellingForge();
     const m = withFewBuyable(2);
     const shelf = purchasableBlueprints(m);
     expect(shelf.length).toBeGreaterThan(0);
     expect(shelf.length).toBeLessThanOrEqual(3);
     f.render(m, 1280, 720);
-    const text = privateOf(f).infoText.text;
-    for (const id of shelf) expect(text).toContain(id);
+    const text = privateOf(f).storeCaption.text;
+    expect(text).toMatch(/^For sale: /);
     expect(text).not.toContain('more available');
+    // The line used to join the raw catalogue ids (`cryobolt`), which are asset keys.
+    for (const id of shelf) expect(text).not.toMatch(new RegExp(`\\b${id}\\b`));
+    expect(text.split(', ')).toHaveLength(shelf.length);
   });
 
-  it('omits the Store line entirely once nothing is left to buy', () => {
-    const f = new Forge();
-    const m = withFewBuyable(0);
-    expect(purchasableBlueprints(m)).toHaveLength(0);
-    f.render(m, 1280, 720);
-    expect(privateOf(f).infoText.text).not.toContain('Store');
+  it('goes with the button: gone once nothing is left to buy, and gone where this build may not sell', () => {
+    const empty = sellingForge();
+    empty.render(withFewBuyable(0), 1280, 720);
+    expect(privateOf(empty).storeCaption.visible).toBe(false);
+
+    // The old info line kept saying "Store: … [B] open the store" on a build with no store.
+    const barred = new Forge();
+    barred.render(withFewBuyable(2), 1280, 720);
+    expect(privateOf(barred).storeCaption.visible).toBe(false);
   });
 
-  it('infoText wraps AND force-breaks unbroken runs (CJK locales have no spaces to wrap at, design/17-i18n.md)', () => {
-    const f = new Forge();
-    const style = privateOf(f).infoText.style;
+  it('wraps AND force-breaks unbroken runs (CJK locales have no spaces to wrap at, design/17-i18n.md)', () => {
+    const style = privateOf(new Forge()).storeCaption.style;
     expect(style.wordWrap).toBe(true);
     expect(style.breakWords).toBe(true);
   });
 });
 
-describe('Forge — store button (design/19 §4; was ACQUIRE, the `demo: free grant` scaffold)', () => {
-  /** `storeEnabled` is what the assembly sets from `platform/storePlatform.ts`. */
-  function sellingForge(): Forge {
+describe('Forge — what the run carries', () => {
+  it('names the default pair when nothing is forged, and counts 0 of the slots', () => {
     const f = new Forge();
-    f.storeEnabled = true;
-    return f;
-  }
+    f.render(defaultMetaState(), 1280, 720);
+    const p = privateOf(f);
+    expect(p.carryingText.text).toBe('(none → Blaster + Saber)');
+    expect(p.carryingHeading.text).toContain('0/2');
+  });
 
+  it('names forged weapons by their translated names', () => {
+    const f = new Forge();
+    f.render({ ...defaultMetaState(), loadout: ['repeater'] }, 1280, 720);
+    const p = privateOf(f);
+    expect(p.carryingText.text).toBe('Repeater');
+    expect(p.carryingHeading.text).toContain('1/2');
+  });
+
+  it('falls back to the id for a loadout entry the catalogue no longer knows', () => {
+    const f = new Forge();
+    f.render({ ...defaultMetaState(), loadout: ['not-a-weapon'] }, 1280, 720);
+    expect(privateOf(f).carryingText.text).toBe('not-a-weapon');
+  });
+});
+
+describe('Forge — store button (design/19 §4; was ACQUIRE, the `demo: free grant` scaffold)', () => {
   it('is visible when this build may sell AND there is something purchasable', () => {
     const f = sellingForge();
     const m = withFewBuyable(2);
@@ -143,7 +190,7 @@ describe('Forge — store button (design/19 §4; was ACQUIRE, the `demo: free gr
     expect(privateOf(f).storeBtn.view.visible).toBe(false);
   });
 
-  it('is hidden once nothing is left to buy — same condition the Store info line uses', () => {
+  it('is hidden once nothing is left to buy — same condition its caption uses', () => {
     const f = sellingForge();
     const m = withFewBuyable(0);
     f.render(m, 1280, 720);
@@ -163,56 +210,52 @@ describe('Forge — store button (design/19 §4; was ACQUIRE, the `demo: free gr
     expect(purchasableBlueprints(m)).toEqual(purchasableBlueprints(withFewBuyable(2)));
   });
 
-  it("doesn't overlap the first blueprint row when shown", () => {
-    const f = sellingForge();
-    f.render(withFewBuyable(2), 1280, 720);
-    const p = privateOf(f);
-    expect(p.storeBtn.view.position.y).toBeLessThan(p.rowCards[0]!.view.position.y);
+  it('stands clear of the grid in both layouts: beside it when wide, under it when narrow', () => {
+    const wide = sellingForge();
+    wide.render(withFewBuyable(2), 1280, 720);
+    expect(privateOf(wide).storeBtn.view.position.x).toBeGreaterThan(GRID_W);
+
+    const narrow = sellingForge();
+    narrow.render(withFewBuyable(2), 760, 1600);
+    const p = privateOf(narrow);
+    const gridBottom = p.rowCards[7]!.view.position.y + BlueprintCard.H;
+    expect(p.storeBtn.view.position.y).toBeGreaterThan(gridBottom);
+    expect(p.storeBtn.view.position.x + p.storeBtn.width).toBeCloseTo(GRID_W, 6);
   });
 
-  it('reflows the row list up once the button disappears — same instance, not a fresh one', () => {
-    // The two tests above use separate Forge instances with separate MetaStates, which
-    // only proves the button's OWN .visible flag toggles — not that render()'s
-    // `y += 36` (only added when acquireBtn is visible) actually reflows every row/
-    // page-nav element below it for the SAME screen across a real state transition
-    // (buyable>0 → buyable==0), the same "boundary transition on one instance" pattern
-    // the fixed-bottom-action-bar tests below already use via moveSelection/re-render.
+  it('does not move the grid when it disappears — the grid never made room for it', () => {
+    // It used to take a row of its own above the grid, so selling the last blueprint shifted
+    // every card up by 36px under the player's cursor.
     const f = sellingForge();
     let m = withFewBuyable(2);
     f.render(m, 1280, 720);
     const p = privateOf(f);
-    expect(p.storeBtn.view.visible).toBe(true);
-    const rowYWithButton = p.rowCards[0]!.view.position.y;
-
-    while (purchasableBlueprints(m).length > 0) {
-      m = acquireBlueprint(m, purchasableBlueprints(m)[0]!);
-    }
+    const before = p.rowCards[0]!.view.position.y;
+    while (purchasableBlueprints(m).length > 0) m = acquireBlueprint(m, purchasableBlueprints(m)[0]!);
     f.render(m, 1280, 720);
     expect(p.storeBtn.view.visible).toBe(false);
-    const rowYWithoutButton = p.rowCards[0]!.view.position.y;
-    // The shift is AT LEAST the button's own reserved 36px — dropping the Store info
-    // line at the same time also shrinks infoText by one line's height, so the real
-    // total delta is bigger than 36 alone; the >=36 floor is what actually pins down
-    // "the button's reserved space really disappeared," without being coupled to the
-    // separate, unrelated infoText line-count arithmetic.
-    expect(rowYWithButton - rowYWithoutButton).toBeGreaterThanOrEqual(36);
+    expect(p.rowCards[0]!.view.position.y).toBe(before);
   });
 });
 
-describe('Forge — the hint line is anchored, not flowed', () => {
-  it('pins the hint to the viewport height, not to the content flow above it', () => {
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).hint.position.y).toBe(720 - 6);
+describe('Forge — the sheet: one layout the shell scales, not one pinned to the viewport', () => {
+  it('closes the sheet with the hint, under the pager and the store entry', () => {
+    const f = sellingForge();
+    f.render(withFewBuyable(2), 1280, 720);
+    const p = privateOf(f);
+    expect(p.hint.position.y).toBeGreaterThan(p.prevPageBtn.view.position.y);
+    expect(p.hint.position.y).toBeGreaterThan(p.storeBtn.view.position.y);
   });
 
-  it('stays at the same height-relative offset on a short viewport', () => {
-    // The original bug, in the shape it took on this screen: a bottom row whose y came from
-    // `Math.min(flowedY, h - 70)` landed wherever the flow happened to overflow to — which,
-    // with eight full-size cards above it, meant on top of cards 6-8.
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 480);
-    expect(privateOf(f).hint.position.y).toBe(480 - 6);
+  it('places everything the same on a short viewport — the shell scales the sheet instead', () => {
+    // The original bug, in the shape it took here: a bottom row whose y came from
+    // `Math.min(flowedY, h - 70)` landed on top of cards 6-8 once the viewport got short.
+    const tall = new Forge();
+    tall.render(defaultMetaState(), 1280, 900);
+    const short = new Forge();
+    short.render(defaultMetaState(), 1280, 380);
+    expect(privateOf(short).hint.position.y).toBe(privateOf(tall).hint.position.y);
+    expect(privateOf(short).rowCards[7]!.view.position.y).toBe(privateOf(tall).rowCards[7]!.view.position.y);
   });
 
   it('does not move the pager when paging changes what sits above it', () => {
@@ -220,27 +263,56 @@ describe('Forge — the hint line is anchored, not flowed', () => {
     const m = defaultMetaState();
     f.render(m, 1280, 600);
     const before = privateOf(f).prevPageBtn.view.position.y;
-    f.moveSelection(1); // may flip pages, changing the grid's content but not its size
+    f.moveSelection(PAGE_FLIP); // flips to page 2: the grid's content changes, not its size
     f.render(m, 1280, 600);
     expect(privateOf(f).prevPageBtn.view.position.y).toBe(before);
+    expect(privateOf(f).nextPageBtn.view.position.y).toBe(before);
+  });
+
+  it('keeps the compare card on a short viewport — it no longer has to give way', () => {
+    const f = new Forge();
+    f.render(defaultMetaState(), 1280, 380);
+    expect(privateOf(f).compareCard.view.visible).toBe(true);
   });
 });
 
-describe('Forge — compare card no-room hide', () => {
-  it('shows the compare card when the viewport is tall enough', () => {
-    const f = new Forge();
-    f.render(defaultMetaState(), 1280, 900);
-    expect(privateOf(f).compareCard.view.visible).toBe(true);
+describe('Forge — the two layouts', () => {
+  it('takes the wide sheet only where it fits at full size', () => {
+    expect(forgeIsWide(WIDE_SHEET_W + 32)).toBe(true);
+    expect(forgeIsWide(WIDE_SHEET_W + 31)).toBe(false);
+    expect(forgeIsWide(760)).toBe(false); // a portrait phone's design width
+    expect(NARROW_SHEET_W).toBeLessThan(760 - 32);
   });
 
-  it('hides the compare card instead of overlapping the hint line on a short viewport', () => {
+  it('puts the compare card beside the grid when wide', () => {
     const f = new Forge();
-    f.render(defaultMetaState(), 1280, 380);
+    f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
-    expect(p.compareCard.view.visible).toBe(false);
-    // And the hint itself must still be exactly where a taller render would put it relative
-    // to `h` — hiding the card must not be achieved by moving what it was giving way to.
-    expect(p.hint.position.y).toBe(380 - 6);
+    expect(p.compareCard.view.position.x).toBeGreaterThan(GRID_W);
+    expect(p.carryingText.position.x).toBeGreaterThan(GRID_W);
+  });
+
+  it('puts it under the grid when narrow, beside what the run carries', () => {
+    const f = new Forge();
+    f.render(defaultMetaState(), 760, 1600);
+    const p = privateOf(f);
+    const gridBottom = p.rowCards[7]!.view.position.y + BlueprintCard.H;
+    expect(p.compareCard.view.position.y).toBeGreaterThan(gridBottom);
+    expect(p.carryingText.position.y).toBeGreaterThan(gridBottom);
+    expect(p.compareCard.view.position.x).toBeGreaterThan(p.carryingText.position.x);
+    expect(p.hint.position.y).toBeGreaterThan(p.compareCard.view.position.y + p.compareCard.view.height);
+  });
+
+  it('lays out without a compare card too, in both layouts (nothing under the cursor to diff)', () => {
+    for (const w of [1280, 760]) {
+      const f = new Forge();
+      f.selectedIndex = f.order.length; // past the catalogue: no candidate
+      f.render(defaultMetaState(), w, 1600);
+      const p = privateOf(f);
+      expect(p.compareCard.view.visible).toBe(false);
+      expect(p.hint.position.y).toBeGreaterThan(p.prevPageBtn.view.position.y);
+      expect(layoutForgeSheet(p.parts(), w === 1280)).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -254,7 +326,7 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
 
   it('shows translated weapon names in the compare-card equipped/candidate headers', () => {
     const f = new Forge();
-    f.render(defaultMetaState(), 1280, 900); // tall enough that the card isn't hidden
+    f.render(defaultMetaState(), 1280, 900);
     const p = privateOf(f);
     // Empty loadout falls back to PLAYER_BASE.startWeapons (Blaster); the browse
     // cursor starts on order[0] (Repeater), the same kind (ranged) so they compare.
@@ -272,31 +344,34 @@ describe('Forge — content display names (tName(), not raw catalog ids)', () =>
     expect(p.compareCard.rightName.text).toBe('候选：连发枪');
   });
 
-  it('uses the translated compact element codes for the material bank line and blueprint cost, not the old English-derived slice()', async () => {
+  it('uses the translated compact element codes for the material bank and blueprint cost, not the old English-derived slice()', async () => {
     const f = new Forge();
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
-    expect(p.infoText.text).toMatch(/PHY \d+.*FIR \d+.*ICE \d+.*LIG \d+.*POI \d+/s);
+    expect(p.bank.cells.map((c) => c.name.text)).toEqual(['PHY', 'FIR', 'ICE', 'LIG', 'POI']);
+    expect(p.bank.cells.every((c) => /^\d+$/.test(c.count.text))).toBe(true);
     expect(p.rowCards[0]!.costLabel).toBe('PHY×3'); // repeater: 3 physical
 
     await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(f).infoText.text).toMatch(/物 \d+.*火 \d+.*冰 \d+.*雷 \d+.*毒 \d+/s);
+    expect(privateOf(f).bank.cells.map((c) => c.name.text)).toEqual(['物', '火', '冰', '雷', '毒']);
     expect(privateOf(f).rowCards[0]!.costLabel).toBe('物×3');
   });
 });
 
 describe('Forge — i18n (design/17-i18n.md)', () => {
-  it('render() retexts static labels and interpolates the info block under zh', async () => {
-    const f = new Forge();
+  it('render() retexts static labels and the section headings under zh', async () => {
+    const f = sellingForge();
     await useLocale('zh');
     f.render(defaultMetaState(), 1280, 720);
     const p = privateOf(f);
     expect(p.title.text).toBe('锻造场');
+    expect(p.backBtn.label.text).toBe('返回');
     expect(p.storeBtn.label.text).toBe('商店');
     expect(p.hint.text).toBe('[↑↓] 浏览 · [1-9] 打造 · [B] 商店');
-    expect(p.infoText.text).toContain('材料');
-    expect(p.infoText.text).toContain('装备');
+    expect(p.bank.heading.text).toBe('材料');
+    expect(p.carryingHeading.text).toBe('携带  0/2');
+    expect(p.storeCaption.text).toMatch(/^在售：/);
   });
 
   it('a blueprint card still shows the status text translated', async () => {

@@ -1,6 +1,11 @@
-import { Container, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Button } from '../ui/widgets';
 import { TextInputOverlay } from '../ui/TextInputOverlay';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { FormField } from '../ui/FormField';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
+import { SHEET_W, CONTENT_W, ID_TEXT_X, TAB_H, BUTTON_H, LOGOUT_H, layoutLoginSheet, drawLoginAvatar, type LoginSheetParts } from './loginSheet';
 import * as authApi from '../../net/auth';
 import { getSession, setSession, type Session } from '../../net/session';
 import { getUiTexture } from '../../render/uiSkins';
@@ -16,39 +21,76 @@ export interface AuthApi {
   changePassword: typeof authApi.changePassword;
 }
 
+/** The server's own limits (`server/src/AuthService.ts`). */
+const USERNAME_MAX = 20;
+const PASSWORD_MAX = 64;
+
+type GuestTab = 'login' | 'register';
+
 /**
- * Account login/register (design/16-accounts.md — this project's first real login
- * system). Pure presentation + its own two-step username→password prompt (Pixi has no
- * native text input; `TextInputOverlay` shows one field at a time, same as
- * PartyScreen's join-code entry — sequential prompts are simplest here, not worth a
- * multi-field form for two fields).
+ * Account login/register (design/16-accounts.md), on the menu shell (design/10 "One shell for
+ * every menu", 2026-09-27).
  *
- * Logging in is NEVER required to play — a player who taps BACK without an account
- * stays exactly on the pre-existing guest path (`net/identity.ts`'s local random id).
- * This screen only changes what `getPlayerId()` returns once a session exists.
+ * ## The layout
+ *
+ * One framed sheet: who the player is (an avatar and a line saying where their progress
+ * lives), then — for a guest — LOG IN / REGISTER as two tabs over ONE form of two fields and
+ * one primary button, then the data notice and the policy link inside the card. Signed in, the
+ * form is CHANGE PASSWORD's instead, folded away until asked for, and LOG OUT sits in the
+ * identity row as the destructive thing it is.
+ *
+ * It replaced two stacked buttons that each opened two centred prompts in a row: nothing on
+ * screen said which field was being asked for, and nothing said what an account is FOR.
+ *
+ * ## The fields
+ *
+ * Pixi has no text input, so each `FormField` opens `TextInputOverlay` ON itself. Enter moves
+ * on to the next field and, on the last one, submits; a tap anywhere else keeps what was typed
+ * (`onBlur`), which is what lets a player type a password and then press the button.
+ *
+ * Logging in is NEVER required to play — a player who taps BACK without an account stays
+ * exactly on the pre-existing guest path (`net/identity.ts`'s local random id). This screen
+ * only changes what `getPlayerId()` returns once a session exists.
  */
 export class LoginScreen {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.85, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private readonly avatar = new Graphics();
+  private readonly avatarInitial: Text;
+  private readonly avatarGlyph = new Sprite();
+  private whoText: Text;
+  /** The line under the name: where the player's progress lives, or what registering buys. */
+  private standingText: Text;
   private statusText: Text;
   /** The one-line "what registering stores" notice — see its construction below. */
   private privacyText: Text;
   /** The hosted-policy link under the notice. Rendered only where a URL exists
    *  (`policyLinks.ts`) — the notice above stands on its own without it. */
   private privacyLink: Text;
-  private whoText: Text;
+  private readonly rule = new Graphics();
+  /** The guest's two tabs. */
   private loginBtn: Button;
   private registerBtn: Button;
+  /** The one primary on the screen: LOG IN, CREATE ACCOUNT or SAVE PASSWORD. */
+  private submitBtn: Button;
   private logoutBtn: Button;
   private changePasswordBtn: Button;
-  private backBtn: Button;
+  private userField: FormField;
+  private passField: FormField;
+  private oldPassField: FormField;
+  private newPassField: FormField;
   private inputOverlay = new TextInputOverlay();
 
   private readonly matchBaseUrl: string;
   private readonly api: AuthApi;
   private session: Session | null;
+  private tab: GuestTab = 'login';
+  /** Signed in: whether the change-password form is unfolded. */
+  private passwordOpen = false;
   private busy = false;
+  private size: { w: number; h: number } | null = null;
   // Guards a stale login/register/change-password continuation from reacting after the
   // player has already backed out (`hide()` bumps this) — same `attemptToken`
   // convention PartyScreen/Matchmaking already use. `setSession()` itself (the actual
@@ -69,11 +111,18 @@ export class LoginScreen {
     this.api = opts.api ?? authApi;
     this.session = getSession();
 
-    this.title = new Text({ text: t('auth.title'), style: { fill: 0xf7fafc, fontSize: 32, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    this.whoText = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 18, fontFamily: 'monospace', padding: 16 } });
-    this.whoText.anchor.set(0.5, 0);
-    this.statusText = new Text({ text: '', style: { fill: 0xf56565, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
+    this.shell = new MenuShell({ title: t('auth.title'), back: t('auth.back') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
+
+    this.avatarInitial = new Text({ text: '', style: { fill: 0xffffff, fontSize: 24, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 8 } });
+    this.avatarInitial.anchor.set(0.5);
+    this.avatarGlyph.anchor.set(0.5);
+    this.whoText = new Text({ text: '', style: menuText('value', { fontSize: 17, wordWrap: true, breakWords: true, wordWrapWidth: CONTENT_W - ID_TEXT_X }) });
+    this.whoText.anchor.set(0, 0);
+    this.standingText = new Text({ text: '', style: menuText('body', { fontSize: 13, lineHeight: 17, fill: MENU_COLORS.warn, wordWrapWidth: CONTENT_W - ID_TEXT_X }) });
+    this.standingText.anchor.set(0, 0);
+    this.statusText = new Text({ text: '', style: menuText('body', { fontSize: 13, align: 'center', fill: MENU_COLORS.error, wordWrapWidth: CONTENT_W }) });
     this.statusText.anchor.set(0.5, 0);
     // The data notice, at the point of collection.
     //
@@ -88,50 +137,58 @@ export class LoginScreen {
     // stored is a username, a password hash and the account's progress
     // (`server/src/AuthService.ts`, `EntitlementService.ts`), and the alternative is to
     // simply not do this.
-    this.privacyText = new Text({
-      text: '',
-      style: { fill: 0x8fa2b8, fontSize: 12, fontFamily: 'monospace', align: 'center', lineHeight: 17, padding: 12, wordWrap: true, wordWrapWidth: 420 },
-    });
+    this.privacyText = new Text({ text: '', style: menuText('caption', { align: 'center', wordWrapWidth: CONTENT_W }) });
     this.privacyText.anchor.set(0.5, 0);
     // The notice says what registering does; this points at the full document for the
     // player who wants it. Visible only if a URL exists, and it is the only tappable thing
     // in this corner of the screen.
-    this.privacyLink = new Text({ text: '', style: { fill: 0x63b3ed, fontSize: 12, fontFamily: 'monospace', padding: 12, align: 'center' } });
+    this.privacyLink = new Text({ text: '', style: menuText('caption', { fill: MENU_COLORS.link, align: 'center', wordWrap: false }) });
     this.privacyLink.anchor.set(0.5, 0);
     this.privacyLink.visible = policyUrl('privacy') !== null;
     this.privacyLink.eventMode = 'static';
     this.privacyLink.cursor = 'pointer';
     this.privacyLink.on('pointertap', () => openPolicy('privacy'));
 
-    this.loginBtn = new Button(t('auth.login'), { w: 200, h: 44, fontSize: 15 });
-    this.loginBtn.onTap = () => this.beginLogin();
+    const tabW = (CONTENT_W - 8) / 2;
+    this.loginBtn = new Button(t('auth.login'), { w: tabW, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.toggle' });
+    this.loginBtn.onTap = () => this.selectTab('login');
     this.loginBtn.setIcon(getUiTexture('icon_account'));
-    this.registerBtn = new Button(t('auth.register'), { w: 200, h: 44, fontSize: 15, color: 0x2f855a });
-    this.registerBtn.onTap = () => this.beginRegister();
+    this.registerBtn = new Button(t('auth.register'), { w: tabW, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.toggle' });
+    this.registerBtn.onTap = () => this.selectTab('register');
     this.registerBtn.setIcon(getUiTexture('icon_register'));
-    this.changePasswordBtn = new Button(t('auth.changePassword'), { w: 200, h: 40, fontSize: 13 });
-    this.changePasswordBtn.onTap = () => this.beginChangePassword();
+    this.submitBtn = new Button(t('auth.submitLogin'), { w: CONTENT_W, h: BUTTON_H, fontSize: 17, ...MENU_BUTTONS.primary });
+    this.submitBtn.onTap = () => this.submit();
+    this.changePasswordBtn = new Button(t('auth.changePassword'), { w: CONTENT_W, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary });
+    this.changePasswordBtn.onTap = () => this.togglePasswordForm();
     this.changePasswordBtn.setIcon(getUiTexture('icon_password'));
-    this.logoutBtn = new Button(t('auth.logout'), { w: 160, h: 36, fontSize: 13, color: 0x742a2a });
+    this.logoutBtn = new Button(t('auth.logout'), { w: 112, h: LOGOUT_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.danger });
     this.logoutBtn.onTap = () => void this.doLogout();
     this.logoutBtn.setIcon(getUiTexture('icon_logout'));
-    this.backBtn = new Button(t('auth.back'), { w: 120, h: 32, fontSize: 13, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
-    this.backBtn.setIcon(getUiTexture('icon_back'));
 
-    this.view.addChild(
-      this.panel.view, this.title, this.whoText, this.statusText, this.privacyText, this.privacyLink,
-      this.loginBtn.view, this.registerBtn.view, this.changePasswordBtn.view, this.logoutBtn.view, this.backBtn.view,
+    this.userField = new FormField(t('auth.usernamePlaceholder'), CONTENT_W);
+    this.passField = new FormField(t('auth.passwordPlaceholder'), CONTENT_W, { password: true });
+    this.oldPassField = new FormField(t('auth.currentPasswordPlaceholder'), CONTENT_W, { password: true });
+    this.newPassField = new FormField(t('auth.newPasswordPlaceholder'), CONTENT_W, { password: true });
+    for (const field of this.fields()) field.onTap = () => this.edit(field);
+
+    this.shell.content.addChild(
+      this.avatar, this.avatarInitial, this.avatarGlyph, this.whoText, this.standingText,
+      this.loginBtn.view, this.registerBtn.view, this.changePasswordBtn.view, this.logoutBtn.view,
+      this.userField.view, this.passField.view, this.oldPassField.view, this.newPassField.view,
+      this.statusText, this.submitBtn.view, this.rule, this.privacyText, this.privacyLink,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
     this.refresh();
   }
 
   show(w: number, h: number): void {
-    this.retext();
-    this.layout(w, h);
+    this.size = { w, h };
     this.session = getSession();
+    // A fresh visit starts clean: the last visit's error is not news any more.
+    this.statusText.text = '';
+    this.retext();
     this.view.visible = true;
     this.refresh();
   }
@@ -139,12 +196,17 @@ export class LoginScreen {
   /** Re-apply every static label from the active locale — same convention as
    * MainMenu.ts's `retext()` (design/17-i18n.md). */
   private retext(): void {
-    this.title.text = t('auth.title');
+    this.shell.setTitle(t('auth.title'));
+    this.shell.setBack(t('auth.back'));
     this.loginBtn.setText(t('auth.login'));
     this.registerBtn.setText(t('auth.register'));
     this.changePasswordBtn.setText(t('auth.changePassword'));
     this.logoutBtn.setText(t('auth.logout'));
-    this.backBtn.setText(t('auth.back'));
+    this.userField.setLabel(t('auth.usernamePlaceholder'));
+    this.passField.setLabel(t('auth.passwordPlaceholder'));
+    this.oldPassField.setLabel(t('auth.currentPasswordPlaceholder'));
+    this.newPassField.setLabel(t('auth.newPasswordPlaceholder'));
+    for (const f of this.fields()) f.setPlaceholder(t('auth.tapToType'));
     this.privacyText.text = t('auth.dataNotice');
     this.privacyLink.text = t('auth.privacyLink');
   }
@@ -153,74 +215,119 @@ export class LoginScreen {
     this.view.visible = false;
     this.inputOverlay.close(); // never leave a DOM input dangling once navigated away
     this.attemptToken++; // any login/register/change-password still in flight becomes stale
+    this.clearSecrets();
   }
 
-  private layout(w: number, h: number): void {
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    this.title.position.set(cx, cy - 160);
-    this.whoText.position.set(cx, cy - 100);
-    this.statusText.position.set(cx, cy + 110);
-    this.loginBtn.view.position.set(cx - 100, cy - 40);
-    this.registerBtn.view.position.set(cx - 100, cy + 14);
-    this.changePasswordBtn.view.position.set(cx - 100, cy - 40);
-    this.logoutBtn.view.position.set(cx - 80, cy + 14);
-    this.backBtn.view.position.set(cx - 60, cy + 170);
-    this.privacyText.position.set(cx, cy + 216);
-    // Below the notice. A FIXED offset, not `privacyText.height`: reading `.height` on a
-    // Pixi `Text` forces a canvas text measurement, and this screen is unit-tested with no
-    // `document`. 54px clears three lines at this font's 17px line height.
-    this.privacyLink.position.set(cx, cy + 216 + 54);
+  /** Per-frame: the backdrop's motion. A no-op while hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
-  private beginLogin(): void {
+  private fields(): FormField[] {
+    return [this.userField, this.passField, this.oldPassField, this.newPassField];
+  }
+
+  /** Passwords never outlive the screen, or a failed attempt: a player who comes back finds
+   *  the username they typed and an empty password. */
+  private clearSecrets(): void {
+    this.passField.setValue('');
+    this.oldPassField.setValue('');
+    this.newPassField.setValue('');
+  }
+
+  private selectTab(tab: GuestTab): void {
     if (this.busy) return;
-    this.promptCredentials((username, password) => void this.doLogin(username, password));
-  }
-
-  private beginRegister(): void {
-    if (this.busy) return;
-    this.promptCredentials((username, password) => void this.doRegister(username, password));
-  }
-
-  private promptCredentials(onDone: (username: string, password: string) => void): void {
+    this.tab = tab;
     this.statusText.text = '';
+    this.refresh();
+  }
+
+  private togglePasswordForm(): void {
+    if (this.busy || !this.session) return;
+    this.passwordOpen = !this.passwordOpen;
+    this.statusText.text = '';
+    if (!this.passwordOpen) this.clearSecrets();
+    this.refresh();
+  }
+
+  /**
+   * Open the real input on `field`. Enter keeps the value and moves to the form's next field
+   * (or submits, from the last one); a tap elsewhere keeps the value and stops; Escape drops
+   * the edit.
+   */
+  private edit(field: FormField): void {
+    if (this.busy) return;
+    const isUser = field === this.userField;
+    for (const f of this.fields()) f.setFocused(f === field);
+    const done = (value: string) => {
+      field.setFocused(false);
+      field.setValue(isUser ? value.trim() : value);
+    };
     this.inputOverlay.open({
-      placeholder: t('auth.usernamePlaceholder'),
-      maxLength: 20,
-      onSubmit: (username) => {
-        const name = username.trim();
-        if (!name) {
+      placeholder: t('auth.tapToType'),
+      maxLength: isUser ? USERNAME_MAX : PASSWORD_MAX,
+      password: field.password,
+      value: field.text,
+      anchor: this.anchorOf(field),
+      onSubmit: (value) => {
+        done(value);
+        // A blank username stops here rather than walking on to the password: the player
+        // would otherwise type a password for an account that cannot exist.
+        if (isUser && !value.trim()) {
           this.statusText.text = t('auth.usernameRequired');
+          this.relayout();
           return;
         }
-        this.inputOverlay.open({
-          placeholder: t('auth.passwordPlaceholder'),
-          maxLength: 64,
-          password: true,
-          onSubmit: (password) => onDone(name, password),
-        });
+        const next = this.after(field);
+        if (next) this.edit(next);
+        else this.submit();
       },
+      onBlur: done,
+      onCancel: () => field.setFocused(false),
     });
   }
 
-  private beginChangePassword(): void {
-    if (this.busy || !this.session) return;
-    this.statusText.text = '';
-    this.inputOverlay.open({
-      placeholder: t('auth.currentPasswordPlaceholder'),
-      maxLength: 64,
-      password: true,
-      onSubmit: (oldPassword) => {
-        this.inputOverlay.open({
-          placeholder: t('auth.newPasswordPlaceholder'),
-          maxLength: 64,
-          password: true,
-          onSubmit: (newPassword) => void this.doChangePassword(oldPassword, newPassword),
-        });
-      },
-    });
+  /** The field Enter moves to after `field` — the second field of a form ends it. */
+  private after(field: FormField): FormField | null {
+    return field === this.userField ? this.passField : field === this.oldPassField ? this.newPassField : null;
+  }
+
+  /** Where the real input goes: over the field, when the screen has been laid out on a real
+   *  canvas; `undefined` (the centred prompt) otherwise. */
+  private anchorOf(field: FormField): { x: number; y: number; w: number; h: number } | undefined {
+    const rect = field.anchorRect();
+    return rect.w > 0 && rect.h > 0 ? rect : undefined;
+  }
+
+  /** The primary button — and Enter on the last field. */
+  private submit(): void {
+    if (this.busy) return;
+    if (this.session) {
+      if (!this.passwordOpen) return;
+      const oldPassword = this.oldPassField.text;
+      const newPassword = this.newPassField.text;
+      if (!oldPassword || !newPassword) {
+        this.statusText.text = t('auth.passwordRequired');
+        this.relayout();
+        return;
+      }
+      void this.doChangePassword(oldPassword, newPassword);
+      return;
+    }
+    const username = this.userField.text.trim();
+    const password = this.passField.text;
+    if (!username) {
+      this.statusText.text = t('auth.usernameRequired');
+      this.relayout();
+      return;
+    }
+    if (!password) {
+      this.statusText.text = t('auth.passwordRequired');
+      this.relayout();
+      return;
+    }
+    if (this.tab === 'login') void this.doLogin(username, password);
+    else void this.doRegister(username, password);
   }
 
   private async doLogin(username: string, password: string): Promise<void> {
@@ -238,7 +345,10 @@ export class LoginScreen {
       if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.loginFailed'));
     } finally {
       this.busy = false; // always clears — this screen's own guard, not tied to staleness
-      if (token === this.attemptToken) this.refresh();
+      if (token === this.attemptToken) {
+        this.clearSecrets();
+        this.refresh();
+      }
     }
   }
 
@@ -257,7 +367,10 @@ export class LoginScreen {
       if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.registerFailed'));
     } finally {
       this.busy = false;
-      if (token === this.attemptToken) this.refresh();
+      if (token === this.attemptToken) {
+        this.clearSecrets();
+        this.refresh();
+      }
     }
   }
 
@@ -289,14 +402,21 @@ export class LoginScreen {
     if (!this.session || this.busy) return;
     this.busy = true;
     const token = this.attemptToken;
+    let changed = false;
     try {
       await this.api.changePassword(this.matchBaseUrl, this.session.token, oldPassword, newPassword);
+      changed = true;
       if (token === this.attemptToken) this.statusText.text = t('auth.passwordChanged');
     } catch (e) {
       if (token === this.attemptToken) this.statusText.text = this.failureText(e, t('auth.passwordChangeFailed'));
     } finally {
       this.busy = false;
-      if (token === this.attemptToken) this.refresh();
+      if (token === this.attemptToken) {
+        this.clearSecrets();
+        // A change that landed folds the form away; the success line stays to say so.
+        if (changed) this.passwordOpen = false;
+        this.refresh();
+      }
     }
   }
 
@@ -306,6 +426,9 @@ export class LoginScreen {
     const session = this.session;
     setSession(null);
     this.session = null;
+    this.passwordOpen = false;
+    this.tab = 'login';
+    this.statusText.text = '';
     this.onSessionChange?.();
     this.refresh();
     if (session) {
@@ -321,12 +444,51 @@ export class LoginScreen {
     }
   }
 
+  /** Re-derive every state-dependent label and visibility, then re-lay the sheet out. */
   private refresh(): void {
     const loggedIn = this.session !== null;
+    const guest = !loggedIn;
     this.whoText.text = loggedIn ? t('auth.loggedInAs', { username: this.session!.username }) : t('auth.playingAsGuest');
-    this.loginBtn.view.visible = !loggedIn;
-    this.registerBtn.view.visible = !loggedIn;
+    this.standingText.text = loggedIn ? t('auth.syncedStatus') : this.tab === 'register' ? t('auth.registerPitch') : t('auth.guestStatus');
+    this.standingText.style.fill = loggedIn ? MENU_COLORS.success : MENU_COLORS.warn;
+    this.loginBtn.view.visible = guest;
+    this.registerBtn.view.visible = guest;
+    this.userField.view.visible = guest;
+    this.passField.view.visible = guest;
     this.changePasswordBtn.view.visible = loggedIn;
     this.logoutBtn.view.visible = loggedIn;
+    this.oldPassField.view.visible = loggedIn && this.passwordOpen;
+    this.newPassField.view.visible = loggedIn && this.passwordOpen;
+    this.submitBtn.view.visible = guest || this.passwordOpen;
+    this.submitBtn.setText(loggedIn ? t('auth.savePassword') : this.tab === 'login' ? t('auth.submitLogin') : t('auth.submitRegister'));
+    // The selected tab carries the crystal frame; the other is a plain secondary.
+    const on = (b: Button, active: boolean) => {
+      b.setFill(active ? 0x1d3350 : MENU_COLORS.field);
+      b.setBorder(active ? MENU_COLORS.frame : MENU_COLORS.fieldBorder);
+    };
+    on(this.loginBtn, this.tab === 'login');
+    on(this.registerBtn, this.tab === 'register');
+    on(this.changePasswordBtn, this.passwordOpen);
+    // The notice is about what REGISTERING stores, so it goes with the guest's form.
+    this.privacyText.visible = guest;
+    this.privacyLink.visible = guest && policyUrl('privacy') !== null;
+    drawLoginAvatar({ avatar: this.avatar, avatarInitial: this.avatarInitial, avatarGlyph: this.avatarGlyph }, this.session?.username ?? null);
+    this.relayout();
+  }
+
+  private relayout(): void {
+    if (this.size) this.layout(this.size.w, this.size.h);
+  }
+
+  private layout(w: number, h: number): void {
+    this.statusText.style.fill = this.statusText.text === t('auth.passwordChanged') ? MENU_COLORS.success : MENU_COLORS.error;
+    this.shell.layout(w, h, SHEET_W, layoutLoginSheet(this.parts(), this.session !== null, this.passwordOpen));
+  }
+
+  /** The widgets `loginSheet.ts` places — kept as fields here, where the harnesses read them. */
+  private parts(): LoginSheetParts {
+    const { whoText, standingText, statusText, privacyText, privacyLink, rule, loginBtn, registerBtn } = this;
+    const { changePasswordBtn, logoutBtn, submitBtn, userField, passField, oldPassField, newPassField } = this;
+    return { whoText, standingText, statusText, privacyText, privacyLink, rule, loginBtn, registerBtn, changePasswordBtn, logoutBtn, submitBtn, userField, passField, oldPassField, newPassField };
   }
 }

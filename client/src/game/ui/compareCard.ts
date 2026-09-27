@@ -100,19 +100,21 @@ export class CompareCard {
     rightColor: number;
     rows: readonly CompareRow[];
   }) {
-    const headerH = 30;
-    const h = headerH + (opts.rows.length ? opts.rows.length * 19 + 10 : 6);
-    this.panel.layout(opts.w, h);
-
-    this.leftBorder.clear().roundRect(0, 0, 4, h, 2).fill({ color: opts.leftColor });
-    this.rightBorder.clear().roundRect(opts.w - 4, 0, 4, h, 2).fill({ color: opts.rightColor });
-
     this.leftName.text = opts.leftName;
     this.leftName.style.fill = opts.leftColor;
-    this.leftName.position.set(12, 8);
     this.rightName.text = opts.rightName;
     this.rightName.style.fill = opts.rightColor;
-    this.rightName.position.set(opts.w - 12, 8);
+    // Two names too wide for one line (a narrow card, like the forge's side column) stack:
+    // the candidate drops under the equipped one, still right-aligned, instead of overlapping.
+    const stacked = this.leftName.width + this.rightName.width + 16 > opts.w - 24;
+    const headerH = stacked ? 50 : 30;
+    this.leftName.position.set(12, 8);
+    this.rightName.position.set(opts.w - 12, stacked ? 28 : 8);
+
+    const h = headerH + (opts.rows.length ? opts.rows.length * 19 + 10 : 6);
+    this.panel.layout(opts.w, h);
+    this.leftBorder.clear().roundRect(0, 0, 4, h, 2).fill({ color: opts.leftColor });
+    this.rightBorder.clear().roundRect(opts.w - 4, 0, 4, h, 2).fill({ color: opts.rightColor });
 
     const labelW = Math.max(6, ...opts.rows.map((r) => r.label.length));
     const valW = Math.max(4, ...opts.rows.map((r) => Math.max(r.left.length, r.right.length)));
@@ -121,6 +123,11 @@ export class CompareCard {
       .map((r) => `${r.label.padEnd(labelW)} ${r.left.padStart(valW)}  ${vs}  ${r.right.padStart(valW)}`)
       .join('\n');
     this.body.position.set(12, headerH);
+    // A translated stat block can outgrow a narrow card (ru's `физический` twice over in the
+    // forge's 300px column): shrink the block to fit rather than run past the card's edge.
+    this.body.scale.set(1);
+    const room = opts.w - 24;
+    if (this.body.width > room) this.body.scale.set(room / this.body.width);
 
     this.view.visible = true;
   }

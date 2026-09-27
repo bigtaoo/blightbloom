@@ -8,18 +8,22 @@ import { buildArenaSpecs, PVP_SCALE_FACTOR, DEFAULT_SKIN_ID, SKIN_DEFS } from '@
 import { PvpPreview } from './PvpPreview';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
+import { installFakeTextCanvas } from './fakeTextCanvas';
+
+// The sheet measures the wrapped fairness note (`Text.height`), which needs a 2D context.
+installFakeTextCanvas();
 
 function privateOf(p: PvpPreview) {
-  return p as unknown as {
-    title: { text: string };
+  const shell = (p as unknown as { shell: { sheet: { title: { text: string } }; backBtn: { label: { text: string }; onTap: (() => void) | null } } }).shell;
+  const self = p as unknown as {
     mapLine: { text: string };
     fairnessNote: { text: string };
     queueBtn: { label: { text: string }; onTap: (() => void) | null };
-    backBtn: { label: { text: string }; onTap: (() => void) | null };
     playerCard: { displayName: string };
     weaponCard: { nameText: string; damageText: string; estimatedWidth(): number; view: { position: { x: number; y: number } } };
     weaponSlotChip: { view: { visible: boolean; position: { x: number; y: number } }; set(spec: unknown): void };
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn });
 }
 
 afterEach(() => resetLocaleForTests());
@@ -140,5 +144,29 @@ describe('PvpPreview — i18n (design/17-i18n.md)', () => {
     setLocale('en');
     p.show(800, 600, DEFAULT_SKIN_ID);
     expect(privateOf(p).title.text).toBe('PVP MATCH');
+  });
+});
+
+describe('PvpPreview — the sheet (design/10 "One shell for every menu")', () => {
+  it('flows ARENA, then YOUR BUILD, then the note, then QUEUE across the sheet', () => {
+    const p = new PvpPreview();
+    p.show(800, 600, DEFAULT_SKIN_ID);
+    const q = p as unknown as {
+      arenaHeading: { text: string; position: { y: number } };
+      buildHeading: { text: string; position: { y: number } };
+      mapLine: { text: string; position: { y: number } };
+      playerCard: { view: { position: { y: number } } };
+      fairnessNote: { position: { y: number } };
+      queueBtn: { width: number; view: { position: { x: number; y: number } } };
+      shell: { sheet: { width: number } };
+    };
+    expect(q.arenaHeading.text).toBe('ARENA');
+    expect(q.buildHeading.text).toBe('YOUR BUILD');
+    expect(q.mapLine.text).toBe('The Seven Districts \u00b7 60 rooms');
+    const ys = [q.arenaHeading.position.y, q.mapLine.position.y, q.buildHeading.position.y,
+      q.playerCard.view.position.y, q.fairnessNote.position.y, q.queueBtn.view.position.y];
+    for (let i = 1; i < ys.length; i++) expect(ys[i]!).toBeGreaterThan(ys[i - 1]!);
+    expect(q.queueBtn.view.position.x).toBe(0);
+    expect(q.queueBtn.width).toBe(q.shell.sheet.width - 48);
   });
 });

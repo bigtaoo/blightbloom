@@ -31,8 +31,23 @@ export interface TextInputOverlayOptions {
   numeric?: boolean;
   /** Masks input as `••••` (design/16-accounts.md's password field) — otherwise plain text. */
   password?: boolean;
+  /** The text the field opens with — a form field being edited again, rather than a prompt. */
+  value?: string;
+  /**
+   * Where to put the input, in canvas CSS px — over a field the canvas drew (`FormField`),
+   * rather than the default centred prompt. Offset by the canvas's own page position, so it
+   * lands on the field wherever the canvas sits.
+   */
+  anchor?: { x: number; y: number; w: number; h: number };
   onSubmit: (value: string) => void;
   onCancel?: () => void;
+  /**
+   * Called with what was typed when the input loses focus for any reason but Enter or Escape
+   * — a tap on the canvas. A form wants that value KEPT (the tap is often on the form's own
+   * submit button); a one-shot prompt wants it dropped, which is what omitting this does:
+   * blur then counts as `onCancel`.
+   */
+  onBlur?: (value: string) => void;
 }
 
 export class TextInputOverlay {
@@ -51,6 +66,7 @@ export class TextInputOverlay {
     input.autocapitalize = opts.password || opts.numeric ? 'off' : 'characters';
     input.autocomplete = opts.password ? 'current-password' : 'off';
     input.spellcheck = false;
+    input.value = opts.value ?? '';
     if (opts.numeric) {
       input.inputMode = 'numeric';
       input.pattern = '[0-9]*'; // see `numeric`'s note — this is what iOS Safari reads
@@ -72,6 +88,26 @@ export class TextInputOverlay {
       color: '#e2e8f0',
       width: '220px',
     } satisfies Partial<CSSStyleDeclaration>);
+    if (opts.anchor) {
+      const canvas = document.querySelector('canvas');
+      const page = canvas?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const { x, y, w, h } = opts.anchor;
+      Object.assign(input.style, {
+        left: `${page.left + x}px`,
+        top: `${page.top + y}px`,
+        width: `${w}px`,
+        height: `${h}px`,
+        transform: 'none',
+        boxSizing: 'border-box',
+        padding: `0 ${Math.round(h * 0.3)}px`,
+        fontSize: `${Math.max(12, Math.round(h * 0.42))}px`,
+        textAlign: 'left',
+        letterSpacing: '1px',
+        border: '2px solid #7fd8ff',
+        background: '#141d2e',
+        outline: 'none',
+      } satisfies Partial<CSSStyleDeclaration>);
+    }
 
     // `numeric` first and `else if`: stripping non-digits already covers case, and running
     // both would fight over `input.value` on the same event.
@@ -107,8 +143,10 @@ export class TextInputOverlay {
     // only ever proceeds for a GENUINE external blur.
     input.addEventListener('blur', () => {
       if (this.el !== input) return;
+      const value = input.value;
       this.close();
-      opts.onCancel?.();
+      if (opts.onBlur) opts.onBlur(value);
+      else opts.onCancel?.();
     });
 
     document.body.appendChild(input);

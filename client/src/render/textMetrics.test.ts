@@ -507,7 +507,7 @@ describe('Button label vs. box — the Russian settings-screen regression', () =
     for (const locale of LOCALES) {
       await useLocale(locale);
       screen.show(800, 600, { ...defaultSettingsState(), locale });
-      for (const key of ['languageBtn', 'controlLayoutBtn', 'muteBtn', 'backBtn']) {
+      for (const key of ['languageBtn', 'controlLayoutBtn', 'qualityBtn', 'frameRateBtn', 'reduceMotionBtn', 'muteBtn']) {
         const button = buttons[key]!;
         const { left, right } = labelEdges(button);
         expect({ locale, key, left: left >= 0 }).toEqual({ locale, key, left: true });

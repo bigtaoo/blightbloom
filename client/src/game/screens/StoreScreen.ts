@@ -1,8 +1,11 @@
 import { Container, Text } from 'pixi.js';
 import { BLUEPRINT_CATALOG, SKIN_DEFS, WEAPON_SPECS } from '@dd/engine';
-import { Panel, Button } from '../ui/widgets';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { SHEET_PAD, SHEET_TITLE_H } from '../ui/MenuSheet';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { clampPageStart, pageCount } from '../ui/paging';
-import { getUiTexture } from '../../render/uiSkins';
 import { playUiCue } from '../../audio/uiSound';
 import { formatSkuPrice, type SkuGrant, type StoreSku } from '../../net/billing';
 import type { StorePurchase, CatalogFailure, PurchaseFailure } from '../controllers/StorePurchase';
@@ -13,6 +16,12 @@ import { t, tName, type TranslationKey } from '../../i18n';
  * paging helpers the Forge grid already uses beats letting the list run off the panel — the
  * exact bug `Forge`'s own `buyableText` comment records. */
 const PAGE_SIZE = 6;
+/** The sheet's width and the content inside its padding; a row's height and pitch; the pager. */
+const SHEET_W = 560;
+const CONTENT_W = SHEET_W - SHEET_PAD * 2;
+const ROW_H = 42;
+const ROW_PITCH = ROW_H + 8;
+const PAGER_H = 30;
 
 /** Every failure code either half of the flow can produce, mapped to the ONE player-facing
  * line for it. Exhaustive `Record`s rather than a `switch` with a default, so a new code in
@@ -49,20 +58,25 @@ const CATALOG_MESSAGE: Record<CatalogFailure, TranslationKey> = {
  *     not to. See that file for why an iOS build showing a web checkout is a rule break
  *     rather than a rough edge.
  *
+ * Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+ * sheet — the status line, then the rows as full-width buttons, then the pager — with BACK as
+ * the shell's corner chip. An owned row keeps its place and drops to the field colour, so a
+ * page never reflows under the player's finger after a purchase.
+ *
  * Every button is `sound: 'silent'`: a store press can end in a purchase, a refusal, or a
  * swallowed double-tap, and only the transaction knows which — so the cue is played from
  * the outcome (design/11, same reasoning as the Forge's craft rows).
  */
 export class StoreScreen {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.85, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
   private statusText: Text;
   private pageLabel: Text;
   private rows: Button[];
   private prevPageBtn: Button;
   private nextPageBtn: Button;
-  private backBtn: Button;
 
   private skus: StoreSku[] = [];
   private meta: MetaState | null = null;
@@ -81,17 +95,18 @@ export class StoreScreen {
   onBack: (() => void) | null = null;
 
   constructor(private readonly purchase: StorePurchase) {
-    this.title = new Text({ text: t('store.title'), style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    // wordWrap for the same reason the Forge's info line has it: these lines are translated
-    // and one of them carries a server-supplied failure message of no fixed length.
-    this.statusText = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 13, fontFamily: 'monospace', lineHeight: 19, align: 'center', padding: 16, wordWrap: true, wordWrapWidth: 620, breakWords: true } });
+    this.shell = new MenuShell({ title: t('store.title'), back: t('store.back') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
+    // wordWrap for the same reason the Forge's store caption has it: these lines are
+    // translated and one of them carries a server-supplied failure message of no fixed length.
+    this.statusText = new Text({ text: '', style: menuText('body', { fill: MENU_COLORS.accent, align: 'center', wordWrapWidth: CONTENT_W }) });
     this.statusText.anchor.set(0.5, 0);
-    this.pageLabel = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 12, fontFamily: 'monospace', padding: 14 } });
+    this.pageLabel = new Text({ text: '', style: menuText('label', { fill: MENU_COLORS.accent, fontSize: 12 }) });
     this.pageLabel.anchor.set(0.5);
 
     this.rows = Array.from({ length: PAGE_SIZE }, (_, slot) => {
-      const skuRowBtn = new Button('', { w: 460, h: 34, fontSize: 13, sound: 'silent' });
+      const skuRowBtn = new Button('', { w: CONTENT_W, h: ROW_H, fontSize: 14, sound: 'silent', ...MENU_BUTTONS.secondary });
       skuRowBtn.onTap = () => {
         const sku = this.skus[this.pageStart + slot];
         if (sku) void this.buy(sku);
@@ -99,23 +114,18 @@ export class StoreScreen {
       return skuRowBtn;
     });
 
-    this.prevPageBtn = new Button(t('store.pagePrev'), { w: 80, h: 26, fontSize: 11 });
+    this.prevPageBtn = new Button(t('store.pagePrev'), { w: 96, h: PAGER_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.prevPageBtn.onTap = () => this.turnPage(-1);
-    this.nextPageBtn = new Button(t('store.pageNext'), { w: 80, h: 26, fontSize: 11 });
+    this.nextPageBtn = new Button(t('store.pageNext'), { w: 96, h: PAGER_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.nextPageBtn.onTap = () => this.turnPage(1);
 
-    // Label carries NO arrow glyph: `setIcon` below draws one, and `store.back` used to
-    // carry a `←` as well, which rendered as "← ← FORGE" on a build with the art loaded.
-    // Same shape as LoginScreen's own back button, whose label is the bare word.
-    this.backBtn = new Button(t('store.back'), { w: 140, h: 32, fontSize: 13, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
-    this.backBtn.setIcon(getUiTexture('icon_back'));
-
-    this.view.addChild(
-      this.panel.view, this.title, this.statusText,
-      ...this.rows.map((r) => r.view),
-      this.prevPageBtn.view, this.pageLabel, this.nextPageBtn.view, this.backBtn.view,
+    // BACK is the shell's chip. Its label carries NO arrow glyph: the chip draws one, and
+    // `store.back` used to carry a `←` as well, which rendered as "← ← FORGE".
+    this.shell.content.addChild(
+      this.statusText, ...this.rows.map((r) => r.view),
+      this.prevPageBtn.view, this.pageLabel, this.nextPageBtn.view,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
@@ -135,6 +145,12 @@ export class StoreScreen {
     void this.load();
   }
 
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
+  }
+
   hide(): void {
     this.view.visible = false;
     this.attemptToken++;
@@ -148,10 +164,10 @@ export class StoreScreen {
   /** Re-apply every static label from the active locale — MainMenu's `retext()` convention
    * (design/17-i18n.md). */
   private retext(): void {
-    this.title.text = t('store.title');
+    this.shell.setTitle(t('store.title'));
+    this.shell.setBack(t('store.back'));
     this.prevPageBtn.setText(t('store.pagePrev'));
     this.nextPageBtn.setText(t('store.pageNext'));
-    this.backBtn.setText(t('store.back'));
   }
 
   private async load(): Promise<void> {
@@ -235,19 +251,13 @@ export class StoreScreen {
   private render(w: number, h: number): void {
     this.lastW = w;
     this.lastH = h;
-    this.panel.layout(w, h);
-    const cx = w / 2;
 
     // Clamp after a listing shrank the page count out from under a page we were on.
     const pages = pageCount(this.skus.length, PAGE_SIZE);
     if (this.pageStart >= this.skus.length) this.pageStart = Math.max(0, (pages - 1) * PAGE_SIZE);
 
-    let y = Math.max(20, h * 0.06);
-    this.title.position.set(cx, y);
-    y += 46;
-    this.statusText.style.wordWrapWidth = Math.min(620, w - 80);
-    this.statusText.position.set(cx, y);
-    y += Math.max(28, this.statusText.height + 10);
+    this.statusText.position.set(CONTENT_W / 2, 0);
+    let y = Math.max(20, this.statusText.height) + 16;
 
     this.rows.forEach((row, slot) => {
       const sku = this.skus[this.pageStart + slot];
@@ -256,28 +266,38 @@ export class StoreScreen {
         return;
       }
       row.view.visible = true;
-      const price = formatSkuPrice(sku.amountCents, sku.currency);
+      const owned = this.owns(sku);
       row.setText(
-        this.owns(sku)
+        owned
           ? t('store.rowOwned', { item: this.skuLabel(sku) })
-          : t('store.row', { item: this.skuLabel(sku), price }),
+          : t('store.row', { item: this.skuLabel(sku), price: formatSkuPrice(sku.amountCents, sku.currency) }),
       );
-      row.view.position.set(cx - 230, y + slot * 40);
+      row.setFill(owned ? MENU_COLORS.field : MENU_BUTTONS.secondary.color);
+      row.setBorder(owned ? MENU_COLORS.fieldBorder : MENU_BUTTONS.secondary.borderColor);
+      row.view.position.set(0, y + slot * ROW_PITCH);
     });
-    y += PAGE_SIZE * 40 + 6;
-
+    // A paged list reserves a full page, so flipping to a short last page does not shrink
+    // the sheet (and rescale everything) under the pager the player just pressed.
     const paged = this.skus.length > PAGE_SIZE;
+    const shownRows = paged ? PAGE_SIZE : this.skus.length;
+    y += shownRows * ROW_PITCH;
+
     this.prevPageBtn.view.visible = paged;
     this.nextPageBtn.view.visible = paged;
     this.pageLabel.visible = paged;
     if (paged) {
-      this.prevPageBtn.view.position.set(cx - 230, y);
+      y += 4;
+      this.prevPageBtn.view.position.set(0, y);
       this.pageLabel.text = t('store.pageLabel', { current: Math.floor(this.pageStart / PAGE_SIZE) + 1, total: pages });
-      this.pageLabel.position.set(cx, y + 13);
-      this.nextPageBtn.view.position.set(cx + 150, y);
+      this.pageLabel.position.set(CONTENT_W / 2, y + PAGER_H / 2);
+      this.nextPageBtn.view.position.set(CONTENT_W - this.nextPageBtn.width, y);
+      y += PAGER_H;
+    } else if (shownRows > 0) {
+      y -= ROW_PITCH - ROW_H;
     }
 
-    this.backBtn.view.position.set(cx - 70, h - 56);
+    // `MenuSheet.layout`'s own sums: the title plate, the gap under it, and the bottom padding.
+    this.shell.layout(w, h, SHEET_W, SHEET_TITLE_H + 18 + y + SHEET_PAD);
   }
 }
 

@@ -345,7 +345,6 @@ export class ScreenNav {
     d.hud.reposition(size);
     d.portalPrompt.reposition(size);
     d.floorCardPrompt.reposition(size);
-    d.screenFlow.repositionSettingsButtonIfLoadout(d.run.phase === 'loadout', w, h);
     // Unconditional, and before the phase switch: the prompt floats over every hub screen
     // rather than being one, so no `case` below owns it. It no-ops while closed.
     d.accountPrompt.relayout();

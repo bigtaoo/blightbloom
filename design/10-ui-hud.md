@@ -77,10 +77,10 @@ weeks, and the reason it changed is the interesting part.
 - ✅ **Tutorial level shipped** (`client/src/game/match/tutorialConfig.ts` + `TutorialHintController.ts`, 2026-08-03) — a fixed, flat (non-dungeon) 2-floor run teaching move/aim/fire → weapon-swap → melee-deflect → the real checkpoint (the actual `Portal`/`PortalPrompt`, not a scripted stand-in). *Was "the real extract-vs-descend checkpoint DECISION" until 2026-09-10: `ENGINE_VERSION` 61 removed that decision, so floor 0 now teaches DESCEND and floor 1 teaches EXTRACT — the shape of a real run, but no longer a choice. The two floors are kept for exactly that reason; a one-floor tutorial would never show DESCEND at all.*. Always skippable via the pause menu (relabeled "SKIP TUTORIAL" for this run only); completing OR skipping alike sets `MetaState.hasSeenTutorial`. **Since 2026-09-08 the teaching BEATS also run on a first-time player's first real run** (`RunState.firstRunHints`, armed by `RunLifecycle.beginRun` when `!hasSeenTutorial`, gated in `GameLoop` through the renamed `Game.isTeaching()` — the union of the tutorial flag and this one). The standalone level is unchanged and still the only thing `tutorialActive` means; what changed is that the hints stopped being reachable only from a menu route a first-time player has not taken. `design/20` has the reason it became urgent — a game portal lands a new visitor in a run on their FIRST CLICK, so that path was also the path with no control instructions on it. Two consequences of running over a real loadout rather than the tutorial's hand-picked pair: a lesson this loadout cannot teach is skipped rather than waited on (and lands on a silent `done`, not a congratulation), and the wording follows the input device — the single old string named "left stick / WASD" and described an aim stick v33 removed. Exposed and fixed a real bug along the way: the checkpoint-eligibility gate, the HUD's floor chip, and the result screen's floor line all hardcoded `EMBER_DUNGEON.floorCount` instead of reading the run's actual config — harmless while the ember dungeon was the only floored content, wrong for any flat `EngineConfig.floors` run (fixed via a shared `totalFloorCount()` helper, `client/src/game/match/floorCount.ts`).
 - ✅ **PvP match preview shipped** (`client/src/game/screens/PvpPreview.ts`, new `'pvpPreview'` `Phase`, 2026-08-03) — sits between ModeSelect's PVP SOLO QUEUE and Matchmaking so a player sees the real map and their own PvP-scaled character/weapon (`buildArenaSpecs` — the same function a real seat is built from) before committing to queue, instead of jumping straight into "Finding a match…" blind. NOT wired into the squad path — see the diagram note above. **Its BACK is an EXIT FROM THE QUEUE, not a navigation — corrected 2026-09-20 after a live freeze report.** This screen is reached only after `OnlineMatch.beginSoloQueue` has already declared the run online (`RunState.online`, set before any screen is drawn), so the two exits are not symmetrical the way the buttons look: QUEUE goes further in, BACK has to undo that declaration. It was wired straight to `nav.showMenu()`, which walked back to the lobby with the flag still set — and `GameLoop.update` routes the WHOLE frame on that flag, so the next OFFLINE run (any of them; the report was the lobby's TUTORIAL row) entered `advanceOnline`, found no session, held the scene and returned. What the player saw was the room `RunLifecycle.enterPrimedRun` had just built with nothing alive in it, a HUD still showing the PREVIOUS run's chips, and — `keydownAction` and `HudView.onPause` are gated on the same flag — no working pause or Escape to get out with. BACK now calls `OnlineMatch.onCancelled`, the verb the Matchmaking screen's CANCEL already used, which clears the flag and the party id and routes to the lobby itself. `RunLifecycle.resetRenderState` also declares every fresh run offline by default (with `finalizeOnlineRun` re-declaring it), so a future screen cannot reintroduce this; `client/src/game/gameRunClock.test.ts` pins the whole seam end to end through `Game`, because every unit test involved was green throughout — the flag is written by one controller, read by a second and leaked by a screen owned by a third, and each of those suites stubs the other two.
 - ✅ **Loadout screen shipped** (`client/src/game/screens/Forge.ts`) — the old keyboard-only monospace text board is now real clickable tiles, paged 8-at-a-time (`BLUEPRINT_CATALOG` has more entries than the digit-key shortcuts ever reached), character-cycle arrows, a Clear Loadout button, and a Start Run button. Keyboard shortcuts (digits/arrows/C/X/Enter) still work unchanged as a second input path — both drive the exact same underlying Game methods, not duplicated logic. ✅ **One real gap in that pass survived until 2026-08-05: the "Store (demo: free)" buyable-blueprint line was display-only, with no tap equivalent to the `KeyB` keyboard shortcut — every other Forge action got a real `Button` in the original pass, this one didn't.** Closed with `Forge.acquireBtn` (shown only while `purchasableBlueprints(m).length > 0`, positioned above the blueprint grid so it never overlaps the first card), wired to the exact same `forgeAcquireBlueprint()` method the `KeyB` handler now calls too (extracted from the forge key handler — `controllers/ForgeInput.onKey` since 2026-09-03, `Game.onForgeKey` when this shipped — one source of truth for both input paths, matching every other Forge action's existing convention). ✅ **Blueprint rows became icon cards (2026-08-14, user request: "display them as icon cards" — not a list).** The one-`Button`-per-row vertical list is gone; `ui/BlueprintCard.ts` (new) renders each blueprint as a 4-column grid tile — weapon art on a rarity-bordered chip, name/cost/status stacked below it, a `[n]` key tag, and a staged-count badge — with the browse cursor now a bright border highlight instead of the old inline `»` glyph (a glyph has no "line start" to sit at once rows become a grid). Page nav/acquire/clear button x-positions now derive from the grid's own measured width instead of a hardcoded row-width constant. Same click-to-craft/keyboard-shortcut behavior throughout — presentation-only change, no `MetaState`/transaction logic touched.
-- ✅ **Result screen content decided and shipped** (`client/src/game/controllers/RunOutcome.ts` + `Screens.ts`) — was previously a single squashed sub-line; now shows floor reached, materials banked/lost, `Time M:SS` (free from the sim's own `s.tick`/`TICK_RATE`, no new state), and score, plus a secondary "Main Menu" link (the primary confirm/tap still re-enters the loadout screen to gear up for the next run — or Mode Select, for a tutorial run).
+- ✅ **Result screen content decided and shipped** (`client/src/game/controllers/RunOutcome.ts` + `Screens.ts`) — was previously a single squashed sub-line; now shows floor reached, materials banked/lost, `Time M:SS` (free from the sim's own `s.tick`/`TICK_RATE`, no new state), and score, plus a secondary "Main Menu" link (the menu shell's top-left chip since 2026-09-27; the primary confirm/tap still re-enters the loadout screen to gear up for the next run — or Mode Select, for a tutorial run).
 
 - **A screen with real buttons is driven ONLY by those buttons** — since 2026-08-17, with no exceptions at all. Raw controller/pointer *level* input (the `firing` bit sampled per frame) no longer confirms anything on any screen: `GameLoop.ts`'s `pollConfirm`/`prevFire` rising-edge poll is gone, and so is the `confirmEdge.ts` helper that used to gate it (`acceptsFireConfirm`/`shouldConfirmOnFireEdge`, deleted with its test). The **result screens** were the last holdout — the fire edge was the fallback there for `Screens.ts`'s own tap-anywhere handler — and they now carry an explicit CONFIRM `Button` instead, because a stray click or still-held fire from the fight itself could dismiss the results before they were ever read (the same report that flagged an almost-instant swarm death read it as "the level just exited on its own"; see `roadmap/current-state.md`). **Note what that removal cost, if you are adding a phase:** the `Phase` union moved out to `client/src/game/phase.ts`, and the exhaustive `Record<Phase, boolean>` in `confirmEdge.test.ts` — which used to fail type-check until a new phase was explicitly given `false`, and is how `modeSelect`/`matchmaking` and `pvpPreview` (both 2026-08-03) got added — went with it. Nothing fails to compile now; the invariant holds structurally instead, because there is no fire-confirm path left for a phase to opt out of. Rationale for the rule, learned the hard way (2026-08-02): `firing` goes true on mouse-**down**, and a human click holds for ~100ms — several frames — so a per-frame confirm poll fires before Pixi can deliver that button's `pointertap` on the way back **up**, then hides the screen the press started on so the intended tap is swallowed outright. That collapsed every main-menu button into "any click → forge" and every forge button into "any click → start the run". Note this is the *opposite* rule from in-match input, where `08` deliberately edge-detects discrete actions from the button *level* — inside a match there are no competing widgets to lose the race to.
-- **A screen drawn over background art owns its own contrast** (2026-08-02). `hub_bg.png` sits behind every menu-shaped screen, and its brightness varies enough across the image that no single semi-transparent button fill reads everywhere on it. So: `Button` fills are **opaque** and may carry a border (`ui/widgets.ts`), and a cluster of controls gets its own dark backing card rather than trusting the art behind it (`MainMenu.ts`). Corollary, from the same report: **two adjacent buttons must differ by more than their label.** LOGIN and SETTINGS stacked vertically with near-identical icon chips produced repeated "the click went to the wrong page" reports even though routing was correct end-to-end — the fix was hierarchy (PLAY primary: bigger + green, the "go" colour `PartyScreen`/`LoginScreen` already used; SQUAD secondary; LOGIN/SETTINGS side-by-side with distinct icon-chip colours), not a routing change.
+- **A screen drawn over background art owns its own contrast** (2026-08-02; since 2026-09-27 every screen outside the lobby buys it with one framed sheet — [One shell for every menu](#one-shell-for-every-menu-2026-09-27)). `hub_bg.png` sat behind every menu-shaped screen, and its brightness varies enough across the image that no single semi-transparent button fill reads everywhere on it. So: `Button` fills are **opaque** and may carry a border (`ui/widgets.ts`), and a cluster of controls gets its own dark backing card rather than trusting the art behind it (`MainMenu.ts`). Corollary, from the same report: **two adjacent buttons must differ by more than their label.** LOGIN and SETTINGS stacked vertically with near-identical icon chips produced repeated "the click went to the wrong page" reports even though routing was correct end-to-end — the fix was hierarchy (PLAY primary: bigger + green, the "go" colour `PartyScreen`/`LoginScreen` already used; SQUAD secondary; LOGIN/SETTINGS side-by-side with distinct icon-chip colours), not a routing change.
 - **`ScreenManager`** is a small render-side state machine (`enum Screen`, one active `Container` per screen, swap on transition). It owns the `GameEngine` lifecycle: constructs it with `(config, seed, input)` on match start, tears it down on result. It is *not* deterministic and carries no gameplay — safe to hold Pixi objects, timers, wall-clock.
 - **Result → restart** is just "build a fresh `GameState` from a new seed and re-enter `playing`." Because a run is `seed + config + input stream` (`08`), restart needs nothing persisted from the old match except meta progression (server-authoritative, `05`/`09`).
 - **Pause** (single-player only) stops calling `engine.tick()`; the last state stays on screen. In co-op/PvP there is no true pause — the frame stream keeps coming (`06`); the shell shows a non-blocking overlay instead. ✅ **Shipped exactly as specified** (`client/src/game/screens/PauseMenu.ts`, Escape/P) — offline/local play genuinely freezes (mirrors the hit-stop `acc`-doesn't-accumulate trick, no catch-up burst on resume); online is a documented no-op for now (the overlay itself isn't built for that path, matching "no true pause" above). ✅ **A real touch/WeChat entry point shipped too (2026-08-05) — a genuine gap, not a design deferral: the ONLY way into `pause()` was a keyboard `Escape`/`P` listener, so a touch/WeChat player (no keyboard at all) could never pause mid-run.** `HudView.pauseBtn` (`‖`, top-right corner, above the minimap) calls the exact same `pause()` the keyboard handler does, gated by the identical `!this.online` check (`pause()`'s freeze is unconditional once entered — `phase === 'paused'` skips both `advanceSim` AND `advanceOnline` — so the button replicates the keyboard path's online guard rather than inventing a second one). Lives inside `HudView.view`, so it inherits every phase-transition's existing show/hide for free (no new wiring needed at the ~11 call sites that already toggle `hudView.visible`).
@@ -289,8 +289,8 @@ Each of the three had a cause in the code rather than in taste:
   back under them, and bob around their homes. At 16:9 all three homes sit under the logo, the hero
   and the column, so the same sprites are also placed, smaller, in the open sky the UI leaves —
   never drawn larger than the size they were cut at. The other menu
-  screens keep `Panel` and the hub art; they are dense with text and the painting's composition is
-  built around the lobby's layout.
+  screens kept `Panel` and the hub art for the rest of that day; they moved onto the same painting,
+  dimmed, the same evening — see [One shell for every menu](#one-shell-for-every-menu-2026-09-27).
 - **The player's own character hovering on the dais** (`LobbyHero`), a painted portrait per
   character (not the rig, which is built for a 16-40 px body), with its name and pools under it.
   A character with no portrait leaves the dais empty rather than showing a wrong one.
@@ -350,6 +350,78 @@ any dungeon run has ended, the deepest floor reached: `MetaState.bestFloor`, wri
 `RunState.noteFloorReached` on a result screen and on a quit or save-and-quit (not the tutorial,
 not the arena, not a replay), only ever rising, migrated to 0 for an older save and merged as the
 maximum of the two sides on a guest merge. It rides in the account's meta blob, so it syncs.
+
+### One shell for every menu (2026-09-27)
+
+The lobby had just become a scene; every door out of it still opened onto the old look. The owner's
+words: the lobby looks good, login, settings and the rest do not. The audit of the eleven screens
+outside the lobby found the same three faults on all of them:
+
+| fault | cause |
+| --- | --- |
+| a murkier, different place | the 384x288 hub art under `Panel`'s 55% scrim, not the lobby painting |
+| phone-sized on a desktop | `menuLayer.ts` fits screens DOWN only, so a 1280x720 window showed each screen at its phone size in a sea of background |
+| no grouping, no fixed way back | text and buttons floated straight on the art; BACK was top-left on two screens, bottom-centre on three, bottom-right on one |
+
+**The shell** (`client/src/game/ui/MenuShell.ts`, `MenuSheet.ts`, `menuTheme.ts`). Every one of
+these screens now composes the same three things:
+
+- **The lobby painting, dimmed** (`LobbyBackdrop` with `MENU_BACKDROP_DIM`, dais centred) — the
+  same place the player just left, with its rocks, glow and motes still moving. The main loop
+  animates every menu screen's backdrop (`menuScreens`), the pause menu's included, while a paused
+  run stays frozen.
+- **A BACK chip pinned top-left**, at the lobby's corner inset and height, always sounding `ui.back`.
+  An optional chip mirrors it top-right (the loadout's SETTINGS).
+- **One framed sheet**, centred in the room left under the chrome: a night-blue card with a
+  crystal-cyan frame (design/13's purified-crystal hue, the dais glow's) and a title plate. Contrast
+  is the sheet's job, so the painting behind it is dimmed rather than scrimmed. The sheet and chrome
+  scale up with the viewport the way the lobby does (`lobbyScale`, to 1.5x), capped by what fits,
+  with text re-rasterised at the drawn size.
+
+`menuTheme.ts` holds the tokens, lifted from what the lobby already shipped rather than invented:
+`MENU_COLORS`, a type ramp (`menuText`), and five button presets — `primary` (the go-green),
+`secondary`, `danger`, `pvp` (the lobby's PvP red) and `chrome` (the corner chips).
+
+**Each screen, on the sheet:**
+
+- **Login** — who the player is and where their progress lives, then LOG IN / REGISTER as two tabs
+  over ONE form of two canvas-drawn fields (`FormField`) and one primary button, then the data
+  notice and policy link inside the card. A tap opens the real DOM input ON the field
+  (`TextInputOverlay`'s `anchor`), and a tap elsewhere keeps what was typed. Signed in, the form is
+  CHANGE PASSWORD's, folded until asked for, and LOG OUT sits in the identity row. It replaced two
+  buttons that each opened two centred prompts in a row.
+- **Settings** — two columns of titled sections (AUDIO; DISPLAY and GAME). Every option is a row:
+  its name on the left, its value on a chip that cycles when tapped; the volumes are a restyled
+  `Slider`. It replaced one centred stack of eleven "NAME: VALUE" buttons.
+- **Loadout** — the character (portrait, pools, ‹ ›) beside the shared `MaterialBank`, the weapon
+  row under a heading with the forged count, and an action bar closing the sheet instead of pinned
+  to the viewport's bottom edge. SETTINGS is the shell's top-right chip.
+- **Forge** — the material bank over the paged grid on the left; a side column with what the run
+  carries, the compare card, the forger and the store entry. The compare card no longer hides on a
+  short viewport, and the forger no longer needs a wide one.
+- **Store** — the status line, the rows as full-width buttons, the pager. An owned row keeps its
+  place, so a page never reflows under the finger after a purchase.
+- **Squad** — out of a party, a line saying what the screen is for and the three ways in; in one,
+  the code in its own box, a row per SEAT (taken or open), then START for the leader or who the
+  room is waiting on for a member, and LEAVE.
+- **Matchmaking** — a ring of crystals turning while the queue works (a cracked red one on
+  failure), the status and countdown, and one button: CANCEL, or RETRY in its place. BACK means
+  what CANCEL means.
+- **PvP preview** — ARENA, YOUR BUILD (character and the whole kit in a box), the fairness note,
+  and QUEUE across the sheet in the PvP red.
+- **Pause** — a narrow sheet in two groups under a hairline: RESUME (primary) and SETTINGS stay in
+  the run; SAVE & QUIT (savable runs only, as before) and QUIT (red, it throws the run away) leave
+  it. The corner chip is a second RESUME. RESUME and SETTINGS keep their place in the sheet whether
+  SAVE & QUIT shows; the sheet itself re-centres, which never changes within one run.
+- **Results** — the outcome as the sheet's title, green for a win and red for a loss; the badge;
+  the stat lines in a field box; the optional amber offer on its own row; CONFIRM across the sheet.
+  MAIN MENU moved from a small button under CONFIRM to the top-left chip, off CONFIRM's thumb spot.
+
+**Kept, deliberately.** Every screen is still pure presentation with the same callbacks; each keeps
+its backdrop in a field named `panel`, which `menuCoversWorld.test.ts` reads; the widgets keep
+`Button`'s shape, so `labelFit`, `viewportFit` and `widgetOverlap` sweep the new layouts unchanged.
+The `buttonCueConventions` dismiss floor fell from 10 to 8 because each screen's own BACK (and the
+results screen's MAIN MENU) folded into the shell's one chip — a real drop, noted in the test.
 
 ### The account chip: clickability is the host's, the copy is the session's (2026-09-17)
 

@@ -1,40 +1,29 @@
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import {
-  DAMAGE_TYPES, PLAYER_BASE, RARITY_TIERS, SKIN_DEFS, TICK_RATE, WEAPON_SPECS,
+  PLAYER_BASE, RARITY_TIERS, SKIN_DEFS, TICK_RATE, WEAPON_SPECS,
   resolveLoadout,
 } from '@dd/engine';
 import type { SavedRunSummary } from '../match/runSave';
 import type { MetaState } from '../../meta';
-import { bankTotal } from '../../meta';
-import { Panel, Button } from '../ui/widgets';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import { MaterialBank } from '../ui/MaterialBank';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { BlueprintCard } from '../ui/BlueprintCard';
 import { RARITY_COLORS } from '../theme';
 import { getRigSkin } from '../../render/skinRegistry';
 import { getWeaponTexture } from '../../render/weaponSkins';
 import { getUiTexture } from '../../render/uiSkins';
 import { t, tName } from '../../i18n';
-import { ELEMENT_SHORT_KEY } from '../../i18n/contentKeys';
+import {
+  ACTION_H, ARROW_H, ARROW_W, PORTRAIT, SHEET_W, layoutLoadoutSheet,
+} from './loadoutSheet';
 
 /** The bone slot a rig bundle binds its main body art to — the same one `PlayerCard`
  *  reuses as a portrait rather than commissioning a separate headshot, so a new
  *  character needs no extra art to show its face on this screen. */
 const PORTRAIT_SLOT = 'shell';
-/** The portrait's square box, and the character card that holds it. The card is a fixed
- *  size rather than one measured off its own text: every position on these screens is
- *  arithmetic on constants precisely so that laying one out needs no canvas (see
- *  `screens/fakeTextCanvas.ts`). */
-const PORTRAIT = 104;
-const CHAR_CARD_W = 424;
-const CHAR_CARD_H = PORTRAIT + 28;
-/** The weapon row: one card per loadout slot, plus the forge card at the end. */
-const WEAPON_GAP = 14;
-const WEAPON_ROW_SLOTS = PLAYER_BASE.weaponSlots + 1;
-const WEAPON_ROW_W = WEAPON_ROW_SLOTS * BlueprintCard.W + (WEAPON_ROW_SLOTS - 1) * WEAPON_GAP;
-/** Two lines of monospace info at 20px line height, plus the gap under them. A COUNT of
- *  lines rather than a `Text.height` read, for the same no-canvas reason as above — and
- *  unlike the forge's own info block this one is a fixed two lines in every locale. */
-const INFO_BLOCK_H = 2 * 20 + 14;
-
 /**
  * The LOADOUT screen — what you take into the next run, and the last thing between the
  * lobby and a run (design/10 screen flow, design/14).
@@ -55,6 +44,14 @@ const INFO_BLOCK_H = 2 * 20 + 14;
  * slot — and nothing else. A blueprint you could craft is not a thing you are carrying,
  * and this screen no longer claims otherwise.
  *
+ * ## The sheet (design/10 "One shell for every menu", 2026-09-27)
+ *
+ * BACK is the shell's corner chip, and everything else is one framed sheet — the character
+ * (portrait, pools, the ‹ › pair) beside the material bank, the weapon row under a heading that
+ * carries the forged count, and an action bar closing the sheet. Before, the same widgets
+ * floated on the backdrop with the action bar pinned to the viewport's bottom edge, a
+ * screen-height away from the row it acts on. `loadoutSheet.ts` holds the geometry.
+ *
  * Pure presentation, the same shape as `Forge`/`PauseMenu`/`Settings`: it reads a
  * `MetaState` and renders it, and every mutation goes out through the `onX` callbacks
  * that `gameWiring.ts` points at `ForgeActions`. The keyboard path (`ForgeInput`) drives
@@ -62,11 +59,14 @@ const INFO_BLOCK_H = 2 * 20 + 14;
  */
 export class Loadout {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.82, background: 'hub' });
-  private charCard = new Panel({ radius: 14, color: 0x05070c, alpha: 0.62, borderColor: 0x3a4a5c, borderAlpha: 0.5 });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private rules = new Graphics();
   private hint: Text;
-  private backBtn: Button;
+  private weaponsHeading: Text;
+  /** The five element cells — the same widget the forge shows. */
+  private bank: MaterialBank;
   private prevCharBtn: Button;
   private nextCharBtn: Button;
   /** The character's own art, at portrait size. Best-effort like every other art read in
@@ -78,7 +78,6 @@ export class Loadout {
   private charName: Text;
   private charStats: Text;
   private charOwned: Text;
-  private infoText: Text;
   private savedText: Text;
   /** One card per loadout slot, reused across renders — the same fixed-pool shape the
    *  forge's own grid uses. */
@@ -117,76 +116,77 @@ export class Loadout {
   savedRun: () => SavedRunSummary | null = () => null;
 
   constructor() {
-    // `padding` guards against a real observed font-metrics clipping bug (see widgets.ts's
-    // Button doc comment for the full explanation).
-    this.title = new Text({ text: t('loadout.title'), style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    this.hint = new Text({ text: t('loadout.hint'), style: { fill: 0x90cdf4, fontSize: 12, fontFamily: 'monospace', padding: 10 } });
-    this.hint.anchor.set(0.5, 1);
+    this.shell = new MenuShell({ title: t('loadout.title'), back: t('loadout.backButton') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
 
-    this.backBtn = new Button(t('loadout.backButton'), { w: 90, h: 30, fontSize: 12, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.onBack?.();
+    this.hint = new Text({ text: t('loadout.hint'), style: menuText('caption', { wordWrap: false, align: 'center' }) });
+    this.hint.anchor.set(0.5, 0);
+    this.bank = new MaterialBank(t('loadout.sectionMaterials'));
+    this.weaponsHeading = new Text({ text: '', style: menuText('heading') });
 
     this.portraitFrame
       .roundRect(0, 0, PORTRAIT, PORTRAIT, 12)
-      .fill({ color: 0x18202f, alpha: 0.92 })
+      .fill({ color: MENU_COLORS.field, alpha: 0.95 })
       .roundRect(0.5, 0.5, PORTRAIT - 1, PORTRAIT - 1, 12)
-      .stroke({ color: 0x63b3ed, alpha: 0.55, width: 1.5 });
+      .stroke({ color: MENU_COLORS.frame, alpha: 0.55, width: 1.5 });
 
     // The character's text block, LEFT-anchored so every line starts at the same x beside
-    // the portrait — the layout the report asked for ("picture, then the text to its
-    // right"), which a centred block cannot give.
-    this.charName = new Text({ text: '', style: { fill: 0xf7fafc, fontSize: 22, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.charName.anchor.set(0, 0);
-    this.charStats = new Text({ text: '', style: { fill: 0xcbd5e0, fontSize: 15, fontFamily: 'monospace', padding: 14 } });
-    this.charStats.anchor.set(0, 0);
-    this.charOwned = new Text({ text: '', style: { fill: 0x718096, fontSize: 12, fontFamily: 'monospace', padding: 12 } });
-    this.charOwned.anchor.set(0, 0);
+    // the portrait — "picture, then the text to its right", which a centred block cannot give.
+    this.charName = new Text({ text: '', style: menuText('value', { fontSize: 22, wordWrap: true, breakWords: true }) });
+    this.charStats = new Text({ text: '', style: menuText('label', { fontSize: 14, fill: MENU_COLORS.text }) });
+    this.charOwned = new Text({ text: '', style: menuText('caption', { wordWrap: false }) });
 
-    this.prevCharBtn = new Button('‹', { w: 32, h: 30, fontSize: 16 });
+    this.prevCharBtn = new Button('‹', { w: ARROW_W, h: ARROW_H, fontSize: 16, ...MENU_BUTTONS.secondary });
     this.prevCharBtn.onTap = () => this.onCycleCharacter?.();
-    this.nextCharBtn = new Button('›', { w: 32, h: 30, fontSize: 16 });
+    this.nextCharBtn = new Button('›', { w: ARROW_W, h: ARROW_H, fontSize: 16, ...MENU_BUTTONS.secondary });
     this.nextCharBtn.onTap = () => this.onCycleCharacter?.();
 
-    this.infoText = new Text({ text: '', style: { fill: 0xcbd5e0, fontSize: 14, fontFamily: 'monospace', lineHeight: 20, align: 'center', padding: 24 } });
-    this.infoText.anchor.set(0.5, 0);
     // The saved-run line names what CONTINUE resumes and what START RUN would throw away.
     // Two buttons whose difference is only their label is not enough on its own — a player
     // who has been away a week has no way to know which run is in the slot, and the discard
     // is irreversible.
-    this.savedText = new Text({ text: '', style: { fill: 0x9ae6b4, fontSize: 12, fontFamily: 'monospace', align: 'center', padding: 16, wordWrap: true, wordWrapWidth: 700, breakWords: true } });
+    this.savedText = new Text({ text: '', style: menuText('body', { fill: MENU_COLORS.success, fontSize: 13, align: 'center' }) });
     this.savedText.anchor.set(0.5, 0);
 
     this.weaponCards = Array.from({ length: PLAYER_BASE.weaponSlots }, () => new BlueprintCard());
     this.forgeCard.onTap = () => this.onForge?.();
 
-    this.clearBtn = new Button(t('loadout.clearLoadout'), { w: 160, h: 30, fontSize: 12 });
+    this.clearBtn = new Button(t('loadout.clearLoadout'), { w: 160, h: ACTION_H, fontSize: 13, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.clearBtn.onTap = () => this.onClear?.();
     this.clearBtn.setIcon(getUiTexture('icon_clear'));
-    this.startBtn = new Button(t('loadout.startRun'), { w: 220, h: 44, fontSize: 17, color: 0x2f855a, borderColor: 0x68d391 });
+    this.startBtn = new Button(t('loadout.startRun'), { w: 200, h: ACTION_H, fontSize: 16, autoWidth: true, ...MENU_BUTTONS.primary });
     this.startBtn.onTap = () => this.onStart?.();
     this.startBtn.setIcon(getUiTexture('icon_play'));
-    this.continueBtn = new Button(t('loadout.continueRun'), { w: 220, h: 44, fontSize: 17, color: 0x2f855a, borderColor: 0x68d391 });
+    this.continueBtn = new Button(t('loadout.continueRun'), { w: 200, h: ACTION_H, fontSize: 16, autoWidth: true, ...MENU_BUTTONS.primary });
     this.continueBtn.onTap = () => this.onContinue?.();
     this.continueBtn.setIcon(getUiTexture('icon_play'));
 
-    this.view.addChild(
-      this.panel.view, this.title, this.backBtn.view,
-      this.charCard.view, this.portraitFrame, this.portraitFallback,
+    this.shell.content.addChild(
+      this.rules, this.portraitFrame, this.portraitFallback,
       this.charName, this.charStats, this.charOwned,
       this.prevCharBtn.view, this.nextCharBtn.view,
-      this.infoText,
-      ...this.weaponCards.map((c) => c.view), this.forgeCard.view,
+      this.bank.view,
+      this.weaponsHeading, ...this.weaponCards.map((c) => c.view), this.forgeCard.view,
       this.savedText,
       this.clearBtn.view, this.startBtn.view, this.continueBtn.view,
       this.hint,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
 
+  /**
+   * Pin the shared SETTINGS chip in the corner opposite BACK. It is the assembly's button
+   * (`hudLayer.ts`), floated over every screen and shown only in this phase; the shell places
+   * it on each layout so it scales and insets exactly the way BACK does.
+   */
+  setCornerChip(btn: Button): void {
+    this.shell.setCorner(btn);
+  }
+
   render(m: MetaState, w: number, h: number) {
-    this.panel.layout(w, h);
     this.retext();
 
     const skin = SKIN_DEFS[m.selectedSkin];
@@ -198,10 +198,8 @@ export class Loadout {
     // Material bank — the five elemental kinds (design/14), summed across every rolled
     // tier. Kept on this screen even though spending happens in the forge: it is the one
     // number that decides whether a trip to the forge is worth making at all.
-    const bank = DAMAGE_TYPES.map((e) => `${t(ELEMENT_SHORT_KEY[e])} ${bankTotal(m, e)}`).join('   ');
-    this.infoText.text =
-      t('loadout.materialsLine', { bank }) + '\n' +
-      t('loadout.slotsLine', { count: this.forgedCount(m), max: PLAYER_BASE.weaponSlots });
+    this.bank.render(m);
+    this.weaponsHeading.text = t('loadout.sectionWeapons', { count: this.forgedCount(m), max: PLAYER_BASE.weaponSlots });
 
     this.renderWeaponRow(m);
 
@@ -214,9 +212,21 @@ export class Loadout {
       })
       : '';
     this.savedText.visible = saved !== null;
+    this.continueBtn.view.visible = saved !== null;
+    // One primary per bar: with a save, CONTINUE is it, and START RUN — which throws that save
+    // away — steps down to the ordinary action colour.
+    const start = saved ? MENU_BUTTONS.secondary : MENU_BUTTONS.primary;
+    this.startBtn.setFill(start.color);
+    this.startBtn.setBorder(start.borderColor);
 
-    this.layout(w, h, saved !== null);
+    this.shell.layout(w, h, SHEET_W, layoutLoadoutSheet(this.parts(), saved !== null));
     this.view.visible = true;
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide() {
@@ -294,73 +304,28 @@ export class Loadout {
    *  language change made in Settings (design/17-i18n.md) takes effect the next time this
    *  screen draws, without needing a global re-render hook. */
   private retext(): void {
-    this.title.text = t('loadout.title');
+    this.shell.setTitle(t('loadout.title'));
+    this.shell.setBack(t('loadout.backButton'));
     this.hint.text = t('loadout.hint');
-    this.backBtn.setText(t('loadout.backButton'));
+    this.bank.setTitle(t('loadout.sectionMaterials'));
     this.clearBtn.setText(t('loadout.clearLoadout'));
     this.startBtn.setText(t('loadout.startRun'));
     this.continueBtn.setText(t('loadout.continueRun'));
   }
 
-  /**
-   * Where everything goes. Title at the top, the character card under it, the info block,
-   * the weapon row, and a FIXED bottom action bar anchored to `h` — not flowed down from
-   * the row above it, which is the layout mistake that put START RUN on top of the forge's
-   * weapon cards on a landscape phone (see `screens/viewportFit.test.ts`'s header).
-   */
-  private layout(w: number, h: number, saved: boolean): void {
-    const cx = w / 2;
-    let y = Math.max(20, h * 0.05);
-    this.title.position.set(cx, y);
-    this.backBtn.view.position.set(16, 16);
-    y += 46;
-
-    const cardLeft = cx - CHAR_CARD_W / 2;
-    this.charCard.layout(CHAR_CARD_W, CHAR_CARD_H);
-    this.charCard.view.position.set(cardLeft, y);
-    const portraitX = cardLeft + 14;
-    const portraitY = y + 14;
-    this.portraitFrame.position.set(portraitX, portraitY);
-    this.portraitFallback.position.set(portraitX, portraitY);
-    this.portrait?.position.set(portraitX + PORTRAIT / 2, portraitY + PORTRAIT / 2);
-    const textX = portraitX + PORTRAIT + 18;
-    this.charName.position.set(textX, y + 22);
-    this.charStats.position.set(textX, y + 56);
-    this.charOwned.position.set(textX, y + 82);
-    // The cycle arrows sit OUTSIDE the card, one per side, so neither can be mistaken for
-    // part of the portrait it is beside.
-    this.prevCharBtn.view.position.set(cardLeft - 42, y + CHAR_CARD_H / 2 - 15);
-    this.nextCharBtn.view.position.set(cardLeft + CHAR_CARD_W + 10, y + CHAR_CARD_H / 2 - 15);
-    y += CHAR_CARD_H + 16;
-
-    this.infoText.position.set(cx, y);
-    y += INFO_BLOCK_H;
-
-    const rowLeft = cx - WEAPON_ROW_W / 2;
-    this.weaponCards.forEach((card, i) => {
-      card.view.position.set(rowLeft + i * (BlueprintCard.W + WEAPON_GAP), y);
-    });
-    this.forgeCard.view.position.set(rowLeft + PLAYER_BASE.weaponSlots * (BlueprintCard.W + WEAPON_GAP), y);
-    y += BlueprintCard.H + 12;
-
-    this.savedText.style.wordWrapWidth = Math.min(700, w - 80);
-    this.savedText.position.set(cx, y);
-
-    // Action bar. With a saved run there are TWO primary buttons and they stack vertically
-    // rather than sitting side by side — CONTINUE takes the footer slot START RUN normally
-    // occupies (it is what the player came back for), and START RUN moves one row up as the
-    // "start over instead" option. The same arrangement, and the same reason, as the forge's
-    // own bar before this screen took it over.
-    const footerY = h - 60;
-    // CLEAR sits to the LEFT of the primary pair, not at the weapon row's own left edge:
-    // that edge is `cx - 212` and START RUN's is `cx - 110`, so aligning the two would put a
-    // 160px-wide button 58px underneath the one it sits beside. Measured, on the running
-    // client — it shipped that way for exactly one screenshot.
-    this.clearBtn.view.position.set(cx - 290, footerY + 7);
-    this.continueBtn.view.visible = saved;
-    this.continueBtn.view.position.set(cx - 110, footerY);
-    this.startBtn.view.position.set(cx - 110, saved ? footerY - 52 : footerY);
-    this.hint.position.set(cx, h - 6);
+  /** The widgets `layoutLoadoutSheet` places — the drawn weapon cards, then the forge card. */
+  private parts() {
+    return {
+      portraitFrame: this.portraitFrame, portraitFallback: this.portraitFallback, portrait: this.portrait,
+      charName: this.charName, charStats: this.charStats, charOwned: this.charOwned,
+      prevCharBtn: this.prevCharBtn, nextCharBtn: this.nextCharBtn,
+      bank: this.bank,
+      weaponsHeading: this.weaponsHeading,
+      cards: [...this.weaponCards.filter((c) => c.view.visible), this.forgeCard],
+      savedText: this.savedText,
+      clearBtn: this.clearBtn, startBtn: this.startBtn, continueBtn: this.continueBtn,
+      hint: this.hint, rules: this.rules,
+    };
   }
 
   /** Bind the selected character's body art into the portrait frame, or fall back to a
@@ -380,7 +345,7 @@ export class Loadout {
       this.portrait = new Sprite();
       this.portrait.anchor.set(0.5);
       // Above the frame, below the text — the same stacking `PlayerCard` uses.
-      this.view.addChildAt(this.portrait, this.view.getChildIndex(this.portraitFallback) + 1);
+      this.shell.content.addChildAt(this.portrait, this.shell.content.getChildIndex(this.portraitFallback) + 1);
     }
     this.portrait.texture = texture;
     // Contain, not stretch — body art is square-ish but not guaranteed to be.

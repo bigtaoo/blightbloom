@@ -289,3 +289,83 @@ describe('TextInputOverlay — the numeric room-code field', () => {
     expect(el.value).toBe('ABC12');
   });
 });
+
+/**
+ * The form mode (design/10 "One shell for every menu", 2026-09-27): an input placed ON a field
+ * the canvas drew, opened on that field's value, and keeping what was typed on a blur — which
+ * is how a player types a password and then presses the form's own button.
+ */
+describe('TextInputOverlay — the form mode', () => {
+  function stubDomWithCanvas(page: { left: number; top: number } | null): { appended: FakeInput[] } {
+    const appended: FakeInput[] = [];
+    vi.stubGlobal('document', {
+      createElement: () => new FakeInput(),
+      querySelector: (sel: string) => (sel === 'canvas' && page ? { getBoundingClientRect: () => page } : null),
+      body: { appendChild: (el: FakeInput) => appended.push(el) },
+    });
+    return { appended };
+  }
+
+  it('sits on the anchor, offset by where the canvas is on the page', () => {
+    const { appended } = stubDomWithCanvas({ left: 30, top: 12 });
+    new TextInputOverlay().open({ anchor: { x: 100, y: 200, w: 412, h: 42 }, onSubmit: vi.fn() });
+    const s = appended[0]!.style;
+    expect([s.left, s.top, s.width, s.height, s.transform]).toEqual(['130px', '212px', '412px', '42px', 'none']);
+    // Sized off the field, so a scaled-up sheet gets a scaled-up input.
+    expect(s.fontSize).toBe('18px');
+  });
+
+  it('falls back to the page origin when there is no canvas to measure', () => {
+    const { appended } = stubDomWithCanvas(null);
+    new TextInputOverlay().open({ anchor: { x: 5, y: 6, w: 100, h: 20 }, onSubmit: vi.fn() });
+    const s = appended[0]!.style;
+    expect([s.left, s.top]).toEqual(['5px', '6px']);
+    expect(s.fontSize).toBe('12px'); // never below a readable floor
+  });
+
+  it('without an anchor, keeps the centred prompt', () => {
+    const { appended } = stubDomWithCanvas({ left: 30, top: 12 });
+    new TextInputOverlay().open({ onSubmit: vi.fn() });
+    const s = appended[0]!.style;
+    expect([s.left, s.top, s.transform]).toEqual(['50%', '50%', 'translate(-50%, -50%)']);
+  });
+
+  it('opens on the value it is handed, and on nothing otherwise', () => {
+    const { appended } = stubDomWithCanvas(null);
+    const overlay = new TextInputOverlay();
+    overlay.open({ value: 'alice', onSubmit: vi.fn() });
+    expect(appended[0]!.value).toBe('alice');
+    overlay.open({ onSubmit: vi.fn() });
+    expect(appended[1]!.value).toBe('');
+  });
+
+  it('a genuine blur hands the typed value to onBlur, and does NOT count as a cancel', () => {
+    const { appended } = stubDomWithCanvas(null);
+    const overlay = new TextInputOverlay();
+    const onBlur = vi.fn();
+    const onCancel = vi.fn();
+    const onSubmit = vi.fn();
+    overlay.open({ onSubmit, onCancel, onBlur });
+    const el = appended[0]!;
+    el.focus();
+    el.value = 'hunter22';
+    el.fire('blur', {});
+    expect(onBlur).toHaveBeenCalledWith('hunter22');
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(overlay.isOpen).toBe(false);
+  });
+
+  it('Enter and Escape never reach onBlur through remove()\'s own blur', () => {
+    const { appended } = stubDomWithCanvas(null);
+    const overlay = new TextInputOverlay();
+    const onBlur = vi.fn();
+    overlay.open({ onSubmit: vi.fn(), onBlur });
+    appended[0]!.focus();
+    appended[0]!.keydown('Enter');
+    overlay.open({ onSubmit: vi.fn(), onBlur, onCancel: vi.fn() });
+    appended[1]!.focus();
+    appended[1]!.keydown('Escape');
+    expect(onBlur).not.toHaveBeenCalled();
+  });
+});

@@ -194,6 +194,8 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     // last of all: it is modal, so it has to be above the SETTINGS button too.
     [p.settingsBtn.view, accountPrompt.view],
   );
+  // The SETTINGS chip only ever shows in the loadout phase, so that screen's shell places it.
+  p.loadout.setCornerChip(p.settingsBtn);
 
   const screenFlow = new ScreenFlow({
     mainMenu: p.mainMenu, pvpPreview: p.pvpPreview,
@@ -225,7 +227,10 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     scene: p.scene, roomBuilder: p.roomBuilder, fx: p.fx, hud: p.hud,
     touchControlsView: p.touchControlsView, portalPrompt: p.portalPrompt,
     floorCardPrompt: p.floorCardPrompt,
-    lobbyScreens: [partyScreen, p.matchmaking, p.mainMenu], builder: p.builder, ally: p.ally,
+    lobbyScreens: [partyScreen, p.matchmaking, p.mainMenu],
+    menuScreens: [p.loadout, p.forge, p.pvpPreview, p.matchmaking, p.screens, p.settingsScreen,
+      p.pauseMenu, partyScreen, loginScreen, storeScreen],
+    builder: p.builder, ally: p.ally,
     world: p.layers.world, ticker: p.ticker,
     input: p.input, events: p.events, runOutcome: p.runOutcome,
     tutorialHints: p.tutorialHints, pickupDebugOverlay: p.pickupDebugOverlay,

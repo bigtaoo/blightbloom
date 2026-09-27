@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, Rectangle, Sprite, type Texture } from 'pixi.js';
+import { Container, Graphics, Text, Sprite, type Texture } from 'pixi.js';
 import { getUiTexture } from '../../render/uiSkins';
 import { playUiCue, type UiCue } from '../../audio/uiSound';
 import { widestMonoLine, wrapMono } from './textWidth';
@@ -426,74 +426,6 @@ export class Button {
   }
 }
 
-/** A draggable [0,1] slider (settings volume, design/10). Drag tracking is done on a
- * `dragSurface` (a full-screen container already in `eventMode:'static'`, e.g. the
- * owning screen's `view`) via `globalpointermove`, so the knob keeps tracking even once
- * the pointer moves off the thin track — the standard Pixi v8 drag pattern. */
-export class Slider {
-  readonly view = new Container();
-  private track = new Graphics();
-  private knob = new Graphics();
-  private w: number;
-  private value = 0;
-  private dragging = false;
-  onChange: ((v: number) => void) | null = null;
-
-  constructor(opts: { w: number; dragSurface?: Container }) {
-    this.w = opts.w;
-    const h = 6;
-    const knobR = 9;
-    this.track.roundRect(0, -h / 2, this.w, h, h / 2).fill({ color: 0x1f2532 });
-    this.knob.circle(0, 0, knobR).fill({ color: 0x63b3ed });
-    this.view.addChild(this.track, this.knob);
-    this.view.eventMode = 'static';
-    this.view.cursor = 'pointer';
-    this.view.hitArea = new Rectangle(-knobR, -20, this.w + knobR * 2, 40);
-
-    const surface = opts.dragSurface ?? this.view;
-    this.view.on('pointerdown', (e) => {
-      this.dragging = true;
-      this.seekFromGlobal(e.global.x, e.global.y);
-    });
-    surface.on('globalpointermove', (e) => {
-      if (this.dragging) this.seekFromGlobal(e.global.x, e.global.y);
-    });
-    // Release ENDS a drag and is where the cue plays — one tick per adjustment, not one per
-    // pixel of travel. On the volume sliders this is doing double duty: the tick is played
-    // through the bus the slider just changed, so releasing the SFX slider is also how you
-    // hear what you set it to (design/10's settings screen, design/11's "playable silent" —
-    // a volume control you cannot audition is a guess).
-    surface.on('pointerup', () => this.endDrag(true));
-    surface.on('pointerupoutside', () => this.endDrag(true));
-    // An OS-level interruption (e.g. an incoming call/notification mid-drag) delivers
-    // pointercancel instead of pointerup — without this, `dragging` gets stuck true, and
-    // when several sliders share one `dragSurface` (Settings.ts), the NEXT unrelated
-    // pointer move over that surface silently drags this slider's value again.
-    // Silent: an incoming call is not the player committing a value.
-    surface.on('pointercancel', () => this.endDrag(false));
-  }
-
-  /** End a drag, optionally with the commit cue. Guarded on `dragging` because these
-   * listeners live on a SHARED drag surface — every pointerup anywhere on the settings
-   * screen reaches all three sliders, and only the one being dragged has anything to say. */
-  private endDrag(commit: boolean) {
-    if (!this.dragging) return;
-    this.dragging = false;
-    if (commit) playUiCue('ui.toggle');
-  }
-
-  private seekFromGlobal(gx: number, gy: number) {
-    const local = this.view.toLocal({ x: gx, y: gy });
-    this.set(local.x / this.w);
-    this.onChange?.(this.value);
-  }
-
-  set(v: number) {
-    this.value = Math.max(0, Math.min(1, v));
-    this.knob.position.x = this.value * this.w;
-  }
-
-  get(): number {
-    return this.value;
-  }
-}
+// The slider moved to its own file with the menu shell (2026-09-27); re-exported so the old
+// import path keeps working.
+export { Slider } from './Slider';
