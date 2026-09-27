@@ -370,7 +370,7 @@ export class Game {
   }
 
   setPhase(phase: 'victory' | 'defeat'): void {
-    this.run.phase = phase;
+    this.run.settleOutcome(phase);
   }
 
   hideHud(): void {

@@ -28,6 +28,7 @@ export const pl: Translations<typeof en> = {
     pvpHint: 'Walcz z innymi graczami',
     guestHint: 'Zaloguj się, by zapisać postęp',
     syncedHint: 'Postęp zsynchronizowany',
+    bestFloor: 'Rekord: piętro {floor}',
   },
   loading: {
     boot: 'WCZYTYWANIE',

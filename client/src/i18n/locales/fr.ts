@@ -28,6 +28,7 @@ export const fr: Translations<typeof en> = {
     pvpHint: 'Affronter d’autres joueurs',
     guestHint: 'Connexion pour sauvegarder',
     syncedHint: 'Progression synchronisée',
+    bestFloor: 'Record : étage {floor}',
   },
   loading: {
     boot: 'CHARGEMENT',

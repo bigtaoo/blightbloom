@@ -28,6 +28,7 @@ export const de: Translations<typeof en> = {
     pvpHint: 'Kampf gegen andere Spieler',
     guestHint: 'Anmelden, um zu speichern',
     syncedHint: 'Fortschritt synchronisiert',
+    bestFloor: 'Bestwert: Ebene {floor}',
   },
   loading: {
     boot: 'LÄDT',

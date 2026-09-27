@@ -33,6 +33,7 @@ export const ru: Translations<typeof en> = {
     pvpHint: 'Бой с другими игроками',
     guestHint: 'Войдите, чтобы сохранить',
     syncedHint: 'Прогресс сохранён',
+    bestFloor: 'Рекорд: этаж {floor}',
   },
   loading: {
     boot: 'ЗАГРУЗКА',

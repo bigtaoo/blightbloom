@@ -43,6 +43,8 @@ const SPRITES: Array<[string, number]> = [
   ['lobby_rock_a.png', 52],
   ['lobby_rock_b.png', 45],
   ['lobby_rock_c.png', 88],
+  // A byte-for-byte copy of weapons/gun_cryobolt.png (LobbyHero's orbiting weapon).
+  ['lobby_weapon.png', 160],
 ];
 
 describe('the lobby portraits and logos', () => {

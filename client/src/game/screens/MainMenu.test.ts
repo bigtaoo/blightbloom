@@ -12,6 +12,10 @@ import { setPublicFlags } from '../../net/clientFlags';
 import { BANNER_MAX_LENGTH, PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 import type { SavedRunSummary } from '../match/runSave';
 import { useLocale } from '../../i18n/loadLocale';
+import { installFakeTextCanvas } from './fakeTextCanvas';
+
+// The notice strip stacks its lines by their MEASURED height, so the text has to be measurable.
+installFakeTextCanvas();
 
 const ALICE: Session = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
 
@@ -52,7 +56,8 @@ function privateOf(m: MainMenu) {
     settingsBtn: Btn;
     accountLabel: { text: string; visible: boolean; position: { x: number; y: number } };
     dataNotice: { text: string; visible: boolean; position: { x: number; y: number } };
-    banner: { text: string; visible: boolean; anchor: { x: number; y: number }; position: { x: number; y: number } };
+    banner: { text: string; visible: boolean; anchor: { x: number; y: number }; position: { x: number; y: number }; height: number };
+    notices: Pt & { visible: boolean };
     topLeft: Pt;
     topRight: Pt;
     header: Pt;
@@ -157,45 +162,50 @@ describe('MainMenu — the maintenance banner (design/21 §9)', () => {
     expect(privateOf(m).banner.text).toBe('');
   });
 
-  it('hangs under the corner row and pushes the header down, never the corners', () => {
-    // The banner is full width, so it cannot share a row with the corner chips; it hangs
-    // under them and the header (logo + tagline) moves down by the room it is owed. The
-    // corners are pinned to the viewport and must not move for it.
+  it('sits in a strip centred on the top third of the screen, moving nothing else', () => {
+    // 2026-09-27: it used to hang under the corner row and push the header down. Now it sits
+    // on one band across the scene at a third of the height; the header, the column and the
+    // corners stay exactly where they are without it.
     const plain = new MainMenu();
-    plain.show(800, 600);
+    plain.show(1280, 720);
     withBanner('x'.repeat(BANNER_MAX_LENGTH));
     const withIt = new MainMenu();
-    withIt.show(800, 600);
+    withIt.show(1280, 720);
     const a = privateOf(plain);
     const b = privateOf(withIt);
-    expect(b.banner.anchor.y).toBe(0); // grows DOWN as it wraps, into the room reserved for it
-    expect(b.banner.position.y).toBeGreaterThan(b.topLeft.position.y + 40);
-    expect(b.header.position.y).toBeGreaterThan(a.header.position.y);
-    expect([b.topLeft.position.x, b.topLeft.position.y]).toEqual([a.topLeft.position.x, a.topLeft.position.y]);
-    expect([b.topRight.position.x, b.topRight.position.y]).toEqual([a.topRight.position.x, a.topRight.position.y]);
+    expect(a.notices.visible).toBe(false);
+    expect(b.notices.visible).toBe(true);
+    const k = b.notices.scale.y;
+    const top = b.notices.position.y;
+    const bottom = top + (b.banner.position.y + b.banner.height + 8) * k;
+    expect((top + bottom) / 2).toBeCloseTo(720 / 3, 0);
+    for (const key of ['header', 'column', 'topLeft', 'topRight'] as const) {
+      expect([b[key].position.x, b[key].position.y], key).toEqual([a[key].position.x, a[key].position.y]);
+    }
   });
 
-  it('re-lays the screen out when a banner arrives while the lobby is up', () => {
+  it('stays across the scene, left of the column, and never above the corner row', () => {
+    withBanner('M'.repeat(BANNER_MAX_LENGTH));
+    const m = new MainMenu();
+    m.show(1386, 640);
+    const p = privateOf(m);
+    const k = p.notices.scale.x;
+    // The banner is centred on the strip, and the strip ends where the column's room does.
+    expect(p.notices.position.x + p.banner.position.x * k * 2).toBeLessThan(p.column.position.x);
+    expect(p.notices.position.y).toBeGreaterThanOrEqual(p.topLeft.position.y + 40 * p.topLeft.scale.y);
+  });
+
+  it('re-lays the screen out when a banner arrives while the lobby is up, and hides the strip when it goes', () => {
     const m = new MainMenu();
     m.show(800, 600);
-    const before = privateOf(m).header.position.y;
+    expect(privateOf(m).notices.visible).toBe(false);
     withBanner('going down in 20 minutes');
     m.refreshBanner();
-    expect(privateOf(m).header.position.y).toBeGreaterThan(before);
+    expect(privateOf(m).notices.visible).toBe(true);
+    expect(privateOf(m).notices.position.y).toBeGreaterThan(0);
     setPublicFlags(null);
     m.refreshBanner();
-    expect(privateOf(m).header.position.y).toBe(before);
-  });
-
-  it('is positioned even while hidden, so a later refresh needs no re-layout', () => {
-    // Why `show()` positions it unconditionally: `refreshBanner` changes only the text and
-    // the visibility, so a banner arriving mid-screen has to already be somewhere sensible.
-    // Without this the first live banner would draw at (0, 0).
-    const m = new MainMenu();
-    m.show(800, 600);
-    expect(privateOf(m).banner.visible).toBe(false);
-    expect(privateOf(m).banner.position.x).toBe(400);
-    expect(privateOf(m).banner.position.y).toBeGreaterThan(0);
+    expect(privateOf(m).notices.visible).toBe(false);
   });
 });
 
@@ -482,7 +492,7 @@ describe('MainMenu — the scene (hero, logo, materials)', () => {
 
   it("shows the profile's materials, one chip per element", () => {
     const m = new MainMenu();
-    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: { fire: 12, ice: 3, poison: 12345 } });
+    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: { fire: 12, ice: 3, poison: 12345 }, bestFloor: 0 });
     m.show(800, 600);
     const p = privateOf(m);
     expect(p.resources.view.visible).toBe(true);
@@ -634,11 +644,12 @@ describe('MainMenu — quick play', () => {
     m.show(1386, 640);
     const p = privateOf(m);
     expect(p.banner.visible).toBe(true);
-    // The banner's reserved room (55px measured, see BANNER_RESERVE) ends above the column.
-    expect(p.banner.position.y + 55).toBeLessThanOrEqual(p.column.position.y);
-    // ...and the lowest thing on the screen, the policy link, still fits on it.
-    const linkY = p.column.position.y + p.privacyLink.position.y * p.column.scale.y;
-    expect(linkY + 18).toBeLessThan(640);
+    // Banner, notice and link all in the strip, and the strip on the screen.
+    const k = p.notices.scale.y;
+    expect(p.privacyLink.position.y).toBeGreaterThan(p.banner.position.y);
+    expect(p.notices.position.y + (p.privacyLink.position.y + 18) * k).toBeLessThan(640);
+    // ...and the column, which no longer makes room for either, still fits too.
+    expect(p.column.position.y + p.column.scale.y * 10).toBeLessThan(640);
   });
 });
 
@@ -707,9 +718,9 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     expect(screenBox(privateOf(alone).settingsBtn)).toEqual(screenBox(privateOf(paired).settingsBtn));
   });
 
-  it('shows the data notice under the column, not at the bottom edge the banner ad owns', () => {
+  it('shows the data notice in the top-third strip, not at the bottom edge the banner ad owns', () => {
     // Nobody types anything on a portal, so the one screen they do see has to say what is
-    // stored. `BannerHost` owns the bottom of the viewport, so this sits under the routes.
+    // stored. `BannerHost` owns the bottom of the viewport, so this sits in the notice strip.
     const m = new MainMenu();
     m.setAccountEntry(false);
     m.show(800, 600);
@@ -717,8 +728,10 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     const notice = p.dataNotice;
     expect(notice.visible).toBe(true);
     expect(notice.text).toContain('CrazyGames');
-    expect(notice.position.y).toBeGreaterThan(p.routes.height);
-    expect(p.column.position.y + notice.position.y * p.column.scale.y).toBeLessThan(600);
+    expect(p.notices.visible).toBe(true);
+    const y = p.notices.position.y + notice.position.y * p.notices.scale.y;
+    expect(y).toBeGreaterThan(0);
+    expect(y).toBeLessThan(600 / 2);
   });
 
   it('translates the notice with the rest of the screen', async () => {

@@ -77,6 +77,9 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   lobby_rock_a: '/ui/lobby_rock_a.png',
   lobby_rock_b: '/ui/lobby_rock_b.png',
   lobby_rock_c: '/ui/lobby_rock_c.png',
+  // One weapon orbiting the lobby hero: a copy of `weapons/gun_cryobolt.png`, because the
+  // weapon art ships in the `forge` pack, which only arrives at the run phase.
+  lobby_weapon: '/ui/lobby_weapon.png',
 };
 
 const textures = new Map<string, Texture>();

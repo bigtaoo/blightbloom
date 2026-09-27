@@ -3,7 +3,7 @@
  * and the FREE_CHARACTERS roster derivation.
  */
 import { describe, it, expect } from 'vitest';
-import { defaultMetaState, FREE_CHARACTERS } from './MetaState';
+import { defaultMetaState, FREE_CHARACTERS, recordFloorReached } from './MetaState';
 import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, SKIN_DEFS } from '@dd/engine';
 
 describe('FREE_CHARACTERS', () => {
@@ -53,5 +53,20 @@ describe('defaultMetaState()', () => {
     expect(a.ownedCharacters).not.toBe(b.ownedCharacters);
     a.unlockedBlueprints.push('mutated');
     expect(b.unlockedBlueprints).not.toContain('mutated');
+  });
+});
+
+describe('recordFloorReached()', () => {
+  it('starts a fresh account at 0 — no line under the hero', () => {
+    expect(defaultMetaState().bestFloor).toBe(0);
+  });
+
+  it('keeps the deeper floor, and hands back the SAME object when nothing changed', () => {
+    const m = recordFloorReached(defaultMetaState(), 3);
+    expect(m.bestFloor).toBe(3);
+    expect(recordFloorReached(m, 5).bestFloor).toBe(5);
+    expect(recordFloorReached(m, 2)).toBe(m);
+    expect(recordFloorReached(m, 3)).toBe(m);
+    expect(recordFloorReached(m, Number.NaN)).toBe(m);
   });
 });

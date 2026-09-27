@@ -28,6 +28,7 @@ export const zh: Translations<typeof en> = {
     pvpHint: '与其他玩家对战',
     guestHint: '登录以保存进度',
     syncedHint: '进度已同步',
+    bestFloor: '最深到达：第 {floor} 层',
   },
   loading: {
     boot: '加载中',

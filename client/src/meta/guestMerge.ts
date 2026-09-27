@@ -130,5 +130,7 @@ export function mergeGuestIntoAccount(guest: MetaState, account: MetaState): Met
     unlockedBlueprints: union(account.unlockedBlueprints, guest.unlockedBlueprints),
     ownedCharacters: union(account.ownedCharacters, guest.ownedCharacters),
     hasSeenTutorial: account.hasSeenTutorial || guest.hasSeenTutorial,
+    // A record, not a count: the deeper of the two, never their sum.
+    bestFloor: Math.max(account.bestFloor, guest.bestFloor),
   };
 }

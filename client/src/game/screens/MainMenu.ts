@@ -1,4 +1,4 @@
-import { Container, Sprite, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Button } from '../ui/widgets';
 import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H } from '../ui/LobbyRoutes';
 import { LobbyCard } from '../ui/LobbyCard';
@@ -28,18 +28,13 @@ function clipName(name: string): string {
 /** The corner chrome's inset from the viewport edge, and its row height (unscaled). */
 const EDGE = 14;
 const CHROME_H = 40;
-/**
- * Room kept under the corner row for a maintenance banner. MEASURED on a real page with the
- * real font (2026-09-10): the worst legal banner (140 `M`s, `@dd/net/publicFlags`) wraps to
- * three lines and 55px at a 700px wrap. `fakeTextCanvas` measures 0.6em per character and
- * would call the same string two lines, so this is a floor the unit suite cannot derive.
- */
-const BANNER_RESERVE = 72;
+/** The notice strip's widest wrap, its inner padding, and the gap between its lines. */
+const STRIP_WRAP_MAX = 700;
+const STRIP_PAD = 8;
+const STRIP_GAP = 4;
 /** The logo's width in the lobby's own units, and the tagline's room under it. */
 const LOGO_W = 300;
 const TAGLINE_H = 24;
-/** What the portal's data notice + policy link occupy under the column. */
-const NOTICE_BLOCK_H = 12 + 44 + 18;
 
 /**
  * The LOBBY — the boot front door and the branch point (design/10 screen flow). Still called
@@ -56,7 +51,11 @@ const NOTICE_BLOCK_H = 12 + 44 + 18;
  *  - the ways into the game as one column on the right, in three visibly different tiers
  *    (`LobbyRoutes`), with a soft vignette behind it and nothing else darkened;
  *  - account (top-left) and materials + SETTINGS (top-right) pinned to the real viewport
- *    corners, because they are chrome and not doors.
+ *    corners, because they are chrome and not doors;
+ *  - the operator's maintenance banner and the portal's data notice in one strip across the
+ *    scene at the top third of the screen, left of the column (`layoutNotices`). Not the
+ *    bottom edge: on the portal that belongs to its banner ad (`BannerHost`). And not pushing
+ *    the header or the column around, which the banner used to do.
  *
  * Everything in the column, header and corners is multiplied by one lobby scale `k`
  * (`lobbyScale`): the menu layer never scales UP (`menuLayer.ts`), so on a desktop window the
@@ -98,11 +97,14 @@ export class MainMenu {
   /**
    * The operator's maintenance notice (design/21 §4's `ui.maintenanceBanner`). Empty means no
    * banner, the shipped default. Not localised and cannot be (it is one line an operator
-   * typed), hence the 140-character cap in `@dd/net/publicFlags`. It hangs under the corner
-   * row and pushes the header down by `BANNER_RESERVE` when shown, so `refreshBanner` re-lays
-   * the screen out when it appears or goes while the lobby is up.
+   * typed), hence the 140-character cap in `@dd/net/publicFlags`. It sits in the notice
+   * strip, so `refreshBanner` re-lays the screen out when it appears or goes while the lobby
+   * is up — the strip changes height.
    */
   private banner: Text;
+  /** The notice strip: its band, then the banner, the data notice and the policy link. */
+  private notices = new Container();
+  private noticeBand = new Graphics();
   private quickPlay = false;
   private accountEntry = true;
   /** The resumable run `show()` last read — `applyPrimary` is also reachable from
@@ -120,7 +122,7 @@ export class MainMenu {
 
   /** The selected character and the banked materials — a provider for the same reason as
    *  `resumableRun`. `null` (the default) draws an empty dais and no material chips. */
-  lobbyProfile: () => { skinId: string; materials: MaterialCounts } | null = () => null;
+  lobbyProfile: () => { skinId: string; materials: MaterialCounts; bestFloor: number } | null = () => null;
 
   /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
@@ -183,17 +185,18 @@ export class MainMenu {
     this.privacyLink.eventMode = 'static';
     this.privacyLink.cursor = 'pointer';
     this.privacyLink.on('pointertap', () => openPolicy('privacy'));
-    this.column.addChild(this.playBtn.view, this.routes.view, this.dataNotice, this.privacyLink);
+    this.column.addChild(this.playBtn.view, this.routes.view);
 
     // `breakWords` alongside `wordWrap`: a 140-character banner with no spaces (a URL, `MMMM…`)
     // is a legal value and cannot wrap at spaces at all (`viewportFit.test.ts` caught it).
     this.banner = new Text({ text: '', style: { fill: 0xfbd38d, fontSize: 15, fontFamily: 'sans-serif', fontWeight: 'bold', padding: 16, align: 'center', wordWrap: true, wordWrapWidth: 700, breakWords: true, stroke: { color: 0x1a202c, width: 4 } } });
     this.banner.anchor.set(0.5, 0);
     this.banner.visible = false;
+    this.notices.addChild(this.noticeBand, this.banner, this.dataNotice, this.privacyLink);
 
     this.view.addChild(
-      this.panel.view, this.hero.view, this.header, this.column,
-      this.topLeft, this.topRight, this.banner,
+      this.panel.view, this.hero.view, this.header, this.column, this.notices,
+      this.topLeft, this.topRight,
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
@@ -259,6 +262,7 @@ export class MainMenu {
     this.applyPrimary();
     const profile = this.lobbyProfile();
     this.hero.setCharacter(profile?.skinId ?? null);
+    this.hero.setBestFloor(profile?.bestFloor ?? 0);
     this.resources.set(profile?.materials ?? {});
     this.resources.view.visible = profile !== null;
     this.refreshBanner(false);
@@ -294,27 +298,19 @@ export class MainMenu {
     this.resources.view.position.set(-settingsW - 10 - this.resources.width, (CHROME_H - this.resources.height) / 2);
     this.topRight.position.set(w - edge, edge);
 
-    // The banner hangs under the corner row, full width, and owes the header its room.
     const chromeBottom = edge + CHROME_H * k;
-    this.banner.style.wordWrapWidth = Math.min(700, w - 32);
-    this.banner.position.set(w / 2, chromeBottom + 8);
-    const reserve = this.banner.visible ? BANNER_RESERVE : 0;
 
-    // The column: right-aligned, below the corner row (and the banner), centred in what is
-    // left. Its height includes the portal's notice block when that is shown.
+    // The column: right-aligned, below the corner row, centred in what is left.
     const colW = LOBBY_ROUTES_W * k;
-    const noticeH = this.accountEntry ? 0 : NOTICE_BLOCK_H;
-    const colH = this.routes.height + noticeH;
+    const colH = this.routes.height;
     const colX = w - Math.max(20, w * 0.035) - colW;
-    const colTopMin = chromeBottom + 14 + reserve;
+    const colTopMin = chromeBottom + 14;
     const colTop = colTopMin + Math.max(0, (h - 16 - colTopMin - colH * k) / 2);
     this.column.scale.set(k);
     this.column.position.set(colX, colTop);
     this.playBtn.view.position.set(0, 0);
     this.routes.layout();
     this.routes.view.position.set(0, 0);
-    this.dataNotice.position.set(LOBBY_ROUTES_W / 2, this.routes.height + 12);
-    this.privacyLink.position.set(LOBBY_ROUTES_W / 2, this.routes.height + 12 + 44);
     this.panel.setFocus({ x: colX, y: colTop, w: colW, h: colH * k });
 
     // The painting, cropped so the dais sits in the middle of the room left of the column.
@@ -341,7 +337,7 @@ export class MainMenu {
     this.header.scale.set(k);
     const half = (LOGO_W * k) / 2;
     const headerX = Math.min(Math.max(dais.x, half + 16), Math.max(half + 16, leftRoom - half));
-    const headerTop = chromeBottom + 10 + reserve;
+    const headerTop = chromeBottom + 10;
     this.header.position.set(headerX, headerTop);
     const headerBottom = headerTop + headerH * k;
 
@@ -349,10 +345,38 @@ export class MainMenu {
     // to the stone, and never taller than the room between the header and the dais.
     const room = (dais.y - headerBottom - 6) / (1 + 0.14);
     const heroH = Math.max(0, Math.min(dais.paintingH * 0.3, w * 0.36, room));
-    const captionY = Math.min(dais.y + dais.paintingH * 0.075, h - 48 * k);
+    // Room under it for three caption lines: name, stats, best floor.
+    const captionY = Math.min(dais.y + dais.paintingH * 0.075, h - 64 * k);
     this.hero.layout(dais.x, dais.y, heroH, captionY, k);
+    this.layoutNotices(leftRoom, h, chromeBottom, k);
 
     sharpenText(this.view, k);
+  }
+
+  /**
+   * The notice strip, centred on the top third of the screen across the scene (`0..right`,
+   * left of the column): whichever of the banner, the data notice and its link are shown,
+   * stacked on one translucent band. Hidden when none is. Never above the corner row.
+   */
+  private layoutNotices(right: number, h: number, chromeBottom: number, k: number): void {
+    const lines = [this.banner, this.dataNotice, this.privacyLink].filter((t) => t.visible);
+    this.notices.visible = lines.length > 0;
+    const stripW = Math.max(0, right);
+    const wrap = Math.max(120, Math.min(STRIP_WRAP_MAX, stripW / k - STRIP_PAD * 4));
+    this.banner.style.wordWrapWidth = wrap;
+    this.dataNotice.style.wordWrapWidth = wrap;
+    let y = STRIP_PAD;
+    for (const line of lines) {
+      line.position.set(stripW / (2 * k), y);
+      y += line.height + STRIP_GAP;
+    }
+    const bandH = lines.length > 0 ? y - STRIP_GAP + STRIP_PAD : 0;
+    this.noticeBand.clear()
+      .rect(0, 0, stripW / k, bandH).fill({ color: 0x0b0e14, alpha: 0.62 })
+      .rect(0, 0, stripW / k, 1).fill({ color: 0xfbd38d, alpha: 0.35 })
+      .rect(0, bandH - 1, stripW / k, 1).fill({ color: 0xfbd38d, alpha: 0.35 });
+    this.notices.scale.set(k);
+    this.notices.position.set(0, Math.max(chromeBottom + 6, h / 3 - (bandH * k) / 2));
   }
 
   /**
