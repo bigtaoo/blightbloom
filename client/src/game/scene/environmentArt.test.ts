@@ -179,9 +179,10 @@ describe('every shipped environment sprite — the pipeline steps that leave no 
 describe('the shipped drop sprites — resolution, and contrast against the floor', () => {
   it.each(PICKUPS)('pickup_%s has resolution headroom for the camera zoom', (kind) => {
     // What got five of the six first-batch pillar generations rejected: art authored at the
-    // size the game draws. A drop is drawn at ART_LONG_AXIS (18 px) while `FxController`'s
-    // MAX_ZOOM is 4.5 and the renderer runs at up to 2x device pixel ratio, so the sprite is
-    // MAGNIFIED to ~162 device px in a small room. This is the one defect that cannot be
+    // size the game draws. A drop is drawn at ART_LONG_AXIS (18 px) while the camera's MAX_ZOOM
+    // was 4.5 (3.5 since 2026-09-28 — the bar is kept at the old cap so the art does not have to
+    // be regenerated if the cap goes back up) and the renderer runs at up to 2x device pixel
+    // ratio, so the sprite is MAGNIFIED to ~162 device px in a small room. This is the one defect that cannot be
     // repaired at import.
     const img = pickup(kind);
     expect(Math.max(img.width, img.height)).toBeGreaterThanOrEqual(18 * 4.5 * 2);

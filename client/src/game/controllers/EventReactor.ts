@@ -274,7 +274,8 @@ export class EventReactor {
             this.fx.particles.explosionDebris(
               fpToPx(e.gx), fpToPx(e.gy) - bodyR * DEATH_BURST_LIFT_R, THEME.colors.enemy, bodyR,
             );
-            this.fx.addShake(0.15);
+            // No shake on a kill (dropped 2026-09-28, motion-comfort pass): kills come in strings,
+            // and each one topping up the trauma kept a busy room's whole screen moving.
             cue('death.enemy');
           } else if (isLocalSeat(e.id)) {
             // The local seat bled out (ReviveSystem) — the run is over, and until 2026-09-02

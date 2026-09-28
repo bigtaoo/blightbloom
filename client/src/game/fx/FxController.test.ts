@@ -109,11 +109,11 @@ describe('FxController.updateCamera', () => {
   it('zooms a small room up to cover both axes, capped at MAX_ZOOM', () => {
     const layers = new Layers();
     const fx = new FxController(layers);
-    // zoomX = 800/100 = 8, zoomY = 600/100 = 6 — cover-fit picks the max (8), past the cap (4.5).
+    // zoomX = 800/100 = 8, zoomY = 600/100 = 6 — cover-fit picks the max (8), past the cap (3.5).
     fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 100, h: 100 }, fakePlayer(50, 50));
-    expect(layers.world.scale.x).toBeCloseTo(4.5);
-    expect(layers.world.scale.y).toBeCloseTo(4.5);
-    expect(fx.zoom).toBeCloseTo(4.5);
+    expect(layers.world.scale.x).toBeCloseTo(3.5);
+    expect(layers.world.scale.y).toBeCloseTo(3.5);
+    expect(fx.zoom).toBeCloseTo(3.5);
   });
 
   it('zooms by the uncapped cover-fit ratio when under MAX_ZOOM', () => {
@@ -802,10 +802,10 @@ describe('FxController under "reduce motion"', () => {
     const fx = new FxController(layers);
     fx.addShake(1);
     const seen: { x: number; y: number }[] = [];
-    // Several frames: the offset is re-rolled from `Math.random()` every call, so one frame
-    // landing near zero by chance is a real possibility and a single sample would make this
-    // case pass for the wrong reason roughly one time in a hundred.
+    // Several frames, each advancing the shake clock: the offset is a waveform of that clock
+    // (`shakeOffset`), and a single sample could land on one of its zero crossings.
     for (let i = 0; i < 30; i++) {
+      fx.updateFx(16, 0, undefined);
       fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 2000, h: 2000 }, fakePlayer(1000, 1000));
       seen.push({ x: layers.world.x, y: layers.world.y });
     }
@@ -838,6 +838,7 @@ describe('FxController under "reduce motion"', () => {
     setReduceMotion(false);
     let moved = false;
     for (let i = 0; i < 30; i++) {
+      fx.updateFx(16, 0, undefined);
       fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 2000, h: 2000 }, fakePlayer(1000, 1000));
       if (layers.world.x !== held.x || layers.world.y !== held.y) moved = true;
     }

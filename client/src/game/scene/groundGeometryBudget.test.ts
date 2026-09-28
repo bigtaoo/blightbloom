@@ -525,7 +525,9 @@ const REAL = {
   total: 460_370,
   /** Largest single piece, and the worst any one camera submits. 5,840 / 76,646 before the clip. */
   largestPiece: 5_558,
-  worstCamera: 26_150,
+  /** 26,150 until 2026-09-28, when MAX_ZOOM fell 4.5 -> 3.5: a lower cap shows a little more of the
+   *  floor around a small room, so the worst camera submits a little more. */
+  worstCamera: 26_226,
   /** Unchanged by the clip, on purpose — see the note above. */
   shadowLargest: 49_392,
   /** `staticGraphics.ts`'s stated envelope for the wall-shadow pass, for comparison. */
