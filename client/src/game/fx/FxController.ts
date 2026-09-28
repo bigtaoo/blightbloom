@@ -9,6 +9,9 @@ import { cullGroundLayer } from '../scene/groundCulling';
 import { acquireSlashArc, releaseSlashArc, type SlashArc, type SlashArcPose } from './slashArc';
 import { motionReduced } from '../../render/motion';
 import { DamageNumbers } from './DamageNumbers';
+import { CameraRig, MAX_SHAKE_PX, shakeOffset, type CameraFrame, type CameraTarget } from './cameraRig';
+
+export type { CameraFrame, CameraTarget } from './cameraRig';
 
 const FX_LIFE_MS = 170; // flash/trail lifetime (the default for a `_life`-tagged fx child)
 /** Muzzle-flare lifetime. Much shorter than a flash: a gun's flare is a single frame of real
@@ -19,53 +22,6 @@ const MUZZLE_FLARE_MS = 85;
  *  gun's length past the barrel). Drawn along +x and rotated onto the shot direction. */
 const FLARE_R = 5;
 const FLARE_LEN = 17;
-const MAX_SHAKE_PX = 14; // camera-shake offset at full trauma (design/01 milestone 3)
-// Cap on updateCamera's fill zoom — raised from 1.8 (design/10's original legibility
-// fix) to 2.5 (user report, 2026-08-12): a floor whose combined room width is well
-// under the viewport left a wide dark `Backdrop` void beside the room that read as "the
-// game viewport doesn't fill the window" rather than an intentional letterbox (the void
-// colour is deliberately very dark — theme.ts's `BiomePalette.void` — so it's visually
-// indistinguishable from an unrendered black canvas). A higher cap shrinks that void by
-// zooming a small floor in further before the degenerate-blockiness limit kicks in; it
-// does NOT touch the zoom=1 floor for anything already viewport-sized+. Superseded for
-// the VOID ITSELF by the cover-fit switch below (2026-08-12 follow-up) — this cap now
-// only guards against a truly tiny/degenerate room forcing an absurd zoom, not against
-// letterboxing (cover-fit has none).
-// Raised again 2026-08-17 (2.5 -> 4.5) when the fit target became the current ROOM
-// rather than the whole floor: level 1's authored rooms are ~470-560 px square, so
-// cover-fitting one into a 1920x911 viewport wants ~3.4-4.1x and the old 2.5 cap bound
-// in every single room — the room rendered ~1170 px wide inside a 1920 px viewport and
-// the neighbours on either side stayed on screen, which is exactly what the fit change
-// was for. At 4x the hero reads about a seventh of the screen height, in line with the
-// genre. This remains a guard against a degenerate/tiny room, not a framing dial.
-const MAX_ZOOM = 4.5;
-// How much of the frame the camera looks ABOVE the follow target's ground point, as a
-// fraction of the viewport height (user report, 2026-08-17: "镜头往下一些 … 给角色最好
-// 的展示"). Every entity reports its GROUND position — the point at its feet, where its
-// shadow and collision footprint sit (Entity.applyTransform) — so a camera centred on
-// it puts the character's feet dead centre and its whole body in the upper half of the
-// screen, with a band of empty floor below. Biasing the look-at point upward in world
-// space slides the rendered world DOWN, which is what re-centres the character in the
-// frame. 8% of the viewport, not a fixed pixel count, so it scales with the window and
-// with the zoom the frame-fit picks.
-const CAMERA_BODY_BIAS_R = 0.08;
-
-/** Something that can report its interpolated ground position — the local player's
- *  Actor view, duck-typed so FxController never needs to import game/Actor.ts. */
-export interface CameraTarget {
-  interpGroundX(alpha: number): number;
-  interpGroundY(alpha: number): number;
-}
-
-/** A world-px rect for the camera to fill — the room the local player is standing in
- *  (`GameLoop.updateCamera` resolves it), falling back to the whole floor. */
-export interface CameraFrame {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 /**
  * Post-processing / game-feel (design/01 fidelity roadmap milestone 3), extracted out
  * of Game.ts 2026-07-28 (that file had accreted 6+ unrelated jobs — this is the "world
@@ -102,6 +58,10 @@ export class FxController {
    *  through `_life` because each one animates its geometry, not just its alpha — `updateFx`. */
   private readonly slashes: SlashArc[] = [];
   private shakeTrauma = 0;
+  /** Clock of the shake waveform (`shakeOffset`), advanced by `updateFx`. */
+  private shakeTimeMs = 0;
+  /** Zoom, dead-zone follow and their smoothing — `cameraRig.ts`. */
+  private readonly rig = new CameraRig();
   private hitStopMs = 0;
   /** Current world→screen zoom applied in updateCamera — CommandBuilder needs this
    *  to convert a screen-space mouse point back to world space (Game.ts reads it
@@ -283,34 +243,24 @@ export class FxController {
     // Screen-shake trauma also decays here (updateCamera only gets `alpha`, not `dt`; it
     // just reads the current value to compute this frame's offset).
     this.shakeTrauma = Math.max(0, this.shakeTrauma - dt * 0.0025);
+    this.shakeTimeMs += dt;
   }
 
   /** Follow `player`, pin the camera inside the world, then add screen-shake on top.
    *
-   *  Cover-fit zoom (design/10, 2026-08-12 follow-up — replaced the original contain-
-   *  fit): zoom by whichever axis needs the MOST zoom to fill the viewport, so both
-   *  axes always cover it — no letterbox void on either axis, ever, capped at MAX_ZOOM
-   *  so a tiny/degenerate room doesn't blow sprites up into blocks. The tradeoff (the
-   *  fitted rect is now routinely bigger than the viewport on the axis that didn't need
-   *  the zoom) is exactly what the clamp branch below was already built to handle — an
-   *  edge or door can scroll off-screen while the player is elsewhere, back into view as
-   *  they approach it, same as any camera-follow game.
+   *  Cover-fit zoom (design/10, 2026-08-12 follow-up — replaced the original contain-fit): zoom
+   *  by whichever axis needs the MOST zoom to fill the viewport, so both axes cover it, capped at
+   *  MAX_ZOOM. What it fits is `frame` — the ROOM the player is standing in — not the whole floor
+   *  (user report, 2026-08-17: "尽量视口内只有当前房间"): a dungeon floor is co-resident, so
+   *  fitting `worldSize` meant fitting every room at once. `frame` is null in a mode with no room
+   *  model, and in a door passage (which belongs to no room); the last room fitted is held
+   *  through the passage, and the whole floor is the fallback only when there never was one.
    *
-   *  What it fits, though, is `frame` — the ROOM the player is standing in — not the
-   *  whole floor (user report, 2026-08-17: "尽量视口内只有当前房间"). A dungeon floor is
-   *  co-resident: every room of it is stitched into one world (`world/dungeon`'s
-   *  `buildFloorGeometry`), so fitting `worldSize` meant fitting the whole floor, which
-   *  is far wider than any viewport — cover-fit therefore resolved to zoom 1 and the
-   *  player saw several rooms at once, each one small. Fitting the current room instead
-   *  puts that room (and essentially only it) on screen. `frame` is null in a mode with
-   *  no room model, or in the tick before the player's room is resolved; the whole floor
-   *  is then the fallback, i.e. exactly the previous behaviour.
+   *  Panning still clamps to the WORLD, never to `frame`: clamping to the room would hard-stop
+   *  the camera at a doorway, cutting off the corridor the player is about to walk into.
    *
-   *  Panning still clamps to the WORLD, never to `frame`: clamping to the room would
-   *  hard-stop the camera at a doorway, cutting off the corridor the player is about to
-   *  walk into. A room whose fitted zoom leaves it larger than the viewport keeps the
-   *  pan; one smaller than the viewport just shows a little of its neighbours at the
-   *  edges, which reads as depth rather than as a mistake.
+   *  `dtMs` drives the smoothing (2026-09-28, motion-comfort pass — see `CameraRig` for the
+   *  three causes it answers). Omitted, the camera cuts straight to the target pose.
    *
    *  No-op (leaves layers.world untouched) if there's no player yet. */
   updateCamera(
@@ -319,6 +269,7 @@ export class FxController {
     worldSize: { w: number; h: number } | null,
     player: CameraTarget | null,
     frame: CameraFrame | null = null,
+    dtMs?: number,
   ): void {
     if (!player) {
       // Still re-sync: the camera is unchanged, but a light may have expired or moved, and
@@ -327,31 +278,17 @@ export class FxController {
       return;
     }
     const { vw, vh } = viewport;
-    const worldW = worldSize ? worldSize.w : vw;
-    const worldH = worldSize ? worldSize.h : vh;
-    const fitW = frame ? frame.w : worldW;
-    const fitH = frame ? frame.h : worldH;
-    const zoom = Math.min(MAX_ZOOM, Math.max(1, vw / fitW, vh / fitH));
-    this.zoom = zoom;
-    const effW = worldW * zoom;
-    const effH = worldH * zoom;
-    // Look slightly ABOVE the follow target's feet so the character sits in the middle
-    // of the frame rather than in its top half — see CAMERA_BODY_BIAS_R.
-    const targetY = player.interpGroundY(alpha) - (vh * CAMERA_BODY_BIAS_R) / zoom;
-    // How far ABOVE world y=0 the camera may reveal (2026-08-19). `cy`'s upper bound used to
-    // be a flat 0 — the world's own top edge — which silently cancelled the whole reason
-    // `GameLoop.cameraFrame` extends its rect upward by MAX_WALL_HEIGHT: a standing wall on the
-    // FLOOR's northern boundary draws its cap and the top of its face at NEGATIVE world y, so
-    // the clamp pinned exactly that band off the top of the screen. Confirmed in a live frame
-    // (`layers.world.y === 0`, the room's north wall showing face only, no cap, top of the face
-    // cut) — the tallest wall in the room, and the player never saw where it ended. The frame is
-    // the authority on how much overscan it asked for, so this reads it back off `frame.y`
-    // rather than importing the wall height.
-    const overscanTop = frame ? Math.max(0, -frame.y) * zoom : 0;
-    const cx = effW <= vw ? (vw - effW) / 2 : clamp(vw / 2 - player.interpGroundX(alpha) * zoom, vw - effW, 0);
-    const cy = effH <= vh
-      ? (vh - effH) / 2
-      : clamp(vh / 2 - targetY * zoom, vh - effH, overscanTop);
+    const pose = this.rig.step({
+      vw,
+      vh,
+      worldW: worldSize ? worldSize.w : vw,
+      worldH: worldSize ? worldSize.h : vh,
+      frame,
+      px: player.interpGroundX(alpha),
+      py: player.interpGroundY(alpha),
+      dtMs,
+    });
+    this.zoom = pose.zoom;
 
     // `motionReduced()` is read HERE rather than at `addShake`, so trauma keeps accumulating
     // and decaying exactly as it always did and the setting is a pure output filter: turning it
@@ -359,12 +296,11 @@ export class FxController {
     // its own. See `render/motion.ts` for what the setting covers and what it deliberately
     // does not.
     const shakeMag = motionReduced() ? 0 : this.shakeTrauma * this.shakeTrauma * MAX_SHAKE_PX;
-    const shakeX = shakeMag > 0.05 ? (Math.random() * 2 - 1) * shakeMag : 0;
-    const shakeY = shakeMag > 0.05 ? (Math.random() * 2 - 1) * shakeMag : 0;
+    const shake = shakeMag > 0.05 ? shakeOffset(this.shakeTimeMs, shakeMag) : { x: 0, y: 0 };
 
-    this.layers.world.scale.set(zoom);
-    this.layers.world.x = cx + shakeX;
-    this.layers.world.y = cy + shakeY;
+    this.layers.world.scale.set(pose.zoom);
+    this.layers.world.x = pose.x + shake.x;
+    this.layers.world.y = pose.y + shake.y;
     this.syncCamera(viewport);
   }
 
@@ -476,10 +412,8 @@ export class FxController {
     }
     this.shakeTrauma = 0;
     this.hitStopMs = 0;
+    // A new run starts somewhere else entirely: cut to it rather than pan across from the old one.
+    this.rig.reset();
     this.chromatic.amount = 0;
   }
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
 }
