@@ -8,7 +8,8 @@
  * the registry, independent of whether its PNG exists yet.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Texture } from 'pixi.js';
 import { FLOOR_CARD_IDS } from '@dd/engine';
@@ -211,5 +212,47 @@ describe('uiSkins — whenUiTexture / onUiTexture', () => {
     expect(heard).toEqual(['lobby_rock_a']); // ...and the unsubscribed listener missed it
     expect(apply).toHaveBeenCalledTimes(1);
     resetUiSkinsForTests();
+  });
+});
+
+describe('uiSkins — the keys the rest of the client asks for', () => {
+  it('names no key the registry lacks: a typo waits for a texture that never comes', () => {
+    // `whenUiTexture` on an unknown key never fires and never throws, and `getUiTexture` returns
+    // the same `undefined` a not-yet-loaded file does — the button just stays text-only, which
+    // looks like the art is late, not missing. So sweep every literal key in the source.
+    const src = fileURLToPath(new URL('..', import.meta.url));
+    const asked = new Map<string, string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.ts$/.test(entry.name) && !/\.test\.ts$/.test(entry.name)) {
+          for (const m of readFileSync(path, 'utf8').matchAll(/(?:getUiTexture|whenUiTexture)\('([^']+)'/g)) asked.set(m[1]!, path);
+        }
+      }
+    };
+    walk(src);
+    // A sweep over nothing proves nothing: the menu screens alone name over a dozen.
+    expect(asked.size).toBeGreaterThan(12);
+    for (const [key, where] of asked) expect(UI_ASSET_KEYS, `${key} in ${where}`).toContain(key);
+  });
+});
+
+describe('uiSkins — the lossy-quantized files stay quantized (2026-09-28)', () => {
+  // Re-quantized to a 256-entry palette with libimagequant: a third to a half of their RGBA
+  // size. `tools/png-pipeline/compress.mjs` re-inflates any file it touches back to RGBA, and
+  // only the `boot` files sit under a byte budget above — the portraits and the weapon are
+  // `lobby` tier, so running the compressor over them would triple the lobby's download with
+  // nothing red. PNG byte 25 is the IHDR colour type; 3 is indexed.
+  const QUANTIZED = [
+    'lobby_hero_orb', 'lobby_hero_skirmisher', 'lobby_hero_juggernaut',
+    'lobby_logo_en', 'lobby_logo_zh', 'npc_forger', 'lobby_weapon',
+  ];
+
+  it.each(QUANTIZED)('%s is an 8-bit palette PNG', (key) => {
+    const bytes = readFileSync(fileURLToPath(new URL(`../../public${UI_ASSETS[key]}`, import.meta.url)));
+    expect(bytes.subarray(12, 16).toString('latin1')).toBe('IHDR'); // the offset really is the header
+    expect(bytes[24], 'bit depth').toBe(8);
+    expect(bytes[25], 'colour type').toBe(3);
   });
 });
