@@ -44,10 +44,13 @@ export class FxController {
    *  see fx/filters/litFx.ts. Mounted on `layers.lit` by `attach`. */
   readonly sceneLight = new SceneLightFilter();
   /** The same pass over `layers.litStand` when the tier splits it (`standAntialias`): a second
-   *  instance only so its target can be multisampled — `'inherit'` takes the canvas's own
-   *  antialias setting, so a host that turned MSAA off gets none here either. Same uniforms as
-   *  `sceneLight` every frame (`syncCamera`), or the two halves would be lit differently. */
-  readonly sceneLightStand = new SceneLightFilter({ antialias: 'inherit' });
+   *  instance only so its target can be multisampled. `'on'`, NOT `'inherit'`: Pixi resolves
+   *  `'inherit'` against the CURRENT render target, and on the high tier that is `world`'s
+   *  vignette pass — a pool texture with no MSAA — so `'inherit'` silently meant off (measured:
+   *  no change at all to the stepping). A WebGL1 host gets none either way; Pixi only
+   *  multisamples where `supports.msaa`. Same uniforms as `sceneLight` every frame
+   *  (`syncCamera`), or the two halves would be lit differently. */
+  readonly sceneLightStand = new SceneLightFilter({ antialias: 'on' });
   /** Bloom-lite blur over the additive fx layer. A field rather than a `new` inside `attach()`
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a
    *  fresh filter — and its GL program — every time the tier changes. */
