@@ -25,6 +25,7 @@ import { groundSteps } from './groundLayer';
 import { planRoomWalls, type RoomWallPlan } from './roomWallPlan';
 import { StagedBuild, solo, type BuildStep } from './stagedBuild';
 import { DescendCover } from './descendCover';
+import { FilterWarmup } from './filterWarmup';
 import { faceCrownFraction } from './wallTone';
 import type { Backdrop } from './Backdrop';
 import { Terrain } from './Terrain';
@@ -110,6 +111,8 @@ export class RoomBuilder {
    *  `tickFixtures`, a few ms per frame. */
   private readonly staged = new StagedBuild();
   private readonly cover: DescendCover;
+  private readonly warmup: FilterWarmup;
+  private warmPending = false;
 
   constructor(
     private readonly layers: Layers,
@@ -117,6 +120,7 @@ export class RoomBuilder {
   ) {
     this.terrain = new Terrain(layers);
     this.cover = new DescendCover(layers.ui);
+    this.warmup = new FilterWarmup(layers.ui);
   }
 
   /** `room_enter`: rebuild only when the floor itself changed — see `floorKey.ts` for why a room
@@ -157,6 +161,10 @@ export class RoomBuilder {
 
   private beginBuild(s: GameState): BuildStep[] {
     this.builtFloor = floorKeyOf(s);
+    // Every build happens with the world covered (a run's behind the loading screen, a descend's
+    // behind `cover`), so the next frame is where the actor filters get linked — `filterWarmup.ts`.
+    // Armed from `tickFixtures`, not here, because only a rendering frame has anything to link.
+    this.warmPending = true;
     const w = fpToPx(s.worldW);
     const h = fpToPx(s.worldH);
 
@@ -381,6 +389,9 @@ export class RoomBuilder {
     // every render path — and first, so the doors ticked below are this frame's doors.
     if (this.staged.busy) this.staged.runFor(STAGED_BUILD_BUDGET_MS);
     this.cover.update(dt, this.staged.busy);
+    if (this.warmPending) this.warmup.arm(); // drawn by this frame's render, and the next one's
+    else this.warmup.tick();
+    this.warmPending = false;
     tickDoors(dt, this.doorFixtures, this.doorFootprints, view, playerPx);
     // The portal animates only while it is open — it is `visible = false` otherwise, and a hidden
     // vortex advancing its own clock is pure cost. `alpha` is 1 because a portal never
@@ -464,6 +475,8 @@ export class RoomBuilder {
     this.builtFloor = null;
     this.staged.cancel();
     this.cover.hide();
+    this.warmup.cancel();
+    this.warmPending = false;
     for (const c of [...this.layers.ground.children]) c.destroy();
     this.clearDoors();
     this.clearWalls();
