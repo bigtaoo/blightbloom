@@ -3,10 +3,10 @@ import type { GameState } from '@dd/engine';
 import type { Layers } from './layers';
 import { Entity } from './Entity';
 import { biomePalette, biomeElementOf, type BiomeElement, type BiomePalette } from '../theme';
-import { fpToPx, PX_PER_GRID } from '../coords';
+import { fpToPx } from '../coords';
 import { getFloorTexture, getWallTexture, getWallFaceTexture } from '../../render/biomeTiles';
 import { getDoorCurtainTexture, getDoorTexture } from '../../render/environmentSprites';
-import { wallTier, wallHeight, DOOR_H, DOOR_TIER, type RectPx } from './wallGeometry';
+import { wallHeight, DOOR_H, DOOR_TIER, type RectPx } from './wallGeometry';
 import { buildWallBlock, drawWallShadow } from './wallRender';
 import { staticGraphics } from '../../render/staticGraphics';
 import { buildPillarEntities, buildPropEntities, destroyDressing } from './roomDressing';
@@ -18,19 +18,13 @@ import {
   type FadeableOccluder,
   type OcclusionFocus,
 } from './occlusion';
-import {
-  blockCapTop,
-  bordersDoorNorth,
-  doorCapless,
-  effectiveWallHeight,
-  mergeWallRuns,
-  wallJoins,
-  type WallRun,
-} from './wallRuns';
+import { blockCapTop, doorCapless, effectiveWallHeight, wallJoins, type WallRun } from './wallRuns';
 import { buildDoorBlock, type DoorFixture, type DoorSkin } from './doorRender';
 import { tickDoors, type CameraRect } from './doorTick';
-import { buildGroundLayer, floorRegionsPx, roomRectsPx } from './groundLayer';
-import { voidEdges } from './wallVoidEdge';
+import { groundSteps } from './groundLayer';
+import { planRoomWalls, type RoomWallPlan } from './roomWallPlan';
+import { StagedBuild, solo, type BuildStep } from './stagedBuild';
+import { DescendCover } from './descendCover';
 import { faceCrownFraction } from './wallTone';
 import type { Backdrop } from './Backdrop';
 import { Terrain } from './Terrain';
@@ -52,6 +46,11 @@ import { floorKeyOf, isSameFloor, type FloorKey } from './floorKey';
 // was still costing a render target per wall the one time it was ever flipped on. The shader
 // itself (`NormalLitFilter`) and its actor-facing tuning (`ACTOR_*`) are unaffected — this only
 // removes the wall-specific `WALL_LIT_*` look and its call site.
+
+/** Build time a staged build may spend per render frame. Its own frame also pays for triangulating
+ *  whatever that slice added (on the render that first draws it), and a normal frame here is ~4 ms
+ *  of work, so 4 ms keeps a building frame near half the 16.7 ms budget. */
+const STAGED_BUILD_BUDGET_MS = 4;
 
 /**
  * Render-side mirror of the engine's dungeon/arena room geometry (design/08 "render
@@ -107,22 +106,56 @@ export class RoomBuilder {
    *  Assigned in the constructor body, not as a field initializer, so it cannot depend on
    *  parameter-property assignment order. */
   private readonly terrain: Terrain;
+  /** The build in progress, if any: `build` drains it at once, `buildStaged` leaves it to
+   *  `tickFixtures`, a few ms per frame. */
+  private readonly staged = new StagedBuild();
+  private readonly cover: DescendCover;
 
   constructor(
     private readonly layers: Layers,
     private readonly backdrop: Backdrop,
   ) {
     this.terrain = new Terrain(layers);
+    this.cover = new DescendCover(layers.ui);
   }
 
   /** `room_enter`: rebuild only when the floor itself changed — see `floorKey.ts` for why a room
-   *  of the floor already drawn needs nothing here (door locks arrive through `updateDoors`). */
+   *  of the floor already drawn needs nothing here (door locks arrive through `updateDoors`).
+   *
+   *  A NEW dungeon floor after one was already drawn is a descend, and that one is built over
+   *  several frames behind `DescendCover` (`stagedBuild.ts` has the measurement). Anything else —
+   *  nothing built yet, a restart, a flat or arena state — builds at once, as it always has. */
   enterRoom(s: GameState): void {
-    if (!isSameFloor(this.builtFloor, s)) this.build(s);
+    if (isSameFloor(this.builtFloor, s)) return;
+    if (this.builtFloor !== null && s.dungeonRooms.length > 0) this.buildStaged(s);
+    else this.build(s);
   }
 
-  /** Rebuild the ground, AABB walls, and pillars for the CURRENTLY LOADED room. */
+  /** Rebuild the ground, AABB walls, and pillars for the CURRENTLY LOADED room, now. */
   build(s: GameState): void {
+    this.staged.start(this.buildSteps(s));
+    this.staged.runAll();
+  }
+
+  /** The same build, spread over the next render frames (`tickFixtures` runs it) with the world
+   *  covered until it is done. */
+  buildStaged(s: GameState): void {
+    this.staged.start(this.buildSteps(s));
+    this.cover.show();
+  }
+
+  /** Whether a staged build is still running. */
+  get building(): boolean {
+    return this.staged.busy;
+  }
+
+  /** One build as ordered steps: the first clears the old floor and plans the new one, then
+   *  expands into a step per wall run, per ground piece, and the doors, dressing and portal. */
+  private buildSteps(s: GameState): BuildStep[] {
+    return [solo(() => this.beginBuild(s))];
+  }
+
+  private beginBuild(s: GameState): BuildStep[] {
     this.builtFloor = floorKeyOf(s);
     const w = fpToPx(s.worldW);
     const h = fpToPx(s.worldH);
@@ -130,7 +163,7 @@ export class RoomBuilder {
     for (const c of [...this.layers.ground.children]) c.destroy();
     this.clearWalls();
     // Dropped here rather than inside `clearWalls`, because pillars contribute to this list too
-    // and `buildPillars` refills it further down this same method.
+    // and the dressing step refills it further down this same build.
     this.occluders.length = 0;
 
     // design/13 "per-biome background palette" — derived from the run's dungeon
@@ -145,49 +178,16 @@ export class RoomBuilder {
     // because the fog over it IS `palette.void` — the two have to move together or the plane
     // stops resolving into the backdrop at the view's edge.
     this.terrain.setPalette(palette);
+    // Everything else the old floor stood up goes now too, not only when its own step comes round:
+    // a staged build is covered, but the doors' ticks and `updateDoors` still see these lists.
+    this.clearDoors();
+    destroyDressing(this.props);
+    destroyDressing(this.pillars);
+    this.portal?.destroy();
+    this.portal = null;
+    this.portalPx = null;
 
-    // The ground layer — floor, its variation, the grid, the room light — is `groundLayer.ts`
-    // (split out 2026-08-20, 500-line convention). It is painted AFTER the wall/door geometry below
-    // is worked out, because the decals need the merged wall footprints (rubble must not sit on a
-    // wall's own footprint) and the door rects (the worn patch across a doorway).
-    const roomsPx = roomRectsPx(s, w, h);
-
-    // AABB walls (ROADMAP 1.2 — finally drawn): a tiled swatch + outline once wall art
-    // exists for this element, else the same flat fill + outline as before. A
-    // currently-locked door's passage rect lives in `s.walls` too (DoorSystem folds it
-    // in while locked) but must render as a door fixture, not a generic wall segment —
-    // `doorAabbs` is a reference-identity set (DoorSystem pushes the SAME `passageAabb`
-    // object, never a copy) so this skip is exact and free for non-dungeon modes
-    // (`dungeonDoors` is empty there).
-    const doorAabbs = new Set(s.dungeonDoors.map((dr) => dr.passageAabb));
-    // Px-space rects of every door passage, for `bordersDoorNorth` below — a door is never a
-    // wall (it's skipped from `runs` just above), but it's a fixture standing in the room all
-    // the same, and a run's cap must not be allowed to spill onto it (live report: the door
-    // "随时清晰可见" — always clearly visible — was half swallowed by a run's cap standing south
-    // of it, the exact "door passage between two rooms" case design/01 already called out).
-    const doorRectsPx: RectPx[] = s.dungeonDoors.map((dr) => ({
-      x: fpToPx(dr.passageAabb.x),
-      y: fpToPx(dr.passageAabb.y),
-      w: fpToPx(dr.passageAabb.w),
-      h: fpToPx(dr.passageAabb.h),
-    }));
-    // Every passage the wall pass must keep its art off — NOT the same list: an arena authors its
-    // passages as `arenaMap.doors` and never populates `dungeonDoors` (a `DoorRuntime` is
-    // DoorSystem's lockable-fixture record; an arena passage has no lock and no leaf, design/15).
-    // Until 2026-08-26 that left the list empty on every arena, so `bordersDoorNorth` always
-    // answered no and the clip rule was dead code there — 58 of `arena_launch`'s 74 passages stood
-    // under wall art, 36 buried outright; feeding them here takes it to 10, worst 40 px
-    // (`arenaWallCoverage.test.ts`). `passageGrid` is ABSOLUTE grid, unlike a room's `solids`, so
-    // no room offset. Fixtures still come only from `doorRectsPx`: an arena builds none.
-    const passageRectsPx: RectPx[] = [
-      ...doorRectsPx,
-      ...(s.arenaMap?.doors ?? []).map((d) => ({
-        x: d.passageGrid.x * PX_PER_GRID,
-        y: d.passageGrid.y * PX_PER_GRID,
-        w: d.passageGrid.w * PX_PER_GRID,
-        h: d.passageGrid.h * PX_PER_GRID,
-      })),
-    ];
+    const plan = planRoomWalls(s, w, h, element);
     // Every wall now stands (2026-08-18 — see `wallGeometry.wallTier` for why the old
     // "east-west runs only" rule was what made a room read flat), at one of three heights.
     // Shadows all land on one shared Graphics, added to `layers.shadow` before the blocks so
@@ -197,92 +197,73 @@ export class RoomBuilder {
     // joins the sprite batch for one build-time pack instead of a draw call per frame.
     const shadows = staticGraphics();
     const faceTex = getWallFaceTexture(element);
-    // Tier FIRST, then merge same-tier neighbours into one mass (`wallRuns.ts`): adjacent rooms
-    // each author their own perimeter wall, so a room boundary is two parallel 32 px rects and
-    // drawing each as its own block put a lit-edge/dark-band seam down the middle of one stone
-    // mass. Tier before merge, never after — see `mergeWallRuns` for why same-tier-only is
-    // load-bearing rather than caution.
-    const runs: WallRun[] = [];
-    for (const wall of s.walls) {
-      if (doorAabbs.has(wall)) continue;
-      const rect: RectPx = { x: fpToPx(wall.x), y: fpToPx(wall.y), w: fpToPx(wall.w), h: fpToPx(wall.h) };
-      runs.push({ rect, tier: wallTier(rect, roomsPx) });
-    }
-    // ...then, on the merged set, work out which edges are buried in an L/T corner. An L cannot
-    // be merged (its union is not a rectangle), so without this every corner drew two blocks'
-    // worth of "I end here" cues across one continuous stone top — see `wallJoins`.
-    const merged = mergeWallRuns(runs);
-    // The crown line a corner stops under is per-ELEMENT: the shipped face swatches disagree, ice
-    // most of all (see `FACE_CROWN_ROWS`), so this has to come from the room's own biome.
-    const joins = wallJoins(merged, faceCrownFraction(element));
-    for (const [i, run] of merged.entries()) {
-      if (bordersDoorNorth(run.rect, passageRectsPx)) joins[i] = { ...joins[i]!, doorClip: true };
-    }
-    // ...and which of their east/west sides end at NOTHING, which `wallJoins` cannot answer
-    // because it only ever sees other walls: the question is about the floor as well as the
-    // stone (`wallVoidEdge.ts`). Fed the regions the ground layer actually PAINTS rather than
-    // `roomsPx`, since the two diverge in the fallback case — a mode with no usable room model
-    // paints the whole world box and therefore has no interior void for a return to face.
-    const mergedRects = merged.map((run) => run.rect);
-    const floorsPx = floorRegionsPx(s, w, h);
-    const voids = mergedRects.map((rect) => voidEdges(rect, mergedRects, floorsPx));
-    for (const [i, run] of merged.entries()) {
-      // `doorClip`ped run whose OWN footprint is shallower than its tier: shrink the height
-      // itself, not just the cap — see `effectiveWallHeight` for why a cap-only clip still let
-      // the FACE spill onto the door (measured: 72 px of pure face, on a 32 px-deep stub). A
-      // no-op for every other run, tier height unchanged.
-      const height = effectiveWallHeight(run.rect, wallHeight(run.tier), joins[i]!);
-      drawWallShadow(shadows, run.rect, height);
-      const seg = buildWallBlock(
-        run.rect,
-        height,
-        { palette, cap: wallTex, face: faceTex },
-        joins[i],
-        voids[i],
-      );
-      this.layers.entities.addChild(seg);
-      this.wallEntities.push(seg);
-      // The block sorts on its south edge and paints upward from there, so the floor it covers
-      // runs from its cap's north edge down to its own footprint — see `occlusion.Occluder`.
-      const sortY = run.rect.y + run.rect.h;
-      this.occluders.push(
-        fadeableBlock(
-          {
-            left: run.rect.x,
-            right: run.rect.x + run.rect.w,
-            top: sortY + blockCapTop(run.rect, height, joins[i]),
-            sortY,
-            foldY: sortY - height, // the cap/face joint: below it, only a deep fade reaches
-          },
-          xrayLayers(seg.children),
-          deepXrayLayers(seg.children),
-        ),
-      );
-    }
-    buildGroundLayer(this.layers.ground, {
-      rooms: roomsPx,
-      floorRegions: floorsPx,
-      wallRects: mergedRects,
-      doorRects: passageRectsPx,
-      palette,
-      floorTex,
-    });
-
+    // Owned from here, although it is only mounted with the doors: a build cancelled before then
+    // still has it destroyed by the next `clearWalls`.
+    this.wallShadows = shadows;
+    const skin = { palette, cap: wallTex, face: faceTex };
+    const steps: BuildStep[] = plan.merged.map((run, i) => () => this.buildWallRun(run, i, plan, skin, shadows));
+    steps.push(
+      ...groundSteps(this.layers.ground, {
+        rooms: plan.roomsPx,
+        floorRegions: plan.floorsPx,
+        wallRects: plan.merged.map((run) => run.rect),
+        doorRects: plan.passageRectsPx,
+        palette,
+        floorTex,
+      }),
+    );
     // Doors before the shadow Graphics is mounted, because a door is a piece of the wall it is
     // cut into and throws its own cast shadow onto the same shared Graphics.
-    this.buildDoors(
-      s,
-      merged,
-      doorRectsPx,
-      { palette, cap: wallTex, face: faceTex, floor: floorTex, curtain: getDoorCurtainTexture() },
-      shadows,
-      element,
-    );
-    this.layers.shadow.addChild(shadows);
-    this.wallShadows = shadows;
+    steps.push(solo(() => {
+      this.buildDoors(
+        s,
+        plan.merged,
+        plan.doorRectsPx,
+        { palette, cap: wallTex, face: faceTex, floor: floorTex, curtain: getDoorCurtainTexture() },
+        shadows,
+        element,
+      );
+      this.layers.shadow.addChild(shadows);
+    }));
+    steps.push(solo(() => this.buildDressing(s, palette, element)));
+    steps.push(() => this.buildPortal(s, w, h));
+    return steps;
+  }
 
-    this.buildDressing(s, palette, element);
-    this.buildPortal(s, w, h);
+  /** One merged wall run: its ground shadow, its standing block, and its occluder. */
+  private buildWallRun(
+    run: WallRun,
+    i: number,
+    plan: RoomWallPlan,
+    skin: Pick<DoorSkin, 'palette' | 'cap' | 'face'>,
+    shadows: Graphics,
+  ): void {
+    const { joins, voids } = plan;
+    // `doorClip`ped run whose OWN footprint is shallower than its tier: shrink the height
+    // itself, not just the cap — see `effectiveWallHeight` for why a cap-only clip still let
+    // the FACE spill onto the door (measured: 72 px of pure face, on a 32 px-deep stub). A
+    // no-op for every other run, tier height unchanged.
+    const height = effectiveWallHeight(run.rect, wallHeight(run.tier), joins[i]!);
+    drawWallShadow(shadows, run.rect, height);
+    const seg = buildWallBlock(run.rect, height, skin, joins[i], voids[i]);
+    this.layers.entities.addChild(seg);
+    this.wallEntities.push(seg);
+    // The block sorts on its south edge and paints upward from there, so the floor it covers
+    // runs from its cap's north edge down to its own footprint — see `occlusion.Occluder`.
+    const sortY = run.rect.y + run.rect.h;
+    this.occluders.push(
+      fadeableBlock(
+        {
+          left: run.rect.x,
+          right: run.rect.x + run.rect.w,
+          top: sortY + blockCapTop(run.rect, height, joins[i]),
+          sortY,
+          foldY: sortY - height, // the cap/face joint: below it, only a deep fade reaches
+        },
+        xrayLayers(seg.children),
+        deepXrayLayers(seg.children),
+      ),
+    );
   }
 
   /**
@@ -396,6 +377,10 @@ export class RoomBuilder {
    * `doorTick.tickDoors`.
    */
   tickFixtures(dt: number, view: CameraRect | null, playerPx: { x: number; y: number } | null): void {
+    // A staged build (a descend) advances here because this is called once per render frame on
+    // every render path — and first, so the doors ticked below are this frame's doors.
+    if (this.staged.busy) this.staged.runFor(STAGED_BUILD_BUDGET_MS);
+    this.cover.update(dt, this.staged.busy);
     tickDoors(dt, this.doorFixtures, this.doorFootprints, view, playerPx);
     // The portal animates only while it is open — it is `visible = false` otherwise, and a hidden
     // vortex advancing its own clock is pure cost. `alpha` is 1 because a portal never
@@ -477,6 +462,8 @@ export class RoomBuilder {
    *  leak the previous run's geometry. */
   clear(): void {
     this.builtFloor = null;
+    this.staged.cancel();
+    this.cover.hide();
     for (const c of [...this.layers.ground.children]) c.destroy();
     this.clearDoors();
     this.clearWalls();
