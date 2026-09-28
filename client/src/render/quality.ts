@@ -34,6 +34,12 @@ export interface QualityProfile {
   readonly tier: QualityTier;
   /** The one lighting pass over `layers.lit` (`fx/filters/litFx.ts`). */
   readonly sceneLight: boolean;
+  /** Split the lighting pass so the standing half (walls, actors) renders MSAA'd
+   *  (`Layers.litStand`). Costs a second lighting pass plus a multisampled target, so only
+   *  where there is headroom; without it the one pass stays on `layers.lit`, unantialiased.
+   *  Meaningless while `sceneLight` is off: without a filter the entities draw straight into the
+   *  canvas and get its antialiasing for free. */
+  readonly standAntialias: boolean;
   /** Vignette + chromatic aberration over `layers.world`. */
   readonly screenFx: boolean;
   /** Bloom-lite blur over the additive `layers.fx`. */
@@ -57,6 +63,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
   high: {
     tier: 'high',
     sceneLight: true,
+    standAntialias: true,
     screenFx: true,
     bloom: true,
     actorShaders: true,
@@ -81,6 +88,8 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
   medium: {
     tier: 'medium',
     sceneLight: true,
+    // One lighting pass, not two: the pass COUNT is this tier's whole reason to exist.
+    standAntialias: false,
     screenFx: false,
     bloom: false,
     actorShaders: false,
@@ -94,6 +103,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
   low: {
     tier: 'low',
     sceneLight: false,
+    standAntialias: false,
     screenFx: false,
     bloom: false,
     actorShaders: false,

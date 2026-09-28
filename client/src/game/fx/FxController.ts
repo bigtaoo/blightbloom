@@ -43,6 +43,11 @@ export class FxController {
   /** The one lighting pass (design/01 milestone 2) — replaced a per-actor filter 2026-08-24,
    *  see fx/filters/litFx.ts. Mounted on `layers.lit` by `attach`. */
   readonly sceneLight = new SceneLightFilter();
+  /** The same pass over `layers.litStand` when the tier splits it (`standAntialias`): a second
+   *  instance only so its target can be multisampled — `'inherit'` takes the canvas's own
+   *  antialias setting, so a host that turned MSAA off gets none here either. Same uniforms as
+   *  `sceneLight` every frame (`syncCamera`), or the two halves would be lit differently. */
+  readonly sceneLightStand = new SceneLightFilter({ antialias: 'inherit' });
   /** Bloom-lite blur over the additive fx layer. A field rather than a `new` inside `attach()`
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a
    *  fresh filter — and its GL program — every time the tier changes. */
@@ -87,6 +92,8 @@ export class FxController {
     // a property of the layer, not of the pass, and leaving it correct means re-mounting on a
     // tier change needs no second call.
     this.layers.lit.filterArea = this.litArea;
+    this.layers.litFloor.filterArea = this.litArea;
+    this.layers.litStand.filterArea = this.litArea;
     this.applyQuality();
   }
 
@@ -111,7 +118,12 @@ export class FxController {
     // flashes/trails/particles) gives a cheap glow halo without a real multi-pass
     // bright-pass bloom (first-pass approximation, design/01's own "milestone" framing).
     this.layers.fx.filters = q.bloom ? [this.bloom] : [];
-    this.layers.lit.filters = q.sceneLight ? [this.sceneLight] : [];
+    // One pass on `lit`, or the same pass split over its two halves — never both, or the stand
+    // half would be lit twice. See `Layers.litFloor` for the measurement behind the split.
+    const split = q.sceneLight && q.standAntialias;
+    this.layers.lit.filters = q.sceneLight && !split ? [this.sceneLight] : [];
+    this.layers.litFloor.filters = split ? [this.sceneLight] : [];
+    this.layers.litStand.filters = split ? [this.sceneLightStand] : [];
     this.particles.setBudget(q.particleBudget);
   }
 
@@ -352,8 +364,11 @@ export class FxController {
     });
     // Nothing reads these uniforms while the pass is unmounted (low tier).
     if (!activeQuality().sceneLight) return;
-    this.sceneLight.setRegion(this.litArea.x, this.litArea.y, this.litArea.width, this.litArea.height);
-    this.sceneLight.setLights(this.lightBuffer, this.lights.snapshot(this.lightBuffer));
+    const count = this.lights.snapshot(this.lightBuffer);
+    for (const pass of [this.sceneLight, this.sceneLightStand]) {
+      pass.setRegion(this.litArea.x, this.litArea.y, this.litArea.width, this.litArea.height);
+      pass.setLights(this.lightBuffer, count);
+    }
   }
 
   /** This frame's visible world rect, in world px — the inverse of the camera transform applied
