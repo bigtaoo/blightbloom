@@ -29,6 +29,7 @@ import { Assets } from 'pixi.js';
 import { resetAssetHost, setAssetHost, type AssetHost } from './assetHost';
 import { packsForPhase } from './assetManifest';
 import { resetPackLoader } from './packLoader';
+import { resetUiSkinsForTests, uiTierOf, UI_ASSETS, UI_ASSET_KEYS, type UiTier } from './uiSkins';
 import {
   beginDeferredArt,
   ensureRunArt,
@@ -103,6 +104,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   resetPreloadArt();
   resetPackLoader();
+  resetUiSkinsForTests();
 });
 
 afterEach(() => {
@@ -110,6 +112,7 @@ afterEach(() => {
   resetAssetHost();
   resetPreloadArt();
   resetPackLoader();
+  resetUiSkinsForTests();
 });
 
 describe('beginDeferredArt — the download nobody asked for', () => {
@@ -241,5 +244,66 @@ describe('preloadCoreArt — the everything-now path', () => {
     await ensureRunArt();
 
     expect(h.jsonReads.length).toBe(afterCore);
+  });
+});
+
+describe('the UI tiers each phase waits for (2026-09-28)', () => {
+  const tierFiles = (tier: UiTier): string[] => UI_ASSET_KEYS.filter((k) => uiTierOf(k) === tier).map((k) => UI_ASSETS[k]!);
+
+  /** Every `Assets.load` src, in order; the files in `hold` never settle until released, and
+   *  everything else fails at once — every loader is best-effort, so a failure still "settles". */
+  function watchLoads(hold: readonly string[]) {
+    const srcs: string[] = [];
+    const pending: Array<() => void> = [];
+    vi.spyOn(Assets, 'load').mockImplementation(((opts: unknown) => {
+      const src = typeof opts === 'string' ? opts : (opts as { src?: string } | undefined)?.src ?? '';
+      srcs.push(src);
+      if (hold.includes(src)) return new Promise((_, reject) => pending.push(() => reject(new Error('released'))));
+      return Promise.reject(new Error('no asset server here'));
+    }) as never);
+    return { srcs, release: () => pending.splice(0).forEach((r) => r()) };
+  }
+
+  it('preloadLobbyArt awaits `boot` alone: it resolves with `lobby` still downloading, and asks for no `late` file', async () => {
+    // The tiering's whole saving. Swapped back to `await preloadUiArt()`, or the `lobby` kick
+    // awaited, this never resolves — and the uiSkins byte budget stays green, because it sizes
+    // the tier and not what the boot waits on.
+    setAssetHost(countingHost().host);
+    const lobby = tierFiles('lobby');
+    const loads = watchLoads(lobby);
+
+    let resolved = false;
+    const boot = preloadLobbyArt().then(() => { resolved = true; });
+    await vi.waitFor(() => expect(resolved).toBe(true));
+    await boot;
+
+    for (const src of tierFiles('boot')) expect(loads.srcs).toContain(src);
+    // `lobby` was KICKED — the portraits start downloading behind the first frame, not at the gate...
+    for (const src of lobby) expect(loads.srcs).toContain(src);
+    // ...and `late` was not touched: it would share the one slow line with `lobby`.
+    for (const src of tierFiles('late')) expect(loads.srcs).not.toContain(src);
+    loads.release();
+  });
+
+  it('ensureRunArt holds the run gate until every `late` file has settled', async () => {
+    // A run draws the floor-card icons and the result art; a gate that opened without them
+    // would put a text-only card in front of the player. One late file held back is enough.
+    setAssetHost(countingHost().host);
+    const late = tierFiles('late');
+    expect(late.length).toBeGreaterThan(1);
+    const held = late[late.length - 1]!;
+    const loads = watchLoads([held]);
+
+    let resolved = false;
+    const gate = ensureRunArt().then(() => { resolved = true; });
+    await vi.waitFor(() => expect(loads.srcs).toContain(held));
+    // Every other loader has failed fast by now; give them all a chance to settle anyway.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolved).toBe(false);
+    for (const src of late) expect(loads.srcs).toContain(src);
+
+    loads.release();
+    await gate;
+    expect(resolved).toBe(true);
   });
 });
