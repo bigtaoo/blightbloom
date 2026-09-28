@@ -56,6 +56,23 @@ import { LoadingScreen } from '../ui/loadingScreen';
  */
 export const MIN_TRANSITION_MS = 3000;
 
+/**
+ * After a run-boundary retry, the screen stays up until the frames have SETTLED: `SETTLE_FRAMES`
+ * in a row no longer than 1.5x the shortest frame seen while holding (the device's own vsync,
+ * whatever its rate), after at least `SETTLE_MIN_FRAMES`, and never past `SETTLE_CAP_MS`.
+ *
+ * Why (2026-09-28). The screen used to come down BEFORE the retry, so everything a run costs
+ * once happened on the first frames the player could see: the first sim tick generating the
+ * floor, every actor view created at once (with the session's one-time texture bakes — the
+ * sphere shade field and the shield scales, ~50 ms together), the room build (56 ms) and the
+ * first render's uploads and shader compiles. Measured on a 1080p desktop: 132 ms and 129 ms
+ * frames, then a 117 ms and a 134 ms gap — 44 frames in the run's first second, in plain view.
+ * Held, the same work happens under the screen, and the run appears already running smoothly.
+ */
+export const SETTLE_FRAMES = 3;
+export const SETTLE_MIN_FRAMES = 5;
+export const SETTLE_CAP_MS = 1500;
+
 /** Which side of a run the player is crossing to. It picks the caption, and nothing else. */
 export type RunBoundary = 'run' | 'hub';
 
@@ -103,7 +120,7 @@ export class TransitionGate {
    */
   deferRunBoundary(into: RunBoundary, retry: () => void): boolean {
     const label = t(into === 'run' ? 'loading.enteringRun' : 'loading.returningToHub');
-    return this.open(retry, label, isDeferredArtArmed() ? MIN_TRANSITION_MS : 0);
+    return this.open(retry, label, isDeferredArtArmed() ? MIN_TRANSITION_MS : 0, true);
   }
 
   /** Whether a wait is currently on screen. Test/diagnostic surface. */
@@ -111,7 +128,7 @@ export class TransitionGate {
     return this.screen !== null;
   }
 
-  private open(retry: () => void, label: string, minMs: number): boolean {
+  private open(retry: () => void, label: string, minMs: number, settle = false): boolean {
     // Already inside a released transition: the outer gate has been paid and this caller is
     // part of what it released. Gating again would charge the floor a second time.
     if (this.releasing) return false;
@@ -162,22 +179,43 @@ export class TransitionGate {
     if (minMs > 0) waits.push((this.deps.sleep ?? defaultSleep)(minMs));
 
     void Promise.all(waits).then(() => {
-      // Torn down BEFORE the retry, so the re-entrant call sees no screen — and `releasing`
-      // is what stops it opening a fresh one in that gap.
-      this.hide();
+      // Released BEFORE the retry, so the re-entrant call sees no screen — and `releasing`
+      // is what stops it opening a fresh one in that gap. A run boundary keeps the VIEW up a
+      // little longer (`SETTLE_FRAMES`); the gate itself is open either way.
+      this.screen = null;
+      if (!settle) screen.destroy();
       this.releasing = true;
       try {
         retry();
       } finally {
         this.releasing = false;
       }
+      if (settle) this.holdUntilSettled(screen);
     });
     return true;
   }
 
-  private hide(): void {
-    this.screen?.destroy();
-    this.screen = null;
+  /** Keep `screen` on the overlay until the frames behind it have settled — see `SETTLE_FRAMES`. */
+  private holdUntilSettled(screen: LoadingScreen): void {
+    const ticker = this.deps.ticker;
+    let frames = 0;
+    let calm = 0;
+    let elapsed = 0;
+    let fastest = Infinity;
+    const tick = (): void => {
+      // `elapsedMS`, not `deltaMS`: the latter is clamped to the ticker's 100 ms ceiling, and the
+      // frames this is waiting out are exactly the ones past it.
+      const dt = ticker.elapsedMS;
+      frames++;
+      elapsed += dt;
+      fastest = Math.min(fastest, dt);
+      calm = dt <= fastest * 1.5 ? calm + 1 : 0;
+      if ((frames >= SETTLE_MIN_FRAMES && calm >= SETTLE_FRAMES) || elapsed >= SETTLE_CAP_MS) {
+        ticker.remove(tick);
+        screen.destroy();
+      }
+    };
+    ticker.add(tick);
   }
 }
 

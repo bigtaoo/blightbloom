@@ -17,7 +17,7 @@
  * shape instead of just aggregate bounds), which matters here because tinting IS
  * the widget's whole job.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { Graphics } from 'pixi.js';
 import type { ArenaMap } from '@dd/engine/content/arenas';
 import { Minimap, type MinimapPlayer } from './Minimap';
@@ -172,5 +172,75 @@ describe('Minimap — player dots (shared by both modes; PvE gained this 2026-08
     const remoteRadius = (drawnShapes(graphicsAt(m2, 3))[0]!.shape as { radius: number }).radius;
 
     expect(localRadius).toBeGreaterThan(remoteRadius);
+  });
+});
+
+// The HUD calls update() every frame, and PvE hands in a freshly CONVERTED map every frame
+// (`dungeonToArenaMap`). A cleared Graphics is re-triangulated on its next render, so each layer
+// redraws only when what it would draw changed (2026-09-28) — measured, the three layers were a
+// real share of a run's per-frame garbage for a picture that changes a few times per room.
+describe('Minimap — each layer redraws only when its own content changed', () => {
+  const spies = (m: Minimap) => ({
+    doors: vi.spyOn(graphicsAt(m, 1), 'clear'),
+    rooms: vi.spyOn(graphicsAt(m, 2), 'clear'),
+    dots: vi.spyOn(graphicsAt(m, 3), 'clear'),
+  });
+  const cloneMap = (): ArenaMap => JSON.parse(JSON.stringify(MAP)) as ArenaMap;
+  const here: MinimapPlayer[] = [{ roomId: 'A', alive: true, isLocal: true }];
+
+  it('an unchanged frame redraws nothing — even with a NEW map object of the same content', () => {
+    const m = new Minimap({ w: 100, h: 100 });
+    m.update(MAP, () => 'safe', here);
+    const s = spies(m);
+    for (let i = 0; i < 5; i++) m.update(cloneMap(), () => 'safe', [{ ...here[0]! }]);
+    expect(s.doors).not.toHaveBeenCalled();
+    expect(s.rooms).not.toHaveBeenCalled();
+    expect(s.dots).not.toHaveBeenCalled();
+    // ...and what is on screen is still the full picture, not an emptied one.
+    expect(drawnShapes(graphicsAt(m, 2))).toHaveLength(2);
+    expect(drawnShapes(graphicsAt(m, 3))).toHaveLength(1);
+  });
+
+  it('a room changing status redraws the rooms and nothing else', () => {
+    const m = new Minimap({ w: 100, h: 100 });
+    m.update(MAP, () => 'safe', here);
+    const s = spies(m);
+    m.update(MAP, (id) => (id === 'B' ? 'danger' : 'safe'), here);
+    expect(s.rooms).toHaveBeenCalledTimes(1);
+    expect(s.doors).not.toHaveBeenCalled();
+    expect(s.dots).not.toHaveBeenCalled();
+    expect(drawnShapes(graphicsAt(m, 2)).map((r) => r.color)).toEqual([0x2a3140, 0x9b2c2c]);
+  });
+
+  it('a player moving rooms, or changing role, redraws the dots and nothing else', () => {
+    const m = new Minimap({ w: 100, h: 100 });
+    m.update(MAP, () => 'safe', here);
+    const s = spies(m);
+    m.update(MAP, () => 'safe', [{ roomId: 'B', alive: true, isLocal: true }]);
+    expect(s.dots).toHaveBeenCalledTimes(1);
+    m.update(MAP, () => 'safe', [{ roomId: 'B', alive: true, isLocal: false }]);
+    expect(s.dots).toHaveBeenCalledTimes(2); // the local dot's size and colour are content too
+    expect(s.rooms).not.toHaveBeenCalled();
+    expect(s.doors).not.toHaveBeenCalled();
+  });
+
+  it('a different map redraws its doors and rooms', () => {
+    const m = new Minimap({ w: 100, h: 100 });
+    m.update(MAP, () => 'safe', here);
+    const s = spies(m);
+    const moved = cloneMap();
+    (moved.rooms[1]!.rectGrid as { w: number }).w = 5;
+    moved.doors = [];
+    m.update(moved, () => 'safe', here);
+    expect(s.rooms).toHaveBeenCalledTimes(1);
+    expect(s.doors).toHaveBeenCalledTimes(1);
+    expect(graphicsAt(m, 1).context.instructions).toHaveLength(0);
+  });
+
+  it('a player dropping off the map empties the dots layer rather than leaving a stale dot', () => {
+    const m = new Minimap({ w: 100, h: 100 });
+    m.update(MAP, () => 'safe', here);
+    m.update(MAP, () => 'safe', [{ roomId: undefined, alive: true, isLocal: true }]);
+    expect(drawnShapes(graphicsAt(m, 3))).toHaveLength(0);
   });
 });

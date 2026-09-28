@@ -91,6 +91,7 @@ export class Bar {
   private h: number;
   private fillColor: number;
   private curFrac = 0;
+  private drawn = false;
   private lastValue = -1;
   private flashMs = 0;
   private static readonly FLASH_LIFE_MS = 160;
@@ -111,9 +112,15 @@ export class Bar {
 
   /** value/max in [0, max]. `labelText` overrides the default `value/max` readout. */
   set(value: number, max: number, labelText?: string) {
-    this.curFrac = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
-    this.fill.clear();
-    if (this.curFrac > 0) this.fill.roundRect(0, 0, this.w * this.curFrac, this.h, this.h / 2).fill({ color: this.fillColor });
+    const frac = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+    // The HUD sets every bar every frame; redraw only a fill that moved (a cleared Graphics
+    // is re-triangulated on its next render, which was per-frame garbage for a still bar).
+    if (frac !== this.curFrac || !this.drawn) {
+      this.curFrac = frac;
+      this.drawn = true;
+      this.fill.clear();
+      if (frac > 0) this.fill.roundRect(0, 0, this.w * frac, this.h, this.h / 2).fill({ color: this.fillColor });
+    }
     if (this.lastValue >= 0 && value < this.lastValue) this.flashMs = Bar.FLASH_LIFE_MS;
     this.lastValue = value;
     if (this.label) this.label.text = labelText ?? `${Math.max(0, Math.round(value))}/${Math.round(max)}`;

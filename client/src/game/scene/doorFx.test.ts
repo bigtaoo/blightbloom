@@ -13,7 +13,7 @@
  * the proximity ramp, and the x-ray proxy that exists because `occlusion.fadeGroup` and this class
  * would otherwise both own the same `alpha`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Container, Graphics, Sprite, TilingSprite } from 'pixi.js';
 import { DoorFx, type DoorFxParts } from './doorFx';
 import { doorFloorPlane, GLOW_POOL_SQUASH, type DoorFloorPlane } from './doorLights';
@@ -517,5 +517,32 @@ describe('a degenerate band builds no flame layers at all', () => {
     expect(fx.over.children.filter((c) => c instanceof Sprite)).toHaveLength(0);
     // ...and the open state's streams are unaffected: they do not depend on the leaf art at all.
     expect(tilesOf(fx.behind)).toHaveLength(2);
+  });
+});
+
+// A settled door ticks every frame. Its motes (open state only), pulse (dark at the ends of its
+// sawtooth) and burst (a lock change only) are often EMPTY, and clearing an empty Graphics still
+// marks it dirty, which rebuilds it on its next render: up to three rebuilds a frame per door of
+// nothing at all (2026-09-28). Each is now cleared only when it has something to lose.
+describe('DoorFx — an empty layer is not re-cleared every frame', () => {
+  it('a settled LOCKED door leaves its empty motes and burst alone across many ticks', () => {
+    const { fx } = build(true);
+    fx.tick(16, 1);
+    const empty = graphicsOf(fx.over).filter((g) => g.context.instructions.length === 0);
+    expect(empty.length).toBeGreaterThanOrEqual(2); // motes (open-only) and burst (idle)
+    const clears = empty.map((g) => vi.spyOn(g, 'clear'));
+    for (let i = 0; i < 10; i++) fx.tick(16, 1);
+    for (const c of clears) expect(c).not.toHaveBeenCalled();
+  });
+
+  it('still empties a layer the frame it goes dark, rather than leaving its last drawing up', () => {
+    // The burst lights on a lock change and must be GONE once it has played out.
+    const { fx } = build(true);
+    fx.setLocked(false, true);
+    fx.tick(80, 1);
+    const burst = graphicsOf(fx.over).at(-1)!;
+    expect(burst.context.instructions.length).toBeGreaterThan(0);
+    fx.tick(TRANSITION_MS, 1);
+    expect(burst.context.instructions).toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { Graphics, type Texture } from 'pixi.js';
+import { Graphics, type Container, type Texture } from 'pixi.js';
 import { CLEAR, bakedField, over, premul, writeTexel, type Premul } from './shadeRamp';
 import type { BoneDef, ResolvedBoneTransform, WorldPose, WorldPositions } from './types';
 
@@ -331,9 +331,14 @@ export function drawSphereShading(drawnR: number): Graphics {
  * bone tips relative to the body bone's tip.
  *
  * Each mount gets nested ellipses squashed toward the body's surface and pulled back TOWARD
- * the core, so the dark side of the blob is the side the module overlaps. Cleared and
- * redrawn per frame (the mounts orbit), which is why this takes a Graphics instead of
- * returning one.
+ * the core, so the dark side of the blob is the side the module overlaps.
+ *
+ * **Geometry once, position per frame (2026-09-28).** A contact's ellipses depend only on the
+ * body's drawn radius; what the orbiting module changes every frame is where they sit. So each
+ * mount owns one child Graphics of `layer`, built once around its own origin and then only
+ * moved. The version before cleared and refilled every ellipse of every mount per frame — the
+ * mounts orbit, so that was every frame — and a refilled Graphics is re-triangulated on its next
+ * render: ~32 KB of garbage a frame for one player, the second-largest source in a run.
  */
 /**
  * Repaint one rig's module contact shades from this frame's posed bones — the GATHERING half of
@@ -386,7 +391,7 @@ export function placeSphereShade(
 }
 
 export function paintModuleContacts(
-  g: Graphics,
+  g: Container,
   shadeBoneId: string,
   boneDefs: readonly BoneDef[],
   worldPose: WorldPositions,
@@ -418,25 +423,36 @@ export function paintModuleContacts(
   drawModuleContacts(g, mounts, drawnR);
 }
 
-export function drawModuleContacts(g: Graphics, mounts: ReadonlyArray<{ x: number; y: number }>, drawnR: number): void {
-  g.clear();
+/** The drawn radius each contact Graphics was last BUILT for — see `drawModuleContacts`. */
+const builtFor = new WeakMap<Graphics, number>();
+
+export function drawModuleContacts(layer: Container, mounts: ReadonlyArray<{ x: number; y: number }>, drawnR: number): void {
   const r = drawnR * SHADE_FIT;
   const rx = r * MODULE_CONTACT_RX;
-  for (const m of mounts) {
-    const len = Math.hypot(m.x, m.y);
-    if (len < 0.001) continue;
+  while (layer.children.length < mounts.length) layer.addChild(new Graphics());
+  layer.children.forEach((child, i) => {
+    const g = child as Graphics;
+    const m = mounts[i];
+    const len = m ? Math.hypot(m.x, m.y) : 0;
+    if (!m || len < 0.001) {
+      g.visible = false;
+      return;
+    }
+    if (builtFor.get(g) !== drawnR) {
+      builtFor.set(g, drawnR);
+      g.clear();
+      for (let k = 0; k < MODULE_CONTACT_ALPHAS.length; k++) {
+        const scale = 1 - k * 0.28;
+        g.ellipse(0, 0, rx * scale, r * MODULE_CONTACT_RY * scale).fill({ color: SHADE_DARK, alpha: MODULE_CONTACT_ALPHAS[k]! });
+      }
+    }
     // Clamp the centre so the whole ellipse stays inside the body — a module hangs off a socket
     // bone whose TIP is well outside the shell (orb-core: socket len 52 vs shell bodyR 40), so
     // an unclamped blob would sit mostly on transparent background and paint a dark smudge
     // beside the character instead of a contact shade on it. Same invariant the ramp above
     // holds, and `rigShading.test.ts` checks both the same way.
     const reach = Math.min(len, Math.max(0, r - rx));
-    const cx = (m.x / len) * reach;
-    const cy = (m.y / len) * reach;
-    for (let i = 0; i < MODULE_CONTACT_ALPHAS.length; i++) {
-      const k = 1 - i * 0.28;
-      g.ellipse(cx, cy, rx * k, r * MODULE_CONTACT_RY * k)
-        .fill({ color: SHADE_DARK, alpha: MODULE_CONTACT_ALPHAS[i]! });
-    }
-  }
+    g.visible = true;
+    g.position.set((m.x / len) * reach, (m.y / len) * reach);
+  });
 }
