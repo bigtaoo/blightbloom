@@ -21,6 +21,24 @@ export class Layers {
   // Introduced 2026-08-24 when lighting moved off the individual actors — see litFx.ts.
   readonly lit = new Container();
 
+  // `lit`'s two halves (2026-09-28, motion-comfort pass two). On the high tier the lighting pass
+  // is mounted on EACH of these instead of on `lit` (`FxController.applyQuality`), because only
+  // the second one is worth antialiasing. A filter renders into a pool texture, and a pool
+  // texture has no MSAA unless the filter asks for it — so every wall edge, rig outline and
+  // shading band in the pass was being rasterized with NO antialiasing at all, while the lobby,
+  // drawn straight into the canvas, had the canvas's own. Measured on a live run by shifting the
+  // camera in 1/8 px steps: 36.5% of the moving edge pixels jumped in one step instead of
+  // gliding, which is what a player reads as the walls juddering while walking and as the idle
+  // hover bob stepping. MSAA over the whole of `lit` cut that to 14.5% for +4.4 ms of GPU on a
+  // 1080p desktop (3.2 -> 7.6 ms) — nearly all of it the floor's overdraw, times four samples,
+  // while the floor contributes almost none of the stepping. Split like this, with MSAA on the
+  // stand half only: 9.7% for +0.8 ms.
+  //
+  //  litFloor — the floor and the ground shadows: heavy overdraw, soft edges.
+  //  litStand — the Y-sorted entity set: every hard edge that moves.
+  readonly litFloor = new Container();
+  readonly litStand = new Container();
+
   // The void's FAR SIDE (Terrain.ts, 2026-08-28) — the ground beyond the wall, in WORLD space so
   // it pans and zooms with everything else, but a SIBLING of `lit` rather than a child of it, so
   // `SceneLightFilter` never shades it. That placement is the point: the 2026-08-27 frame that
@@ -87,7 +105,9 @@ export class Layers {
     // entities are sorted by zIndex (= gy) for top-down depth occlusion
     this.entities.sortableChildren = true;
 
-    this.lit.addChild(this.ground, this.shadow, this.entities);
+    this.litFloor.addChild(this.ground, this.shadow);
+    this.litStand.addChild(this.entities);
+    this.lit.addChild(this.litFloor, this.litStand);
     this.world.addChild(this.terrain, this.lit, this.fx, this.hud, this.numbers);
     this.root.addChild(this.backdrop, this.world, this.ui);
     this.ui.addChild(this.hudOverlay, this.menu, this.overlay);

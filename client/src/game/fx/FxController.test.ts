@@ -28,6 +28,8 @@ vi.mock('./filters', () => ({
   ChromaticAberrationFilter: class { amount: number; constructor(amount = 0) { this.amount = amount; } },
   MAX_SCENE_LIGHTS: 8,
   SceneLightFilter: class {
+    antialias: string;
+    constructor(opts: { antialias?: string } = {}) { this.antialias = opts.antialias ?? 'off'; }
     region: number[] = [0, 0, 1, 1];
     lights: { x: number; y: number; radius: number; intensity: number; color: number }[] = [];
     setRegion(x: number, y: number, w: number, h: number) { this.region = [x, y, w, h]; }
@@ -242,14 +244,41 @@ describe('FxController.updateCamera', () => {
 // the inverse of the camera transform that same frame — get this wrong and every light sits
 // somewhere other than where its source is, in a way no unit test of the shader could catch.
 describe('FxController scene-light sync', () => {
-  it('mounts the one lighting pass on the lit layer, with a filterArea (never bare bounds)', () => {
+  it('mounts the lighting pass on the two lit halves, each with a filterArea (never bare bounds)', () => {
     // The filter opts out of Pixi's viewport clip, so with no filterArea its region would be
-    // the whole dungeon floor's bounds — a texture allocation the size of the level.
+    // the whole dungeon floor's bounds — a texture allocation the size of the level. High tier
+    // (the default) splits the pass (`Layers.litStand`), and both halves need the SAME area.
     const layers = new Layers();
     const fx = new FxController(layers);
     fx.attach();
-    expect(layers.lit.filters).toEqual([fx.sceneLight]);
-    expect(layers.lit.filterArea).not.toBeNull();
+    expect(layers.lit.filters).toEqual([]);
+    expect(layers.litFloor.filters).toEqual([fx.sceneLight]);
+    expect(layers.litStand.filters).toEqual([fx.sceneLightStand]);
+    expect(layers.litFloor.filterArea).not.toBeNull();
+    expect(layers.litStand.filterArea).toBe(layers.litFloor.filterArea);
+    expect(layers.lit.filterArea).toBe(layers.litFloor.filterArea);
+  });
+
+  it('multisamples ONLY the stand half — the floor is where MSAA costs and buys nothing', () => {
+    // The measurement behind the split: MSAA over the whole pass was +4.4 ms on a 1080p desktop,
+    // nearly all of it the floor's overdraw, while the floor contributed almost none of the
+    // stepping edges. `'inherit'`, not `'on'`: a host whose canvas has no MSAA gets none here.
+    const fx = new FxController(new Layers());
+    expect(fx.sceneLightStand.antialias).toBe('inherit');
+    expect(fx.sceneLight.antialias).toBe('off');
+  });
+
+  it('feeds both halves the same region and lights, or the two would be lit differently', () => {
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    fx.flash(420, 360, 0x66e0ff, 20);
+    fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, fakePlayer(800, 600));
+    const floor = recorded(fx);
+    const stand = fx.sceneLightStand as unknown as typeof floor;
+    expect(floor.lights).toHaveLength(1);
+    expect(stand.region).toEqual(floor.region);
+    expect(stand.lights).toEqual(floor.lights);
   });
 
   it('leaves terrain, fx and hud out of the pass — three different reasons, one exclusion', () => {
@@ -262,7 +291,8 @@ describe('FxController scene-light sync', () => {
     // through is exactly the void.
     const layers = new Layers();
     new FxController(layers).attach();
-    expect(layers.lit.children).toEqual([layers.ground, layers.shadow, layers.entities]);
+    expect(layers.litFloor.children).toEqual([layers.ground, layers.shadow]);
+    expect(layers.litStand.children).toEqual([layers.entities]);
     expect(layers.world.children).toEqual([layers.terrain, layers.lit, layers.fx, layers.hud, layers.numbers]);
   });
 
@@ -349,6 +379,8 @@ describe('FxController quality tiers', () => {
       world: (layers.world.filters ?? []) as unknown[],
       fx: (layers.fx.filters ?? []) as unknown[],
       lit: (layers.lit.filters ?? []) as unknown[],
+      litFloor: (layers.litFloor.filters ?? []) as unknown[],
+      litStand: (layers.litStand.filters ?? []) as unknown[],
     };
   }
 
@@ -360,7 +392,10 @@ describe('FxController quality tiers', () => {
     const m = mounted(layers);
     expect(m.world).toEqual([fx.vignette, fx.chromatic]);
     expect(m.fx).toHaveLength(1); // the bloom blur
-    expect(m.lit).toEqual([fx.sceneLight]);
+    // ...and the lighting pass split in two, so the stand half can be multisampled.
+    expect(m.lit).toEqual([]);
+    expect(m.litFloor).toEqual([fx.sceneLight]);
+    expect(m.litStand).toEqual([fx.sceneLightStand]);
   });
 
   it('mounts ONLY the lighting pass on the medium tier — the rung is the pass count', () => {
@@ -373,7 +408,10 @@ describe('FxController quality tiers', () => {
     const fx = new FxController(layers);
     fx.attach();
     const m = mounted(layers);
+    // ONE lighting pass, on `lit` — the split would double exactly what this rung exists to cut.
     expect(m.lit).toEqual([fx.sceneLight]);
+    expect(m.litFloor).toEqual([]);
+    expect(m.litStand).toEqual([]);
     expect(m.world).toEqual([]);
     expect(m.fx).toEqual([]);
   });
@@ -387,6 +425,8 @@ describe('FxController quality tiers', () => {
     expect(m.world).toEqual([]);
     expect(m.fx).toEqual([]);
     expect(m.lit).toEqual([]);
+    expect(m.litFloor).toEqual([]);
+    expect(m.litStand).toEqual([]);
   });
 
   it('keeps `lit`\'s filterArea across a tier change, so re-mounting needs no second call', () => {
@@ -401,7 +441,17 @@ describe('FxController quality tiers', () => {
     setActiveQuality('high');
     fx.applyQuality();
     expect(layers.lit.filterArea).toBe(area);
+    expect(layers.litFloor.filterArea).toBe(area);
+    expect(layers.litStand.filterArea).toBe(area);
+    expect(layers.litFloor.filters).toEqual([fx.sceneLight]);
+    expect(layers.litStand.filters).toEqual([fx.sceneLightStand]);
+    // ...and back down to medium puts the ONE pass back on `lit`, off both halves — never both,
+    // or the stand half would be lit twice.
+    setActiveQuality('medium');
+    fx.applyQuality();
     expect(layers.lit.filters).toEqual([fx.sceneLight]);
+    expect(layers.litFloor.filters).toEqual([]);
+    expect(layers.litStand.filters).toEqual([]);
   });
 
   it('flips back and forth without rebuilding the filters', () => {

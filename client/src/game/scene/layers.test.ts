@@ -24,8 +24,12 @@ describe('Layers', () => {
   });
 
   it('lit contains ground, shadow, entities in that paint order', () => {
+    // Through its two halves since 2026-09-28 (`Layers.litStand`): the floor half first, so the
+    // paint order is exactly what it was when all three were direct children.
     const layers = new Layers();
-    expect(layers.lit.children).toEqual([layers.ground, layers.shadow, layers.entities]);
+    expect(layers.lit.children).toEqual([layers.litFloor, layers.litStand]);
+    expect(layers.litFloor.children).toEqual([layers.ground, layers.shadow]);
+    expect(layers.litStand.children).toEqual([layers.entities]);
   });
 
   // The `lit` grouping (2026-08-24) exists to give the one scene-lighting pass something to
@@ -34,8 +38,10 @@ describe('Layers', () => {
   // hud is a readout, not a surface. Both must stay outside, or the pass eats them.
   it('keeps fx and hud OUT of the lit group — a muzzle flash is light, a health bar is a readout', () => {
     const layers = new Layers();
-    expect(layers.lit.children).not.toContain(layers.fx);
-    expect(layers.lit.children).not.toContain(layers.hud);
+    for (const group of [layers.lit, layers.litFloor, layers.litStand]) {
+      expect(group.children).not.toContain(layers.fx);
+      expect(group.children).not.toContain(layers.hud);
+    }
     expect(layers.fx.parent).toBe(layers.world);
     expect(layers.hud.parent).toBe(layers.world);
   });
@@ -46,8 +52,9 @@ describe('Layers', () => {
     // lighting. This is the one layer whose inclusion is a look decision rather than a
     // mechanical one.
     const layers = new Layers();
-    expect(layers.ground.parent).toBe(layers.lit);
-    expect(layers.shadow.parent).toBe(layers.lit);
+    expect(layers.ground.parent).toBe(layers.litFloor);
+    expect(layers.shadow.parent).toBe(layers.litFloor);
+    expect(layers.litFloor.parent).toBe(layers.lit);
   });
 
   it('only entities is sortable (Y-sort by zIndex) — every other layer stays insertion order', () => {
@@ -56,6 +63,8 @@ describe('Layers', () => {
     expect(layers.ground.sortableChildren).toBe(false);
     expect(layers.shadow.sortableChildren).toBe(false);
     expect(layers.lit.sortableChildren).toBe(false);
+    expect(layers.litFloor.sortableChildren).toBe(false);
+    expect(layers.litStand.sortableChildren).toBe(false);
     expect(layers.fx.sortableChildren).toBe(false);
     expect(layers.hud.sortableChildren).toBe(false);
     expect(layers.ui.sortableChildren).toBe(false);
@@ -105,9 +114,11 @@ describe('Layers', () => {
     // The lit grouping wraps `entities`; it must never split it. A standing wall block and
     // a character Y-sort against each other as one set (RoomBuilder mounts wall segments
     // into `entities` alongside every Actor), and separating them to give actors their own
-    // filter target would break every occlusion cue in the frame.
+    // filter target would break every occlusion cue in the frame. The 2026-09-28 split gives
+    // `entities` a filter target of its own, but WHOLE — walls and actors still sort as one set.
     const layers = new Layers();
-    expect(layers.entities.parent).toBe(layers.lit);
+    expect(layers.entities.parent).toBe(layers.litStand);
+    expect(layers.litStand.children).toEqual([layers.entities]);
     expect(layers.entities.sortableChildren).toBe(true);
   });
 
@@ -125,7 +136,7 @@ describe('Layers', () => {
   // end: that the screens drawn instead of it are opaque.
   it('puts every layer a RUN draws into under world, and the two screen-space ones outside it', () => {
     const layers = new Layers();
-    const drawnByARun = [layers.terrain, layers.lit, layers.ground, layers.shadow, layers.entities, layers.fx, layers.hud];
+    const drawnByARun = [layers.terrain, layers.lit, layers.litFloor, layers.litStand, layers.ground, layers.shadow, layers.entities, layers.fx, layers.hud];
     for (const layer of drawnByARun) {
       let node = layer.parent;
       const chain: unknown[] = [];
@@ -159,9 +170,10 @@ describe('Layers', () => {
   // extra full-room render pass. `entities` must render live.
   it('entities renders live — no baked-texture stand-in (resolution + additive-blend regression)', () => {
     const layers = new Layers();
-    expect(layers.lit.children).toContain(layers.entities);
+    expect(layers.litStand.children).toContain(layers.entities);
     // Nothing else may sit in that slot pretending to be `entities`.
-    expect(layers.lit.children).toHaveLength(3);
+    expect(layers.litStand.children).toHaveLength(1);
+    expect(layers.lit.children).toHaveLength(2);
     // 5 since 2026-09-26: terrain, lit, fx, hud, numbers.
     expect(layers.world.children).toHaveLength(5);
   });

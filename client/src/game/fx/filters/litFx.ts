@@ -21,7 +21,7 @@
 //   * Shading now runs AFTER each actor's own overlays (shield glow, hit flash, dissolve),
 //     since it sees them already composited, where before it ran first and they layered on
 //     top. Kept deliberately: the alternative is going back to per-actor passes.
-import { Filter, GlProgram, UniformGroup, defaultFilterVert } from 'pixi.js';
+import { Filter, GlProgram, UniformGroup, defaultFilterVert, type FilterAntialias } from 'pixi.js';
 import { FRAME_UV, hexToRgb } from './shaderPrelude';
 
 /** Point lights the one pass can carry. A frame with more (a big fight throws a transient
@@ -125,6 +125,11 @@ void main(void)
     // is in the pass too. Slopes and lights then read as relative brightening/darkening of
     // the art's own painted value, which is what a lighting pass over authored art should do.
     color.rgb *= lit / uFlatReference;
+    // Premultiplied, so a colour channel may never exceed alpha. A no-op over an opaque texel
+    // (the 8-bit target clamps at 1 anyway), and the whole point over a translucent one: the
+    // split pass (\`Layers.litStand\`) lights actors and walls over a TRANSPARENT background,
+    // where a brightened antialiased edge texel would otherwise composite as a glow.
+    color.rgb = min(color.rgb, vec3(color.a));
     finalColor = color;
 }
 `;
@@ -136,6 +141,10 @@ export interface SceneLightOptions {
   gradient?: number;
   keyColor?: number;
   keyIntensity?: number;
+  /** Multisampling of the pass's own render target. Pixi's filter default is `'off'`, which
+   *  is right for a pass over soft content and wrong for one over hard moving edges — see
+   *  `Layers.litStand`. */
+  antialias?: FilterAntialias;
 }
 
 /** One light as the shader wants it: world position, world-px radius, already-faded
@@ -178,6 +187,7 @@ export class SceneLightFilter extends Filter {
       // intersects it with the viewport, which is a no-op while `filterArea` IS the viewport
       // but would silently shift the mapping the first time it is not.
       clipToViewport: false,
+      antialias: opts.antialias ?? 'off',
       resources: {
         sceneLightUniforms: new UniformGroup({
           uKeyColor: { value: hexToRgb(opts.keyColor ?? 0xfff2e0), type: 'vec3<f32>' },
