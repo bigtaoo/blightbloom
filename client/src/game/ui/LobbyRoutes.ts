@@ -39,7 +39,14 @@
 // "Open it, or take it off the screen" (design/10), not dimmed; `screens/Settings.ts` holds a
 // second door so the route never becomes unreachable. The dock re-divides its width between
 // SQUAD and FORGE when it goes, so no hole is left where it was.
-import { Container, Text } from 'pixi.js';
+//
+// ## FORGE's badge (2026-09-28)
+//
+// A count of the weapons the forge would craft right now (`meta/forge.ts craftableNow`), on
+// the button's top-right corner, and nothing at zero. It replaced the five material counts
+// that sat beside SETTINGS: the lobby only needs to say whether a trip to the forge is worth
+// it, and a bank total cannot say that (a recipe's `minTier` and the staged kit decide it).
+import { Container, Graphics, Text } from 'pixi.js';
 import { Button } from './widgets';
 import { LobbyCard } from './LobbyCard';
 import { whenUiTexture } from '../../render/uiSkins';
@@ -76,6 +83,9 @@ const PLAIN_FRAME = 0x718096;
 /** CO-OP's and PVP's route colours — the same teal/coral their banners were painted in. */
 const COOP_FRAME = 0x4fd1c5;
 const PVP_FRAME = 0xfc8181;
+/** FORGE's badge: the green the forge itself paints a craftable card's status in. */
+const BADGE_FILL = 0x68d391;
+const BADGE_H = 20;
 
 export class LobbyRoutes {
   readonly view = new Container();
@@ -89,6 +99,11 @@ export class LobbyRoutes {
   private forgeBtn: Button;
   private tutorialBtn: Button;
   private recommendedTag: Text;
+  /** FORGE's "N craftable now" badge — see `setForgeReady`. */
+  private forgeBadge = new Container();
+  private forgeBadgeBg = new Graphics();
+  private forgeBadgeText: Text;
+  private forgeBadgeW = BADGE_H;
   /** Both "badge TUTORIAL as NEW HERE?" and "draw TUTORIAL at all". Defaults to `true`: the
    *  real caller (`ScreenFlow.showMenu`) always sets it before the first `show()`, and
    *  "always on screen" is the safer fallback for a test that skips it. */
@@ -142,9 +157,15 @@ export class LobbyRoutes {
     this.recommendedTag.anchor.set(0.5, 0.5);
     this.recommendedTag.visible = false;
 
+    this.forgeBadgeText = new Text({ text: '', style: { fill: 0x1a202c, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold', padding: 8 } });
+    this.forgeBadgeText.anchor.set(0.5, 0.5);
+    this.forgeBadge.addChild(this.forgeBadgeBg, this.forgeBadgeText);
+    this.forgeBadge.visible = false;
+
     this.view.addChild(
       this.continueBtn.view, this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view,
       this.squadBtn.view, this.forgeBtn.view, this.tutorialBtn.view, this.recommendedTag,
+      this.forgeBadge,
     );
     this.applyHierarchy();
   }
@@ -173,6 +194,20 @@ export class LobbyRoutes {
   /** Whether the TOP slot of this block is empty and owed to `MainMenu`'s PLAY card. */
   get reservesPrimarySlot(): boolean {
     return !this.soloIsPrimary() && this.saved === null;
+  }
+
+  /** Badge FORGE with how many weapons it can craft right now; none at zero (or at a count
+   *  that is not a positive number — a badge reading `NaN` is worse than no badge). */
+  setForgeReady(count: number): void {
+    const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    this.forgeBadge.visible = n > 0;
+    if (n === 0) return;
+    this.forgeBadgeText.text = n > 99 ? '99+' : String(n);
+    const w = Math.max(BADGE_H, this.forgeBadgeText.width + 10);
+    this.forgeBadgeW = w;
+    this.forgeBadgeBg.clear()
+      .roundRect(-w / 2, -BADGE_H / 2, w, BADGE_H, BADGE_H / 2).fill(BADGE_FILL)
+      .stroke({ color: 0x1a202c, width: 2 });
   }
 
   setRecommendTutorial(recommend: boolean): void {
@@ -245,7 +280,9 @@ export class LobbyRoutes {
       b.setWidth(dockW);
       b.view.position.set(i * (dockW + DOCK_GAP), y);
     });
-    // Positioned even when hidden, same as every invisible node in these screens.
+    // Positioned even when hidden, same as every invisible node in these screens. The badge
+    // straddles FORGE's top-right corner, inset so it never pokes past the column's edge.
+    this.forgeBadge.position.set(dockW + DOCK_GAP + dockW - this.forgeBadgeW / 2 - 2, y);
     this.tutorialBtn.view.visible = this.recommendTutorial;
     this.recommendedTag.position.set(2 * (dockW + DOCK_GAP) + dockW / 2, y);
     this.recommendedTag.visible = this.recommendTutorial;

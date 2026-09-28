@@ -44,6 +44,8 @@ function privateOf(m: MainMenu) {
       pvpSoloBtn: Btn;
       squadBtn: Btn;
       forgeBtn: Btn;
+      forgeBadge: Pt & { visible: boolean };
+      forgeBadgeText: { text: string };
       tutorialBtn: Btn;
       height: number;
       recommendedTag: { text: string; visible: boolean; position: { x: number; y: number } };
@@ -65,7 +67,6 @@ function privateOf(m: MainMenu) {
     column: Pt;
     logo: { visible: boolean };
     hero: { view: { visible: boolean } };
-    resources: { view: { visible: boolean }; labels: Array<{ text: string }> };
     privacyLink: {
       text: string;
       visible: boolean;
@@ -499,24 +500,53 @@ describe('MainMenu — hierarchy and layout', () => {
   });
 });
 
-describe('MainMenu — the scene (hero, logo, materials)', () => {
-  it('draws an empty dais and no material chips with no profile, which is the default', () => {
+describe('MainMenu — the scene (hero, logo, FORGE badge)', () => {
+  it('draws an empty dais and no FORGE badge with no profile, which is the default', () => {
     const m = new MainMenu();
     m.show(800, 600);
     expect(privateOf(m).hero.view.visible).toBe(false);
-    expect(privateOf(m).resources.view.visible).toBe(false);
+    expect(privateOf(m).routes.forgeBadge.visible).toBe(false);
   });
 
-  it("shows the profile's materials, one chip per element", () => {
+  it('keeps the top-right corner to SETTINGS alone — the material counts left the lobby', () => {
     const m = new MainMenu();
-    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: { fire: 12, ice: 3, poison: 12345 }, bestFloor: 0 });
+    m.lobbyProfile = () => ({ skinId: 'vanguard', forgeReady: 3, bestFloor: 0 });
     m.show(800, 600);
-    const p = privateOf(m);
-    expect(p.resources.view.visible).toBe(true);
-    const texts = p.resources.labels.map((l) => l.text);
-    expect(texts).toContain('12');
-    expect(texts).toContain('3');
-    expect(texts).toContain('12k');
+    expect((privateOf(m).topRight as unknown as { children: unknown[] }).children).toEqual([privateOf(m).settingsBtn.view]);
+  });
+
+  it("badges FORGE with the profile's craftable count, on the button's top-right corner", () => {
+    const m = new MainMenu();
+    m.lobbyProfile = () => ({ skinId: 'vanguard', forgeReady: 3, bestFloor: 0 });
+    m.show(800, 600);
+    const r = privateOf(m).routes;
+    expect(r.forgeBadge.visible).toBe(true);
+    expect(r.forgeBadgeText.text).toBe('3');
+    const forge = r.forgeBtn.view as unknown as Pt;
+    const box = bgOf(r.forgeBtn);
+    expect(r.forgeBadge.position.y).toBeCloseTo(forge.position.y, 5);
+    expect(r.forgeBadge.position.x).toBeGreaterThan(forge.position.x + box.width / 2);
+    expect(r.forgeBadge.position.x).toBeLessThan(forge.position.x + box.width);
+  });
+
+  it('hides the badge at zero, and for a count that is not a positive number', () => {
+    for (const forgeReady of [0, -2, Number.NaN]) {
+      const m = new MainMenu();
+      m.lobbyProfile = () => ({ skinId: 'vanguard', forgeReady, bestFloor: 0 });
+      m.show(800, 600);
+      expect(privateOf(m).routes.forgeBadge.visible).toBe(false);
+    }
+  });
+
+  it('caps the badge at 99+ and clears it when the count drops back to zero', () => {
+    const m = new MainMenu();
+    let forgeReady = 250;
+    m.lobbyProfile = () => ({ skinId: 'vanguard', forgeReady, bestFloor: 0 });
+    m.show(800, 600);
+    expect(privateOf(m).routes.forgeBadgeText.text).toBe('99+');
+    forgeReady = 0;
+    m.show(800, 600);
+    expect(privateOf(m).routes.forgeBadge.visible).toBe(false);
   });
 
   it('draws the text title where the logo art is missing', () => {
@@ -908,7 +938,7 @@ describe('MainMenu — lobby art that lands after the first frame (2026-09-28)',
   it('re-lays itself out on the next frame, and shows the hero and banners', async () => {
     resetUiSkinsForTests();
     const m = new MainMenu();
-    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: {}, bestFloor: 0 });
+    m.lobbyProfile = () => ({ skinId: 'vanguard', forgeReady: 0, bestFloor: 0 });
     m.show(1280, 720);
     const hero = (m as unknown as { hero: { view: { visible: boolean; alpha: number } } }).hero;
     const solo = (m as unknown as { routes: { soloBtn: { art: { visible: boolean } } } }).routes.soloBtn;
