@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Container, Text } from 'pixi.js';
 import { installFakeTextCanvas } from '../screens/fakeTextCanvas';
-import { lobbyScale, sharpenText, LOBBY_MAX_SCALE } from './lobbyScale';
+import { lobbyScale, lobbyColumnScale, sharpenText, LOBBY_MAX_SCALE, LOBBY_COLUMN_BOOST, LOBBY_COLUMN_MAX_SHARE } from './lobbyScale';
 import { MENU_DESIGN_W, MENU_DESIGN_H } from './menuLayer';
 
 installFakeTextCanvas();
@@ -64,5 +64,24 @@ describe('sharpenText', () => {
     const { root, a } = tree();
     sharpenText(root, 1.5);
     expect(a.resolution).toBe(1.5);
+  });
+});
+
+describe('lobbyColumnScale', () => {
+  it('boosts k by LOBBY_COLUMN_BOOST when the viewport has room', () => {
+    expect(lobbyColumnScale(4000, 1.5, 100, 100, 4000)).toBeCloseTo(1.5 * LOBBY_COLUMN_BOOST, 9);
+  });
+
+  it('stops at its share of the width', () => {
+    expect(lobbyColumnScale(1000, 1.2, 250, 10, 10000)).toBeCloseTo((1000 * LOBBY_COLUMN_MAX_SHARE) / 250, 9);
+  });
+
+  it('stops at the height it is given', () => {
+    expect(lobbyColumnScale(10000, 1.4, 100, 500, 800)).toBeCloseTo(1.6, 9);
+  });
+
+  it('never goes below k, however little room there is', () => {
+    expect(lobbyColumnScale(300, 1, 272, 364, 100)).toBe(1);
+    expect(lobbyColumnScale(760, 1.2, 272, 364, 200)).toBe(1.2);
   });
 });

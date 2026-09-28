@@ -78,7 +78,7 @@ describe('the shipped pillar sprite — measured, not assumed', () => {
 
   it('carries real resolution headroom for the camera zoom', () => {
     // What got the FIRST batch of pillar art rejected: it was generated at exactly the 84x98 the
-    // game draws, while `FxController`'s MAX_ZOOM is 4.5 and the renderer runs at up to 2x device
+    // game draws, while the camera's MAX_ZOOM was 4.5 (3.5 since 2026-09-28) and the renderer runs at up to 2x device
     // pixel ratio — so the sprite is MAGNIFIED in every real room (level 1's gallery renders at
     // zoom 4). A source at game size is a blurred pillar, and nothing else measured in this file
     // would notice. Survived the mutation battery until this was added.

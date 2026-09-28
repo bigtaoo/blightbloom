@@ -318,6 +318,14 @@ Each of the three had a cause in the code rather than in taste:
 a scaled container is re-rasterised at the drawn size (`sharpenText`), or it would be a magnified
 bitmap.
 
+**The column goes further** (2026-09-28). At `k` alone the route column was ~20% of a desktop
+window's width and read as a sidebar beside the scene. It now has its own scale,
+`lobbyColumnScale`: `k` x 1.35 (`LOBBY_COLUMN_BOOST`), capped at 30% of the viewport's width
+(`LOBBY_COLUMN_MAX_SHARE`) and at the height under the corner row, and never below `k` — so a
+small viewport is unchanged. The caps are computed against the column's TALLEST state (a save or
+portal PLAY above SOLO), so a save appearing does not resize the cards. The header, corners and
+hero stay at `k`; the dais re-centres in the room left of the wider column.
+
 **What had to survive, and where it went:**
 
 - *Exactly one primary* (2026-08-02): asserted per state in `LobbyRoutes.test.ts`, glow included.

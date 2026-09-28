@@ -12,10 +12,10 @@ tiers live in [../01-rendering.md](../01-rendering.md).
 - **Room zoom-to-cover** (legibility fix, 2026-08-02; cap raised 1.8→2.5 2026-08-12;
   contain-fit → cover-fit 2026-08-12, same day, follow-up; fit target changed from the
   whole floor to the CURRENT ROOM + cap 2.5→4.5 2026-08-17, see "Framing the current
-  room" below): the fitted rect is scaled up so BOTH axes cover the viewport (cover-fit —
-  zoom by whichever axis needs MORE zoom, capped at 4.5x so a tiny/degenerate room
-  doesn't blow sprites into blocks) — `FxController.updateCamera`
-  (`client/src/game/fx/FxController.ts`). Originally contain-fit (zoom by whichever axis
+  room" below; cap 4.5→3.5 2026-09-28, see "Motion comfort" below): the fitted rect is
+  scaled up so BOTH axes cover the viewport (cover-fit — zoom by whichever axis needs MORE
+  zoom, capped at `MAX_ZOOM` so a tiny/degenerate room doesn't blow sprites into blocks) —
+  `FxController.updateCamera`, with the math in `CameraRig` (`client/src/game/fx/cameraRig.ts`). Originally contain-fit (zoom by whichever axis
   is TIGHTER), which left a real dark `Backdrop`-filled void on the other axis whenever
   the room's aspect ratio didn't match the viewport's — raising the cap (2026-08-12,
   earlier that day) only shrank that void for a too-small room, it couldn't fix an
@@ -38,7 +38,8 @@ tiers live in [../01-rendering.md](../01-rendering.md).
     `dungeonRoomRects`/`arenaRoomRects` the run is using (`engine/state/roomModel.ts`, the one
     selector the camera, the floor and `EnvironmentSystem` share) and passes that rect as
     `updateCamera`'s `frame`;
-    the whole floor stays the fallback for a mode with no room model. Level 1's rooms are
+    the whole floor stays the fallback for a mode with no room model. (Until 2026-09-28 it
+    was also the fallback in a door passage, which belongs to no room — see "Motion comfort".) Level 1's rooms are
     ~480 px square, so this lands at ~4x and the room fills the viewport — which is what
     forced the `MAX_ZOOM` raise, since 2.5 bound in literally every room.
   - **The look-at point is biased above the player's feet** (`CAMERA_BODY_BIAS_R`, 8% of
@@ -51,6 +52,25 @@ tiers live in [../01-rendering.md](../01-rendering.md).
     cost is that the room only fills the viewport exactly when the player is near its
     centre; standing off-centre shows a strip of the neighbouring room. A true one-room-
     per-screen lock would mean a jump-cut at every door, which is a separate design call.
+- **Motion comfort** (2026-09-28, live report: *"玩起来还是感觉会头晕，类似晕3D的感觉"*; the work
+  is [volume 104](../roadmap/104-2026-09-28-camera-comfort.md)). Nothing on the camera was
+  eased, and three things moved the whole screen:
+  - **Zoom is held through a door passage and eased between rooms.** A passage belongs to no
+    room, so the player's `roomId` clears there and the camera used to re-fit the whole floor:
+    ~4x → ~1x → ~4x in one frame each way through every door. `CameraRig` keeps the last room it
+    fitted and eases toward a new room's fit in log space (`ZOOM_TAU_MS` 320).
+  - **The camera follows a dead zone, eased.** It used to sit exactly on the player, so a strafe,
+    a wall bump or a knockback was a whole-screen jolt, multiplied by the zoom. The player now moves
+    freely inside `DEADZONE_R` (5% of the viewport's shorter side) and the camera eases toward the
+    zone's edge (`FOLLOW_TAU_MS` 140). Both eases are `1 - exp(-dt/tau)`, so frame rate does not
+    change them. A teleport, the first frame and a new run are cuts. The world-edge clamp is applied
+    to both the anchor and the eased point, so an easing zoom never shows past the world.
+  - **The shake is a smooth waveform, and a kill does not shake.** It was ±14 px of white noise
+    re-rolled every frame and topped up by every kill; it is now `shakeOffset`'s two sines per axis
+    (~7-12 Hz) at up to `MAX_SHAKE_PX` 7.
+  - **`MAX_ZOOM` 4.5 → 3.5**, so the same step slides less screen. A level-1 room no longer quite
+    covers a desktop viewport, and a sliver of its neighbours shows at the edges.
+  These constants are a first tuning and sit together at the top of `cameraRig.ts`.
 
 ---
 

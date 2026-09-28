@@ -227,7 +227,7 @@ export class GameLoop {
     const alpha = this.host.getPhase() === 'playing' ? Math.min(1, this.acc / SIM_DT_MS) : 1;
     this.deps.scene.interpolate(alpha, dt);
     this.updateFx(dt);
-    this.updateCamera(alpha);
+    this.updateCamera(alpha, dt);
     if (this.host.getPhase() === 'playing') {
       this.updateHud(dt);
       this.deps.touchControlsView.update(this.deps.input.getTouchVisual());
@@ -338,7 +338,7 @@ export class GameLoop {
     const { alpha } = this.onlineInterp;
     this.deps.scene.interpolate(alpha, dt);
     this.updateFx(dt);
-    this.updateCamera(alpha);
+    this.updateCamera(alpha, dt);
     this.updateHud(dt);
     this.deps.touchControlsView.update(this.deps.input.getTouchVisual());
 
@@ -443,11 +443,11 @@ export class GameLoop {
     this.doorFx.frame(dt, s?.dungeonDoors ?? [], d.roomBuilder, d.fx, player, d.builder.lastMove);
   }
 
-  private updateCamera(alpha: number): void {
+  private updateCamera(alpha: number, dt: number): void {
     const s = this.host.activeState();
     const worldSize = s ? { w: fpToPx(s.worldW), h: fpToPx(s.worldH) } : null;
     const { w: vw, h: vh } = this.host.screenSize();
-    this.deps.fx.updateCamera(alpha, { vw, vh }, worldSize, this.deps.scene.player, this.cameraFrame(s));
+    this.deps.fx.updateCamera(alpha, { vw, vh }, worldSize, this.deps.scene.player, this.cameraFrame(s), dt);
   }
 
   /**
@@ -458,7 +458,8 @@ export class GameLoop {
    * (`EnvironmentSystem` refreshes `Actor.roomId` every tick), so this is a lookup, not
    * a geometry test. Null whenever there is no room to frame — a flat `waves`/tutorial
    * config, or the tick before the player's `roomId` resolves (standing in a door
-   * passage clears it) — and `updateCamera` falls back to the whole world for those.
+   * passage clears it) — and `updateCamera` holds the last room it fitted through those,
+   * falling back to the whole world only when it never had one.
    */
   private cameraFrame(s: GameState | null): { x: number; y: number; w: number; h: number } | null {
     const roomId = s?.players[this.host.localOwner]?.roomId;

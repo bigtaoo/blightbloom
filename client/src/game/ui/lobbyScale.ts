@@ -43,3 +43,23 @@ export function sharpenText(root: Container, k: number): void {
 function isAuto(t: Text): boolean {
   return (t as unknown as { _autoResolution?: boolean })._autoResolution !== false;
 }
+
+/**
+ * How much bigger than `k` the route column is drawn (2026-09-28). At `k` alone the column
+ * read as a sidebar — ~20% of a desktop window's width beside a scene that fills the rest —
+ * when it holds every way into the game.
+ */
+export const LOBBY_COLUMN_BOOST = 1.35;
+/** The widest share of the viewport the column may take, so the scene keeps its room. */
+export const LOBBY_COLUMN_MAX_SHARE = 0.3;
+
+/**
+ * The route column's own scale: `k` boosted by `LOBBY_COLUMN_BOOST`, but only as far as the
+ * viewport has room for — no wider than `LOBBY_COLUMN_MAX_SHARE` of it, and no taller than
+ * `roomH` for a column `colH` tall. Never below `k`, so a small viewport is exactly as before.
+ * `colH` should be the column's TALLEST state, so a save appearing does not resize the cards.
+ */
+export function lobbyColumnScale(w: number, k: number, colW: number, colH: number, roomH: number): number {
+  const fit = Math.min(k * LOBBY_COLUMN_BOOST, (w * LOBBY_COLUMN_MAX_SHARE) / colW, roomH / colH);
+  return Math.max(k, fit);
+}
