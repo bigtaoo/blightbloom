@@ -341,7 +341,7 @@ export class Game {
   // ---- Scene construction (static) ----
   //
   // Room/pillar geometry construction now lives in RoomBuilder (extracted 2026-07-28)
-  // — see roomBuilder.build() calls in beginArenaDemoRun / EventReactorHost.onRoomEnter.
+  // — see roomBuilder.build() in RunLifecycle and roomBuilder.enterRoom() in onRoomEnter.
 
   private buildHud() {
     // Assembly + the settings button live in `controllers/hudLayer.ts`; the button is
@@ -407,7 +407,7 @@ export class Game {
   }
 
   onRoomEnter(s: GameState): void {
-    this.roomBuilder.build(s);
+    this.roomBuilder.enterRoom(s);
   }
 
   onDoorStateChange(s: GameState): void {
