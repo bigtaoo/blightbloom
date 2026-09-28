@@ -262,9 +262,11 @@ describe('FxController scene-light sync', () => {
   it('multisamples ONLY the stand half — the floor is where MSAA costs and buys nothing', () => {
     // The measurement behind the split: MSAA over the whole pass was +4.4 ms on a 1080p desktop,
     // nearly all of it the floor's overdraw, while the floor contributed almost none of the
-    // stepping edges. `'inherit'`, not `'on'`: a host whose canvas has no MSAA gets none here.
+    // stepping edges. `'on'`, not `'inherit'`: Pixi resolves `'inherit'` against the CURRENT
+    // render target, which on this tier is `world`'s un-multisampled vignette pass — the first
+    // version shipped `'inherit'`, and a live frame measured it as no antialiasing at all.
     const fx = new FxController(new Layers());
-    expect(fx.sceneLightStand.antialias).toBe('inherit');
+    expect(fx.sceneLightStand.antialias).toBe('on');
     expect(fx.sceneLight.antialias).toBe('off');
   });
 
