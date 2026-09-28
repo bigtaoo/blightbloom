@@ -1,12 +1,12 @@
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Button } from '../ui/widgets';
-import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H } from '../ui/LobbyRoutes';
+import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H, LOBBY_ROUTES_DEMOTED_H } from '../ui/LobbyRoutes';
 import { LobbyCard } from '../ui/LobbyCard';
 import { AccountCard } from '../ui/AccountCard';
 import { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { LobbyHero } from '../ui/LobbyHero';
 import { LobbyResources, type MaterialCounts } from '../ui/LobbyResources';
-import { lobbyScale, sharpenText } from '../ui/lobbyScale';
+import { lobbyScale, lobbyColumnScale, sharpenText } from '../ui/lobbyScale';
 import type { SavedRunSummary } from '../match/runSave';
 import { getSession } from '../../net/session';
 import { getUiTexture, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
@@ -60,6 +60,7 @@ const TAGLINE_H = 24;
  * Everything in the column, header and corners is multiplied by one lobby scale `k`
  * (`lobbyScale`): the menu layer never scales UP (`menuLayer.ts`), so on a desktop window the
  * old lobby sat at its phone size in a sea of background — the other half of "looks empty".
+ * The column goes further, to its own `lobbyColumnScale` where the viewport has room.
  *
  * Pure presentation, same shape as every screen here: `gameWiring.ts` owns what each route
  * does. The shell owns two questions about the routes — whether there is a run to continue
@@ -320,18 +321,20 @@ export class MainMenu {
 
     const chromeBottom = edge + CHROME_H * k;
 
-    // The column: right-aligned, below the corner row, centred in what is left.
-    const colW = LOBBY_ROUTES_W * k;
+    // The column: right-aligned, below the corner row, centred in what is left. Drawn at its
+    // own scale `ck`, bigger than `k` where the viewport has room (`lobbyColumnScale`).
+    const colTopMin = chromeBottom + 14;
+    const ck = lobbyColumnScale(w, k, LOBBY_ROUTES_W, LOBBY_ROUTES_DEMOTED_H, h - 16 - colTopMin);
+    const colW = LOBBY_ROUTES_W * ck;
     const colH = this.routes.height;
     const colX = w - Math.max(20, w * 0.035) - colW;
-    const colTopMin = chromeBottom + 14;
-    const colTop = colTopMin + Math.max(0, (h - 16 - colTopMin - colH * k) / 2);
-    this.column.scale.set(k);
+    const colTop = colTopMin + Math.max(0, (h - 16 - colTopMin - colH * ck) / 2);
+    this.column.scale.set(ck);
     this.column.position.set(colX, colTop);
     this.playBtn.view.position.set(0, 0);
     this.routes.layout();
     this.routes.view.position.set(0, 0);
-    this.panel.setFocus({ x: colX, y: colTop, w: colW, h: colH * k });
+    this.panel.setFocus({ x: colX, y: colTop, w: colW, h: colH * ck });
 
     // The painting, cropped so the dais sits in the middle of the room left of the column.
     const leftRoom = colX - 16;
@@ -371,6 +374,7 @@ export class MainMenu {
     this.layoutNotices(leftRoom, h, chromeBottom, k);
 
     sharpenText(this.view, k);
+    sharpenText(this.column, ck);
   }
 
   /**

@@ -460,9 +460,25 @@ describe('MainMenu — hierarchy and layout', () => {
     const big = new MainMenu();
     big.show(1920, 1080);
     expect(privateOf(small).column.scale.x).toBe(1);
-    expect(privateOf(big).column.scale.x).toBe(1.5);
     expect(privateOf(big).topLeft.scale.x).toBe(1.5);
     expect(privateOf(big).header.scale.x).toBe(1.5);
+    // The column goes past `k` — the boost, where the viewport has room for it.
+    expect(privateOf(big).column.scale.x).toBeCloseTo(1.5 * 1.35, 6);
+  });
+
+  it('draws the column bigger than the rest of the lobby, but never past its share of the width', () => {
+    for (const [w, h] of [[1386, 640], [1888, 901], [1920, 1080], [2560, 1440], [3440, 1440]] as const) {
+      const m = new MainMenu();
+      m.show(w, h);
+      const p = privateOf(m);
+      const k = p.header.scale.x;
+      expect(p.column.scale.x, `${w}x${h}`).toBeGreaterThanOrEqual(k);
+      expect(screenBox(p.routes.soloBtn).w, `${w}x${h}`).toBeLessThanOrEqual(w * 0.3 + 1);
+    }
+    // 1888x901 — the window the request was made at: the column is visibly bigger than `k`.
+    const m = new MainMenu();
+    m.show(1888, 901);
+    expect(privateOf(m).column.scale.x).toBeGreaterThan(privateOf(m).header.scale.x * 1.3);
   });
 
   it('re-divides the dock between SQUAD and FORGE when TUTORIAL hides', () => {
