@@ -6,7 +6,7 @@ import { MenuShell } from '../ui/MenuShell';
 import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { SHEET_W, COL_W, CHIP_H, WIDE_BUTTON_H, layoutSettingsSheet, type OptionRow, type SliderRow } from './settingsSheet';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { t, LOCALES, type Locale } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 import { QUALITY_SETTINGS, activeQuality, type QualitySetting } from '../../render/quality';
@@ -243,7 +243,7 @@ export class Settings {
     // `SettingsState`, it only fires a passthrough (see `onTutorial`). Closes the GAME section.
     this.tutorialBtn = new Button(t('settings.tutorial'), { w: COL_W, h: WIDE_BUTTON_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.tap' });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
-    this.tutorialBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.tutorialBtn.setIcon(tex));
 
     this.shell.content.addChild(
       this.rules, this.audioHeading, this.displayHeading, this.gameHeading,

@@ -12,10 +12,14 @@ const mocks = vi.hoisted(() => ({ textures: new Map<string, unknown>() }));
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: (key: string) => mocks.textures.get(key),
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((key, apply) => { const tex = mocks.textures.get(key); if (tex) apply(tex as never); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 vi.mock('../../audio/uiSound', () => ({ playUiCue: vi.fn() }));
 
 import { LobbyCard, fitFont, ellipsise } from './LobbyCard';
+import { ART_FADE_MS } from './artFade';
 import { estimateMonoWidth } from './textWidth';
 
 installFakeTextCanvas();
@@ -187,5 +191,33 @@ describe('LobbyCard — state changes', () => {
     const frozen = glow.alpha;
     c.update(600);
     expect(glow.alpha).toBe(frozen);
+  });
+});
+
+describe('LobbyCard — a banner that lands after the lobby is up (2026-09-28)', () => {
+  it('draws the fill until then, and fades the banner in when refreshArt finds it', () => {
+    const c = new LobbyCard('X', 272, 62, { art: 'late-banner', fill: 0, frame: 0, fontSize: 12 });
+    expect(internals(c).art.visible).toBe(false);
+    c.refreshArt(); // still not in: nothing to do
+    expect(internals(c).art.visible).toBe(false);
+    mocks.textures.set('late-banner', BANNER);
+    c.refreshArt();
+    const art = internals(c).art;
+    expect(art.visible).toBe(true);
+    expect(art.width).toBeCloseTo(272, 5); // drawn exactly as a warm card is
+    expect(art.alpha).toBe(0);
+    c.update(ART_FADE_MS / 2); // not the primary: the fade still runs
+    expect(art.alpha).toBeCloseTo(0.5);
+    c.update(ART_FADE_MS);
+    expect(art.alpha).toBe(1);
+    mocks.textures.delete('late-banner');
+  });
+
+  it('neither redraws nor fades a card whose art was already there', () => {
+    const c = new LobbyCard('X', 272, 62, { art: 'banner', fill: 0, frame: 0, fontSize: 12 });
+    const before = internals(c).art.texture;
+    c.refreshArt();
+    expect(internals(c).art.texture).toBe(before); // no redraw: the same cropped texture
+    expect(internals(c).art.alpha).toBe(1);
   });
 });

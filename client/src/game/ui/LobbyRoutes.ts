@@ -42,7 +42,7 @@
 import { Container, Text } from 'pixi.js';
 import { Button } from './widgets';
 import { LobbyCard } from './LobbyCard';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { TICK_RATE } from '@dd/engine';
 import type { SavedRunSummary } from '../match/runSave';
 import { t } from '../../i18n';
@@ -125,16 +125,16 @@ export class LobbyRoutes {
     const dockW = this.dockWidth(3);
     this.squadBtn = new Button(t('mainMenu.squad'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: PLAIN_FRAME });
     this.squadBtn.onTap = () => this.onSquad?.();
-    this.squadBtn.setIcon(getUiTexture('icon_party_create'), undefined, 'top');
+    whenUiTexture('icon_party_create', (tex) => this.squadBtn.setIcon(tex, undefined, 'top'));
 
     // The forger NPC's own art as the icon: it is the character this route leads to.
     this.forgeBtn = new Button(t('mainMenu.forge'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: PLAIN_FRAME });
     this.forgeBtn.onTap = () => this.onForge?.();
-    this.forgeBtn.setIcon(getUiTexture('npc_forger'), undefined, 'top');
+    whenUiTexture('npc_forger', (tex) => this.forgeBtn.setIcon(tex, undefined, 'top'));
 
     this.tutorialBtn = new Button(t('mainMenu.tutorial'), { w: dockW, h: DOCK_H, fontSize: 12, borderColor: 0xfbd38d });
     this.tutorialBtn.onTap = () => this.onTutorial?.();
-    this.tutorialBtn.setIcon(getUiTexture('icon_account'), undefined, 'top');
+    whenUiTexture('icon_account', (tex) => this.tutorialBtn.setIcon(tex, undefined, 'top'));
 
     // Never forced — the same "never required" convention `LoginScreen` follows. A tag on
     // the dock button's top edge rather than inside it: the button is too small to share.
@@ -251,10 +251,19 @@ export class LobbyRoutes {
     this.recommendedTag.visible = this.recommendTutorial;
   }
 
-  /** Advance the primary card's glow. */
+  /** Advance the primary card's glow, and any banner's fade-in. */
   update(dtMs: number): void {
-    this.continueBtn.update(dtMs);
-    this.soloBtn.update(dtMs);
+    for (const card of this.cards()) card.update(dtMs);
+  }
+
+  /** Redraw any banner whose art has landed since it was drawn (`MainMenu`, as lobby art
+   *  arrives). */
+  refreshArt(): void {
+    for (const card of this.cards()) card.refreshArt();
+  }
+
+  private cards(): LobbyCard[] {
+    return [this.continueBtn, this.soloBtn, this.coopBtn, this.pvpSoloBtn];
   }
 
   /** CONTINUE's label and its floor/time hint, in the active locale. */

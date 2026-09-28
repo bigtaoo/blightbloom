@@ -22,7 +22,7 @@ import {
 // @ts-expect-error — untyped .mjs, deliberately: build/ is plain Node with no declarations.
 import { loadAssetPacks, packOf as rawPackOf } from '../../../build/wechatAssetSync.mjs';
 import { BIOME_TILE_ASSETS } from './biomeTiles';
-import { UI_ASSETS } from './uiSkins';
+import { UI_ASSETS, UI_ASSET_KEYS, uiTierOf } from './uiSkins';
 import { ENV_SPRITE_ASSETS } from './environmentSprites';
 import { WEAPON_DEFS, KIND_DEFAULTS } from './weaponSkins';
 import { CHAR_BUNDLES } from './preloadArt';
@@ -82,7 +82,7 @@ describe('the load phases', () => {
     // whose pack was not there — see MusicPlayer.invalidate / design/12.
     expect(packsForPhase('background').map((p) => p.name)).toEqual(['music']);
     expect(packsForPhase('run').map((p) => p.name).sort()).toEqual(
-      ['biome-ice', 'biome-lightning', 'biome-poison', 'boss', 'forge', 'run'],
+      ['biome-ice', 'biome-lightning', 'biome-poison', 'boss', 'forge', 'run', 'ui-late'],
     );
   });
 
@@ -116,11 +116,19 @@ describe('what the first download contains', () => {
     expect(shipped.every((rel) => statSync(join(root, rel)).size > 0)).toBe(true);
   });
 
-  it('holds the whole menu-shaped UI in the one pack the boot wait covers', () => {
-    // Everything `preloadUiArt` asks for has to be in `lobby`: it is loaded immediately after
-    // that pack and before `new Game(...)`, so a UI file deferred anywhere else would leave a
-    // menu on its flat-colour fallback for as long as the background download takes.
-    for (const path of Object.values(UI_ASSETS)) expect(packOf(path), path).toBe('lobby');
+  it('puts each UI file in the pack its load tier is fetched with, and no other', () => {
+    // uiSkins.ts's `boot` and `lobby` tiers are loaded straight after the `lobby` pack (one
+    // awaited, one kicked), so a file of theirs anywhere else names nothing on WeChat and
+    // stays on its fallback for the session. The `late` tier is loaded after the `run`
+    // packs, so a file of ITS in `lobby` is back on the wait a player sits through — which
+    // is the whole reason the tier exists. Both directions, file by file.
+    for (const [key, path] of Object.entries(UI_ASSETS)) {
+      expect(packOf(path), `${key} (${uiTierOf(key)})`).toBe(uiTierOf(key) === 'late' ? 'ui-late' : 'lobby');
+    }
+    // ...and each tier is non-empty, or the sweep above would be vacuous for it.
+    for (const tier of ['boot', 'lobby', 'late'] as const) {
+      expect(UI_ASSET_KEYS.some((k) => uiTierOf(k) === tier), tier).toBe(true);
+    }
   });
 
   it('defers every weapon to the forge pack, which the forge gate awaits', () => {
@@ -187,7 +195,8 @@ describe('packedPathFor', () => {
     // back into `main` would exercise it again.
     expect(packedPathFor('/biome/floor_fire.png')).toBe('packs/run/biome/floor_fire.png');
     expect(packedPathFor('/biome/floor_ice.png')).toBe('packs/biome-ice/biome/floor_ice.png');
-    expect(packedPathFor('/ui/hub_bg.png')).toBe('packs/lobby/ui/hub_bg.png');
+    expect(packedPathFor('/ui/hub_bg.jpg')).toBe('packs/lobby/ui/hub_bg.jpg');
+    expect(packedPathFor('/ui/icon_back.png')).toBe('packs/ui-late/ui/icon_back.png');
     expect(packedPathFor('/weapons/gun_blaster.png')).toBe('packs/forge/weapons/gun_blaster.png');
   });
 

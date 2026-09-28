@@ -2,7 +2,9 @@
  * Pure-Node PNG decode/encode for 8-bit RGBA, non-interlaced PNGs (fs+zlib only,
  * no sharp/pngquant/etc — this repo's art assets are consistently colorType=6,
  * bitDepth=8, interlace=0, e.g. GPT Image 2 exports and this pipeline's own
- * re-encodes, so that's the only shape this codec needs to support). Re-created
+ * re-encodes, so that's the only shape this codec ENCODES; it also DECODES RGB and 8-bit
+ * palette files, the latter since the lobby art went through libimagequant, 2026-09-28,
+ * so the shipped-art tests can still read what ships). Re-created
  * 2026-07-28 for the asset-size audit follow-up (the original weapon-art pipeline
  * session's codec was never committed as a reusable tool — this one is, so it
  * doesn't need re-deriving a third time).
@@ -50,10 +52,12 @@ function paeth(a, b, c) {
 }
 
 /** Decode an 8-bit non-interlaced PNG buffer (RGBA or RGB — a flat background image
- * with no transparency, e.g. a hub/menu backdrop, commonly exports as colorType 2)
- * into { width, height, data: Uint8Array } — always normalized to RGBA8 (opaque
- * alpha=255 synthesized for colorType 2) so every other function in this module only
- * ever deals with one pixel shape. */
+ * with no transparency, e.g. a hub/menu backdrop, commonly exports as colorType 2 — or
+ * 8-bit PALETTE, colorType 3, which is what a libimagequant/pngquant pass ships: the lobby
+ * portraits and logos since 2026-09-28) into { width, height, data: Uint8Array } — always
+ * normalized to RGBA8 (opaque alpha=255 synthesized for colorType 2, and for any palette
+ * entry past the end of tRNS) so every other function in this module only ever deals with
+ * one pixel shape. */
 export function decodePNG(buf) {
   const chunks = readChunks(buf);
   const ihdr = chunks.find((c) => c.type === 'IHDR');
@@ -63,13 +67,13 @@ export function decodePNG(buf) {
   const bitDepth = ihdr.data[8];
   const colorType = ihdr.data[9];
   const interlace = ihdr.data[12];
-  if (bitDepth !== 8 || (colorType !== 6 && colorType !== 2) || interlace !== 0) {
-    throw new Error(`Unsupported PNG shape (bitDepth=${bitDepth}, colorType=${colorType}, interlace=${interlace}) — this codec only handles 8-bit RGB/RGBA non-interlaced`);
+  if (bitDepth !== 8 || (colorType !== 6 && colorType !== 2 && colorType !== 3) || interlace !== 0) {
+    throw new Error(`Unsupported PNG shape (bitDepth=${bitDepth}, colorType=${colorType}, interlace=${interlace}) — this codec only handles 8-bit RGB/RGBA/palette non-interlaced`);
   }
   const idat = Buffer.concat(chunks.filter((c) => c.type === 'IDAT').map((c) => c.data));
   const raw = zlib.inflateSync(idat);
 
-  const bpp = colorType === 6 ? 4 : 3; // RGBA8 or RGB8
+  const bpp = colorType === 6 ? 4 : colorType === 2 ? 3 : 1; // RGBA8, RGB8, or a palette index
   const stride = width * bpp;
   const unfiltered = new Uint8Array(width * height * bpp);
   let rawOff = 0;
@@ -96,6 +100,7 @@ export function decodePNG(buf) {
     rawOff += stride;
   }
   if (bpp === 4) return { width, height, data: unfiltered };
+  if (bpp === 1) return { width, height, data: expandPalette(chunks, unfiltered) };
 
   const out = new Uint8Array(width * height * 4);
   for (let i = 0, j = 0; i < unfiltered.length; i += 3, j += 4) {
@@ -105,6 +110,24 @@ export function decodePNG(buf) {
     out[j + 3] = 255;
   }
   return { width, height, data: out };
+}
+
+/** Palette indices -> RGBA8. An index with no PLTE entry is a corrupt file, not a colour. */
+function expandPalette(chunks, indices) {
+  const plte = chunks.find((c) => c.type === 'PLTE');
+  if (!plte) throw new Error('Palette PNG with no PLTE chunk');
+  const trns = chunks.find((c) => c.type === 'tRNS')?.data ?? new Uint8Array(0);
+  const entries = plte.data.length / 3;
+  const out = new Uint8Array(indices.length * 4);
+  for (let i = 0; i < indices.length; i++) {
+    const k = indices[i];
+    if (k >= entries) throw new Error(`Palette index ${k} past the ${entries}-entry PLTE`);
+    out[i * 4] = plte.data[k * 3];
+    out[i * 4 + 1] = plte.data[k * 3 + 1];
+    out[i * 4 + 2] = plte.data[k * 3 + 2];
+    out[i * 4 + 3] = k < trns.length ? trns[k] : 255;
+  }
+  return out;
 }
 
 /** Encode { width, height, data: Uint8Array RGBA8 } into a PNG buffer, with per-row adaptive filtering. */

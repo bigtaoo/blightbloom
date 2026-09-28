@@ -4,8 +4,9 @@
  * Forge.test.ts made) — asserted here via `.visible`/`.text`, not pixel output.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Graphics } from 'pixi.js';
+import { Assets, Graphics, Texture, TextureSource } from 'pixi.js';
 import { MainMenu } from './MainMenu';
+import { preloadUiTier, resetUiSkinsForTests } from '../../render/uiSkins';
 import { getSession, setSession, resetSessionCacheForTests, type Session } from '../../net/session';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { setPublicFlags } from '../../net/clientFlags';
@@ -880,5 +881,56 @@ describe('MainMenu — a host that forbids a login entry (design/20 account inte
     // ...and the green goes with the slot, so the card still has exactly one primary.
     expect(fillOf(privateOf(m).routes.continueBtn)).toBe(GREEN);
     expect(fillOf(privateOf(m).routes.soloBtn)).not.toBe(GREEN);
+  });
+});
+describe('MainMenu — lobby art that lands after the first frame (2026-09-28)', () => {
+  // Through the REAL uiSkins module and its real `lobby`-tier load, with only Pixi's loader
+  // stubbed: the property is that a lobby shown before its decoration arrived ends up dressed,
+  // and a stub of `onUiTexture` could not tell a wired-up menu from one that never listens.
+  afterEach(() => resetUiSkinsForTests());
+
+  it('re-lays itself out on the next frame, and shows the hero and banners', async () => {
+    resetUiSkinsForTests();
+    const m = new MainMenu();
+    m.lobbyProfile = () => ({ skinId: 'vanguard', materials: {}, bestFloor: 0 });
+    m.show(1280, 720);
+    const hero = (m as unknown as { hero: { view: { visible: boolean; alpha: number } } }).hero;
+    const solo = (m as unknown as { routes: { soloBtn: { art: { visible: boolean } } } }).routes.soloBtn;
+    expect(hero.view.visible).toBe(false);
+    expect(solo.art.visible).toBe(false);
+
+    const tex = new Texture({ source: new TextureSource({ width: 300, height: 360 }) });
+    const spy = vi.spyOn(Assets, 'load').mockResolvedValue(tex as never);
+    try {
+      await preloadUiTier('lobby');
+    } finally {
+      spy.mockRestore();
+    }
+    // Nothing changes until a frame runs: ten files land one by one, and each would otherwise
+    // cost a full layout of its own.
+    expect(hero.view.visible).toBe(false);
+    m.update(16);
+    expect(hero.view.visible).toBe(true);
+    expect(solo.art.visible).toBe(true);
+    expect(hero.view.alpha).toBeLessThan(1); // arriving art fades in
+  });
+
+  it('ignores a `late` file, and does nothing while hidden', async () => {
+    resetUiSkinsForTests();
+    const m = new MainMenu();
+    m.show(1280, 720);
+    const layout = vi.spyOn(m as unknown as { layout(w: number, h: number): void }, 'layout');
+    const spy = vi.spyOn(Assets, 'load').mockResolvedValue(Texture.WHITE as never);
+    try {
+      await preloadUiTier('late');
+      m.update(16);
+      expect(layout).not.toHaveBeenCalled();
+      m.hide();
+      await preloadUiTier('lobby');
+      m.update(16);
+      expect(layout).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

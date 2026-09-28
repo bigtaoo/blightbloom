@@ -26,7 +26,7 @@ import { LobbyBackdrop } from './LobbyBackdrop';
 import { MenuSheet } from './MenuSheet';
 import { lobbyScale, sharpenText } from './lobbyScale';
 import { MENU_BACKDROP_DIM, MENU_BUTTONS } from './menuTheme';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 
 /** The corner chrome's inset and height — the lobby's (`MainMenu`'s `EDGE`/`CHROME_H`). */
 export const SHELL_EDGE = 14;
@@ -52,7 +52,7 @@ export class MenuShell {
   constructor(opts: { title: string; back: string }) {
     this.sheet = new MenuSheet(opts.title);
     this.backBtn = new Button(opts.back, { w: 96, h: SHELL_CHROME_H, fontSize: 13, autoWidth: true, sound: 'ui.back', ...MENU_BUTTONS.chrome });
-    this.backBtn.setIcon(getUiTexture('icon_back'), 0x4a5568);
+    whenUiTexture('icon_back', (tex) => this.backBtn.setIcon(tex, 0x4a5568));
     this.backBtn.onTap = () => this.onBack?.();
     this.chrome.addChild(this.backBtn.view);
     this.root.addChild(this.sheet.view, this.content);

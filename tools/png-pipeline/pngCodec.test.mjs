@@ -173,6 +173,54 @@ describe('decodePNG / encodePNG round trip', () => {
       70, 80, 90, 255, 100, 110, 120, 255,
     ]);
   });
+
+  describe('colorType 3 (8-bit palette — what a libimagequant pass ships, 2026-09-28)', () => {
+    function chunk(type, data) {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length, 0);
+      return Buffer.concat([len, Buffer.from(type, 'ascii'), data, Buffer.alloc(4)]); // CRC unused
+    }
+    // A 3x2 image of palette indices. Row 0 uses filter None; row 1 uses Sub, so the one-byte
+    // `bpp` of the unfilter loop is exercised (a Sub row stores index[x] - index[x-1]).
+    function palettePNG({ plte, trns, rows = [[0, 1, 2], [2, 1, 0]] }) {
+      const raw = Buffer.from([
+        0, ...rows[0],
+        1, rows[1][0], (rows[1][1] - rows[1][0]) & 0xff, (rows[1][2] - rows[1][1]) & 0xff,
+      ]);
+      const ihdr = Buffer.alloc(13);
+      ihdr.writeUInt32BE(3, 0);
+      ihdr.writeUInt32BE(2, 4);
+      ihdr[8] = 8; ihdr[9] = 3;
+      return Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        chunk('IHDR', ihdr),
+        ...(plte ? [chunk('PLTE', Buffer.from(plte))] : []),
+        ...(trns ? [chunk('tRNS', Buffer.from(trns))] : []),
+        chunk('IDAT', zlib.deflateSync(raw)),
+        chunk('IEND', Buffer.alloc(0)),
+      ]);
+    }
+    const PLTE = [10, 20, 30, 40, 50, 60, 70, 80, 90];
+
+    it('expands indices through PLTE, alpha from tRNS, and 255 past the end of a short tRNS', () => {
+      const decoded = decodePNG(palettePNG({ plte: PLTE, trns: [0, 128] }));
+      expect(decoded.width).toBe(3);
+      expect(Array.from(decoded.data)).toEqual([
+        10, 20, 30, 0, 40, 50, 60, 128, 70, 80, 90, 255,
+        70, 80, 90, 255, 40, 50, 60, 128, 10, 20, 30, 0,
+      ]);
+    });
+
+    it('is fully opaque with no tRNS at all', () => {
+      const alphas = Array.from(decodePNG(palettePNG({ plte: PLTE })).data).filter((_, i) => i % 4 === 3);
+      expect(alphas).toEqual([255, 255, 255, 255, 255, 255]);
+    });
+
+    it('refuses a palette file with no PLTE, or an index past its end, rather than inventing a colour', () => {
+      expect(() => decodePNG(palettePNG({}))).toThrow(/no PLTE/);
+      expect(() => decodePNG(palettePNG({ plte: PLTE, rows: [[0, 1, 3], [0, 0, 0]] }))).toThrow(/index 3 past the 3-entry/);
+    });
+  });
 });
 
 describe('crc32 (indirect, via encodePNG output)', () => {

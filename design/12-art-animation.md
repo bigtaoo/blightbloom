@@ -666,10 +666,12 @@ visibility, correct blend mode and a default (0, 0) position, with green tests a
 
 So there are exactly **two art phases**, not per-asset laziness:
 
-- **LOBBY** — `preloadLobbyArt()`: `Assets.init`, then the `lobby` pack, then `preloadUiArt()`.
-  Awaited by every entry before `new Game(...)`, behind a Graphics-drawn progress screen
-  (`game/ui/loadingScreen.ts` — no art in it, because there is no art yet). Login, main menu, mode
-  select, settings, party and account screens are UI chrome only and are fully dressed here.
+- **LOBBY** — `preloadLobbyArt()`: `Assets.init`, then the `lobby` pack, then the UI loader's
+  `boot` tier. Awaited by every entry before `new Game(...)`, behind a Graphics-drawn progress
+  screen (`game/ui/loadingScreen.ts` — no art in it, because there is no art yet). Since
+  2026-09-28 the rest of the UI art is NOT in this wait — see "Update (2026-09-28): the lobby
+  waits for its first frame, not for every menu" below for the one bounded exception that makes
+  to this rule, and why it is confined to menu chrome.
 - **RUN** — `ensureRunArt()`: every remaining `run`-phase pack, then the four remaining loaders
   (`preloadRigSkin` per bundle, weapons, biome tiles, environment sprites) exactly once. Memoised,
   so it is one transition per session no matter how many gates ask for it.
@@ -694,7 +696,8 @@ Entering the **forge** is the boundary, not START RUN. The forge is where a play
 weapon art, so weapons must be dressed before it paints — and by then the background load has had
 the whole login/menu sequence to finish. Art-gated sites: `showLoadout`, `showForge`,
 `showPvpPreview`, `showMatchmaking`. Everything left ungated (`showMenu`, `showAccount`,
-`showSquad`, settings, the store) draws from the `lobby` pack alone.
+`showSquad`, settings, the store) draws from the `lobby` pack alone — plus, since 2026-09-28, the
+icons of those screens, which may land after the screen is built (see the 2026-09-28 update).
 
 `controllers/TransitionGate.ts` owns it — renamed from `ArtGate.ts` on 2026-09-22, when it took
 on a second reason to hold the same screen (see "The run boundary is held on purpose" below).
@@ -1042,6 +1045,81 @@ textures inside a web worker, whose requests do not appear in the page's own net
 so whether a document-level `<link rel="preload" as="image">` would be a cache HIT or a second
 432 kB download could not be verified here — and shipping that unverified is a coin flip on the
 one download in front of the menu. It stays on this list with that reason attached.
+
+## Update (2026-09-28): the lobby waits for its first frame, not for every menu
+
+**Measured first.** A throttled static server (one shared 1.6 Mbps link, 60 ms per request,
+`no-store`, gzip on text) serving the production build, with a probe injected into the page that
+timestamps the boot bar reaching 20% (renderer up) and 90% (lobby art in), and `window.__game`
+appearing (Game constructed). Three cold loads each; the art phase is the median (one "after"
+run read 3.22 s, with the previous page's leftover requests still sharing the link):
+
+| | before | after |
+| --- | --- | --- |
+| lobby art phase (bar 20% → 90%) | 8.54 s | 2.36 s (3.45 s with tiering alone) |
+| UI bytes awaited before `new Game` | 1.65 MB, 42 files | 0.44 MB, 8 files |
+| first `renderer.render` of the lobby | 43–65 ms | unchanged |
+
+The UI art was the whole wait: 42 files, 1.65 MB, every one awaited, about half of them drawn by no
+screen a player can reach in the first seconds. (Two traps met on the way, both recorded so they
+are not re-met: a HIDDEN browser tab gets no `requestAnimationFrame`, so the splash's
+`afterFirstRenderedFrame` sits on its 4 s timeout and "splash hidden" measures that timeout, not
+the boot; and Pixi fetches textures in a worker, so none of this is visible in the page's own
+resource timing — the server has to count it.)
+
+**Three UI tiers** (`render/uiSkins.ts`, header and `uiTierOf`):
+
+- `boot` — awaited in `preloadLobbyArt`: the painting, the menu background, both logos (so a
+  language switch never waits), and every icon on a lobby BUTTON — a button that gains its icon
+  later re-flows its label, which reads as a glitch where a portrait fading in does not.
+- `lobby` — kicked as `preloadLobbyArt` returns, never awaited: portraits, route banners, the
+  drifting rocks, the orbiting weapon. `MainMenu` listens (`onUiTexture`), marks its art stale,
+  and re-lays itself out on the next frame (ten arrivals cost at most one layout a frame); each
+  piece fades in over 200 ms (`game/ui/artFade.ts`). Art already present on the first draw — the
+  warm boot — does not fade.
+- `late` — loaded inside `loadRunArt`, so **the run gate awaits it**: every other screen's icons,
+  the floor-card and result art, the damage digits. On WeChat these files are the `ui-late` pack
+  (`run` phase), so they left the download a player waits for too; `assetManifest.test.ts` pins
+  pack membership to the tier file for file, in both directions.
+
+**The one exception to "textures change only at a phase boundary", and its fence.** A menu screen
+built before its `late` icon lands takes it through `whenUiTexture(key, apply)` — applied now if
+loaded, otherwise once on arrival. That is availability as a function of time, which the rule
+above forbids, and it is allowed here only because it is fenced: it is menu chrome (a button's
+glyph beside a label that is already there), never anything a run draws — everything a run draws
+is behind the gate, which now includes the `late` tier. The ten test files that mock
+`getUiTexture` had to route `whenUiTexture` through the same fake: the real one reads the module's
+own map, so each of those suites would otherwise have kept passing with every constructor-time
+icon silently gone — `labelFit`/`widgetOverlap`'s icon-shifted label sweeps among them. The late
+arrival itself is pinned by `client/src/game/screens/lateIcons.test.ts`: every menu screen is
+built with nothing loaded, then the icons land as one labelled texture per key, and each must
+end up on its own button. `preloadArt.test.ts` pins what each phase waits for (the boot resolves
+with `lobby` still downloading and asks for no `late` file; the run gate holds until every `late`
+file settles), and `uiSkins.test.ts` sweeps the source for any literal key missing from
+`UI_ASSETS` — an unknown key waits forever without an error.
+
+**Recompression, not a new format.** `hub_bg` was an opaque PNG and is now a JPEG (153 → 37 kB).
+The portraits, logos, the forger NPC and the lobby weapon are 256-colour palette PNGs with a
+tRNS alpha table, quantised with libimagequant (the `imagequant` Python binding, dithering 1.0):
+1.2–3× smaller, mean error 0.3–1.0 levels over a dark backdrop. A first pass with Pillow's octree
+quantiser was 2× smaller again but left visible speckle on the orb's white shell and banding in
+the skirmisher's fur, at 2–3× the error; it was rejected on a 3× zoom. `tools/png-pipeline`'s
+`decodePNG` learned colorType 3 the same day, because the shipped-art tests (`lobbyArt.test.ts`,
+`npcArt.test.ts`) read these files through it; its encoder still writes RGBA only, so re-running
+`compress.mjs` over one of them undoes the quantisation — which `uiSkins.test.ts` now fails, by
+reading each file's IHDR colour type, since the `lobby`-tier ones sit under no byte budget. WebP stays off the table: WeChat's
+decoder support could not be confirmed, and a portrait that decodes on web and not in the
+mini-game is the one failure this repo cannot see from here.
+
+**Mipmaps stay on everything but `hub`.** The plan was to drop them for the painting and the
+banners as "drawn 1:1". They are not: the painting is cover-scaled to 0.67× on a 1280×720 window
+and further down on a phone, and a banner is drawn at about a third of its width. A texture that
+is minified needs its chain; only `hub` (a 384 px swatch stretched over the whole screen) is
+always magnified, and only it loads without one (`uiUsesMipmaps`).
+
+**Code splitting stays out, and not for lack of a lever** (see "the first download itself"
+above): some target platforms cannot load code dynamically at all, so a lazily-imported chunk is
+not an option there. Every boot win has to come from assets and ordering.
 
 ## Open questions
 

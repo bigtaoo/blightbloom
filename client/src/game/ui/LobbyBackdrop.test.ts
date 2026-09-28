@@ -11,9 +11,13 @@ const mocks = vi.hoisted(() => ({ textures: new Map<string, unknown>() }));
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: (key: string) => mocks.textures.get(key),
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((key, apply) => { const tex = mocks.textures.get(key); if (tex) apply(tex as never); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 import { LobbyBackdrop, DAIS_U, DAIS_V, SKY_ROCKS } from './LobbyBackdrop';
+import { ART_FADE_MS } from './artFade';
 
 const PAINTING = new Texture({ source: new TextureSource({ width: 1920, height: 1080 }) });
 const HUB = new Texture({ source: new TextureSource({ width: 384, height: 288 }) });
@@ -279,5 +283,45 @@ describe('LobbyBackdrop — the dimmed mode every other menu draws (2026-09-27)'
     const b = new LobbyBackdrop({ dim: 0.5, daisU: 0.5 });
     b.layout(760, 1646);
     expect(b.dais.x).toBeCloseTo(760 * 0.5, 5);
+  });
+});
+
+describe('LobbyBackdrop — rocks that land after the painting (2026-09-28)', () => {
+  const ROCK = new Texture({ source: new TextureSource({ width: 48, height: 52 }) });
+  const rockSprites = (b: LobbyBackdrop) => (b as unknown as { rocks: { children: Sprite[] } }).rocks.children;
+
+  it('fades each rock in as a re-layout finds it, and not before', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    const b = new LobbyBackdrop();
+    b.layout(1280, 720);
+    for (const s of rockSprites(b)) expect(s.visible).toBe(false);
+    for (const r of SKY_ROCKS) mocks.textures.set(r.key, ROCK);
+    b.layout(1280, 720); // `MainMenu` re-lays the lobby as art lands
+    for (const s of rockSprites(b)) {
+      expect(s.visible).toBe(true);
+      expect(s.alpha).toBe(0);
+    }
+    b.update(ART_FADE_MS);
+    for (const s of rockSprites(b)) expect(s.alpha).toBe(1);
+    b.layout(1280, 720); // a later re-layout (a resize) does not replay it
+    for (const s of rockSprites(b)) expect(s.alpha).toBe(1);
+  });
+
+  it('does not fade rocks already in on the first layout, nor count the hub fallback as waiting', () => {
+    mocks.textures.set('lobby_bg', PAINTING);
+    for (const r of SKY_ROCKS) mocks.textures.set(r.key, ROCK);
+    const warm = new LobbyBackdrop();
+    warm.layout(1280, 720);
+    for (const s of rockSprites(warm)) expect(s.alpha).toBe(1);
+
+    // Over the hub fallback there are no rocks to wait for: when the painting then arrives
+    // with its rocks already in, they simply appear with it.
+    mocks.textures.delete('lobby_bg');
+    mocks.textures.set('hub', HUB);
+    const fallback = new LobbyBackdrop();
+    fallback.layout(1280, 720);
+    mocks.textures.set('lobby_bg', PAINTING);
+    fallback.layout(1280, 720);
+    for (const s of rockSprites(fallback)) expect(s.alpha).toBe(1);
   });
 });

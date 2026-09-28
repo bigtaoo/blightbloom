@@ -48,9 +48,10 @@ export class Panel {
     this.w = w;
     this.h = h;
 
-    // Preloaded (or not) before any screen ever calls layout() — main.ts awaits
-    // preloadUiArt() before constructing Game — so a texture that exists is already
-    // ready the first time this runs; a missing one just leaves bgSprite null forever.
+    // Preloaded (or not) before any screen ever calls layout() — every entry awaits the
+    // `boot` UI tier, which holds the one background key in use ('hub'), before
+    // constructing Game — so a texture that exists is already ready the first time this
+    // runs; a missing one just leaves bgSprite null forever.
     const bgTexture = this.backgroundKey ? getUiTexture(this.backgroundKey) : undefined;
     if (bgTexture) {
       if (!this.bgSprite) {
