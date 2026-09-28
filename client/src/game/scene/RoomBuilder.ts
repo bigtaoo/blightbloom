@@ -35,6 +35,8 @@ import { faceCrownFraction } from './wallTone';
 import type { Backdrop } from './Backdrop';
 import { Terrain } from './Terrain';
 import { Portal } from './Portal';
+import { portalCenterPx } from './portalPlacement';
+import { floorKeyOf, isSameFloor, type FloorKey } from './floorKey';
 
 // Standing walls used to optionally take a per-segment `NormalLitFilter` on top of their
 // hand-authored cap/face/side tints (2026-08-18 — one render-target pass per segment, up to 32
@@ -55,8 +57,8 @@ import { Portal } from './Portal';
  * Render-side mirror of the engine's dungeon/arena room geometry (design/08 "render
  * only reads") — ground/grid, AABB walls, and the round Y-sortable pillars. Extracted
  * out of Game.ts 2026-07-28 alongside EventReactor: owns the pillar Entity list itself
- * so Game only calls `build()` (on `room_enter`, or once for the `?arenaDemo=1` harness)
- * and `clear()` (on a fresh run).
+ * so Game only calls `build()` (once per run), `enterRoom()` (on `room_enter`) and `clear()`
+ * (on a fresh run).
  */
 export class RoomBuilder {
   private readonly pillars: Entity[] = [];
@@ -96,6 +98,8 @@ export class RoomBuilder {
   // World-px position of the current room's portal (its center), or null before the
   // first room ever loads. Game reads this to gate the popup's proximity check.
   portalPx: { x: number; y: number } | null = null;
+  /** The floor the last `build()` drew (`floorKey.ts`), so `enterRoom` can skip rebuilding it. */
+  private builtFloor: FloorKey | null = null;
 
   /** The void's far side (Terrain.ts). Owned here rather than by `Game`, because its whole
    *  lifecycle is the room's — unlike `Backdrop`, nothing outside this class ever touches it
@@ -111,8 +115,15 @@ export class RoomBuilder {
     this.terrain = new Terrain(layers);
   }
 
+  /** `room_enter`: rebuild only when the floor itself changed — see `floorKey.ts` for why a room
+   *  of the floor already drawn needs nothing here (door locks arrive through `updateDoors`). */
+  enterRoom(s: GameState): void {
+    if (!isSameFloor(this.builtFloor, s)) this.build(s);
+  }
+
   /** Rebuild the ground, AABB walls, and pillars for the CURRENTLY LOADED room. */
   build(s: GameState): void {
+    this.builtFloor = floorKeyOf(s);
     const w = fpToPx(s.worldW);
     const h = fpToPx(s.worldH);
 
@@ -425,31 +436,14 @@ export class RoomBuilder {
 
   /** Hidden until `setPortalOpen(true)` (Game, gated on the same checkpoint condition
    *  PortalPrompt uses). Rebuilt (not just repositioned) per room so a stale reference
-   *  never survives a room swap.
-   *
-   *  Placement bug fix (2026-08-12, live screenshot report): this used to center on
-   *  `(w/2, h/2)` — but in dungeon mode `w`/`h` are `fpToPx(s.worldW/worldH)`, the
-   *  bounding box of the WHOLE floor's co-resident rooms (buildFloorGeometry), not the
-   *  single room the checkpoint actually belongs to. On any floor with more than one
-   *  room that box's center can land in a corridor or on top of a wall instead of
-   *  inside the capstone (extraction/boss) room. `state.dungeonRoomRects` — populated
-   *  per room by SpawnSystem, always with the capstone LAST (ExtractionSystem's own
-   *  "capstone = last entry" convention, generateFloor always appends it last) — gives
-   *  the correct room to center on. Flat (non-dungeon) runs never populate
-   *  `dungeonRoomRects` (SpawnSystem only pushes into it in the dungeon branch), where
-   *  `w/h` already IS the single room's own size, so the old `w/2, h/2` center is kept
-   *  as the fallback for that mode. */
+   *  never survives a room swap. WHERE it stands is `portalPlacement.ts`. */
   private buildPortal(s: GameState, w: number, h: number): void {
     this.portal?.destroy();
     const portal = new Portal();
     this.layers.entities.addChild(portal);
     this.layers.shadow.addChild(portal.shadow!);
 
-    const capstone = s.dungeonRoomRects[s.dungeonRoomRects.length - 1]?.rect;
-    const px = capstone
-      ? { x: fpToPx(capstone.x) + fpToPx(capstone.w) / 2, y: fpToPx(capstone.y) + fpToPx(capstone.h) / 2 }
-      : { x: w / 2, y: h / 2 };
-
+    const px = portalCenterPx(s, w, h);
     portal.place(px.x, px.y);
     this.portal = portal;
     this.portalPx = px;
@@ -482,6 +476,7 @@ export class RoomBuilder {
   /** Tear down the current room's ground + pillars (beginRun) so a restart doesn't
    *  leak the previous run's geometry. */
   clear(): void {
+    this.builtFloor = null;
     for (const c of [...this.layers.ground.children]) c.destroy();
     this.clearDoors();
     this.clearWalls();
