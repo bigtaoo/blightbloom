@@ -43,6 +43,14 @@ export class FxController {
   /** The one lighting pass (design/01 milestone 2) — replaced a per-actor filter 2026-08-24,
    *  see fx/filters/litFx.ts. Mounted on `layers.lit` by `attach`. */
   readonly sceneLight = new SceneLightFilter();
+  /** The same pass over `layers.litStand` when the tier splits it (`standAntialias`): a second
+   *  instance only so its target can be multisampled. `'on'`, NOT `'inherit'`: Pixi resolves
+   *  `'inherit'` against the CURRENT render target, and on the high tier that is `world`'s
+   *  vignette pass — a pool texture with no MSAA — so `'inherit'` silently meant off (measured:
+   *  no change at all to the stepping). A WebGL1 host gets none either way; Pixi only
+   *  multisamples where `supports.msaa`. Same uniforms as `sceneLight` every frame
+   *  (`syncCamera`), or the two halves would be lit differently. */
+  readonly sceneLightStand = new SceneLightFilter({ antialias: 'on' });
   /** Bloom-lite blur over the additive fx layer. A field rather than a `new` inside `attach()`
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a
    *  fresh filter — and its GL program — every time the tier changes. */
@@ -87,6 +95,15 @@ export class FxController {
     // a property of the layer, not of the pass, and leaving it correct means re-mounting on a
     // tier change needs no second call.
     this.layers.lit.filterArea = this.litArea;
+    this.layers.litFloor.filterArea = this.litArea;
+    this.layers.litStand.filterArea = this.litArea;
+    // The screen passes too (2026-09-28, steady-load pass). Without an area Pixi measures the
+    // region as `world`'s bounds, a walk over every one of its ~660 descendants on every frame —
+    // 0.37 ms a frame on a desktop, the single most expensive bounds query in the frame, and it
+    // only ever produced "the viewport, clipped". `world`'s local space is `lit`'s (`lit` sits at
+    // the identity), so this is the same rect, and it is now EXACTLY the viewport rather than the
+    // viewport clipped to whatever the room happens to cover.
+    this.layers.world.filterArea = this.litArea;
     this.applyQuality();
   }
 
@@ -111,7 +128,12 @@ export class FxController {
     // flashes/trails/particles) gives a cheap glow halo without a real multi-pass
     // bright-pass bloom (first-pass approximation, design/01's own "milestone" framing).
     this.layers.fx.filters = q.bloom ? [this.bloom] : [];
-    this.layers.lit.filters = q.sceneLight ? [this.sceneLight] : [];
+    // One pass on `lit`, or the same pass split over its two halves — never both, or the stand
+    // half would be lit twice. See `Layers.litFloor` for the measurement behind the split.
+    const split = q.sceneLight && q.standAntialias;
+    this.layers.lit.filters = q.sceneLight && !split ? [this.sceneLight] : [];
+    this.layers.litFloor.filters = split ? [this.sceneLight] : [];
+    this.layers.litStand.filters = split ? [this.sceneLightStand] : [];
     this.particles.setBudget(q.particleBudget);
   }
 
@@ -240,6 +262,10 @@ export class FxController {
 
     // Chromatic-aberration pulse decays back to 0 — a hit reaction, never a permanent look.
     this.chromatic.amount = Math.max(0, this.chromatic.amount - dt * 0.006);
+    // At rest the split is zero and the pass would copy the screen onto itself: skip it. Pixi
+    // drops a disabled filter from the chain, so this is one full-viewport pass off every frame
+    // that is not a hit reaction.
+    this.chromatic.enabled = this.chromatic.amount > 0;
     // Screen-shake trauma also decays here (updateCamera only gets `alpha`, not `dt`; it
     // just reads the current value to compute this frame's offset).
     this.shakeTrauma = Math.max(0, this.shakeTrauma - dt * 0.0025);
@@ -333,12 +359,11 @@ export class FxController {
     this.litArea.y = -world.y / zoom;
     this.litArea.width = viewport.vw / zoom;
     this.litArea.height = viewport.vh / zoom;
-    this.visibleGroundPieces = cullGroundLayer(this.layers.ground, {
-      x: this.litArea.x,
-      y: this.litArea.y,
-      w: this.litArea.width,
-      h: this.litArea.height,
-    });
+    const view = { x: this.litArea.x, y: this.litArea.y, w: this.litArea.width, h: this.litArea.height };
+    this.visibleGroundPieces = cullGroundLayer(this.layers.ground, view);
+    // The floor's standing blocks, by the same tag (`groundCulling.tagStandingPiece`); actors,
+    // bullets and pickups carry no tag and are never culled.
+    cullGroundLayer(this.layers.entities, view);
     // The void's far side, fitted to the same rect (Terrain.ts, 2026-08-28). ABOVE the tier guard
     // below, and for exactly the reason the ground cull is: the low tier is the DEVICE tier, and a
     // terrain plane left un-fitted there would be a 1x1 sprite in the corner — i.e. the void would
@@ -352,8 +377,11 @@ export class FxController {
     });
     // Nothing reads these uniforms while the pass is unmounted (low tier).
     if (!activeQuality().sceneLight) return;
-    this.sceneLight.setRegion(this.litArea.x, this.litArea.y, this.litArea.width, this.litArea.height);
-    this.sceneLight.setLights(this.lightBuffer, this.lights.snapshot(this.lightBuffer));
+    const count = this.lights.snapshot(this.lightBuffer);
+    for (const pass of [this.sceneLight, this.sceneLightStand]) {
+      pass.setRegion(this.litArea.x, this.litArea.y, this.litArea.width, this.litArea.height);
+      pass.setLights(this.lightBuffer, count);
+    }
   }
 
   /** This frame's visible world rect, in world px — the inverse of the camera transform applied
@@ -387,6 +415,7 @@ export class FxController {
   pulseChromatic(amount: number): void {
     if (motionReduced()) return;
     this.chromatic.amount = Math.min(0.03, this.chromatic.amount + amount);
+    this.chromatic.enabled = this.chromatic.amount > 0; // on this frame, not at the next decay
   }
 
   /** If hit-stop is active, consume `dt` from it and report true (caller should skip

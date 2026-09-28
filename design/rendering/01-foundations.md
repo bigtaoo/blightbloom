@@ -140,7 +140,7 @@ entirely along the shot and the component that draws an arc is invisible.
 
 ## Depth sorting (Y-sort)
 
-- The entity layer sets `sortableChildren = true`; each frame we set `entity.zIndex = entity.gy`.
+- The entity layer sets `sortableChildren = true`, and every view's sort key is its ground `gy`. Since 2026-09-28 the key is written WITHOUT Pixi's `zIndex` setter (`scene/ySort.ts` `writeSortKey`), because the setter flags the whole render group for a rebuild on every write. Once per rendered frame, the layer's own `onRender` (`settleYSort`) asks Pixi to re-sort, and only when two children have actually crossed. The draw order is exactly what the setter produced; the frames with no crossing just stop paying for a rebuild. See "Steady load" at the end of "Layers".
 - Lower on screen (larger gy) draws later → occludes objects above it. A character walking behind a pillar is hidden; in front, it hides the pillar.
 - **Hidden, but never LOST**: since 2026-08-20 any standing block that is drawing over the local player OR a live enemy x-rays out of the way (see "The occlusion x-ray" above). The sort itself is unchanged — the character really is behind the stone, and the stone is what goes translucent.
 
@@ -415,6 +415,36 @@ entirely along the shot and the component that draws an arc is invisible.
 > A first probe honestly read 0 because every pillar at that camera was faded, and a faded pillar's
 > crease contributes nothing. A block only fades when its `sortY` is south of the player, so stand
 > NORTH of the cluster to get unfaded subjects on screen.
+
+> **Steady load (2026-09-28): the render group stops rebuilding what did not change.** The work is
+> [volume 107](../roadmap/107-2026-09-28-frame-pacing.md). Under a 4x CPU throttle, standing in for a
+> phone, a quiet walk cost 17.1 ms of work per frame at p50 and 36–54 frames a second. Most of that was
+> not drawing: a render group was re-collecting and re-batching its instructions without needing to.
+> Five structural rules came out of it, each with a test:
+>
+> 1. **The Y-sort key never goes through the `zIndex` setter** — see "Depth sorting" above.
+> 2. **A Graphics redrawn every frame is `no-batch`, and hidden while empty**
+>    (`render/staticGraphics.ts` `redrawnGraphics`). This only pays because of
+>    `render/graphicsPipeFix.ts`. Pixi 8.19's `GraphicsPipe.validateRenderable` tests
+>    `!!graphics._gpuData`, a map the constructor always creates, so it asks for a rebuild on every
+>    change to ANY Graphics. The patch reads this renderer's batch elements instead. Its test pins the
+>    bug, so a Pixi upgrade that fixes it goes red and the patch can go.
+> 3. **Churning layers get their own groups too**: `entities`, `fx` and `numbers`, alongside the
+>    static ones above. The point is the reverse of the static case: a particle rebuilds a group of
+>    particles, not the walls. None of the three ever batched with the others, because each sits under
+>    a different filter or none.
+> 4. **Every full-screen pass has a `filterArea`.** Without one, Pixi measures the pass region as the
+>    container's bounds, a walk over every descendant on every frame. A pass at rest leaves the chain
+>    (`filter.enabled = false`), because a zero-strength filter still costs a full render-target pass.
+> 5. **Standing pieces are culled with the ground** (`groundCulling.tagStandingPiece`, with a 96 px
+>    margin for the door rings drawn after the build). Actors, bullets and pickups are never tagged, so
+>    they are never culled.
+>
+> Result: 59–61 frames every second at 4x over 60 s with a descend, work p50 about 6 ms; unthrottled
+> work p50 went from 2.5 to 1.5 ms. `game/controllers/steadyFrame.test.ts` holds rules 1–3 across the
+> real `GameLoop`: a rebuild must have a tree change behind it, and a tree change must get a rebuild.
+> Rule 5 is held by `client/tools/perf/cullAB.mjs`, a live pixel A/B, since it saves draws rather
+> than rebuilds.
 
 ---
 

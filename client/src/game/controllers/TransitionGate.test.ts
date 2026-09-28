@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Container, Text, Ticker } from 'pixi.js';
 import { readFileSync } from 'node:fs';
-import { MIN_TRANSITION_MS, TransitionGate } from './TransitionGate';
+import { MIN_TRANSITION_MS, SETTLE_CAP_MS, SETTLE_FRAMES, SETTLE_MIN_FRAMES, TransitionGate } from './TransitionGate';
 import { setAssetHost, resetAssetHost, webAssetHost, type AssetHost } from '../../render/assetHost';
 import { resetPackLoader } from '../../render/packLoader';
 import {
@@ -90,6 +90,19 @@ function heldClock(): { sleep: (ms: number) => Promise<void>; slept: number[]; e
       for (const resolve of waiting.splice(0)) resolve();
     },
   };
+}
+
+/** Render frames `dts` ms apart on a ticker nobody started — `Ticker.update` is what a started one
+ *  calls from rAF. The first call primes `lastTime`, so a frame's `elapsedMS` is exactly its dt. */
+function frames(ticker: Ticker, dts: readonly number[]): void {
+  if (ticker.lastTime < 0) ticker.lastTime = 1000;
+  let t = ticker.lastTime;
+  for (const dt of dts) ticker.update((t += dt));
+}
+
+/** Enough calm 60 Hz frames for any run-boundary screen to have come down. */
+function settle(ticker: Ticker): void {
+  frames(ticker, Array.from({ length: SETTLE_MIN_FRAMES + SETTLE_FRAMES }, () => 16.7));
 }
 
 function gateWith(sleep?: (ms: number) => Promise<void>): {
@@ -354,7 +367,7 @@ describe('the run boundary, which is held on purpose', () => {
     // the in-game screen switches, entering a map, returning to the lobby". The art is in, so
     // `defer` would answer synchronously — a jump cut — and this is the one call that does not.
     const clock = heldClock();
-    const { gate, overlay } = gateWith(clock.sleep);
+    const { gate, overlay, ticker } = gateWith(clock.sleep);
     await withArtAlreadyIn();
 
     const retry = vi.fn();
@@ -366,6 +379,7 @@ describe('the run boundary, which is held on purpose', () => {
     clock.elapse();
     await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
     expect(gate.waiting).toBe(false);
+    settle(ticker); // the view outlives the gate by a few frames — see the settle block below
     expect(overlay.children.length).toBe(0);
   });
 
@@ -415,7 +429,7 @@ describe('the run boundary, which is held on purpose', () => {
     // each one asks the gate. Without the pass-through a player would sit through three
     // separate three-second screens for one press, with every other test here green.
     const clock = heldClock();
-    const { gate, overlay } = gateWith(clock.sleep);
+    const { gate, overlay, ticker } = gateWith(clock.sleep);
     await withArtAlreadyIn();
 
     const inner = vi.fn();
@@ -432,6 +446,7 @@ describe('the run boundary, which is held on purpose', () => {
     // a second `sleep(MIN_TRANSITION_MS)` here is what charging per layer looks like.
     expect(clock.slept).toEqual([MIN_TRANSITION_MS]);
     expect(inner).not.toHaveBeenCalled(); // it returned false — the caller carried on itself
+    settle(ticker);
     expect(overlay.children.length).toBe(0);
   });
 
@@ -439,7 +454,7 @@ describe('the run boundary, which is held on purpose', () => {
     // One screen, two captions. `t()` is synchronous and English is the source-of-truth
     // locale, so this reads the real table rather than a stub.
     const clock = heldClock();
-    const { gate, overlay } = gateWith(clock.sleep);
+    const { gate, overlay, ticker } = gateWith(clock.sleep);
     await withArtAlreadyIn();
 
     const captionOf = (): string => {
@@ -451,6 +466,7 @@ describe('the run boundary, which is held on purpose', () => {
     const entering = captionOf();
     clock.elapse();
     await vi.waitFor(() => expect(gate.waiting).toBe(false));
+    settle(ticker);
 
     gate.deferRunBoundary('hub', () => {});
     const returning = captionOf();
@@ -460,5 +476,89 @@ describe('the run boundary, which is held on purpose', () => {
     expect(entering).toBe(t('loading.enteringRun'));
     expect(returning).toBe(t('loading.returningToHub'));
     expect(entering).not.toBe(returning); // a single shared caption would pass both lines above
+  });
+});
+
+/**
+ * The run boundary's screen outlives its retry until the frames behind it settle (2026-09-28). It
+ * used to come down BEFORE the retry, so a run's one-time costs — the first sim tick, every actor
+ * view at once with the session's texture bakes, the room build, the first uploads — landed on the
+ * first frames the player could see: 132 ms and 129 ms frames on a 1080p desktop, 44 frames in the
+ * run's first second.
+ */
+describe('the run boundary holds its screen until the frames settle', () => {
+  /** A run boundary, released, with its screen still on the overlay. */
+  async function released(): Promise<{ gate: TransitionGate; overlay: Container; ticker: Ticker }> {
+    const clock = heldClock();
+    const g = gateWith(clock.sleep);
+    await withArtAlreadyIn();
+    g.gate.deferRunBoundary('run', () => {});
+    clock.elapse();
+    await vi.waitFor(() => expect(g.gate.waiting).toBe(false));
+    expect(g.overlay.children.length).toBe(1);
+    return g;
+  }
+
+  it('waits out the heavy frames behind it, then SETTLE_FRAMES calm ones', async () => {
+    const { overlay, ticker } = await released();
+    frames(ticker, [16.7, 16.7, 130, 130, 16.7, 16.7]); // the run's first frames, as measured
+    expect(overlay.children.length).toBe(1); // two calm frames since the stall: not yet
+    frames(ticker, [16.7]);
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('never comes down before SETTLE_MIN_FRAMES, however calm the first ones are', async () => {
+    // The first sim tick lands a frame or two after the retry, so a screen that trusted the very
+    // first calm frames would come down just before the stall it exists to hide.
+    const { overlay, ticker } = await released();
+    frames(ticker, Array.from({ length: SETTLE_MIN_FRAMES - 1 }, () => 16.7));
+    expect(overlay.children.length).toBe(1);
+    frames(ticker, [16.7]);
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('reads calm off the device\'s own frame rate — a 30 Hz device settles, not only a 60 Hz one', async () => {
+    const { overlay, ticker } = await released();
+    frames(ticker, Array.from({ length: SETTLE_MIN_FRAMES }, () => 33.3));
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('gives up at SETTLE_CAP_MS on a device that never settles, rather than holding forever', async () => {
+    const { overlay, ticker } = await released();
+    const slow = Math.ceil(SETTLE_CAP_MS / 250) - 1;
+    // Alternating so no run of SETTLE_FRAMES is ever calm against the fastest frame seen.
+    frames(ticker, Array.from({ length: slow }, (_, i) => (i % 2 ? 250 : 100)));
+    expect(overlay.children.length).toBe(1);
+    frames(ticker, [250, 250, 250]);
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('measures the real gap, not the ticker\'s 100 ms-clamped deltaMS', async () => {
+    // A 400 ms stall read through `deltaMS` is a 100 ms frame — still not calm here, but the cap
+    // would then be counting 100 where 400 passed. Four real stalls reach the cap; four clamped
+    // ones would not.
+    const { overlay, ticker } = await released();
+    frames(ticker, [16.7, 400, 400, 400, 400]);
+    expect(overlay.children.length).toBe(0);
+  });
+
+  it('leaves no ticker callback behind once it has come down', async () => {
+    const { overlay, ticker } = await released();
+    settle(ticker);
+    expect(overlay.children.length).toBe(0);
+    expect(ticker.count).toBe(0);
+  });
+
+  it('an art-only defer still comes down BEFORE its retry — only a run boundary holds', async () => {
+    const { host, release } = blockingHost();
+    setAssetHost(host);
+    const { gate, overlay } = gateWith();
+    beginDeferredArt();
+    let seen = -1;
+    gate.defer(() => {
+      seen = overlay.children.length;
+    });
+    release();
+    await vi.waitFor(() => expect(seen).toBe(0));
   });
 });

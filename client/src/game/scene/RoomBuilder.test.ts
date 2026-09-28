@@ -2141,3 +2141,36 @@ describe('RoomBuilder — decorative props (RoomPiece.props)', () => {
     expect(propEntities(rb)).toHaveLength(0);
   });
 });
+
+describe('RoomBuilder — standing pieces are tagged for the camera cull (2026-09-28)', () => {
+  // `FxController` culls `layers.entities` by the same tag as the ground: every block, door and
+  // pillar must carry one covering what it draws, and the portal (which animates past its bounds)
+  // and every actor must not — an untagged child is never culled, which is the safe direction.
+  it('tags every wall block, door fixture and pillar with a rect around its drawn bounds', () => {
+    const s = stateWithOneWall('ember');
+    pushDoor(s, true, [300, 100, 20, 64]);
+    const rb = makeRoomBuilder();
+    const layers = (rb as unknown as { layers: Layers }).layers;
+    rb.build(s);
+    const pillars = makeRoomBuilder();
+    pillars.build(stateWithOneObstacle());
+    const pillarLayer = (pillars as unknown as { layers: Layers }).layers.entities;
+    const standing = [
+      ...(rb as unknown as { wallEntities: Container[] }).wallEntities,
+      doorFixtures(rb)[0]!.view,
+      pillarLayer.children[0]!,
+    ];
+    expect(standing).toHaveLength(3);
+    for (const piece of standing) {
+      const tag = groundPieceBounds(piece)!;
+      expect(tag).toBeDefined();
+      const b = piece.getLocalBounds();
+      expect(tag.x).toBeLessThanOrEqual(piece.x + b.minX);
+      expect(tag.y).toBeLessThanOrEqual(piece.y + b.minY);
+      expect(tag.x + tag.w).toBeGreaterThanOrEqual(piece.x + b.maxX);
+      expect(tag.y + tag.h).toBeGreaterThanOrEqual(piece.y + b.maxY);
+    }
+    const untagged = layers.entities.children.filter((c) => !groundPieceBounds(c));
+    expect(untagged).toEqual([(rb as unknown as { portal: Container }).portal]);
+  });
+});

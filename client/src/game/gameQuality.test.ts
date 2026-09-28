@@ -55,7 +55,7 @@ function fakeApp(screen: { width: number; height: number }, resolution: number) 
 }
 
 interface GameInternals {
-  layers: { world: Container; fx: Container; lit: Container };
+  layers: { world: Container; fx: Container; lit: Container; litFloor: Container; litStand: Container };
   settingsScreen: { onChange: ((s: SettingsState) => void) | null };
   settingsBinding: SettingsBinding;
   quality: RenderQualityController;
@@ -89,12 +89,15 @@ function newGame(settings: Partial<SettingsState> = {}, resolution = 2) {
   return { game, renderer, inner };
 }
 
-/** What is actually mounted on the three filtered layers. */
+/** What is actually mounted on the filtered layers. */
 function mountedCounts(inner: GameInternals) {
   return {
     world: (inner.layers.world.filters ?? ([] as unknown[])).length,
     fx: (inner.layers.fx.filters ?? ([] as unknown[])).length,
-    lit: (inner.layers.lit.filters ?? ([] as unknown[])).length,
+    // Lighting passes wherever they are mounted: one on `lit`, or the high tier's split pair on
+    // its two halves (`Layers.litStand`) — so this counts passes, which is what a tier costs.
+    lit: [inner.layers.lit, inner.layers.litFloor, inner.layers.litStand]
+      .reduce((n, layer) => n + (layer.filters ?? ([] as unknown[])).length, 0),
   };
 }
 
@@ -103,7 +106,7 @@ describe('Game — quality tier wiring', () => {
     const { renderer, inner } = newGame({ quality: 'auto' }, 2);
     expect(activeQuality().tier).toBe('high');
     expect(renderer.resolution).toBe(2);
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
   });
 
   it('applies a persisted low tier at boot — filters off and resolution down', () => {
@@ -130,13 +133,13 @@ describe('Game — quality tier wiring', () => {
 
   it('applies a tier picked from the settings screen, live', () => {
     const { renderer, inner } = newGame({ quality: 'auto' }, 2);
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
     inner.settingsScreen.onChange!({ ...inner.settingsBinding.state, quality: 'low' });
     expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 0 });
     expect(renderer.resolution).toBe(1);
     // ...and back, in the same session.
     inner.settingsScreen.onChange!({ ...inner.settingsBinding.state, quality: 'high' });
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
     expect(renderer.resolution).toBe(2);
   });
 
@@ -164,7 +167,7 @@ describe('Game — the auto downgrade', () => {
     // (`world` 2 -> 0, `fx` 1 -> 0), `lit` still lit, and the resolution untouched.
     const { game, renderer, inner } = newGame({ quality: 'auto' }, 2);
     feed(game, [SLOW, SLOW]);
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 }); // not yet
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 }); // not yet
     feed(game, [SLOW]);
     expect(activeQuality().tier).toBe('medium');
     expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 1 });
@@ -191,7 +194,7 @@ describe('Game — the auto downgrade', () => {
     const { game, renderer, inner } = newGame({ quality: 'auto' }, 2);
     feed(game, [FAST, SLOW, FAST, SLOW, SLOW, FAST, SLOW]);
     expect(activeQuality().tier).toBe('high');
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
     expect(renderer.resizes).toHaveLength(0);
   });
 
@@ -200,7 +203,7 @@ describe('Game — the auto downgrade', () => {
     feed(game, [SLOW, SLOW, SLOW, SLOW, SLOW]);
     // The player asked for high and is still on high — the game does not overrule them.
     expect(activeQuality().tier).toBe('high');
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
   });
 
   it('does not persist the downgrade — the SETTING stays auto', () => {
@@ -263,7 +266,7 @@ describe('Game — the watchdog has no authority on a pinned tier', () => {
 describe('Game — a real perf window drops a real tier', () => {
   it('downgrades the live renderer off the real sampler, not off a literal', () => {
     const { game, renderer, inner } = newGame({ quality: 'auto' }, 2);
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
 
     // A second, independent app purely to run the real perf pipeline — `Game`'s own fake ticker
     // never fires, and standing up a real one would drag the whole update loop into this test.
@@ -316,7 +319,7 @@ describe('Game — a real perf window drops a real tier', () => {
     // The control: windows really were produced and really did reach the game.
     expect(windows).toBeGreaterThanOrEqual(3);
     expect(activeQuality().tier).toBe('high');
-    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 1 });
+    expect(mountedCounts(inner)).toEqual({ world: 2, fx: 1, lit: 2 });
     expect(renderer.resizes).toHaveLength(0);
   });
 });

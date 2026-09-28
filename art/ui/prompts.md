@@ -223,8 +223,8 @@ against always looks fine.
 Nine images for the redesigned lobby (design/10 "The lobby, redesigned"): the painting, two
 logos, one portrait per playable character and three route-card banners. Generated with GPT
 Image 2; every prompt carries the full style and composition brief on its own, so a batch
-cannot drift. The material chips, crystal glow, rising motes and the column's vignette are
-drawn in code and needed no art.
+cannot drift. The crystal glow, rising motes and the column's vignette are drawn in code and
+needed no art.
 
 ## `lobby_bg` — the painting (2560x1440, opaque)
 

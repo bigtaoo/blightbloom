@@ -5,7 +5,6 @@ import { LobbyCard } from '../ui/LobbyCard';
 import { AccountCard } from '../ui/AccountCard';
 import { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { LobbyHero } from '../ui/LobbyHero';
-import { LobbyResources, type MaterialCounts } from '../ui/LobbyResources';
 import { lobbyScale, lobbyColumnScale, sharpenText } from '../ui/lobbyScale';
 import type { SavedRunSummary } from '../match/runSave';
 import { getSession } from '../../net/session';
@@ -50,8 +49,11 @@ const TAGLINE_H = 24;
  *    character hovering on its dais (`LobbyHero`) and the logo above it;
  *  - the ways into the game as one column on the right, in three visibly different tiers
  *    (`LobbyRoutes`), with a soft vignette behind it and nothing else darkened;
- *  - account (top-left) and materials + SETTINGS (top-right) pinned to the real viewport
- *    corners, because they are chrome and not doors;
+ *  - account (top-left) and SETTINGS (top-right) pinned to the real viewport corners,
+ *    because they are chrome and not doors. The banked materials are NOT here (2026-09-28):
+ *    five bare counts answered no question a player asks in the lobby, and the Forge and
+ *    Loadout screens already show them where they are spent. What the lobby says instead is
+ *    the one actionable fact — how many weapons can be crafted now — as FORGE's badge;
  *  - the operator's maintenance banner and the portal's data notice in one strip across the
  *    scene at the top third of the screen, left of the column (`layoutNotices`). Not the
  *    bottom edge: on the portal that belongs to its banner ad (`BannerHost`). And not pushing
@@ -65,7 +67,7 @@ const TAGLINE_H = 24;
  * Pure presentation, same shape as every screen here: `gameWiring.ts` owns what each route
  * does. The shell owns two questions about the routes — whether there is a run to continue
  * (`resumableRun`) and whether a portal wants its one-click PLAY (`applyPrimary`) — plus the
- * profile the hero and the material chips draw (`lobbyProfile`).
+ * profile the hero and the FORGE badge draw (`lobbyProfile`).
  */
 export class MainMenu {
   readonly view = new Container();
@@ -87,7 +89,6 @@ export class MainMenu {
    *  worth a tap). */
   private accountBtn: AccountCard;
   private settingsBtn: Button;
-  private resources = new LobbyResources();
   /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
    *  `setAccountEntry`. It states who the player is; it does not offer to change it. */
   private accountLabel: Text;
@@ -123,9 +124,10 @@ export class MainMenu {
    */
   resumableRun: () => SavedRunSummary | null = () => null;
 
-  /** The selected character and the banked materials — a provider for the same reason as
-   *  `resumableRun`. `null` (the default) draws an empty dais and no material chips. */
-  lobbyProfile: () => { skinId: string; materials: MaterialCounts; bestFloor: number } | null = () => null;
+  /** The selected character and how many weapons the forge can craft right now — a provider
+   *  for the same reason as `resumableRun`. `null` (the default) draws an empty dais and no
+   *  FORGE badge. */
+  lobbyProfile: () => { skinId: string; forgeReady: number; bestFloor: number } | null = () => null;
 
   /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
@@ -177,7 +179,7 @@ export class MainMenu {
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 120, h: CHROME_H, fontSize: 13, color: 0x1f2532, borderColor: 0x718096, autoWidth: true });
     this.settingsBtn.onTap = () => this.onSettings?.();
     whenUiTexture('icon_settings', (tex) => this.settingsBtn.setIcon(tex, 0x4a5568));
-    this.topRight.addChild(this.resources.view, this.settingsBtn.view);
+    this.topRight.addChild(this.settingsBtn.view);
 
     this.dataNotice = new Text({ text: '', style: { fill: 0xe2e8f0, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: LOBBY_ROUTES_W, stroke: { color: 0x1a202c, width: 3 } } });
     this.dataNotice.anchor.set(0.5, 0);
@@ -275,8 +277,7 @@ export class MainMenu {
     const profile = this.lobbyProfile();
     this.hero.setCharacter(profile?.skinId ?? null);
     this.hero.setBestFloor(profile?.bestFloor ?? 0);
-    this.resources.set(profile?.materials ?? {});
-    this.resources.view.visible = profile !== null;
+    this.routes.setForgeReady(profile?.forgeReady ?? 0);
     this.refreshBanner(false);
     this.layout(w, h);
     this.view.visible = true;
@@ -314,9 +315,7 @@ export class MainMenu {
     this.topLeft.scale.set(k);
     this.topLeft.position.set(edge, edge);
     this.topRight.scale.set(k);
-    const settingsW = this.settingsBtn.width;
-    this.settingsBtn.view.position.set(-settingsW, 0);
-    this.resources.view.position.set(-settingsW - 10 - this.resources.width, (CHROME_H - this.resources.height) / 2);
+    this.settingsBtn.view.position.set(-this.settingsBtn.width, 0);
     this.topRight.position.set(w - edge, edge);
 
     const chromeBottom = edge + CHROME_H * k;

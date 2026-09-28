@@ -19,6 +19,9 @@ has since 2026-09-09** — see the amendment under *How funny's version was chan
 | `gpuTimer.ts` | GPU-side frame timing via `EXT_disjoint_timer_query_webgl2` — what the GPU actually did, not what the CPU spent submitting it. Carries its own controls (`sweepTrust`) and the fixed-vs-fill decomposition (`resolutionSplit`). |
 | `index.ts` | `installPerf(app, { overlay })` + the `window.__perf` console handle. |
 
+The live, whole-run measurements — the 60 s frame-rate acceptance run on a throttled CPU and the
+culling pixel A/B — are scripts outside the bundle, in [`client/tools/perf`](../../tools/perf/README.md).
+
 ## Using it
 
 ```bash

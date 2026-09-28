@@ -40,6 +40,7 @@ import { staticGraphics } from '../../render/staticGraphics';
 import { drawRoomLight } from './roomLight';
 import { cellExtent, roomsCoverReachableSpace } from './floorPartition';
 import { tagGroundPiece } from './groundCulling';
+import { StagedBuild, solo, type BuildStep } from './stagedBuild';
 
 /** Opacity of the 64 px floor grid. See the module header for why it is this low. */
 const GRID_ALPHA = 0.12;
@@ -69,22 +70,36 @@ export interface GroundDeps {
  * the render layer, the same way `Pickup`'s bob phase is a golden angle times its entity id.
  */
 export function buildGroundLayer(ground: Container, deps: GroundDeps): void {
+  const staged = new StagedBuild();
+  staged.start(groundSteps(ground, deps));
+  staged.runAll();
+}
+
+/**
+ * The same paint as `buildGroundLayer`, as one step per mounted piece, in mount order — the unit a
+ * descend spreads over frames (`stagedBuild.ts`). Running every step in order IS `buildGroundLayer`,
+ * which is how it is implemented, so the two cannot drift apart.
+ */
+export function groundSteps(ground: Container, deps: GroundDeps): BuildStep[] {
   const { rooms, floorRegions, wallRects, doorRects, palette, floorTex } = deps;
   const tileSize = floorTex?.width ?? FALLBACK_TILE;
+  const steps: BuildStep[] = [];
 
   // (1) the floor itself. One container per region rather than 322 loose sprites, so the piece the
   // camera switches off is the region — the same granularity every other stage is culled at, and
   // the one rect that is already known exactly without measuring anything.
   for (const region of floorRegions) {
-    const tiles = new Container();
-    if (floorTex) {
-      for (const tile of stampFloor(floorTex, region)) tiles.addChild(tile);
-    } else {
-      const fill = staticGraphics();
-      fill.rect(region.x, region.y, region.w, region.h).fill({ color: palette.ground });
-      tiles.addChild(fill);
-    }
-    mountPiece(ground, tiles, region);
+    steps.push(() => {
+      const tiles = new Container();
+      if (floorTex) {
+        for (const tile of stampFloor(floorTex, region)) tiles.addChild(tile);
+      } else {
+        const fill = staticGraphics();
+        fill.rect(region.x, region.y, region.w, region.h).fill({ color: palette.ground });
+        tiles.addChild(fill);
+      }
+      mountPiece(ground, tiles, region);
+    });
   }
 
   // (2) the floor's variation. Two pieces per room, because the light half is additively blended —
@@ -96,36 +111,49 @@ export function buildGroundLayer(ground: Container, deps: GroundDeps): void {
   // `staticGraphics` throughout, as before: painted once per room build and never touched again, on
   // a layer with its own render group.
   const lightHalves: Graphics[] = [];
+  // Each room's variation is the heaviest paint on the floor (2-5 ms apiece on a desktop, most of
+  // it the mottle's clip), so each gets a frame to itself when the build is staged.
   for (const room of rooms) {
-    const dark = staticGraphics();
-    const light = staticGraphics();
-    light.blendMode = 'add';
-    const seed = hash2(Math.round(room.x), Math.round(room.y)) >>> 8;
-    drawRoomWash(dark, room, seed);
-    drawFloorMottle(dark, light, room, seed, tileSize);
-    drawFloorDecals(dark, light, room, seed, wallRects);
-    mountPainted(ground, dark);
-    lightHalves.push(light);
+    steps.push(solo(() => {
+      const dark = staticGraphics();
+      const light = staticGraphics();
+      light.blendMode = 'add';
+      const seed = hash2(Math.round(room.x), Math.round(room.y)) >>> 8;
+      drawRoomWash(dark, room, seed);
+      drawFloorMottle(dark, light, room, seed, tileSize);
+      drawFloorDecals(dark, light, room, seed, wallRects);
+      mountPainted(ground, dark);
+      lightHalves.push(light);
+    }));
   }
-  for (const light of lightHalves) mountPainted(ground, light);
+  // One step per light half, still all after every dark one: mounting them together would put all
+  // their triangulation on one render.
+  for (let i = 0; i < rooms.length; i++) steps.push(() => mountPainted(ground, lightHalves[i]!));
   for (const door of doorRects) {
-    const wear = staticGraphics();
-    wear.blendMode = 'add';
-    drawDoorWear(wear, door);
-    mountPainted(ground, wear);
+    steps.push(() => {
+      const wear = staticGraphics();
+      wear.blendMode = 'add';
+      drawDoorWear(wear, door);
+      mountPainted(ground, wear);
+    });
   }
 
   // (3) the grid, per region, and (4) the light pool, per room.
   for (const region of floorRegions) {
-    const grid = staticGraphics();
-    drawRegionGrid(grid, region, palette);
-    mountPiece(ground, grid, region);
+    steps.push(() => {
+      const grid = staticGraphics();
+      drawRegionGrid(grid, region, palette);
+      mountPiece(ground, grid, region);
+    });
   }
   for (const room of rooms) {
-    const light = staticGraphics();
-    drawRoomLight(light, room);
-    mountPainted(ground, light);
+    steps.push(() => {
+      const light = staticGraphics();
+      drawRoomLight(light, room);
+      mountPainted(ground, light);
+    });
   }
+  return steps;
 }
 
 /** The 64 px lattice over one floor region. */

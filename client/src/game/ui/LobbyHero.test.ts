@@ -1,6 +1,5 @@
 /**
- * `LobbyHero` — the selected character on the lobby dais (design/10, 2026-09-27), and the
- * `LobbyResources` material chips beside SETTINGS.
+ * `LobbyHero` — the selected character on the lobby dais (design/10, 2026-09-27).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Sprite, Text, Texture, TextureSource } from 'pixi.js';
@@ -18,7 +17,6 @@ vi.mock('../../render/uiSkins', async (importOriginal) => ({
 
 import { LobbyHero, HERO_PORTRAITS } from './LobbyHero';
 import { ART_FADE_MS } from './artFade';
-import { LobbyResources, compactCount } from './LobbyResources';
 import { UI_ASSET_KEYS } from '../../render/uiSkins';
 
 installFakeTextCanvas();
@@ -158,34 +156,6 @@ describe('LobbyHero — the best floor', () => {
     expect(internals(h).bestText.y).toBeGreaterThan(internals(h).statsText.y);
     h.setBestFloor(0);
     expect(internals(h).bestText.visible).toBe(false);
-  });
-});
-
-describe('LobbyResources', () => {
-  it('compacts a count to fit a four-digit chip', () => {
-    expect(compactCount(0)).toBe('0');
-    expect(compactCount(9999)).toBe('9999');
-    expect(compactCount(12345)).toBe('12k');
-    expect(compactCount(2_500_000)).toBe('2m');
-  });
-
-  it('draws one chip per element, zero for a missing or bad count', () => {
-    const r = new LobbyResources();
-    r.set({ fire: 7, ice: -3, lightning: Number.NaN });
-    const labels = (r as unknown as { labels: Text[] }).labels.map((l) => l.text);
-    expect(labels).toHaveLength(5);
-    expect(labels).toContain('7');
-    expect(labels.filter((t) => t === '0').length).toBe(4);
-    expect(r.width).toBeGreaterThan(0);
-    expect(r.height).toBeGreaterThan(0);
-  });
-
-  it('widens as a count grows', () => {
-    const r = new LobbyResources();
-    r.set({});
-    const narrow = r.width;
-    r.set({ fire: 9999 });
-    expect(r.width).toBeGreaterThan(narrow);
   });
 });
 

@@ -10,7 +10,7 @@ import type { MetaState } from './index';
 import {
   defaultMetaState, bankMaterials, unlockBlueprint, isUnlocked, canAfford, craft,
   clearLoadout, selectCharacter, grantCharacter, acquireBlueprint, purchasableBlueprints,
-  bankTotal, kindAlreadyStaged, MemoryMetaStore, createWebMetaStore, migrate,
+  bankTotal, kindAlreadyStaged, craftableNow, addSchematic, MemoryMetaStore, createWebMetaStore, migrate,
 } from './index';
 import { BLUEPRINT_CATALOG } from '@dd/engine';
 
@@ -383,5 +383,38 @@ describe('meta loadout reaches the run via EngineConfig.loadout', () => {
     for (const loadout of [undefined, [], ['ghost'], ['repeater'], ['emberblade']]) {
       expect(names(loadout).length).toBe(PLAYER_BASE.weaponSlots);
     }
+  });
+});
+
+describe('craftableNow — the lobby FORGE badge (design/10, 2026-09-28)', () => {
+  it('is zero on an empty bank, however many recipes the account owns', () => {
+    const m = defaultMetaState();
+    expect(m.unlockedBlueprints.length).toBeGreaterThan(0);
+    expect(craftableNow(m)).toBe(0);
+  });
+
+  it('counts only what craft() would accept, and agrees with it recipe by recipe', () => {
+    const m = bankMaterials(defaultMetaState(), { mat_physical: 3 });
+    const n = craftableNow(m);
+    expect(n).toBeGreaterThan(0);
+    expect(craft(m, 'repeater').ok).toBe(true);
+    // A purchase-only recipe the bank could afford does not count until it is owned...
+    expect(craft(m, 'seeker')).toEqual({ ok: false, reason: 'locked' });
+    const rich = bankMaterials(defaultMetaState(), { mat_physical: 5 });
+    // ...and a banked schematic makes it count.
+    expect(craftableNow(addSchematic(rich, 'cannon'))).toBe(craftableNow(rich) + 1);
+  });
+
+  it('drops the staged kind, and reaches zero once the loadout is full', () => {
+    const m = bankMaterials(defaultMetaState(), { mat_physical: 100 });
+    const before = craftableNow(m);
+    const gun = craft(m, 'repeater');
+    if (!gun.ok) throw new Error('setup: repeater should craft');
+    const after = craftableNow(gun.meta);
+    expect(after).toBeGreaterThan(0); // the melee recipes are still open
+    expect(after).toBeLessThan(before);
+    const melee = craft(gun.meta, 'hammer');
+    if (!melee.ok) throw new Error('setup: hammer should craft');
+    expect(craftableNow(melee.meta)).toBe(0);
   });
 });

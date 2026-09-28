@@ -39,6 +39,7 @@
 // MATERIAL, which is what an image model is actually good at.
 import { Container, Graphics, Sprite, TilingSprite } from 'pixi.js';
 import { activeQuality } from '../../render/quality';
+import { redrawnGraphics } from '../../render/staticGraphics';
 import {
   GLOW_COLOR,
   ringTravel,
@@ -191,9 +192,11 @@ export class DoorFx {
   private readonly rejectFlash: Graphics | null = null;
   private readonly streamA: TilingSprite;
   private readonly streamB: TilingSprite;
-  private readonly motes = new Graphics();
-  private readonly pulse = new Graphics();
-  private readonly burst = new Graphics();
+  // Redrawn every frame they are showing, so never batched: a batched one would rebuild the whole
+  // enclosing render group each time (`redrawnGraphics`).
+  private readonly motes = redrawnGraphics();
+  private readonly pulse = redrawnGraphics();
+  private readonly burst = redrawnGraphics();
 
   constructor(
     private readonly openingW: number,
@@ -389,8 +392,8 @@ export class DoorFx {
    *  `Portal.drawParticles`, and the only per-frame redraw a door does. */
   private drawMotes(weight: number): void {
     const g = this.motes;
-    g.clear();
-    if (weight <= 0.001) return;
+    if (weight <= 0.001) return clearOnce(g);
+    redraw(g);
     // The one per-frame REDRAW a door does, and therefore the one part of this pass with a cost
     // worth a lever. It rides `particleBudget` rather than a new tier field because that is
     // literally what the field means ("multiplier on particle burst counts") and a mote is a
@@ -422,11 +425,13 @@ export class DoorFx {
    *  0.35 to 1.3 of the door's own size, from the wall's face where the plane has one. */
   private drawPulse(lockedW: number, openW: number, nearMul: number): void {
     const g = this.pulse;
-    g.clear();
     const s = sawtooth(this.t, PULSE_PERIOD_MS);
     const fade = Math.sin(Math.PI * s); // 0 at both ends, so the sawtooth's jump is never drawn
+    const alphaOf = (weight: number): number => weight * nearMul * PULSE_ALPHA * fade;
+    if (alphaOf(openW) <= 0.002 && alphaOf(lockedW) <= 0.002) return clearOnce(g);
+    redraw(g);
     const ring = (weight: number, color: number, grow: number): void => {
-      const a = weight * nearMul * PULSE_ALPHA * fade;
+      const a = alphaOf(weight);
       if (a <= 0.002) return;
       const rx = ringTravel(this.plane, 0.35, 1.3, grow);
       strokeFloorArc(g, this.plane, rx, color, 2, Math.min(1, a));
@@ -439,13 +444,28 @@ export class DoorFx {
    *  an event rather than a boolean. Outward and warm on unlock, inward and red on lock. */
   private drawBurst(fade: number): void {
     const g = this.burst;
-    g.clear();
-    if (this.burstMs <= 0) return;
+    if (this.burstMs <= 0) return clearOnce(g);
+    redraw(g);
     const k = 1 - this.burstMs / TRANSITION_MS;
     const grow = this.locked ? 1 - k : k;
     const rx = ringTravel(this.plane, 0.3, 1.65, grow);
     strokeFloorArc(g, this.plane, rx, this.locked ? GLOW_COLOR : 0xffffff, 3, (1 - k) * 0.75 * fade);
   }
+}
+
+/** Empty `g` unless it already is. Clearing an empty Graphics still marks it dirty, and a dirty
+ *  Graphics is rebuilt on its next render — for a settled door that was three rebuilds a frame of
+ *  nothing at all. Hidden too: these are `redrawnGraphics`, each its own draw call and a break in
+ *  the batch around it, and an empty one would pay both for nothing. */
+function clearOnce(g: Graphics): void {
+  if (g.context.instructions.length > 0) g.clear();
+  g.visible = false;
+}
+
+/** Start this frame's drawing of `g`: shown, and emptied of last frame's. */
+function redraw(g: Graphics): void {
+  g.visible = true;
+  g.clear();
 }
 
 /** Write one state group's alphas: `weight` is its crossfade share times its breath, `nearMul` the

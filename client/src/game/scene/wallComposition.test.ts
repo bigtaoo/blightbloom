@@ -555,13 +555,16 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
     expect(faceCrownFraction('poison')).not.toBe(FACE_CROWN_FRACTION_MIN); // it IS measured now
   });
 
-  it("is actually WIRED to the room's element by RoomBuilder", () => {
+  it("is actually WIRED to the room's element by the wall plan", () => {
     // The one step nothing else here can reach: `wallJoins` defaults to the conservative minimum, so
     // a caller that forgets to pass the room's own fraction still produces plausible corners — every
     // fire room would just clip a few px low, forever, silently. Read from source rather than
     // imported because importing RoomBuilder needs a live Pixi stage; same trick
-    // `render/rigComposition.test.ts` uses on main.ts.
-    const source = readFileSync(new URL('RoomBuilder.ts', import.meta.url)).toString('utf8');
+    // `render/rigComposition.test.ts` uses on main.ts. The walls' joins moved into
+    // `roomWallPlan.ts` on 2026-09-28, and RoomBuilder hands that plan the room's element.
+    const source = readFileSync(new URL('roomWallPlan.ts', import.meta.url)).toString('utf8');
+    const builder = readFileSync(new URL('RoomBuilder.ts', import.meta.url)).toString('utf8');
+    expect(builder).toMatch(/planRoomWalls\(\s*s,\s*w,\s*h,\s*element\s*\)/);
     expect(source).toMatch(/wallJoins\(\s*merged,\s*faceCrownFraction\(element\)\s*\)/);
   });
 
