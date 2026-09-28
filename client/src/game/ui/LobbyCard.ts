@@ -23,6 +23,7 @@ import { Container, Graphics, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import { getUiTexture } from '../../render/uiSkins';
 import { playUiCue } from '../../audio/uiSound';
 import { estimateMonoWidth } from './textWidth';
+import { ArtFade } from './artFade';
 
 export interface LobbyCardStyle {
   /** `uiSkins.ts` key of the banner art. Absent, or not loaded, leaves the flat `fill`. */
@@ -59,6 +60,10 @@ export class LobbyCard {
   private clip = new Container();
   private clipMask = new Graphics();
   private art = new Sprite();
+  // The banner lands after the lobby's first frame on a cold boot (uiSkins.ts's `lobby` tier):
+  // set while this card's art is named but not loaded, so its arrival fades in.
+  private artPending = false;
+  private readonly artFade = new ArtFade(this.art);
   private shade = new Graphics();
   private hover = new Graphics();
   private frame = new Graphics();
@@ -179,8 +184,15 @@ export class LobbyCard {
     this.layoutText();
   }
 
-  /** Advance the primary card's glow. A no-op on every other card. */
+  /** Pick up banner art that has landed since the last draw — `MainMenu` calls this as lobby
+   *  art arrives. A no-op unless this card is still waiting on its art. */
+  refreshArt(): void {
+    if (this.artPending) this.redraw();
+  }
+
+  /** Advance the art's fade-in and the primary card's glow (a no-op on every other card). */
   update(dtMs: number): void {
+    this.artFade.update(dtMs);
     if (!this.style.glow) return;
     this.clockMs = (this.clockMs + dtMs) % GLOW_PERIOD_MS;
     this.glow.alpha = 0.55 + 0.45 * Math.sin((this.clockMs / GLOW_PERIOD_MS) * Math.PI * 2);
@@ -198,6 +210,8 @@ export class LobbyCard {
 
     const texture = this.style.art ? getUiTexture(this.style.art) : undefined;
     this.art.visible = !!texture;
+    if (texture && this.artPending) this.artFade.start();
+    this.artPending = !!this.style.art && !texture;
     if (texture) {
       // Cover, cropped through the texture's own frame rather than by overflowing the card:
       // the sprite is then exactly the card's size, so nothing it draws can stick out past

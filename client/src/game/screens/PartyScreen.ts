@@ -8,7 +8,7 @@ import { ACTION_H, CONTENT_W, LEAVE_H, PRIMARY_H, SHEET_W, layoutPartySheet, typ
 import * as partyApi from '../../net/party';
 import type { PartyInfo } from '../../net/party';
 import { getPlayerId } from '../../net/identity';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { setPartyPresence } from '../../platform/partyPresence';
 import type { PartyMode } from '../match/partyShape';
@@ -130,19 +130,19 @@ export class PartyScreen {
 
     this.createCoopBtn = new Button(t('party.createCoop'), { w: CONTENT_W, h: PRIMARY_H, fontSize: 16, ...MENU_BUTTONS.primary });
     this.createCoopBtn.onTap = () => void this.doCreate('coop');
-    this.createCoopBtn.setIcon(getUiTexture('icon_party_create'));
+    whenUiTexture('icon_party_create', (tex) => this.createCoopBtn.setIcon(tex));
     this.createBtn = new Button(t('party.create'), { w: CONTENT_W, h: ACTION_H, fontSize: 15, ...MENU_BUTTONS.secondary });
     this.createBtn.onTap = () => void this.doCreate('pvp');
-    this.createBtn.setIcon(getUiTexture('icon_party_create'));
+    whenUiTexture('icon_party_create', (tex) => this.createBtn.setIcon(tex));
     this.joinBtn = new Button(t('party.join'), { w: CONTENT_W, h: ACTION_H, fontSize: 15, ...MENU_BUTTONS.secondary });
     this.joinBtn.onTap = () => this.openJoinInput();
-    this.joinBtn.setIcon(getUiTexture('icon_party_join'));
+    whenUiTexture('icon_party_join', (tex) => this.joinBtn.setIcon(tex));
     this.startBtn = new Button(t('party.startMatching'), { w: CONTENT_W, h: PRIMARY_H, fontSize: 16, ...MENU_BUTTONS.primary });
     this.startBtn.onTap = () => void this.doStart();
-    this.startBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.startBtn.setIcon(tex));
     this.leaveBtn = new Button(t('party.leave'), { w: CONTENT_W, h: LEAVE_H, fontSize: 14, sound: 'ui.back', ...MENU_BUTTONS.danger });
     this.leaveBtn.onTap = () => void this.doLeave();
-    this.leaveBtn.setIcon(getUiTexture('icon_party_leave'));
+    whenUiTexture('icon_party_leave', (tex) => this.leaveBtn.setIcon(tex));
 
     this.shell.content.addChild(
       this.boxes, this.rules, this.introText, this.codeHeading, this.codeText, this.codeHint, this.membersHeading,

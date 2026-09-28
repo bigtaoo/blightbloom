@@ -26,6 +26,7 @@
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { SKIN_DEFS } from '@dd/engine';
 import { getUiTexture } from '../../render/uiSkins';
+import { ArtFade } from './artFade';
 import { t, tName } from '../../i18n';
 
 /** Portrait art per render key (`SkinDef.atlasKey`). Keyed by the render key rather than the
@@ -68,6 +69,12 @@ export class LobbyHero {
   private clockMs = 0;
   private orbitMs = 0;
   private weaponScale = 1;
+  // Set while a skin is chosen whose portrait (or weapon) has not loaded — the next
+  // `setCharacter` that finds it fades it in rather than popping it (`artFade.ts`).
+  private bodyPending = false;
+  private weaponPending = false;
+  private readonly bodyFade = new ArtFade(this.view);
+  private readonly weaponFade = new ArtFade(); // `place()` owns the weapon's alpha
 
   constructor() {
     this.sprite.anchor.set(0.5, 1);
@@ -98,10 +105,24 @@ export class LobbyHero {
     const key = def ? HERO_PORTRAITS[def.atlasKey] : undefined;
     const texture = key ? getUiTexture(key) : undefined;
     this.view.visible = !!texture;
-    if (texture) this.sprite.texture = texture;
+    if (texture) {
+      this.sprite.texture = texture;
+      if (this.bodyPending) this.bodyFade.start();
+    }
+    this.bodyPending = !!key && !texture;
     const weaponTex = getUiTexture('lobby_weapon');
     this.weapon.visible = !!weaponTex;
-    if (weaponTex) this.weapon.texture = weaponTex;
+    if (weaponTex) {
+      this.weapon.texture = weaponTex;
+      // Only on its own: a weapon arriving with the body is already inside the body's fade.
+      if (this.weaponPending && !this.bodyFade.active) this.weaponFade.start();
+    }
+    this.weaponPending = !weaponTex;
+  }
+
+  /** Re-read the art for the current skin — `MainMenu` calls this as lobby art lands. */
+  refreshArt(): void {
+    this.setCharacter(this.skinId);
   }
 
   /** The deepest floor reached; 0 hides the line. */
@@ -145,6 +166,8 @@ export class LobbyHero {
 
   update(dtMs: number): void {
     if (!this.view.visible) return;
+    this.bodyFade.update(dtMs);
+    this.weaponFade.update(dtMs);
     this.clockMs = (this.clockMs + dtMs) % BOB_PERIOD_MS;
     this.orbitMs = (this.orbitMs + dtMs) % ORBIT_PERIOD_MS;
     this.place();
@@ -166,7 +189,7 @@ export class LobbyHero {
       this.footY - lift - this.bodyH * ORBIT_CY + near * this.bodyH * ORBIT_RY,
     );
     this.weapon.scale.set(this.weaponScale * (0.86 + 0.14 * near));
-    this.weapon.alpha = 0.8 + 0.2 * near;
+    this.weapon.alpha = (0.8 + 0.2 * near) * this.weaponFade.level;
     this.weapon.rotation = -0.2 * Math.cos(angle);
     this.weapon.zIndex = near >= 0 ? 2 : 0;
   }

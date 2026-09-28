@@ -43,6 +43,7 @@
 // UI leaves: the painting's own rock art, never magnified past the size it was cut at.
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getUiTexture } from '../../render/uiSkins';
+import { ArtFade } from './artFade';
 
 /** The dais crystal's centre in `lobby_bg`, as fractions of the image — MEASURED off the
  *  shipped file. The prompt asked for 38%/68%; the painting put it at 33%/72%, and the code
@@ -120,6 +121,9 @@ export class LobbyBackdrop {
   private rocks = new Container();
   /** Each rock's home in screen px, and its drift amplitude — set by `layout`. */
   private rockHomes: Array<{ x: number; y: number; amp: number }> = [];
+  /** Per rock: its fade-in, and whether it was drawn missing (so its arrival fades). */
+  private rockFades: ArtFade[] = [];
+  private rockPending: boolean[] = [];
   private vignette = new Graphics();
   private wash = new Graphics();
   private readonly dim: number;
@@ -145,6 +149,8 @@ export class LobbyBackdrop {
       sprite.anchor.set(0.5);
       sprite.label = rock.key;
       this.rocks.addChild(sprite);
+      this.rockFades.push(new ArtFade(sprite));
+      this.rockPending.push(false);
     }
     // Under the vignette, so a rock behind the column is darkened with the sky around it.
     // The wash over the rocks and under the glow: the crystal stays lit in the dimmed mode.
@@ -207,6 +213,8 @@ export class LobbyBackdrop {
       const sprite = this.rocks.children[i] as Sprite;
       const texture = this.painted ? getUiTexture(rock.key) : undefined;
       sprite.visible = !!texture;
+      if (texture && this.rockPending[i]) this.rockFades[i].start();
+      this.rockPending[i] = this.painted && !texture;
       if (texture) {
         sprite.texture = texture;
         const height = rock.hFrac * drawnH;
@@ -245,6 +253,7 @@ export class LobbyBackdrop {
 
   update(dtMs: number): void {
     if (!this.painted) return;
+    for (const fade of this.rockFades) fade.update(dtMs);
     this.clockMs = (this.clockMs + dtMs) % (PULSE_MS * MOTE_RISE_MS);
     this.glow.alpha = 0.7 + 0.3 * Math.sin((this.clockMs / PULSE_MS) * Math.PI * 2);
     this.drawMotes();

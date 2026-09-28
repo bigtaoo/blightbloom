@@ -8,7 +8,7 @@ import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { SHEET_W, CONTENT_W, ID_TEXT_X, TAB_H, BUTTON_H, LOGOUT_H, layoutLoginSheet, drawLoginAvatar, type LoginSheetParts } from './loginSheet';
 import * as authApi from '../../net/auth';
 import { getSession, setSession, type Session } from '../../net/session';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 
@@ -152,18 +152,18 @@ export class LoginScreen {
     const tabW = (CONTENT_W - 8) / 2;
     this.loginBtn = new Button(t('auth.login'), { w: tabW, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.toggle' });
     this.loginBtn.onTap = () => this.selectTab('login');
-    this.loginBtn.setIcon(getUiTexture('icon_account'));
+    whenUiTexture('icon_account', (tex) => this.loginBtn.setIcon(tex));
     this.registerBtn = new Button(t('auth.register'), { w: tabW, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary, sound: 'ui.toggle' });
     this.registerBtn.onTap = () => this.selectTab('register');
-    this.registerBtn.setIcon(getUiTexture('icon_register'));
+    whenUiTexture('icon_register', (tex) => this.registerBtn.setIcon(tex));
     this.submitBtn = new Button(t('auth.submitLogin'), { w: CONTENT_W, h: BUTTON_H, fontSize: 17, ...MENU_BUTTONS.primary });
     this.submitBtn.onTap = () => this.submit();
     this.changePasswordBtn = new Button(t('auth.changePassword'), { w: CONTENT_W, h: TAB_H, fontSize: 14, ...MENU_BUTTONS.secondary });
     this.changePasswordBtn.onTap = () => this.togglePasswordForm();
-    this.changePasswordBtn.setIcon(getUiTexture('icon_password'));
+    whenUiTexture('icon_password', (tex) => this.changePasswordBtn.setIcon(tex));
     this.logoutBtn = new Button(t('auth.logout'), { w: 112, h: LOGOUT_H, fontSize: 12, autoWidth: true, ...MENU_BUTTONS.danger });
     this.logoutBtn.onTap = () => void this.doLogout();
-    this.logoutBtn.setIcon(getUiTexture('icon_logout'));
+    whenUiTexture('icon_logout', (tex) => this.logoutBtn.setIcon(tex));
 
     this.userField = new FormField(t('auth.usernamePlaceholder'), CONTENT_W);
     this.passField = new FormField(t('auth.passwordPlaceholder'), CONTENT_W, { password: true });

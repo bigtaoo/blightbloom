@@ -22,7 +22,7 @@ import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import { Button } from '../ui/widgets';
 import { SHELL_CHROME_H } from '../ui/MenuShell';
 import { MENU_BUTTONS } from '../ui/menuTheme';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 
 export interface HudLayerViews {
@@ -55,7 +55,7 @@ export function buildHudLayer(
   // The lobby's SETTINGS chip, in look and size: the loadout screen pins it top-right,
   // opposite its BACK chip (`MenuShell.setCorner`).
   const settingsBtn = new Button(t('settings.title'), { w: 120, h: SHELL_CHROME_H, fontSize: 13, autoWidth: true, ...MENU_BUTTONS.chrome });
-  settingsBtn.setIcon(getUiTexture('icon_settings'), 0x4a5568);
+  whenUiTexture('icon_settings', (tex) => settingsBtn.setIcon(tex, 0x4a5568));
   settingsBtn.onTap = onSettings;
   settingsBtn.view.visible = false;
   return settingsBtn;

@@ -9,7 +9,7 @@ import { LobbyResources, type MaterialCounts } from '../ui/LobbyResources';
 import { lobbyScale, sharpenText } from '../ui/lobbyScale';
 import type { SavedRunSummary } from '../match/runSave';
 import { getSession } from '../../net/session';
-import { getUiTexture } from '../../render/uiSkins';
+import { getUiTexture, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
 import { t, getLocale } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
@@ -111,6 +111,8 @@ export class MainMenu {
    *  `setQuickPlay`, which the assembly calls before the first show. */
   private saved: SavedRunSummary | null = null;
   private size: { w: number; h: number } | null = null;
+  /** Lobby art has landed since the last layout — see the constructor. */
+  private artStale = false;
 
   /**
    * Whether this lobby has an unfinished run to offer (design/10, 2026-09-17). A provider,
@@ -164,7 +166,7 @@ export class MainMenu {
     // some name in some script.
     this.accountBtn = new AccountCard(t('mainMenu.account'), CHROME_H);
     this.accountBtn.onTap = () => this.onAccount?.();
-    this.accountBtn.setIcon(getUiTexture('icon_account'));
+    whenUiTexture('icon_account', (tex) => this.accountBtn.setIcon(tex));
     this.accountLabel = new Text({ text: '', style: { fill: 0xffffff, fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', padding: 16, stroke: { color: 0x1a202c, width: 4 } } });
     this.accountLabel.anchor.set(0, 0.5);
     this.accountLabel.position.set(0, CHROME_H / 2);
@@ -173,7 +175,7 @@ export class MainMenu {
 
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 120, h: CHROME_H, fontSize: 13, color: 0x1f2532, borderColor: 0x718096, autoWidth: true });
     this.settingsBtn.onTap = () => this.onSettings?.();
-    this.settingsBtn.setIcon(getUiTexture('icon_settings'), 0x4a5568);
+    whenUiTexture('icon_settings', (tex) => this.settingsBtn.setIcon(tex, 0x4a5568));
     this.topRight.addChild(this.resources.view, this.settingsBtn.view);
 
     this.dataNotice = new Text({ text: '', style: { fill: 0xe2e8f0, fontSize: 11, fontFamily: 'sans-serif', padding: 12, align: 'center', wordWrap: true, wordWrapWidth: LOBBY_ROUTES_W, stroke: { color: 0x1a202c, width: 3 } } });
@@ -200,6 +202,14 @@ export class MainMenu {
     );
     this.view.eventMode = 'static';
     this.view.visible = false;
+
+    // The lobby's decoration lands after its first frame on a cold boot (uiSkins.ts's `lobby`
+    // tier): mark the art stale and let the next frame re-lay the screen, so the ten files
+    // that arrive one by one cost one layout per frame at most. A hidden lobby needs nothing
+    // here — `show()` reads everything fresh.
+    onUiTexture((key) => {
+      if (uiTierOf(key) !== 'late') this.artStale = true;
+    });
   }
 
   /**
@@ -253,6 +263,7 @@ export class MainMenu {
 
   show(w: number, h: number) {
     this.size = { w, h };
+    this.artStale = false;
     this.retext();
     // Asked on every show rather than cached, so a run saved from the pause menu is on the
     // front door the moment the player lands back on it — and before the layout, because the
@@ -274,10 +285,19 @@ export class MainMenu {
     this.view.visible = false;
   }
 
+  private refreshArt(w: number, h: number): void {
+    this.artStale = false;
+    this.hero.refreshArt();
+    this.playBtn.refreshArt();
+    this.routes.refreshArt();
+    this.layout(w, h);
+  }
+
   /** Per-frame: the crystal, the hero's hover, the primary card's glow. Driven from the main
    *  loop's `lobbyScreens` list, and a no-op while the lobby is hidden. */
   update(dtMs: number): void {
     if (!this.view.visible) return;
+    if (this.artStale && this.size) this.refreshArt(this.size.w, this.size.h);
     this.panel.update(dtMs);
     this.hero.update(dtMs);
     this.playBtn.update(dtMs);

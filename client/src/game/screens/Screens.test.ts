@@ -34,6 +34,9 @@ const badge = vi.hoisted(() => ({ tex: undefined as unknown }));
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: () => badge.tex,
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((_key, apply) => { const tex = badge.tex; if (tex) apply(tex as never); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 type Tappable = { view: { emit: (event: string) => void; visible: boolean; position: { x: number; y: number } }; label: { text: string } };
