@@ -883,11 +883,15 @@ describe('RigSkin — the body art\'s drawn radius, not its declared one', () =>
 });
 
 describe('RigSkin — contact shades seat an orbiting module against the core', () => {
-  function aoOf(skin: RigSkin): Graphics | null {
-    return (skin as unknown as { moduleAO: Graphics | null }).moduleAO;
+  function aoOf(skin: RigSkin): Container | null {
+    return (skin as unknown as { moduleAO: Container | null }).moduleAO;
   }
-  function fillCount(g: Graphics): number {
-    return (g.context.instructions as Array<{ action: string }>).filter((i) => i.action === 'fill').length;
+  /** One child Graphics per mount (`rigShading.drawModuleContacts`); the showing ones. */
+  function contactsOf(ao: Container): Graphics[] {
+    return (ao.children as Graphics[]).filter((g) => g.visible);
+  }
+  function fillCount(ao: Container): number {
+    return contactsOf(ao).reduce((n, g) => n + (g.context.instructions as Array<{ action: string }>).filter((i) => i.action === 'fill').length, 0);
   }
 
   it('exists for a rig with orbiting modules, and not for a rig without them', () => {
@@ -922,8 +926,8 @@ describe('RigSkin — contact shades seat an orbiting module against the core', 
     expect(fillCount(ao)).toBeGreaterThanOrEqual(2); // socket_l and socket_r, nested passes each
   });
 
-  it('clears before redrawing, so a per-frame repaint cannot accumulate', () => {
-    // It IS repainted every frame (the mounts orbit), which makes this the difference between
+  it('never accumulates across per-frame updates', () => {
+    // It IS updated every frame (the mounts orbit), which makes this the difference between
     // a contact shade and an ever-darkening blob.
     const skin = makeSkin(ORB_CORE_RIG);
     skin.update();
@@ -940,7 +944,7 @@ describe('RigSkin — contact shades seat an orbiting module against the core', 
       const rig = new Rig(ORB_CORE_RIG);
       const skin = new RigSkin(rig, fakeBundle(rig), fill);
       skin.update();
-      const b = aoOf(skin)!.bounds;
+      const b = aoOf(skin)!.getLocalBounds();
       const painted = 40 * fill;
       expect(Math.max(-b.minX, b.maxX, -b.minY, b.maxY)).toBeLessThanOrEqual(painted);
     }
@@ -980,8 +984,8 @@ describe('RigSkin — contact shades seat an orbiting module against the core', 
       ['kick', { duration: 1, loop: false, keyframes: [{ time: 0, bones: new Map([['socket_r', { translateX: -44 }]]) }] }],
     ]);
     const skin = makeSkin(ORB_CORE_RIG, clips);
-    const centres = (): number[] => (aoOf(skin)!.context.instructions as Array<{ action: string; data: { path?: { instructions: Array<{ action: string; data: number[] }> } } }>)
-      .flatMap((i) => (i.data.path?.instructions ?? []).filter((pi) => pi.action === 'ellipse').map((pi) => pi.data[0]!));
+    // Each contact is built around its own origin and positioned, so its centre IS its x.
+    const centres = (): number[] => contactsOf(aoOf(skin)!).map((g) => g.x);
     skin.update();
     const rest = centres();
     skin.playClip('kick', 0);
@@ -999,7 +1003,7 @@ describe('RigSkin — contact shades seat an orbiting module against the core', 
     // Snapshot the NUMBERS, not the Bounds object — Pixi mutates one instance in place, so
     // holding the reference across a redraw would compare it against itself and pass on nothing.
     const snap = (): number[] => {
-      const b = aoOf(skin)!.bounds;
+      const b = aoOf(skin)!.getLocalBounds();
       return [b.minX, b.minY, b.maxX, b.maxY];
     };
     skin.setAim(0);

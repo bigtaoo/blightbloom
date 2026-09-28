@@ -25,8 +25,8 @@
  * texture, and "inside the body radius" is checked over every texel rather than over band corners.
  * The perf claim the rewrite was for has its own test at the bottom of the sphere section.
  */
-import { describe, it, expect } from 'vitest';
-import type { Graphics } from 'pixi.js';
+import { describe, it, expect, vi } from 'vitest';
+import { Container, type Graphics } from 'pixi.js';
 import {
   drawModuleContacts,
   drawSphereShading,
@@ -104,6 +104,15 @@ function fills(g: Graphics): Array<{ color: number; alpha: number; kind: string;
     }
   }
   return out;
+}
+
+/** `fills`, over every showing contact Graphics of a `drawModuleContacts` layer, with each child's
+ *  position folded into its ellipses' centres — i.e. the drawing in the layer's own space, which is
+ *  what these assertions were written against before each mount got its own Graphics. */
+function contactFills(layer: Container): Array<{ color: number; alpha: number; kind: string; data: number[] }> {
+  return (layer.children as Graphics[])
+    .filter((g) => g.visible)
+    .flatMap((g) => fills(g).map((f) => ({ ...f, data: [f.data[0]! + g.x, f.data[1]! + g.y, ...f.data.slice(2)] })));
 }
 
 /** Unit vector toward the key light (upper-left, y-down screen space) — restated here rather
@@ -443,21 +452,52 @@ describe('drawSphereShading — the ramp is smooth, and it rolls back at the lim
 
 describe('drawModuleContacts — seating an orbiting module against the core', () => {
   /** A throwaway Graphics with the same instruction-list shape the others read. */
-  function contacts(mounts: Array<{ x: number; y: number }>, bodyR = 40): Graphics {
-    const g = drawSphereShading(bodyR); // any Graphics; cleared by drawModuleContacts
-    drawModuleContacts(g, mounts, bodyR);
-    return g;
+  function contacts(mounts: Array<{ x: number; y: number }>, bodyR = 40): Container {
+    const layer = new Container();
+    drawModuleContacts(layer, mounts, bodyR);
+    return layer;
   }
 
 
-  it('clears whatever was there first, so a per-frame repaint cannot accumulate', () => {
-    const g = contacts([]); // handed a Graphics already full of sphere shading
-    expect(instructions(g)).toHaveLength(0);
+  it('never accumulates: repainting the same mounts leaves the same drawing', () => {
+    const layer = contacts([{ x: 30, y: 0 }, { x: -30, y: 4 }]);
+    const once = contactFills(layer);
+    for (let i = 0; i < 5; i++) drawModuleContacts(layer, [{ x: 30, y: 0 }, { x: -30, y: 4 }], 40);
+    expect(contactFills(layer)).toEqual(once);
+  });
+
+  it('hides the contact of a mount that went away, rather than leaving it where it was', () => {
+    const layer = contacts([{ x: 30, y: 0 }, { x: -30, y: 4 }]);
+    const one = contactFills(contacts([{ x: 30, y: 0 }]));
+    drawModuleContacts(layer, [{ x: 30, y: 0 }], 40);
+    expect(contactFills(layer)).toEqual(one);
+  });
+
+  it('an orbiting mount only MOVES its contact — the geometry is built once (2026-09-28)', () => {
+    // The whole point of the rewrite: the mounts orbit every frame, and a refilled Graphics is
+    // re-triangulated on its next render. Detected by spying on `clear`, which a rebuild starts with.
+    const layer = contacts([{ x: 30, y: 0 }]);
+    const g = layer.children[0] as Graphics;
+    const clear = vi.spyOn(g, 'clear');
+    const xs: number[] = [];
+    for (let deg = 10; deg <= 90; deg += 10) {
+      const a = (deg * Math.PI) / 180;
+      drawModuleContacts(layer, [{ x: 30 * Math.cos(a), y: 30 * Math.sin(a) }], 40);
+      xs.push(g.x);
+    }
+    expect(clear).not.toHaveBeenCalled();
+    expect(new Set(xs).size).toBe(xs.length); // ...while it really did follow the mount
+  });
+
+  it('DOES rebuild when the body radius changes, since the ellipses are sized off it', () => {
+    const layer = contacts([{ x: 30, y: 0 }], 40);
+    drawModuleContacts(layer, [{ x: 30, y: 0 }], 20);
+    expect(contactFills(layer)).toEqual(contactFills(contacts([{ x: 30, y: 0 }], 20)));
   });
 
   it('draws nested ellipses per mount, pulled back from the mount TOWARD the core', () => {
     const mount = { x: 30, y: 0 };
-    const drawn = fills(contacts([mount]));
+    const drawn = contactFills(contacts([mount]));
     expect(drawn.length).toBeGreaterThanOrEqual(3);
     for (const f of drawn) {
       expect(f.kind).toBe('ellipse');
@@ -467,13 +507,13 @@ describe('drawModuleContacts — seating an orbiting module against the core', (
   });
 
   it('shrinks each nested pass and keeps every one of them faint', () => {
-    const drawn = fills(contacts([{ x: 30, y: 0 }]));
+    const drawn = contactFills(contacts([{ x: 30, y: 0 }]));
     for (let i = 1; i < drawn.length; i++) expect(drawn[i]!.data[2]!).toBeLessThan(drawn[i - 1]!.data[2]!);
     for (const f of drawn) expect(f.alpha).toBeLessThan(0.2);
   });
 
   it('squashes the contact vertically, like every other round thing in this tilted view', () => {
-    for (const f of fills(contacts([{ x: 30, y: 0 }]))) expect(f.data[3]!).toBeLessThan(f.data[2]!);
+    for (const f of contactFills(contacts([{ x: 30, y: 0 }]))) expect(f.data[3]!).toBeLessThan(f.data[2]!);
   });
 
   it('clamps a FAR mount onto the body, and every ellipse with it', () => {
@@ -481,7 +521,7 @@ describe('drawModuleContacts — seating an orbiting module against the core', (
     // so this is the normal case, not the edge case. Nothing here is masked, so an unclamped
     // blob would paint a dark smudge on the transparent background beside the character.
     const bodyR = 40;
-    for (const f of fills(contacts([{ x: 200, y: 0 }], bodyR))) {
+    for (const f of contactFills(contacts([{ x: 200, y: 0 }], bodyR))) {
       expect(f.data[0]! + f.data[2]!).toBeLessThanOrEqual(bodyR); // centre + rx, inside the body
     }
   });
@@ -489,27 +529,27 @@ describe('drawModuleContacts — seating an orbiting module against the core', (
   it('leaves a NEAR mount where it is, rather than pushing it out to the clamp circle', () => {
     // The clamp is a ceiling, not a target: a module that a clip has pulled in close should have
     // its contact follow it in, or the shade detaches from the thing casting it.
-    const near = fills(contacts([{ x: 6, y: 0 }]))[0]!;
-    const far = fills(contacts([{ x: 200, y: 0 }]))[0]!;
+    const near = contactFills(contacts([{ x: 6, y: 0 }]))[0]!;
+    const far = contactFills(contacts([{ x: 200, y: 0 }]))[0]!;
     expect(near.data[0]!).toBeLessThan(far.data[0]!);
     expect(near.data[0]!).toBeGreaterThan(0);
   });
 
   it('places a contact on the same side as its mount, for a mount in any direction', () => {
     for (const [mx, my] of [[40, 0], [-40, 0], [0, 40], [0, -40], [-30, 30]]) {
-      const c = fills(contacts([{ x: mx, y: my }]))[0]!;
+      const c = contactFills(contacts([{ x: mx, y: my }]))[0]!;
       expect(Math.sign(c.data[0]!)).toBe(Math.sign(mx));
       expect(Math.sign(c.data[1]!)).toBe(Math.sign(my));
     }
   });
 
   it('skips a mount sitting exactly on the core, which has no direction to pull along', () => {
-    expect(fills(contacts([{ x: 0, y: 0 }]))).toHaveLength(0);
+    expect(contactFills(contacts([{ x: 0, y: 0 }]))).toHaveLength(0);
   });
 
   it('handles two mounts independently — one contact per orbiting module', () => {
-    const one = fills(contacts([{ x: 30, y: 0 }])).length;
-    expect(fills(contacts([{ x: 30, y: 0 }, { x: -30, y: 4 }]))).toHaveLength(one * 2);
+    const one = contactFills(contacts([{ x: 30, y: 0 }])).length;
+    expect(contactFills(contacts([{ x: 30, y: 0 }, { x: -30, y: 4 }]))).toHaveLength(one * 2);
   });
 });
 
@@ -550,8 +590,8 @@ describe('paintModuleContacts — gathering this frame\'s mounts from a posed ri
     bones: BoneDef[],
     poses: ReadonlyArray<readonly [string, { sx: number; sy: number; ex: number; ey: number; wa: number }]>,
     transforms: Array<[string, ResolvedBoneTransform]> = [],
-  ): Graphics {
-    const g = drawSphereShading(40); // any Graphics; cleared by the painter
+  ): Container {
+    const g = new Container();
     paintModuleContacts(g, BODY, bones, new Map(poses), new Map(transforms), 40);
     return g;
   }
@@ -583,15 +623,15 @@ describe('paintModuleContacts — gathering this frame\'s mounts from a posed ri
     // survived. Same relative geometry, different absolute position => identical drawing is the
     // claim itself, and it cannot be satisfied by an accident of the pull-in factor.
     const bones = [bone(BODY, false), bone('socket_r', true)];
-    const atOrigin = fills(paint(bones, [pose(BODY, 0, 0), pose('socket_r', 30, 0)]));
-    const shifted = fills(paint(bones, [pose(BODY, 10, -4), pose('socket_r', 40, -4)]));
+    const atOrigin = contactFills(paint(bones, [pose(BODY, 0, 0), pose('socket_r', 30, 0)]));
+    const shifted = contactFills(paint(bones, [pose(BODY, 10, -4), pose('socket_r', 40, -4)]));
     expect(atOrigin.length).toBeGreaterThan(0);
     expect(shifted).toEqual(atOrigin);
   });
 
   it('follows a mount bone the attack clip has slid, not just one FK moved', () => {
-    const still = fills(paint([bone(BODY, false), bone('socket_r', true)], [pose(BODY, 0, 0), pose('socket_r', 30, 0)]));
-    const slid = fills(paint(
+    const still = contactFills(paint([bone(BODY, false), bone('socket_r', true)], [pose(BODY, 0, 0), pose('socket_r', 30, 0)]));
+    const slid = contactFills(paint(
       [bone(BODY, false), bone('socket_r', true)],
       [pose(BODY, 0, 0), pose('socket_r', 30, 0)],
       [['socket_r', { ...rest, translateX: -10 }]],
@@ -602,14 +642,14 @@ describe('paintModuleContacts — gathering this frame\'s mounts from a posed ri
   it('only gathers bones that actually carry a module', () => {
     // `outerW`/`innerW` is the marker for an orbiting mount (`rigTethers` uses the same one).
     // A rig whose bones are all plain body parts must paint nothing at all.
-    expect(fills(paint([bone(BODY, false), bone('eye', false)], [pose(BODY, 0, 0), pose('eye', 8, 2)]))).toHaveLength(0);
+    expect(contactFills(paint([bone(BODY, false), bone('eye', false)], [pose(BODY, 0, 0), pose('eye', 8, 2)]))).toHaveLength(0);
   });
 
   it('drops a mount the clip has faded out, rather than shading an invisible module', () => {
     const bones = [bone(BODY, false), bone('socket_r', true)];
     const poses = [pose(BODY, 0, 0), pose('socket_r', 30, 0)];
-    expect(fills(paint(bones, poses)).length).toBeGreaterThan(0);
-    expect(fills(paint(bones, poses, [['socket_r', { ...rest, alpha: 0 }]]))).toHaveLength(0);
+    expect(contactFills(paint(bones, poses)).length).toBeGreaterThan(0);
+    expect(contactFills(paint(bones, poses, [['socket_r', { ...rest, alpha: 0 }]]))).toHaveLength(0);
   });
 
   it('hides itself when the body bone is missing from this frame\'s pose', () => {

@@ -65,7 +65,8 @@ export { barrelReach };
 export class RigSkin {
   readonly view = new Container();
   private readonly sprites = new Map<string, Sprite>();
-  private readonly tethers: Graphics | null;
+  /** One child Graphics per tethered bone (`rigTethers.drawTethers`). */
+  private readonly tethers: Container | null;
   // Sphere shading over the body bone (see rigShading.ts), plus which bone it tracks. Null
   // for a rig whose body is too small to shade, or one with no bound body art at all.
   private readonly sphereShade: Graphics | null;
@@ -73,7 +74,7 @@ export class RigSkin {
    *  2026-08-19). Allocated only for a rig that HAS orbiting modules, i.e. the same tethered
    *  bones the tether Graphics is drawn from, and only when that rig's body is big enough to
    *  shade at all — an enemy with one body bone gets neither. */
-  private readonly moduleAO: Graphics | null;
+  private readonly moduleAO: Container | null;
   private readonly shadeBoneId: string | null;
   /** Which mount path this body plan uses (`rigWeaponMount.resolveWeaponMount`) — resolved
    *  once at construction, since it is a property of the rig def, not of this frame. */
@@ -111,7 +112,7 @@ export class RigSkin {
     this.layers = new ClipLayers(bundle.clips);
     // Tethers paint behind every bone sprite: they run from the core's centre out to a
     // module, so the half nearest the core belongs UNDER the body, not across it.
-    this.tethers = hasTetheredBone(rig.boneDefs) ? new Graphics() : null;
+    this.tethers = hasTetheredBone(rig.boneDefs) ? new Container() : null;
     if (this.tethers) {
       this.tethers.zIndex = -1;
       this.view.addChild(this.tethers);
@@ -149,7 +150,7 @@ export class RigSkin {
 
     // Just above the sphere shade and still below every decorative bone (orb-core: belly 1,
     // eye 2, sockets 3/4), so a module's own art always draws over its contact shade.
-    this.moduleAO = this.shadeBoneId && this.tethers ? new Graphics() : null;
+    this.moduleAO = this.shadeBoneId && this.tethers ? new Container() : null;
     if (this.moduleAO) {
       this.moduleAO.zIndex = (bundle.bindings.get(this.shadeBoneId!)?.zOrder ?? 0) + 0.6;
       this.view.addChild(this.moduleAO);

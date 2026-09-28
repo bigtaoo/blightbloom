@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Container, EventBoundary, FederatedContainer, Graphics, Text, Texture, extensions } from 'pixi.js';
-import { Panel, Button, Slider } from './widgets';
+import { Panel, Button, Slider, Bar } from './widgets';
 import { setUiAudio } from '../../audio/uiSound';
 import type { AudioBus } from '../../platform/types';
 
@@ -477,5 +477,60 @@ describe('Slider — the commit cue', () => {
     const s = new Slider({ w: 200 });
     fire(s.view, 'pointerup');
     expect(log).toEqual([]);
+  });
+});
+
+// Bar.set runs every frame for every HUD bar (2026-09-28): a cleared Graphics is re-triangulated on
+// its next render, so a bar whose value did not move must not be redrawn — and one that did must.
+describe('Bar — redraws its fill only when the fill moved', () => {
+  const fillOf = (b: Bar) => b.view.children[1] as Graphics; // constructor order: track, fill, flash
+  const width = (b: Bar) => fillOf(b).getLocalBounds().width;
+
+  it('skips the redraw for an unchanged value — the per-frame case', () => {
+    const b = new Bar({ w: 100, h: 10, fillColor: 0xff0000 });
+    b.set(50, 100);
+    const clear = vi.spyOn(fillOf(b), 'clear');
+    for (let i = 0; i < 5; i++) b.set(50, 100);
+    expect(clear).not.toHaveBeenCalled();
+    expect(width(b)).toBeCloseTo(50, 0);
+  });
+
+  it('redraws when the value moves, to the new width', () => {
+    const b = new Bar({ w: 100, h: 10, fillColor: 0xff0000 });
+    b.set(50, 100);
+    b.set(20, 100);
+    expect(width(b)).toBeCloseTo(20, 0);
+  });
+
+  it('treats the same fraction of a different max as unchanged, and a new fraction as changed', () => {
+    const b = new Bar({ w: 100, h: 10, fillColor: 0xff0000 });
+    b.set(50, 100);
+    const clear = vi.spyOn(fillOf(b), 'clear');
+    b.set(100, 200); // same 0.5
+    expect(clear).not.toHaveBeenCalled();
+    b.set(100, 400);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(width(b)).toBeCloseTo(25, 0);
+  });
+
+  it('draws the very first set even at 0, and an empty bar stays empty', () => {
+    // `curFrac` starts at 0, so a first set(0) must not lean on the comparison to decide.
+    const b = new Bar({ w: 100, h: 10, fillColor: 0xff0000 });
+    const clear = vi.spyOn(fillOf(b), 'clear');
+    b.set(0, 100);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(fillOf(b).context.instructions).toHaveLength(0);
+    b.set(100, 100);
+    expect(width(b)).toBeCloseTo(100, 0);
+  });
+
+  it('still flashes on a drop and still updates its label while the fill is skipped', () => {
+    const b = new Bar({ w: 100, h: 10, fillColor: 0xff0000, label: true });
+    b.set(50, 100);
+    b.set(50, 100, 'custom');
+    expect((b.view.children[3] as Text).text).toBe('custom');
+    b.set(40, 100);
+    b.update(16);
+    expect((b.view.children[2] as Graphics).visible).toBe(true); // the decrease flash
   });
 });
