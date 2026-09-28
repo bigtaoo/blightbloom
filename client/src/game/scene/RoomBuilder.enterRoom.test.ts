@@ -234,6 +234,25 @@ describe('RoomBuilder — a descend builds over frames, behind the cover', () =>
     expect(frames).toBeGreaterThan(3);
   });
 
+  it('tears the old floor down in one frame and plans the new one in the next, each alone', () => {
+    // Together they were the one over-budget frame of a descend (23 ms at a 4x CPU throttle), so
+    // each is `solo`: nothing else runs in its frame, however much of the budget is left.
+    const { layers, rb } = setup();
+    const s = dungeonState();
+    rb.build(s);
+    descend(s);
+    rb.enterRoom(s);
+    const walls = (): number => (rb as unknown as { wallEntities: unknown[] }).wallEntities.length;
+    rb.tickFixtures(16, null, null); // teardown
+    expect(layers.ground.children).toHaveLength(0);
+    expect(walls()).toBe(0);
+    rb.tickFixtures(16, null, null); // the plan: still nothing built
+    expect(walls()).toBe(0);
+    expect(rb.building).toBe(true);
+    rb.tickFixtures(16, null, null); // the planned steps
+    expect(walls()).toBeGreaterThan(0);
+  });
+
   it('fades the cover out once the floor is up, and then it is gone', () => {
     const { layers, rb } = setup();
     const s = dungeonState();

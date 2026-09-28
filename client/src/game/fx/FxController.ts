@@ -97,6 +97,13 @@ export class FxController {
     this.layers.lit.filterArea = this.litArea;
     this.layers.litFloor.filterArea = this.litArea;
     this.layers.litStand.filterArea = this.litArea;
+    // The screen passes too (2026-09-28, steady-load pass). Without an area Pixi measures the
+    // region as `world`'s bounds, a walk over every one of its ~660 descendants on every frame —
+    // 0.37 ms a frame on a desktop, the single most expensive bounds query in the frame, and it
+    // only ever produced "the viewport, clipped". `world`'s local space is `lit`'s (`lit` sits at
+    // the identity), so this is the same rect, and it is now EXACTLY the viewport rather than the
+    // viewport clipped to whatever the room happens to cover.
+    this.layers.world.filterArea = this.litArea;
     this.applyQuality();
   }
 
@@ -255,6 +262,10 @@ export class FxController {
 
     // Chromatic-aberration pulse decays back to 0 — a hit reaction, never a permanent look.
     this.chromatic.amount = Math.max(0, this.chromatic.amount - dt * 0.006);
+    // At rest the split is zero and the pass would copy the screen onto itself: skip it. Pixi
+    // drops a disabled filter from the chain, so this is one full-viewport pass off every frame
+    // that is not a hit reaction.
+    this.chromatic.enabled = this.chromatic.amount > 0;
     // Screen-shake trauma also decays here (updateCamera only gets `alpha`, not `dt`; it
     // just reads the current value to compute this frame's offset).
     this.shakeTrauma = Math.max(0, this.shakeTrauma - dt * 0.0025);
@@ -348,12 +359,11 @@ export class FxController {
     this.litArea.y = -world.y / zoom;
     this.litArea.width = viewport.vw / zoom;
     this.litArea.height = viewport.vh / zoom;
-    this.visibleGroundPieces = cullGroundLayer(this.layers.ground, {
-      x: this.litArea.x,
-      y: this.litArea.y,
-      w: this.litArea.width,
-      h: this.litArea.height,
-    });
+    const view = { x: this.litArea.x, y: this.litArea.y, w: this.litArea.width, h: this.litArea.height };
+    this.visibleGroundPieces = cullGroundLayer(this.layers.ground, view);
+    // The floor's standing blocks, by the same tag (`groundCulling.tagStandingPiece`); actors,
+    // bullets and pickups carry no tag and are never culled.
+    cullGroundLayer(this.layers.entities, view);
     // The void's far side, fitted to the same rect (Terrain.ts, 2026-08-28). ABOVE the tier guard
     // below, and for exactly the reason the ground cull is: the low tier is the DEVICE tier, and a
     // terrain plane left un-fitted there would be a 1x1 sprite in the corner — i.e. the void would
@@ -405,6 +415,7 @@ export class FxController {
   pulseChromatic(amount: number): void {
     if (motionReduced()) return;
     this.chromatic.amount = Math.min(0.03, this.chromatic.amount + amount);
+    this.chromatic.enabled = this.chromatic.amount > 0; // on this frame, not at the next decay
   }
 
   /** If hit-stop is active, consume `dt` from it and report true (caller should skip

@@ -14,6 +14,7 @@
 import type { GameState } from '@dd/engine';
 import type { Layers } from './layers';
 import { Entity, SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
+import { tagStandingPiece } from './groundCulling';
 import type { BiomeElement, BiomePalette } from '../theme';
 import { fpToPx, PX_PER_GRID } from '../coords';
 import { getPillarTexture } from '../../render/biomeTiles';
@@ -78,6 +79,7 @@ export function buildPillarEntities(
     const gx = fpToPx(o.gx);
     const gy = fpToPx(o.gy);
     p.place(gx, gy);
+    tagStandingPiece(p);
     // A pillar hides the character exactly the way a wall block does — it is drawn upward from
     // its ground point over the same `height` of walkable floor to its north, and it is a
     // NARROWER target, so the player brushes past its blind side more often, not less. Same
@@ -121,6 +123,7 @@ export function buildPropEntities(layers: Layers, s: GameState, palette: BiomePa
       layers.shadow.addChild(e.shadow!);
       props.push(e);
       e.place((prop.x + room.offsetXGrid) * PX_PER_GRID, (prop.y + room.offsetYGrid) * PX_PER_GRID);
+      tagStandingPiece(e);
     }
   }
   return props;

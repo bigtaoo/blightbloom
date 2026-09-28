@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 import { THEME } from '../theme';
 import { staticGraphics } from '../../render/staticGraphics';
+import { writeSortKey } from './ySort';
 
 /** Nested-ellipse ground shadow (see `makeShadow`): `SHADOW_RINGS` ellipses stepping evenly
  *  from `SHADOW_R_OUTER` down to `SHADOW_R_INNER` times the body radius. Because they
@@ -219,7 +220,9 @@ export class Entity extends Container {
     this.drawnLift = lift;
     this.x = x;
     this.y = y - lift;
-    this.zIndex = y; // Y-sort — the GROUND coordinate, never the lifted one
+    // Y-sort — the GROUND coordinate, never the lifted one. Written without Pixi's re-sort
+    // notification: `layers.entities` raises that itself, only when the order changes (`ySort.ts`).
+    writeSortKey(this, y);
 
     if (this.shadow) {
       // Displaced away from the key light in proportion to height: a body at head height

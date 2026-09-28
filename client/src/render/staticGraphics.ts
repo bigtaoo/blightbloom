@@ -38,6 +38,8 @@
 // shadow in a second render group to isolate it from that churn was tried and came out WORSE, which
 // is most likely to mean "below the noise floor" rather than a real effect either way.
 import { Graphics } from 'pixi.js';
+// Installs the no-batch fix `redrawnGraphics` depends on — see that module.
+import './graphicsPipeFix';
 
 /**
  * A `Graphics` that always joins the sprite batcher, however large its geometry.
@@ -49,5 +51,24 @@ import { Graphics } from 'pixi.js';
 export function staticGraphics(): Graphics {
   const g = new Graphics();
   g.context.batchMode = 'batch';
+  return g;
+}
+
+/**
+ * A `Graphics` that never joins the sprite batcher — for geometry REDRAWN every frame.
+ *
+ * The opposite case, found 2026-09-28 (steady-load pass): Pixi's `GraphicsPipe.validateRenderable`
+ * answers "rebuild the whole render group" for ANY batched Graphics whose context changed, because
+ * its vertices live in the group's shared batch. So one small ring redrawn per frame — a door's
+ * floor pulse, 168 floats — made the root render group re-collect and re-batch every entity, wall
+ * and effect bracket on every frame it was on screen. A non-batched Graphics is submitted on its
+ * own and its changed geometry is simply re-uploaded: one draw call instead of a rebuild.
+ *
+ * The draw call is not free (it breaks the batch it sits in), so a caller should also hide the
+ * Graphics while it has nothing to draw, the way `doorFx.clearOnce` does.
+ */
+export function redrawnGraphics(): Graphics {
+  const g = new Graphics();
+  g.context.batchMode = 'no-batch';
   return g;
 }
