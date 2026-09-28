@@ -14,7 +14,7 @@ import { BlueprintCard } from '../ui/BlueprintCard';
 import { RARITY_COLORS } from '../theme';
 import { getRigSkin } from '../../render/skinRegistry';
 import { getWeaponTexture } from '../../render/weaponSkins';
-import { getUiTexture } from '../../render/uiSkins';
+import { getUiTexture, whenUiTexture } from '../../render/uiSkins';
 import { t, tName } from '../../i18n';
 import {
   ACTION_H, ARROW_H, ARROW_W, PORTRAIT, SHEET_W, layoutLoadoutSheet,
@@ -154,13 +154,13 @@ export class Loadout {
 
     this.clearBtn = new Button(t('loadout.clearLoadout'), { w: 160, h: ACTION_H, fontSize: 13, autoWidth: true, ...MENU_BUTTONS.secondary });
     this.clearBtn.onTap = () => this.onClear?.();
-    this.clearBtn.setIcon(getUiTexture('icon_clear'));
+    whenUiTexture('icon_clear', (tex) => this.clearBtn.setIcon(tex));
     this.startBtn = new Button(t('loadout.startRun'), { w: 200, h: ACTION_H, fontSize: 16, autoWidth: true, ...MENU_BUTTONS.primary });
     this.startBtn.onTap = () => this.onStart?.();
-    this.startBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.startBtn.setIcon(tex));
     this.continueBtn = new Button(t('loadout.continueRun'), { w: 200, h: ACTION_H, fontSize: 16, autoWidth: true, ...MENU_BUTTONS.primary });
     this.continueBtn.onTap = () => this.onContinue?.();
-    this.continueBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.continueBtn.setIcon(tex));
 
     this.shell.content.addChild(
       this.rules, this.portraitFrame, this.portraitFallback,

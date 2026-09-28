@@ -20,7 +20,7 @@
 > shipped PNG under `client/public/` (**82 files**) was decoded and its alpha channel audited
 > (`tools/png-pipeline/alpha-audit.mjs`) — no opaque-matte-background bug and no
 > translucent-haze bug found. All sprite art (characters/weapons/icons/NPC) is clean bimodal
-> alpha; the only fully-opaque files are the ones meant to be (`ui/hub_bg.png` and the **12**
+> alpha; the only fully-opaque files are the ones meant to be (`ui/hub_bg.jpg` — a PNG at the time of this audit — and the **12**
 > `biome/floor_*`/`wall_*`/`wallface_*` tiles, which are full-bleed backgrounds/tileables with
 > no transparency by design). This closes the last open caveat below. **Update (2026-08-20):** the
 > pillar sprite (`biome/pillar_neutral.png`) is the 13th file in that directory and the only one

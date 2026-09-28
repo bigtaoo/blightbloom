@@ -45,7 +45,7 @@ import {
 } from './preloadArt';
 import { getRigSkin } from './skinRegistry';
 import { getFloorTexture } from './biomeTiles';
-import { UI_ASSETS, getUiTexture } from './uiSkins';
+import { UI_ASSET_KEYS, getUiTexture, uiTierOf } from './uiSkins';
 import { getDoorCurtainTexture } from './environmentSprites';
 import { getWeaponTexture } from './weaponSkins';
 
@@ -82,7 +82,8 @@ beforeAll(async () => {
   imagesAfterLobby = [...fake.imageRequests];
   // Deliberately read BEFORE the run phase starts — these are the assertions about the window.
   lobbyOnly = {
-    ui: Object.keys(UI_ASSETS).filter((k) => getUiTexture(k) !== undefined).length,
+    uiBoot: UI_ASSET_KEYS.filter((k) => uiTierOf(k) === 'boot' && getUiTexture(k) !== undefined).length,
+    uiLate: UI_ASSET_KEYS.filter((k) => uiTierOf(k) === 'late' && getUiTexture(k) !== undefined).length,
     rigs: CHAR_BUNDLES.filter(([name]) => getRigSkin(name) !== undefined).length,
     floor: getFloorTexture('fire') !== undefined,
     weapon: getWeaponTexture('scattergun', 'ranged') !== undefined,
@@ -96,7 +97,8 @@ beforeAll(async () => {
 });
 
 let lobbyOnly: {
-  ui: number;
+  uiBoot: number;
+  uiLate: number;
   rigs: number;
   floor: boolean;
   weapon: boolean;
@@ -116,9 +118,13 @@ describe('phase one — the only wait a player sees', () => {
     expect(afterLobby).toEqual(['lobby']);
   });
 
-  it('dressed every menu-shaped screen', () => {
-    // The whole point of the `lobby` pack: a login screen with no art is what this replaces.
-    expect(lobbyOnly.ui).toBe(Object.keys(UI_ASSETS).length);
+  it('dressed the lobby, and held back the UI files no lobby draws', () => {
+    // The `boot` tier is what the wait is FOR (uiSkins.ts): all of it in by the time the wait
+    // ends. The `late` tier ships in `ui-late`, a run-phase pack not fetched yet — so none of it
+    // can be in, and if it were, the boot would be downloading it again.
+    expect(lobbyOnly.uiBoot).toBe(UI_ASSET_KEYS.filter((k) => uiTierOf(k) === 'boot').length);
+    expect(lobbyOnly.uiBoot).toBeGreaterThan(0);
+    expect(lobbyOnly.uiLate).toBe(0);
   });
 
   it('asked the runtime for nothing outside the lobby pack', () => {
@@ -192,6 +198,10 @@ describe('phase two — the run gate', () => {
     expect(new Set(fake.packLoads).size).toBe(fake.packLoads.length);
   });
 
+  it('has every UI file in once the run gate opens', () => {
+    for (const key of UI_ASSET_KEYS) expect(getUiTexture(key), key).toBeDefined();
+  });
+
   it('filled in every loader that phase one had left empty', () => {
     // This is the property the design rests on: a loader re-run after its pack lands resolves
     // the textures that were missing the first time (they are idempotent map-fillers, and Pixi
@@ -213,7 +223,8 @@ describe('phase two — the run gate', () => {
     // 1..total with no gap — which is also what says the progress is a BROADCAST and not a
     // callback the background kick swallowed (it started the download with no listener at all).
     const total = runArtUnitCount();
-    expect(total).toBe(packsForPhase('run').length + CHAR_BUNDLES.length + 3);
+    // + 4: the late UI tier, weapons, biome, environment.
+    expect(total).toBe(packsForPhase('run').length + CHAR_BUNDLES.length + 4);
     expect(runTicks.map(([done]) => done)).toEqual(Array.from({ length: total + 1 }, (_, i) => i));
     for (const [, t] of runTicks) expect(t).toBe(total);
   });

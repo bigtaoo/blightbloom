@@ -11,9 +11,13 @@ const mocks = vi.hoisted(() => ({ textures: new Map<string, unknown>() }));
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: (key: string) => mocks.textures.get(key),
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((key, apply) => { const tex = mocks.textures.get(key); if (tex) apply(tex as never); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 import { LobbyHero, HERO_PORTRAITS } from './LobbyHero';
+import { ART_FADE_MS } from './artFade';
 import { LobbyResources, compactCount } from './LobbyResources';
 import { UI_ASSET_KEYS } from '../../render/uiSkins';
 
@@ -182,5 +186,61 @@ describe('LobbyResources', () => {
     const narrow = r.width;
     r.set({ fire: 9999 });
     expect(r.width).toBeGreaterThan(narrow);
+  });
+});
+
+describe('LobbyHero — art that lands after the lobby is up (2026-09-28)', () => {
+  it('shows a portrait that arrives later, fading it in rather than popping it', () => {
+    const h = new LobbyHero();
+    h.setCharacter('vanguard'); // cold boot: the `lobby` tier is still downloading
+    expect(h.view.visible).toBe(false);
+    mocks.textures.set('lobby_hero_orb', PORTRAIT);
+    mocks.textures.set('lobby_weapon', WEAPON);
+    h.refreshArt();
+    expect(h.view.visible).toBe(true);
+    expect(internals(h).sprite.texture).toBe(PORTRAIT);
+    expect(h.view.alpha).toBe(0);
+    h.update(ART_FADE_MS / 2);
+    expect(h.view.alpha).toBeCloseTo(0.5);
+    h.update(ART_FADE_MS);
+    expect(h.view.alpha).toBe(1);
+    // The weapon came in with the body, inside the body's fade — not held at 0 by its own.
+    expect(internals(h).weapon.alpha).toBeGreaterThan(0.5);
+  });
+
+  it('does not fade art that is already there on the first draw — the warm boot', () => {
+    mocks.textures.set('lobby_hero_orb', PORTRAIT);
+    mocks.textures.set('lobby_weapon', WEAPON);
+    const h = new LobbyHero();
+    h.setCharacter('vanguard');
+    expect(h.view.alpha).toBe(1);
+    h.update(16);
+    expect(internals(h).weapon.alpha).toBeGreaterThan(0.5);
+  });
+
+  it('fades a weapon that lands after the body on its own', () => {
+    mocks.textures.set('lobby_hero_orb', PORTRAIT);
+    const h = new LobbyHero();
+    h.setCharacter('vanguard');
+    h.layout(400, 500, 300, 520, 1);
+    expect(internals(h).weapon.visible).toBe(false);
+    mocks.textures.set('lobby_weapon', WEAPON);
+    h.refreshArt();
+    expect(internals(h).weapon.visible).toBe(true);
+    h.update(0);
+    expect(internals(h).weapon.alpha).toBe(0);
+    h.update(ART_FADE_MS);
+    expect(internals(h).weapon.alpha).toBeGreaterThan(0.5);
+    expect(h.view.alpha).toBe(1); // the body did not replay its fade
+  });
+
+  it('does not fade on a character change once the art is in', () => {
+    mocks.textures.set('lobby_hero_orb', PORTRAIT);
+    mocks.textures.set('lobby_hero_skirmisher', PORTRAIT);
+    mocks.textures.set('lobby_weapon', WEAPON);
+    const h = new LobbyHero();
+    h.setCharacter('vanguard');
+    h.setCharacter('skirmisher');
+    expect(h.view.alpha).toBe(1);
   });
 });

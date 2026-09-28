@@ -31,7 +31,7 @@ import { packOf, packsForPhase } from './assetManifest';
 import { ensureAllPacks, ensurePack, ensurePacks } from './packLoader';
 import { preloadRigSkin } from './skinRegistry';
 import { preloadWeaponSkins } from './weaponSkins';
-import { preloadUiArt } from './uiSkins';
+import { preloadUiArt, preloadUiTier } from './uiSkins';
 import { preloadBiomeTiles } from './biomeTiles';
 import { preloadEnvironmentSprites } from './environmentSprites';
 import { invalidateMusicTrack } from '../game/musicDirector';
@@ -52,10 +52,10 @@ export const CHAR_BUNDLES: ReadonlyArray<[string, string]> = [
 ];
 
 /** Progress ticks a caller can expect from `ensureRunArt`: one per `run`-phase pack, then one
- *  per loader (each rig bundle, then weapons/biome/environment). Exported so the loading screen
+ *  per loader (each rig bundle, then the late UI tier and weapons/biome/environment). Exported so the loading screen
  *  can size its bar before the first tick arrives rather than growing it as it goes. */
 export function runArtUnitCount(): number {
-  return packsForPhase('run').length + CHAR_BUNDLES.length + 3;
+  return packsForPhase('run').length + CHAR_BUNDLES.length + 4;
 }
 
 /** Told once per pack/loader as it settles, with how many of `total` are done. */
@@ -80,8 +80,10 @@ function tickRun(): void {
 }
 
 /**
- * Phase one: `Assets.init`, the `lobby` pack, the UI loader. Both entries await this before
- * constructing `Game`, so every menu-shaped screen is fully dressed on its first paint.
+ * Phase one: `Assets.init`, the `lobby` pack, the UI loader's `boot` tier. Every entry awaits
+ * this before constructing `Game`; the `lobby` tier (the lobby's decoration) is kicked on the
+ * way out and never awaited, and `late` rides the run phase — see `uiSkins.ts`'s header for
+ * which file is in which, and why.
  *
  * `Assets.init` is explicit, and BEFORE the first load. `Assets.load` self-initialises
  * otherwise, which on WeChat throws inside the format detection and silently costs whichever
@@ -95,8 +97,9 @@ export async function preloadLobbyArt(onProgress?: ArtProgress): Promise<void> {
   // has not been fetched names no file, and the loader would take that for "not generated yet"
   // and fall back silently. See packLoader.ts.
   await ensurePacks(lobby, tick);
-  await preloadUiArt();
+  await preloadUiTier('boot');
   tick();
+  void preloadUiTier('lobby');
 }
 
 // Whether anything has actually been deferred this session. UNSET IS "EVERYTHING IS HERE":
@@ -179,7 +182,18 @@ export function ensureRunArt(onProgress?: ArtProgress): Promise<void> {
 
 async function loadRunArt(): Promise<void> {
   await ensurePacks(packsForPhase('run'), tickRun);
+  // The lobby's decoration before any run art: it is what the player is looking at while this
+  // downloads, and on a slow web link everything below would otherwise share the line with it.
+  // A few hundred kB, and a player cannot reach the run gate in the time it takes. After the
+  // packs rather than before, because on web `ensurePacks` is free, and on WeChat these files
+  // are already local (they ship in `lobby`) while the packs are the real download.
+  await preloadUiTier('lobby');
   await Promise.all([
+    // The UI files no menu on the lobby draws — the other screens' icons, the floor-card and
+    // result art, the damage digits. On WeChat they live in a `run`-phase pack (`ui-late`),
+    // which is why this comes after `ensurePacks` above; either way the gate this promise
+    // backs is what guarantees a run never starts without them.
+    preloadUiTier('late').then(tickRun),
     ...CHAR_BUNDLES.map(async ([name, baseUrl]) => {
       try {
         await preloadRigSkin(name, baseUrl);

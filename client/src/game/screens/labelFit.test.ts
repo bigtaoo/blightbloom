@@ -62,6 +62,9 @@ import { useLocale } from '../../i18n/loadLocale';
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: () => Texture.WHITE,
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((_key, apply) => { const tex = Texture.WHITE; if (tex) apply(tex); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 installFakeTextCanvas();

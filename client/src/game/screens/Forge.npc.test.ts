@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({ npcTexture: undefined as Texture | undefined }
 
 vi.mock('../../render/uiSkins', () => ({
   getUiTexture: (key: string) => (key === 'npc_forger' ? mocks.npcTexture : undefined),
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((key, apply) => { const tex = (key === 'npc_forger' ? mocks.npcTexture : undefined); if (tex) apply(tex); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 // Same fake-canvas seam Forge.test.ts installs — render() reads Text.height to flow

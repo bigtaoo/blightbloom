@@ -45,6 +45,9 @@ const mocks = vi.hoisted(() => ({ hub: undefined as Texture | undefined }));
 vi.mock('../../render/uiSkins', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../render/uiSkins')>()),
   getUiTexture: (key: string) => (key === 'hub' ? mocks.hub : undefined),
+  // `whenUiTexture` through the same fake: the real one reads the module's own map, which
+  // this mock never fills, so constructor-time icons would silently stay off.
+  whenUiTexture: ((key, apply) => { const tex = (key === 'hub' ? mocks.hub : undefined); if (tex) apply(tex); }) as typeof import('../../render/uiSkins').whenUiTexture,
 }));
 
 installFakeTextCanvas();

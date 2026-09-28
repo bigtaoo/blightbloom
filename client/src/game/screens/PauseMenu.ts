@@ -4,7 +4,7 @@ import { MenuShell } from '../ui/MenuShell';
 import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { SHEET_PAD, SHEET_TITLE_H } from '../ui/MenuSheet';
 import { MENU_BUTTONS, MENU_COLORS } from '../ui/menuTheme';
-import { getUiTexture } from '../../render/uiSkins';
+import { whenUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 
 /** The sheet's width and content width; the rows' heights and the gaps between them. */
@@ -58,16 +58,16 @@ export class PauseMenu {
 
     this.resumeBtn = new Button(t('pauseMenu.resume'), { w: CONTENT_W, h: RESUME_H, fontSize: 16, sound: 'ui.back', ...MENU_BUTTONS.primary });
     this.resumeBtn.onTap = () => this.onResume?.();
-    this.resumeBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.resumeBtn.setIcon(tex));
     this.settingsBtn = new Button(t('pauseMenu.settings'), { w: CONTENT_W, h: ROW_H, ...MENU_BUTTONS.secondary });
     this.settingsBtn.onTap = () => this.onSettings?.();
-    this.settingsBtn.setIcon(getUiTexture('icon_settings'));
+    whenUiTexture('icon_settings', (tex) => this.settingsBtn.setIcon(tex));
     this.saveQuitBtn = new Button(t('pauseMenu.saveQuit'), { w: CONTENT_W, h: ROW_H, sound: 'ui.back', ...MENU_BUTTONS.secondary });
     this.saveQuitBtn.onTap = () => this.onSaveQuit?.();
-    this.saveQuitBtn.setIcon(getUiTexture('icon_play'));
+    whenUiTexture('icon_play', (tex) => this.saveQuitBtn.setIcon(tex));
     this.quitBtn = new Button(t('pauseMenu.quit'), { w: CONTENT_W, h: ROW_H, sound: 'ui.back', ...MENU_BUTTONS.danger });
     this.quitBtn.onTap = () => this.onQuit?.();
-    this.quitBtn.setIcon(getUiTexture('icon_quit'));
+    whenUiTexture('icon_quit', (tex) => this.quitBtn.setIcon(tex));
 
     this.shell.content.addChild(this.rules, this.resumeBtn.view, this.settingsBtn.view,
       this.saveQuitBtn.view, this.quitBtn.view);

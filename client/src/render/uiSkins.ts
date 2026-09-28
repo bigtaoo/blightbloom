@@ -6,6 +6,19 @@
 // screen on its flat-colour/plain-text fallback (Panel's flat fill, Button's centered
 // label) — art never blocks boot or play. See the GPT Image 2 prompts on file for the
 // asset list this key set expects.
+//
+// Loaded in three TIERS (2026-09-28), because the boot used to await all ~40 files (1.65 MB)
+// before the first menu frame, and on a slow link that was most of the wait:
+//   boot   awaited by `preloadLobbyArt` — what the lobby's first frame cannot do without: the
+//          painting, the menu background, both logos, and every icon on a lobby BUTTON (a
+//          button that gains its icon later re-flows its label, which reads as a glitch).
+//   lobby  kicked the moment `boot` is in, never awaited — the lobby's decoration: portraits,
+//          route-card banners, the drifting rocks, the orbiting weapon. Each is a lone image
+//          whose absence the lobby already draws (`MainMenu` re-lays itself out on arrival
+//          and the pieces fade in).
+//   late   after `lobby`, and AWAITED by the run gate (`preloadArt.ts`'s `loadRunArt`) —
+//          everything else: the icons of screens off the lobby, and everything a run draws.
+//          A menu screen built before its icon lands takes it through `whenUiTexture`.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';
 import { DAMAGE_DIGITS_PATH } from './damageDigitAtlas';
@@ -13,7 +26,7 @@ import { DAMAGE_DIGITS_PATH } from './damageDigitAtlas';
 /** Exported so the WeChat package checks can enumerate the real FILES this loader asks
  *  for — see biomeTiles.ts's BIOME_TILE_ASSETS for the full note. */
 export const UI_ASSETS: Readonly<Record<string, string>> = {
-  hub: '/ui/hub_bg.png',
+  hub: '/ui/hub_bg.jpg',
   icon_play: '/ui/icon_play.png',
   icon_squad: '/ui/icon_squad.png',
   icon_account: '/ui/icon_account.png',
@@ -82,7 +95,42 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   lobby_weapon: '/ui/lobby_weapon.png',
 };
 
+/** When a key loads — see the header. A key not listed in either set is `late`, which is the
+ *  safe direction for a new file: it can never silently lengthen the boot. */
+export type UiTier = 'boot' | 'lobby' | 'late';
+
+const BOOT_KEYS: ReadonlySet<string> = new Set([
+  'lobby_bg', 'hub', 'lobby_logo_en', 'lobby_logo_zh',
+  // The lobby's buttons: the corner account/settings pair, and the route column's squad,
+  // forge (the forger's portrait) and tutorial tiles.
+  'icon_account', 'icon_settings', 'icon_party_create', 'npc_forger',
+]);
+
+const LOBBY_KEYS: ReadonlySet<string> = new Set([
+  'lobby_hero_orb', 'lobby_hero_skirmisher', 'lobby_hero_juggernaut', 'lobby_weapon',
+  'lobby_card_descend', 'lobby_card_coop', 'lobby_card_pvp',
+  'lobby_rock_a', 'lobby_rock_b', 'lobby_rock_c',
+]);
+
+export function uiTierOf(key: string): UiTier {
+  if (BOOT_KEYS.has(key)) return 'boot';
+  if (LOBBY_KEYS.has(key)) return 'lobby';
+  return 'late';
+}
+
+/** The keys loaded without a mip chain. Every one is drawn at or ABOVE its source size on the
+ *  screens this game targets (the menu background is a 384 px swatch stretched to the whole
+ *  screen), so a chain would be GPU memory and first-frame upload time spent on levels that are
+ *  never sampled. Everything else keeps it — see `preloadUiTier`. */
+const NO_MIPMAP_KEYS: ReadonlySet<string> = new Set(['hub']);
+
+export function uiUsesMipmaps(key: string): boolean {
+  return !NO_MIPMAP_KEYS.has(key);
+}
+
 const textures = new Map<string, Texture>();
+const tierLoads = new Map<UiTier, Promise<void>>();
+const listeners = new Set<(key: string) => void>();
 
 /** Every key `getUiTexture` can resolve once preloaded — exposed so tests can assert
  * a key (e.g. a new icon or `npc_forger`) is actually registered here, since
@@ -90,24 +138,77 @@ const textures = new Map<string, Texture>();
  * registered key whose file hasn't loaded (network-independent by design). */
 export const UI_ASSET_KEYS: readonly string[] = Object.keys(UI_ASSETS);
 
+/**
+ * Load one tier. Memoised on the promise, so the boot's kick and the run gate's await share one
+ * download; a tier that finished (with whatever failed swallowed) resolves immediately.
+ */
+export function preloadUiTier(tier: UiTier): Promise<void> {
+  let load = tierLoads.get(tier);
+  if (!load) {
+    load = Promise.all(
+      UI_ASSET_KEYS.filter((key) => uiTierOf(key) === tier).map(async (key) => {
+        try {
+          // Same lone-object rule the weapon/environment/biome-sprite loaders follow: these
+          // are 208-256 px sources drawn into buttons and badges a fraction of that size, so
+          // without a mip chain they minify off a 2x2 texel neighbourhood. Caught in the same
+          // loader audit as `weaponSkins.ts` (2026-08-24). `repeat` stays off — only a
+          // tileable swatch wants it, and every file here is a lone object.
+          const texture = await Assets.load<Texture>({
+            src: resolveAssetUrl(UI_ASSETS[key]),
+            data: { autoGenerateMipmaps: uiUsesMipmaps(key) },
+          });
+          textures.set(key, texture);
+          for (const listen of [...listeners]) listen(key);
+        } catch {
+          // Not generated yet (or failed to fetch) — fine, every consumer already
+          // renders correctly without it.
+        }
+      }),
+    ).then(() => undefined);
+    tierLoads.set(tier, load);
+  }
+  return load;
+}
+
+/** Every tier, in order, awaited — for callers with no reason to think about tiers. */
 export async function preloadUiArt(): Promise<void> {
-  await Promise.all(
-    Object.entries(UI_ASSETS).map(async ([key, path]) => {
-      try {
-        // Same lone-object rule the weapon/environment/biome-sprite loaders follow: these
-        // are 208-256 px sources drawn into buttons and badges a fraction of that size, so
-        // without a mip chain they minify off a 2x2 texel neighbourhood. Caught in the same
-        // loader audit as `weaponSkins.ts` (2026-08-24). `repeat` stays off — only a
-        // tileable swatch wants it, and every file here is a lone object.
-        textures.set(key, await Assets.load<Texture>({ src: resolveAssetUrl(path), data: { autoGenerateMipmaps: true } }));
-      } catch {
-        // Not generated yet (or failed to fetch) — fine, every consumer already
-        // renders correctly without it.
-      }
-    }),
-  );
+  await preloadUiTier('boot');
+  await preloadUiTier('lobby');
+  await preloadUiTier('late');
 }
 
 export function getUiTexture(key: string): Texture | undefined {
   return textures.get(key);
+}
+
+/**
+ * Hand `key`'s texture to `apply` — now if it is loaded, otherwise once, when it lands. For
+ * the menu widgets that set their art once, in a constructor that can run before a `lobby` or
+ * `late` file has arrived. A file that never loads never calls back, which leaves the widget on
+ * the fallback it already draws.
+ */
+export function whenUiTexture(key: string, apply: (texture: Texture) => void): void {
+  const now = textures.get(key);
+  if (now) {
+    apply(now);
+    return;
+  }
+  const off = onUiTexture((landed) => {
+    if (landed !== key) return;
+    off();
+    apply(textures.get(key)!);
+  });
+}
+
+/** Told the key of every UI texture as it lands. Returns the unsubscribe. */
+export function onUiTexture(listen: (key: string) => void): () => void {
+  listeners.add(listen);
+  return () => listeners.delete(listen);
+}
+
+/** Test-only: module state outlives a single test file. */
+export function resetUiSkinsForTests(): void {
+  textures.clear();
+  tierLoads.clear();
+  listeners.clear();
 }
