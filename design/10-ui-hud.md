@@ -264,7 +264,7 @@ opposite sides of a visible rule, which is most of the confusion this pass could
 ### The lobby becomes a scene (2026-09-27)
 
 `client/src/game/screens/MainMenu.ts`, `client/src/game/ui/{LobbyRoutes,LobbyCard,LobbyBackdrop,
-LobbyHero,LobbyResources,lobbyScale}.ts`; art and prompts in `art/ui/` (`prompts.md`, "The lobby
+LobbyHero,lobbyScale}.ts`; art and prompts in `art/ui/` (`prompts.md`, "The lobby
 redesign"); work log: [volume 102](roadmap/102-2026-09-27-lobby-scene.md). **Supersedes the layout
 of the 2026-09-22 section above** — the card, the divider and the centred utility row are gone.
 TUTORIAL hiding once seen, and its second door in Settings, are unchanged.
@@ -305,8 +305,9 @@ Each of the three had a cause in the code rather than in taste:
      width, each with a one-line description;
   3. SQUAD, FORGE, TUTORIAL — a dock of small icon-over-label buttons. It re-divides its row when
      TUTORIAL goes, so no hole is left.
-- **Chrome pinned to the real viewport corners**: the account card top-left, one material chip
-  per element plus SETTINGS top-right. The card (`AccountCard`) is an avatar disc, the name, and
+- **Chrome pinned to the real viewport corners**: the account card top-left, SETTINGS alone
+  top-right (the material chips that shipped beside it are gone — see "The FORGE badge" below).
+  The card (`AccountCard`) is an avatar disc, the name, and
   one line under it: "log in to save progress" for a guest, "progress synced" once signed in
   (`meta/accountSync.ts` pushes every save). There are no uploaded pictures, so a signed-in
   player's avatar is their initial on a disc whose hue is hashed from the name — theirs, and the
@@ -325,6 +326,17 @@ window's width and read as a sidebar beside the scene. It now has its own scale,
 small viewport is unchanged. The caps are computed against the column's TALLEST state (a save or
 portal PLAY above SOLO), so a save appearing does not resize the cards. The header, corners and
 hero stay at `k`; the dais re-centres in the room left of the wider column.
+
+**The FORGE badge replaces the material chips** (2026-09-28, [volume 105](roadmap/105-2026-09-28-forge-badge.md)).
+The redesign shipped five bank totals, one per element, beside SETTINGS. They answered no
+question a player asks in the lobby: whether 165 fire is enough depends on a recipe's `minTier`
+and on what is already staged, and a total across tiers cannot say. The same counts are already
+on the Forge and Loadout screens (`MaterialBank`), where they are spent. So the lobby now says the
+one actionable fact instead: FORGE carries a green count of the weapons the forge would craft
+right now (`meta/forge.ts craftableNow`, asked through `craft()` itself so the badge can never
+promise a craft the forge refuses), on the button's top-right corner, `99+` at most, and nothing at
+zero. Moving the chips to the top centre was considered and rejected: centred, they become the
+screen's focal point and crowd the logo, for information that is not worth a glance there.
 
 **What had to survive, and where it went:**
 

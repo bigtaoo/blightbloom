@@ -1639,9 +1639,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-28** [The camera stops causing motion sickness](roadmap/104-2026-09-28-camera-comfort.md#the-camera-stops-causing-motion-sickness-2026-09-28-client--test--docs-no-engine-change) — the owner said playing made them dizzy, like 3D motion sickness. The camera had three causes. The zoom snapped ~4x → ~1x → ~4x in one frame each way through every door, because a passage belongs to no room and the camera re-fit the whole floor there. The camera was welded to the player, so every strafe, bump and knockback moved the whole screen 1:1, magnified. The shake was ±14 px of per-frame white noise, topped up by every kill. A new pure `cameraRig.ts` holds the last room's zoom through a passage and eases zoom (320 ms) and pan (140 ms, frame-rate independent) behind a 5% dead zone, cutting on a teleport or new run. The shake is a smooth 7 px waveform, kills no longer shake, and `MAX_ZOOM` drops 4.5 → 3.5. 16 new tests, client 7,830 green, and a live run held zoom 3.2 through a 640 px corridor. `render` `test` `docs`
 
+**[2026-09-28 — the FORGE badge](roadmap/105-2026-09-28-forge-badge.md)**
+
+- **09-28** [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change) — the owner asked whether the five material counts beside the lobby's SETTINGS should move to the top centre or leave the lobby. They left: the forge is their only sink, and the Forge and Loadout screens already show them. A bank total across tiers cannot say whether a `minTier` recipe or the staged kit allows a craft. Centred, they would have crowded the logo. `LobbyResources` is deleted. FORGE now carries a green count of the weapons the forge would craft right now (`craftableNow`, asked through `craft()` itself), capped at 99+ and hidden at zero. 7 new tests, and driven live: a fresh account with 10 physical reads 2. `ui` `test` `docs`
+
 ## The work log — by theme
 
-The same 201 entries, grouped. An entry with more than one tag appears more than once.
+The same 202 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(71)*
 
@@ -1824,7 +1828,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(115)*
+**`test`** — coverage sweeps, gates, mutation batteries *(116)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1941,6 +1945,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The camera stops causing motion sickness](roadmap/104-2026-09-28-camera-comfort.md#the-camera-stops-causing-motion-sickness-2026-09-28-client--test--docs-no-engine-change)
+- 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1989,7 +1994,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(45)*
+**`ui`** — HUD, screens, widgets *(46)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2036,6 +2041,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
+- 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(23)*
 
@@ -2063,7 +2069,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`docs`** — design docs and this log itself *(120)*
+**`docs`** — design docs and this log itself *(121)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2185,6 +2191,7 @@ The same 201 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The camera stops causing motion sickness](roadmap/104-2026-09-28-camera-comfort.md#the-camera-stops-causing-motion-sickness-2026-09-28-client--test--docs-no-engine-change)
+- 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

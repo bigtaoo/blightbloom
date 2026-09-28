@@ -168,6 +168,14 @@ export function craft(m: MetaState, weaponId: string): CraftResult {
   return { ok: true, meta: { ...m, materialBank, blueprintStock, loadout: [...m.loadout, weaponId] } };
 }
 
+/** How many distinct blueprints `craft()` would accept right now — the lobby's FORGE badge
+ * (design/10, 2026-09-28). Asked through `craft()` itself rather than re-deriving its gates,
+ * so a staged-kind or full-loadout refusal can never leave the badge promising a craft the
+ * forge then denies. */
+export function craftableNow(m: MetaState): number {
+  return Object.keys(BLUEPRINT_CATALOG).filter((id) => craft(m, id).ok).length;
+}
+
 /** Clear the staged loadout (e.g. after a run consumes it, or the player reconsiders).
  * The crafted weapons are gone either way — they were spent when crafted (design/05). */
 export function clearLoadout(m: MetaState): MetaState {

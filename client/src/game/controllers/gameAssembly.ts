@@ -28,7 +28,7 @@
 // person does not have to rediscover it by reordering two lines and getting `undefined`.
 import type { InputSource } from '../../platform/types';
 import type { SettingsState } from '../../settings';
-import { DAMAGE_TYPES, type GameState } from '@dd/engine';
+import { type GameState } from '@dd/engine';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PartyScreen } from '../screens/PartyScreen';
 import { StoreScreen } from '../screens/StoreScreen';
@@ -72,7 +72,7 @@ import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
 import { resumableRunSummary } from '../match/resumableRun';
 import { pullAccountMeta } from '../../meta/accountSync';
-import { bankTotal } from '../../meta';
+import { craftableNow } from '../../meta';
 import { getSession } from '../../net/session';
 import type { RunState } from '../runState';
 
@@ -172,12 +172,12 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // header has the rest, including the memo that keeps it free per render.
   p.loadout.savedRun = () => resumableRunSummary();
   p.mainMenu.resumableRun = () => resumableRunSummary();
-  // The lobby's hero and material chips (design/10, 2026-09-27) — read off the live meta on
+  // The lobby's hero and FORGE badge (design/10, 2026-09-27/28) — read off the live meta on
   // every show, so a character picked or a material banked is on the front door when the
   // player lands back on it.
   p.mainMenu.lobbyProfile = () => ({
     skinId: p.run.meta.selectedSkin,
-    materials: Object.fromEntries(DAMAGE_TYPES.map((e) => [e, bankTotal(p.run.meta, e)])),
+    forgeReady: craftableNow(p.run.meta),
     bestFloor: p.run.meta.bestFloor,
   });
 
