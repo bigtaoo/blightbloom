@@ -8,8 +8,8 @@
  * moved away from everything.
  */
 import { describe, it, expect } from 'vitest';
-import { Container } from 'pixi.js';
-import { cullGroundLayer, groundPieceBounds, tagGroundPiece } from './groundCulling';
+import { Container, Graphics } from 'pixi.js';
+import { cullGroundLayer, groundPieceBounds, STANDING_CULL_MARGIN, tagGroundPiece, tagStandingPiece } from './groundCulling';
 import type { RectPx } from './wallGeometry';
 
 function piece(bounds: RectPx | null): Container {
@@ -99,5 +99,30 @@ describe('cullGroundLayer', () => {
     cullGroundLayer(g, { x: 10_000, y: 10_000, w: 10, h: 10 });
     expect(p.culled).toBe(true);
     expect(g.renderGroup!.structureDidChange).toBe(true);
+  });
+});
+
+describe('tagStandingPiece', () => {
+  it('tags the placed piece with its drawn bounds grown by the margin, in its parent space', () => {
+    const c = new Container();
+    c.addChild(new Graphics().rect(-10, -40, 20, 40).fill(0xffffff));
+    c.position.set(300, 500);
+    tagStandingPiece(c, 5);
+    expect(groundPieceBounds(c)).toEqual({ x: 285, y: 455, w: 30, h: 50 });
+  });
+
+  it('keeps a piece on for STANDING_CULL_MARGIN past its edge, and culls it beyond that', () => {
+    const wall = new Container();
+    wall.addChild(new Graphics().rect(0, 0, 10, 10).fill(0xffffff));
+    wall.position.set(VIEW.x + VIEW.w + STANDING_CULL_MARGIN - 1, VIEW.y);
+    tagStandingPiece(wall);
+    const actor = new Container(); // untagged, like every actor: never culled however far away
+    actor.position.set(10_000, 10_000);
+    expect(cullGroundLayer(ground(wall, actor), VIEW)).toBe(2);
+    wall.position.x += 2 + 10;
+    tagStandingPiece(wall);
+    cullGroundLayer(ground(wall, actor), VIEW);
+    expect(wall.culled).toBe(true);
+    expect(actor.culled).toBe(false);
   });
 });

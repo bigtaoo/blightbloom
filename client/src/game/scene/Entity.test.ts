@@ -6,7 +6,7 @@
  * like the pre-existing `facingRad` — angles snap to the current tick's value.
  */
 import { describe, it, expect } from 'vitest';
-import type { Graphics } from 'pixi.js';
+import { Container, type Graphics } from 'pixi.js';
 import { Entity, SHADOW_SQUASH, SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
 import { AUTO_BATCH_VERTEX_LIMIT } from '../../perf/drawAttribution';
 
@@ -79,6 +79,23 @@ describe('Entity — visualZ, the render-only hover lift', () => {
     setVisualZ(e, 9);
     e.place(100, 250, 30);
     expect(e.zIndex).toBe(250);
+  });
+
+  it('moving writes the sort key WITHOUT flagging its render group — `ySort.ts` re-sorts', () => {
+    // A moving view used to set `zIndex` every frame, and the setter rebuilds the whole enclosing
+    // render group each time (~30% of frame work at a 4x CPU throttle). The layer's own
+    // `settleYSort` raises the flag instead, and only when the order has actually changed.
+    const layer = new Container();
+    layer.sortableChildren = true;
+    layer.enableRenderGroup();
+    const e = new Entity();
+    layer.addChild(e);
+    layer.renderGroup!.structureDidChange = false;
+    layer.sortDirty = false;
+    e.place(100, 260, 0);
+    expect(e.zIndex).toBe(260);
+    expect(layer.renderGroup!.structureDidChange).toBe(false);
+    expect(layer.sortDirty).toBe(false);
   });
 
   it('interpolates the sim z and then applies the lift on top', () => {

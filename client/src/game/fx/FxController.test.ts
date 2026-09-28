@@ -914,3 +914,47 @@ describe('FxController under "reduce motion"', () => {
     expect(amount()).toBe(0);
   });
 });
+
+describe('FxController steady-frame savings (2026-09-28)', () => {
+  it('gives the screen passes on `world` the same filterArea as the lit pass, not bare bounds', () => {
+    // Without one Pixi measures `world`'s bounds — a walk over every descendant, every frame.
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    expect(layers.world.filterArea).not.toBeNull();
+    expect(layers.world.filterArea).toBe(layers.lit.filterArea);
+  });
+
+  it('takes the chromatic pass off the chain at rest, and puts it back for a hit', () => {
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    fx.updateFx(16, 0, undefined);
+    expect(fx.chromatic.enabled).toBe(false);
+    fx.pulseChromatic(0.01);
+    expect(fx.chromatic.enabled).toBe(true); // the hit frame itself, before any decay
+    fx.updateFx(1, 0, undefined); // 0.006 of the 0.01 decays in a millisecond
+    expect(fx.chromatic.enabled).toBe(true); // still decaying
+    fx.updateFx(10_000, 0, undefined);
+    expect(fx.chromatic.amount).toBe(0);
+    expect(fx.chromatic.enabled).toBe(false);
+  });
+
+  it('culls tagged standing pieces in `entities` by the camera rect, and never an untagged actor', () => {
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    const near = new Container();
+    const far = new Container();
+    const actor = new Container();
+    tagGroundPiece(near, { x: -10_000, y: -10_000, w: 20_000, h: 20_000 });
+    tagGroundPiece(far, { x: 1_000_000, y: 1_000_000, w: 40, h: 40 });
+    actor.position.set(1_000_000, 1_000_000);
+    layers.entities.addChild(near, far, actor);
+    fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 800, h: 600 }, fakePlayer(400, 300));
+    expect(near.culled).toBe(false);
+    expect(far.culled).toBe(true);
+    expect(actor.culled).toBe(false);
+    expect(fx.visibleGroundPieces).toBe(0); // the ground's count, which entities do not feed
+  });
+});

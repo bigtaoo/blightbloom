@@ -546,3 +546,31 @@ describe('DoorFx — an empty layer is not re-cleared every frame', () => {
     expect(burst.context.instructions).toHaveLength(0);
   });
 });
+
+describe('the per-frame Graphics — never batched, hidden while empty', () => {
+  // The last three of `over`, in the constructor's order: pulse, motes, burst (a locked door's
+  // scan bar and reject flash come first, and are drawn once).
+  const drawn = (fx: DoorFx): Graphics[] => graphicsOf(fx.over).slice(-3);
+
+  it('marks all three no-batch, so a redraw does not rebuild the enclosing render group', () => {
+    const { fx } = build(false);
+    const gs = drawn(fx);
+    expect(gs).toHaveLength(3);
+    expect(graphicsOf(build(true).fx.over)[0]!.context.batchMode).not.toBe('no-batch'); // control
+    for (const g of gs) expect(g.context.batchMode).toBe('no-batch');
+  });
+
+  it('hides a Graphics that has nothing to draw, and shows it again once it does', () => {
+    const { fx } = build(true);
+    fx.tick(16, 1);
+    const [, motes, burst] = drawn(fx);
+    // A locked door draws no motes, and a settled one no burst: both hidden, not just empty.
+    expect(motes!.visible).toBe(false);
+    expect(burst!.visible).toBe(false);
+    fx.setLocked(false, true);
+    fx.tick(16, 1);
+    expect(motes!.visible).toBe(true);
+    expect(burst!.visible).toBe(true);
+    expect(motes!.context.instructions.length).toBeGreaterThan(0);
+  });
+});

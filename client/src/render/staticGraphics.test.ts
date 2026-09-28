@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Graphics, GraphicsContextSystem } from 'pixi.js';
-import { staticGraphics } from './staticGraphics';
+import { redrawnGraphics, staticGraphics } from './staticGraphics';
 import { AUTO_BATCH_VERTEX_LIMIT } from '../perf/drawAttribution';
 
 /** Pixi's own batching decision, run for real. */
@@ -95,5 +95,13 @@ describe('staticGraphics', () => {
     // measurement says must stay on 'auto'.
     staticGraphics();
     expect(new Graphics().context.batchMode).toBe('auto');
+  });
+});
+
+describe('redrawnGraphics', () => {
+  it('never batches, however small — a redraw must not rebuild the enclosing render group', () => {
+    const g = rects(redrawnGraphics(), 1); // 8 floats: Pixi would auto-batch this
+    expect(contextSystem().updateGpuContext(g.context).isBatchable).toBe(false);
+    expect(contextSystem().updateGpuContext(rects(new Graphics(), 1).context).isBatchable).toBe(true); // control
   });
 });

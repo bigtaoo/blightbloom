@@ -8,6 +8,7 @@ import { getFloorTexture, getWallTexture, getWallFaceTexture } from '../../rende
 import { getDoorCurtainTexture, getDoorTexture } from '../../render/environmentSprites';
 import { wallHeight, DOOR_H, DOOR_TIER, type RectPx } from './wallGeometry';
 import { buildWallBlock, drawWallShadow } from './wallRender';
+import { tagStandingPiece } from './groundCulling';
 import { staticGraphics } from '../../render/staticGraphics';
 import { buildPillarEntities, buildPropEntities, destroyDressing } from './roomDressing';
 import {
@@ -179,8 +180,6 @@ export class RoomBuilder {
     // arena, which fall back to today's neutral palette unchanged).
     const palette = biomePalette(s.dungeonConfig?.biomeId);
     const element = biomeElementOf(s.dungeonConfig?.biomeId);
-    const floorTex = getFloorTexture(element);
-    const wallTex = getWallTexture(element);
     this.backdrop.setPalette(palette);
     // The far-side ground under the whole world (Terrain.ts). Recoloured with the backdrop
     // because the fog over it IS `palette.void` — the two have to move together or the plane
@@ -195,6 +194,13 @@ export class RoomBuilder {
     this.portal = null;
     this.portalPx = null;
 
+    // Planned in its own solo step: teardown + plan together were a 23 ms frame at 4x throttle.
+    return [solo(() => this.planSteps(s, w, h, palette, element))];
+  }
+
+  private planSteps(s: GameState, w: number, h: number, palette: BiomePalette, element: BiomeElement): BuildStep[] {
+    const floorTex = getFloorTexture(element);
+    const wallTex = getWallTexture(element);
     const plan = planRoomWalls(s, w, h, element);
     // Every wall now stands (2026-08-18 — see `wallGeometry.wallTier` for why the old
     // "east-west runs only" rule was what made a room read flat), at one of three heights.
@@ -205,8 +211,7 @@ export class RoomBuilder {
     // joins the sprite batch for one build-time pack instead of a draw call per frame.
     const shadows = staticGraphics();
     const faceTex = getWallFaceTexture(element);
-    // Owned from here, although it is only mounted with the doors: a build cancelled before then
-    // still has it destroyed by the next `clearWalls`.
+    // Owned from here though mounted with the doors, so a cancelled build's is still destroyed.
     this.wallShadows = shadows;
     const skin = { palette, cap: wallTex, face: faceTex };
     const steps: BuildStep[] = plan.merged.map((run, i) => () => this.buildWallRun(run, i, plan, skin, shadows));
@@ -255,6 +260,7 @@ export class RoomBuilder {
     drawWallShadow(shadows, run.rect, height);
     const seg = buildWallBlock(run.rect, height, skin, joins[i], voids[i]);
     this.layers.entities.addChild(seg);
+    tagStandingPiece(seg);
     this.wallEntities.push(seg);
     // The block sorts on its south edge and paints upward from there, so the floor it covers
     // runs from its cap's north edge down to its own footprint — see `occlusion.Occluder`.
@@ -354,6 +360,7 @@ export class RoomBuilder {
       const fixture = buildDoorBlock(rect, height, { ...skin, leaf: getDoorTexture(dr.locked) }, dr.locked, joins, i);
       drawWallShadow(shadows, rect, height);
       this.layers.entities.addChild(fixture.view);
+      tagStandingPiece(fixture.view);
       this.doorFixtures.push(fixture);
       this.doorFootprints.push(rect);
       const sortY = rect.y + rect.h;

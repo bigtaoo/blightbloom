@@ -1,5 +1,6 @@
 import { Container } from 'pixi.js';
 import { MenuLayer } from '../ui/menuLayer';
+import { settleYSort } from './ySort';
 
 // Render layers (see design/01-rendering.md).
 // The world layer pans with the camera; the ui layer is fixed.
@@ -102,8 +103,11 @@ export class Layers {
   readonly overlay = new Container();
 
   constructor() {
-    // entities are sorted by zIndex (= gy) for top-down depth occlusion
+    // entities are sorted by zIndex (= gy) for top-down depth occlusion. A moving view writes its
+    // key without Pixi's re-sort notification; this re-sorts once per rendered frame, and only
+    // when some pair has actually crossed — see `ySort.ts` for the measurement.
     this.entities.sortableChildren = true;
+    this.entities.onRender = () => settleYSort(this.entities);
 
     this.litFloor.addChild(this.ground, this.shadow);
     this.litStand.addChild(this.entities);
@@ -130,10 +134,23 @@ export class Layers {
     // room, 8 live enemies: 168 -> 114 re-adds, render collection 0.60 -> 0.52 ms, and it is what
     // makes `staticGraphics()` affordable on `ground`/`shadow` (see that module).
     //
-    // NOT `entities` (rebuilt every frame by design — a group there would buy nothing and add a
-    // batch boundary), NOT `fx` (particles are added and removed constantly, plus it carries a
-    // blur filter), and NOT `lit`/`world` (they hold `entities`, so they inherit its churn).
+    // NOT `lit`/`world` (they only wrap the layers below).
     for (const layer of [this.ground, this.shadow, this.hud, this.ui, this.backdrop]) {
+      layer.enableRenderGroup();
+    }
+
+    // ...and, since 2026-09-28 (steady-load pass), one per CHURNING layer as well, which is the
+    // same argument from the other side. `entities` used to be left in the root group because it
+    // was rebuilt every frame anyway (every mover wrote a `zIndex`); `ySort.ts` ended that, and
+    // what is left of its churn — a bullet fired, an enemy killed, two actors crossing — now
+    // happens a few times a second rather than always. Particles (`fx`) and damage numbers
+    // (`numbers`) come and go at their own rate, independent of it. With all three in the root
+    // group each one's churn rebuilt the other two plus the terrain and every filter bracket;
+    // measured under a 4x CPU throttle after the Y-sort fix, the root was still rebuilt on 27% of
+    // frames, nearly all of it particles. Apart, a particle rebuilds a group of particles. A group
+    // boundary breaks a batch, but these three never batched with each other anyway: each sits
+    // under a different filter (`fx`'s bloom, `litStand`'s light) or none.
+    for (const layer of [this.entities, this.fx, this.numbers]) {
       layer.enableRenderGroup();
     }
   }

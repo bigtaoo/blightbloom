@@ -82,6 +82,38 @@ export function tagGroundPiece(node: Container, bounds: RectPx): void {
   (node as Container & TaggedPiece).ddGroundBounds = bounds;
 }
 
+/**
+ * How far past its measured bounds a STANDING piece is kept on (world px). A door's travelling
+ * rings are empty Graphics when the fixture is built and reach up to 1.65 x its span (~116 px on a
+ * 128 px doorway) once they are drawn, and its open-state layers are hidden while it is locked, so
+ * neither is in the bounds read at build time. Generous on purpose: an extra wall kept on for a
+ * margin's worth of panning costs one more batched block, a ring popping off at the screen's edge
+ * is a visible bug.
+ */
+export const STANDING_CULL_MARGIN = 96;
+
+/**
+ * Tag a standing piece of `layers.entities` — a wall block, a door fixture, a pillar, a prop —
+ * with the rect it paints, read off its built geometry, once it has been placed (2026-09-28,
+ * steady-load pass). The same tag and the same cull as the ground's: `FxController` runs
+ * `cullGroundLayer` over `entities` too, and an untagged child (every actor, bullet and pickup)
+ * is never touched.
+ *
+ * Why it matters there more than it did on the ground: a floor's walls are co-resident, so a
+ * floor's every block stood in the Y-sorted layer at once — measured on floor 1, 63 standing
+ * pieces and 365 visible nodes, 5 of them on screen. Each one was collected on every rebuild of
+ * that layer (every shot fired, every kill) and packed and submitted on every frame.
+ */
+export function tagStandingPiece(node: Container, margin = STANDING_CULL_MARGIN): void {
+  const b = node.getLocalBounds();
+  tagGroundPiece(node, {
+    x: node.x + b.minX - margin,
+    y: node.y + b.minY - margin,
+    w: b.maxX - b.minX + 2 * margin,
+    h: b.maxY - b.minY + 2 * margin,
+  });
+}
+
 /** The rect `node` was tagged with, or `undefined` for an untagged (never-culled) piece. */
 export function groundPieceBounds(node: Container): RectPx | undefined {
   return (node as Container & TaggedPiece).ddGroundBounds;
