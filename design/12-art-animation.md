@@ -1090,7 +1090,13 @@ glyph beside a label that is already there), never anything a run draws — ever
 is behind the gate, which now includes the `late` tier. The ten test files that mock
 `getUiTexture` had to route `whenUiTexture` through the same fake: the real one reads the module's
 own map, so each of those suites would otherwise have kept passing with every constructor-time
-icon silently gone — `labelFit`/`widgetOverlap`'s icon-shifted label sweeps among them.
+icon silently gone — `labelFit`/`widgetOverlap`'s icon-shifted label sweeps among them. The late
+arrival itself is pinned by `client/src/game/screens/lateIcons.test.ts`: every menu screen is
+built with nothing loaded, then the icons land as one labelled texture per key, and each must
+end up on its own button. `preloadArt.test.ts` pins what each phase waits for (the boot resolves
+with `lobby` still downloading and asks for no `late` file; the run gate holds until every `late`
+file settles), and `uiSkins.test.ts` sweeps the source for any literal key missing from
+`UI_ASSETS` — an unknown key waits forever without an error.
 
 **Recompression, not a new format.** `hub_bg` was an opaque PNG and is now a JPEG (153 → 37 kB).
 The portraits, logos, the forger NPC and the lobby weapon are 256-colour palette PNGs with a
@@ -1100,7 +1106,8 @@ quantiser was 2× smaller again but left visible speckle on the orb's white shel
 the skirmisher's fur, at 2–3× the error; it was rejected on a 3× zoom. `tools/png-pipeline`'s
 `decodePNG` learned colorType 3 the same day, because the shipped-art tests (`lobbyArt.test.ts`,
 `npcArt.test.ts`) read these files through it; its encoder still writes RGBA only, so re-running
-`compress.mjs` over one of them undoes the quantisation. WebP stays off the table: WeChat's
+`compress.mjs` over one of them undoes the quantisation — which `uiSkins.test.ts` now fails, by
+reading each file's IHDR colour type, since the `lobby`-tier ones sit under no byte budget. WebP stays off the table: WeChat's
 decoder support could not be confirmed, and a portrait that decodes on web and not in the
 mini-game is the one failure this repo cannot see from here.
 
