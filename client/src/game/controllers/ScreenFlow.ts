@@ -178,8 +178,8 @@ export class ScreenFlow {
     this.w.partyScreen.hide();
     this.w.loginScreen.hide();
     this.w.storeScreen.hide();
+    // Positioned by the render itself: the loadout's shell pins it top-right.
     this.w.loadout.render(meta, width, height);
-    this.w.settingsBtn.view.position.set(width - 130, height - 50);
     this.w.settingsBtn.view.visible = true;
   }
 
@@ -218,12 +218,5 @@ export class ScreenFlow {
    * starts from the loadout screen, so the button (that screen's only) must go dark. */
   hideSettingsButton(): void {
     this.w.settingsBtn.view.visible = false;
-  }
-
-  /** The loadout-phase settings-button reposition `relayoutViewport` does on every
-   * resize — kept separate from `showLoadout`'s own positioning call since a resize
-   * must reposition without re-rendering the whole screen. */
-  repositionSettingsButtonIfLoadout(isLoadoutPhase: boolean, width: number, height: number): void {
-    if (isLoadoutPhase) this.w.settingsBtn.view.position.set(width - 130, height - 50);
   }
 }

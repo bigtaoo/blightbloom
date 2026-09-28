@@ -1,5 +1,9 @@
-import { Container, Sprite, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { SHEET_PAD, SHEET_TITLE_H } from '../ui/MenuSheet';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 
@@ -17,8 +21,15 @@ import { t } from '../../i18n';
 // so the very first stray click/press after the swarm kill could dismiss this
 // screen before it was even read — reading as "the level just exited on its own"
 // even though a real confirm technically fired. `confirmBtn` is now the ONE way to
-// leave this screen (mirroring `menuBtn`'s secondary exit) — deliberate, not
-// incidental.
+// leave this screen forward (MAIN MENU, the shell's corner chip, is the other exit) —
+// deliberate, not incidental.
+//
+// Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+// sheet: the outcome as the sheet's title, tinted for a win or a loss; the badge; the stat
+// lines in a field box; the optional offer; and CONFIRM across the sheet. MAIN MENU moved from
+// a small button under CONFIRM to the shell's top-left chip — the corner every other screen
+// leaves for the lobby from — which also takes it out from under the thumb that presses
+// CONFIRM.
 /**
  * An optional extra action on the results screen: today the rewarded-ad materials bonus
  * (`RunOutcome.ts`), which is why the reward itself is not modelled here. This screen knows
@@ -35,13 +46,24 @@ export interface ResultOffer {
   claim: () => Promise<readonly string[]>;
 }
 
+/** The sheet's width and content width; the rows' heights and the gap between them. */
+const SHEET_W = 440;
+const CONTENT_W = SHEET_W - SHEET_PAD * 2;
+const BADGE = 64;
+const BOX_PAD = 14;
+const OFFER_H = 40;
+const CONFIRM_H = 48;
+const GAP = 14;
+
 export class Screens {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.72, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  /** The stat lines' field box. */
+  private readonly box = new Graphics();
   private sub: Text;
   private confirmBtn: Button;
-  private menuBtn: Button;
   /** The optional offer button (see `ResultOffer`). Hidden unless `show` is handed one,
    *  which is every build without a rewarded ad installed and every result that has
    *  nothing to offer. `autoWidth` because its label is translated and the longest
@@ -57,54 +79,72 @@ export class Screens {
   /** The viewport the last `layout` ran against — see its own note. */
   private lastW = 0;
   private lastH = 0;
-  /** Win/loss badge above the title (`RunOutcome.ts`'s titles: EXTRACTED/VICTORY
+  /** Win/loss badge at the top of the sheet (`RunOutcome.ts`'s titles: EXTRACTED/VICTORY
    * ROYALE = win, DEFEAT/ELIMINATED = loss). Hidden until its art is generated
-   * (uiSkins.ts's non-blocking preload) — a missing texture just means no badge. */
+   * (uiSkins.ts's non-blocking preload) — a missing texture just means no badge, and the
+   * rows close up over the room it would have taken. */
   private resultIcon = new Sprite();
 
   // Called when the player taps `confirmBtn` (start/restart — re-enters the loadout
   // screen to gear up for the next run).
   onConfirm: (() => void) | null = null;
-  // Secondary exit — a smaller button, not the primary confirm action (design/10
+  // Secondary exit — the shell's corner chip, not the primary confirm action (design/10
   // decided result-screen content: confirm still re-enters the loadout screen; this
   // is for a player who wants to fully back out to the main menu instead).
   onMenu: (() => void) | null = null;
 
   constructor() {
-    // `padding` guards against a real observed font-metrics clipping bug (widgets.ts's
-    // Button has the full explanation) — these aren't Buttons, so it's set directly.
-    this.title = new Text({
-      text: '',
-      style: { fill: 0xf7fafc, fontSize: 46, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 },
-    });
+    this.shell = new MenuShell({ title: '', back: t('results.mainMenuButton') });
+    this.shell.onBack = () => this.onMenu?.();
+    this.panel = this.shell.backdrop;
     // Multi-line stat rows (design/10 result-screen content) — `align:'center'` keeps
     // each row centered under the anchor, not just the block as a whole.
     this.sub = new Text({
       text: '',
-      style: { fill: 0xcbd5e0, fontSize: 19, fontFamily: 'monospace', align: 'center', lineHeight: 26, padding: 26 },
+      style: menuText('value', { fill: MENU_COLORS.textSoft, align: 'center', lineHeight: 26, wordWrap: true, breakWords: true, wordWrapWidth: CONTENT_W - BOX_PAD * 2 }),
     });
-    this.title.anchor.set(0.5);
-    this.sub.anchor.set(0.5);
+    this.sub.anchor.set(0.5, 0);
 
-    // Primary action — same green "go" styling as the lobby's primary route /
-    // SOLO / PartyScreen's START MATCHING (widgets.ts's established convention for
-    // "the button this screen wants you to press").
-    this.confirmBtn = new Button(t('results.confirmButton'), { w: 220, h: 44, fontSize: 17, color: 0x2f855a, borderColor: 0x68d391 });
+    // Primary action — the shell's go-green (`MENU_BUTTONS.primary`), "the button this
+    // screen wants you to press".
+    this.confirmBtn = new Button(t('results.confirmButton'), { w: CONTENT_W, h: CONFIRM_H, fontSize: 17, ...MENU_BUTTONS.primary });
     this.confirmBtn.onTap = () => this.onConfirm?.();
-    this.menuBtn = new Button(t('results.mainMenuButton'), { w: 150, h: 32, fontSize: 13, sound: 'ui.back' });
-    this.menuBtn.onTap = () => this.onMenu?.();
     // Amber, not the confirm green: this is an OPTIONAL extra, and a second green button
     // beside CONFIRM would read as the primary action on a screen whose primary action is
-    // to move on (widgets.ts's "the button this screen wants you to press" convention).
-    this.offerBtn = new Button('', { w: 240, h: 40, fontSize: 14, color: 0x975a16, borderColor: 0xf6ad55, autoWidth: true });
+    // to move on.
+    this.offerBtn = new Button('', { w: CONTENT_W, h: OFFER_H, fontSize: 14, color: 0x975a16, borderColor: 0xf6ad55, autoWidth: true });
     this.offerBtn.onTap = () => void this.claim();
     this.offerBtn.view.visible = false;
 
-    this.resultIcon.anchor.set(0.5);
+    this.resultIcon.anchor.set(0.5, 0);
     this.resultIcon.visible = false;
 
-    this.view.addChild(this.panel.view, this.resultIcon, this.title, this.sub, this.offerBtn.view, this.confirmBtn.view, this.menuBtn.view);
+    this.shell.content.addChild(this.box, this.resultIcon, this.sub, this.offerBtn.view, this.confirmBtn.view);
+    this.shell.mount(this.view);
     this.view.visible = false;
+  }
+
+  /** Flow the sheet top to bottom and return the content's height. Every row but CONFIRM
+   *  can be absent — the badge before its art loads, the offer on most results — and the
+   *  rows close up rather than leave a hole. */
+  private flow(): number {
+    const cx = CONTENT_W / 2;
+    let y = 0;
+    this.resultIcon.position.set(cx, y);
+    if (this.resultIcon.visible) y += BADGE + GAP;
+    const boxH = this.sub.height + BOX_PAD * 2;
+    this.box.clear()
+      .roundRect(0, y, CONTENT_W, boxH, 10).fill({ color: MENU_COLORS.field, alpha: 0.9 })
+      .roundRect(0.5, y + 0.5, CONTENT_W - 1, boxH - 1, 10).stroke({ color: MENU_COLORS.fieldBorder, width: 1 });
+    this.sub.position.set(cx, y + BOX_PAD);
+    y += boxH + GAP + 4;
+    // The offer takes a row of its own between the stats and CONFIRM, pushing CONFIRM down
+    // rather than squeezing in beside it: it is the one row a player has to read before
+    // pressing the button they always press.
+    this.offerBtn.view.position.set(cx - this.offerBtn.width / 2, y);
+    if (this.offerBtn.view.visible) y += OFFER_H + GAP;
+    this.confirmBtn.view.position.set(0, y);
+    return y + CONFIRM_H;
   }
 
   private layout(w: number, h: number) {
@@ -113,41 +153,28 @@ export class Screens {
     // caller there to ask (`resize` has one, which is why it takes them).
     this.lastW = w;
     this.lastH = h;
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    this.resultIcon.position.set(cx, cy - 168);
-    this.title.position.set(cx, cy - 120);
-    this.sub.position.set(cx, cy);
-    // The offer takes a row of its own between the stats and CONFIRM, pushing the two
-    // exits down rather than squeezing in beside them: it is the one row a player has to
-    // read before pressing the button they always press. With no offer every position
-    // below is byte-identical to what this screen has always laid out — the whole shift
-    // is `offset`, which is 0 then.
-    const offset = this.offerBtn.view.visible ? 56 : 0;
-    this.offerBtn.view.position.set(cx - this.offerBtn.width / 2, cy + 78);
-    this.confirmBtn.view.position.set(cx - 110, cy + 92 + offset);
-    this.menuBtn.view.position.set(cx - 75, cy + 152 + offset);
+    this.shell.layout(w, h, SHEET_W, SHEET_TITLE_H + 18 + this.flow() + SHEET_PAD);
   }
 
   show(w: number, h: number, won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null) {
     // Retext on show (design/17-i18n.md) so a language change takes effect next time
     // this screen opens, same convention as MainMenu.ts's `retext()`.
     this.confirmBtn.setText(t('results.confirmButton'));
-    this.menuBtn.setText(t('results.mainMenuButton'));
+    this.shell.setBack(t('results.mainMenuButton'));
     // The offer's label is already translated by whoever built it (it names the reward,
     // which is not this screen's knowledge) — so it is set, not re-derived, here.
     this.offer = offer;
     this.claiming = false;
     this.offerBtn.view.visible = offer !== null;
     if (offer) this.offerBtn.setText(offer.label);
-    this.title.text = title;
+    // The copy is the caller's; the tint is the one thing `won` decides here.
+    this.shell.sheet.title.style.fill = won ? MENU_COLORS.success : MENU_COLORS.error;
+    this.shell.setTitle(title);
     this.sub.text = lines.join('\n');
     const tex = getUiTexture(won ? 'icon_result_extract' : 'icon_result_wiped');
     if (tex) {
       this.resultIcon.texture = tex;
-      const size = 64;
-      this.resultIcon.scale.set(Math.min(size / tex.width, size / tex.height));
+      this.resultIcon.scale.set(Math.min(BADGE / tex.width, BADGE / tex.height));
       this.resultIcon.visible = true;
     } else {
       this.resultIcon.visible = false;
@@ -187,6 +214,12 @@ export class Screens {
     this.offerBtn.view.visible = false;
     if (lines) this.sub.text = lines.join('\n');
     if (this.view.visible) this.layout(this.lastW, this.lastH);
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide() {

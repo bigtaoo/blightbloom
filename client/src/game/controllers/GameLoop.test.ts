@@ -124,7 +124,7 @@ function buildDeps(extra: Partial<GameLoopDeps> = {}) {
   const ticker = { maxFPS: 0 };
 
   const deps: GameLoopDeps = {
-    scene, fx, hud, touchControlsView, portalPrompt, floorCardPrompt, roomBuilder, lobbyScreens: [partyScreen, matchmaking],
+    scene, fx, hud, touchControlsView, portalPrompt, floorCardPrompt, roomBuilder, lobbyScreens: [partyScreen, matchmaking], menuScreens: [],
     builder, ally, input, events, runOutcome, tutorialHints, world, ticker,
     pickupDebugOverlay: null,
     ...extra,
@@ -1588,5 +1588,23 @@ describe('GameLoop — hands the reconcile\'s spawn count to the reactor', () =>
     });
     stepOnce(deps);
     expect(events.consume.mock.calls[0]![1]).toBe(7);
+  });
+});
+
+describe('GameLoop.update — the menu backdrops (2026-09-27)', () => {
+  // Every menu outside the lobby draws the lobby painting, whose rocks, glow and motes move
+  // (`ui/MenuShell.ts`). The pause menu is one of those screens, so the paused branch has to
+  // tick them too — the lobby-screen list never ran there, which is why this is its own list.
+  it('animates the menu screens outside a run AND while paused, and never while playing', () => {
+    const screen = { animate: vi.fn() };
+    const { deps } = buildDeps({ menuScreens: [screen] });
+    for (const phase of ['menu', 'forge', 'paused', 'victory'] as const) {
+      screen.animate.mockClear();
+      new GameLoop(deps, buildHost({ getPhase: () => phase })).update(16);
+      expect(screen.animate, phase).toHaveBeenCalledWith(16);
+    }
+    screen.animate.mockClear();
+    new GameLoop(deps, buildHost({ getPhase: () => 'playing' })).update(16);
+    expect(screen.animate).not.toHaveBeenCalled();
   });
 });

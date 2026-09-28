@@ -19,6 +19,7 @@ import { defaultMetaState, type MetaState } from '../../meta';
 import { resetLocaleForTests, t } from '../../i18n';
 import type { StoreOrder, StoreSku } from '../../net/billing';
 import { useLocale } from '../../i18n/loadLocale';
+import { MENU_BUTTONS, MENU_COLORS } from '../ui/menuTheme';
 
 installFakeTextCanvas();
 afterEach(() => { setUiAudio(null); resetLocaleForTests(); });
@@ -28,19 +29,22 @@ afterEach(() => { setUiAudio(null); resetLocaleForTests(); });
 interface TestButton {
   view: { visible: boolean; position: { x: number; y: number } };
   label: { text: string };
+  width: number;
+  color: number;
   onTap: (() => void) | null;
 }
 
+/** The screen's widgets, plus the two the menu shell owns (the title and BACK). */
 function privateOf(screen: StoreScreen) {
-  return screen as unknown as {
-    title: { text: string };
+  const shell = (screen as unknown as { shell: { sheet: { title: { text: string }; height: number }; backBtn: TestButton } }).shell;
+  const self = screen as unknown as {
     statusText: { text: string };
     rows: TestButton[];
     prevPageBtn: TestButton;
     nextPageBtn: TestButton;
     pageLabel: { visible: boolean; text: string };
-    backBtn: TestButton;
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn, sheet: shell.sheet });
 }
 
 const SESSION = { accountId: 'acct-1', username: 'alice', token: 'tok-1' };
@@ -188,6 +192,33 @@ describe('the listing', () => {
     const small = await shown();
     expect(small.ui.nextPageBtn.view.visible).toBe(false);
     expect(small.ui.pageLabel.visible).toBe(false);
+  });
+
+  it('keeps the sheet one size across pages, so the pager does not move under the finger', async () => {
+    // A short last page reserving only its own rows would shrink the sheet, and the shell would
+    // re-scale and re-centre everything — the PAGE button the player just pressed included.
+    const many = Array.from({ length: 9 }, (_, i) => ({ ...CRYO, sku: `bp.${i}` }));
+    const f = await shown({ skus: many });
+    const full = f.ui.sheet.height;
+    const pagerY = f.ui.nextPageBtn.view.position.y;
+    f.ui.nextPageBtn.onTap?.();
+    expect(f.ui.sheet.height).toBe(full);
+    expect(f.ui.nextPageBtn.view.position.y).toBe(pagerY);
+  });
+
+  it('draws each row the sheet\'s full width, stacked without overlap', async () => {
+    const f = await shown();
+    const [a, b] = f.ui.rows;
+    expect(a!.width).toBe(b!.width);
+    expect(a!.width).toBeGreaterThan(400);
+    expect(b!.view.position.y).toBeGreaterThanOrEqual(a!.view.position.y + 42);
+  });
+
+  it('dims an owned row to the field colour, and gives it back the ordinary one when it is not', async () => {
+    const f = await shown({ meta: { ...defaultMetaState(), unlockedBlueprints: [...defaultMetaState().unlockedBlueprints, 'cryobolt'] } });
+    expect(f.ui.rows[0]!.label.text).toContain('OWNED');
+    expect(f.ui.rows[0]!.color).toBe(MENU_COLORS.field);
+    expect(f.ui.rows[1]!.color).toBe(MENU_BUTTONS.secondary.color);
   });
 
   it('buys the SKU under the row that was pressed, not the first one', async () => {

@@ -1,6 +1,9 @@
-import { Container, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
-import { getUiTexture } from '../../render/uiSkins';
+import { Container, Graphics, Text } from 'pixi.js';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { SHEET_PAD, SHEET_TITLE_H } from '../ui/MenuSheet';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { t } from '../../i18n';
 import type { CoopSession } from '../../net/CoopSession';
 import { MatchRequestError, type QueueProgress } from '../../net/matchmaking';
@@ -37,6 +40,24 @@ function classifyError(e: unknown): string {
   return t('matchmaking.errorGeneric');
 }
 
+/** The sheet's width and content width; the fixed rows' heights, top to bottom. Every row keeps
+ *  its room in both states, so RETRY lands exactly where CANCEL was. */
+const SHEET_W = 420;
+const CONTENT_W = SHEET_W - SHEET_PAD * 2;
+const MARK_H = 72;
+/** The text block: three status lines (the longest error message, translated, wrapped), or
+ *  one status line (the elapsed clock) over two caption lines (the backfill countdown). The
+ *  hint only ever shows beside a one-line status, so it starts one line down. */
+const TEXT_H = 64;
+const HINT_Y = 30;
+const BUTTON_W = 220;
+const BUTTON_H = 44;
+const CONTENT_H = MARK_H + 12 + TEXT_H + 14 + BUTTON_H;
+/** The crystals circling while the queue works, and how fast they go round. */
+const SPINNER_GEMS = 8;
+const SPINNER_R = 26;
+const SPINNER_RAD_PER_MS = (Math.PI * 2) / 1600;
+
 /**
  * The matchmaking wait/error screen (design/10 screen-flow gap). Previously
  * `connectOnlineSession` ran with NO visible feedback at all — the game sat in a blank
@@ -58,16 +79,26 @@ function classifyError(e: unknown): string {
  * LoginScreen uses for logged-in/out): 'connecting' (elapsed-time text + Cancel) and
  * 'error' (message + Retry + Back). No network call is made directly here — `connect`
  * is injected, same DI convention as PartyScreen's `PartyApi`.
+ *
+ * Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+ * sheet: a ring of crystals turning while the queue works (a cracked red one on failure), the
+ * status and countdown lines, and one button — CANCEL, or RETRY in its place. BACK is the
+ * shell's corner chip in both states, and means what CANCEL means: give up on this search.
  */
 export class Matchmaking {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.85, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  /** The ring of crystals while searching; the failure mark in its place. */
+  private readonly spinner = new Graphics();
+  private readonly failMark = new Graphics();
   private statusText: Text;
   private hintText: Text;
   private cancelBtn: Button;
   private retryBtn: Button;
-  private backBtn: Button;
+  /** Whether `layout` has run — text changed before it has nothing to re-rasterise against. */
+  private laidOut = false;
 
   private connectFn: MatchmakingConnect | null = null;
   private signal: MatchmakingSignal | null = null;
@@ -86,36 +117,39 @@ export class Matchmaking {
   onCancelled: (() => void) | null = null;
 
   constructor() {
-    this.title = new Text({ text: t('matchmaking.searching'), style: { fill: 0xf7fafc, fontSize: 30, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    this.statusText = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 16, fontFamily: 'monospace', padding: 16 } });
+    this.shell = new MenuShell({ title: t('matchmaking.searching'), back: t('matchmaking.back') });
+    this.shell.onBack = () => this.cancel();
+    this.panel = this.shell.backdrop;
+    this.statusText = new Text({ text: '', style: menuText('value', { fill: MENU_COLORS.accent, align: 'center', wordWrap: true, breakWords: true, wordWrapWidth: CONTENT_W, lineHeight: 21 }) });
     this.statusText.anchor.set(0.5, 0);
-    this.hintText = new Text({ text: '', style: { fill: 0xa0aec0, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
+    this.hintText = new Text({ text: '', style: menuText('caption', { fontSize: 12, lineHeight: 16, align: 'center', wordWrapWidth: CONTENT_W }) });
     this.hintText.anchor.set(0.5, 0);
+    drawSpinner(this.spinner);
+    drawFailMark(this.failMark);
 
-    this.cancelBtn = new Button(t('matchmaking.cancel'), { w: 160, h: 40, fontSize: 14, color: 0x742a2a, sound: 'ui.back' });
+    this.cancelBtn = new Button(t('matchmaking.cancel'), { w: BUTTON_W, h: BUTTON_H, fontSize: 15, sound: 'ui.back', ...MENU_BUTTONS.danger });
     this.cancelBtn.onTap = () => this.cancel();
-    this.retryBtn = new Button(t('matchmaking.retry'), { w: 160, h: 40, fontSize: 14, color: 0x2f855a });
+    this.retryBtn = new Button(t('matchmaking.retry'), { w: BUTTON_W, h: BUTTON_H, fontSize: 15, ...MENU_BUTTONS.primary });
     this.retryBtn.onTap = () => this.retry();
-    this.backBtn = new Button(t('matchmaking.back'), { w: 160, h: 40, fontSize: 14, sound: 'ui.back' });
-    this.backBtn.onTap = () => this.cancel();
-    this.backBtn.setIcon(getUiTexture('icon_back'));
 
-    this.view.addChild(this.panel.view, this.title, this.statusText, this.hintText, this.cancelBtn.view, this.retryBtn.view, this.backBtn.view);
+    this.shell.content.addChild(this.spinner, this.failMark, this.statusText, this.hintText, this.cancelBtn.view, this.retryBtn.view);
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
   }
 
   private layout(w: number, h: number): void {
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    this.title.position.set(cx, cy - 80);
-    this.statusText.position.set(cx, cy - 10);
-    this.hintText.position.set(cx, cy + 16);
-    this.cancelBtn.view.position.set(cx - 80, cy + 48);
-    this.retryBtn.view.position.set(cx - 170, cy + 48);
-    this.backBtn.view.position.set(cx + 10, cy + 48);
+    this.laidOut = true;
+    const cx = CONTENT_W / 2;
+    this.spinner.position.set(cx, MARK_H / 2);
+    this.failMark.position.set(cx, MARK_H / 2);
+    let y = MARK_H + 12;
+    this.statusText.position.set(cx, y);
+    this.hintText.position.set(cx, y + HINT_Y);
+    y += TEXT_H + 14;
+    this.cancelBtn.view.position.set(cx - BUTTON_W / 2, y);
+    this.retryBtn.view.position.set(cx - BUTTON_W / 2, y);
+    this.shell.layout(w, h, SHEET_W, SHEET_TITLE_H + 18 + CONTENT_H + SHEET_PAD);
   }
 
   /** Begin (or resume showing) a matchmaking attempt. `connect` is called immediately —
@@ -126,6 +160,14 @@ export class Matchmaking {
     this.connectFn = connect;
     this.beginAttempt();
     this.view.visible = true;
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (!this.view.visible) return;
+    this.panel.update(dtMs);
+    if (this.spinner.visible) this.spinner.rotation = (this.spinner.rotation + dtMs * SPINNER_RAD_PER_MS) % (Math.PI * 2);
   }
 
   hide(): void {
@@ -184,9 +226,9 @@ export class Matchmaking {
   }
 
   private retext(): void {
+    this.shell.setBack(t('matchmaking.back'));
     this.cancelBtn.setText(t('matchmaking.cancel'));
     this.retryBtn.setText(t('matchmaking.retry'));
-    this.backBtn.setText(t('matchmaking.back'));
   }
 
   private refreshStatusText(): void {
@@ -207,11 +249,36 @@ export class Matchmaking {
 
   private refresh(): void {
     const connecting = this.state === 'connecting';
-    this.title.text = connecting ? t('matchmaking.searching') : t('matchmaking.errorTitle');
+    this.shell.setTitle(connecting ? t('matchmaking.searching') : t('matchmaking.errorTitle'));
     this.statusText.text = connecting ? t('matchmaking.elapsed', { seconds: 0 }) : this.errorText;
+    this.statusText.style.fill = connecting ? MENU_COLORS.accent : MENU_COLORS.error;
     this.hintText.text = connecting ? this.hintLine() : '';
+    this.spinner.visible = connecting;
+    this.failMark.visible = !connecting;
     this.cancelBtn.view.visible = connecting;
     this.retryBtn.view.visible = !connecting;
-    this.backBtn.view.visible = !connecting;
+    if (this.laidOut) this.shell.sharpen();
   }
+}
+
+/** A ring of crystals, brightest at the head, so turning it reads as motion: the sheet's own
+ *  corner gem, repeated round a circle. */
+function drawSpinner(g: Graphics): void {
+  for (let i = 0; i < SPINNER_GEMS; i++) {
+    const a = (i / SPINNER_GEMS) * Math.PI * 2;
+    const x = Math.cos(a) * SPINNER_R;
+    const y = Math.sin(a) * SPINNER_R;
+    const s = 3 + (i / SPINNER_GEMS) * 3;
+    g.poly([x, y - s * 1.5, x + s, y, x, y + s * 1.5, x - s, y])
+      .fill({ color: MENU_COLORS.frame, alpha: 0.2 + 0.8 * (i / (SPINNER_GEMS - 1)) });
+  }
+}
+
+/** The failure mark: one large crystal in the error red, split down the middle. */
+function drawFailMark(g: Graphics): void {
+  const s = 18;
+  g.poly([0, -s * 1.5, s, 0, 0, s * 1.5, -s, 0]).fill({ color: MENU_COLORS.danger, alpha: 0.9 })
+    .poly([0, -s * 1.5, s, 0, 0, s * 1.5, -s, 0]).stroke({ color: MENU_COLORS.error, width: 2 })
+    .moveTo(-3, -s * 1.1).lineTo(3, -4).lineTo(-3, 4).lineTo(2, s * 1.1)
+    .stroke({ color: MENU_COLORS.outline, width: 3 });
 }

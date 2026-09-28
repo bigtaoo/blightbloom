@@ -1,6 +1,10 @@
-import { Container, Text } from 'pixi.js';
-import { Panel, Button } from '../ui/widgets';
+import { Container, Graphics, Text } from 'pixi.js';
+import { Button } from '../ui/widgets';
+import { MenuShell } from '../ui/MenuShell';
+import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
+import { MENU_BUTTONS, MENU_COLORS, menuText } from '../ui/menuTheme';
 import { TextInputOverlay } from '../ui/TextInputOverlay';
+import { ACTION_H, CONTENT_W, LEAVE_H, PRIMARY_H, SHEET_W, layoutPartySheet, type PartySheetParts } from './partySheet';
 import * as partyApi from '../../net/party';
 import type { PartyInfo } from '../../net/party';
 import { getPlayerId } from '../../net/identity';
@@ -8,6 +12,7 @@ import { getUiTexture } from '../../render/uiSkins';
 import { t } from '../../i18n';
 import { setPartyPresence } from '../../platform/partyPresence';
 import type { PartyMode } from '../match/partyShape';
+import { SQUAD_SIZE } from '../match/pvpConfig';
 import { ROOM_CODE_LENGTH, normalizeRoomCode } from '../match/roomCode';
 
 /** The party network calls this screen needs — injected (default: the real
@@ -43,20 +48,34 @@ export interface PartyApi {
  * entered via `TextInputOverlay` (Pixi has no native text input). That constant is IMPORTED
  * from the pure layer and shared with the server rather than restated here — see
  * `../match/roomCode`'s header for the hour this file spent holding a second copy of it.
+ *
+ * Since the menu shell (design/10 "One shell for every menu", 2026-09-27) it is one framed
+ * sheet with BACK as the shell's corner chip. Out of a party: a line saying what the screen is
+ * for, then the three ways in as full-width buttons. In one: the code in its own box to read
+ * out, a row per SEAT (taken or open, so a host sees how many friends are still missing), then
+ * START for the leader — or, for a member, who the room is waiting on — and LEAVE.
  */
 export class PartyScreen {
   readonly view = new Container();
-  private panel = new Panel({ alpha: 0.85, background: 'hub' });
-  private title: Text;
+  private readonly shell: MenuShell;
+  /** The dimmed lobby painting. Named `panel` for `menuCoversWorld.test.ts`. */
+  private readonly panel: LobbyBackdrop;
+  private readonly rules = new Graphics();
+  private readonly boxes = new Graphics();
+  private introText: Text;
+  private codeHeading: Text;
   private codeText: Text;
-  private membersText: Text;
+  private codeHint: Text;
+  private membersHeading: Text;
+  /** One label per seat of the largest room there is (a PvP squad). */
+  private seatTexts: Text[];
+  private waitingText: Text;
   private statusText: Text;
   private createBtn: Button;
   private createCoopBtn: Button;
   private joinBtn: Button;
   private startBtn: Button;
   private leaveBtn: Button;
-  private backBtn: Button;
   private inputOverlay = new TextInputOverlay();
 
   private readonly matchBaseUrl: string;
@@ -65,6 +84,8 @@ export class PartyScreen {
   private party: PartyInfo | null = null;
   private busy = false; // in-flight create/join/start/leave call guard — no double-fire
   private pollAccMs = 0;
+  private lastW = 0;
+  private lastH = 0;
   private static readonly POLL_INTERVAL_MS = 1000;
   // Guards a stale create/join/start/poll continuation from acting after the player has
   // already backed out (`hide()` bumps this) — same `attemptToken` convention
@@ -84,46 +105,60 @@ export class PartyScreen {
     this.playerId = opts.playerId ?? getPlayerId();
     this.api = opts.api ?? partyApi;
 
-    this.title = new Text({ text: t('party.title'), style: { fill: 0xf7fafc, fontSize: 32, fontWeight: 'bold', fontFamily: 'sans-serif', padding: 16 } });
-    this.title.anchor.set(0.5, 0);
-    this.codeText = new Text({ text: '', style: { fill: 0x90cdf4, fontSize: 22, fontFamily: 'monospace', letterSpacing: 4, padding: 16 } });
-    this.codeText.anchor.set(0.5, 0);
-    this.membersText = new Text({ text: '', style: { fill: 0xcbd5e0, fontSize: 16, fontFamily: 'monospace', align: 'center', lineHeight: 22, padding: 16 } });
-    this.membersText.anchor.set(0.5, 0);
-    this.statusText = new Text({ text: '', style: { fill: 0xf56565, fontSize: 13, fontFamily: 'monospace', padding: 12 } });
+    this.shell = new MenuShell({ title: t('party.title'), back: t('party.back') });
+    this.shell.onBack = () => this.onBack?.();
+    this.panel = this.shell.backdrop;
+
+    this.introText = new Text({ text: '', style: menuText('body', { align: 'center', wordWrapWidth: CONTENT_W }) });
+    this.introText.anchor.set(0.5, 0);
+    this.codeHeading = new Text({ text: '', style: menuText('heading') });
+    // The code is read out loud across a room: large, spaced, and alone in its box.
+    this.codeText = new Text({ text: '', style: menuText('value', { fill: MENU_COLORS.accent, fontSize: 30, letterSpacing: 10 }) });
+    this.codeText.anchor.set(0.5);
+    this.codeHint = new Text({ text: '', style: menuText('caption', { align: 'center', wordWrapWidth: CONTENT_W }) });
+    this.codeHint.anchor.set(0.5, 0);
+    this.membersHeading = new Text({ text: '', style: menuText('heading') });
+    this.seatTexts = Array.from({ length: SQUAD_SIZE }, () => {
+      const seat = new Text({ text: '', style: menuText('label', { fontSize: 14 }) });
+      seat.anchor.set(0, 0.5);
+      return seat;
+    });
+    this.waitingText = new Text({ text: '', style: menuText('body', { fill: MENU_COLORS.textMuted, align: 'center', wordWrapWidth: CONTENT_W }) });
+    this.waitingText.anchor.set(0.5);
+    this.statusText = new Text({ text: '', style: menuText('body', { fill: MENU_COLORS.error, align: 'center', wordWrapWidth: CONTENT_W }) });
     this.statusText.anchor.set(0.5, 0);
 
-    this.createBtn = new Button(t('party.create'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
-    this.createBtn.onTap = () => void this.doCreate('pvp');
-    this.createBtn.setIcon(getUiTexture('icon_party_create'));
-    this.createCoopBtn = new Button(t('party.createCoop'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
+    this.createCoopBtn = new Button(t('party.createCoop'), { w: CONTENT_W, h: PRIMARY_H, fontSize: 16, ...MENU_BUTTONS.primary });
     this.createCoopBtn.onTap = () => void this.doCreate('coop');
     this.createCoopBtn.setIcon(getUiTexture('icon_party_create'));
-    this.joinBtn = new Button(t('party.join'), { w: 200, h: 44, fontSize: 15, autoWidth: true });
+    this.createBtn = new Button(t('party.create'), { w: CONTENT_W, h: ACTION_H, fontSize: 15, ...MENU_BUTTONS.secondary });
+    this.createBtn.onTap = () => void this.doCreate('pvp');
+    this.createBtn.setIcon(getUiTexture('icon_party_create'));
+    this.joinBtn = new Button(t('party.join'), { w: CONTENT_W, h: ACTION_H, fontSize: 15, ...MENU_BUTTONS.secondary });
     this.joinBtn.onTap = () => this.openJoinInput();
     this.joinBtn.setIcon(getUiTexture('icon_party_join'));
-    this.startBtn = new Button(t('party.startMatching'), { w: 200, h: 44, fontSize: 15, color: 0x2f855a, autoWidth: true });
+    this.startBtn = new Button(t('party.startMatching'), { w: CONTENT_W, h: PRIMARY_H, fontSize: 16, ...MENU_BUTTONS.primary });
     this.startBtn.onTap = () => void this.doStart();
     this.startBtn.setIcon(getUiTexture('icon_play'));
-    this.leaveBtn = new Button(t('party.leave'), { w: 160, h: 36, fontSize: 13, color: 0x742a2a, sound: 'ui.back', autoWidth: true });
+    this.leaveBtn = new Button(t('party.leave'), { w: CONTENT_W, h: LEAVE_H, fontSize: 14, sound: 'ui.back', ...MENU_BUTTONS.danger });
     this.leaveBtn.onTap = () => void this.doLeave();
     this.leaveBtn.setIcon(getUiTexture('icon_party_leave'));
-    this.backBtn = new Button(t('party.back'), { w: 120, h: 32, fontSize: 13, sound: 'ui.back', autoWidth: true });
-    this.backBtn.onTap = () => this.onBack?.();
-    this.backBtn.setIcon(getUiTexture('icon_back'));
 
-    this.view.addChild(
-      this.panel.view, this.title, this.codeText, this.membersText, this.statusText,
-      this.createCoopBtn.view, this.createBtn.view, this.joinBtn.view, this.startBtn.view, this.leaveBtn.view, this.backBtn.view,
+    this.shell.content.addChild(
+      this.boxes, this.rules, this.introText, this.codeHeading, this.codeText, this.codeHint, this.membersHeading,
+      ...this.seatTexts, this.waitingText, this.statusText,
+      this.createCoopBtn.view, this.createBtn.view, this.joinBtn.view, this.startBtn.view, this.leaveBtn.view,
     );
+    this.shell.mount(this.view);
     this.view.eventMode = 'static';
     this.view.visible = false;
     this.refreshButtons();
   }
 
   show(w: number, h: number): void {
+    this.lastW = w;
+    this.lastH = h;
     this.retext();
-    this.layout(w, h);
     this.view.visible = true;
     this.refresh();
   }
@@ -131,13 +166,23 @@ export class PartyScreen {
   /** Re-apply every static label from the active locale — same convention as
    * MainMenu.ts's `retext()` (design/17-i18n.md). */
   private retext(): void {
-    this.title.text = t('party.title');
+    this.shell.setBack(t('party.back'));
+    this.introText.text = t('party.intro');
+    this.codeHeading.text = t('party.sectionCode');
+    this.codeHint.text = t('party.codeHint');
+    this.membersHeading.text = t('party.sectionMembers');
+    this.waitingText.text = t('party.waitingLeader');
     this.createBtn.setText(t('party.create'));
     this.createCoopBtn.setText(t('party.createCoop'));
     this.joinBtn.setText(t('party.join'));
     this.startBtn.setText(t('party.startMatching'));
     this.leaveBtn.setText(t('party.leave'));
-    this.backBtn.setText(t('party.back'));
+  }
+
+  /** Per-frame: the backdrop's rocks, glow and motes. Driven from the main loop's
+   *  `menuScreens`, and a no-op while this screen is hidden. */
+  animate(dtMs: number): void {
+    if (this.view.visible) this.panel.update(dtMs);
   }
 
   hide(): void {
@@ -157,29 +202,24 @@ export class PartyScreen {
     void this.pollOnce();
   }
 
-  private layout(w: number, h: number): void {
-    this.panel.layout(w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    this.title.position.set(cx, cy - 200);
-    this.codeText.position.set(cx, cy - 140);
-    this.membersText.position.set(cx, cy - 90);
-    this.statusText.position.set(cx, cy + 60);
-    // Centred from the MEASURED width, not from half of the constructor's: every label on
-    // this screen is a phrase rather than a word ("join with code", "start matching",
-    // "leave squad"), and five of them overflowed a fixed box in French, Spanish or Italian
-    // — found by `screens/labelFit.test.ts`, 2026-09-10. `autoWidth` grows the box instead,
-    // which only works if the caller re-reads the width, exactly as `Settings.ts` already
-    // documents for the same reason. There is room: these are stacked rows on a 760-wide
-    // design space, so a wider button costs nothing but its own centring.
-    const centred = (b: Button, y: number) => b.view.position.set(cx - b.width / 2, y);
-    // Co-op first: it is the mode a pair of friends most often means by "play together".
-    centred(this.createCoopBtn, cy - 74);
-    centred(this.createBtn, cy - 20);
-    centred(this.joinBtn, cy + 34);
-    centred(this.startBtn, cy - 20);
-    centred(this.leaveBtn, cy + 90);
-    centred(this.backBtn, cy + 150);
+  private layout(): void {
+    const party = this.party;
+    const state = {
+      inParty: party !== null,
+      capacity: party ? Math.min(party.capacity, this.seatTexts.length) : 0,
+      members: party ? party.members.length : 0,
+    };
+    this.shell.layout(this.lastW, this.lastH, SHEET_W, layoutPartySheet(this.parts(), state));
+  }
+
+  private parts(): PartySheetParts {
+    return {
+      rules: this.rules, boxes: this.boxes, introText: this.introText, codeHeading: this.codeHeading,
+      codeText: this.codeText, codeHint: this.codeHint, membersHeading: this.membersHeading,
+      seatTexts: this.seatTexts, waitingText: this.waitingText, statusText: this.statusText,
+      createCoopBtn: this.createCoopBtn, createBtn: this.createBtn, joinBtn: this.joinBtn,
+      startBtn: this.startBtn, leaveBtn: this.leaveBtn,
+    };
   }
 
   private async pollOnce(): Promise<void> {
@@ -339,20 +379,24 @@ export class PartyScreen {
         : null,
     );
     if (!this.party) {
-      this.title.text = t('party.title');
+      this.shell.setTitle(t('party.title'));
       this.codeText.text = '';
-      this.membersText.text = '';
+      for (const seat of this.seatTexts) seat.text = '';
     } else {
-      // The mode and head-count take the TITLE's place rather than a line above the members:
-      // a full squad's four rows already reach the START button, and a fifth would cover it.
-      this.title.text = t(this.party.mode === 'coop' ? 'party.headerCoop' : 'party.headerSquad', {
-        count: this.party.members.length,
-        capacity: this.party.capacity,
+      const party = this.party;
+      // The mode and head-count are the sheet's title: what kind of room this is, and how full.
+      this.shell.setTitle(t(party.mode === 'coop' ? 'party.headerCoop' : 'party.headerSquad', {
+        count: party.members.length,
+        capacity: party.capacity,
+      }));
+      this.codeText.text = party.code;
+      this.seatTexts.forEach((seat, i) => {
+        const m = party.members[i];
+        seat.text = m === undefined
+          ? t('party.openSeat')
+          : `${m === party.leaderId ? '★' : ' '} ${m === this.playerId ? t('party.you') : m.slice(0, 8)}`;
+        seat.style.fill = m === undefined ? MENU_COLORS.textMuted : m === this.playerId ? MENU_COLORS.text : MENU_COLORS.textSoft;
       });
-      this.codeText.text = t('party.codeLine', { code: this.party.code });
-      this.membersText.text = this.party.members
-        .map((m) => `${m === this.party!.leaderId ? '★' : ' '} ${m === this.playerId ? t('party.you') : m.slice(0, 8)}`)
-        .join('\n');
     }
     this.refreshButtons();
   }
@@ -364,5 +408,13 @@ export class PartyScreen {
     this.joinBtn.view.visible = !inParty;
     this.leaveBtn.view.visible = inParty;
     this.startBtn.view.visible = inParty && this.isLeader();
+    this.introText.visible = !inParty;
+    for (const txt of [this.codeHeading, this.codeText, this.codeHint, this.membersHeading]) txt.visible = inParty;
+    this.waitingText.visible = inParty && !this.isLeader();
+    if (!inParty) for (const seat of this.seatTexts) seat.visible = false;
+    if (this.lastW > 0) {
+      this.layout();
+      this.shell.sharpen();
+    }
   }
 }

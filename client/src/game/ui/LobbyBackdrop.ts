@@ -8,8 +8,16 @@
 // art, and the lobby report was that the whole screen read as too dark. Contrast is now
 // bought locally instead: the route cards carry their own art and frames, the corner chips
 // carry their own backing, and the only darkening on the painting is `setFocus`'s vignette
-// behind the column. The other menu screens keep `Panel` and its scrim; they are dense with
-// text and never had a painting worth showing.
+// behind the column.
+//
+// ## The dimmed mode every other menu uses (2026-09-27)
+//
+// The other menu screens used to put `Panel`'s scrim over the old 384x288 hub art, which made
+// every door out of the lobby read as a different, darker game. They now draw this same
+// painting with `{ dim }`: one flat night-blue wash over the painting and its rocks, under the
+// crystal's glow and motes, so the place is the lobby's and the screen's own framed sheet
+// (`MenuSheet`) still reads on top of it. The wash is a single layer on purpose — contrast for
+// the text is the sheet's job, not the backdrop's.
 //
 // ## Cover, cropped around the dais
 //
@@ -57,6 +65,15 @@ const MOTE_RISE_MS = 4200;
 const VIGNETTE_BANDS = 8;
 const VIGNETTE_BAND_ALPHA = 0.045;
 const VIGNETTE_STEP = 8;
+/** The dimmed mode's wash colour: the night-blue the sheets and chips are drawn in. */
+const DIM_COLOR = 0x0a1020;
+
+export interface LobbyBackdropOptions {
+  /** Alpha of a full-screen wash over the painting and its rocks; 0 (the lobby) draws none. */
+  dim?: number;
+  /** Where the dais lands, as a fraction of the width, until `setDaisTarget` says otherwise. */
+  daisU?: number;
+}
 
 /** The sky rocks, at their home in the painting — MEASURED off `lobby_bg_raw.png` by the
  *  script that lifted them out (`art/ui/prompts.md`, "The drifting rocks"): centre as
@@ -104,6 +121,8 @@ export class LobbyBackdrop {
   /** Each rock's home in screen px, and its drift amplitude — set by `layout`. */
   private rockHomes: Array<{ x: number; y: number; amp: number }> = [];
   private vignette = new Graphics();
+  private wash = new Graphics();
+  private readonly dim: number;
   private glow = new Graphics();
   private motes = new Graphics();
   private w = 0;
@@ -115,7 +134,10 @@ export class LobbyBackdrop {
   /** Where the shell wants the dais, as a fraction of the width. */
   private daisTargetU = 0.3;
 
-  constructor() {
+  constructor(opts: LobbyBackdropOptions = {}) {
+    this.dim = opts.dim ?? 0;
+    this.daisTargetU = opts.daisU ?? this.daisTargetU;
+    this.wash.visible = this.dim > 0;
     this.glow.blendMode = 'add';
     this.motes.blendMode = 'add';
     for (const rock of SKY_ROCKS) {
@@ -125,7 +147,8 @@ export class LobbyBackdrop {
       this.rocks.addChild(sprite);
     }
     // Under the vignette, so a rock behind the column is darkened with the sky around it.
-    this.view.addChild(this.cover, this.rocks, this.vignette, this.glow, this.motes);
+    // The wash over the rocks and under the glow: the crystal stays lit in the dimmed mode.
+    this.view.addChild(this.cover, this.rocks, this.vignette, this.wash, this.glow, this.motes);
   }
 
   get dais(): DaisPoint {
@@ -141,6 +164,8 @@ export class LobbyBackdrop {
   layout(w: number, h: number): void {
     this.w = w;
     this.h = h;
+    this.wash.clear();
+    if (this.dim > 0) this.wash.rect(0, 0, w, h).fill({ color: DIM_COLOR, alpha: this.dim });
     const art = getUiTexture('lobby_bg');
     const texture = art ?? getUiTexture(FALLBACK_KEY);
     this.painted = !!art;

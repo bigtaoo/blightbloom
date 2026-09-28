@@ -319,6 +319,7 @@ const SCREENS: Array<[string, ScreenBuild]> = [
     const visibleRows = rowsOf(s).filter((r) => r.view.visible).length;
     expect(visibleRows, 'a full page of SKU rows').toBe(6); // PAGE_SIZE, private to StoreScreen
     expect(pagerOf(s).view.visible, 'the pager, i.e. more SKUs than one page').toBe(true);
+    lastStore = s;
     return s.view;
   }],
   // The account modals (design/16 holes 1 and 2). Not a full-screen menu, but it is laid out
@@ -348,6 +349,9 @@ const STORE_SKUS: StoreSku[] = [
     currency: 'CNY', grants: [{ kind: 'blueprint' as const, id: `filler${i}` }],
   })),
 ];
+
+/** The store the `StoreScreen (paged)` builder made last — for a probe that needs its shell. */
+let lastStore: StoreScreen | null = null;
 
 /** The store's six row buttons and its pager — private, same escape hatch
  *  `StoreScreen.test.ts` uses. */
@@ -410,20 +414,22 @@ describe.each(VIEWPORTS)('every menu screen fits $name ($w x $h)', ({ w, h }) =>
 });
 
 describe('Loadout — START RUN is reachable, not buried under the weapon row', () => {
-  /** The exact failure the user saw, on the screen that owns the button now: it exists and
-   *  is on-screen, but a card is drawn over the same pixels, so there is nothing
-   *  tappable-looking there. */
-  function startButtonOverlapsACard(w: number, h: number, saved = false) {
-    const l = new Loadout();
-    // `saved` moves START RUN one row UP, toward the cards — see the saved-run cases below.
-    if (saved) l.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
-    l.render(defaultMetaState(), w, h);
-    const p = l as unknown as {
-      weaponCards: Array<{ view: { visible: boolean; x: number; y: number } }>;
-      forgeCard: { view: { visible: boolean; x: number; y: number } };
-      startBtn: { view: { x: number; y: number } };
+  type Box = { view: { visible: boolean; x: number; y: number } };
+  function parts(l: Loadout) {
+    return l as unknown as {
+      weaponCards: Box[];
+      forgeCard: Box;
+      startBtn: Box & { width: number };
+      continueBtn: Box & { width: number };
     };
-    const btn = { x: p.startBtn.view.x, y: p.startBtn.view.y, w: 220, h: 44 }; // widgets.ts Button opts
+  }
+
+  /** The exact failure the user saw on 2026-09-21: the button exists and is on-screen, but a
+   *  card is drawn over the same pixels, so there is nothing tappable-looking there. Every
+   *  box here is in the sheet's content space, which is where all of them live. */
+  function startButtonOverlapsACard(l: Loadout) {
+    const p = parts(l);
+    const btn = { x: p.startBtn.view.x, y: p.startBtn.view.y, w: p.startBtn.width, h: 46 }; // loadoutSheet ACTION_H
     return [...p.weaponCards, p.forgeCard].some((c) => {
       if (!c.view.visible) return false;
       return c.view.x < btn.x + btn.w && c.view.x + 132 > btn.x
@@ -431,40 +437,43 @@ describe('Loadout — START RUN is reachable, not buried under the weapon row', 
     });
   }
 
+  function rendered(w: number, h: number, saved = false): Loadout {
+    const l = new Loadout();
+    if (saved) l.savedRun = () => ({ floorIndex: 4, ticks: 54000, savedAtMs: 0 });
+    l.render(defaultMetaState(), w, h);
+    return l;
+  }
+
+  // Since the menu shell (2026-09-27) the action bar is FLOWED under the weapon row inside
+  // the sheet, and the shell scales the whole sheet to fit — so the viewport height no longer
+  // decides where the bar lands relative to the cards. The sweeps stay, because that is the
+  // claim; what changed is the control below, since a viewport can no longer produce the bug.
   it.each(VIEWPORTS)('$name', ({ w, h }) => {
     const design = new MenuLayer().fit({ w, h });
-    expect(startButtonOverlapsACard(design.w, design.h)).toBe(false);
+    expect(startButtonOverlapsACard(rendered(design.w, design.h))).toBe(false);
   });
 
-  // With a saved run START RUN is no longer the bottom row — CONTINUE RUN takes that slot and
-  // START RUN moves 52px UP, i.e. toward the weapon row. That is strictly closer to the
-  // reported bug this whole block exists for, so it needs its own sweep rather than trusting
-  // the one above: every case there lays out the shape where the button is furthest away.
-  it.each(VIEWPORTS)('$name — with a saved run, START RUN sits a row higher', ({ w, h }) => {
+  it.each(VIEWPORTS)('$name — with a saved run, START RUN shares the bar with CONTINUE', ({ w, h }) => {
     const design = new MenuLayer().fit({ w, h });
-    expect(startButtonOverlapsACard(design.w, design.h, true)).toBe(false);
+    expect(startButtonOverlapsACard(rendered(design.w, design.h, true))).toBe(false);
   });
 
-  // Harness check: the assertion above must be able to FAIL. Laying the same screen out
-  // against the RAW 844x390 viewport — what Game.ts did before ui/menuLayer.ts existed —
-  // has to reproduce the reported bug, otherwise the passes above prove nothing.
-  it('reproduces the original bug when the fit-scale is skipped', () => {
-    expect(startButtonOverlapsACard(844, 390)).toBe(true);
+  // Harness check: the assertion above must be able to FAIL. Put START RUN where the bug put
+  // it — on the row — and the detector has to see it.
+  it('detects the overlap when START RUN is dropped onto the weapon row', () => {
+    const l = rendered(1280, MENU_DESIGN_H);
+    const p = parts(l);
+    p.startBtn.view.x = p.weaponCards[0]!.view.x;
+    p.startBtn.view.y = p.weaponCards[0]!.view.y + 40;
+    expect(startButtonOverlapsACard(l)).toBe(true);
   });
 
-  // Pins WHY the design height is what it is: shrinking `MENU_DESIGN_H` far enough brings
-  // the overlap back on every device at once.
-  it('the design height clears the row the bottom bar has to sit under', () => {
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H)).toBe(false);
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 200)).toBe(true);
-  });
-
-  it('...and still clears it with the taller two-row bar, which can also FAIL', () => {
-    // The saved-run sweep above needs the same harness check every other assertion in this
-    // file has: a passing `false` proves nothing unless `true` is reachable. It is reachable
-    // 52px sooner than for the one-row bar, which is the whole point of measuring it.
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H, true)).toBe(false);
-    expect(startButtonOverlapsACard(1280, MENU_DESIGN_H - 200, true)).toBe(true);
+  it('keeps the whole bar BELOW the row — CONTINUE too, with a saved run', () => {
+    const l = rendered(1280, MENU_DESIGN_H, true);
+    const p = parts(l);
+    const rowBottom = p.weaponCards[0]!.view.y + 132;
+    expect(p.startBtn.view.y).toBeGreaterThan(rowBottom);
+    expect(p.continueBtn.view.y).toBeGreaterThan(rowBottom);
   });
 });
 
@@ -486,44 +495,53 @@ describe('Forge — the grid gives way rather than stacking on the hint line', (
     }
   });
 
-  // ...and the fits-the-viewport sweep's own harness check: unfitted, the Forge must overflow.
-  it('the unfitted 844x390 viewport also overflows on its own', () => {
+  // Before the menu shell (2026-09-27) the unfitted 844x390 viewport overflowed on its own,
+  // and that was this block's harness check. The shell scales the sheet to what fits, so the
+  // claim is now the opposite one — and the harness check is a card pushed out of the sheet.
+  it('fits even the unfitted 844x390 viewport — the shell scales the sheet down', () => {
     const f = new Forge();
     f.storeEnabled = true;
     f.render(defaultMetaState(), 844, 390);
+    expect(contentBounds(f.view).maxY).toBeLessThanOrEqual(390 + SLACK);
+  });
+
+  it('...and the probe sees a card that runs off the bottom', () => {
+    const f = new Forge();
+    f.render(defaultMetaState(), 844, 390);
+    const cards = (f as unknown as { rowCards: Array<{ view: { y: number } }> }).rowCards;
+    cards[7]!.view.y += 2000;
     expect(contentBounds(f.view).maxY).toBeGreaterThan(390);
   });
 });
 
 describe('Store — BACK is reachable, not buried under the SKU rows', () => {
-  // The Forge's bug, on the screen that takes money. `backBtn` is the one control here that
-  // is anchored to the bottom (`h - 56`) while everything above it flows downward from the
-  // top, so a short enough layout draws the pager — and then the last SKU row — straight over
-  // it. Nothing in the sweep above can see that: an overlap is not an overflow, and the
-  // bottom-anchored button is on screen at every height by construction.
+  // The Forge's bug, on the screen that takes money. BACK used to be anchored to the bottom
+  // (`h - 56`) while the rows flowed down from the top, so a short enough layout drew the pager
+  // — and then the last SKU row — straight over it. Since the menu shell (2026-09-27) BACK is
+  // the top-left corner chip and the rows sit in a sheet the shell keeps clear of it; this
+  // probe is what holds the shell to that on the screen with the most rows.
   const buildStore = SCREENS.find(([n]) => n.startsWith('StoreScreen'))![1];
 
-  /** Does anything flowed collide with the bottom-anchored BACK button? */
+  type Box = { x: number; y: number; w: number; h: number };
+  const boxOf = (c: Container): Box => {
+    const b = c.getBounds();
+    return { x: b.minX, y: b.minY, w: b.width, h: b.height };
+  };
+  const hits = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+  /** The shell's BACK chip and the visible press targets in the sheet's content. */
+  async function storeTargets(w: number, h: number) {
+    await buildStore(w, h);
+    const s = lastStore!;
+    const shell = (s as unknown as { shell: { backBtn: { view: Container }; content: Container } }).shell;
+    const targets = shell.content.children.filter((c) => c.visible && c.eventMode === 'static');
+    return { back: shell.backBtn.view, targets };
+  }
+
   async function backButtonIsCovered(w: number, h: number) {
-    const view = await buildStore(w, h);
-    // Geometry from the widgets themselves (`StoreScreen`'s constructor): rows 460x34, the
-    // pager buttons 80x26, BACK 140x32.
-    const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-    let back: { x: number; y: number; w: number; h: number } | null = null;
-    // `.slice(1)` skips the full-viewport Panel, exactly as `contentBounds` does — it covers
-    // the whole screen, so leaving it in makes every control trivially "overlapped" (this
-    // probe reported the design height as broken until it was excluded).
-    for (const child of view.children.slice(1)) {
-      if (!child.visible) continue;
-      const b = child.getBounds();
-      if (b.width === 0 && b.height === 0) continue;
-      boxes.push({ x: b.minX, y: b.minY, w: b.width, h: b.height });
-    }
-    // BACK is the last child added, and the only one whose top sits within 56px of the bottom.
-    back = boxes[boxes.length - 1] ?? null;
-    if (!back) throw new Error('store: no BACK button measured');
-    return boxes.slice(0, -1).some((r) =>
-      r.x < back!.x + back!.w && r.x + r.w > back!.x && r.y < back!.y + back!.h && r.y + r.h > back!.y);
+    const { back, targets } = await storeTargets(w, h);
+    if (targets.length === 0) throw new Error('store: no rows measured');
+    return targets.some((c) => hits(boxOf(c as Container), boxOf(back)));
   }
 
   it('clears BACK at the design height, and at every shipped viewport', async () => {
@@ -534,13 +552,14 @@ describe('Store — BACK is reachable, not buried under the SKU rows', () => {
     }
   });
 
-  it('...and the probe can fail: 220px under the design height, BACK is covered', async () => {
+  it('...and the probe can fail: a row moved onto the chip is seen', async () => {
     // The harness check every overlap probe in this file carries. Without it, "no overlap" is
-    // indistinguishable from "the probe measures nothing" — the mistake that made the whole
-    // Forge sweep worth writing. It also locates the real floor: the flowed part of this
-    // screen needs about 420px, so the 640 design height has room for roughly five more rows
-    // before BACK is the thing that gives.
-    expect(await backButtonIsCovered(MENU_DESIGN_W, MENU_DESIGN_H - 220)).toBe(true);
+    // indistinguishable from "the probe measures nothing".
+    const { back, targets } = await storeTargets(MENU_DESIGN_W, MENU_DESIGN_H);
+    const row = targets[0] as Container;
+    const at = back.getBounds();
+    row.parent!.toLocal({ x: at.minX + 4, y: at.minY + 4 }, undefined, row.position);
+    expect(hits(boxOf(row), boxOf(back))).toBe(true);
   });
 });
 
@@ -585,10 +604,19 @@ describe.each([
 });
 
 describe('the design space is sized to the content, not picked arbitrarily', () => {
+  /**
+   * Does any screen fail to fit `w` wide? A screen on the menu shell never overflows — the
+   * shell scales its sheet down to what fits — so for those, "does not fit" means the sheet
+   * was drawn below full size (the shell's root, the shell view's first child, scaled < 1).
+   * Built very tall so height never forces that shrink: this asks about width alone.
+   */
   async function widestOverflow(w: number) {
     for (const [, build] of SCREENS) {
-      const b = contentBounds(await build(w, MENU_DESIGN_H));
+      const view = await build(w, 4000);
+      const b = contentBounds(view);
       if (b.minX < -SLACK || b.maxX > w + SLACK) return true;
+      const sheetRoot = (view.children[1] as Container | undefined)?.children[0];
+      if (sheetRoot && sheetRoot.scale.x < 1 - 1e-9) return true;
     }
     return false;
   }

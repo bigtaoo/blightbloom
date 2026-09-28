@@ -7,6 +7,10 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { PauseMenu } from './PauseMenu';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
+import { installFakeTextCanvas } from './fakeTextCanvas';
+
+// The fit test measures the buttons' bounds, which measures their labels.
+installFakeTextCanvas();
 
 interface Btn {
   label: { text: string };
@@ -15,13 +19,14 @@ interface Btn {
 }
 
 function privateOf(m: PauseMenu) {
-  return m as unknown as {
-    title: { text: string };
+  const shell = (m as unknown as { shell: { sheet: { title: { text: string }; height: number }; backBtn: Btn } }).shell;
+  const self = m as unknown as {
     resumeBtn: Btn;
     settingsBtn: Btn;
     saveQuitBtn: Btn;
     quitBtn: Btn;
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn, sheet: shell.sheet });
 }
 
 afterEach(() => resetLocaleForTests());
@@ -187,5 +192,72 @@ describe('PauseMenu — SAVE & QUIT', () => {
     setLocale('en');
     m.show(800, 600, undefined, true);
     expect(privateOf(m).saveQuitBtn.label.text).toBe('SAVE & QUIT');
+  });
+});
+
+describe('PauseMenu — the sheet (design/10 "One shell for every menu")', () => {
+  it('the corner chip is a second RESUME, and fires onResume', () => {
+    const m = new PauseMenu();
+    const calls: string[] = [];
+    m.onResume = () => calls.push('resume');
+    m.onQuit = () => calls.push('quit');
+    m.show(800, 600);
+    expect(privateOf(m).backBtn.label.text).toBe('RESUME');
+    privateOf(m).backBtn.onTap?.();
+    expect(calls).toEqual(['resume']);
+  });
+
+  it('stacks the rows full width, RESUME first and QUIT last', () => {
+    const m = new PauseMenu();
+    m.show(800, 600, undefined, true);
+    const p = privateOf(m);
+    const order = [p.resumeBtn, p.settingsBtn, p.saveQuitBtn, p.quitBtn];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i]!.view.position.y).toBeGreaterThan(order[i - 1]!.view.position.y);
+    }
+    const widths = order.map((b) => (b as unknown as { width: number }).width);
+    expect(new Set(widths).size).toBe(1);
+  });
+
+  it('keeps a gap wider than the row gap between staying in the run and leaving it', () => {
+    // The hairline between the groups is the point: QUIT throws the run away, and it should
+    // not read as one more row of the same list as SETTINGS.
+    const m = new PauseMenu();
+    m.show(800, 600, undefined, true);
+    const p = privateOf(m);
+    const rowGap = p.saveQuitBtn.view.position.y - p.settingsBtn.view.position.y;
+    const inGroup = p.quitBtn.view.position.y - p.saveQuitBtn.view.position.y;
+    expect(rowGap).toBeGreaterThan(inGroup);
+  });
+
+  it('grows the sheet by the SAVE & QUIT row, not by a hole when it is hidden', () => {
+    const m = new PauseMenu();
+    m.show(800, 600, undefined, false);
+    const short = privateOf(m).sheet.height;
+    m.show(800, 600, undefined, true);
+    expect(privateOf(m).sheet.height).toBeGreaterThan(short);
+  });
+});
+
+describe('PauseMenu — the divider and the fit', () => {
+  it('draws the hairline in the gap between SETTINGS and the rows that leave the run', () => {
+    const m = new PauseMenu();
+    m.show(800, 600, undefined, true);
+    const p = privateOf(m);
+    const rules = (m as unknown as { rules: { getLocalBounds(): { minY: number; maxY: number } } }).rules.getLocalBounds();
+    const settingsBottom = p.settingsBtn.view.position.y + 44;
+    expect(rules.minY).toBeGreaterThan(settingsBottom);
+    expect(rules.maxY).toBeLessThan(p.saveQuitBtn.view.position.y);
+    // Control for the savable-off form: the line stays above QUIT when QUIT takes the slot.
+    m.show(800, 600, undefined, false);
+    const again = (m as unknown as { rules: { getLocalBounds(): { maxY: number } } }).rules.getLocalBounds();
+    expect(again.maxY).toBeLessThan(p.quitBtn.view.position.y);
+  });
+
+  it('fits its tallest form — SAVE & QUIT shown, the tutorial label — on a phone held sideways', () => {
+    const m = new PauseMenu();
+    m.show(844, 390, 'SKIP TUTORIAL', true);
+    const quit = (m as unknown as { quitBtn: { view: { getBounds(): { maxY: number } } } }).quitBtn.view.getBounds();
+    expect(quit.maxY).toBeLessThanOrEqual(390);
   });
 });

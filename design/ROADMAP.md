@@ -1631,9 +1631,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-27** [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change) — the owner said the lobby looked empty, had no hierarchy and was too dark; each had a cause in code (a 55% scrim plus a 62% card over a 384x288 painting; a menu layer that never scales up; six identical pills and a hairline). The lobby is now a painted outpost at full value with the player's character hovering on its dais, the logo above it, and the routes as one right-hand column in three tiers that differ in size and material: a glowing primary banner card, CO-OP/PVP banner cards, and a SQUAD/FORGE/TUTORIAL dock. An account card (avatar, name, status line) and materials+SETTINGS are pinned to the viewport corners, the painting's floating rocks drift, a weapon orbits the hero over a best-floor caption (`MetaState.bestFloor`, new), the maintenance banner and portal notice share a strip at the top third, and the whole lobby scales up to 1.5x on big screens with text re-rasterised at the drawn size. Nine generations, seven accepted first try; opaque art ships as JPEG and the `lobby` pack guard went 1 MB → 2 MB. Every portal/account/banner/CONTINUE rule survived. Client 7,607 tests green, coverage 97.56/94.48, driven live at three viewports. `ui` `art` `test` `i18n` `docs`
 
+**[2026-09-27 — one shell for every menu](roadmap/103-2026-09-27-menu-shell.md)**
+
+- **09-27** [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change) — the owner said the lobby looked right and every other screen did not. Eleven screens shared three faults: the old hub art under a 55% scrim, a menu layer that never scales up, and widgets floating on the art with BACK in three different corners. A new shell (`MenuShell`/`MenuSheet`/`menuTheme`) gives each the lobby painting dimmed and still moving, a top-left BACK chip, and one framed night-blue sheet that scales up like the lobby. Then, one screen at a time: Login as tabs over one form with canvas fields the real input opens on, Settings as name/value rows in two columns, Loadout and Forge sharing a `MaterialBank`, Store, Squad with a row per seat, Matchmaking with a crystal ring, PvP preview, Pause in two groups under a hairline, Results with a tinted title and MAIN MENU moved to the chip. Client 7,769 tests green, coverage 98.33/94.61. `ui` `test` `i18n` `docs`
+
 ## The work log — by theme
 
-The same 199 entries, grouped. An entry with more than one tag appears more than once.
+The same 200 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(70)*
 
@@ -1815,7 +1819,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(113)*
+**`test`** — coverage sweeps, gates, mutation batteries *(114)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1930,6 +1934,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
+- 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -1978,7 +1983,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(44)*
+**`ui`** — HUD, screens, widgets *(45)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2024,6 +2029,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
+- 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(23)*
 
@@ -2051,7 +2057,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 
-**`docs`** — design docs and this log itself *(118)*
+**`docs`** — design docs and this log itself *(119)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2171,6 +2177,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
+- 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
@@ -2210,7 +2217,7 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 
-**`i18n`** — locales and text layout *(20)*
+**`i18n`** — locales and text layout *(21)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2232,3 +2239,4 @@ The same 199 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
+- 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)

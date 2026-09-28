@@ -173,3 +173,19 @@ describe('the per-frame lobby clocks', () => {
     expect(view.hintText.text).toBe('AI players fill empty seats in 3s');
   });
 });
+
+describe('the per-frame menu backdrops', () => {
+  it('ticks every full-screen menu outside the lobby', () => {
+    // The same defect shape as the Matchmaking clock above, one list over: `animate` exists on
+    // every menu screen and does nothing unless the assembly hands the screen to the loop.
+    const matchmaking = new Matchmaking();
+    const { assembled } = build({ matchmaking });
+    const menuScreens = (assembled.gameLoop as unknown as { deps: { menuScreens: object[] } }).deps.menuScreens;
+    // Ten entries; this harness hands several screens in as one shared stub, so the count is
+    // of entries rather than distinct objects, and the stubs carry no `animate` (the type of
+    // `menuScreens` is what requires one of every real screen).
+    expect(menuScreens).toHaveLength(10);
+    expect(menuScreens).toContain(matchmaking);
+    expect(menuScreens).toContain(assembled.partyScreen);
+  });
+});

@@ -24,8 +24,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Graphics, Sprite, Texture, TextureSource } from 'pixi.js';
 import { PLAYER_BASE, SKIN_DEFS, resolveLoadout } from '@dd/engine';
 import { Loadout } from './Loadout';
+import { CONTENT_W, PORTRAIT, layoutLoadoutSheet, type LoadoutSheetParts } from './loadoutSheet';
 import { installFakeTextCanvas } from './fakeTextCanvas';
-import { defaultMetaState, grantCharacter } from '../../meta';
+import { MENU_BUTTONS } from '../ui/menuTheme';
+import { bankMaterials, defaultMetaState, grantCharacter } from '../../meta';
 import { setLocale, resetLocaleForTests, tName } from '../../i18n';
 import type { LoadedRigSkin } from '../../render/skinRegistry';
 import { useLocale } from '../../i18n/loadLocale';
@@ -54,7 +56,10 @@ installFakeTextCanvas();
 interface TestButton {
   view: { visible: boolean; position: { x: number; y: number } };
   label: { text: string };
+  width: number;
+  color: number;
   onTap: (() => void) | null;
+  setText(text: string): void;
 }
 
 interface TestCard {
@@ -66,25 +71,28 @@ interface TestCard {
   stagedLabel: string;
 }
 
+/** The screen's widgets, plus the two the shell owns (the title and BACK). */
 function privateOf(l: Loadout) {
-  return l as unknown as {
-    title: { text: string };
+  const shell = (l as unknown as { shell: { sheet: { title: { text: string } }; backBtn: TestButton } }).shell;
+  const self = l as unknown as {
     hint: { text: string; position: { x: number; y: number } };
-    infoText: { text: string };
+    weaponsHeading: { text: string };
+    bank: { heading: { text: string }; cells: Array<{ name: { text: string }; count: { text: string } }> };
     savedText: { text: string; visible: boolean };
     charName: { text: string; position: { x: number; y: number } };
     charStats: { text: string; position: { x: number; y: number } };
     charOwned: { text: string; position: { x: number; y: number } };
-    portraitFrame: { position: { x: number; y: number } };
+    portraitFrame: { position: { x: number; y: number }; parent: unknown };
     weaponCards: TestCard[];
     forgeCard: TestCard;
-    backBtn: TestButton;
     clearBtn: TestButton;
     startBtn: TestButton;
     continueBtn: TestButton;
     prevCharBtn: TestButton;
     nextCharBtn: TestButton;
+    parts(): LoadoutSheetParts;
   };
+  return Object.assign(Object.create(self) as typeof self, { title: shell.sheet.title, backBtn: shell.backBtn });
 }
 
 afterEach(() => {
@@ -177,7 +185,6 @@ describe('Loadout — the character block', () => {
  * every case above is drawing the fallback disc. These four drive the REAL branch.
  */
 describe('Loadout — the portrait', () => {
-  const PORTRAIT = 104; // the screen's own box constant
   const INNER = PORTRAIT - 16;
 
   it("binds the selected character's body art, CONTAINED rather than stretched", () => {
@@ -244,22 +251,21 @@ describe('Loadout — the portrait', () => {
     expect(discWidthOf(l)).toBe(0);
   });
 
-  it('centres it in the frame, and moves it when the layout does', () => {
+  it('centres it in the frame, in the same container, whatever the viewport', () => {
     // The sprite is anchored (0.5, 0.5) and positioned separately from the frame it sits in,
-    // so a layout that moves one and not the other leaves the face outside its own box.
+    // so a layout that moved one and not the other would leave the face outside its own box.
+    // Both live in the sheet's content now, so a viewport change moves neither relative to
+    // the other — asserted across two, since that is the case that used to re-centre them.
     const m = defaultMetaState();
     withPortraitArt(m.selectedSkin, 64, 64);
     const l = new Loadout();
     const p = privateOf(l);
-
-    l.render(m, 1280, 720);
-    const wide = { x: p.portraitFrame.position.x, y: p.portraitFrame.position.y };
-    expect(portraitOf(l)!.position.x).toBeCloseTo(wide.x + PORTRAIT / 2, 6);
-    expect(portraitOf(l)!.position.y).toBeCloseTo(wide.y + PORTRAIT / 2, 6);
-
-    l.render(m, 900, 720); // a narrower viewport re-centres the whole block
-    expect(p.portraitFrame.position.x).not.toBeCloseTo(wide.x, 0);
-    expect(portraitOf(l)!.position.x).toBeCloseTo(p.portraitFrame.position.x + PORTRAIT / 2, 6);
+    for (const w of [1280, 900]) {
+      l.render(m, w, 720);
+      expect(portraitOf(l)!.parent).toBe(p.portraitFrame.parent);
+      expect(portraitOf(l)!.position.x).toBeCloseTo(p.portraitFrame.position.x + PORTRAIT / 2, 6);
+      expect(portraitOf(l)!.position.y).toBeCloseTo(p.portraitFrame.position.y + PORTRAIT / 2, 6);
+    }
   });
 
   it('re-binds when the character changes', () => {
@@ -345,10 +351,10 @@ describe('Loadout — the weapon row shows what the run CARRIES', () => {
   it('counts only the forged slots in the header line, not the starters filling in', () => {
     const l = new Loadout();
     l.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(l).infoText.text).toContain(`0/${PLAYER_BASE.weaponSlots}`);
+    expect(privateOf(l).weaponsHeading.text).toContain(`0/${PLAYER_BASE.weaponSlots}`);
 
     l.render({ ...defaultMetaState(), loadout: ['repeater'] }, 1280, 720);
-    expect(privateOf(l).infoText.text).toContain(`1/${PLAYER_BASE.weaponSlots}`);
+    expect(privateOf(l).weaponsHeading.text).toContain(`1/${PLAYER_BASE.weaponSlots}`);
   });
 
   it('ignores an id no weapon catalog knows, exactly as the engine does', () => {
@@ -358,14 +364,17 @@ describe('Loadout — the weapon row shows what the run CARRIES', () => {
     const l = new Loadout();
     l.render({ ...defaultMetaState(), loadout: ['no_such_weapon'] }, 1280, 720);
     const p = privateOf(l);
-    expect(p.infoText.text).toContain(`0/${PLAYER_BASE.weaponSlots}`);
+    expect(p.weaponsHeading.text).toContain(`0/${PLAYER_BASE.weaponSlots}`);
     expect(p.weaponCards.filter((c) => c.view.visible).map((c) => c.nameLabel)).toEqual(['Blaster', 'Saber']);
   });
 
   it('states the material bank, which is what decides whether a forge trip is worth it', () => {
     const l = new Loadout();
-    l.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(l).infoText.text).toMatch(/PHY \d+.*FIR \d+.*ICE \d+.*LIG \d+.*POI \d+/s);
+    l.render(bankMaterials(defaultMetaState(), { mat_fire: 7 }), 1280, 720);
+    const cells = privateOf(l).bank.cells;
+    expect(cells.map((c) => c.name.text)).toEqual(['PHY', 'FIR', 'ICE', 'LIG', 'POI']);
+    expect(cells[1]!.count.text).toBe('7');
+    expect(cells.every((c) => /^\d+$/.test(c.count.text))).toBe(true);
   });
 });
 
@@ -402,27 +411,52 @@ describe('Loadout — the FORGE card at the end of the row', () => {
   });
 });
 
-describe('Loadout — the fixed bottom action bar', () => {
-  it('anchors clear/start/hint to the viewport height, not to the content flow above them', () => {
+/** The weapon row's bottom edge, in the sheet's content space. */
+function rowBottom(l: Loadout): number {
+  return privateOf(l).weaponCards[0]!.view.position.y + 132; // BlueprintCard.H
+}
+
+describe('Loadout — the action bar closing the sheet', () => {
+  it('sits under the weapon row: CLEAR on the left, START RUN right-aligned, on one line', () => {
     const l = new Loadout();
     l.render(defaultMetaState(), 1280, 720);
     const p = privateOf(l);
-    expect(p.startBtn.view.position.y).toBe(720 - 60);
-    expect(p.clearBtn.view.position.y).toBe(720 - 60 + 7);
-    expect(p.hint.position.y).toBe(720 - 6);
+    expect(p.startBtn.view.position.y).toBeGreaterThan(rowBottom(l));
+    expect(p.startBtn.view.position.x + p.startBtn.width).toBeCloseTo(CONTENT_W, 6);
+    expect(p.clearBtn.view.position.x).toBe(0);
+    expect(p.clearBtn.view.position.y).toBe(p.startBtn.view.position.y);
+    expect(p.hint.position.y).toBeGreaterThan(p.startBtn.view.position.y);
   });
 
-  it('stays at the same height-relative offset on a short viewport', () => {
-    // The bug the forge was reported for, inherited along with the bar: a button whose y came
-    // from `Math.min(flowedY, h - 70)` landed wherever the flow happened to overflow to.
+  it('stays put in the sheet on a short viewport — the shell scales the sheet instead', () => {
+    // Pinning the bar to `h` is what put it a screen-height away from the row on a desktop
+    // window, and on top of the row on a landscape phone (see viewportFit.test.ts).
+    const tall = new Loadout();
+    tall.render(defaultMetaState(), 1280, 720);
+    const short = new Loadout();
+    short.render(defaultMetaState(), 1280, 480);
+    expect(privateOf(short).startBtn.view.position.y).toBe(privateOf(tall).startBtn.view.position.y);
+  });
+
+  it('moves CLEAR to a row of its own when a translation is too long for one', () => {
     const l = new Loadout();
-    l.render(defaultMetaState(), 1280, 480);
+    l.savedRun = () => ({ floorIndex: 0, ticks: 60, savedAtMs: 0 });
+    l.render(defaultMetaState(), 1280, 720);
     const p = privateOf(l);
-    expect(p.startBtn.view.position.y).toBe(480 - 60);
-    expect(p.hint.position.y).toBe(480 - 6);
+    expect(p.clearBtn.view.position.y, 'one line to begin with').toBe(p.startBtn.view.position.y);
+
+    p.clearBtn.setText('C'.repeat(60));
+    layoutLoadoutSheet(p.parts(), true);
+    expect(p.clearBtn.view.position.x).toBe(0);
+    expect(p.startBtn.view.position.y).toBeGreaterThan(p.clearBtn.view.position.y);
+    expect(p.continueBtn.view.position.y).toBe(p.startBtn.view.position.y);
+
+    // Without a save the same drop applies to START RUN alone.
+    layoutLoadoutSheet(p.parts(), false);
+    expect(p.startBtn.view.position.y).toBeGreaterThan(p.clearBtn.view.position.y);
   });
 
-  it('CLEAR and START run different verbs', () => {
+  it('CLEAR, START and BACK run different verbs', () => {
     const l = new Loadout();
     const calls: string[] = [];
     l.onClear = () => calls.push('clear');
@@ -439,7 +473,7 @@ describe('Loadout — the fixed bottom action bar', () => {
 
 /**
  * CONTINUE RUN (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — this
- * screen's second primary button, and the two-row action bar it produces. Moved here from
+ * screen's second primary button, and the bar it shares with START RUN. Moved here from
  * `Forge.test.ts` with the button itself.
  */
 describe('Loadout — CONTINUE RUN', () => {
@@ -477,20 +511,32 @@ describe('Loadout — CONTINUE RUN', () => {
     expect(privateOf(l).continueBtn.view.visible).toBe(false);
   });
 
-  it('takes the footer slot, and pushes START RUN to the row above', () => {
+  it('takes the right-hand slot, with START RUN beside it on the same line', () => {
     // Continuing is what a returning player came for, so it gets the primary position; and
     // the two must not overlap, because the other one discards the save.
     const l = withSave();
     l.render(defaultMetaState(), 1280, 720);
     const p = privateOf(l);
-    expect(p.continueBtn.view.position.y).toBe(720 - 60);
-    expect(p.startBtn.view.position.y).toBe(720 - 60 - 52);
+    expect(p.continueBtn.view.position.x + p.continueBtn.width).toBeCloseTo(CONTENT_W, 6);
+    expect(p.startBtn.view.position.y).toBe(p.continueBtn.view.position.y);
+    expect(p.startBtn.view.position.x + p.startBtn.width).toBeLessThan(p.continueBtn.view.position.x);
   });
 
-  it('leaves START RUN exactly where it was when there is no save', () => {
-    const l = withSave(null);
+  it('steps START RUN down to the ordinary colour, so the bar has one primary', () => {
+    const l = withSave();
     l.render(defaultMetaState(), 1280, 720);
-    expect(privateOf(l).startBtn.view.position.y).toBe(720 - 60);
+    expect(privateOf(l).startBtn.color).toBe(MENU_BUTTONS.secondary.color);
+    expect(privateOf(l).continueBtn.color).toBe(MENU_BUTTONS.primary.color);
+  });
+
+  it('gives START RUN back the right-hand slot and the primary colour when there is no save', () => {
+    const l = withSave();
+    l.render(defaultMetaState(), 1280, 720);
+    l.savedRun = () => null;
+    l.render(defaultMetaState(), 1280, 720);
+    const p = privateOf(l);
+    expect(p.startBtn.view.position.x + p.startBtn.width).toBeCloseTo(CONTENT_W, 6);
+    expect(p.startBtn.color).toBe(MENU_BUTTONS.primary.color);
   });
 
   it('fires onContinue, never onStart', () => {
@@ -540,7 +586,9 @@ describe('Loadout — i18n (design/17-i18n.md)', () => {
     expect(p.startBtn.label.text).toBe('开始行动 ▸');
     expect(p.continueBtn.label.text).toBe('继续行动 ▸');
     expect(p.clearBtn.label.text).toBe('清空装备');
-    expect(p.backBtn.label.text).toBe('← 菜单');
+    expect(p.backBtn.label.text).toBe('菜单');
+    expect(p.bank.heading.text).toBe('材料');
+    expect(p.weaponsHeading.text).toBe('携带武器  0/2');
     expect(p.hint.text).toBe('[C] 切换角色 · [X] 清空装备 · [F] 锻造场 · [Enter] 出发');
   });
 
@@ -556,7 +604,7 @@ describe('Loadout — i18n (design/17-i18n.md)', () => {
     expect(p.weaponCards[0]!.statusLabel).toBe('已锻造');
     expect(p.weaponCards[1]!.statusLabel).toBe('默认武器');
     expect(p.forgeCard.nameLabel).toBe('锻造场');
-    expect(p.infoText.text).toMatch(/物 \d+/);
+    expect(p.bank.cells[0]!.name.text).toBe('物');
   });
 
   it('switching back to English on a later render() fully reverts', async () => {

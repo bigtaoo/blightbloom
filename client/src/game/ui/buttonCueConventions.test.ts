@@ -106,8 +106,12 @@ describe('every Button in the client declares a cue that matches what it does', 
     for (const s of sites.filter((s) => s.sound === 'ui.back')) {
       expect(DISMISSES.test(s.name), `${key(s)} plays ui.back but is not a dismiss button`).toBe(true);
     }
+    // The floor is a parser-collapse guard, not a census. It was 10 until the menu shell
+    // (2026-09-27) folded every screen's own BACK button — and the results screen's MAIN MENU —
+    // into `MenuShell`'s one chip, which is a real drop in the count rather than a sweep that
+    // stopped finding them.
     expect(dismiss.length, 'the dismiss sweep found suspiciously few buttons')
-      .toBeGreaterThanOrEqual(10);
+      .toBeGreaterThanOrEqual(8);
   });
 
   it('marks every settings option with ui.toggle', () => {
