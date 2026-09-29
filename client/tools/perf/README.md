@@ -44,7 +44,8 @@ It slows the CPU `--throttle` times (Chrome's own emulation; 4x stands in for a 
 plays a discarded `--warmup`, then plays `--secs` more walking a square, descends a floor at
 `--descend-at`, and reports frames per wall-clock second. The player is made unkillable for the
 run. It prints `PASS` and exits 0 when the slowest and fastest second are within `--max-spread`
-(default 3) frames of each other.
+(default 3) frames of each other. `--reload` reloads the tab under the throttle before anything
+else, so `--warmup 0 --reload` measures a cold page load rather than whatever state the tab was in.
 
 The other numbers in the report:
 
@@ -62,11 +63,18 @@ work p50 of 17.1 ms.
 
 ### Cold start
 
-The first run after a page load is slower. On a fresh dev page the first ~30 s at 4x take 2–3x the
-steady cost while V8 optimises, and it is real — a player would see it — but it is a property of
-loading the page, not of the frame. On the recording day, the run straight after a 30 s warm-up
-read spread 6 (55–61), and the next run read spread 2. That is why `--warmup` defaults to 60. To
-measure the cold start itself, pass `--warmup 0` on a freshly loaded page.
+The first run after a page load is slower. On a fresh dev page the first ~30 s at 4x took 2–3x the
+steady cost (volume 107), which is why `--warmup` defaults to 60.
+
+On a production build it is much shorter. Measured 2026-09-29 (volume 108) with
+`--warmup 0 --reload`: the run started straight after a cold load is slow for **1–8 seconds**,
+mostly at its start. After 5 s in the lobby, 1–3 slow seconds remain at the run boundary, under the
+transition that already waits for them. It is not JIT warm-up: stopping the ticker for 60 s, so no
+game code runs, leaves the first run as clean as 60 s of lobby does. What remains is first use, as
+the run's textures upload and its render paths run for the first time.
+
+A cold run that stays slow the whole way through is not a cold start, because a cold cost fades.
+See the noise section below.
 
 ### Noise
 
