@@ -20,6 +20,7 @@
     "gen:trig": "node tools/gen-trig-tables.mjs",
     "perf:accept": "node tools/perf/accept.mjs",
     "perf:cull-ab": "node tools/perf/cullAB.mjs",
+    "perf:gpu-cost": "node tools/perf/gpuCost.mjs",
     "build": "tsc --noEmit && vite build",
     "build:crazygames": "tsc --noEmit && vite build --config vite.crazygames.config.js",
     "dev:crazygames": "vite --config vite.crazygames.config.js",
