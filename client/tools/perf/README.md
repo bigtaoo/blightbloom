@@ -65,15 +65,19 @@ work p50 of 17.1 ms.
 
 ### Cold start
 
-The first run after a page load is slower. On a fresh dev page the first ~30 s at 4x took 2–3x the
-steady cost (volume 107), which is why `--warmup` defaults to 60.
+The first run after a page load is slower for a few seconds. `--warmup` defaults to 60, which
+covers that for the price of a minute.
 
-On a production build it is much shorter. Measured 2026-09-29 (volume 108) with
-`--warmup 0 --reload`: the run started straight after a cold load is slow for **1–8 seconds**,
-mostly at its start. After 5 s in the lobby, 1–3 slow seconds remain at the run boundary, under the
-transition that already waits for them. It is not JIT warm-up: stopping the ticker for 60 s, so no
+On a production build, measured 2026-09-29 (volume 108) with `--warmup 0 --reload`: the run started
+straight after a cold load is slow for **1–8 seconds**, mostly at its start. After 5 s in the lobby, 1–3 slow seconds remain at the run boundary,
+under the transition that already waits for them. It is not JIT warm-up: stopping the ticker for 60 s, so no
 game code runs, leaves the first run as clean as 60 s of lobby does. What remains is first use, as
 the run's textures upload and its render paths run for the first time.
+
+On the dev build, measured the same day (volume 112): **0–4 slow seconds**, median 1, over 7 cold
+reloads on a quiet machine, and 1.2–2.2 s from reload to `window.__game`. A dev server restarted
+just before is no worse. Volume 107's figure, the first ~30 s at 2–3x the steady cost, did not
+reproduce.
 
 A cold run that stays slow the whole way through is not a cold start, because a cold cost fades.
 See the noise section below.
