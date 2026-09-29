@@ -59,6 +59,7 @@ npm run dev        # client dev server, http://localhost:5173
 | `npm run test:pvp-sim` | The offline PvP balance harness (`client/sim/`, kept out of the default test glob — ~6s) |
 | `npm run test:pve-sim` | The PvE level simulator — bot-driven real runs of level 1, per-room reaction window / peak shooters / clear rate and the difficulty gates, plus both halves of the loot economy: what a floor HANDS YOU (weapons / potions / materials / energy per floor) and what a floor COSTS to clear (trigger pulls, projectiles, melee share) (`client/sim/`, also out of the default glob) |
 | `npm run test:weapon-sim` | The per-weapon sweep — every player-facing weapon plays the shipped level over 8 seeds, reporting kills / ticks-per-kill / damage taken / depth, and gating that no weapon is inert (`client/sim/`, also out of the default glob — ~10s) |
+| `npm run test:voice-sim` | Voice demand under real play — headless PvE and PvP bot matches, the cues the real `EventReactor` plays, replayed through the real `VoiceBudget` at a ladder of caps; gates that the shipped cap costs no cue from `impact` up (`client/sim/`, also out of the default glob — ~1 min) |
 | `DD_REPLAY=<path> npm run replay:inspect` | Read one recorded run (a `ddreplay-*.json` a player saved with the HUD's ● button or F9) and report every drop's closest approach, swept path, gate and `pickup` event (`client/sim/replay/`) |
 
 ### Branching
