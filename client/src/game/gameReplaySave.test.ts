@@ -227,6 +227,9 @@ describe('Game — saving a replay, from a real run to real bytes', () => {
 
   it('says SAVED, naming the file, so the player knows what to hand over', () => {
     const { inner, toasts, saved } = startedRun();
+    // The run's own toasts (a mob killed in the first 120 frames drops a pickup) are not
+    // what these cases are about; only what the save says.
+    toasts.length = 0;
     inner.hud.replayBtn.onTap!();
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toContain(saved[0]!.name);
@@ -244,6 +247,7 @@ describe('Game — saving a replay, from a real run to real bytes', () => {
     // A run IS recording and the file IS packed; what fails is the host. Reporting that as
     // success would send a player looking for a download that never happened.
     const { inner, toasts } = startedRun({ canDownload: false });
+    toasts.length = 0; // as above
     inner.hud.replayBtn.onTap!();
     expect(toasts).toEqual([t('toast.replayUnsupported')]);
   });

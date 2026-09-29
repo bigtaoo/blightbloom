@@ -22,10 +22,13 @@ import { CUE_CATALOGUE } from './cueCatalogue';
 import { VoiceBudget } from './VoiceBudget';
 import type { SampleBank } from './SampleBank';
 
-/** Simultaneous sample voices. What real play ASKS FOR is measured (2026-09-29,
- *  `sim/voiceDemand.sim.ts`, roadmap volume 113): 8 voices at p99 and 14 at worst over ~540k
- *  cues of PvE and PvP bot play, and 12 is the smallest cap at which no cue from `impact` up
- *  loses a voice — that sim gates it. What a phone can AFFORD is still open (design/11).
+/** Simultaneous sample voices. What real play ASKS FOR is measured (`sim/voiceDemand.sim.ts`,
+ *  which gates it): 16 is the smallest cap at which no cue from `impact` up loses a voice in
+ *  any mode played. It was 12 from volume 113 (2026-09-29) until volume 115 the same day, when
+ *  it turned out 113's PvP matches had every seat stacked on one spawn point and firing past
+ *  each other; real PvP fights ask for 12-14 voices at p99 and 17 at worst (8 seats), and at
+ *  12 the 8-seat rows lost 0.9% of their voices, 55 of them `impact`. 14 and 15 still lost
+ *  `impact`. What a phone can AFFORD is still open (design/11).
  *  First sized against what a frame can actually ask for: the
  *  caller coalesces duplicates, so a bounded number of distinct cues arrive per frame, and the
  *  long tails (`death.player`, 780 ms; `death.enemy`, 600 ms) are the only ones that overlap
@@ -37,7 +40,7 @@ import type { SampleBank } from './SampleBank';
  *
  *  Exported for that test, which derives how many voices a saturated frame must sacrifice
  *  rather than writing the number down — it had been written down, and it went stale. */
-export const DEFAULT_CAP = 12;
+export const DEFAULT_CAP = 16;
 
 /** Pitch spread per voice, plus and minus. Small enough to read as the same sound, large
  *  enough to blunt the repetition a 2-variant cue would otherwise have. */

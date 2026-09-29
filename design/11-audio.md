@@ -62,7 +62,7 @@ The data half of "what does a cue sound like", and the reason the 46 shipped fil
 - **The fallback ladder, in `CueMixer`:** a decoded sample if one exists → otherwise the synth voice. That second rung is permanent, not a shim: `status.burn` has no sample by decision, a cold boot fires cues before the preload resolves, and a failed fetch or decode lands there too. Both rungs pass through the same catalogue gain, so the swap never changes the weight of the mix.
 - **Gain is the mix, and it applies to both rungs.** The shipped files were peak-matched to the synth voice each replaces, so `1.0` means "as loud as the placeholder was". `muzzle` sits at 0.8 (it fires on every shot), the status stings at 0.75 (this doc's "quiet bed, punchy combat"), and `deflect` is the one cue deliberately *above* its placeholder at 1.15 — the signature parry has to read over the mix. The synth path reaches the bus through a trim node when its gain is not exactly 1.
 - **Coalescing now carries a COUNT.** `EventReactor` collects `Map<AudioCue, number>` rather than a `Set`, and the mixer turns it into a log-shaped gain boost (+0.15 per doubling, capped at ×1.5). Ten hits in a frame are one impact at higher gain — measured at ×1.49 on the bus.
-- **The voice cap is real and priority-ranked** (`VoiceBudget`, 12 simultaneous sample voices). At the cap a cue only sounds if it *outranks* the weakest voice still playing, which is then stopped over a 12 ms fade rather than cut dead. Equal priority loses, so a stream of `muzzle`s does not chop itself up. Ladder: `win` (120, never stealable) > `wave-clear` > `deflect` (95) > `shield.break` > `pickup.*` > `death` (70) > `impact` (60) > `status.*` > `clash` > `muzzle` (20). Voices retire by TIME, not by an `ended` event — a clip's length is known before it starts, and a cap that silently stopped purging would fail *closed* (the mix going quiet after 12 cues, looking exactly like "audio broke").
+- **The voice cap is real and priority-ranked** (`VoiceBudget`, 16 simultaneous sample voices since volume 115; 12 before). At the cap a cue only sounds if it *outranks* the weakest voice still playing, which is then stopped over a 12 ms fade rather than cut dead. Equal priority loses, so a stream of `muzzle`s does not chop itself up. Ladder: `win` (120, never stealable) > `wave-clear` > `deflect` (95) > `shield.break` > `pickup.*` > `death` (70) > `impact` (60) > `status.*` > `clash` > `muzzle` (20). Voices retire by TIME, not by an `ended` event — a clip's length is known before it starts, and a cap that silently stopped purging would fail *closed* (the mix going quiet after 12 cues, looking exactly like "audio broke").
 - **Variant choice never repeats the previous variant** (repetition fatigue is audible across a set long before any one sample sounds wrong), plus ±3% render-side pitch jitter. Both draw from an injected `random` defaulting to `Math.random` — never the sim's `Prng` (`06`).
 - **Loading goes through `AssetHost.readBinary`**, added beside `readJson`: `fetch` on web, `FileSystemManager.readFileSync` (no encoding → ArrayBuffer) on WeChat, both via `packedPathFor`. Consequence worth keeping: a future **music subpackage is a prefix rule in `assetPacks.json`**, not a loader change.
 
@@ -154,7 +154,7 @@ heavy shatter when it fails.
 
 ### Why the voice cap did NOT move
 
-The cue count went 20 → 24 and `CueMixer`'s `DEFAULT_CAP` stayed at 12. It is a *device* budget,
+The cue count went 20 → 24 and `CueMixer`'s `DEFAULT_CAP` stayed at 12 (it went to 16 on 2026-09-29, for demand, below). It is a *device* budget,
 not headroom over the cue list, and what the extra cues actually cost is measured rather than
 assumed: a frame containing every engine cue overflows the cap by exactly the number of sample
 voices over it, and every sacrificed voice ranks below every surviving one. That is what the
@@ -174,6 +174,12 @@ lose some, at 8 all but 8-seat PvP do. So 12 is the smallest cap that costs no c
 up, and the sim gates exactly that, plus a 0.1% ceiling on what the cap may cost at all. A cap
 lowered for a weak device should be read against that table
 ([volume 113](roadmap/113-2026-09-29-voice-demand.md#what-real-play-asks-for)).
+
+**Superseded the same day, and the cap is now 16** ([volume 115](roadmap/115-2026-09-29-arena-spawns.md)).
+The PvP matches above had every seat stacked on one point, firing past each other. With real
+spawns and real fights, 8-seat PvP asks for 12–14 voices at p99 and 17 at worst; at 12 it lost
+0.93% of its voices, 55 of them `impact`, and 14 and 15 still lost some `impact`. 16 is the
+smallest cap that costs no cue from `impact` up. The gates did not change.
 
 ### Browser-measured, not assumed
 
