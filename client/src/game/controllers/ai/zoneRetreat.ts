@@ -38,7 +38,7 @@ export function zoneRetreatCommand(
   // Breadth-first over the door graph to the nearest room that stays safe.
   const step = nextRoomToward(map, from, (id) => safe.has(id));
   if (step === undefined) return null;
-  const move = walkIntoRoom(map, me, from, step);
+  const move = walkIntoRoom(s, map, me, from, step);
   const inRange = opponents.some((o) => Math.hypot(o.gx - me.gx, o.gy - me.gy) <= FIRE_RANGE_FP);
   return makeCommand({ owner, tick, moveBrad: move.moveBrad, moveMag: move.moveMag, buttons: inRange ? Button.FIRE : 0 });
 }

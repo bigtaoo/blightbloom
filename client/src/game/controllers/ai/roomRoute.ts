@@ -3,12 +3,10 @@
 // Split out of `zoneRetreat.ts` on 2026-09-29 when the second rule needed the same search.
 //
 // Pure functions of the map and a position, like everything the bot does.
-import { FP_SCALE, quantizeMove, type Brad } from '@dd/engine';
+import { FP_SCALE, quantizeMove, type GameState } from '@dd/engine';
 import type { ArenaMap } from '@dd/engine/content/arenas';
 import type { Point } from './engage';
-
-/** A passage centre this close counts as reached, and the bot aims at the next room's centre. */
-const GATE_REACHED_FP = FP_SCALE;
+import { steer, type Move } from './steer';
 
 /** Each room's neighbours in `map.doors` order. Derived once per map: the bot asks every tick
  *  for every seat, and rescanning every door for every room it expands made the balance sim
@@ -65,15 +63,45 @@ export function nextRoomToward(
   return step;
 }
 
-/** The move from `me` (in room `from`) into the adjacent room `step`: to the shared door's
- *  passage centre, then on to that room's centre once the passage is reached. */
-export function walkIntoRoom(map: ArenaMap, me: Point, from: string, step: string): { moveBrad: Brad; moveMag: number } {
+/**
+ * The move from `me` (in room `from`) into the adjacent room `step` through their shared door:
+ * to whichever point across the passage's width it can walk to (centre first, `ai/steer.ts`),
+ * then, once inside the passage, straight on through it to a grid past its far side.
+ */
+export function walkIntoRoom(s: GameState, map: ArenaMap, me: Point, from: string, step: string): Move {
   const door = map.doors.find((d) => (d.roomA === from && d.roomB === step) || (d.roomB === from && d.roomA === step))!;
-  const gate = centre(door.passageGrid);
-  const room = map.rooms.find((r) => r.id === step);
-  const atGate = Math.hypot(gate.gx - me.gx, gate.gy - me.gy) <= GATE_REACHED_FP;
-  const aim = atGate && room ? centre(room.rectGrid) : gate;
-  return quantizeMove(aim.gx - me.gx, aim.gy - me.gy);
+  const p = door.passageGrid;
+  const room = map.rooms.find((r) => r.id === step)!;
+  // The passage cuts across the wall between the two rooms: its short side is the way through.
+  const acrossX = p.w <= p.h;
+  const into = Math.sign(acrossX ? centre(room.rectGrid).gx - centre(p).gx : centre(room.rectGrid).gy - centre(p).gy) || 1;
+  const inPassage = me.gx >= (p.x - 0.5) * FP_SCALE && me.gx <= (p.x + p.w + 0.5) * FP_SCALE && me.gy >= (p.y - 0.5) * FP_SCALE && me.gy <= (p.y + p.h + 0.5) * FP_SCALE;
+  if (inPassage) {
+    const beyond = into > 0 ? (acrossX ? p.x + p.w : p.y + p.h) + 1 : (acrossX ? p.x : p.y) - 1;
+    const on = acrossX ? { gx: beyond * FP_SCALE, gy: me.gy } : { gx: me.gx, gy: beyond * FP_SCALE };
+    return steer(s, me, [on]) ?? toward(me, on);
+  }
+  const gates = gatePoints(p, acrossX);
+  return steer(s, me, gates) ?? toward(me, gates[0]!);
+}
+
+/** Points along the passage's long side at every grid, centre first, then outward; each kept
+ *  half a grid inside its ends so a body there clears the jambs. */
+function gatePoints(p: { x: number; y: number; w: number; h: number }, acrossX: boolean): Point[] {
+  const c = centre(p);
+  const lo = (acrossX ? p.y : p.x) + 0.5;
+  const hi = (acrossX ? p.y + p.h : p.x + p.w) - 0.5;
+  const mid = (lo + hi) / 2;
+  const at: number[] = [mid];
+  for (let d = 1; mid - d >= lo || mid + d <= hi; d++) {
+    if (mid - d >= lo) at.push(mid - d);
+    if (mid + d <= hi) at.push(mid + d);
+  }
+  return at.map((v) => (acrossX ? { gx: c.gx, gy: Math.round(v * FP_SCALE) } : { gx: Math.round(v * FP_SCALE), gy: c.gy }));
+}
+
+function toward(me: Point, g: Point): Move {
+  return quantizeMove(g.gx - me.gx, g.gy - me.gy);
 }
 
 function centre(r: { x: number; y: number; w: number; h: number }): Point {

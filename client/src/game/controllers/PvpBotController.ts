@@ -8,10 +8,12 @@
 // at the SAME tick get the identical command, which is exactly what lets
 // server/src/BotClient.ts drive a bot seat as a normal headless client, indistinguishable
 // from a real one at the wire level (design/06).
-import { FP_SCALE, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
-import { engageNearest, FIRE_RANGE_FP, idleCommand, type Point } from './ai/engage';
+import { Button, FP_SCALE, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
+import { nearestHostile } from '@dd/engine/systems/targeting';
+import { engageNearest, FIRE_RANGE_FP, idleCommand, KEEP_DIST_FP, type Point } from './ai/engage';
 import { lineOfFireClear, pointClear } from './ai/lineOfFire';
 import { nextRoomToward, walkIntoRoom } from './ai/roomRoute';
+import { BODY_CLEAR_FP, HOLD, reachable, steer, type Move } from './ai/steer';
 import { roomIsUnsafe, zoneRetreatCommand } from './ai/zoneRetreat';
 
 export class PvpBotController {
@@ -29,14 +31,27 @@ export class PvpBotController {
     // from where the bot stands, not chased.
     const retreat = zoneRetreatCommand(s, owner, tick, me, opponents);
     if (retreat) return retreat;
-    const cmd = engageNearest(owner, tick, me, opponents);
-    if (!cmd) return idleCommand(owner, tick);
-    const target = nearest(me, opponents)!;
-    // A shot the pillar or wall in between would eat is not fired (`ai/lineOfFire.ts`). Only
-    // tested in range: out of it nothing is fired anyway.
-    const inRange = Math.hypot(target.gx - me.gx, target.gy - me.gy) <= FIRE_RANGE_FP;
+    // Whether to pull is decided on what the gun POINTS at, which is not always the opponent
+    // being chased: the engine turns every player to its nearest hostile, mob or seat
+    // (`ApplyInputSystem`). A shot the pillar or wall in between would eat is not fired
+    // (`ai/lineOfFire.ts`); in range is tested first, since out of it nothing is fired anyway.
+    const aim = nearestHostile(s, me, me.gx, me.gy);
+    const fire = aim !== null && within(me, aim) && lineOfFireClear(s, me, aim) ? Button.FIRE : 0;
+    const target = nearest(me, opponents);
+    const inRange = target !== undefined && within(me, target);
     const clear = inRange && lineOfFireClear(s, me, target);
-    const fire = clear ? cmd.buttons : 0;
+    // Mobs in its own room are fought before an opponent further off, and with no opponent
+    // left standing: they fight back, and a bot that only ever aimed at seats stood among them
+    // until they killed it. With seats spawned apart, 2-seat matches were decided by mobs and
+    // the zone, the seats dealing each other almost nothing (2026-09-29). An opponent with a
+    // clear shot still comes first.
+    // Its own room is the whole field on a map without rooms. Only a mob it can shoot from here
+    // or walk to: a few spawn in pockets no body can enter (a free-standing block's brim closes
+    // a one-grid corridor), and walking at one of those pinned a seat to the block for good.
+    const mob = clear ? undefined : mobToFight(s, me);
+    if (mob) return makeCommand({ owner, tick, ...holdAndFight(s, me, mob, owner, tick), buttons: fire });
+    const cmd = engageNearest(owner, tick, me, opponents);
+    if (!cmd || !target) return idleCommand(owner, tick);
     if (roomIsUnsafe(s, target.roomId)) return { ...cmd, moveMag: 0, buttons: fire };
     // An opponent in another room is walked to through the doors (2026-09-29), firing only
     // where a doorway gives a clear shot. Until seats spawned apart the whole lobby started
@@ -44,12 +59,34 @@ export class PvpBotController {
     // 3 grid from an opponent on the far side of one and fired into it for the rest of the match.
     const route = routeToRoom(s, me, target.roomId);
     if (route) return makeCommand({ owner, tick, moveBrad: route.moveBrad, moveMag: route.moveMag, buttons: fire });
-    if (!inRange) return cmd;
-    if (clear) return cmd.moveMag === 0 ? { ...cmd, ...strafe(s, me, target, owner, tick) } : cmd;
-    // Same room, something solid in between: step out from behind it.
-    const side = sidestep(s, me, target);
-    return makeCommand({ owner, tick, moveBrad: side.moveBrad, moveMag: side.moveMag, buttons: 0 });
+    if (!inRange) return makeCommand({ owner, tick, ...(steer(s, me, [target]) ?? HOLD), buttons: fire });
+    return makeCommand({ owner, tick, ...holdAndFight(s, me, target, owner, tick), buttons: fire });
   }
+}
+
+/** The nearest live mob in `me`'s room that it can shoot from where it stands or walk to.
+ *  Nearest first, and the path search only until one passes: it is the costly test. */
+function mobToFight(s: GameState, me: Point & { roomId?: string }): Point | undefined {
+  const here = s.enemies.filter((e) => e.alive && e.roomId === me.roomId);
+  here.sort((a, b) => (a.gx - me.gx) ** 2 + (a.gy - me.gy) ** 2 - ((b.gx - me.gx) ** 2 + (b.gy - me.gy) ** 2) || a.id - b.id);
+  return here.find((e) => lineOfFireClear(s, me, e) || reachable(s, me, e));
+}
+
+/** Fire range, in fp: the one test both the opponent and whatever the gun points at share. */
+function within(me: Point, t: Point): boolean {
+  return Math.hypot(t.gx - me.gx, t.gy - me.gy) <= FIRE_RANGE_FP;
+}
+
+/**
+ * The move against a target in reach, seat or mob: close to the spacing ring, strafe once
+ * there, and step out from behind a solid when the line to it is blocked.
+ */
+function holdAndFight(s: GameState, me: Point, target: Point, owner: number, tick: number): ReturnType<typeof quantizeMove> {
+  const dx = target.gx - me.gx;
+  const dy = target.gy - me.gy;
+  if (within(me, target) && !lineOfFireClear(s, me, target)) return sidestep(s, me, target) ?? strafe(s, me, target, owner, tick);
+  if (Math.hypot(dx, dy) > KEEP_DIST_FP) return steer(s, me, [target]) ?? strafe(s, me, target, owner, tick);
+  return strafe(s, me, target, owner, tick);
 }
 
 /** The move toward room `to` along safe rooms, or null when `me` is already there, the rooms
@@ -59,7 +96,7 @@ function routeToRoom(s: GameState, me: Point & { roomId?: string }, to: string |
   const from = me.roomId;
   if (!map || from === undefined || to === undefined || from === to) return null;
   const step = nextRoomToward(map, from, (id) => id === to, (id) => !roomIsUnsafe(s, id));
-  return step === undefined ? null : walkIntoRoom(map, me, from, step);
+  return step === undefined ? null : walkIntoRoom(s, map, me, from, step);
 }
 
 /** Distances of the sidestep candidates from the bot, across the line to its target, nearest
@@ -67,12 +104,14 @@ function routeToRoom(s: GameState, me: Point & { roomId?: string }, to: string |
 const SIDESTEP_REACH_FP = [2 * FP_SCALE, 4 * FP_SCALE];
 
 /**
- * The move out from behind a solid, within the target's room: to the nearest of the points
- * `SIDESTEP_REACH_FP` to either side of the line to it that has a clear shot and a clear path
- * from here (north first, then west). With none, it closes in, which
- * walks it round a pillar's rim and along a wall's face.
+ * The move out from behind a solid, within the target's room: straight to the nearest of the
+ * points `SIDESTEP_REACH_FP` to either side of the line to it where a body can stand and walk to
+ * and a shot gets through (north first, then west). With none, it walks at the target itself
+ * (`ai/steer.ts`), which brings it round the solid; null when it cannot get
+ * there either. (It used to circle sideways at close range instead, and a seat wedged between a
+ * block and a pillar pushed into the pillar for the rest of the match.)
  */
-function sidestep(s: GameState, me: Point, target: Point): ReturnType<typeof quantizeMove> {
+function sidestep(s: GameState, me: Point, target: Point): Move | null {
   const dx = target.gx - me.gx;
   const dy = target.gy - me.gy;
   const len = Math.hypot(dx, dy) || 1;
@@ -83,12 +122,12 @@ function sidestep(s: GameState, me: Point, target: Point): ReturnType<typeof qua
     // each always opposite the other.
     sides.sort((a, b) => a.gy - b.gy || a.gx - b.gx);
     for (const c of sides) {
-      if (pointClear(s, c.gx, c.gy) && lineOfFireClear(s, me, c) && lineOfFireClear(s, c, target)) {
+      if (pointClear(s, c.gx, c.gy, BODY_CLEAR_FP, true) && lineOfFireClear(s, me, c, BODY_CLEAR_FP, true) && lineOfFireClear(s, c, target)) {
         return quantizeMove(c.gx - me.gx, c.gy - me.gy);
       }
     }
   }
-  return len > FIRE_RANGE_FP / 4 ? quantizeMove(dx, dy) : quantizeMove(-dy, dx);
+  return steer(s, me, [target]);
 }
 
 /** Ticks between strafe reversals, and the look-ahead that keeps a strafe off a wall. */
