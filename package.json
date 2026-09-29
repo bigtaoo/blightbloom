@@ -32,6 +32,7 @@
     "test:weapon-sim": "npm run test:weapon-sim -w client",
     "test:drop-sim": "npm run test:drop-sim -w client",
     "test:voice-sim": "npm run test:voice-sim -w client",
+    "test:pvp-capacity": "npm run test:pvp-capacity -w client",
     "audit:arena": "npm run audit:arena -w client",
     "replay:inspect": "npm run replay:inspect -w client",
     "dev": "npm run dev -w client",
@@ -42,7 +43,7 @@
     "dev:desktop-shell": "npm run start -w tools/desktop-shell",
     "build": "npm run build -w client",
     "record:golden": "npm run record:golden -w engine",
-    "test:sims": "npm run test:pvp-sim && npm run test:pve-sim && npm run test:weapon-sim && npm run test:drop-sim && npm run test:voice-sim",
+    "test:sims": "npm run test:pvp-sim && npm run test:pve-sim && npm run test:weapon-sim && npm run test:drop-sim && npm run test:voice-sim && npm run test:pvp-capacity",
     "check:full": "npm run check && npm run test:sims"
   },
   "devDependencies": {

@@ -352,7 +352,20 @@ a bot that takes looted guns and swings its blade when the gun is dry:
 - **Whether a looted frame can pay at all.** No ordering the bot was given made a swap beat the
   starter gun. That is either the bot (it cannot use a mechanic) or the roster (the frames are
   side-grades for anyone who kites). Only play can tell which.
-- **PvP capacity** is still unmeasured, as above: the arena bot neither swaps nor parries.
+- ~~**PvP capacity** is still unmeasured: the arena bot neither swaps nor parries.~~ **Measured
+  2026-09-29** ([volume 117](roadmap/117-2026-09-29-pvp-capacity.md)) by
+  `client/sim/pvpCapacity.sim.ts`, with a sim-only bot that loots, swaps and parries. It plays
+  90 arena matches per condition.
+  - The landing kit is sustainable: 0.83% dry ticks.
+  - A looted gun with no fallback runs dry 9% of the time, and a quarter of the seats go
+    under a tenth of their bar.
+  - The blade fallback takes that under 0.1%.
+  - **The roster's own pools decide nothing in PvP either.** Shipped pools against everyone
+    at 100 read 0.05% vs 0.03% dry, 20 vs 19 emptied seats, and a win split within two
+    matches of 90 per character.
+  - Only a pool of 30 shows: half the bar at the median, and emptied seats more than double.
+  - It also found that two frame-perfect parriers can deflect each other's every shot
+    indefinitely (design/15).
 
 *(Until 2026-09-29 this section said the PvE bot never swaps off the starter gun. Volume 99
 fixed that on 2026-09-26, and volume 111 added the swap under pressure. The mob melee weapons'
