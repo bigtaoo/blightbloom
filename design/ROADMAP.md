@@ -1667,9 +1667,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-29** [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change) — `design/03` still said the bot never swaps, but volume 99 had already taught it to take guns. What it lacked was a swap under pressure: a dry gun left it disarmed beside a blade it never drew. It now draws the blade when a pull is unaffordable and redraws the gun at half a bar, which takes dry ticks on floors 1–2 from ~22% to under 1% and moves depth not at all. The bigger finding was the upgrade rule: "strictly rarer" made 46 of 67 paired runs worse, because rarity buys a mechanic and not pace, so guns are now ordered by `dps`. The v60 capacity table re-run at 400 seeds still reads texture across the roster's 70–130 pools and power below them. `weaponSweep.sim.ts` had been inheriting the swap since 09-26 and now pins it off.
 
+**[2026-09-29 — the dev cold start](roadmap/112-2026-09-29-dev-cold-start.md)**
+
+- **09-29** [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change) — volume 108 left the dev build open, and the README still carried volume 107's "first ~30 s at 2–3x". Seven cold reloads of the dev server at 4x, run at once, read 0–4 slow seconds (median 1) on a machine sampled at 15% busy, with 1.2–2.2 s from reload to `window.__game`; a freshly restarted server is no worse, and the one run slow throughout had contention's flat shape. The 30 s does not reproduce. `accept.mjs` keeps `--warmup 60` as cheap cover for first-use seconds, with its comment corrected; no game code changed.
+
 ## The work log — by theme
 
-The same 208 entries, grouped. An entry with more than one tag appears more than once.
+The same 209 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1772,7 +1776,7 @@ The same 208 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 
-**`perf`** — frame time, draw calls, geometry budgets *(17)*
+**`perf`** — frame time, draw calls, geometry budgets *(18)*
 
 - 08-19 [Volume, measured: the numbers behind the two passes above](roadmap/03-2026-08-17--08-19.md#volume-measured-the-numbers-behind-the-two-passes-above-2026-08-19-render-only)
 - 08-24 [Room props get real art, and three loaders that were never mip-mapped](roadmap/05-2026-08-21--08-24.md#room-props-get-real-art-and-three-loaders-that-were-never-mip-mapped-2026-08-24-client-only)
@@ -1791,6 +1795,7 @@ The same 208 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test)
+- 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 
 **`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(37)*
 
@@ -2078,7 +2083,7 @@ The same 208 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(27)*
+**`tools`** — sims, profilers, editors, build scripts *(28)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2107,8 +2112,9 @@ The same 208 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change)
+- 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 
-**`docs`** — design docs and this log itself *(125)*
+**`docs`** — design docs and this log itself *(126)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2235,6 +2241,7 @@ The same 208 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change)
+- 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

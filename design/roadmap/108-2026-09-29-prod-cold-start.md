@@ -74,3 +74,5 @@ otherwise.
   phone's GPU, its texture upload or its thermal limits. First-use costs are the part a phone is
   most likely to make worse.
 - **The dev build's cold start was not re-measured.** The README's dev figure is still volume 107's.
+  **Re-measured the same day, [volume 112](112-2026-09-29-dev-cold-start.md): 0–4 slow seconds,
+  and volume 107's 30 s did not reproduce.**

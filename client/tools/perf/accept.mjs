@@ -135,9 +135,10 @@ try {
     console.log(`reloaded: window.__game after ${((Date.now() - t) / 1000).toFixed(1)} s`);
   }
   if (opts.warmup > 0) {
-    // A freshly loaded dev build runs 2-3x slower at 4x for its first ~30 s while V8 optimises —
-    // real, but a property of the page load, not of the frame (README "cold start"). 30 s of
-    // warm-up was measured NOT to be enough: spread 6 straight after it, spread 2 on the next run.
+    // A cold page is slow for its first few seconds at 4x, on dev and production alike: 0-4 slow
+    // seconds on dev over 7 runs, 1-8 on production (README "cold start", volumes 108 and 112).
+    // The ~30 s JIT tail this default was first chosen for did not reproduce. It stays at 60 s
+    // because it absorbs those seconds for the price of one minute.
     console.log(`warm-up: ${opts.warmup} s, discarded`);
     await page.evaluate(measure, { secs: opts.warmup, descendAt: 0 });
   }
