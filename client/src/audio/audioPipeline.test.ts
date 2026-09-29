@@ -335,7 +335,7 @@ describe('the audio pipeline — a frame that asks for more than the voice cap',
   }
 
   it('sacrifices only expendable voices when a frame saturates the cap', async () => {
-    // Every engine cue in one frame exceeds the 12-voice cap, so something must give — and
+    // Every engine cue in one frame exceeds the voice cap, so something must give — and
     // what gives is worth pinning, because the mechanism is not the obvious one. Over the cap
     // a higher-priority cue does NOT get refused: it STEALS the weakest slot, so every cue
     // still starts, and the loser is faded out 12 ms in. So the assertion is about which

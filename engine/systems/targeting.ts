@@ -33,6 +33,8 @@ import { nearestByPosition } from './nearest';
  */
 interface TeamPoolCache {
   tick: number;
+  playerCount: number;
+  enemyCount: number;
   hostilePlayersByTeam: Map<number, Actor[]>;
   hostileEnemiesByTeam: Map<number, Actor[]>;
 }
@@ -40,8 +42,18 @@ const teamPoolCache = new WeakMap<GameState, TeamPoolCache>();
 
 function getTeamPools(state: GameState, teamId: number): { players: Actor[]; enemies: Actor[] } {
   let cache = teamPoolCache.get(state);
-  if (!cache || cache.tick !== state.tick) {
-    cache = { tick: state.tick, hostilePlayersByTeam: new Map(), hostileEnemiesByTeam: new Map() };
+  // Also invalidated by an actor joining or leaving either array mid-tick. Until ENGINE_VERSION
+  // 79 the first query of a tick came at step 5 or later, after anything that adds actors had
+  // run; `WeaponFireSystem` now queries at step 3 (`muzzle.ts`), and a cache keyed on the tick
+  // alone would hide an actor added after it for the rest of that tick.
+  if (!cache || cache.tick !== state.tick || cache.playerCount !== state.players.length || cache.enemyCount !== state.enemies.length) {
+    cache = {
+      tick: state.tick,
+      playerCount: state.players.length,
+      enemyCount: state.enemies.length,
+      hostilePlayersByTeam: new Map(),
+      hostileEnemiesByTeam: new Map(),
+    };
     teamPoolCache.set(state, cache);
   }
   let players = cache.hostilePlayersByTeam.get(teamId);
