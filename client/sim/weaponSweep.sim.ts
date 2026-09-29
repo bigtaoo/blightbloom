@@ -92,8 +92,17 @@ const MAX_TICKS = 6000;
  * flight bounds each fixed.
  */
 export function profileForWeapon(reachGrid: number, speedGridPerSec: number): BotProfile {
-  return standoffFor(BOT_PROFILES.careful, reachGrid, speedGridPerSec);
+  return standoffFor(PINNED, reachGrid, speedGridPerSec);
 }
+
+/**
+ * The shipped `careful` spacing with both of the bot's swapping behaviours OFF: this sweep
+ * measures ONE weapon, so the bot must finish the run holding the one it was staged with.
+ * Inherited on, a blade loadout re-drew the starter gun at half a bar and a gun loadout took
+ * any faster gun off the floor — `frostbrand` read 52 kills instead of 428 (2026-09-29), a
+ * number about the bot's habits rather than about the blade.
+ */
+const PINNED: BotProfile = { ...BOT_PROFILES.careful, swapsWeapons: false, meleeWhenDry: false };
 
 interface WeaponRow {
   readonly profile: WeaponProfile;

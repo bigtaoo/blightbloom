@@ -35,9 +35,11 @@ export function profileForWeapon(base: BotProfile, reachGrid: number, speedGridP
   return { ...base, standoffFp: g(standoff), hysteresisFp: g(0.4), fireRangeFp: g(reachGrid) };
 }
 
-/** `profileForWeapon` for a catalogued RANGED weapon id; `base` for anything else. */
+/** `profileForWeapon` for a catalogued weapon id; `base` for an unknown one. A blade does not
+ *  travel, so only its reach bounds it (`rangeGrid`, the axis `weaponProfile.ts` reports for it). */
 export function profileForWeaponId(base: BotProfile, weaponId: string): BotProfile {
   const spec = WEAPON_SPECS[weaponId];
-  if (!spec || spec.kind !== 'ranged') return base;
+  if (!spec) return base;
+  if (spec.kind === 'melee') return profileForWeapon(base, spec.rangeGrid, 0);
   return profileForWeapon(base, reachGrid(spec), spec.bulletSpeed);
 }

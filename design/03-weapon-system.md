@@ -329,11 +329,33 @@ Three things follow, and only the first was intended:
   named. What bounds the risk meanwhile is the burst-vs-sustain rule above, which is a
   property of the arithmetic rather than of the bot.
 
+**Re-measured 2026-09-29 with a bot that swaps** ([volume 111](roadmap/111-2026-09-29-bot-blade-fallback.md)).
+The table above came from 8 runs of a bot that never left the starter gun. At 400 runs, with
+a bot that takes looted guns and swings its blade when the gun is dry:
+
+- **Across the roster's own pools (70 / 100 / 130), capacity is still texture**: avg floor
+  0.432 / 0.458 / 0.430, level with the old bot's 0.463 / 0.453 / 0.455.
+- **Below the roster it becomes power.** At a pool of 30 the old bot drops to 0.372 and the
+  swapping one to 0.270. A bar that small sends it to the blade, and a kiter that has to close
+  in takes the hits kiting avoided. No shipped pool is under 70, so this bounds a future
+  character, not a current one.
+- **The blade fallback is measured now, and it is neutral**: it takes dry ticks on floors 1–2
+  from ~22% to under 1% and does not move the outcome. "Melee is the free fallback" holds as
+  far as not costing anything; it does not buy depth.
+- **Rarity is not an upgrade for a kiter.** A bot swapping to any strictly rarer gun did worse
+  on 46 of 67 paired seeds, as the falling dps-by-rarity figures above predict. The bot now
+  orders guns by `dps`, which reads level with never swapping. No ordering tried made a looted
+  gun pay.
+
 ### Still open
 
-The PvE bot never swaps off the starter gun (`weaponFireStats` reads `blaster` 100%), which
-is what leaves the row above unable to measure an expensive frame running dry — a bot that
-swaps under pressure is the one change that would make it real. *(The mob melee weapons'
+- **Whether a looted frame can pay at all.** No ordering the bot was given made a swap beat the
+  starter gun. That is either the bot (it cannot use a mechanic) or the roster (the frames are
+  side-grades for anyone who kites). Only play can tell which.
+- **PvP capacity** is still unmeasured, as above: the arena bot neither swaps nor parries.
+
+*(Until 2026-09-29 this section said the PvE bot never swaps off the starter gun. Volume 99
+fixed that on 2026-09-26, and volume 111 added the swap under pressure. The mob melee weapons'
 placeholder art was the other item here; both shipped real art on 2026-09-06, see `12`.)*
 
 

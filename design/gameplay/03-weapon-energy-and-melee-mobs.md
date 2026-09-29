@@ -99,3 +99,6 @@ design is *unmeasured*, not verified — the careful bot never swaps to its blad
 existing gate comment already says so) and, running the sustainable starter gun, it never
 runs dry either. A bot that swaps under pressure is the instrument this pass would need
 next, and changing it mid-pass would have made this A/B unreadable.
+*(Built 2026-09-29, [volume 111](../roadmap/111-2026-09-29-bot-blade-fallback.md): the bot swings its blade when the gun is dry.
+The fallback reads neutral at the shipped pools. It takes dry ticks from ~22% to under 1% and
+does not move depth.)*

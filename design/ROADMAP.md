@@ -1663,9 +1663,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-29** [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test) — the owner's pick of volume 109's third option: `low` chooses its form by display. Where the platform renders at resolution 1, it mounts one passthrough `AlphaFilter` on `world`, so the world draws into a 1x pool texture instead of the multisampled canvas; above 1, where the tilers live, it stays pass-free. `resolveProfile(tier, baseResolution)` adds `plainPass` to `low` only, and `RenderQualityController` feeds it the PLATFORM resolution, never the renderer's post-cap one, which reads 1 on a 3x phone once low has applied. Measured on the same Intel Arc: low at DPR 1 goes from 3.4 ms to **1.0 ms**, level with medium, and on the phone screen it is unchanged at one framebuffer bind. 5 new tests; a wiring mutation that survived the first round is now killed. `render` `perf` `test`
 
+**[2026-09-29 — the PvE bot's blade fallback](roadmap/111-2026-09-29-bot-blade-fallback.md)**
+
+- **09-29** [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change) — `design/03` still said the bot never swaps, but volume 99 had already taught it to take guns. What it lacked was a swap under pressure: a dry gun left it disarmed beside a blade it never drew. It now draws the blade when a pull is unaffordable and redraws the gun at half a bar, which takes dry ticks on floors 1–2 from ~22% to under 1% and moves depth not at all. The bigger finding was the upgrade rule: "strictly rarer" made 46 of 67 paired runs worse, because rarity buys a mechanic and not pace, so guns are now ordered by `dps`. The v60 capacity table re-run at 400 seeds still reads texture across the roster's 70–130 pools and power below them. `weaponSweep.sim.ts` had been inheriting the swap since 09-26 and now pins it off.
+
 ## The work log — by theme
 
-The same 207 entries, grouped. An entry with more than one tag appears more than once.
+The same 208 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1855,7 +1859,7 @@ The same 207 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(119)*
+**`test`** — coverage sweeps, gates, mutation batteries *(120)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -1976,6 +1980,7 @@ The same 207 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [Walls and actors are antialiased, so they stop juddering in motion](roadmap/106-2026-09-28-stand-antialias.md#walls-and-actors-are-antialiased-so-they-stop-juddering-in-motion-2026-09-28-client--render--test-no-engine-change)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test)
+- 09-29 [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(7)*
 
@@ -2073,7 +2078,7 @@ The same 207 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(26)*
+**`tools`** — sims, profilers, editors, build scripts *(27)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2101,8 +2106,9 @@ The same 207 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
+- 09-29 [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change)
 
-**`docs`** — design docs and this log itself *(124)*
+**`docs`** — design docs and this log itself *(125)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2228,6 +2234,7 @@ The same 207 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
+- 09-29 [The PvE bot swings its blade when the gun runs dry, and stops trusting rarity](roadmap/111-2026-09-29-bot-blade-fallback.md#the-pve-bot-swings-its-blade-when-the-gun-runs-dry-and-stops-trusting-rarity-2026-09-29-tools--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
