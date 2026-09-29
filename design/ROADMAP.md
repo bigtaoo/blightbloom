@@ -1649,11 +1649,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 **[2026-09-28 — frame pacing](roadmap/107-2026-09-28-frame-pacing.md)**
 
-- **09-28** [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change) — the owner's rule: no second may differ from another by more than 3 frames, first on the desktop, then on a phone (a 4x CPU throttle standing in). Five branches. `room_enter` stops rebuilding the floor it is on (`floorKey.ts`). Unchanged Graphics stop re-triangulating (15.7 → 5.2 MB/s). A descend builds over frames behind a cover (48 ms frame → 12–14). The run-boundary screen stays up until frames settle. Actor filter shaders link behind the loading screen. Then the steady cost: most of a throttled frame was render-group REBUILDS — the `zIndex` setter on every mover (`ySort.ts`), a Pixi 8.19 bug that rebuilt on any changed Graphics (`graphicsPipeFix.ts`), shared groups, a missing `filterArea`, unculled walls. At 4x: 36–54 fps → 59–61 every second, work p50 17.1 → 6.1 ms. `steadyFrame.test.ts` guards it across the real `GameLoop` (8/8 mutations killed), and `client/tools/perf/` holds the live acceptance run and the culling pixel A/B. Open: the cold start, and no real phone yet. `perf` `test` `tools` `docs`
+- **09-28** [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change) — the owner's rule: no second may differ from another by more than 3 frames, first on the desktop, then on a phone (a 4x CPU throttle standing in). Five branches. `room_enter` stops rebuilding the floor it is on (`floorKey.ts`). Unchanged Graphics stop re-triangulating (15.7 → 5.2 MB/s). A descend builds over frames behind a cover (48 ms frame → 12–14). The run-boundary screen stays up until frames settle. Actor filter shaders link behind the loading screen. Then the steady cost: most of a throttled frame was render-group REBUILDS — the `zIndex` setter on every mover (`ySort.ts`), a Pixi 8.19 bug that rebuilt on any changed Graphics (`graphicsPipeFix.ts`), shared groups, a missing `filterArea`, unculled walls. At 4x: 36–54 fps → 59–61 every second, work p50 17.1 → 6.1 ms. `steadyFrame.test.ts` guards it across the real `GameLoop` (8/8 mutations killed), and `client/tools/perf/` holds the live acceptance run and the culling pixel A/B. Open: the cold start **(measured the next day, [volume 108](roadmap/108-2026-09-29-prod-cold-start.md): 1–3 s on a production build)**, and no real phone yet. `perf` `test` `tools` `docs`
+
+**[2026-09-29 — the production cold start](roadmap/108-2026-09-29-prod-cold-start.md)**
+
+- **09-29** [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change) — volume 107 left the cold start open: a fresh dev page ran 2–3x slower for ~30 s at 4x, blamed on V8 optimising, never measured on a production build. `accept.mjs --reload` reloads under the throttle, with a marker on the old window, because `Page.reload` returns before the old page is gone and the first version read `__game` off it. On the production build the first run after a cold load is slow for 1–8 seconds, and after 5 s in the lobby, for 1–3 at the run boundary, under the transition that already waits. Not JIT: a ticker stopped for 60 s leaves the run as clean as 60 s of lobby. Not main-thread background work: long tasks only in the first second, no fetch after 0.7 s. The 30-second stretches were contention on a shared machine: they stayed flat where a cold cost fades. No game code changed. Open: a real phone. `perf` `tools` `docs`
 
 ## The work log — by theme
 
-The same 204 entries, grouped. An entry with more than one tag appears more than once.
+The same 205 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(72)*
 
@@ -1754,7 +1758,7 @@ The same 204 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 
-**`perf`** — frame time, draw calls, geometry budgets *(14)*
+**`perf`** — frame time, draw calls, geometry budgets *(15)*
 
 - 08-19 [Volume, measured: the numbers behind the two passes above](roadmap/03-2026-08-17--08-19.md#volume-measured-the-numbers-behind-the-two-passes-above-2026-08-19-render-only)
 - 08-24 [Room props get real art, and three loaders that were never mip-mapped](roadmap/05-2026-08-21--08-24.md#room-props-get-real-art-and-three-loaders-that-were-never-mip-mapped-2026-08-24-client-only)
@@ -1770,6 +1774,7 @@ The same 204 entries, grouped. An entry with more than one tag appears more than
 - 08-31 [The re-measurement that its own control threw away](roadmap/11-2026-08-28--08-31.md#the-re-measurement-that-its-own-control-threw-away-2026-08-31-docs--measurement-only)
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
+- 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 
 **`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(37)*
 
@@ -2055,7 +2060,7 @@ The same 204 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(24)*
+**`tools`** — sims, profilers, editors, build scripts *(25)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2081,8 +2086,9 @@ The same 204 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
+- 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 
-**`docs`** — design docs and this log itself *(122)*
+**`docs`** — design docs and this log itself *(123)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2206,6 +2212,7 @@ The same 204 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [The camera stops causing motion sickness](roadmap/104-2026-09-28-camera-comfort.md#the-camera-stops-causing-motion-sickness-2026-09-28-client--test--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
+- 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
