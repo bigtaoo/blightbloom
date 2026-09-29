@@ -1675,9 +1675,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-29** [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change) — `design/11` had carried the 12-voice cap as "a first pass, not a measurement" since 2026-08-27. A device cannot be measured from here, but demand can: `voiceDemand.sim.ts` records the cues the real `EventReactor` plays over headless bot play (five PvE modes of 40 seeds including unkillable runs that reach the boss, PvP at 2/4/8 seats) and replays them through the real `VoiceBudget` with each voice as long as its shipped mp3 (checked against a hooked browser run to the millisecond). Over ~540k cues demand is 8 voices at p99 and 14 at worst; at 12 the cap cost nine `muzzle`s, at 11 the first `impact`, at 8 every mode but 8-seat PvP. 12 stays, now gated (≤0.1% lost, nothing from `impact` up), folded into `test:sims`; 10 unit cases, 6/6 mutations killed. The device half is still open.
 
+**[2026-09-29 — the PvP sim's seeds](roadmap/114-2026-09-29-pvp-sim-seeds.md)**
+
+- **09-29** [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change) — `pvpBalanceSim`'s 180 matches were not 180: the arena is one map and the shipped bot a pure function of state, so 30 seeds replayed only 12 / 16 / 22 / 21 / 23 / 9 distinct matches at 2 / 3 / 4 / 5 / 6 / 8 seats, and the win-rate report counted repeats. A sim-only per-seat start delay (0–45 ticks, its own Prng stream) takes every count from 3 seats up to 28–30 and 2 seats to 23. The win split barely moves (s/v/j 73/59/48 → 70/64/46), so volume 99 stands. Gated: ≥20 distinct of 30 per seat count, with a no-delay control that must fall below the bar (it reads 12). `arena` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 210 entries, grouped. An entry with more than one tag appears more than once.
+The same 211 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1841,7 +1845,8 @@ The same 210 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The PRNG hashes its seed and its output](roadmap/100-2026-09-26-prng-mixing.md#the-prng-hashes-its-seed-and-its-output-2026-09-26-engine--test--docs-engine_version-78)
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 
-**`arena`** — the PvP launch map and its audit *(8)*
+**`arena`** — the PvP launch map and its audit *(9)*
+- 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 
 - 08-25 [The launch arena is a placeholder that passes validation](roadmap/06-2026-08-25.md#the-launch-arena-is-a-placeholder-that-passes-validation-2026-08-25-tooling--audit)
 - 08-25 [The Seven Districts: the launch arena gets authored](roadmap/06-2026-08-25.md#the-seven-districts-the-launch-arena-gets-authored-2026-08-25-content)
@@ -1868,7 +1873,8 @@ The same 210 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(121)*
+**`test`** — coverage sweeps, gates, mutation batteries *(122)*
+- 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2089,7 +2095,8 @@ The same 210 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(29)*
+**`tools`** — sims, profilers, editors, build scripts *(30)*
+- 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2121,7 +2128,8 @@ The same 210 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 
-**`docs`** — design docs and this log itself *(127)*
+**`docs`** — design docs and this log itself *(128)*
+- 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)

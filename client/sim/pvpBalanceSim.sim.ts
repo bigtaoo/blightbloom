@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameEngine, Prng, type EngineConfig } from '@dd/engine';
 import { buildPvpEngineConfig, squadSizeForPlayerCount } from '../src/game/match/pvpConfig';
 import { PvpBotController } from '../src/game/controllers/PvpBotController';
+import { idleCommand } from '../src/game/controllers/ai/engage';
 
 // SIM-ONLY deconfounding: `buildPvpEngineConfig` skins seats BY INDEX (seat i -> the
 // i-th SKIN_DEFS entry) — a real, load-bearing property of the real match config
@@ -40,6 +41,22 @@ function deconfoundSkinSeating(config: EngineConfig, seed: number): EngineConfig
   };
 }
 
+// SIM-ONLY deconfounding, the second one: per-seat reaction offsets at the drop. The arena is
+// one fixed map and `PvpBotController` is a pure function of state, so without them a match is
+// fixed by its seating alone � measured 2026-09-29, 30 seeds replayed only 12 (2 seats), 16, 22,
+// 21, 23 and 9 (8 seats) distinct matches, and the win-rate report was counting the same game
+// several times over. Each seat stands idle for 0..MAX_START_DELAY ticks off its own Prng stream
+// (never a gameplay one), which is also closer to real play: nobody moves on the first tick.
+// 45 ticks (1.5 s) takes every count from 3 seats up to 28-30 distinct; 2 seats stop near 23,
+// since only the relative offset and two seatings vary there. The gate below holds that.
+const MAX_START_DELAY = 45;
+const MIN_DISTINCT = 20; // of SEEDS_PER_COUNT, per seat count
+
+function startDelays(seed: number, playerCount: number, maxDelay: number): number[] {
+  const prng = new Prng(seed ^ 0x0de1a7ed);
+  return Array.from({ length: playerCount }, () => prng.nextInt(maxDelay + 1));
+}
+
 // Matches Matchmaker.MAX_PLAYERS' 8-seat ceiling (design/15); 7 skipped, no special
 // meaning at odd counts a run of 6 doesn't already cover.
 const PLAYER_COUNTS = [2, 3, 4, 5, 6, 8];
@@ -57,17 +74,20 @@ interface MatchResult {
   winnerSkin: string; // 'tie' on the rare simultaneous-elimination edge case
   zoneStageAtEnd: number;
   placementsCount: number;
+  /** Duration plus elimination order: two matches with the same one are the same match. */
+  fingerprint: string;
 }
 
-function runMatch(seed: number, playerCount: number): MatchResult {
+function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY): MatchResult {
   const config = deconfoundSkinSeating(buildPvpEngineConfig(seed, playerCount), seed);
   const engine = createGameEngine(config);
   const bots = Array.from({ length: playerCount }, () => new PvpBotController());
+  const delays = startDelays(seed, playerCount, maxDelay);
 
   let ticks = 0;
   while (engine.state.phase !== 'gameover' && ticks < MAX_TICKS) {
     const nextTick = engine.state.tick + 1;
-    const cmds = bots.map((bot, seat) => bot.build(engine.state, seat, nextTick));
+    const cmds = bots.map((bot, seat) => (nextTick <= delays[seat]! ? idleCommand(seat, nextTick) : bot.build(engine.state, seat, nextTick)));
     engine.step(cmds);
     ticks++;
   }
@@ -84,12 +104,13 @@ function runMatch(seed: number, playerCount: number): MatchResult {
     winnerSkin,
     zoneStageAtEnd: s.zone?.stage ?? -1,
     placementsCount: s.placements.length,
+    fingerprint: `${ticks}:${JSON.stringify(s.placements)}`,
   };
 }
 
 describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR/zone tuning, not a replacement for real playtesting)', () => {
   it('runs a sweep across seat counts and seeds, asserts convergence, reports win-rate/duration', () => {
-    // (timeout below: 180 real bot-vs-bot matches genuinely take a few seconds of
+    // (timeout below: 210 real bot-vs-bot matches, the no-offset control included, take ~15 s of
     // wall-clock, past vitest's 5s default per-test timeout)
     const results: MatchResult[] = [];
     for (const playerCount of PLAYER_COUNTS) {
@@ -102,6 +123,14 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // stage loops HOLD forever rather than shrinking to nothing) should mean bots
     // always reach a winner well inside MAX_TICKS. A real regression check, not
     // just a report — if this ever fails, the zone/bot-AI combo stopped converging.
+    // Every seed has to be its own match, or the counts below weigh one game several times.
+    // The control proves this can fail: with the offsets off, 2 seats replay 12 matches.
+    const distinct = (rows: MatchResult[]) => new Set(rows.map((r) => r.fingerprint)).size;
+    const distinctByCount = PLAYER_COUNTS.map((pc) => [pc, distinct(results.filter((r) => r.playerCount === pc))] as const);
+    for (const [pc, n] of distinctByCount) expect(n, `${pc} seats`).toBeGreaterThanOrEqual(MIN_DISTINCT);
+    const control = Array.from({ length: SEEDS_PER_COUNT }, (_, i) => runMatch(1_000_000 + 2 * 10_000 + i, 2, 0));
+    expect(distinct(control)).toBeLessThan(MIN_DISTINCT);
+
     const timedOut = results.filter((r) => r.timedOut);
     expect(timedOut).toEqual([]);
 
@@ -156,6 +185,8 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // eslint-disable-next-line no-console
     console.log('Duration (ticks @30Hz) / max zone stage reached, by seat count:', JSON.stringify(Object.fromEntries(byPlayerCount)));
     // eslint-disable-next-line no-console
+    console.log('Distinct matches of', SEEDS_PER_COUNT, 'seeds, by seat count:', JSON.stringify(Object.fromEntries(distinctByCount)), `(no-offset control, 2 seats: ${distinct(control)})`);
+    // eslint-disable-next-line no-console
     console.log(`Ties (simultaneous elimination, no clear winner): ${ties.length}/${results.length}`);
-  }, 30_000);
+  }, 60_000);
 });
