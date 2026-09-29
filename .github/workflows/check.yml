@@ -16,10 +16,11 @@
 #   coverage — the same suites again under v8 instrumentation, then the 90% line / 90% branch
 #              gate over client, engine and server (build/checkCoverageThreshold.mjs).
 #              Minutes; see that job's own comment for why it runs on every event anyway.
-#   sims     — the five `.sim.ts` suites in `test:sims` (`test:pvp-sim`, `test:pve-sim`,
-#              `test:weapon-sim`, `test:drop-sim`, `test:voice-sim`). They play real
-#              bot-driven matches and carry the level's survivability gates (design/05 "Room
-#              encounter budget") and the voice-cap gate (design/11), which is exactly what a
+#   sims     — the six `.sim.ts` suites in `test:sims` (`test:pvp-sim`, `test:pve-sim`,
+#              `test:weapon-sim`, `test:drop-sim`, `test:voice-sim`, `test:pvp-capacity`).
+#              They play real bot-driven matches and carry the level's survivability gates
+#              (design/05 "Room encounter budget"), the voice-cap gate (design/11) and the
+#              PvP energy-capacity instrument gates (design/03), which is exactly what a
 #              geometry, enemy or sample change can break without failing a single unit test.
 #              Minutes.
 #
