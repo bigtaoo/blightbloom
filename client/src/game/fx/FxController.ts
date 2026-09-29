@@ -1,4 +1,4 @@
-import { BlurFilter, Container, Graphics, Rectangle } from 'pixi.js';
+import { AlphaFilter, BlurFilter, Container, Graphics, Rectangle } from 'pixi.js';
 import type { Layers } from '../scene/layers';
 import { fitTerrain } from '../scene/Terrain';
 import { VignetteFilter, ChromaticAberrationFilter, SceneLightFilter, MAX_SCENE_LIGHTS } from './filters';
@@ -55,6 +55,10 @@ export class FxController {
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a
    *  fresh filter — and its GL program — every time the tier changes. */
   private readonly bloom = new BlurFilter({ strength: 3, quality: 2 });
+  /** A passthrough on `layers.world` for a tier with `plainPass` (low at resolution 1). It draws
+   *  nothing of its own: it exists so the world renders into a 1x pool texture rather than the
+   *  multisampled canvas, which measured cheaper on every screen (design/roadmap volume 110). */
+  private readonly plain = new AlphaFilter({ alpha: 1 });
   /** `layers.lit`'s filter region, in WORLD px. Pinned to exactly the visible world rect and
    *  mutated in place each frame (never reassigned) so the filter's own `uRegion` and Pixi's
    *  computed bounds describe the same rectangle — the shader's world-space mapping, and so
@@ -123,7 +127,7 @@ export class FxController {
    */
   applyQuality(): void {
     const q = activeQuality();
-    this.layers.world.filters = q.screenFx ? [this.vignette, this.chromatic] : [];
+    this.layers.world.filters = q.screenFx ? [this.vignette, this.chromatic] : q.plainPass ? [this.plain] : [];
     // Bloom-lite: a modest blur directly on the ADDITIVE-blended fx layer (muzzle
     // flashes/trails/particles) gives a cheap glow halo without a real multi-pass
     // bright-pass bloom (first-pass approximation, design/01's own "milestone" framing).

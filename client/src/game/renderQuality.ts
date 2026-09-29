@@ -49,7 +49,7 @@ export class RenderQualityController {
    * backing buffer.
    */
   apply(setting: QualitySetting): void {
-    setActiveQuality(resolveTier(setting, this.watchdog.downgrades));
+    setActiveQuality(resolveTier(setting, this.watchdog.downgrades), this.baseResolution);
     this.deps.fx.applyQuality();
     this.deps.scene.refreshQuality();
     const wanted = Math.min(this.baseResolution, activeQuality().resolutionCap);
