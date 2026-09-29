@@ -49,8 +49,10 @@ function deconfoundSkinSeating(config: EngineConfig, seed: number): EngineConfig
 // (never a gameplay one), which is also closer to real play: nobody moves on the first tick.
 // Since seats spawn at their own authored points (volume 115, `assignArenaStarts`) the seeded
 // spawn shuffle does most of this work (27-30 distinct with the offsets off); the offsets stay
-// as the second source. The gate below holds the result, and its control pins the spawns and
-// drops the offsets to show the gate can still fail.
+// as the second source. The gate below holds the result. Its control used to pin the spawns
+// and drop the offsets; once the bot fought mobs and walked round solids (volume 116), those
+// matches diverged on the skin shuffle and the loot rolls alone (23 distinct), so the control is
+// now the defect the gate exists for, a seed that changes nothing.
 const MAX_START_DELAY = 45;
 const MIN_DISTINCT = 20; // of SEEDS_PER_COUNT, per seat count
 
@@ -80,11 +82,8 @@ interface MatchResult {
   fingerprint: string;
 }
 
-/** `pinStartsTo`: every seat starts where that seed's match would put it, whatever `seed` is. */
-function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY, pinStartsTo?: number): MatchResult {
-  const base = deconfoundSkinSeating(buildPvpEngineConfig(seed, playerCount), seed);
-  const pinned = pinStartsTo === undefined ? undefined : buildPvpEngineConfig(pinStartsTo, playerCount).players!;
-  const config = pinned ? { ...base, players: base.players!.map((p, i) => ({ ...p, start: pinned[i]!.start })) } : base;
+function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY): MatchResult {
+  const config = deconfoundSkinSeating(buildPvpEngineConfig(seed, playerCount), seed);
   const engine = createGameEngine(config);
   const bots = Array.from({ length: playerCount }, () => new PvpBotController());
   const delays = startDelays(seed, playerCount, maxDelay);
@@ -115,8 +114,9 @@ function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY,
 
 describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR/zone tuning, not a replacement for real playtesting)', () => {
   it('runs a sweep across seat counts and seeds, asserts convergence, reports win-rate/duration', () => {
-    // (timeout below: 210 real bot-vs-bot matches, the control included, take ~2 min of
-    // wall-clock since seats spawn apart: a spread lobby wakes many rooms' mobs at once)
+    // (timeout below: 240 real bot-vs-bot matches, the control included, take ~80 s of
+    // wall-clock since seats spawn apart and the bots path round solids: a spread lobby wakes
+    // many rooms' mobs at once, and the bot's own tick costs about what the engine's does)
     const results: MatchResult[] = [];
     for (const playerCount of PLAYER_COUNTS) {
       for (let i = 0; i < SEEDS_PER_COUNT; i++) {
@@ -129,12 +129,13 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // always reach a winner well inside MAX_TICKS. A real regression check, not
     // just a report — if this ever fails, the zone/bot-AI combo stopped converging.
     // Every seed has to be its own match, or the counts below weigh one game several times.
-    // The control proves this can fail: 2 seats, the spawns pinned and the offsets off.
+    // The control proves this can fail: a harness that dropped its seed, 30 runs of one seed
+    // with the offsets off, has to read as one match (and so doubles as a determinism check).
     const distinct = (rows: MatchResult[]) => new Set(rows.map((r) => r.fingerprint)).size;
     const distinctByCount = PLAYER_COUNTS.map((pc) => [pc, distinct(results.filter((r) => r.playerCount === pc))] as const);
     for (const [pc, n] of distinctByCount) expect(n, `${pc} seats`).toBeGreaterThanOrEqual(MIN_DISTINCT);
-    const control = Array.from({ length: SEEDS_PER_COUNT }, (_, i) => runMatch(1_000_000 + 2 * 10_000 + i, 2, 0, 1_000_000 + 2 * 10_000));
-    expect(distinct(control)).toBeLessThan(MIN_DISTINCT);
+    const control = Array.from({ length: SEEDS_PER_COUNT }, () => runMatch(1_000_000 + 2 * 10_000, 2, 0));
+    expect(distinct(control)).toBe(1);
 
     const timedOut = results.filter((r) => r.timedOut);
     expect(timedOut).toEqual([]);
@@ -190,7 +191,7 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // eslint-disable-next-line no-console
     console.log('Duration (ticks @30Hz) / max zone stage reached, by seat count:', JSON.stringify(Object.fromEntries(byPlayerCount)));
     // eslint-disable-next-line no-console
-    console.log('Distinct matches of', SEEDS_PER_COUNT, 'seeds, by seat count:', JSON.stringify(Object.fromEntries(distinctByCount)), `(control, 2 seats with spawns pinned and no offsets: ${distinct(control)})`);
+    console.log('Distinct matches of', SEEDS_PER_COUNT, 'seeds, by seat count:', JSON.stringify(Object.fromEntries(distinctByCount)), `(control, one seed 30 times: ${distinct(control)})`);
     // eslint-disable-next-line no-console
     console.log(`Ties (simultaneous elimination, no clear winner): ${ties.length}/${results.length}`);
   }, 300_000);

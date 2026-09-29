@@ -28,7 +28,9 @@ const MAP: ArenaMap = {
 
 function state(zone: Partial<ZoneState> | undefined, map: ArenaMap = MAP): GameState {
   const z = zone && { eye: 'A', stage: 1, phase: 'hold', ticksToPhaseEnd: 100, safe: [], closing: [], escalation: 0, ...zone };
-  return { zone: z, arenaMap: map } as unknown as GameState;
+  // No solids: the walk still asks the spatial index what stands in the way (`ai/steer.ts`).
+  const spatialIndex = { queryObstacles: () => [], queryWalls: () => [] };
+  return { zone: z, arenaMap: map, spatialIndex, walls: [], obstacles: [] } as unknown as GameState;
 }
 
 const at = (gx: number, gy: number, roomId?: string) => ({ gx: gx * FP_SCALE, gy: gy * FP_SCALE, roomId });
@@ -65,13 +67,13 @@ describe('zoneRetreatCommand — walking out', () => {
     expect(heading(cmd.moveBrad).x).toBeLessThan(-0.99); // due west to the C|B gate at (20.5, 5)
   });
 
-  it("aims at the gate first, then — once within a grid of it — at the next room's centre", () => {
+  it('aims at the gate first, then — once inside the passage — straight on through it', () => {
     // Two hops out (only A is safe), so the next room is B, centre (15, 5).
     const s = state({ safe: ['A'] });
     const far = zoneRetreatCommand(s, 0, 1, at(20.5, 8, 'C'), [])!;
     expect(heading(far.moveBrad).y).toBeLessThan(-0.99); // straight up to the gate at (20.5, 5)
     const near = zoneRetreatCommand(s, 0, 1, at(20.5, 5.9, 'C'), [])!;
-    expect(heading(near.moveBrad).x).toBeLessThan(-0.9); // past the gate, on toward B's centre
+    expect(heading(near.moveBrad).x).toBeLessThan(-0.99); // in the passage: due west, into B
   });
 
   it('during a WARN, leaves a room that is still safe but about to close', () => {

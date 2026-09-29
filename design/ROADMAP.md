@@ -1683,9 +1683,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-29** [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs) — every PvP match stacked its whole lobby on one point: `buildPvpEngineConfig` never assigned `arena_launch`'s 8 authored spawns, so each seat defaulted to the world centre, and a body closer than the muzzle could not be shot, so stacked seats fired into the air. Seats now take a seeded shuffle of the spawns (client and server deploy together), and `ENGINE_VERSION` 79 pulls the muzzle back onto a hostile body inside it (live PvE too: a melee mob in reach is now shot). The shipped bot stopped stalling behind pillars, into walls and in bullet clashes: it fires only on a clear line, sidesteps, routes by the door graph and strafes. The PvP sim reads 28–30 distinct of 30 and s/v/j 64/68/48 in ~2 min, with a new pinned-spawn control (17). Real fights ask for 17 voices at worst, so the cap goes 12 → 16, the smallest that loses no `impact`. Volumes 99, 113 and 114's PvP numbers are superseded. `engine` `arena` `audio` `test` `tools` `docs`
 
+**[2026-09-29 — the PvP bot's steering](roadmap/116-2026-09-29-pvp-bot-steer.md)**
+
+- **09-29** [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs) — in a 2-seat match 4 of ~835 hits were a player hitting a player: the shipped `PvpBotController` fought only seats, walked straight lines into pillars, and sized bodies as bullets, and the arena has pockets no body can enter. It now fires at what its gun points at and fights mobs in its room it can shoot or reach, and `ai/steer.ts` walks a body round solids by A* on half-grid cells (brim counted, regions and paths cached, a partial path to the nearest reachable cell). The sim reads 30 distinct of 30 at every seat count, s/v/j 49/68/59 with 4 ties and 0 timeouts, in ~80 s; the control is now one seed 30 times, reading 1. The bot's tick went 1,231 → ~169 µs at 8 seats. The pockets stay an open content issue. `arena` `test` `tools` `docs`
+
 ## The work log — by theme
 
-The same 212 entries, grouped. An entry with more than one tag appears more than once.
+The same 213 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1850,7 +1854,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Crits and heals get their numbers](roadmap/101-2026-09-26-crit-heal-numbers.md#crits-and-heals-get-their-numbers-2026-09-26-engine--ui--test--docs-no-engine-change-to-the-hash)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 
-**`arena`** — the PvP launch map and its audit *(10)*
+**`arena`** — the PvP launch map and its audit *(11)*
 
 - 08-25 [The launch arena is a placeholder that passes validation](roadmap/06-2026-08-25.md#the-launch-arena-is-a-placeholder-that-passes-validation-2026-08-25-tooling--audit)
 - 08-25 [The Seven Districts: the launch arena gets authored](roadmap/06-2026-08-25.md#the-seven-districts-the-launch-arena-gets-authored-2026-08-25-content)
@@ -1862,6 +1866,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 
 **`content`** — authored rooms, pieces, props, loot *(13)*
 
@@ -1879,7 +1884,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-14 [Rooms that are a search, not a fight](roadmap/58-2026-09-14-room-types.md#rooms-that-are-a-search-not-a-fight-2026-09-14-content--docs-engine_version-6465)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(123)*
+**`test`** — coverage sweeps, gates, mutation batteries *(124)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2004,6 +2009,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2103,7 +2109,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(31)*
+**`tools`** — sims, profilers, editors, build scripts *(32)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2136,8 +2142,9 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 
-**`docs`** — design docs and this log itself *(129)*
+**`docs`** — design docs and this log itself *(130)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2268,6 +2275,7 @@ The same 212 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Every seed is its own match](roadmap/114-2026-09-29-pvp-sim-seeds.md#every-seed-is-its-own-match-2026-09-29-arena--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
