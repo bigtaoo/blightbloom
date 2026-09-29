@@ -100,6 +100,10 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
   // Everything that costs a render-target pass is off, and the frame is drawn at 1x. This is
   // roughly the game as it looked before design/01's milestones 2-5 landed: flat, unlit,
   // un-vignetted, but the same fight at the same framerate budget.
+  //
+  // Measured 2026-09-29 (design/roadmap volume 109): with no pass, the world draws straight into
+  // the multisampled canvas instead of a 1x pool texture, so on a desktop GPU at DPR 1 this tier
+  // costs nearly twice high's GPU time. A tiler may reverse that; it has not been checked on one.
   low: {
     tier: 'low',
     sceneLight: false,

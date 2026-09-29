@@ -1655,11 +1655,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **09-29** [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change) — volume 107 left the cold start open: a fresh dev page ran 2–3x slower for ~30 s at 4x, blamed on V8 optimising, never measured on a production build. `accept.mjs --reload` reloads under the throttle, with a marker on the old window, because `Page.reload` returns before the old page is gone and the first version read `__game` off it. On the production build the first run after a cold load is slow for 1–8 seconds, and after 5 s in the lobby, for 1–3 at the run boundary, under the transition that already waits. Not JIT: a ticker stopped for 60 s leaves the run as clean as 60 s of lobby. Not main-thread background work: long tasks only in the first second, no fetch after 0.7 s. The 30-second stretches were contention on a shared machine: they stayed flat where a cold cost fades. No game code changed. Open: a real phone. `perf` `tools` `docs`
 
+**[2026-09-29 — the GPU cost of each pass](roadmap/109-2026-09-29-gpu-cost.md)**
+
+- **09-29** [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change) — volume 107 cut almost only CPU cost, so this pass timed the GPU side: `gpuCost.mjs` freezes a real run's frame, switches one pass, layer or tier off at a time, and reads a timer query, interleaved against the unchanged frame with a no-change twin and a fill calibration. On an Intel Arc, high is 1.8 ms at 1264x705 @1 and 1.3 ms at 844x390 @3; the MSAA lighting split is its largest pass (0.5 ms at desktop size), the floor its largest content (0.2–0.4 ms), and medium saves 0.8 / 0.3 ms. The finding: every filter pass keeps the world at 1x without MSAA, so a frame with none lands in the multisampled, full-resolution canvas. Low has none and costs **3.4 ms against high's 1.8 at DPR 1**, and is about level with high at DPR 2–3. A tiler may reverse that, so no code changed; the low tier's form is the owner's call. `perf` `render` `tools` `docs`
+
 ## The work log — by theme
 
-The same 205 entries, grouped. An entry with more than one tag appears more than once.
+The same 206 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(72)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(73)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1733,6 +1737,7 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-28 [The camera stops causing motion sickness](roadmap/104-2026-09-28-camera-comfort.md#the-camera-stops-causing-motion-sickness-2026-09-28-client--test--docs-no-engine-change)
 - 09-28 [Walls and actors are antialiased, so they stop juddering in motion](roadmap/106-2026-09-28-stand-antialias.md#walls-and-actors-are-antialiased-so-they-stop-juddering-in-motion-2026-09-28-client--render--test-no-engine-change)
+- 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 
 **`art`** — authored assets and the art pipeline *(21)*
 
@@ -1758,7 +1763,7 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 
-**`perf`** — frame time, draw calls, geometry budgets *(15)*
+**`perf`** — frame time, draw calls, geometry budgets *(16)*
 
 - 08-19 [Volume, measured: the numbers behind the two passes above](roadmap/03-2026-08-17--08-19.md#volume-measured-the-numbers-behind-the-two-passes-above-2026-08-19-render-only)
 - 08-24 [Room props get real art, and three loaders that were never mip-mapped](roadmap/05-2026-08-21--08-24.md#room-props-get-real-art-and-three-loaders-that-were-never-mip-mapped-2026-08-24-client-only)
@@ -1775,6 +1780,7 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-08 [The frame nobody sees, and the 120 Hz nobody asked for](roadmap/46-2026-09-08-power-budget.md#the-frame-nobody-sees-and-the-120-hz-nobody-asked-for-2026-09-08-client-only-no-engine-change)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
+- 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 
 **`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(37)*
 
@@ -2060,7 +2066,7 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(25)*
+**`tools`** — sims, profilers, editors, build scripts *(26)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2087,8 +2093,9 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The PvP balance pass, and a bot that swaps guns](roadmap/99-2026-09-26-pvp-balance-bot-guns.md#the-pvp-balance-pass-and-a-bot-that-swaps-guns-2026-09-26-engine--tools--test--docs-engine_version-77)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
+- 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 
-**`docs`** — design docs and this log itself *(123)*
+**`docs`** — design docs and this log itself *(124)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2213,6 +2220,7 @@ The same 205 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 - 09-28 [Every second holds the same frame rate, on a slow CPU too](roadmap/107-2026-09-28-frame-pacing.md#every-second-holds-the-same-frame-rate-on-a-slow-cpu-too-2026-09-28-client--perf--test--tools--docs-no-engine-change)
 - 09-29 [The cold start is a few seconds, not thirty](roadmap/108-2026-09-29-prod-cold-start.md#the-cold-start-is-a-few-seconds-not-thirty-2026-09-29-perf--tools--docs-no-code-change)
+- 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

@@ -11,6 +11,7 @@ every frame, and read the numbers against the ones recorded below.
 | --- | --- |
 | `npm run perf:accept --prefix client` | Does every second of a real run hold the same frame rate — including the second a floor descends — on a slow CPU? |
 | `npm run perf:cull-ab --prefix client` | Does the off-screen cull change a single pixel? |
+| `npm run perf:gpu-cost --prefix client` | What does each render pass, floor layer and quality tier cost the GPU? |
 
 `src/perf/README.md` has the in-page probes (`window.__perf`) for finding *where* a frame's time
 goes; these scripts only say *whether* it is good enough.
@@ -31,8 +32,9 @@ goes; these scripts only say *whether* it is good enough.
    (`accept.mjs` says so rather than reporting zeros). A separate profile keeps the debugging port
    off your everyday browser.
 
-Both scripts take `--port` (default 9333) and `--page` (a substring of the tab's URL, default
-`localhost:5173`). They start a quick run themselves if the game is not already in one.
+All three scripts take `--port` (default 9333) and `--page` (a substring of the tab's URL, default
+`localhost:5173`; `gpuCost.mjs` defaults to `localhost:4173`, the production build). They start a
+quick run themselves if the game is not already in one.
 
 ## `accept.mjs` — the frame-rate acceptance run
 
@@ -116,3 +118,65 @@ It prints `PASS` only if every diff is zero **and** three controls hold:
 
 **Recorded 2026-09-28** (level 1, 98 tagged pieces): 0 px at all 16 positions. Between 2 and 34
 pieces were on screen at a time, and 57–98 were culled.
+
+## `gpuCost.mjs` — the GPU cost of each pass
+
+```bash
+node tools/perf/gpuCost.mjs --page localhost:4173 [--viewport 844x390@3] [--rounds 7]
+```
+
+Open the page with `?perf=1`, or the draw / program / framebuffer columns stay empty. The script
+starts a run, lets enemies come on screen, and stops the ticker so every sample renders the same
+frame. Then it switches one thing off at a time (a filter pass, a floor layer, a whole quality tier)
+and times the frame with a GPU timer query (`EXT_disjoint_timer_query_webgl2`). The arms are
+interleaved with the unchanged frame (base, arm, base, arm, …), so each arm's number is a paired
+difference from the base samples either side of it. The first round is thrown away, because the
+first samples after a change read high.
+
+`--viewport WxH@DPR` emulates a screen and reloads the page under it, because the renderer picks
+its resolution once, at boot. The script reloads the page again when it finishes. Clearing the
+emulation alone leaves the renderer at the emulated resolution, and the next run would silently
+measure that.
+
+The report has one row per arm:
+
+- `saved ms`: how much GPU time the frame loses when that thing is off. A negative number means
+  switching it off made the frame **more** expensive.
+- `layers`: the same number in units of one full-screen 50%-alpha layer drawn on the canvas. The
+  `fill10` arm measures that unit (ten such layers).
+- `draws prog fb`: draw calls, program switches and framebuffer binds for that arm. A tile-based
+  phone GPU pays for every framebuffer bind, which this desktop GPU mostly does not.
+
+It prints `TRUSTWORTHY` and exits 0 only when:
+
+- the `noop` arm, which changes nothing, reads under 0.1 ms;
+- the fill calibration is above zero;
+- rendering an empty container costs under a quarter of the frame;
+- no sample was discarded as disjoint.
+
+A run that fails the `noop` check still shows effects much larger than 0.1 ms. Its small rows are
+noise.
+
+WebGL makes a query result available only after the page has gone back to its event loop, so the
+result poll has to yield. The first version polled synchronously and hung the tab.
+
+**Recorded 2026-09-29** (volume 109; Intel Arc, production build, a level-1 room with 8 enemies,
+`saved ms`):
+
+| arm | desktop 1264x705 @1 | phone 844x390 @3 | desktop 1264x705 @2 |
+| --- | --- | --- | --- |
+| base frame | 1.81 | 1.33 | 3.49 |
+| lighting as one pass instead of the MSAA split | 0.51 | 0.13 | 0.63 |
+| no lighting at all | 0.67 | 0.25 | 0.70 |
+| floor hidden | 0.42 | 0.22 | 0.34 |
+| no bloom | 0.18 | 0.15 | noise |
+| no vignette + chromatic | 0.11 | −0.08 | −0.27 |
+| medium tier | 0.83 | 0.27 | 0.78 |
+| low tier | **−1.58** | 0.12 | 0.06 |
+| light and bloom off, world pass kept | 0.83 | 0.34 | 0.97 |
+| every pass off, resolution unchanged | **−1.58** | **−3.89** | **−8.89** |
+
+The last column's run failed its `noop` check (0.16 ms), so only its large rows are quoted. The
+bold rows are what volume 109 is about. Without any filter pass the scene is drawn straight into
+the canvas, at the full renderer resolution and multisampled. Every filter pass draws into a 1x
+texture with no MSAA. So the low tier, which has no passes, is **slower** than high at DPR 1.
