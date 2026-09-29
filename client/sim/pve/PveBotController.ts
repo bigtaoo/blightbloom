@@ -28,8 +28,9 @@
  * A run is still fully reproducible, since that memory only ever advances from
  * state the engine already decided.
  */
-import { Button, makeCommand, quantizeMove, FP_SCALE, RARITY_ORDER, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, makeCommand, quantizeMove, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
 import { profileForWeaponId } from './weaponStandoff';
+import { bladeSwapDue, gunWorth } from './weaponChoice';
 import { checkpointReached, totalFloorCount } from '../../src/game/match/floorCount';
 import { bfsPath, capstoneRoomId, doorCentre, pointInRect, rectCentre, roomIdAt, roomRect, roomRuntime, type Vec } from './pveNav';
 
@@ -59,10 +60,20 @@ export interface BotProfile {
    * fought every floor with the starter blaster, so `weaponFireStats` read `blaster 100%` on
    * every sweep and the energy economy's whole reason to exist — a strong frame running its
    * pool dry — was never exercised by play, only by staged `loadout` runs. "Better" is a
-   * strictly higher intrinsic rarity; ranged only, since the bot never swings its blade. The
-   * bot then stands where the new gun can connect from (`weaponStandoff.ts`).
+   * strictly higher authored dps (`gunWorth` says why not rarity); ranged only, since the
+   * blade is `meleeWhenDry`'s. The bot then stands where the new gun can connect from
+   * (`weaponStandoff.ts`).
    */
   swapsWeapons: boolean;
+  /**
+   * Holster a gun it cannot afford and fight with the blade until the pool refills
+   * (2026-09-29). Without it a dry ranged slot left the bot disarmed: it held FIRE on a pull
+   * the engine refused and never touched the melee slot, so a looted frame that ran dry was
+   * dead weight — the "melee is the free fallback" argument `design/03` rests on had never
+   * been exercised. It swaps to the blade when a pull is unaffordable and an enemy shares its
+   * room, and back once the pool holds half its size (`weaponChoice.ts`).
+   */
+  meleeWhenDry: boolean;
 }
 
 /**
@@ -73,8 +84,8 @@ export interface BotProfile {
  * game's own existing bot considers normal.
  */
 export const BOT_PROFILES: Record<'careful' | 'aggressive', BotProfile> = {
-  careful: { standoffFp: g(7.5), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.7, restsBetweenRooms: true, swapsWeapons: true },
-  aggressive: { standoffFp: g(4), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.5, restsBetweenRooms: false, swapsWeapons: true },
+  careful: { standoffFp: g(7.5), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.7, restsBetweenRooms: true, swapsWeapons: true, meleeWhenDry: true },
+  aggressive: { standoffFp: g(4), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.5, restsBetweenRooms: false, swapsWeapons: true, meleeWhenDry: true },
 };
 
 /** Enemies further than this are somebody else's problem — keeps the bot from
@@ -114,12 +125,33 @@ export class PveBotController {
   private readonly spacingCache = new Map<string, BotProfile>();
   /** The gun in hand the first time the bot fought — the one that keeps the base spacing. */
   private startingWeapon: string | undefined;
+  /** Tick of the last SWAP_WEAPON pulse — the engine swaps on a press EDGE, so two pulses on
+   *  consecutive ticks would read as one held button and swap only once. */
+  private lastSwapTick = -2;
 
   constructor(private readonly profile: BotProfile = BOT_PROFILES.careful) {}
 
   build(s: GameState, owner: number, tick: number): PlayerCommand {
     const me = s.players[owner];
     if (!me || !me.alive || me.downed) return this.idle(owner, tick);
+    const cmd = this.decide(s, owner, tick);
+    if (!this.wantsSlotSwap(s, owner, tick)) return cmd;
+    // The swap rides on whatever the tick decided to do, minus the trigger: the pulled
+    // FIRE would go to the weapon being put away.
+    this.lastSwapTick = tick;
+    return makeCommand({ ...cmd, buttons: (cmd.buttons & ~Button.FIRE) | Button.SWAP_WEAPON });
+  }
+
+  /** Should this tick pulse SWAP_WEAPON (`meleeWhenDry`, rule in `weaponChoice.ts`)? Never on
+   *  the tick straight after a pulse (see `lastSwapTick`). */
+  private wantsSlotSwap(s: GameState, owner: number, tick: number): boolean {
+    if (!this.profile.meleeWhenDry || tick - this.lastSwapTick < 2) return false;
+    const room = this.currentRoom;
+    return bladeSwapDue(s.players[owner]!, room !== undefined && s.enemies.some((e) => e.alive && e.roomId === room));
+  }
+
+  private decide(s: GameState, owner: number, tick: number): PlayerCommand {
+    const me = s.players[owner]!;
 
     const self: Self = { x: me.gx, y: me.gy, hp: me.hp, maxHp: me.maxHp, shield: me.shield, maxShield: me.maxShield };
     const here = roomIdAt(s, self.x, self.y);
@@ -200,14 +232,16 @@ export class PveBotController {
     return this.withUnstick(owner, tick, me, move, buttons);
   }
 
-  /** The profile re-spaced for the gun in hand (`weaponStandoff.ts`), cached per weapon id —
-   *  but only once the bot has actually SWAPPED. The gun a run starts with keeps the base
+  /** The profile re-spaced for the weapon in hand (`weaponStandoff.ts`: a looted gun, or the
+   *  blade `meleeWhenDry` draws), cached per weapon id — but only once the bot has actually
+   *  SWAPPED. The gun a run starts with keeps the base
    *  profile, so a run that never swaps plays exactly as before the bot could. (Re-spacing the
    *  starter blaster too pulled the careful bot in from 7.5 to ~6 grid and took its average
    *  depth from floor 0.5 to 0 with no swap at all — measured, 2026-09-26.) */
   private spacingFor(weaponId: string | undefined): BotProfile {
     if (weaponId !== undefined && this.startingWeapon === undefined) this.startingWeapon = weaponId;
-    if (!this.profile.swapsWeapons || weaponId === undefined || weaponId === this.startingWeapon) return this.profile;
+    const holdsOthers = this.profile.swapsWeapons || this.profile.meleeWhenDry;
+    if (!holdsOthers || weaponId === undefined || weaponId === this.startingWeapon) return this.profile;
     let p = this.spacingCache.get(weaponId);
     if (!p) {
       p = profileForWeaponId(this.profile, weaponId);
@@ -235,22 +269,22 @@ export class PveBotController {
   }
 
   /**
-   * A ranged weapon on the floor of the bot's own room whose intrinsic rarity beats the gun
-   * it holds, nearest first — or null. Own room only, for the reason `healToSeek` gives: a
-   * pickup behind a combat-locked door is not reachable. Strictly higher rarity, so the gun
-   * the swap drops back on the floor (always the worse one) can never lure it back.
+   * A ranged weapon on the floor of the bot's own room that is worth more (`gunWorth`) than
+   * the gun it holds, nearest first — or null. Own room only, for the reason `healToSeek` gives: a
+   * pickup behind a combat-locked door is not reachable. Strictly more, so the gun the swap
+   * drops back on the floor (always the lesser one) can never lure it back.
    */
   private weaponToTake(s: GameState, owner: number, room: string | undefined): (Vec & { id: number }) | null {
     if (!this.profile.swapsWeapons) return null;
     const me = s.players[owner];
     if (!me) return null;
     const held = me.weapons.find((w) => w.spec.kind === 'ranged');
-    const heldRank = held ? rarityRank(held.spec.name) : -1;
+    const heldRank = held ? gunWorth(held.spec.name) : -1;
     let best = Infinity;
     let found: (Vec & { id: number }) | null = null;
     for (const item of s.pickups) {
       if (!item.alive || item.kind !== 'weapon' || !item.weaponId) continue;
-      if (WEAPON_SPECS[item.weaponId]?.kind !== 'ranged' || rarityRank(item.weaponId) <= heldRank) continue;
+      if (WEAPON_SPECS[item.weaponId]?.kind !== 'ranged' || gunWorth(item.weaponId) <= heldRank) continue;
       if (room !== undefined && roomIdAt(s, item.gx, item.gy) !== room) continue;
       const dx = item.gx - me.gx;
       const dy = item.gy - me.gy;
@@ -448,8 +482,3 @@ export class PveBotController {
   }
 }
 
-/** A weapon id's intrinsic rarity as a rank (`RARITY_ORDER` index); -1 for an unknown id. */
-function rarityRank(weaponId: string): number {
-  const spec = WEAPON_SPECS[weaponId];
-  return spec ? RARITY_ORDER.indexOf(spec.rarity) : -1;
-}

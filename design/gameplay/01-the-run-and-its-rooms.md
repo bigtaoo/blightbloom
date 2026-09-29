@@ -632,7 +632,8 @@ resolve it. See "the gate that was passing on luck" in [`03-weapon-energy-and-me
 0. Both directions are gated in the sim so a later tuning pass can fail for being too
 lethal *or* for overshooting into a walkover. Read the bot as a LOWER bound on a human —
 it never swaps to the saber (2 damage, hits everything in the arc, parries bullets) and
-never dodges a shot on purpose.
+never dodges a shot on purpose. *(Since 2026-09-29 it does draw the saber when its gun is dry,
+[volume 111](../roadmap/111-2026-09-29-bot-blade-fallback.md); it still never parries or dodges.)*
 
 **A second, worse bug fell out of the same sim run: a real softlock.** The tick a player's
 step across a threshold activates a room, their body is still in the doorway;
