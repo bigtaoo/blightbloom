@@ -21,6 +21,8 @@ import { resetSlashArcPool, slashArcPoolSize, type SlashArcPose } from './slashA
 vi.mock('pixi.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('pixi.js')>()),
   BlurFilter: class { strength = 0; quality = 0; },
+  // The low tier's passthrough on a 1x display (`plainPass`): a real filter compiles a program.
+  AlphaFilter: class { alpha: number; constructor(opts: { alpha?: number } = {}) { this.alpha = opts.alpha ?? 0.5; } },
 }));
 
 vi.mock('./filters', () => ({
@@ -454,6 +456,38 @@ describe('FxController quality tiers', () => {
     expect(layers.lit.filters).toEqual([fx.sceneLight]);
     expect(layers.litFloor.filters).toEqual([]);
     expect(layers.litStand.filters).toEqual([]);
+  });
+
+  it('gives the low tier ONE passthrough pass on a 1x display, and none above it', () => {
+    // Volume 110. With no pass at all the world draws straight into the multisampled canvas,
+    // which measured nearly twice high's GPU time on a DPR-1 desktop; one passthrough keeps it in
+    // a 1x pool texture. Above resolution 1 the tier stays pass-free, since that is where a tiler
+    // lives and a tiler pays per pass. Asserted as what is MOUNTED, and on `world` only: the pass
+    // must not bring any of the tier's dropped passes back with it.
+    setActiveQuality('low', 1);
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    fx.attach();
+    const m = mounted(layers);
+    expect(m.world).toHaveLength(1);
+    const pass = m.world[0] as { alpha: number };
+    // A passthrough, not a fade: at any other alpha the whole world would dim.
+    expect(pass.alpha).toBe(1);
+    expect(pass).not.toBe(fx.vignette);
+    expect(pass).not.toBe(fx.chromatic);
+    expect([m.fx, m.lit, m.litFloor, m.litStand]).toEqual([[], [], [], []]);
+    // The same tier on a 2x display: pass-free, exactly as before.
+    setActiveQuality('low', 2);
+    fx.applyQuality();
+    expect(mounted(layers).world).toEqual([]);
+    // Back on a 1x display it is the same instance, not a fresh one (a fresh GL program upload).
+    setActiveQuality('low', 1);
+    fx.applyQuality();
+    expect(mounted(layers).world[0]).toBe(pass);
+    // And high swaps it out for the real screen passes instead of stacking on it.
+    setActiveQuality('high', 1);
+    fx.applyQuality();
+    expect(mounted(layers).world).toEqual([fx.vignette, fx.chromatic]);
   });
 
   it('flips back and forth without rebuilding the filters', () => {

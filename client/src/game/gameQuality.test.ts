@@ -115,6 +115,27 @@ describe('Game — quality tier wiring', () => {
     expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 0 });
   });
 
+  it('gives low its one plain pass on a 1x host, from the PLATFORM resolution', () => {
+    // Volume 110. The decision reads the resolution the platform chose, not the one the tier
+    // leaves behind: low caps every host at 1, so reading the renderer AFTER the cap would put
+    // the pass on a 3x phone too, which is the device class it is meant to spare.
+    const { renderer, inner } = newGame({ quality: 'low' }, 1);
+    expect(renderer.resolution).toBe(1);
+    expect(mountedCounts(inner)).toEqual({ world: 1, fx: 0, lit: 0 });
+    // A 2x host already capped to 1 by a first visit to low must still read the platform's 2.
+    const hi = newGame({ quality: 'low' }, 2);
+    expect(mountedCounts(hi.inner)).toEqual({ world: 0, fx: 0, lit: 0 });
+    hi.inner.settingsScreen.onChange!({ ...hi.inner.settingsBinding.state, quality: 'high' });
+    hi.inner.settingsScreen.onChange!({ ...hi.inner.settingsBinding.state, quality: 'low' });
+    expect(hi.renderer.resolution).toBe(1);
+    expect(mountedCounts(hi.inner)).toEqual({ world: 0, fx: 0, lit: 0 });
+    // ...and so must a re-apply that finds the renderer ALREADY at 1. No settings path does that
+    // today, which is exactly why it is pinned here: a read of the live renderer would pass every
+    // other case in this file and put the pass on a phone the first time something re-applied.
+    hi.inner.quality.apply('low');
+    expect(mountedCounts(hi.inner)).toEqual({ world: 0, fx: 0, lit: 0 });
+  });
+
   it('never raises resolution above what the platform chose', () => {
     // A 1x host (a low-DPR screen, or a mini-game reporting pixelRatio 1) asked for high: the
     // tier's cap of 2 is a CEILING, not a target, so nothing should move.
@@ -181,6 +202,15 @@ describe('Game — the auto downgrade', () => {
     expect(activeQuality().tier).toBe('low');
     expect(mountedCounts(inner)).toEqual({ world: 0, fx: 0, lit: 0 });
     expect(renderer.resolution).toBe(1);
+  });
+
+  it('lands a 1x host that steps all the way down on the plain pass, not the canvas', () => {
+    // The defect volume 109 found: on a DPR-1 desktop, `'auto'` stepping past medium used to
+    // land on the most expensive frame of the three, and the ladder never climbs back.
+    const { game, inner } = newGame({ quality: 'auto' }, 1);
+    feed(game, [SLOW, SLOW, SLOW, SLOW, SLOW, SLOW]);
+    expect(activeQuality().tier).toBe('low');
+    expect(mountedCounts(inner)).toEqual({ world: 1, fx: 0, lit: 0 });
   });
 
   it('stops at the bottom rung however long the device stays slow', () => {

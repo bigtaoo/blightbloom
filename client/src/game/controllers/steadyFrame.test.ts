@@ -71,12 +71,13 @@ import { Backdrop } from '../scene/Backdrop';
 import { FxController } from '../fx/FxController';
 import type { InputSource, InputState, TouchVisual } from '../../platform/types';
 
-// Pixi's BlurFilter and every class in fx/filters compile a GL program at construction. Only the
+// Pixi's BlurFilter and AlphaFilter and every class in fx/filters compile a GL program at construction. Only the
 // classes are replaced; the module's plain values (`SHELL_ASPECT`, `MAX_SCENE_LIGHTS`, ...) stay
 // real, the convention Scene.test.ts records the reason for.
 vi.mock('pixi.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('pixi.js')>()),
   BlurFilter: class { strength = 0; quality = 0; enabled = true; },
+  AlphaFilter: class { alpha = 1; enabled = true; },
 }));
 
 vi.mock('../fx/filters', async () => {

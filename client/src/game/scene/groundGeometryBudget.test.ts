@@ -72,10 +72,11 @@ import { FxController } from '../fx/FxController';
 // filters compile a GL program at construction — which needs a canvas this environment does not
 // have. Stubbed exactly as `fx/FxController.test.ts` stubs them, and for the same reason: the shader
 // is irrelevant to the camera math, and the alternative is mirroring the zoom rule in this file.
-// `pixi.js` itself stays real apart from `BlurFilter` — `GraphicsContextSystem` is the whole point.
+// `pixi.js` itself stays real apart from `BlurFilter` and `AlphaFilter` — `GraphicsContextSystem` is the whole point.
 vi.mock('pixi.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('pixi.js')>()),
   BlurFilter: class { strength = 0; quality = 0; },
+  AlphaFilter: class { alpha = 1; },
 }));
 // Spread over `vi.importActual` (the convention RoomBuilder.test.ts/wechatRoomBuild.test.ts
 // already use here): only the filter CLASSES touch GL, while the module also exports plain
