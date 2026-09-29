@@ -1,0 +1,6 @@
+# Every script with a shebang in this repo is an .mjs file. Check them out with LF even where
+# core.autocrlf is on. @vitest/mocker strips a shebang with /^#!.*\n/, and `.` does not match
+# `\r`, so a CRLF shebang line is left in place and the module fails to load with
+# "SyntaxError: Invalid or unexpected token". A fresh worktree on Windows checks out CRLF,
+# which is where tools/png-pipeline's alphaClamp and lumaCurve tests broke.
+*.mjs text eol=lf
