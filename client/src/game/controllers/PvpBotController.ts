@@ -11,6 +11,7 @@
 import { Button, FP_SCALE, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
 import { nearestHostile } from '@dd/engine/systems/targeting';
 import { engageNearest, FIRE_RANGE_FP, idleCommand, KEEP_DIST_FP, type Point } from './ai/engage';
+import { yieldsFire } from './ai/fireYield';
 import { lineOfFireClear, pointClear } from './ai/lineOfFire';
 import { nextRoomToward, walkIntoRoom } from './ai/roomRoute';
 import { BODY_CLEAR_FP, HOLD, reachable, steer, type Move } from './ai/steer';
@@ -36,7 +37,9 @@ export class PvpBotController {
     // (`ApplyInputSystem`). A shot the pillar or wall in between would eat is not fired
     // (`ai/lineOfFire.ts`); in range is tested first, since out of it nothing is fired anyway.
     const aim = nearestHostile(s, me, me.gx, me.gy);
-    const fire = aim !== null && within(me, aim) && lineOfFireClear(s, me, aim) ? Button.FIRE : 0;
+    // Nor one that would only meet the opponent's own coming down the same line: of two seats
+    // trading shots head-on, one holds for a turn (`ai/fireYield.ts`).
+    const fire = aim !== null && within(me, aim) && lineOfFireClear(s, me, aim) && !yieldsFire(s, me, aim, tick) ? Button.FIRE : 0;
     const target = nearest(me, opponents);
     const inRange = target !== undefined && within(me, target);
     const clear = inRange && lineOfFireClear(s, me, target);

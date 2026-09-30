@@ -157,7 +157,9 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // <8% ties — a spike would flag a real placement/elimination bug. It was <5% until 2026-09-30,
     // when the v83 chevron change moved this block from 6 ties to 9 with no change in the rate:
     // three 180-match blocks read 16 ties of 540 on v83 and 19 on v82. Nearly all ties are the
-    // last seats downed on one tick by the same mob, bleeding out together 900 ticks later.
+    // last seats downed on one tick by the same mob, bleeding out together 900 ticks later. Once
+    // the bot took turns holding fire in a head-on trade (`ai/fireYield.ts`, same day) the block
+    // read 0 ties (not traced; likely duels decided before one mob downs both seats).
     expect(ties.length).toBeLessThan(results.length * 0.08);
 
     // Win rate per character. `deconfoundSkinSeating` (above) shuffles which skinId

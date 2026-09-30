@@ -351,5 +351,58 @@ on that tick. design/15's rule says so.
 - **Two same-gun bots can trade cancelling shots for ever.** This is what keeps
   `test:pvp-capacity` red (above). A fix belongs to how the bot fires (fire timing, or leading
   the shot), not to the map.
+  *(Closed the same day, [below](#the-bot-takes-turns-in-a-head-on-trade-2026-09-30-tools--test--docs):
+  the bot takes turns holding its fire.)*
+- **The three 9-row chevron rooms** keep a two-row lane.
+- **The catalog gate** still has no reachability rule.
+
+## The bot takes turns in a head-on trade (2026-09-30, tools + test + docs)
+
+The owner's call on the entry above: fix how the bot fires, so `test:pvp-capacity` goes green.
+
+### Why strafing never closed it
+
+The bot cannot aim. The engine turns every seat to its nearest hostile's current position
+(`ApplyInputSystem`), so on any tick both seats of a pair fire, the two bullets leave the two
+ends of one segment and meet halfway, however either is moving. Strafing only turns the line
+between shots. Two bots holding the trigger with the same gun fire on the same ticks for good.
+In seed 3000149 (2 seats, `loots` profile) both strafed round `atrium_r2c4` 3-4 cells apart
+from tick ~4,000 to the 20,000 cap: about 330 clashes every 2,000 ticks, and in those 16,000
+ticks the two lost 8 and 12 health, at 6 and 3 left. The pinned
+corner seat in the entry above was one case of this, not the cause. Leading the shot is not
+open to the bot: it has no aim input.
+
+### The rule, in `controllers/ai/fireYield.ts`
+
+While a rival seat holds a gun's trigger with this bot as its nearest hostile, one of the two
+holds fire. Which one alternates every `YIELD_BLOCK` (60) ticks, by teamId, so each takes its
+turn being shot at and neither is favoured. 60 ticks is over a blaster bullet's 33-tick flight
+across the whole fire range, so a turn outlasts the bullets already in the air. A seat shooting
+at someone else, or not shooting, or holding a blade, is no reason to hold. It is a pure
+function of state, so the server's bot seats run it too.
+
+A first cut held only while a rival bullet was in the air on the line between the two. It did
+nothing: fired on the same tick, the last pair had always cancelled before either gun was ready
+again.
+
+### Measured
+
+- `npm run test:pvp-capacity`: **green**, 0 timeouts in all seven conditions, the parrying ones
+  included (they were allowed 2%). The gated shares hold: `loots` dry 10.53% against
+  `shipped` 0.60%, emptied 89 against 5.
+- `npm run test:pvp-sim`: green. 29-30 distinct of 30 at every seat count, control 1,
+  skirmisher/vanguard/juggernaut 56/77/47, **0 ties** (was 9). Matches are shorter at every
+  seat count (2 seats: 1,747 -> 1,580 ticks). Why the ties went to none was not traced; the
+  likely reading is that seats which hurt each other are decided before one mob downs both.
+
+### Tests
+
+- `fireYield.test.ts`: who holds on which turn, and the four reasons not to (no trigger, a
+  different target, a blade, a mob or teammate). Two bots 3.75 grid apart in the open both lose
+  health within four turns and did clash. That case fails with the rule switched off: seat 0
+  keeps all 10 of its health and shield.
+
+### Still open
+
 - **The three 9-row chevron rooms** keep a two-row lane.
 - **The catalog gate** still has no reachability rule.
