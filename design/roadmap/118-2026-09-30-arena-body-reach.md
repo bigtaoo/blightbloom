@@ -323,8 +323,10 @@ on that tick. design/15's rule says so.
   Skirmisher/vanguard/juggernaut 46/73/52 with 9 ties. The tie check was `< 5%`, and 9 of 180 is
   exactly 5%. It is now `< 8%`, because the rate did not move. Three 180-match blocks
   (seed bases 1, 2 and 3 million) read 9 + 2 + 5 = 16 ties on v83 and 6 + 5 + 8 = 19 on v82. Nearly
-  every tie has the same cause. The last seats are downed on one tick by the same mob, and they
-  bleed out together 900 ticks later.
+  every tie has the same cause. The last seats are downed on one tick, and they
+  bleed out together 900 ticks later. *(The cause given here was "by the same mob". That was
+  wrong: traced the same day, [below](#why-the-ties-went-to-none), 13 of the 16 are the two
+  seats shooting each other down on one tick.)*
 - `npm run test:pvp-capacity` is **red, and was red before this entry**. It passes on `main` (v79)
   and fails on v82 and v83. Its `loots` and `lootsDry` profiles each time out one match, and on
   v82 the `loots` dry share also missed its `> 5 x shipped` bound (8.18% against 9.12%). The
@@ -394,8 +396,30 @@ again.
   `shipped` 0.60%, emptied 89 against 5.
 - `npm run test:pvp-sim`: green. 29-30 distinct of 30 at every seat count, control 1,
   skirmisher/vanguard/juggernaut 56/77/47, **0 ties** (was 9). Matches are shorter at every
-  seat count (2 seats: 1,747 -> 1,580 ticks). Why the ties went to none was not traced; the
-  likely reading is that seats which hurt each other are decided before one mob downs both.
+  seat count (2 seats: 1,747 -> 1,580 ticks). The ties went to none because two seats no longer
+  fire at each other on the same ticks ([below](#why-the-ties-went-to-none)).
+
+### Why the ties went to none
+
+Traced the same day. Each of the three 180-match blocks (seed bases 1, 2 and 3 million) was run
+twice, with the rule off and on.
+
+- **Off: 16 ties. In all 16 the last two seats were downed on the same tick.** In 13 of them
+  the last hit on both seats came from a seat's bullet. In a 2-seat match (1020022, 1020025,
+  2020006, 3020005, 3020026) that can only be the two shooting each other down on one tick. In
+  the other 3, one seat was downed by a mob on the tick the other was shot. The entry above
+  blamed "the same mob". That was a guess, and it was wrong: in none of the 540 does a mob down
+  both seats.
+- **On: 0 ties.** Every one of the 16 seeds ends with a winner. Two bots with the same gun
+  fired on the same ticks. Most pairs of bullets met and cancelled, but when both landed, they
+  landed on the same tick. Once only one of the two fires at a time, the hits are never
+  simultaneous, and neither is the downing.
+- Across the 540 matches, clashes fell from 50,225 to 10,935, and total match length fell 8%
+  (1,144,811 ticks to 1,037,855).
+
+A tie is still a real outcome, since two humans can trade a last shot. The rule for one is
+pinned by `placement.test.ts` (above), not by this sim, and the sim's `< 8%` tie check now
+guards a rate of 0 against a spike.
 
 ### Tests
 
