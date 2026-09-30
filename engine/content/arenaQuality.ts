@@ -125,6 +125,10 @@ export function auditArenaQuality(map: ArenaMap): ArenaViolation[] {
     const e = access.unreached[0]!;
     defect('content_unreached', `${access.unreached.length} markers no body in their room gets to, e.g. ${e.room} ${e.feature} -> (${e.at.x}, ${e.at.y})`);
   }
+  if (access.shutDoors.length > 0) {
+    const e = access.shutDoors[0]!;
+    defect('door_shut', `${access.shutDoors.length} doors no body walks through, e.g. ${e.roomA} -> ${e.roomB}`);
+  }
 
   // ---- design bands: both ends are a real failure ----
   const dominant = Math.max(m.footprints.dominantShare, m.interiorShapes.dominantShare);

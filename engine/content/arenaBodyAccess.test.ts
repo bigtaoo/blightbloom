@@ -39,7 +39,9 @@ function pair(barred: boolean): ArenaMap {
     id: 'fixture_pair',
     sizeGrid: { w: 20, h: 12 },
     rooms: [l, r],
-    doors: [{ roomA: 'l', roomB: 'r', passageGrid: { x: 10, y: 2, w: 1, h: 2 } }],
+    // Spanning the wall and the floor behind it, as `slotGrid.doorBetween` does, so a body stands
+    // inside it.
+    doors: [{ roomA: 'l', roomB: 'r', passageGrid: { x: 10, y: 2, w: 2, h: 2 } }],
     spawns: [{ x: 4, y: 4 }],
     eyeCandidates: [{ roomId: 'l' }],
   };
@@ -47,7 +49,7 @@ function pair(barred: boolean): ArenaMap {
 
 describe('measureBodyAccess', () => {
   it('splits a room whose halves meet only through its neighbour', () => {
-    expect(measureBodyAccess(pair(false))).toEqual({ splitRooms: [], unreached: [] });
+    expect(measureBodyAccess(pair(false))).toEqual({ splitRooms: [], unreached: [], shutDoors: [] });
     const { splitRooms, unreached } = measureBodyAccess(pair(true));
     expect(splitRooms).toEqual([{ room: 'r', pieces: 2 }]);
     // The smaller half is the south one (the bar sits below the middle): its loot is reported.
@@ -69,7 +71,7 @@ describe('measureBodyAccess', () => {
       eyeCandidates: [],
     };
     // (1, 1) is flush in the corner, where no body centre fits: the one-grid slack reaches it.
-    expect(measureBodyAccess(map)).toEqual({ splitRooms: [], unreached: [] });
+    expect(measureBodyAccess(map)).toEqual({ splitRooms: [], unreached: [], shutDoors: [] });
   });
 
   it('leaves content outside its own room, and a drop point outside every room, to other rules', () => {
@@ -83,5 +85,16 @@ describe('measureBodyAccess', () => {
     const map = pair(false);
     map.rooms[0] = { ...map.rooms[0]!, solids: [...map.rooms[0]!.solids, { x: 2, y: 2, w: 5, h: 5 }] };
     expect(measureBodyAccess(map).unreached).toEqual([{ room: 'l', feature: 'drop', at: { x: 4, y: 4 } }]);
+  });
+
+  it('shuts a door whose gap is walled, and leaves one naming a missing room to other rules', () => {
+    // `r`'s north gap is the door; wall it and `l` reaches `r` only through the south gap, which
+    // the passage does not cover, so this door is shut while `r` stays one piece.
+    const map = pair(false);
+    map.rooms[1] = { ...map.rooms[1]!, solids: [...map.rooms[1]!.solids, { x: 0, y: 2, w: 1, h: 2 }] };
+    expect(measureBodyAccess(map)).toEqual({ splitRooms: [], unreached: [], shutDoors: [{ roomA: 'l', roomB: 'r' }] });
+    const ghost = pair(false);
+    ghost.doors = [...ghost.doors, { roomA: 'l', roomB: 'nowhere', passageGrid: { x: 0, y: 0, w: 1, h: 1 } }];
+    expect(measureBodyAccess(ghost).shutDoors).toEqual([]);
   });
 });

@@ -463,4 +463,52 @@ the fixtures would need real openings first.
 ### Still open
 
 - **The three 9-row chevron rooms** keep a two-row lane.
-- **A room with no open door** passes the gate (above).
+- **A room with no open door** passes the gate (above). *(Closed the same day, next entry.)*
+
+## Every door lets a body through (2026-09-30, arena + test + docs)
+
+Continuing from the open item above, unprompted beyond "继续" (continue): a doorway walled back up
+passed the gate. The two rules above ask each room about itself, and the graph rules ask the door
+list, so a shut door between two rooms that still meet the long way round tripped nothing.
+
+### The rule
+
+`measureBodyAccess` gains `shutDoors`, and `auditArenaQuality` a 24th rule, **`door_shut`**
+(`defect`). Per door, it floods each room's largest floor piece inside that room plus the door's
+passage, never the other room, and calls the door open when the two floods meet inside the
+passage. Asking about the passage and not the room pair matters: the first draft flooded both
+rooms together, and a second gap between the same two rooms opened a walled one
+(`arenaBodyAccess.test.ts` caught it). A door naming a missing room is left to the graph rules.
+
+### The fixtures got real doors
+
+The gate's fixtures gave doors only in the graph, which is why the first entry stayed per room.
+`arenaQuality.test.ts` now has `opened(map)`: each door's passage is stretched from one room's
+facing wall to the other's, keeping its span across, and cut out of both walls. The jambs stay,
+so `door_gates_nothing` still sees a wall. Two of `healthyMap`'s doors, `b-e` and `d-e`, turned
+out to join rooms that meet only at a corner; `e` is now 11x20 at (40, 5), so it faces both.
+`healthyMap(size)` replaces the stamped fixtures' re-walled 10x10 rooms, which lost the openings
+(12x20 is a size that keeps every door facing a wall). The bogus-door case now emits
+`door_gates_nothing` and `door_shut`: a passage in open floor is also a door into nothing.
+
+### Measured
+
+- `arena_launch`: 74 doors, none shut, with or without the pocket fill. Walling any one passage
+  (tried doors 0, 30 and 73) reports exactly that door, and `room_split` and `content_unreached`
+  stay silent, which is the gap this closes.
+- Cost: the whole `measureBodyAccess` on `arena_launch` runs in about 65 ms.
+
+### Tests
+
+- `arenaBodyAccess.test.ts`, 1 case: walling `r`'s north gap shuts the `l-r` door while its
+  south gap keeps `r` whole; a door naming a missing room is skipped. The `pair` fixture's
+  passage now spans the wall and the floor behind it, as `slotGrid.doorBetween` does.
+- `arenaQuality.test.ts`, 1 case: one doorway of `healthyMap` walled fires `door_shut` alone
+  (the rooms still meet via `a-c-d-b`); walling one of its two rows does not, since a body is
+  one grid wide. The completeness sweep lists the rule.
+- Mutations, 6 killed of 8. Two are equivalent and recorded in the code: dropping the passage
+  from one side's flood, and scanning the passage box open-ended.
+
+### Still open
+
+- **The three 9-row chevron rooms** keep a two-row lane.

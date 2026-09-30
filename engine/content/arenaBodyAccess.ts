@@ -6,10 +6,10 @@
  * Why per room and not over the whole map: `measureBodyReach` floods from the map's largest
  * region, which asks whether the doors really open. The gate's own fixture maps give their
  * doors only in the graph and wall every room solid, so a whole-map flood strands all but one
- * room of each. Whether a door is open is the door graph's question (`door_gates_nothing`,
- * `undoored_leak`); what shipped wrong on `arena_launch` was inside the rooms: floor sealed off
- * by a free-standing block's brim with mobs spawned in it, and rooms whose floor was two halves
- * joined only through other rooms (volumes 116 and 118). Both are visible from the room alone.
+ * room of each. What shipped wrong on `arena_launch` was inside the rooms: floor sealed off by a
+ * free-standing block's brim with mobs spawned in it, and rooms whose floor was two halves joined
+ * only through other rooms (volumes 116 and 118). Both are visible from the room alone. A door is
+ * asked the same way, one door at a time: can a body from each room walk into its passage.
  *
  * Construction-time only, like `arenaBodyReach.ts`.
  */
@@ -35,6 +35,9 @@ export interface ArenaBodyAccess {
   splitRooms: { room: string; pieces: number }[];
   /** Content no body on its room's largest floor piece gets within one grid of. */
   unreached: UnreachedContent[];
+  /** Doors a body cannot walk through: no path from one room's largest floor piece to the
+   *  other's inside the two rooms and the passage, in map order. */
+  shutDoors: { roomA: string; roomB: string }[];
 }
 
 export function measureBodyAccess(map: ArenaMap): ArenaBodyAccess {
@@ -43,13 +46,16 @@ export function measureBodyAccess(map: ArenaMap): ArenaBodyAccess {
   const splitRooms: ArenaBodyAccess['splitRooms'] = [];
   const unreached: UnreachedContent[] = [];
   const largest = new Map<string, Uint8Array>();
+  // A grid rect's closed extent in cells, so a doorway cell on its edge counts with it.
+  const cellsOf = (r: { x: number; y: number; w: number; h: number }) => ({
+    x0: Math.max(0, r.x * CELLS_PER_GRID),
+    y0: Math.max(0, r.y * CELLS_PER_GRID),
+    x1: Math.min(w - 1, (r.x + r.w) * CELLS_PER_GRID),
+    y1: Math.min(h - 1, (r.y + r.h) * CELLS_PER_GRID),
+  });
 
   for (const room of map.rooms) {
-    // The room's closed rect in cells, so a doorway cell on its edge counts with it.
-    const x0 = Math.max(0, room.rectGrid.x * CELLS_PER_GRID);
-    const y0 = Math.max(0, room.rectGrid.y * CELLS_PER_GRID);
-    const x1 = Math.min(w - 1, (room.rectGrid.x + room.rectGrid.w) * CELLS_PER_GRID);
-    const y1 = Math.min(h - 1, (room.rectGrid.y + room.rectGrid.h) * CELLS_PER_GRID);
+    const { x0, y0, x1, y1 } = cellsOf(room.rectGrid);
     const piece = new Int32Array(w * h).fill(-1);
     const sizes: number[] = [];
     for (let cy = y0; cy <= y1; cy++) {
@@ -115,5 +121,47 @@ export function measureBodyAccess(map: ArenaMap): ArenaBodyAccess {
     const room = map.rooms.find((r) => inRect(r, p.x, p.y));
     if (room) check(room, 'drop', p.x, p.y);
   }
-  return { splitRooms, unreached };
+
+  // A door is open when a body on each room's floor can walk into the door's own passage, each
+  // without entering the other room, and the two meet there. Asking about the passage and not
+  // the pair is what keeps a second gap between the same two rooms from opening a walled one.
+  // A door naming a room the map lacks is the graph rules' finding.
+  type Box = ReturnType<typeof cellsOf>;
+  const flood = (seed: Uint8Array, boxes: Box[]): Uint8Array => {
+    const inside = (x: number, y: number) => boxes.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+    const seen = new Uint8Array(w * h);
+    const stack: number[] = [];
+    for (let k = 0; k < seed.length; k++) if (seed[k]) { seen[k] = 1; stack.push(k); }
+    while (stack.length > 0) {
+      const c = stack.pop()!;
+      const px = c % w;
+      const py = (c - px) / w;
+      for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]] as const) {
+        if (!inside(nx, ny)) continue;
+        const n = ny * w + nx;
+        if (!standable[n] || seen[n]) continue;
+        seen[n] = 1;
+        stack.push(n);
+      }
+    }
+    return seen;
+  };
+  const shutDoors: ArenaBodyAccess['shutDoors'] = [];
+  const byId = new Map(map.rooms.map((r) => [r.id, r]));
+  for (const door of map.doors) {
+    const a = byId.get(door.roomA);
+    const b = byId.get(door.roomB);
+    if (!a || !b) continue;
+    const p = cellsOf(door.passageGrid);
+    const fromA = flood(largest.get(a.id)!, [cellsOf(a.rectGrid), p]);
+    const fromB = flood(largest.get(b.id)!, [cellsOf(b.rectGrid), p]);
+    // Two battery mutants are equivalent (2026-09-30): dropping the passage from one side's
+    // flood (two floods that meet in the passage also meet where one side's path entered it,
+    // on its own room's edge), and scanning the passage's box open-ended (a meeting only on its
+    // far edge line would need a passage no body stands inside).
+    let open = false;
+    for (let y = p.y0; y <= p.y1 && !open; y++) for (let x = p.x0; x <= p.x1; x++) if (fromA[y * w + x] && fromB[y * w + x]) open = true;
+    if (!open) shutDoors.push({ roomA: a.id, roomB: b.id });
+  }
+  return { splitRooms, unreached, shutDoors };
 }
