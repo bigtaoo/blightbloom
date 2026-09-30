@@ -13,13 +13,18 @@
  *   - `parries`: draw a READY blade and swing when a hostile bullet will cross its reach
  *     within `PARRY_LOOKAHEAD` ticks, without leaving the gun's spacing; go back to the gun
  *     once nothing is coming.
+ *   - `revives`: walk to a downed squadmate within `REVIVE_DETOUR_FP` and hold INTERACT from
+ *     inside the channel's reach, standing still and still shooting (`ReviveSystem` asks only
+ *     for range and the hold). An arena revive spends a bandage, so a seat carrying none walks
+ *     to a floor one instead, when nothing it aims at is in fire range.
  *
  * Deliberately NOT the shipped bot. `PvpBotController` fills empty seats in real matches
  * (`server/src/BotClient.ts`) and must stay a pure function of state; this one keeps two
  * fields of memory (the last swap tick, since the engine swaps on a press edge, and why the
  * blade is out). Whether any of this belongs in the shipped bot is a separate decision.
  */
-import { Button, FP_SCALE, SIM, WEAPON_SPECS, makeCommand, type GameState, type PlayerActor, type PlayerCommand } from '@dd/engine';
+import { Button, FP_SCALE, REVIVE_RANGE_GRID, SIM, WEAPON_SPECS, makeCommand, type GameState, type PlayerActor, type PlayerCommand } from '@dd/engine';
+import { toFpGrid } from '@dd/engine/content/convert';
 import { nearestHostile } from '@dd/engine/systems/targeting';
 import { PvpBotController } from '../../src/game/controllers/PvpBotController';
 import { FIRE_RANGE_FP, idleCommand } from '../../src/game/controllers/ai/engage';
@@ -31,14 +36,16 @@ export interface ArenaBotProfile {
   loots: boolean;
   meleeWhenDry: boolean;
   parries: boolean;
+  revives: boolean;
 }
 
 export const ARENA_PROFILES = {
-  shipped: { loots: false, meleeWhenDry: false, parries: false },
-  loots: { loots: true, meleeWhenDry: false, parries: false },
-  lootsDry: { loots: true, meleeWhenDry: true, parries: false },
-  parries: { loots: false, meleeWhenDry: false, parries: true },
-  full: { loots: true, meleeWhenDry: true, parries: true },
+  shipped: { loots: false, meleeWhenDry: false, parries: false, revives: false },
+  loots: { loots: true, meleeWhenDry: false, parries: false, revives: false },
+  lootsDry: { loots: true, meleeWhenDry: true, parries: false, revives: false },
+  parries: { loots: false, meleeWhenDry: false, parries: true, revives: false },
+  full: { loots: true, meleeWhenDry: true, parries: true, revives: false },
+  fullRevives: { loots: true, meleeWhenDry: true, parries: true, revives: true },
 } as const satisfies Record<string, ArenaBotProfile>;
 
 /**
@@ -54,6 +61,14 @@ export const LOOT_DETOUR_FP = 8 * FP_SCALE;
 /** Ticks ahead a bullet is judged against the blade's reach. A swap and a swing start on the
  *  same tick, so this only needs to cover a bullet crossing the reach between two commands. */
 export const PARRY_LOOKAHEAD = 4;
+/** How far the bot walks to a downed squadmate. A squad drops together (volume 118), so a
+ *  mate going down is usually close; a longer walk crosses the fight to get there. */
+export const REVIVE_DETOUR_FP = 12 * FP_SCALE;
+const REVIVE_RANGE_FP = toFpGrid(REVIVE_RANGE_GRID);
+/** How close inside that reach the bot stands before it stops walking. Stopping at the edge let
+ *  any shove end the channel: in the first sweep 30 of 76 broken channels were a reviver a hair
+ *  outside the reach, at a median of 25 of the 450 ticks. */
+export const REVIVE_SNUG_FP = toFpGrid(REVIVE_RANGE_GRID / 3);
 
 export class ArenaBotController {
   private readonly base = new PvpBotController();
@@ -129,6 +144,11 @@ export class ArenaBotController {
       this.lastSwapTick = tick;
       buttons |= Button.SWAP_WEAPON;
     }
+    // Revive last, so its walk wins over the loot and blade walks; the zone still wins over it.
+    const rescue = this.profile.revives && !retreating ? reviveGoal(s, me) : undefined;
+    if (rescue?.inReach) buttons |= Button.INTERACT;
+    if (rescue?.snug) ({ moveBrad, moveMag } = HOLD);
+    else if (rescue && (rescue.kind === 'mate' || !inRange)) ({ moveBrad, moveMag } = steer(s, me, [rescue]) ?? HOLD);
     return makeCommand({ owner, tick, moveBrad, moveMag, buttons, pickupTargetId });
   }
 }
@@ -180,6 +200,36 @@ export function bulletIncoming(s: GameState, me: PlayerActor, reach: number): bo
     if ((-along - Math.sqrt(disc)) / v2 <= PARRY_LOOKAHEAD) return true;
   }
   return false;
+}
+
+/**
+ * Where the revive rule walks: the nearest downed squadmate within `REVIVE_DETOUR_FP` when the
+ * seat can pay for the revive (an arena one costs a bandage, a PvE one nothing), else the
+ * nearest floor bandage within `LOOT_DETOUR_FP`. `inReach` means holding INTERACT here counts:
+ * the reach `ReviveSystem.findReviver` measures, centre to centre; `snug` means standing well inside it.
+ */
+export function reviveGoal(s: GameState, me: PlayerActor): { kind: 'mate' | 'bandage'; gx: number; gy: number; inReach: boolean; snug: boolean } | undefined {
+  const canPay = !s.zoneEnabled || me.bandages > 0;
+  if (canPay) {
+    let mate: PlayerActor | undefined;
+    let d = REVIVE_DETOUR_FP;
+    for (const p of s.players) {
+      if (p === me || !p.alive || !p.downed || p.teamId !== me.teamId) continue;
+      const dd = dist(me, p);
+      if (dd <= d) (d = dd), (mate = p);
+    }
+    if (!mate) return undefined;
+    const bodies = me.radius + mate.radius;
+    return { kind: 'mate', gx: mate.gx, gy: mate.gy, inReach: d <= REVIVE_RANGE_FP + bodies, snug: d <= REVIVE_SNUG_FP + bodies };
+  }
+  let best: { gx: number; gy: number } | undefined;
+  let d = LOOT_DETOUR_FP;
+  for (const item of s.pickups) {
+    if (!item.alive || item.kind !== 'bandage') continue;
+    const dd = dist(me, item);
+    if (dd <= d) (d = dd), (best = item);
+  }
+  return best && { kind: 'bandage', gx: best.gx, gy: best.gy, inReach: false, snug: false };
 }
 
 /**

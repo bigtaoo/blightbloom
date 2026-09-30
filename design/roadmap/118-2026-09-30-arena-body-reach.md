@@ -757,3 +757,77 @@ with squads (`squadSizeForPlayerCount`).
 - **No bot revives a squadmate.** Neither `PvpBotController` nor `ArenaBotController` ever holds
   `INTERACT` for a downed seat, so in every simulated squad match a downed seat bleeds out. The
   revive channel and the bandages it spends are measured by no sim.
+
+## A sim bot revives a squadmate (2026-09-30, tools + test + docs)
+
+The last section's open item. No bot ever held `INTERACT` over a downed squadmate, so in every
+simulated squad match a downed seat bled out, and the revive channel (`REVIVE_CHANNEL_TICKS`,
+450), the bleedout (`DOWNED_BLEEDOUT_TICKS`, 900) and the bandage supply had never been measured.
+
+### What changed
+
+- `ArenaBotController` gains a `revives` flag (profile `fullRevives`: `full` plus it). With a
+  bandage it walks to the nearest downed squadmate within `REVIVE_DETOUR_FP` (12 grid), holds
+  `INTERACT` once inside the channel's reach, and keeps closing until `REVIVE_SNUG_FP` inside it;
+  the gun keeps firing throughout, since `ReviveSystem` asks only for range and the hold. With no
+  bandage it walks to a floor one within `LOOT_DETOUR_FP` when nothing is in fire range. The zone
+  retreat still wins over it. Every existing profile has the flag off.
+- `runArenaMatch` counts, per seat: downs, times revived, bleedouts, bandages picked and spent,
+  channel ticks while down, and channels that reset short of done. `MatchSetup.bandages` starts
+  every seat with that many, so the channel can be measured apart from the supply.
+- New sim `pvpRevive.sim.ts` (`npm run test:pvp-revive`, folded into `test:sims`, ~50 s): the
+  capacity sim's eight-seat seeds, four conditions. Gates, on the instrument only: downs happen
+  in every condition; without the flag nobody is revived, no channel starts and no bandage is
+  spent, bandage in hand or not; with it and a bandage each, seats are revived; every revive
+  spends exactly one bandage; no seat is revived more often than it went down; no timeouts; one
+  squad standing at the end.
+
+### Measured
+
+30 eight-seat matches per condition:
+
+| condition | downs | revived | bled out | broken channels | bandages picked | winning-squad seats standing |
+|---|---|---|---|---|---|---|
+| `full` (no revive) | 190 | 0 | 186 | 0 | 56 | 1.80 / match |
+| `full`, a bandage each | 190 | 0 | 186 | 0 | 56 | 1.80 |
+| `fullRevives` | 190 | 15 | 171 | 23 | 125 | 2.30 |
+| `fullRevives`, a bandage each | 234 | 55 | 162 | 46 | 56 | 2.60 |
+
+- **The first cut of the bot broke its own channels.** It stopped walking at the edge of the
+  reach, and 30 of 76 broken channels were a reviver shoved a hair outside it, at a median of 25
+  of the 450 ticks. Closing to `REVIVE_SNUG_FP` removed that class: of the 46 left, 42 are the
+  reviver itself going down and 4 are two revivers on one seat where the other finished first.
+- **The floor supply arrives late, not short.** Reviving bots pick up 125 floor bandages over
+  30 matches but spend 15; handed one each at the drop they spend 55. The bandage is there
+  after the fights it was needed in.
+- **Why a bandage-carrying squad still bleeds out** (the bandage-each run, 162 bleedouts, by the
+  best help each downed seat ever had): 73 had a mate with a bandage who was never within 12
+  grid, 44 had one within it at some point and still bled out, 30 had no squadmate up, 15 had mates up with no bandage left.
+- **The revive count is a property of the bot as much as of the game.** With the detour at 40
+  grid instead of 12 (a probe, not shipped): 38 and 90 revives in the two reviving conditions,
+  but 205 broken channels in the second, since the walk crosses the fight, and the winning squad
+  keeps 2.63 seats standing against 2.60. So these counts are no verdict on the channel, the
+  bleedout or the drop weight; what they do show is that a revive keeps about 0.5-0.8 more of
+  the winning squad standing, and that the channel, not the bandage, is where revives die.
+- The capacity sim's printed rows are byte-identical (the flag is off in all its profiles).
+
+### Tests
+
+- `ArenaBotController.test.ts`: the walk, the hold once in reach, the stop once snug; a rival, a
+  mate beyond the detour and a seat with no bandage are passed over, and the flag off never
+  holds `INTERACT`; a seat with no bandage walks to a floor one within the detour; and, through
+  the engine, a bot next to a downed mate brings it up after the full channel and spends its
+  bandage.
+- `arenaMatch.test.ts`: every counter, on a match with no reviver and one with.
+- Mutations killed, each by the sim: the bot never holding `INTERACT` (no revives), and spent
+  bandages never counted (15 revives against 0 spent).
+
+### Still open
+
+- **The reviver may move.** design/07 says the channel is interruptible, "the reviver moving /
+  being downed cancels it", but `ReviveSystem` checks only range and the held button: a reviver
+  can walk inside the reach and keep shooting through all 450 ticks. Either the doc or the
+  engine is wrong; changing the engine is a rule change and an `ENGINE_VERSION` bump, so it is
+  left for a decision.
+- The shipped arena bot (`PvpBotController`, which fills empty seats in real matches) still
+  never revives.

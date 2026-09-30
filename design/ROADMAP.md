@@ -1704,10 +1704,11 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **09-30** [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85) — the owner's call on volume 117's parry stalemate: change the rule, not the bot. `DeflectSystem` latches a bullet on its first deflect and lets it through every later swing, so two parriers can no longer return one bullet between them. `ENGINE_VERSION` 85; the golden gate failed in `launch-arena-pvp` alone, witness `deflect` 3 -> 2. In the capacity sim about three parries in four were a rebound turned back again, and the parrying profiles lose their 2% timeout allowance. `engine` `tools` `test` `docs`
 - **09-30** [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs) — the owner's call on volume 115's open item: squadmates started in separate districts. In a squad match each squad now takes a run of neighbouring spawns round the map's spawn ring, the tightest cut of it (west half against east half on `arena_launch`); a free-for-all keeps the plain shuffle, byte-identical. 8-seat matches run 2,033 -> 1,860 ticks and three times the `hurt` cues.
 - **09-30** [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs) — `test:pvp-capacity` played 2, 4 and 6 seats, so no gate in `test:sims` saw a squad. The same seven conditions now also run at 8 seats (two squads of four) over the same 30 seeds, gated apart from the solo block, whose output is byte-identical. Two gates of its own: the squads start on opposite halves, and a match ends with one squad standing; both killed by a mutation. No timeouts; the win split by starting half is printed, not asserted. ~126 s -> ~207 s. Still open: no bot revives a squadmate. `tools` `test` `docs`
+- **09-30** [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs) — no bot had ever held `INTERACT` over a downed squadmate, so every simulated squad match bled its downed seats out. A sim-only `revives` flag on `ArenaBotController` walks to a downed mate within 12 grid and channels from well inside the reach; new `test:pvp-revive` (~50 s, in `test:sims`) counts downs, revives, bleedouts, bandages and broken channels over 30 eight-seat matches. Floor bandages arrive late (125 picked, 15 spent; 55 revives with one each at the drop), the reviver going down breaks most channels, and the counts move with the bot's detour, so they are no verdict on the numbers. Found: design/07 says a moving reviver cancels the channel; the engine does not. `tools` `test` `docs`
 
 ## The work log — by theme
 
-The same 225 entries, grouped. An entry with more than one tag appears more than once.
+The same 226 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1918,7 +1919,7 @@ The same 225 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(136)*
+**`test`** — coverage sweeps, gates, mutation batteries *(137)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2056,6 +2057,7 @@ The same 225 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 - 09-30 [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs)
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
+- 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2155,7 +2157,7 @@ The same 225 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(36)*
+**`tools`** — sims, profilers, editors, build scripts *(37)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2193,8 +2195,9 @@ The same 225 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The bot takes turns in a head-on trade](roadmap/118-2026-09-30-arena-body-reach.md#the-bot-takes-turns-in-a-head-on-trade-2026-09-30-tools--test--docs)
 - 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
+- 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 
-**`docs`** — design docs and this log itself *(142)*
+**`docs`** — design docs and this log itself *(143)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2338,6 +2341,7 @@ The same 225 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 - 09-30 [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs)
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
+- 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

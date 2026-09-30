@@ -37,6 +37,16 @@ export interface SeatStats {
   parries: number;
   /** Trigger pulls on a ranged weapon (`bullet_fired` events, one per pull). */
   shots: number;
+  /** Times this seat went down, was brought back up, and died of bleedout while down. */
+  downs: number;
+  revived: number;
+  bledOut: number;
+  /** Bandages picked up, and spent: a bandage is only ever spent on a revive this seat completed. */
+  bandagesPicked: number;
+  bandagesSpent: number;
+  /** While down: ticks a squadmate's channel advanced, and channels that reset short of done. */
+  channelTicks: number;
+  interrupted: number;
 }
 
 export interface ArenaMatch {
@@ -81,6 +91,9 @@ export interface MatchSetup {
   pool?: number;
   /** Every seat starts holding this gun instead of the landing blaster (`equipArenaGun`). */
   gun?: string;
+  /** Every seat starts carrying this many bandages instead of none: the revive measured apart
+   *  from how rarely the floor supplies one. */
+  bandages?: number;
 }
 
 export function runArenaMatch(seed: number, seats: number, profile: ArenaBotProfile, setup: MatchSetup = {}): ArenaMatch {
@@ -90,6 +103,7 @@ export function runArenaMatch(seed: number, seats: number, profile: ArenaBotProf
   for (const p of s.players) {
     if (setup.gun !== undefined) equipArenaGun(p, setup.gun);
     if (setup.pool !== undefined) (p.maxEnergy = setup.pool), (p.energy = setup.pool);
+    if (setup.bandages !== undefined) p.bandages = setup.bandages;
   }
   // Per-seat reaction offsets off their own stream (see `ArenaBotController`'s `startDelay`).
   const delays = new Prng(seed ^ 0x0de1a7ed);
@@ -109,19 +123,37 @@ export function runArenaMatch(seed: number, seats: number, profile: ArenaBotProf
     swaps: 0,
     parries: 0,
     shots: 0,
+    downs: 0,
+    revived: 0,
+    bledOut: 0,
+    bandagesPicked: 0,
+    bandagesSpent: 0,
+    channelTicks: 0,
+    interrupted: 0,
   }));
+  const seatOf = (id: number) => s.players.findIndex((p) => p.id === id);
 
   let ticks = 0;
   while (s.phase !== 'gameover' && ticks < MAX_TICKS) {
     const next = s.tick + 1;
     const cmds = bots.map((b, seat) => b.build(s, seat, next));
     for (const c of cmds) if (c.buttons & Button.SWAP_WEAPON) bySeat[c.owner]!.swaps++;
+    const before = s.players.map((p) => ({ downed: p.alive && p.downed, progress: p.reviveProgressTicks, bandages: p.bandages }));
     engine.step(cmds);
     ticks++;
+    const revivedNow = new Set<number>();
     for (const e of s.events) {
       if (e.type === 'pickup' && e.kind === 'weapon' && e.weaponId) {
-        const seat = s.players.findIndex((p) => p.id === e.by);
+        const seat = seatOf(e.by);
         if (seat >= 0) bySeat[seat]!.pickedGuns++;
+      } else if (e.type === 'downed') {
+        bySeat[seatOf(e.id)]!.downs++;
+      } else if (e.type === 'revived') {
+        bySeat[seatOf(e.id)]!.revived++;
+        revivedNow.add(seatOf(e.id));
+      } else if (e.type === 'death' && e.faction === 'player') {
+        const seat = seatOf(e.id);
+        if (seat >= 0 && before[seat]!.downed) bySeat[seat]!.bledOut++;
       } else if (e.type === 'bullet_fired') {
         const seat = s.players.findIndex((p) => p.id === e.ownerId);
         if (seat >= 0) bySeat[seat]!.shots++;
@@ -131,8 +163,14 @@ export function runArenaMatch(seed: number, seats: number, profile: ArenaBotProf
       }
     }
     s.players.forEach((p, i) => {
-      if (!p.alive || p.downed) return;
       const st = bySeat[i]!;
+      const was = before[i]!;
+      if (p.bandages > was.bandages) st.bandagesPicked += p.bandages - was.bandages;
+      else if (p.bandages < was.bandages) st.bandagesSpent += was.bandages - p.bandages;
+      if (was.downed && p.reviveProgressTicks > was.progress) st.channelTicks++;
+      // A channel that reset without bringing the seat up: the reviver let go or was driven off.
+      if (was.progress > 0 && p.reviveProgressTicks === 0 && !revivedNow.has(i)) st.interrupted++;
+      if (!p.alive || p.downed) return;
       st.liveTicks++;
       const w = p.weapon?.spec;
       if (w?.kind === 'ranged' && p.energy < w.energyCost) st.dryTicks++;

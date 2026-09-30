@@ -4,9 +4,13 @@
  * sweep reads "no effect" as a result and a behaviour that silently never fires reads the same.
  */
 import { describe, expect, it } from 'vitest';
-import { Button, FP_SCALE, createGameEngine, createGameState, makeCommand, type GameState, type PlayerActor, type Projectile } from '@dd/engine';
+import { Button, FP_SCALE, REVIVE_CHANNEL_TICKS, REVIVE_RANGE_GRID, createGameEngine, createGameState, makeCommand, type GameState, type PlayerActor, type Projectile } from '@dd/engine';
+import { toFpGrid } from '@dd/engine/content/convert';
+import { shuffledArenaConfig } from './arenaMatch';
 import { PvpBotController } from '../../src/game/controllers/PvpBotController';
-import { ARENA_PROFILES, ArenaBotController, LOOT_DETOUR_FP, PARRY_LOOKAHEAD, REARM_SHOTS, bulletIncoming, drySwapDue, lootToSeek } from './ArenaBotController';
+import { ARENA_PROFILES, ArenaBotController, LOOT_DETOUR_FP, PARRY_LOOKAHEAD, REARM_SHOTS, REVIVE_DETOUR_FP, REVIVE_SNUG_FP, bulletIncoming, drySwapDue, lootToSeek, reviveGoal } from './ArenaBotController';
+
+const REVIVE_RANGE_FP = toFpGrid(REVIVE_RANGE_GRID);
 
 const CFG = { seed: 3, worldW: 1600, worldH: 1200, waves: [] as const };
 const G = FP_SCALE;
@@ -190,5 +194,76 @@ describe('lootToSeek', () => {
     const cmd = new ArenaBotController(ARENA_PROFILES.loots).build(s, 0, 5);
     expect(cmd.pickupTargetId).toBe(50);
     expect(cmd.moveBrad).toBe(new PvpBotController().build(s, 0, 5).moveBrad); // the fight still steers
+  });
+});
+
+describe('reviveGoal and the revive rule', () => {
+  /** An eight-seat arena at the drop: seat 0 and a squadmate `gap` grid east of it, downed. */
+  function squad(gap: number, bandages = 1): { s: GameState; me: PlayerActor; mate: PlayerActor } {
+    const s = createGameEngine(shuffledArenaConfig(5, 8)).state;
+    const me = s.players[0]!;
+    const mate = s.players.find((p) => p !== me && p.teamId === me.teamId)!;
+    Object.assign(mate, { gx: me.gx + gap * G, gy: me.gy, downed: true, hp: 0, bleedoutTicks: 900 });
+    me.bandages = bandages;
+    return { s, me, mate };
+  }
+  const bot = () => new ArenaBotController(ARENA_PROFILES.fullRevives);
+  const interacts = (buttons: number) => (buttons & Button.INTERACT) !== 0;
+
+  it('walks to a downed squadmate, holds INTERACT once in reach, and stops once snug', () => {
+    const far = squad(6);
+    expect(reviveGoal(far.s, far.me)).toMatchObject({ kind: 'mate', inReach: false, snug: false });
+    const walk = bot().build(far.s, 0, 5);
+    expect(walk.moveMag).toBeGreaterThan(0);
+    expect(interacts(walk.buttons)).toBe(false);
+    // Inside the reach but not snug: holding INTERACT and still closing in.
+    const edge = squad((REVIVE_SNUG_FP + REVIVE_RANGE_FP) / 2 / G + 2 * far.me.radius / G);
+    expect(reviveGoal(edge.s, edge.me)).toMatchObject({ inReach: true, snug: false });
+    const closing = bot().build(edge.s, 0, 5);
+    expect(interacts(closing.buttons) && closing.moveMag > 0).toBe(true);
+    const near = squad(1);
+    const hold = bot().build(near.s, 0, 5);
+    expect(interacts(hold.buttons)).toBe(true);
+    expect(hold.moveMag).toBe(0);
+  });
+
+  it('passes over a rival, a mate beyond the detour, and every mate while it has no bandage', () => {
+    const rival = squad(1);
+    rival.mate.teamId = rival.me.teamId + 1;
+    expect(reviveGoal(rival.s, rival.me)).toBeUndefined();
+    const beyond = squad(REVIVE_DETOUR_FP / G + 1);
+    expect(reviveGoal(beyond.s, beyond.me)).toBeUndefined();
+    const broke = squad(1, 0);
+    expect(reviveGoal(broke.s, broke.me)).toBeUndefined();
+    expect(interacts(bot().build(broke.s, 0, 5).buttons)).toBe(false);
+    // With the flag off, never, bandage or not.
+    expect(interacts(new ArenaBotController(ARENA_PROFILES.full).build(squad(1).s, 0, 5).buttons)).toBe(false);
+  });
+
+  it('with no bandage, walks to a floor one within the detour', () => {
+    const { s, me } = squad(1, 0);
+    s.pickups.push({ id: 77, kind: 'bandage', gx: me.gx, gy: me.gy + 3 * G, spawnTick: 0, alive: true } as never);
+    expect(reviveGoal(s, me)).toMatchObject({ kind: 'bandage', inReach: false });
+    s.pickups[s.pickups.length - 1]!.gy = (me.gy + LOOT_DETOUR_FP + G) as never;
+    expect(reviveGoal(s, me)).toBeUndefined();
+  });
+
+  it('brings the mate back up in the engine, spending the bandage', () => {
+    const config = shuffledArenaConfig(5, 8);
+    const engine = createGameEngine(config);
+    const s = engine.state as GameState;
+    const me = s.players[0]!;
+    const mate = s.players.find((p) => p !== me && p.teamId === me.teamId)!;
+    Object.assign(mate, { gx: me.gx + 2 * G, gy: me.gy, downed: true, hp: 0, bleedoutTicks: 900 });
+    me.bandages = 1;
+    const bots = s.players.map((_, i) => (i === 0 ? bot() : new ArenaBotController(ARENA_PROFILES.shipped, 10_000)));
+    let revivedAt = -1;
+    for (let t = 0; t < REVIVE_CHANNEL_TICKS + 60 && revivedAt < 0; t++) {
+      engine.step(bots.map((b, i) => b.build(s, i, s.tick + 1)));
+      if (s.events.some((e) => e.type === 'revived' && e.id === mate.id)) revivedAt = t;
+    }
+    expect(revivedAt).toBeGreaterThanOrEqual(REVIVE_CHANNEL_TICKS - 1);
+    expect(mate.downed).toBe(false);
+    expect(me.bandages).toBe(0);
   });
 });
