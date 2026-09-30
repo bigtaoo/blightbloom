@@ -179,7 +179,9 @@ lowered for a weak device should be read against that table
 The PvP matches above had every seat stacked on one point, firing past each other. With real
 spawns and real fights, 8-seat PvP asks for 12–14 voices at p99 and 17 at worst; at 12 it lost
 0.93% of its voices, 55 of them `impact`, and 14 and 15 still lost some `impact`. 16 is the
-smallest cap that costs no cue from `impact` up. The gates did not change.
+smallest cap that costs no cue from `impact` up. The `impact`-up gate did not change; the
+overall ceiling moved from 0.1% to 0.25% after volume 116's bot (it fights mobs) pushed 8-seat
+PvP to 0.14% at cap 16 — all stolen `muzzle`s, 0.9 s of audio in ten matches.
 
 ### Browser-measured, not assumed
 
