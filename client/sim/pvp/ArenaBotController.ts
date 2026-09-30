@@ -13,6 +13,9 @@
  *   - `parries`: draw a READY blade and swing when a hostile bullet will cross its reach
  *     within `PARRY_LOOKAHEAD` ticks, without leaving the gun's spacing; go back to the gun
  *     once nothing is coming.
+ *   - `revives`: the shipped bot's revive rule (`ai/revive.ts`), which this flag switches on
+ *     in the base bot too, re-applied last so the loot and blade walks above never pull a
+ *     reviver off the body. Off, neither bot revives: the sims' no-revive control.
  *
  * Deliberately NOT the shipped bot. `PvpBotController` fills empty seats in real matches
  * (`server/src/BotClient.ts`) and must stay a pure function of state; this one keeps two
@@ -23,6 +26,7 @@ import { Button, FP_SCALE, SIM, WEAPON_SPECS, makeCommand, type GameState, type 
 import { nearestHostile } from '@dd/engine/systems/targeting';
 import { PvpBotController } from '../../src/game/controllers/PvpBotController';
 import { FIRE_RANGE_FP, idleCommand } from '../../src/game/controllers/ai/engage';
+import { reviveMove } from '../../src/game/controllers/ai/revive';
 import { HOLD, steer } from '../../src/game/controllers/ai/steer';
 import { zoneRetreatCommand } from '../../src/game/controllers/ai/zoneRetreat';
 import { gunWorth } from '../pve/weaponChoice';
@@ -31,14 +35,19 @@ export interface ArenaBotProfile {
   loots: boolean;
   meleeWhenDry: boolean;
   parries: boolean;
+  revives: boolean;
 }
 
 export const ARENA_PROFILES = {
-  shipped: { loots: false, meleeWhenDry: false, parries: false },
-  loots: { loots: true, meleeWhenDry: false, parries: false },
-  lootsDry: { loots: true, meleeWhenDry: true, parries: false },
-  parries: { loots: false, meleeWhenDry: false, parries: true },
-  full: { loots: true, meleeWhenDry: true, parries: true },
+  shipped: { loots: false, meleeWhenDry: false, parries: false, revives: false },
+  loots: { loots: true, meleeWhenDry: false, parries: false, revives: false },
+  lootsDry: { loots: true, meleeWhenDry: true, parries: false, revives: false },
+  parries: { loots: false, meleeWhenDry: false, parries: true, revives: false },
+  full: { loots: true, meleeWhenDry: true, parries: true, revives: false },
+  fullRevives: { loots: true, meleeWhenDry: true, parries: true, revives: true },
+  /** The shipped bot as it ships. `shipped` above is it with the revive rule off, as every
+   *  capacity sweep measured it before the rule existed. */
+  shippedRevives: { loots: false, meleeWhenDry: false, parries: false, revives: true },
 } as const satisfies Record<string, ArenaBotProfile>;
 
 /**
@@ -56,7 +65,7 @@ export const LOOT_DETOUR_FP = 8 * FP_SCALE;
 export const PARRY_LOOKAHEAD = 4;
 
 export class ArenaBotController {
-  private readonly base = new PvpBotController();
+  private readonly base: PvpBotController;
   private lastSwapTick = -2;
   /** The blade is out because a bullet was coming, not because the gun ran dry. */
   private bladeForParry = false;
@@ -69,7 +78,9 @@ export class ArenaBotController {
   constructor(
     private readonly profile: ArenaBotProfile,
     private readonly startDelay = 0,
-  ) {}
+  ) {
+    this.base = new PvpBotController({ revives: profile.revives });
+  }
 
   build(s: GameState, owner: number, tick: number): PlayerCommand {
     if (tick <= this.startDelay) return idleCommand(owner, tick);
@@ -129,6 +140,10 @@ export class ArenaBotController {
       this.lastSwapTick = tick;
       buttons |= Button.SWAP_WEAPON;
     }
+    // Revive last, so its walk wins over the loot and blade walks; the zone still wins over it.
+    const rescue = this.profile.revives && !retreating ? reviveMove(s, me, opponents, inRange) : undefined;
+    if (rescue) ({ moveBrad, moveMag } = rescue.move);
+    if (rescue?.interact) buttons = (buttons & ~Button.FIRE) | Button.INTERACT;
     return makeCommand({ owner, tick, moveBrad, moveMag, buttons, pickupTargetId });
   }
 }
@@ -159,11 +174,13 @@ function gunAffordable(me: PlayerActor): boolean {
  * Will a bullet hostile to `me` enter `reach` of it within the next `PARRY_LOOKAHEAD` ticks?
  * Straight-line, on the bullet's current velocity. A bullet moving away is
  * never a threat, even inside the reach: it has passed. A still bullet is not either (a beam
- * or a landed lob, which a swing cannot turn back).
+ * or a landed lob, which a swing cannot turn back), and neither is a rebound, which cannot be
+ * turned back twice.
  */
 export function bulletIncoming(s: GameState, me: PlayerActor, reach: number): boolean {
   for (const b of s.projectiles) {
-    if (!b.alive || b.teamId === me.teamId) continue;
+    // A rebound cannot be turned back again (ENGINE_VERSION 85), so it is no reason to swing.
+    if (!b.alive || b.deflected || b.teamId === me.teamId) continue;
     const rx = b.gx - me.gx;
     const ry = b.gy - me.gy;
     const v2 = b.vx * b.vx + b.vy * b.vy;

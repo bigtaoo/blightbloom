@@ -8,7 +8,7 @@ import { ShopPrompt } from './ShopPrompt';
 import { nearbyShop, SHOP_PROMPT_RANGE_GRID } from './shopProximity';
 import { ChestPrompt } from './ChestPrompt';
 import { nearbyBigChest, CHEST_PLATE_PROMPT_RANGE_GRID } from './chestProximity';
-import { toFpGrid } from '@dd/engine';
+import { reviveTarget, toFpGrid } from '@dd/engine';
 import { Minimap, type MinimapPlayer } from './Minimap';
 import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
 import { PlayerCard, AllyRow } from './PlayerCard';
@@ -17,6 +17,7 @@ import { WeaponCard } from './WeaponCard';
 import { WeaponSlotChip } from './WeaponSlotChip';
 import { StatChip } from './StatChip';
 import { DownedBanner } from './DownedBanner';
+import { ReviveBanner } from './ReviveBanner';
 import type { HudIconId } from './hudIcons';
 import type { GameState, SeatNames } from '@dd/engine';
 import { t, type TranslationKey } from '../../i18n';
@@ -97,6 +98,7 @@ export class HudView {
   readonly allyRow = new AllyRow();
   readonly seatRoster = new SeatRoster();
   readonly downedBanner = new DownedBanner();
+  readonly reviveBanner = new ReviveBanner();
   readonly chips = new Map<ChipKey, StatChip>();
   // Ground weapon-pickup panel (design/03, ENGINE_VERSION 32) — lists every nearby
   // floor weapon (icon + name); tapping one is the collect action itself. Replaces the
@@ -180,6 +182,7 @@ export class HudView {
       this.shopPrompt.view,
       this.chestPrompt.view,
       this.downedBanner.view,
+      this.reviveBanner.view,
       this.pauseBtn.view,
       this.replayBtn.view,
     );
@@ -207,6 +210,7 @@ export class HudView {
     // right edge, so a second row would land on top of it.
     this.replayBtn.view.position.set(screenPx.w - 20 - 36 - 42, 12);
     this.downedBanner.reposition(screenPx);
+    this.reviveBanner.reposition(screenPx);
     this.chestPrompt.reposition(screenPx);
   }
 
@@ -284,6 +288,12 @@ export class HudView {
     // why or how long until either a revive completes or bleedout ends the run.
     this.downedBanner.set(p?.downed ?? false, p?.bleedoutTicks ?? 0, p?.reviveProgressTicks ?? 0);
     this.downedBanner.update(dt);
+    // The other side of the same channel: the local seat holding a revive (design/07,
+    // ENGINE_VERSION 86), off the engine's own predicate so the bar shows exactly when the
+    // engine holds this seat's fire.
+    const patient = p && p.alive && !p.downed ? reviveTarget(s, p) : null;
+    this.reviveBanner.set(patient ? patient.reviveProgressTicks : null);
+    this.reviveBanner.update(dt);
 
     // Who else is here, by name (design/20). Set BEFORE `layout`, which reserves the row
     // only when there is something in it — and `set` returning that answer is why the two

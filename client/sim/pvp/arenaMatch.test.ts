@@ -4,7 +4,7 @@
  * that a seed actually varies the match, and that each counter counts what it says.
  */
 import { describe, expect, it } from 'vitest';
-import { PVP_SCALE_FACTOR, WEAPON_SIM_BY_ID, createGameEngine } from '@dd/engine';
+import { FP_SCALE, PVP_SCALE_FACTOR, REVIVE_CHANNEL_TICKS, WEAPON_SIM_BY_ID, createGameEngine } from '@dd/engine';
 import { ARENA_PROFILES } from './ArenaBotController';
 import { equipArenaGun, runArenaMatch, shuffledArenaConfig } from './arenaMatch';
 
@@ -67,6 +67,43 @@ describe('runArenaMatch', { timeout: 60_000 }, () => {
       expect(s.minEnergyFrac).toBeLessThan(1);
       expect(s.minEnergyFrac).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('records each seat squad, spawn and fate, and names the winning squad', () => {
+    const config = shuffledArenaConfig(5, 8);
+    const start = createGameEngine(config).state.players;
+    const m = runArenaMatch(5, 8, ARENA_PROFILES.shipped);
+    expect(m.bySeat.map((s) => s.team)).toEqual(config.players!.map((p) => p.teamId));
+    expect(new Set(m.bySeat.map((s) => s.team)).size).toBe(2);
+    expect(m.bySeat.map((s) => [s.startGx, s.startGy])).toEqual(start.map((p) => [p.gx / FP_SCALE, p.gy / FP_SCALE]));
+    expect(new Set(m.bySeat.map((s) => `${s.startGx},${s.startGy}`)).size).toBe(8);
+    const standing = m.bySeat.filter((s) => s.survived);
+    expect(standing.length).toBeGreaterThan(0);
+    expect(standing.every((s) => s.team === m.winnerTeam)).toBe(true);
+    expect(standing[0]!.skin).toBe(m.winner);
+    // Solo: every seat its own squad, and the one standing is the winner.
+    const solo = runArenaMatch(5, 2, ARENA_PROFILES.shipped);
+    expect(solo.bySeat[0]!.team).not.toBe(solo.bySeat[1]!.team);
+    expect(solo.bySeat.filter((s) => s.survived).map((s) => s.team)).toEqual([solo.winnerTeam]);
+  });
+
+  it('counts downs, revives, bleedouts, bandages and broken channels', () => {
+    // No bot revives: every down that the match outlasts bleeds out, and no channel starts.
+    const none = runArenaMatch(5, 8, ARENA_PROFILES.full, { bandages: 1 });
+    const t = (m: typeof none, k: 'downs' | 'revived' | 'bledOut' | 'bandagesSpent' | 'channelTicks' | 'interrupted' | 'bandagesPicked') =>
+      m.bySeat.reduce((n, s) => n + s[k], 0);
+    expect(t(none, 'downs')).toBeGreaterThan(0);
+    expect(t(none, 'bledOut')).toBeGreaterThan(0);
+    for (const k of ['revived', 'bandagesSpent', 'channelTicks', 'interrupted'] as const) expect(t(none, k), k).toBe(0);
+    // The reviving bot, a bandage each: seats come back up, each one for exactly one bandage
+    // and a full channel.
+    const m = runArenaMatch(5, 8, ARENA_PROFILES.fullRevives, { bandages: 1 });
+    expect(t(m, 'revived')).toBeGreaterThan(0);
+    expect(t(m, 'bandagesSpent')).toBe(t(m, 'revived'));
+    expect(t(m, 'channelTicks')).toBeGreaterThanOrEqual(t(m, 'revived') * REVIVE_CHANNEL_TICKS);
+    for (const s of m.bySeat) expect(s.revived + s.bledOut).toBeLessThanOrEqual(s.downs);
+    // A bandage picked off the floor is counted too; the start-of-match one is not.
+    expect(t(runArenaMatch(5, 8, ARENA_PROFILES.fullRevives), 'bandagesPicked')).toBeGreaterThan(0);
   });
 
   it('resizes every bar when asked', () => {

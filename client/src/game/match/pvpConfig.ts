@@ -53,19 +53,76 @@ export function teamIdForOwner(owner: number, playerCount: number): number {
 export const SEED_SPAWN = 0x5b4a5e11;
 
 /**
+ * The authored spawns in ring order: sorted by angle round their own centroid, in exact
+ * integer arithmetic (no `atan2`: the client and the server must build the same config, and
+ * a float that rounds differently on one JS engine would seat a squad elsewhere). Ties, and
+ * a spawn standing on the centroid itself, fall back to authored order. Neighbours in this
+ * order are neighbours on the map as long as the spawns ring the map, which the launch
+ * arena's do (one per outer district; `pvpConfig.test.ts` pins the order).
+ */
+export function spawnRingOrder(spawns: readonly { x: number; y: number }[]): number[] {
+  const m = spawns.length;
+  const sx = spawns.reduce((a, p) => a + p.x, 0);
+  const sy = spawns.reduce((a, p) => a + p.y, 0);
+  // Scaled by m, so the centroid is an integer point.
+  const v = spawns.map((p) => ({ x: p.x * m - sx, y: p.y * m - sy }));
+  const half = (i: number) => (v[i]!.y < 0 || (v[i]!.y === 0 && v[i]!.x < 0) ? 1 : 0);
+  return spawns
+    .map((_, i) => i)
+    .sort((a, b) => half(a) - half(b) || v[b]!.x * v[a]!.y - v[a]!.x * v[b]!.y || a - b);
+}
+
+/**
  * Which authored spawn each seat drops at, as a `start` in px (design/15: `spawns` is
  * ">= seat count; system-assigned per match, no player choice"). A seeded shuffle, so a
  * seat index is not tied to a corner of the map. Until 2026-09-29 nothing did this: every
  * seat started at the `worldW/2, worldH/2` default of `GameState.buildSeat`, which is one
  * point inside spawn 0's room, so every real match began with the whole lobby stacked there
  * and every gun firing past bodies closer than its `muzzleOffset`.
+ *
+ * A squad starts together (volume 118). The free-for-all shuffle scattered squadmates over
+ * the whole map, so an 8-seat match opened as eight lone fights. When the match has squads
+ * (`squadSizeForPlayerCount` > 1), each squad takes a run of neighbouring spawns in
+ * `spawnRingOrder`, the runs spaced evenly round the ring. Of the ways to turn that cut round
+ * the ring, the tightest one is used: the least summed squared distance between squadmates.
+ * On the launch arena that is the west half against the east half, the only cut that starts
+ * no seat nearer the enemy than its own squad; a cut ending beside an enemy run would. The
+ * seed picks among equally tight cuts (which squad takes which half) and shuffles the members
+ * within their run. A free-for-all match keeps the plain shuffle, seat for seat, so every
+ * match without squads starts exactly where it did before.
  */
 export function assignArenaStarts(arena: ArenaMap, seed: number, playerCount: number): [number, number][] {
-  if (arena.spawns.length < playerCount) {
-    throw new Error(`arena has ${arena.spawns.length} spawns for ${playerCount} seats`);
+  const m = arena.spawns.length;
+  if (m < playerCount) {
+    throw new Error(`arena has ${m} spawns for ${playerCount} seats`);
   }
-  const order = arena.spawns.map((_, i) => i);
-  new Prng(seed ^ SEED_SPAWN).shuffle(order);
+  const prng = new Prng(seed ^ SEED_SPAWN);
+  const squad = squadSizeForPlayerCount(playerCount);
+  let order: number[];
+  if (squad === 1) {
+    order = arena.spawns.map((_, i) => i);
+    prng.shuffle(order);
+  } else {
+    const ring = spawnRingOrder(arena.spawns);
+    const squads = playerCount / squad;
+    // Runs never overlap: the gap between run starts is at least floor(m / squads), which is
+    // at least the squad size because m >= playerCount.
+    const runs = (turn: number) =>
+      Array.from({ length: squads }, (_, k) =>
+        Array.from({ length: squad }, (_, j) => ring[(turn + Math.floor((k * m) / squads) + j) % m]!));
+    const d2 = (a: number, b: number) =>
+      (arena.spawns[a]!.x - arena.spawns[b]!.x) ** 2 + (arena.spawns[a]!.y - arena.spawns[b]!.y) ** 2;
+    const spread = (turn: number) =>
+      runs(turn).reduce((t, run) => t + run.reduce((u, a, i) => u + run.slice(i + 1).reduce((w, b) => w + d2(a, b), 0), 0), 0);
+    const cost = ring.map((_, turn) => spread(turn));
+    const least = Math.min(...cost);
+    const tightest = cost.flatMap((c, turn) => (c === least ? [turn] : []));
+    order = [];
+    for (const run of runs(tightest[prng.nextInt(tightest.length)]!)) {
+      prng.shuffle(run);
+      order.push(...run);
+    }
+  }
   const px = (grid: number) => fpToPx(toFpGrid(grid));
   return order.slice(0, playerCount).map((i) => [px(arena.spawns[i]!.x), px(arena.spawns[i]!.y)]);
 }

@@ -88,6 +88,28 @@ describe('WinConditionSystem — PvP placement', () => {
     expect(s.placements).not.toContain(0);
     expect(s.placements.sort()).toEqual([1, 2, 3]);
   });
+
+  // The tie is only among the seats that went out together. Until 2026-09-30 the tiebreak took
+  // the lowest teamId of EVERY squad, so seat 0, out first, was pulled back out of placements and
+  // named winner (the PvP sim's seed 1040000: seat 0 died at tick 1315, the last two at 2100).
+  it('never names a seat eliminated on an earlier tick the winner of a simultaneous wipe', () => {
+    const s = pvpState(4);
+    const sys = new WinConditionSystem();
+    s.players[0]!.alive = false;
+    sys.tick(s);
+    expect(s.placements).toEqual([0]);
+
+    s.players[1]!.alive = false;
+    s.players[2]!.alive = false;
+    s.players[3]!.alive = false;
+    sys.tick(s);
+
+    expect(s.winner).toBe(1);
+    expect(s.events.find((e) => e.type === 'win')).toMatchObject({ winner: 1 });
+    // Seat 0 is still last, and the winner is not a loser.
+    expect(s.placements[0]).toBe(0);
+    expect([...s.placements].sort()).toEqual([0, 2, 3]);
+  });
 });
 
 describe('WinConditionSystem — squads (design/05/15 PvP squad follow-up)', () => {

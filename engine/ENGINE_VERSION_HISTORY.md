@@ -2695,3 +2695,112 @@ where it stands (a 120-frame dungeon run in `gameReplaySave.test.ts` kills one a
 pickup), so a PvE replay with such a shot diverges too. `launch-arena-pvp` now places its two
 seats 3 grid apart in spawn 0's room; stacked, they downed each other at once and fired 12
 shots. Golden fixture regenerated.
+
+v80 (2026-09-30 — the launch arena stops placing content where no body can go). `arena_launch`
+has five pockets no player can walk into (volume 116), two of them sealed only by a free-standing
+block's north brim, and `launchArena.furnish` had put four encounter mobs, two unused spawn
+points and one crate in them: it checked that a cell was not stone, which is a bullet-sized
+question. The builder now floods the assembled map for a body (`content/arenaBodyReach.ts`: the
+player's solid radius against `blockingRect`, on half-grid cells) and furnishes every room a
+second time with the unreached cells taken out. Seven placements moved, all in those five rooms
+(`barracks_r1c8`, `barracks_r3c8`, `catacombs_r4c6`, `catacombs_r6c3`, `catacombs_r7c5`); every
+other room, and all eight drop points, are byte-identical. The pockets themselves stay.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` plays spawn 0's room and
+never wakes a pocket room. A recorded arena match that did diverges, since those rooms' mobs now
+spawn elsewhere. Golden fixture regenerated (version stamp only).
+
+v81 (2026-09-30 — the launch arena's sealed pockets are stone). v80 stopped placing content in
+the pockets and left them painted as floor. `world/arenas/pocketFill.ts` now fills them: a free
+cell turns to stone when it is 4-connected, inside its room, to a cell holding stranded floor
+(standable for a body, outside the main region), and when that stone, north brim included, would
+touch no main-region position. Pillars and hazard cells are never covered. The fill is
+`freeStanding`, like the blocks it grows out of, so it is drawn and collided the same way. Seven
+rooms gained stone, the five pockets and two slivers (`catacombs_r5c4`, `barracks_r5c8`); the main
+region is identical lattice point for lattice point, and every spawn, crate, drop point, door,
+pillar and hazard is byte-identical to v80.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` never shoots into a pocket.
+A recorded arena match whose shot crossed one diverges, because the shot now stops on stone.
+Golden fixture regenerated (version stamp only).
+
+v82 (2026-09-30 — every launch-arena room is one piece). Volume 116 named two rooms,
+`barracks_r2c7` and `catacombs_r5c5`, whose floor split into halves joined only through other
+rooms. A per-room flood found five: those two, `catacombs_r6c7`, `terraces_r1c1`, and
+`atrium_r4c3`, whose north door opened into a corner two ring pillars sealed off. The five pockets
+v81 filled were the same defect, in rooms where one half had no door. Three kit fixes in
+`world/arenas/interiorKits.ts`: the chevron has no centre pillar (it stood in the lane between
+the two runs in every room it furnished) and keeps that lane two rows high (one row, less the
+lower run's north brim, is narrower than a body); a rubble pillar touching two chunks at once is
+left out; the ring's pillars stay a body's width off the walls. Sixteen rooms changed pillars and
+six changed solids. The pocket fill now closes only the two slivers (2 rects, from 13), and the
+main region grows from 18,802 half-grid points to 19,291. 17 spawn points, 14 crates and one drop
+point (spawn 2, `barracks_r1c8`) moved.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` stays in spawn 0's room,
+which did not change. A recorded arena match that entered any of the sixteen rooms diverges.
+Golden fixture regenerated (version stamp only).
+
+v83 (2026-09-30 — the chevron lane is three rows where the room has them). v82 kept the lane
+between the chevron's two runs two rows high: walkable, but not visible. A free-standing block
+is drawn 70 px tall, north of its footprint, so the lower run's face covered the whole 64 px
+lane, and where the two runs overlap in x (`catacombs_r4c6`) they read as one wall. The lower
+run now sits four rows below the upper one, leaving a three-row lane and 26 px of its floor in
+view. Five of the eight chevron rooms have the row to give (`barracks_r2c7`, `barracks_r3c8`,
+`catacombs_r4c6`, `catacombs_r5c5`, `catacombs_r7c5`) and each moved one run a row south; the
+three 9-row rooms (`barracks_r1c8`, `catacombs_r6c3`, `catacombs_r6c7`) have seven inner rows
+and keep two. Three crates and one mob spawn moved, all in those five rooms; every drop point,
+door, pillar, hazard and the pocket fill are byte-identical, and every room is still one piece.
+
+The same bump fixes the PvP same-tick tiebreak (`WinConditionSystem`). When every remaining
+squad went out on one tick, the win went to the lowest `teamId` of every squad in the match,
+not of the ones that went out together, so a seat eliminated long before was pulled back out
+of `placements` and named winner (the PvP sim's seed 1040000: seat 0 out at tick 1315, the last
+two at 2100). The tiebreak now chooses only among the squads wiped on that tick. A recorded
+match that ended in a simultaneous wipe changes its winner and placements.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` stays in spawn 0's room,
+which did not change, and no scenario ends in a simultaneous wipe. A recorded arena match that
+walked or shot through the lower run of any of the five rooms diverges. Golden fixture
+regenerated (version stamp only).
+
+v84 (2026-09-30 — no 9-row room is a chevron). v83 left three chevron rooms with a two-row lane:
+`barracks_r1c8`, `catacombs_r6c3` and `catacombs_r6c7` have seven inner rows, and north strip,
+run, lane, run and south strip leave two. Walkable, but the lower run's 70 px face covers the
+64 px lane. They are refurnished instead: `barracks_r1c8` with rubble, `catacombs_r6c3` with four
+pillars and `catacombs_r6c7` with stubs. In those three rooms every enemy spawn and crate is
+placed again from the new free cells, and `barracks_r1c8`'s drop point moves from (111, 18) to
+(112, 17). Every other room, door, pillar, hazard and drop point is byte-identical, and every
+room is still one piece.
+
+The golden gate, run before this bump, was green: no scenario enters the three rooms. A
+recorded arena match that walked, shot or spawned in any of them diverges, and the seat that
+dropped in `barracks_r1c8` starts one grid away. Golden fixture regenerated (version stamp only).
+
+v85 (2026-09-30 — a bullet turns back once). A parried bullet used to be a live target for
+the next swing that met it, the shooter's own included, so two parriers could return one
+bullet between them until the match's tick limit (volume 117's stalemate).
+`PVP_DEFLECT_DAMAGE_PERMILLE` never came into it, because the weakened shot was parried again
+before it landed. `DeflectSystem` now latches `Projectile.deflected` on the first deflect and
+lets a latched bullet through every later swing. The latch is hashed in `serializeState`, and
+only on a bullet that has it, so a bullet nobody parried hashes as before. In PvE nothing
+changes: only a player deflects, and nothing a player owns is hostile to another player there.
+
+The golden gate, run before this bump, failed in `launch-arena-pvp` alone, and its witness
+names the change: `deflect` 3 -> 2, every other count equal. One rebound in that run used to be
+parried back. A recorded PvP match in which a seat parried a rebound diverges on that tick.
+Golden fixture regenerated.
+
+v86 (2026-09-30 — a reviver cannot attack). design/07 said a moving reviver cancels the
+channel, and `ReviveSystem` never checked it: a reviver could walk and shoot through all
+`REVIVE_CHANNEL_TICKS`. The owner's call keeps the walking and drops the shooting. A stray
+step inside the reach no longer throws a channel away (it never did); leaving the reach,
+letting go of INTERACT or being downed still does. What changes is `ApplyInputSystem`: a seat
+holding INTERACT on a squadmate it can revive has `firing` cleared, so it neither fires nor
+swings. The predicate is `canRevive`, now a free function `ReviveSystem` itself uses, so the
+two steps cannot disagree about who is reviving. Moving and swapping are untouched. The same
+rule holds in PvE co-op.
+
+The golden gate, run before this bump, was green: no scenario revives anyone. A recorded
+match in which a seat held FIRE and INTERACT together over a revivable squadmate diverges on
+that tick. Golden fixture regenerated (version stamp only).

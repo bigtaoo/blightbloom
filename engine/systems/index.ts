@@ -14,7 +14,7 @@ export { ShopSystem } from './ShopSystem';
 export { SpawnSystem } from './SpawnSystem';
 export { DoorSystem } from './DoorSystem';
 export { ExtractionSystem } from './ExtractionSystem';
-export { ReviveSystem } from './ReviveSystem';
+export { ReviveSystem, canRevive, findReviver, reviveTarget } from './ReviveSystem';
 export { WinConditionSystem } from './WinConditionSystem';
 export { ZoneSystem } from './ZoneSystem';
 export { EnvironmentSystem } from './EnvironmentSystem';

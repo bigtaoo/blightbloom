@@ -159,6 +159,43 @@ describe('PvP: seats on different teamIds can damage each other', () => {
     expect(mobShot.damage).toBe(25);
   });
 
+  it("a bullet turns back once: the shooter's own swing lets the rebound through (ENGINE_VERSION 85)", () => {
+    const s = createGameState({
+      ...CFG,
+      players: [
+        { start: [400, 400], teamId: 0 },
+        { start: [420, 400], teamId: 1 },
+      ],
+    });
+    const [a, b] = [s.players[0]!, s.players[1]!];
+    for (const p of [a, b]) {
+      p.weapon = makeWeapon(SABER_SIM);
+      p.weapons = [p.weapon];
+      openSwing(p.weapon);
+    }
+    a.facing = 0 as Brad;
+    b.facing = 0 as Brad;
+
+    // b's shot, parried by a: now a's, aimed back at b.
+    const rebound = bulletOn(s, { gx: a.gx, gy: a.gy }, 1);
+    new DeflectSystem().tick(s);
+    expect(rebound.teamId).toBe(0);
+    expect(rebound.deflected).toBe(true);
+
+    // b swings at it: it keeps a's team and its course. Control, the same tick and the same
+    // swing: a fresh shot of a's is turned, so b's swing is live and the rebound was refused.
+    rebound.gx = b.gx;
+    rebound.gy = b.gy;
+    const course = { vx: rebound.vx, vy: rebound.vy, damage: rebound.damage };
+    a.weapon!.swingTicksLeft = 0; // a's swing would otherwise turn b's parry back again
+    const fresh = bulletOn(s, { gx: b.gx, gy: b.gy }, 0);
+    new DeflectSystem().tick(s);
+    expect(fresh.teamId).toBe(1);
+    expect(rebound.teamId).toBe(0);
+    expect({ vx: rebound.vx, vy: rebound.vy, damage: rebound.damage }).toEqual(course);
+    expect(s.events.filter((e) => e.type === 'deflect')).toHaveLength(2); // a's parry and b's, no third
+  });
+
   it('deflectedPlayerDamage rounds to the nearest point and never drops a shot below 1', () => {
     expect(deflectedPlayerDamage(1)).toBe(1);
     expect(deflectedPlayerDamage(0)).toBe(1);

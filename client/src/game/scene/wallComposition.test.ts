@@ -639,7 +639,7 @@ describe('shipped level-1 walls — the shading still batches', () => {
 
   // ------------------------------------------------------------------------------------------
   // The face split of 2026-08-27 adds a SECOND piece to every block whose face the x-ray's deep
-  // pass can partly reach — 227 of 294 blocks in a built arena. That is exactly the shape of cue
+  // pass can partly reach — 227 of 294 blocks in a built arena (measured before the 2026-09-30 pocket fill). That is exactly the shape of cue
   // the 2026-08-24 pass found 50 of 107 draw calls in: something added per block, correct in
   // isolation, and outside every budget in this file. Live measurement said it is free (45 draws
   // before, 45 after) BECAUSE the piece is a batchable sprite — so these two checks pin the

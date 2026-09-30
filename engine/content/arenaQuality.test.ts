@@ -39,6 +39,46 @@ function walledRoom(id: string, x: number, y: number, w = 10, h = 10): ArenaRoom
   };
 }
 
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** `r` less `cut`, as up to four rects. */
+function subtract(r: Rect, cut: Rect): Rect[] {
+  const x0 = Math.max(r.x, cut.x), x1 = Math.min(r.x + r.w, cut.x + cut.w);
+  const y0 = Math.max(r.y, cut.y), y1 = Math.min(r.y + r.h, cut.y + cut.h);
+  if (x0 >= x1 || y0 >= y1) return [r];
+  return [
+    { x: r.x, y: r.y, w: r.w, h: y0 - r.y },
+    { x: r.x, y: y1, w: r.w, h: r.y + r.h - y1 },
+    { x: r.x, y: y0, w: x0 - r.x, h: y1 - y0 },
+    { x: x1, y: y0, w: r.x + r.w - x1, h: y1 - y0 },
+  ].filter((p) => p.w > 0 && p.h > 0);
+}
+
+/**
+ * Give every door a body can walk through (`door_shut`): the passage is stretched from one
+ * room's facing wall to the other's, keeping its span across, and cut out of both walls. The
+ * jambs either side stay, so the door still gates a wall (`door_gates_nothing`).
+ */
+function opened(map: ArenaMap): ArenaMap {
+  const byId = new Map(map.rooms.map((r) => [r.id, r]));
+  for (const door of map.doors) {
+    const a = byId.get(door.roomA)!.rectGrid;
+    const b = byId.get(door.roomB)!.rectGrid;
+    const p = door.passageGrid;
+    const across = Math.max(a.y, b.y) < Math.min(a.y + a.h, b.y + b.h); // side by side
+    const [lo, hi] = across ? (a.x < b.x ? [a, b] : [b, a]) : (a.y < b.y ? [a, b] : [b, a]);
+    door.passageGrid = across
+      ? { x: lo.x + lo.w - 1, y: p.y, w: hi.x - (lo.x + lo.w - 1) + 1, h: p.h }
+      : { x: p.x, y: lo.y + lo.h - 1, w: p.w, h: hi.y - (lo.y + lo.h - 1) + 1 };
+    for (const room of [byId.get(door.roomA)!, byId.get(door.roomB)!]) {
+      const { x: ox, y: oy } = room.rectGrid;
+      const cut = { ...door.passageGrid, x: door.passageGrid.x - ox, y: door.passageGrid.y - oy };
+      room.solids = room.solids.flatMap((s) => subtract(s, cut));
+    }
+  }
+  return map;
+}
+
 /**
  * Seven rooms that clear every bound, as the base every defect fixture mutates.
  *
@@ -48,39 +88,40 @@ function walledRoom(id: string, x: number, y: number, w = 10, h = 10): ArenaRoom
  * with a two-room tail rather than a tidy ring — a ring is all degree 2 (no branching) and
  * only two hops across (too shallow), so the tidy shape fails two bounds at once.
  */
-function healthyMap(): ArenaMap {
-  return {
+function healthyMap(size?: readonly [number, number]): ArenaMap {
+  const room = (id: string, x: number, y: number, w: number, h: number) => walledRoom(id, x, y, ...(size ?? [w, h]));
+  return opened({
     id: 'fixture_healthy',
     sizeGrid: { w: 60, h: 60 },
     rooms: [
-      walledRoom('a', 0, 0, 10, 10),
-      walledRoom('b', 20, 0, 12, 10),
-      walledRoom('c', 0, 20, 10, 14),
-      walledRoom('d', 20, 20, 14, 12),
-      walledRoom('e', 40, 10, 11, 10),
-      walledRoom('f', 40, 30, 10, 11),
-      walledRoom('g', 0, 40, 12, 11),
+      room('a', 0, 0, 10, 10),
+      room('b', 20, 0, 12, 10),
+      room('c', 0, 20, 10, 14),
+      room('d', 20, 20, 14, 12),
+      room('e', 40, 5, 11, 20),
+      room('f', 40, 30, 10, 11),
+      room('g', 0, 40, 12, 11),
     ],
     doors: [
       { roomA: 'a', roomB: 'b', passageGrid: { x: 10, y: 4, w: 10, h: 2 } },
       { roomA: 'a', roomB: 'c', passageGrid: { x: 4, y: 10, w: 2, h: 10 } },
       { roomA: 'c', roomB: 'd', passageGrid: { x: 10, y: 24, w: 10, h: 2 } },
       { roomA: 'b', roomB: 'd', passageGrid: { x: 24, y: 10, w: 2, h: 10 } },
-      { roomA: 'b', roomB: 'e', passageGrid: { x: 32, y: 14, w: 8, h: 2 } },
-      { roomA: 'd', roomB: 'e', passageGrid: { x: 34, y: 18, w: 6, h: 2 } },
+      { roomA: 'b', roomB: 'e', passageGrid: { x: 32, y: 6, w: 8, h: 2 } },
+      { roomA: 'd', roomB: 'e', passageGrid: { x: 34, y: 22, w: 6, h: 2 } },
       { roomA: 'e', roomB: 'f', passageGrid: { x: 44, y: 20, w: 2, h: 10 } },
       { roomA: 'c', roomB: 'g', passageGrid: { x: 4, y: 34, w: 2, h: 6 } },
     ],
     // Rooms 'a' and 'f' — three hops apart, comfortably clear of the adjacency bound.
     spawns: [{ x: 4, y: 4 }, { x: 44, y: 34 }],
     eyeCandidates: [{ roomId: 'a' }, { roomId: 'd' }, { roomId: 'f' }],
-  };
+  });
 }
 
 /** Six rooms in a line, every footprint distinct so only the graph shape is on trial. */
 function chainMap(): ArenaMap {
   const sizes: Array<[number, number]> = [[10, 10], [11, 10], [10, 11], [12, 10], [10, 12], [11, 11]];
-  return {
+  return opened({
     id: 'fixture_chain',
     sizeGrid: { w: 90, h: 30 },
     rooms: sizes.map(([w, h], i) => walledRoom(`r${i}`, i * 14, 0, w, h)),
@@ -89,7 +130,7 @@ function chainMap(): ArenaMap {
     })),
     spawns: [{ x: 4, y: 4 }, { x: 74, y: 4 }],
     eyeCandidates: [{ roomId: 'r0' }, { roomId: 'r5' }],
-  };
+  });
 }
 
 const rules = (map: ArenaMap): string[] => auditArenaQuality(map).map((v) => v.rule).sort();
@@ -207,9 +248,9 @@ describe('the arena quality gate — every rule fires on content that deserves i
   });
 
   it('`stamped_rooms`: one footprint repeated across the map', () => {
-    const map = healthyMap();
-    // Every room the same 10x10 footprint — `arena_prototype_60`'s headline number (1.0).
-    map.rooms = map.rooms.map((r) => walledRoom(r.id, r.rectGrid.x, r.rectGrid.y, 10, 10));
+    // Every room the same footprint — `arena_prototype_60`'s headline number (1.0). 12x20 is
+    // the one that keeps every door facing a wall on both sides.
+    const map = healthyMap([12, 20]);
     expect(rules(map)).toEqual(['stamped_rooms']);
   });
 
@@ -300,6 +341,54 @@ describe('the arena quality gate — every rule fires on content that deserves i
     expect(rules(map)).toContain('undoored_leak');
   });
 
+  // The two body-reach rules (`arenaBodyAccess.ts`). `arena_launch` shipped both until
+  // 2026-09-30: floor sealed off inside a room, mobs spawned in it, and rooms in two halves.
+  it('`room_split`: a bar laid wall to wall across one room', () => {
+    const map = healthyMap();
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, { x: 1, y: 6, w: 12, h: 1 }] };
+    expect(rules(map)).toEqual(['room_split']);
+    // One short of the far wall, a body walks round the end of it: one piece again.
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...healthyMap().rooms[3]!.solids, { x: 1, y: 6, w: 10, h: 1 }] };
+    expect(rules(map)).toEqual([]);
+  });
+
+  it('`content_unreached`: loot in the middle of a block, and not loot beside it', () => {
+    const map = healthyMap();
+    const block = { x: 2, y: 2, w: 4, h: 4 };
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, block], lootMarkers: [{ point: { x: 4, y: 4 }, tableId: 'arena_common' }] };
+    expect(rules(map)).toEqual(['content_unreached']);
+    // Against the block's face is reached: a body stands a grid off it.
+    map.rooms[3] = { ...map.rooms[3]!, lootMarkers: [{ point: { x: 6, y: 4 }, tableId: 'arena_common' }] };
+    expect(rules(map)).toEqual([]);
+  });
+
+  it('`room_split` + `content_unreached`: a mob spawned in a pocket sealed inside its room', () => {
+    // The volume 116 shape: standable floor no door leads to, and something placed on it.
+    const map = healthyMap();
+    const ring = [{ x: 2, y: 2, w: 5, h: 1 }, { x: 2, y: 6, w: 5, h: 1 }, { x: 2, y: 2, w: 1, h: 5 }, { x: 6, y: 2, w: 1, h: 5 }];
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, ...ring], spawns: [{ x: 4, y: 4 }] };
+    expect(rules(map)).toEqual(['content_unreached', 'room_split']);
+  });
+
+  it('`content_unreached` checks drop points too, against the room that holds them', () => {
+    const map = healthyMap();
+    map.rooms[0] = { ...map.rooms[0]!, solids: [...map.rooms[0]!.solids, { x: 2, y: 2, w: 5, h: 5 }] };
+    expect(auditArenaQuality(map).map((v) => v.detail)).toEqual([expect.stringContaining('a drop -> (4, 4)')]);
+  });
+
+  it('`door_shut`: one doorway walled back up, which no graph rule can see', () => {
+    // `a` still reaches `b` the long way round (a-c-d-b), so the graph is whole and every
+    // other rule is silent. Only the one door is shut.
+    const map = healthyMap();
+    map.rooms[0] = { ...map.rooms[0]!, solids: [...map.rooms[0]!.solids, { x: 9, y: 4, w: 1, h: 2 }] };
+    expect(auditArenaQuality(map).map((v) => [v.rule, v.detail])).toEqual([['door_shut', '1 doors no body walks through, e.g. a -> b']]);
+    // The other side of the bound: wall one of the doorway's two rows and a body still fits the
+    // one-grid gap left (its solid radius is half a grid), so the door is open.
+    const narrow = healthyMap();
+    narrow.rooms[0] = { ...narrow.rooms[0]!, solids: [...narrow.rooms[0]!.solids, { x: 9, y: 4, w: 1, h: 1 }] };
+    expect(rules(narrow)).toEqual([]);
+  });
+
   it('every rule the gate can emit is covered by a case above', () => {
     // The sweep's own completeness check. Both directions: nothing in the list went
     // unreached, and nothing was emitted that the list does not name (which would mean a
@@ -323,8 +412,7 @@ describe('the arena quality gate — every rule fires on content that deserves i
     const outside = healthyMap(); outside.spawns = [{ x: 55, y: 55 }, { x: 24, y: 24 }]; collect(outside);
     const shared = healthyMap(); shared.spawns = [{ x: 4, y: 4 }, { x: 5, y: 5 }]; collect(shared);
     const close = healthyMap(); close.spawns = [{ x: 4, y: 4 }, { x: 24, y: 4 }]; collect(close);
-    const stamped = healthyMap();
-    stamped.rooms = stamped.rooms.map((r) => walledRoom(r.id, r.rectGrid.x, r.rectGrid.y, 10, 10));
+    const stamped = healthyMap([12, 20]);
     collect(stamped);
     const sparse: ArenaMap = {
       ...healthyMap(),
@@ -368,6 +456,12 @@ describe('the arena quality gate — every rule fires on content that deserves i
     leak.spawns = [{ x: 4, y: 4 }, { x: 4, y: 24 }];
     leak.eyeCandidates = [{ roomId: 'a' }, { roomId: 'c' }];
     collect(leak);
+    const split = healthyMap();
+    split.rooms[3] = { ...split.rooms[3]!, solids: [...split.rooms[3]!.solids, { x: 1, y: 6, w: 12, h: 1 }] };
+    collect(split);
+    const buried = healthyMap();
+    buried.rooms[3] = { ...buried.rooms[3]!, solids: [...buried.rooms[3]!.solids, { x: 2, y: 2, w: 4, h: 4 }], lootMarkers: [{ point: { x: 4, y: 4 }, tableId: 'arena_common' }] };
+    collect(buried);
 
     const ALL_RULES = [
       'content_off_map', 'content_outside_room', 'no_walls', 'unenclosed_room',
@@ -375,7 +469,7 @@ describe('the arena quality gate — every rule fires on content that deserves i
       'no_spawns', 'spawn_outside_room', 'spawn_shared_room', 'stamped_rooms',
       'rooms_without_cover', 'cover_too_sparse', 'cover_too_dense', 'spawns_too_close',
       'map_too_shallow', 'no_branching', 'zone_has_no_choices', 'zone_unreachable',
-      'room_barely_walled',
+      'room_barely_walled', 'room_split', 'content_unreached', 'door_shut',
     ];
     expect([...emitted].sort().filter((r) => !ALL_RULES.includes(r))).toEqual([]);
     expect(ALL_RULES.filter((r) => !emitted.has(r)).sort()).toEqual([]);
@@ -397,7 +491,8 @@ describe('the arena quality gate — the bounds sit where they claim to', () => 
     const map = healthyMap();
     map.doors.push({ roomA: 'a', roomB: 'b', passageGrid: { x: 3, y: 3, w: 2, h: 2 } });
     expect(measureEnclosure(map).doorsWithoutWalls).toBe(1);
-    expect(rules(map)).toEqual(['door_gates_nothing']);
+    // It is also a door no body walks through to `b`, which is `door_shut`'s own finding.
+    expect(rules(map)).toEqual(['door_gates_nothing', 'door_shut']);
   });
 
   it('fires `unenclosed_room` on ONE unenclosed room', () => {
@@ -454,6 +549,7 @@ describe('the arena quality gate — the bounds sit where they claim to', () => 
     const map = healthyMap();
     map.sizeGrid = { w: 200, h: 200 };
     map.rooms[6] = { ...walledRoom('g', 0, 40, 100, 100), pillars: [] };
+    opened(map);
     const fractions = measureArena(map).cover.coverFractions;
     expect(fractions[0]!).toBeLessThan(ARENA_QUALITY_BOUNDS.minMedianCoverFraction);
     expect(fractions[Math.floor(fractions.length / 2)]!).toBeGreaterThan(ARENA_QUALITY_BOUNDS.minMedianCoverFraction);
@@ -486,8 +582,8 @@ describe('the arena quality gate — the bounds sit where they claim to', () => 
     // rather than pretending a fixture reaches it.
     const withSides = (keep: number): ArenaMap => {
       const map = healthyMap();
-      map.rooms[2] = { ...map.rooms[2]!, solids: map.rooms[2]!.solids.slice(0, keep) };
-      return map;
+      map.rooms[2] = { ...map.rooms[2]!, solids: walledRoom('c', 0, 20, 10, 14).solids.slice(0, keep) };
+      return opened(map);
     };
     expect(measureEnclosure(withSides(2)).perimeterCoverage[0]!).toBeLessThan(ARENA_QUALITY_BOUNDS.minPerimeterCoverage);
     expect(rules(withSides(2))).toContain('room_barely_walled');
@@ -508,8 +604,7 @@ describe('the arena quality gate — the bounds sit where they claim to', () => 
     expect(bySeverity.get('rooms_without_cover')).toBe('design');
     expect(bySeverity.get('cover_too_sparse')).toBe('design');
 
-    const stamped = healthyMap();
-    stamped.rooms = stamped.rooms.map((r) => walledRoom(r.id, r.rectGrid.x, r.rectGrid.y, 10, 10));
+    const stamped = healthyMap([12, 20]);
     expect(auditArenaQuality(stamped).map((v) => v.severity)).toEqual(['design']);
 
     const noSpawn = healthyMap();

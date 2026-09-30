@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ENGINE_VERSION } from '@dd/engine/config';
+import { toFp } from '@dd/engine/math/fixed';
 import { createGameEngine } from '@dd/engine/GameEngine';
 import type { EngineConfig } from '@dd/engine/state/GameState';
 import { Button, LocalInputSource, type PlayerCommand } from '@dd/engine/state/commands';
@@ -119,5 +120,22 @@ describe('runHeadless (shared authoritative loop)', () => {
       src2.submit(makeCommand({ owner: 0, tick: t, moveBrad: 0 as never, moveMag: 0, buttons: Button.FIRE }));
     }
     expect(hashState(runHeadless(cfg, src2, 600).state)).toBe(hashState(e.state));
+  });
+});
+
+describe('serializeState: the deflect latch (ENGINE_VERSION 85)', () => {
+  it('hashes a bullet that has turned back, and a bullet that has not as before the latch existed', () => {
+    const e = createGameEngine(ARENA);
+    const s = e.state;
+    s.projectiles.push({
+      id: s.nextId(), faction: 'player', teamId: 0, gx: toFp(0), gy: toFp(0), z: toFp(0), vx: toFp(0), vy: toFp(0),
+      radius: toFp(1), damage: 1, damageType: 'physical', lifeTicks: 9, alive: true,
+    });
+    const row = () => (serializeState(s) as { projectiles: unknown[][] }).projectiles[0]!;
+    const plain = row();
+    const hashPlain = hashState(s);
+    s.projectiles[0]!.deflected = true;
+    expect(row()).toEqual([...plain, 1]); // appended, never folded into a field before it
+    expect(hashState(s)).not.toBe(hashPlain);
   });
 });

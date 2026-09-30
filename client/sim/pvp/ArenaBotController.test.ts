@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Button, FP_SCALE, createGameEngine, createGameState, makeCommand, type GameState, type PlayerActor, type Projectile } from '@dd/engine';
+import { shuffledArenaConfig } from './arenaMatch';
 import { PvpBotController } from '../../src/game/controllers/PvpBotController';
 import { ARENA_PROFILES, ArenaBotController, LOOT_DETOUR_FP, PARRY_LOOKAHEAD, REARM_SHOTS, bulletIncoming, drySwapDue, lootToSeek } from './ArenaBotController';
 
@@ -38,7 +39,7 @@ describe('ArenaBotController', () => {
     for (const gap of [2, 6, 20]) {
       const s = duel(gap);
       bullet(s, 1, -0.3);
-      expect(new ArenaBotController(ARENA_PROFILES.shipped).build(s, 0, 5)).toEqual(new PvpBotController().build(s, 0, 5));
+      expect(new ArenaBotController(ARENA_PROFILES.shipped).build(s, 0, 5)).toEqual(new PvpBotController({ revives: false }).build(s, 0, 5));
     }
   });
 
@@ -190,5 +191,36 @@ describe('lootToSeek', () => {
     const cmd = new ArenaBotController(ARENA_PROFILES.loots).build(s, 0, 5);
     expect(cmd.pickupTargetId).toBe(50);
     expect(cmd.moveBrad).toBe(new PvpBotController().build(s, 0, 5).moveBrad); // the fight still steers
+  });
+});
+
+describe('the revive flag', () => {
+  /** An eight-seat arena at the drop: seat 0 and a squadmate one grid east of it, downed. */
+  function squad(): GameState {
+    const s = createGameEngine(shuffledArenaConfig(5, 8)).state;
+    const me = s.players[0]!;
+    const mate = s.players.find((p) => p !== me && p.teamId === me.teamId)!;
+    Object.assign(mate, { gx: me.gx + G, gy: me.gy, downed: true, hp: 0, bleedoutTicks: 900 });
+    me.bandages = 1;
+    return s;
+  }
+  const interacts = (buttons: number) => (buttons & Button.INTERACT) !== 0;
+
+  it('switches the shipped rule on and off: on, it holds the revive; off, neither bot revives', () => {
+    const on = new ArenaBotController(ARENA_PROFILES.fullRevives).build(squad(), 0, 5);
+    expect(interacts(on.buttons)).toBe(true);
+    expect(on.moveMag).toBe(0);
+    for (const p of [ARENA_PROFILES.full, ARENA_PROFILES.shipped]) expect(interacts(new ArenaBotController(p).build(squad(), 0, 5).buttons)).toBe(false);
+    expect(new ArenaBotController(ARENA_PROFILES.shippedRevives).build(squad(), 0, 5)).toEqual(new PvpBotController().build(squad(), 0, 5));
+  });
+
+  it('keeps a reviver on the body over the loot walk', () => {
+    const s = squad();
+    const me = s.players[0]!;
+    s.pickups.push({ id: 60, kind: 'crate', gx: me.gx, gy: me.gy + 3 * G, spawnTick: 0, alive: true } as never);
+    expect(new ArenaBotController(ARENA_PROFILES.full).build(s, 0, 5).moveMag).toBeGreaterThan(0); // walks to the crate
+    const cmd = new ArenaBotController(ARENA_PROFILES.fullRevives).build(s, 0, 5);
+    expect(interacts(cmd.buttons)).toBe(true);
+    expect(cmd.moveMag).toBe(0);
   });
 });

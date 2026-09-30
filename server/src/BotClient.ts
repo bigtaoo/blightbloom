@@ -11,9 +11,11 @@
  * determinism, no shortcuts — the engine can't tell a bot from a remote player, design/08)
  * and picks its own commands from a brain chosen by the room's MODE:
  *
- *   `pvp`   `PvpBotController` — fight the nearest living opponent, idle otherwise.
- *   `coop`  `AllyController` — fight the nearest enemy, and regroup on the human seat when
- *           the floor is quiet. This is not a new bot written for the server: it is the
+ *   `pvp`   `PvpBotController` — fight the nearest living opponent, idle otherwise; revive
+ *           a downed squadmate close by when it carries a bandage (volume 118).
+ *   `coop`  `AllyController` — revive the downed human seat (volume 118), else fight the
+ *           nearest enemy, and regroup on the human seat when the floor is quiet. This
+ *           is not a new bot written for the server: it is the
  *           exact controller the local `?coop=1` toggle has driven the second seat with
  *           since ROADMAP 3.1, which is what made a co-op backfill worth wiring at all
  *           (design/10's front-door audit, 2026-09-17) — the content already existed and

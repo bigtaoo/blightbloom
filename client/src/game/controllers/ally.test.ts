@@ -19,6 +19,7 @@ import { BASIC_ENEMY } from '@dd/engine/content/enemies';
 import { toFp } from '@dd/engine/math/fixed';
 import { type Brad } from '@dd/engine/math/trig';
 import { ENEMY_TEAM_ID, type EnemyActor } from '@dd/engine/state/entities';
+import { REVIVE_CHANNEL_TICKS } from '@dd/engine';
 import { AllyController } from './AllyController';
 
 function addEnemy(s: GameState, xpx: number, ypx: number): EnemyActor {
@@ -91,5 +92,67 @@ describe('two-seat run: the bot ally actually drives the second player through s
     expect(gapTo()).toBeLessThan(startGap); // the bot drove the 2nd player toward the enemy
     expect(eng.state.players[0]!.gx).toBe(pxToFp(400)); // leader stayed put (only its own cmd moved it)
     expect(eng.state.winner).toBeNull(); // both up, enemy alive → run continues
+  });
+});
+
+describe('AllyController — reviving the downed leader (volume 118)', () => {
+  // Leader (seat 0) downed `gapPx` east of the ally (seat 1).
+  function downedLeader(gapPx: number): GameState {
+    const s = createGameState({ ...CFG, players: [{ start: [400 + gapPx, 400] }, { start: [400, 400] }] });
+    Object.assign(s.players[0]!, { downed: true, hp: 0, bleedoutTicks: 900 });
+    return s;
+  }
+  const interacts = (buttons: number) => (buttons & Button.INTERACT) !== 0;
+
+  it('holds INTERACT beside the body, with no bandage (a co-op revive is free), and never fires', () => {
+    const s = downedLeader(20);
+    expect(s.players[1]!.bandages).toBe(0);
+    const cmd = ally.build(s, 1, 0, 5);
+    expect(interacts(cmd.buttons)).toBe(true);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+    expect(cmd.moveMag).toBe(0);
+  });
+
+  it('walks to a body out of reach without holding INTERACT', () => {
+    const cmd = ally.build(downedLeader(200), 1, 0, 5);
+    expect(cmd.moveMag).toBeGreaterThan(0);
+    expect(interacts(cmd.buttons)).toBe(false);
+  });
+
+  it('fights an enemy with a clear shot before starting, and holds a channel already running', () => {
+    const s = downedLeader(20);
+    addEnemy(s, 600, 400);
+    const open = ally.build(s, 1, 0, 5);
+    expect(interacts(open.buttons)).toBe(false);
+    expect(open.buttons & Button.FIRE).toBeTruthy();
+    s.players[0]!.reviveProgressTicks = 50;
+    const held = ally.build(s, 1, 0, 5);
+    expect(interacts(held.buttons)).toBe(true);
+    expect(held.buttons & Button.FIRE).toBe(0);
+  });
+
+  it('a leader up is no revive: the ally regroups as before', () => {
+    const s = downedLeader(200);
+    s.players[0]!.downed = false;
+    expect(interacts(ally.build(s, 1, 0, 5).buttons)).toBe(false);
+  });
+
+  it('brings the leader back up through step()', () => {
+    const eng = createGameEngine({ ...CFG, waves: [[[1500, 1100]]], players: [{ start: [440, 400] }, { start: [400, 400] }] });
+    const idle = (t: number) => makeCommand({ owner: 0, tick: t, moveBrad: 0 as Brad, moveMag: 0, buttons: 0 });
+    eng.step([idle(1)]);
+    const enemy = eng.state.enemies[0]!;
+    enemy.weapon = null;
+    Object.assign(eng.state.players[0]!, { downed: true, hp: 0, bleedoutTicks: 900 });
+    let revived = false;
+    for (let t = 2; t < 2 + REVIVE_CHANNEL_TICKS + 30 && !revived; t++) {
+      // The enemy is held far off, so the run lasts and nothing is in fire range.
+      Object.assign(enemy, { gx: pxToFp(1500), gy: pxToFp(1100) });
+      eng.step([idle(t), ally.build(eng.state, 1, 0, t)]);
+      revived = eng.state.events.some((e) => e.type === 'revived' && e.id === eng.state.players[0]!.id);
+    }
+    expect(revived).toBe(true);
+    expect(eng.state.players[0]!.downed).toBe(false);
+    expect(eng.state.winner).toBeNull();
   });
 });

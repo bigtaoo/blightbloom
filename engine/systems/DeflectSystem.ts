@@ -23,6 +23,11 @@
  * refactor — design/05's "deflect is already a commitment" still holds, since the
  * commitment is the swing itself, and the frame-perfect timing this replaced was
  * unreadable at 30 Hz.
+ *
+ * A bullet turns back once (ENGINE_VERSION 85, volume 118). Before, a rebound was a live
+ * target for the shooter's own swing, and two frame-perfect parriers returned one bullet
+ * between them until the match's tick limit (volume 117). `PVP_DEFLECT_DAMAGE_PERMILLE` never
+ * came into it: the weakened shot was parried again before it could land.
  */
 import { mulFp } from '../math/fixed';
 import { atan2Brad, bradDiff, cosFp, sinFp } from '../math/trig';
@@ -44,7 +49,8 @@ export class DeflectSystem {
       const spec: MeleeSimSpec = w.spec;
 
       for (const b of state.projectiles) {
-        if (!b.alive || !isHostile(p, b)) continue;
+        // A bullet turns back once (ENGINE_VERSION 85): a rebound goes through the next swing.
+        if (!b.alive || b.deflected || !isHostile(p, b)) continue;
         const dx = b.gx - p.gx;
         const dy = b.gy - p.gy;
         if (dx * dx + dy * dy > spec.range * spec.range) continue; // swing reach
@@ -64,6 +70,7 @@ export class DeflectSystem {
         delete b.crit; // the deflector rolled nothing; the rebound is not a crit of theirs
         b.teamId = p.teamId; // now hostile to the ORIGINAL owner's team, not the deflector's
         b.lifeTicks = DEFLECT_LIFE_TICKS;
+        b.deflected = true;
         state.events.push({ type: 'deflect', gx: b.gx, gy: b.gy });
       }
     }

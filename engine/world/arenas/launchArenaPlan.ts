@@ -55,12 +55,12 @@ export const DISTRICT_MAP = [
  *  `S` spike field `l` spike line, `.` empty slot. */
 export const KIT_MAP = [
   'co4.SluS.',
-  'cur4l.ush',
+  'cur4l.usu',
   '4crovrShs',
   '.4cvovsvh',
   'urcro.hs.',
   'suc.vhusv',
-  'us.hl.vh4',
+  'us.4l.vs4',
   '.cus.hSv.',
 ] as const;
 

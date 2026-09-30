@@ -6,9 +6,9 @@
  * `@dd/game/pvpConfig` import.
  */
 import { describe, it, expect } from 'vitest';
-import { createGameState } from '@dd/engine';
+import { createGameState, Prng } from '@dd/engine';
 import { toFpGrid } from '@dd/engine/content/convert';
-import { assignArenaStarts, buildPvpEngineConfig, squadSizeForPlayerCount, teamIdForOwner, SQUAD_SIZE } from './pvpConfig';
+import { assignArenaStarts, buildPvpEngineConfig, spawnRingOrder, squadSizeForPlayerCount, teamIdForOwner, SEED_SPAWN, SQUAD_SIZE } from './pvpConfig';
 import { ARENA_CATALOG } from './arenaCatalog';
 import { fpToPx } from '../coords';
 
@@ -89,5 +89,115 @@ describe('assignArenaStarts', () => {
 
   it('refuses a lobby bigger than the authored spawn list', () => {
     expect(() => assignArenaStarts(arena, 1, arena.spawns.length + 1)).toThrow(/spawns for/);
+  });
+});
+
+// A squad starts together (volume 118). Until then the free-for-all shuffle also seated
+// squads, so an 8-seat match dropped squadmates in separate districts all over the map.
+describe('assignArenaStarts: squads', () => {
+  const arena = ARENA_CATALOG.arena_launch;
+  const px = (grid: number) => fpToPx(toFpGrid(grid));
+  const spawnOf = (a: typeof arena, start: [number, number]) =>
+    a.spawns.findIndex((p) => px(p.x) === start[0] && px(p.y) === start[1]);
+  // The volume-115 assignment, which every match used before this: one plain shuffle.
+  const plainShuffle = (a: typeof arena, seed: number, n: number) => {
+    const order = a.spawns.map((_, i) => i);
+    new Prng(seed ^ SEED_SPAWN).shuffle(order);
+    return order.slice(0, n);
+  };
+  // A synthetic map whose `count` spawns sit on a circle, authored in a scrambled order so
+  // the ring order has to be derived rather than read off the list.
+  const circleArena = (count: number) => {
+    const pts = Array.from({ length: count }, (_, i) => ({
+      x: 100 + Math.round(80 * Math.cos((2 * Math.PI * i) / count)),
+      y: 100 + Math.round(80 * Math.sin((2 * Math.PI * i) / count)),
+    }));
+    const scramble = pts.map((_, i) => (i * 5) % count); // 5 is coprime to 8 and 12
+    return { arena: { ...arena, spawns: scramble.map((i) => pts[i]!) }, circlePos: scramble };
+  };
+  const SEEDS = Array.from({ length: 64 }, (_, i) => i);
+
+  it('orders spawns round their centroid, falling back to authored order on a tie', () => {
+    // A square authored out of order, then two points on one ray from the centroid, and a
+    // point on the centroid's west axis (the y === 0, x < 0 edge of the half-plane split).
+    const square = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 10, y: 0 }, { x: 0, y: 10 }];
+    expect(spawnRingOrder(square)).toEqual([1, 3, 0, 2]);
+    const ray = [{ x: 2, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 0 }, { x: -6, y: 0 }];
+    expect(spawnRingOrder(ray)).toEqual([0, 1, 2, 3]);
+    // Due west and due east cross to zero, so only the half-plane split puts west after east.
+    const compass = [{ x: -10, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }, { x: 0, y: -10 }];
+    expect(spawnRingOrder(compass)).toEqual([1, 2, 0, 3]);
+  });
+
+  it('puts the launch arena spawns in their ring round the map', () => {
+    // E, SE, S, SW, W, NW, N, NE: each spawn's ring neighbours are neighbours on the map.
+    const named = spawnRingOrder(arena.spawns).map((i) => `${arena.spawns[i]!.x},${arena.spawns[i]!.y}`);
+    expect(named).toEqual(['101,53', '101,88', '61,69', '24,87', '24,42', '7,11', '75,7', '112,17']);
+  });
+
+  it('gives each squad a run of neighbouring ring spawns, and the runs never overlap', () => {
+    for (const [count, seats] of [[8, 8], [12, 8], [12, 12]] as const) {
+      const { arena: a, circlePos } = circleArena(count);
+      const squad = squadSizeForPlayerCount(seats);
+      for (const seed of SEEDS) {
+        const spawns = assignArenaStarts(a, seed, seats).map((st) => spawnOf(a, st));
+        expect(new Set(spawns).size).toBe(seats);
+        for (let k = 0; k < seats / squad; k++) {
+          const pos = spawns.slice(k * squad, (k + 1) * squad).map((i) => circlePos[i]!);
+          // A cyclic run of `squad` positions: some member is the start of it.
+          const run = pos.some((p0) => pos.every((p) => (p - p0 + count) % count < squad));
+          expect(run, `${count} spawns, ${seats} seats, seed ${seed}, squad ${k}: ${pos}`).toBe(true);
+        }
+        // Spare spawns go between the squads, not all on one side: 8 seats on 12 spawns
+        // leave two empty spawns on each side of each run.
+        const gap = Math.floor(count / (seats / squad)) - squad + 1;
+        spawns.forEach((a, i) => spawns.forEach((b, j) => {
+          if (teamIdForOwner(i, seats) === teamIdForOwner(j, seats)) return;
+          const apart = (circlePos[a]! - circlePos[b]! + count) % count;
+          expect(Math.min(apart, count - apart), `${count} spawns, ${seats} seats, seed ${seed}`).toBeGreaterThanOrEqual(gap);
+        }));
+      }
+    }
+  });
+
+  it('starts every squadmate nearer its squad than the enemy, on the launch arena', () => {
+    const d = (a: number, b: number) => Math.hypot(arena.spawns[a]!.x - arena.spawns[b]!.x, arena.spawns[a]!.y - arena.spawns[b]!.y);
+    const lonely = (spawns: number[]) =>
+      spawns.filter((me, seat) => {
+        const mates = spawns.filter((_, o) => o !== seat && teamIdForOwner(o, 8) === teamIdForOwner(seat, 8));
+        const foes = spawns.filter((_, o) => teamIdForOwner(o, 8) !== teamIdForOwner(seat, 8));
+        const mean = (xs: number[]) => xs.reduce((t, x) => t + d(me, x), 0) / xs.length;
+        return mean(mates) >= mean(foes);
+      }).length;
+    let before = 0;
+    for (const seed of SEEDS) {
+      expect(lonely(assignArenaStarts(arena, seed, 8).map((st) => spawnOf(arena, st))), `seed ${seed}`).toBe(0);
+      before += lonely(plainShuffle(arena, seed, 8));
+    }
+    // The control: the plain shuffle strands a large share of seats among the enemy.
+    expect(before).toBeGreaterThan(SEEDS.length);
+  });
+
+  it('lets the seed choose which squad takes which half, and the seats within it', () => {
+    const west = new Set(['61,69', '24,87', '24,42', '7,11']);
+    const halves = new Set<string>();
+    const seatings = new Set<string>();
+    for (const seed of SEEDS) {
+      const starts = assignArenaStarts(arena, seed, 8).map((st) => spawnOf(arena, st));
+      const side = starts.map((i) => (west.has(`${arena.spawns[i]!.x},${arena.spawns[i]!.y}`) ? 'W' : 'E')).join('');
+      expect(['WWWWEEEE', 'EEEEWWWW'], `seed ${seed}`).toContain(side);
+      halves.add(side);
+      seatings.add(starts.join());
+    }
+    expect(halves.size).toBe(2);
+    expect(seatings.size).toBeGreaterThan(SEEDS.length / 2);
+  });
+
+  it('leaves every free-for-all match where the plain shuffle put it', () => {
+    for (const seats of [2, 3, 4, 5, 6, 7]) {
+      for (const seed of SEEDS) {
+        expect(assignArenaStarts(arena, seed, seats).map((st) => spawnOf(arena, st))).toEqual(plainShuffle(arena, seed, seats));
+      }
+    }
   });
 });

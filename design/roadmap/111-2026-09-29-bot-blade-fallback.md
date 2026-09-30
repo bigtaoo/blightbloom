@@ -131,7 +131,8 @@ both flags on. The `swapsWeapons`-off case is what killed it.
 
 - **The PvP bot still never parries.** `PVP_DEFLECT_DAMAGE_PERMILLE` is still unmeasured, per
   volume 99. This pass gave the *PvE* bot a blade, and only as a fallback; it swings at mobs,
-  not at bullets.
+  not at bullets. *(The capacity sim's bot parries since [volume 117](117-2026-09-29-pvp-capacity.md);
+  the shipped arena bot still does not.)*
 - **No ordering made a looted gun pay** for this bot. Whether that is the bot (it cannot use a
   mechanic) or the roster (the frames really are side-grades for anyone who kites) is a
   question a person playing can answer and this harness cannot.

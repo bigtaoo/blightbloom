@@ -12,9 +12,14 @@
  *     completes. Reaching REVIVE_CHANNEL_TICKS brings the player back up with
  *     REVIVE_HP and consumes the reviver's bandage (PvP only; PvE's channel stays
  *     free, exactly as before design/05/15).
- *   - otherwise the channel is interrupted: progress resets to 0 (design/07 "the reviver
- *     moving / being downed cancels it") and the bleedout timer ticks down. At 0 the
- *     player dies permanently (alive=false).
+ *   - otherwise the channel is interrupted: progress resets to 0 and the bleedout timer
+ *     ticks down. At 0 the player dies permanently (alive=false). What interrupts it is
+ *     leaving the reach, letting go of INTERACT, or being downed (design/07): moving INSIDE
+ *     the reach does not, so a stray step never throws a channel away (ENGINE_VERSION 86).
+ *
+ * The reviver cannot attack while it channels (ENGINE_VERSION 86): ApplyInputSystem (step
+ * 1) clears `firing` for a seat that `reviveTarget` says is holding a valid revive, with the
+ * same predicate this system uses, so the two can never disagree about who is reviving.
  *
  * The teamId check is a no-op in PvE co-op (every player shares the implicit single
  * team) — it only ever excludes anyone in PvP, where distinct squads exist. There is
@@ -35,7 +40,7 @@ export class ReviveSystem {
   tick(state: GameState): void {
     for (const d of state.players) {
       if (!d.alive || !d.downed) continue;
-      const reviver = this.findReviver(state, d);
+      const reviver = findReviver(state, d);
       if (reviver) {
         // Committed revive: bleedout paused, channel advances.
         d.reviveProgressTicks++;
@@ -64,22 +69,33 @@ export class ReviveSystem {
       }
     }
   }
+}
 
-  /** The valid reviver for downed player `d`, if any — another up, same-squad player
-   * holding INTERACT within reach, carrying a bandage if this is a PvP (zoneEnabled)
-   * match. `null` if none qualifies. */
-  private findReviver(state: GameState, d: PlayerActor): PlayerActor | null {
-    for (const r of state.players) {
-      if (r.id === d.id || !r.alive || r.downed || !r.interacting) continue;
-      if (r.teamId !== d.teamId) continue; // never a rival squad (design/05/15)
-      if (state.zoneEnabled && r.bandages <= 0) continue; // PvP: must be carrying one
-      const dx = (r.gx - d.gx) as number;
-      const dy = (r.gy - d.gy) as number;
-      const reach = (REVIVE_RANGE_FP + r.radius + d.radius) as number;
-      if (dx * dx + dy * dy <= reach * reach) return r;
-    }
-    return null;
-  }
+/** Whether `r` qualifies as `d`'s reviver this tick: another up player of the same squad,
+ * holding INTERACT within reach, carrying a bandage if this is a PvP (zoneEnabled) match. */
+export function canRevive(state: GameState, r: PlayerActor, d: PlayerActor): boolean {
+  if (r.id === d.id || !r.alive || r.downed || !r.interacting) return false;
+  if (!d.alive || !d.downed) return false;
+  if (r.teamId !== d.teamId) return false; // never a rival squad (design/05/15)
+  if (state.zoneEnabled && r.bandages <= 0) return false; // PvP: must be carrying one
+  const dx = (r.gx - d.gx) as number;
+  const dy = (r.gy - d.gy) as number;
+  const reach = (REVIVE_RANGE_FP + r.radius + d.radius) as number;
+  return dx * dx + dy * dy <= reach * reach;
+}
+
+/** The valid reviver for downed player `d`, if any: the first seat `canRevive` accepts. */
+export function findReviver(state: GameState, d: PlayerActor): PlayerActor | null {
+  for (const r of state.players) if (canRevive(state, r, d)) return r;
+  return null;
+}
+
+/** The downed squadmate `r` is holding a revive on, if any: the body whose channel `r` would
+ * advance or share. Two seats on one body both count as reviving it (and neither attacks),
+ * though only `findReviver`'s pick spends the bandage. */
+export function reviveTarget(state: GameState, r: PlayerActor): PlayerActor | null {
+  for (const d of state.players) if (canRevive(state, r, d)) return d;
+  return null;
 }
 
 // Re-export the bleedout constant next to the system that owns the mechanic, so callers

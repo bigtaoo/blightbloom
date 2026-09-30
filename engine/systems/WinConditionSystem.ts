@@ -61,7 +61,7 @@ export class WinConditionSystem {
    * place first) the tick that happens. When exactly one squad still has a living
    * member, that squad wins. The zero-surviving-squads case (two-or-more squads wiped
    * on the identical tick) is design/15's explicit same-tick tiebreak — deterministic,
-   * never a coin flip: ascending `teamId` places higher.
+   * never a coin flip: among the squads wiped on that tick, ascending `teamId` places higher.
    *
    * `state.winner`/the `'win'` event still carry a single representative SEAT index
    * (the winning squad's lowest seat index) — every consumer (`RunOutcome.ts`,
@@ -85,8 +85,11 @@ export class WinConditionSystem {
       seats.push(i);
     });
 
-    for (const seats of seatsByTeam.values()) {
+    // Squads wiped on THIS tick: the only ones the zero-survivors tiebreak may choose from.
+    const wipedNow: number[] = [];
+    for (const [team, seats] of seatsByTeam) {
       if (!seats.every((i) => !state.players[i]!.alive)) continue; // squad still has a survivor
+      if (seats.some((i) => !state.placements.includes(i))) wipedNow.push(team);
       for (const i of seats) {
         if (!state.placements.includes(i)) state.placements.push(i);
       }
@@ -102,7 +105,9 @@ export class WinConditionSystem {
     if (aliveTeams.size === 1) {
       winnerTeam = [...aliveTeams][0]!;
     } else {
-      winnerTeam = Math.min(...seatsByTeam.keys()); // simultaneous wipe — lowest teamId wins
+      // Simultaneous wipe: the lowest teamId among the squads that went out together wins. Not
+      // among every squad: until 2026-09-30 a seat eliminated long before could be named winner.
+      winnerTeam = Math.min(...wipedNow);
     }
     const winnerSeats = seatsByTeam.get(winnerTeam)!;
     for (const i of winnerSeats) {
