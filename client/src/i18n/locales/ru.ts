@@ -215,6 +215,10 @@ export const ru: Translations<typeof en> = {
       bleedout: 'Кровотечение — осталось {seconds}с',
       reviving: 'ВАС РЕАНИМИРУЮТ…',
     },
+    revive: {
+      title: 'ПОДНИМАЕМ {pct}%',
+      hint: 'Держись рядом · стрелять нельзя',
+    },
     roster: { you: 'ВЫ' },
     portalTitle: 'ЭТАЖ ЗАЧИЩЕН — портал открылся',
     portalExtract: 'Сохранить и эвакуироваться ({pending} материалов)',

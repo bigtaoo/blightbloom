@@ -4,13 +4,17 @@
  * each downed seat bleeding out, and the channel (`REVIVE_CHANNEL_TICKS`), the bleedout
  * (`DOWNED_BLEEDOUT_TICKS`) and the bandage supply (`ARENA_DROP_TABLE`) had never been measured.
  *
- * Four conditions over the capacity sim's eight-seat seeds, two squads of four:
+ * Six conditions over the capacity sim's eight-seat seeds, two squads of four:
  *   - `full`: the capacity sim's full bot, which never revives: the control;
  *   - `full bandage1`: every seat starts with a bandage and nobody uses it: bandages alone
  *     revive nobody;
  *   - `revives`: the same bot, reviving, on whatever bandages the floor supplies;
  *   - `revives bandage1`: reviving with a bandage each from the drop, the channel measured
- *     apart from the supply.
+ *     apart from the supply;
+ *   - `shipped`: the bot that fills empty seats in real matches, its revive rule off;
+ *   - `shipped revives`: that bot as it ships.
+ *
+ * Every condition plays ENGINE_VERSION 86's rule: a reviver cannot attack.
  *
  * What it gates is the instrument, not a balance verdict: nobody comes back up without a bot
  * that revives, the reviving bot does bring seats back up once it can pay for it, every
@@ -30,6 +34,8 @@ const CONDS: [string, keyof typeof ARENA_PROFILES, number | undefined][] = [
   ['full bandage1', 'full', 1],
   ['revives', 'fullRevives', undefined],
   ['revives bandage1', 'fullRevives', 1],
+  ['shipped', 'shipped', undefined],
+  ['shipped revives', 'shippedRevives', undefined],
 ];
 
 type Count = 'downs' | 'revived' | 'bledOut' | 'bandagesPicked' | 'bandagesSpent' | 'channelTicks' | 'interrupted';
@@ -74,8 +80,10 @@ describe('PvP squad revive (bot that revives — first-signal data, not a balanc
       expect(r[k]!.total.channelTicks, k).toBe(0);
       expect(r[k]!.total.bandagesSpent, k).toBe(0);
     }
-    // The reviving bot brings seats back up once it can pay for the channel.
-    expect(r['revives bandage1']!.total.revived).toBeGreaterThan(0);
+    // The reviving bot brings seats back up once it can pay for the channel, and so does the
+    // shipped one on the floor's bandages alone.
+    for (const k of ['revives bandage1', 'shipped revives']) expect(r[k]!.total.revived, k).toBeGreaterThan(0);
+    expect(r.shipped!.total.revived).toBe(0);
     for (const [k, x] of Object.entries(r)) {
       // Every revive spends one bandage, and a seat is revived only after going down.
       expect(x.total.bandagesSpent, k).toBe(x.total.revived);

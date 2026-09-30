@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { Container } from 'pixi.js';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState, EngineConfig } from '@dd/engine/state/GameState';
+import type { PlayerActor } from '@dd/engine/state/entities';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { Fp } from '@dd/engine/math/fixed';
 import { CHEST_MECHANISM_RING_GRID, toFpGrid } from '@dd/engine';
@@ -585,6 +586,43 @@ describe('HudView — ally row revive progress (design/10 open question, ROADMAP
     hud.update(s, 16, { ...CTX, showAlly: true, allySkinId: 'juggernaut' });
 
     expect(hud.allyRow.statusText).toBe('DOWNED 2s');
+  });
+});
+
+describe("HudView — the reviver's own channel bar (design/07, ENGINE_VERSION 86)", () => {
+  const kneeling = () => {
+    const s = createGameState({ ...PVE_CFG, players: [{}, {}] });
+    const [me, mate] = s.players as [PlayerActor, PlayerActor];
+    mate.gx = me.gx;
+    mate.gy = me.gy;
+    mate.downed = true;
+    mate.bleedoutTicks = 60;
+    mate.reviveProgressTicks = 90; // of 450: 20%
+    me.interacting = true;
+    return { s, me, mate };
+  };
+
+  it("shows the body's channel while the local seat holds a revive on it", () => {
+    const hud = newHud();
+    const { s } = kneeling();
+    hud.update(s, 16, CTX);
+    expect(hud.reviveBanner.view.visible).toBe(true);
+    expect(hud.reviveBanner.titleText).toBe('REVIVING 20%');
+  });
+
+  it('hides when the seat lets go, walks out of the reach, or is itself down', () => {
+    const cases: [string, (x: ReturnType<typeof kneeling>) => void][] = [
+      ['let go', ({ me }) => (me.interacting = false)],
+      ['out of reach', ({ me }) => (me.gx = (me.gx + toFpGrid(20)) as Fp)],
+      ['down itself', ({ me }) => (me.downed = true)],
+    ];
+    for (const [label, poke] of cases) {
+      const hud = newHud();
+      const x = kneeling();
+      poke(x);
+      hud.update(x.s, 16, CTX);
+      expect(hud.reviveBanner.view.visible, label).toBe(false);
+    }
   });
 });
 

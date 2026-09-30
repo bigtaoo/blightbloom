@@ -230,6 +230,10 @@ export const en = {
       bleedout: 'Bleeding out — {seconds}s left',
       reviving: 'BEING REVIVED…',
     },
+    revive: {
+      title: 'REVIVING {pct}%',
+      hint: 'Stay close · you cannot shoot',
+    },
     roster: { you: 'YOU' },
     portalTitle: 'FLOOR CLEARED — a portal has opened',
     portalExtract: 'Bank & Extract ({pending} materials)',

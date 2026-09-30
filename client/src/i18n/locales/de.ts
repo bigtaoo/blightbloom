@@ -210,6 +210,10 @@ export const de: Translations<typeof en> = {
       bleedout: 'Verblutet in {seconds}s',
       reviving: 'WIRD WIEDERBELEBT…',
     },
+    revive: {
+      title: 'WIEDERBELEBEN {pct}%',
+      hint: 'In der Nähe bleiben · kein Schießen',
+    },
     roster: { you: 'DU' },
     portalTitle: 'ETAGE GESÄUBERT — ein Portal hat sich geöffnet',
     portalExtract: 'Sichern & Extrahieren ({pending} Materialien)',

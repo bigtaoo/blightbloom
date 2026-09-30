@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { toFp } from '@dd/engine/math/fixed';
-import type { Brad } from '@dd/engine/math/trig';
+import { BRAD_FULL, type Brad } from '@dd/engine/math/trig';
 import { pxToFp, toFpGrid } from '@dd/engine/content/convert';
 import { freshStatus } from '@dd/engine/content/damage';
 import { BASIC_ENEMY } from '@dd/engine/content/enemies';
@@ -21,7 +21,8 @@ import {
   DOWNED_BLEEDOUT_TICKS, REVIVE_CHANNEL_TICKS, REVIVE_HP, REVIVE_RANGE_GRID,
 } from '@dd/engine/config';
 import {
-  DeathDropsSystem, HitResolveSystem, ReviveSystem, WinConditionSystem,
+  ApplyInputSystem, DeathDropsSystem, HitResolveSystem, ReviveSystem, WinConditionSystem,
+  canRevive, findReviver, reviveTarget,
 } from '@dd/engine/systems';
 import { createGameEngine } from '@dd/engine/GameEngine';
 import { makeCommand } from '@dd/engine/state/input';
@@ -381,5 +382,109 @@ describe('Integration — single-player downed→wipe through the real engine st
     expect(eng.state.phase).toBe('gameover');
     expect(eng.state.winner).toBe('enemies');
     expect(eng.state.players[0]!.downed).toBe(true); // single-player: down = run over, never revived
+  });
+});
+
+describe('A reviver cannot attack, and may move inside the reach (design/07, ENGINE_VERSION 86)', () => {
+  const both = Button.FIRE | Button.INTERACT;
+  const cmd = (owner: number, buttons: number, moveBrad = 0, moveMag = 0) =>
+    makeCommand({ owner, tick: 1, moveBrad: moveBrad as Brad, moveMag, buttons });
+  /** A downed at (400,400), B its squadmate standing `offsetPx` east of it. */
+  const pair = (offsetPx = 0) => {
+    const s = state();
+    const a = s.players[0]!;
+    a.gx = pxToFp(400);
+    a.gy = pxToFp(400);
+    a.downed = true;
+    a.bleedoutTicks = DOWNED_BLEEDOUT_TICKS;
+    const b = addPlayer(s, 400 + offsetPx, 400);
+    return { s, a, b };
+  };
+
+  it('FIRE held with INTERACT over a revivable squadmate does not fire; the move still applies', () => {
+    const { s, a, b } = pair();
+    new ApplyInputSystem().tick(s, [cmd(1, both, 0, 255)]);
+    expect(b.interacting).toBe(true);
+    expect(b.firing).toBe(false);
+    expect(b.vx).toBeGreaterThan(0); // walking is still allowed
+    expect(reviveTarget(s, b)).toBe(a);
+  });
+
+  it('fires as usual when there is nothing it could revive', () => {
+    const reach = REVIVE_RANGE_GRID * 32 + 32; // the range plus two 16 px body radii
+    const cases: [string, (x: ReturnType<typeof pair>) => void, number][] = [
+      ['FIRE without INTERACT', () => {}, Button.FIRE],
+      ['out of reach', ({ b }) => (b.gx = pxToFp(400 + reach + 64)), both],
+      ['the body is up', ({ a }) => (a.downed = false), both],
+      ['the body is a rival', ({ b }) => (b.teamId = 1), both],
+    ];
+    for (const [label, poke, buttons] of cases) {
+      const x = pair();
+      poke(x);
+      new ApplyInputSystem().tick(x.s, [cmd(1, buttons)]);
+      expect(x.b.firing, label).toBe(true);
+      expect(reviveTarget(x.s, x.b), label).toBeNull();
+    }
+  });
+
+  it('in PvP a seat with no bandage cannot revive, so it may shoot', () => {
+    const MINI = {
+      id: 'mini', sizeGrid: { w: 40, h: 40 },
+      rooms: [{ id: 'A', rectGrid: { x: 0, y: 0, w: 40, h: 40 }, solids: [] }],
+      doors: [], spawns: [{ x: 12, y: 12 }], eyeCandidates: [{ roomId: 'A' }],
+    };
+    const s = createGameState({ ...CFG, arena: MINI, players: [{ teamId: 0 }] });
+    const a = s.players[0]!;
+    a.gx = pxToFp(400);
+    a.gy = pxToFp(400);
+    a.downed = true;
+    const b = addPlayer(s, 400, 400);
+    new ApplyInputSystem().tick(s, [cmd(1, both)]);
+    expect(b.firing).toBe(true);
+    b.bandages = 1;
+    new ApplyInputSystem().tick(s, [cmd(1, both)]);
+    expect(b.firing).toBe(false);
+  });
+
+  it('two seats on one body both hold their fire; the first one in seat order is the reviver', () => {
+    const { s, a, b } = pair();
+    const c = addPlayer(s, 400, 400);
+    new ApplyInputSystem().tick(s, [cmd(1, both), cmd(2, both)]);
+    expect([b.firing, c.firing]).toEqual([false, false]);
+    expect([reviveTarget(s, b), reviveTarget(s, c)]).toEqual([a, a]);
+    expect(findReviver(s, a)).toBe(b);
+    expect(canRevive(s, a, a)).toBe(false); // never oneself
+  });
+
+  it('through step(): a reviver pacing inside the reach completes the channel and fires nothing until it is done', () => {
+    const eng = createGameEngine({ seed: 3, worldW: 1600, worldH: 1200, waves: [], players: [{}, {}] });
+    const s = eng.state;
+    const [a, b] = s.players as [PlayerActor, PlayerActor];
+    a.gx = pxToFp(800);
+    a.gy = pxToFp(600);
+    a.hp = 0;
+    a.downed = true;
+    a.bleedoutTicks = DOWNED_BLEEDOUT_TICKS;
+    b.gx = pxToFp(800);
+    b.gy = pxToFp(600);
+    addEnemy(s, 60, 60); // unarmed and far off: only there so the run is not already won
+    let shots = 0;
+    let t = 0;
+    while (a.downed && t < REVIVE_CHANNEL_TICKS + 5) {
+      t++;
+      // Pace east and west on alternate ten-tick legs: moving, never leaving the reach.
+      const west = Math.floor(t / 10) % 2 === 1;
+      const events = eng.step([makeCommand({ owner: 1, tick: t, moveBrad: (west ? BRAD_FULL / 2 : 0) as Brad, moveMag: 255, buttons: both })]);
+      shots += events.filter((e) => e.type === 'bullet_fired' && e.ownerId === b.id).length;
+    }
+    expect(a.downed).toBe(false);
+    expect(t).toBe(REVIVE_CHANNEL_TICKS); // not one tick of the channel lost to the pacing
+    expect(shots).toBe(0);
+    // Up again, the same held buttons shoot: the only thing holding the fire was the revive.
+    for (let k = 1; k <= 30; k++) {
+      const events = eng.step([makeCommand({ owner: 1, tick: t + k, moveBrad: 0 as Brad, moveMag: 0, buttons: both })]);
+      shots += events.filter((e) => e.type === 'bullet_fired' && e.ownerId === b.id).length;
+    }
+    expect(shots).toBeGreaterThan(0);
   });
 });

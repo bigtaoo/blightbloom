@@ -11,7 +11,8 @@
  * determinism, no shortcuts — the engine can't tell a bot from a remote player, design/08)
  * and picks its own commands from a brain chosen by the room's MODE:
  *
- *   `pvp`   `PvpBotController` — fight the nearest living opponent, idle otherwise.
+ *   `pvp`   `PvpBotController` — fight the nearest living opponent, idle otherwise; revive
+ *           a downed squadmate close by when it carries a bandage (volume 118).
  *   `coop`  `AllyController` — fight the nearest enemy, and regroup on the human seat when
  *           the floor is quiet. This is not a new bot written for the server: it is the
  *           exact controller the local `?coop=1` toggle has driven the second seat with

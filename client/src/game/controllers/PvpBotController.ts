@@ -13,11 +13,16 @@ import { nearestHostile } from '@dd/engine/systems/targeting';
 import { engageNearest, FIRE_RANGE_FP, idleCommand, KEEP_DIST_FP, type Point } from './ai/engage';
 import { yieldsFire } from './ai/fireYield';
 import { lineOfFireClear, pointClear } from './ai/lineOfFire';
+import { reviveMove } from './ai/revive';
 import { nextRoomToward, walkIntoRoom } from './ai/roomRoute';
 import { BODY_CLEAR_FP, HOLD, reachable, steer, type Move } from './ai/steer';
 import { roomIsUnsafe, zoneRetreatCommand } from './ai/zoneRetreat';
 
 export class PvpBotController {
+  /** @param revives walk to a downed squadmate and hold the revive (volume 118). Off only for
+   *  the sims that measure a squad without it. */
+  constructor(private readonly opts: { revives?: boolean } = {}) {}
+
   /** Build this bot seat's command for `tick`. */
   build(s: GameState, owner: number, tick: number): PlayerCommand {
     const me = s.players[owner];
@@ -40,6 +45,12 @@ export class PvpBotController {
     // Nor one that would only meet the opponent's own coming down the same line: of two seats
     // trading shots head-on, one holds for a turn (`ai/fireYield.ts`).
     const fire = aim !== null && within(me, aim) && lineOfFireClear(s, me, aim) && !yieldsFire(s, me, aim, tick) ? Button.FIRE : 0;
+    // A downed squadmate next, ahead of any fight (volume 118): walk over firing as usual, then
+    // hold INTERACT from well inside the reach. The engine holds a reviver's fire
+    // (ENGINE_VERSION 86), so the button is not sent with it. A seat with no bandage for an
+    // arena revive walks to a floor one instead, while nothing it aims at is in range.
+    const rescue = this.opts.revives === false ? undefined : reviveMove(s, me, opponents, aim !== null && within(me, aim));
+    if (rescue) return makeCommand({ owner, tick, ...rescue.move, buttons: rescue.interact ? Button.INTERACT : fire });
     const target = nearest(me, opponents);
     const inRange = target !== undefined && within(me, target);
     const clear = inRange && lineOfFireClear(s, me, target);

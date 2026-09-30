@@ -2790,3 +2790,17 @@ The golden gate, run before this bump, failed in `launch-arena-pvp` alone, and i
 names the change: `deflect` 3 -> 2, every other count equal. One rebound in that run used to be
 parried back. A recorded PvP match in which a seat parried a rebound diverges on that tick.
 Golden fixture regenerated.
+
+v86 (2026-09-30 — a reviver cannot attack). design/07 said a moving reviver cancels the
+channel, and `ReviveSystem` never checked it: a reviver could walk and shoot through all
+`REVIVE_CHANNEL_TICKS`. The owner's call keeps the walking and drops the shooting. A stray
+step inside the reach no longer throws a channel away (it never did); leaving the reach,
+letting go of INTERACT or being downed still does. What changes is `ApplyInputSystem`: a seat
+holding INTERACT on a squadmate it can revive has `firing` cleared, so it neither fires nor
+swings. The predicate is `canRevive`, now a free function `ReviveSystem` itself uses, so the
+two steps cannot disagree about who is reviving. Moving and swapping are untouched. The same
+rule holds in PvE co-op.
+
+The golden gate, run before this bump, was green: no scenario revives anyone. A recorded
+match in which a seat held FIRE and INTERACT together over a revivable squadmate diverges on
+that tick. Golden fixture regenerated (version stamp only).

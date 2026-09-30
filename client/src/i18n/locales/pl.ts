@@ -210,6 +210,10 @@ export const pl: Translations<typeof en> = {
       bleedout: 'Wykrwawianie — {seconds}s do końca',
       reviving: 'TRWA REANIMACJA…',
     },
+    revive: {
+      title: 'OŻYWIANIE {pct}%',
+      hint: 'Zostań blisko · nie możesz strzelać',
+    },
     roster: { you: 'TY' },
     portalTitle: 'PIĘTRO OCZYSZCZONE — otworzył się portal',
     portalExtract: 'Złóż i wydostań się ({pending} surowców)',

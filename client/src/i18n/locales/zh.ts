@@ -210,6 +210,10 @@ export const zh: Translations<typeof en> = {
       bleedout: '流血倒计时——剩余 {seconds} 秒',
       reviving: '正在被救援…',
     },
+    revive: {
+      title: '正在救援 {pct}%',
+      hint: '留在附近 · 救援时无法攻击',
+    },
     roster: { you: '你' },
     portalTitle: '楼层已清空 — 传送门已开启',
     portalExtract: '存入并撤离（{pending} 份材料）',

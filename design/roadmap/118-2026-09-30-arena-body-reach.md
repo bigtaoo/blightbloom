@@ -828,6 +828,93 @@ simulated squad match a downed seat bled out, and the revive channel (`REVIVE_CH
   being downed cancels it", but `ReviveSystem` checks only range and the held button: a reviver
   can walk inside the reach and keep shooting through all 450 ticks. Either the doc or the
   engine is wrong; changing the engine is a rule change and an `ENGINE_VERSION` bump, so it is
-  left for a decision.
+  left for a decision. *(Decided the same day, [next entry](#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86):
+  the reviver may move inside the reach and may not attack.)*
 - The shipped arena bot (`PvpBotController`, which fills empty seats in real matches) still
-  never revives.
+  never revives. *(Closed in the next entry.)*
+
+## A reviver cannot attack, and the shipped bot revives (2026-09-30, engine + ui + tools + test + docs, ENGINE_VERSION 86)
+
+Both open items above. The owner's call on the first: a revive shows a progress bar, the
+reviver cannot attack while it channels, and it may move, but only inside a reach around the
+body; leaving the reach ends it, a stray step does not.
+
+### What changed
+
+- **Engine (`ENGINE_VERSION` 86).** `ApplyInputSystem` clears `firing` for a seat holding
+  `INTERACT` over a squadmate it can revive, so it neither shoots nor swings; moving and swapping
+  are untouched. The test is `canRevive`, now a free function in `ReviveSystem.ts` that
+  `ReviveSystem` itself uses (with `findReviver`, and `reviveTarget`: the body a seat is holding a
+  revive on), so the two steps cannot disagree about who is reviving. Leaving the reach, letting
+  go or being downed still ends the channel, as it always did; nothing ever ended it for moving
+  inside the reach, and nothing does now. The same rule holds in PvE co-op. The golden gate, run
+  before the bump, was green: no scenario revives anyone.
+- **Client.** New `ReviveBanner`: the reviver's own bar, lower centre, "REVIVING n%" over the
+  body's `reviveProgressTicks` and a hint that it cannot shoot. It shows exactly when
+  `reviveTarget` finds a body, the engine's own predicate. Before it, a reviver in a PvP squad saw
+  nothing: `AllyRow` exists only in co-op, and names one ally, not the one being revived. The
+  downed seat keeps `DownedBanner`. Strings in all eight locales.
+- **Shipped bot.** The revive rule moves out of the sim into `controllers/ai/revive.ts`
+  (`reviveGoal`, `reviveMove`), and `PvpBotController` runs it after the zone retreat and before
+  any fight: walk to a downed squadmate within 12 grid firing as usual, hold `INTERACT` from well
+  inside the reach, and with no bandage for an arena revive walk to a floor one while nothing is in
+  range. `new PvpBotController({ revives: false })` turns it off, for the sims' control.
+  `ArenaBotController`'s `revives` flag now switches the same rule on in its base bot, re-applying
+  it last so its loot and blade walks cannot pull a reviver off the body. `server/src/BotClient.ts`
+  drives the shipped bot, so bot seats in real squad matches revive.
+- **When the bot starts a channel.** A reviver cannot shoot back, so the bot does not START a
+  channel while an opponent has a clear shot in fire range; once the body's channel is running
+  with it in reach, it holds to the end. Chosen over two others on the same 30 matches (below).
+- `pvpRevive.sim.ts` gains `shipped` (its rule off) and `shipped revives`, and gates that the
+  shipped bot revives someone and, with the rule off, nobody. Six conditions, ~80 s.
+
+### Measured
+
+30 eight-seat matches per condition, `ENGINE_VERSION` 86, the rule as shipped:
+
+| condition | downs | revived | bled out | broken channels | bandages picked | winning-squad seats standing |
+|---|---|---|---|---|---|---|
+| `full` (no revive) | 190 | 0 | 186 | 0 | 56 | 1.80 / match |
+| `full`, a bandage each | 190 | 0 | 186 | 0 | 56 | 1.80 |
+| `fullRevives` | 191 | 17 | 169 | 10 | 125 | 2.37 |
+| `fullRevives`, a bandage each | 217 | 36 | 163 | 38 | 58 | 2.57 |
+| `shipped` (rule off) | 177 | 0 | 176 | 0 | 56 | 2.13 |
+| `shipped revives` | 197 | 24 | 169 | 10 | 117 | 2.37 |
+
+- **Not shooting halves the revives of a bot that ignores the rule.** Under v85, shooting
+  through the channel, `fullRevives` with a bandage each revived 55 and kept 2.60 standing.
+  Under v86 the same bot, reviving whatever came, revived 24 and kept 2.00: still more than the
+  1.80 of never reviving, but the fewest of any reviving run.
+- **Three start rules, one set of matches.** Reviving whatever came: `shipped revives` 21
+  revives, 27 broken channels, 2.33 standing. Backing off whenever an opponent had a shot, even
+  mid-channel: 17, 372 broken, 2.30, the bot letting go every time an opponent strafed into view
+  (with a bandage each it was the best run, 45 and 2.87, and still 132 broken). Not starting under
+  fire, but finishing what was started: 24, 10 broken, 2.37. The shipped bot is the one real
+  seats meet, so its row decided it.
+- The shipped bot's revive is worth about a quarter of a seat per match to the winning squad
+  (2.13 to 2.37). As in the entry above, these are properties of the bot as much as of the
+  channel, the bleedout or the drop weight.
+- The capacity sim's printed rows are byte-identical: none of its profiles revives, and nobody
+  there holds `INTERACT`.
+
+### Tests
+
+- `engine/systems/revive.test.ts`: FIRE with `INTERACT` over a revivable squadmate does not fire
+  and still moves; FIRE fires with nothing to revive (no `INTERACT`, out of reach, the body up, a
+  rival); in PvP a seat with no bandage may shoot, and holds once it has one; two seats on one body
+  both hold, the first in seat order revives; and through `step()`, a reviver pacing east and west
+  inside the reach completes the channel in exactly `REVIVE_CHANNEL_TICKS` with no shot, then
+  shoots on the same buttons once the body is up.
+- `pvpBotRevive.test.ts`: `reviveGoal` on each side of the reach, the detour and the bandage;
+  the shipped bot's walk, hold and stop; no channel started under an opponent's clear shot, one
+  already running held, and a body out of reach left alone; the rule off; the walk to a floor
+  bandage; and through the engine, a revive after the full channel that spends the bandage.
+- `ReviveBanner.test.ts`, and `HudView.test.ts`: the bar shows while the local seat holds a
+  revive, and hides when it lets go, walks out of the reach or is itself down.
+- Mutations killed: the engine never holding a reviver's fire (4 tests), the bot never checking
+  for an opponent's shot, and the bot not holding a channel already running (1 each).
+
+### Still open
+
+- The PvE co-op bot (`AllyController`) still never revives the human seat. The engine rule
+  applies there too, so a co-op revive now costs the reviver its gun for 15 s.

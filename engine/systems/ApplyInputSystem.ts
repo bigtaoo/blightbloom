@@ -29,6 +29,7 @@ import type { PlayerActor } from '../state/entities';
 import { PLAYER_BASE } from '../content/players';
 import { closeSwing } from '../content/weapons';
 import { nearestHostile } from './targeting';
+import { reviveTarget } from './ReviveSystem';
 
 export class ApplyInputSystem {
   tick(state: GameState, commands: readonly PlayerCommand[]): void {
@@ -75,6 +76,10 @@ export class ApplyInputSystem {
     p.firing = (held & Button.FIRE) !== 0;
     // This tick's INTERACT hold state (design/05/08) — read by PickupSystem/ReviveSystem.
     p.interacting = (held & Button.INTERACT) !== 0;
+    // A seat holding a revive cannot attack (design/07, ENGINE_VERSION 86): the channel is
+    // a commitment, not something to shoot through. It may still move and swap; leaving the
+    // reach is what ends the channel (ReviveSystem, the same `canRevive` predicate).
+    if (p.firing && p.interacting && reviveTarget(state, p)) p.firing = false;
     // Portal-popup choice (design/05, ROADMAP 1.4 follow-up) — ExtractionSystem reads
     // these directly; already a one-tick pulse (CommandBuilder latches then clears),
     // same convention as SWAP_WEAPON below, so no edge detection needed here.
