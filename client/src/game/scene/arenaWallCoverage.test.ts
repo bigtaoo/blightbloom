@@ -12,9 +12,9 @@
  * Every one of them sweeps `EMBER_L1_FLOORS` — the five PvE floors — and nothing else. The
  * arena had no walls at all until `arena_launch` was authored (2026-08-25), so there was
  * nothing to sweep; now there is, and it is a different shape of content by an order of
- * magnitude: 60 rooms against a PvE floor's 5-8, 25 distinct footprints, 505 authored wall
+ * magnitude: 60 rooms against a PvE floor's 5-8, 25 distinct footprints, 494 authored wall
  * rects, rooms adjacent on both axes (a PvE floor has 11 stacked boundaries in total; this map
- * has 44), 124 pillars, and 74 authored passages. A rule tuned on 27 runs of level 1 can be
+ * has 44), 113 pillars, and 74 authored passages. A rule tuned on 27 runs of level 1 can be
  * vacuous, or wrong, or merely out of headroom here without anything else noticing.
  *
  * So: `arena_launch` through `buildArenaGeometry` → `wallTier` → `mergeWallRuns` → `wallJoins`
@@ -284,11 +284,12 @@ describe('the arena reaches the wall pipeline at all', () => {
       expect([r.x / PX_PER_GRID, r.y / PX_PER_GRID, r.w / PX_PER_GRID, r.h / PX_PER_GRID], r.id)
         .toEqual([authored.x, authored.y, authored.w, authored.h]);
     }
-    // 492 / 294 until 2026-09-30 (ENGINE_VERSION 81): the pocket fill added 13 rects, and all
-    // but two of them merge into the free-standing blocks they grow out of.
-    expect(LAUNCH.walls).toHaveLength(505);
-    expect(LAUNCH.runs).toHaveLength(296); // 505 authored rects merge to 296 drawn blocks
-    expect(LAUNCH.pillars).toHaveLength(124);
+    // 492 / 294 / 124 until 2026-09-30. The pocket fill (ENGINE_VERSION 81) added 13 rects; the
+    // kit fixes the same day (82) opened the rooms they filled, leaving 2, lowered six chevron
+    // runs, and dropped 11 pillars (8 chevron, 3 rubble).
+    expect(LAUNCH.walls).toHaveLength(494);
+    expect(LAUNCH.runs).toHaveLength(288); // 494 authored rects merge to 288 drawn blocks
+    expect(LAUNCH.pillars).toHaveLength(113);
     expect(LAUNCH.passages).toHaveLength(74);
   });
 
@@ -837,7 +838,7 @@ function deepPassHits(brim: number): Array<{ gx: number; gy: number; blocks: Blo
 describe('arena occlusion coverage — the launch map, swept', () => {
   it('is looking at a real amount of floor, and the x-ray bucketing cannot miss a block', () => {
     expect(SWEPT.length).toBeGreaterThan(60_000); // measured 72,686 standable samples
-    expect(LAUNCH.blocks.length).toBeGreaterThan(300); // 296 runs + 124 pillars
+    expect(LAUNCH.blocks.length).toBeGreaterThan(300); // 288 runs + 113 pillars
     // The optimisation this sweep needs to be affordable, checked rather than assumed: a body is
     // only 2*HALF_W wide, so a block outside the sample's own 128 px column can never reach it.
     expect(HALF_W * 2).toBeLessThan(128);
@@ -957,7 +958,7 @@ describe('arena occlusion coverage — the launch map, swept', () => {
     // art over a shallow footprint, and on this map that shape is exactly the interior kit block:
     // 70 px of art over a footprint one grid cell deep. The v47 north brim moves the player far
     // enough out that a block's front face stops covering any of them, so the cap fade alone now
-    // does the whole job — on a map where 119 of 505 wall rects are free-standing (106 of 492 before the 2026-09-30 pocket fill).
+    // does the whole job — on a map where 108 of 494 wall rects are free-standing (106 of 492 before the 2026-09-30 pocket fill, 119 of 505 with it until the kits stopped sealing rooms the same day).
     //
     // A test that only asserted `=== 0` would stay green if the sweep silently stopped finding
     // anything at all, which is the failure mode this file exists to catch. So it is asserted
@@ -1002,7 +1003,7 @@ describe('arena occlusion coverage — the launch map, swept', () => {
     // 12.3% of standable floor leaves the player at least half hidden and 7.8% leaves them
     // COMPLETELY invisible before the x-ray, against 5.4% and 3.3% on the five PvE floors. Both
     // were 16.7% and 11.6% until the passage clip (2026-08-26) took a wall height off 44 runs. The
-    // arena is denser (124 pillars, 25 interior kits, colonnade rooms whose whole point is
+    // arena is denser (113 pillars, 25 interior kits, colonnade rooms whose whole point is
     // cover), so more of it is behind stone by design — what this bounds is the sweep, not the
     // level: zero would mean the x-ray has become dead weight, and half the floor would mean the
     // measurement is wrong rather than the map.
@@ -1108,8 +1109,8 @@ describe('arena passages — the clip rule that used to be dead code here', () =
     const s = createGameState({ seed: 1, worldW: 1, worldH: 1, waves: [], arena: ARENA_CATALOG.arena_launch });
     rb.build(s);
     const inner = rb as unknown as { occluders: Array<{ box: Occluder }>; wallEntities: unknown[] };
-    expect(inner.wallEntities).toHaveLength(296);
-    expect(inner.occluders).toHaveLength(296 + 124); // ...and nothing else: zero door fixtures
+    expect(inner.wallEntities).toHaveLength(288);
+    expect(inner.occluders).toHaveLength(288 + 113); // ...and nothing else: zero door fixtures
     const wallBoxes = inner.occluders.slice(0, inner.wallEntities.length).map((o) => o.box);
 
     let covered = 0;

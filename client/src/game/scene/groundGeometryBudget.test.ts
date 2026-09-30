@@ -517,22 +517,22 @@ describe('what ONE camera submits — the property the per-room split exists for
  */
 const REAL = {
   /** Everything additive: every room's mottle-light + rubble highlights, plus every door's worn
-   *  patch. 284,966 before the room clip; 228,052 until 2026-09-30 (ENGINE_VERSION 81), when the
-   *  arena's sealed pockets were filled with stone and the floor under them stopped being drawn. */
-  additive: 227_528,
+   *  patch. 284,966 before the room clip; 228,052 until 2026-09-30, 227,528 with the pocket fill
+   *  (ENGINE_VERSION 81), and this since the kit fixes (82) opened those rooms as floor. */
+  additive: 228_136,
   /** Everything else on the layer: the dark half, the fallback flat fill this headless build gets in
    *  place of a stamped swatch (480), the grid (6,400) and the light pools (17,280). 289,726 before
-   *  the room clip; 232,318 until the 2026-09-30 pocket fill. */
-  rest: 231_674,
-  total: 459_202,
+   *  the room clip; 232,318 until the 2026-09-30 pocket fill, 231,674 with it (81). */
+  rest: 232_426,
+  total: 460_562,
   /** Largest single piece, and the worst any one camera submits. 5,840 / 76,646 before the clip. */
   largestPiece: 5_558,
   /** 26,150 until 2026-09-28, when MAX_ZOOM fell 4.5 -> 3.5: a lower cap shows a little more of the
    *  floor around a small room, so the worst camera submits a little more. */
   worstCamera: 26_226,
   /** Unchanged by the clip, on purpose — see the note above. 49,392 until the 2026-09-30 pocket
-   *  fill, which is new standing stone and so casts new shadow. */
-  shadowLargest: 49_728,
+   *  fill, 49,728 with it (81); the kit fixes (82) took out pillars and most of the fill. */
+  shadowLargest: 48_384,
   /** `staticGraphics.ts`'s stated envelope for the wall-shadow pass, for comparison. */
   shadowMeasuredAt: 24_000,
 };

@@ -2723,3 +2723,20 @@ pillar and hazard is byte-identical to v80.
 The golden gate, run before this bump, was green: `launch-arena-pvp` never shoots into a pocket.
 A recorded arena match whose shot crossed one diverges, because the shot now stops on stone.
 Golden fixture regenerated (version stamp only).
+
+v82 (2026-09-30 — every launch-arena room is one piece). Volume 116 named two rooms,
+`barracks_r2c7` and `catacombs_r5c5`, whose floor split into halves joined only through other
+rooms. A per-room flood found five: those two, `catacombs_r6c7`, `terraces_r1c1`, and
+`atrium_r4c3`, whose north door opened into a corner two ring pillars sealed off. The five pockets
+v81 filled were the same defect, in rooms where one half had no door. Three kit fixes in
+`world/arenas/interiorKits.ts`: the chevron has no centre pillar (it stood in the lane between
+the two runs in every room it furnished) and keeps that lane two rows high (one row, less the
+lower run's north brim, is narrower than a body); a rubble pillar touching two chunks at once is
+left out; the ring's pillars stay a body's width off the walls. Sixteen rooms changed pillars and
+six changed solids. The pocket fill now closes only the two slivers (2 rects, from 13), and the
+main region grows from 18,802 half-grid points to 19,291. 17 spawn points, 14 crates and one drop
+point (spawn 2, `barracks_r1c8`) moved.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` stays in spawn 0's room,
+which did not change. A recorded arena match that entered any of the sixteen rooms diverges.
+Golden fixture regenerated (version stamp only).

@@ -172,5 +172,82 @@ and the version goes to **81**. The fixture was re-recorded, and only the versio
 ### Still open
 
 - **`barracks_r2c7` and `catacombs_r5c5`** still split into halves joined only through other rooms
-  (volume 116). That is not a pocket: both halves are the main region.
+  (volume 116). That is not a pocket: both halves are the main region. **Joined the same day, in
+  the entry below (`ENGINE_VERSION` 82).**
 - **The catalog gate** still has no reachability rule (entry above).
+
+## Every room is one piece (2026-09-30, arena + content + test + docs, ENGINE_VERSION 82)
+
+The owner, next: *"把那两个被切成两半的房间也打通"* (open up the two rooms cut in half too). Those
+are `barracks_r2c7` and `catacombs_r5c5`, whose floor fell into two halves joined only through
+other rooms (volume 116).
+
+### What was cutting them
+
+A per-room flood (main-region lattice points inside the room's closed rect, 4-connected, never
+leaving it) found **five** split rooms, not two: those two, `catacombs_r6c7`, `terraces_r1c1`, and
+`atrium_r4c3`, whose north door opened into a corner sealed from the rest of the room. Three kits
+were responsible, and one of them was the cause of every pocket as well:
+
+- **The chevron** (two offset runs, an S-shaped path) sealed in **every** room it furnished, all
+  eight. Its centre pillar stood in the lane between the two runs. Where it did not, the lane
+  was one row high, and one row less the lower run's north brim is narrower than a body. A room
+  cut in two with doors on both halves reads as a split. With no door in one half it is volume
+  116's pocket: all five pockets were chevron rooms.
+- **Rubble**: in `terraces_r1c1` the pillar touched two chunks at once and made one wall across
+  the room.
+- **The pillar ring**: in `atrium_r4c3` rounding put the north pillar flush against the north
+  wall, and with its western neighbour it closed off the corner the door opens into.
+
+### The fix, in `world/arenas/interiorKits.ts`
+
+- The chevron has no centre pillar, and its lower run sits at least three rows below the upper
+  one, so the lane is two rows high.
+- A rubble pillar that touches two chunks is left out. Against one chunk it is only a bigger chunk.
+- A ring pillar is kept a body's width (two cells from the wall line) off every wall.
+
+### What changed
+
+Against v81:
+
+- **No room is split, and no pocket is left to fill.** The five pockets are now open floor, reached
+  through their own room. The fill still closes the two slivers (`catacombs_r5c4`,
+  `barracks_r5c8`): 2 rects, down from 13. This reverses the stone in five rooms that the entry
+  above laid, because it is what the owner asked for in the first place: no corner a player
+  cannot get to. The stone was the answer while the rooms stayed as authored; with the kit
+  fixed, the rooms are whole.
+- **The main region grows from 18,802 half-grid points to 19,291.**
+- Sixteen rooms changed pillars: 8 chevron and 3 rubble pillars were removed (`terraces_r1c1`,
+  `kilns_r1c6`, `foundry_r6c0`), 124 → 113 pillars, and 5 ring rooms each had one or two pillars
+  moved a cell. Six chevron rooms moved their lower run. The two rubble rooms other than
+  `terraces_r1c1` were not split; the rule "no pillar bridging two chunks" is the simple one to
+  state, and those two bridged.
+- 17 spawn points, 14 crates and one drop point (spawn 2, `barracks_r1c8`: (112,21) → (111,18))
+  moved. The centres the pillars had taken were free.
+
+`pvpBalanceSim` re-run on the new map: 30 distinct of 30 at every seat count, control 1,
+skirmisher/vanguard/juggernaut 50/67/57 with 6 ties (volume 116: 49/68/59 with 4), inside its
+gates. Not tuned here.
+
+The golden gate was green before the bump (`launch-arena-pvp` stays in spawn 0's room, which did
+not change), and the version goes to **82**. The fixture was re-recorded, version stamp only.
+
+### Tests
+
+- `launchArena.test.ts`, new: **every room is one piece.** The count reads `{}` on the shipped map.
+  Its control lays a bar wall to wall across `barracks_r2c7` and must see it. Against the old kits
+  the case fails naming exactly the five rooms.
+- The pocket control now expects only the two slivers from the map as authored.
+- The cover bound (< 0.7) is back on the shipped map. The 0.75 allowance of the entry above
+  existed for the filled pocket rooms, which are floor again.
+- Client pins re-measured: 494 wall rects, 288 drawn runs, 113 pillars (`arenaWallCoverage`), and
+  ground and shadow floats (`groundGeometryBudget`).
+- Mutations, 4 killed: the one-row chevron lane, the chevron pillar back, the rubble rule off,
+  and the ring clamp off. Reverting the ring clamp on one axis alone survives: on this map either
+  axis opens `atrium_r4c3`'s corner by itself. It is one rule, a body's width off every wall, and
+  is kept whole.
+
+### Still open
+
+- **The catalog gate** still has no reachability rule (first entry above).
+

@@ -125,10 +125,9 @@ describe('geometry is real', () => {
 
   // The pockets themselves are stone since 2026-09-30 (`pocketFill.ts`). The shipped map has
   // no floor a body stands on but cannot get to; the map as authored, built without the fill,
-  // is the control: it has the seven, so the first assertion has something to have removed.
-  // Stranded half-grid cells as authored: catacombs_r4c6 147, barracks_r3c8 117,
-  // catacombs_r7c5 81, barracks_r1c8 53, catacombs_r6c3 29 (volume 116's five), and two slivers,
-  // catacombs_r5c4 9 and barracks_r5c8 3.
+  // is the control, so the first assertion has something to have removed. Volume 116's five
+  // pockets were all chevron rooms, and the chevron no longer seals (the next case); what the
+  // fill still closes is two slivers, catacombs_r5c4 (9 half-grid cells) and barracks_r5c8 (3).
   const pocketRooms = (map: ArenaMap) => {
     const reach = measureBodyReach(buildArenaGeometry(map));
     const half = FP_SCALE / 2;
@@ -149,10 +148,64 @@ describe('geometry is real', () => {
 
   it('has no floor a body can stand on but not get to: the pockets are stone', () => {
     expect(pocketRooms(LAUNCH_ARENA)).toEqual([]);
-    expect(pocketRooms(AS_AUTHORED)).toEqual([
-      'barracks_r1c8', 'barracks_r3c8', 'barracks_r5c8',
-      'catacombs_r4c6', 'catacombs_r5c4', 'catacombs_r6c3', 'catacombs_r7c5',
-    ]);
+    expect(pocketRooms(AS_AUTHORED)).toEqual(['barracks_r5c8', 'catacombs_r5c4']);
+  });
+
+  // Reachable is not enough: a room whose floor is two pieces, joined only through other rooms,
+  // is two rooms to a player, and a door that opens into the smaller one leads nowhere. Eight
+  // chevron rooms, one rubble room and one ring room were built that way until 2026-09-30:
+  // barracks_r2c7 and catacombs_r5c5 in halves (volume 116), five more as pockets, and the rest
+  // found by this case. Pieces are counted over main-region lattice points inside the room's
+  // closed rect, so a doorway counts with the room it opens into.
+  const roomPieces = (map: ArenaMap) => {
+    const reach = measureBodyReach(buildArenaGeometry(map));
+    const half = FP_SCALE / 2;
+    const out: Record<string, number> = {};
+    for (const room of map.rooms) {
+      const { x, y, w, h } = room.rectGrid;
+      const [x0, y0, x1, y1] = [x, y, x + w, y + h].map((v) => (v * FP_SCALE) / half) as [number, number, number, number];
+      const seen = new Set<number>();
+      let pieces = 0;
+      for (let cy = y0; cy <= y1; cy++) {
+        for (let cx = x0; cx <= x1; cx++) {
+          const k = cy * reach.w + cx;
+          if (!reach.main[k] || seen.has(k)) continue;
+          pieces++;
+          const stack = [k];
+          seen.add(k);
+          while (stack.length > 0) {
+            const c = stack.pop()!;
+            const px = c % reach.w;
+            const py = (c - px) / reach.w;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+              const nx = px + dx;
+              const ny = py + dy;
+              const j = ny * reach.w + nx;
+              if (nx < x0 || nx > x1 || ny < y0 || ny > y1 || !reach.main[j] || seen.has(j)) continue;
+              seen.add(j);
+              stack.push(j);
+            }
+          }
+        }
+      }
+      if (pieces !== 1) out[room.id] = pieces;
+    }
+    return out;
+  };
+
+  it('keeps every room one piece: a body crosses it without leaving it', () => {
+    expect(roomPieces(LAUNCH_ARENA)).toEqual({});
+    // Control: the same count sees a bar laid wall to wall across one room.
+    const room = LAUNCH_ARENA.rooms.find((r) => r.id === 'barracks_r2c7')!;
+    const barred: ArenaMap = {
+      ...LAUNCH_ARENA,
+      rooms: LAUNCH_ARENA.rooms.map((r) =>
+        r === room ? { ...r, solids: [...r.solids, { x: 1, y: 6, w: room.rectGrid.w - 2, h: 1 }] } : r,
+      ),
+    };
+    const pieces = roomPieces(barred);
+    expect(Object.keys(pieces)).toEqual(['barracks_r2c7']);
+    expect(pieces.barracks_r2c7).toBeGreaterThan(1);
   });
 
   it('fills only the pockets: no route, no standing place and no content moves', () => {
@@ -250,10 +303,7 @@ describe('the map is authored, not stamped', () => {
   it('gives every room cover without filling it in', () => {
     expect(metrics.cover.roomsWithNoCover).toEqual([]);
     expect(Math.min(...metrics.cover.coverFractions)).toBeGreaterThan(0.1);
-    // Measured on the map as authored. The pocket fill is not cover: it turns floor no one could
-    // reach into stone, and it takes a pocket room to 0.67–0.71 (catacombs_r7c5 the most).
-    expect(Math.max(...measureArena(AS_AUTHORED).cover.coverFractions)).toBeLessThan(0.7);
-    expect(Math.max(...metrics.cover.coverFractions)).toBeLessThan(0.75);
+    expect(Math.max(...metrics.cover.coverFractions)).toBeLessThan(0.7);
   });
 
   it('differentiates its loot tables', () => {

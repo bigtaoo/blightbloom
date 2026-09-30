@@ -1,11 +1,11 @@
 {
-  "engineVersion": 81,
+  "engineVersion": 82,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 407422793,
+      "hash": 2136625896,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -33,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 1548973209,
+      "hash": 1661176662,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -59,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 1573479020,
+      "hash": 4194214645,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -92,7 +92,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 2007294081,
+      "hash": 44397888,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -120,7 +120,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 2753600123,
+      "hash": 2500413198,
       "witness": {
         "tick": 252,
         "phase": "gameover",
@@ -153,7 +153,7 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 323346051,
+      "hash": 2931415926,
       "witness": {
         "tick": 900,
         "phase": "playing",
@@ -183,7 +183,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 2052583554,
+      "hash": 3495471985,
       "witness": {
         "tick": 400,
         "phase": "playing",

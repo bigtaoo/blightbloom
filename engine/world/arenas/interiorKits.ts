@@ -97,7 +97,12 @@ export const pillarRing: Kit = (inner) => ({
     [0.12, 0.68],
     [0.12, 0.32],
   ].map(([fx, fy]) => ({
-    center: { x: at(inner.x0, inner.w, fx!), y: at(inner.y0, inner.h, fy!) },
+    // Kept a body's width off the walls: rounded flush against one, a disc closes the corner
+    // behind it (`atrium_r4c3`'s north door opened into a sealed corner until 2026-09-30).
+    center: {
+      x: Math.max(inner.x0 + 2, Math.min(inner.x1, at(inner.x0, inner.w, fx!))),
+      y: Math.max(inner.y0 + 2, Math.min(inner.y1, at(inner.y0, inner.h, fy!))),
+    },
     radius: 1,
   })),
   cellTraits: [],
@@ -147,8 +152,11 @@ export const crossStubs: Kit = (inner) => {
 export const chevron: Kit = (inner, variant) => {
   const flip = variant % 2 === 1;
   const len = Math.max(3, Math.floor(inner.w * 0.6));
+  // The lane between the runs is two rows at least: one row, less the lower run's north brim,
+  // is narrower than a body, and every short room built with this kit came out sealed in two.
+  // No pillar either: it stood in that lane in every room it was used in (until 2026-09-30).
   const top = at(inner.y0, inner.h, 0.32);
-  const bottom = at(inner.y0, inner.h, 0.68);
+  const bottom = Math.min(inner.y1 - 1, Math.max(at(inner.y0, inner.h, 0.68), top + 3));
   const leftX = inner.x0;
   const rightX = inner.x1 - len + 1;
   return {
@@ -156,7 +164,7 @@ export const chevron: Kit = (inner, variant) => {
       { x: flip ? rightX : leftX, y: top, w: len, h: 1 },
       { x: flip ? leftX : rightX, y: bottom, w: len, h: 1 },
     ],
-    pillars: [{ center: { x: at(inner.x0, inner.w, 0.5), y: at(inner.y0, inner.h, 0.5) }, radius: 1 }],
+    pillars: [],
     cellTraits: [],
   };
 };
@@ -207,16 +215,22 @@ export const rubble: Kit = (inner, variant) => {
     ],
   ];
   const chosen = pattern[variant % pattern.length]!;
-  return {
-    solids: chosen.map(([fx, fy, w, h]) => ({
-      x: Math.min(at(inner.x0, inner.w, fx), inner.x1 - w + 1),
-      y: Math.min(at(inner.y0, inner.h, fy), inner.y1 - h + 1),
-      w,
-      h,
-    })),
-    pillars: [{ center: { x: at(inner.x0, inner.w, 0.5), y: at(inner.y0, inner.h, 0.42) }, radius: 1 }],
-    cellTraits: [],
-  };
+  const solids = chosen.map(([fx, fy, w, h]) => ({
+    x: Math.min(at(inner.x0, inner.w, fx), inner.x1 - w + 1),
+    y: Math.min(at(inner.y0, inner.h, fy), inner.y1 - h + 1),
+    w,
+    h,
+  }));
+  // No pillar touching two chunks at once: bridging them, the disc makes one long wall, and in
+  // `terraces_r1c1` that wall cut the room in half (until 2026-09-30). Against one chunk it is
+  // only a bigger chunk.
+  const pillar = { center: { x: at(inner.x0, inner.w, 0.5), y: at(inner.y0, inner.h, 0.42) }, radius: 1 };
+  const pressed = solids.filter(
+    (s) =>
+      s.x <= pillar.center.x + 1 && s.x + s.w >= pillar.center.x - 1 &&
+      s.y <= pillar.center.y + 1 && s.y + s.h >= pillar.center.y - 1,
+  );
+  return { solids, pillars: pressed.length < 2 ? [pillar] : [], cellTraits: [] };
 };
 
 /** A hazard floor with cover only at the edges: crossing costs health, going around costs

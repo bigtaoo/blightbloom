@@ -1694,11 +1694,12 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 **[2026-09-30 — the arena's body reach](roadmap/118-2026-09-30-arena-body-reach.md)**
 
 - **09-30** [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80) — volume 116 left `arena_launch`'s five body-sealed pockets open, with mobs and a crate placed inside them: `launchArena.furnish` asked whether a cell was stone, which is a bullet-sized question. New `content/arenaBodyReach.ts` floods the assembled map for a body (solid radius against `blockingRect`, brim included, half-grid cells), and the builder furnishes every room a second time with unreached cells taken out. Seven placements moved, all in the five pocket rooms; every other room and all eight drop points are byte-identical. The golden gate was green before the bump (`launch-arena-pvp` never wakes a pocket room); `ENGINE_VERSION` 80 because a recorded match that did wake one diverges. The rule is per-map, not in `auditArenaQuality`, whose fixtures are walled solid with graph-only doors. Two slivers volume 116 missed were pinned too. The pockets themselves stay: opening them is a layout call. `engine` `arena` `content` `test` `docs`
-- **09-30** [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81) — the owner's call on the entry above: fill the dead corners in as stone. New `world/arenas/pocketFill.ts` lays stone on free cells 4-connected, inside their room, to stranded floor, and only where that stone, brim included, touches no main-region position; pillars and hazards are never covered, and the fill is `freeStanding` like the blocks it grows from. Seven rooms gained stone (the five pockets and two slivers). The main region is identical point for point, and every spawn, crate, drop point, door, pillar and hazard is byte-identical to v80. `ENGINE_VERSION` 81, because a shot into a pocket now stops on stone. Two layout tests moved, and one had been wrong: "narrows 7 gaps past the player" was counting gaps a room wall or a pillar already stood in, and there was only ever 1.
+- **09-30** [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81) — the owner's call on the entry above: fill the dead corners in as stone. New `world/arenas/pocketFill.ts` lays stone on free cells 4-connected, inside their room, to stranded floor, and only where that stone, brim included, touches no main-region position; pillars and hazards are never covered, and the fill is `freeStanding` like the blocks it grows from. Seven rooms gained stone (the five pockets and two slivers). The main region is identical point for point, and every spawn, crate, drop point, door, pillar and hazard is byte-identical to v80. `ENGINE_VERSION` 81, because a shot into a pocket now stops on stone. Two layout tests moved, and one had been wrong: "narrows 7 gaps past the player" was counting gaps a room wall or a pillar already stood in, and there was only ever 1. (Five of the seven rooms are open floor again since the entry below.)
+- **09-30** [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82) — the owner's next call: open up `barracks_r2c7` and `catacombs_r5c5`, whose floor fell in halves joined only through other rooms. A per-room flood found five split rooms, and the chevron kit had sealed all eight rooms it furnished: its centre pillar stood in the lane between its runs, or the lane was one row, which the lower run's brim makes narrower than a body. Every one of the five pockets was a chevron room with one half doorless. `interiorKits.ts` now builds the chevron with no pillar and a two-row lane, leaves out a rubble pillar touching two chunks (`terraces_r1c1`), and keeps ring pillars a body's width off the walls (`atrium_r4c3`'s north door opened into a sealed corner). No room is split; the pockets are open floor again and the fill closes only the two slivers (13 rects → 2); the main region grows 18,802 → 19,291 half-grid points; 17 spawn points, 14 crates and one drop point moved. `ENGINE_VERSION` 82. A new test holds every room to one piece, and fails on the old kits naming exactly the five. `arena` `content` `test` `docs`
 
 ## The work log — by theme
 
-The same 216 entries, grouped. An entry with more than one tag appears more than once.
+The same 217 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1865,7 +1866,7 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 
-**`arena`** — the PvP launch map and its audit *(13)*
+**`arena`** — the PvP launch map and its audit *(14)*
 
 - 08-25 [The launch arena is a placeholder that passes validation](roadmap/06-2026-08-25.md#the-launch-arena-is-a-placeholder-that-passes-validation-2026-08-25-tooling--audit)
 - 08-25 [The Seven Districts: the launch arena gets authored](roadmap/06-2026-08-25.md#the-seven-districts-the-launch-arena-gets-authored-2026-08-25-content)
@@ -1880,8 +1881,9 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
+- 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`content`** — authored rooms, pieces, props, loot *(15)*
+**`content`** — authored rooms, pieces, props, loot *(16)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1898,8 +1900,9 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
+- 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(127)*
+**`test`** — coverage sweeps, gates, mutation batteries *(128)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2028,6 +2031,7 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [PvP energy capacity, measured with a bot that loots, swaps and parries](roadmap/117-2026-09-29-pvp-capacity.md#pvp-energy-capacity-measured-with-a-bot-that-loots-swaps-and-parries-2026-09-29-tools--test--docs-no-game-code-change)
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
+- 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2163,7 +2167,7 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 - 09-29 [PvP energy capacity, measured with a bot that loots, swaps and parries](roadmap/117-2026-09-29-pvp-capacity.md#pvp-energy-capacity-measured-with-a-bot-that-loots-swaps-and-parries-2026-09-29-tools--test--docs-no-game-code-change)
 
-**`docs`** — design docs and this log itself *(133)*
+**`docs`** — design docs and this log itself *(134)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2298,6 +2302,7 @@ The same 216 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [PvP energy capacity, measured with a bot that loots, swaps and parries](roadmap/117-2026-09-29-pvp-capacity.md#pvp-energy-capacity-measured-with-a-bot-that-loots-swaps-and-parries-2026-09-29-tools--test--docs-no-game-code-change)
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
+- 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
