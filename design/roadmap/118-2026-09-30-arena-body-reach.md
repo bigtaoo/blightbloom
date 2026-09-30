@@ -711,3 +711,49 @@ shuffle, the half-plane edge, and runs packed together instead of spaced.
   cluster) would need its own rule; `arena_launch` is the only real map.
 - Whether squads want to start even closer (one district) is a playtest question. With one spawn
   per district it would need more spawns authored.
+
+## The capacity sim plays squads (2026-09-30, tools + test + docs)
+
+`test:pvp-capacity` played 2, 4 and 6 seats, so no match in it had squads. The squad spawns above
+were measured by `test:pvp-sim` and `test:voice-sim` only, and no gate in `test:sims` would turn
+red if a squad match stopped ending, or started its squads mixed. Eight seats is the only count
+with squads (`squadSizeForPlayerCount`).
+
+### What changed
+
+- `client/sim/pvp/arenaMatch.ts`: each seat records its squad (`team`), where it started
+  (`startGx`, `startGy`, grid units) and whether it was alive at the end (`survived`); a match
+  records the surviving squad (`winnerTeam`, -1 for a tie). `winner` is unchanged: the skin of
+  the first surviving seat, which in a squad match is just whichever member comes first.
+- `client/sim/pvpCapacity.sim.ts`: the seven conditions run as two blocks. The solo block
+  (2, 4 and 6 seats) is the old test, unchanged. The squad block plays the same seven conditions
+  at 8 seats over the same 30 seeds, kept apart so a squad-only failure cannot hide under the
+  solo matches. It runs the same instrument gates, and two of its own on every match: the two
+  squads start on opposite halves (every spawn of one squad west of every spawn of the other),
+  and no seat outside the winning squad is left standing. Its win split is keyed by the half the
+  winning squad started on.
+
+### Measured
+
+- The solo block's printed rows are byte-identical to before.
+- The squad block (7 conditions x 30 matches): no timeouts; 1 tie (`full pool100`). The dry
+  counter moves as in the solo block (`loots` 8.51% dry against `shipped` 0.87%; 66 against 6
+  emptied bars of 240), the blade fallback holds (`full` 0.10%), and a pool of 30 shows (55
+  against 19 emptied). Mean length 1,916-2,074 ticks.
+- Win split by starting half, west/east: from 11/19 (`shipped`) to 20/10 (`loots`), 15/15 for
+  `full`. Thirty matches cannot tell a half advantage from noise, so it is printed, not asserted.
+- `test:pvp-capacity` grows from ~126 s to ~207 s.
+
+### Tests
+
+- `arenaMatch.test.ts`: an 8-seat match records the config's squads, the engine's start
+  positions (eight distinct spawns), survivors all of the winning squad, and a `winner` who is one
+  of them; a 2-seat match gives each seat its own squad.
+- Mutations killed, each by the squad block: seating squads by the plain shuffle (the half gate,
+  on the first match), and naming squad 0 the winner every time (the survivor gate).
+
+### Still open
+
+- **No bot revives a squadmate.** Neither `PvpBotController` nor `ArenaBotController` ever holds
+  `INTERACT` for a downed seat, so in every simulated squad match a downed seat bleeds out. The
+  revive channel and the bandages it spends are measured by no sim.

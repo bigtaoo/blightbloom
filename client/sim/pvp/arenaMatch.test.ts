@@ -4,7 +4,7 @@
  * that a seed actually varies the match, and that each counter counts what it says.
  */
 import { describe, expect, it } from 'vitest';
-import { PVP_SCALE_FACTOR, WEAPON_SIM_BY_ID, createGameEngine } from '@dd/engine';
+import { FP_SCALE, PVP_SCALE_FACTOR, WEAPON_SIM_BY_ID, createGameEngine } from '@dd/engine';
 import { ARENA_PROFILES } from './ArenaBotController';
 import { equipArenaGun, runArenaMatch, shuffledArenaConfig } from './arenaMatch';
 
@@ -67,6 +67,24 @@ describe('runArenaMatch', { timeout: 60_000 }, () => {
       expect(s.minEnergyFrac).toBeLessThan(1);
       expect(s.minEnergyFrac).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('records each seat squad, spawn and fate, and names the winning squad', () => {
+    const config = shuffledArenaConfig(5, 8);
+    const start = createGameEngine(config).state.players;
+    const m = runArenaMatch(5, 8, ARENA_PROFILES.shipped);
+    expect(m.bySeat.map((s) => s.team)).toEqual(config.players!.map((p) => p.teamId));
+    expect(new Set(m.bySeat.map((s) => s.team)).size).toBe(2);
+    expect(m.bySeat.map((s) => [s.startGx, s.startGy])).toEqual(start.map((p) => [p.gx / FP_SCALE, p.gy / FP_SCALE]));
+    expect(new Set(m.bySeat.map((s) => `${s.startGx},${s.startGy}`)).size).toBe(8);
+    const standing = m.bySeat.filter((s) => s.survived);
+    expect(standing.length).toBeGreaterThan(0);
+    expect(standing.every((s) => s.team === m.winnerTeam)).toBe(true);
+    expect(standing[0]!.skin).toBe(m.winner);
+    // Solo: every seat its own squad, and the one standing is the winner.
+    const solo = runArenaMatch(5, 2, ARENA_PROFILES.shipped);
+    expect(solo.bySeat[0]!.team).not.toBe(solo.bySeat[1]!.team);
+    expect(solo.bySeat.filter((s) => s.survived).map((s) => s.team)).toEqual([solo.winnerTeam]);
   });
 
   it('resizes every bar when asked', () => {

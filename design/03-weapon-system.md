@@ -366,6 +366,10 @@ a bot that takes looted guns and swings its blade when the gun is dry:
   - Only a pool of 30 shows: half the bar at the median, and emptied seats more than double.
   - It also found that two frame-perfect parriers can deflect each other's every shot
     indefinitely (design/15).
+  - Since 2026-09-30 ([volume 118](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs))
+    it also plays 30 eight-seat squad matches per condition, gated apart from the solo ones.
+    The squad numbers read the same way: 8.51% dry for a looted gun with no fallback, 0.10%
+    with the blade.
 
 *(Until 2026-09-29 this section said the PvE bot never swaps off the starter gun. Volume 99
 fixed that on 2026-09-26, and volume 111 added the swap under pressure. The mob melee weapons'
