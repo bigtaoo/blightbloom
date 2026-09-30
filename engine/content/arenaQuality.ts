@@ -33,6 +33,7 @@
 import type { ArenaMap } from './arenas';
 import { measureArena } from './arenaMetrics';
 import { measureEnclosure, measurePlacement } from './arenaGeometryMetrics';
+import { measureBodyAccess } from './arenaBodyAccess';
 
 export interface ArenaViolation {
   /** Stable id, so a test can name the rule it expects to fire without matching prose. */
@@ -88,6 +89,7 @@ export function auditArenaQuality(map: ArenaMap): ArenaViolation[] {
   const m = measureArena(map);
   const placement = measurePlacement(map);
   const enclosure = measureEnclosure(map);
+  const access = measureBodyAccess(map);
   const out: ArenaViolation[] = [];
   const defect = (rule: string, detail: string) => out.push({ rule, severity: 'defect', detail });
   const design = (rule: string, detail: string) => out.push({ rule, severity: 'design', detail });
@@ -114,6 +116,15 @@ export function auditArenaQuality(map: ArenaMap): ArenaViolation[] {
   // `> 0` rather than `>= 2` for readability; the metric SUMS the size of each over-occupied
   // room, so it is 0 or at least 2 and never 1. A battery mutant to `> 1` is equivalent.
   if (m.spawns.colliding > 0) defect('spawn_shared_room', `${m.spawns.colliding} spawns sharing a room with another`);
+  // A body, not a bullet (`arenaBodyAccess.ts`): `arena_launch` shipped both until 2026-09-30.
+  if (access.splitRooms.length > 0) {
+    const e = access.splitRooms[0]!;
+    defect('room_split', `${access.splitRooms.length} rooms whose floor is more than one piece, e.g. ${e.room} in ${e.pieces}`);
+  }
+  if (access.unreached.length > 0) {
+    const e = access.unreached[0]!;
+    defect('content_unreached', `${access.unreached.length} markers no body in their room gets to, e.g. ${e.room} ${e.feature} -> (${e.at.x}, ${e.at.y})`);
+  }
 
   // ---- design bands: both ends are a real failure ----
   const dominant = Math.max(m.footprints.dominantShare, m.interiorShapes.dominantShare);

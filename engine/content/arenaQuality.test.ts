@@ -300,6 +300,41 @@ describe('the arena quality gate — every rule fires on content that deserves i
     expect(rules(map)).toContain('undoored_leak');
   });
 
+  // The two body-reach rules (`arenaBodyAccess.ts`). `arena_launch` shipped both until
+  // 2026-09-30: floor sealed off inside a room, mobs spawned in it, and rooms in two halves.
+  it('`room_split`: a bar laid wall to wall across one room', () => {
+    const map = healthyMap();
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, { x: 1, y: 6, w: 12, h: 1 }] };
+    expect(rules(map)).toEqual(['room_split']);
+    // One short of the far wall, a body walks round the end of it: one piece again.
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...healthyMap().rooms[3]!.solids, { x: 1, y: 6, w: 10, h: 1 }] };
+    expect(rules(map)).toEqual([]);
+  });
+
+  it('`content_unreached`: loot in the middle of a block, and not loot beside it', () => {
+    const map = healthyMap();
+    const block = { x: 2, y: 2, w: 4, h: 4 };
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, block], lootMarkers: [{ point: { x: 4, y: 4 }, tableId: 'arena_common' }] };
+    expect(rules(map)).toEqual(['content_unreached']);
+    // Against the block's face is reached: a body stands a grid off it.
+    map.rooms[3] = { ...map.rooms[3]!, lootMarkers: [{ point: { x: 6, y: 4 }, tableId: 'arena_common' }] };
+    expect(rules(map)).toEqual([]);
+  });
+
+  it('`room_split` + `content_unreached`: a mob spawned in a pocket sealed inside its room', () => {
+    // The volume 116 shape: standable floor no door leads to, and something placed on it.
+    const map = healthyMap();
+    const ring = [{ x: 2, y: 2, w: 5, h: 1 }, { x: 2, y: 6, w: 5, h: 1 }, { x: 2, y: 2, w: 1, h: 5 }, { x: 6, y: 2, w: 1, h: 5 }];
+    map.rooms[3] = { ...map.rooms[3]!, solids: [...map.rooms[3]!.solids, ...ring], spawns: [{ x: 4, y: 4 }] };
+    expect(rules(map)).toEqual(['content_unreached', 'room_split']);
+  });
+
+  it('`content_unreached` checks drop points too, against the room that holds them', () => {
+    const map = healthyMap();
+    map.rooms[0] = { ...map.rooms[0]!, solids: [...map.rooms[0]!.solids, { x: 2, y: 2, w: 5, h: 5 }] };
+    expect(auditArenaQuality(map).map((v) => v.detail)).toEqual([expect.stringContaining('a drop -> (4, 4)')]);
+  });
+
   it('every rule the gate can emit is covered by a case above', () => {
     // The sweep's own completeness check. Both directions: nothing in the list went
     // unreached, and nothing was emitted that the list does not name (which would mean a
@@ -368,6 +403,12 @@ describe('the arena quality gate — every rule fires on content that deserves i
     leak.spawns = [{ x: 4, y: 4 }, { x: 4, y: 24 }];
     leak.eyeCandidates = [{ roomId: 'a' }, { roomId: 'c' }];
     collect(leak);
+    const split = healthyMap();
+    split.rooms[3] = { ...split.rooms[3]!, solids: [...split.rooms[3]!.solids, { x: 1, y: 6, w: 12, h: 1 }] };
+    collect(split);
+    const buried = healthyMap();
+    buried.rooms[3] = { ...buried.rooms[3]!, solids: [...buried.rooms[3]!.solids, { x: 2, y: 2, w: 4, h: 4 }], lootMarkers: [{ point: { x: 4, y: 4 }, tableId: 'arena_common' }] };
+    collect(buried);
 
     const ALL_RULES = [
       'content_off_map', 'content_outside_room', 'no_walls', 'unenclosed_room',
@@ -375,7 +416,7 @@ describe('the arena quality gate — every rule fires on content that deserves i
       'no_spawns', 'spawn_outside_room', 'spawn_shared_room', 'stamped_rooms',
       'rooms_without_cover', 'cover_too_sparse', 'cover_too_dense', 'spawns_too_close',
       'map_too_shallow', 'no_branching', 'zone_has_no_choices', 'zone_unreachable',
-      'room_barely_walled',
+      'room_barely_walled', 'room_split', 'content_unreached',
     ];
     expect([...emitted].sort().filter((r) => !ALL_RULES.includes(r))).toEqual([]);
     expect(ALL_RULES.filter((r) => !emitted.has(r)).sort()).toEqual([]);

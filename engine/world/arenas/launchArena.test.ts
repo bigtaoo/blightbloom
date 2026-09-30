@@ -17,6 +17,8 @@ import { PLAYER_BASE } from '../../content/players';
 import { WALL_NORTH_BRIM } from '../../config';
 import { toFpGrid } from '../../content/convert';
 import { measureBodyReach } from '../../content/arenaBodyReach';
+import { measureBodyAccess } from '../../content/arenaBodyAccess';
+import { auditArenaQuality } from '../../content/arenaQuality';
 import { FP_SCALE } from '../../math/fixed';
 
 const metrics = measureArena(LAUNCH_ARENA);
@@ -149,6 +151,15 @@ describe('geometry is real', () => {
   it('has no floor a body can stand on but not get to: the pockets are stone', () => {
     expect(pocketRooms(LAUNCH_ARENA)).toEqual([]);
     expect(pocketRooms(AS_AUTHORED)).toEqual(['barracks_r5c8', 'catacombs_r5c4']);
+  });
+
+  // The catalog gate holds every future map to the same rule (`arenaBodyAccess.ts`). This map
+  // without its fill is the real-content proof that it fires: each sliver is a second piece of
+  // its room's floor.
+  it('fails the catalog gate without its fill, on exactly the two sliver rooms', () => {
+    expect(auditArenaQuality(LAUNCH_ARENA)).toEqual([]);
+    expect(auditArenaQuality(AS_AUTHORED).map((v) => v.rule)).toEqual(['room_split']);
+    expect(measureBodyAccess(AS_AUTHORED).splitRooms.map((r) => r.room).sort()).toEqual(['barracks_r5c8', 'catacombs_r5c4']);
   });
 
   // Reachable is not enough: a room whose floor is two pieces, joined only through other rooms,

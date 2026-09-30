@@ -63,6 +63,8 @@ bumps to **80**. The fixture was re-recorded, and only the version stamp moved.
 
 ### Why the rule is not in `auditArenaQuality`
 
+*(Superseded the same day: the gate checks it per room, [last entry](#the-catalog-gate-checks-a-body-2026-09-30-arena--test--docs).)*
+
 The catalog-wide gate is where a rule for every future arena would belong. But its fixture maps
 (`healthyMap`, `chainMap`) wall every room solid and give doors only in the graph: no body can
 cross them, and a reachability rule would fire on every one. Cutting real openings into those
@@ -405,4 +407,60 @@ again.
 ### Still open
 
 - **The three 9-row chevron rooms** keep a two-row lane.
-- **The catalog gate** still has no reachability rule.
+- **The catalog gate** still has no reachability rule. *(Closed the same day, next entry.)*
+
+## The catalog gate checks a body (2026-09-30, arena + test + docs)
+
+The owner's call on the open item above: hold every catalog map, not only `arena_launch`, to the
+body-reach rule.
+
+### Why per room
+
+The first entry kept the rule out of the gate because its fixture maps wall every room solid
+and give doors only in the graph. A flood of the whole map from its largest region strands all
+but one room of each. That flood asks whether the doors open, which is the door graph's question
+(`door_gates_nothing`, `undoored_leak`). What shipped wrong was inside the rooms, and a room shows
+it alone: floor sealed off by a brim with mobs spawned on it, and floors in two halves joined only
+through other rooms. So nothing in the fixtures had to change.
+
+### The rules
+
+New `engine/content/arenaBodyAccess.ts`, `measureBodyAccess(map)`, reuses `measureBodyReach`'s
+standable lattice and floods it per room, inside the room's closed rect (a doorway on the edge
+counts with the room). Two new `defect` rules in `auditArenaQuality`, 23 in all:
+
+- **`room_split`**: a room's standable floor is more than one piece.
+- **`content_unreached`**: loot, an enemy spawn or a drop point that no body on its room's largest
+  piece gets within one grid of (the slack `BodyReach.reaches` allows). Content outside its own
+  room is left to `content_outside_room`, a drop point outside every room to `spawn_outside_room`.
+
+What it still does not see: a room with no open door at all. That needs the whole-map flood, and
+the fixtures would need real openings first.
+
+### Measured
+
+- `arena_launch` clears both. Built without its pocket fill, it fails the gate on `room_split`
+  alone, in exactly the two sliver rooms (`barracks_r5c8`, `catacombs_r5c4`): the real-content
+  control.
+- The dense-cover fixture now also fires `content_unreached`, since its drop point sits in stone.
+  Correct, and nothing asserted its full list.
+
+### Tests
+
+- `arenaBodyAccess.test.ts`, 4 cases: a room whose halves meet only through its neighbour splits,
+  and its smaller half's loot is reported; a sealed room is held to its own floor, with a
+  wall-flush corner spawn reached; content outside its room and a drop point outside every room
+  are left to other rules; a drop point buried in stone is reported.
+- `arenaQuality.test.ts`, 4 cases: a wall-to-wall bar fires `room_split` and one two grid short
+  does not; loot inside a block fires `content_unreached` and loot against its face does not; a
+  sealed pocket with a mob in it fires both; a buried drop point is named. The completeness sweep
+  lists both rules.
+- `launchArena.test.ts`, 1 case: the control above.
+- Mutations, 8 killed of 8: the flood leaving the room's rect; a split needing three pieces; no
+  slack; the smallest piece kept; drop points or enemy spawns not checked; content outside its
+  room checked; the room offset dropped.
+
+### Still open
+
+- **The three 9-row chevron rooms** keep a two-row lane.
+- **A room with no open door** passes the gate (above).
