@@ -5,13 +5,15 @@
 // ApplyInputSystem path. Nothing here decides outcomes — it only decides an INPUT, which
 // the deterministic engine then simulates (design/08 "render only produces input").
 //
-// Behaviour: engage the nearest enemy (fire in range, hold spacing — facing is engine-
+// Behaviour: revive a downed teammate (volume 118, `ai/revive.ts`: the rule the arena bot
+// ships), else engage the nearest enemy (fire in range, hold spacing — facing is engine-
 // decided, design/10 v33), and when the floor is quiet, regroup toward the local player
 // so the two stay together through room transitions. All from the engine's fp state, no
 // wall-clock / RNG — a bot is just another command source, and keeping it state-derived
 // makes the run reproducible.
-import { makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
 import { engageNearest, idleCommand, gridFp, type Point } from './ai/engage';
+import { reviveMove } from './ai/revive';
 
 const REGROUP_FP = gridFp(3); // when idle, only close to the leader if further than this
 
@@ -23,6 +25,12 @@ export class AllyController {
 
     const enemies: Point[] = [];
     for (const e of s.enemies) if (e.alive) enemies.push(e);
+    // A co-op revive is free (no bandage), so the rule never walks to a floor one and the aim
+    // flag it takes for that is moot. It does not start a channel while an enemy has a clear
+    // shot in fire range (the reviver cannot shoot back, ENGINE_VERSION 86), and holds one
+    // already running.
+    const rescue = reviveMove(s, me, enemies, false);
+    if (rescue) return makeCommand({ owner, tick, ...rescue.move, buttons: rescue.interact ? Button.INTERACT : 0 });
     const engaged = engageNearest(owner, tick, me, enemies);
     if (engaged) return engaged;
 

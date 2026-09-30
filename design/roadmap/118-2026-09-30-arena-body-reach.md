@@ -917,4 +917,39 @@ body; leaving the reach ends it, a stray step does not.
 ### Still open
 
 - The PvE co-op bot (`AllyController`) still never revives the human seat. The engine rule
-  applies there too, so a co-op revive now costs the reviver its gun for 15 s.
+  applies there too, so a co-op revive now costs the reviver its gun for 15 s. *(Closed the same
+  day, next entry.)*
+
+## The co-op bot revives (2026-09-30, tools + test + docs)
+
+The open item above, on "继续" (continue). `AllyController`, the bot that drives the second
+seat in local `?coop=1` and in a server co-op backfill (`BotClient.ts`), never held `INTERACT`,
+so a human downed in co-op bled out beside a bot that kept shooting.
+
+### What changed
+
+`AllyController.build` runs the arena bot's rule (`reviveMove`, `controllers/ai/revive.ts`)
+before it engages: walk to a downed teammate within `REVIVE_DETOUR_FP` (12 grid), hold
+`INTERACT` from well inside the reach, and do not start a channel while an enemy has a clear
+shot in fire range; hold one already running. A co-op revive is free, so the rule never walks
+to a floor bandage. With a body beyond the detour the ally regroups on the leader as before,
+which is the same body when the leader is the one down, so it walks in.
+
+### Not measured
+
+`test:pve-sim` plays one seat, and no sim plays co-op, so how often the ally gets a revive off
+before the 900-tick bleedout is unknown. PvE enemies seldom leave a downed player's side, and
+the rule waits until no enemy near the ally has a clear shot, so the likely failure is a
+bleedout while the ally fights, not a broken channel.
+
+### Tests
+
+- `ally.test.ts`: the ally holds `INTERACT` beside the body with no bandage and never fires;
+  walks to a body out of reach without holding it; fights an enemy with a clear shot before
+  starting and holds a channel already running; regroups when the leader is up; and through
+  `step()`, brings the downed leader back up within the channel with the run still going.
+- Mutation killed: the ally never reviving (3 tests).
+
+### Still open
+
+- A co-op sim, to measure the above.

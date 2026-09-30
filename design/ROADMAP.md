@@ -1706,10 +1706,11 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **09-30** [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs) — `test:pvp-capacity` played 2, 4 and 6 seats, so no gate in `test:sims` saw a squad. The same seven conditions now also run at 8 seats (two squads of four) over the same 30 seeds, gated apart from the solo block, whose output is byte-identical. Two gates of its own: the squads start on opposite halves, and a match ends with one squad standing; both killed by a mutation. No timeouts; the win split by starting half is printed, not asserted. ~126 s -> ~207 s. Still open: no bot revives a squadmate. `tools` `test` `docs`
 - **09-30** [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs) — no bot had ever held `INTERACT` over a downed squadmate, so every simulated squad match bled its downed seats out. A sim-only `revives` flag on `ArenaBotController` walks to a downed mate within 12 grid and channels from well inside the reach; new `test:pvp-revive` (~50 s, in `test:sims`) counts downs, revives, bleedouts, bandages and broken channels over 30 eight-seat matches. Floor bandages arrive late (125 picked, 15 spent; 55 revives with one each at the drop), the reviver going down breaks most channels, and the counts move with the bot's detour, so they are no verdict on the numbers. Found: design/07 says a moving reviver cancels the channel; the engine does not. `tools` `test` `docs`
 - **09-30** [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86) — the owner's call on the moving reviver: it may move inside the reach and may not attack (`ENGINE_VERSION` 86, `ApplyInputSystem` clears `firing` on the same `canRevive` predicate `ReviveSystem` uses). New `ReviveBanner` gives the reviver its own bar; in a PvP squad it saw none. The revive rule moves into `controllers/ai/revive.ts` and the shipped `PvpBotController` runs it, so bot seats in real squad matches revive; it does not start a channel under an opponent's clear shot and finishes one it started, chosen over two other rules on the same 30 matches (24 revives and 10 broken channels, against 21/27 and 17/372). Winning-squad seats standing: 2.13 to 2.37 per match. `engine` `ui` `i18n` `tools` `test` `docs`
+- **09-30** [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs) — the co-op `AllyController` runs the same revive rule, so a human downed in co-op (local `?coop=1` or a server backfill) is no longer left to bleed out beside a bot that keeps shooting. A co-op revive needs no bandage. Unmeasured: no sim plays co-op. `tools` `test` `docs`
 
 ## The work log — by theme
 
-The same 227 entries, grouped. An entry with more than one tag appears more than once.
+The same 228 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1921,7 +1922,7 @@ The same 227 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(138)*
+**`test`** — coverage sweeps, gates, mutation batteries *(139)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2061,6 +2062,7 @@ The same 227 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2161,7 +2163,7 @@ The same 227 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 
-**`tools`** — sims, profilers, editors, build scripts *(38)*
+**`tools`** — sims, profilers, editors, build scripts *(39)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2201,8 +2203,9 @@ The same 227 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 
-**`docs`** — design docs and this log itself *(144)*
+**`docs`** — design docs and this log itself *(145)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2348,6 +2351,7 @@ The same 227 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The capacity sim plays squads](roadmap/118-2026-09-30-arena-body-reach.md#the-capacity-sim-plays-squads-2026-09-30-tools--test--docs)
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 
