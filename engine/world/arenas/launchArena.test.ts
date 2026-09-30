@@ -16,6 +16,8 @@ import { buildArenaGeometry } from '../../content/arenas';
 import { PLAYER_BASE } from '../../content/players';
 import { WALL_NORTH_BRIM } from '../../config';
 import { toFpGrid } from '../../content/convert';
+import { measureBodyReach } from '../../content/arenaBodyReach';
+import { FP_SCALE } from '../../math/fixed';
 
 const metrics = measureArena(LAUNCH_ARENA);
 const placement = measurePlacement(LAUNCH_ARENA);
@@ -101,6 +103,50 @@ describe('geometry is real', () => {
       for (const s of room.spawns ?? []) expect(solids.has(abs(s))).toBe(false);
     }
     for (const s of LAUNCH_ARENA.spawns) expect(solids.has(`${s.x},${s.y}`)).toBe(false);
+  });
+
+  // Missing a solid is a bullet-sized test; a player is a body. Volume 116 found mobs spawned
+  // in five pockets no body can enter, two of them sealed only by a block's north brim, and a
+  // crate in one of them. The builder now places content only where `arenaBodyReach` says a
+  // body gets to; this is the check, and the second case is its control.
+  it('never places loot, an enemy spawn or a drop point where no body can get to it', () => {
+    const reach = measureBodyReach(buildArenaGeometry(LAUNCH_ARENA));
+    const stranded: string[] = [];
+    for (const room of LAUNCH_ARENA.rooms) {
+      const ok = (p: { x: number; y: number }) => reach.reaches(toFpGrid(p.x + room.rectGrid.x), toFpGrid(p.y + room.rectGrid.y));
+      (room.lootMarkers ?? []).forEach((m, i) => { if (!ok(m.point)) stranded.push(`${room.id} loot ${i}`); });
+      (room.spawns ?? []).forEach((sp, i) => { if (!ok(sp)) stranded.push(`${room.id} spawn ${i}`); });
+    }
+    LAUNCH_ARENA.spawns.forEach((p, i) => { if (!reach.reaches(toFpGrid(p.x), toFpGrid(p.y))) stranded.push(`drop ${i}`); });
+    expect(stranded).toEqual([]);
+  });
+
+  it('still HAS the sealed pockets, so the check above has something to avoid', () => {
+    // The pockets themselves are a content question (open them, or leave them as dead stone)
+    // that this pass did not take. While they stand, these are the rooms a body cannot fully
+    // enter; if one is opened, drop it from the list. Stranded half-grid cells, 2026-09-30:
+    // catacombs_r4c6 147, barracks_r3c8 117, catacombs_r7c5 81, barracks_r1c8 53,
+    // catacombs_r6c3 29 (volume 116's five), and two slivers too small to hold anything,
+    // catacombs_r5c4 9 and barracks_r5c8 3.
+    const reach = measureBodyReach(buildArenaGeometry(LAUNCH_ARENA));
+    const half = FP_SCALE / 2;
+    const pocketRooms = LAUNCH_ARENA.rooms
+      .filter((room) => {
+        const { x, y, w, h } = room.rectGrid;
+        for (let cy = Math.ceil((y * FP_SCALE) / half); cy <= ((y + h) * FP_SCALE) / half; cy++) {
+          for (let cx = Math.ceil((x * FP_SCALE) / half); cx <= ((x + w) * FP_SCALE) / half; cx++) {
+            const k = cy * reach.w + cx;
+            if (reach.standable[k] && !reach.main[k]) return true;
+          }
+        }
+        return false;
+      })
+      .map((room) => room.id)
+      .sort();
+    expect(pocketRooms).toEqual([
+      'barracks_r1c8', 'barracks_r3c8', 'barracks_r5c8',
+      'catacombs_r4c6', 'catacombs_r5c4', 'catacombs_r6c3', 'catacombs_r7c5',
+    ]);
   });
 
   // A mutation battery left "ignore the target cell, take the first free cell" alive: nothing

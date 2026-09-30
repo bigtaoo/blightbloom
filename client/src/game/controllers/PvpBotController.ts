@@ -46,8 +46,10 @@ export class PvpBotController {
     // the zone, the seats dealing each other almost nothing (2026-09-29). An opponent with a
     // clear shot still comes first.
     // Its own room is the whole field on a map without rooms. Only a mob it can shoot from here
-    // or walk to: a few spawn in pockets no body can enter (a free-standing block's brim closes
-    // a one-grid corridor), and walking at one of those pinned a seat to the block for good.
+    // or walk to: a few spawned in pockets no body can enter (a free-standing block's brim closes
+    // a one-grid corridor), and walking at one of those pinned a seat to the block for good. The
+    // launch arena places nothing there since ENGINE_VERSION 80 (`content/arenaBodyReach.ts`);
+    // the filter stays for any map that does.
     const mob = clear ? undefined : mobToFight(s, me);
     if (mob) return makeCommand({ owner, tick, ...holdAndFight(s, me, mob, owner, tick), buttons: fire });
     const cmd = engageNearest(owner, tick, me, opponents);

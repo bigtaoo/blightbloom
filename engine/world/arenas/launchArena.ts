@@ -17,6 +17,9 @@
  */
 import type { ArenaMap, ArenaRoom, CellTrait, EyeCandidate, Door, LootMarker } from '../../content/arenas';
 import type { AabbGrid, PillarGrid, Point, SpawnPoint, WaveEntry } from '../../content/rooms';
+import { buildArenaGeometry } from '../../content/arenas';
+import { measureBodyReach, type BodyReach } from '../../content/arenaBodyReach';
+import { toFpGrid } from '../../content/convert';
 import { INTERIOR_KITS, innerOf, type KitId } from './interiorKits';
 import {
   doorBetween,
@@ -151,14 +154,16 @@ function blockedCells(solids: readonly AabbGrid[], pillars: readonly PillarGrid[
  * The free interior cells of a room, ordered by distance from `target` — closest first, ties
  * broken by (y, x) so the result never depends on iteration order. Cells adjacent to a
  * blocked cell sort later, so a crate lands in open floor rather than wedged against stone
- * whenever the room has room for it.
+ * whenever the room has room for it. With `reach`, a cell no body can get to is skipped too
+ * (`arenaBodyReach.ts`): free of stone is not the same as somewhere a player can go.
  */
-function freeCellsNear(rect: Rect, blocked: ReadonlySet<string>, target: Point): Point[] {
+function freeCellsNear(rect: Rect, blocked: ReadonlySet<string>, target: Point, reach?: BodyReach): Point[] {
   const inner = innerOf(rect);
   const cells: { p: Point; d: number; tight: number }[] = [];
   for (let y = inner.y0; y <= inner.y1; y++) {
     for (let x = inner.x0; x <= inner.x1; x++) {
       if (blocked.has(`${x},${y}`)) continue;
+      if (reach && !reach.reaches(toFpGrid(rect.x + x), toFpGrid(rect.y + y))) continue;
       let tight = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         if (blocked.has(`${x + dx},${y + dy}`)) tight++;
@@ -200,11 +205,13 @@ function buildDoors(slots: Map<SlotRef, SlotInfo>): { doors: Door[]; openings: M
   return { doors, openings };
 }
 
-/** One room's encounter, spawn points and loot markers, all placed on verified free cells. */
+/** One room's encounter, spawn points and loot markers, all placed on verified free cells —
+ *  and, given `reach`, on cells a body can get to. */
 function furnish(
   slot: SlotInfo,
   openings: readonly Opening[],
   encounter: boolean,
+  reach?: BodyReach,
 ): ArenaRoom {
   const profile = DISTRICTS[slot.district]!;
   const variant = slot.row * 3 + slot.col;
@@ -222,7 +229,7 @@ function furnish(
 
   const centre = { x: Math.floor(slot.rect.w / 2), y: Math.floor(slot.rect.h / 2) };
   const isVault = slot.kit === 'vault';
-  const central = freeCellsNear(slot.rect, blocked, centre);
+  const central = freeCellsNear(slot.rect, blocked, centre, reach);
   const lootMarkers: LootMarker[] = [];
   if (central[0]) lootMarkers.push({ point: central[0], tableId: isVault ? profile.vaultLoot : profile.loot });
   if (isVault && central[1]) lootMarkers.push({ point: central[1], tableId: profile.vaultLoot });
@@ -236,7 +243,7 @@ function furnish(
   const taken = new Set(lootMarkers.map((m) => `${m.point.x},${m.point.y}`));
   const spawns: SpawnPoint[] = [];
   for (const corner of corners) {
-    const cell = freeCellsNear(slot.rect, blocked, corner).find((c) => !taken.has(`${c.x},${c.y}`));
+    const cell = freeCellsNear(slot.rect, blocked, corner, reach).find((c) => !taken.has(`${c.x},${c.y}`));
     if (!cell) continue;
     taken.add(`${cell.x},${cell.y}`);
     spawns.push({ ...cell, type: profile.enemies[spawns.length % profile.enemies.length] });
@@ -286,7 +293,15 @@ function buildLaunchArena(): ArenaMap {
   const ordered = [...slots.values()];
   const withEncounter = encounterRooms(ordered);
 
-  const rooms = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref)));
+  // Twice. The first pass fixes every solid, and a room's solids never depend on what it
+  // holds, so the flood of that geometry is the geometry of the map. The second places the
+  // content again with the cells no body reaches taken out: on the shipped plan five pockets
+  // are sealed (two of them only by a block's north brim), and mobs and a crate had been
+  // placed in them, where no player could get to them (volume 116).
+  const draft = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref)));
+  const sizeGrid = gridExtent(GRID_ORIGIN, COL_WIDTHS, ROW_HEIGHTS, GRID_MARGIN);
+  const reach = measureBodyReach(buildArenaGeometry({ id: 'arena_launch', sizeGrid, rooms: draft, doors, spawns: [], eyeCandidates: [] }));
+  const rooms = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref), reach));
   const byRef = new Map(ordered.map((s, i) => [s.ref, { slot: s, room: rooms[i]! }]));
 
   // Drop points are ABSOLUTE (ArenaMap.spawns, unlike everything inside a room), placed on
@@ -297,7 +312,7 @@ function buildLaunchArena(): ArenaMap {
     const { slot, room } = entry;
     const blocked = blockedCells(room.solids, room.pillars ?? [], room.cellTraits ?? []);
     const centre = { x: Math.floor(slot.rect.w / 2), y: Math.floor(slot.rect.h / 2) };
-    const cell = freeCellsNear(slot.rect, blocked, centre)[0];
+    const cell = freeCellsNear(slot.rect, blocked, centre, reach)[0];
     if (!cell) throw new Error(`launchArena: spawn room ${room.id} has no free cell`);
     return { x: slot.rect.x + cell.x, y: slot.rect.y + cell.y };
   });
@@ -310,7 +325,7 @@ function buildLaunchArena(): ArenaMap {
 
   return {
     id: 'arena_launch',
-    sizeGrid: gridExtent(GRID_ORIGIN, COL_WIDTHS, ROW_HEIGHTS, GRID_MARGIN),
+    sizeGrid,
     rooms,
     doors,
     spawns,

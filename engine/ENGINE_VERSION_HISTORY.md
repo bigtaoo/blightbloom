@@ -2695,3 +2695,17 @@ where it stands (a 120-frame dungeon run in `gameReplaySave.test.ts` kills one a
 pickup), so a PvE replay with such a shot diverges too. `launch-arena-pvp` now places its two
 seats 3 grid apart in spawn 0's room; stacked, they downed each other at once and fired 12
 shots. Golden fixture regenerated.
+
+v80 (2026-09-30 — the launch arena stops placing content where no body can go). `arena_launch`
+has five pockets no player can walk into (volume 116), two of them sealed only by a free-standing
+block's north brim, and `launchArena.furnish` had put four encounter mobs, two unused spawn
+points and one crate in them: it checked that a cell was not stone, which is a bullet-sized
+question. The builder now floods the assembled map for a body (`content/arenaBodyReach.ts`: the
+player's solid radius against `blockingRect`, on half-grid cells) and furnishes every room a
+second time with the unreached cells taken out. Seven placements moved, all in those five rooms
+(`barracks_r1c8`, `barracks_r3c8`, `catacombs_r4c6`, `catacombs_r6c3`, `catacombs_r7c5`); every
+other room, and all eight drop points, are byte-identical. The pockets themselves stay.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` plays spawn 0's room and
+never wakes a pocket room. A recorded arena match that did diverges, since those rooms' mobs now
+spawn elsewhere. Golden fixture regenerated (version stamp only).
