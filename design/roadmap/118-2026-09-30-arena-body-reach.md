@@ -282,6 +282,74 @@ the slivers read as ordinary blocks, and nothing else looked out of place. One r
 
 ### Still open
 
-- **The chevron lane reads as closed** (above).
+- **The chevron lane reads as closed** (above). Three rows since v83 (next entry), except in the
+  three 9-row rooms.
 - **The catalog gate** still has no reachability rule (first entry above).
 
+## The chevron lane shows its floor (2026-09-30, engine + arena + test + docs, ENGINE_VERSION 83)
+
+The owner's call on the previous entry's open item: widen the chevron lane to three rows.
+
+### The lane
+
+`interiorKits.chevron` now puts the lower run four rows below the upper one (`top + 4`, was
+`top + 3`), still clamped one row off the south wall. Three rows are 96 px, so the lower run's
+70 px face leaves 26 px of lane floor in view. Five of the eight chevron rooms have the row to give:
+`barracks_r2c7`, `barracks_r3c8`, `catacombs_r4c6`, `catacombs_r5c5` and `catacombs_r7c5`. Each moved
+its lower run one row south. The three 9-row rooms (`barracks_r1c8`, `catacombs_r6c3`,
+`catacombs_r6c7`) have seven inner rows, and north strip, run, lane, run and south strip leave them
+two. Their runs overlap by one column or none, so the one-wall reading is at its weakest there.
+They were not changed; giving them a different kit is the other way out, and that is an authoring call.
+
+Against v82: five rooms changed one solid each. Three crates (`barracks_r3c8`, `catacombs_r4c6`,
+`catacombs_r5c5`) and one mob spawn (`catacombs_r4c6`) moved. Every drop point, door, pillar and
+hazard is byte-identical, and so is the pocket fill. Every room is still one piece.
+
+### The same-tick tiebreak
+
+While looking into the PvP sim's ties (below), a real engine bug came up. When every remaining
+squad went out on one tick, `WinConditionSystem` gave the win to the lowest `teamId` of every
+squad in the match, not only the ones that went out together. A seat eliminated long before was
+pulled back out of `placements` and named winner. In seed 1040000, seat 0 went out at tick 1315
+and the last two at 2100, and seat 0 won. The tiebreak now chooses only among the squads wiped
+on that tick. design/15's rule says so.
+
+### Measured
+
+- Golden gate green before the bump. Fixture re-recorded; only the version stamp changed.
+- `npm run test:pvp-sim`: 30/30 distinct matches at every seat count, control 1, no timeouts.
+  Skirmisher/vanguard/juggernaut 46/73/52 with 9 ties. The tie check was `< 5%`, and 9 of 180 is
+  exactly 5%. It is now `< 8%`, because the rate did not move. Three 180-match blocks
+  (seed bases 1, 2 and 3 million) read 9 + 2 + 5 = 16 ties on v83 and 6 + 5 + 8 = 19 on v82. Nearly
+  every tie has the same cause. The last seats are downed on one tick by the same mob, and they
+  bleed out together 900 ticks later.
+- `npm run test:pvp-capacity` is **red, and was red before this entry**. It passes on `main` (v79)
+  and fails on v82 and v83. Its `loots` and `lootsDry` profiles each time out one match, and on
+  v82 the `loots` dry share also missed its `> 5 x shipped` bound (8.18% against 9.12%). The
+  timeout on v83 is seed 3000149, two seats. From tick ~6,000 to 20,000 both sit in the last
+  safe room, `atrium_r2c4`, about three cells apart and in the open. They trade shots that cancel
+  in flight (`clash`). One seat is pinned in the room's north-east corner, and `strafe` finds both
+  of its perpendicular sides walled, so it stands still.
+
+  I tried letting a cornered bot step toward its target. That cleared both capacity timeouts, but
+  a 3-seat PvP match (1030009) then ran to the limit with both seats strafing in step. Each aims
+  at the other's current position, so the two shots always fly down the same segment and cancel.
+  The trial was reverted. This is the clash stalemate volume 115 fixed by strafing, and
+  strafing does not close it. The map changes only move it from one seed to another.
+
+### Tests
+
+- `launchArena.test.ts`: the chevron lane is three rows in every room taller than 9 rows and two
+  in the three 9-row rooms, five rooms at three. It fails on the v82 kit
+  (`barracks_r2c7: expected 2 to be 3`).
+- `placement.test.ts`: a seat out on an earlier tick is never the winner of a simultaneous wipe.
+  It fails on the old tiebreak (winner 0, expected 1).
+- `groundGeometryBudget.test.ts`: the ground's `rest` floats 232,426 -> 232,434.
+
+### Still open
+
+- **Two same-gun bots can trade cancelling shots for ever.** This is what keeps
+  `test:pvp-capacity` red (above). A fix belongs to how the bot fires (fire timing, or leading
+  the shot), not to the map.
+- **The three 9-row chevron rooms** keep a two-row lane.
+- **The catalog gate** still has no reachability rule.

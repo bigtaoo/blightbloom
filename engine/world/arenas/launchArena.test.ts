@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { LAUNCH_ARENA, buildLaunchArena } from './launchArena';
-import { DISTRICTS, DISTRICT_MAP, SPAWN_SLOTS, EYE_SLOTS } from './launchArenaPlan';
+import { DISTRICTS, DISTRICT_MAP, KIT_MAP, SPAWN_SLOTS, EYE_SLOTS } from './launchArenaPlan';
 import { measureArena } from '../../content/arenaMetrics';
 import { measureEnclosure, measurePlacement, solidCellSet } from '../../content/arenaGeometryMetrics';
 import { buildArenaGeometry, type ArenaMap } from '../../content/arenas';
@@ -206,6 +206,27 @@ describe('geometry is real', () => {
     const pieces = roomPieces(barred);
     expect(Object.keys(pieces)).toEqual(['barracks_r2c7']);
     expect(pieces.barracks_r2c7).toBeGreaterThan(1);
+  });
+
+  // Walkable is not visible. A free-standing block is drawn 70 px tall, north of its footprint
+  // (the client's `WALL_H_INTERIOR`), so a two-row chevron lane (64 px) is covered by the lower
+  // run's face, and where the runs overlap they read as one wall (`catacombs_r4c6`, found in the
+  // client on 2026-09-30). Three rows leave 26 px of floor in view. A 9-row room has seven inner
+  // rows: north strip, run, lane, run, south strip leave it two, and it is the one exception.
+  it('keeps the chevron lane three rows, so its floor shows past the lower run', () => {
+    const lanes: Record<string, number> = {};
+    for (const room of LAUNCH_ARENA.rooms) {
+      const [, r, c] = /_r(\d+)c(\d+)$/.exec(room.id)!.map(Number) as [number, number, number];
+      if (KIT_MAP[r]![c] !== 'h') continue;
+      const runs = room.solids.filter((s) => s.freeStanding && s.h === 1).map((s) => s.y);
+      expect(runs).toHaveLength(2);
+      lanes[room.id] = Math.abs(runs[1]! - runs[0]!) - 1;
+    }
+    expect(Object.keys(lanes)).toHaveLength(8);
+    for (const room of LAUNCH_ARENA.rooms) {
+      if (room.id in lanes) expect(lanes[room.id], room.id).toBe(room.rectGrid.h > 9 ? 3 : 2);
+    }
+    expect(Object.entries(lanes).filter(([, n]) => n === 3)).toHaveLength(5);
   });
 
   it('fills only the pockets: no route, no standing place and no content moves', () => {

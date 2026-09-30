@@ -2740,3 +2740,26 @@ point (spawn 2, `barracks_r1c8`) moved.
 The golden gate, run before this bump, was green: `launch-arena-pvp` stays in spawn 0's room,
 which did not change. A recorded arena match that entered any of the sixteen rooms diverges.
 Golden fixture regenerated (version stamp only).
+
+v83 (2026-09-30 — the chevron lane is three rows where the room has them). v82 kept the lane
+between the chevron's two runs two rows high: walkable, but not visible. A free-standing block
+is drawn 70 px tall, north of its footprint, so the lower run's face covered the whole 64 px
+lane, and where the two runs overlap in x (`catacombs_r4c6`) they read as one wall. The lower
+run now sits four rows below the upper one, leaving a three-row lane and 26 px of its floor in
+view. Five of the eight chevron rooms have the row to give (`barracks_r2c7`, `barracks_r3c8`,
+`catacombs_r4c6`, `catacombs_r5c5`, `catacombs_r7c5`) and each moved one run a row south; the
+three 9-row rooms (`barracks_r1c8`, `catacombs_r6c3`, `catacombs_r6c7`) have seven inner rows
+and keep two. Three crates and one mob spawn moved, all in those five rooms; every drop point,
+door, pillar, hazard and the pocket fill are byte-identical, and every room is still one piece.
+
+The same bump fixes the PvP same-tick tiebreak (`WinConditionSystem`). When every remaining
+squad went out on one tick, the win went to the lowest `teamId` of every squad in the match,
+not of the ones that went out together, so a seat eliminated long before was pulled back out
+of `placements` and named winner (the PvP sim's seed 1040000: seat 0 out at tick 1315, the last
+two at 2100). The tiebreak now chooses only among the squads wiped on that tick. A recorded
+match that ended in a simultaneous wipe changes its winner and placements.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` stays in spawn 0's room,
+which did not change, and no scenario ends in a simultaneous wipe. A recorded arena match that
+walked or shot through the lower run of any of the five rooms diverges. Golden fixture
+regenerated (version stamp only).
