@@ -247,7 +247,41 @@ not change), and the version goes to **82**. The fixture was re-recorded, versio
   axis opens `atrium_r4c3`'s corner by itself. It is one rule, a body's width off every wall, and
   is kept whole.
 
+### The final-stage stall is gone from the map, not only from the bot
+
+Volume 116's one sweep timeout was an 8-seat match whose last safe room was split. The bot's
+partial path (walk to the reachable cell nearest the goal, and hold) cleared it, so the sweep
+could no longer say whether the map still stalls. Measured the same day, with the partial path
+switched off (`steer` returns no path when no goal is reachable) and nothing committed:
+
+- **v82 map:** `pvpBalanceSim` 180 of 180 converge. Seed 1080025 (8 seats), the timeout,
+  ends at tick 5,317 in zone stage 11; `barracks_r2c7` is one of nine safe rooms.
+- **v81 kits (the control):** the same sweep fails on exactly that match. It runs to the
+  20,000-tick cap in stage 13 with `barracks_r2c7` (x 96-105, y 23-36) the only safe room and
+  three seats alive: one at y 24, two at y 36, each side of the lane the chevron sealed.
+
+So the map no longer makes the stall; the partial path stays as the bot's answer to a shot that
+gets in where a body cannot.
+
+### Looked at in the client
+
+Walked `?arena=arena_launch` the same day and framed each changed room: `barracks_r2c7`,
+`catacombs_r5c5`, `catacombs_r4c6`, `atrium_r4c3`, `terraces_r1c1`, and the two sliver rooms
+`catacombs_r5c4` and `barracks_r5c8`. The ring corner inside `atrium_r4c3`'s north door is open floor,
+the slivers read as ordinary blocks, and nothing else looked out of place. One real defect:
+
+- **The chevron lane is open but does not look open.** A free-standing wall stands
+  `WALL_H_INTERIOR` = 70 px tall, drawn north of its footprint. The lane is two rows, 64 px, so the
+  lower run's face covers all of it and 6 px of the upper run's base. Where the runs overlap in x
+  (`catacombs_r4c6`, columns 87-88) the pair reads as one unbroken wall. A player standing in the
+  lane (collision settles them at y 52.78 of rows 52-53) is drawn over the lower run's cap. The
+  map is right and the picture says it is closed: the "a wall a player never tries to walk
+  through" failure of volume 116's pockets, in picture form.
+- A three-row lane (96 px) would leave 26 px of floor showing. That moves the lower run again,
+  so it is another `ENGINE_VERSION` bump and not made here.
+
 ### Still open
 
+- **The chevron lane reads as closed** (above).
 - **The catalog gate** still has no reachability rule (first entry above).
 
