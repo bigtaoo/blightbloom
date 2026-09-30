@@ -535,4 +535,56 @@ out to join rooms that meet only at a corner; `e` is now 11x20 at (40, 5), so it
 
 ### Still open
 
-- **The three 9-row chevron rooms** keep a two-row lane.
+- **The three 9-row chevron rooms** keep a two-row lane. *(Closed the same day, next entry.)*
+
+## No 9-row room is a chevron (2026-09-30, engine + arena + test + docs, ENGINE_VERSION 84)
+
+The owner's call on the open item above, the first of three offered: give the three 9-row
+chevron rooms a different kit, rather than drop the chevron's strip against a wall or accept the
+two-row lane.
+
+### The kits
+
+`barracks_r1c8`, `catacombs_r6c3` and `catacombs_r6c7` have seven inner rows, and north strip,
+run, lane, run and south strip leave the lane two rows, all covered by the lower run's 70 px face.
+Each candidate kit was built into all three rooms and run through the quality gate; all passed.
+Chosen, for the district and the neighbours:
+
+| Room | Inner | Kit | Why |
+|---|---|---|---|
+| `barracks_r1c8` | 11x7 | rubble | The barracks' one rubble room. `r1c7` and `r2c8` next door are stubs already. |
+| `catacombs_r6c3` | 7x7 | four pillars | The smallest room; four discs break every line across it and cost no row. |
+| `catacombs_r6c7` | 8x7 | stubs | A corner to clear at every door, the centre open. |
+
+Vault was ruled out because it changes the room's loot table, and so the economy. The ring's
+discs ran together in both catacombs rooms, and the colonnade's two rows would stand two rows
+apart, touching.
+
+Against v83: only the three rooms changed. Six chevron runs came out; four rubble blocks, four stubs
+and four pillars went in. Their mob spawns and crates are placed again from the new free cells,
+and `barracks_r1c8`'s drop point moves from (111, 18) to (112, 17). In `catacombs_r6c3` the
+pillars leave free cells mostly along the north wall, so its three mobs and its crate now all
+stand on the first row. Every other room, door, pillar,
+hazard and drop point is byte-identical, and every room is still one piece.
+
+### Measured
+
+- The golden gate was green before the bump: no scenario enters the three rooms.
+  `ENGINE_VERSION` 84, because a recorded match that did enter one diverges.
+- Client geometry pins: walls 494 → 496 rects, 288 → 290 drawn runs, pillars 113 → 117; the
+  ground's additive half 228,136 → 228,060 floats and `rest` 232,434 → 232,342; the largest
+  shadow piece 48,384 → 48,720.
+- `test:sims` green, every one. PvP sim: 29-30 distinct matches of 30 per seat count (two
+  seats read 29), control 1, no timeouts, 0 ties of 180, wins s/v/j 56/75/49.
+  `test:pvp-capacity` has no timeouts in any condition. `npm run audit:arena` is clean.
+
+### Tests
+
+- `launchArena.test.ts`: the chevron-lane case now names the five chevron rooms and holds every
+  one to three rows. It fails on v83, which has eight. The brim-pinch case reads 2 and not 1:
+  `barracks_r1c8`'s rubble adds a second one-cell corner notch, the same shape as the first
+  (`kilns_r1c6`, also rubble), and the "no overlap past one cell" assertion still holds.
+
+### Still open
+
+- Nothing from this volume.

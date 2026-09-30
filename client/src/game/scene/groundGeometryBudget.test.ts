@@ -518,22 +518,25 @@ describe('what ONE camera submits — the property the per-room split exists for
 const REAL = {
   /** Everything additive: every room's mottle-light + rubble highlights, plus every door's worn
    *  patch. 284,966 before the room clip; 228,052 until 2026-09-30, 227,528 with the pocket fill
-   *  (ENGINE_VERSION 81), and this since the kit fixes (82) opened those rooms as floor. */
-  additive: 228_136,
+   *  (ENGINE_VERSION 81), 228,136 since the kit fixes (82) opened those rooms as floor, and this
+   *  since the three 9-row chevron rooms were refurnished (84). */
+  additive: 228_060,
   /** Everything else on the layer: the dark half, the fallback flat fill this headless build gets in
    *  place of a stamped swatch (480), the grid (6,400) and the light pools (17,280). 289,726 before
    *  the room clip; 232,318 until the 2026-09-30 pocket fill, 231,674 with it (81), 232,426 with
-   *  the kit fixes (82), and this since five chevron runs moved a row south (83). */
-  rest: 232_434,
-  total: 460_570,
+   *  the kit fixes (82), 232,434 since five chevron runs moved a row south (83), and this since
+   *  the three 9-row chevron rooms were refurnished (84). */
+  rest: 232_342,
+  total: 460_402,
   /** Largest single piece, and the worst any one camera submits. 5,840 / 76,646 before the clip. */
   largestPiece: 5_558,
   /** 26,150 until 2026-09-28, when MAX_ZOOM fell 4.5 -> 3.5: a lower cap shows a little more of the
    *  floor around a small room, so the worst camera submits a little more. */
   worstCamera: 26_226,
   /** Unchanged by the clip, on purpose — see the note above. 49,392 until the 2026-09-30 pocket
-   *  fill, 49,728 with it (81); the kit fixes (82) took out pillars and most of the fill. */
-  shadowLargest: 48_384,
+   *  fill, 49,728 with it (81); the kit fixes (82) took out pillars and most of the fill (48,384),
+   *  and the three refurnished 9-row rooms (84) put blocks and pillars back in. */
+  shadowLargest: 48_720,
   /** `staticGraphics.ts`'s stated envelope for the wall-shadow pass, for comparison. */
   shadowMeasuredAt: 24_000,
 };

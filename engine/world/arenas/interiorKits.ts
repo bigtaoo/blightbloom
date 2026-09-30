@@ -156,7 +156,7 @@ export const chevron: Kit = (inner, variant) => {
   // run's north brim, is narrower than a body, and every short room built with this kit came
   // out sealed in two. Two rows are walkable but not visible: the lower run's 70 px face is
   // drawn over the 64 px lane, so the lane reads as one wall. Three rows leave 26 px of floor
-  // in view. A 9-row room has no third row to give and keeps two.
+  // in view. A 9-row room has no third row to give, so none is furnished with this kit.
   // No pillar either: it stood in that lane in every room it was used in (until 2026-09-30).
   const top = at(inner.y0, inner.h, 0.32);
   const bottom = Math.min(inner.y1 - 1, Math.max(at(inner.y0, inner.h, 0.68), top + 4));

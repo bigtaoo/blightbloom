@@ -286,10 +286,12 @@ describe('the arena reaches the wall pipeline at all', () => {
     }
     // 492 / 294 / 124 until 2026-09-30. The pocket fill (ENGINE_VERSION 81) added 13 rects; the
     // kit fixes the same day (82) opened the rooms they filled, leaving 2, lowered six chevron
-    // runs, and dropped 11 pillars (8 chevron, 3 rubble).
-    expect(LAUNCH.walls).toHaveLength(494);
-    expect(LAUNCH.runs).toHaveLength(288); // 494 authored rects merge to 288 drawn blocks
-    expect(LAUNCH.pillars).toHaveLength(113);
+    // runs, and dropped 11 pillars (8 chevron, 3 rubble). 494 / 288 / 113 until the three 9-row
+    // chevron rooms were refurnished (84): six runs out, eight rubble and stub blocks and four
+    // pillars in.
+    expect(LAUNCH.walls).toHaveLength(496);
+    expect(LAUNCH.runs).toHaveLength(290); // 496 authored rects merge to 290 drawn blocks
+    expect(LAUNCH.pillars).toHaveLength(117);
     expect(LAUNCH.passages).toHaveLength(74);
   });
 
@@ -1109,8 +1111,8 @@ describe('arena passages — the clip rule that used to be dead code here', () =
     const s = createGameState({ seed: 1, worldW: 1, worldH: 1, waves: [], arena: ARENA_CATALOG.arena_launch });
     rb.build(s);
     const inner = rb as unknown as { occluders: Array<{ box: Occluder }>; wallEntities: unknown[] };
-    expect(inner.wallEntities).toHaveLength(288);
-    expect(inner.occluders).toHaveLength(288 + 113); // ...and nothing else: zero door fixtures
+    expect(inner.wallEntities).toHaveLength(290);
+    expect(inner.occluders).toHaveLength(290 + 117); // ...and nothing else: zero door fixtures
     const wallBoxes = inner.occluders.slice(0, inner.wallEntities.length).map((o) => o.box);
 
     let covered = 0;

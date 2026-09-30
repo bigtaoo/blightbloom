@@ -2763,3 +2763,16 @@ The golden gate, run before this bump, was green: `launch-arena-pvp` stays in sp
 which did not change, and no scenario ends in a simultaneous wipe. A recorded arena match that
 walked or shot through the lower run of any of the five rooms diverges. Golden fixture
 regenerated (version stamp only).
+
+v84 (2026-09-30 — no 9-row room is a chevron). v83 left three chevron rooms with a two-row lane:
+`barracks_r1c8`, `catacombs_r6c3` and `catacombs_r6c7` have seven inner rows, and north strip,
+run, lane, run and south strip leave two. Walkable, but the lower run's 70 px face covers the
+64 px lane. They are refurnished instead: `barracks_r1c8` with rubble, `catacombs_r6c3` with four
+pillars and `catacombs_r6c7` with stubs. In those three rooms every enemy spawn and crate is
+placed again from the new free cells, and `barracks_r1c8`'s drop point moves from (111, 18) to
+(112, 17). Every other room, door, pillar, hazard and drop point is byte-identical, and every
+room is still one piece.
+
+The golden gate, run before this bump, was green: no scenario enters the three rooms. A
+recorded arena match that walked, shot or spawned in any of them diverges, and the seat that
+dropped in `barracks_r1c8` starts one grid away. Golden fixture regenerated (version stamp only).

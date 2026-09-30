@@ -223,7 +223,8 @@ describe('geometry is real', () => {
   // (the client's `WALL_H_INTERIOR`), so a two-row chevron lane (64 px) is covered by the lower
   // run's face, and where the runs overlap they read as one wall (`catacombs_r4c6`, found in the
   // client on 2026-09-30). Three rows leave 26 px of floor in view. A 9-row room has seven inner
-  // rows: north strip, run, lane, run, south strip leave it two, and it is the one exception.
+  // rows: north strip, run, lane, run, south strip leave it two, so no 9-row room is a chevron
+  // (its three were refurnished on 2026-09-30).
   it('keeps the chevron lane three rows, so its floor shows past the lower run', () => {
     const lanes: Record<string, number> = {};
     for (const room of LAUNCH_ARENA.rooms) {
@@ -233,11 +234,14 @@ describe('geometry is real', () => {
       expect(runs).toHaveLength(2);
       lanes[room.id] = Math.abs(runs[1]! - runs[0]!) - 1;
     }
-    expect(Object.keys(lanes)).toHaveLength(8);
-    for (const room of LAUNCH_ARENA.rooms) {
-      if (room.id in lanes) expect(lanes[room.id], room.id).toBe(room.rectGrid.h > 9 ? 3 : 2);
-    }
-    expect(Object.entries(lanes).filter(([, n]) => n === 3)).toHaveLength(5);
+    expect(Object.keys(lanes).sort()).toEqual([
+      'barracks_r2c7',
+      'barracks_r3c8',
+      'catacombs_r4c6',
+      'catacombs_r5c5',
+      'catacombs_r7c5',
+    ]);
+    for (const [id, n] of Object.entries(lanes)) expect(n, id).toBe(3);
   });
 
   it('fills only the pockets: no route, no standing place and no content moves', () => {
@@ -568,7 +572,7 @@ describe('what the north brim costs the launch map', () => {
     expect(lost).toBeLessThan(0.05);
   });
 
-  it('narrows 1 gap past the player, and it is a CORNER, not a corridor', () => {
+  it('narrows 2 gaps past the player, and each is a CORNER, not a corridor', () => {
     // The pairs where a channel that took exactly one grid cell no longer fits a body. Sealing one
     // is only acceptable because of the shape: it overlaps in x by a single cell, so it is the
     // diagonal notch where two blocks nearly touch at a corner — the player walks one cell aside
@@ -604,7 +608,8 @@ describe('what the north brim costs the launch map', () => {
         });
       }
     }
-    expect(pinches).toHaveLength(1);
+    // The second is `barracks_r1c8`'s rubble (2026-09-30), the same one-cell corner notch.
+    expect(pinches).toHaveLength(2);
     expect(pinches.filter((p) => p.overlap > toFpGrid(1))).toEqual([]);
   });
 });
