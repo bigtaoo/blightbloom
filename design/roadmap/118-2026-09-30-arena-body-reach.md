@@ -645,3 +645,69 @@ swing, since a swing cannot turn it.
 
 - Nothing from this volume. Whether a human parries well enough to feel the change is still a
   playtest question, and the shipped arena bot still never parries.
+
+## A squad starts together (2026-09-30, arena + test + docs)
+
+The owner's call on [volume 115](115-2026-09-29-arena-spawns.md)'s open item: squadmates started
+in separate districts. `assignArenaStarts` gave every seat of every match one plain shuffle of
+the eight authored spawns, so an 8-seat match (two squads of four) opened as eight lone fights
+spread over the map. Squadmates should start on neighbouring spawns, and the two squads apart.
+
+### The rule
+
+`client/src/game/match/pvpConfig.ts`, client-side like the rest of the spawn assignment (no
+engine change, no `ENGINE_VERSION` bump; replays embed their config):
+
+- `spawnRingOrder` sorts the spawns by angle round their centroid, in integer arithmetic (the
+  client and the server build the config independently, and an `atan2` that rounds differently
+  on one JS engine would seat a squad elsewhere). On `arena_launch`, one spawn per outer
+  district, the ring reads E, SE, S, SW, W, NW, N, NE.
+- In a match with squads (`squadSizeForPlayerCount` > 1), each squad takes a run of neighbouring
+  ring spawns, the runs spaced evenly round the ring.
+- Of the ways to turn that cut round the ring, the **tightest** is used, the one with the least
+  summed squared distance between squadmates. On `arena_launch` that is the west half
+  {S, SW, W, NW} against the east half {N, NE, E, SE}. It is also the tightest of all 35 ways to
+  split the eight spawns in two, and the only one that starts no seat nearer the enemy than its
+  own squad. The other three ring cuts each end a run beside an enemy spawn and leave one or two
+  such seats. A seeded rotation, tried first, did exactly that: seed 1 started the north seat
+  38 grid from an enemy and 79 on average from its own squad.
+- The seed picks among equally tight cuts (which squad takes which half) and shuffles the members
+  within their run: 2 x 4! x 4! seatings.
+- A free-for-all match keeps the plain shuffle, seat for seat, on the same stream.
+
+### Measured
+
+- Every match without squads starts where it did: `test:pvp-capacity` (2, 4 and 6 seats) is
+  byte-identical, and `test:pvp-sim`'s 2-6 seat rows read the same.
+- `test:pvp-sim`, 8 seats: mean length 2,033 -> 1,860 ticks, highest zone stage 6 -> 5,
+  30 distinct matches of 30 as before, 0 ties. Win split 56/75/49 -> 54/73/53 (skirmisher /
+  vanguard / juggernaut, all 180 matches).
+- `test:voice-sim`, 8 seats: `hurt` cues 246 -> 772 over the same 10 matches. The squads meet as
+  squads, where the scattered seats used to fight one at a time and die to mobs and the zone.
+  Voice demand fell (peak 20 -> 18, p99 15 -> 13); at the shipped cap of 16 the 8-seat rows lose
+  3 `muzzle` voices and nothing from `impact` up.
+- `npm run check` green; `npm run coverage` gate green.
+
+### Tests
+
+`pvpConfig.test.ts`, 6 new cases:
+
+- the ring order on a scrambled square, a tie on one ray, and due west against due east (only the
+  half-plane split orders those two);
+- the launch arena's ring, pinned;
+- on synthetic circles (8 spawns / 8 seats, 12 / 8, 12 / 12), each squad is a run of neighbouring
+  spawns, and spare spawns go between the squads, not all on one side;
+- on the launch arena, over 64 seeds, no seat starts nearer the enemy than its squad (by mean
+  distance); the control is the plain shuffle, which strands more than one seat per seed;
+- the seed chooses which squad takes which half, and varies the seating within it;
+- every free-for-all seat count (2-7) over 64 seeds matches the plain shuffle exactly.
+
+Mutations killed: the plain shuffle for squads, the loosest cut, no seeded side, no member
+shuffle, the half-plane edge, and runs packed together instead of spaced.
+
+### Still open
+
+- The cut is chosen for the map's spawn ring. A map whose spawns do not ring it (a line, a
+  cluster) would need its own rule; `arena_launch` is the only real map.
+- Whether squads want to start even closer (one district) is a playtest question. With one spawn
+  per district it would need more spawns authored.

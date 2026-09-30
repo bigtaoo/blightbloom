@@ -30,7 +30,8 @@ ArenaMap {
   rooms: ArenaRoom[]           // ~60 at launch
   doors: Door[]                // EXPLICIT adjacency — never inferred from rect adjacency (below)
   spawns: Point[]              // >= seat count; system-assigned per match, no player choice
-                               // (a seeded shuffle, `assignArenaStarts` in client pvpConfig.ts, since volume 115)
+                               // (a seeded shuffle, `assignArenaStarts` in client pvpConfig.ts, since volume 115;
+                               //  a squad takes neighbouring spawns, the squads opposite halves, since volume 118)
   eyeCandidates: EyeCandidate[]  // candidate final-circle rooms; one drawn per match (below)
 }
 
