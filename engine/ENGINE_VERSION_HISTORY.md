@@ -2776,3 +2776,17 @@ room is still one piece.
 The golden gate, run before this bump, was green: no scenario enters the three rooms. A
 recorded arena match that walked, shot or spawned in any of them diverges, and the seat that
 dropped in `barracks_r1c8` starts one grid away. Golden fixture regenerated (version stamp only).
+
+v85 (2026-09-30 — a bullet turns back once). A parried bullet used to be a live target for
+the next swing that met it, the shooter's own included, so two parriers could return one
+bullet between them until the match's tick limit (volume 117's stalemate).
+`PVP_DEFLECT_DAMAGE_PERMILLE` never came into it, because the weakened shot was parried again
+before it landed. `DeflectSystem` now latches `Projectile.deflected` on the first deflect and
+lets a latched bullet through every later swing. The latch is hashed in `serializeState`, and
+only on a bullet that has it, so a bullet nobody parried hashes as before. In PvE nothing
+changes: only a player deflects, and nothing a player owns is hostile to another player there.
+
+The golden gate, run before this bump, failed in `launch-arena-pvp` alone, and its witness
+names the change: `deflect` 3 -> 2, every other count equal. One rebound in that run used to be
+parried back. A recorded PvP match in which a seat parried a rebound diverges on that tick.
+Golden fixture regenerated.

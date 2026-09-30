@@ -588,3 +588,60 @@ hazard and drop point is byte-identical, and every room is still one piece.
 ### Still open
 
 - Nothing from this volume.
+
+## A bullet turns back once (2026-09-30, engine + tools + test + docs, ENGINE_VERSION 85)
+
+The owner's call on [volume 117](117-2026-09-29-pvp-capacity.md)'s parry stalemate: change the
+deflect rule, not the bot. Of the two fixes that volume named, a rebound that cannot be parried
+back was chosen over one that decays. It is the simpler rule, and it ends the rally at the
+second swing, not after several.
+
+### The rule
+
+`DeflectSystem` latches `Projectile.deflected` on a bullet's first deflect, and a latched bullet
+is no candidate for any later swing, the shooter's own included. Before, the shooter's swing
+turned the rebound again, at half damage (`PVP_DEFLECT_DAMAGE_PERMILLE`, floored at 1), and two
+frame-perfect parriers could keep one bullet between them until the tick limit. The weakened
+shot never landed, because it was parried again. The answer to a rebound is now to dodge it, or
+to cancel it with a shot of your own (a `clash`).
+
+PvE does not change. Only a player deflects, and in co-op every seat is one team, so no bullet a
+player owns is hostile to another player. The latch is hashed in `serializeState`, appended
+only to a bullet that has it, so a bullet nobody parried hashes as before.
+
+The capacity sim's bot (`bulletIncoming`) no longer counts a latched bullet as a reason to
+swing, since a swing cannot turn it.
+
+### Measured
+
+- The golden gate, run before the bump, failed in `launch-arena-pvp` alone. Its witness reads
+  `deflect` 3 -> 2, every other count equal: one rebound in that run used to be parried back.
+  `ENGINE_VERSION` 85, golden fixture regenerated.
+- `test:pvp-capacity`, same seeds, before -> after:
+
+  | condition | parries | mean ticks | timeouts |
+  |---|---|---|---|
+  | `parries` | 14,508 -> 3,238 | 2,428 -> 2,041 | 0 -> 0 |
+  | `full` | 9,792 -> 3,037 | 2,046 -> 1,954 | 0 -> 0 |
+  | `full pool100` | 9,843 -> 3,009 | 2,039 -> 1,908 | 0 -> 0 |
+  | `full pool30` | 6,483 -> 1,792 | 2,037 -> 1,908 | 0 -> 0 |
+
+  About three parries in four were a rebound turned back again. The conditions without a parry
+  read the same (`shipped` and `loots` are byte-identical). The timeouts were already 0 before
+  this pass: the fire yield above made two seats rarely shoot at each other on one tick, which
+  is what started a rally. The rule removes the rally itself, so the 2% allowance goes.
+- `npm run check` green; every `test:sims` gate green.
+
+### Tests
+
+- `teamHostility.test.ts`: a rebound goes through the shooter's own live swing, keeping its team,
+  course and damage, while a fresh shot meets the same swing and is turned. It fails on the old
+  rule (`expected 1 to be 0`: the rebound changed team).
+- `replay.test.ts`: the latch appends one value to a bullet's hashed row and changes the hash;
+  an unlatched bullet's row is unchanged.
+- `pvpCapacity.sim.ts`: every condition must end every match. The parrying ones were allowed 2%.
+
+### Still open
+
+- Nothing from this volume. Whether a human parries well enough to feel the change is still a
+  playtest question, and the shipped arena bot still never parries.

@@ -73,4 +73,8 @@ export interface Projectile {
   // the roll's outcome is already hashed through `damage` and the `combatPrng` cursor. Cleared
   // on a deflect, because the deflector rolled nothing.
   crit?: true;
+  // Set by a deflect (ENGINE_VERSION 85): a bullet turns back once. A second swing lets it
+  // through, so two parriers cannot bat one bullet between them for ever (volume 117's
+  // stalemate). Only ever `true` or absent; hashed in `serializeState` only when set.
+  deflected?: true;
 }

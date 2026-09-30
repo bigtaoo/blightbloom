@@ -159,11 +159,13 @@ function gunAffordable(me: PlayerActor): boolean {
  * Will a bullet hostile to `me` enter `reach` of it within the next `PARRY_LOOKAHEAD` ticks?
  * Straight-line, on the bullet's current velocity. A bullet moving away is
  * never a threat, even inside the reach: it has passed. A still bullet is not either (a beam
- * or a landed lob, which a swing cannot turn back).
+ * or a landed lob, which a swing cannot turn back), and neither is a rebound, which cannot be
+ * turned back twice.
  */
 export function bulletIncoming(s: GameState, me: PlayerActor, reach: number): boolean {
   for (const b of s.projectiles) {
-    if (!b.alive || b.teamId === me.teamId) continue;
+    // A rebound cannot be turned back again (ENGINE_VERSION 85), so it is no reason to swing.
+    if (!b.alive || b.deflected || b.teamId === me.teamId) continue;
     const rx = b.gx - me.gx;
     const ry = b.gy - me.gy;
     const v2 = b.vx * b.vx + b.vy * b.vy;

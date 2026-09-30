@@ -9,8 +9,9 @@
  *   - the full bot really loots, swaps and parries;
  *   - a smaller bar shows up as more emptied seats;
  *   - the blade fallback keeps a dry gun out of the hand;
- *   - matches end. Two frame-perfect parriers can deflect each other's every shot for good, so
- *     the parrying profiles are allowed a few timeouts, counted and reported.
+ *   - matches end, every one of them. Until `ENGINE_VERSION` 85 two frame-perfect parriers could
+ *     return one bullet between them for good, and the parrying profiles were allowed 2% of
+ *     their matches at the tick limit. A bullet now turns back once (`DeflectSystem`).
  * The win split per condition is printed, not asserted.
  */
 import { describe, expect, it } from 'vitest';
@@ -19,8 +20,6 @@ import { runArenaMatch, type ArenaMatch } from './pvp/arenaMatch';
 
 const SEATS = [2, 4, 6];
 const SEEDS = Array.from({ length: 30 }, (_, i) => 3_000_000 + i * 7);
-/** Share of a parrying profile's matches that may run to the tick limit (see the header). */
-const MAX_PARRY_STALEMATE = 0.02;
 
 interface Summary {
   matches: number;
@@ -88,8 +87,7 @@ describe('PvP energy capacity (bot that loots, swaps and parries — first-signa
     // The blade fallback keeps a dry gun out of the hand.
     expect(r.lootsDry!.dryPct).toBeLessThan(1);
     expect(r.full!.dryPct).toBeLessThan(1);
-    // Matches end. Without a parry every one of them must.
-    for (const k of ['shipped', 'loots', 'lootsDry']) expect(r[k]!.timeouts, k).toBe(0);
-    for (const k of ['parries', 'full', 'full pool100', 'full pool30']) expect(r[k]!.timeouts, k).toBeLessThanOrEqual(r[k]!.matches * MAX_PARRY_STALEMATE);
+    // Matches end, the parrying ones included (see the header).
+    for (const k of Object.keys(r)) expect(r[k]!.timeouts, k).toBe(0);
   }, 900_000);
 });

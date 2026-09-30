@@ -1701,10 +1701,11 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **09-30** [The catalog gate checks a body](roadmap/118-2026-09-30-arena-body-reach.md#the-catalog-gate-checks-a-body-2026-09-30-arena--test--docs) — the owner's call on the open item: hold every catalog map to the body-reach rule. The fixtures' doors are graph-only, so a whole-map flood would strand them; new `content/arenaBodyAccess.ts` floods each room's own floor instead, and `auditArenaQuality` gains `room_split` and `content_unreached` (23 rules). `arena_launch` clears both; without its pocket fill it fails on the two sliver rooms. 8 of 8 mutants killed. A room with no open door still passes. `arena` `test` `docs`
 - **09-30** [Every door lets a body through](roadmap/118-2026-09-30-arena-body-reach.md#every-door-lets-a-body-through-2026-09-30-arena--test--docs) — a walled-up doorway passed the gate. New `door_shut` (24 rules): per door, each room's floor floods into the passage and the two must meet there. The fixtures got real doorways (`opened`), which the per-room entry avoided. `arena_launch`'s 74 doors are all open; walling one reports exactly it. 6 of 8 mutants killed, 2 equivalent. `arena` `test` `docs`
 - **09-30** [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84) — the owner's call on the last open item: the three 9-row chevron rooms, whose seven inner rows leave the lane two rows and drawn closed, get other kits. `barracks_r1c8` is rubble, `catacombs_r6c3` four pillars, `catacombs_r6c7` stubs; each candidate passed the gate, and vault was ruled out for its loot table. Only those three rooms and one drop point changed. `ENGINE_VERSION` 84; the golden gate was green before the bump. Every chevron room now has a three-row lane. `engine` `arena` `test` `docs`
+- **09-30** [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85) — the owner's call on volume 117's parry stalemate: change the rule, not the bot. `DeflectSystem` latches a bullet on its first deflect and lets it through every later swing, so two parriers can no longer return one bullet between them. `ENGINE_VERSION` 85; the golden gate failed in `launch-arena-pvp` alone, witness `deflect` 3 -> 2. In the capacity sim about three parries in four were a rebound turned back again, and the parrying profiles lose their 2% timeout allowance. `engine` `tools` `test` `docs`
 
 ## The work log — by theme
 
-The same 222 entries, grouped. An entry with more than one tag appears more than once.
+The same 223 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
 
@@ -1828,7 +1829,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test)
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(42)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(43)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1872,6 +1873,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [The chevron lane shows its floor](roadmap/118-2026-09-30-arena-body-reach.md#the-chevron-lane-shows-its-floor-2026-09-30-engine--arena--test--docs-engine_version-83)
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
+- 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 
 **`arena`** — the PvP launch map and its audit *(18)*
 
@@ -1913,7 +1915,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(133)*
+**`test`** — coverage sweeps, gates, mutation batteries *(134)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2048,6 +2050,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The catalog gate checks a body](roadmap/118-2026-09-30-arena-body-reach.md#the-catalog-gate-checks-a-body-2026-09-30-arena--test--docs)
 - 09-30 [Every door lets a body through](roadmap/118-2026-09-30-arena-body-reach.md#every-door-lets-a-body-through-2026-09-30-arena--test--docs)
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
+- 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2147,7 +2150,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(34)*
+**`tools`** — sims, profilers, editors, build scripts *(35)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2183,8 +2186,9 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The bot walks round what its body hits, and fights what its gun points at](roadmap/116-2026-09-29-pvp-bot-steer.md#the-bot-walks-round-what-its-body-hits-and-fights-what-its-gun-points-at-2026-09-29-arena--test--tools--docs)
 - 09-29 [PvP energy capacity, measured with a bot that loots, swaps and parries](roadmap/117-2026-09-29-pvp-capacity.md#pvp-energy-capacity-measured-with-a-bot-that-loots-swaps-and-parries-2026-09-29-tools--test--docs-no-game-code-change)
 - 09-30 [The bot takes turns in a head-on trade](roadmap/118-2026-09-30-arena-body-reach.md#the-bot-takes-turns-in-a-head-on-trade-2026-09-30-tools--test--docs)
+- 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 
-**`docs`** — design docs and this log itself *(139)*
+**`docs`** — design docs and this log itself *(140)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2325,6 +2329,7 @@ The same 222 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The catalog gate checks a body](roadmap/118-2026-09-30-arena-body-reach.md#the-catalog-gate-checks-a-body-2026-09-30-arena--test--docs)
 - 09-30 [Every door lets a body through](roadmap/118-2026-09-30-arena-body-reach.md#every-door-lets-a-body-through-2026-09-30-arena--test--docs)
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
+- 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 
 **`net`** — matchmaking, sockets, reconnect *(35)*
 

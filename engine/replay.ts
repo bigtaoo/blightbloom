@@ -199,6 +199,9 @@ export function serializeState(s: GameState): unknown {
       // necessarily moving anything either. Stable -1/'' for every weapon without
       // either proc, so byte-identical there.
       b.ricochetsLeft ?? -1, b.hitIds?.join(',') ?? '',
+      // A deflect's one-way latch (ENGINE_VERSION 85), appended only when set so a bullet
+      // no one parried hashes byte-identically to before it existed.
+      ...(b.deflected ? [1] : []),
     ]),
     pickups: s.pickups.map((k) => [
       k.id, k.kind, k.gx, k.gy, k.spawnTick, k.alive,
