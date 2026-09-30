@@ -3,7 +3,10 @@
 // passes were held to: every second within 3 frames of every other.
 //
 //   node tools/perf/accept.mjs [--throttle 4] [--secs 60] [--descend-at 30] [--warmup 60]
-//                              [--port 9333] [--page localhost:5173] [--max-spread 3]
+//                              [--port 9333] [--page localhost:5173] [--max-spread 3] [--reload]
+//
+// `--reload` reloads the tab under the throttle before anything else, so `--warmup 0 --reload`
+// measures the cold start a player gets rather than whatever state the tab was left in.
 //
 // Exit code 1 when the spread is over `--max-spread`, so it can gate a script — but read the README's
 // "noise" section before treating a single red run as a regression.
@@ -17,6 +20,7 @@ const opts = parseArgs(process.argv.slice(2), {
   descendAt: 30,
   warmup: 60,
   maxSpread: 3,
+  reload: false,
 });
 
 /**
@@ -114,10 +118,27 @@ try {
   await page.front();
   await page.throttle(opts.throttle);
   console.log(`page ${page.url}, CPU throttle ${opts.throttle}x`);
+  if (opts.reload) {
+    // Reloaded AFTER the throttle is on, so the page's own load and first JIT pass run on the slow
+    // CPU too. The old execution context dies with the page, so poll until the new one answers.
+    // `Page.reload` returns before the old page is gone, so a marker on the old window is what
+    // tells the two apart: the new page is ready once the marker is absent and `__game` is present.
+    await page.evaluate(() => { window.__perfBeforeReload = true; });
+    await page.send('Page.reload', { ignoreCache: true });
+    const t = Date.now();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 250));
+      const ready = await page.evaluate(() => !window.__perfBeforeReload && !!window.__game).catch(() => false);
+      if (ready) break;
+      if (Date.now() - t > 120000) throw new Error('the reloaded page never exposed window.__game');
+    }
+    console.log(`reloaded: window.__game after ${((Date.now() - t) / 1000).toFixed(1)} s`);
+  }
   if (opts.warmup > 0) {
-    // A freshly loaded dev build runs 2-3x slower at 4x for its first ~30 s while V8 optimises —
-    // real, but a property of the page load, not of the frame (README "cold start"). 30 s of
-    // warm-up was measured NOT to be enough: spread 6 straight after it, spread 2 on the next run.
+    // A cold page is slow for its first few seconds at 4x, on dev and production alike: 0-4 slow
+    // seconds on dev over 7 runs, 1-8 on production (README "cold start", volumes 108 and 112).
+    // The ~30 s JIT tail this default was first chosen for did not reproduce. It stays at 60 s
+    // because it absorbs those seconds for the price of one minute.
     console.log(`warm-up: ${opts.warmup} s, discarded`);
     await page.evaluate(measure, { secs: opts.warmup, descendAt: 0 });
   }

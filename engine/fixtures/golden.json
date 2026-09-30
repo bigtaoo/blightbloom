@@ -1,11 +1,11 @@
 {
-  "engineVersion": 78,
+  "engineVersion": 79,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 1885516845,
+      "hash": 4250759158,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -33,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 4047062101,
+      "hash": 531191564,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -59,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 1707235768,
+      "hash": 2092982507,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -92,7 +92,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 1868329901,
+      "hash": 3295572858,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -120,7 +120,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 139428575,
+      "hash": 3375543484,
       "witness": {
         "tick": 252,
         "phase": "gameover",
@@ -153,30 +153,28 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 87233082,
+      "hash": 3028115216,
       "witness": {
         "tick": 900,
         "phase": "playing",
         "winner": "null",
         "seats": 2,
-        "enemiesAlive": 2,
-        "projectiles": 1,
-        "pickups": 4,
+        "enemiesAlive": 0,
+        "projectiles": 2,
+        "pickups": 5,
         "floorIndex": 0,
-        "hpTotal": -178,
-        "energyTotal": 230,
-        "prngCursors": 10867868219,
+        "hpTotal": 47,
+        "energyTotal": 225,
+        "prngCursors": 10652221615,
         "events": {
-          "bullet_fired": 117,
-          "clash": 1,
-          "hit": 54,
-          "shield_break": 3,
-          "melee_swing": 44,
-          "downed": 1,
-          "deflect": 2,
-          "death": 4,
+          "bullet_fired": 167,
+          "clash": 24,
+          "pickup": 3,
+          "melee_swing": 85,
+          "hit": 13,
+          "deflect": 3,
+          "death": 6,
           "zone_warn": 2,
-          "pickup": 2,
           "zone_close": 1
         }
       }
@@ -185,7 +183,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 133724518,
+      "hash": 2201177395,
       "witness": {
         "tick": 400,
         "phase": "playing",

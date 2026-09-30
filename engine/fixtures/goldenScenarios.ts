@@ -359,9 +359,13 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
       arena: LAUNCH_ARENA,
       // Distinct `teamId`s — a real PvP match (design/15), so this also pins the hostility
       // predicate. Two DIFFERENT skins so `buildArenaSpecs`' per-character scaling is live.
+      // Both seats start in spawn 0's room, 3 grid apart, so they fight inside the run.
+      // Until ENGINE_VERSION 79 neither had a `start`: both stood on the same default
+      // point, and every shot either fired spawned past the other's body (see
+      // `systems/muzzle.ts`), so the "two hostile seats" this pinned never hit each other.
       players: [
-        { skinId: 'vanguard', teamId: 0 },
-        { skinId: 'skirmisher', teamId: 1 },
+        { skinId: 'vanguard', teamId: 0, start: [LAUNCH_ARENA.spawns[0]!.x * 32, LAUNCH_ARENA.spawns[0]!.y * 32] },
+        { skinId: 'skirmisher', teamId: 1, start: [(LAUNCH_ARENA.spawns[0]!.x + 3) * 32, LAUNCH_ARENA.spawns[0]!.y * 32] },
       ],
     },
     ticks: 900,

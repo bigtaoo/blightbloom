@@ -9,7 +9,7 @@
  * where a real generated floor would hide it.
  */
 import { describe, expect, it } from 'vitest';
-import { Button, FP_SCALE, WEAPON_SPECS, SIM, type GameState } from '@dd/engine';
+import { Button, FP_SCALE, WEAPON_SPECS, SIM, weaponProfile, type GameState } from '@dd/engine';
 import { BOT_PROFILES, PveBotController } from './PveBotController';
 
 const g = (grid: number): number => grid * FP_SCALE;
@@ -30,6 +30,9 @@ interface FixtureOpts {
   floorWeapons?: [number, number, string][];
   /** Weapon ids in the seat's slots; the first is the one in hand. Default: none. */
   held?: string[];
+  /** The seat's energy pool (2026-09-29, `meleeWhenDry`). Default: full at 100. */
+  energy?: number;
+  maxEnergy?: number;
   chests?: { roomId: string; kind: 'small' | 'big'; at: [number, number]; opened?: boolean; plates?: [number, number, boolean][] }[];
 }
 
@@ -45,6 +48,9 @@ const TWO_ROOMS: NonNullable<FixtureOpts['rooms']> = [
   { id: 'b', x: g(10), y: 0, w: g(10), h: g(10), activated: false },
 ];
 const DOOR_AB: NonNullable<FixtureOpts['doors']> = [['a', 'b', { x: g(9.5), y: g(4), w: g(1), h: g(2) }]];
+
+/** The catalogued spec where there is one, so a fixture gun carries its real `energyCost`. */
+const specOf = (id: string) => ({ ...(WEAPON_SPECS[id] ?? { kind: 'ranged' }), name: id });
 
 function fixture(o: FixtureOpts): GameState {
   const rooms = o.rooms ?? TWO_ROOMS;
@@ -64,8 +70,10 @@ function fixture(o: FixtureOpts): GameState {
         maxHp: 6,
         shield: o.shield ?? 3.2,
         maxShield: 3.2,
-        weapons: (o.held ?? []).map((id) => ({ spec: { name: id, kind: WEAPON_SPECS[id]?.kind ?? 'ranged' } })),
-        weapon: o.held?.[0] ? { spec: { name: o.held[0], kind: WEAPON_SPECS[o.held[0]]?.kind ?? 'ranged' } } : undefined,
+        energy: o.energy ?? o.maxEnergy ?? 100,
+        maxEnergy: o.maxEnergy ?? 100,
+        weapons: (o.held ?? []).map((id) => ({ spec: specOf(id) })),
+        weapon: o.held?.[0] ? { spec: specOf(o.held[0]) } : undefined,
       },
     ],
     chests: (o.chests ?? []).map((c, i) => ({
@@ -518,10 +526,13 @@ describe('PveBotController — the room, not a scan radius, is what bounds the s
  * every sweep and nothing measured a looted frame running its pool dry.
  */
 describe('PveBotController — chests and better guns', () => {
+  const dps = (id: string) => weaponProfile(id, WEAPON_SPECS[id]!).axes.dps!;
   const rank = (id: string) => ['common', 'fine', 'epic', 'legend', 'legendary'].indexOf(WEAPON_SPECS[id]!.rarity);
   const ranged = Object.keys(WEAPON_SPECS).filter((id) => WEAPON_SPECS[id]!.kind === 'ranged');
-  const better = ranged.find((id) => rank(id) > rank('blaster'))!;
-  const same = ranged.find((id) => id !== 'blaster' && rank(id) === rank('blaster'));
+  const better = ranged.find((id) => dps(id) > dps('blaster'))!;
+  const same = ranged.find((id) => id !== 'blaster' && dps(id) === dps('blaster'));
+  /** Rarer than the blaster and slower than it — what the rarity ordering used to walk to. */
+  const rarerButSlower = ranged.find((id) => rank(id) > rank('blaster') && dps(id) < dps('blaster'));
 
   it('walks to an unopened small chest in its quiet room', () => {
     const s = fixture({ playerAt: [2, 2], held: ['blaster'], chests: [{ roomId: 'a', kind: 'small', at: [8, 8] }] });
@@ -569,7 +580,18 @@ describe('PveBotController — chests and better guns', () => {
     expect(bot().build(s, 0, 501).pickupTargetId).toBe(0);
   });
 
-  it('never takes a melee weapon, since it never swings its blade', () => {
+  it('orders guns by dps, not rarity: a rarer, slower gun is not an upgrade', () => {
+    // The 2026-09-29 finding: over 400 paired seeds a rarity-ordered swap made the run worse on
+    // 46 of 67 seeds, because rarity buys a mechanic and this bot can only use pace (design/03).
+    expect(rarerButSlower).toBeDefined();
+    const s = fixture({ playerAt: [8, 5], held: ['blaster'], floorWeapons: [[8.5, 5, rarerButSlower!]] });
+    expect(bot().build(s, 0, 501).pickupTargetId).toBe(0);
+    // Control: the same spot, a faster gun — so the refusal above is the ordering, not the reach.
+    const ok = fixture({ playerAt: [8, 5], held: ['blaster'], floorWeapons: [[8.5, 5, better]] });
+    expect(bot().build(ok, 0, 501).pickupTargetId).toBe(60);
+  });
+
+  it("never takes a melee weapon from the floor — the blade slot is meleeWhenDry's", () => {
     const blade = Object.keys(WEAPON_SPECS).find((id) => WEAPON_SPECS[id]!.kind === 'melee' && rank(id) > 0)!;
     const s = fixture({ playerAt: [8, 5], held: ['blaster'], floorWeapons: [[8.5, 5, blade]] });
     expect(bot().build(s, 0, 501).pickupTargetId).toBe(0);
@@ -631,5 +653,87 @@ describe('PveBotController — the capstone is the last objective', () => {
       ],
     });
     expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeGreaterThan(0.9); // south to c, not east to b
+  });
+});
+
+/**
+ * The blade when the gun is dry (2026-09-29). Until then a pool that could not pay for a pull
+ * left the bot holding FIRE on a refused trigger, disarmed, with a blade in the other slot.
+ */
+describe('PveBotController — melee when the gun is dry', () => {
+  const blade = Object.keys(WEAPON_SPECS).find((id) => WEAPON_SPECS[id]!.kind === 'melee')!;
+  const cost = (WEAPON_SPECS.blaster as { energyCost: number }).energyCost;
+  const fight = (o: Partial<FixtureOpts>) =>
+    fixture({ playerAt: [5, 2], held: ['blaster', blade], enemies: [[5, 8, 'a']], ...o });
+  /** A bot that has already fought once in room `a`, so it knows which room it is in. */
+  const primed = (profile = BOT_PROFILES.careful) => {
+    const b = bot(profile);
+    b.build(fight({}), 0, 400);
+    return b;
+  };
+
+  it('pulses SWAP_WEAPON, and not FIRE, when the gun cannot pay for a pull', () => {
+    const cmd = primed().build(fight({ energy: cost - 1 }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(Button.SWAP_WEAPON);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+  });
+
+  it('keeps the gun while one pull is still affordable — the boundary', () => {
+    const cmd = primed().build(fight({ energy: cost }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(0);
+    expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('does not holster in a quiet room — there is nothing to swing at', () => {
+    const cmd = primed().build(fight({ energy: 0, enemies: [] }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(0);
+  });
+
+  it('never pulses on two consecutive ticks, which the engine would read as one held press', () => {
+    const b = primed();
+    expect(b.build(fight({ energy: 0 }), 0, 501).buttons & Button.SWAP_WEAPON).toBe(Button.SWAP_WEAPON);
+    expect(b.build(fight({ energy: 0 }), 0, 502).buttons & Button.SWAP_WEAPON).toBe(0);
+    expect(b.build(fight({ energy: 0 }), 0, 503).buttons & Button.SWAP_WEAPON).toBe(Button.SWAP_WEAPON);
+  });
+
+  it("swings the blade from the blade's own reach, not from the gun's standoff", () => {
+    // Blade in hand, 6 grid from the mob: far outside any blade's arc, so it closes and holds fire.
+    const cmd = primed().build(fight({ held: [blade, 'blaster'], energy: 0 }), 0, 501);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+    expect(dir(cmd.moveBrad).y).toBeGreaterThan(0.9);
+    // Adjacent: it swings.
+    const close = primed().build(fight({ held: [blade, 'blaster'], energy: 0, playerAt: [5, 7.5] }), 0, 501);
+    expect(close.buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('re-spaces for the blade even with swapsWeapons off — the two flags are independent', () => {
+    const bladeOnly = { ...BOT_PROFILES.careful, swapsWeapons: false };
+    const cmd = primed(bladeOnly).build(fight({ held: [blade, 'blaster'], energy: 0 }), 0, 501);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+    expect(dir(cmd.moveBrad).y).toBeGreaterThan(0.9);
+  });
+
+  it('re-draws the gun at half a bar, and not a tick before', () => {
+    const below = primed().build(fight({ held: [blade, 'blaster'], energy: 49 }), 0, 501);
+    expect(below.buttons & Button.SWAP_WEAPON).toBe(0);
+    const at = primed().build(fight({ held: [blade, 'blaster'], energy: 50 }), 0, 501);
+    expect(at.buttons & Button.SWAP_WEAPON).toBe(Button.SWAP_WEAPON);
+  });
+
+  it('re-draws in a quiet room too, so the next room opens with the gun', () => {
+    const cmd = primed().build(fight({ held: [blade, 'blaster'], energy: 100, enemies: [] }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(Button.SWAP_WEAPON);
+  });
+
+  it('with meleeWhenDry off, stays disarmed on the gun: the pre-2026-09-29 bot exactly', () => {
+    const off = { ...BOT_PROFILES.careful, meleeWhenDry: false };
+    const cmd = primed(off).build(fight({ energy: 0 }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(0);
+    expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('does nothing without a blade to swap to', () => {
+    const cmd = primed().build(fight({ held: ['blaster'], energy: 0 }), 0, 501);
+    expect(cmd.buttons & Button.SWAP_WEAPON).toBe(0);
   });
 });

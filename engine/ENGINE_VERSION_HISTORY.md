@@ -2677,3 +2677,21 @@ defects:
   (room generation among them) drew from that fraction.
 
 Every seeded run diverges from its first draw. Golden fixture regenerated.
+
+v79 (2026-09-29 — a gun hits a body standing inside its muzzle). A bullet is born
+`muzzleOffset` ahead of the shooter (1 grid for most guns) and is first tested for hits after
+`ProjectileStepSystem` has moved it once more, so any hostile body closer than that was behind
+the muzzle and could not be shot. Two players standing on each other emptied their bars into
+the air; in the balance sim two bots did that for 16,000 ticks. `systems/muzzle.ts` now pulls
+the spawn point back when a hostile body's hit circle crosses the ray before the point the
+bullet would first be tested at, far enough that step 5 carries it onto that body and step 7
+resolves an ordinary hit. A beam (which never moves) starts at the body; an orbit is exempt.
+Found because every real PvP match stacked its whole lobby on one point: `buildPvpEngineConfig`
+never gave a seat a `start` (fixed in the same pass, client-side, no engine change of its own).
+
+Only the arena golden scenario moved: the six others hash identically, because none of them
+happens to fire point-blank. Live PvE does: a melee mob that reaches the player is now shot
+where it stands (a 120-frame dungeon run in `gameReplaySave.test.ts` kills one and toasts its
+pickup), so a PvE replay with such a shot diverges too. `launch-arena-pvp` now places its two
+seats 3 grid apart in spawn 0's room; stacked, they downed each other at once and fired 12
+shots. Golden fixture regenerated.

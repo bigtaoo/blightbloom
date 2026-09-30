@@ -6,7 +6,11 @@
  * `@dd/game/pvpConfig` import.
  */
 import { describe, it, expect } from 'vitest';
-import { buildPvpEngineConfig, squadSizeForPlayerCount, teamIdForOwner, SQUAD_SIZE } from './pvpConfig';
+import { createGameState } from '@dd/engine';
+import { toFpGrid } from '@dd/engine/content/convert';
+import { assignArenaStarts, buildPvpEngineConfig, squadSizeForPlayerCount, teamIdForOwner, SQUAD_SIZE } from './pvpConfig';
+import { ARENA_CATALOG } from './arenaCatalog';
+import { fpToPx } from '../coords';
 
 describe('squadSizeForPlayerCount / teamIdForOwner', () => {
   it('uses SQUAD_SIZE when playerCount divides evenly into at least 2 squads', () => {
@@ -52,5 +56,38 @@ describe('buildPvpEngineConfig', () => {
     const cfg = buildPvpEngineConfig(1, 3);
     const teamIds = cfg.players!.map((p) => p.teamId);
     expect(teamIds).toEqual([0, 1, 2]);
+  });
+});
+
+describe('assignArenaStarts', () => {
+  const arena = ARENA_CATALOG.arena_launch;
+  const px = (grid: number) => fpToPx(toFpGrid(grid));
+  const authored = arena.spawns.map((p) => `${px(p.x)},${px(p.y)}`);
+
+  it('drops every seat of a full lobby at its own authored spawn', () => {
+    for (const seed of [1, 2, 3, 99]) {
+      const starts = buildPvpEngineConfig(seed, arena.spawns.length).players!.map((p) => `${p.start![0]},${p.start![1]}`);
+      expect(new Set(starts).size).toBe(arena.spawns.length);
+      for (const s of starts) expect(authored).toContain(s);
+    }
+  });
+
+  it('seats land where the config says — not on the default centre point', () => {
+    const cfg = buildPvpEngineConfig(7, 2);
+    const s = createGameState(cfg);
+    s.players.forEach((p, i) => {
+      expect(fpToPx(p.gx)).toBe(cfg.players![i]!.start![0]);
+      expect(fpToPx(p.gy)).toBe(cfg.players![i]!.start![1]);
+    });
+    expect(s.players[0]!.gx === s.players[1]!.gx && s.players[0]!.gy === s.players[1]!.gy).toBe(false);
+  });
+
+  it('varies the seat-to-spawn mapping with the seed', () => {
+    const firsts = new Set(Array.from({ length: 16 }, (_, seed) => buildPvpEngineConfig(seed, 2).players![0]!.start!.join(',')));
+    expect(firsts.size).toBeGreaterThan(3);
+  });
+
+  it('refuses a lobby bigger than the authored spawn list', () => {
+    expect(() => assignArenaStarts(arena, 1, arena.spawns.length + 1)).toThrow(/spawns for/);
   });
 });

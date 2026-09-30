@@ -29,14 +29,16 @@ describe('PvpBotController — command generation', () => {
     expect(cmd.moveMag).toBeGreaterThan(0);
   });
 
-  it('holds position (stops advancing) once inside spacing but keeps firing', () => {
+  it('stops advancing once inside spacing, strafing across the line while it keeps firing', () => {
     const s = createGameState({
       ...CFG,
       players: [{ start: [400, 400], teamId: 0 }, { start: [500, 400], teamId: 1 }],
     });
     const cmd = bot.build(s, 0, 5); // ~2.5 grid east — inside keep-dist
     expect(cmd.buttons & Button.FIRE).toBeTruthy();
-    expect(cmd.moveMag).toBe(0);
+    expect(cmd.moveMag).toBeGreaterThan(0);
+    // Sideways, not closer: the move has no east component (see pvpBotSight.test.ts).
+    expect(Math.abs(Math.cos((cmd.moveBrad / BRAD_FULL) * Math.PI * 2))).toBeLessThan(0.01);
   });
 
   it('ignores a same-team seat and holds fire when no opponent remains', () => {

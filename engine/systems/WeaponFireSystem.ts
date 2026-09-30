@@ -28,6 +28,7 @@
  */
 import { addFp, mulFp } from '../math/fixed';
 import { cosFp, sinFp, normBrad, type Brad } from '../math/trig';
+import { muzzleDistance } from './muzzle';
 import { radialDir } from '../content/ballistics';
 import {
   buffedCooldown,
@@ -173,8 +174,9 @@ export class WeaponFireSystem {
   private spawnBullet(state: GameState, a: Actor, spec: RangedSimSpec, dir: Brad, buffs: BuffSums): void {
     const cos = cosFp(dir);
     const sin = sinFp(dir);
-    const gx = addFp(a.gx, mulFp(cos, spec.muzzleOffset));
-    const gy = addFp(a.gy, mulFp(sin, spec.muzzleOffset));
+    const muzzle = muzzleDistance(state, a, spec, cos, sin);
+    const gx = addFp(a.gx, mulFp(cos, muzzle));
+    const gy = addFp(a.gy, mulFp(sin, muzzle));
     // Crit (design/07 "one frozen payload"): rolled once per pellet, at fire time,
     // frozen straight into the bullet's damage — never re-rolled on impact.
     const isCrit = rollCrit(buffs, state.combatPrng);

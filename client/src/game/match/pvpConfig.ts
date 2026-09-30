@@ -17,8 +17,11 @@
  * the `@dd/game/pvpConfig` alias it already uses for this file), so a seat's squad is
  * never in question regardless of who ends up sitting in it.
  */
-import { SKIN_DEFS, type EngineConfig } from '@dd/engine';
+import { Prng, SKIN_DEFS, type EngineConfig } from '@dd/engine';
+import { toFpGrid } from '@dd/engine/content/convert';
+import type { ArenaMap } from '@dd/engine/content/arenas';
 import { ARENA_CATALOG } from './arenaCatalog';
+import { fpToPx } from '../coords';
 
 // Ignored once `arena` is set (each arena's own geometry defines the bounds) — mirrors
 // the PLACEHOLDER_WORLD literal Game.ts uses for its own (non-PvP) online/offline configs.
@@ -45,8 +48,32 @@ export function teamIdForOwner(owner: number, playerCount: number): number {
   return Math.floor(owner / squadSizeForPlayerCount(playerCount));
 }
 
+/** Seeds the spawn-assignment stream. Distinct from every engine stream (`GameState`'s
+ *  `SEED_*`), and read here only, before the engine exists. */
+export const SEED_SPAWN = 0x5b4a5e11;
+
+/**
+ * Which authored spawn each seat drops at, as a `start` in px (design/15: `spawns` is
+ * ">= seat count; system-assigned per match, no player choice"). A seeded shuffle, so a
+ * seat index is not tied to a corner of the map. Until 2026-09-29 nothing did this: every
+ * seat started at the `worldW/2, worldH/2` default of `GameState.buildSeat`, which is one
+ * point inside spawn 0's room, so every real match began with the whole lobby stacked there
+ * and every gun firing past bodies closer than its `muzzleOffset`.
+ */
+export function assignArenaStarts(arena: ArenaMap, seed: number, playerCount: number): [number, number][] {
+  if (arena.spawns.length < playerCount) {
+    throw new Error(`arena has ${arena.spawns.length} spawns for ${playerCount} seats`);
+  }
+  const order = arena.spawns.map((_, i) => i);
+  new Prng(seed ^ SEED_SPAWN).shuffle(order);
+  const px = (grid: number) => fpToPx(toFpGrid(grid));
+  return order.slice(0, playerCount).map((i) => [px(arena.spawns[i]!.x), px(arena.spawns[i]!.y)]);
+}
+
 export function buildPvpEngineConfig(seed: number, playerCount: number): EngineConfig {
   const ids = Object.keys(SKIN_DEFS);
+  const arena = ARENA_CATALOG.arena_launch;
+  const starts = assignArenaStarts(arena, seed, playerCount);
   return {
     seed,
     worldW: PLACEHOLDER_WORLD,
@@ -55,7 +82,8 @@ export function buildPvpEngineConfig(seed: number, playerCount: number): EngineC
     players: Array.from({ length: playerCount }, (_, i) => ({
       skinId: ids[i % ids.length]!,
       teamId: teamIdForOwner(i, playerCount),
+      start: starts[i]!,
     })),
-    arena: ARENA_CATALOG.arena_launch,
+    arena,
   };
 }

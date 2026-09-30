@@ -14,6 +14,7 @@ import {
   activeQuality,
   qualityProfile,
   resetActiveQuality,
+  resolveProfile,
   resolveTier,
   setActiveQuality,
   type QualityTier,
@@ -107,6 +108,28 @@ describe('resolveTier', () => {
   });
 });
 
+describe('resolveProfile', () => {
+  it('gives low a plain pass only where the platform resolution is 1 or less', () => {
+    expect(resolveProfile('low', 1).plainPass).toBe(true);
+    expect(resolveProfile('low', 0.75).plainPass).toBe(true);
+    expect(resolveProfile('low', 1.5).plainPass).toBe(false);
+    expect(resolveProfile('low', 3).plainPass).toBe(false);
+    // Unknown resolution is the tier's own profile, not a guess.
+    expect(resolveProfile('low')).toBe(qualityProfile('low'));
+  });
+
+  it('changes nothing else about low, and nothing at all about the other tiers', () => {
+    // The plain pass is the ONLY difference: it must not bring back a pass the tier drops, or
+    // raise its resolution. A spread over the wrong base profile would fail here.
+    expect(resolveProfile('low', 1)).toEqual({ ...qualityProfile('low'), plainPass: true });
+    for (const tier of ['high', 'medium'] as const) {
+      for (const res of [undefined, 1, 2]) expect(resolveProfile(tier, res)).toBe(qualityProfile(tier));
+    }
+    // ...and no tier's own profile carries it.
+    for (const tier of LADDER) expect(qualityProfile(tier).plainPass).toBe(false);
+  });
+});
+
 describe('the live mirror', () => {
   it('starts high, so a host that never wires the setting still gets the authored look', () => {
     expect(activeQuality().tier).toBe('high');
@@ -117,6 +140,9 @@ describe('the live mirror', () => {
       setActiveQuality(tier);
       expect(activeQuality()).toEqual(qualityProfile(tier));
     }
+    // The platform resolution reaches the mirror, not just `resolveProfile`.
+    setActiveQuality('low', 1);
+    expect(activeQuality().plainPass).toBe(true);
   });
 });
 

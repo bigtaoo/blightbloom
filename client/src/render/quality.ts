@@ -57,6 +57,10 @@ export interface QualityProfile {
    *  weak device is per-sprite CPU and, more, legibility — forty numbers over one fight read as
    *  noise on a phone screen well before they cost a frame. A full screen reuses its oldest. */
   readonly damageNumbers: number;
+  /** Mount one passthrough filter on `layers.world` while `screenFx` is off, so the world still
+   *  renders into a 1x, non-multisampled pool texture instead of straight into the canvas. Only
+   *  ever set by `resolveProfile`, never by a tier's own profile — see `low` below. */
+  readonly plainPass: boolean;
 }
 
 const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
@@ -70,6 +74,7 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     particleBudget: 1,
     resolutionCap: 2,
     damageNumbers: 40,
+    plainPass: false,
   },
   // The battery tier (2026-09-08, added with `game/powerBudget.ts` for the phone/iPad drain
   // report). It keeps the ONE thing that carries the game's look — the scene-lighting pass —
@@ -96,10 +101,17 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     particleBudget: 0.6,
     resolutionCap: 2,
     damageNumbers: 28,
+    plainPass: false,
   },
   // Everything that costs a render-target pass is off, and the frame is drawn at 1x. This is
   // roughly the game as it looked before design/01's milestones 2-5 landed: flat, unlit,
   // un-vignetted, but the same fight at the same framerate budget.
+  //
+  // Measured 2026-09-29 (design/roadmap volume 109): with no pass, the world draws straight into
+  // the multisampled canvas instead of a 1x pool texture, so on a desktop GPU at DPR 1 this tier
+  // cost nearly twice high's GPU time. `resolveProfile` therefore gives it one plain pass where
+  // the platform's resolution is 1 (volume 110). Above 1 it stays pass-free: that is where a
+  // tile-based phone GPU lives, which resolves MSAA on chip and pays per pass instead.
   low: {
     tier: 'low',
     sceneLight: false,
@@ -110,10 +122,25 @@ const PROFILES: Readonly<Record<QualityTier, QualityProfile>> = {
     particleBudget: 0.35,
     resolutionCap: 1,
     damageNumbers: 16,
+    plainPass: false,
   },
 };
 
 export function qualityProfile(tier: QualityTier): QualityProfile {
+  return PROFILES[tier];
+}
+
+/** `low` on a display the platform renders at resolution 1 — see `resolveProfile`. */
+const LOW_PLAIN: QualityProfile = { ...PROFILES.low, plainPass: true };
+
+/**
+ * The profile a tier runs at on a renderer whose PLATFORM resolution is `baseResolution` (before
+ * any tier's `resolutionCap`). Differs from `qualityProfile` in one case: `low` at a base
+ * resolution of 1 or less gets `plainPass`, because there the canvas costs more than a pass
+ * (volume 110). Omitting `baseResolution` means "unknown" and returns the tier's own profile.
+ */
+export function resolveProfile(tier: QualityTier, baseResolution?: number): QualityProfile {
+  if (tier === 'low' && baseResolution !== undefined && baseResolution <= 1) return LOW_PLAIN;
   return PROFILES[tier];
 }
 
@@ -151,8 +178,8 @@ export function resolveTier(setting: QualitySetting, autoDowngrades: number): Qu
 // Only presentation reads this. Nothing under `@dd/engine` may (see the header).
 let active: QualityProfile = PROFILES.high;
 
-export function setActiveQuality(tier: QualityTier): void {
-  active = PROFILES[tier];
+export function setActiveQuality(tier: QualityTier, baseResolution?: number): void {
+  active = resolveProfile(tier, baseResolution);
 }
 
 export function activeQuality(): QualityProfile {
