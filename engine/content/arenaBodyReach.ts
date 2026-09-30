@@ -19,7 +19,7 @@
  * never called from a system at match time.
  */
 import { FP_SCALE } from '../math/fixed';
-import { blockingRect } from '../systems/solidBounds';
+import { blockingRect, type Bounds } from '../systems/solidBounds';
 import type { AABB, Obstacle } from '../state/entities';
 import { PLAYER_BASE } from './players';
 
@@ -44,6 +44,17 @@ export interface BodyReach {
   readonly strandedCells: number;
   /** Whether a body in the main region can get within one grid of an absolute fp point. */
   reaches(gx: number, gy: number): boolean;
+  /** Whether a solid with this collision rect (absolute fp, brim already applied) would take a
+   *  cell away from the main region. False means stone there costs no body a place it stood.
+   *  (`blockingRect`'s output.) */
+  wouldBlockMain(b: Bounds): boolean;
+}
+
+/** A body centred at (px, py) touches the rect. */
+function touchesRect(b: Bounds, px: number, py: number, r: number): boolean {
+  const dx = px - Math.max(b.left, Math.min(px, b.right));
+  const dy = py - Math.max(b.top, Math.min(py, b.bottom));
+  return dx * dx + dy * dy <= r * r;
 }
 
 /** Flood the standable floor of a map's assembled geometry (`buildArenaGeometry`). */
@@ -58,24 +69,27 @@ export function measureBodyReach(geo: {
   const r = BODY_CLEARANCE_FP;
   const blocked = new Uint8Array(w * h);
 
-  // Each solid marks only the cells near it, tested exactly: the whole-map product is ~30M
-  // pairs, and this runs at module load in the client.
-  const box = (x0: number, y0: number, x1: number, y1: number, hit: (px: number, py: number) => boolean): void => {
+  // Each solid visits only the cells near it, tested exactly: the whole-map product is ~30M
+  // pairs, and this runs at module load in the client. `visit` stops at the first `true`.
+  const near = (x0: number, y0: number, x1: number, y1: number, visit: (k: number, px: number, py: number) => boolean): boolean => {
     const cx0 = Math.max(0, Math.floor((x0 - r) / CELL_FP));
     const cy0 = Math.max(0, Math.floor((y0 - r) / CELL_FP));
     const cx1 = Math.min(w - 1, Math.ceil((x1 + r) / CELL_FP));
     const cy1 = Math.min(h - 1, Math.ceil((y1 + r) / CELL_FP));
     for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) if (hit(cx * CELL_FP, cy * CELL_FP)) blocked[cy * w + cx] = 1;
+      for (let cx = cx0; cx <= cx1; cx++) if (visit(cy * w + cx, cx * CELL_FP, cy * CELL_FP)) return true;
     }
+    return false;
+  };
+  const box = (x0: number, y0: number, x1: number, y1: number, hit: (px: number, py: number) => boolean): void => {
+    near(x0, y0, x1, y1, (k, px, py) => {
+      if (hit(px, py)) blocked[k] = 1;
+      return false;
+    });
   };
   for (const wall of geo.walls) {
     const b = blockingRect(wall);
-    box(b.left, b.top, b.right, b.bottom, (px, py) => {
-      const dx = px - Math.max(b.left, Math.min(px, b.right));
-      const dy = py - Math.max(b.top, Math.min(py, b.bottom));
-      return dx * dx + dy * dy <= r * r;
-    });
+    box(b.left, b.top, b.right, b.bottom, (px, py) => touchesRect(b, px, py, r));
   }
   for (const o of geo.obstacles) {
     box(o.gx - o.radius, o.gy - o.radius, o.gx + o.radius, o.gy + o.radius, (px, py) => {
@@ -133,5 +147,8 @@ export function measureBodyReach(geo: {
     return false;
   };
 
-  return { w, h, standable, main, strandedCells, reaches };
+  const wouldBlockMain = (b: Bounds): boolean =>
+    near(b.left, b.top, b.right, b.bottom, (k, px, py) => main[k] === 1 && touchesRect(b, px, py, r));
+
+  return { w, h, standable, main, strandedCells, reaches, wouldBlockMain };
 }

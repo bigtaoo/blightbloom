@@ -2709,3 +2709,17 @@ other room, and all eight drop points, are byte-identical. The pockets themselve
 The golden gate, run before this bump, was green: `launch-arena-pvp` plays spawn 0's room and
 never wakes a pocket room. A recorded arena match that did diverges, since those rooms' mobs now
 spawn elsewhere. Golden fixture regenerated (version stamp only).
+
+v81 (2026-09-30 — the launch arena's sealed pockets are stone). v80 stopped placing content in
+the pockets and left them painted as floor. `world/arenas/pocketFill.ts` now fills them: a free
+cell turns to stone when it is 4-connected, inside its room, to a cell holding stranded floor
+(standable for a body, outside the main region), and when that stone, north brim included, would
+touch no main-region position. Pillars and hazard cells are never covered. The fill is
+`freeStanding`, like the blocks it grows out of, so it is drawn and collided the same way. Seven
+rooms gained stone, the five pockets and two slivers (`catacombs_r5c4`, `barracks_r5c8`); the main
+region is identical lattice point for lattice point, and every spawn, crate, drop point, door,
+pillar and hazard is byte-identical to v80.
+
+The golden gate, run before this bump, was green: `launch-arena-pvp` never shoots into a pocket.
+A recorded arena match whose shot crossed one diverges, because the shot now stops on stone.
+Golden fixture regenerated (version stamp only).

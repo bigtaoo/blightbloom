@@ -12,7 +12,7 @@ import { LAUNCH_ARENA, buildLaunchArena } from './launchArena';
 import { DISTRICTS, DISTRICT_MAP, SPAWN_SLOTS, EYE_SLOTS } from './launchArenaPlan';
 import { measureArena } from '../../content/arenaMetrics';
 import { measureEnclosure, measurePlacement, solidCellSet } from '../../content/arenaGeometryMetrics';
-import { buildArenaGeometry } from '../../content/arenas';
+import { buildArenaGeometry, type ArenaMap } from '../../content/arenas';
 import { PLAYER_BASE } from '../../content/players';
 import { WALL_NORTH_BRIM } from '../../config';
 import { toFpGrid } from '../../content/convert';
@@ -20,6 +20,8 @@ import { measureBodyReach } from '../../content/arenaBodyReach';
 import { FP_SCALE } from '../../math/fixed';
 
 const metrics = measureArena(LAUNCH_ARENA);
+/** The map without its pocket fill: the control for everything the fill claims. */
+const AS_AUTHORED = buildLaunchArena({ fillPockets: false });
 const placement = measurePlacement(LAUNCH_ARENA);
 const enclosure = measureEnclosure(LAUNCH_ARENA);
 
@@ -121,16 +123,16 @@ describe('geometry is real', () => {
     expect(stranded).toEqual([]);
   });
 
-  it('still HAS the sealed pockets, so the check above has something to avoid', () => {
-    // The pockets themselves are a content question (open them, or leave them as dead stone)
-    // that this pass did not take. While they stand, these are the rooms a body cannot fully
-    // enter; if one is opened, drop it from the list. Stranded half-grid cells, 2026-09-30:
-    // catacombs_r4c6 147, barracks_r3c8 117, catacombs_r7c5 81, barracks_r1c8 53,
-    // catacombs_r6c3 29 (volume 116's five), and two slivers too small to hold anything,
-    // catacombs_r5c4 9 and barracks_r5c8 3.
-    const reach = measureBodyReach(buildArenaGeometry(LAUNCH_ARENA));
+  // The pockets themselves are stone since 2026-09-30 (`pocketFill.ts`). The shipped map has
+  // no floor a body stands on but cannot get to; the map as authored, built without the fill,
+  // is the control: it has the seven, so the first assertion has something to have removed.
+  // Stranded half-grid cells as authored: catacombs_r4c6 147, barracks_r3c8 117,
+  // catacombs_r7c5 81, barracks_r1c8 53, catacombs_r6c3 29 (volume 116's five), and two slivers,
+  // catacombs_r5c4 9 and barracks_r5c8 3.
+  const pocketRooms = (map: ArenaMap) => {
+    const reach = measureBodyReach(buildArenaGeometry(map));
     const half = FP_SCALE / 2;
-    const pocketRooms = LAUNCH_ARENA.rooms
+    return map.rooms
       .filter((room) => {
         const { x, y, w, h } = room.rectGrid;
         for (let cy = Math.ceil((y * FP_SCALE) / half); cy <= ((y + h) * FP_SCALE) / half; cy++) {
@@ -143,10 +145,33 @@ describe('geometry is real', () => {
       })
       .map((room) => room.id)
       .sort();
-    expect(pocketRooms).toEqual([
+  };
+
+  it('has no floor a body can stand on but not get to: the pockets are stone', () => {
+    expect(pocketRooms(LAUNCH_ARENA)).toEqual([]);
+    expect(pocketRooms(AS_AUTHORED)).toEqual([
       'barracks_r1c8', 'barracks_r3c8', 'barracks_r5c8',
       'catacombs_r4c6', 'catacombs_r5c4', 'catacombs_r6c3', 'catacombs_r7c5',
     ]);
+  });
+
+  it('fills only the pockets: no route, no standing place and no content moves', () => {
+    const filled = measureBodyReach(buildArenaGeometry(LAUNCH_ARENA));
+    const authored = measureBodyReach(buildArenaGeometry(AS_AUTHORED));
+    // The main region, lattice point for lattice point.
+    expect(filled.main).toEqual(authored.main);
+    // Everything but the solids is the same map.
+    const strip = (map: ArenaMap) => ({ ...map, rooms: map.rooms.map(({ solids: _s, ...rest }) => rest) });
+    expect(strip(LAUNCH_ARENA)).toEqual(strip(AS_AUTHORED));
+    // Only the seven rooms gained stone, and each kept its authored solids in front.
+    const grew = LAUNCH_ARENA.rooms
+      .filter((room, i) => room.solids.length !== AS_AUTHORED.rooms[i]!.solids.length)
+      .map((room) => room.id)
+      .sort();
+    expect(grew).toEqual(pocketRooms(AS_AUTHORED));
+    LAUNCH_ARENA.rooms.forEach((room, i) => {
+      expect(room.solids.slice(0, AS_AUTHORED.rooms[i]!.solids.length)).toEqual(AS_AUTHORED.rooms[i]!.solids);
+    });
   });
 
   // A mutation battery left "ignore the target cell, take the first free cell" alive: nothing
@@ -225,7 +250,10 @@ describe('the map is authored, not stamped', () => {
   it('gives every room cover without filling it in', () => {
     expect(metrics.cover.roomsWithNoCover).toEqual([]);
     expect(Math.min(...metrics.cover.coverFractions)).toBeGreaterThan(0.1);
-    expect(Math.max(...metrics.cover.coverFractions)).toBeLessThan(0.7);
+    // Measured on the map as authored. The pocket fill is not cover: it turns floor no one could
+    // reach into stone, and it takes a pocket room to 0.67–0.71 (catacombs_r7c5 the most).
+    expect(Math.max(...measureArena(AS_AUTHORED).cover.coverFractions)).toBeLessThan(0.7);
+    expect(Math.max(...metrics.cover.coverFractions)).toBeLessThan(0.75);
   });
 
   it('differentiates its loot tables', () => {
@@ -458,12 +486,17 @@ describe('what the north brim costs the launch map', () => {
     expect(lost).toBeLessThan(0.05);
   });
 
-  it('narrows 7 gaps past the player, and every one is a CORNER, not a corridor', () => {
+  it('narrows 1 gap past the player, and it is a CORNER, not a corridor', () => {
     // The pairs where a channel that took exactly one grid cell no longer fits a body. Sealing one
-    // is only acceptable because of the shape: all seven overlap in x by a single cell, so they
-    // are the diagonal notch where two blocks nearly touch at a corner — the player walks one cell
-    // aside and past. A pair overlapping by more than that would be a real passage, and is what
-    // this assertion exists to catch if a kit is ever retuned.
+    // is only acceptable because of the shape: it overlaps in x by a single cell, so it is the
+    // diagonal notch where two blocks nearly touch at a corner — the player walks one cell aside
+    // and past. A pair overlapping by more than that would be a real passage, and is what this
+    // assertion exists to catch if a kit is ever retuned.
+    //
+    // A gap something else already stands in is no channel. This read 7 until 2026-09-30: six of
+    // them were a block one cell below a room's own north wall, measured against the NEXT room's
+    // wall behind it, or a gap a pillar stands in. The pocket fill (volume 118) added two more
+    // of the same kind, which is how the other six were found.
     const pinches: Array<{ where: string; overlap: number }> = [];
     for (const w of geo.walls) {
       if (!w.freeStanding) continue;
@@ -471,13 +504,25 @@ describe('what the north brim costs the launch map', () => {
         if (o === w || !(o.x < w.x + w.w && o.x + o.w > w.x)) continue;
         const gap = w.y - (o.y + o.h);
         if (gap < 2 * R || gap >= 2 * R + WALL_NORTH_BRIM) continue;
+        const x0 = Math.max(w.x, o.x);
+        const x1 = Math.min(w.x + w.w, o.x + o.w);
+        const y0 = o.y + o.h;
+        const y1 = w.y;
+        const occupied =
+          geo.walls.some((q) => q !== w && q !== o && q.x < x1 && q.x + q.w > x0 && q.y < y1 && q.y + q.h > y0) ||
+          geo.obstacles.some((p) => {
+            const dx = p.gx - Math.max(x0, Math.min(p.gx, x1));
+            const dy = p.gy - Math.max(y0, Math.min(p.gy, y1));
+            return dx * dx + dy * dy < p.radius * p.radius;
+          });
+        if (occupied) continue;
         pinches.push({
           where: `(${w.x},${w.y}) vs (${o.x},${o.y})`,
           overlap: Math.min(w.x + w.w, o.x + o.w) - Math.max(w.x, o.x),
         });
       }
     }
-    expect(pinches).toHaveLength(7);
+    expect(pinches).toHaveLength(1);
     expect(pinches.filter((p) => p.overlap > toFpGrid(1))).toEqual([]);
   });
 });

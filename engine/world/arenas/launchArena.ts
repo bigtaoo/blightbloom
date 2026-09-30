@@ -21,6 +21,7 @@ import { buildArenaGeometry } from '../../content/arenas';
 import { measureBodyReach, type BodyReach } from '../../content/arenaBodyReach';
 import { toFpGrid } from '../../content/convert';
 import { INTERIOR_KITS, innerOf, type KitId } from './interiorKits';
+import { pocketFill } from './pocketFill';
 import {
   doorBetween,
   gridExtent,
@@ -206,12 +207,13 @@ function buildDoors(slots: Map<SlotRef, SlotInfo>): { doors: Door[]; openings: M
 }
 
 /** One room's encounter, spawn points and loot markers, all placed on verified free cells —
- *  and, given `reach`, on cells a body can get to. */
+ *  and, given `reach`, on cells a body can get to, with the room's sealed pockets filled. */
 function furnish(
   slot: SlotInfo,
   openings: readonly Opening[],
   encounter: boolean,
   reach?: BodyReach,
+  fillPockets = true,
 ): ArenaRoom {
   const profile = DISTRICTS[slot.district]!;
   const variant = slot.row * 3 + slot.col;
@@ -221,10 +223,12 @@ function furnish(
   // one input to the north brim `MovementSystem` gives a standing block (config's
   // `WALL_NORTH_BRIM`, v47). Marked rather than re-derived downstream: once the lists are
   // concatenated no rect can be asked which one it came from.
-  const solids = [
+  const built = [
     ...perimeterSolids(slot.rect, openings),
     ...kit.solids.map((s) => ({ ...s, freeStanding: true as const })),
   ];
+  // Given the flood, a pocket no body can get into is stone, not floor (`pocketFill.ts`).
+  const solids = reach && fillPockets ? [...built, ...pocketFill(slot.rect, built, kit.pillars, kit.cellTraits, reach)] : built;
   const blocked = blockedCells(solids, kit.pillars, kit.cellTraits);
 
   const centre = { x: Math.floor(slot.rect.w / 2), y: Math.floor(slot.rect.h / 2) };
@@ -285,7 +289,9 @@ function encounterRooms(slots: readonly SlotInfo[]): Set<SlotRef> {
   return out;
 }
 
-function buildLaunchArena(): ArenaMap {
+/** `fillPockets: false` builds the map as authored, pockets and all: the control a test of
+ *  the fill compares against. The shipped map is always filled. */
+function buildLaunchArena(opts: { fillPockets?: boolean } = {}): ArenaMap {
   validatePlan();
   const rects = slotRects(GRID_ORIGIN, COL_WIDTHS, ROW_HEIGHTS);
   const slots = occupiedSlots(rects);
@@ -293,15 +299,16 @@ function buildLaunchArena(): ArenaMap {
   const ordered = [...slots.values()];
   const withEncounter = encounterRooms(ordered);
 
-  // Twice. The first pass fixes every solid, and a room's solids never depend on what it
-  // holds, so the flood of that geometry is the geometry of the map. The second places the
-  // content again with the cells no body reaches taken out: on the shipped plan five pockets
-  // are sealed (two of them only by a block's north brim), and mobs and a crate had been
-  // placed in them, where no player could get to them (volume 116).
+  // Twice. The first pass fixes every authored solid, and a room's solids never depend on what
+  // it holds, so the flood of that geometry is the geometry of the map. The second fills the
+  // sealed pockets with stone and places the content again with the cells no body reaches
+  // taken out: on the shipped plan five pockets are sealed (two of them only by a block's
+  // north brim), and mobs and a crate had been placed in them, where no player could get to
+  // them (volume 116). The fill takes no position from the main region, so the flood holds.
   const draft = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref)));
   const sizeGrid = gridExtent(GRID_ORIGIN, COL_WIDTHS, ROW_HEIGHTS, GRID_MARGIN);
   const reach = measureBodyReach(buildArenaGeometry({ id: 'arena_launch', sizeGrid, rooms: draft, doors, spawns: [], eyeCandidates: [] }));
-  const rooms = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref), reach));
+  const rooms = ordered.map((slot) => furnish(slot, openings.get(slot.ref) ?? [], withEncounter.has(slot.ref), reach, opts.fillPockets ?? true));
   const byRef = new Map(ordered.map((s, i) => [s.ref, { slot: s, room: rooms[i]! }]));
 
   // Drop points are ABSOLUTE (ArenaMap.spawns, unlike everything inside a room), placed on
