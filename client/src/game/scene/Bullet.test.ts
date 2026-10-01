@@ -5,26 +5,42 @@
  * convention as Pickup.test.ts/TouchControlsView.test.ts, no public accessor for
  * either child.
  */
-import { describe, it, expect } from 'vitest';
-import type { Graphics } from 'pixi.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Texture, TextureSource, type Graphics, type Sprite } from 'pixi.js';
 import { TICK_RATE, fromFp, WEAPON_SIM_BY_ID, type RangedSimSpec } from '@dd/engine';
 import { THEME } from '../theme';
 import { PX_PER_GRID } from '../coords';
+
+// The projectile art is resolved through the environment sprite registry. Mocked so each test
+// chooses whether the art has "loaded": undefined by default, which is the flat-dot fallback
+// every test above the art block was written against.
+const sprites = vi.hoisted(() => ({ getBulletTexture: vi.fn() }));
+vi.mock('../../render/environmentSprites', () => sprites);
+
 import { Bullet } from './Bullet';
 import { SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
 
-const enum Child { Glow, Core, Flare }
+const enum Child { Glow, Core, Art, Flare }
 function glowOf(b: Bullet): Graphics {
   return b.children[Child.Glow] as Graphics;
 }
 function coreOf(b: Bullet): Graphics {
   return b.children[Child.Core] as Graphics;
 }
+function artOf(b: Bullet): Sprite {
+  return b.children[Child.Art] as Sprite;
+}
+
+beforeEach(() => {
+  sprites.getBulletTexture.mockReset();
+});
 
 describe('Bullet — construction', () => {
-  it('builds exactly glow + core + spawn flare (3 children) plus a soft shadow', () => {
+  it('builds exactly glow + core + art + spawn flare (4 children) plus a soft shadow', () => {
     const b = new Bullet(6);
-    expect(b.children.length).toBe(3);
+    expect(b.children.length).toBe(4);
+    // The art sits under the flare, so the departure flash still washes over the round.
+    expect(artOf(b).visible).toBe(false);
     expect(glowOf(b).blendMode).toBe('add');
     expect(b.children[Child.Flare]!.blendMode).toBe('add');
     expect(b.shadow).not.toBeNull();
@@ -423,5 +439,97 @@ describe('Bullet — the spawn pop', () => {
     b.interpolate(1, 5000);
     expect(coreOf(b).scale.x).toBe(1);
     expect(flareOf(b).visible).toBe(false);
+  });
+});
+
+/**
+ * The projectile art (2026-10-01): one sprite per DamageType, pointed along the velocity, with
+ * the flat dot kept as the fallback for a round whose texture has not loaded. The file is
+ * 256 x 100 here — the shape of the shipped fireball — so the long-axis sizing is measurable.
+ */
+describe('Bullet — projectile art', () => {
+  const tex = (): Texture => new Texture({ source: new TextureSource({ width: 256, height: 100 }) });
+  function armed(type: 'physical' | 'fire' = 'fire', faction: 'player' | 'enemy' = 'player'): Bullet {
+    sprites.getBulletTexture.mockImplementation((t: string) => (t === type ? tex() : undefined));
+    const b = new Bullet(4);
+    b.setFaction(faction);
+    if (type !== 'physical') b.setElement(type);
+    b.interpolate(1, 5000); // settle the spawn pop so the scale read below is the base one
+    return b;
+  }
+
+  it("asks the registry by the round's own damage type", () => {
+    armed('fire');
+    expect(sprites.getBulletTexture).toHaveBeenCalledWith('fire');
+  });
+
+  it('draws the sprite INSTEAD of the dot, never both', () => {
+    const b = armed('fire');
+    expect(artOf(b).visible).toBe(true);
+    expect(coreOf(b).getLocalBounds().width).toBe(0);
+  });
+
+  it('sizes the art by its long axis to four bullet radii', () => {
+    const b = armed('fire');
+    expect(artOf(b).width).toBeCloseTo(16, 6); // r = 4
+    expect(artOf(b).height).toBeCloseTo(16 * (100 / 256), 6);
+  });
+
+  it('keeps the halo behind elemental art', () => {
+    expect(glowOf(armed('fire')).getLocalBounds().width).toBeGreaterThan(0);
+  });
+
+  it('leaves an elemental file its own colours', () => {
+    expect(artOf(armed('fire')).tint).toBe(0xffffff);
+  });
+
+  it('tints the greyscale physical file by faction, and re-tints it on a deflect', () => {
+    const b = armed('physical', 'enemy');
+    expect(artOf(b).tint).toBe(THEME.colors.bulletEnemy);
+    b.setFaction('player');
+    expect(artOf(b).tint).toBe(THEME.colors.bulletPlayer);
+  });
+
+  it('points along the velocity', () => {
+    const b = armed();
+    b.setHeading(0, 5);
+    expect(artOf(b).rotation).toBeCloseTo(Math.PI / 2, 6);
+    b.setHeading(3, -3);
+    expect(artOf(b).rotation).toBeCloseTo(-Math.PI / 4, 6);
+  });
+
+  it('mirrors a leftward round so its lit side stays on top', () => {
+    const b = armed();
+    b.setHeading(5, 0);
+    expect(artOf(b).scale.y).toBeGreaterThan(0);
+    b.setHeading(-5, 0); // a deflect reverses it in flight
+    expect(artOf(b).rotation).toBeCloseTo(Math.PI, 6);
+    expect(artOf(b).scale.y).toBeLessThan(0);
+    expect(Math.abs(artOf(b).scale.y)).toBeCloseTo(artOf(b).scale.x, 9);
+  });
+
+  it('keeps its last heading through a zero velocity', () => {
+    const b = armed();
+    b.setHeading(0, 5);
+    b.setHeading(0, 0);
+    expect(artOf(b).rotation).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('takes the spawn pop too, and settles back onto its base size', () => {
+    sprites.getBulletTexture.mockImplementation(() => tex());
+    const b = new Bullet(4);
+    b.setElement('fire');
+    b.interpolate(1, 0);
+    const base = 16 / 256;
+    expect(artOf(b).scale.x).toBeGreaterThan(base * 1.5);
+    b.interpolate(1, 5000);
+    expect(artOf(b).scale.x).toBeCloseTo(base, 9);
+  });
+
+  it('falls back to the dot for a type whose file has not loaded', () => {
+    const b = armed('physical');
+    b.setElement('ice'); // only `physical` resolves in this test
+    expect(artOf(b).visible).toBe(false);
+    expect(coreOf(b).getLocalBounds().width).toBeGreaterThan(0);
   });
 });

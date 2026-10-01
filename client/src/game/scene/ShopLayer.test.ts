@@ -15,18 +15,29 @@
  * dimensioned stand-in so the two failure modes stay separable.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { Container, Graphics, Texture, TextureSource, type Sprite } from 'pixi.js';
+import { Container, Graphics, Sprite, Texture, TextureSource } from 'pixi.js';
 import { SHOP_INTERACT_RANGE_GRID, type GameState, type Shop, type ShopOffer } from '@dd/engine';
-import { COUNTER_HEIGHT_PX, KEEPER_BACK_PX, KEEPER_WIDTH_PX, ShopLayer } from './ShopLayer';
+import {
+  COUNTER_ART_WIDTH_PX,
+  COUNTER_HEIGHT_PX,
+  KEEPER_BACK_PX,
+  KEEPER_WIDTH_PX,
+  ShopLayer,
+  buildCounterBody,
+} from './ShopLayer';
 import { fpToPx } from '../coords';
 
 // `render/environmentSprites.ts` is mocked so BOTH keeper paths are reachable under vitest,
 // and defaults to "nothing loaded" so every test above the keeper block keeps exercising the
 // counter-only room — the same convention `Portal.test.ts`/`Pickup.test.ts` use.
-const mocks = vi.hoisted(() => ({ keeperTexture: undefined as Texture | undefined }));
+const mocks = vi.hoisted(() => ({
+  keeperTexture: undefined as Texture | undefined,
+  counterTexture: undefined as Texture | undefined,
+}));
 
 vi.mock('../../render/environmentSprites', () => ({
   getShopkeeperTexture: () => mocks.keeperTexture,
+  getShopCounterTexture: () => mocks.counterTexture,
 }));
 
 type Fp = Shop['gx'];
@@ -385,6 +396,85 @@ describe('ShopLayer — the shopkeeper (design/05 "Shops", 2026-09-14)', () => {
       expect(entities.children).toHaveLength(2);
       expect(keeperOf(entities).destroyed).toBe(false);
       expect(spriteOf(entities).width).toBeCloseTo(KEEPER_WIDTH_PX, 5);
+    });
+  });
+});
+
+/**
+ * The counter art (2026-10-01). Same shape as the chest's sprite path: art when loaded, the
+ * shipped Graphics when not, a late texture picked up under a counter already built — plus the
+ * one composition property this prop has: the keeper's base has to stay behind the SLAB, which
+ * now means behind the sprite's drawn height rather than `COUNTER_HEIGHT_PX`.
+ */
+describe('ShopLayer — counter art', () => {
+  /** The shipped file's real dimensions (`client/public/environment/shop_counter.png`). */
+  const counterTex = (width = 320, height = 161) => new Texture({ source: new TextureSource({ width, height }) });
+  const spriteIn = (body: Container) => body.children.find((c) => c instanceof Sprite) as Sprite | undefined;
+
+  function withCounter<T>(tex: Texture | undefined, run: () => T): T {
+    mocks.counterTexture = tex;
+    try {
+      return run();
+    } finally {
+      mocks.counterTexture = undefined;
+    }
+  }
+
+  it('draws a bottom-anchored sprite scaled by WIDTH, the art setting its height', () => {
+    const body = buildCounterBody(counterTex());
+    const sprite = spriteIn(body)!;
+    expect(sprite).toBeDefined();
+    expect(sprite.anchor.y).toBe(1);
+    expect(sprite.width).toBeCloseTo(COUNTER_ART_WIDTH_PX, 5);
+    expect(sprite.height).toBeCloseTo(COUNTER_ART_WIDTH_PX * (161 / 320), 5);
+    // The control: a different aspect gives a different height, so the one above is not baked.
+    expect(spriteIn(buildCounterBody(counterTex(320, 240)))!.height).toBeCloseTo(COUNTER_ART_WIDTH_PX * 0.75, 5);
+  });
+
+  it('casts a shadow as wide as the furniture standing on it, on both paths', () => {
+    // Child 0, under the body. The art is wider than the Graphics slab; a shadow left at the
+    // slab's width would leave the sprite's ends hanging over bare floor.
+    const art = buildCounterBody(counterTex());
+    const fallback = buildCounterBody(undefined);
+    expect((art.children[0] as Graphics).bounds.width).toBeCloseTo(COUNTER_ART_WIDTH_PX, 0);
+    expect((fallback.children[0] as Graphics).bounds.width).toBeLessThan(COUNTER_ART_WIDTH_PX);
+    expect(spriteIn(fallback)).toBeUndefined();
+  });
+
+  it('is no narrower than the keeper standing behind it', () => {
+    expect(COUNTER_ART_WIDTH_PX).toBeGreaterThanOrEqual(KEEPER_WIDTH_PX);
+  });
+
+  it('keeps the keeper base behind the drawn counter, with the art in', () => {
+    // `KEEPER_BACK_PX` is derived from the FALLBACK slab's height. With the art in, the thing
+    // the keeper's base must stay below is the sprite's own top — so this is stated against
+    // the drawn sprite, and fails if a replacement file came back much flatter.
+    const sprite = spriteIn(buildCounterBody(counterTex()))!;
+    expect(KEEPER_BACK_PX).toBeLessThan(sprite.height);
+  });
+
+  it('picks the art up when it loads LATE, under a counter already built', () => {
+    const { entities, layer, state } = harness([shop()]);
+    layer.update(state);
+    const body = entities.children[0] as Container;
+    expect(spriteIn(body.children[0] as Container)).toBeUndefined();
+    withCounter(counterTex(), () => {
+      layer.update(state);
+      expect(body.children).toHaveLength(1);
+      expect(spriteIn(body.children[0] as Container)).toBeDefined();
+    });
+  });
+
+  it('does NOT rebuild the counter every frame once the art is in', () => {
+    withCounter(counterTex(), () => {
+      const { entities, layer, state } = harness([shop()]);
+      layer.update(state);
+      const body = entities.children[0] as Container;
+      const drawn = body.children[0];
+      layer.update(state);
+      layer.update(state);
+      expect(body.children[0]).toBe(drawn);
+      expect(body.children).toHaveLength(1);
     });
   });
 });

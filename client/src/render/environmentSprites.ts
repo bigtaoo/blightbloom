@@ -1,7 +1,8 @@
 // Standalone environment fixtures (design/05 "Room & door model", 2026-08-04) — the door
-// pair, the five in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
-// portal art pass), the room props (2026-08-24) and the shop's shopkeeper (2026-09-14, the
-// first PERSON in this registry rather than a fixture). Same non-blocking best-effort
+// pair, the eleven in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
+// portal art pass), the room props (2026-08-24), the shop's shopkeeper (2026-09-14, the
+// first PERSON in this registry rather than a fixture) and the five projectiles
+// (2026-10-01). Same non-blocking best-effort
 // preload pattern as biomeTiles.ts/weaponSkins.ts: a missing/not-yet-generated sprite just
 // leaves its caller on the existing Graphics fallback, never blocks boot.
 import { Assets, Texture } from 'pixi.js';
@@ -27,6 +28,28 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   pickup_buff: '/environment/pickup_buff.png',
   pickup_crate: '/environment/pickup_crate.png',
   pickup_bandage: '/environment/pickup_bandage.png',
+  // The second drop batch (2026-10-01, `art/environment/prompts.md`): the four kinds that had
+  // been drawn as Graphics since they were added, with no fallback-vs-art split at all.
+  pickup_coin: '/environment/pickup_coin.png',
+  pickup_energy: '/environment/pickup_energy.png',
+  pickup_shield: '/environment/pickup_shield.png',
+  pickup_emp: '/environment/pickup_emp.png',
+  // The third drop batch (2026-10-01): the two boss-only kinds, which closes the set — every
+  // kind but `weapon` now has a file.
+  pickup_schematic: '/environment/pickup_schematic.png',
+  pickup_character: '/environment/pickup_character.png',
+  // Projectiles (2026-10-01), keyed `bullet_<DamageType>` to match `getBulletTexture`. Filed
+  // here rather than in a registry of their own because they are the same kind of file — a
+  // lone object, drawn far smaller than its source, needing the same mip chain — and this
+  // loader already reaches both the boot preload and the WeChat package checks. Each points
+  // +x; `Bullet` rotates it onto the round's velocity. `bullet_physical` is greyscale on
+  // purpose: a physical round takes its FACTION colour, and a melee deflect flips that
+  // mid-flight, so the hue is a runtime tint and never baked into the file.
+  bullet_physical: '/environment/bullet_physical.png',
+  bullet_fire: '/environment/bullet_fire.png',
+  bullet_ice: '/environment/bullet_ice.png',
+  bullet_lightning: '/environment/bullet_lightning.png',
+  bullet_poison: '/environment/bullet_poison.png',
   // The extraction checkpoint's standing stone arch. Only the STRUCTURE is art — the
   // vortex rings, core, infalling motes and ground bloom stay program-drawn in Portal.ts
   // (they animate every frame, which a sprite cannot do).
@@ -48,6 +71,14 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   chest_small_open: '/environment/chest_small_open.png',
   chest_big: '/environment/chest_big.png',
   chest_big_open: '/environment/chest_big_open.png',
+  // A big chest's mechanism plate, idle and live (2026-10-01) — a flat ground decal, so the
+  // one file here drawn from straight above. `ChestLayer` stretches it onto the sim's own
+  // trigger ellipse, so the art's rim IS the trigger edge.
+  chest_plate: '/environment/chest_plate.png',
+  chest_plate_on: '/environment/chest_plate_on.png',
+  // The shop counter (2026-10-01). Drawn IN FRONT of the shopkeeper, which is why the art has
+  // nothing rising above its top slab: the warm accent is a valance on its front, not an awning.
+  shop_counter: '/environment/shop_counter.png',
   // The shop's shopkeeper (2026-09-14, design/05 "Shops"). Filed under `environment/`
   // rather than `ui/` where `npc_forger.png` sits, because this one stands IN a room and
   // is Y-sorted against the actors — the hub Forger is a corner-anchored UI sprite. It is
@@ -106,6 +137,12 @@ export function getPickupTexture(kind: string): Texture | undefined {
   return textures.get(`pickup_${kind}`);
 }
 
+/** A projectile's sprite, by `DamageType`. Undefined until preloaded — `Bullet` falls back to
+ *  the flat dot it drew before this art existed. */
+export function getBulletTexture(damageType: string): Texture | undefined {
+  return textures.get(`bullet_${damageType}`);
+}
+
 /** The extraction portal's standing arch. Undefined until preloaded — `Portal` falls back
  *  to the two stroked ellipses it drew before this art existed. */
 export function getPortalArchTexture(): Texture | undefined {
@@ -129,6 +166,19 @@ export function getPropTexture(kind: string): Texture | undefined {
  *  flight still picks the art up. */
 export function getChestTexture(kind: string, opened: boolean): Texture | undefined {
   return textures.get(`chest_${kind}${opened ? '_open' : ''}`);
+}
+
+/** A big chest's mechanism plate, by occupancy (`scene/ChestLayer.ts`). Undefined until
+ *  preloaded — the plate falls back to the stroked ellipse it drew before this art existed,
+ *  and `ChestLayer` re-asks every frame until it resolves. */
+export function getChestPlateTexture(occupied: boolean): Texture | undefined {
+  return textures.get(occupied ? 'chest_plate_on' : 'chest_plate');
+}
+
+/** The shop counter (`scene/ShopLayer.ts`). Undefined until preloaded — the counter falls back
+ *  to the slab-and-awning Graphics it shipped with, and `ShopLayer` re-asks every frame. */
+export function getShopCounterTexture(): Texture | undefined {
+  return textures.get('shop_counter');
 }
 
 /** The shop counter's shopkeeper (`scene/ShopLayer.ts`). Undefined until preloaded — and a

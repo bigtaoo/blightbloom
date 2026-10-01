@@ -314,7 +314,19 @@ describe('Pickup — real drop art (2026-08-20)', () => {
     }
   }
 
-  it.each(['heal', 'material', 'buff', 'crate', 'bandage'] as const)(
+  // Every kind but `weapon`, derived from ALL_KINDS rather than listed: the list here used to be
+  // the five 2026-08-20 kinds, and the six that gained a file on 2026-10-01 (coin onwards) had
+  // no test that the sprite replaces their silhouette. Deriving it covers the next kind the day
+  // it joins ALL_KINDS.
+  const SPRITED_KINDS = ALL_KINDS.filter((k) => k !== 'weapon');
+
+  it('the sprited set includes the 2026-10-01 kinds (else the sweep below misses them)', () => {
+    expect(SPRITED_KINDS).toEqual(
+      expect.arrayContaining(['coin', 'energy', 'shield', 'emp', 'schematic', 'character']),
+    );
+  });
+
+  it.each(SPRITED_KINDS)(
     'mounts the %s sprite in place of its Graphics silhouette',
     (kind) => {
       withArt({ [kind]: tex(116, 192) }, () => {

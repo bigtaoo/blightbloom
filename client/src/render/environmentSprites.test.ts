@@ -13,8 +13,11 @@ import {
   getDoorCurtainTexture,
   getPickupTexture,
   getPortalArchTexture,
+  getBulletTexture,
   getPropTexture,
   getChestTexture,
+  getChestPlateTexture,
+  getShopCounterTexture,
   getShopkeeperTexture,
   ENV_SPRITE_ASSETS,
   ENV_SPRITE_ASSET_KEYS,
@@ -43,6 +46,17 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   pickup_buff: () => getPickupTexture('buff'),
   pickup_crate: () => getPickupTexture('crate'),
   pickup_bandage: () => getPickupTexture('bandage'),
+  pickup_coin: () => getPickupTexture('coin'),
+  pickup_energy: () => getPickupTexture('energy'),
+  pickup_shield: () => getPickupTexture('shield'),
+  pickup_emp: () => getPickupTexture('emp'),
+  pickup_schematic: () => getPickupTexture('schematic'),
+  pickup_character: () => getPickupTexture('character'),
+  bullet_physical: () => getBulletTexture('physical'),
+  bullet_fire: () => getBulletTexture('fire'),
+  bullet_ice: () => getBulletTexture('ice'),
+  bullet_lightning: () => getBulletTexture('lightning'),
+  bullet_poison: () => getBulletTexture('poison'),
   prop_crate: () => getPropTexture('crate'),
   prop_barrel: () => getPropTexture('barrel'),
   prop_rubble: () => getPropTexture('rubble'),
@@ -53,7 +67,25 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   chest_small_open: () => getChestTexture('small', true),
   chest_big: () => getChestTexture('big', false),
   chest_big_open: () => getChestTexture('big', true),
+  chest_plate: () => getChestPlateTexture(false),
+  chest_plate_on: () => getChestPlateTexture(true),
+  shop_counter: () => getShopCounterTexture(),
 } as Readonly<Record<string, () => { source: { label: string } } | undefined>>;
+
+/** Every drop kind with a file — all of them but `weapon` since 2026-10-01. */
+const ART_DROPS = [
+  'material',
+  'heal',
+  'buff',
+  'crate',
+  'bandage',
+  'coin',
+  'energy',
+  'shield',
+  'emp',
+  'schematic',
+  'character',
+] as const;
 
 describe('environmentSprites — getDoorTexture before any preload', () => {
   it('returns undefined for both lock states (RoomBuilder falls back to a flat tint)', () => {
@@ -75,7 +107,7 @@ describe('environmentSprites — every key a caller can ask for is actually regi
   // typo in the asset table is invisible at run time: the drop just keeps drawing its
   // Graphics fallback forever, which looks like art that was never generated. Same guard
   // biomeTiles.test.ts keeps over BIOME_TILE_ASSET_KEYS.
-  it.each(['material', 'heal', 'buff', 'crate', 'bandage'])('pickup_%s has a file', (kind) => {
+  it.each(ART_DROPS)('pickup_%s has a file', (kind) => {
     expect(ENV_SPRITE_ASSET_KEYS).toContain(`pickup_${kind}`);
   });
 
@@ -84,6 +116,14 @@ describe('environmentSprites — every key a caller can ask for is actually regi
     expect(ENV_SPRITE_ASSET_KEYS).toContain('door_open');
     expect(ENV_SPRITE_ASSET_KEYS).toContain('door_curtain');
     expect(ENV_SPRITE_ASSET_KEYS).toContain('portal_arch');
+  });
+
+  it('registers a projectile for every DamageType', () => {
+    // `Bullet` asks by the round's own `damageType`, so a missing row is a round of that
+    // element quietly drawn as the old dot while its siblings fly as art.
+    for (const type of ['physical', 'fire', 'ice', 'lightning', 'poison']) {
+      expect(ENV_SPRITE_ASSET_KEYS).toContain(`bullet_${type}`);
+    }
   });
 
   it('registers all three room-prop kinds', () => {
@@ -126,14 +166,18 @@ describe('environmentSprites — every key a caller can ask for is actually regi
 
 describe('environmentSprites — the getters before any preload', () => {
   it('returns undefined for every drop kind, the curtain, and the arch', () => {
-    for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage', 'weapon']) {
+    for (const kind of [...ART_DROPS, 'weapon']) {
       expect(getPickupTexture(kind)).toBeUndefined();
     }
     expect(getDoorCurtainTexture()).toBeUndefined();
     expect(getPortalArchTexture()).toBeUndefined();
+    expect(getBulletTexture('fire')).toBeUndefined();
     // The keeper's undefined path is the one with a visible consequence rather than a fallback:
     // `ShopLayer` draws no merchant at all, deliberately (design/05).
     expect(getShopkeeperTexture()).toBeUndefined();
+    expect(getShopCounterTexture()).toBeUndefined();
+    expect(getChestPlateTexture(false)).toBeUndefined();
+    expect(getChestPlateTexture(true)).toBeUndefined();
   });
 });
 
@@ -171,13 +215,20 @@ describe('environmentSprites — each getter resolves the key it registered, aft
       expect(at(getDoorTexture(false))).toBe('/environment/door_open_raw.png');
       expect(at(getDoorCurtainTexture())).toBe('/environment/door_curtain_raw.png');
       expect(at(getPortalArchTexture())).toBe('/environment/portal_arch.png');
-      for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage']) {
+      for (const kind of ART_DROPS) {
         expect(at(getPickupTexture(kind))).toBe(`/environment/pickup_${kind}.png`);
+      }
+      for (const type of ['physical', 'fire', 'ice', 'lightning', 'poison']) {
+        expect(at(getBulletTexture(type))).toBe(`/environment/bullet_${type}.png`);
       }
       for (const kind of ['crate', 'barrel', 'rubble']) {
         expect(at(getPropTexture(kind))).toBe(`/environment/prop_${kind}.png`);
       }
       expect(at(getShopkeeperTexture())).toBe('/environment/npc_shopkeeper.png');
+      expect(at(getShopCounterTexture())).toBe('/environment/shop_counter.png');
+      // Occupancy picks the state: an inverted ternary would light every idle plate.
+      expect(at(getChestPlateTexture(false))).toBe('/environment/chest_plate.png');
+      expect(at(getChestPlateTexture(true))).toBe('/environment/chest_plate_on.png');
     } finally {
       restore();
     }

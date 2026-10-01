@@ -20,22 +20,37 @@ import {
   CHEST_OPEN_RANGE_GRID,
 } from '@dd/engine';
 import type { Chest, GameState } from '@dd/engine';
-import { Sprite, Texture } from 'pixi.js';
-import { ChestLayer, buildChestBody, chestFootprintWidth, drawBody, drawPlate } from './ChestLayer';
-import { getChestTexture } from '../../render/environmentSprites';
+import { Sprite, Texture, TextureSource } from 'pixi.js';
+import {
+  ChestLayer,
+  buildChestBody,
+  buildPlate,
+  chestFootprintWidth,
+  drawBody,
+  drawPlate,
+  plateFootprint,
+} from './ChestLayer';
+import { getChestPlateTexture, getChestTexture } from '../../render/environmentSprites';
 import { fpToPx, PX_PER_GRID } from '../coords';
 
 // `getChestTexture` is the one thing this module reads that a headless test has no way to
 // satisfy for real (`preloadEnvironmentSprites` needs a GPU and a network). Mocked rather than
 // worked around, so BOTH branches of `buildChestBody` are reachable here — the fallback is the
 // default, and the art is opted into per case.
-vi.mock('../../render/environmentSprites', () => ({ getChestTexture: vi.fn(() => undefined) }));
+vi.mock('../../render/environmentSprites', () => ({
+  getChestTexture: vi.fn(() => undefined),
+  getChestPlateTexture: vi.fn(() => undefined),
+}));
 const mockedTexture = vi.mocked(getChestTexture);
+const mockedPlateTexture = vi.mocked(getChestPlateTexture);
 
 /** A texture of a stated pixel size — the only two fields `buildChestBody` reads. */
 const texture = (w: number, h: number) => ({ width: w, height: h }) as Texture;
 
-beforeEach(() => mockedTexture.mockReturnValue(undefined));
+beforeEach(() => {
+  mockedTexture.mockReturnValue(undefined);
+  mockedPlateTexture.mockReturnValue(undefined);
+});
 
 type Fp = Chest['gx'];
 const fp = (grid: number) => (grid * 1000) as Fp;
@@ -145,13 +160,13 @@ describe('ChestLayer — state it has to keep following', () => {
     const c = chest({ kind: 'big', opened: true, mechanisms: [{ gx: fp(13), gy: fp(12), occupied: true }] });
     const { ground, layer, state } = harness([c]);
     layer.update(state);
-    const g = ground.children[0]!.children[0] as Graphics;
-    const lit = g.bounds.width;
+    const holder = ground.children[0]!.children[0] as Container;
+    const lit = holder.getLocalBounds().width;
     c.mechanisms[0]!.occupied = false;
     layer.update(state);
     // The idle ring is drawn with a thinner stroke, so its bounds are strictly smaller — a
     // measured difference rather than "some draw call happened".
-    expect(g.bounds.width).toBeLessThan(lit);
+    expect(holder.getLocalBounds().width).toBeLessThan(lit);
   });
 
   it('follows a plate that moves', () => {
@@ -353,5 +368,74 @@ describe('the size the drawn chest is allowed to be', () => {
     // reaches the near edge of a plate.
     const nearestPlateEdgePx = (CHEST_MECHANISM_RING_GRID - CHEST_MECHANISM_RADIUS_GRID) * PX_PER_GRID;
     expect(chestFootprintWidth('big') / 2).toBeLessThan(nearestPlateEdgePx);
+  });
+});
+
+/**
+ * The plate art (2026-10-01): one file per state, and the property that matters is the one the
+ * fallback was built on — the drawn rim IS the sim's trigger edge. So the sprite is stretched
+ * onto the footprint on BOTH axes, not scaled by width like a standing body.
+ */
+describe('ChestLayer — plate art', () => {
+  const bigWithPlate = (occupied: boolean) =>
+    chest({ kind: 'big', mechanisms: [{ gx: fp(13), gy: fp(12), occupied }] });
+  const plateContent = (ground: Container) => (ground.children[0]!.children[0] as Container).children[0]!;
+
+  it('stretches the sprite onto the trigger ellipse, centred on the point the sim measures', () => {
+    // A texture whose aspect is NOT the squash, so a width-only scale would fail the height.
+    const sprite = buildPlate(false, texture(576, 333)) as Sprite;
+    expect(sprite).toBeInstanceOf(Sprite);
+    expect(sprite.anchor.x).toBe(0.5);
+    expect(sprite.anchor.y).toBe(0.5);
+    expect(sprite.width).toBeCloseTo(plateFootprint().width, 5);
+    expect(sprite.height).toBeCloseTo(plateFootprint().height, 5);
+  });
+
+  it('draws the plate at the sim radius — the footprint is derived, not picked', () => {
+    expect(plateFootprint().width).toBe(CHEST_MECHANISM_RADIUS_GRID * PX_PER_GRID * 2);
+    expect(plateFootprint().height).toBeLessThan(plateFootprint().width);
+  });
+
+  it('falls back to the Graphics form when the texture has not loaded', () => {
+    expect(buildPlate(true, undefined)).toBeInstanceOf(Graphics);
+  });
+
+  it('asks for the texture of the state it is drawing, and swaps it when someone steps on', () => {
+    // Real textures, not the `{ width, height }` stand-in: a Sprite swaps a non-Texture for
+    // `Texture.EMPTY`, and identity is what this asserts.
+    const idle = new Texture({ source: new TextureSource({ width: 576, height: 333 }) });
+    const live = new Texture({ source: new TextureSource({ width: 576, height: 335 }) });
+    mockedPlateTexture.mockImplementation((occupied) => (occupied ? live : idle));
+    const c = bigWithPlate(false);
+    const { ground, layer, state } = harness([c]);
+    layer.update(state);
+    expect((plateContent(ground) as Sprite).texture).toBe(idle);
+    c.mechanisms[0]!.occupied = true;
+    layer.update(state);
+    expect((plateContent(ground) as Sprite).texture).toBe(live);
+    // And back: an opened chest's plates keep following occupancy with the art in too.
+    c.mechanisms[0]!.occupied = false;
+    layer.update(state);
+    expect((plateContent(ground) as Sprite).texture).toBe(idle);
+  });
+
+  it('picks the art up when it loads LATE, under a plate already drawn', () => {
+    const { ground, layer, state } = harness([bigWithPlate(false)]);
+    layer.update(state);
+    expect(plateContent(ground)).toBeInstanceOf(Graphics);
+    mockedPlateTexture.mockReturnValue(texture(576, 333));
+    layer.update(state);
+    expect(plateContent(ground)).toBeInstanceOf(Sprite);
+    expect((ground.children[0]!.children[0] as Container).children).toHaveLength(1);
+  });
+
+  it('does NOT rebuild a plate every frame once its art is in', () => {
+    mockedPlateTexture.mockReturnValue(texture(576, 333));
+    const { ground, layer, state } = harness([bigWithPlate(true)]);
+    layer.update(state);
+    const drawn = plateContent(ground);
+    layer.update(state);
+    layer.update(state);
+    expect(plateContent(ground)).toBe(drawn);
   });
 });

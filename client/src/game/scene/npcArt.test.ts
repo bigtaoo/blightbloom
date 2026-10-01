@@ -40,10 +40,14 @@ import type { GameState, Shop } from '@dd/engine';
 import { decodePNG } from '../../../../tools/png-pipeline/pngCodec.mjs';
 import { KEEPER_BACK_PX, KEEPER_WIDTH_PX, ShopLayer } from './ShopLayer';
 
-const mocks = vi.hoisted(() => ({ keeperTexture: undefined as Texture | undefined }));
+const mocks = vi.hoisted(() => ({
+  keeperTexture: undefined as Texture | undefined,
+  counterTexture: undefined as Texture | undefined,
+}));
 
 vi.mock('../../render/environmentSprites', () => ({
   getShopkeeperTexture: () => mocks.keeperTexture,
+  getShopCounterTexture: () => mocks.counterTexture,
 }));
 
 interface Img {
@@ -109,6 +113,7 @@ function chroma(img: Img): number {
 }
 
 const SHOPKEEPER = '../../../public/environment/npc_shopkeeper.png';
+const COUNTER = '../../../public/environment/shop_counter.png';
 const LOOT = '../../../public/environment/pickup_crate.png';
 const STONE = '../../../public/environment/prop_barrel.png';
 const ELEMENTAL = '../../../public/skins/skirmisher-core/shell.png';
@@ -255,6 +260,28 @@ describe('the shipped shopkeeper art — driven through the REAL layer at its RE
       // 9 px back + 28/0.931 tall puts the top 10 px clear of the awning apex.
       expect(counterTop - keeperTop).toBeGreaterThan(6);
     });
+  });
+
+  it("shows head AND torso over the counter ART, at both files' real dimensions", () => {
+    // The counter sprite (2026-10-01) has no awning, so the keeper clears it by more than the
+    // fallback — but the art is also what decides how much of the merchant the counter hides,
+    // and a replacement counter that came back taller would bury the torso. At least half the
+    // keeper's drawn height has to stand above the counter's top.
+    const counterImg = load(COUNTER);
+    mocks.counterTexture = new Texture({ source: new TextureSource({ width: counterImg.width, height: counterImg.height }) });
+    try {
+      withShippedAspect(() => {
+        const { entities, layer, state } = harness();
+        layer.update(state);
+        const counter = entities.children[0]!.getBounds();
+        const keeper = entities.children[1]!.getBounds();
+        expect(counter.top - keeper.top).toBeGreaterThan(keeper.height / 2);
+        // ...while the counter still crosses the keeper's base, so it stands AT the counter.
+        expect(keeper.bottom).toBeGreaterThan(counter.top);
+      });
+    } finally {
+      mocks.counterTexture = undefined;
+    }
   });
 
   it('stays short enough to skip the occlusion x-ray the counter also skips', () => {

@@ -322,6 +322,289 @@ art/environment/<id>_raw.png                       # keyed source of truth, neve
 `Portal` scale by the TEXTURE's dimensions, so untrimmed margin silently shrinks the object on
 screen by however much empty space the generator left (up to 44% on this batch's rejects).
 
+## The second drop batch (4), 2026-10-01 — coin, energy, shield, emp
+
+Why: an audit of every Graphics-drawn visual in the client found these four were the only drop
+kinds a player meets in an ordinary run that still had NO art at all — the coin especially, since
+it drops from every kill once shops exist. Same framing block, same 1024 x 1024 + 6 px margin,
+colours taken from `THEME.colors.pickup*` so the additive glow behind each sprite still matches.
+Four generations, four accepted; none regenerated.
+
+Each prompt named its specific failure modes up front rather than waiting to be bitten:
+
+- **`pickup_coin`** — a coin's natural shape is a disc, and the bandage reject above proved a pale
+  disc with a dark centre reads as an eye in this game. So: ONE thick coin tilted back ~35 degrees
+  (a wide ellipse with its reeded EDGE showing as a darker band along the bottom), a raised rim, and
+  a solid four-pointed star at the centre that is the BRIGHTEST part of the face — "do NOT draw a
+  dark hole, a dark dot, a dark ring, a square hole or concentric rings at the centre". Also "no
+  facets, no spikes", because coin and material share the warm band (`#FFC94A` vs `#F6E05E`) and
+  must differ in form. Face `#FFE9A8 / #FFC94A / #D99A1E`, edge `#A8701A`, star `#FFF3C4`.
+- **`pickup_energy`** — an upright glass CAPSULE (0.6 wide), dark metal cap bands on the top and
+  bottom 14%, teal fill `#A6F3EC / #4FD1C5 / #1F7A72`, and a SOLID filled near-white bolt at least 22%
+  of the width thick (the buff reject's outline-arrowhead lesson). A cell, so it never shares a
+  silhouette with the material crystal or the shield.
+- **`pickup_shield`** — a flat face-on heater shield (0.82 wide), a raised border 11% thick, the face
+  split by one vertical line into a lit `#76E4F7` and a shadowed `#2E9DB5` half (that split IS the
+  cel shading), and a SOLID near-white upward chevron. Explicitly "NO extrusion, NO 3D side faces",
+  since shield and energy are both cyan-family and have to be told apart by form.
+- **`pickup_emp`** — a squat round dark-gunmetal grenade (`#6B7685 / #444C58 / #1E232B`), one thick
+  glowing `#FFF176` equatorial band with three dark notches, a fuse cap and lever on top; "the body
+  must NOT be pure black — the bright band must be the dominant read". No lightning, no hazard sign.
+
+Results, trimmed: coin **192 x 140** (aspect 1.37 against 1.35 asked — the tilt landed, and its
+centre patch measures well above its own mean, which `environmentArt.test.ts` now asserts), energy
+88 x 192, shield 177 x 192, emp 183 x 192. All four lit from the upper left as asked.
+
+### What these four needed on top of the prompt
+
+1. **WebP -> PNG**, as before (Pillow, lossless), and the generator's UUID names replaced with
+   `pickup_<kind>_raw.png`. The UUID's trailing segment is base64 of the generator's own output path
+   (`.../gold_coin_sprite_1024`), which is how the four were told apart without opening them.
+2. **The alpha veil `alphaClamp.mjs` exists for.** Every file carried a sheet of alpha 1-8 over the
+   WHOLE canvas: the `alpha > 0` bbox of the coin was 874 x 996 against a real object of 565 x 411.
+   Trimmed as-is, the coin would have drawn at less than half its size. `alphaClamp.mjs` (floor 8)
+   brought every bbox onto its `alpha > 8` measurement exactly.
+3. **Two dark bands sank into the floor — the heal reject's failure, caught by its test.** The emp's
+   lower fifth measured luma **49.5**, inside the floor's own 39-49 band (the grenade's body vanished
+   at display size, leaving a floating yellow stripe), and the energy cell's dark caps put its top
+   band at 67.6 against the 69 bar. Fixed offline with a luma-keyed LIFT, the inverse of the
+   arch's darkening: `lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.6` (emp) / `--lo-gain=1.35`
+   (energy), `--hi-gain=1`, so the bright band, the bolt and the near-black outlines are untouched
+   (an outline at ~20 lifted 1.6x is still an outline). Bands after: emp 131 / 154 / **79**, energy
+   **105** / 180 / 88.
+
+Pipeline for this batch:
+
+```
+art/environment/pickup_<kind>_raw.png
+  -> cp to client/public/environment/pickup_<kind>.png
+  -> alphaClamp.mjs                                              # all four (default floor 8)
+  -> lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.6 --hi-gain=1    # emp ONLY
+  -> lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.35 --hi-gain=1   # energy ONLY
+  -> compress.mjs --long-axis=192
+  -> alpha-audit.mjs client/public/environment
+```
+
+Still drawn, deliberately not in this batch: `schematic` (at most one per run) and `character`
+(boss-only). Both slot in the same way — a file plus one `ENV_SPRITE_ASSETS` row.
+
+## The third batch (2 drops + 5 projectiles), 2026-10-01 — schematic, character, bullets
+
+The last two Graphics-only drops, plus a sprite per `DamageType` for the projectiles. Seven
+generations, seven accepted; none regenerated. Same framing block for the drops; the bullets
+replaced its Camera paragraph with a pure SIDE VIEW pointing +x on a 1024 x 512 canvas, "maximum
+TWO colour bands plus the outline, one bold silhouette, nothing thin", since they are drawn 15-36
+world px long.
+
+Considered and NOT made: the HUD stat-chip glyphs and the element badges. design/13 locks both as
+vectors (tinted per stat/element, crisp at any DPR), and at 14 px / 6 px a generated image would be
+less legible than the glyph it replaced.
+
+- **`pickup_schematic`** — a horizontal rolled scroll in the `pickupSchematic` rose
+  (`#FBB6CE / #F687B3 / #B83280`), near-white `#FFF0F6` end knobs, one `#97266D` tie band. "Do NOT
+  stand it upright": the energy cell is an upright capsule. No writing on the paper.
+- **`pickup_character`** — a faceless lavender crystal bust (`#E9D8FD / #B794F4 / #6B46C1`) on a
+  short hexagonal base. "NO face, NO eyes, NO mouth": the bandage's eye lesson, and a skull already
+  means poison in this game.
+- **`bullet_physical`** — a plain capsule slug in NEUTRAL GREYSCALE only (`#FFFFFF / #B8BEC8`,
+  outline `#3A3F48`). A physical round takes its faction colour and a deflect flips it in flight,
+  so `Bullet` tints this file at runtime; it measures max chroma 18 on its opaque pixels.
+- **`bullet_fire / _ice / _lightning / _poison`** — fireball with fat flame tongues, a three-facet
+  ice shard, a fat two-bend zigzag, a slime glob with one trailing droplet, each in its locked
+  element hex (`statusBurn` / `statusChill` / `statusShock` / `statusPoison`) so the code-drawn halo
+  around it still matches.
+
+Results, trimmed: schematic **192 x 49** (aspect 3.9 against the 2.6 asked — the knobs and the curl
+widened it; it draws 18 x 4.6 px at `ART_LONG_AXIS`, slim but unmistakably a scroll), character
+140 x 192; bullets at 256 long: physical 256 x 115, fire 256 x 102, ice 256 x 62, lightning 256 x 58,
+poison 256 x 83. Every luma band sat well above the floor bar, so no `lumaCurve` step this time
+(lowest band: the fire's tongues at 83).
+
+What these needed on top of the prompt:
+
+1. **WebP -> PNG** for the two WebP ones (Pillow, lossless); the other five arrived as PNG at
+   1774-2688 px wide and were copied as-is. Renamed to `<id>_raw.png`. One generator file was itself
+   named `crystal_bust_sprite_alt.png` — unrelated to this directory's `*_alt.png` reject convention
+   (it is kept as `pickup_character_original.png`; see "Generator originals" below).
+2. **`alphaClamp.mjs`**, as always — the veil was thin this time (0.3-1.4% of the canvas).
+3. **The trim test's 2 px slack was too tight for a needle tip.** The ice shard and the lightning bolt
+   fade through partial alpha over their last 3 px at 256 long (edge-column max alpha 110 / 55), and
+   `environmentArt.test.ts` measures the bbox at alpha > 200. That tip is the object, not margin, so
+   the slack became 1.5% of the side (never under 2 px); real untrimmed margin is tens of percent.
+
+Pipeline for this batch:
+
+```
+art/environment/<id>_raw.png
+  -> cp to client/public/environment/<id>.png
+  -> alphaClamp.mjs                                  # all seven
+  -> compress.mjs --long-axis=192                    # the two drops
+  -> compress.mjs --long-axis=256                    # the five bullets
+  -> alpha-audit.mjs client/public/environment
+```
+
+256 for the bullets because `Bullet` draws the art's long axis at 4 bullet radii: the largest round
+in the content (0.28 grid) is 36 world px long, x3.5 `MAX_ZOOM` x2 DPR = 251 device px.
+
+On the code side, `Bullet` gained a sprite child (between the core and the flare) that replaces the
+dot whenever `getBulletTexture(damageType)` resolves, rotated by `Scene` to the round's velocity
+every reconcile and mirrored vertically while flying leftward so the baked upper-left light stays
+on top. The halo, the spawn pop and flare, and the trail are unchanged.
+
+## Generator originals
+
+The second and third batches keep the generator's own files, untouched, as
+`<id>_original.webp|png` beside the `<id>_raw.png` made from each (the coin, energy, shield, emp,
+schematic and physical slug arrived as WebP; the character, fire, ice, lightning and poison as
+PNG). They are NOT the source of truth — `<id>_raw.png` is, and nothing reads the originals — but
+the raw files have had their WebP decoded and some were cropped, so an original is the only way
+to re-derive a raw from scratch. The first batch's originals were not kept.
+
+## Still drawn by code — the art backlog, 2026-10-01
+
+From the same audit. Element badges and HUD stat glyphs are deliberately absent (design/13 locks
+both as vectors), and so is everything that animates every frame (bars, particles, the portal's
+swirl, lighting, shadows, the minimap, debug layers).
+
+| Priority | Item | Drawn today in | Proposed file |
+|---|---|---|---|
+| ~~high~~ | ~~Shop counter~~ | shipped 2026-10-01, fourth batch below | `environment/shop_counter.png` |
+| ~~mid~~ | ~~Chest mechanism plate, idle + live~~ | shipped 2026-10-01, fourth batch below | `environment/chest_plate.png`, `chest_plate_on.png` |
+| mid | Touch controls: stick base/knob, fire, interact, swap — base, knob and fire prompts issued 2026-10-01 (`art/ui/prompts.md`, "Touch controls") | `TouchControlsView.ts` | `ui/touch_*.png`, 2x DPR of the drawn size |
+| mid | Buttons, panels, menu sheet frame + corner gem, slot frame | `widgets.ts`, `MenuSheet.ts` | 9-slices `btn_9slice`, `panel_9slice`, `sheet_frame_9slice`, `slot_frame_9slice`, plus `sheet_gem`. Touches the menu renderer — riskiest, last |
+| low | Guest avatar, matchmaking spinner, fail crystal | `AccountCard.ts`, `Matchmaking.ts` | `avatar_guest`, `spinner_gem`, `icon_fail_crystal` |
+| low | Rarity dot | `rarityOverlay.ts` | optional |
+
+Unlike the drops, none of the remaining items has a registry row that makes the swap code-free:
+the UI items need a loader as well as the swap.
+
+## The fourth batch (3), 2026-10-01 — shop counter, chest plates
+
+Three generations, three accepted, none regenerated — and all three came back with the PAINTED
+checkerboard (RGB, no alpha channel at all) despite the framing block's anti-checkerboard
+paragraph, which had held for every generation since 2026-08-20. Results and fixes after the
+prompts. Prompts as issued:
+
+### `shop_counter`
+
+Drawn today as a 24 x 18 px slab with a triangle awning over it; the shopkeeper (28 px wide) stands
+`KEEPER_BACK_PX` behind it, and the counter's body is Y-sorted IN FRONT of the keeper. So the art
+must NOT have a canopy or posts rising above the counter top — anything up there would paint over
+the merchant's body. The warm accent moves from the awning to a cloth valance on the counter's
+front. Asked wider (about 1.6 : 1) so it is no narrower than the keeper; `ShopLayer` would draw it
+by width, anchored at its bottom centre.
+
+> [framing block] A single game SPRITE of one small market-stall SHOP COUNTER — a low wooden-and-
+> stone trading counter a merchant stands behind. Output the image at 1024 x 1024 pixels, with a
+> 6-pixel fully transparent margin on all four sides; no part of the object may touch the image edge.
+>
+> Construction: one low, wide, solid counter block, about 1.6 times as wide as it is tall, seen
+> from the front with a shallow visible TOP surface (the top surface about 22% of the object's total
+> height). The top is one flat slab of pale stone with a slight overhang past the body on both
+> sides. Hanging from the front edge of the top, a cloth VALANCE covering the upper 40% of the front
+> face, its bottom edge cut into four or five large rounded scallops. Below the valance, the plain
+> front face of the counter. Two or three small closed goods on the counter top near the left end —
+> a small sack and a little box, kept low (under 15% of the object's height) and simple.
+>
+> CRITICAL, because a character is drawn standing BEHIND this counter and this sprite is drawn over
+> them: NOTHING may rise above the counter top except those low goods. NO canopy, NO awning roof, NO
+> posts, NO poles, NO sign, NO banner, NO lantern, NO arch over the counter.
+>
+> It stands on the ground: its bottom edge is flat and sits exactly on the bottom of the transparent
+> margin (this sprite is anchored at its bottom centre). But draw NO floor, NO rug, NO ground plate
+> under it.
+>
+> Colour: the counter body is a cool desaturated slate blue — front face approximately #3F4D63,
+> lit left part up to about #55657F, right end down to about #283242. The stone top is the brightest
+> plane, approximately #7E8DB0 with its upper-left up to about #A3B0CC. The valance is ONE warm
+> accent colour, a muted brick red approximately #C05A4A, shadowed folds about #7E3328 — the only
+> warm hue in the image. The goods on top a desaturated tan. Thin near-black outline on the
+> silhouette, the top slab's edge and the valance's edge only.
+>
+> Do NOT draw coins, a cash box, scales, text, prices, a logo, or any glow. It is displayed at about
+> 32 x 20 pixels in game, so: one valance, one slab, two items — no wood grain, no stone texture,
+> no stitching.
+
+### `chest_plate` and `chest_plate_on` — one plate, two states
+
+A ground DECAL (it goes in `Layers.ground`, under actors), so it is the one sprite in this directory
+not drawn from the front-and-slightly-down camera: it lies flat in the floor, foreshortened by
+`SHADOW_SQUASH` = 0.62, which is why the canvas is 1024 x 640. It is drawn 64 x 40 world px — the
+sim's own `CHEST_MECHANISM_RADIUS_GRID` — so the art's edge IS the trigger edge, and the centre
+mark has to stay because it marks the point the sim measures from. Live amber is
+`THEME.colors.pickupWeapon` (`#F6AD55`).
+
+Generate the idle plate first, then make the live one FROM it (image-to-image / edit, with the
+idle file attached): two separate generations will not agree on shape, and a plate that changes
+shape when stepped on reads as two different objects.
+
+> **`chest_plate`** — [framing block, but REPLACE its Camera paragraph with this:] Camera: this
+> object lies FLAT on the ground and is seen from above at a steep angle, so its circular outline
+> appears as a horizontal ELLIPSE exactly 0.62 times as tall as it is wide. No side walls, no
+> visible thickness, no perspective — it is a flat inlay in the floor.
+>
+> A single game SPRITE of one round stone PRESSURE PLATE set flush into a dungeon floor. Output the
+> image at 1024 x 640 pixels, with an 8-pixel fully transparent margin on all four sides; the
+> ellipse fills the canvas inside that margin.
+>
+> Construction: an outer ring of dark iron, about 8% of the plate's width thick; inside it, one flat
+> stone disc divided into four equal quarters by two thin dark seams crossing at the centre; at the
+> exact centre, one small round crystal STUD about 16% of the plate's width across. Everything
+> outside the ellipse is fully transparent — there is no floor, only the plate.
+>
+> State: DORMANT. The crystal stud is dull, unlit, a desaturated grey-blue approximately #6B7280.
+> The stone quarters approximately #4A505A, their upper-left edges lit up to about #5E6570; the iron
+> ring approximately #2A2E35. Nothing glows.
+>
+> Do NOT draw runes, glyphs, arrows, a skull, text, rubble, cracks or moss. NO glow, NO light, NO
+> shadow. It is displayed at about 64 x 40 pixels in game.
+>
+> **`chest_plate_on`** — (attach the accepted `chest_plate` image) Redraw THIS EXACT plate —
+> identical outline, ring, seams, stud position and size, identical canvas and margin — changing
+> ONLY its colours to the ACTIVATED state: the crystal stud is lit a bright solid amber,
+> approximately #FFD9A0 at its upper-left and #F6AD55 across the rest; the two seams are filled with
+> the same solid amber #F6AD55 as glowing channels running from the stud to the ring; the inner edge
+> of the iron ring carries one thin solid amber line #F6AD55 all the way round. The stone and the
+> iron stay exactly as they were. Solid flat colour only — NO soft glow, NO bloom, NO halo, NO light
+> spilling outside the plate; the game draws its own glow.
+
+### What these three needed
+
+1. **Keying the painted checkerboard.** All three objects are dark and fully closed by a near-black
+   outline, so the recipe in the art-pipeline notes applied: flood-fill from the canvas border over
+   light low-chroma pixels (luma >= 195, chroma <= 28) — the flood never crosses the outline, so no
+   interior hole can be punched; the counter's 576 light interior pixels (its slab's highlight)
+   stayed opaque — then a 2 px alpha ramp by luma (245 -> 120) on the pixels bordering the
+   background, colour un-mixed from the white it was blended over. Done in Python as the step
+   before `<id>_raw.png`; the untouched generator files are kept as `<id>_original.png`.
+2. **The plate's iron ring sat in the floor band** — luma 48 (idle) / 52 (live) against the floor's
+   39-49, so the rim, which IS the trigger edge, would have dissolved. `lumaCurve.mjs --lo=55
+   --hi=72 --lo-gain=1.4 --hi-gain=1` lifts only the ring and the outlines; the stone (p10 77)
+   and the amber are above `--hi` and untouched.
+3. **Aspects.** The counter came back 1.98 : 1 against the 1.6 asked; kept, and drawn 36 px wide so
+   its height lands at ~18 px — the Graphics slab's own `COUNTER_HEIGHT_PX`, which keeps
+   `KEEPER_BACK_PX` right for both paths. The plates came back 0.58 tall against the 0.62 squash
+   (7% flat); `buildPlate` stretches them onto the trigger ellipse on both axes, so the rim lands
+   on the trigger edge either way. The live plate kept the idle one's outline to within 1% —
+   image-to-image from the accepted idle file worked as intended.
+
+Results, trimmed: counter **320 x 161**, plates **576 x 333** / **576 x 335**.
+
+```
+art/environment/<id>_original.png  -> key (Python, above) ->  art/environment/<id>_raw.png
+  -> cp to client/public/environment/<id>.png
+  -> alphaClamp.mjs                                              # all three
+  -> lumaCurve.mjs --lo=55 --hi=72 --lo-gain=1.4 --hi-gain=1     # the two plates
+  -> compress.mjs --long-axis=320                                # counter: 36 px x 3.5 zoom x 2 DPR = 252
+  -> compress.mjs --long-axis=576                                # plates:  64 px x 3.5 x 2 = 448
+  -> alpha-audit.mjs client/public/environment
+```
+
+On the code side: `ShopLayer` builds the counter through `buildCounterBody` (sprite by width,
+feet-anchored, its shadow sized to whichever path drew) and re-asks for the texture until it
+resolves; `ChestLayer` keeps a holder per plate and redraws it on a key of occupancy AND
+art-loaded, so a late texture lands without anybody stepping on the plate.
+
 ## Standing finding, not fixed here
 
 `alpha-audit.mjs` flags **`client/public/environment/door_open_raw.png`** as HAZE: 44.7% partial

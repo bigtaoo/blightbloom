@@ -367,3 +367,86 @@ from it, 1920x1080 q82) and `lobby_rock_{a,b,c}_raw.png`, then `alphaClamp.mjs` 
 (160x148). A copy rather than a reference because the weapons ship in the `forge` pack, which only
 arrives at the run phase; the lobby may only draw what the `lobby` pack holds. If the cryobolt's
 art is ever regenerated, copy it again.
+
+# Touch controls (2026-10-01 pass)
+
+The on-screen controls `TouchControlsView.ts` draws as translucent Graphics circles today. A
+different job from every icon above: these sit ON TOP of live gameplay for the whole run, so
+they must stay readable over any floor while hiding as little of it as possible. The game, not
+the art, makes them translucent (sprite alpha about 0.5 idle, 0.9 while held), so each file is
+drawn fully opaque where it has paint, with a REAL transparent hole wherever the game should
+show through. Drawn sizes, from `TouchControls` (CSS px): stick base 180 across, knob 72, fire
+180, the three small buttons 80. Output is 1024 x 1024 and `compress.mjs` brings it down to
+2x DPR of the drawn size (base and fire 360, knob 144, small buttons 160).
+
+Colours are the ones the Graphics use, so the swap does not change what the controls mean:
+the move stick is the player teal `THEME.colors.player` (#4FD1C5), fire is the muzzle amber
+`THEME.colors.muzzle` (#FFE08A), interact is the heal green `THEME.colors.pickupHeal`
+(#68D391). The two weapon-swap buttons keep their code-drawn "1" / "2" labels on top of a
+shared art disc, so no image may contain a digit.
+
+Issued first: the three controls a phone player touches every second. The swap disc and the
+interact button follow in the next batch.
+
+## Extra constraints for this batch (paste alongside the locked style paragraph)
+
+This is a TOUCH CONTROL drawn over a moving game scene, not an icon on a menu. Perfectly
+circular and centred, viewed straight on, no perspective, no tilt. Bold but THIN dark outline
+(about 1.5% of the image width). Real alpha transparency: everything outside the circle, and
+every area described as "hollow" or "transparent", must be fully transparent pixels — do NOT
+paint a checkerboard pattern to suggest transparency, do NOT fill the background with white or
+grey; if true transparency is impossible, use one flat solid pure white (#FFFFFF) background
+and nothing else. No drop shadow, no outer glow, no light spilling past the outline — the game
+draws its own highlight while the control is held. No text, no letters, no digits.
+
+## 1. `touch_stick_base` — the movement stick's ring
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single circular joystick BASE for a mobile game: one flat ring whose
+> band is about 9% of the circle's diameter thick, in the player teal — base colour
+> approximately #4FD1C5, its upper-left arc lit up to about #8EEDE4, its lower-right arc down to
+> about #2C8C84. On the ring, at the four compass points (top, right, bottom, left), four small
+> inward-pointing chevrons in the same teal, each about 6% of the diameter wide, sitting on the
+> inner edge of the band. Faint crystal facets: the band is subtly cut into 12 equal flat
+> facets, each a slightly different shade of the same teal — no other texture. The ENTIRE
+> interior inside the band is hollow: fully transparent, nothing drawn there at all, so the game
+> scene shows through.
+
+## 2. `touch_stick_knob` — the thumb knob
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single round joystick THUMB KNOB for a mobile game, filling the canvas
+> inside the margin: a solid domed disc in the player teal, approximately #4FD1C5, cel-shaded
+> with one flat highlight crescent at the upper-left up to about #B5F5EF and one flat shadow
+> crescent at the lower-right down to about #2C8C84. At its centre, one small faceted crystal
+> gem about 22% of the disc's diameter, a bright cyan-white approximately #E6FFFC with a single
+> darker facet — the game's "purified crystal" accent. Solid, opaque, no hole. Simple enough to
+> read at 72 pixels across.
+
+## 3. `touch_fire` — the hold-to-fire button
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single large round FIRE BUTTON for a mobile shooter, filling the canvas
+> inside the margin. A ring band about 7% of the diameter thick in warm amber — base
+> approximately #FFE08A, upper-left lit to about #FFF2C4, lower-right shaded to about #C9A23F.
+> Inside the ring, a dark disc approximately #2A3140 at its centre, so the button stays legible
+> over a bright floor. On that dark disc, centred, one bold amber CROSSHAIR glyph, about 46% of
+> the button's diameter: a thin circle with four short ticks at the compass points that stop
+> short of the centre, and one small solid amber dot exactly in the middle. Nothing else — no
+> bullet, no gun, no flame, no explosion.
+
+## Workflow for this batch
+
+Same pipeline as the environment batches (`art/environment/prompts.md`, "Pipeline, in order"):
+keep the generator's file as `<id>_original.*`, decode the alpha channel before believing it,
+key a painted checkerboard by border flood-fill if one came back anyway, then
+`alphaClamp.mjs` -> `compress.mjs --long-axis=<2x drawn size>` -> `alpha-audit.mjs`. Check each
+one composited at its drawn size over a BRIGHT and a dark floor swatch at alpha 0.5 — the
+stick base's hollow interior and the fire button's ring are the two places that fail in
+opposite directions (a filled interior hides the floor; a ring with no dark edge vanishes on
+a bright one).
+
+Code side, not done yet: unlike the drops, no registry makes this a code-free swap.
+`TouchControlsView` needs a loader for `ui/touch_*.png` and a sprite path per control, keeping
+today's Graphics as the fallback until the textures resolve, and the held state as an alpha
+change on the sprite.
