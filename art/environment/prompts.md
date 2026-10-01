@@ -322,6 +322,72 @@ art/environment/<id>_raw.png                       # keyed source of truth, neve
 `Portal` scale by the TEXTURE's dimensions, so untrimmed margin silently shrinks the object on
 screen by however much empty space the generator left (up to 44% on this batch's rejects).
 
+## The second drop batch (4), 2026-10-01 — coin, energy, shield, emp
+
+Why: an audit of every Graphics-drawn visual in the client found these four were the only drop
+kinds a player meets in an ordinary run that still had NO art at all — the coin especially, since
+it drops from every kill once shops exist. Same framing block, same 1024 x 1024 + 6 px margin,
+colours taken from `THEME.colors.pickup*` so the additive glow behind each sprite still matches.
+Four generations, four accepted; none regenerated.
+
+Each prompt named its specific failure modes up front rather than waiting to be bitten:
+
+- **`pickup_coin`** — a coin's natural shape is a disc, and the bandage reject above proved a pale
+  disc with a dark centre reads as an eye in this game. So: ONE thick coin tilted back ~35 degrees
+  (a wide ellipse with its reeded EDGE showing as a darker band along the bottom), a raised rim, and
+  a solid four-pointed star at the centre that is the BRIGHTEST part of the face — "do NOT draw a
+  dark hole, a dark dot, a dark ring, a square hole or concentric rings at the centre". Also "no
+  facets, no spikes", because coin and material share the warm band (`#FFC94A` vs `#F6E05E`) and
+  must differ in form. Face `#FFE9A8 / #FFC94A / #D99A1E`, edge `#A8701A`, star `#FFF3C4`.
+- **`pickup_energy`** — an upright glass CAPSULE (0.6 wide), dark metal cap bands on the top and
+  bottom 14%, teal fill `#A6F3EC / #4FD1C5 / #1F7A72`, and a SOLID filled near-white bolt at least 22%
+  of the width thick (the buff reject's outline-arrowhead lesson). A cell, so it never shares a
+  silhouette with the material crystal or the shield.
+- **`pickup_shield`** — a flat face-on heater shield (0.82 wide), a raised border 11% thick, the face
+  split by one vertical line into a lit `#76E4F7` and a shadowed `#2E9DB5` half (that split IS the
+  cel shading), and a SOLID near-white upward chevron. Explicitly "NO extrusion, NO 3D side faces",
+  since shield and energy are both cyan-family and have to be told apart by form.
+- **`pickup_emp`** — a squat round dark-gunmetal grenade (`#6B7685 / #444C58 / #1E232B`), one thick
+  glowing `#FFF176` equatorial band with three dark notches, a fuse cap and lever on top; "the body
+  must NOT be pure black — the bright band must be the dominant read". No lightning, no hazard sign.
+
+Results, trimmed: coin **192 x 140** (aspect 1.37 against 1.35 asked — the tilt landed, and its
+centre patch measures well above its own mean, which `environmentArt.test.ts` now asserts), energy
+88 x 192, shield 177 x 192, emp 183 x 192. All four lit from the upper left as asked.
+
+### What these four needed on top of the prompt
+
+1. **WebP -> PNG**, as before (Pillow, lossless), and the generator's UUID names replaced with
+   `pickup_<kind>_raw.png`. The UUID's trailing segment is base64 of the generator's own output path
+   (`.../gold_coin_sprite_1024`), which is how the four were told apart without opening them.
+2. **The alpha veil `alphaClamp.mjs` exists for.** Every file carried a sheet of alpha 1-8 over the
+   WHOLE canvas: the `alpha > 0` bbox of the coin was 874 x 996 against a real object of 565 x 411.
+   Trimmed as-is, the coin would have drawn at less than half its size. `alphaClamp.mjs` (floor 8)
+   brought every bbox onto its `alpha > 8` measurement exactly.
+3. **Two dark bands sank into the floor — the heal reject's failure, caught by its test.** The emp's
+   lower fifth measured luma **49.5**, inside the floor's own 39-49 band (the grenade's body vanished
+   at display size, leaving a floating yellow stripe), and the energy cell's dark caps put its top
+   band at 67.6 against the 69 bar. Fixed offline with a luma-keyed LIFT, the inverse of the
+   arch's darkening: `lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.6` (emp) / `--lo-gain=1.35`
+   (energy), `--hi-gain=1`, so the bright band, the bolt and the near-black outlines are untouched
+   (an outline at ~20 lifted 1.6x is still an outline). Bands after: emp 131 / 154 / **79**, energy
+   **105** / 180 / 88.
+
+Pipeline for this batch:
+
+```
+art/environment/pickup_<kind>_raw.png
+  -> cp to client/public/environment/pickup_<kind>.png
+  -> alphaClamp.mjs                                              # all four (default floor 8)
+  -> lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.6 --hi-gain=1    # emp ONLY
+  -> lumaCurve.mjs --lo=90 --hi=150 --lo-gain=1.35 --hi-gain=1   # energy ONLY
+  -> compress.mjs --long-axis=192
+  -> alpha-audit.mjs client/public/environment
+```
+
+Still drawn, deliberately not in this batch: `schematic` (at most one per run) and `character`
+(boss-only). Both slot in the same way — a file plus one `ENV_SPRITE_ASSETS` row.
+
 ## Standing finding, not fixed here
 
 `alpha-audit.mjs` flags **`client/public/environment/door_open_raw.png`** as HAZE: 44.7% partial

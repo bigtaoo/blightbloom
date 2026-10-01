@@ -43,6 +43,10 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   pickup_buff: () => getPickupTexture('buff'),
   pickup_crate: () => getPickupTexture('crate'),
   pickup_bandage: () => getPickupTexture('bandage'),
+  pickup_coin: () => getPickupTexture('coin'),
+  pickup_energy: () => getPickupTexture('energy'),
+  pickup_shield: () => getPickupTexture('shield'),
+  pickup_emp: () => getPickupTexture('emp'),
   prop_crate: () => getPropTexture('crate'),
   prop_barrel: () => getPropTexture('barrel'),
   prop_rubble: () => getPropTexture('rubble'),
@@ -75,7 +79,7 @@ describe('environmentSprites — every key a caller can ask for is actually regi
   // typo in the asset table is invisible at run time: the drop just keeps drawing its
   // Graphics fallback forever, which looks like art that was never generated. Same guard
   // biomeTiles.test.ts keeps over BIOME_TILE_ASSET_KEYS.
-  it.each(['material', 'heal', 'buff', 'crate', 'bandage'])('pickup_%s has a file', (kind) => {
+  it.each(['material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp'])('pickup_%s has a file', (kind) => {
     expect(ENV_SPRITE_ASSET_KEYS).toContain(`pickup_${kind}`);
   });
 
@@ -126,7 +130,7 @@ describe('environmentSprites — every key a caller can ask for is actually regi
 
 describe('environmentSprites — the getters before any preload', () => {
   it('returns undefined for every drop kind, the curtain, and the arch', () => {
-    for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage', 'weapon']) {
+    for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp', 'weapon']) {
       expect(getPickupTexture(kind)).toBeUndefined();
     }
     expect(getDoorCurtainTexture()).toBeUndefined();
@@ -171,7 +175,7 @@ describe('environmentSprites — each getter resolves the key it registered, aft
       expect(at(getDoorTexture(false))).toBe('/environment/door_open_raw.png');
       expect(at(getDoorCurtainTexture())).toBe('/environment/door_curtain_raw.png');
       expect(at(getPortalArchTexture())).toBe('/environment/portal_arch.png');
-      for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage']) {
+      for (const kind of ['material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp']) {
         expect(at(getPickupTexture(kind))).toBe(`/environment/pickup_${kind}.png`);
       }
       for (const kind of ['crate', 'barrel', 'rubble']) {

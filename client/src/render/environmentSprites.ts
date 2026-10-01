@@ -1,5 +1,5 @@
 // Standalone environment fixtures (design/05 "Room & door model", 2026-08-04) — the door
-// pair, the five in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
+// pair, the nine in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
 // portal art pass), the room props (2026-08-24) and the shop's shopkeeper (2026-09-14, the
 // first PERSON in this registry rather than a fixture). Same non-blocking best-effort
 // preload pattern as biomeTiles.ts/weaponSkins.ts: a missing/not-yet-generated sprite just
@@ -27,6 +27,12 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   pickup_buff: '/environment/pickup_buff.png',
   pickup_crate: '/environment/pickup_crate.png',
   pickup_bandage: '/environment/pickup_bandage.png',
+  // The second drop batch (2026-10-01, `art/environment/prompts.md`): the four kinds that had
+  // been drawn as Graphics since they were added, with no fallback-vs-art split at all.
+  pickup_coin: '/environment/pickup_coin.png',
+  pickup_energy: '/environment/pickup_energy.png',
+  pickup_shield: '/environment/pickup_shield.png',
+  pickup_emp: '/environment/pickup_emp.png',
   // The extraction checkpoint's standing stone arch. Only the STRUCTURE is art — the
   // vortex rings, core, infalling motes and ground bloom stay program-drawn in Portal.ts
   // (they animate every frame, which a sprite cannot do).

@@ -128,7 +128,7 @@ function runsAt(img: Img, fy: number): number[] {
   return out;
 }
 
-const PICKUPS = ['material', 'heal', 'buff', 'crate', 'bandage'] as const;
+const PICKUPS = ['material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp'] as const;
 const pickup = (kind: string): Img => load(`../../../public/environment/pickup_${kind}.png`);
 const arch = load('../../../public/environment/portal_arch.png');
 
@@ -224,6 +224,25 @@ describe('the shipped drop sprites — resolution, and contrast against the floo
     // eye needs a roundish outline, so a clearly elongated one cannot become one.
     const b = bbox(pickup('bandage'));
     expect(b.w / b.h).toBeGreaterThan(1.6);
+  });
+
+  it('the coin reads as a tilted coin, never as an eye', () => {
+    // The bandage's lesson applied before the fact (2026-10-01): a coin is the one drop whose
+    // natural shape IS a disc. Two properties keep it from becoming a pale disc with a dark
+    // middle: the tilt that makes it a wide ellipse with a visible edge, and a centre that is
+    // the BRIGHTEST part of the face (a raised star) rather than a hole.
+    const img = pickup('coin');
+    const b = bbox(img);
+    expect(b.w / b.h).toBeGreaterThan(1.2);
+    let sum = 0;
+    let n = 0;
+    for (let y = b.y + Math.round(b.h * 0.3); y < b.y + Math.round(b.h * 0.5); y++) {
+      for (let x = b.x + Math.round(b.w * 0.4); x < b.x + Math.round(b.w * 0.6); x++) {
+        sum += lumaAt(img, x, y);
+        n++;
+      }
+    }
+    expect(sum / n).toBeGreaterThan(meanLuma(img) + 20);
   });
 
   it('the crate keeps its top the brightest plane on the object', () => {
