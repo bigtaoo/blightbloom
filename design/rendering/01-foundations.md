@@ -71,6 +71,16 @@ tiers live in [../01-rendering.md](../01-rendering.md).
   - **`MAX_ZOOM` 4.5 → 3.5**, so the same step slides less screen. A level-1 room no longer quite
     covers a desktop viewport, and a sliver of its neighbours shows at the edges.
   These constants are a first tuning and sit together at the top of `cameraRig.ts`.
+- **The world offset is snapped to whole pixels** (2026-10-01, live report: *"角色移动的时候物品抖动
+  厉害 … 墙壁也会抖"*). `updateCamera` rounds `layers.world.x/y` after the shake is added. Most of
+  the world renders through resolution-1 filter targets with no MSAA, so a fractional offset
+  re-rasterized every edge at a new sub-pixel phase each frame, and walls and drops crawled
+  against each other while the player walked. Measured live while panning 0.27 px a frame, the
+  mean per-pixel residual between consecutive frames (after the best integer shift) was 1.01
+  unsnapped against 0.07 snapped. The grid is whole LOGICAL pixels, not device pixels, because
+  those filter targets are 1x on every display. The zoom is not snapped: it only eases between
+  rooms. A different stop-go is deliberate and stays: the hit-stop freezes sim ticks for a strong
+  hit, so the player and the camera pause for a few frames mid-fight.
 
 ---
 

@@ -470,7 +470,7 @@ swirl, lighting, shadows, the minimap, debug layers).
 |---|---|---|---|
 | ~~high~~ | ~~Shop counter~~ | shipped 2026-10-01, fourth batch below | `environment/shop_counter.png` |
 | ~~mid~~ | ~~Chest mechanism plate, idle + live~~ | shipped 2026-10-01, fourth batch below | `environment/chest_plate.png`, `chest_plate_on.png` |
-| mid | Touch controls: stick base/knob, fire, interact, swap | `TouchControlsView.ts` | `ui/touch_*.png`, 128 px |
+| mid | Touch controls: stick base/knob, fire, interact, swap — base, knob and fire prompts issued 2026-10-01 (`art/ui/prompts.md`, "Touch controls") | `TouchControlsView.ts` | `ui/touch_*.png`, 2x DPR of the drawn size |
 | mid | Buttons, panels, menu sheet frame + corner gem, slot frame | `widgets.ts`, `MenuSheet.ts` | 9-slices `btn_9slice`, `panel_9slice`, `sheet_frame_9slice`, `slot_frame_9slice`, plus `sheet_gem`. Touches the menu renderer — riskiest, last |
 | low | Guest avatar, matchmaking spinner, fail crystal | `AccountCard.ts`, `Matchmaking.ts` | `avatar_guest`, `spinner_gem`, `icon_fail_crystal` |
 | low | Rarity dot | `rarityOverlay.ts` | optional |
