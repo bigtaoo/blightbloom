@@ -1,6 +1,6 @@
 /**
- * The SHIPPED drop/portal art itself (`client/public/environment/pickup_*.png`,
- * `portal_arch.png`), decoded and measured (2026-08-20). Sibling of `pillarArt.test.ts`,
+ * The SHIPPED drop/portal/projectile art itself (`client/public/environment/pickup_*.png`,
+ * `bullet_*.png`, `portal_arch.png`), decoded and measured (2026-08-20; projectiles 2026-10-01). Sibling of `pillarArt.test.ts`,
  * for the same reason: every other test in this directory checks what the renderer does
  * with a texture, and these objects' whole look now lives in the files.
  *
@@ -128,13 +128,18 @@ function runsAt(img: Img, fy: number): number[] {
   return out;
 }
 
-const PICKUPS = ['material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp'] as const;
+const PICKUPS = [
+  'material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp', 'schematic', 'character',
+] as const;
 const pickup = (kind: string): Img => load(`../../../public/environment/pickup_${kind}.png`);
+const BULLETS = ['physical', 'fire', 'ice', 'lightning', 'poison'] as const;
+const bullet = (type: string): Img => load(`../../../public/environment/bullet_${type}.png`);
 const arch = load('../../../public/environment/portal_arch.png');
 
 describe('every shipped environment sprite — the pipeline steps that leave no other trace', () => {
   const all: ReadonlyArray<[string, Img]> = [
     ...PICKUPS.map((k) => [`pickup_${k}`, pickup(k)] as [string, Img]),
+    ...BULLETS.map((t) => [`bullet_${t}`, bullet(t)] as [string, Img]),
     ['portal_arch', arch],
   ];
 
@@ -170,9 +175,12 @@ describe('every shipped environment sprite — the pipeline steps that leave no 
     // `compress.mjs` trims the alpha bbox, and `Pickup`/`Portal` scale by the TEXTURE's
     // dimensions — so untrimmed margin silently shrinks the object on screen by however
     // much empty space the generator happened to leave (up to 44% on this batch's rejects).
+    // The slack is 1.5% of the side, never under 2 px: a needle-tipped projectile (the ice
+    // shard, the lightning bolt) fades through partial alpha over its last 3 px of a 256 px
+    // file, and that tip is the object, not margin. Margin worth catching is tens of percent.
     const b = bbox(img);
-    expect(b.w).toBeGreaterThanOrEqual(img.width - 2);
-    expect(b.h).toBeGreaterThanOrEqual(img.height - 2);
+    expect(b.w).toBeGreaterThanOrEqual(img.width - Math.max(2, img.width * 0.015));
+    expect(b.h).toBeGreaterThanOrEqual(img.height - Math.max(2, img.height * 0.015));
   });
 });
 
@@ -245,6 +253,20 @@ describe('the shipped drop sprites — resolution, and contrast against the floo
     expect(sum / n).toBeGreaterThan(meanLuma(img) + 20);
   });
 
+  it('the schematic lies flat as a scroll, never upright like the energy cell', () => {
+    // The two boss-adjacent shapes that could be confused are both cylinders: the energy cell
+    // stands (88 x 192) and the schematic must lie. At 18 px the orientation is the read.
+    const b = bbox(pickup('schematic'));
+    expect(b.w / b.h).toBeGreaterThan(2);
+  });
+
+  it('the character bust stands taller than it is wide', () => {
+    // A head over shoulders over a base: the silhouette that keeps it apart from the round
+    // drops (coin, emp) and the wide ones (bandage, schematic) it can share a floor with.
+    const b = bbox(pickup('character'));
+    expect(b.h / b.w).toBeGreaterThan(1.2);
+  });
+
   it('the crate keeps its top the brightest plane on the object', () => {
     // Same sky-facing rule the pillar's cap follows, and the same defect that has now been
     // caught twice in this project: a raised surface that reads darker than the ground it
@@ -252,6 +274,58 @@ describe('the shipped drop sprites — resolution, and contrast against the floo
     // anyone has for height.
     const img = pickup('crate');
     expect(rowBand(img, 0, 0.2)).toBeGreaterThan(rowBand(img, 0.4, 0.6) + 20);
+  });
+});
+
+describe('the shipped projectile sprites (2026-10-01)', () => {
+  it.each(BULLETS)('bullet_%s has resolution headroom for the largest round at full zoom', (type) => {
+    // `Bullet` draws the art's long axis at ART_LENGTH_R (4) radii. The biggest round in the
+    // content is 0.28 grid (9 world px), at MAX_ZOOM 3.5 and up to 2x device pixel ratio.
+    const img = bullet(type);
+    expect(Math.max(img.width, img.height)).toBeGreaterThanOrEqual(4 * 0.28 * 32 * 3.5 * 2);
+  });
+
+  it.each(BULLETS)('bullet_%s is drawn pointing along x', (type) => {
+    // `Bullet` rotates the sprite by atan2(vy, vx), which is only right for art that points
+    // +x. A file authored vertical would fly sideways through every shot.
+    const b = bbox(bullet(type));
+    expect(b.w / b.h).toBeGreaterThan(2);
+  });
+
+  it.each(BULLETS)('bullet_%s reads clearly brighter than the floor it flies over', (type) => {
+    expect(meanLuma(bullet(type))).toBeGreaterThan(FLOOR_LUMA_MAX + 40);
+  });
+
+  it('the physical round carries no hue of its own, so the faction tint lands true', () => {
+    // A physical round is blue for the player and orange for an enemy, and a deflect flips it
+    // in flight — `Bullet` tints this file per faction. Any baked hue would multiply into both.
+    const img = bullet('physical');
+    let maxChroma = 0;
+    for (let i = 0; i < img.data.length; i += 4) {
+      if (img.data[i + 3]! <= 200) continue;
+      const r = img.data[i]!;
+      const g = img.data[i + 1]!;
+      const b = img.data[i + 2]!;
+      maxChroma = Math.max(maxChroma, Math.max(r, g, b) - Math.min(r, g, b));
+    }
+    expect(maxChroma).toBeLessThan(24);
+  });
+
+  it('every elemental round DOES carry its hue — it is never tinted at runtime', () => {
+    for (const type of ['fire', 'ice', 'lightning', 'poison']) {
+      const img = bullet(type);
+      let chroma = 0;
+      let n = 0;
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i + 3]! <= 200) continue;
+        const r = img.data[i]!;
+        const g = img.data[i + 1]!;
+        const b = img.data[i + 2]!;
+        chroma += Math.max(r, g, b) - Math.min(r, g, b);
+        n++;
+      }
+      expect(chroma / n, type).toBeGreaterThan(60);
+    }
   });
 });
 

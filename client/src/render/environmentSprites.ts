@@ -1,7 +1,8 @@
 // Standalone environment fixtures (design/05 "Room & door model", 2026-08-04) — the door
-// pair, the nine in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
-// portal art pass), the room props (2026-08-24) and the shop's shopkeeper (2026-09-14, the
-// first PERSON in this registry rather than a fixture). Same non-blocking best-effort
+// pair, the eleven in-run drop sprites, the extraction portal's arch (2026-08-20 pickup/
+// portal art pass), the room props (2026-08-24), the shop's shopkeeper (2026-09-14, the
+// first PERSON in this registry rather than a fixture) and the five projectiles
+// (2026-10-01). Same non-blocking best-effort
 // preload pattern as biomeTiles.ts/weaponSkins.ts: a missing/not-yet-generated sprite just
 // leaves its caller on the existing Graphics fallback, never blocks boot.
 import { Assets, Texture } from 'pixi.js';
@@ -33,6 +34,22 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   pickup_energy: '/environment/pickup_energy.png',
   pickup_shield: '/environment/pickup_shield.png',
   pickup_emp: '/environment/pickup_emp.png',
+  // The third drop batch (2026-10-01): the two boss-only kinds, which closes the set — every
+  // kind but `weapon` now has a file.
+  pickup_schematic: '/environment/pickup_schematic.png',
+  pickup_character: '/environment/pickup_character.png',
+  // Projectiles (2026-10-01), keyed `bullet_<DamageType>` to match `getBulletTexture`. Filed
+  // here rather than in a registry of their own because they are the same kind of file — a
+  // lone object, drawn far smaller than its source, needing the same mip chain — and this
+  // loader already reaches both the boot preload and the WeChat package checks. Each points
+  // +x; `Bullet` rotates it onto the round's velocity. `bullet_physical` is greyscale on
+  // purpose: a physical round takes its FACTION colour, and a melee deflect flips that
+  // mid-flight, so the hue is a runtime tint and never baked into the file.
+  bullet_physical: '/environment/bullet_physical.png',
+  bullet_fire: '/environment/bullet_fire.png',
+  bullet_ice: '/environment/bullet_ice.png',
+  bullet_lightning: '/environment/bullet_lightning.png',
+  bullet_poison: '/environment/bullet_poison.png',
   // The extraction checkpoint's standing stone arch. Only the STRUCTURE is art — the
   // vortex rings, core, infalling motes and ground bloom stay program-drawn in Portal.ts
   // (they animate every frame, which a sprite cannot do).
@@ -110,6 +127,12 @@ export function getDoorCurtainTexture(): Texture | undefined {
  *  Graphics silhouette it drew before this art existed. */
 export function getPickupTexture(kind: string): Texture | undefined {
   return textures.get(`pickup_${kind}`);
+}
+
+/** A projectile's sprite, by `DamageType`. Undefined until preloaded — `Bullet` falls back to
+ *  the flat dot it drew before this art existed. */
+export function getBulletTexture(damageType: string): Texture | undefined {
+  return textures.get(`bullet_${damageType}`);
 }
 
 /** The extraction portal's standing arch. Undefined until preloaded — `Portal` falls back

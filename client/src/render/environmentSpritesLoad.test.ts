@@ -61,6 +61,8 @@ describe('environmentSprites — each getter resolves to its OWN file', () => {
     expect(src(getPickupTexture('energy'))).toBe('/environment/pickup_energy.png');
     expect(src(getPickupTexture('shield'))).toBe('/environment/pickup_shield.png');
     expect(src(getPickupTexture('emp'))).toBe('/environment/pickup_emp.png');
+    expect(src(getPickupTexture('schematic'))).toBe('/environment/pickup_schematic.png');
+    expect(src(getPickupTexture('character'))).toBe('/environment/pickup_character.png');
   });
 
   it('has nothing for a weapon drop even after a full successful preload', async () => {

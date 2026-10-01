@@ -1,10 +1,11 @@
-import { Graphics } from 'pixi.js';
+import { Graphics, Sprite, Texture } from 'pixi.js';
 import type { DamageType } from '@dd/engine';
 import { THEME, ELEMENT_COLORS } from '../theme';
+import { getBulletTexture } from '../../render/environmentSprites';
 import { Entity } from './Entity';
 import type { Faction } from './Actor';
 
-// Bullet view. Pure presentation: a coloured dot with a shadow, positioned by the
+// Bullet view. Pure presentation: a projectile sprite with a shadow, positioned by the
 // engine each tick. The engine may flip a bullet's faction (melee deflect: enemy →
 // player); the view re-reads faction each reconcile and recolours to match.
 //
@@ -12,6 +13,11 @@ import type { Faction } from './Actor';
 // hue with a soft additive glow halo, so a fire/ice/lightning/poison shot reads at a
 // glance — distinct from a plain (faction-coloured) physical round. The world-space
 // motion trail is spawned by Game (fx layer), keyed off the same element colour.
+//
+// Since 2026-10-01 each damage type also has its own SHAPE (`bullet_<type>.png`: a slug, a
+// fireball, an ice shard, a lightning bolt, a toxic glob), which is design/13's dual-channel
+// rule — colour AND form — reaching the projectiles. The flat dot is the fallback for any
+// round whose texture has not loaded. The glow, the spawn flare and the trail stay drawn.
 /**
  * How far (in world px of TRAVEL, not wall-clock time) a bullet eases from its shooter's
  * drawn muzzle onto its true sim line (setMuzzleOrigin) before the correction is fully spent.
@@ -53,11 +59,24 @@ const SPAWN_POP_SCALE = 0.9;
 /** The departure flare's radius, in bullet radii. Bigger than the pop because it is a glow
  *  around the round rather than the round itself. */
 const SPAWN_FLARE_R = 3.2;
+/**
+ * The projectile art's long axis, in bullet radii — twice the dot's diameter. Every file is
+ * 2.2-4.4 times as long as it is tall, so at this length the drawn body is about as thick as
+ * the dot it replaces and the extra extent all runs along the flight line, where it reads as
+ * motion rather than as a bigger hitbox.
+ */
+const ART_LENGTH_R = 4;
 
 export class Bullet extends Entity {
   private glow = new Graphics(); // additive halo, behind the core (elemental only)
-  private gfx = new Graphics();
+  private gfx = new Graphics(); // the flat-dot fallback, drawn only while `art` has no texture
+  private art = new Sprite(Texture.EMPTY); // the projectile sprite, pointed along the velocity
   private flare = new Graphics(); // one-shot departure glow (see SPAWN_POP_MS)
+  private artScale = 0; // texture px → world px; 0 = no art, the dot is drawn
+  // -1 while flying leftward: the sprite is mirrored as well as rotated, so the light baked
+  // into the art (upper left) stays on top instead of flipping under the round.
+  private artFlipY = 1;
+  private popScale = 1;
   private popMs = SPAWN_POP_MS; // remaining spawn-pop time; 0 = drawn at its true size
   private radiusPx: number;
   private faction: Faction | null = null;
@@ -83,7 +102,9 @@ export class Bullet extends Entity {
     this.flare.circle(0, 0, radiusPx * SPAWN_FLARE_R).fill({ color: 0xffffff, alpha: 0.5 });
     this.flare.circle(0, 0, radiusPx * SPAWN_FLARE_R * 0.45).fill({ color: 0xffffff, alpha: 0.5 });
     this.flare.blendMode = 'add';
-    this.addChild(this.glow, this.gfx, this.flare);
+    this.art.anchor.set(0.5);
+    this.art.visible = false;
+    this.addChild(this.glow, this.gfx, this.art, this.flare);
     this.makeShadow(radiusPx * 0.8);
   }
 
@@ -107,19 +128,52 @@ export class Bullet extends Entity {
     );
   }
 
+  /**
+   * Point the sprite along the round's ground velocity (world px per anything — only the
+   * direction is read). Re-sent every reconcile rather than once at spawn, because a deflect
+   * reverses a round in flight. A zero velocity leaves the last heading, since it has none.
+   */
+  setHeading(vx: number, vy: number): void {
+    if (vx === 0 && vy === 0) return;
+    this.art.rotation = Math.atan2(vy, vx);
+    this.artFlipY = vx < 0 ? -1 : 1;
+    this.applyScale();
+  }
+
   private redraw(): void {
     const color = this.color;
     const r = this.radiusPx;
+    const elemental = ELEMENT_COLORS[this.damageType] !== undefined;
     this.gfx.clear();
-    this.gfx.circle(0, 0, r).fill({ color });
+    const tex = getBulletTexture(this.damageType);
+    if (tex) {
+      this.art.texture = tex;
+      // An elemental file carries its own colours; the physical one is greyscale and takes
+      // the faction colour here, which is what keeps a deflected round recolouring.
+      this.art.tint = elemental ? 0xffffff : color;
+      this.artScale = (r * ART_LENGTH_R) / Math.max(tex.width, tex.height);
+      this.art.visible = true;
+    } else {
+      this.art.visible = false;
+      this.artScale = 0;
+      this.gfx.circle(0, 0, r).fill({ color });
+    }
+    this.applyScale();
 
-    // Elemental rounds get a halo; physical rounds stay a clean dot.
+    // Elemental rounds get a halo; physical rounds stay clean.
     this.glow.clear();
-    if (ELEMENT_COLORS[this.damageType] !== undefined) {
+    if (elemental) {
       for (let i = 3; i >= 1; i--) {
         this.glow.circle(0, 0, r * (1 + i * 0.5)).fill({ color, alpha: 0.12 });
       }
     }
+  }
+
+  private applyScale(): void {
+    const s = this.popScale;
+    this.gfx.scale.set(s);
+    this.glow.scale.set(s);
+    this.art.scale.set(this.artScale * s, this.artScale * s * this.artFlipY);
   }
 
   /**
@@ -192,9 +246,8 @@ export class Bullet extends Entity {
       this.popMs = Math.max(0, this.popMs - frameDt);
       const k = this.popMs / SPAWN_POP_MS; // 1 at the shot → 0 once settled
       const ease = k * k; // same ease-out shape as the muzzle correction below
-      const s = 1 + SPAWN_POP_SCALE * ease;
-      this.gfx.scale.set(s);
-      this.glow.scale.set(s);
+      this.popScale = 1 + SPAWN_POP_SCALE * ease;
+      this.applyScale();
       // The flare runs the other way: it starts at full size and collapses into the round.
       this.flare.scale.set(0.25 + 0.75 * ease);
       this.flare.alpha = ease;

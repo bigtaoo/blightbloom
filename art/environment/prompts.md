@@ -388,6 +388,68 @@ art/environment/pickup_<kind>_raw.png
 Still drawn, deliberately not in this batch: `schematic` (at most one per run) and `character`
 (boss-only). Both slot in the same way — a file plus one `ENV_SPRITE_ASSETS` row.
 
+## The third batch (2 drops + 5 projectiles), 2026-10-01 — schematic, character, bullets
+
+The last two Graphics-only drops, plus a sprite per `DamageType` for the projectiles. Seven
+generations, seven accepted; none regenerated. Same framing block for the drops; the bullets
+replaced its Camera paragraph with a pure SIDE VIEW pointing +x on a 1024 x 512 canvas, "maximum
+TWO colour bands plus the outline, one bold silhouette, nothing thin", since they are drawn 15-36
+world px long.
+
+Considered and NOT made: the HUD stat-chip glyphs and the element badges. design/13 locks both as
+vectors (tinted per stat/element, crisp at any DPR), and at 14 px / 6 px a generated image would be
+less legible than the glyph it replaced.
+
+- **`pickup_schematic`** — a horizontal rolled scroll in the `pickupSchematic` rose
+  (`#FBB6CE / #F687B3 / #B83280`), near-white `#FFF0F6` end knobs, one `#97266D` tie band. "Do NOT
+  stand it upright": the energy cell is an upright capsule. No writing on the paper.
+- **`pickup_character`** — a faceless lavender crystal bust (`#E9D8FD / #B794F4 / #6B46C1`) on a
+  short hexagonal base. "NO face, NO eyes, NO mouth": the bandage's eye lesson, and a skull already
+  means poison in this game.
+- **`bullet_physical`** — a plain capsule slug in NEUTRAL GREYSCALE only (`#FFFFFF / #B8BEC8`,
+  outline `#3A3F48`). A physical round takes its faction colour and a deflect flips it in flight,
+  so `Bullet` tints this file at runtime; it measures max chroma 18 on its opaque pixels.
+- **`bullet_fire / _ice / _lightning / _poison`** — fireball with fat flame tongues, a three-facet
+  ice shard, a fat two-bend zigzag, a slime glob with one trailing droplet, each in its locked
+  element hex (`statusBurn` / `statusChill` / `statusShock` / `statusPoison`) so the code-drawn halo
+  around it still matches.
+
+Results, trimmed: schematic **192 x 49** (aspect 3.9 against the 2.6 asked — the knobs and the curl
+widened it; it draws 18 x 4.6 px at `ART_LONG_AXIS`, slim but unmistakably a scroll), character
+140 x 192; bullets at 256 long: physical 256 x 115, fire 256 x 102, ice 256 x 62, lightning 256 x 58,
+poison 256 x 83. Every luma band sat well above the floor bar, so no `lumaCurve` step this time
+(lowest band: the fire's tongues at 83).
+
+What these needed on top of the prompt:
+
+1. **WebP -> PNG** for the two WebP ones (Pillow, lossless); the other five arrived as PNG at
+   1774-2688 px wide and were copied as-is. Renamed to `<id>_raw.png`. One generator file was itself
+   named `crystal_bust_sprite_alt.png` — unrelated to this directory's `*_alt.png` reject convention.
+2. **`alphaClamp.mjs`**, as always — the veil was thin this time (0.3-1.4% of the canvas).
+3. **The trim test's 2 px slack was too tight for a needle tip.** The ice shard and the lightning bolt
+   fade through partial alpha over their last 3 px at 256 long (edge-column max alpha 110 / 55), and
+   `environmentArt.test.ts` measures the bbox at alpha > 200. That tip is the object, not margin, so
+   the slack became 1.5% of the side (never under 2 px); real untrimmed margin is tens of percent.
+
+Pipeline for this batch:
+
+```
+art/environment/<id>_raw.png
+  -> cp to client/public/environment/<id>.png
+  -> alphaClamp.mjs                                  # all seven
+  -> compress.mjs --long-axis=192                    # the two drops
+  -> compress.mjs --long-axis=256                    # the five bullets
+  -> alpha-audit.mjs client/public/environment
+```
+
+256 for the bullets because `Bullet` draws the art's long axis at 4 bullet radii: the largest round
+in the content (0.28 grid) is 36 world px long, x3.5 `MAX_ZOOM` x2 DPR = 251 device px.
+
+On the code side, `Bullet` gained a sprite child (between the core and the flare) that replaces the
+dot whenever `getBulletTexture(damageType)` resolves, rotated by `Scene` to the round's velocity
+every reconcile and mirrored vertically while flying leftward so the baked upper-left light stays
+on top. The halo, the spawn pop and flare, and the trail are unchanged.
+
 ## Standing finding, not fixed here
 
 `alpha-audit.mjs` flags **`client/public/environment/door_open_raw.png`** as HAZE: 44.7% partial

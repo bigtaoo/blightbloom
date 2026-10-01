@@ -187,9 +187,9 @@ export class Pickup extends Entity {
     } else if (kind === 'coin') {
       // A struck disc with a rim and an off-centre highlight — "money" (design/05 "Shops").
       // The fallback for `pickup_coin.png` (2026-10-01), whose tilt and visible edge do the
-      // same job this rim does. The rim is what does the work against `material`'s crystal at a glance — same warm band,
-      // different silhouette, which is design/13's dual-channel rule applied the one way
-      // round it can be when the colour genuinely should not move.
+      // same job this rim does. The rim is what does the work against `material`'s crystal
+      // at a glance — same warm band, different silhouette, which is design/13's dual-channel
+      // rule applied the one way round it can be when the colour genuinely should not move.
       const color = THEME.colors.pickupCoin;
       gfx.circle(0, 0, 7).fill({ color });
       gfx.circle(0, 0, 7).stroke({ color: 0xfff6d5, width: 1.5, alpha: 0.85 });
@@ -200,9 +200,9 @@ export class Pickup extends Entity {
       const color = THEME.colors.pickupCrate;
       gfx.rect(-7, -7, 14, 14).stroke({ color, width: 2 });
     } else if (kind === 'schematic') {
-      // A rolled scroll — a blueprint schematic (design/14, ENGINE_VERSION 68). No sprite
-      // ships for this kind yet, so this Graphics silhouette is the drawn form, not a
-      // fallback; `getPickupTexture('schematic')` picking one up later needs no change here. Shaped distinctly (a cylinder, not a disc or crystal) since
+      // A rolled scroll — a blueprint schematic (design/14, ENGINE_VERSION 68). The fallback
+      // for `pickup_schematic.png` (2026-10-01), which keeps this same horizontal roll with
+      // bright end knobs. Shaped distinctly (a cylinder, not a disc or crystal) since
       // design/13's dual-channel rule still applies and this is the one drop in the set that
       // should never be mistaken for routine loot at a glance — at most one exists per run.
       const color = THEME.colors.pickupSchematic;
@@ -211,17 +211,18 @@ export class Pickup extends Entity {
       gfx.circle(8, 0, 3).fill({ color: 0xfff0f6, alpha: 0.85 });
     } else if (kind === 'character') {
       // A bust — head over shoulders — for the boss's rare character unlock (design/14,
-      // 2026-09-26). Drawn, like the schematic, and shaped as a PERSON so it can never read
-      // as another resource at a glance; it can drop beside the schematic, so the two differ
-      // in form as well as hue.
+      // 2026-09-26). The fallback for `pickup_character.png` (2026-10-01), a faceless crystal
+      // bust. Shaped as a PERSON so it can never read as another resource at a glance; it can
+      // drop beside the schematic, so the two differ in form as well as hue.
       const color = THEME.colors.pickupCharacter;
       gfx.circle(0, -4, 4).fill({ color });
       gfx.poly([-8, 8, -5, 1, 5, 1, 8, 8]).fill({ color });
       gfx.circle(0, -4, 4).stroke({ color: 0xfaf5ff, width: 1, alpha: 0.8 });
     } else if (kind === 'shield') {
       // A shield silhouette — the shield-battery instant item (Task 4). The fallback for
-      // `pickup_shield.png` (2026-10-01), like `energy`/`coin` above. Shaped as the actual pool's own icon language (a pointed shield, not a
-      // ring or crystal) so it never reads as another `energy` at a glance.
+      // `pickup_shield.png` (2026-10-01), like `energy`/`coin` above. Shaped as the actual
+      // pool's own icon language (a pointed shield, not a ring or crystal) so it never reads
+      // as another `energy` at a glance.
       const color = THEME.colors.pickupShield;
       gfx.poly([0, -9, 7, -5, 7, 2, 0, 9, -7, 2, -7, -5]).fill({ color, alpha: 0.85 });
       gfx.poly([0, -9, 7, -5, 7, 2, 0, 9, -7, 2, -7, -5]).stroke({ color: 0xffffff, width: 1, alpha: 0.5 });
