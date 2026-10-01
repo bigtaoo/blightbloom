@@ -476,6 +476,12 @@ stick base's hollow interior and the fire button's ring are the two places that 
 opposite directions (a filled interior hides the floor; a ring with no dark edge vanishes on
 a bright one).
 
+Baseline for that last step, so a new flag is easy to tell from an old one:
+`alpha-audit.mjs client/public/ui` reads **35/37 clean** (2026-10-01). The two flags,
+`icon_account` and `icon_card_bounty`, are HAZE at 10.6% / 10.5% midtone, just over the 10%
+line. They are not cutout defects: the partial alpha is the painted crystal glow (the bounty
+chest's shard, the account badge's light rim), which this icon style asks for.
+
 Code side, wired ahead of the files (2026-10-01): `TouchControlsView` has a sprite per control
 (`TOUCH_ART_KEYS`), sized to the Graphics' own radius, alpha 0.5 idle / 0.9 held, and keeps the
 Graphics for any control whose texture has not landed. What is left for the day the PNGs

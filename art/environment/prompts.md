@@ -605,12 +605,12 @@ feet-anchored, its shadow sized to whichever path drew) and re-asks for the text
 resolves; `ChestLayer` keeps a holder per plate and redraws it on a key of occupancy AND
 art-loaded, so a late texture lands without anybody stepping on the plate.
 
-## Standing finding, not fixed here
+## The directory audit after this batch
 
-`alpha-audit.mjs` flags **`client/public/environment/door_open_raw.png`** as HAZE: 44.7% partial
-alpha with a 15.4% midtone cluster. That is a pre-existing shipped file from the 2026-08-04 door
-pass, unrelated to this batch, and the audit has apparently never been run over that directory
-before. Flagged, not touched.
+`alpha-audit.mjs client/public/environment` reads **30/31 clean** (re-run 2026-10-01). The one
+flag is `door_curtain_raw.png` as HAZE, which is expected: it is the open door's additive light
+(`blendMode: 'add'`), so a graduated alpha IS the content (`art/README.md`, 2026-08-30b). The
+`door_open_raw.png` HAZE flag of 2026-08-20 was fixed on 2026-08-21 and does not recur.
 
 ## Workflow reminder
 
