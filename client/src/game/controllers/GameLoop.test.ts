@@ -450,7 +450,7 @@ describe('GameLoop — offline sim stepping (advanceSim/stepSim)', () => {
   it("does NOT offer it online - the server holds that match's record, not the client", () => {
     const { deps, hud } = buildDeps();
     const engine = createGameEngine(CFG);
-    const session = { started: true, state: engine.state, frame: 1, submit: vi.fn(), drive: () => [] };
+    const session = { started: true, state: engine.state, frame: 1, submit: vi.fn(), steppable: () => 0, inputDelayMs: null, drive: () => [] };
     const host = buildHost({
       isOnline: () => true,
       getEngine: () => engine,
@@ -588,16 +588,27 @@ describe('GameLoop — the per-frame phase report', () => {
 });
 
 describe('GameLoop — online path (advanceOnline)', () => {
-  function fakeSession(overrides: Partial<CoopSession> = {}): CoopSession {
-    return {
+  /** A session with a queue: `q.ready` frames are playable, `drive(k)` steps up to k of them,
+   *  advancing the tick and handing back each stepped frame's `events`. */
+  function fakeSession(overrides: Partial<CoopSession> = {}, events: unknown[] = []) {
+    const q = { ready: 0 };
+    const session = {
       started: true,
       frame: 5,
       state: createGameEngine(CFG).state,
       submit: vi.fn(),
-      drive: vi.fn().mockReturnValue([]),
+      steppable: () => q.ready,
+      inputDelayMs: null,
+      drive: vi.fn((k = 300) => {
+        const n = Math.min(k, q.ready);
+        q.ready -= n;
+        session.state.tick += n;
+        return n > 0 ? events : [];
+      }),
       reportResult: vi.fn(),
       ...overrides,
-    } as unknown as CoopSession;
+    } as unknown as CoopSession & { state: GameState };
+    return Object.assign(session, { q });
   }
 
   it('not yet started: holds the scene and keeps fx fading, without touching the session', () => {
@@ -613,139 +624,125 @@ describe('GameLoop — online path (advanceOnline)', () => {
     expect(session.submit).not.toHaveBeenCalled();
   });
 
-  it('started: relays the local command, drives the session, and reconciles the scene', () => {
+  it('started: relays the local command, steps the ready frame, and reconciles the scene', () => {
     const { deps, scene } = buildDeps();
     const session = fakeSession();
+    session.q.ready = 1;
     const host = buildHost({ isOnline: () => true, getSession: () => session });
     const loop = new GameLoop(deps, host);
 
     loop.update(16);
 
     expect(session.submit).toHaveBeenCalledTimes(1);
-    expect(session.drive).toHaveBeenCalledTimes(1);
+    expect(session.drive).toHaveBeenCalledWith(1);
     expect(scene.reconcile).toHaveBeenCalledTimes(1);
   });
 
-  // ---- render interpolation (2026-09-22) ----
-  //
-  // What this path did before: `reconcile` every render frame, then `interpolate(1)`. Since
-  // `Entity.pushState` shifts cur → prev, mirroring twice inside one sim tick collapses the
-  // two, so there was nothing to interpolate BETWEEN and an online match moved in 30 Hz steps
-  // on a 60 Hz screen — every remote actor, every bullet, and the camera whenever the local
-  // seat was not being predicted. Each case below fails against that version.
+  it("draws the local seat ahead of confirmed by the session's measured input delay", () => {
+    // The stick is held east and nothing confirms: what the delay adds is the trail's last
+    // (delay + one tick) of stick, 133 ms at 192 px/s, on top of the same ease either way.
+    const lead = (inputDelayMs: number | null): number => {
+      const { deps, scene, builder } = buildDeps();
+      vi.spyOn(builder, 'build').mockImplementation((tick, owner) =>
+        makeCommand({ owner, tick, moveBrad: 0 as never, moveMag: 255, buttons: 0 }),
+      );
+      const session = fakeSession({ inputDelayMs } as Partial<CoopSession>);
+      const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+      for (let i = 0; i < 60; i++) loop.update(1000 / 30);
+      const calls = vi.mocked(scene.positionLocal).mock.calls;
+      return calls[calls.length - 1]![0];
+    };
+    const unled = lead(null);
+    expect(Number.isFinite(unled)).toBe(true);
+    expect(lead(100) - unled).toBeCloseTo((192 * (100 + 1000 / 30)) / 1000, 1);
+  });
 
-  it('mirrors the confirmed state once per TICK, not once per frame', () => {
+  // ---- pacing (2026-10-01) ----
+  //
+  // `MatchRoom` sends three frames per 100 ms. This path used to step every playable frame the
+  // moment it arrived and mirror once, so every remote entity covered a batch's worth of ground
+  // in one render frame and then stood still for two — a 10 Hz stutter. Each case below fails
+  // against that version; `onlineInterpolation.test.ts` measures the clock itself.
+
+  it('steps a batch that lands at once over three ticks, one per tick, not in one frame', () => {
     const { deps, scene } = buildDeps();
     const session = fakeSession();
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
-
-    loop.update(16);
-    loop.update(16);
-    loop.update(16);
-    expect(scene.reconcile).toHaveBeenCalledTimes(1);
-
-    // ...and a tick that really did advance mirrors again.
-    session.state!.tick += 1;
-    loop.update(16);
-    expect(scene.reconcile).toHaveBeenCalledTimes(2);
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    loop.update(16); // the fresh match's start frame
+    session.q.ready = 3;
+    const perFrame: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const before = session.state.tick;
+      loop.update(1000 / 60);
+      perFrame.push(session.state.tick - before);
+    }
+    expect(Math.max(...perFrame)).toBe(1);
+    expect(perFrame.reduce((a, b) => a + b, 0)).toBe(3); // all of it, over ~100 ms
+    expect(scene.reconcile).toHaveBeenCalledTimes(1 + 3); // once per tick
   });
 
-  it('ramps alpha across the tick and clamps it at 1', () => {
+  it('mirrors each stepped frame with ITS events, so a two-step frame drops none', () => {
+    // `drive()` hands back only the LAST frame's events; stepping one at a time is what keeps a
+    // pickup flight or a death in the first of two frames on screen.
+    const { deps, scene, events } = buildDeps();
+    const evs = [{ type: 'pickup', by: 1, kind: 'coin', gx: 0, gy: 0 }];
+    const session = fakeSession({}, evs);
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    session.q.ready = 3;
+    loop.update(16); // the first frame steps at once
+    loop.update(70); // two ticks of render time: two steps
+    const withEvents = scene.reconcile.mock.calls.filter((c) => c[2] === evs);
+    expect(withEvents).toHaveLength(3);
+    expect((events.consume as Mock).mock.calls.filter((c) => c[0] === evs)).toHaveLength(3);
+  });
+
+  it('ramps alpha across the tick and clamps it at 1 when the queue runs dry', () => {
     const { deps, scene, fx } = buildDeps();
     const session = fakeSession();
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
+    session.q.ready = 1;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
     const alphas = (): number[] => scene.interpolate.mock.calls.map((c) => c[0] as number);
 
-    loop.update(16);
-    // The frame the tick lands on draws the position it interpolates FROM. Not a rounding
-    // detail: at alpha 1 the scene would show the newest confirmed frame and then have to
-    // stand still until the next one, which is the stutter this whole change is about.
-    expect(alphas()).toEqual([0]);
-
-    loop.update(16);
-    expect(alphas()[1]).toBeCloseTo(16 / (1000 / 30), 5);
-    loop.update(16);
-    expect(alphas()[2]).toBeCloseTo(32 / (1000 / 30), 5);
-
-    // A server stall: three more frames with no new tick. Alpha stops at 1 rather than running
-    // remote actors past their newest confirmed position.
-    loop.update(16);
-    loop.update(16);
-    loop.update(16);
-    for (const a of alphas()) expect(a).toBeLessThanOrEqual(1);
-    expect(alphas()[alphas().length - 1]).toBe(1);
-
-    // The camera is handed the same alpha, not a separate one — it follows the same entities.
-    const camAlphas = fx.updateCamera.mock.calls.map((c) => c[0] as number);
-    expect(camAlphas).toEqual(alphas());
-  });
-
-  it('restarts the ramp on every confirmed tick', () => {
-    const { deps, scene } = buildDeps();
-    const session = fakeSession();
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
-
-    loop.update(16);
-    loop.update(16);
-    session.state!.tick += 1;
-    loop.update(16);
-    expect(scene.interpolate.mock.calls.map((c) => c[0] as number)).toEqual([0, 16 / (1000 / 30), 0]);
-  });
-
-  it('still mirrors a frame that carries events but no new tick', () => {
-    // `drive()` returns the events of the frames it applied; dropping one loses a pickup
-    // flight or a death permanently, while re-mirroring an unchanged tick costs one frame of
-    // a remote actor standing still. The trade is stated in `advanceOnline`.
-    const { deps, scene } = buildDeps();
-    const events = [{ type: 'pickup', by: 1, kind: 'coin', gx: 0, gy: 0 }];
-    const session = fakeSession({ drive: vi.fn().mockReturnValue(events) as unknown as CoopSession['drive'] });
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
-
-    loop.update(16);
-    loop.update(16); // same tick, events again
-    expect(scene.reconcile).toHaveBeenCalledTimes(2);
-    expect(scene.reconcile.mock.calls[1]![2]).toBe(events);
+    for (let i = 0; i < 6; i++) loop.update(16);
+    const a = alphas();
+    for (let i = 1; i < 2; i++) expect(a[i]!).toBeGreaterThan(a[i - 1]!);
+    for (const x of a) expect(x).toBeLessThanOrEqual(1);
+    expect(a[a.length - 1]).toBe(1); // a stall holds the newest position, never past it
+    // The camera is handed the same alpha — it follows the same entities.
+    expect(fx.updateCamera.mock.calls.map((c) => c[0] as number)).toEqual(a);
   });
 
   it('lays down bullet trails once per tick, not once per frame', () => {
-    // The doc comment on `spawnBulletTrails` has always said "once per sim tick"; the online
-    // path called it per render frame, so an online comet tail was twice as dense as the
-    // offline one it is meant to match — and denser again on a 120 Hz panel.
+    // An online comet tail used to be twice as dense as the offline one it is meant to match.
     const { deps, fx } = buildDeps();
-    const state = createGameEngine(CFG).state;
+    const session = fakeSession();
+    const state = session.state;
     state.projectiles.push({
       ...state.projectiles[0],
       alive: true, gx: toFp(10), gy: toFp(10), radius: toFp(2), damageType: 'fire',
     } as (typeof state.projectiles)[number]);
-    const session = fakeSession({ state });
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
 
     loop.update(16);
     loop.update(16);
     loop.update(16);
-    expect(fx.trailDot).toHaveBeenCalledTimes(1);
+    expect(fx.trailDot).toHaveBeenCalledTimes(1); // the start frame, then nothing ready
 
-    state.tick += 1;
-    loop.update(16);
+    session.q.ready = 1;
+    loop.update(40);
     expect(fx.trailDot).toHaveBeenCalledTimes(2);
   });
 
-  it('resetOnlinePrediction clears the mirrored tick, so a fresh match at tick 0 is drawn', () => {
-    // A new match starts at tick 0. A leftover `onlineTick` of 0 from the previous one would
-    // read as "already mirrored" and hold the first confirmed frame off the screen entirely
-    // until tick 1 — a black-ish first frame that would look like a connection problem.
+  it('draws a fresh match at once, and again after resetOnlinePrediction, before any frame steps', () => {
+    // A new match starts at tick 0 with nothing yet playable. A leftover mirrored tick of 0 from
+    // the previous one would hold the first frame off the screen — which looks like a
+    // connection problem, not like an off-by-one.
     const { deps, scene } = buildDeps();
-    const first = createGameEngine(CFG).state;
-    first.tick = 0;
-    const session = fakeSession({ state: first });
-    const host = buildHost({ isOnline: () => true, getSession: () => session });
-    const loop = new GameLoop(deps, host);
+    const session = fakeSession();
+    session.state.tick = 0;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
 
+    loop.update(16);
     loop.update(16);
     expect(scene.reconcile).toHaveBeenCalledTimes(1);
 
@@ -754,11 +751,36 @@ describe('GameLoop — online path (advanceOnline)', () => {
     expect(scene.reconcile).toHaveBeenCalledTimes(2);
   });
 
+  it('fast-forwards a backlog past MAX_STEPS unseen, mirroring only the frames it shows', () => {
+    const { deps, scene } = buildDeps();
+    const session = fakeSession();
+    const start = session.state.tick;
+    session.q.ready = 40;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    loop.update(16);
+    expect(session.state.tick).toBe(start + 38); // two left queued
+    expect(scene.reconcile.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it('stops stepping at gameover, even with frames still ready', () => {
+    const { deps } = buildDeps();
+    const session = fakeSession();
+    session.q.ready = 3;
+    (session.drive as Mock).mockImplementation(() => {
+      session.q.ready--;
+      session.state.tick++;
+      session.state.phase = 'gameover';
+      return [];
+    });
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    loop.update(70);
+    expect(session.drive).toHaveBeenCalledTimes(1);
+  });
+
   it('gameover: reports the result hash and hands off to RunOutcome exactly once', () => {
     const { deps, runOutcome } = buildDeps();
-    const gameoverState = createGameEngine(CFG).state;
-    gameoverState.phase = 'gameover';
-    const session = fakeSession({ state: gameoverState });
+    const session = fakeSession();
+    session.state.phase = 'gameover';
     const host = buildHost({ isOnline: () => true, getSession: () => session });
     const loop = new GameLoop(deps, host);
 
@@ -766,7 +788,7 @@ describe('GameLoop — online path (advanceOnline)', () => {
 
     expect(session.reportResult).toHaveBeenCalledTimes(1);
     expect(runOutcome.handle).toHaveBeenCalledTimes(1);
-    expect(runOutcome.handle).toHaveBeenCalledWith(gameoverState);
+    expect(runOutcome.handle).toHaveBeenCalledWith(session.state);
   });
 });
 
@@ -826,7 +848,7 @@ describe('GameLoop — the scene is reconciled BEFORE the tick\'s events are con
     const drained = [{ type: 'pickup', kind: 'material', by: 1, gx: 0, gy: 0 }];
     const session = {
       started: true, frame: 5, state: createGameEngine(CFG).state,
-      submit: vi.fn(), drive: vi.fn().mockReturnValue(drained), reportResult: vi.fn(),
+      submit: vi.fn(), steppable: () => 1, inputDelayMs: null, drive: vi.fn().mockReturnValue(drained), reportResult: vi.fn(),
     } as unknown as CoopSession;
     const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
 
@@ -840,7 +862,7 @@ describe('GameLoop — the scene is reconciled BEFORE the tick\'s events are con
     const { deps, scene, events } = buildDeps();
     const session = {
       started: true, frame: 5, state: createGameEngine(CFG).state,
-      submit: vi.fn(), drive: vi.fn().mockReturnValue([{ type: 'hit' }]), reportResult: vi.fn(),
+      submit: vi.fn(), steppable: () => 1, inputDelayMs: null, drive: vi.fn().mockReturnValue([{ type: 'hit' }]), reportResult: vi.fn(),
     } as unknown as CoopSession;
     const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
 
@@ -1502,6 +1524,17 @@ describe('GameLoop — the local player glow (design/01 milestone 2)', () => {
     expect(calls.every((c: unknown[]) => c[0] === 'local')).toBe(true);
     expect(calls[0]![1]).toMatchObject({ x: 10, y: 20 });
     expect(calls[1]![1]).toMatchObject({ x: 90, y: 40 });
+  });
+
+  it('places the glow where the player is DRAWN this frame, not at the tick ahead of it', () => {
+    // A tick-position glow moved in 30 Hz steps up to a tick ahead of the smoothly drawn sprite,
+    // and since it lights the floor all around the player, the whole lit patch stepped.
+    const { deps, scene, fx } = buildDeps();
+    const loop = new GameLoop(deps, buildHost({ getPhase: () => 'playing' }));
+    scene.player = { curX: 130, curY: 60, prevX: 100, prevY: 20, bodySilhouette: silhouette };
+    loop.update(1000 / 60); // half a tick into the accumulator: alpha 0.5, no sim step
+
+    expect(fx.lights.addPersistent.mock.calls[0]![1]).toMatchObject({ x: 115, y: 40 });
   });
 
   it('drops the glow when there is no player view, rather than leaving it at a stale position', () => {

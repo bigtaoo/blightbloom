@@ -468,11 +468,14 @@ Three things that row of tables settles, and one it does not:
   45. An even 45 is what a player reads as smooth; a 58 fps average alternating one and two
   vsyncs per frame is what they read as a stutter.
 - **The residue on 90/100/165 Hz panels cannot be removed through `maxFPS`.** Their vsync interval
-  is not a whole number of milliseconds, so no integer `_minElapsedMS` divides it evenly. Fixing
-  those means not using Pixi's gate at all — taking `app.render` off the ticker and calling it on
-  our own schedule — which is a larger change than the report asked for and is recorded here as
-  the follow-up rather than attempted.
-- **The idle cap keeps a ~2.7% residue and that is accepted.** 30 fps on a 60 Hz panel is
+  is not a whole number of milliseconds, so no integer `_minElapsedMS` divides it evenly. ~~Recorded
+  as the follow-up.~~ **Done 2026-10-01** (motion-comfort pass): `client/src/game/frameGate.ts` sits
+  in front of the ticker on both platforms, takes the same `maxFPS` `powerBudget.ts` writes, and
+  counts VSYNCS instead of milliseconds — draw once at least N - 1/2 intervals have passed since
+  the last drawn frame, nothing carried forward. Every rate in the table, both settings and the
+  idle cap, measures 0% uneven against the real `Ticker` with jitter (`frameGate.test.ts`); before
+  the display probe answers, the gate estimates the interval from the callbacks it sees.
+- **The idle cap kept a ~2.7% residue and that was accepted** (gone with the gate above too). 30 fps on a 60 Hz panel is
   33.33 ms, also not a whole number. It is accepted because of WHERE it lands: `IDLE_MAX_FPS`
   applies only to phases that draw no world, i.e. to a static menu panel, where a frame of the
   same unchanged image lasting twice as long is not observable by anyone. An animated menu would

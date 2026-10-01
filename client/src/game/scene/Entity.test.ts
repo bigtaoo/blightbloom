@@ -6,7 +6,7 @@
  * like the pre-existing `facingRad` — angles snap to the current tick's value.
  */
 import { describe, it, expect } from 'vitest';
-import { Container, type Graphics } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import { Entity, SHADOW_SQUASH, SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
 import { AUTO_BATCH_VERTEX_LIMIT } from '../../perf/drawAttribution';
 
@@ -237,5 +237,27 @@ describe('Entity — the shadow answers to height', () => {
     const e = new Entity();
     expect(() => e.place(10, 20, 5)).not.toThrow();
     expect(e.shadow).toBeNull();
+  });
+});
+
+describe('Entity.nudge', () => {
+  // FxController.updateCamera cancels the camera's whole-pixel rounding on the followed player
+  // with this. It has to move the parts placed by hand with the body, and must never pile up.
+  it("shifts this frame's pose and its shadow, replaces rather than accumulates, and clears on the next draw", () => {
+    const e = new Entity();
+    e.shadow = new Graphics();
+    e.pushState(100, 50, 0, 0);
+    e.snap();
+    e.interpolate(1, 16);
+    const sx = e.shadow.x;
+    const sy = e.shadow.y;
+
+    e.nudge(0.25, -0.125);
+    e.nudge(0.25, -0.125); // twice in one frame: still one shift, not two
+    expect([e.x, e.y]).toEqual([100.25, 49.875]);
+    expect([e.shadow.x, e.shadow.y]).toEqual([sx + 0.25, sy - 0.125]);
+
+    e.interpolate(1, 16);
+    expect([e.x, e.y, e.shadow.x, e.shadow.y]).toEqual([100, 50, sx, sy]);
   });
 });

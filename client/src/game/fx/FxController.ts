@@ -335,9 +335,17 @@ export class FxController {
     // per-pixel residual of 1.01 between consecutive frames after the best integer shift,
     // against 0.07 snapped — a whole-pixel step moves the frame rigidly. Whole LOGICAL pixels,
     // not device pixels: those filter targets are 1x on every display.
+    //
+    // The followed player is then shifted back by the rounding (2026-10-01, "我不希望有任何抖的地方"):
+    // the world steps in whole pixels but the player moves continuously, so with the snap alone its
+    // screen position carried a fresh ±0.5 px rounding error every frame — a wobble on the one thing
+    // the eye is tracking. An unrounded player is drawn the way every other moving actor already is.
+    const ux = pose.x + shake.x;
+    const uy = pose.y + shake.y;
     this.layers.world.scale.set(pose.zoom);
-    this.layers.world.x = Math.round(pose.x + shake.x);
-    this.layers.world.y = Math.round(pose.y + shake.y);
+    this.layers.world.x = Math.round(ux);
+    this.layers.world.y = Math.round(uy);
+    player.nudge?.((ux - this.layers.world.x) / pose.zoom, (uy - this.layers.world.y) / pose.zoom);
     this.syncCamera(viewport);
   }
 

@@ -5,7 +5,7 @@ import type { Phase } from '../phase';
 import { updateMusicForFrame } from '../musicDirector';
 import { fpToPx, bradToRad } from '../coords';
 import { ELEMENT_COLORS } from '../theme';
-import { LocalPredictor, DEFAULT_PREDICTOR } from './LocalPredictor';
+import { LocalPredictor, DEFAULT_PREDICTOR, walkableFor } from './LocalPredictor';
 import type { CommandBuilder } from './CommandBuilder';
 import type { AllyController } from './AllyController';
 import type { EventReactor } from './EventReactor';
@@ -112,11 +112,7 @@ export interface GameLoopHost {
  * local-player predictor (`predictor`/`predLastTick`) as its own private state — none
  * of those are read anywhere outside these methods, unlike `phase`/`engine`/`session`/
  * `meta` (which stay on Game, see `GameLoopHost`'s own doc comment). Result-screen
- * confirm used to be polled here too (a raw fire-button rising edge, `confirmEdge.ts`)
- * — removed 2026-08-17 in favor of `Screens.ts`'s own explicit CONFIRM button, the
- * same "driven exclusively by its own Buttons" rule every other screen already
- * followed (see that file's doc comment for why the raw-input path was a real bug
- * source, not just a redundancy).
+ * confirm is not polled here: `Screens.ts`'s own CONFIRM button drives it (2026-08-17).
  */
 export class GameLoop {
   private acc = 0; // accumulated real time (ms) not yet consumed by a sim step
@@ -133,15 +129,12 @@ export class GameLoop {
     ...DEFAULT_PREDICTOR,
   });
   private predLastTick = -1;
-  private readonly onlineInterp = new OnlineInterpolation(); // online render interpolation
+  private readonly onlineInterp = new OnlineInterpolation(); // online playout clock + alpha
+  private onlineTick = -1; // the confirmed tick the scene mirrors; -1 = none yet
   private readonly doorFx = new DoorFxDriver(); // per-frame fixture motion (`scene/doorTick.ts`)
 
-  // Reused every `updateFx` call instead of a fresh array of fresh objects per render frame
-  // (`Scene.enemiesScratch` is the same idea one layer down) — occlusion runs at render rate
-  // for every live actor, and `.map()`-ing a new `{x,y,halfW,bodyH}` per enemy every frame is
-  // needless churn in a room with any real number of mobs. Cleared and refilled in place each
-  // call; safe because `RoomBuilder.updateOcclusion` only ever reads it synchronously within
-  // the same call, never stores or diffs it across frames.
+  // Reused by every `updateFx` call rather than a fresh object per actor per frame; safe because
+  // `RoomBuilder.updateOcclusion` reads it synchronously and never keeps it.
   private readonly occlusionFociScratch: OcclusionFocus[] = [];
 
   constructor(
@@ -162,6 +155,7 @@ export class GameLoop {
     this.predictor.deactivate();
     this.predLastTick = -1;
     this.onlineInterp.reset();
+    this.onlineTick = -1;
   }
 
   update(dt: number): void {
@@ -226,7 +220,7 @@ export class GameLoop {
 
     const alpha = this.host.getPhase() === 'playing' ? Math.min(1, this.acc / SIM_DT_MS) : 1;
     this.deps.scene.interpolate(alpha, dt);
-    this.updateFx(dt);
+    this.updateFx(dt, alpha);
     this.updateCamera(alpha, dt);
     if (this.host.getPhase() === 'playing') {
       this.updateHud(dt);
@@ -305,31 +299,27 @@ export class GameLoop {
     // Predict the local seat's own motion for THIS render frame (before draining confirmed
     // frames) so movement responds instantly under latency. Suspended when downed/dead.
     const predicting = !!p && p.alive && !p.downed;
-    if (predicting) this.predictor.predict(cmd.moveBrad, cmd.moveMag, dt);
+    const walk = p ? walkableFor(s, p) : undefined;
+    if (predicting) this.predictor.predict(cmd.moveBrad, cmd.moveMag, dt, walk);
 
-    const events = session.drive();
+    // Step confirmed frames at the sim's own pace, not as they arrive (3 per 100 ms): the jitter
+    // buffer is `onlineInterpolation.ts`. A backlog past MAX_STEPS is fast-forwarded unseen.
+    const n = this.onlineInterp.plan(dt, session.steppable());
+    if (n > MAX_STEPS) session.drive(n - MAX_STEPS);
+    for (let i = Math.min(n, MAX_STEPS); i > 0 && s.phase !== 'gameover'; i--) this.mirrorOnline(s, session.drive(1));
+    if (s.tick !== this.onlineTick) this.mirrorOnline(s, []); // a fresh match's first frame
 
-    // Reconcile toward the confirmed local position — but ONLY when a new confirmed frame
-    // landed (a stall must not drag the prediction back); first activation snaps to spawn.
+    // Hand each new confirmed local position over (first activation snaps to spawn), then
+    // settle the drawn one at the measured input delay ahead of it.
     if (predicting && p) {
-      if (!this.predictor.isActive) {
-        this.predictor.reset(fpToPx(p.gx), fpToPx(p.gy), bradToRad(p.facing));
-      } else if (s.tick > this.predLastTick) {
-        this.predictor.reconcile(fpToPx(p.gx), fpToPx(p.gy));
-      }
+      if (!this.predictor.isActive) this.predictor.reset(fpToPx(p.gx), fpToPx(p.gy), bradToRad(p.facing));
+      else if (s.tick > this.predLastTick) this.predictor.reconcile(fpToPx(p.gx), fpToPx(p.gy));
       this.predLastTick = s.tick;
+      this.predictor.settle(this.onlineInterp.alpha, session.inputDelayMs, dt, walk);
     } else {
       this.predictor.deactivate();
     }
 
-    // Mirror the confirmed state only on a frame whose tick moved — and on one that carries
-    // events, which is not belt-and-braces (`onlineInterpolation.ts` has the trade).
-    const advanced = this.onlineInterp.observe(s.tick, dt);
-    if (advanced || events.length > 0) {
-      this.deps.scene.reconcile(s, p?.id ?? -1, events); // camera follows the LOCAL (ticket-assigned) seat
-      this.consumeEvents(events);
-    }
-    if (advanced) this.spawnBulletTrails(s); // once per sim tick — see its own doc comment
     // Draw the local seat from the predictor (camera follows it too); remote seats confirmed.
     if (predicting && p && this.predictor.isActive) {
       const pose = this.predictor.pose;
@@ -337,7 +327,7 @@ export class GameLoop {
     }
     const { alpha } = this.onlineInterp;
     this.deps.scene.interpolate(alpha, dt);
-    this.updateFx(dt);
+    this.updateFx(dt, alpha);
     this.updateCamera(alpha, dt);
     this.updateHud(dt);
     this.deps.touchControlsView.update(this.deps.input.getTouchVisual());
@@ -351,6 +341,15 @@ export class GameLoop {
       session.reportResult(hashState(s));
       this.deps.runOutcome.handle(s);
     }
+  }
+
+  /** One stepped confirmed frame into the scene: once per tick, its events with it (`drive(1)`
+   *  hands back exactly that frame's), camera on the LOCAL (ticket-assigned) seat. */
+  private mirrorOnline(s: GameState, events: readonly GameEvent[]): void {
+    this.deps.scene.reconcile(s, s.players[this.host.localOwner]?.id ?? -1, events);
+    this.consumeEvents(events);
+    this.spawnBulletTrails(s);
+    this.onlineTick = s.tick;
   }
 
   // Events are the only engine→render channel (design/08): fx feedback + score + audio.
@@ -389,7 +388,8 @@ export class GameLoop {
   // so these gather this frame's derived values (dust bounds, viewport, camera target)
   // and hand them down — the only reason these still live here rather than being
   // inlined at every call site.
-  private updateFx(dt: number): void {
+  /** `alpha`: the fraction `scene.interpolate` just drew with (1 where it draws the last tick). */
+  private updateFx(dt: number, alpha = 1): void {
     const s = this.host.activeState();
     const dustBounds = s ? { x: 0, y: 0, w: fpToPx(s.worldW), h: fpToPx(s.worldH) } : undefined;
     this.deps.fx.updateFx(dt, this.host.getPhase() === 'playing' ? 700 : 0, dustBounds);
@@ -399,14 +399,13 @@ export class GameLoop {
     // tracked as a one-time spawn; every other point light (muzzle flash/impact bursts)
     // is registered directly by FxController.flash. This one `updateFx` wrapper is
     // already called from every render path (paused/menu/offline/online), so registering
-    // here covers all of them with no per-path wiring.
-    //
-    // What used to follow — `scene.applyLighting`, one `strongestAt` scan and one uniform
-    // write PER ACTOR — is gone (2026-08-24). The whole set is uploaded once, to the single
-    // scene-lighting pass, by `FxController.updateCamera`, which is where the camera
-    // transform this frame's world→region mapping needs is settled.
+    // here covers all of them with no per-path wiring (uploaded by `FxController.updateCamera`).
+    // At the DRAWN position, not the tick one (2026-10-01): a tick-position glow lit the floor
+    // around the player in 30 Hz steps, up to a tick ahead of the smoothly drawn sprite.
     const player = this.deps.scene.player;
-    if (player) this.deps.fx.lights.addPersistent('local', { x: player.curX, y: player.curY, color: 0xfff4d6, radius: 140, intensity: 0.35 });
+    const lx = player ? player.prevX + (player.curX - player.prevX) * alpha : 0;
+    const ly = player ? player.prevY + (player.curY - player.prevY) * alpha : 0;
+    if (player) this.deps.fx.lights.addPersistent('local', { x: lx, y: ly, color: 0xfff4d6, radius: 140, intensity: 0.35 });
     else this.deps.fx.lights.removePersistent('local');
 
     // Occlusion x-ray (design/01 "Limits of fake 3D"): a standing wall block or pillar that is

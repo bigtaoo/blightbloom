@@ -1708,11 +1708,18 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **09-30** [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86) — the owner's call on the moving reviver: it may move inside the reach and may not attack (`ENGINE_VERSION` 86, `ApplyInputSystem` clears `firing` on the same `canRevive` predicate `ReviveSystem` uses). New `ReviveBanner` gives the reviver its own bar; in a PvP squad it saw none. The revive rule moves into `controllers/ai/revive.ts` and the shipped `PvpBotController` runs it, so bot seats in real squad matches revive; it does not start a channel under an opponent's clear shot and finishes one it started, chosen over two other rules on the same 30 matches (24 revives and 10 broken channels, against 21/27 and 17/372). Winning-squad seats standing: 2.13 to 2.37 per match. `engine` `ui` `i18n` `tools` `test` `docs`
 - **09-30** [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs) — the co-op `AllyController` runs the same revive rule, so a human downed in co-op (local `?coop=1` or a server backfill) is no longer left to bleed out beside a bot that keeps shooting. A co-op revive needs no bandage. Unmeasured: no sim plays co-op. `tools` `test` `docs`
 
+**[2026-10-01 — motion comfort](roadmap/119-2026-10-01-motion-comfort.md)**
+
+- **10-01** [The camera lands, and the player is not rounded](roadmap/119-2026-10-01-motion-comfort.md#the-camera-lands-and-the-player-is-not-rounded-2026-10-01-client--render--test--docs-no-engine-change) — the owner's report: the frame shook at the end of a camera ease, and they get 3D-sick easily. With the world offset snapped to whole pixels, both eases' tails reached the screen as lone 1 px jumps of the whole frame; the pan and zoom now have a speed floor that lands (`fx/cameraRig.ts`). The followed player takes the world's rounding back (`Entity.nudge`), its glow sits where it is drawn, and online the local correction is spread over frames instead of sawing at 30 Hz against walls. `render` `test` `docs`
+- **10-01** [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change) — the client stepped each 3-frame batch in the render frame it landed in, so every remote entity moved in 10 Hz lurches and two of three frames' events were lost. `controllers/onlineInterpolation.ts` is now a jitter buffer stepping on the sim's clock, leaning the rate ±5% on its slack; every frame moves a remote entity the same distance to within 6% at 30/60/144 fps with 20 ms jitter. `net` `render` `test` `docs`
+- **10-01** [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change) — Pixi's gate counts whole milliseconds, which drew 4-9% of frames a vsync late on 90/100/165 Hz panels. `game/frameGate.ts` counts vsyncs instead, on both platforms; 0% uneven at every rate from 60 to 240 Hz, both settings and the idle cap, against the real `Ticker` with jitter. `render` `perf` `platform` `test` `docs`
+- **10-01** [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change) — `LocalPredictor` eased onto the delayed confirmed position, so online the local player carried the whole latency and slid on after a stop. It now leads by the send-to-stepped delay `net/inputDelay.ts` measures, and pushes out of walls with the sim's own `clampToWalkable`; the client also drops the 3-frame cushion. Modelled on the server's timing: 3-7 px behind the stick instead of 34-79, a 3-19 px forward-only slide instead of 33-78. Open: the slide is the server landing commands on each batch's last frame. `net` `test` `docs`
+
 ## The work log — by theme
 
-The same 228 entries, grouped. An entry with more than one tag appears more than once.
+The same 232 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(74)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1788,6 +1795,9 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-28 [Walls and actors are antialiased, so they stop juddering in motion](roadmap/106-2026-09-28-stand-antialias.md#walls-and-actors-are-antialiased-so-they-stop-juddering-in-motion-2026-09-28-client--render--test-no-engine-change)
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test)
+- 10-01 [The camera lands, and the player is not rounded](roadmap/119-2026-10-01-motion-comfort.md#the-camera-lands-and-the-player-is-not-rounded-2026-10-01-client--render--test--docs-no-engine-change)
+- 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
+- 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
 **`art`** — authored assets and the art pipeline *(21)*
 
@@ -1813,7 +1823,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 
-**`perf`** — frame time, draw calls, geometry budgets *(18)*
+**`perf`** — frame time, draw calls, geometry budgets *(19)*
 
 - 08-19 [Volume, measured: the numbers behind the two passes above](roadmap/03-2026-08-17--08-19.md#volume-measured-the-numbers-behind-the-two-passes-above-2026-08-19-render-only)
 - 08-24 [Room props get real art, and three loaders that were never mip-mapped](roadmap/05-2026-08-21--08-24.md#room-props-get-real-art-and-three-loaders-that-were-never-mip-mapped-2026-08-24-client-only)
@@ -1833,6 +1843,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [What each pass costs the GPU, and a low tier that costs more than high](roadmap/109-2026-09-29-gpu-cost.md#what-each-pass-costs-the-gpu-and-a-low-tier-that-costs-more-than-high-2026-09-29-perf--tools--docs-no-code-change)
 - 09-29 [The low tier stops being the most expensive frame on a 1x display](roadmap/110-2026-09-29-low-tier-plain-pass.md#the-low-tier-stops-being-the-most-expensive-frame-on-a-1x-display-2026-09-29-render--perf--test)
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
+- 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
 **`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(44)*
 
@@ -1922,7 +1933,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(139)*
+**`test`** — coverage sweeps, gates, mutation batteries *(143)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2063,6 +2074,10 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
+- 10-01 [The camera lands, and the player is not rounded](roadmap/119-2026-10-01-motion-comfort.md#the-camera-lands-and-the-player-is-not-rounded-2026-10-01-client--render--test--docs-no-engine-change)
+- 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
+- 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
+- 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2076,7 +2091,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(34)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(35)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -2112,6 +2127,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-21 [A loading page with a floor under it, and four things measured on the way to the menu](roadmap/86-2026-09-21-boot-splash-and-load-path.md#a-loading-page-with-a-floor-under-it-and-four-things-measured-on-the-way-to-the-menu-2026-09-21-client--build--docs-no-engine-change)
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
+- 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
 **`ui`** — HUD, screens, widgets *(47)*
 
@@ -2205,7 +2221,7 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 
-**`docs`** — design docs and this log itself *(145)*
+**`docs`** — design docs and this log itself *(149)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2352,8 +2368,12 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
+- 10-01 [The camera lands, and the player is not rounded](roadmap/119-2026-10-01-motion-comfort.md#the-camera-lands-and-the-player-is-not-rounded-2026-10-01-client--render--test--docs-no-engine-change)
+- 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
+- 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
+- 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(35)*
+**`net`** — matchmaking, sockets, reconnect *(37)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2390,6 +2410,8 @@ The same 228 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Co-op room codes, whole-party matching and a load driver](roadmap/96-2026-09-26-coop-party-matchmaking.md#co-op-room-codes-whole-party-matching-and-a-load-driver-2026-09-26-net--ui--i18n--tools--test--docs-no-engine-change)
 - 09-26 [B2, B3 and B4 closed, and juggernaut drops from the boss](roadmap/97-2026-09-26-backlog-close-juggernaut.md#b2-b3-and-b4-closed-and-juggernaut-drops-from-the-boss-2026-09-26-engine--content--ui--net--i18n--test--docs-engine_version-76)
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
+- 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
+- 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

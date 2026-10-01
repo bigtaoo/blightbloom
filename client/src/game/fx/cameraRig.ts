@@ -28,6 +28,20 @@ export const DEADZONE_R = 0.05;
 export const FOLLOW_TAU_MS = 140;
 export const ZOOM_TAU_MS = 320;
 
+// Floor on the pan's speed, screen px per ms (60 px/s = one whole pixel a frame at 60 fps). An
+// exponential never arrives: its last few pixels crawl in at a fraction of a pixel a frame, and
+// since the world offset is snapped to whole pixels (FxController.updateCamera) that crawl reached
+// the screen as isolated 1 px jumps of the WHOLE frame, a second and more apart — measured after a
+// stop at 60 fps: `… 1 1 0 1 0 1 0 0 0 1 0 0 0 0 0 0 1`. User report, 2026-10-01: "镜头缓动快结束
+// 的时候，整个画面都在抖动 … 频繁的跑，停切换，就晕". With the floor the tail is a steady glide that
+// lands: the ease still decelerates through the large part of the move, and the last ~9 px come in
+// at one pixel a frame and stop. Never less than ONE whole screen pixel a frame, either: at 144 Hz
+// 60 px/s is 0.42 px a frame, which rounds back into the same sparse staircase.
+// The zoom ease had the same tail, worse: after a room change the viewport's edge kept moving by
+// less than a pixel a frame for 86 frames at 60 fps (294 at 144), every edge on screen re-rasterized
+// at a new scale each of them. It takes the same floor, measured at the viewport's edge.
+export const MIN_PAN_PX_PER_MS = 0.06;
+
 // A jump of the look-at point farther than this (fraction of the viewport's LONGER side, in
 // screen px) is a teleport — a new floor, a respawn, a force-regroup across a room — and is cut
 // to rather than swept across: a half-second pan over a whole floor is worse than a cut.
@@ -42,6 +56,8 @@ export const MAX_SHAKE_PX = 7;
 export interface CameraTarget {
   interpGroundX(alpha: number): number;
   interpGroundY(alpha: number): number;
+  /** Shift this frame's drawn pose by world px — `Entity.nudge`; see FxController.updateCamera. */
+  nudge?(dx: number, dy: number): void;
 }
 
 /** A world-px rect for the camera to fill — the room the local player is standing in
@@ -127,8 +143,12 @@ export class CameraRig {
 
     let cut = this.zoom === 0 || dtMs === undefined;
     if (!cut) {
+      // Same floor as the pan, measured where a zoom moves pixels the most: the viewport's edge.
+      const dl = Math.log(targetZoom) - Math.log(this.zoom);
       const k = 1 - Math.exp(-dtMs! / ZOOM_TAU_MS);
-      this.zoom = Math.exp(Math.log(this.zoom) + (Math.log(targetZoom) - Math.log(this.zoom)) * k);
+      const minDl = Math.max(1, MIN_PAN_PX_PER_MS * dtMs!) / (Math.max(vw, vh) / 2);
+      const move = Math.min(Math.abs(dl), Math.max(Math.abs(dl) * k, minDl));
+      this.zoom = Math.abs(dl) <= minDl ? targetZoom : Math.exp(Math.log(this.zoom) + Math.sign(dl) * move);
     }
     const zoom = cut ? targetZoom : this.zoom;
 
@@ -153,9 +173,16 @@ export class CameraRig {
       const dz = (DEADZONE_R * Math.min(vw, vh)) / zoom;
       this.anchorX = clamp(clamp(this.anchorX, tx - dz, tx + dz), xLo, xHi);
       this.anchorY = clamp(clamp(this.anchorY, ty - dz, ty + dz), yLo, yHi);
-      const k = 1 - Math.exp(-dtMs! / FOLLOW_TAU_MS);
-      this.lookX = clamp(this.lookX + (this.anchorX - this.lookX) * k, xLo, xHi);
-      this.lookY = clamp(this.lookY + (this.anchorY - this.lookY) * k, yLo, yHi);
+      // Along the vector, not per axis, so a diagonal settle lands on both axes in the same frame.
+      const dx = this.anchorX - this.lookX;
+      const dy = this.anchorY - this.lookY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        const k = 1 - Math.exp(-dtMs! / FOLLOW_TAU_MS);
+        const move = Math.min(dist, Math.max(dist * k, Math.max(1, MIN_PAN_PX_PER_MS * dtMs!) / zoom));
+        this.lookX = clamp(this.lookX + (dx * move) / dist, xLo, xHi);
+        this.lookY = clamp(this.lookY + (dy * move) / dist, yLo, yHi);
+      }
     }
     return { zoom, x: vw / 2 - this.lookX * zoom, y: vh / 2 - this.lookY * zoom };
   }

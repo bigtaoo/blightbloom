@@ -108,9 +108,51 @@ describe('CameraRig — dead-zone follow', () => {
     expect(mid).toBeLessThan(1100 - dz - 10); // genuinely mid-ease, or the comparison is empty
     expect(Math.abs(after(16, 160) - mid)).toBeLessThan(1);
   });
+
+  // User report, 2026-10-01: "镜头缓动快结束的时候，整个画面都在抖动". FxController snaps the offset
+  // to whole pixels, so a pure exponential tail reached the screen as lone 1 px jumps of the whole
+  // frame long after the camera looked settled. Once the snapped offset stops, it must STAY stopped.
+  it.each([33, 16, 7])('lands after a stop with no stray pixel jumps in the tail (dt %i ms)', (dt) => {
+    const rig = new CameraRig();
+    let px = 1000;
+    rig.step(inp(px, 1000));
+    for (let t = 0; t < 600; t += dt) rig.step(inp((px += 0.2 * dt), 1000, { dtMs: dt })); // run
+    const steps: number[] = [];
+    let last = Math.round(rig.step(inp(px, 1000, { dtMs: dt })).x);
+    for (let t = 0; t < 2000; t += dt) {
+      const x = Math.round(rig.step(inp(px, 1000, { dtMs: dt })).x);
+      steps.push(last - x);
+      last = x;
+    }
+    const firstStill = steps.indexOf(0);
+    expect(firstStill).toBeGreaterThan(0); // it was still moving when the player stopped
+    expect(firstStill * dt).toBeLessThan(800); // ...and it lands, rather than crawling in forever
+    expect(steps.slice(firstStill).every((d) => d === 0)).toBe(true);
+    expect(steps.slice(0, firstStill).every((d) => d >= 1)).toBe(true); // no sub-pixel frames before it
+  });
 });
 
 describe('CameraRig — zoom', () => {
+  // Same report as the pan tail above: a pure exponential zoom kept rescaling the whole frame by a
+  // fraction of a pixel at the viewport edge for well over a second after a room change.
+  it.each([33, 16, 7])('lands a room-change zoom instead of rescaling by sub-pixels (dt %i ms)', (dt) => {
+    const rig = new CameraRig();
+    const other = { x: 800, y: 800, w: 600, h: 600 }; // zoom 1.33 in VIEW, against ROOM's 2
+    rig.step(inp(1000, 1000));
+    const edge: number[] = [];
+    let z = rig.step(inp(1000, 1000, { frame: other, dtMs: dt })).zoom;
+    for (let t = 0; t < 3000; t += dt) {
+      const next = rig.step(inp(1000, 1000, { frame: other, dtMs: dt })).zoom;
+      edge.push((Math.abs(next - z) / z) * (VIEW.vw / 2));
+      z = next;
+    }
+    expect(z).toBe(4 / 3); // exactly, not asymptotically
+    const moving = edge.filter((e) => e > 0);
+    expect(moving.length * dt).toBeLessThan(1500);
+    // Every frame but the landing one moves the viewport edge by a pixel or more.
+    expect(moving.slice(0, -1).every((e) => e >= 0.99)).toBe(true);
+  });
+
   it('eases between rooms of different size instead of jumping', () => {
     const rig = new CameraRig();
     rig.step(inp(1000, 1000)); // zoom 2

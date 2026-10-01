@@ -1,96 +1,169 @@
 /**
- * The online match's render-interpolation clock (`onlineInterpolation.ts`, 2026-09-22).
+ * The online playout clock (`onlineInterpolation.ts`; a jitter buffer since 2026-10-01).
  *
- * Two numbers, and every property worth having is about WHEN they move rather than about
- * arithmetic: mirroring twice inside one sim tick is what collapsed `Entity`'s interpolation
- * buffers and made an online match move in 30 Hz steps on a 60 Hz screen. `GameLoop.test.ts`
- * covers this driving the real loop; these cases cover the edges that are awkward to reach
- * from there — a stall, a catch-up burst, a fresh match starting at tick 0.
+ * The property that matters is the one a player sees: how far a remote entity moves on screen
+ * from one render frame to the next. `drawn` below is that position in ticks — the scene shows
+ * `prev + alpha·(cur - prev)`, and `prev` is the tick before the newest one stepped — fed by the
+ * server's real shape, three frames every 100 ms (`MatchRoom`'s `DEFAULT_FRAMES_PER_BATCH`),
+ * with arrival jitter on top. `GameLoop.test.ts` covers the wiring.
  */
 import { describe, it, expect } from 'vitest';
-import { OnlineInterpolation } from './onlineInterpolation';
+import { CATCHUP_FRAMES, OnlineInterpolation } from './onlineInterpolation';
 
 const TICK_MS = 1000 / 30;
 
-describe('OnlineInterpolation', () => {
-  it('reports the first tick it ever sees as an advance', () => {
-    const interp = new OnlineInterpolation();
-    expect(interp.observe(0, 16)).toBe(true);
-    expect(interp.alpha).toBe(0);
-  });
+/** Seeded noise in [-amp, amp], so a regression fails instead of flaking. */
+function noise(amp: number): () => number {
+  let seed = 13579;
+  return () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed / 0x7fffffff - 0.5) * 2 * amp;
+  };
+}
 
-  it('advances once per tick, however many frames go by inside it', () => {
-    const interp = new OnlineInterpolation();
-    interp.observe(7, 16);
-    expect(interp.observe(7, 16)).toBe(false);
-    expect(interp.observe(7, 16)).toBe(false);
-    expect(interp.observe(8, 16)).toBe(true);
-  });
-
-  it('ramps alpha with real time and restarts it on each tick', () => {
-    const interp = new OnlineInterpolation();
-    interp.observe(1, 16);
-    expect(interp.alpha).toBe(0);
-    interp.observe(1, 16);
-    expect(interp.alpha).toBeCloseTo(16 / TICK_MS, 6);
-    interp.observe(1, 16);
-    expect(interp.alpha).toBeCloseTo(32 / TICK_MS, 6);
-    interp.observe(2, 16);
-    expect(interp.alpha).toBe(0);
-  });
-
-  it('clamps at 1 through a stall rather than running past the confirmed position', () => {
-    // A server that stops sending. Every remote actor must hold at its newest confirmed
-    // position; an unclamped alpha would keep extrapolating along the last delta, so a player
-    // who stopped walking would keep sliding for as long as the network was down.
-    const interp = new OnlineInterpolation();
-    interp.observe(3, 16);
-    for (let i = 0; i < 100; i++) {
-      interp.observe(3, 16);
-      expect(interp.alpha).toBeLessThanOrEqual(1);
+/**
+ * Run `seconds` of render frames at `fps` against batches of 3 frames every 100 ms, each landing
+ * up to `jitterMs` late. `plan` is the policy under test; the old one stepped everything ready.
+ * Returns the drawn position's per-frame movement, in ticks, after a two-second settle.
+ */
+function playout(plan: (dt: number, ready: number, clock: OnlineInterpolation) => number, fps: number, jitterMs: number) {
+  const clock = new OnlineInterpolation();
+  const late = noise(jitterMs);
+  const arrivals: number[] = [];
+  for (let t = 100; t < 20_000; t += 100) arrivals.push(t + Math.abs(late()));
+  arrivals.sort((a, b) => a - b);
+  const dt = 1000 / fps;
+  let confirmed = 0;
+  let stepped = 0;
+  let next = 0;
+  let last: number | null = null;
+  const moves: number[] = [];
+  for (let now = 0; now < 12_000; now += dt) {
+    while (next < arrivals.length && arrivals[next]! <= now) {
+      confirmed += 3;
+      next++;
     }
-    expect(interp.alpha).toBe(1);
+    const n = plan(dt, confirmed - stepped, clock);
+    stepped += n;
+    const drawn = stepped - 1 + clock.alpha;
+    if (now > 2000 && last !== null) moves.push(drawn - last);
+    last = drawn;
+  }
+  return { moves, perFrame: dt / TICK_MS, rate: clock.rate };
+}
+
+const paced = (dt: number, ready: number, c: OnlineInterpolation): number => c.plan(dt, ready);
+const greedy = (dt: number, ready: number, c: OnlineInterpolation): number => {
+  c.plan(dt, 0); // keeps the old alpha: it ramped from the last arrival and clamped at 1
+  return ready;
+};
+
+describe('OnlineInterpolation — playout against the real batch shape', () => {
+  it('the control: stepping each batch as it lands moves remote entities in 10 Hz lurches', () => {
+    const { moves } = playout((dt, ready, c) => {
+      const n = greedy(dt, ready, c);
+      if (n > 0) c.reset(); // alpha restarts on the frame a batch lands, as the old observe() did
+      return n;
+    }, 60, 0);
+    expect(Math.max(...moves)).toBeGreaterThan(2); // a whole batch's travel in one frame
+    expect(moves.filter((m) => m === 0).length).toBeGreaterThan(moves.length / 3); // then frozen
   });
 
-  it('treats a catch-up burst as one advance, because one mirror is what happened', () => {
-    // `CoopSession.drive()` can apply several confirmed frames in one call and the caller
-    // mirrors the RESULTING state once. Alpha restarts from that state, which is correct: the
-    // scene is now showing the newest tick, not the first of the batch.
-    const interp = new OnlineInterpolation();
-    interp.observe(10, 16);
-    interp.observe(10, 16);
-    expect(interp.observe(14, 16)).toBe(true);
-    expect(interp.alpha).toBe(0);
+  it.each([
+    [60, 0],
+    [60, 20],
+    [144, 20],
+    [30, 20],
+  ])('moves every remote entity the same distance every frame (%i fps, %i ms jitter)', (fps, jitter) => {
+    const { moves, perFrame } = playout(paced, fps, jitter);
+    // Never a stall, never a jump: each frame within the 5% the rate is allowed to lean.
+    for (const m of moves) {
+      expect(m).toBeGreaterThan(perFrame * 0.94);
+      expect(m).toBeLessThan(perFrame * 1.06);
+    }
   });
 
-  it('accepts a tick that goes BACKWARDS as an advance', () => {
-    // Not a real netcode case, but the guard is free and the alternative is bad: a `>` test
-    // would freeze the scene permanently on a session that resets its tick, and the symptom
-    // would be a match that connects and then never moves.
-    const interp = new OnlineInterpolation();
-    interp.observe(50, 16);
-    expect(interp.observe(2, 16)).toBe(true);
+  it('settles at a shallow buffer rather than growing one', () => {
+    // Steady 3-every-100 ms: the slack at the worst moment is what decides latency. A clock that
+    // kept leaning slow would pass the smoothness case above and drift ever further behind.
+    const clock = new OnlineInterpolation();
+    let confirmed = 0;
+    let stepped = 0;
+    let deepest = 0;
+    for (let now = 0; now < 30_000; now += 1000 / 60) {
+      if (Math.floor(now / 100) > Math.floor((now - 1000 / 60) / 100)) confirmed += 3;
+      stepped += clock.plan(1000 / 60, confirmed - stepped);
+      if (now > 5000) deepest = Math.max(deepest, confirmed - stepped);
+    }
+    expect(deepest).toBeLessThanOrEqual(6); // two batches, ~200 ms, at its very worst
+  });
+});
+
+describe('OnlineInterpolation — edges', () => {
+  it('steps on its very first frame, so a new match is drawn at once', () => {
+    const clock = new OnlineInterpolation();
+    expect(clock.plan(16, 1)).toBe(1);
+    expect(clock.alpha).toBeLessThan(1); // and it ramps from there, rather than holding
   });
 
-  it('forgets the mirrored tick on reset, so a fresh match at tick 0 is drawn', () => {
-    // The `-1` sentinel: a match starts at tick 0, and a leftover 0 from the previous one
-    // would read as "already mirrored" and hold the first confirmed frame off the screen until
-    // tick 1 — which looks like a connection problem, not like an off-by-one.
-    const interp = new OnlineInterpolation();
-    interp.observe(0, 16);
-    interp.observe(0, 16);
-    interp.reset();
-    expect(interp.observe(0, 16)).toBe(true);
-    expect(interp.alpha).toBe(0);
+  it('steps nothing with nothing ready, and holds at the newest position through a stall', () => {
+    // A server that stops sending. Every remote actor must hold at its newest confirmed
+    // position; an alpha past 1 would keep extrapolating, sliding a stopped player onward.
+    const clock = new OnlineInterpolation();
+    clock.plan(16, 1);
+    for (let i = 0; i < 100; i++) {
+      expect(clock.plan(16, 0)).toBe(0);
+      expect(clock.alpha).toBeLessThanOrEqual(1);
+    }
+    expect(clock.alpha).toBe(1);
+  });
+
+  it('resumes after a stall one tick at a time — the time spent dry is not banked', () => {
+    const clock = new OnlineInterpolation();
+    clock.plan(16, 1);
+    for (let i = 0; i < 30; i++) clock.plan(16, 0);
+    expect(clock.plan(16, 6)).toBe(1); // not a burst through everything that piled up
+    expect(clock.plan(16, 5)).toBe(0);
+  });
+
+  it(`skips a backlog of ${CATCHUP_FRAMES}+ in one go, keeping two queued`, () => {
+    // A backgrounded tab or a reconnect resync: pacing half a second of backlog would leave the
+    // whole match drawn that far behind for as long as it took to drain.
+    const clock = new OnlineInterpolation();
+    expect(clock.plan(16, 40)).toBe(38);
+    expect(clock.alpha).toBe(0);
+    expect(clock.plan(16, CATCHUP_FRAMES - 1)).toBe(0); // below the line: paced again
+  });
+
+  it('leans slow when it keeps running dry, and fast when the queue stays deep', () => {
+    const dry = new OnlineInterpolation();
+    for (let i = 0; i < 70; i++) dry.plan(16, i % 4 === 0 ? 1 : 0);
+    expect(dry.rate).toBeLessThan(1);
+
+    const deep = new OnlineInterpolation();
+    for (let i = 0; i < 70; i++) deep.plan(16, 8);
+    expect(deep.rate).toBeGreaterThan(1);
+
+    const fine = new OnlineInterpolation();
+    for (let i = 0; i < 70; i++) fine.plan(16, 2);
+    expect(fine.rate).toBe(1);
   });
 
   it('never returns a negative alpha, whatever dt it is handed', () => {
     // A clock that went backwards across a tab suspend. Alpha feeds a lerp, and a negative one
     // draws every remote actor BEHIND where it was last seen.
-    const interp = new OnlineInterpolation();
-    interp.observe(1, 16);
-    interp.observe(1, -500);
-    expect(interp.alpha).toBeLessThanOrEqual(1);
-    expect(interp.alpha).toBeGreaterThanOrEqual(0);
+    const clock = new OnlineInterpolation();
+    clock.plan(16, 1);
+    clock.plan(-500, 0);
+    expect(clock.alpha).toBeGreaterThanOrEqual(0);
+    expect(clock.alpha).toBeLessThanOrEqual(1);
+  });
+
+  it('reset restores a first-frame step and the neutral rate', () => {
+    const clock = new OnlineInterpolation();
+    for (let i = 0; i < 70; i++) clock.plan(16, 8);
+    clock.reset();
+    expect(clock.rate).toBe(1);
+    expect(clock.plan(0, 1)).toBe(1);
   });
 });

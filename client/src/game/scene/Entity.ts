@@ -212,10 +212,32 @@ export class Entity extends Container {
     );
   }
 
+  /** The last pose `applyTransform` was given, so `nudge` can redraw from it. */
+  private posedX = 0;
+  private posedY = 0;
+  private posedZ = 0;
+
+  /**
+   * Redraw this frame's pose shifted by (`dx`, `dy`) world px — everything `applyTransform` places
+   * (shadow, and a subclass's hand-synced parts such as `Actor`'s health bar) moves with it. Not
+   * cumulative: a second call replaces the first, and the next `interpolate`/`place` clears it.
+   * `FxController.updateCamera` uses it on the followed player to cancel the camera's whole-pixel
+   * rounding, so the one thing the eye tracks keeps its exact, unrounded screen position.
+   */
+  nudge(dx: number, dy: number): void {
+    const { posedX: x, posedY: y, posedZ: z } = this;
+    this.applyTransform(x + dx, y + dy, z);
+    this.posedX = x;
+    this.posedY = y;
+  }
+
   // Write the Pixi transform + shadow from an interpolated ground position + height.
   // `visualZ` (the render-only hover) is folded in here rather than at every call site, so
   // `place()` and `interpolate()` and any future caller all get it.
   protected applyTransform(x: number, y: number, z: number): void {
+    this.posedX = x;
+    this.posedY = y;
+    this.posedZ = z;
     const lift = z + this.visualZ;
     this.drawnLift = lift;
     this.x = x;

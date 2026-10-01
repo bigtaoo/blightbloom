@@ -4,6 +4,8 @@ import { WeChatAdapter } from './WeChatAdapter';
 import { WeChatInput } from './WeChatInput';
 import { WeChatAudio } from './WeChatAudio';
 import { installWeChatEventBridge, type WeChatEventBridge } from './weChatDomEvents';
+import { installFrameGate } from '../../game/frameGate';
+import { activeDisplayHz } from '../../game/powerBudget';
 
 // WeChat mini-game platform.
 //
@@ -60,6 +62,7 @@ export class WeChatPlatform implements Platform {
       preference: 'webgl',
       manageImports: false,
     });
+    installFrameGate(app.ticker, activeDisplayHz); // even frame pacing on any refresh rate
     return app;
   }
 

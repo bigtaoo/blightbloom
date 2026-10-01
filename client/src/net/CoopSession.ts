@@ -19,10 +19,11 @@
  * simulates the identical confirmed stream and stays in lock-step (design/06).
  *
  * NOT here: local prediction. That is a RENDER-layer concern that sits on top of this
- * session WITHOUT changing the confirmed path — `client/src/game/LocalPredictor.ts` draws
- * the local seat's movement/aim ahead of the confirmed frame and eases back (snap-vs-lerp)
- * on each confirmed frame, wired in `Game.advanceOnline`. This session stays purely the
- * confirmed-stream driver; the sim it runs is never touched by prediction (design/06).
+ * session WITHOUT changing the confirmed path — `game/controllers/LocalPredictor.ts` draws
+ * the local seat's movement ahead of the confirmed frame, wired in `GameLoop.advanceOnline`.
+ * What this session adds for it is a measurement only: `inputDelayMs`, how long the local
+ * seat's input takes to come back stepped (`inputDelay.ts`). The sim it runs is never
+ * touched by prediction (design/06).
  */
 import {
   NetInputSource,
@@ -32,12 +33,14 @@ import {
   type EngineConfig,
   type GameEngine,
   type GameEvent,
+  type InputSource,
   type MatchOver,
   type MatchStart,
   type PlayerCommand,
   type SeatNames,
 } from '@dd/engine';
 import type { Transport } from './transport';
+import { InputDelayMeter } from './inputDelay';
 
 /** Spiral-of-death guard: never step more than this many sim frames in one drive(). */
 const MAX_CATCHUP_STEPS = 300;
@@ -50,7 +53,9 @@ export interface CoopSessionOptions {
   playerCount: number;
   /** Build the run config once the match starts (seed/localOwner/playerCount known). */
   buildConfig: (info: MatchStart) => EngineConfig;
-  bufferFrames?: number; // NetInputSource jitter cushion (default 3)
+  bufferFrames?: number; // NetInputSource jitter cushion (default 3; the game passes 0, see onlineConnect)
+  /** The clock the input delay is read on — the render loop's (`performance.now`). */
+  now?: () => number;
   onMatchStart?: (info: MatchStart) => void;
   onMatchOver?: (over: MatchOver) => void;
 }
@@ -69,11 +74,20 @@ export class CoopSession {
    *  and empty for a room in which nobody was logged in — which is most rooms. */
   private names: SeatNames = [];
   private serverErrorHandler: ((code: string, message: string) => void) | null = null;
+  private readonly delay = new InputDelayMeter();
+  private readonly now: () => number;
+  private localOwner = -1;
 
   constructor(private readonly opts: CoopSessionOptions) {
     this.transport = opts.transport;
+    this.now = opts.now ?? (() => performance.now());
     this.net = new NetInputSource(
-      { submit: (cmd) => this.transport.send({ type: 'cmd', cmd }) },
+      {
+        submit: (cmd) => {
+          this.delay.sent(cmd.tick, this.now());
+          this.transport.send({ type: 'cmd', cmd });
+        },
+      },
       {
         bufferFrames: opts.bufferFrames,
         onMatchStart: (info) => this.onStart(info),
@@ -130,7 +144,19 @@ export class CoopSession {
   }
 
   private onStart(info: MatchStart): void {
-    this.engine = createGameEngine(this.opts.buildConfig(info), this.net);
+    this.localOwner = info.localOwner;
+    // The engine reads its input through this, so every stepped frame can tell the delay meter
+    // which of the local seat's commands it applied.
+    const input: InputSource = {
+      submit: this.net.submit.bind(this.net),
+      take: (frame) => {
+        const cmds = this.net.take(frame);
+        const mine = cmds?.find((c) => c.owner === this.localOwner);
+        if (mine) this.delay.applied(mine.tick, this.now());
+        return cmds;
+      },
+    };
+    this.engine = createGameEngine(this.opts.buildConfig(info), input);
     this.nextFrame = info.startFrame + 1; // first sim frame after the initial state
     this.opts.onMatchStart?.(info);
   }
@@ -190,6 +216,19 @@ export class CoopSession {
       if (engine.state.phase === 'gameover') break;
     }
     return last;
+  }
+
+  /** How many frames `drive()` could step right now — `backlog()` plus the next frame itself,
+   *  which `backlog()` cannot tell apart from "nothing playable" at zero. What the online
+   *  playout clock (`game/controllers/onlineInterpolation.ts`) paces against. */
+  steppable(): number {
+    return this.net.confirmedLead?.(this.nextFrame - 1) ?? 0;
+  }
+
+  /** Send-to-stepped delay of the local seat's input, in ms (`inputDelay.ts`) — how far ahead
+   *  `LocalPredictor` draws. Null until a change has made the round trip. */
+  get inputDelayMs(): number | null {
+    return this.delay.delayMs;
   }
 
   /** How many confirmed frames are queued ahead of the sim (render pacing / catch-up UI). */

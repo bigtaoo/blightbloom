@@ -6,8 +6,9 @@
  * that happened to be a bug would have been answering the diagnosis rather than the player.
  * What it turns off is the whole-screen motion that is decoration rather than information:
  *
- * - **camera shake** (`fx/FxController.ts`). ±14 px of white noise applied to the entire world
- *   layer, re-rolled every render frame. Nothing about the game state is readable from it —
+ * - **camera shake** (`fx/FxController.ts`). Then ±14 px of white noise applied to the entire
+ *   world layer, re-rolled every render frame; since 2026-09-28 a smooth ~7-12 Hz waveform of at
+ *   most 7 px (`fx/cameraRig.ts` `shakeOffset`), still the whole world. Nothing about the game state is readable from it —
  *   the hit it accompanies is already shown by the flash, the knockback and the damage number
  *   — and an uncorrelated per-frame translation of everything on screen is the single most
  *   reliable way to make a player motion-sick.
