@@ -417,6 +417,26 @@ describe('Scene.reconcile — death-dissolve lingering view (design/01 fidelity 
     expect(dying.length).toBe(0); // gone outright, not queued to dissolve
   });
 
+  it("hands each bullet its sim velocity, so the projectile art points along the shot", () => {
+    // `Bullet.test` drives `setHeading` directly; this pins the one line in `reconcile` that
+    // calls it. Without it every round's art would fly pointing due east, whatever its path.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const bullet = addBullet(s, 300, 300);
+    bullet.vx = toFp(0);
+    bullet.vy = toFp(1); // due south (screen y grows down)
+    const scene = new Scene(new Layers());
+    scene.reconcile(s);
+    const view = (scene as unknown as { views: Map<number, Entity> }).views.get(bullet.id)!;
+    // Bullet's children are glow, core, art, flare in construction order (Bullet.test's `Child`).
+    const art = view.children[2] as Graphics & { rotation: number };
+    expect(art.rotation).toBeCloseTo(Math.PI / 2, 6);
+
+    bullet.vx = toFp(-1); // a deflect reverses it in flight; re-read on every reconcile
+    bullet.vy = toFp(0);
+    scene.reconcile(s);
+    expect(art.rotation).toBeCloseTo(Math.PI, 6);
+  });
+
   it('a new bullet is DRAWN leaving the shooter\'s muzzle, easing onto the engine position', () => {
     const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
     const p = s.players[0]!;

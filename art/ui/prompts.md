@@ -367,3 +367,125 @@ from it, 1920x1080 q82) and `lobby_rock_{a,b,c}_raw.png`, then `alphaClamp.mjs` 
 (160x148). A copy rather than a reference because the weapons ship in the `forge` pack, which only
 arrives at the run phase; the lobby may only draw what the `lobby` pack holds. If the cryobolt's
 art is ever regenerated, copy it again.
+
+# Touch controls (2026-10-01 pass)
+
+The on-screen controls `TouchControlsView.ts` draws as translucent Graphics circles today. A
+different job from every icon above: these sit ON TOP of live gameplay for the whole run, so
+they must stay readable over any floor while hiding as little of it as possible. The game, not
+the art, makes them translucent (sprite alpha about 0.5 idle, 0.9 while held), so each file is
+drawn fully opaque where it has paint, with a REAL transparent hole wherever the game should
+show through. Drawn sizes, from `TouchControls` (CSS px): stick base 180 across, knob 72, fire
+180, the three small buttons 80. Output is 1024 x 1024 and `compress.mjs` brings it down to
+2x DPR of the drawn size (base and fire 360, knob 144, small buttons 160).
+
+Colours are the ones the Graphics use, so the swap does not change what the controls mean:
+the move stick is the player teal `THEME.colors.player` (#4FD1C5), fire is the muzzle amber
+`THEME.colors.muzzle` (#FFE08A), interact is the heal green `THEME.colors.pickupHeal`
+(#68D391). The two weapon-swap buttons keep their code-drawn "1" / "2" labels on top of a
+shared art disc, so no image may contain a digit.
+
+Issued first: the three controls a phone player touches every second. The swap disc and the
+interact button follow in the next batch.
+
+## Extra constraints for this batch (paste alongside the locked style paragraph)
+
+This is a TOUCH CONTROL drawn over a moving game scene, not an icon on a menu. Perfectly
+circular and centred, viewed straight on, no perspective, no tilt. Bold but THIN dark outline
+(about 1.5% of the image width). Real alpha transparency: everything outside the circle, and
+every area described as "hollow" or "transparent", must be fully transparent pixels — do NOT
+paint a checkerboard pattern to suggest transparency, do NOT fill the background with white or
+grey; if true transparency is impossible, use one flat solid pure white (#FFFFFF) background
+and nothing else. No drop shadow, no outer glow, no light spilling past the outline — the game
+draws its own highlight while the control is held. No text, no letters, no digits.
+
+## 1. `touch_stick_base` — the movement stick's ring
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single circular joystick BASE for a mobile game: one flat ring whose
+> band is about 9% of the circle's diameter thick, in the player teal — base colour
+> approximately #4FD1C5, its upper-left arc lit up to about #8EEDE4, its lower-right arc down to
+> about #2C8C84. On the ring, at the four compass points (top, right, bottom, left), four small
+> inward-pointing chevrons in the same teal, each about 6% of the diameter wide, sitting on the
+> inner edge of the band. Faint crystal facets: the band is subtly cut into 12 equal flat
+> facets, each a slightly different shade of the same teal — no other texture. The ENTIRE
+> interior inside the band is hollow: fully transparent, nothing drawn there at all, so the game
+> scene shows through.
+
+## 2. `touch_stick_knob` — the thumb knob
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single round joystick THUMB KNOB for a mobile game, filling the canvas
+> inside the margin: a solid domed disc in the player teal, approximately #4FD1C5, cel-shaded
+> with one flat highlight crescent at the upper-left up to about #B5F5EF and one flat shadow
+> crescent at the lower-right down to about #2C8C84. At its centre, one small faceted crystal
+> gem about 22% of the disc's diameter, a bright cyan-white approximately #E6FFFC with a single
+> darker facet — the game's "purified crystal" accent. Solid, opaque, no hole. Simple enough to
+> read at 72 pixels across.
+
+## 3. `touch_fire` — the hold-to-fire button
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single large round FIRE BUTTON for a mobile shooter, filling the canvas
+> inside the margin. A ring band about 7% of the diameter thick in warm amber — base
+> approximately #FFE08A, upper-left lit to about #FFF2C4, lower-right shaded to about #C9A23F.
+> Inside the ring, a dark disc approximately #2A3140 at its centre, so the button stays legible
+> over a bright floor. On that dark disc, centred, one bold amber CROSSHAIR glyph, about 46% of
+> the button's diameter: a thin circle with four short ticks at the compass points that stop
+> short of the centre, and one small solid amber dot exactly in the middle. Nothing else — no
+> bullet, no gun, no flame, no explosion.
+
+## Next batch, prepared (not yet issued): the small buttons
+
+Same extra-constraints paragraph. Both are drawn 80 across, so they must read at that size:
+one shape each, no fine detail.
+
+### 4. `touch_swap` — the weapon-swap disc (used twice)
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single small round BUTTON DISC for a mobile game, filling the canvas
+> inside the margin, deliberately plain because the game prints a "1" or a "2" on top of it. A
+> flat dark slate disc approximately #2A3140, with a thin cool-grey rim about 6% of the
+> diameter thick, approximately #E2E8F0 at the upper-left fading to about #8A94A6 at the
+> lower-right. The disc's centre is EMPTY and flat: no symbol, no texture, no gradient beyond
+> one very faint lighter crescent along the upper-left inside the rim. No digit, no letter, no
+> weapon, no arrow.
+
+### 5. `touch_interact` — the hold-to-revive/interact button
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single small round SUPPORT BUTTON for a mobile game, filling the
+> canvas inside the margin. A ring band about 8% of the diameter thick in heal green — base
+> approximately #68D391, upper-left lit to about #B4F0C8, lower-right shaded to about #3F9A62
+> — around a dark disc approximately #2A3140. Centred on the disc, one bold green PLUS sign
+> with slightly rounded ends, its arms about 50% of the button's diameter, the same green as
+> the ring with a flat lighter top face. Nothing else — no heart, no cross outline, no hand.
+
+Code side for these two: `drawButton` / `drawInteractButton` take the same sprite swap as the
+three above. The swap disc keeps its "1"/"2" Text on top; the interact button's "+" Text goes
+away once its art lands, since the plus is in the art.
+
+## Workflow for this batch
+
+Same pipeline as the environment batches (`art/environment/prompts.md`, "Pipeline, in order"):
+keep the generator's file as `<id>_original.*`, decode the alpha channel before believing it,
+key a painted checkerboard by border flood-fill if one came back anyway, then
+`alphaClamp.mjs` -> `compress.mjs --long-axis=<2x drawn size>` -> `alpha-audit.mjs`. Check each
+one composited at its drawn size over a BRIGHT and a dark floor swatch at alpha 0.5 — the
+stick base's hollow interior and the fire button's ring are the two places that fail in
+opposite directions (a filled interior hides the floor; a ring with no dark edge vanishes on
+a bright one).
+
+Baseline for that last step, so a new flag is easy to tell from an old one:
+`alpha-audit.mjs client/public/ui` reads **35/37 clean** (2026-10-01). The two flags,
+`icon_account` and `icon_card_bounty`, are HAZE at 10.6% / 10.5% midtone, just over the 10%
+line. They are not cutout defects: the partial alpha is the painted crystal glow (the bounty
+chest's shard, the account badge's light rim), which this icon style asks for.
+
+Code side, wired ahead of the files (2026-10-01): `TouchControlsView` has a sprite per control
+(`TOUCH_ART_KEYS`), sized to the Graphics' own radius, alpha 0.5 idle / 0.9 held, and keeps the
+Graphics for any control whose texture has not landed. What is left for the day the PNGs
+arrive: add the three keys to `UI_ASSETS` in `render/uiSkins.ts` (they load in the `late`
+tier, before a run) together with the files in `client/public/ui/` and their
+`assetPacks.json` entries. The keys cannot be registered earlier: `wechatAssetLoad.test.ts`
+requires every registered file to load.

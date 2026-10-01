@@ -6,11 +6,14 @@
 // (`layers.entities`) and a flat "stand here" mat that every actor must be drawn over
 // (`layers.ground`) — and a single `Entity` has one position and one layer.
 //
-// ## No art for the COUNTER yet, deliberately — but there is now a person behind it
+// ## The counter, and the person behind it
 //
 // The same staged rollout every object in this room went through: walls, pillars, doors, drops,
-// props and chests each shipped a Graphics form first and grew a sprite later. The counter shapes
-// below are the drawn form for now, not a fallback waiting on a file.
+// props and chests each shipped a Graphics form first and grew a sprite later. The counter got
+// its art 2026-10-01 (`shop_counter.png`); the slab-and-awning shapes below are now the fallback
+// while it loads. The art has NOTHING above its top slab — the counter sorts in front of the
+// keeper, so a canopy would paint over the merchant — and carries the warm accent the awning
+// used to as a valance on its front instead.
 //
 // The SHOPKEEPER (2026-09-14) is the exception, and deliberately the other way round: it exists
 // only as art. The owner's *"商店是通过房间里的 npc 打开的"* said a shop should be a person, and
@@ -35,9 +38,9 @@
 //
 // The mat also dims once every line is sold, which is the only state a shop has: a counter you
 // have cleared out looks different from one you have not reached yet, without needing text.
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import { SHOP_INTERACT_RANGE_GRID, type GameState, type Shop } from '@dd/engine';
-import { getShopkeeperTexture } from '../../render/environmentSprites';
+import { getShopCounterTexture, getShopkeeperTexture } from '../../render/environmentSprites';
 import { fpToPx } from '../coords';
 import { THEME } from '../theme';
 import { SHADOW_SQUASH } from './Entity';
@@ -54,6 +57,12 @@ const BODY_ASPECT = 0.75;
  *  (the slab has to cross the keeper's base, or the merchant stops reading as standing behind
  *  a counter), and a test cannot state that against a number locked inside `create()`. */
 export const COUNTER_HEIGHT_PX = BODY_HALF * 2 * BODY_ASPECT;
+/** The counter SPRITE's drawn width, world px, with the art's own aspect setting its height.
+ *  Wider than the Graphics slab and than the 28 px keeper behind it, so the merchant stands at
+ *  the counter rather than overhanging it; at the shipped file's ~2:1 aspect that lands the
+ *  sprite at ~18 px tall — the slab's own `COUNTER_HEIGHT_PX`, so `KEEPER_BACK_PX` holds for
+ *  both paths. Exported for the reason the keeper constants are. */
+export const COUNTER_ART_WIDTH_PX = 36;
 /** The interaction mat's radius in world px, derived from the SIM's own gate rather than
  *  chosen. `coords.ts` has no grid→px helper (the sim speaks Fp), and one grid is 32 px here,
  *  the same conversion `ChestLayer`'s PLATE_RADIUS_PX makes. */
@@ -101,6 +110,10 @@ interface ShopView {
    *  than every frame — the same redraw-on-key-change convention the rest of this layer and
    *  `WeaponPickupPrompt` follow. `null` is the sentinel that forces the first draw. */
   drawnSoldOut: boolean | null;
+  /** Whether the counter on screen is the SPRITE rather than the Graphics fallback — so a
+   *  counter built while `preloadEnvironmentSprites()` was in flight still picks the art up,
+   *  the same late-texture flag `ChestLayer` keeps. */
+  drawnWithArt: boolean;
 }
 
 export class ShopLayer {
@@ -171,22 +184,9 @@ export class ShopLayer {
     const mat = new Graphics();
     this.ground.addChild(mat);
 
-    const shadow = new Graphics();
-    shadow.ellipse(0, 0, BODY_HALF, BODY_HALF * SHADOW_SQUASH).fill({ color: 0x000000, alpha: 0.28 });
-    body.addChild(shadow);
-
-    const g = new Graphics();
-    const h = COUNTER_HEIGHT_PX;
-    // The counter: a slab with a lit top edge, drawn from its base so it sits ON the ground
-    // point rather than centred on it (every body in this scene is anchored at the feet).
-    g.rect(-BODY_HALF, -h, BODY_HALF * 2, h).fill({ color: COUNTER_FILL });
-    g.rect(-BODY_HALF, -h, BODY_HALF * 2, 3).fill({ color: COUNTER_TOP });
-    // The awning: one warm triangle above the slab. Form AND colour differ from a chest
-    // (design/13's dual-channel rule), so the two props never have to be told apart by hue.
-    g.poly([-BODY_HALF - 2, -h - 2, BODY_HALF + 2, -h - 2, 0, -h - 11]).fill({ color: AWNING });
-    body.addChild(g);
-
-    return { body, mat, keeper: null, drawnSoldOut: null };
+    const tex = getShopCounterTexture();
+    body.addChild(buildCounterBody(tex));
+    return { body, mat, keeper: null, drawnSoldOut: null, drawnWithArt: tex !== undefined };
   }
 
   /** The shopkeeper: a bottom-anchored sprite on its own ground point, `KEEPER_BACK_PX`
@@ -224,6 +224,15 @@ export class ShopLayer {
     v.body.zIndex = y;
     v.mat.position.set(x, y);
 
+    if (!v.drawnWithArt) {
+      const tex = getShopCounterTexture();
+      if (tex) {
+        for (const old of v.body.removeChildren()) old.destroy({ children: true });
+        v.body.addChild(buildCounterBody(tex));
+        v.drawnWithArt = true;
+      }
+    }
+
     v.keeper ??= this.createKeeper();
     if (v.keeper) {
       // North of the counter, and sorted on THAT point rather than on the counter's — which
@@ -246,4 +255,41 @@ export class ShopLayer {
       .ellipse(0, 0, MAT_RADIUS_PX, MAT_RADIUS_PX * SHADOW_SQUASH)
       .stroke({ color: THEME.colors.pickupCoin, width: 1.5, alpha: soldOut ? 0.25 : 0.6 });
   }
+}
+
+/**
+ * One counter body — its ground shadow plus the art if it has loaded, the Graphics form if not.
+ *
+ * The sprite is anchored at the feet and scaled by WIDTH, the art's aspect setting its height
+ * (the rule `buildChestBody` and the keeper follow). The shadow is built here rather than once
+ * in `create()` because the two paths have different footprints: the art is wider than the
+ * slab, and a shadow narrower than the furniture standing on it reads as the counter floating.
+ * Exported so a test can measure both paths directly.
+ */
+export function buildCounterBody(tex?: Texture): Container {
+  const c = new Container();
+  const half = tex ? COUNTER_ART_WIDTH_PX / 2 : BODY_HALF;
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0, half, half * SHADOW_SQUASH).fill({ color: 0x000000, alpha: 0.28 });
+  c.addChild(shadow);
+
+  if (tex) {
+    const sprite = new Sprite(tex);
+    sprite.anchor.set(0.5, 1);
+    sprite.setSize(COUNTER_ART_WIDTH_PX, COUNTER_ART_WIDTH_PX * (tex.height / tex.width));
+    c.addChild(sprite);
+    return c;
+  }
+
+  const g = new Graphics();
+  const h = COUNTER_HEIGHT_PX;
+  // The counter: a slab with a lit top edge, drawn from its base so it sits ON the ground
+  // point rather than centred on it (every body in this scene is anchored at the feet).
+  g.rect(-BODY_HALF, -h, BODY_HALF * 2, h).fill({ color: COUNTER_FILL });
+  g.rect(-BODY_HALF, -h, BODY_HALF * 2, 3).fill({ color: COUNTER_TOP });
+  // The awning: one warm triangle above the slab. Form AND colour differ from a chest
+  // (design/13's dual-channel rule), so the two props never have to be told apart by hue.
+  g.poly([-BODY_HALF - 2, -h - 2, BODY_HALF + 2, -h - 2, 0, -h - 11]).fill({ color: AWNING });
+  c.addChild(g);
+  return c;
 }

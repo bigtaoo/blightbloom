@@ -86,7 +86,7 @@ Where the four channels landed, and one deliberate omission:
 | **status** | the aura ring's hue (`07`) | a glyph ON that status's own ring (`scene/statusAura.ts`) |
 | **weapon (HUD)** | the damage badge's tint | the glyph inside that badge (`ui/WeaponCard.ts`) |
 | **weapon (dropped)** | *nothing* — the ground icon was untinted | a badge on the drop, plus the icon now tinted |
-| **bullet** | its hue + additive halo | **none** — a 4 px dot has no room, and this doc's list names weapon / enemy / status |
+| **bullet** | its hue + additive halo | its **shape** (2026-10-01): a per-element sprite rather than a glyph — fireball, ice shard, lightning bolt, toxic glob, and a greyscale slug tinted by faction for physical (`bullet_<type>.png`, `scene/Bullet.ts`). Until then this column read "none — a 4 px dot has no room"; the dot is still the fallback for an unloaded texture |
 
 The enemy badge rides on the **health bar** rather than on the body, and both reasons come from
 things already on screen: the bar is mounted on `layers.hud`, so unlike anything parented to the

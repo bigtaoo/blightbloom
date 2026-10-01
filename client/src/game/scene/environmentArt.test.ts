@@ -1,6 +1,6 @@
 /**
- * The SHIPPED drop/portal art itself (`client/public/environment/pickup_*.png`,
- * `portal_arch.png`), decoded and measured (2026-08-20). Sibling of `pillarArt.test.ts`,
+ * The SHIPPED drop/portal/projectile art itself (`client/public/environment/pickup_*.png`,
+ * `bullet_*.png`, `portal_arch.png`), decoded and measured (2026-08-20; projectiles 2026-10-01). Sibling of `pillarArt.test.ts`,
  * for the same reason: every other test in this directory checks what the renderer does
  * with a texture, and these objects' whole look now lives in the files.
  *
@@ -128,14 +128,25 @@ function runsAt(img: Img, fy: number): number[] {
   return out;
 }
 
-const PICKUPS = ['material', 'heal', 'buff', 'crate', 'bandage'] as const;
+const PICKUPS = [
+  'material', 'heal', 'buff', 'crate', 'bandage', 'coin', 'energy', 'shield', 'emp', 'schematic', 'character',
+] as const;
 const pickup = (kind: string): Img => load(`../../../public/environment/pickup_${kind}.png`);
+const BULLETS = ['physical', 'fire', 'ice', 'lightning', 'poison'] as const;
+const bullet = (type: string): Img => load(`../../../public/environment/bullet_${type}.png`);
 const arch = load('../../../public/environment/portal_arch.png');
+const counter = load('../../../public/environment/shop_counter.png');
+const plateIdle = load('../../../public/environment/chest_plate.png');
+const plateLive = load('../../../public/environment/chest_plate_on.png');
 
 describe('every shipped environment sprite — the pipeline steps that leave no other trace', () => {
   const all: ReadonlyArray<[string, Img]> = [
     ...PICKUPS.map((k) => [`pickup_${k}`, pickup(k)] as [string, Img]),
+    ...BULLETS.map((t) => [`bullet_${t}`, bullet(t)] as [string, Img]),
     ['portal_arch', arch],
+    ['shop_counter', counter],
+    ['chest_plate', plateIdle],
+    ['chest_plate_on', plateLive],
   ];
 
   it.each(all)('%s has a real alpha channel with transparent corners', (_name, img) => {
@@ -170,9 +181,12 @@ describe('every shipped environment sprite — the pipeline steps that leave no 
     // `compress.mjs` trims the alpha bbox, and `Pickup`/`Portal` scale by the TEXTURE's
     // dimensions — so untrimmed margin silently shrinks the object on screen by however
     // much empty space the generator happened to leave (up to 44% on this batch's rejects).
+    // The slack is 1.5% of the side, never under 2 px: a needle-tipped projectile (the ice
+    // shard, the lightning bolt) fades through partial alpha over its last 3 px of a 256 px
+    // file, and that tip is the object, not margin. Margin worth catching is tens of percent.
     const b = bbox(img);
-    expect(b.w).toBeGreaterThanOrEqual(img.width - 2);
-    expect(b.h).toBeGreaterThanOrEqual(img.height - 2);
+    expect(b.w).toBeGreaterThanOrEqual(img.width - Math.max(2, img.width * 0.015));
+    expect(b.h).toBeGreaterThanOrEqual(img.height - Math.max(2, img.height * 0.015));
   });
 });
 
@@ -226,6 +240,39 @@ describe('the shipped drop sprites — resolution, and contrast against the floo
     expect(b.w / b.h).toBeGreaterThan(1.6);
   });
 
+  it('the coin reads as a tilted coin, never as an eye', () => {
+    // The bandage's lesson applied before the fact (2026-10-01): a coin is the one drop whose
+    // natural shape IS a disc. Two properties keep it from becoming a pale disc with a dark
+    // middle: the tilt that makes it a wide ellipse with a visible edge, and a centre that is
+    // the BRIGHTEST part of the face (a raised star) rather than a hole.
+    const img = pickup('coin');
+    const b = bbox(img);
+    expect(b.w / b.h).toBeGreaterThan(1.2);
+    let sum = 0;
+    let n = 0;
+    for (let y = b.y + Math.round(b.h * 0.3); y < b.y + Math.round(b.h * 0.5); y++) {
+      for (let x = b.x + Math.round(b.w * 0.4); x < b.x + Math.round(b.w * 0.6); x++) {
+        sum += lumaAt(img, x, y);
+        n++;
+      }
+    }
+    expect(sum / n).toBeGreaterThan(meanLuma(img) + 20);
+  });
+
+  it('the schematic lies flat as a scroll, never upright like the energy cell', () => {
+    // The two boss-adjacent shapes that could be confused are both cylinders: the energy cell
+    // stands (88 x 192) and the schematic must lie. At 18 px the orientation is the read.
+    const b = bbox(pickup('schematic'));
+    expect(b.w / b.h).toBeGreaterThan(2);
+  });
+
+  it('the character bust stands taller than it is wide', () => {
+    // A head over shoulders over a base: the silhouette that keeps it apart from the round
+    // drops (coin, emp) and the wide ones (bandage, schematic) it can share a floor with.
+    const b = bbox(pickup('character'));
+    expect(b.h / b.w).toBeGreaterThan(1.2);
+  });
+
   it('the crate keeps its top the brightest plane on the object', () => {
     // Same sky-facing rule the pillar's cap follows, and the same defect that has now been
     // caught twice in this project: a raised surface that reads darker than the ground it
@@ -233,6 +280,140 @@ describe('the shipped drop sprites — resolution, and contrast against the floo
     // anyone has for height.
     const img = pickup('crate');
     expect(rowBand(img, 0, 0.2)).toBeGreaterThan(rowBand(img, 0.4, 0.6) + 20);
+  });
+});
+
+describe('the shipped projectile sprites (2026-10-01)', () => {
+  it.each(BULLETS)('bullet_%s has resolution headroom for the largest round at full zoom', (type) => {
+    // `Bullet` draws the art's long axis at ART_LENGTH_R (4) radii. The biggest round in the
+    // content is 0.28 grid (9 world px), at MAX_ZOOM 3.5 and up to 2x device pixel ratio.
+    const img = bullet(type);
+    expect(Math.max(img.width, img.height)).toBeGreaterThanOrEqual(4 * 0.28 * 32 * 3.5 * 2);
+  });
+
+  it.each(BULLETS)('bullet_%s is drawn pointing along x', (type) => {
+    // `Bullet` rotates the sprite by atan2(vy, vx), which is only right for art that points
+    // +x. A file authored vertical would fly sideways through every shot.
+    const b = bbox(bullet(type));
+    expect(b.w / b.h).toBeGreaterThan(2);
+  });
+
+  it.each(BULLETS)('bullet_%s reads clearly brighter than the floor it flies over', (type) => {
+    expect(meanLuma(bullet(type))).toBeGreaterThan(FLOOR_LUMA_MAX + 40);
+  });
+
+  it('the physical round carries no hue of its own, so the faction tint lands true', () => {
+    // A physical round is blue for the player and orange for an enemy, and a deflect flips it
+    // in flight — `Bullet` tints this file per faction. Any baked hue would multiply into both.
+    const img = bullet('physical');
+    let maxChroma = 0;
+    for (let i = 0; i < img.data.length; i += 4) {
+      if (img.data[i + 3]! <= 200) continue;
+      const r = img.data[i]!;
+      const g = img.data[i + 1]!;
+      const b = img.data[i + 2]!;
+      maxChroma = Math.max(maxChroma, Math.max(r, g, b) - Math.min(r, g, b));
+    }
+    expect(maxChroma).toBeLessThan(24);
+  });
+
+  it('every elemental round DOES carry its hue — it is never tinted at runtime', () => {
+    for (const type of ['fire', 'ice', 'lightning', 'poison']) {
+      const img = bullet(type);
+      let chroma = 0;
+      let n = 0;
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i + 3]! <= 200) continue;
+        const r = img.data[i]!;
+        const g = img.data[i + 1]!;
+        const b = img.data[i + 2]!;
+        chroma += Math.max(r, g, b) - Math.min(r, g, b);
+        n++;
+      }
+      expect(chroma / n, type).toBeGreaterThan(60);
+    }
+  });
+});
+
+/** Mean luma and mean chroma of the opaque pixels inside an elliptical annulus of the object's
+ *  own bbox — `from`/`to` are normalised radii (0 centre, 1 rim). How a plate's ring and its
+ *  centre stud are measured, since neither is a row or a column. */
+function ellipseBand(img: Img, from: number, to: number): { luma: number; chroma: number } {
+  const b = bbox(img);
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  let luma = 0;
+  let chroma = 0;
+  let n = 0;
+  for (let y = b.y; y < b.y + b.h; y++) {
+    for (let x = b.x; x < b.x + b.w; x++) {
+      if (alphaAt(img, x, y) <= 200) continue;
+      const d = Math.hypot((x + 0.5 - cx) / (b.w / 2), (y + 0.5 - cy) / (b.h / 2));
+      if (d < from || d >= to) continue;
+      const i = (y * img.width + x) * 4;
+      luma += lumaAt(img, x, y);
+      chroma += Math.max(img.data[i]!, img.data[i + 1]!, img.data[i + 2]!) - Math.min(img.data[i]!, img.data[i + 1]!, img.data[i + 2]!);
+      n++;
+    }
+  }
+  expect(n).toBeGreaterThan(0);
+  return { luma: luma / n, chroma: chroma / n };
+}
+
+describe('the shipped shop counter and chest plates (2026-10-01)', () => {
+  it('the counter has resolution headroom for its drawn width at full zoom', () => {
+    // `ShopLayer` draws it COUNTER_ART_WIDTH_PX (36) wide, at MAX_ZOOM 3.5 and up to 2x DPR.
+    expect(counter.width).toBeGreaterThanOrEqual(36 * 3.5 * 2);
+  });
+
+  it('the counter is wider than tall, and no band of it sinks into the floor', () => {
+    // Its slate front is the darkest large surface in the batch (#3F4D63) and stands straight
+    // on the floor, so the lower band is the one to watch.
+    const b = bbox(counter);
+    expect(b.w / b.h).toBeGreaterThan(1.4);
+    for (const [from, to] of [
+      [0, 0.2],
+      [0.4, 0.6],
+      [0.8, 1],
+    ] as const) {
+      expect(rowBand(counter, from, to)).toBeGreaterThan(FLOOR_LUMA_MAX + 20);
+    }
+  });
+
+  it.each([
+    ['chest_plate', plateIdle],
+    ['chest_plate_on', plateLive],
+  ] as const)('%s has headroom for the 64 px plate, and is close to the ground squash', (_n, img) => {
+    // Drawn 64 x 40 (the sim's trigger circle x SHADOW_SQUASH 0.62). `buildPlate` stretches it
+    // onto that ellipse on both axes, so an aspect far off the squash would visibly distort it.
+    expect(img.width).toBeGreaterThanOrEqual(64 * 3.5 * 2);
+    expect(img.height / img.width).toBeGreaterThan(0.62 * 0.9);
+    expect(img.height / img.width).toBeLessThan(0.62 * 1.1);
+  });
+
+  it.each([
+    ['chest_plate', plateIdle],
+    ['chest_plate_on', plateLive],
+  ] as const)('%s keeps its rim out of the floor band — the rim IS the trigger edge', (_n, img) => {
+    // The generated iron ring came back at luma 48-52, inside the floor's own 39-49: the plate's
+    // outer edge would have dissolved and it would have read a ring-width smaller than the sim's
+    // trigger. Lifted offline by `lumaCurve.mjs` (see art/environment/prompts.md).
+    expect(ellipseBand(img, 0.88, 0.98).luma).toBeGreaterThan(FLOOR_LUMA_MAX + 12);
+  });
+
+  it('the two plate states share one outline, so stepping on it changes colour, not shape', () => {
+    const a = bbox(plateIdle);
+    const b = bbox(plateLive);
+    expect(Math.abs(a.w / a.h - b.w / b.h)).toBeLessThan(0.02);
+  });
+
+  it('only the live plate carries amber at its centre stud', () => {
+    // The live file was made FROM the idle one; the whole state change is this colour.
+    const idle = ellipseBand(plateIdle, 0, 0.12);
+    const live = ellipseBand(plateLive, 0, 0.12);
+    expect(idle.chroma).toBeLessThan(40);
+    expect(live.chroma).toBeGreaterThan(idle.chroma + 60);
+    expect(live.luma).toBeGreaterThan(idle.luma + 40);
   });
 });
 

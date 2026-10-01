@@ -260,6 +260,7 @@ export class Scene {
       }
       v.setFaction(b.faction);
       v.setElement(b.damageType);
+      v.setHeading(fpToPx(b.vx), fpToPx(b.vy));
       seen.add(b.id);
     }
 
