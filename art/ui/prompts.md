@@ -435,6 +435,36 @@ draws its own highlight while the control is held. No text, no letters, no digit
 > short of the centre, and one small solid amber dot exactly in the middle. Nothing else — no
 > bullet, no gun, no flame, no explosion.
 
+## Next batch, prepared (not yet issued): the small buttons
+
+Same extra-constraints paragraph. Both are drawn 80 across, so they must read at that size:
+one shape each, no fine detail.
+
+### 4. `touch_swap` — the weapon-swap disc (used twice)
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single small round BUTTON DISC for a mobile game, filling the canvas
+> inside the margin, deliberately plain because the game prints a "1" or a "2" on top of it. A
+> flat dark slate disc approximately #2A3140, with a thin cool-grey rim about 6% of the
+> diameter thick, approximately #E2E8F0 at the upper-left fading to about #8A94A6 at the
+> lower-right. The disc's centre is EMPTY and flat: no symbol, no texture, no gradient beyond
+> one very faint lighter crescent along the upper-left inside the rim. No digit, no letter, no
+> weapon, no arrow.
+
+### 5. `touch_interact` — the hold-to-revive/interact button
+
+> [locked style] [extra constraints] Output 1024 x 1024 pixels, an 8-pixel fully transparent
+> margin on all sides. A single small round SUPPORT BUTTON for a mobile game, filling the
+> canvas inside the margin. A ring band about 8% of the diameter thick in heal green — base
+> approximately #68D391, upper-left lit to about #B4F0C8, lower-right shaded to about #3F9A62
+> — around a dark disc approximately #2A3140. Centred on the disc, one bold green PLUS sign
+> with slightly rounded ends, its arms about 50% of the button's diameter, the same green as
+> the ring with a flat lighter top face. Nothing else — no heart, no cross outline, no hand.
+
+Code side for these two: `drawButton` / `drawInteractButton` take the same sprite swap as the
+three above. The swap disc keeps its "1"/"2" Text on top; the interact button's "+" Text goes
+away once its art lands, since the plus is in the art.
+
 ## Workflow for this batch
 
 Same pipeline as the environment batches (`art/environment/prompts.md`, "Pipeline, in order"):
@@ -446,7 +476,10 @@ stick base's hollow interior and the fire button's ring are the two places that 
 opposite directions (a filled interior hides the floor; a ring with no dark edge vanishes on
 a bright one).
 
-Code side, not done yet: unlike the drops, no registry makes this a code-free swap.
-`TouchControlsView` needs a loader for `ui/touch_*.png` and a sprite path per control, keeping
-today's Graphics as the fallback until the textures resolve, and the held state as an alpha
-change on the sprite.
+Code side, wired ahead of the files (2026-10-01): `TouchControlsView` has a sprite per control
+(`TOUCH_ART_KEYS`), sized to the Graphics' own radius, alpha 0.5 idle / 0.9 held, and keeps the
+Graphics for any control whose texture has not landed. What is left for the day the PNGs
+arrive: add the three keys to `UI_ASSETS` in `render/uiSkins.ts` (they load in the `late`
+tier, before a run) together with the files in `client/public/ui/` and their
+`assetPacks.json` entries. The keys cannot be registered earlier: `wechatAssetLoad.test.ts`
+requires every registered file to load.
