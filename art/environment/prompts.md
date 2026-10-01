@@ -468,20 +468,22 @@ swirl, lighting, shadows, the minimap, debug layers).
 
 | Priority | Item | Drawn today in | Proposed file |
 |---|---|---|---|
-| high | Shop counter | `ShopLayer.ts` `create()` (slab + awning triangle) | `environment/shop_counter.png` — prompt below |
-| mid | Chest mechanism plate, idle + live | `ChestLayer.ts` `drawPlate()` | `environment/chest_plate.png`, `chest_plate_on.png` — prompts below |
+| ~~high~~ | ~~Shop counter~~ | shipped 2026-10-01, fourth batch below | `environment/shop_counter.png` |
+| ~~mid~~ | ~~Chest mechanism plate, idle + live~~ | shipped 2026-10-01, fourth batch below | `environment/chest_plate.png`, `chest_plate_on.png` |
 | mid | Touch controls: stick base/knob, fire, interact, swap | `TouchControlsView.ts` | `ui/touch_*.png`, 128 px |
 | mid | Buttons, panels, menu sheet frame + corner gem, slot frame | `widgets.ts`, `MenuSheet.ts` | 9-slices `btn_9slice`, `panel_9slice`, `sheet_frame_9slice`, `slot_frame_9slice`, plus `sheet_gem`. Touches the menu renderer — riskiest, last |
 | low | Guest avatar, matchmaking spinner, fail crystal | `AccountCard.ts`, `Matchmaking.ts` | `avatar_guest`, `spinner_gem`, `icon_fail_crystal` |
 | low | Rarity dot | `rarityOverlay.ts` | optional |
 
-Unlike the drops, none of these has a registry row that makes the swap code-free: the counter and
-the plates each need their layer to build a sprite (with the Graphics form kept as the fallback),
-and the UI items need a loader as well.
+Unlike the drops, none of the remaining items has a registry row that makes the swap code-free:
+the UI items need a loader as well as the swap.
 
-## The fourth batch (prompts issued), 2026-10-01 — shop counter, chest plates
+## The fourth batch (3), 2026-10-01 — shop counter, chest plates
 
-Not yet generated. Prompts as issued:
+Three generations, three accepted, none regenerated — and all three came back with the PAINTED
+checkerboard (RGB, no alpha channel at all) despite the framing block's anti-checkerboard
+paragraph, which had held for every generation since 2026-08-20. Results and fixes after the
+prompts. Prompts as issued:
 
 ### `shop_counter`
 
@@ -565,6 +567,43 @@ shape when stepped on reads as two different objects.
 > of the iron ring carries one thin solid amber line #F6AD55 all the way round. The stone and the
 > iron stay exactly as they were. Solid flat colour only — NO soft glow, NO bloom, NO halo, NO light
 > spilling outside the plate; the game draws its own glow.
+
+### What these three needed
+
+1. **Keying the painted checkerboard.** All three objects are dark and fully closed by a near-black
+   outline, so the recipe in the art-pipeline notes applied: flood-fill from the canvas border over
+   light low-chroma pixels (luma >= 195, chroma <= 28) — the flood never crosses the outline, so no
+   interior hole can be punched; the counter's 576 light interior pixels (its slab's highlight)
+   stayed opaque — then a 2 px alpha ramp by luma (245 -> 120) on the pixels bordering the
+   background, colour un-mixed from the white it was blended over. Done in Python as the step
+   before `<id>_raw.png`; the untouched generator files are kept as `<id>_original.png`.
+2. **The plate's iron ring sat in the floor band** — luma 48 (idle) / 52 (live) against the floor's
+   39-49, so the rim, which IS the trigger edge, would have dissolved. `lumaCurve.mjs --lo=55
+   --hi=72 --lo-gain=1.4 --hi-gain=1` lifts only the ring and the outlines; the stone (p10 77)
+   and the amber are above `--hi` and untouched.
+3. **Aspects.** The counter came back 1.98 : 1 against the 1.6 asked; kept, and drawn 36 px wide so
+   its height lands at ~18 px — the Graphics slab's own `COUNTER_HEIGHT_PX`, which keeps
+   `KEEPER_BACK_PX` right for both paths. The plates came back 0.58 tall against the 0.62 squash
+   (7% flat); `buildPlate` stretches them onto the trigger ellipse on both axes, so the rim lands
+   on the trigger edge either way. The live plate kept the idle one's outline to within 1% —
+   image-to-image from the accepted idle file worked as intended.
+
+Results, trimmed: counter **320 x 161**, plates **576 x 333** / **576 x 335**.
+
+```
+art/environment/<id>_original.png  -> key (Python, above) ->  art/environment/<id>_raw.png
+  -> cp to client/public/environment/<id>.png
+  -> alphaClamp.mjs                                              # all three
+  -> lumaCurve.mjs --lo=55 --hi=72 --lo-gain=1.4 --hi-gain=1     # the two plates
+  -> compress.mjs --long-axis=320                                # counter: 36 px x 3.5 zoom x 2 DPR = 252
+  -> compress.mjs --long-axis=576                                # plates:  64 px x 3.5 x 2 = 448
+  -> alpha-audit.mjs client/public/environment
+```
+
+On the code side: `ShopLayer` builds the counter through `buildCounterBody` (sprite by width,
+feet-anchored, its shadow sized to whichever path drew) and re-asks for the texture until it
+resolves; `ChestLayer` keeps a holder per plate and redraws it on a key of occupancy AND
+art-loaded, so a late texture lands without anybody stepping on the plate.
 
 ## Standing finding, not fixed here
 

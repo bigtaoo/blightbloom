@@ -51,6 +51,8 @@ import {
   getPortalArchTexture,
   getPropTexture,
   getChestTexture,
+  getChestPlateTexture,
+  getShopCounterTexture,
   getShopkeeperTexture,
 } from './environmentSprites';
 import { WEAPON_DEFS, KIND_DEFAULTS, getWeaponTexture } from './weaponSkins';
@@ -189,6 +191,11 @@ describe('WeChat runtime — every sprite loader resolved', () => {
       door_curtain: () => getDoorCurtainTexture(),
       portal_arch: () => getPortalArchTexture(),
       npc_shopkeeper: () => getShopkeeperTexture(),
+      shop_counter: () => getShopCounterTexture(),
+      // Named before the `chest_` split below, which would otherwise read them as a chest KIND
+      // called `plate` (2026-10-01).
+      chest_plate: () => getChestPlateTexture(false),
+      chest_plate_on: () => getChestPlateTexture(true),
     };
     for (const key of Object.keys(ENV_SPRITE_ASSETS)) {
       if (key.startsWith('pickup_')) getters[key] = () => getPickupTexture(key.slice('pickup_'.length));
@@ -196,7 +203,7 @@ describe('WeChat runtime — every sprite loader resolved', () => {
       else if (key.startsWith('bullet_')) getters[key] = () => getBulletTexture(key.slice('bullet_'.length));
       // `chest_<kind>` and `chest_<kind>_open` (2026-09-15) — the open state is a suffix rather
       // than a family of its own, so the split is on the LAST segment, not the first.
-      else if (key.startsWith('chest_')) {
+      else if (key.startsWith('chest_') && !(key in getters)) {
         const rest = key.slice('chest_'.length);
         const opened = rest.endsWith('_open');
         const kind = opened ? rest.slice(0, -'_open'.length) : rest;

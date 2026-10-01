@@ -36,7 +36,9 @@ exists yet.~~ **Art landed 2026-09-15** — four files (`chest_small`, `chest_sm
 `chest_big`, `chest_big_open`), the same staged rollout walls, pillars, doors and drops each went
 through. `client/src/game/scene/ChestLayer.ts` keeps its Graphics form as the fallback, anchored
 at the feet in the same box the sprite occupies, so a state whose file has not loaded still draws
-something the right size. Audio is still unstarted: a chest opens in silence.
+something the right size. The big chest's mechanism plates followed **2026-10-01** (`chest_plate`, `chest_plate_on`): a flat decal stretched onto the sim's own trigger ellipse, so
+the art's rim is the trigger edge, the stroked ellipse kept as its fallback. Audio is still
+unstarted: a chest opens in silence.
 
 **Where they actually sit — rewritten 2026-09-14 the same day** (`ENGINE_VERSION` 65). The first
 pass put the chests on the pieces that already existed (a big one in `ember_l1_extraction`, a small
@@ -349,6 +351,9 @@ they have nothing to do with each other:
   of its silhouette. `scene/ShopLayer.ts` owns it; `render/environmentSprites.ts` loads it in the
   `run` pack alongside the doors and the props. **Zero engine change** — no `ENGINE_VERSION`, no
   golden re-record, no replay consequence, because nothing about the purchase rule moved.
+  The **counter** itself got its art 2026-10-01 (`shop_counter.png`, 36 px wide): nothing rises
+  above its top slab, since it is drawn over the keeper, and the awning's warm accent moved to a
+  valance on its front. The slab-and-awning Graphics stays as the fallback.
 - **"…and that is what opens the shop."** A change to the VERB, and still open. Deliberately not
   taken in the same pass: the panel opens on proximity today, and making it need an explicit
   gesture means answering *which* gesture first, given `INTERACT` already carries two consumers

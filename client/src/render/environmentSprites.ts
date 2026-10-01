@@ -71,6 +71,14 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   chest_small_open: '/environment/chest_small_open.png',
   chest_big: '/environment/chest_big.png',
   chest_big_open: '/environment/chest_big_open.png',
+  // A big chest's mechanism plate, idle and live (2026-10-01) — a flat ground decal, so the
+  // one file here drawn from straight above. `ChestLayer` stretches it onto the sim's own
+  // trigger ellipse, so the art's rim IS the trigger edge.
+  chest_plate: '/environment/chest_plate.png',
+  chest_plate_on: '/environment/chest_plate_on.png',
+  // The shop counter (2026-10-01). Drawn IN FRONT of the shopkeeper, which is why the art has
+  // nothing rising above its top slab: the warm accent is a valance on its front, not an awning.
+  shop_counter: '/environment/shop_counter.png',
   // The shop's shopkeeper (2026-09-14, design/05 "Shops"). Filed under `environment/`
   // rather than `ui/` where `npc_forger.png` sits, because this one stands IN a room and
   // is Y-sorted against the actors — the hub Forger is a corner-anchored UI sprite. It is
@@ -158,6 +166,19 @@ export function getPropTexture(kind: string): Texture | undefined {
  *  flight still picks the art up. */
 export function getChestTexture(kind: string, opened: boolean): Texture | undefined {
   return textures.get(`chest_${kind}${opened ? '_open' : ''}`);
+}
+
+/** A big chest's mechanism plate, by occupancy (`scene/ChestLayer.ts`). Undefined until
+ *  preloaded — the plate falls back to the stroked ellipse it drew before this art existed,
+ *  and `ChestLayer` re-asks every frame until it resolves. */
+export function getChestPlateTexture(occupied: boolean): Texture | undefined {
+  return textures.get(occupied ? 'chest_plate_on' : 'chest_plate');
+}
+
+/** The shop counter (`scene/ShopLayer.ts`). Undefined until preloaded — the counter falls back
+ *  to the slab-and-awning Graphics it shipped with, and `ShopLayer` re-asks every frame. */
+export function getShopCounterTexture(): Texture | undefined {
+  return textures.get('shop_counter');
 }
 
 /** The shop counter's shopkeeper (`scene/ShopLayer.ts`). Undefined until preloaded — and a

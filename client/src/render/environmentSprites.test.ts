@@ -16,6 +16,8 @@ import {
   getBulletTexture,
   getPropTexture,
   getChestTexture,
+  getChestPlateTexture,
+  getShopCounterTexture,
   getShopkeeperTexture,
   ENV_SPRITE_ASSETS,
   ENV_SPRITE_ASSET_KEYS,
@@ -65,6 +67,9 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   chest_small_open: () => getChestTexture('small', true),
   chest_big: () => getChestTexture('big', false),
   chest_big_open: () => getChestTexture('big', true),
+  chest_plate: () => getChestPlateTexture(false),
+  chest_plate_on: () => getChestPlateTexture(true),
+  shop_counter: () => getShopCounterTexture(),
 } as Readonly<Record<string, () => { source: { label: string } } | undefined>>;
 
 /** Every drop kind with a file — all of them but `weapon` since 2026-10-01. */
@@ -170,6 +175,9 @@ describe('environmentSprites — the getters before any preload', () => {
     // The keeper's undefined path is the one with a visible consequence rather than a fallback:
     // `ShopLayer` draws no merchant at all, deliberately (design/05).
     expect(getShopkeeperTexture()).toBeUndefined();
+    expect(getShopCounterTexture()).toBeUndefined();
+    expect(getChestPlateTexture(false)).toBeUndefined();
+    expect(getChestPlateTexture(true)).toBeUndefined();
   });
 });
 
@@ -217,6 +225,10 @@ describe('environmentSprites — each getter resolves the key it registered, aft
         expect(at(getPropTexture(kind))).toBe(`/environment/prop_${kind}.png`);
       }
       expect(at(getShopkeeperTexture())).toBe('/environment/npc_shopkeeper.png');
+      expect(at(getShopCounterTexture())).toBe('/environment/shop_counter.png');
+      // Occupancy picks the state: an inverted ternary would light every idle plate.
+      expect(at(getChestPlateTexture(false))).toBe('/environment/chest_plate.png');
+      expect(at(getChestPlateTexture(true))).toBe('/environment/chest_plate_on.png');
     } finally {
       restore();
     }

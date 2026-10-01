@@ -27,13 +27,14 @@
 // ## What the plates have to communicate, and what they must not
 //
 // A mechanism is the only thing in the game whose state is "somebody else is standing here", so
-// an occupied plate is drawn as filled-and-ringed and an empty one as a thin outline. The rule
-// the drawing has to respect is that an OPENED chest's plates keep updating: `ChestSystem`
+// an occupied plate shows its amber-lit art (`chest_plate_on.png`) and an empty one the
+// dormant grey file — or, before the art loads, a filled-and-ringed ellipse against a thin
+// outline. The rule the drawing has to respect is that an OPENED chest's plates keep updating: `ChestSystem`
 // refreshes `occupied` for an opened chest too, precisely so a plate does not stay lit forever
 // after the party walks away, and a renderer that stopped reading them would put that bug back.
 import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { Chest, GameState } from '@dd/engine';
-import { getChestTexture } from '../../render/environmentSprites';
+import { getChestPlateTexture, getChestTexture } from '../../render/environmentSprites';
 import { fpToPx } from '../coords';
 import { THEME } from '../theme';
 import { SHADOW_SQUASH } from './Entity';
@@ -68,11 +69,13 @@ interface ChestView {
    *  `ShopLayer.createKeeper` handles by re-asking, stated here as a flag because a chest has
    *  a body either way and "is there one" cannot answer it. */
   drawnWithArt: boolean;
-  /** Per-plate occupancy as last drawn, index-aligned with `Chest.mechanisms`. Same reason.
-   *  `null` means "never drawn", and it has to be a third value rather than a `false` default:
-   *  seeding it with a boolean makes the first frame a no-op for every plate that happens to
-   *  start in that state, which leaves a live plate undrawn until somebody steps off it. */
-  drawnOccupied: (boolean | null)[];
+  /** Per-plate state as last drawn — occupancy AND whether it was the sprite — index-aligned
+   *  with `Chest.mechanisms`. Same reason as `drawnWithArt`: a plate drawn before its texture
+   *  loaded has to be redrawn when it arrives, not only when somebody steps on it. `null`
+   *  means "never drawn", and it has to be a value the real key can never equal: seeding it
+   *  with a real key makes the first frame a no-op for every plate that happens to start in
+   *  that state, which leaves a live plate undrawn until somebody steps off it. */
+  drawnPlate: (string | null)[];
 }
 
 export class ChestLayer {
@@ -145,15 +148,15 @@ export class ChestLayer {
     body.addChild(shadow);
     const plates = new Container();
     this.ground.addChild(plates);
-    for (let i = 0; i < chest.mechanisms.length; i++) plates.addChild(new Graphics());
+    for (let i = 0; i < chest.mechanisms.length; i++) plates.addChild(new Container());
     // Both sentinels are deliberately values the real state can never equal, so the first
-    // `sync` always draws: `drawnOpen` inverted, `drawnOccupied` null.
+    // `sync` always draws: `drawnOpen` inverted, `drawnPlate` null.
     return {
       body,
       plates,
       drawnOpen: !chest.opened,
       drawnWithArt: false,
-      drawnOccupied: chest.mechanisms.map(() => null),
+      drawnPlate: chest.mechanisms.map(() => null),
     };
   }
 
@@ -176,12 +179,15 @@ export class ChestLayer {
     }
     for (let i = 0; i < chest.mechanisms.length; i++) {
       const m = chest.mechanisms[i]!;
-      const g = v.plates.children[i] as Graphics | undefined;
-      if (!g) continue;
-      g.position.set(fpToPx(m.gx), fpToPx(m.gy));
-      if (v.drawnOccupied[i] === m.occupied) continue;
-      drawPlate(g, m.occupied);
-      v.drawnOccupied[i] = m.occupied;
+      const holder = v.plates.children[i] as Container | undefined;
+      if (!holder) continue;
+      holder.position.set(fpToPx(m.gx), fpToPx(m.gy));
+      const tex = getChestPlateTexture(m.occupied);
+      const key = `${m.occupied}|${tex !== undefined}`;
+      if (v.drawnPlate[i] === key) continue;
+      for (const old of holder.removeChildren()) old.destroy();
+      holder.addChild(buildPlate(m.occupied, tex));
+      v.drawnPlate[i] = key;
     }
   }
 }
@@ -247,7 +253,34 @@ export function drawBody(kind: 'small' | 'big', opened: boolean): Graphics {
   return g;
 }
 
-/** One mechanism plate. Exported for the same reason `drawBody` is. */
+/** The drawn size of a mechanism plate, world px — the sim's trigger circle seen through the
+ *  ground squash. Exported so a test derives the sprite's size instead of restating it. */
+export function plateFootprint(): { width: number; height: number } {
+  return { width: PLATE_RADIUS_PX * 2, height: PLATE_RADIUS_PX * 2 * SHADOW_SQUASH };
+}
+
+/**
+ * One mechanism plate, art if it has loaded and the Graphics form if it has not.
+ *
+ * Unlike every standing body here, the sprite is **stretched to the footprint on both axes**
+ * rather than scaled by width: a plate has no aspect of its own, it is the sim's trigger circle
+ * lying in the floor, and its rim has to land on the trigger edge in both directions or "am I
+ * standing on it" stops being answered by the picture. Centre-anchored, because the sim
+ * measures from the centre (the stud marks it). No tint: idle grey and live amber are the two
+ * files.
+ */
+export function buildPlate(occupied: boolean, tex?: Texture): Container {
+  if (tex) {
+    const { width, height } = plateFootprint();
+    const sprite = new Sprite(tex);
+    sprite.anchor.set(0.5);
+    sprite.setSize(width, height);
+    return sprite;
+  }
+  return drawPlate(new Graphics(), occupied);
+}
+
+/** The Graphics fallback for one mechanism plate. Exported for the same reason `drawBody` is. */
 export function drawPlate(g: Graphics, occupied: boolean): Graphics {
   g.clear();
   const r = PLATE_RADIUS_PX;
