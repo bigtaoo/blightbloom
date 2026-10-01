@@ -176,6 +176,24 @@ describe('FxController.updateCamera', () => {
     expect(layers.world.y).toBeCloseTo(-252);
   });
 
+  it('puts the world on whole screen pixels, so a sub-pixel pan cannot make edges crawl', () => {
+    // 2026-10-01: a fractional offset re-rasterized every edge at a new phase each frame inside
+    // the un-antialiased filter targets — walls and drops shimmered while the player walked.
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    // Zoom 1, a world twice the viewport, the player at a fractional point: the unsnapped pose
+    // is (400 - 800.37, 300 - (600.61 - 48)) = (-400.37, -252.61).
+    fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, fakePlayer(800.37, 600.61));
+    expect(layers.world.x).toBe(-400);
+    expect(layers.world.y).toBe(-253);
+    // And through the eased follow, frame after frame, with the shake on.
+    fx.addShake(1);
+    for (let i = 1; i <= 30; i++) {
+      fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, fakePlayer(800.37 + i * 1.13, 600.61), null, 16.7);
+      expect(Number.isInteger(layers.world.x) && Number.isInteger(layers.world.y)).toBe(true);
+    }
+  });
+
   it('fits the FRAME rect (the current room) when given one, not the whole floor', () => {
     const layers = new Layers();
     const fx = new FxController(layers);

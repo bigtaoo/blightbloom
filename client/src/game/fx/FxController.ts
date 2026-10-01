@@ -328,9 +328,16 @@ export class FxController {
     const shakeMag = motionReduced() ? 0 : this.shakeTrauma * this.shakeTrauma * MAX_SHAKE_PX;
     const shake = shakeMag > 0.05 ? shakeOffset(this.shakeTimeMs, shakeMag) : { x: 0, y: 0 };
 
+    // Snapped to whole screen pixels (2026-10-01, user report "角色移动的时候物品抖动…墙壁也会抖").
+    // Most of the world renders through resolution-1 filter targets, which carry no MSAA, so a
+    // fractional offset re-rasterizes every edge at a new sub-pixel phase each frame and edges
+    // crawl independently of each other. Measured live while panning 0.27 px a frame: a mean
+    // per-pixel residual of 1.01 between consecutive frames after the best integer shift,
+    // against 0.07 snapped — a whole-pixel step moves the frame rigidly. Whole LOGICAL pixels,
+    // not device pixels: those filter targets are 1x on every display.
     this.layers.world.scale.set(pose.zoom);
-    this.layers.world.x = pose.x + shake.x;
-    this.layers.world.y = pose.y + shake.y;
+    this.layers.world.x = Math.round(pose.x + shake.x);
+    this.layers.world.y = Math.round(pose.y + shake.y);
     this.syncCamera(viewport);
   }
 
