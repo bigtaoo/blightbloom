@@ -1,85 +1,118 @@
-// Render interpolation for an ONLINE match (2026-09-22), split out of `GameLoop.ts` under
-// CLAUDE.md's 500-line convention — form (2), composition: one concern, two fields, and a
-// cross-boundary call list of exactly `observe`/`alpha`/`reset`.
+// The playout clock for an ONLINE match (2026-09-22; rewritten 2026-10-01 as a jitter buffer),
+// split out of `GameLoop.ts` under CLAUDE.md's 500-line convention — form (2), composition: one
+// concern, a cross-boundary call list of exactly `plan`/`alpha`/`reset`.
 //
 // ## What it is for
 //
-// `Entity.pushState` shifts cur → prev, so `Scene.reconcile` is only meaningful ONCE per sim
-// tick. The online path used to call it every render frame with whatever state the session
-// held, which collapses prev onto cur — leaving nothing between the two to interpolate. That
-// is why it passed `alpha = 1`, and why an online match moved in 30 Hz steps on a 60 Hz
-// screen: every remote actor, every bullet, and (whenever the local seat was not being
-// predicted) the camera advanced twice per frame and then held still.
+// `Entity.pushState` shifts cur → prev, so `Scene.reconcile` must run ONCE per sim tick, and
+// the render frames between two ticks interpolate across them by `alpha`. Offline that is
+// `advanceSim`'s own accumulator. Online the ticks come from the server, and they do not come
+// evenly: `MatchRoom` sends them in batches of THREE every 100 ms (`DEFAULT_FRAMES_PER_BATCH`),
+// on top of whatever the network adds. Until 2026-10-01 the loop stepped every confirmed frame
+// the moment it was playable, so a batch landed as three ticks inside one render frame, mirrored
+// once, and every remote player, enemy and bullet covered 100 ms of movement in 33 ms and then
+// stood still for 67 — a 10 Hz stutter of everything on screen the player was not driving, and
+// two thirds of each batch's events (`CoopSession.drive` returns the last frame's only) dropped.
 //
-// Offline has never had this problem, because `advanceSim` owns a real accumulator and only
-// steps the engine on a tick boundary. This is the same idea for a clock the client does not
-// control: the SERVER's tick is the beat, and this measures how far into the current one the
-// render frame falls.
+// ## What it does
+//
+// It STEPS the confirmed stream at the sim's own 30 Hz, from render time, the way the offline
+// accumulator does: `plan` says how many frames to step this render frame (usually 0 or 1), and
+// whatever arrives early waits in the queue. That queue is the jitter buffer, and its depth is
+// managed by the playout RATE rather than by a fixed delay:
+//
+//   - **running dry** holds `alpha` at 1 (every remote entity at its newest confirmed position,
+//     never past it) and the next frame steps the moment it is playable — no catch-up burst;
+//   - **the depth** is read as the SLACK at the worst moment of each second: ticks of play left
+//     before the queue would run dry, were nothing more to arrive. Under one tick, the clock
+//     plays 5% slow for the next second; over three, 5% fast. Either is invisible (a remote
+//     player walking 5% faster for a second), where a stall or a skipped tick is not, and the
+//     buffer settles at the shallowest depth this connection's jitter allows;
+//   - **a backlog of half a second or more** (a backgrounded tab, a reconnect's resync) is not
+//     paced at all: it is skipped down to a two-frame queue in one go, the old catch-up.
 //
 // ## What it costs
 //
-// The standard price of entity interpolation, paid by REMOTE entities only: they are drawn up
-// to one tick (33 ms) behind the newest confirmed frame. The local seat is unaffected — the
-// predictor snaps its view after this, and the camera follows that. Presentation-only, like
-// every other render decision here: the sim is never touched (design/06).
+// Latency for REMOTE entities: they are drawn the jitter buffer's depth behind the newest
+// confirmed frame, typically one to three ticks. The local seat is drawn from the predictor,
+// whose correction target is the same paced confirmed position. Presentation-only, like every
+// other render decision here: the sim is never touched (design/06), and what is stepped is the
+// identical confirmed stream in the identical order, only at a different wall-clock moment.
 
 /** Milliseconds per sim tick. 30 Hz, matching `SIM_DT_MS` in `GameLoop.ts` and the engine's
  *  own `TICK_RATE` — duplicated rather than imported to keep this module free of both. */
 const SIM_DT_MS = 1000 / 30;
 
+/** A queue this deep is not jitter, it is a client that fell behind: skip, do not pace. */
+export const CATCHUP_FRAMES = 15;
+/** What a skip leaves queued, so the frame after it does not start dry. */
+const SKIP_KEEP = 2;
+/** The slack band, in ticks, the rate steers the worst moment of each window into. */
+const SLACK_LOW = 1;
+const SLACK_HIGH = 3;
+/** How far the rate leans, and how often it is reconsidered. */
+const RATE_LEAN = 0.05;
+const WINDOW_MS = 1000;
+
 export class OnlineInterpolation {
-  /** The confirmed tick the scene is currently mirroring. `-1` is "nothing mirrored yet",
-   *  which a real tick can never be — see `reset`. */
-  private tick = -1;
-  /** Milliseconds since that tick landed. */
-  private acc = 0;
+  /** Milliseconds into the tick currently being drawn. */
+  private acc = SIM_DT_MS;
+  private playRate = 1;
+  private windowMs = 0;
+  private slackMin = Infinity;
 
   /**
-   * Report this render frame's confirmed tick and its `dt`.
+   * How many confirmed frames to step this render frame, given `dtMs` of render time and the
+   * `ready` frames playable now (`CoopSession.steppable`). The caller steps exactly that many,
+   * mirroring each into the scene, and draws with {@link alpha}.
    *
-   * Returns whether the tick ADVANCED, which is the caller's signal to mirror the state into
-   * the scene (and to do the other once-per-tick work — see `GameLoop.spawnBulletTrails`).
-   *
-   * The caller also mirrors on any frame that carried EVENTS, which is the one deliberate
-   * exception to "once per tick" and is stated here because it is a statement about what this
-   * return value does not cover: `CoopSession.drive()` hands back the events of the frames it
-   * applied, and dropping one loses a pickup flight or a death for good, where re-mirroring an
-   * unchanged tick costs nothing worse than one frame of a remote actor standing still.
+   * A fresh clock steps on its first frame, so a new match is drawn the moment its first frame
+   * is playable rather than one tick later.
    */
-  observe(serverTick: number, dtMs: number): boolean {
-    if (serverTick === this.tick) {
-      // Floored at 0: a clock that goes backwards across a tab suspend would otherwise give a
-      // NEGATIVE alpha, and alpha feeds a lerp — every remote actor would be drawn BEHIND the
-      // last place it was seen. Found by the test that asks for it rather than by a player.
-      this.acc = Math.max(0, this.acc + dtMs);
-      return false;
+  plan(dtMs: number, ready: number): number {
+    if (ready >= CATCHUP_FRAMES) {
+      this.acc = 0;
+      return ready - SKIP_KEEP;
     }
-    this.tick = serverTick;
-    this.acc = 0;
-    return true;
+    // Floored at 0: a clock that goes backwards across a tab suspend would otherwise give a
+    // NEGATIVE alpha, and alpha feeds a lerp — every remote actor would be drawn BEHIND the
+    // last place it was seen.
+    this.acc += Math.max(0, dtMs) * this.playRate;
+    const steps = Math.min(ready, Math.floor(this.acc / SIM_DT_MS));
+    this.acc -= steps * SIM_DT_MS;
+    if (steps === ready) this.acc = Math.min(this.acc, SIM_DT_MS); // dry: hold, do not bank time
+    this.steer(Math.max(0, dtMs), ready - steps + 1 - this.alpha);
+    return steps;
+  }
+
+  private steer(dtMs: number, slack: number): void {
+    this.slackMin = Math.min(this.slackMin, slack);
+    this.windowMs += dtMs;
+    if (this.windowMs < WINDOW_MS) return;
+    this.playRate =
+      this.slackMin < SLACK_LOW ? 1 - RATE_LEAN : this.slackMin > SLACK_HIGH ? 1 + RATE_LEAN : 1;
+    this.windowMs = 0;
+    this.slackMin = Infinity;
   }
 
   /**
-   * How far into the current tick this frame falls, 0..1.
-   *
-   * Clamped, not wrapped: a server stall must leave every remote actor at its newest confirmed
-   * position rather than running it past one. Zero on the frame a tick lands, which is not a
-   * rounding detail — at 1 the scene would show the newest confirmed frame and then have to
-   * stand still until the next one arrived, which is the stutter this exists to remove.
+   * How far into the current tick this frame falls, 0..1. Clamped, not wrapped: a server stall
+   * must leave every remote actor at its newest confirmed position rather than running it past.
    */
   get alpha(): number {
     return Math.min(1, this.acc / SIM_DT_MS);
   }
 
-  /**
-   * Forget the mirrored tick — a new match is starting.
-   *
-   * Load-bearing: a match starts at tick 0, and a leftover 0 from the previous one would read
-   * as "already mirrored" and hold the first confirmed frame off the screen until tick 1. A
-   * first frame that never arrives looks like a connection problem, not like an off-by-one.
-   */
+  /** The current playout rate — 1, or 5% either side of it while the buffer is being steered. */
+  get rate(): number {
+    return this.playRate;
+  }
+
+  /** A new match is starting: step its first frame immediately, at the neutral rate. */
   reset(): void {
-    this.tick = -1;
-    this.acc = 0;
+    this.acc = SIM_DT_MS;
+    this.playRate = 1;
+    this.windowMs = 0;
+    this.slackMin = Infinity;
   }
 }

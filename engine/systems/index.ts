@@ -13,6 +13,7 @@ export { ChestSystem } from './ChestSystem';
 export { ShopSystem } from './ShopSystem';
 export { SpawnSystem } from './SpawnSystem';
 export { DoorSystem } from './DoorSystem';
+export { clampToWalkable } from './geom'; // the client predictor's wall response (LocalPredictor)
 export { ExtractionSystem } from './ExtractionSystem';
 export { ReviveSystem, canRevive, findReviver, reviveTarget } from './ReviveSystem';
 export { WinConditionSystem } from './WinConditionSystem';

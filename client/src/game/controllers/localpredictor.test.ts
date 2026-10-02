@@ -2,14 +2,16 @@
  * LocalPredictor (ROADMAP 3.3 follow-up / design/06 local-player prediction). Pins the
  * render-layer predictor's math headlessly — the properties that matter for feel under
  * latency: at zero lag it tracks the confirmed sim exactly (no visible correction); under
- * lag it LEADS the confirmed position (that lead IS the hidden latency) and CONVERGES back
- * as confirmed catches up; a large gap snaps, a small one eases. No real RTT needed — the
- * lag is simulated by feeding reconcile() an intentionally-stale confirmed position.
+ * lag it LEADS the confirmed position by the input still in flight (that lead IS the hidden
+ * latency) and holds it; a large gap snaps, a small one eases. No real RTT needed — the lag
+ * is simulated by feeding reconcile() an intentionally-stale confirmed position. The same
+ * predictor under a model of the real server's timing is `predictorPlayout.test.ts`.
  * Weapon-facing is out of scope here (design/10 v33): it's engine-decided, not predicted —
  * see LocalPredictor's own header comment.
  */
 import { describe, it, expect } from 'vitest';
-import { LocalPredictor, DEFAULT_PREDICTOR } from './LocalPredictor';
+import { createGameState } from '@dd/engine/state/GameState';
+import { LocalPredictor, DEFAULT_PREDICTOR, walkableFor, type Walkable } from './LocalPredictor';
 import { bradToRad } from '../coords';
 
 const SPEED = 192; // px/sec — the real sim value (fpToPx(6.4px/tick) × 30Hz)
@@ -59,32 +61,45 @@ describe('LocalPredictor — reconciliation', () => {
       p.predict(EAST, 255, DT); // local input advances predicted
       confirmed += STEP; // confirmed advances in lockstep (no latency)
       p.reconcile(confirmed, 0);
+      p.settle(1, null, DT);
     }
     expect(Math.abs(p.pose.x - confirmed)).toBeLessThan(0.5);
   });
 
-  it('under lag, predicted LEADS the confirmed position (the hidden latency)', () => {
-    const K = 6; // confirmed trails 6 frames behind
+  it('under lag, leads the confirmed position by exactly the input in flight', () => {
+    // Confirmed trails 6 frames; the measured delay says so (5 ticks + the interpolation's 1).
+    const K = 6;
     const p = make();
     p.reset(0, 0, 0);
-    for (let f = 1; f <= 40; f++) {
+    for (let f = 1; f <= 60; f++) {
       p.predict(EAST, 255, DT);
-      const confirmedX = Math.max(0, f - K) * STEP; // stale confirmed
-      p.reconcile(confirmedX, 0);
+      p.reconcile(Math.max(0, f - K) * STEP, 0);
+      p.settle(1, (K - 1) * DT, DT);
     }
-    const confirmedNow = Math.max(0, 40 - K) * STEP;
-    expect(p.pose.x).toBeGreaterThan(confirmedNow); // leads the confirmed edge
-    expect(p.pose.x).toBeLessThan(40 * STEP + STEP); // but not past the true leading edge
+    expect(p.pose.x).toBeCloseTo(60 * STEP, 2); // where the stick put it, not where confirmed is
+  });
+
+  it('with no delay measured yet, eases onto the confirmed position (the model before)', () => {
+    const p = make();
+    p.reset(0, 0, 0);
+    for (let f = 1; f <= 60; f++) {
+      p.predict(EAST, 255, DT);
+      p.reconcile(Math.max(0, f - 6) * STEP, 0);
+      p.settle(1, null, DT);
+    }
+    expect(p.pose.x).toBeLessThan(58 * STEP);
   });
 
   it('converges to confirmed once input stops (error decays monotonically to ~0)', () => {
     const target = 100;
     const p = make();
     p.reset(target + 40, 0, 0); // a 40px lead built up under lag; input has now stopped
+    p.reconcile(target, 0);
+    p.reconcile(target, 0);
     let prevErr = Infinity;
     for (let f = 0; f < 30; f++) {
       p.predict(EAST, 0, DT); // input released → no advance
-      p.reconcile(target, 0);
+      p.settle(1, 100, DT);
       const err = Math.abs(p.pose.x - target);
       expect(err).toBeLessThanOrEqual(prevErr + 1e-9); // never diverges
       prevErr = err;
@@ -96,12 +111,73 @@ describe('LocalPredictor — reconciliation', () => {
     const snap = make();
     snap.reset(0, 0, 0);
     snap.reconcile(1000, 0); // >> snapPx → jump
+    snap.settle(0.5, null, DT); // ...to the far side, not halfway across the gap
     expect(snap.pose.x).toBe(1000);
 
     const ease = make();
     ease.reset(0, 0, 0);
-    ease.reconcile(10, 0); // < snapPx → lerp by gain (0.25)
+    ease.reconcile(10, 0); // < snapPx → no jump: it becomes the target of the next frames
+    expect(ease.pose.x).toBe(0);
+    ease.settle(1, null, DT / 2);
+    ease.settle(1, null, DT / 2); // one tick of render time, in two frames → gain (0.25) of it
     expect(ease.pose.x).toBeCloseTo(10 * DEFAULT_PREDICTOR.correctionGain, 5);
+  });
+
+  it('interpolates the confirmed base at the playout alpha', () => {
+    const p = make({ correctionGain: 1 }); // drawn = target, to read the target off
+    p.reset(0, 0, 0);
+    p.reconcile(10, 0);
+    p.settle(0.25, null, DT);
+    expect(p.pose.x).toBeCloseTo(2.5, 6);
+    p.settle(-1, null, DT); // clamped into 0..1
+    expect(p.pose.x).toBe(0);
+  });
+
+  // 2026-10-01: the correction landed whole on each confirmed tick, so holding the stick into a
+  // wall drew a 30 Hz sawtooth of a full tick's step. The predictor now knows the walls.
+  it('holds still against a wall instead of sawing at the tick rate', () => {
+    const wall: Walkable = (x, y) => ({ x: Math.min(x, 0), y });
+    const p = make();
+    p.reset(0, 0, 0);
+    const deltas: number[] = [];
+    for (let f = 0; f < 240; f++) {
+      const before = p.pose.x;
+      p.predict(EAST, 255, DT / 2, wall); // 60 fps render, stick held east
+      if (f % 2 === 1) p.reconcile(0, 0); // 30 Hz confirmed: blocked at x = 0
+      p.settle(f % 2 === 1 ? 0 : 0.5, 150, DT / 2, wall);
+      deltas.push(p.pose.x - before);
+    }
+    expect(p.pose.x).toBe(0);
+    expect(Math.max(...deltas.map(Math.abs))).toBe(0);
+  });
+
+  it('walks the lead into a thin wall in short steps, never out the far side', () => {
+    // A 32 px slab from x = 20 to 52, pushing out by its nearer face — the sim's own rule.
+    const slab: Walkable = (x, y) => ({ x: x > 20 && x < 52 ? (x < 36 ? 20 : 52) : x, y });
+    const p = make({ correctionGain: 1, snapPx: 1000 });
+    p.reset(0, 0, 0);
+    for (let f = 0; f < 9; f++) p.predict(EAST, 255, DT); // 57.6 px of stick in flight
+    p.settle(1, 1000, DT, slab); // one 57.6 px push would land at 57.6, through the slab
+    expect(p.pose.x).toBe(20);
+  });
+
+  it('forgets input older than a second — past that a delay reading is a stall', () => {
+    const p = make({ correctionGain: 1, snapPx: 1e6 });
+    p.reset(0, 0, 0);
+    for (let f = 0; f < 60; f++) p.predict(EAST, 255, DT); // two seconds of stick
+    p.settle(1, 5000, DT);
+    // The last second's worth (30 steps, one more where the float clock lands on the edge), not both.
+    expect(p.pose.x).toBeGreaterThan(30 * STEP - 1e-6);
+    expect(p.pose.x).toBeLessThan(31 * STEP + 1e-6);
+  });
+
+  it('a zero-length frame adds nothing to the lead (and no NaN)', () => {
+    const p = make({ correctionGain: 1 });
+    p.reset(0, 0, 0);
+    p.predict(EAST, 255, DT);
+    p.predict(EAST, 255, 0);
+    p.settle(1, 1000, DT);
+    expect(p.pose.x).toBeCloseTo(STEP, 6);
   });
 
   it('deactivate() halts prediction so the caller can fall back to confirmed', () => {
@@ -110,8 +186,24 @@ describe('LocalPredictor — reconciliation', () => {
     p.deactivate();
     p.predict(EAST, 255, DT);
     p.reconcile(999, 999);
+    p.settle(1, 100, DT);
     expect(p.pose).toEqual({ x: 5, y: 5, bodyFacing: 0, moving: false });
     expect(p.isActive).toBe(false);
+  });
+});
+
+describe("walkableFor — the sim's own wall response, in px", () => {
+  const state = createGameState({ seed: 3, worldW: 1600, worldH: 1200, waves: [], players: [{ start: [400, 400] }] });
+  const walk = walkableFor(state, state.players[0]!);
+
+  it('hands a free point back untouched, float and all', () => {
+    expect(walk(400.123, 300.456)).toEqual({ x: 400.123, y: 300.456 });
+  });
+
+  it('pushes a point past the world edge back inside it', () => {
+    const at = walk(-50, 300);
+    expect(at.x).toBeGreaterThan(0);
+    expect(at.y).toBeCloseTo(300, 1);
   });
 });
 

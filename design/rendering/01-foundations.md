@@ -81,6 +81,36 @@ tiers live in [../01-rendering.md](../01-rendering.md).
   those filter targets are 1x on every display. The zoom is not snapped: it only eases between
   rooms. A different stop-go is deliberate and stays: the hit-stop freezes sim ticks for a strong
   hit, so the player and the camera pause for a few frames mid-fight.
+- **Nothing creeps, and what the eye tracks is not rounded** (2026-10-01, live report: *"镜头缓动快
+  结束的时候，整个画面都在抖动 … 我非常容易晕3D"*). The snap above has consequences of its own:
+  - **Both eases land.** An exponential never arrives, and with the offset snapped its last pixels
+    reached the screen as lone 1 px jumps of the whole frame, up to a second apart after a stop
+    (`… 1 0 1 0 0 0 1 0 0 0 0 0 0 1` at 60 fps). The pan now has a speed floor
+    (`MIN_PAN_PX_PER_MS`, and never under one screen pixel a frame, so 144 Hz is covered too); the
+    zoom takes the same floor at the viewport's edge, where its old tail rescaled the frame by
+    sub-pixels for 86 frames at 60 fps after a room change.
+  - **The followed player is drawn unrounded.** With only the world snapped, the player — moving
+    continuously inside it — carried a fresh ±0.5 px rounding error on screen every frame.
+    `updateCamera` hands the rounding back to it (`Entity.nudge`).
+  - **The player's glow sits where the player is drawn**, not at the tick position, which lit the
+    floor around them in 30 Hz steps up to a tick ahead of the sprite.
+  - **Online, the local player's server correction is spread over frames** (`LocalPredictor`,
+    same 25%-per-tick strength). Landing whole on each confirmed tick, it sawed at 30 Hz against
+    every wall by a full tick's step, ~22 screen px at room zoom. The predictor now also knows the
+    walls (`geom.clampToWalkable`, the sim's own push-out) and leads the confirmed position by the
+    measured input delay (`net/inputDelay.ts`) instead of easing onto it: running, the local
+    player trails the stick by 3-7 px instead of 34-79, and a stop slides 3-19 px forward (the
+    server's 100 ms batch phase), never back, instead of 33-78
+    (`controllers/predictorPlayout.test.ts`).
+  - **Online, confirmed frames are played at 30 Hz, not as they arrive**
+    (`controllers/onlineInterpolation.ts`). `MatchRoom` sends three per 100 ms and the loop used to
+    step all three in one render frame, so every remote player, enemy and bullet moved in 10 Hz
+    lurches. The queue is now a jitter buffer whose depth is steered by leaning the playout rate
+    ±5%; measured at 30/60/144 fps with 20 ms of arrival jitter, every frame moves a remote entity
+    the same distance to within that 5%.
+  - **Frames are evenly spaced on every refresh rate** (`game/frameGate.ts`): the render-rate cap
+    counts vsyncs instead of Pixi's whole milliseconds, removing the 4-9% doubled frames on
+    90/100/165 Hz panels (design/01-rendering "frame cadence").
 
 ---
 

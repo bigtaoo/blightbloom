@@ -23,6 +23,7 @@ export * from './state/input';
 export * from './state/events';
 export * from './state/GameState';
 export * from './state/roomModel';
+export { blockingRadius } from './state/actorRadius';
 export * from './sim.config';
 export * from './content';
 export * from './balance';

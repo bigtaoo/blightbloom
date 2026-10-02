@@ -103,6 +103,11 @@ export async function connectOnlineSession(opts: OnlineConnectOptions): Promise<
       seed: info.seed,
       playerCount: info.playerCount,
       buildConfig: buildOnlineConfig,
+      // No cushion behind the watermark (2026-10-01): the playout clock keeps its own adaptive
+      // slack (`game/controllers/onlineInterpolation.ts`), so NetInputSource's default 3 frames
+      // were 100 ms of delay on every remote entity and smoothed nothing. Measured up to 120 ms
+      // of jitter in `predictorPlayout.test.ts`: the same even playout either way.
+      bufferFrames: 0,
       onMatchStart: (m) => {
         opts.onMatchStart(m.localOwner);
         if (settled) return;

@@ -194,6 +194,28 @@ describe('FxController.updateCamera', () => {
     }
   });
 
+  it('shifts the followed player back by the rounding, so ITS screen position stays unrounded', () => {
+    // 2026-10-01: with only the world snapped, the player (moving continuously inside it) carried
+    // a fresh ±0.5 px rounding error on screen every frame — a wobble on what the eye tracks.
+    const layers = new Layers();
+    const fx = new FxController(layers);
+    const nudges: Array<[number, number]> = [];
+    const player = (x: number, y: number): CameraTarget => ({ ...fakePlayer(x, y), nudge: (dx, dy) => void nudges.push([dx, dy]) });
+    // Same cut as above: unsnapped (-400.37, -252.61), snapped (-400, -253). The player's own
+    // screen point, world offset + (ground + nudge) * zoom, lands exactly where the unsnapped
+    // camera put it: the viewport centre, and the body-bias row above it.
+    fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, player(800.37, 600.61));
+    const [dx, dy] = nudges[0]!;
+    expect(layers.world.x + (800.37 + dx) * fx.zoom).toBeCloseTo(400, 9);
+    expect(layers.world.y + (600.61 + dy) * fx.zoom).toBeCloseTo(-252.61 + 600.61, 9);
+    // Never more than the half pixel the rounding can take, through the eased follow and a shake.
+    fx.addShake(1);
+    for (let i = 1; i <= 30; i++) fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, player(800.37 + i * 1.13, 600.61), null, 16.7);
+    expect(nudges).toHaveLength(31);
+    expect(nudges.every(([x, y]) => Math.abs(x * fx.zoom) <= 0.5 && Math.abs(y * fx.zoom) <= 0.5)).toBe(true);
+    expect(nudges.some(([x]) => x !== 0)).toBe(true);
+  });
+
   it('fits the FRAME rect (the current room) when given one, not the whole floor', () => {
     const layers = new Layers();
     const fx = new FxController(layers);

@@ -112,6 +112,7 @@ describe('CoopSession — full client↔server loop reproduces a replay', () => 
     // Nothing confirmed yet → drive() stalls immediately at frame 1.
     expect(session.drive()).toEqual([]);
     expect(session.state!.tick).toBe(0);
+    expect(session.steppable()).toBe(0);
 
     // A burst confirms up to frame 12 at once; a single drive() must catch up all of it.
     const server = new FrameBroadcast({ framesPerBatch: 3, startFrame: 0 });
@@ -119,6 +120,9 @@ describe('CoopSession — full client↔server loop reproduces a replay', () => 
     // backlog = confirmed frames STRICTLY ahead of the next frame (frame 1 is also
     // steppable), so 11 here while drive() will step all 12 (frames 1..12).
     expect(session.backlog()).toBe(11);
+    expect(session.steppable()).toBe(12); // ...and this counts frame 1 too: what drive() WILL step
+    session.drive(1);
+    expect(session.steppable()).toBe(11);
     session.drive();
     expect(session.state!.tick).toBe(12); // caught up to the watermark in one drive
     expect(session.backlog()).toBe(0);
@@ -316,5 +320,42 @@ describe('CoopSession — seat names (design/20)', () => {
     transport.deliver({ type: 'frame_batch', toFrame: 1, frames: [] });
     transport.deliver({ type: 'conn_resync', startFrame: 0, curFrame: 1, log: [] });
     expect(s.seatNames).toEqual(['Ada', 'Grace']);
+  });
+});
+
+describe('CoopSession — input delay (what LocalPredictor leads by)', () => {
+  it('reads send-to-stepped for the LOCAL seat\'s command, null before the first round trip', () => {
+    let now = 0;
+    const transport = new FakeTransport();
+    const s = new CoopSession({
+      transport, roomId: 'r', owner: 1, seed: SEED, playerCount: 2,
+      buildConfig: () => ({ ...CONFIG, players: [{ start: [400, 400] }, { start: [300, 300] }] }),
+      bufferFrames: 0,
+      now: () => now,
+    });
+    transport.deliver({ type: 'match_start', seed: SEED, startFrame: 0, localOwner: 1, playerCount: 2 });
+    expect(s.inputDelayMs).toBeNull();
+
+    now = 100;
+    s.submit(makeCommand({ owner: 1, tick: 1, moveBrad: 0 as Brad, moveMag: 255, buttons: 0 }));
+    // The other seat's command carries a tag this client never sent: it must not read as ours.
+    const theirs = makeCommand({ owner: 0, tick: 1, moveBrad: 0 as Brad, moveMag: 9, buttons: 0 });
+    now = 180;
+    transport.deliver({ type: 'frame_batch', toFrame: 3, frames: [{ frame: 3, cmds: [theirs, transport.lastCmd()] }] });
+    s.drive(2);
+    expect(s.inputDelayMs).toBeNull(); // frames 1-2 hold nothing of ours yet
+    now = 250;
+    s.drive();
+    expect(s.inputDelayMs).toBe(150); // sent at 100, first stepped at 250
+  });
+
+  it('reads the clock off performance.now when none is given', () => {
+    const transport = new FakeTransport();
+    const s = new CoopSession({ transport, roomId: 'r', owner: 0, seed: SEED, playerCount: 1, buildConfig: () => CONFIG, bufferFrames: 0 });
+    transport.deliver({ type: 'match_start', seed: SEED, startFrame: 0, localOwner: 0, playerCount: 1 });
+    s.submit(makeCommand({ owner: 0, tick: 1, moveBrad: 0 as Brad, moveMag: 255, buttons: 0 }));
+    transport.deliver({ type: 'frame_batch', toFrame: 3, frames: [{ frame: 3, cmds: [transport.lastCmd()] }] });
+    s.drive();
+    expect(s.inputDelayMs).toBeGreaterThanOrEqual(0);
   });
 });

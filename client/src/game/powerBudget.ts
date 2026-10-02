@@ -126,10 +126,10 @@ export const IDLE_MAX_FPS = 30;
 //
 // The residue on 90/100/165 Hz panels (5-9%) is the one thing this cannot fix: their vsync
 // interval is not a whole number of milliseconds either, so no integer `_minElapsedMS`
-// divides it evenly. Fixing THOSE means not using Pixi's gate at all — taking
-// `app.render` off the ticker and calling it on our own schedule — which is a much larger
-// change than the one the report asked for, and is recorded in design/01 as the follow-up
-// rather than attempted here.
+// divides it evenly. Since 2026-10-01 the shipped clients do not use Pixi's gate at all:
+// `frameGate.ts` sits in front of the ticker, takes the same `maxFPS` this file writes, and
+// counts vsyncs instead of milliseconds, which leaves every rate in the table at 0%. This
+// function's snapping is still what decides the rate; the gate only delivers it evenly.
 
 /**
  * The measured refresh rate of the display the game is on, or `null` while nothing has
