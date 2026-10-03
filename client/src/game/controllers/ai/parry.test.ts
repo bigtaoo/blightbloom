@@ -81,6 +81,16 @@ describe('bulletToParry', () => {
     }
   });
 
+  it('not a bullet whose line passes wide of the reach, but one whose line crosses it', () => {
+    const at = (dy: number) => {
+      const s = duel();
+      bullet(s, 3, -0.5).gy = (s.players[0]!.gy + dy * G) as never;
+      return toParry(s);
+    };
+    expect(at(2)).toBe(false);
+    expect(at(0.5)).toBe(true);
+  });
+
   it('not a bullet from behind: the swing faces the nearest hostile, east', () => {
     const s = duel();
     bullet(s, -1, 0.5);
@@ -121,6 +131,35 @@ describe('parryMove', () => {
     drawBlade(s.players[0]!);
     bullet(s, 1, -0.5);
     expect(parryMove(s, s.players[0]!, 0)).toEqual({ swap: false, fire: true });
+  });
+
+  it('a blade still in its swing turns a bullet; one only recovering does not', () => {
+    const at = (swingTicksLeft: number) => {
+      const s = duel();
+      const b = blade(s.players[0]!);
+      drawBlade(s.players[0]!);
+      b.cooldownTicks = 5;
+      b.swingTicksLeft = swingTicksLeft;
+      bullet(s, 1, -0.5);
+      return parryMove(s, s.players[0]!, 0);
+    };
+    expect(at(2)).toEqual({ swap: false, fire: true });
+    expect(at(0)).toEqual({ swap: false, fire: false });
+  });
+
+  it('swaps back on the press edge only: not while last tick still held the swap', () => {
+    const s = duel();
+    const me = s.players[0]!;
+    drawBlade(me);
+    me.prevButtons = Button.SWAP_WEAPON;
+    expect(parryMove(s, me, 0)).toEqual({ swap: false, fire: false });
+  });
+
+  it('blade out with no hostile left: back to the gun, no swing at nothing', () => {
+    const s = duel();
+    drawBlade(s.players[0]!);
+    s.players[1]!.alive = false;
+    expect(parryMove(s, s.players[0]!, 0)).toEqual({ swap: true, fire: false });
   });
 
   it('blade out and nothing coming: back to the gun once recovered, not before', () => {
@@ -177,6 +216,19 @@ describe('PvpBotController parries', () => {
     expect(on.reboundHits).toBeGreaterThan(0);
     // Control: the same match without the rule turns nothing back.
     expect(shootAt(new PvpBotController({ parries: false }))).toEqual({ deflects: 0, reboundHits: 0 });
+  });
+
+  it('a dead or downed bot presses nothing, whatever is coming', () => {
+    const at = (set: (p: PlayerActor) => void) => {
+      const s = duel();
+      set(s.players[0]!);
+      bullet(s, 1, -0.5);
+      return new PvpBotController().build(s, 0, 1).buttons & (Button.FIRE | Button.SWAP_WEAPON);
+    };
+    expect(at((p) => (p.alive = false))).toBe(0);
+    expect(at((p) => (p.downed = true))).toBe(0);
+    // Control: the same bullet at a standing bot is parried.
+    expect(at(() => {})).toBe(Button.FIRE | Button.SWAP_WEAPON);
   });
 
   it('never swaps away from a revive: the hold is the commitment', () => {

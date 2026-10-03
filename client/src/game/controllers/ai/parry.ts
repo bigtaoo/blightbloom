@@ -80,12 +80,11 @@ export function bulletToParry(s: GameState, me: PlayerActor, owner: number, reac
     const ry = b.gy - me.gy;
     const along = rx * b.vx + ry * b.vy;
     if (along >= 0) continue; // moving away: already past, or never coming
-    // The ticks it is inside the reach: the roots of |r + v t| = reach.
+    // The tick it enters the reach: the first root of |r + v t| = reach. A closing bullet's
+    // second root is always ahead, so it cannot have left already.
     const disc = along * along - v2 * (rx * rx + ry * ry - reach * reach);
     if (disc < 0) continue; // passes wide
-    const enter = (-along - Math.sqrt(disc)) / v2;
-    const leave = (-along + Math.sqrt(disc)) / v2;
-    if (enter > PARRY_LOOKAHEAD || leave < 0) continue;
+    if ((-along - Math.sqrt(disc)) / v2 > PARRY_LOOKAHEAD) continue;
     if (Math.abs(bradDiff(atan2Brad(ry, rx), facing)) > arcHalf) continue;
     return true;
   }
