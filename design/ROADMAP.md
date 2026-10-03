@@ -1723,9 +1723,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-03** [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change) — the item volume 119 left open: the server landed every command on its 100 ms window's last frame, so a stop slid 3-19 px. It now lands each on the frame its arrival falls in (`server/src/windowClock.ts`); modelled, the worst slide drops from 19 px to 7. On the way: `NetInputSource` filled only each batch's last frame and the sim idles a seat with no command, so online every player moved and fired on one frame in three. Every frame now holds, one-shot taps fire once and are no longer lost to the next command, and a relayed run is byte-equal to the local one. `net` `test` `docs`
 
+**[2026-10-03 — PvP bot parry](roadmap/122-2026-10-03-pvp-bot-parry.md)**
+
+- **10-03** [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change) — the shipped arena bot never left its gun, so no match had a parry and a rival's half-damage rebound never came into play. `ai/parry.ts` swaps to a ready blade and swings at one bullet in two (picked by id, no memory), and swaps back once the blade recovers; 180 sim matches now see 4,642 parries and 2,579 rebounds land. On the way: the server bot read the match through a 3-frame cushion no client uses and parried 11 times where it parried 26 at 0; `BOT_BUFFER_FRAMES` = 0. `net` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 234 entries, grouped. An entry with more than one tag appears more than once.
+The same 235 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1941,7 +1945,7 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(145)*
+**`test`** — coverage sweeps, gates, mutation batteries *(146)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2088,6 +2092,7 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2190,7 +2195,7 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(39)*
+**`tools`** — sims, profilers, editors, build scripts *(40)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2231,8 +2236,9 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(151)*
+**`docs`** — design docs and this log itself *(152)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2385,8 +2391,9 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(38)*
+**`net`** — matchmaking, sockets, reconnect *(39)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2426,6 +2433,7 @@ The same 234 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

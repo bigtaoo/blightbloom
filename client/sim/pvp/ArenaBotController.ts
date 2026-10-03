@@ -17,6 +17,10 @@
  *     in the base bot too, re-applied last so the loot and blade walks above never pull a
  *     reviver off the body. Off, neither bot revives: the sims' no-revive control.
  *
+ * Since 2026-10-03 the shipped bot parries too (`ai/parry.ts`: half the bullets, no memory).
+ * This one switches that off in its base and keeps its own frame-perfect rule behind `parries`,
+ * so the profiles below read as they always have: `shipped` is the gun-only bot.
+ *
  * Deliberately NOT the shipped bot. `PvpBotController` fills empty seats in real matches
  * (`server/src/BotClient.ts`) and must stay a pure function of state; this one keeps two
  * fields of memory (the last swap tick, since the engine swaps on a press edge, and why the
@@ -79,7 +83,9 @@ export class ArenaBotController {
     private readonly profile: ArenaBotProfile,
     private readonly startDelay = 0,
   ) {
-    this.base = new PvpBotController({ revives: profile.revives });
+    // The base without its own parry (2026-10-03): this bot's `parries` flag is the one rule, so
+    // `shipped` here stays the bot every capacity sweep measured, gun only.
+    this.base = new PvpBotController({ revives: profile.revives, parries: false });
   }
 
   build(s: GameState, owner: number, tick: number): PlayerCommand {

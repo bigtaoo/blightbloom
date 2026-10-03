@@ -13,18 +13,33 @@ import { nearestHostile } from '@dd/engine/systems/targeting';
 import { engageNearest, FIRE_RANGE_FP, idleCommand, KEEP_DIST_FP, type Point } from './ai/engage';
 import { yieldsFire } from './ai/fireYield';
 import { lineOfFireClear, pointClear } from './ai/lineOfFire';
+import { parryMove } from './ai/parry';
 import { reviveMove } from './ai/revive';
 import { nextRoomToward, walkIntoRoom } from './ai/roomRoute';
 import { BODY_CLEAR_FP, HOLD, reachable, steer, type Move } from './ai/steer';
 import { roomIsUnsafe, zoneRetreatCommand } from './ai/zoneRetreat';
 
 export class PvpBotController {
-  /** @param revives walk to a downed squadmate and hold the revive (volume 118). Off only for
-   *  the sims that measure a squad without it. */
-  constructor(private readonly opts: { revives?: boolean } = {}) {}
+  /**
+   * @param revives walk to a downed squadmate and hold the revive (volume 118). Off only for
+   *   the sims that measure a squad without it.
+   * @param parries draw the blade to bat incoming bullets back (`ai/parry.ts`, 2026-10-03).
+   *   Off only for the sim bot that layers its own parry rule on this one.
+   */
+  constructor(private readonly opts: { revives?: boolean; parries?: boolean } = {}) {}
 
-  /** Build this bot seat's command for `tick`. */
+  /** Build this bot seat's command for `tick`: the fight below, with a parry layered on. */
   build(s: GameState, owner: number, tick: number): PlayerCommand {
+    const cmd = this.fight(s, owner, tick);
+    const me = s.players[owner];
+    // Not while reviving: the hold is the commitment, and a swap would not end it anyway.
+    if (this.opts.parries === false || !me || !me.alive || me.downed || cmd.buttons & Button.INTERACT) return cmd;
+    const parry = parryMove(s, me, owner);
+    if (!parry) return cmd;
+    return { ...cmd, buttons: (parry.fire ? Button.FIRE : 0) | (parry.swap ? Button.SWAP_WEAPON : 0) };
+  }
+
+  private fight(s: GameState, owner: number, tick: number): PlayerCommand {
     const me = s.players[owner];
     if (!me || !me.alive || me.downed) return idleCommand(owner, tick);
 
