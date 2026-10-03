@@ -1,14 +1,14 @@
 /**
  * FrameBroadcast — the server-side frame-relay core (design/06, ROADMAP 3.1). Verifies
  * the metronome/ordering/watermark/log contract in isolation, then the capstone
- * loopback: server relay → NetInputSource → engine reproduces a plain ReplayInputSource
- * run BYTE-FOR-BYTE. That closes design/06's loop — the same deterministic engine
- * consumed identically by the recorded path and the full online path.
+ * loopback: a client's commands relayed through server → NetInputSource → engine reproduce
+ * the LOCAL run of the same intent BYTE-FOR-BYTE (2026-10-03: each command lands on its own
+ * frame, and the frames between hold). That closes design/06's loop — online plays exactly
+ * what the player did, not a re-timed copy of it.
  */
 import { describe, it, expect } from 'vitest';
 import { FrameBroadcast } from '@dd/engine/net/FrameBroadcast';
-import { NetInputSource, type CmdSink } from '@dd/engine/net/NetInputSource';
-import type { FrameBatch } from '@dd/engine/net/protocol';
+import { NetInputSource } from '@dd/engine/net/NetInputSource';
 import { makeCommand } from '@dd/engine/state/input';
 import { Button, type PlayerCommand } from '@dd/engine/state/commands';
 import type { Brad } from '@dd/engine/math/trig';
@@ -17,7 +17,6 @@ import type { EngineConfig } from '@dd/engine/state/GameState';
 
 const cmd = (owner: number, tick: number, buttons = 0) =>
   makeCommand({ owner, tick, moveBrad: 0 as Brad, moveMag: 0, buttons });
-const nullSink: CmdSink = { submit: () => {} };
 
 describe('FrameBroadcast — metronome / ordering / watermark / log', () => {
   it('advances the watermark by framesPerBatch every pulse, even with no input', () => {
@@ -27,9 +26,9 @@ describe('FrameBroadcast — metronome / ordering / watermark / log', () => {
     expect(b.frame).toBe(6);
   });
 
-  it('flushes buffered commands onto the window toFrame, ordered by owner (arrival-stable)', () => {
+  it('with no arrival offset, flushes onto the window toFrame, one command per owner, owners ascending', () => {
     const b = new FrameBroadcast({ framesPerBatch: 3 });
-    // Submitted out of owner order; owner 1's two commands must keep arrival order.
+    // Submitted out of owner order; owner 1's two commands fold into one, the later's state.
     const a1 = cmd(1, 0, Button.FIRE);
     const a0 = cmd(0, 0);
     const a1b = cmd(1, 0, Button.INTERACT);
@@ -38,10 +37,45 @@ describe('FrameBroadcast — metronome / ordering / watermark / log', () => {
     expect(batch.toFrame).toBe(3);
     expect(batch.frames).toHaveLength(1);
     expect(batch.frames[0]!.frame).toBe(3);
-    // owner 0 first, then owner 1's two in arrival order (a1 before a1b).
-    expect(batch.frames[0]!.cmds).toEqual([a0, a1, a1b]);
+    expect(batch.frames[0]!.cmds).toEqual([a0, a1b]);
     // Buffer cleared: the next pulse is an empty metronome pulse.
     expect(b.tick()).toEqual({ toFrame: 6, frames: [] });
+  });
+
+  it('lands each command on the window frame its arrival offset falls in (2026-10-03)', () => {
+    const b = new FrameBroadcast({ framesPerBatch: 3 });
+    b.tick(); // window (3, 6] is open
+    const early = cmd(0, 0, Button.FIRE);
+    const mid = cmd(1, 0, Button.FIRE);
+    const late = cmd(0, 0);
+    b.submit(early, 0); b.submit(mid, 1.7); b.submit(late, 2);
+    expect(b.tick()).toEqual({
+      toFrame: 6,
+      frames: [{ frame: 4, cmds: [early] }, { frame: 5, cmds: [mid] }, { frame: 6, cmds: [late] }],
+    });
+    expect(b.log.map((f) => f.frame)).toEqual([4, 5, 6]);
+  });
+
+  it('clamps an offset into the window and never lands a command before an earlier arrival', () => {
+    const b = new FrameBroadcast({ framesPerBatch: 3 });
+    const first = cmd(0, 0, Button.FIRE);
+    const second = cmd(1, 0);
+    const third = cmd(1, 0, Button.FIRE);
+    b.submit(first, 99); // a late metronome: past the window → its last frame
+    b.submit(second, -4); // before the window → would be frame 1, but `first` already holds 3
+    expect(b.tick().frames).toEqual([{ frame: 3, cmds: [first, second] }]);
+    b.submit(third, -4);
+    expect(b.tick().frames).toEqual([{ frame: 4, cmds: [third] }]);
+  });
+
+  it('folds a tap and its immediate clear on one frame: the state of the clear, the tap kept', () => {
+    const b = new FrameBroadcast({ framesPerBatch: 3 });
+    const tap = { ...cmd(0, 1, Button.FIRE | Button.SWAP_WEAPON), pickupTargetId: 7, shopBuyId: 3, cardVote: 2 };
+    const clear = { ...cmd(0, 2, 0), moveMag: 255 };
+    b.submit(tap, 1); b.submit(clear, 1);
+    const [fc] = b.tick().frames;
+    expect(fc!.frame).toBe(2);
+    expect(fc!.cmds).toEqual([{ ...clear, buttons: Button.SWAP_WEAPON, pickupTargetId: 7, shopBuyId: 3, cardVote: 2 }]);
   });
 
   it('logSince returns only the non-empty frames after a given watermark (reconnect payload)', () => {
@@ -57,51 +91,59 @@ describe('FrameBroadcast — metronome / ordering / watermark / log', () => {
   });
 });
 
-describe('loopback: FrameBroadcast → NetInputSource → engine == plain replay (design/06)', () => {
-  it('a match relayed through the server core reproduces the recorded replay byte-for-byte', () => {
-    const N = 180;
-    const framesPerBatch = 3;
-    const config: EngineConfig = {
-      seed: 4242, worldW: 800, worldH: 800, playerStart: [400, 400],
-      waves: [[[500, 400], [300, 400]], [[400, 300]]],
-    };
+describe('loopback: FrameBroadcast → NetInputSource → engine == the local run (design/06)', () => {
+  const N = 180;
+  const framesPerBatch = 3;
+  const config: EngineConfig = {
+    seed: 4242, worldW: 800, worldH: 800, playerStart: [400, 400],
+    waves: [[[500, 400], [300, 400]], [[400, 300]]],
+  };
 
-    // The player's intent, one command per SIM frame (the render loop's rate).
-    const perFrame: PlayerCommand[] = [];
+  /** Relay `intent` (one command per sim frame) the way a live client does — through
+   *  `NetInputSource.submit`'s change filter, each arriving in the window third of its own
+   *  frame — then drive an engine off the confirmed stream. */
+  function online(intent: PlayerCommand[]) {
+    const server = new FrameBroadcast({ framesPerBatch });
+    const net = new NetInputSource({ submit: (c) => server.submit(c, pendingOffset) }, { bufferFrames: 0 });
+    let pendingOffset = 0;
+    net.handleServerMsg({ type: 'match_start', seed: config.seed, startFrame: 0, localOwner: 0, playerCount: 1 });
     for (let f = 1; f <= N; f++) {
-      perFrame.push(makeCommand({
+      pendingOffset = (f - 1) % framesPerBatch;
+      net.submit(intent[f - 1]!);
+      if (f % framesPerBatch === 0) net.handleServerMsg({ type: 'frame_batch', ...server.tick() });
+    }
+    return { engine: runHeadless(config, net, server.frame), server };
+  }
+  const local = (intent: PlayerCommand[]) => runReplay(toReplay(config, intent), N);
+
+  it('a command changing every frame reproduces the local run byte-for-byte', () => {
+    const intent: PlayerCommand[] = [];
+    for (let f = 1; f <= N; f++) {
+      intent.push(makeCommand({
         owner: 0, tick: f,
         moveBrad: ((f * 337) & 0xffff) as Brad, moveMag: (f * 7) % 256,
         buttons: Button.FIRE,
       }));
     }
+    const { engine, server } = online(intent);
+    const ref = local(intent);
+    expect(server.log).toHaveLength(N); // every frame carried its own command
+    expect(engine.state.tick).toBe(ref.state.tick);
+    expect(hashState(engine.state)).toBe(hashState(ref.state));
+  });
 
-    // ── Server side: feed each frame's command into the broadcaster, pulse the
-    //    metronome every `framesPerBatch` frames, and collect the batches. Commands
-    //    submitted during a window land on that window's toFrame — so the effective
-    //    (confirmed) command stream is the SAME commands re-tagged to the window frame. ──
-    const server = new FrameBroadcast({ framesPerBatch });
-    const batches: FrameBatch[] = [];
-    for (let f = 1; f <= N; f++) {
-      server.submit(perFrame[f - 1]!);
-      if (f % framesPerBatch === 0) batches.push(server.tick());
-    }
-
-    // The reference replay must use the commands AS THE SERVER CONFIRMED THEM (re-tagged
-    // to their window frame), since that is what every client actually simulates.
-    const confirmed: PlayerCommand[] = server.log.flatMap((fc) =>
-      fc.cmds.map((c) => ({ ...c, tick: fc.frame })),
-    );
-    const replayEngine = runReplay(toReplay(config, confirmed), server.frame);
-
-    // ── Client side: replay the collected batches into a NetInputSource and drive the
-    //    engine off it exactly as the live client would. ──
-    const net = new NetInputSource(nullSink, { bufferFrames: 0 });
-    net.handleServerMsg({ type: 'match_start', seed: config.seed, startFrame: 0, localOwner: 0, playerCount: 1 });
-    for (const batch of batches) net.handleServerMsg({ type: 'frame_batch', ...batch });
-    const netEngine = runHeadless(config, net, server.frame);
-
-    expect(netEngine.state.tick).toBe(replayEngine.state.tick);
-    expect(hashState(netEngine.state)).toBe(hashState(replayEngine.state));
+  it('a held stick sent once, and a one-shot swap, reproduce the local run — the gaps hold, the tap does not repeat', () => {
+    const run = (f: number) =>
+      makeCommand({ owner: 0, tick: f, moveBrad: (f < 90 ? 0 : 16384) as Brad, moveMag: f < 150 ? 255 : 0, buttons: Button.FIRE | (f === 40 ? Button.SWAP_WEAPON : 0) });
+    const intent = Array.from({ length: N }, (_, i) => run(i + 1));
+    const { engine, server } = online(intent);
+    const ref = local(intent);
+    // Sent on change only: the start, the tap, its clear, the turn, the stop.
+    expect(server.log.map((f) => f.frame)).toEqual([1, 40, 41, 90, 150]);
+    expect(hashState(engine.state)).toBe(hashState(ref.state));
+    // The control: the same stream with every gap idled — what the client did before
+    // 2026-10-03 — is a different run.
+    const sparse = server.log.flatMap((fc) => fc.cmds.map((c) => ({ ...c, tick: fc.frame })));
+    expect(hashState(runReplay(toReplay(config, sparse), N).state)).not.toBe(hashState(ref.state));
   });
 });

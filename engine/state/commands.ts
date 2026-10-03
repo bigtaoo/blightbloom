@@ -55,6 +55,37 @@ export interface PlayerCommand {
   shopBuyId: number;
 }
 
+/** The Button bits that are one-tick pulses rather than held state (see `Button`). */
+export const PULSE_BUTTONS = Button.SWAP_WEAPON | Button.CONFIRM_EXTRACT | Button.CONFIRM_DESCEND;
+
+/**
+ * What a seat is still doing on the frames after `cmd` until its next command lands
+ * (design/15 "held input", 2026-10-03): the stick and the held buttons, with every one-shot
+ * part stripped — the pulse bits, the pickup and shop latches, and the card vote (0 there
+ * already means "no change"). Holding the whole command would swap a weapon or buy an
+ * offer once per frame. Returns `cmd` itself when it carries nothing one-shot.
+ */
+export function heldPart(cmd: PlayerCommand): PlayerCommand {
+  if ((cmd.buttons & PULSE_BUTTONS) === 0 && !cmd.pickupTargetId && !cmd.shopBuyId && !cmd.cardVote) return cmd;
+  return { ...cmd, buttons: cmd.buttons & ~PULSE_BUTTONS, pickupTargetId: 0, shopBuyId: 0, cardVote: 0 };
+}
+
+/**
+ * Two commands from one seat that land on the same frame (2026-10-03): `next`'s held state,
+ * keeping any one-shot part `prev` carried that `next` does not replace. A client sends at
+ * its render rate and clears a latch on the very next command, so "last one wins" dropped a
+ * tap whenever the clear arrived in the same frame — most of the time.
+ */
+export function foldCommands(prev: PlayerCommand, next: PlayerCommand): PlayerCommand {
+  return {
+    ...next,
+    buttons: next.buttons | (prev.buttons & PULSE_BUTTONS),
+    pickupTargetId: next.pickupTargetId || prev.pickupTargetId,
+    shopBuyId: next.shopBuyId || prev.shopBuyId,
+    cardVote: next.cardVote || prev.cardVote,
+  };
+}
+
 /**
  * design/08: submit / take(frame). `take` returns null only when a frame isn't
  * confirmed yet (net stall); a local/replay source never returns null. The
