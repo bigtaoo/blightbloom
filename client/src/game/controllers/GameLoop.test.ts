@@ -22,6 +22,7 @@ import type { Phase } from '../phase';
 import type { AudioBus, MusicTrack } from '../../platform/types';
 import { MAX_WALL_HEIGHT } from '../scene/wallGeometry';
 import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
+import { fpToPx } from '../coords';
 
 const CFG = { seed: 3, worldW: 1600, worldH: 1200, waves: [] as const };
 // A single sim tick's worth of render dt (matches GameLoop's own internal SIM_DT_MS,
@@ -1029,10 +1030,14 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
   });
 
   it('still gates fire on the PORTAL popup, whose buttons sit in a cleared room', () => {
-    const { deps, portalPrompt, builder } = buildDeps();
+    const { deps, portalPrompt, builder, roomBuilder } = buildDeps();
     const suppress = vi.spyOn(builder, 'suppressFire');
     portalPrompt.isOpen = true;
     const s = dungeonStateWithRooms(2);
+    // Standing at the portal: during a co-op countdown the popup also shows away from it, and
+    // there fire is not gated (ENGINE_VERSION 87, `checkpointOverlays`).
+    const p = s.players[0]!;
+    roomBuilder.portalPx = { x: fpToPx(p.gx), y: fpToPx(p.gy) };
     const host = buildHost({ getPhase: () => 'playing', activeState: () => s });
     const loop = new GameLoop(deps, host);
 

@@ -62,6 +62,7 @@ npm run dev        # client dev server, http://localhost:5173
 | `npm run test:voice-sim` | Voice demand under real play — headless PvE and PvP bot matches, the cues the real `EventReactor` plays, replayed through the real `VoiceBudget` at a ladder of caps; gates that the shipped cap costs no cue from `impact` up (`client/sim/`, also out of the default glob — ~1 min) |
 | `npm run test:pvp-capacity` | PvP energy capacity — a sim-only arena bot that loots, swaps and parries, 90 matches per behaviour and pool; gates that the dry-tick instrument can move (`client/sim/`, in `test:sims`, ~5 min) |
 | `npm run test:pvp-revive` | PvP squad revive — the sim bot and the shipped bot reviving a downed squadmate, 30 eight-seat matches per condition; gates that nobody comes back up without the rule, that both bots revive with it, and that each revive spends a bandage (`client/sim/`, in `test:sims`, ~1.5 min) |
+| `npm run test:coop-revive` | Co-op PvE revive — the shipped ally beside the level sim's bot, 40 seeds at both profiles with its revive on, off, and laid over the leader too; gates that nobody comes back up without the rule, that the ally revives with it and opens a big chest with its player, and that every run ends (`client/sim/`, in `test:sims`, ~1 min) |
 | `DD_REPLAY=<path> npm run replay:inspect` | Read one recorded run (a `ddreplay-*.json` a player saved with the HUD's ● button or F9) and report every drop's closest approach, swept path, gate and `pickup` event (`client/sim/replay/`) |
 
 ### Branching

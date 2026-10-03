@@ -4,16 +4,23 @@
 //
 // Pure functions of the map and a position, like everything the bot does.
 import { FP_SCALE, quantizeMove, type GameState } from '@dd/engine';
-import type { ArenaMap } from '@dd/engine/content/arenas';
+import type { Door } from '@dd/engine/content/arenas';
 import type { Point } from './engage';
 import { steer, type Move } from './steer';
+
+/** The part of a map the route reads: its doors, and each room's rect in grid units. An
+ *  `ArenaMap` is one; a dungeon floor is adapted to one by `dungeonRoute.ts` (2026-10-03). */
+export interface RouteMap {
+  readonly doors: readonly Door[];
+  readonly rooms: readonly { readonly id: string; readonly rectGrid: { x: number; y: number; w: number; h: number } }[];
+}
 
 /** Each room's neighbours in `map.doors` order. Derived once per map: the bot asks every tick
  *  for every seat, and rescanning every door for every room it expands made the balance sim
  *  eight times slower. */
-const neighbours = new WeakMap<ArenaMap, Map<string, string[]>>();
+const neighbours = new WeakMap<RouteMap, Map<string, string[]>>();
 
-function adjacency(map: ArenaMap): Map<string, string[]> {
+function adjacency(map: RouteMap): Map<string, string[]> {
   let adj = neighbours.get(map);
   if (!adj) {
     adj = new Map();
@@ -36,7 +43,7 @@ function adjacency(map: ArenaMap): Map<string, string[]> {
  * same way on every machine.
  */
 export function nextRoomToward(
-  map: ArenaMap,
+  map: RouteMap,
   from: string,
   isGoal: (id: string) => boolean,
   canEnter: (id: string) => boolean = () => true,
@@ -68,7 +75,7 @@ export function nextRoomToward(
  * to whichever point across the passage's width it can walk to (centre first, `ai/steer.ts`),
  * then, once inside the passage, straight on through it to a grid past its far side.
  */
-export function walkIntoRoom(s: GameState, map: ArenaMap, me: Point, from: string, step: string): Move {
+export function walkIntoRoom(s: GameState, map: RouteMap, me: Point, from: string, step: string): Move {
   const door = map.doors.find((d) => (d.roomA === from && d.roomB === step) || (d.roomB === from && d.roomA === step))!;
   const p = door.passageGrid;
   const room = map.rooms.find((r) => r.id === step)!;

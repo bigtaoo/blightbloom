@@ -219,6 +219,7 @@ export const pl: Translations<typeof en> = {
     portalExtract: 'Złóż i wydostań się ({pending} surowców)',
     portalDescend: 'Zejdź na piętro {floor}',
     portalTitleBoss: 'BOSS POKONANY — portal ewakuacyjny jest otwarty',
+    portalCountdown: 'Drużyna rusza za {seconds}s — gotowi: {ready}/{total}',
     floorCardTitle: 'Wybierz ulepszenie',
     floorCardVotes: '{n} głosów',
   },

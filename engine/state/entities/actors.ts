@@ -133,6 +133,10 @@ export interface PlayerActor extends Actor {
    *  live tally off it, which it can only do if the vote persists in shared state.
    *  Reset to 0 for every seat when a descend consumes the offer. */
   cardVote: number;
+  /** This seat has pressed the open portal's button and is waiting on the rest
+   *  (ENGINE_VERSION 87, `GameState.portalCountdownTicks`). Cleared when the portal
+   *  resolves. */
+  portalReady: boolean;
   // This tick's INTERACT hold state (mirrors `firing`'s FIRE mirror), set by
   // ApplyInputSystem. Read by ReviveSystem (sustained channel) — no longer by
   // PickupSystem (weapon collection is click-driven now, see `pickupTargetId` below)

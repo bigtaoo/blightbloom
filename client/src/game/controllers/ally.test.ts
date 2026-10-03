@@ -17,9 +17,12 @@ import { pxToFp } from '@dd/engine/content/convert';
 import { freshStatus } from '@dd/engine/content/damage';
 import { BASIC_ENEMY } from '@dd/engine/content/enemies';
 import { toFp } from '@dd/engine/math/fixed';
-import { type Brad } from '@dd/engine/math/trig';
+import { BRAD_FULL, type Brad } from '@dd/engine/math/trig';
 import { ENEMY_TEAM_ID, type EnemyActor } from '@dd/engine/state/entities';
-import { REVIVE_CHANNEL_TICKS } from '@dd/engine';
+import { CHEST_MECHANISM_RING_GRID, PORTAL_COUNTDOWN_TICKS, REVIVE_CHANNEL_TICKS } from '@dd/engine';
+import { toFpGrid } from '@dd/engine/content/convert';
+import { mechanismRing } from '@dd/engine/content/chests';
+import type { Chest } from '@dd/engine/state/entities';
 import { AllyController } from './AllyController';
 
 function addEnemy(s: GameState, xpx: number, ypx: number): EnemyActor {
@@ -113,6 +116,11 @@ describe('AllyController — reviving the downed leader (volume 118)', () => {
     expect(cmd.moveMag).toBe(0);
   });
 
+  it('with `revives: false` (the co-op sim control) it never holds INTERACT over the body', () => {
+    const cmd = new AllyController({ revives: false }).build(downedLeader(20), 1, 0, 5);
+    expect(interacts(cmd.buttons)).toBe(false);
+  });
+
   it('walks to a body out of reach without holding INTERACT', () => {
     const cmd = ally.build(downedLeader(200), 1, 0, 5);
     expect(cmd.moveMag).toBeGreaterThan(0);
@@ -154,5 +162,122 @@ describe('AllyController — reviving the downed leader (volume 118)', () => {
     expect(revived).toBe(true);
     expect(eng.state.players[0]!.downed).toBe(false);
     expect(eng.state.winner).toBeNull();
+  });
+});
+
+describe('AllyController — a big chest’s second plate (2026-10-03)', () => {
+  // A two-plate chest at grid (20, 10): plates due east (20 + ring, 10) and due west.
+  const CX = 20;
+  const R = CHEST_MECHANISM_RING_GRID;
+  function chestState(leaderGx: number, allyGx: number): { s: GameState; chest: Chest } {
+    const s = createGameState({ ...CFG, players: [{ start: [0, 0] }, { start: [0, 0] }] });
+    Object.assign(s.players[0]!, { gx: toFpGrid(leaderGx), gy: toFpGrid(10) });
+    Object.assign(s.players[1]!, { gx: toFpGrid(allyGx), gy: toFpGrid(10) });
+    const chest: Chest = { id: 1, roomId: 'none', kind: 'big', gx: toFpGrid(CX), gy: toFpGrid(10), mechanisms: mechanismRing(toFpGrid(CX), toFpGrid(10), 2), opened: false };
+    s.chests.push(chest);
+    return { s, chest };
+  }
+  /** The command's heading as a unit vector (+y is south). */
+  const heading = (cmd: { moveBrad: number }) => {
+    const a = (cmd.moveBrad / BRAD_FULL) * 2 * Math.PI;
+    return { x: Math.cos(a), y: Math.sin(a) };
+  };
+
+  it('holds the free plate once the leader stands on the other, where it would otherwise regroup', () => {
+    // The plates are 2 * ring = 6 grid apart, past the 3-grid regroup distance.
+    const { s, chest } = chestState(CX - R, CX + R);
+    expect(ally.build(s, 1, 0, 5).moveMag).toBe(0);
+    chest.opened = true; // control: the same spot, no chest to work
+    expect(heading(ally.build(s, 1, 0, 5)).x).toBeLessThan(-0.9); // regroups west, on the leader
+  });
+
+  it('walks to the free plate, not to the leader', () => {
+    // Ally 6 grid due south of the free (east) plate; the leader is on the west plate.
+    const { s } = chestState(CX - R, CX + R);
+    s.players[1]!.gy = toFpGrid(16);
+    const h = heading(ally.build(s, 1, 0, 5));
+    expect(h.y).toBeLessThan(-0.95); // due north, onto the plate
+    expect(Math.abs(h.x)).toBeLessThan(0.2); // not toward the leader, north-west
+  });
+
+  it('leaves a plate alone while no squadmate stands on one', () => {
+    // Leader at the chest's centre, on no plate; ally on the east plate, 3 grid off: within
+    // the regroup distance, so it stands still either way — move it out to 5 grid.
+    const { s } = chestState(CX, CX + R + 2);
+    expect(heading(ally.build(s, 1, 0, 5)).x).toBeLessThan(-0.9); // regroups, past the plate
+  });
+
+  it('leaves the chest alone once every plate is held by someone else', () => {
+    // Three seats, two plates: seats 0 and 2 hold both, so seat 1 has no plate to take.
+    const s = createGameState({ ...CFG, players: [{ start: [0, 0] }, { start: [0, 0] }, { start: [0, 0] }] });
+    Object.assign(s.players[0]!, { gx: toFpGrid(CX - R), gy: toFpGrid(10) });
+    Object.assign(s.players[1]!, { gx: toFpGrid(CX - R - 4), gy: toFpGrid(14) });
+    Object.assign(s.players[2]!, { gx: toFpGrid(CX + R), gy: toFpGrid(10) });
+    s.chests.push({ id: 1, roomId: 'none', kind: 'big', gx: toFpGrid(CX), gy: toFpGrid(10), mechanisms: mechanismRing(toFpGrid(CX), toFpGrid(10), 2), opened: false });
+    // Regrouping on seat 0, 4 grid north-east (0.71, -0.71); seat 2's plate is east-north-east.
+    const h = heading(ally.build(s, 1, 0, 5));
+    expect(h.y).toBeLessThan(-0.6);
+    expect(h.x).toBeLessThan(0.8);
+  });
+
+  it('fights an enemy in range before the plate, but takes the plate over one far off', () => {
+    const { s } = chestState(CX - R, CX + R);
+    addEnemy(s, 1500, 1100).weapon = null; // 26+ grid off: not in range
+    const onPlate = ally.build(s, 1, 0, 5);
+    expect(onPlate.moveMag).toBe(0);
+    expect(onPlate.buttons & Button.FIRE).toBe(0);
+    addEnemy(s, (CX + R + 6) * 32, 10 * 32); // 6 grid east: in range
+    expect(ally.build(s, 1, 0, 5).buttons & Button.FIRE).toBeTruthy();
+  });
+
+  it('opens the chest with the leader through step()', () => {
+    const eng = createGameEngine({ ...CFG, waves: [[[1500, 1100]]], players: [{ start: [0, 0] }, { start: [0, 0] }] });
+    const idle = (t: number) => makeCommand({ owner: 0, tick: t, moveBrad: 0 as Brad, moveMag: 0, buttons: 0 });
+    eng.step([idle(1)]);
+    const s = eng.state;
+    s.enemies[0]!.weapon = null;
+    Object.assign(s.players[0]!, { gx: toFpGrid(CX + R), gy: toFpGrid(10) });
+    Object.assign(s.players[1]!, { gx: toFpGrid(CX - R - 6), gy: toFpGrid(14) });
+    const chest: Chest = { id: 1, roomId: 'none', kind: 'big', gx: toFpGrid(CX), gy: toFpGrid(10), mechanisms: mechanismRing(toFpGrid(CX), toFpGrid(10), 2), opened: false };
+    s.chests.push(chest);
+    for (let t = 2; t < 200 && !chest.opened; t++) {
+      Object.assign(s.enemies[0]!, { gx: pxToFp(1500), gy: pxToFp(1100) });
+      eng.step([idle(t), ally.build(s, 1, 0, t)]);
+    }
+    expect(chest.opened).toBe(true);
+  });
+});
+
+describe('AllyController — confirming the portal (ENGINE_VERSION 87)', () => {
+  const confirms = (buttons: number) => (buttons & Button.CONFIRM_DESCEND) !== 0 && (buttons & Button.CONFIRM_EXTRACT) !== 0;
+
+  it('confirms while a countdown runs and it has not, on top of what it is doing', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
+    addEnemy(s, 620, 400);
+    s.portalCountdownTicks = 100;
+    const cmd = ally.build(s, 1, 0, 5);
+    expect(confirms(cmd.buttons)).toBe(true);
+    expect(cmd.buttons & Button.FIRE).toBeTruthy(); // still fighting
+  });
+
+  it('does not press with no countdown, once confirmed, or while downed', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
+    expect(confirms(ally.build(s, 1, 0, 5).buttons)).toBe(false);
+    s.portalCountdownTicks = 100;
+    s.players[1]!.portalReady = true;
+    expect(confirms(ally.build(s, 1, 0, 5).buttons)).toBe(false);
+    s.players[1]!.portalReady = false;
+    s.players[1]!.downed = true;
+    expect(confirms(ally.build(s, 1, 0, 5).buttons)).toBe(false);
+  });
+
+  it('a leader’s descend goes on the next tick, not after the countdown, through step()', () => {
+    const eng = createGameEngine({ seed: 9, worldW: 800, worldH: 600, waves: [], floors: [[]], players: [{ start: [100, 100] }, { start: [140, 100] }] });
+    const lead = (t: number, buttons = 0, cardVote = 0) => makeCommand({ owner: 0, tick: t, moveBrad: 0 as Brad, moveMag: 0, buttons, cardVote });
+    eng.step([lead(1, 0, 1), ally.build(eng.state, 1, 0, 1)]);
+    eng.step([lead(2, Button.CONFIRM_DESCEND), ally.build(eng.state, 1, 0, 2)]);
+    expect(eng.state.portalCountdownTicks).toBe(PORTAL_COUNTDOWN_TICKS - 1);
+    eng.step([lead(3), ally.build(eng.state, 1, 0, 3)]);
+    expect(eng.state.floorIndex).toBe(1);
   });
 });

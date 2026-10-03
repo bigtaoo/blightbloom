@@ -70,7 +70,7 @@ function addPlayer(s: GameState, gx: number, gy: number, coins = 1000): PlayerAc
     solidRadius: PLAYER_BASE.solidRadius,
     alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [],
     energy: 0, maxEnergy: BASE_MAX_ENERGY, coins, shopBuyId: 0,
-    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0,
+    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, portalReady: false,
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),

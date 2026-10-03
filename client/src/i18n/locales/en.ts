@@ -239,6 +239,7 @@ export const en = {
     portalExtract: 'Bank & Extract ({pending} materials)',
     portalDescend: 'Descend to Floor {floor}',
     portalTitleBoss: 'BOSS DOWN — the extraction portal is open',
+    portalCountdown: 'Squad leaves in {seconds}s — {ready}/{total} ready',
     floorCardTitle: 'Choose an Upgrade',
     floorCardVotes: '{n} votes',
   },

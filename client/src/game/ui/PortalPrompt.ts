@@ -1,5 +1,5 @@
 import { Container, Text } from 'pixi.js';
-import type { GameState } from '@dd/engine';
+import { TICK_RATE, type GameState } from '@dd/engine';
 import { Panel, Button } from './widgets';
 import { t } from '../../i18n';
 
@@ -51,6 +51,12 @@ function totalCarryOut(s: GameState, localOwner: number): number {
  * visible at a time. That is deliberate: `labelFit.test.ts` reflects over the fields to
  * measure every label in all eight locales, and a button whose text is only set when shown
  * would be measured as empty and skipped.
+ *
+ * **The co-op countdown (ENGINE_VERSION 87).** Once any seat opens the portal, the engine
+ * runs `portalCountdownTicks` and every seat sees this panel wherever it stands (the caller
+ * drops the proximity half of `show`). The title becomes the countdown and how many living
+ * seats have confirmed; the button is the same one, now a confirm, and it is hidden once
+ * this seat has pressed it, or while it cannot (downed or dead).
  */
 export class PortalPrompt {
   readonly view = new Container();
@@ -62,6 +68,10 @@ export class PortalPrompt {
 
   onExtract: (() => void) | null = null;
   onDescend: (() => void) | null = null;
+  /** A press landed anywhere on this panel — routed to `CommandBuilder.suppressFireUntilRelease`.
+   *  Fire is only gated on the panel near the portal (`checkpointOverlays`); during a countdown it
+   *  also shows mid-fight, where gating it would disarm the seat for up to 30 s. */
+  onPressStart: (() => void) | null = null;
 
   get isOpen(): boolean {
     return this._isOpen;
@@ -85,6 +95,10 @@ export class PortalPrompt {
 
     this.view.addChild(this.panel.view, this.titleText, this.extractBtn.view, this.descendBtn.view);
     this.view.visible = false;
+    // Same capture-phase swallow as `FloorCardPrompt`: `WebInput` reads `firing` from a raw
+    // `mousedown` that a Pixi button consuming the event knows nothing about.
+    this.view.eventMode = 'static';
+    this.view.on('pointerdowncapture', () => this.onPressStart?.());
   }
 
   /** Re-anchor on viewport resize (Game's relayoutViewport, same convention as HudView). */
@@ -134,10 +148,23 @@ export class PortalPrompt {
     this.view.visible = show;
     if (!show) return;
     const nextFloor = s.floorIndex + 2; // 1-based display, one floor further than current
-    this.titleText.text = t(isLastFloor ? 'hud.portalTitleBoss' : 'hud.portalTitle');
+    this.titleText.text = s.portalCountdownTicks > 0 ? countdownTitle(s) : t(isLastFloor ? 'hud.portalTitleBoss' : 'hud.portalTitle');
     this.extractBtn.setText(t('hud.portalExtract', { pending: totalCarryOut(s, localOwner) }));
     this.descendBtn.setText(t('hud.portalDescend', { floor: nextFloor }));
-    this.extractBtn.view.visible = isLastFloor;
-    this.descendBtn.view.visible = !isLastFloor;
+    const me = s.players[localOwner];
+    const canPress = !!me && me.alive && !me.downed && !me.portalReady;
+    this.extractBtn.view.visible = isLastFloor && canPress;
+    this.descendBtn.view.visible = !isLastFloor && canPress;
   }
+}
+
+/** "Squad leaves in 23s — 1/2 ready": whole seconds rounded up, so it never reads 0 while
+ *  the portal is still waiting. Counts living seats only, the ones the engine waits for. */
+function countdownTitle(s: GameState): string {
+  const living = s.players.filter((p) => p.alive);
+  return t('hud.portalCountdown', {
+    seconds: Math.ceil(s.portalCountdownTicks / TICK_RATE),
+    ready: living.filter((p) => p.portalReady).length,
+    total: living.length,
+  });
 }

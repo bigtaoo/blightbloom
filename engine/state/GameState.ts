@@ -224,10 +224,11 @@ export class GameState {
   // `PlayerActor.buffs` at pick time, exactly like a buff picked up off the floor, so
   // they flow through the existing `sumBuffs`/`BUFF_CAPS` machinery instead of a
   // second damage-scaling path.
-  /** This checkpoint's three offered card ids; empty when no offer is open. */
   floorCardOffer: string[] = [];
   /** Every card this run has picked, in pick order. Run-scoped, never carries out. */
   floorCards: string[] = [];
+  /** Ticks left on the co-op portal countdown, 0 when none runs (ENGINE_VERSION 87, `ExtractionSystem`). */
+  portalCountdownTicks = 0;
   /** Guards the boss's one-time schematic roll to at most once per run (design/14,
    *  ENGINE_VERSION 68) — a boss with `onDeathSpawn` adds re-entering `rollBlueprint`'s
    *  branch must not pay twice. Purely a roll guard: WHO ends up carrying the dropped
@@ -463,6 +464,7 @@ export class GameState {
       pickupTargetId: 0,
       shopBuyId: 0,
       cardVote: 0,
+      portalReady: false,
       downed: false, // co-op downed/revive (design/05/07, ROADMAP 3.2)
       bleedoutTicks: 0,
       reviveProgressTicks: 0,

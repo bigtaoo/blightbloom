@@ -138,7 +138,7 @@ describe('a descend holds until somebody picks', () => {
   it('clears the offer and every seat’s vote once a descend consumes it', () => {
     const eng = atCheckpoint(2);
     eng.step([cmd(0, eng.state.tick + 1, { cardVote: 1 }), cmd(1, eng.state.tick + 1, { cardVote: 1 })]);
-    eng.step([descend(0, eng.state.tick + 1), cmd(1, eng.state.tick + 1)]);
+    eng.step([0, 1].map((i) => descend(i, eng.state.tick + 1)));
     expect(eng.state.floorCardOffer).toEqual([]);
     for (const seat of eng.state.players) expect(seat.cardVote).toBe(0);
   });
@@ -169,7 +169,7 @@ describe('multiplayer — the most-voted card wins', () => {
     const chosen = eng.state.floorCardOffer[2]!;
     const t = eng.state.tick + 1;
     eng.step([cmd(0, t, { cardVote: 1 }), cmd(1, t, { cardVote: 3 }), cmd(2, t, { cardVote: 3 })]);
-    eng.step([descend(0, eng.state.tick + 1), cmd(1, eng.state.tick + 1), cmd(2, eng.state.tick + 1)]);
+    eng.step([0, 1, 2].map((i) => descend(i, eng.state.tick + 1)));
     expect(eng.state.floorCards).toEqual([chosen]);
   });
 
@@ -180,7 +180,7 @@ describe('multiplayer — the most-voted card wins', () => {
     const chosen = eng.state.floorCardOffer[1]!;
     const t = eng.state.tick + 1;
     eng.step([cmd(0, t), cmd(1, t, { cardVote: 2 }), cmd(2, t)]);
-    eng.step([descend(0, eng.state.tick + 1), cmd(1, eng.state.tick + 1), cmd(2, eng.state.tick + 1)]);
+    eng.step([0, 1, 2].map((i) => descend(i, eng.state.tick + 1)));
     expect(eng.state.floorIndex).toBe(1);
     expect(eng.state.floorCards).toEqual([chosen]);
   });
@@ -190,7 +190,7 @@ describe('multiplayer — the most-voted card wins', () => {
     const chosen = eng.state.floorCardOffer[0]!;
     const t = eng.state.tick + 1;
     eng.step([cmd(0, t, { cardVote: 2 }), cmd(1, t, { cardVote: 1 })]);
-    eng.step([descend(0, eng.state.tick + 1), cmd(1, eng.state.tick + 1)]);
+    eng.step([0, 1].map((i) => descend(i, eng.state.tick + 1)));
     expect(eng.state.floorCards).toEqual([chosen]);
   });
 });
@@ -202,7 +202,8 @@ describe('the reward is team-wide', () => {
     expect(slot).toBeGreaterThan(0); // the caller must have checked the offer contains it
     const t = eng.state.tick + 1;
     eng.step(eng.state.players.map((_, i) => cmd(i, t, { cardVote: slot })));
-    eng.step(eng.state.players.map((_, i) => (i === 0 ? descend(0, eng.state.tick + 1) : cmd(i, eng.state.tick + 1))));
+    // Every seat confirms, so the portal goes on the press (ENGINE_VERSION 87).
+    eng.step(eng.state.players.map((_, i) => descend(i, eng.state.tick + 1)));
   }
 
   /** An engine whose floor-0 offer is guaranteed to contain `cardId`, by seed search. */
