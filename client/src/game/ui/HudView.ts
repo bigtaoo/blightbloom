@@ -10,7 +10,7 @@ import { ChestPrompt } from './ChestPrompt';
 import { nearbyBigChest, CHEST_PLATE_PROMPT_RANGE_GRID } from './chestProximity';
 import { reviveTarget, toFpGrid } from '@dd/engine';
 import { Minimap, type MinimapPlayer } from './Minimap';
-import { dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
+import { dungeonRoomMarkers, dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
 import { PlayerCard, AllyRow } from './PlayerCard';
 import { SeatRoster } from './SeatRoster';
 import { WeaponCard } from './WeaponCard';
@@ -320,10 +320,12 @@ export class HudView {
       this.minimap.update(s.arenaMap, (id) => roomStatus(s.zone, id), players);
     } else if (s.dungeonRooms.length > 0) {
       this.minimap.view.visible = true;
+      const markers = dungeonRoomMarkers(s.dungeonRooms, s.chests, s.shops);
       this.minimap.update(
         dungeonToArenaMap(s.dungeonRooms, s.dungeonDoors),
-        (id) => dungeonRoomStatus(s.dungeonRoomRuntime, s.dungeonRoomIndexById, id),
+        (id) => dungeonRoomStatus(s.dungeonRoomRuntime, s.dungeonRoomIndexById, id, s.dungeonDoors),
         players,
+        (id) => markers.get(id),
       );
     } else {
       this.minimap.view.visible = false;

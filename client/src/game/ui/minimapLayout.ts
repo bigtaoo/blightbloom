@@ -1,5 +1,5 @@
 import type { ArenaMap, RoomId } from '@dd/engine/content/arenas';
-import type { ZoneState } from '@dd/engine';
+import type { Chest, Shop, ZoneState } from '@dd/engine';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { DoorRuntime, DungeonRoomRuntime } from '@dd/engine/state/GameState';
 
@@ -70,10 +70,12 @@ export function computeMinimapLayout(map: ArenaMap, box: { w: number; h: number 
   return { rooms, doors };
 }
 
-// `'unvisited'` (PvE-only — see `dungeonRoomStatus` below) is the one bucket `roomStatus`
-// (PvP) never produces: a zone has no "haven't been there yet" concept, every room is
-// either safe, about to close, or already outside the safe set from the first tick.
-export type RoomStatus = 'safe' | 'closing' | 'danger' | 'unvisited';
+// `'cleared'`, `'frontier'` and `'unvisited'` (PvE-only — see `dungeonRoomStatus` below) are
+// buckets `roomStatus` (PvP) never produces: a zone has no "haven't been there yet" concept,
+// every room is either safe, about to close, or already outside the safe set from the first
+// tick. PvE's cleared room is its own bucket rather than PvP's `'safe'` so it can be drawn
+// LIT against the dark unexplored rooms without repainting the PvP arena (2026-10-03).
+export type RoomStatus = 'safe' | 'closing' | 'danger' | 'cleared' | 'frontier' | 'unvisited';
 
 /** A room's current zone read, for minimap tinting. No `zone` yet (the first tick
  * before ZoneSystem draws the eye, or simply not an arena match) → nothing is unsafe.
@@ -127,22 +129,68 @@ export function dungeonToArenaMap(rooms: readonly PlacedRoom[], doors: readonly 
 }
 
 /** A PvE room's minimap tint — the same palette `roomStatus` (PvP) already defines,
- * plus `'unvisited'` (a bucket PvP never produces): PvE has no zone-driven "closing"
- * telegraph, but DOES have a real "haven't been there yet" state `roomStatus` has no
- * equivalent for — exactly what a fork's untaken sibling needs to read as, rather
- * than collapsing into the same tint as an already-cleared room (design/05's own
- * documented gap this closes). `'safe'` = cleared (activated, no live enemy);
- * `'danger'` = in combat (`hasLiveEnemy`, the same signal `DoorSystem` itself locks
- * doors on); `'unvisited'` = never activated (including an unknown/malformed
- * `roomId` — same "content bug, don't crash the widget" tolerance
- * `computeMinimapLayout`'s own door-skip already has). */
+ * plus the PvE-only buckets (2026-10-03 rework: "unexplored rooms don't read as different,
+ * I never know which room to head for next"):
+ *   - `'cleared'` = activated, no live enemy — drawn lit.
+ *   - `'danger'`  = activated and in combat (`hasLiveEnemy`, the same signal `DoorSystem`
+ *     itself locks doors on).
+ *   - `'frontier'` = never activated, but one door away from a room that has been — the
+ *     rooms a player can walk into NEXT, drawn with a bright outline so the answer to
+ *     "where now?" is on the map rather than in the player's memory.
+ *   - `'unvisited'` = never activated and not adjacent to anywhere been — dark, outlined
+ *     only. Also what an unknown/malformed `roomId` resolves to (same "content bug, don't
+ *     crash the widget" tolerance `computeMinimapLayout`'s own door-skip already has).
+ * `doors` is optional so a caller with no door data still gets the three-way read; without
+ * it nothing is ever `'frontier'`. */
 export function dungeonRoomStatus(
   runtimes: readonly DungeonRoomRuntime[],
   indexById: ReadonlyMap<RoomId, number>,
   roomId: RoomId,
+  doors: readonly DoorRuntime[] = [],
 ): RoomStatus {
-  const idx = indexById.get(roomId);
-  const rt = idx !== undefined ? runtimes[idx] : undefined;
-  if (!rt || !rt.activated) return 'unvisited';
-  return rt.hasLiveEnemy ? 'danger' : 'safe';
+  const activated = (id: RoomId): boolean => {
+    const idx = indexById.get(id);
+    return idx !== undefined && runtimes[idx]?.activated === true;
+  };
+  if (activated(roomId)) {
+    const rt = runtimes[indexById.get(roomId)!]!;
+    return rt.hasLiveEnemy ? 'danger' : 'cleared';
+  }
+  if (!indexById.has(roomId)) return 'unvisited';
+  for (const { door } of doors) {
+    const other = door.roomA === roomId ? door.roomB : door.roomB === roomId ? door.roomA : undefined;
+    if (other !== undefined && activated(other)) return 'frontier';
+  }
+  return 'unvisited';
+}
+
+/** What a room HOLDS, as far as the minimap tells it (2026-10-03): the floor's boss, its exit
+ * to the next floor, a shop with something still for sale, an unopened chest. */
+export type RoomMarker = 'boss' | 'exit' | 'shop' | 'chest';
+
+/**
+ * One marker per room, for every room that has one. Priority when a room qualifies twice
+ * is boss > exit > shop > chest — the room's reason to exist wins over what it also contains
+ * (the big chest the extraction capstone used to carry is the case this was written for).
+ *
+ * The exit is the floor's capstone: `role: 'extraction'`, or the LAST placed room on a floor
+ * whose capstone carries no role — `ExtractionSystem` gates on `dungeonRoomRuntime[length - 1]`
+ * whatever the piece says, so the minimap follows the same index. The last floor's boss room
+ * "doubles as its own extraction" (design/05) and is marked as the boss. A chest stops
+ * counting once opened and a shop once every line is sold: the marker is a reason to walk
+ * there, and a spent one is not.
+ */
+export function dungeonRoomMarkers(
+  rooms: readonly PlacedRoom[],
+  chests: readonly Pick<Chest, 'roomId' | 'opened'>[],
+  shops: readonly Pick<Shop, 'roomId' | 'stock'>[],
+): Map<RoomId, RoomMarker> {
+  const out = new Map<RoomId, RoomMarker>();
+  for (const c of chests) if (!c.opened) out.set(c.roomId, 'chest');
+  for (const sh of shops) if (sh.stock.some((o) => !o.sold)) out.set(sh.roomId, 'shop');
+  rooms.forEach((r, i) => {
+    if (r.piece.role === 'boss') out.set(r.id, 'boss');
+    else if (r.piece.role === 'extraction' || i === rooms.length - 1) out.set(r.id, 'exit');
+  });
+  return out;
 }

@@ -1715,9 +1715,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **10-01** [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change) — Pixi's gate counts whole milliseconds, which drew 4-9% of frames a vsync late on 90/100/165 Hz panels. `game/frameGate.ts` counts vsyncs instead, on both platforms; 0% uneven at every rate from 60 to 240 Hz, both settings and the idle cap, against the real `Ticker` with jitter. `render` `perf` `platform` `test` `docs`
 - **10-01** [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change) — `LocalPredictor` eased onto the delayed confirmed position, so online the local player carried the whole latency and slid on after a stop. It now leads by the send-to-stepped delay `net/inputDelay.ts` measures, and pushes out of walls with the sim's own `clampToWalkable`; the client also drops the 3-frame cushion. Modelled on the server's timing: 3-7 px behind the stick instead of 34-79, a 3-19 px forward-only slide instead of 33-78. Open: the slide is the server landing commands on each batch's last frame. `net` `test` `docs`
 
+**[2026-10-03 — minimap wayfinding](roadmap/120-2026-10-03-minimap-wayfinding.md)**
+
+- **10-03** [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change) — the owner could not tell unexplored rooms apart or where to head next. PvE rooms now read cleared (lit) / frontier (one door from where you have been, bright outline) / unvisited (dark), and rooms carry a boss, exit, shop or chest marker; a real-engine sweep over all eight level-1 maps pins where they land.
+
 ## The work log — by theme
 
-The same 232 entries, grouped. An entry with more than one tag appears more than once.
+The same 233 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1933,7 +1937,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(143)*
+**`test`** — coverage sweeps, gates, mutation batteries *(144)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2078,6 +2082,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 
 **`audio`** — cues, music, the engine to sound channel *(9)*
 
@@ -2129,7 +2134,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(47)*
+**`ui`** — HUD, screens, widgets *(48)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2178,6 +2183,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(39)*
 
@@ -2221,7 +2227,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 
-**`docs`** — design docs and this log itself *(149)*
+**`docs`** — design docs and this log itself *(150)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2372,6 +2378,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 
 **`net`** — matchmaking, sockets, reconnect *(37)*
 
