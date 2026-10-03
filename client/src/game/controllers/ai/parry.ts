@@ -38,8 +38,10 @@ export interface ParryMove {
   fire: boolean;
 }
 
-/** The parry rule's override for `me` this tick, or null to leave the command alone. */
-export function parryMove(s: GameState, me: PlayerActor, owner: number): ParryMove | null {
+/** The parry rule's override for `me` this tick, or null to leave the command alone.
+ *  `keepBlade`: the blade is out for a dry gun (`ai/dryBlade.ts`), so with nothing coming it is
+ *  that rule's, not this one's, to swing or put back. */
+export function parryMove(s: GameState, me: PlayerActor, owner: number, keepBlade = false): ParryMove | null {
   const blade = me.weapons.find((w) => w.spec.kind === 'melee' && w.spec.deflect);
   if (!blade || blade.spec.kind !== 'melee') return null;
   const bladeOut = me.weapon === blade;
@@ -52,7 +54,7 @@ export function parryMove(s: GameState, me: PlayerActor, owner: number): ParryMo
     return canSwap ? { swap: true, fire: true } : null;
   }
   // Only a blade the bot drew can be put back: with no gun, the blade is all it has.
-  if (!bladeOut || !gun) return null;
+  if (!bladeOut || !gun || keepBlade) return null;
   const aim = nearestHostile(s, me, me.gx, me.gy);
   const bodyInReach = aim !== null && Math.hypot(aim.gx - me.gx, aim.gy - me.gy) <= blade.spec.range;
   const recovered = blade.cooldownTicks === 0 && blade.swingTicksLeft === 0;

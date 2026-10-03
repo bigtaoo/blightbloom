@@ -132,12 +132,20 @@ function cueTable(label: string, logs: CueEvent[][], cap: number): string {
  *  shipped cap (0.14%), every one a stolen `muzzle` and 0.9 s of audio in ten matches. The
  *  cues that matter are gated separately below, so the ceiling moved rather than the cap —
  *  cap 17 would pass at 0.09%, but with no margin and at the price of the saturation test in
- *  `audioPipeline.test.ts`. */
-const MAX_LOSS = 0.0025;
-/** No cue at or above `impact` may lose a voice to the cap in real play: those are the cues
- *  that say something happened to someone, where `muzzle`/`swing`/`clash` below it only
- *  texture a shot the player already sees. */
-const PROTECTED_FROM = CUE_CATALOGUE.impact.priority;
+ *  `audioPipeline.test.ts`.
+ *  0.5% since 2026-10-03 (volume 123): once the PvP bot looted and closed in with its blade,
+ *  8-seat matches bunched up and lost 35 of 8,984 voices at the shipped cap (0.39%), the mix
+ *  peaking at 23 uncapped. Cap 20 would have lost 0.08%; the owner kept 16, the device budget,
+ *  and moved the ceiling. */
+const MAX_LOSS = 0.005;
+/** No cue ABOVE `impact` may lose a voice to the cap in real play: those are the cues that say
+ *  something happened to someone, where `muzzle`/`swing`/`clash` only texture a shot the
+ *  player already sees. `impact` itself was protected too until 2026-10-03, when 8-seat PvP
+ *  with the looting bot lost 6 of 2,704 (0.22%) at cap 16; the owner chose to keep the cap,
+ *  so `impact` may now lose at most `IMPACT_MAX_LOSS` of its voices. A hit is also a `hurt`
+ *  (105) on the seat that took it, which stays protected. */
+const PROTECTED_ABOVE = CUE_CATALOGUE.impact.priority;
+const IMPACT_MAX_LOSS = 0.005;
 
 function lossShare(r: BudgetReport): number {
   const t = totals(r);
@@ -170,11 +178,11 @@ describe('voice demand under real play', () => {
     }
   });
 
-  it('gate: at the shipped cap, no cue from impact up loses a voice', () => {
+  it(`gate: at the shipped cap, no cue above impact loses a voice, and impact at most ${IMPACT_MAX_LOSS * 100}%`, () => {
     for (const [label, logs] of modes) {
       for (const [cue, c] of replayBudget(logs, durations, DEFAULT_CAP).byCue) {
-        if (CUE_CATALOGUE[cue].priority < PROTECTED_FROM) continue;
-        expect(c.refused + c.stolen, `${label}: ${cue}`).toBe(0);
+        if (cue === 'impact') expect((c.refused + c.stolen) / (c.played + c.refused), `${label}: impact`).toBeLessThanOrEqual(IMPACT_MAX_LOSS);
+        else if (CUE_CATALOGUE[cue].priority > PROTECTED_ABOVE) expect(c.refused + c.stolen, `${label}: ${cue}`).toBe(0);
       }
     }
   });
@@ -185,7 +193,9 @@ describe('voice demand under real play', () => {
     const all = modes.flatMap(([, logs]) => logs);
     const tight = replayBudget(all, durations, 4);
     expect(lossShare(tight)).toBeGreaterThan(MAX_LOSS);
-    const hurtOrAbove = [...tight.byCue].filter(([cue, c]) => CUE_CATALOGUE[cue].priority >= PROTECTED_FROM && c.refused + c.stolen > 0);
-    expect(hurtOrAbove.length).toBeGreaterThan(0);
+    const aboveImpact = [...tight.byCue].filter(([cue, c]) => CUE_CATALOGUE[cue].priority > PROTECTED_ABOVE && c.refused + c.stolen > 0);
+    expect(aboveImpact.length).toBeGreaterThan(0);
+    const impact = tight.byCue.get('impact')!;
+    expect((impact.refused + impact.stolen) / (impact.played + impact.refused)).toBeGreaterThan(IMPACT_MAX_LOSS);
   });
 });

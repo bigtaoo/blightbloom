@@ -1727,9 +1727,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-03** [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change) — the shipped arena bot never left its gun, so no match had a parry and a rival's half-damage rebound never came into play. `ai/parry.ts` swaps to a ready blade and swings at one bullet in two (picked by id, no memory), and swaps back once the blade recovers; 180 sim matches now see 4,642 parries and 2,579 rebounds land. On the way: the server bot read the match through a 3-frame cushion no client uses and parried 11 times where it parried 26 at 0; `BOT_BUFFER_FRAMES` = 0. `net` `tools` `test` `docs`
 
+**[2026-10-03 — PvP bot loot and dry blade](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md)**
+
+- **10-03** [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change) — the item volume 122 left open: only the sim-only bot looted or fell back to its blade, and volume 117 had measured both there. The shipped bot now walks to a crate or a better gun while nothing is in range (`ai/loot.ts`), and holsters a gun it cannot pay for to fight with the blade until three pulls are back (`ai/dryBlade.ts`, read off the pool, no memory). Over the same 180 sim matches it loots 746 guns, dry gun time falls 91% (4,922 to 460 seat-ticks), matches shorten by up to 13%, and vanguard's win lead goes (72/57/51 to 59/68/52). The seats now bunch up, so 8-seat PvP overran the 16-voice cap and cut 6 `impact`s short; the owner kept the cap and the voice gate now lets `impact` lose up to 0.5%. `audio` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 235 entries, grouped. An entry with more than one tag appears more than once.
+The same 236 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1945,7 +1949,7 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(146)*
+**`test`** — coverage sweeps, gates, mutation batteries *(147)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2093,8 +2097,9 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
-**`audio`** — cues, music, the engine to sound channel *(9)*
+**`audio`** — cues, music, the engine to sound channel *(10)*
 
 - 08-31 [The search and the gate were the same number three times, and never the same ruler](roadmap/12-2026-08-31-audio.md#the-search-and-the-gate-were-the-same-number-three-times-and-never-the-same-ruler-2026-08-31-tools--assets)
 - 08-31 [Everything existed and nothing was connected](roadmap/12-2026-08-31-audio.md#everything-existed-and-nothing-was-connected-2026-08-31-client-runtime)
@@ -2105,6 +2110,7 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
 **`platform`** — web / WeChat / Electron / game-portal targets and deploys *(35)*
 
@@ -2195,7 +2201,7 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(40)*
+**`tools`** — sims, profilers, editors, build scripts *(41)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2237,8 +2243,9 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(152)*
+**`docs`** — design docs and this log itself *(153)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2392,6 +2399,7 @@ The same 235 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(39)*
 

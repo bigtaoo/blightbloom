@@ -8,11 +8,13 @@
 // at the SAME tick get the identical command, which is exactly what lets
 // server/src/BotClient.ts drive a bot seat as a normal headless client, indistinguishable
 // from a real one at the wire level (design/06).
-import { Button, FP_SCALE, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, FP_SCALE, SIM, makeCommand, quantizeMove, type GameState, type PlayerActor, type PlayerCommand } from '@dd/engine';
 import { nearestHostile } from '@dd/engine/systems/targeting';
 import { engageNearest, FIRE_RANGE_FP, idleCommand, KEEP_DIST_FP, type Point } from './ai/engage';
+import { drySwapDue, rearmed } from './ai/dryBlade';
 import { yieldsFire } from './ai/fireYield';
 import { lineOfFireClear, pointClear } from './ai/lineOfFire';
+import { lootToSeek, type LootTarget } from './ai/loot';
 import { parryMove } from './ai/parry';
 import { reviveMove } from './ai/revive';
 import { nextRoomToward, walkIntoRoom } from './ai/roomRoute';
@@ -25,24 +27,47 @@ export class PvpBotController {
    *   the sims that measure a squad without it.
    * @param parries draw the blade to bat incoming bullets back (`ai/parry.ts`, 2026-10-03).
    *   Off only for the sim bot that layers its own parry rule on this one.
+   * @param loots walk to a crate or a better gun when nothing is in range, and take the gun
+   *   (`ai/loot.ts`, 2026-10-03). @param bladeWhenDry fight with the blade while the gun cannot
+   *   be paid for (`ai/dryBlade.ts`, 2026-10-03). Both off only for the sim bot, which keeps
+   *   its own copies behind its profile flags.
    */
-  constructor(private readonly opts: { revives?: boolean; parries?: boolean } = {}) {}
+  constructor(private readonly opts: { revives?: boolean; parries?: boolean; loots?: boolean; bladeWhenDry?: boolean } = {}) {}
 
-  /** Build this bot seat's command for `tick`: the fight below, with a parry layered on. */
+  /** Build this bot seat's command for `tick`: the fight below, with the blade layered on. */
   build(s: GameState, owner: number, tick: number): PlayerCommand {
-    const cmd = this.fight(s, owner, tick);
-    const me = s.players[owner];
-    // Not while reviving: the hold is the commitment, and a swap would not end it anyway.
-    if (this.opts.parries === false || !me || !me.alive || me.downed || cmd.buttons & Button.INTERACT) return cmd;
-    const parry = parryMove(s, me, owner);
-    if (!parry) return cmd;
-    return { ...cmd, buttons: (parry.fire ? Button.FIRE : 0) | (parry.swap ? Button.SWAP_WEAPON : 0) };
-  }
-
-  private fight(s: GameState, owner: number, tick: number): PlayerCommand {
     const me = s.players[owner];
     if (!me || !me.alive || me.downed) return idleCommand(owner, tick);
+    const loot = this.opts.loots === false ? undefined : lootToSeek(s, me);
+    const { cmd, steady } = this.fight(s, me, owner, tick, loot);
+    // A better gun inside the reveal ring is clicked whatever else the seat is doing.
+    const pickupTargetId = loot?.kind === 'weapon' && Math.hypot(loot.gx - me.gx, loot.gy - me.gy) <= (SIM.lootRevealRadius as number) ? loot.id : 0;
+    return { ...this.blade(s, me, owner, cmd, steady), pickupTargetId };
+  }
 
+  /**
+   * The blade over the fight's command: a parry first, then the dry gun's fallback. Not while
+   * reviving: the hold is the commitment, and a swap would not end it anyway. `steady`: the
+   * fight's walk is the zone's or a revive's, which a blade closing in must not override.
+   */
+  private blade(s: GameState, me: PlayerActor, owner: number, cmd: PlayerCommand, steady: boolean): PlayerCommand {
+    if (cmd.buttons & Button.INTERACT) return cmd;
+    const dryRule = this.opts.bladeWhenDry !== false;
+    const parry = this.opts.parries === false ? null : parryMove(s, me, owner, dryRule && !rearmed(me));
+    if (parry) return { ...cmd, buttons: (parry.fire ? Button.FIRE : 0) | (parry.swap ? Button.SWAP_WEAPON : 0) };
+    if (!dryRule) return cmd;
+    const aim = nearestHostile(s, me, me.gx, me.gy);
+    const canSwap = (me.prevButtons & Button.SWAP_WEAPON) === 0 && (me.weapon?.swingTicksLeft ?? 0) === 0;
+    if (drySwapDue(me, aim !== null && within(me, aim))) return { ...cmd, buttons: canSwap ? Button.SWAP_WEAPON : 0 };
+    const blade = me.weapon?.spec;
+    // A blade held for the dry gun closes in on what the gun pointed at and swings at a body in reach.
+    if (blade?.kind !== 'melee' || !me.weapons.some((w) => w.spec.kind === 'ranged') || !aim) return cmd;
+    const move = steady ? cmd : (steer(s, me, [aim]) ?? HOLD);
+    const swing = Math.hypot(aim.gx - me.gx, aim.gy - me.gy) <= blade.range ? Button.FIRE : 0;
+    return { ...cmd, moveBrad: move.moveBrad, moveMag: move.moveMag, buttons: swing };
+  }
+
+  private fight(s: GameState, me: PlayerActor, owner: number, tick: number, loot: LootTarget | undefined): { cmd: PlayerCommand; steady: boolean } {
     // Nearest living opponent on a different team.
     const opponents: (Point & { roomId?: string })[] = [];
     for (const p of s.players) if (p !== me && p.alive && !p.downed && p.teamId !== me.teamId) opponents.push(p);
@@ -51,7 +76,7 @@ export class PvpBotController {
     // walk into the storm after someone: an opponent standing in an unsafe room is shot at
     // from where the bot stands, not chased.
     const retreat = zoneRetreatCommand(s, owner, tick, me, opponents);
-    if (retreat) return retreat;
+    if (retreat) return { cmd: retreat, steady: true };
     // Whether to pull is decided on what the gun POINTS at, which is not always the opponent
     // being chased: the engine turns every player to its nearest hostile, mob or seat
     // (`ApplyInputSystem`). A shot the pillar or wall in between would eat is not fired
@@ -65,7 +90,15 @@ export class PvpBotController {
     // (ENGINE_VERSION 86), so the button is not sent with it. A seat with no bandage for an
     // arena revive walks to a floor one instead, while nothing it aims at is in range.
     const rescue = this.opts.revives === false ? undefined : reviveMove(s, me, opponents, aim !== null && within(me, aim));
-    if (rescue) return makeCommand({ owner, tick, ...rescue.move, buttons: rescue.interact ? Button.INTERACT : fire });
+    if (rescue) return { cmd: makeCommand({ owner, tick, ...rescue.move, buttons: rescue.interact ? Button.INTERACT : fire }), steady: true };
+    // Loot while nothing the gun points at is in range: a crate or a better gun nearby. One it
+    // cannot walk to is left for the fight.
+    const toLoot = loot && !(aim !== null && within(me, aim)) ? steer(s, me, [loot]) : null;
+    if (toLoot) return { cmd: makeCommand({ owner, tick, ...toLoot, buttons: fire }), steady: false };
+    return { cmd: this.engage(s, me, owner, tick, opponents, fire), steady: false };
+  }
+
+  private engage(s: GameState, me: PlayerActor, owner: number, tick: number, opponents: (Point & { roomId?: string })[], fire: number): PlayerCommand {
     const target = nearest(me, opponents);
     const inRange = target !== undefined && within(me, target);
     const clear = inRange && lineOfFireClear(s, me, target);
