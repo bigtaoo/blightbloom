@@ -77,6 +77,7 @@ import { recordWebhookEvent, webhookEventType, type WebhookOutcome } from './web
 import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from '../metrics';
 import { pendingDeliveries } from './outbox';
 import { readJson, readRaw, send } from './http';
+import { requestUrl } from '../requestUrl';
 import { readPaddleConfig } from './paddle/config';
 import { handlePaddleWebhook, PADDLE_WEBHOOK_PATH } from './paddle/webhook';
 
@@ -251,7 +252,8 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
 
   const server = createServer((req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204, {});
-    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    const url = requestUrl(req);
+    if (!url) return send(res, 400, { error: 'bad request' });
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return send(res, 200, { ok: true, service: 'daydayup-billsvc' });

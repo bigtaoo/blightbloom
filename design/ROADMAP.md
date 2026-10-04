@@ -1755,9 +1755,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-04** [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88) — the case volumes 124 to 126 left open: a co-op player who bled out with the bot ally still up watched it fight on, since a bot never opens the portal. A run now ends as a wipe once every person in it is dead, whatever bots stand (`ENGINE_VERSION` 88); downed is not dead, a second person is waited for, an all-bot run and the arena are untouched. Seats carry `bot`: the offline ally sets it, and online it rides a signed `bot: true` ticket claim from `onBotFill` into `MatchRoom` and `match_start.botSeats`, which `buildOnlineConfig` reads. The co-op sim's stranded runs all become wipes (34 of 40 aggressive with the revive off), every other number unchanged; `stranded` is now gated at 0. Still open: the integrity archive does not record bot seats. `engine` `net` `tools` `test` `docs`
 
+**[2026-10-04 — A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md)**
+
+- **10-04** [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change) — found while covering matchsvc's `main()`: every service built its routing URL with `new URL` over the client's Host header, which throws on one it cannot parse. matchsvc answered 500 and logged an ERROR. billsvc, adminsvc and the gameserver's WebSocket `connection` handler threw an uncaught exception, which ends the process. Caddy's host-matched site block kept that out of reach from outside. `src/requestUrl.ts` now parses with `URL.parse`. The three HTTP services answer 400; the gameserver refuses the handshake with 400 in `verifyClient`. `badHost.http.test.ts` sends three bad hosts to all four services, and all four cases failed before the fix. `net` `test` `docs`
+
 ## The work log — by theme
 
-The same 242 entries, grouped. An entry with more than one tag appears more than once.
+The same 243 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1975,7 +1979,7 @@ The same 242 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(152)*
+**`test`** — coverage sweeps, gates, mutation batteries *(153)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2129,6 +2133,7 @@ The same 242 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(10)*
 
@@ -2283,7 +2288,7 @@ The same 242 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 
-**`docs`** — design docs and this log itself *(159)*
+**`docs`** — design docs and this log itself *(160)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2444,8 +2449,9 @@ The same 242 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(40)*
+**`net`** — matchmaking, sockets, reconnect *(41)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2487,6 +2493,7 @@ The same 242 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 
