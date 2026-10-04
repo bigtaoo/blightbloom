@@ -13,6 +13,7 @@ import type { Matchmaker } from './Matchmaker';
 import type { GameRegistry } from './GameRegistry';
 import type { RollupJob } from './analytics/job';
 import { send } from './routes/http';
+import { requestUrl } from './requestUrl';
 import { renderMetrics, METRICS_CONTENT_TYPE } from './metrics';
 import { matchsvcMetrics } from './matchsvcMetrics';
 import { getClientFlags, PUBLIC_FLAGS_PATH } from './routes/clientFlags';
@@ -64,7 +65,8 @@ export interface DispatchContext {
 /** Route one request. Returns the matched handler's own result, promise included. */
 export function dispatch(req: IncomingMessage, res: ServerResponse, ctx: DispatchContext): void | Promise<void> {
   if (req.method === 'OPTIONS') return void send(res, 204, {});
-  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const url = requestUrl(req);
+  if (!url) return void send(res, 400, { error: 'bad request' });
   const path = url.pathname;
 
   if (req.method === 'GET' && path === '/health') {

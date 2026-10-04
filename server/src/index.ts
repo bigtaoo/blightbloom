@@ -31,6 +31,7 @@ import { buildIntegrityReportBody } from './integrityReport';
 import { verifyTicket, type MatchMode } from './ticket';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
+import { requestUrl } from './requestUrl';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -286,11 +287,19 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
     res.writeHead(426, { 'content-type': 'text/plain' });
     res.end('Upgrade Required');
   });
-  const wss = new WebSocketServer({ server: http, path: '/ws' });
+  // A handshake whose Host does not parse is refused with a 400 here, before the upgrade: the
+  // `connection` handler below has no URL to read a ticket from, and a throw there would be an
+  // uncaught exception (see requestUrl.ts).
+  const wss = new WebSocketServer({
+    server: http,
+    path: '/ws',
+    verifyClient: ({ req }, done) => done(requestUrl(req, 'ws') !== null, 400, 'Bad Request'),
+  });
   const { secret, isDev } = opts.ticketSecret ?? ticketSecret();
 
   wss.on('connection', (ws: WebSocket, req) => {
-    const url = new URL(req.url ?? '', `ws://${req.headers.host}`);
+    const url = requestUrl(req, 'ws')!; // non-null: `verifyClient` above refused the rest
+
     const seat = resolveSeat(url, secret, isDev);
     if (!seat) {
       // A configured secret makes a ticket mandatory; dev-with-no-secret also lands here
