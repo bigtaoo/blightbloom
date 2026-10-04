@@ -5,6 +5,8 @@
  * through `coopRun.ts`, at both bot profiles:
  *   - `solo`: the level sim's own single-seat run, for scale;
  *   - `ally off`: the ally with its revive rule switched off: the control;
+ *   - `ally rushes`: the ally before 2026-10-04's `ai/holdBack.ts`, charging the nearest enemy
+ *     anywhere on the floor: the control for the held-back fight;
  *   - `ally`: the ally as it ships, the leader not reviving (the leader bot has no rule of its own);
  *   - `ally + leader`: the same rule laid over the leader as well, a stand-in for a player who
  *     always goes back for the ally.
@@ -19,8 +21,9 @@ import { runCoop, type CoopRun, type CoopSeat } from './pve/coopRun';
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => 1 + i);
 const PROFILES = ['careful', 'aggressive'] as const;
-const CONDS: [string, { allyRevives: boolean; leaderRevives: boolean }][] = [
+const CONDS: [string, { allyRevives: boolean; leaderRevives: boolean; allyHoldsBack?: boolean }][] = [
   ['ally off', { allyRevives: false, leaderRevives: false }],
+  ['ally rushes', { allyRevives: true, leaderRevives: false, allyHoldsBack: false }],
   ['ally', { allyRevives: true, leaderRevives: false }],
   ['ally + leader', { allyRevives: true, leaderRevives: true }],
 ];

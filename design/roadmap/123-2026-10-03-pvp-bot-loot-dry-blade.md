@@ -127,5 +127,6 @@ same state with the rule switched off.
   like the parry share.
 - An 8-seat match can now cut an `impact` short at the shipped cap, about one in 450. Whether
   that is audible is a listening call, alongside the rest of the unheard audio.
-- The vanguard/skirmisher swing is one sweep of 180 matches. A tuning pass would want more seeds
-  before acting on it.
+- ~~The vanguard/skirmisher swing is one sweep of 180 matches.~~ Six blocks say it was noise, and
+  that the raw counts were never comparable across characters:
+  [volume 127](127-2026-10-04-pvp-character-share.md).

@@ -6,8 +6,9 @@
 // the deterministic engine then simulates (design/08 "render only produces input").
 //
 // Behaviour: revive a downed teammate (volume 118, `ai/revive.ts`: the rule the arena bot
-// ships), else engage the nearest enemy (fire in range, hold spacing — facing is engine-
-// decided, design/10 v33), and when the floor is quiet, regroup toward the local player
+// ships), else fight an enemy in its own room or the leader's from 7.5 grid off
+// (`ai/holdBack.ts`, 2026-10-04 — facing is engine-decided, design/10 v33), and when the
+// room is quiet, regroup toward the local player
 // so the two stay together through room transitions. When the player stands on a big
 // chest's plate, the ally takes another (`ai/chestPlate.ts`), and when a squadmate opens the
 // portal it confirms at once (ENGINE_VERSION 87): a bot never holds its player back. All from the engine's fp state, no
@@ -15,6 +16,7 @@
 // makes the run reproducible.
 import { Button, makeCommand, quantizeMove, type GameState, type PlayerCommand } from '@dd/engine';
 import { engageNearest, idleCommand, gridFp, FIRE_RANGE_FP, type Point } from './ai/engage';
+import { holdBackFight } from './ai/holdBack';
 import { reviveMove } from './ai/revive';
 import { plateMove } from './ai/chestPlate';
 
@@ -24,9 +26,10 @@ const PORTAL_CONFIRM = Button.CONFIRM_DESCEND | Button.CONFIRM_EXTRACT;
 const REGROUP_FP = gridFp(3); // when idle, only close to the leader if further than this
 
 export class AllyController {
-  /** `revives: false` is the co-op revive sim's control (`sim/coopRevive.sim.ts`): the ally as it
-   *  fought before volume 118 gave it the revive rule. */
-  constructor(private readonly opts: { revives?: boolean } = {}) {}
+  /** The co-op revive sim's controls (`sim/coopRevive.sim.ts`): `revives: false` is the ally as
+   *  it fought before volume 118 gave it the revive rule, `holdsBack: false` the ally before
+   *  2026-10-04's `ai/holdBack.ts`, charging the nearest enemy anywhere on the floor. */
+  constructor(private readonly opts: { revives?: boolean; holdsBack?: boolean } = {}) {}
 
   /** Build the ally seat's command for this tick. `leaderOwner` is the seat to regroup on. */
   build(s: GameState, owner: number, leaderOwner: number, tick: number): PlayerCommand {
@@ -49,16 +52,17 @@ export class AllyController {
     // already running.
     const rescue = this.opts.revives === false ? undefined : reviveMove(s, me, enemies, false);
     if (rescue) return makeCommand({ owner, tick, ...rescue.move, buttons: rescue.interact ? Button.INTERACT : 0 });
-    // A plate before the fight, unless the fight is in range: `engageNearest` chases the
-    // nearest live enemy anywhere on the floor, rooms not yet entered included, so "no enemy
-    // left" almost never comes in a dungeon.
+    // A plate before the fight, unless the fight is in range. Written when the ally chased the
+    // nearest live enemy anywhere on the floor, so "no enemy left" almost never came in a
+    // dungeon; the held-back fight only reaches the two seats' rooms, but a vault's plates still
+    // wait while a mob in the room next door has the ally's attention.
     const plate = plateMove(s, me);
     if (plate && !enemies.some((e) => Math.hypot(e.gx - me.gx, e.gy - me.gy) <= FIRE_RANGE_FP)) return makeCommand({ owner, tick, ...plate, buttons: 0 });
-    const engaged = engageNearest(owner, tick, me, enemies);
+    const leader = s.players[leaderOwner];
+    const engaged = this.opts.holdsBack === false ? engageNearest(owner, tick, me, enemies) : holdBackFight(s, owner, tick, me, leader?.alive ? leader : undefined, enemies);
     if (engaged) return engaged;
 
-    // No enemies: regroup on the leader so the pair traverses rooms together.
-    const leader = s.players[leaderOwner];
+    // Nothing to fight here: regroup on the leader so the pair traverses rooms together.
     if (leader && leader.alive) {
       const dx = leader.gx - me.gx;
       const dy = leader.gy - me.gy;

@@ -1739,9 +1739,17 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-03** [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87) — volume 124's two gaps, settled by the owner. Any standing seat now opens a cleared floor's portal, which starts a 30 s countdown; every other seat sees the popup and card offer wherever it stands, and the portal goes when every living seat has confirmed or the countdown ends (`ENGINE_VERSION` 87). A downed seat is waited for, a dead one is not, and solo resolves on the press as before. The co-op ally confirms at once, takes the second plate of a big chest once its player stands on one, and walks there through the floor's doors (`ai/chestPlate.ts`, `ai/dungeonRoute.ts`). Big chests now open in co-op: 16 in 40 careful runs, none before. Still open: a bot left alone after its player dies never leaves. `engine` `ui` `tools` `test` `docs`
 
+**[2026-10-04 — The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md)**
+
+- **10-04** [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change) — the item volumes 124 and 125 left open: the ally charged the nearest enemy anywhere on the floor to 4 grid, so it went down first in 30 of 40 careful runs and its revive seldom got a turn. `ai/holdBack.ts` fights only in its own room or its leader's, from 7.5 grid off (outside every mob's engage range), backing off when closed on; a blade keeps the old shape. Against an `ally rushes` control that reproduces volume 125 exactly: careful extractions 6 to 13, ally downs with the leader up 30 to 21, leader downs answered 1 of 6 to 24 of 32, big chests 16 to 21. The leader now goes down more and is revived more. With its revive off, a held-back ally strands 34 of 40 aggressive runs, which makes the open "bot left alone" case sharper. `tools` `test` `docs`
+
+**[2026-10-04 — PvP character share](roadmap/127-2026-10-04-pvp-character-share.md)**
+
+- **10-04** [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change) — volume 123's vanguard-to-skirmisher swing, re-run over six blocks of 180 matches with the bot before and after looting: the swing was noise (+4 / −11 wins over 900 matches, about half a standard deviation). The raw counts were never comparable either: seat i gets the (i mod 3)-th character, so the juggernaut never plays 2 seats and is short at 4 and 5. Read against seat share at 2 to 6 seats, the bot-vs-bot juggernaut wins 1.45x its share (z +7.5) and vanguard 0.80x (z −5), with either bot and in every block. `test:pvp-sim` now prints wins over fair share and asserts the shares sum. Whether to playtest or tune is the owner's call. `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 238 entries, grouped. An entry with more than one tag appears more than once.
+The same 240 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1958,7 +1966,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(149)*
+**`test`** — coverage sweeps, gates, mutation batteries *(151)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2109,6 +2117,8 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(10)*
 
@@ -2213,7 +2223,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`tools`** — sims, profilers, editors, build scripts *(43)*
+**`tools`** — sims, profilers, editors, build scripts *(45)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2258,8 +2268,10 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(155)*
+**`docs`** — design docs and this log itself *(157)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2416,6 +2428,8 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(39)*
 
