@@ -101,8 +101,8 @@ shipped, and the dead arm went instead. Reach is now the two seats' rooms and no
 
 ### Still open
 
-- **A bot left alone after its player dies** (volume 125). Above: holding back makes it likelier
-  when the ally's revive cannot answer.
+- ~~**A bot left alone after its player dies**~~ (volume 125). Done in
+  [volume 129](129-2026-10-04-bot-only-wipe.md): every stranded run above is now a wipe.
 - **Party-size scaling** for co-op PvE (volume 124).
 - Whether a leader revived three times a run feels like help or like nagging. That needs a
   playtest.

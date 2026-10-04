@@ -381,6 +381,23 @@ describe('gameserver WS — a room that is already in match', () => {
     }
   });
 
+  it('carries a bot ticket’s claim through to match_start.botSeats (ENGINE_VERSION 88)', async () => {
+    // The ticket -> seat -> room -> wire chain end to end. The control is the plain ticket
+    // in the tests above: its match_start has no botSeats at all.
+    const ctx = startServer();
+    await new Promise<void>((r) => ctx.server.listen(0, r));
+    try {
+      const bot = firstOutcome(`${ctx.wsBase}?ticket=${ticketFor({ roomId: 'room-bot', bot: true })}`);
+      expect((await bot.outcome).msg).toMatchObject({ type: 'match_start', botSeats: [0] });
+      bot.ws.close();
+      const person = firstOutcome(`${ctx.wsBase}?ticket=${ticketFor({ roomId: 'room-person' })}`);
+      expect((await person.outcome).msg?.botSeats).toBeUndefined();
+      person.ws.close();
+    } finally {
+      await ctx.close();
+    }
+  });
+
   it('REJECTS a seat another socket already holds in a still-filling room (4403)', async () => {
     const ctx = startServer();
     await new Promise<void>((r) => ctx.server.listen(0, r));

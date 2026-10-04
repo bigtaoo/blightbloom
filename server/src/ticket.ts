@@ -48,6 +48,13 @@ export interface TicketPayload {
    * verify. Absent for guests and bots, which is most seats.
    */
   name?: string;
+  /**
+   * The seat is a practice bot's (ENGINE_VERSION 88). Only `onBotFill` sets it. It reaches every
+   * client through `match_start.botSeats`, so the engine ends a co-op run whose people are all
+   * dead rather than leaving them to watch the bot. Signed for the same reason `owner` is: a
+   * client that could flag its own seat a bot could change when its run ends.
+   */
+  bot?: true;
 }
 
 const b64urlEncode = (s: string): string =>
@@ -116,7 +123,8 @@ export function verifyTicket(
     !Number.isInteger(payload.teamId) ||
     typeof payload.exp !== 'number' ||
     (payload.mode !== undefined && payload.mode !== 'coop' && payload.mode !== 'pvp') ||
-    (payload.accountId !== undefined && typeof payload.accountId !== 'string')
+    (payload.accountId !== undefined && typeof payload.accountId !== 'string') ||
+    (payload.bot !== undefined && payload.bot !== true)
   ) {
     return null;
   }

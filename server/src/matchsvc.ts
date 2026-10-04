@@ -261,7 +261,9 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     // gets is the same grant shape a PvP practice bot's is, and the bot learns which brain
     // to run from the `match_start` the gameserver sends it — not from anything minted
     // here, which is the only version of this that cannot disagree with the real clients in
-    // the same room (design/06 anti-drift).
+    // the same room (design/06 anti-drift). The one mark it does carry is `bot: true`
+    // (ENGINE_VERSION 88): the gameserver gathers those into `match_start.botSeats`, which
+    // every client in the room, the bots included, builds its config from.
     onBotFill: ({ roomId, seed, playerCount, mode, botOwners }) => {
       // Picked once for the room, not once per seat: the bots of one match belong on one
       // instance, exactly as its real players do. No gameserver → no socket for a bot to
@@ -275,7 +277,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
         // real seats in this room — a bot always joins the squad chunk its seat index
         // falls into, topping up a real party's understaffed squad first.
         const teamId = teamIdForOwner(owner, playerCount);
-        const grant: TicketPayload = { roomId, owner, seed, playerCount, teamId, exp, mode };
+        const grant: TicketPayload = { roomId, owner, seed, playerCount, teamId, exp, mode, bot: true };
         spawnBot({
           wsUrl: gs.wsUrl,
           token: signTicket(grant, secret),

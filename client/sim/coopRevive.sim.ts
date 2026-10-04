@@ -13,7 +13,8 @@
  *
  * What it gates is the instrument, not a balance verdict: nobody comes back up without a rule
  * that revives, the shipped ally does bring the leader back up, a seat is only revived from a down
- * its mate was still up for, and every run ends. The rest is printed.
+ * its mate was still up for, every run ends, and none is left with only the bot standing
+ * (ENGINE_VERSION 88). The rest is printed.
  */
 import { describe, expect, it } from 'vitest';
 import { runLevel } from './pve/levelSim';
@@ -87,6 +88,8 @@ describe('co-op PvE revive (shipped ally, bot leader — first-signal data, not 
           }
         }
         expect(x.outcomes.timeout, `${profileName} ${k}`).toBe(0);
+        // The ally's seat is a bot (ENGINE_VERSION 88): the leader dying with it up ends the run.
+        expect(x.outcomes.stranded, `${profileName} ${k}`).toBe(0);
       }
     }
     console.log(`\n${lines.join('\n')}\n`);

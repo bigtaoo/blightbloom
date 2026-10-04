@@ -40,6 +40,8 @@ export interface RoomConnection {
   /** The display name to show other players for this seat (design/20), from the same
    *  verified ticket. `undefined` for guests/bots, which is most seats. */
   readonly name?: string;
+  /** A practice bot's seat (ENGINE_VERSION 88), from the verified ticket. */
+  readonly bot?: boolean;
   send(msg: ServerMsg): void;
 }
 
@@ -141,6 +143,8 @@ interface Seat {
   /** Kept across a disconnect for the same reason `accountId` is: a player who drops for
    *  three seconds must not have their nameplate replaced by a blank for everyone else. */
   name?: string;
+  /** Set on join from `conn.bot`; a seat stays a bot's for the whole match. */
+  bot?: boolean;
 }
 
 export class MatchRoom {
@@ -210,6 +214,7 @@ export class MatchRoom {
     seat.conn = conn;
     if (conn.accountId !== undefined) seat.accountId = conn.accountId;
     if (conn.name !== undefined) seat.name = conn.name;
+    if (conn.bot) seat.bot = true;
     if (this.connected) this.launch();
     return true;
   }
@@ -226,6 +231,17 @@ export class MatchRoom {
     return this.seats.map((seat) => seat.name ?? null);
   }
 
+  /**
+   * The seats practice bots hold, or `undefined` when none does: like `seatNames`, a room of
+   * people puts nothing new on the wire. Every client builds its engine config from this
+   * (`buildOnlineConfig`, ENGINE_VERSION 88), so it is sent once, in `match_start`, and never
+   * changes. `conn_resync` does not carry it: a reconnecting client keeps the engine it built.
+   */
+  private botSeats(): number[] | undefined {
+    const seats = this.seats.filter((seat) => seat.bot).map((seat) => seat.owner);
+    return seats.length > 0 ? seats : undefined;
+  }
+
   private launch(): void {
     this.phase = Phase.IN_MATCH;
     for (const seat of this.seats) {
@@ -237,6 +253,7 @@ export class MatchRoom {
         playerCount: this.playerCount,
         mode: this.mode,
         names: this.seatNames(),
+        botSeats: this.botSeats(),
       });
     }
     this.startMetronome();

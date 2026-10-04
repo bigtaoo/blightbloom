@@ -25,7 +25,8 @@ describe('buildDungeonRunConfig', () => {
     const cfg = buildDungeonRunConfig({ seed: 1, coop: true, localSeat, allySkinId: 'juggernaut' });
     expect(cfg.skinId).toBeUndefined();
     expect(cfg.loadout).toBeUndefined();
-    expect(cfg.players).toEqual([localSeat, { skinId: 'juggernaut' }]);
+    // The ally is flagged a bot (ENGINE_VERSION 88), so the run ends once the player is dead.
+    expect(cfg.players).toEqual([localSeat, { skinId: 'juggernaut', bot: true }]);
   });
 
   it('carries seed through untouched and sets dungeon geometry, no arena', () => {

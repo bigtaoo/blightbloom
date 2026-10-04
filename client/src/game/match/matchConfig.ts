@@ -28,7 +28,9 @@ export function buildOnlineConfig(m: MatchStart): EngineConfig {
     worldW: PLACEHOLDER_WORLD,
     worldH: PLACEHOLDER_WORLD,
     waves: [],
-    players: Array.from({ length: m.playerCount }, (_, i) => ({ skinId: ids[i % ids.length]! })),
+    // A bot's seat is flagged (ENGINE_VERSION 88) only when `match_start` names it, so a room of
+    // people builds the same config it always did.
+    players: Array.from({ length: m.playerCount }, (_, i) => ({ skinId: ids[i % ids.length]!, ...(m.botSeats?.includes(i) ? { bot: true } : {}) })),
     dungeon: { config: EMBER_DUNGEON, library: EMBER_L1_ROOMS },
   };
 }
