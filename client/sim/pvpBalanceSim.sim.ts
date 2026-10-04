@@ -79,6 +79,8 @@ interface MatchResult {
   ticks: number;
   timedOut: boolean;
   winnerSkin: string; // 'tie' on the rare simultaneous-elimination edge case
+  /** The skin on each seat, after the shuffle: what a character's fair share of wins is read off. */
+  skins: string[];
   zoneStageAtEnd: number;
   placementsCount: number;
   /** Duration plus elimination order: two matches with the same one are the same match. */
@@ -145,6 +147,7 @@ function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY)
     ticks,
     timedOut: ticks >= MAX_TICKS,
     winnerSkin,
+    skins: config.players!.map((p) => p.skinId ?? 'unknown'),
     zoneStageAtEnd: s.zone?.stage ?? -1,
     placementsCount: s.placements.length,
     fingerprint: `${ticks}:${JSON.stringify(s.placements)}`,
@@ -221,6 +224,26 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // report would need its own aggregation, deliberately not built here.
     const bySkin = new Map<string, number>();
     for (const r of results) bySkin.set(r.winnerSkin, (bySkin.get(r.winnerSkin) ?? 0) + 1);
+    // The raw counts above are NOT comparable across characters: `buildPvpEngineConfig` skins
+    // seat i as the (i mod 3)-th character, so per match the seats go 1/1/0 at 2 seats (no
+    // juggernaut at all), 2/1/1 at 4, 2/2/1 at 5 and 3/3/2 at 8 (vanguard/skirmisher/juggernaut).
+    // Each character's fair share is the sum over decided matches of its seats / seats; the
+    // ratio of wins to that share is the number to read, 1.0 being par. 8 seats is left out:
+    // its winner is whichever member of the winning squad comes first (above). Volume 127: raw
+    // totals read 357/360/352, level, while the juggernaut won 1.45x its share over 900 matches.
+    const share = new Map<string, { wins: number; fair: number }>();
+    for (const r of results) {
+      if (r.winnerSkin === 'tie' || r.playerCount === 8) continue;
+      for (const skin of new Set(r.skins)) {
+        const row = share.get(skin) ?? { wins: 0, fair: 0 };
+        row.fair += r.skins.filter((x) => x === skin).length / r.playerCount;
+        if (r.winnerSkin === skin) row.wins++;
+        share.set(skin, row);
+      }
+    }
+    // The shares of a decided match sum to one, so the fair shares sum to the decided matches.
+    const decided = results.filter((r) => r.winnerSkin !== 'tie' && r.playerCount !== 8).length;
+    expect([...share.values()].reduce((n, x) => n + x.fair, 0)).toBeCloseTo(decided, 6);
 
     const byPlayerCount = new Map<number, { avgTicks: number; maxZoneStage: number; n: number }>();
     for (const pc of PLAYER_COUNTS) {
@@ -235,7 +258,9 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // eslint-disable-next-line no-console
     console.log(`\n=== PvP balance sim: ${results.length} bot-vs-bot matches ===`);
     // eslint-disable-next-line no-console
-    console.log('Win rate by character:', JSON.stringify(Object.fromEntries(bySkin)));
+    console.log('Wins by character (raw, NOT comparable, see share below):', JSON.stringify(Object.fromEntries(bySkin)));
+    // eslint-disable-next-line no-console
+    console.log('Wins / fair share, 2-6 seats (1.00 = par):', [...share].map(([k, x]) => `${k} ${x.wins}/${x.fair.toFixed(1)} = ${(x.wins / x.fair).toFixed(2)}`).join(', '));
     // eslint-disable-next-line no-console
     console.log('Duration (ticks @30Hz) / max zone stage reached, by seat count:', JSON.stringify(Object.fromEntries(byPlayerCount)));
     // eslint-disable-next-line no-console
