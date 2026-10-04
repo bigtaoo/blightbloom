@@ -22,9 +22,9 @@
  * `origin === 'unhandledRejection'`. Adding an `unhandledRejection` listener as well would
  * switch that default off and leave the two paths to drift apart.
  *
- * Installed ONLY from each entry point's run-as-main guard, never from `main()`: the tests
- * call `main()` inside the vitest worker, and a handler there that exits the process would
- * take the test runner down with it.
+ * Installed ONLY by `runAsEntry` (`entry.ts`), once a module is the entry script — never
+ * from `main()`: the tests call `main()` inside the vitest worker, and a handler there that
+ * exits the process would take the test runner down with it.
  */
 import type { Logger } from './log';
 

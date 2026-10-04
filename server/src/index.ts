@@ -17,7 +17,6 @@
  * build would swap in a binary codec behind this same seam.
  */
 import { createServer, type Server } from 'node:http';
-import { fileURLToPath } from 'node:url';
 import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from './metrics';
@@ -32,7 +31,7 @@ import { verifyTicket, type MatchMode } from './ticket';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
 import { requestUrl } from './requestUrl';
-import { installProcessGuard } from './processGuard';
+import { runAsEntry } from './entry';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -400,10 +399,6 @@ export function main(opts: MainOptions = {}): {
   return { server, wss, manager, shutdown };
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/index.ts`), not when
-// imported by a test — the same ESM `require.main === module` equivalent matchsvc.ts
-// uses now that `createGameserver` is a real importable export.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  installProcessGuard(createLogger('gameserver'));
-  main();
-}
+// Boots only when run directly (`node dist/gameserver.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'gameserver', main);

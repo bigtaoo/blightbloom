@@ -36,12 +36,11 @@
  * No point-in-time consistency ACROSS collections either, which the SQLite version had for
  * free — `snapshot.ts` says what that cost and why the alternative was worse.
  */
-import { fileURLToPath } from 'node:url';
 import { connectMongo } from '../mongo';
 import { readBackupConfig, BackupConfigError, type BackupConfig } from './config';
 import { isHealthy, readStatus, runCycle, writeStatus, type CycleIo } from './runner';
 import { createLogger } from '../log';
-import { installProcessGuard } from '../processGuard';
+import { runAsEntry } from '../entry';
 import { startHeartbeat } from '../heartbeat';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -129,7 +128,10 @@ export function loadOrExit(env: NodeJS.ProcessEnv): BackupConfig {
   }
 }
 
-export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
+export async function main(
+  argv: readonly string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   const cfg = loadOrExit(env);
   if (argv.includes('--health')) {
     // BEFORE the connection. The healthcheck reads `status.json` and nothing else, and a
@@ -160,11 +162,6 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Pro
   await runForever(cfg);
 }
 
-// Only auto-start when run directly — the same ESM `require.main === module` guard
-// `index.ts`, `matchsvc.ts` and `billsvc/main.ts` use. It matters more here than there:
-// what this file starts is a loop that never returns, so a test importing it without the
-// guard would hang rather than fail.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  installProcessGuard(createLogger('backup'));
-  void main(process.argv.slice(2), process.env);
-}
+// Boots only when run directly (`node dist/backup.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'backup', main);
