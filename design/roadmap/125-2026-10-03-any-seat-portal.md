@@ -150,5 +150,5 @@ Same 40 seeds as volume 124, now with the ally on the plates and confirming the 
   player watches it fight on (volume 124's `stranded`). Ending the run when only bots are left
   standing is the candidate.
 - **Party-size scaling** for co-op PvE (volume 124).
-- **An ally that holds back** rather than charging the nearest enemy anywhere on the floor. The
-  same chase is why the plate rule had to outrank the fight.
+- ~~**An ally that holds back** rather than charging the nearest enemy anywhere on the floor.~~
+  Done in [volume 126](126-2026-10-04-ally-holds-back.md).

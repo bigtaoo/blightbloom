@@ -97,5 +97,5 @@ still standing.
 - ~~**A bot ally that works chest plates**~~ and ~~**a stranded run**~~: settled by the owner the
   same day, [volume 125](125-2026-10-03-any-seat-portal.md).
 - **Party-size scaling** for co-op PvE, if co-op is meant to be as hard as solo.
-- **An ally that holds back** rather than charging the nearest enemy. It would go down less and
-  give its own revive more turns.
+- ~~**An ally that holds back** rather than charging the nearest enemy.~~ Done in
+  [volume 126](126-2026-10-04-ally-holds-back.md): it goes down less, and its revive gets turns.

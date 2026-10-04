@@ -51,6 +51,9 @@ export interface CoopOptions {
   profileName?: keyof typeof BOT_PROFILES;
   /** The ally's revive rule; `false` is the control. */
   allyRevives?: boolean;
+  /** The ally's held-back fight (`ai/holdBack.ts`); `false` is the ally that charged the nearest
+   *  enemy anywhere on the floor. */
+  allyHoldsBack?: boolean;
   /** The ally's revive rule laid over the leader too. */
   leaderRevives?: boolean;
   maxTicks?: number;
@@ -61,7 +64,7 @@ export function runCoop(opts: CoopOptions): CoopRun {
     buildDungeonRunConfig({ seed: opts.seed, coop: true, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'juggernaut' }),
   );
   const leader = new PveBotController(BOT_PROFILES[opts.profileName ?? 'careful']);
-  const ally = new AllyController({ revives: opts.allyRevives });
+  const ally = new AllyController({ revives: opts.allyRevives, holdsBack: opts.allyHoldsBack });
   const s = engine.state;
   const seats: [CoopSeat, CoopSeat] = [fresh(), fresh()];
   let channelTicks = 0;

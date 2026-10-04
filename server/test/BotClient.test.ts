@@ -428,7 +428,10 @@ describe('BotClient — a CO-OP room gets an ally, not a PvP practice bot', () =
       // Seat 0 west of the bot; DISTINCT teams, so `PvpBotController` has a target at all.
       players: [{ start: [200, 400], teamId: 0 }, { start: [400, 400], teamId: 1 }],
     });
-    state.enemies.push(enemyAt(state, 600, 400)); // and an enemy to its east, for the ally
+    // And an enemy to its east, for the ally: 9.4 grid, past the held-back ally's 7.5-grid
+    // standoff (`ai/holdBack.ts`), so it walks east. Inside the standoff it backs off WEST, the
+    // way the PvP bot walks, and the two brains agree again (it did at 600, 2026-10-04).
+    state.enemies.push(enemyAt(state, 700, 400));
 
     const ally = brainFor('coop')(state, 1, 5);
     const pvp = brainFor('pvp')(state, 1, 5);

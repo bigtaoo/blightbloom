@@ -1,7 +1,7 @@
 /**
  * AllyController — the local co-op bot (ROADMAP 3.1). It produces a normal PlayerCommand
  * for a non-local seat, so it's pure engine-facing logic (no Pixi) and testable headlessly.
- * Verifies it engages the nearest enemy (fire in range) and regroups on the leader when the
+ * Verifies it fights an enemy in reach (fire in range, held back: `ai/holdBack.ts`) and regroups on the leader when the
  * floor is quiet, and — the point of it — that a real two-seat engine SIMULATES the ally's
  * commands (the second player actually moves under bot control through step()). Facing is
  * engine-decided (design/10 v33), not part of the command — see ApplyInputSystem's own
@@ -43,18 +43,28 @@ const ally = new AllyController();
 const CFG = { seed: 3, worldW: 1600, worldH: 1200, waves: [] as const };
 
 describe('AllyController — command generation', () => {
-  it('fires on the nearest enemy, advancing while outside spacing', () => {
+  it('fires on the nearest enemy, advancing while outside the standoff', () => {
     const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
-    addEnemy(s, 620, 400); // ~6 grid east of the ally at 420 — in fire range, outside keep-dist
+    addEnemy(s, 740, 400); // 10 grid east of the ally at 420: in fire range, past the 7.5-grid standoff
     const cmd = ally.build(s, 1, 0, 5);
     expect(cmd.buttons & Button.FIRE).toBeTruthy(); // firing
-    expect(cmd.moveMag).toBeGreaterThan(0); // advancing to close the gap (beyond keep-dist)
+    expect(cmd.moveMag).toBeGreaterThan(0); // advancing to close the gap
+    expect(Math.cos((cmd.moveBrad / BRAD_FULL) * 2 * Math.PI)).toBeGreaterThan(0.9); // east
   });
 
-  it('holds position (stops advancing) once inside spacing but keeps firing', () => {
+  it('backs off an enemy inside the standoff and keeps firing (ai/holdBack.ts)', () => {
     const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
-    addEnemy(s, 500, 400); // ~2.5 grid east — inside keep-dist: fight in place, don't body-block
+    addEnemy(s, 500, 400); // 2.5 grid east: well inside the standoff
     const cmd = ally.build(s, 1, 0, 5);
+    expect(cmd.buttons & Button.FIRE).toBeTruthy();
+    expect(Math.cos((cmd.moveBrad / BRAD_FULL) * 2 * Math.PI)).toBeLessThan(-0.9); // west, away
+    expect(cmd.moveMag).toBeGreaterThan(0);
+  });
+
+  it('control: with holdsBack off it holds position inside 4 grid, as it fought before', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
+    addEnemy(s, 500, 400);
+    const cmd = new AllyController({ holdsBack: false }).build(s, 1, 0, 5);
     expect(cmd.buttons & Button.FIRE).toBeTruthy();
     expect(cmd.moveMag).toBe(0); // holding
   });
