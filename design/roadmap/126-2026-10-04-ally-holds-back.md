@@ -87,5 +87,10 @@ counts every down, and in brackets those with the other seat still standing.
 - **A bot left alone after its player dies** (volume 125). Above: holding back makes it likelier
   when the ally's revive cannot answer.
 - **Party-size scaling** for co-op PvE (volume 124).
+- **The doorway rule never fires on a generated floor.** `placeFloor` lays adjacent rooms edge to
+  edge and the door straddles the shared edge, so every point is in some room's rect; only the
+  test floor has a gap. What a real floor does instead: an enemy just across a door, in a room
+  neither seat is in, is not the ally's fight even while it shoots the ally. Left as it is for
+  the owner, next to the left-alone case above.
 - Whether a leader revived three times a run feels like help or like nagging. That needs a
   playtest.

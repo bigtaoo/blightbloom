@@ -72,7 +72,9 @@ seats (8 seats left out: its "winner" is whichever squad member comes first):
 - wins over fair share at 2 to 6 seats, with 1.00 as par.
 
 It also asserts the fair shares sum to the decided matches, so a change to the seat count or the
-character list cannot quietly break the arithmetic. The shipped seeds read vanguard 0.84,
+character list cannot quietly break the arithmetic. The arithmetic itself lives in
+`client/sim/pvp/fairShare.ts`, with its own test: the share per seat, the absent character owed
+nothing, ties and 8-seat matches left out, and the sum. The shipped seeds read vanguard 0.84,
 skirmisher 1.07 and juggernaut 1.18. That is one block, the noisiest view; the table above is the
 read.
 
