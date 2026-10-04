@@ -173,3 +173,33 @@ describe('fire suppression', () => {
     expect(t.suppressFire).toHaveBeenLastCalledWith(false);
   });
 });
+
+describe('the co-op countdown (ENGINE_VERSION 87)', () => {
+  const counting = (o: Parameters<typeof state>[0]) => Object.assign(state(o), { portalCountdownTicks: 300 });
+
+  it('shows both panels to a seat far from the portal once a squadmate has opened it', () => {
+    const t = fakeDeps();
+    updateCheckpointOverlays(counting({ distPx: 400 }), 0, t.deps);
+    expect(shown(t)).toEqual({ portal: true, cards: true });
+    const control = fakeDeps();
+    updateCheckpointOverlays(state({ distPx: 400 }), 0, control.deps);
+    expect(shown(control)).toEqual({ portal: false, cards: false });
+  });
+
+  it('still shows nothing on a floor that is not cleared', () => {
+    const t = fakeDeps();
+    updateCheckpointOverlays(counting({ cleared: false }), 0, t.deps);
+    expect(shown(t)).toEqual({ portal: false, cards: false });
+  });
+
+  it('gates fire only at the portal: a seat confirming mid-fight keeps its gun', () => {
+    const far = fakeDeps();
+    far.portalPrompt.isOpen = true;
+    updateCheckpointOverlays(counting({ distPx: 400 }), 0, far.deps);
+    expect(far.suppressFire).toHaveBeenLastCalledWith(false);
+    const near = fakeDeps();
+    near.portalPrompt.isOpen = true;
+    updateCheckpointOverlays(counting({ distPx: 0 }), 0, near.deps);
+    expect(near.suppressFire).toHaveBeenLastCalledWith(true);
+  });
+});

@@ -13,15 +13,18 @@
  *   • The server owns a fixed-rate clock and broadcasts one batch per pulse.
  *   • It NEVER waits for a client — every pulse advances the watermark, whether or not
  *     input arrived. A batch with no commands is a pure metronome pulse (frames: []).
- *   • It never interprets a command; it only buckets by frame and orders deterministically.
+ *   • It never interprets a command beyond folding two from one seat on one frame
+ *     (`foldCommands`); it buckets by frame and orders deterministically.
  *
  * Frame numbering matches the engine and NetInputSource: startFrame (0) is the initial
  * state, sim frames advance by `framesPerBatch` per pulse. With the funny-default 3
- * (sim 30 Hz ÷ net 10 Hz) a pulse jumps 3 sim frames and any commands buffered during
- * that window land on the window's `toFrame`; the intervening frames are idle-hold on
- * every client (NetInputSource returns EMPTY for a confirmed frame with no entry).
+ * (sim 30 Hz ÷ net 10 Hz) a pulse jumps 3 sim frames. A command lands on the frame of the
+ * window its arrival time falls in (2026-10-03, `submit`'s `offset`; the transport owns the
+ * clock): before that every command landed on the window's `toFrame`, so a run lasted up to
+ * a window longer or shorter than the stick was held, and a stop slid 3-19 px. Frames with
+ * no command hold each seat's last one (NetInputSource).
  */
-import type { PlayerCommand } from '../state/commands';
+import { foldCommands, type PlayerCommand } from '../state/commands';
 import type { FrameBatch, FrameCmds } from './protocol';
 
 export interface FrameBroadcastOptions {
@@ -36,8 +39,8 @@ const DEFAULT_FRAMES_PER_BATCH = 3;
 export class FrameBroadcast {
   private curFrame: number;
   private readonly framesPerBatch: number;
-  /** Commands buffered since the last pulse, in arrival order. */
-  private pending: PlayerCommand[] = [];
+  /** Commands buffered since the last pulse, in arrival order, each with the frame it lands on. */
+  private pending: { frame: number; cmd: PlayerCommand }[] = [];
   /** Non-empty frames only — the reconnect/replay log (design/06 "frame log = replay"). */
   private readonly frameLog: FrameCmds[] = [];
 
@@ -49,34 +52,46 @@ export class FrameBroadcast {
   /**
    * Buffer a command received from a client this window. `owner` rides on the command
    * (the transport stamps it from the connection's claimed seat, not from client-sent
-   * data). Multiple commands from one owner in a window are all kept in arrival order;
-   * the engine's ApplyInputSystem already resolves duplicates as "last per owner wins",
-   * and the ordering here is arrival-stable, so the last-arriving one wins identically
-   * on every client.
+   * data). `offset` is how many whole frames of the open window had passed when it
+   * arrived (0 = the window's first frame); it is clamped into the window, never lands
+   * before a command that arrived earlier, and defaults to the window's last frame. Two
+   * commands from one owner on one frame are folded into one (`foldCommands`), so a tap
+   * followed at once by its clear is not lost.
    */
-  submit(cmd: PlayerCommand): void {
-    this.pending.push(cmd);
+  submit(cmd: PlayerCommand, offset = this.framesPerBatch - 1): void {
+    const into = Math.min(this.framesPerBatch - 1, Math.max(0, Math.floor(offset)));
+    const after = this.pending.length > 0 ? this.pending[this.pending.length - 1]!.frame : 0;
+    this.pending.push({ frame: Math.max(after, this.curFrame + 1 + into), cmd });
   }
 
   /**
    * One broadcast pulse. Advances the watermark by `framesPerBatch`, flushes the
-   * buffered commands (ordered by owner ascending, arrival-stable within an owner — the
-   * sole ordering authority, so every client applies an identical sequence) onto the new
-   * `toFrame`, appends them to the log, and returns the batch to broadcast. When nothing
-   * was buffered the batch carries no frames — a pure metronome pulse that still advances
-   * every client's clock (the server never waits, design/06).
+   * buffered commands onto their frames (ascending; within a frame one command per
+   * owner, owners ascending — the sole ordering authority, so every client applies an
+   * identical sequence), appends them to the log, and returns the batch to broadcast.
+   * When nothing was buffered the batch carries no frames — a pure metronome pulse that
+   * still advances every client's clock (the server never waits, design/06).
    */
   tick(): FrameBatch {
     this.curFrame += this.framesPerBatch;
     if (this.pending.length === 0) {
       return { toFrame: this.curFrame, frames: [] };
     }
-    // Array.prototype.sort is stable (ES2019+), so equal owners keep arrival order.
-    const cmds = [...this.pending].sort((a, b) => a.owner - b.owner);
-    const fc: FrameCmds = { frame: this.curFrame, cmds };
-    this.frameLog.push(fc);
+    const byFrame = new Map<number, Map<number, PlayerCommand>>();
+    for (const { frame, cmd } of this.pending) {
+      let owners = byFrame.get(frame);
+      if (!owners) byFrame.set(frame, (owners = new Map()));
+      const prev = owners.get(cmd.owner);
+      owners.set(cmd.owner, prev ? foldCommands(prev, cmd) : cmd);
+    }
     this.pending = [];
-    return { toFrame: this.curFrame, frames: [fc] };
+    // `pending` is in landing order already (submit never lands before an earlier arrival).
+    const frames: FrameCmds[] = [...byFrame].map(([frame, owners]) => ({
+      frame,
+      cmds: [...owners.values()].sort((a, b) => a.owner - b.owner),
+    }));
+    this.frameLog.push(...frames);
+    return { toFrame: this.curFrame, frames };
   }
 
   /** The non-empty frames after `frame` — the reconnect payload (conn_resync.log). */

@@ -44,4 +44,10 @@ describe('nodeScheduler', () => {
     vi.advanceTimersByTime(1000);
     expect(fn).toHaveBeenCalledTimes(3);
   });
+
+  it('reads a monotonic ms clock that moves with the timers', () => {
+    const t0 = nodeScheduler.now!();
+    vi.advanceTimersByTime(250);
+    expect(nodeScheduler.now!() - t0).toBe(250);
+  });
 });

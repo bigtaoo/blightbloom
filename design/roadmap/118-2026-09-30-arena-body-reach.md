@@ -644,7 +644,8 @@ swing, since a swing cannot turn it.
 ### Still open
 
 - Nothing from this volume. Whether a human parries well enough to feel the change is still a
-  playtest question, and the shipped arena bot still never parries.
+  playtest question, and the shipped arena bot still never parries. *(It does since
+  [volume 122](122-2026-10-03-pvp-bot-parry.md).)*
 
 ## A squad starts together (2026-09-30, arena + test + docs)
 

@@ -422,9 +422,24 @@ and an **abstention is not a vote** (a `0` seat is skipped, never counted for sl
 
 **A tally of 0 holds the portal** rather than descending without a card. Holding on >=1 vote
 rather than on "everyone has voted" is the co-op call: a downed or disconnected teammate must
-not be able to strand the squad on a cleared floor. It also leaves the descend authority
-exactly where it already was — player 0's press — so this pass does not settle the shared-descend
-question still open below.
+not be able to strand the squad on a cleared floor. This pass left the descend authority where
+it was, player 0's press.
+
+**Any seat opens the portal, and a countdown takes the rest (`ENGINE_VERSION` 87, the owner's
+call, 2026-10-03).** Player 0's press alone stranded a co-op run whose seat 0 bled out with a
+teammate still up: nobody left could leave the floor ([volume 124](../roadmap/124-2026-10-03-coop-revive-sim.md)).
+Now any standing seat (alive, not downed) opens the portal with the floor's own button, and
+that starts a 30 s countdown (`PORTAL_COUNTDOWN_TICKS`). Every other seat sees the popup and the
+card offer wherever it stands, and its press is a confirm. The portal goes:
+
+- the tick every living seat has confirmed, or
+- when the countdown runs out, taking whoever has not confirmed.
+
+A downed seat cannot confirm but is still waited for, so the countdown is time to revive it. A
+dead seat is not waited for. Descend still needs a card voted before the opening press, and the
+boss floor's EXTRACT works the same way. Solo is unchanged: the press confirms the only seat
+there is. The co-op bot ally confirms at once, so it never holds its player back
+([volume 125](../roadmap/125-2026-10-03-any-seat-portal.md)).
 
 **The reward is team-wide** (the owner's call): the vote is collective, so a buff card pushes
 onto every seat's stack, downed seats included. They are still on the team and still revivable,

@@ -150,6 +150,8 @@ export function serializeState(s: GameState): unknown {
       // Floor-card vote (ENGINE_VERSION 58): persistent per-seat state that decides
       // which card a descend applies, so a desync in the tally has to surface here.
       p.cardVote,
+      // Portal confirm (ENGINE_VERSION 87): decides whether the portal waits on this seat.
+      p.portalReady,
       // Per-seat carry-out (design/05/14, ENGINE_VERSION 68): moved off shared GameState
       // onto each seat, so hashing them here (not at the top level any more) is what
       // catches a per-seat divergence — two clients disagreeing about WHICH seat picked
@@ -240,6 +242,8 @@ export function serializeState(s: GameState): unknown {
     // each player's own `buffs`, already hashed below.
     floorCardOffer: s.floorCardOffer,
     floorCards: s.floorCards,
+    // The co-op portal countdown (ENGINE_VERSION 87): when it reaches 0 the floor ends.
+    portalCountdownTicks: s.portalCountdownTicks,
     // Dungeon-mode co-resident room/door state (design/05 "Room & door model",
     // 2026-08-04). Empty/stable for a non-dungeon config, so this is safe to add
     // without a bump (the golden-replay test compares two independent runs, so a new

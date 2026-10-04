@@ -39,7 +39,7 @@ describe('ArenaBotController', () => {
     for (const gap of [2, 6, 20]) {
       const s = duel(gap);
       bullet(s, 1, -0.3);
-      expect(new ArenaBotController(ARENA_PROFILES.shipped).build(s, 0, 5)).toEqual(new PvpBotController({ revives: false }).build(s, 0, 5));
+      expect(new ArenaBotController(ARENA_PROFILES.shipped).build(s, 0, 5)).toEqual(new PvpBotController({ revives: false, parries: false }).build(s, 0, 5));
     }
   });
 

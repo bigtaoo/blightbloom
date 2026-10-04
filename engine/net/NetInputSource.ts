@@ -39,7 +39,7 @@
  * `LocalPredictor` already uses for the local seat's own rendering, so a future move
  * to full state-sync only swaps what arrives sparsely, not how it's consumed.
  */
-import type { InputSource, PlayerCommand } from '../state/commands';
+import { heldPart, type InputSource, type PlayerCommand } from '../state/commands';
 import type { ConnResync, FrameBatch, FrameCmds, MatchStart, ServerMsg } from './protocol';
 
 const EMPTY: readonly PlayerCommand[] = [];
@@ -68,9 +68,12 @@ export class NetInputSource implements InputSource {
   /** Highest `toFrame` confirmed by the server; -1 before `match_start`. */
   private confirmedTo = -1;
   private startFrame = 0;
-  /** Non-empty frames only: frame → commands (an absent frame is an implicit idle-hold,
-   * for any owner that has never sent anything at all — see `heldByOwner` below). */
-  private readonly cmdsByFrame = new Map<number, PlayerCommand[]>();
+  /** Every confirmed frame once any owner has sent anything: frame → commands. Frames with
+   * nothing new share one held array (`heldSnapshot`). An absent frame is idle for all —
+   * only possible before the first command of the match. */
+  private readonly cmdsByFrame = new Map<number, readonly PlayerCommand[]>();
+  /** Highest frame given its command set; frames above it up to the watermark do not exist yet. */
+  private filledTo = 0;
   /** Highest frame `take()` has released — reported as `resume{lastFrame}` on reconnect. */
   private lastTaken = -1;
   private matchInfo: MatchStart | null = null;
@@ -78,10 +81,12 @@ export class NetInputSource implements InputSource {
   // ── Sparse held-input sync (design/15, ROADMAP 4.5) ──────────────────────────────
   /** Last command actually SENT for the local seat — `submit()`'s change filter. */
   private lastSent: PlayerCommand | null = null;
-  /** Last known command per owner (INBOUND) — updated strictly in frame order as
-   * explicit `FrameCmds` are ingested, so a snapshot taken at ingest time for frame N
+  /** What each owner is still doing (INBOUND) — its last command with the one-shot parts
+   * stripped (`heldPart`), updated strictly in frame order, so the set stored for frame N
    * reflects exactly "as of frame N," independent of wall-clock arrival/burst timing. */
   private readonly heldByOwner = new Map<number, PlayerCommand>();
+  /** `heldByOwner`'s values as one array, shared by every frame with nothing new. */
+  private heldSnapshot: readonly PlayerCommand[] = EMPTY;
 
   constructor(
     private readonly sink: CmdSink,
@@ -166,6 +171,8 @@ export class NetInputSource implements InputSource {
     this.lastTaken = -1;
     this.lastSent = null;
     this.heldByOwner.clear();
+    this.heldSnapshot = EMPTY;
+    this.filledTo = m.startFrame;
     this.matchInfo = m;
     this.startFrame = m.startFrame;
     // The start frame is playable immediately — its command set is empty (the metronome
@@ -175,48 +182,63 @@ export class NetInputSource implements InputSource {
   }
 
   private onFrameBatch(b: FrameBatch): void {
-    for (const fc of b.frames) this.ingestFrame(fc);
-    // A pure metronome pulse (frames: []) still needs its own held snapshot recorded
-    // at the new boundary frame (design/15, ROADMAP 4.5) — "nobody sent anything new
-    // this pulse" means everyone HELD, not everyone went idle.
-    this.ensureHeldSnapshot(b.toFrame);
+    this.fillThrough(b.frames, b.toFrame);
     if (b.toFrame > this.confirmedTo) this.confirmedTo = b.toFrame; // watermark is monotonic
   }
 
   private onConnResync(r: ConnResync): void {
-    // Reconnect: merge the replayed frames (> lastFrame) and jump the watermark to
-    // curFrame. Frames already held (≤ old watermark) are deterministic duplicates —
-    // re-ingesting overwrites with identical content, a no-op in effect.
+    // Reconnect: fill the replayed frames (> lastFrame) and jump the watermark to
+    // curFrame. Frames already filled are deterministic duplicates and are skipped.
     this.startFrame = r.startFrame;
-    for (const fc of r.log) this.ingestFrame(fc);
-    this.ensureHeldSnapshot(r.curFrame); // same reasoning as onFrameBatch above
+    this.fillThrough(r.log, r.curFrame);
     if (r.curFrame > this.confirmedTo) this.confirmedTo = r.curFrame;
   }
 
   /**
-   * Fold one EXPLICIT frame's commands into the held-per-owner state, then snapshot
-   * the FULL current set (every owner heard from so far, fresh or held) at exactly
-   * this frame number — computed at ingest time (not lazily at `take()`), so it
-   * reflects "as of frame N" regardless of wall-clock burst/arrival timing (the
-   * ordered log is identical on every client, so this snapshot is too). The server
-   * already ordered `fc.cmds` (owner asc, then arrival) — irrelevant here since each
-   * owner only ever contributes its own held slot, but preserved for `ApplyInputSystem`
-   * were it ever handed the raw list.
+   * Give every frame from `filledTo` + 1 through `to` its command set (design/15 "held
+   * input": the engine receives one command per player for EVERY tick). A frame in
+   * `frames` gets its fresh commands — one-shot parts included, on that frame only — plus
+   * the held command of every other owner; a frame between them gets the held set. Before
+   * 2026-10-03 only the batch's `toFrame` was filled and the two frames between batches
+   * came back EMPTY, so the sim idled every seat on them: online, a player moved and fired
+   * on one frame in three.
    */
-  private ingestFrame(fc: FrameCmds): void {
-    for (const cmd of fc.cmds) this.heldByOwner.set(cmd.owner, cmd);
-    this.cmdsByFrame.set(fc.frame, [...this.heldByOwner.values()]);
-  }
-
-  /** Ensure `frame` has a stored command set even when NO explicit `FrameCmds`
-   * landed on it this pulse — the held snapshot as of whatever's already known. A
-   * no-op before any owner has ever sent anything (still correctly idle, matching
-   * the pre-4.5 "no command yet" default). */
-  private ensureHeldSnapshot(frame: number): void {
-    if (!this.cmdsByFrame.has(frame) && this.heldByOwner.size > 0) {
-      this.cmdsByFrame.set(frame, [...this.heldByOwner.values()]);
+  private fillThrough(frames: readonly FrameCmds[], to: number): void {
+    const fresh = new Map<number, FrameCmds>();
+    for (const fc of frames) if (fc.frame > this.filledTo) fresh.set(fc.frame, fc);
+    for (let frame = this.filledTo + 1; frame <= to; frame++) {
+      const fc = fresh.get(frame);
+      if (fc) {
+        const now = new Map(this.heldByOwner);
+        for (const cmd of fc.cmds) {
+          now.set(cmd.owner, cmd);
+          this.heldByOwner.set(cmd.owner, heldPart(cmd));
+        }
+        this.cmdsByFrame.set(frame, [...now.values()]);
+        this.heldSnapshot = [...this.heldByOwner.values()];
+      } else if (this.heldSnapshot.length > 0) {
+        this.cmdsByFrame.set(frame, this.heldSnapshot);
+      }
     }
+    if (to > this.filledTo) this.filledTo = to;
   }
+}
+
+/**
+ * A frame log (`FrameBroadcast.log`, a `conn_resync` log) as the full per-frame stream every
+ * client simulates through `toFrame` — the gaps held, each one-shot on its own frame — ready
+ * for `toReplay` (2026-10-03). A log is NOT a sparse replay stream: replayed as one, every
+ * frame between two commands would idle (protocol.ts `FrameCmds`).
+ */
+export function confirmedStream(log: readonly FrameCmds[], toFrame: number, startFrame = 0): PlayerCommand[] {
+  const net = new NetInputSource({ submit: () => {} }, { bufferFrames: 0 });
+  net.handleServerMsg({ type: 'match_start', seed: 0, startFrame, localOwner: 0, playerCount: 0 });
+  net.handleServerMsg({ type: 'frame_batch', toFrame, frames: log });
+  const out: PlayerCommand[] = [];
+  for (let frame = startFrame + 1; frame <= toFrame; frame++) {
+    for (const cmd of net.take(frame)!) out.push({ ...cmd, tick: frame });
+  }
+  return out;
 }
 
 /** Did any of a `PlayerCommand`'s MEANINGFUL fields change (design/15, ROADMAP 4.5)?

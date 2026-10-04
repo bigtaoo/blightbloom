@@ -15,7 +15,7 @@
  * anti-drift — no hand-mirrored second copy of the config logic).
  */
 import { describe, expect, it } from 'vitest';
-import { createGameEngine, Prng, type EngineConfig } from '@dd/engine';
+import { Button, createGameEngine, FP_SCALE, Prng, type EngineConfig, type PlayerActor } from '@dd/engine';
 import { buildPvpEngineConfig, squadSizeForPlayerCount } from '../src/game/match/pvpConfig';
 import { PvpBotController } from '../src/game/controllers/PvpBotController';
 import { idleCommand } from '../src/game/controllers/ai/engage';
@@ -69,6 +69,9 @@ const SEEDS_PER_COUNT = 30;
 // timeout is itself a real finding (the zone/bot-AI combo failed to converge), not an
 // expected outcome the ceiling is meant to paper over.
 const MAX_TICKS = 20000;
+/** How near a seat's hit a vanished rebound was, the tick before, to be the bullet that dealt it:
+ *  a bullet's step plus a body's radius, in fp. */
+const REBOUND_MATCH_FP = 1.5 * FP_SCALE;
 
 interface MatchResult {
   playerCount: number;
@@ -80,6 +83,22 @@ interface MatchResult {
   placementsCount: number;
   /** Duration plus elimination order: two matches with the same one are the same match. */
   fingerprint: string;
+  /** Bullets a seat batted back, and the rebounds that then landed on a seat, with their damage
+   *  (the bot parries since 2026-10-03; `PVP_DEFLECT_DAMAGE_PERMILLE` was never in play before). */
+  deflects: number;
+  reboundHits: number;
+  reboundDamage: number;
+  /** Guns a seat picked up, blades drawn for a gun it could not pay for, and seat-ticks spent
+   *  holding such a gun (the bot loots and falls back to the blade since 2026-10-03). */
+  gunsLooted: number;
+  dryDraws: number;
+  dryTicks: number;
+}
+
+/** The seat holds a gun it cannot pay for a pull of. */
+function holdsDryGun(p: PlayerActor): boolean {
+  const spec = p.weapon?.spec;
+  return spec?.kind === 'ranged' && p.energy < spec.energyCost;
 }
 
 function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY): MatchResult {
@@ -89,11 +108,31 @@ function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY)
   const delays = startDelays(seed, playerCount, maxDelay);
 
   let ticks = 0;
+  const parry = { deflects: 0, reboundHits: 0, reboundDamage: 0 };
+  const kit = { gunsLooted: 0, dryDraws: 0, dryTicks: 0 };
+  const seatIds = new Set(engine.state.players.map((p) => p.id));
   while (engine.state.phase !== 'gameover' && ticks < MAX_TICKS) {
     const nextTick = engine.state.tick + 1;
     const cmds = bots.map((bot, seat) => (nextTick <= delays[seat]! ? idleCommand(seat, nextTick) : bot.build(engine.state, seat, nextTick)));
+    // A rebound that lands is gone after the step; the hit it dealt is the seat hit nearest it.
+    const rebounds = engine.state.projectiles.filter((b) => b.alive && b.deflected).map((b) => ({ b, gx: b.gx, gy: b.gy }));
+    engine.state.players.forEach((p, seat) => {
+      if (!p.alive || p.downed || !holdsDryGun(p)) return;
+      kit.dryTicks++;
+      if (cmds[seat]!.buttons & Button.SWAP_WEAPON) kit.dryDraws++;
+    });
     engine.step(cmds);
     ticks++;
+    for (const e of engine.state.events) {
+      if (e.type === 'deflect') parry.deflects++;
+      if (e.type === 'pickup' && e.kind === 'weapon' && seatIds.has(e.by)) kit.gunsLooted++;
+      if (e.type !== 'hit' || !seatIds.has(e.target)) continue;
+      const landed = rebounds.find((r) => !r.b.alive && Math.hypot(r.gx - e.gx, r.gy - e.gy) <= REBOUND_MATCH_FP);
+      if (!landed) continue;
+      rebounds.splice(rebounds.indexOf(landed), 1);
+      parry.reboundHits++;
+      parry.reboundDamage += e.damage;
+    }
   }
 
   const s = engine.state;
@@ -109,6 +148,8 @@ function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY)
     zoneStageAtEnd: s.zone?.stage ?? -1,
     placementsCount: s.placements.length,
     fingerprint: `${ticks}:${JSON.stringify(s.placements)}`,
+    ...parry,
+    ...kit,
   };
 }
 
@@ -201,5 +242,18 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     console.log('Distinct matches of', SEEDS_PER_COUNT, 'seeds, by seat count:', JSON.stringify(Object.fromEntries(distinctByCount)), `(control, one seed 30 times: ${distinct(control)})`);
     // eslint-disable-next-line no-console
     console.log(`Ties (simultaneous elimination, no clear winner): ${ties.length}/${results.length}`);
+    const total = (k: 'deflects' | 'reboundHits' | 'reboundDamage' | 'gunsLooted' | 'dryDraws' | 'dryTicks') => results.reduce((n, r) => n + r[k], 0);
+    // eslint-disable-next-line no-console
+    console.log(`Parries: ${total('deflects')}, rebounds that landed on a seat: ${total('reboundHits')} for ${total('reboundDamage')} damage`);
+    // The shipped bot parries (`ai/parry.ts`), and a rebound reaches a seat at the deflect damage:
+    // until 2026-10-03 neither happened in any match, sim or real.
+    expect(total('deflects')).toBeGreaterThan(0);
+    expect(total('reboundHits')).toBeGreaterThan(0);
+    // eslint-disable-next-line no-console
+    console.log(`Guns looted: ${total('gunsLooted')}, blades drawn for a dry gun: ${total('dryDraws')}, seat-ticks holding a dry gun: ${total('dryTicks')}`);
+    // The shipped bot loots and draws its blade for a dry gun (`ai/loot.ts`, `ai/dryBlade.ts`):
+    // until 2026-10-03 only the sim-only `ArenaBotController` did either.
+    expect(total('gunsLooted')).toBeGreaterThan(0);
+    expect(total('dryDraws')).toBeGreaterThan(0);
   }, 300_000);
 });

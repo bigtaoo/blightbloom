@@ -24,6 +24,8 @@ import {
   type Winner,
 } from '@dd/engine';
 import type { MatchMode } from './ticket';
+import type { IntervalHandle, Scheduler } from './scheduler';
+import { WindowClock } from './windowClock';
 import { judgeSettlement, SETTLE_TIMEOUT_MS, type BoundsFailure, type IntegrityVerdict, type SeatReport } from './settlement';
 
 export type { IntegrityVerdict } from './settlement';
@@ -41,15 +43,7 @@ export interface RoomConnection {
   send(msg: ServerMsg): void;
 }
 
-/** The metronome clock and the settlement timeout, injected so tests can drive both by hand
- *  (no real timers). */
-export interface Scheduler {
-  setInterval(fn: () => void, ms: number): IntervalHandle;
-  clearInterval(handle: IntervalHandle): void;
-  setTimeout(fn: () => void, ms: number): IntervalHandle;
-  clearTimeout(handle: IntervalHandle): void;
-}
-export type IntervalHandle = unknown;
+export type { IntervalHandle, Scheduler } from './scheduler';
 
 /** How a match settled, for the integrity record (design/15, "PvP integrity", 2026-09-26);
  *  the verdicts are defined beside the rule that picks them, `settlement.ts`. */
@@ -155,6 +149,7 @@ export class MatchRoom {
   private readonly broadcast: FrameBroadcast;
   private readonly batchMs: number;
   private metronome: IntervalHandle | null = null;
+  private readonly window: WindowClock;
   private readonly results = new Map<number, SeatReport>();
   private settled = false;
   /** Armed by the first end-of-match report; settles the room with whoever has reported. */
@@ -178,10 +173,9 @@ export class MatchRoom {
   ) {
     this.mode = deps.mode ?? 'coop';
     this.batchMs = deps.batchMs ?? DEFAULT_BATCH_MS;
-    this.broadcast = new FrameBroadcast({
-      framesPerBatch: deps.framesPerBatch ?? DEFAULT_FRAMES_PER_BATCH,
-      startFrame: START_FRAME,
-    });
+    const framesPerBatch = deps.framesPerBatch ?? DEFAULT_FRAMES_PER_BATCH;
+    this.broadcast = new FrameBroadcast({ framesPerBatch, startFrame: START_FRAME });
+    this.window = new WindowClock(deps.scheduler.now?.bind(deps.scheduler), this.batchMs, framesPerBatch);
     this.seats = Array.from({ length: playerCount }, (_, owner) => ({ owner, conn: null }));
   }
 
@@ -253,13 +247,13 @@ export class MatchRoom {
   /**
    * Relay a command from a seat. The server is the seat authority: it stamps the
    * command's `owner` from the connection (never trusts a client-sent owner) so a
-   * client can only ever move its own player. The frame is assigned by the metronome
-   * (the command lands on the current window's `toFrame`).
+   * client can only ever move its own player. The frame is the one of the open window
+   * its arrival time falls in (`WindowClock`, 2026-10-03).
    */
   submitCmd(owner: number, cmd: PlayerCommand): void {
     if (this.phase !== Phase.IN_MATCH) return;
     if (!this.seats[owner]) return;
-    this.broadcast.submit({ ...cmd, owner });
+    this.broadcast.submit({ ...cmd, owner }, this.window.offset());
   }
 
   private startMetronome(): void {
@@ -270,6 +264,7 @@ export class MatchRoom {
     // respect — a metronome ticking a seat nobody is on advances the clock past that player.
     if (!this.connected) return;
     this.metronome = this.deps.scheduler.setInterval(() => this.pulse(), this.batchMs);
+    this.window.restart();
   }
 
   private stopMetronome(): void {
@@ -282,6 +277,7 @@ export class MatchRoom {
   /** One broadcast pulse — advance the shared clock and fan the batch out to every seat. */
   private pulse(): void {
     const batch = this.broadcast.tick();
+    this.window.restart();
     this.sendAll({ type: 'frame_batch', ...batch });
   }
 

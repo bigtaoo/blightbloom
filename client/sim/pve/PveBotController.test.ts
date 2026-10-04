@@ -550,6 +550,42 @@ describe('PveBotController — chests and better guns', () => {
     expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeLessThan(-0.9); // straight up to the plate
   });
 
+  /** A second seat standing well away from the chest: a co-op squadmate. */
+  const withMate = (s: GameState) => {
+    (s.players as unknown as object[]).push({ id: 2, alive: true, downed: false, gx: g(1), gy: g(9) });
+    return s;
+  };
+
+  it('keeps the plate it stands on rather than walking to the free one (co-op, 2026-10-03)', () => {
+    // Its own plate reads occupied, by itself: "the first free plate" walked it off to the other.
+    const s = withMate(fixture({
+      playerAt: [5, 1],
+      held: ['blaster'],
+      chests: [{ roomId: 'a', kind: 'big', at: [5, 5], plates: [[5, 1, true], [5, 9, false]] }],
+    }));
+    const cmd = bot().build(s, 0, 501);
+    expect(cmd.moveMag > 0 && dir(cmd.moveBrad).y > 0.5).toBe(false);
+    // Control: a step off its plate, it heads back to that one, not south to the free one.
+    const off = withMate(fixture({
+      playerAt: [3, 1],
+      held: ['blaster'],
+      chests: [{ roomId: 'a', kind: 'big', at: [5, 5], plates: [[5, 1, false], [5, 9, false]] }],
+    }));
+    expect(dir(bot().build(off, 0, 501).moveBrad).x).toBeGreaterThan(0.9);
+  });
+
+  it('passes over a big chest with more plates than there are standing seats', () => {
+    // Two plates and one seat (the fixture is solo): with its co-op ally dead, the bot stood on
+    // its plate for the rest of the run. Control: with a squadmate standing, it goes up to one.
+    const chest = () => fixture({
+      playerAt: [5, 5],
+      held: ['blaster'],
+      chests: [{ roomId: 'a', kind: 'big', at: [8, 5], plates: [[5, 1, false], [5, 9, false]] }],
+    });
+    expect(dir(bot().build(chest(), 0, 501).moveBrad).x).toBeGreaterThan(0.5);
+    expect(dir(bot().build(withMate(chest()), 0, 501).moveBrad).y).toBeLessThan(-0.9);
+  });
+
   it('ignores an opened chest and one in another room', () => {
     const s = fixture({
       playerAt: [5, 5],

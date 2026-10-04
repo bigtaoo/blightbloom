@@ -28,7 +28,7 @@
  * A run is still fully reproducible, since that memory only ever advances from
  * state the engine already decided.
  */
-import { Button, makeCommand, quantizeMove, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, makeCommand, quantizeMove, CHEST_MECHANISM_RADIUS_GRID, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
 import { profileForWeaponId } from './weaponStandoff';
 import { bladeSwapDue, gunWorth } from './weaponChoice';
 import { checkpointReached, totalFloorCount } from '../../src/game/match/floorCount';
@@ -93,6 +93,8 @@ export const BOT_PROFILES: Record<'careful' | 'aggressive', BotProfile> = {
 const ENGAGE_SCAN_FP = g(14);
 const HEAL_SCAN_FP = g(12);
 const WAYPOINT_REACHED_FP = g(1);
+/** `ChestSystem`'s plate reach: a seat this close to a plate holds it. */
+const PLATE_FP = g(CHEST_MECHANISM_RADIUS_GRID);
 /** Stuck = intended to move but covered less than this over `STUCK_WINDOW` ticks. */
 const STUCK_WINDOW = 24;
 const STUCK_EPSILON_FP = g(0.4);
@@ -194,7 +196,7 @@ export class PveBotController {
     // that case; here the room is quiet, so seek it directly).
     const heal = this.healToSeek(s, self, here);
     if (heal) return this.withUnstick(owner, tick, self, quantizeMove(heal.x - self.x, heal.y - self.y), 0);
-    const chest = this.chestToOpen(s, here);
+    const chest = this.chestToOpen(s, here, self);
     if (chest) return this.withUnstick(owner, tick, self, quantizeMove(chest.x - self.x, chest.y - self.y), 0);
     const upgrade = this.weaponToTake(s, owner, here);
     if (upgrade) {
@@ -253,16 +255,23 @@ export class PveBotController {
   /**
    * Where to stand to open an unopened chest in the bot's own room (2026-09-26), or null. A
    * small chest opens on approach, so the chest itself; a big one opens while every plate is
-   * occupied, so the nearest plate (solo, a big chest has exactly one). Gated on
+   * occupied, so a free plate (solo, a big chest has exactly one). In co-op it keeps the plate it
+   * already stands on: that plate reads occupied by the bot itself, so "the first free plate"
+   * walked it off to the other one, and the co-op ally that comes to take the free plate
+   * (`ai/chestPlate.ts`) chased it round the ring (2026-10-03). A big chest with more plates than
+   * there are standing seats is passed over: with the ally dead, the bot waited on its plate for
+   * the rest of the run. Gated on
    * `swapsWeapons`, because a chest pays weapons and a bot that cannot use one has no reason
    * to walk to it — keeping the flag-off bot byte-identical to the one every earlier sweep ran.
    */
-  private chestToOpen(s: GameState, room: string | undefined): Vec | null {
+  private chestToOpen(s: GameState, room: string | undefined, me?: Vec): Vec | null {
     if (!this.profile.swapsWeapons || room === undefined) return null;
+    const standing = s.players.filter((p) => p.alive && !p.downed).length;
     for (const c of s.chests) {
-      if (c.opened || c.roomId !== room) continue;
+      if (c.opened || c.roomId !== room || c.mechanisms.length > standing) continue;
       if (c.kind === 'small') return { x: c.gx, y: c.gy };
-      const plate = c.mechanisms.find((m) => !m.occupied) ?? c.mechanisms[0];
+      const mine = me && c.mechanisms.find((m) => Math.hypot(m.gx - me.x, m.gy - me.y) <= PLATE_FP);
+      const plate = mine ?? c.mechanisms.find((m) => !m.occupied) ?? c.mechanisms[0];
       if (plate) return { x: plate.gx, y: plate.gy };
     }
     return null;

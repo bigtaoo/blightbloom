@@ -4,7 +4,7 @@ import type { ZoneState } from '@dd/engine';
 import type { PlacedRoom } from '@dd/engine/world/dungeon';
 import type { DoorRuntime, DungeonRoomRuntime } from '@dd/engine/state/GameState';
 import { toFpGrid } from '@dd/engine/content/convert';
-import { computeMinimapLayout, dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
+import { computeMinimapLayout, dungeonRoomMarkers, dungeonRoomStatus, dungeonToArenaMap, roomStatus } from './minimapLayout';
 
 // Mirrors engine/content/arenas.test.ts's fixture shape (three rooms far
 // apart) so this pure layout math is exercised against the same kind of ArenaMap the
@@ -198,10 +198,10 @@ describe('dungeonRoomStatus (design/05 "fully-realized branching" follow-up, 202
     expect(dungeonRoomStatus(runtimes, indexById, 'a')).toBe('unvisited');
   });
 
-  it('is "safe" when activated and cleared', () => {
+  it('is "cleared" when activated with no live enemy — its own bucket, not PvP\'s "safe", so it can be drawn lit', () => {
     const runtimes = [runtime(true, false)];
     const indexById = new Map([['a', 0]]);
-    expect(dungeonRoomStatus(runtimes, indexById, 'a')).toBe('safe');
+    expect(dungeonRoomStatus(runtimes, indexById, 'a')).toBe('cleared');
   });
 
   it('is "danger" when activated and has a live enemy — the same signal DoorSystem locks doors on', () => {
@@ -223,5 +223,94 @@ describe('dungeonRoomStatus (design/05 "fully-realized branching" follow-up, 202
     const runtimes: DungeonRoomRuntime[] = [];
     const indexById = new Map([['a', 2]]);
     expect(dungeonRoomStatus(runtimes, indexById, 'a')).toBe('unvisited');
+  });
+});
+
+// 2026-10-03: "unexplored rooms don't read as different, I never know which room to head for
+// next". The frontier — never activated, one door from somewhere that has been — is the answer.
+describe('dungeonRoomStatus — the frontier', () => {
+  const runtime = (activated: boolean): DungeonRoomRuntime => ({
+    activated, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false,
+  });
+  const doorRt = (roomA: string, roomB: string): DoorRuntime => ({
+    door: { roomA, roomB, passageGrid: { x: 0, y: 0, w: 1, h: 1 } },
+    passageAabb: { minX: 0, minY: 0, maxX: 0, maxY: 0 } as unknown as DoorRuntime['passageAabb'],
+    locked: false,
+  });
+  // a (been) — b (never) — c (never); b is reachable next, c is not.
+  const indexById = new Map([['a', 0], ['b', 1], ['c', 2]]);
+  const runtimes = [runtime(true), runtime(false), runtime(false)];
+  const doors = [doorRt('a', 'b'), doorRt('b', 'c')];
+
+  it('is "frontier" for an unactivated room one door from an activated one, from either side of the door', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'b', doors)).toBe('frontier');
+    // Same door written the other way round.
+    expect(dungeonRoomStatus(runtimes, indexById, 'b', [doorRt('b', 'a')])).toBe('frontier');
+  });
+
+  it('stays "unvisited" two doors out — only the next step is highlighted, not the whole floor', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'c', doors)).toBe('unvisited');
+  });
+
+  it('a visited room is never "frontier", whatever its doors', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'a', doors)).toBe('cleared');
+  });
+
+  it('without door data nothing is a frontier (the optional arg defaults to no doors)', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'b')).toBe('unvisited');
+  });
+
+  it('an unknown roomId stays "unvisited" even with a door naming it', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'ghost', [doorRt('a', 'ghost')])).toBe('unvisited');
+  });
+
+  it('a door to an unknown room does not make a neighbour a frontier', () => {
+    expect(dungeonRoomStatus(runtimes, indexById, 'c', [doorRt('ghost', 'c')])).toBe('unvisited');
+  });
+});
+
+describe('dungeonRoomMarkers (2026-10-03: boss, exit, shop and chest on the map)', () => {
+  const room = (id: string, role?: 'normal' | 'extraction' | 'boss'): PlacedRoom => ({
+    id,
+    piece: { id: `${id}_piece`, sizeGrid: { w: 15, h: 15 }, solids: [], spawns: { player: [], enemy: [] }, exits: [], ...(role ? { role } : {}) },
+    offsetXGrid: 0,
+    offsetYGrid: 0,
+    entranceGrid: { x: 0, y: 0 },
+  });
+  const offer = (sold: boolean) => ({ id: 1, kind: 'heal' as const, price: 1, sold });
+
+  it('marks the extraction capstone as the exit and the boss room as the boss', () => {
+    expect(dungeonRoomMarkers([room('a'), room('x', 'extraction')], [], [])).toEqual(new Map([['x', 'exit']]));
+    expect(dungeonRoomMarkers([room('a'), room('b', 'boss')], [], [])).toEqual(new Map([['b', 'boss']]));
+  });
+
+  it('marks the LAST room as the exit when its piece carries no role — ExtractionSystem gates on that index', () => {
+    expect(dungeonRoomMarkers([room('a'), room('b')], [], [])).toEqual(new Map([['b', 'exit']]));
+  });
+
+  it('marks an unopened chest, and forgets it once opened', () => {
+    const rooms = [room('a'), room('c'), room('x', 'extraction')];
+    expect(dungeonRoomMarkers(rooms, [{ roomId: 'c', opened: false }], []).get('c')).toBe('chest');
+    expect(dungeonRoomMarkers(rooms, [{ roomId: 'c', opened: true }], []).has('c')).toBe(false);
+  });
+
+  it('marks a shop while anything is unsold, and forgets it once sold out', () => {
+    const rooms = [room('a'), room('s'), room('x', 'extraction')];
+    expect(dungeonRoomMarkers(rooms, [], [{ roomId: 's', stock: [offer(true), offer(false)] }]).get('s')).toBe('shop');
+    expect(dungeonRoomMarkers(rooms, [], [{ roomId: 's', stock: [offer(true)] }]).has('s')).toBe(false);
+  });
+
+  it('resolves a room that qualifies twice by priority: boss > exit > shop > chest', () => {
+    const rooms = [room('m'), room('b', 'boss'), room('x', 'extraction')];
+    const chests = [{ roomId: 'm', opened: false }, { roomId: 'b', opened: false }, { roomId: 'x', opened: false }];
+    const shops = [{ roomId: 'm', stock: [offer(false)] }];
+    const markers = dungeonRoomMarkers(rooms, chests, shops);
+    expect(markers.get('m')).toBe('shop');
+    expect(markers.get('b')).toBe('boss');
+    expect(markers.get('x')).toBe('exit');
+  });
+
+  it('an empty floor has no markers', () => {
+    expect(dungeonRoomMarkers([], [], []).size).toBe(0);
   });
 });

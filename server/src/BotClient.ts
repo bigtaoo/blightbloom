@@ -57,6 +57,14 @@ export interface BotClientOptions {
 const DEFAULT_TICK_MS = 1000 / 30;
 
 /**
+ * The bot's jitter cushion: none (2026-10-03), as the game's own clients run
+ * (`onlineConnect.ts`). A cushion smooths what a player SEES, and a bot sees nothing. Under the
+ * default 3 it read the match three frames late, and a bullet it meant to parry was mostly past
+ * the blade by then (`onlineBotParry.test.ts`).
+ */
+export const BOT_BUFFER_FRAMES = 0;
+
+/**
  * The seat a co-op ally regroups on when the floor is quiet. Always a REAL player:
  * `Matchmaker.formWithBots` seats every live waiter first and hands the bots the trailing
  * indices, so seat 0 is human in every room that reached this file (`formWithBots` returns
@@ -188,6 +196,7 @@ export function runBotClient(opts: BotClientOptions & { transport: Transport }):
     seed: opts.seed,
     playerCount: opts.playerCount,
     buildConfig: buildOnlineConfig,
+    bufferFrames: BOT_BUFFER_FRAMES,
     onMatchStart: (m) => {
       brain = brainFor(m.mode ?? 'coop');
       timer = setInterval(tick, tickMs);

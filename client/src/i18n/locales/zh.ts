@@ -219,6 +219,7 @@ export const zh: Translations<typeof en> = {
     portalExtract: '存入并撤离（{pending} 份材料）',
     portalDescend: '下降至第 {floor} 层',
     portalTitleBoss: 'BOSS 已被击败 —— 撤离传送门已开启',
+    portalCountdown: '{seconds} 秒后全队出发 —— 已确认 {ready}/{total}',
     floorCardTitle: '选择一张升级卡',
     floorCardVotes: '{n} 票',
   },

@@ -17,19 +17,32 @@
  *     in the base bot too, re-applied last so the loot and blade walks above never pull a
  *     reviver off the body. Off, neither bot revives: the sims' no-revive control.
  *
+ * Since 2026-10-03 the shipped bot does all three: it parries (`ai/parry.ts`: half the
+ * bullets, no memory), loots (`ai/loot.ts`) and draws the blade for a dry gun
+ * (`ai/dryBlade.ts`, stateless). This one switches those off in its base and keeps its own
+ * copies behind its flags (the loot and dry tests are the shipped ones; the parry stays its own
+ * frame-perfect rule), so the profiles below read as they always have: `shipped` is the
+ * gun-only bot.
+ *
  * Deliberately NOT the shipped bot. `PvpBotController` fills empty seats in real matches
  * (`server/src/BotClient.ts`) and must stay a pure function of state; this one keeps two
  * fields of memory (the last swap tick, since the engine swaps on a press edge, and why the
- * blade is out). Whether any of this belongs in the shipped bot is a separate decision.
+ * blade is out). The shipped bot reads both off state instead (`prevButtons`, the pool).
  */
-import { Button, FP_SCALE, SIM, WEAPON_SPECS, makeCommand, type GameState, type PlayerActor, type PlayerCommand } from '@dd/engine';
+import { Button, SIM, makeCommand, type GameState, type PlayerActor, type PlayerCommand } from '@dd/engine';
 import { nearestHostile } from '@dd/engine/systems/targeting';
 import { PvpBotController } from '../../src/game/controllers/PvpBotController';
+import { drySwapDue } from '../../src/game/controllers/ai/dryBlade';
 import { FIRE_RANGE_FP, idleCommand } from '../../src/game/controllers/ai/engage';
+import { lootToSeek } from '../../src/game/controllers/ai/loot';
 import { reviveMove } from '../../src/game/controllers/ai/revive';
 import { HOLD, steer } from '../../src/game/controllers/ai/steer';
 import { zoneRetreatCommand } from '../../src/game/controllers/ai/zoneRetreat';
-import { gunWorth } from '../pve/weaponChoice';
+
+// The loot and dry-blade rules moved into the shipped bot (2026-10-03); this bot reads them
+// from there, so the profiles below and the shipped bot cannot drift apart.
+export { LOOT_DETOUR_FP, lootToSeek } from '../../src/game/controllers/ai/loot';
+export { REARM_SHOTS, drySwapDue } from '../../src/game/controllers/ai/dryBlade';
 
 export interface ArenaBotProfile {
   loots: boolean;
@@ -50,16 +63,6 @@ export const ARENA_PROFILES = {
   shippedRevives: { loots: false, meleeWhenDry: false, parries: false, revives: true },
 } as const satisfies Record<string, ArenaBotProfile>;
 
-/**
- * Pulls that must be affordable before a blade drawn for a dry gun goes back. A count of
- * SHOTS, not the PvE bot's share of the pool (`REARM_FRAC`): a pool-share threshold makes a
- * deeper bar wait longer on the blade, which read in the first sweep as "the 130 pool loses"
- * when it was this rule sending the most fragile seat into melee for longest.
- */
-export const REARM_SHOTS = 3;
-
-/** How far off its path the bot walks for a better gun. */
-export const LOOT_DETOUR_FP = 8 * FP_SCALE;
 /** Ticks ahead a bullet is judged against the blade's reach. A swap and a swing start on the
  *  same tick, so this only needs to cover a bullet crossing the reach between two commands. */
 export const PARRY_LOOKAHEAD = 4;
@@ -79,7 +82,9 @@ export class ArenaBotController {
     private readonly profile: ArenaBotProfile,
     private readonly startDelay = 0,
   ) {
-    this.base = new PvpBotController({ revives: profile.revives });
+    // The base without its own parry, loot or dry blade (2026-10-03): this bot's flags are the
+    // one switch for each, so `shipped` here stays the bot every capacity sweep measured, gun only.
+    this.base = new PvpBotController({ revives: profile.revives, parries: false, loots: false, bladeWhenDry: false });
   }
 
   build(s: GameState, owner: number, tick: number): PlayerCommand {
@@ -152,19 +157,6 @@ function dist(a: { gx: number; gy: number }, b: { gx: number; gy: number }): num
   return Math.hypot(b.gx - a.gx, b.gy - a.gy);
 }
 
-/**
- * Should the seat swap slots for the dry rule now? To the blade: the gun in hand cannot pay
- * for a pull and what it aims at is in range. Back to the gun: `REARM_SHOTS` pulls are affordable
- * (or a full bar, if that holds fewer).
- */
-export function drySwapDue(me: PlayerActor, targetInRange: boolean): boolean {
-  const active = me.weapon?.spec;
-  const gun = me.weapons.find((w) => w.spec.kind === 'ranged')?.spec;
-  if (!active || gun?.kind !== 'ranged' || !me.weapons.some((w) => w.spec.kind === 'melee')) return false;
-  if (active.kind === 'ranged') return me.energy < gun.energyCost && targetInRange;
-  return me.energy >= Math.min(me.maxEnergy, gun.energyCost * REARM_SHOTS);
-}
-
 function gunAffordable(me: PlayerActor): boolean {
   const gun = me.weapons.find((w) => w.spec.kind === 'ranged')?.spec;
   return gun?.kind === 'ranged' && me.energy >= gun.energyCost;
@@ -197,26 +189,3 @@ export function bulletIncoming(s: GameState, me: PlayerActor, reach: number): bo
   return false;
 }
 
-/**
- * Where the loot rule walks: the nearest unopened crate, or floor gun worth more than the one
- * held, within `LOOT_DETOUR_FP`. Strictly more, so the gun a pickup drops can never lure the
- * bot back.
- */
-export function lootToSeek(s: GameState, me: PlayerActor): { id: number; kind: 'crate' | 'weapon'; gx: number; gy: number } | undefined {
-  const held = me.weapons.find((w) => w.spec.kind === 'ranged');
-  const heldWorth = held ? gunWorth(held.spec.name) : -1;
-  let best: { id: number; kind: 'crate' | 'weapon'; gx: number; gy: number } | undefined;
-  let d = LOOT_DETOUR_FP;
-  for (const item of s.pickups) {
-    if (!item.alive) continue;
-    if (item.kind === 'weapon') {
-      if (!item.weaponId || WEAPON_SPECS[item.weaponId]?.kind !== 'ranged' || gunWorth(item.weaponId) <= heldWorth) continue;
-    } else if (item.kind !== 'crate') continue;
-    const dd = dist(me, item);
-    if (dd <= d) {
-      d = dd;
-      best = { id: item.id, kind: item.kind, gx: item.gx, gy: item.gy };
-    }
-  }
-  return best;
-}

@@ -219,6 +219,7 @@ export const fr: Translations<typeof en> = {
     portalExtract: 'Stocker et extraire ({pending} matériaux)',
     portalDescend: "Descendre à l'étage {floor}",
     portalTitleBoss: "BOSS VAINCU — le portail d'extraction est ouvert",
+    portalCountdown: "L'équipe part dans {seconds}s — {ready}/{total} prêts",
     floorCardTitle: 'Choisissez une amélioration',
     floorCardVotes: '{n} votes',
   },

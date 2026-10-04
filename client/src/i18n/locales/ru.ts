@@ -224,6 +224,7 @@ export const ru: Translations<typeof en> = {
     portalExtract: 'Сохранить и эвакуироваться ({pending} материалов)',
     portalDescend: 'Спуститься на этаж {floor}',
     portalTitleBoss: 'БОСС ПОВЕРЖЕН — портал эвакуации открыт',
+    portalCountdown: 'Отряд уходит через {seconds} с — готовы {ready}/{total}',
     floorCardTitle: 'Выберите улучшение',
     floorCardVotes: '{n} голосов',
   },

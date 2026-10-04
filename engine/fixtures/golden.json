@@ -1,11 +1,11 @@
 {
-  "engineVersion": 86,
+  "engineVersion": 87,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 3471218092,
+      "hash": 2934726721,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -33,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 287531842,
+      "hash": 3054424723,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -59,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 46173153,
+      "hash": 54924186,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -92,7 +92,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 4142736044,
+      "hash": 449983233,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -120,7 +120,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 1380290482,
+      "hash": 2277002679,
       "witness": {
         "tick": 252,
         "phase": "gameover",
@@ -153,7 +153,7 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 4023845412,
+      "hash": 2335842444,
       "witness": {
         "tick": 900,
         "phase": "playing",
@@ -183,7 +183,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 765870165,
+      "hash": 3508303635,
       "witness": {
         "tick": 400,
         "phase": "playing",

@@ -18,9 +18,11 @@ import type { Winner } from '../state/entities';
 
 /**
  * The confirmed command set for one frame, in the server's authoritative order
- * (design/06 "the server is the sole ordering authority"). A frame with no commands
- * is NOT sent — its absence from a batch's `frames` is an implicit idle-hold, exactly
- * like a sparse Replay stream (replay.ts).
+ * (design/06 "the server is the sole ordering authority"), at most one command per
+ * owner. A frame with no commands is NOT sent — its absence from a batch's `frames` means
+ * every seat HOLDS its last command, one-shot parts stripped (`NetInputSource`, design/15
+ * "held input"). That is NOT a sparse Replay stream's idle (replay.ts): replaying a frame
+ * log needs the hold filled in first, as `NetInputSource` does.
  */
 export interface FrameCmds {
   frame: number;

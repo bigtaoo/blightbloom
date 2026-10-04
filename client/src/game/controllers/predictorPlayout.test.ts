@@ -1,8 +1,9 @@
 /**
  * The local player under real online timing (2026-10-01): `LocalPredictor` + the delay meter
  * (`net/inputDelay.ts`) + the paced playout (`onlineInterpolation.ts`), against a model of the
- * server — commands land on the last frame of a 100 ms, 3-frame window, the batch goes out at
- * the window's end, and each leg of the trip has its own delay and jitter. What is measured is
+ * server — a command lands on the frame of the 100 ms, 3-frame window its arrival falls in
+ * (2026-10-03; before, always the window's last frame — kept as `lastFrame`, the control), the
+ * batch goes out at the window's end, and each leg of the trip has its own delay and jitter. What is measured is
  * the drawn x of a player running east and letting go, compared with where the stick put them.
  *
  * The control is the model this replaced (ease onto the bare confirmed position): it carries
@@ -46,7 +47,7 @@ interface Run {
 }
 
 /** Run east from 500 ms to `stopAt`, then stand; `wall` blocks x past it. */
-function play(net: Net, opts: { old?: boolean; wall?: number; stopAt?: number } = {}): Run {
+function play(net: Net, opts: { old?: boolean; lastFrame?: boolean; wall?: number; stopAt?: number } = {}): Run {
   const wall = opts.wall ?? Infinity;
   const walk: Walkable = (x, y) => ({ x: Math.min(x, wall), y });
   const stopAt = opts.stopAt ?? 8000;
@@ -79,8 +80,12 @@ function play(net: Net, opts: { old?: boolean; wall?: number; stopAt?: number } 
       for (let i = toServer.length - 1; i >= 0; i--) {
         if (toServer[i]!.at <= nextPulse) {
           const c = toServer.splice(i, 1)[0]!;
-          const prev = landed.get(serverFrame);
-          if (!prev || c.tag > prev.tag) landed.set(serverFrame, { mag: c.mag, tag: c.tag });
+          // The window frame the arrival falls in (MatchRoom's WindowClock), or — the server
+          // before 2026-10-03 — always the window's last frame.
+          const into = Math.min(BATCH_FRAMES - 1, Math.max(0, Math.floor(((c.at - (nextPulse - BATCH_MS)) * BATCH_FRAMES) / BATCH_MS)));
+          const frame = opts.lastFrame ? serverFrame : serverFrame - BATCH_FRAMES + 1 + into;
+          const prev = landed.get(frame);
+          if (!prev || c.tag > prev.tag) landed.set(frame, { mag: c.mag, tag: c.tag });
         }
       }
       const last = toClient.length > 0 ? toClient[toClient.length - 1]!.at : 0;
@@ -188,8 +193,8 @@ describe('local prediction under online timing', () => {
       expect(lag, 'lag').toBeLessThan(2 * STEP);
       expect(Math.min(...steps), 'slowest step').toBeGreaterThan(0.98);
       expect(Math.max(...steps), 'fastest step').toBeLessThan(1.02);
-      // Stopping: what is left is the server's batch window plus that lag, eased forward.
-      expect(fwd, 'slide').toBeLessThanOrEqual(BATCH_FRAMES * STEP + lag + 0.5);
+      // Stopping: what is left is one sim tick (where in it the stop arrived) plus that lag.
+      expect(fwd, 'slide').toBeLessThanOrEqual(STEP + lag + 0.5);
       expect(back, 'pulled back').toBeLessThan(0.05);
       expect(r.drawn[r.drawn.length - 1]!, 'settles on the sim').toBeCloseTo(r.settled, 1);
       // From the first step on: may ease (the start lands up to a batch late), never reverses.
@@ -198,13 +203,19 @@ describe('local prediction under online timing', () => {
   }
 
   it('slides forward, never back, at every batch phase of the stop', () => {
+    let oldWorst = 0;
     for (let stopAt = 7000; stopAt < 7100; stopAt += 9) {
       const r = play(LAN, { stopAt });
       const [fwd, back] = afterStop(r);
-      expect(fwd, `slide @ ${stopAt}`).toBeLessThanOrEqual(BATCH_FRAMES * STEP + runningLag(r) + 0.5);
+      // The control: the server landing every command on its window's last frame (before
+      // 2026-10-03) slides up to the whole window — 19 px measured, against 7 px now.
+      const old = play(LAN, { stopAt, lastFrame: true });
+      oldWorst = Math.max(oldWorst, afterStop(old)[0] - runningLag(old));
+      expect(fwd, `slide @ ${stopAt}`).toBeLessThanOrEqual(STEP + runningLag(r) + 0.5);
       expect(back, `pulled back @ ${stopAt}`).toBeLessThan(0.05);
       expect(r.drawn[r.drawn.length - 1]!).toBeCloseTo(r.settled, 1);
     }
+    expect(oldWorst).toBeGreaterThan(2 * STEP);
   });
 
   it('holds still against a wall — no creep into it, no sawtooth', () => {

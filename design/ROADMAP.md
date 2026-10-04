@@ -1715,9 +1715,33 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **10-01** [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change) — Pixi's gate counts whole milliseconds, which drew 4-9% of frames a vsync late on 90/100/165 Hz panels. `game/frameGate.ts` counts vsyncs instead, on both platforms; 0% uneven at every rate from 60 to 240 Hz, both settings and the idle cap, against the real `Ticker` with jitter. `render` `perf` `platform` `test` `docs`
 - **10-01** [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change) — `LocalPredictor` eased onto the delayed confirmed position, so online the local player carried the whole latency and slid on after a stop. It now leads by the send-to-stepped delay `net/inputDelay.ts` measures, and pushes out of walls with the sim's own `clampToWalkable`; the client also drops the 3-frame cushion. Modelled on the server's timing: 3-7 px behind the stick instead of 34-79, a 3-19 px forward-only slide instead of 33-78. Open: the slide is the server landing commands on each batch's last frame. `net` `test` `docs`
 
+**[2026-10-03 — minimap wayfinding](roadmap/120-2026-10-03-minimap-wayfinding.md)**
+
+- **10-03** [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change) — the owner could not tell unexplored rooms apart or where to head next. PvE rooms now read cleared (lit) / frontier (one door from where you have been, bright outline) / unvisited (dark), and rooms carry a boss, exit, shop or chest marker; a real-engine sweep over all eight level-1 maps pins where they land.
+
+**[2026-10-03 — frame alignment](roadmap/121-2026-10-03-frame-alignment.md)**
+
+- **10-03** [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change) — the item volume 119 left open: the server landed every command on its 100 ms window's last frame, so a stop slid 3-19 px. It now lands each on the frame its arrival falls in (`server/src/windowClock.ts`); modelled, the worst slide drops from 19 px to 7. On the way: `NetInputSource` filled only each batch's last frame and the sim idles a seat with no command, so online every player moved and fired on one frame in three. Every frame now holds, one-shot taps fire once and are no longer lost to the next command, and a relayed run is byte-equal to the local one. `net` `test` `docs`
+
+**[2026-10-03 — PvP bot parry](roadmap/122-2026-10-03-pvp-bot-parry.md)**
+
+- **10-03** [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change) — the shipped arena bot never left its gun, so no match had a parry and a rival's half-damage rebound never came into play. `ai/parry.ts` swaps to a ready blade and swings at one bullet in two (picked by id, no memory), and swaps back once the blade recovers; 180 sim matches now see 4,642 parries and 2,579 rebounds land. On the way: the server bot read the match through a 3-frame cushion no client uses and parried 11 times where it parried 26 at 0; `BOT_BUFFER_FRAMES` = 0. `net` `tools` `test` `docs`
+
+**[2026-10-03 — PvP bot loot and dry blade](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md)**
+
+- **10-03** [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change) — the item volume 122 left open: only the sim-only bot looted or fell back to its blade, and volume 117 had measured both there. The shipped bot now walks to a crate or a better gun while nothing is in range (`ai/loot.ts`), and holsters a gun it cannot pay for to fight with the blade until three pulls are back (`ai/dryBlade.ts`, read off the pool, no memory). Over the same 180 sim matches it loots 746 guns, dry gun time falls 91% (4,922 to 460 seat-ticks), matches shorten by up to 13%, and vanguard's win lead goes (72/57/51 to 59/68/52). The seats now bunch up, so 8-seat PvP overran the 16-voice cap and cut 6 `impact`s short; the owner kept the cap and the voice gate now lets `impact` lose up to 0.5%. `audio` `tools` `test` `docs`
+
+**[2026-10-03 — Co-op revive sim](roadmap/124-2026-10-03-coop-revive-sim.md)**
+
+- **10-03** [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change) — the co-op ally has revived a downed leader since volume 118, but the only PvE sim played one seat. New `test:coop-revive` (~55 s, in `test:sims`) plays 40 seeds at both bot profiles with the level sim's bot leading and the shipped `AllyController` beside it, its revive on, off, and laid over the leader too. The ally goes down first (30 of 40 careful runs, against 5 the other way), so its rule rarely gets a turn; when it does, it answers 4 of 6 careful downs, and it takes stranded runs from 9 in 80 to 1. A leader who revives the ally is the lever: careful extractions 7 to 12. Co-op reaches floor 2.7 where solo dies on floor 0.4, and nothing scales enemies with seats. Found: a bot ally stands on no chest plate, so a big chest never opens with one, and a leader who bleeds out with the ally up strands the run, since only seat 0 takes the portal. `tools` `test` `docs`
+
+**[2026-10-03 — Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md)**
+
+- **10-03** [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87) — volume 124's two gaps, settled by the owner. Any standing seat now opens a cleared floor's portal, which starts a 30 s countdown; every other seat sees the popup and card offer wherever it stands, and the portal goes when every living seat has confirmed or the countdown ends (`ENGINE_VERSION` 87). A downed seat is waited for, a dead one is not, and solo resolves on the press as before. The co-op ally confirms at once, takes the second plate of a big chest once its player stands on one, and walks there through the floor's doors (`ai/chestPlate.ts`, `ai/dungeonRoute.ts`). Big chests now open in co-op: 16 in 40 careful runs, none before. Still open: a bot left alone after its player dies never leaves. `engine` `ui` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 232 entries, grouped. An entry with more than one tag appears more than once.
+The same 238 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1845,7 +1869,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(44)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(45)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1891,6 +1915,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
 - 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
 **`arena`** — the PvP launch map and its audit *(19)*
 
@@ -1933,7 +1958,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(143)*
+**`test`** — coverage sweeps, gates, mutation batteries *(149)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2078,8 +2103,14 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
+- 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`audio`** — cues, music, the engine to sound channel *(9)*
+**`audio`** — cues, music, the engine to sound channel *(10)*
 
 - 08-31 [The search and the gate were the same number three times, and never the same ruler](roadmap/12-2026-08-31-audio.md#the-search-and-the-gate-were-the-same-number-three-times-and-never-the-same-ruler-2026-08-31-tools--assets)
 - 08-31 [Everything existed and nothing was connected](roadmap/12-2026-08-31-audio.md#everything-existed-and-nothing-was-connected-2026-08-31-client-runtime)
@@ -2090,6 +2121,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
 **`platform`** — web / WeChat / Electron / game-portal targets and deploys *(35)*
 
@@ -2129,7 +2161,7 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`ui`** — HUD, screens, widgets *(47)*
+**`ui`** — HUD, screens, widgets *(49)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2178,8 +2210,10 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-28 [The lobby's material counts become a FORGE badge](roadmap/105-2026-09-28-forge-badge.md#the-lobbys-material-counts-become-a-forge-badge-2026-09-28-client--ui--test--docs-no-engine-change)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
+- 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`tools`** — sims, profilers, editors, build scripts *(39)*
+**`tools`** — sims, profilers, editors, build scripts *(43)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2220,8 +2254,12 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A sim bot revives a squadmate](roadmap/118-2026-09-30-arena-body-reach.md#a-sim-bot-revives-a-squadmate-2026-09-30-tools--test--docs)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 09-30 [The co-op bot revives](roadmap/118-2026-09-30-arena-body-reach.md#the-co-op-bot-revives-2026-09-30-tools--test--docs)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`docs`** — design docs and this log itself *(149)*
+**`docs`** — design docs and this log itself *(155)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2372,8 +2410,14 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
+- 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
+- 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`net`** — matchmaking, sockets, reconnect *(37)*
+**`net`** — matchmaking, sockets, reconnect *(39)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2412,6 +2456,8 @@ The same 232 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [The Paddle adapter, written and tested but not live](roadmap/98-2026-09-26-paddle-adapter.md#the-paddle-adapter-written-and-tested-but-not-live-2026-09-26-server--test--docs-no-engine-change)
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
+- 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
+- 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

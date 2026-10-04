@@ -9,8 +9,8 @@
  * The per-floor checkpoint is "this floor's waves are exhausted and no enemies
  * remain" (the same condition WinConditionSystem used to auto-win on when floors
  * are disabled — see its own floorsEnabled guard). At that point the run waits on
- * player 0's explicit portal-popup pick (single-player only; co-op's shared
- * decision is a Phase 3 concern), and WHICH pick the portal accepts depends only on
+ * an explicit portal-popup pick (any standing seat's, with a countdown for the rest
+ * since ENGINE_VERSION 87 — see `tick`), and WHICH pick the portal accepts depends only on
  * whether this is the last floor:
  *   - the LAST floor is the only floor that can END a run. CONFIRM_EXTRACT banks and
  *     wins; a CONFIRM_DESCEND press there is ignored, since design/05's "the last
@@ -49,6 +49,8 @@
  */
 import type { GameState } from '../state/GameState';
 import { cardBuffId, rollFloorCardOffer, tallyCardVote } from '../balance/floorCards';
+import { PORTAL_COUNTDOWN_TICKS } from '../config';
+import type { PlayerActor } from '../state/entities';
 
 export class ExtractionSystem {
   tick(state: GameState): void {
@@ -92,34 +94,54 @@ export class ExtractionSystem {
       state.floorCardOffer = rollFloorCardOffer(state.cardPrng);
     }
 
-    const p = state.players[0];
-    if (!p || !p.alive) return;
-    if (isLastFloor) {
-      // EXTRACT ends the run, so whatever the squad had voted for is moot — the card
-      // is deliberately NOT applied on the way out. Nothing else resolves here: the
-      // last floor has no next floor, so CONFIRM_DESCEND falls off the end below.
-      if (p.confirmExtract) this.resolveExtract(state);
-      return;
-    }
-    // Interior floor: descend or stay. CONFIRM_EXTRACT is not consulted at all
-    // (ENGINE_VERSION 61 — see the header). It is dropped silently rather than
-    // treated as a descend: the two are different intentions, and turning one into
-    // the other would spend a floor card the player never chose.
-    if (!p.confirmDescend) return;
-
-    // Descend needs a card chosen. The vote is the squad's, not the presser's
-    // (2026-09-05: "whichever card the most people chose takes effect"), so this
-    // tallies every seat and takes the winner — and a tally of 0 means nobody has
-    // tapped a card yet, which HOLDS the portal rather than descending without one.
+    // Who may open the portal, and when it goes (ENGINE_VERSION 87, the owner's call
+    // 2026-10-03). It used to be player 0's press alone, so a co-op run whose seat 0 bled
+    // out with a teammate still standing could never leave the floor (volume 124's
+    // "stranded" runs). Now any standing seat's press opens it and starts a
+    // `PORTAL_COUNTDOWN_TICKS` countdown; every later press is a confirm. It resolves the
+    // tick every living seat has confirmed, or when the countdown runs out, whoever has
+    // not. A solo press confirms the only seat there is, so a solo run resolves on the
+    // press, exactly as before.
     //
-    // Holding on >=1 vote rather than on "everyone has voted" is the co-op call: a
-    // downed or disconnected teammate must not be able to strand the squad on a
-    // cleared floor. It also leaves the descend authority exactly where it already
-    // was — player 0's press — so this pass does not have to settle design/05's
-    // still-open question of whose press a shared descend decision should be.
-    const slot = tallyCardVote(state.players.map((seat) => seat.cardVote), state.floorCardOffer.length);
-    if (slot === 0) return;
-    this.resolveDescend(state, state.floorCardOffer[slot - 1]);
+    // The button is the floor's own: CONFIRM_EXTRACT on the last floor, CONFIRM_DESCEND
+    // on every other. The other one is ignored (ENGINE_VERSION 61 — see the header).
+    const pressed = (p: PlayerActor) => (isLastFloor ? p.confirmExtract : p.confirmDescend);
+    for (const p of state.players) {
+      if (!p.alive || p.downed || p.portalReady || !pressed(p)) continue;
+      // Descend needs a card chosen before the portal opens. The vote is the squad's,
+      // not the presser's (2026-09-05: "whichever card the most people chose takes
+      // effect"), and a tally of 0 means nobody has tapped a card yet, which HOLDS the
+      // portal rather than descending without one. A vote can change but never return to
+      // 0, so a tally that was non-zero at the opening press is non-zero at resolution.
+      if (state.portalCountdownTicks === 0) {
+        if (!isLastFloor && this.votedSlot(state) === 0) continue;
+        state.portalCountdownTicks = PORTAL_COUNTDOWN_TICKS;
+      }
+      p.portalReady = true;
+    }
+    if (state.portalCountdownTicks === 0) return;
+
+    // A downed seat is still waited for — it is alive, and the countdown is time to
+    // revive it — but it cannot press, so it is the countdown that takes it along. A dead
+    // seat is not waited for.
+    state.portalCountdownTicks--;
+    const waiting = state.players.some((p) => p.alive && !p.portalReady);
+    if (waiting && state.portalCountdownTicks > 0) return;
+    // EXTRACT ends the run, so whatever the squad had voted for is moot — the card is
+    // deliberately NOT applied on the way out.
+    if (isLastFloor) this.resolveExtract(state);
+    else this.resolveDescend(state, state.floorCardOffer[this.votedSlot(state) - 1]);
+  }
+
+  /** The squad's winning card slot, 1-based; 0 while nobody has voted. */
+  private votedSlot(state: GameState): number {
+    return tallyCardVote(state.players.map((seat) => seat.cardVote), state.floorCardOffer.length);
+  }
+
+  /** Close the portal countdown: every resolution passes through here. */
+  private closePortal(state: GameState): void {
+    state.portalCountdownTicks = 0;
+    for (const p of state.players) p.portalReady = false;
   }
 
   /** The floor's capstone (extraction/boss) room — always the LAST entry, since
@@ -144,6 +166,7 @@ export class ExtractionSystem {
   }
 
   private resolveExtract(state: GameState): void {
+    this.closePortal(state);
     this.bankFloorMaterials(state);
     state.winner = 0; // single-player: player id 0 (matches the old wavesExhausted win)
     state.phase = 'gameover';
@@ -151,6 +174,7 @@ export class ExtractionSystem {
   }
 
   private resolveDescend(state: GameState, cardId?: string): void {
+    this.closePortal(state);
     this.bankFloorMaterials(state);
     this.applyFloorCard(state, cardId);
     state.floorIndex++;

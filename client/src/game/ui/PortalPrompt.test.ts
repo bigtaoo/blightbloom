@@ -189,3 +189,47 @@ describe('PortalPrompt — i18n (design/17-i18n.md)', () => {
     expect(zhTitle).not.toBe(enTitle);
   });
 });
+
+describe('PortalPrompt — the co-op countdown (ENGINE_VERSION 87)', () => {
+  const TWO: EngineConfig = { ...PVE_CFG, players: [{ start: [100, 100] }, { start: [140, 100] }] };
+
+  it('titles the countdown in whole seconds rounded up, and counts living seats that confirmed', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(TWO);
+    s.portalCountdownTicks = 31; // 1.03 s left: reads 2, never 1 early or 0 while waiting
+    s.players[1]!.portalReady = true;
+    prompt.update(s, true, 0);
+    expect(privateOf(prompt).titleText.text).toBe('Squad leaves in 2s — 1/2 ready');
+    s.players[0]!.alive = false; // a dead seat is not waited for, so it is not counted
+    prompt.update(s, true, 1);
+    expect(privateOf(prompt).titleText.text).toBe('Squad leaves in 2s — 1/1 ready');
+  });
+
+  it('keeps the floor title while no countdown runs', () => {
+    const prompt = new PortalPrompt();
+    prompt.update(createGameState(TWO), true, 0);
+    expect(privateOf(prompt).titleText.text).toBe('FLOOR CLEARED — a portal has opened');
+  });
+
+  it('offers the button as a confirm until this seat has pressed it, and never to a seat that cannot', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(TWO);
+    s.portalCountdownTicks = 300;
+    s.players[0]!.portalReady = true;
+    prompt.update(s, true, 1);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(true); // seat 1 has not confirmed
+    prompt.update(s, true, 0);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(false); // seat 0 has
+    s.players[1]!.downed = true;
+    prompt.update(s, true, 1, true);
+    expect(privateOf(prompt).extractBtn.view.visible).toBe(false); // downed: cannot press
+  });
+
+  it('swallows a press on the panel, so a confirm mid-fight never fires a shot', () => {
+    const prompt = new PortalPrompt();
+    let presses = 0;
+    prompt.onPressStart = () => presses++;
+    (prompt.view as unknown as { emit(e: string): void }).emit('pointerdowncapture');
+    expect(presses).toBe(1);
+  });
+});

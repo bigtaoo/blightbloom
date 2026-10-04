@@ -2804,3 +2804,19 @@ rule holds in PvE co-op.
 The golden gate, run before this bump, was green: no scenario revives anyone. A recorded
 match in which a seat held FIRE and INTERACT together over a revivable squadmate diverges on
 that tick. Golden fixture regenerated (version stamp only).
+
+v87 (2026-10-03 — any seat opens the portal). A cleared floor's portal used to answer player
+0's press and nobody else's. A co-op run whose seat 0 bled out with a teammate still up could
+never leave the floor (volume 124's "stranded" runs, 9 in 80 in its sim), and online the
+second human was stuck with it. The owner's call: any standing seat (alive, not downed) opens
+the portal with the floor's own button, which starts `PORTAL_COUNTDOWN_TICKS` (900, 30 s) on
+`GameState.portalCountdownTicks`. Every later press is a confirm (`PlayerActor.portalReady`).
+The portal goes the tick every living seat has confirmed, or when the countdown runs out. A
+downed seat is waited for but cannot confirm; a dead seat is not waited for. Descend still
+needs a card voted before the opening press. The last floor's EXTRACT works the same way.
+Solo is unchanged: the press confirms the only seat, and the run resolves on that tick.
+
+Both new fields are hashed in `serializeState`. The golden gate, run before this bump and
+before the fields were hashed, was green: every scenario is single-seat. A recorded co-op run
+diverges at its first checkpoint. Golden fixture regenerated (version stamp and the two new
+fields).

@@ -216,6 +216,7 @@ export function wireHud(d: WiringDeps): void {
   // onSwitchWeapon → builder.requestSwap() below.
   d.portalPrompt.onExtract = () => d.builder.requestConfirmExtract();
   d.portalPrompt.onDescend = () => d.builder.requestConfirmDescend();
+  d.portalPrompt.onPressStart = () => d.builder.suppressFireUntilRelease();
   // Floor cards (design/05, ENGINE_VERSION 58) — a tap is a VOTE, not a descend; the
   // portal's own Descend button is still what leaves the floor. `onPressStart` swallows
   // the press so choosing a card never also fires a shot, exactly as

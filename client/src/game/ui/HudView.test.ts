@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Container } from 'pixi.js';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState, EngineConfig } from '@dd/engine/state/GameState';
@@ -537,6 +537,31 @@ describe('HudView — mode-dependent widgets', () => {
     hud.update(s, 16, CTX);
 
     expect(hud.minimap.view.visible).toBe(true);
+  });
+
+  it('feeds the PvE minimap the doors (for the frontier) and the room markers (2026-10-03)', () => {
+    // A mutation that drops `s.dungeonDoors` or the marker callback leaves the map drawn and
+    // visible, so the visibility test above cannot see it — read what update() was handed.
+    const hud = newHud();
+    const s = pveState();
+    s.dungeonRooms.push(fakeRoom('r0', 0), fakeRoom('r1', 20), fakeRoom('r2', 40));
+    ['r0', 'r1', 'r2'].forEach((id, i) => {
+      s.dungeonRoomIndexById.set(id, i);
+      s.dungeonRoomRuntime.push({ activated: i === 0, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false });
+    });
+    s.dungeonDoors.push({
+      door: { roomA: 'r0', roomB: 'r1', passageGrid: { x: 19, y: 6, w: 2, h: 4 } },
+      passageAabb: { x: toFpGrid(19), y: toFpGrid(6), w: toFpGrid(2), h: toFpGrid(4) },
+      locked: false,
+    });
+    s.chests.push({ id: 1, roomId: 'r1', kind: 'small', gx: toFpGrid(25), gy: toFpGrid(8), mechanisms: [], opened: false });
+    const update = vi.spyOn(hud.minimap, 'update');
+
+    hud.update(s, 16, CTX);
+
+    const [, statusOf, , markerOf] = update.mock.calls.at(-1)!;
+    expect(['r0', 'r1', 'r2'].map(statusOf)).toEqual(['cleared', 'frontier', 'unvisited']);
+    expect(['r0', 'r1', 'r2'].map((id) => markerOf!(id))).toEqual([undefined, 'chest', 'exit']);
   });
 
   it('hides the minimap for a flat (non-dungeon) config with no rooms placed and no arena', () => {

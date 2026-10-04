@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { CoopSession } from './CoopSession';
 import type { Transport } from './transport';
 import { FrameBroadcast } from '@dd/engine/net/FrameBroadcast';
+import { confirmedStream } from '@dd/engine/net/NetInputSource';
 import { makeCommand } from '@dd/engine/state/input';
 import { Button, type PlayerCommand } from '@dd/engine/state/commands';
 import type { ClientMsg, ServerMsg, MatchStart } from '@dd/engine/net/protocol';
@@ -90,10 +91,9 @@ describe('CoopSession — full client↔server loop reproduces a replay', () => 
     }
     session.drive(); // drain any remainder
 
-    // Reference: replay the commands AS CONFIRMED (server re-tags each to its window frame).
-    const confirmed: PlayerCommand[] = server.log.flatMap((fc) =>
-      fc.cmds.map((c) => ({ ...c, tick: fc.frame })),
-    );
+    // Reference: replay the commands AS CONFIRMED — on the frames the server landed them,
+    // held between (`confirmedStream`; a bare log replayed sparse would idle the gaps).
+    const confirmed = confirmedStream(server.log, server.frame);
     const reference = runReplay(toReplay(CONFIG, confirmed), server.frame);
 
     expect(session.state).not.toBeNull();
@@ -164,7 +164,7 @@ describe('CoopSession — full client↔server loop reproduces a replay', () => 
 
     // Reference: replay the confirmed stream only up to tick 150 and hash there —
     // must match exactly what the session reported mid-match at that same tick.
-    const confirmed: PlayerCommand[] = server.log.flatMap((fc) => fc.cmds.map((c) => ({ ...c, tick: fc.frame })));
+    const confirmed = confirmedStream(server.log, server.frame);
     const referenceAt150 = runReplay(toReplay(CONFIG, confirmed), 150);
     expect(referenceAt150.state.tick).toBe(150);
     expect(checkpoints[0]!.stateHash).toBe(hashState(referenceAt150.state));

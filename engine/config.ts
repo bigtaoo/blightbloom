@@ -157,6 +157,10 @@ export const REVIVE_CHANNEL_TICKS = 450; // ~15 s sustained INTERACT to complete
 export const REVIVE_HP = 2; // HP a revived player comes back with (a small amount, design/07)
 export const REVIVE_RANGE_GRID = 1.5; // how close the reviver must stand, grid units
 
+// ── Co-op portal countdown (design/05, ENGINE_VERSION 87). Any standing seat opens the
+// cleared floor's portal; the rest have this long to confirm before it takes them anyway.
+export const PORTAL_COUNTDOWN_TICKS = 900; // 30 s
+
 // ── PvP anti-cheat periodic checkpoints (design/15, ROADMAP 4.4) ──────────────────
 // Generalizes the existing end-of-match `ClientMsg.result.stateHash` (replay.ts
 // hashState) into a tick-indexed check DURING a match. Design/15 is explicit these

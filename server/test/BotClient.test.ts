@@ -360,6 +360,7 @@ describe('BotClient — a CO-OP room gets an ally, not a PvP practice bot', () =
       seed: 4242,
       playerCount: 2,
       buildConfig: buildOnlineConfig,
+      bufferFrames: 0, // as onlineConnect.ts, and as the bot (`BOT_BUFFER_FRAMES`)
     });
     expect(room.join(humanBridge.conn)).toBe(true);
 

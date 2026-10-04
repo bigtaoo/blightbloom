@@ -183,6 +183,14 @@ smallest cap that costs no cue from `impact` up. The `impact`-up gate did not ch
 overall ceiling moved from 0.1% to 0.25% after volume 116's bot (it fights mobs) pushed 8-seat
 PvP to 0.14% at cap 16 — all stolen `muzzle`s, 0.9 s of audio in ten matches.
 
+**The cap stays 16, and `impact` is no longer fully protected** ([volume 123](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-voice-cap-and-a-bot-that-crowds)).
+Once the PvP bot looted and closed in with its blade, 8-seat matches bunched up: the uncapped mix
+peaked at 23 voices (p99 16), and cap 16 lost 0.39% of them, 6 of 2,704 `impact`s among them. Cap
+20 would have lost none. The owner kept 16, a device budget that no phone has been measured
+against yet, and moved the gate instead: cues above `impact` still lose nothing, `impact` may
+lose at most 0.5% of its voices, and the overall ceiling is 0.5%. A hit still sounds its `hurt`
+(105) on the seat that took it.
+
 ### Browser-measured, not assumed
 
 All **61 variants decoded** in a real browser (`loadedCues: 23`, `loadedVariants: 61`). Peak PCM

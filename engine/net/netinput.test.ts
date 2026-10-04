@@ -6,7 +6,7 @@
  * "single logic path, byte-identical regardless of source" guarantee.
  */
 import { describe, it, expect } from 'vitest';
-import { NetInputSource, type CmdSink } from '@dd/engine/net/NetInputSource';
+import { NetInputSource, confirmedStream, type CmdSink } from '@dd/engine/net/NetInputSource';
 import type { ClientMsg, FrameCmds, ServerMsg } from '@dd/engine/net/protocol';
 import { makeCommand } from '@dd/engine/state/input';
 import { Button, type PlayerCommand } from '@dd/engine/state/commands';
@@ -85,6 +85,13 @@ describe('NetInputSource — stall / watermark / cushion contract', () => {
     // as a pure metronome pulse (design/15, ROADMAP 4.5), not idle.
     expect(net.take(9)).toEqual([c]);
     expect(net.resumeFrame()).toBe(9);
+    // A second resync replaying frames already filled skips them; only the new frame lands.
+    const d = cmd(1, 11, Button.FIRE);
+    net.handleServerMsg({ type: 'conn_resync', startFrame: 0, curFrame: 12, log: [{ frame: 7, cmds: [d] }, { frame: 11, cmds: [d] }] });
+    expect(net.take(8)).toEqual([c]);
+    expect(net.take(10)).toEqual([c]);
+    expect(net.take(11)).toEqual([d]);
+    expect(net.take(12)).toEqual([d]);
   });
 });
 
@@ -130,6 +137,46 @@ describe('NetInputSource — sparse held-input sync (design/15, ROADMAP 4.5)', (
     // A later pulse confirms frame 5 with NO fresh input from anyone at all.
     net.handleServerMsg({ type: 'frame_batch', toFrame: 5, frames: [] });
     expect(net.take(5)).toEqual([c0]); // still held, not idle
+  });
+
+  it('every frame between batches holds too, not only each batch\'s toFrame (2026-10-03)', () => {
+    // Before 2026-10-03 only toFrame was filled, so frames 4-5 and 7-8 came back EMPTY and
+    // the sim idled the seat on them: online, a player moved one frame in three.
+    const net = new NetInputSource(collectingSink(), { bufferFrames: 0 });
+    net.handleServerMsg(START);
+    const run = { ...cmd(0, 1, Button.FIRE), moveMag: 255 };
+    net.handleServerMsg({ type: 'frame_batch', toFrame: 3, frames: [{ frame: 1, cmds: [run] }] });
+    net.handleServerMsg({ type: 'frame_batch', toFrame: 6, frames: [] });
+    net.handleServerMsg({ type: 'frame_batch', toFrame: 9, frames: [] });
+    for (let f = 1; f <= 9; f++) expect(net.take(f), `frame ${f}`).toEqual([run]);
+  });
+
+  it('a one-shot tap applies on its own frame only; the frames after hold the rest of the command', () => {
+    const net = new NetInputSource(collectingSink(), { bufferFrames: 0 });
+    net.handleServerMsg(START);
+    const c1 = cmd(1, 1, Button.INTERACT);
+    const tap = {
+      ...cmd(0, 2, Button.FIRE | Button.SWAP_WEAPON | Button.CONFIRM_EXTRACT | Button.CONFIRM_DESCEND),
+      moveMag: 255, pickupTargetId: 7, shopBuyId: 3, cardVote: 2,
+    };
+    net.handleServerMsg({ type: 'frame_batch', toFrame: 3, frames: [{ frame: 1, cmds: [c1] }, { frame: 2, cmds: [tap] }] });
+    net.handleServerMsg({ type: 'frame_batch', toFrame: 6, frames: [] });
+    expect(net.take(1)).toEqual([c1]);
+    expect(net.take(2)).toEqual([c1, tap]);
+    const held = { ...tap, buttons: Button.FIRE, pickupTargetId: 0, shopBuyId: 0, cardVote: 0 };
+    for (let f = 3; f <= 6; f++) expect(net.take(f), `frame ${f}`).toEqual([c1, held]);
+  });
+
+  it('confirmedStream expands a frame log into the per-frame stream a client simulates', () => {
+    const tap = { ...cmd(0, 0, Button.FIRE | Button.SWAP_WEAPON), moveMag: 255 };
+    const c1 = cmd(1, 0, Button.INTERACT);
+    const stream = confirmedStream([{ frame: 2, cmds: [tap] }, { frame: 3, cmds: [c1] }], 4);
+    const held = { ...tap, buttons: Button.FIRE };
+    expect(stream).toEqual([
+      { ...tap, tick: 2 },
+      { ...held, tick: 3 }, { ...c1, tick: 3 },
+      { ...held, tick: 4 }, { ...c1, tick: 4 },
+    ]);
   });
 
   it('a later fresh command for one owner supersedes their held value, leaving other owners\' held state untouched', () => {
