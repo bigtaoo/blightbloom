@@ -19,6 +19,7 @@ import { Button, createGameEngine, FP_SCALE, Prng, type EngineConfig, type Playe
 import { buildPvpEngineConfig, squadSizeForPlayerCount } from '../src/game/match/pvpConfig';
 import { PvpBotController } from '../src/game/controllers/PvpBotController';
 import { idleCommand } from '../src/game/controllers/ai/engage';
+import { countsTowardShare, fairShares } from './pvp/fairShare';
 
 // SIM-ONLY deconfounding: `buildPvpEngineConfig` skins seats BY INDEX (seat i -> the
 // i-th SKIN_DEFS entry) — a real, load-bearing property of the real match config
@@ -224,25 +225,12 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // report would need its own aggregation, deliberately not built here.
     const bySkin = new Map<string, number>();
     for (const r of results) bySkin.set(r.winnerSkin, (bySkin.get(r.winnerSkin) ?? 0) + 1);
-    // The raw counts above are NOT comparable across characters: `buildPvpEngineConfig` skins
-    // seat i as the (i mod 3)-th character, so per match the seats go 1/1/0 at 2 seats (no
-    // juggernaut at all), 2/1/1 at 4, 2/2/1 at 5 and 3/3/2 at 8 (vanguard/skirmisher/juggernaut).
-    // Each character's fair share is the sum over decided matches of its seats / seats; the
-    // ratio of wins to that share is the number to read, 1.0 being par. 8 seats is left out:
-    // its winner is whichever member of the winning squad comes first (above). Volume 127: raw
-    // totals read 357/360/352, level, while the juggernaut won 1.45x its share over 900 matches.
-    const share = new Map<string, { wins: number; fair: number }>();
-    for (const r of results) {
-      if (r.winnerSkin === 'tie' || r.playerCount === 8) continue;
-      for (const skin of new Set(r.skins)) {
-        const row = share.get(skin) ?? { wins: 0, fair: 0 };
-        row.fair += r.skins.filter((x) => x === skin).length / r.playerCount;
-        if (r.winnerSkin === skin) row.wins++;
-        share.set(skin, row);
-      }
-    }
+    // The raw counts above are NOT comparable across characters (`pvp/fairShare.ts` has why):
+    // wins against seat share is the number to read. Volume 127: raw totals read 357/360/352,
+    // level, while the juggernaut won 1.45x its share over 900 matches.
+    const share = fairShares(results);
     // The shares of a decided match sum to one, so the fair shares sum to the decided matches.
-    const decided = results.filter((r) => r.winnerSkin !== 'tie' && r.playerCount !== 8).length;
+    const decided = results.filter(countsTowardShare).length;
     expect([...share.values()].reduce((n, x) => n + x.fair, 0)).toBeCloseTo(decided, 6);
 
     const byPlayerCount = new Map<number, { avgTicks: number; maxZoneStage: number; n: number }>();
