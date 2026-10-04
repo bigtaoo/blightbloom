@@ -80,4 +80,6 @@ read.
 
 ### Still open
 
-- **The juggernaut's lead in bot-vs-bot FFA:** playtest or tune. That is the owner's call.
+- ~~**The juggernaut's lead in bot-vs-bot FFA:** playtest or tune.~~ Answered the same day in
+  [volume 128](128-2026-10-04-pvp-shield-retreat.md): it is the bot's, which never lets a shield
+  refill. A bot that backs off to refill one puts the juggernaut at par. No character is tuned.
