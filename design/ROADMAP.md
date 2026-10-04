@@ -1747,9 +1747,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-04** [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change) — volume 123's vanguard-to-skirmisher swing, re-run over six blocks of 180 matches with the bot before and after looting: the swing was noise (+4 / −11 wins over 900 matches, about half a standard deviation). The raw counts were never comparable either: seat i gets the (i mod 3)-th character, so the juggernaut never plays 2 seats and is short at 4 and 5. Read against seat share at 2 to 6 seats, the bot-vs-bot juggernaut wins 1.45x its share (z +7.5) and vanguard 0.80x (z −5), with either bot and in every block. `test:pvp-sim` now prints wins over fair share and asserts the shares sum. Whether to playtest or tune is the owner's call. `tools` `test` `docs`
 
+**[2026-10-04 — The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md)**
+
+- **10-04** [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change) — volume 127's open choice, playtest or tune, answered from a sim first. The shipped PvP bot never disengages, so a shield never refills and the juggernaut, the one character without one, wins 1.40x its seat share over 900 matches. `pvp/ShieldRetreatBot`, the same bot backing off to refill a spent shield, puts it at 0.94 (to half) and 1.03 (to full) on the same matches. No character is tuned and the shipped bot is untouched; whether it should learn to disengage is the owner's call. `test:pvp-shield` holds the finding. `tools` `docs`
+
 ## The work log — by theme
 
-The same 240 entries, grouped. An entry with more than one tag appears more than once.
+The same 241 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -2223,7 +2227,7 @@ The same 240 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`tools`** — sims, profilers, editors, build scripts *(45)*
+**`tools`** — sims, profilers, editors, build scripts *(46)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2270,8 +2274,9 @@ The same 240 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
+- 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(157)*
+**`docs`** — design docs and this log itself *(158)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2430,6 +2435,7 @@ The same 240 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
+- 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(39)*
 
