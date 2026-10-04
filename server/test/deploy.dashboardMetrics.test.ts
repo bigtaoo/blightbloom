@@ -118,14 +118,18 @@ describe('dashboard metric names', () => {
   });
 
   it('the analytics dashboard asks for every gauge the rollup publishes', () => {
-    // The other direction, asserted for THIS dashboard only — because these four names are
-    // the entire output of design/21 §2.5, and a rollup gauge with no panel is a number
+    // The other direction, asserted for THIS dashboard only — because these names are
+    // the entire output of design/21 §2.5 and §2.7, and a rollup gauge with no panel is a number
     // nobody will ever look at. Not a general rule (see the file header), just a specific
     // one where the whole set is small and known.
     const names = new Set(queried().filter((q) => q.where.startsWith('analytics.json')).map((q) => q.name));
     expect([...names].sort()).toEqual([
       'bb_dau',
       'bb_events_day',
+      'bb_new_cohort_size',
+      'bb_new_funnel_installs',
+      'bb_new_installs',
+      'bb_new_retention_ratio',
       'bb_retention_cohort_size',
       'bb_retention_ratio',
       'bb_screen_views_day',

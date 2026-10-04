@@ -327,6 +327,57 @@ pane-driven run is meaningless, and a test asserting "duration > 0" from one wou
 rather than wrong. This is a sharper case of the known "a hidden pane pauses rAF" trap: the
 pane does not stop the clock, it starves it.
 
+### 2.7 New-install retention and the first-day funnel (2026-10-04)
+
+**Shipped 2026-10-04, server-side only — the client and the wire format are unchanged.** An
+audit before a platform launch found that §1's first two questions were being answered in a
+shape a platform would not recognise:
+
+- **D1–D7 was computed over EVERY install active on the cohort day**, regulars included.
+  That is a real number — the return rate of the active base — but it is not what a platform
+  dashboard, a portal's developer console or an industry benchmark calls D1/D7, which counts
+  only installs whose first day was the cohort day. Once a game has a returning base the two
+  diverge in one direction: the regulars come back every day, so the all-active rate reads
+  healthy over a launch that is losing nearly every new player.
+- **The funnel was event totals**, not people. `bb_screen_views_day` counts views, so one
+  player bouncing between two screens is traffic, and nothing said what share of new installs
+  reached a run.
+
+What was added (`server/src/analytics/newInstalls.ts`):
+
+- **"New" is derived, not stored.** An install is new on day D when it has a `dailyActive`
+  document for D and none earlier — a `$lookup` on the existing `{ install, day }` index. No
+  schema change, no backfill of a `firstDay` field (which would have read as "new on deploy
+  day" for every install that already existed, a fake acquisition spike on exactly the day
+  somebody checks the change), and no new kind of row for §5's privacy policy to bound. Two
+  stated caveats: an install away for longer than the 180-day `dailyActive` window counts as
+  new again, and the earliest cohorts after collection began (2026-09-09) overstate new installs
+  because everything was new to the collector then.
+- **Four `dailyRollup` metrics**, beside the old ones rather than replacing them:
+  `new_installs` (per day), `new_funnel{step}` (distinct new installs that, on their first UTC
+  day, reached the menu / started a run / finished one — won or lost, not abandoned),
+  `new_retention{d}` and `new_cohort_size{d}` (keyed by the cohort's day, like `retention`).
+  The all-active `retention` / `cohort_size` keep their meaning and their rows.
+- **The new metrics fill holes.** The old rollup only ever computes the newest cell, so a day
+  the job did not run on is a hole forever. `newInstallRollupRows` fills any missing
+  new-install day or cell within the last 60 days (the console's grid length, inside the 90-day
+  `events` window the funnel reads) and always recomputes the newest ones, which late batches
+  keep changing. A day with no activity gets NOTHING — before collection began "nobody new
+  arrived" is not something the data says — and an empty cohort gets no retention cell, the
+  same absent-is-not-zero rule as §2.5. In practice the first cycle after deploy back-fills the
+  whole grid from rows that already existed.
+- **Gauges** `bb_new_installs`, `bb_new_funnel_installs{step}`, `bb_new_retention_ratio{d}`,
+  `bb_new_cohort_size{d}`, with three panels on the analytics dashboard; the old retention
+  panel is retitled "Return rate of ALL active installs".
+- **The console's retention tab** now opens on a new-install grid — first day, new installs,
+  each funnel step as a count and a share of that day's new installs, then D1–D7
+  (`server/src/adminsvc/views/newInstalls.ts`) — with the all-active grid below it, labelled
+  as such.
+
+Not done, and filed rather than forgotten: retention split by host (only DAU is), and
+first-day events finer than a run (a tutorial step, a floor reached). Per-floor depth is still
+answerable ad hoc from the `run_end.floor` raw rows for 90 days; it is not rolled up.
+
 ## 3. Phase B — the read-only console
 
 **SHIPPED 2026-09-09.** As code: `server/src/adminsvc/` (the process, the credential guard,

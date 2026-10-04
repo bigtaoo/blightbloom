@@ -15,6 +15,7 @@ import { esc, fmtPercent, fmtTime } from './layout';
 import type { PlayerSearchResult } from '../views/players';
 import type { CommerceSnapshot, ReviewRow, WebhookRow } from '../views/commerce';
 import type { RetentionGrid } from '../views/retention';
+import type { NewInstallGrid } from '../views/newInstalls';
 
 // ───────────────────────────────── players ─────────────────────────────────
 
@@ -174,7 +175,66 @@ events before it writes anything.</p></div>`;
     })
     .join('');
 
-  return `<div class="card"><h2>Retention — D1 to D7 by cohort</h2>${note}
+  return `<div class="card"><h2>Return rate of ALL active installs — D1 to D7</h2>${note}
+<p class="ro">Every install active on the cohort day, regulars included — not the new-install
+retention above, and always higher than it once there is a returning base.</p>
 <table><thead><tr><th>Cohort day</th><th class="num">DAU</th>${head}</tr></thead>
+<tbody>${rows}</tbody></table></div>`;
+}
+
+/** Column labels for the funnel steps, in `FUNNEL_STEPS` order. */
+const STEP_HEADS: Record<string, string> = {
+  menu: 'Reached menu',
+  run_start: 'Started a run',
+  run_finished: 'Finished a run',
+};
+
+/**
+ * The new-install grid: per cohort day, how many installs were new, how many of them reached
+ * each first-day step, then their D1–D7. This is the table "次留 / 七留" means.
+ *
+ * A funnel cell shows the count with its share of that day's new installs, and the share is
+ * computed HERE from two stored numbers — both are measurements, so the ratio is arithmetic on
+ * the record rather than a number this page made up. A missing count, or a day with no
+ * `new_installs` row to divide by, is `—`.
+ */
+export function newInstallSection(grid: NewInstallGrid): string {
+  const note = `<p class="ro">An install is new on the first UTC day it was ever seen. Funnel steps count
+distinct new installs that did the step <b>on that first day</b>; D<i>n</i> is the share active again
+<i>n</i> days later. <span class="dim">—</span> means not known yet, never 0%.</p>`;
+
+  if (grid.rows.length === 0) {
+    return `<div class="card"><h2>New installs — first-day funnel and retention</h2>${note}
+<p class="dim">No new-install rows yet. The rollup on matchsvc writes them hourly, back-filling the
+last 60 days that have activity.</p></div>`;
+  }
+
+  const stepHead = grid.steps.map((s) => `<th class="num">${esc(STEP_HEADS[s] ?? s)}</th>`).join('');
+  const dHead = grid.offsets.map((d) => `<th class="num">D${d}</th>`).join('');
+  const dash = '<td class="num dim">—</td>';
+  const rows = grid.rows
+    .map((row) => {
+      const steps = grid.steps
+        .map((s) => {
+          const n = row.funnel[s];
+          if (n === null) return dash;
+          const share = row.installs !== null && row.installs > 0 ? ` <span class="dim">${fmtPercent(n / row.installs)}</span>` : '';
+          return `<td class="num">${n}${share}</td>`;
+        })
+        .join('');
+      const cells = grid.offsets
+        .map((d) => {
+          const cell = row.cells[d] ?? null;
+          if (cell === null) return dash;
+          return `<td class="num" title="cohort of ${cell.size} new installs on ${esc(row.day)}">${fmtPercent(cell.rate)}</td>`;
+        })
+        .join('');
+      const installs = row.installs === null ? dash : `<td class="num">${row.installs}</td>`;
+      return `<tr><td>${esc(row.day)}</td>${installs}${steps}${cells}</tr>`;
+    })
+    .join('');
+
+  return `<div class="card"><h2>New installs — first-day funnel and retention</h2>${note}
+<table><thead><tr><th>First day</th><th class="num">New</th>${stepHead}${dHead}</tr></thead>
 <tbody>${rows}</tbody></table></div>`;
 }

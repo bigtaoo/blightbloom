@@ -37,12 +37,13 @@ import { credentialMatches, type AdminCredential } from './credentials';
 import { AdminSessionStore, ADMIN_COOKIE_PATH, clearCookieHeader, cookieHeader, readCookie } from './session';
 import { readFormBody, redirect, sendHtml, sendJson } from './http';
 import { document, esc, loginPage, shell, tabFrom, unavailable } from './page/layout';
-import { commerceSection, playersSection, retentionSection } from './page/sections';
+import { commerceSection, newInstallSection, playersSection, retentionSection } from './page/sections';
 import { integritySection } from './page/integrity';
 import { integrityView } from './views/integrity';
 import { searchPlayers } from './views/players';
 import { commerceSnapshot } from './views/commerce';
 import { cohortGrid } from './views/retention';
+import { newInstallGrid } from './views/newInstalls';
 import { flagsSection, flagsUnavailable, type FlagsView } from './page/flags';
 import { effectiveFlags, listOverrides } from '../flags/store';
 import { FLAG_DEFS, FLAG_NAMES } from '../flags/defs';
@@ -129,7 +130,9 @@ export async function getPage(
     body =
       deps.dbs.analytics === null
         ? unavailable('Retention', deps.dbs.errors.analytics)
-        : retentionSection(await cohortGrid(deps.dbs.analytics));
+        : // New-install retention first: it is the number a platform dashboard calls D1/D7.
+          newInstallSection(await newInstallGrid(deps.dbs.analytics)) +
+          retentionSection(await cohortGrid(deps.dbs.analytics));
   } else if (tab === 'integrity') {
     body =
       deps.dbs.accounts === null

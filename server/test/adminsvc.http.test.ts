@@ -296,6 +296,9 @@ describe('the console, signed in', () => {
     const html = await (await fetch(`${base}/admin/?tab=retention`, { headers: { cookie } })).text();
     expect(html).toContain('0 rollup row(s)');
     expect(html).toContain('No rollup rows for any day');
+    // The new-install grid comes first on the same tab — it is the D1/D7 a platform reports.
+    expect(html).toContain('No new-install rows yet');
+    expect(html.indexOf('No new-install rows yet')).toBeLessThan(html.indexOf('No rollup rows for any day'));
   });
 
   it('serves the integrity tab from the accounts database', async () => {
