@@ -3,6 +3,7 @@ import { defaultSettingsState, type ControlLayout, type SettingsState } from './
 import { LOCALES, detectBrowserLocale, type Locale } from '../i18n';
 import { QUALITY_SETTINGS, type QualitySetting } from '../render/quality';
 import { FRAME_RATE_SETTINGS, type FrameRateSetting } from '../game/powerBudget';
+import { webStorage } from '../platform/webStorage';
 
 export interface SettingsStore {
   load(): SettingsState;
@@ -47,13 +48,13 @@ function browserLanguages(): readonly string[] {
  * silently overridden after the fact; `migrate()`'s own `en` fallback (below)
  * already covers that case correctly. */
 export function createWebSettingsStore(key: string = DEFAULT_KEY, deps: SettingsStoreDeps = {}): SettingsStore {
-  const available = typeof localStorage !== 'undefined';
+  const storage = webStorage();
   const languages = deps.languages ?? browserLanguages();
   return {
     load(): SettingsState {
-      if (!available) return defaultSettingsState();
+      if (storage === null) return defaultSettingsState();
       try {
-        const raw = localStorage.getItem(key);
+        const raw = storage.getItem(key);
         if (raw === null) return { ...defaultSettingsState(), locale: detectBrowserLocale(languages) };
         return migrate(JSON.parse(raw));
       } catch {
@@ -61,9 +62,9 @@ export function createWebSettingsStore(key: string = DEFAULT_KEY, deps: Settings
       }
     },
     save(s: SettingsState): void {
-      if (!available) return;
+      if (storage === null) return;
       try {
-        localStorage.setItem(key, JSON.stringify(s));
+        storage.setItem(key, JSON.stringify(s));
       } catch {
         /* quota / private-mode — a lost save is acceptable, a crash is not */
       }

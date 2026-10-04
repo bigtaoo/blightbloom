@@ -299,6 +299,17 @@ describe('the console, signed in', () => {
     // The new-install grid comes first on the same tab — it is the D1/D7 a platform reports.
     expect(html).toContain('No new-install rows yet');
     expect(html.indexOf('No new-install rows yet')).toBeLessThan(html.indexOf('No rollup rows for any day'));
+    expect(html).toContain('first-day funnel and retention (all)');
+  });
+
+  it('passes the retention tab\'s host to the new-install grid, escaped and capped', async () => {
+    const { base } = await startConsole();
+    const { cookie } = await signIn(base);
+    const get = async (q: string) => (await fetch(`${base}/admin/?tab=retention&${q}`, { headers: { cookie } })).text();
+    expect(await get('host=wechat')).toContain('first-day funnel and retention (wechat)');
+    const hostile = await get(`host=${encodeURIComponent('<b>' + 'x'.repeat(60))}`);
+    expect(hostile).toContain(`(&lt;b&gt;${'x'.repeat(29)})`);
+    expect(hostile).not.toContain('<b>xx');
   });
 
   it('serves the integrity tab from the accounts database', async () => {

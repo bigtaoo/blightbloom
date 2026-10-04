@@ -4,6 +4,7 @@
  * localStorage impl here, a WeChat impl elsewhere later), and the same
  * cache-plus-injectable-store test seam.
  */
+import { webStorage } from '../platform/webStorage';
 export interface Session {
   accountId: string;
   username: string;
@@ -34,22 +35,22 @@ export interface SessionStore {
 }
 
 export function createWebSessionStore(key: string = STORAGE_KEY): SessionStore {
-  const available = typeof localStorage !== 'undefined';
+  const storage = webStorage();
   return {
     load(): Session | null {
-      if (!available) return null;
+      if (storage === null) return null;
       try {
-        const raw = localStorage.getItem(key);
+        const raw = storage.getItem(key);
         return raw ? (JSON.parse(raw) as Session) : null;
       } catch {
         return null; // corrupt/unreadable — treat as logged out rather than throw
       }
     },
     save(session: Session | null): void {
-      if (!available) return;
+      if (storage === null) return;
       try {
-        if (session) localStorage.setItem(key, JSON.stringify(session));
-        else localStorage.removeItem(key);
+        if (session) storage.setItem(key, JSON.stringify(session));
+        else storage.removeItem(key);
       } catch {
         /* quota / private-mode — an unpersisted session for this tab is acceptable */
       }

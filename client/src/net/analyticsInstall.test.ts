@@ -107,6 +107,17 @@ describe('installAnalytics — the request', () => {
     expect((b.events as { name: string }[]).map((e) => e.name)).toEqual(['session_start', 'run_end']);
   });
 
+  it('says on session_start whether the install id survived its write', () => {
+    // The default web store in this environment has no `localStorage`, so the id is minted
+    // and cannot be read back — exactly the blocked-frame case the prop exists to count.
+    const h = harness();
+    h.analytics.flush();
+    expect((h.body().events as { name: string; props?: unknown }[])[0]).toMatchObject({
+      name: 'session_start',
+      props: { storage: 'unpersisted' },
+    });
+  });
+
   it('normalizes a null build to "unknown" rather than sending null', () => {
     // Three real cases produce null: a dev build (the manifest plugin is apply:'build'), the
     // WeChat mini-game (whose config never runs the plugin), and the portal build (served

@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TICK_RATE as ENGINE_TICK_RATE } from '@dd/engine';
-import { ID_RE, type AnalyticsBatch, type AnalyticsEventName, type PropValue } from '../net/analyticsEvents';
+import { EVENTS, ID_RE, coerceProp, type AnalyticsBatch, type AnalyticsEventName, type PropValue } from '../net/analyticsEvents';
 import { createAnalytics, resetAnalyticsForTests, setAnalytics } from '../net/analytics';
 import {
   SCREEN_IDS,
@@ -246,6 +246,59 @@ describe("run_end — the abandon half only", () => {
     reportFrame('forge', null);
     reportFrame('store', null);
     expect(names().filter((n) => n === 'run_end')).toHaveLength(1);
+  });
+});
+
+describe('floor_reached', () => {
+  const floors = (): (PropValue | undefined)[] => sent.filter((e) => e.name === 'floor_reached').map((e) => e.props?.floor);
+
+  it('reports each deeper floor once, 1-based, on frames that change no phase', () => {
+    reportFrame('playing', run({ floorIndex: 0 }));
+    expect(reportFrame('playing', run({ floorIndex: 1 }))).toBe(true);
+    expect(reportFrame('playing', run({ floorIndex: 1 }))).toBe(false);
+    reportFrame('playing', run({ floorIndex: 2 }));
+    expect(floors()).toEqual([2, 3]);
+  });
+
+  it('says nothing for the first floor — run_start already implies it', () => {
+    reportFrame('menu', null);
+    reportFrame('playing', run({ floorIndex: 0 }));
+    expect(floors()).toEqual([]);
+  });
+
+  it('keeps counting through a pause, and reports nothing for a floor that did not change', () => {
+    reportFrame('playing', run({ floorIndex: 0 }));
+    reportFrame('paused', run({ floorIndex: 0 }));
+    reportFrame('playing', run({ floorIndex: 1 }));
+    expect(floors()).toEqual([2]);
+  });
+
+  it('starts every run from no baseline, so a finished deep run does not hide the next one', () => {
+    // The victory screen does not clear the snapshot; without the reset on entering a run,
+    // floors 2..9 of the second run would compare against the first run's floor 9.
+    reportFrame('playing', run({ floorIndex: 0 }));
+    reportFrame('playing', run({ floorIndex: 8 }));
+    reportFrame('victory', run({ floorIndex: 8 }));
+    reportFrame('forge', null);
+    sent = [];
+    reportFrame('playing', run({ floorIndex: 0 }));
+    reportFrame('playing', run({ floorIndex: 1 }));
+    expect(floors()).toEqual([2]);
+  });
+
+  it('reports nothing for the floors a resumed run skipped', () => {
+    reportFrame('menu', null);
+    reportFrame('playing', run({ floorIndex: 3 }));
+    expect(floors()).toEqual([]);
+    reportFrame('playing', run({ floorIndex: 4 }));
+    expect(floors()).toEqual([5]);
+  });
+
+  it('emits a floor the server accepts', () => {
+    reportFrame('playing', run({ floorIndex: 0 }));
+    reportFrame('playing', run({ floorIndex: 1 }));
+    const spec = EVENTS.floor_reached.floor;
+    expect(coerceProp(spec, floors()[0])).toBe(2);
   });
 });
 

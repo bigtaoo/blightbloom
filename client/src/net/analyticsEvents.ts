@@ -72,8 +72,17 @@ export type FieldSpec =
  * stops a hostile batch from storing arbitrary integers.
  */
 export const EVENTS = {
-  /** A visit began. The row every retention cohort is built from. */
-  session_start: {},
+  /**
+   * A visit began. The row every retention cohort is built from.
+   *
+   * `storage` says what happened to the install id this visit (design/21 §2.8): `stored` — it
+   * was read back from a previous visit; `new` — it was minted and a read-back after the write
+   * returned it; `unpersisted` — it was minted and did NOT survive the write. The last is the
+   * embedded-frame case on the portal (and private browsing anywhere): that install will be a
+   * new one again next visit, so it can never be counted as returning. Without this the loss
+   * is invisible — it reads as a player who left.
+   */
+  session_start: { storage: { kind: 'enum', values: ['stored', 'new', 'unpersisted'] } },
   /** A visit ended (a timer, a hidden tab, or the page going away). */
   session_end: { duration_s: { kind: 'int', min: 0, max: 86_400 } },
   /** A screen was shown. The funnel's early steps live here. */
@@ -89,6 +98,13 @@ export const EVENTS = {
    * always-empty panel on the dashboard, so it is left out until there is a source for it.
    */
   run_start: { character: { kind: 'id' } },
+  /**
+   * A run reached a new floor (1-based; the first is implied by `run_start`, so this starts at
+   * 2). Derived from the frame like `run_start` (`analyticsTracking.ts`). It exists for the
+   * run that ends with NO `run_end`: a tab closed mid-run is gone before any phase changes, so
+   * its depth was otherwise unknowable — and that is the commonest way a new player leaves.
+   */
+  floor_reached: { floor: { kind: 'int', min: 1, max: 999 } },
   /** A run ended, however it ended. `abandon` is the one this exists for. */
   run_end: {
     outcome: { kind: 'enum', values: ['win', 'loss', 'abandon'] },

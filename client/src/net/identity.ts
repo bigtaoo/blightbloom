@@ -25,6 +25,7 @@
  * distinct installs (design/21 §9).
  */
 import { getSession } from './session';
+import { webStorage } from '../platform/webStorage';
 
 /** The one stored key both readers below share, and the one the WeChat store reuses so a
  *  player's id has a single name across hosts. Exported for
@@ -47,13 +48,20 @@ export interface IdentityStore {
 }
 
 export function createWebIdentityStore(key: string = IDENTITY_STORAGE_KEY): IdentityStore {
-  const available = typeof localStorage !== 'undefined';
+  const storage = webStorage();
   return {
-    load: () => (available ? localStorage.getItem(key) : null),
-    save: (id: string) => {
-      if (!available) return;
+    load: () => {
+      if (storage === null) return null;
       try {
-        localStorage.setItem(key, id);
+        return storage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    save: (id: string) => {
+      if (storage === null) return;
+      try {
+        storage.setItem(key, id);
       } catch {
         /* quota / private-mode — an unpersisted id for this session is acceptable */
       }
@@ -103,10 +111,42 @@ export function getPlayerId(store: IdentityStore = identityStore()): string {
     cached = existing;
     return existing;
   }
-  const id = randomId();
-  store.save(id);
+  const id = mint(store);
   cached = id;
   return id;
+}
+
+/** What happened to the stored id this visit — `session_start`'s `storage` prop. */
+export type InstallIdStorage = 'stored' | 'new' | 'unpersisted';
+
+/** Set by {@link mint} when THIS visit created the id; `null` while it came from storage. */
+let mintedAs: Exclude<InstallIdStorage, 'stored'> | null = null;
+
+/**
+ * Generate an id, save it, and read it back to learn whether the save stuck.
+ *
+ * The read-back is the only honest test. Every store fails soft on a write it cannot make,
+ * by design (a lost id must not crash a boot), so "the save did not throw" says nothing; a
+ * blocked embedded frame and a private window both look like success from here. The same id
+ * coming back is what `new` means, and anything else is `unpersisted`: this install will be
+ * a stranger on its next visit, and analytics needs to know that rather than read it as a
+ * player who left (design/21 §2.8).
+ */
+function mint(store: IdentityStore): string {
+  const id = randomId();
+  store.save(id);
+  mintedAs = store.load() === id ? 'new' : 'unpersisted';
+  return id;
+}
+
+/**
+ * Whether the install id was read from an earlier visit (`stored`), minted now and kept
+ * (`new`), or minted now and lost (`unpersisted`). Meaningful after {@link getInstallId}; a
+ * visit in which {@link getPlayerId} minted the id first still reports the mint, not the
+ * read-back of it that `getInstallId` then did.
+ */
+export function installIdStorage(): InstallIdStorage {
+  return mintedAs ?? 'stored';
 }
 
 /**
@@ -135,8 +175,7 @@ export function getInstallId(store: IdentityStore = identityStore()): string {
     installCached = existing;
     return existing;
   }
-  const id = randomId();
-  store.save(id);
+  const id = mint(store);
   installCached = id;
   return id;
 }
@@ -150,4 +189,5 @@ export function resetIdentityCacheForTests(): void {
   cached = null;
   installCached = null;
   installedStore = null;
+  mintedAs = null;
 }

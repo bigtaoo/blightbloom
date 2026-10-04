@@ -361,6 +361,7 @@ describe('rollupMetrics', () => {
       'bb_new_funnel_installs',
       'bb_new_installs',
       'bb_new_retention_ratio',
+      'bb_new_unpersisted_installs',
       'bb_retention_cohort_size',
       'bb_retention_ratio',
       'bb_screen_views_day',
@@ -464,20 +465,22 @@ describe('persistRollup', () => {
   it('persists a day with no activity rather than skipping it', async () => {
     // A gap in this collection has to mean "the rollup did not run", not "nobody played" —
     // those are different facts and only one of them is a problem.
-    // Five rows: `dau`, plus the new-install count and its three funnel steps, which follow
-    // the same rule for the last complete day (`newInstalls.ts`). Every one is a zero, on
-    // yesterday, and nothing is written for any other day.
-    expect(await persistRollup(db, TODAY, NOW_MS)).toBe(5);
+    // Six rows: `dau`, plus the new-install count, its three funnel steps and its unpersisted
+    // count, which follow the same rule for the last complete day (`newInstalls.ts`) — for
+    // `all` only, since no host was active. Every one is a zero, on yesterday, and nothing is
+    // written for any other day.
+    expect(await persistRollup(db, TODAY, NOW_MS)).toBe(6);
     const docs = await dailyRollupOf(db)
       .find({}, { projection: { _id: 0, day: 1, metric: 1, labels: 1, value: 1 } })
       .sort({ metric: 1, labels: 1 })
       .toArray();
     expect(docs).toEqual([
       { day: '2026-09-08', metric: 'dau', labels: '{"host":"all"}', value: 0 },
-      { day: '2026-09-08', metric: 'new_funnel', labels: '{"step":"menu"}', value: 0 },
-      { day: '2026-09-08', metric: 'new_funnel', labels: '{"step":"run_finished"}', value: 0 },
-      { day: '2026-09-08', metric: 'new_funnel', labels: '{"step":"run_start"}', value: 0 },
-      { day: '2026-09-08', metric: 'new_installs', labels: '{}', value: 0 },
+      { day: '2026-09-08', metric: 'new_funnel', labels: '{"host":"all","step":"menu"}', value: 0 },
+      { day: '2026-09-08', metric: 'new_funnel', labels: '{"host":"all","step":"run_finished"}', value: 0 },
+      { day: '2026-09-08', metric: 'new_funnel', labels: '{"host":"all","step":"run_start"}', value: 0 },
+      { day: '2026-09-08', metric: 'new_installs', labels: '{"host":"all"}', value: 0 },
+      { day: '2026-09-08', metric: 'new_unpersisted', labels: '{"host":"all"}', value: 0 },
     ]);
   });
 

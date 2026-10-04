@@ -10,6 +10,7 @@
  * coverage percentage cannot see it).
  */
 import { parseRunSave, type RunSaveStore, type SavedRun, type SavedRunSummary } from './runSave';
+import { webStorage } from '../../platform/webStorage';
 
 const STORAGE_KEY = 'daydayup.runsave.v1';
 
@@ -19,30 +20,30 @@ const STORAGE_KEY = 'daydayup.runsave.v1';
  * is about to leave the run needs to know the save did not land.
  */
 export function createWebRunSaveStore(key: string = STORAGE_KEY): RunSaveStore {
-  const available = typeof localStorage !== 'undefined';
+  const storage = webStorage();
   return {
     load(): unknown {
-      if (!available) return null;
+      if (storage === null) return null;
       try {
-        const raw = localStorage.getItem(key);
+        const raw = storage.getItem(key);
         return raw ? JSON.parse(raw) : null;
       } catch {
         return null; // corrupt / unreadable — no save, rather than a throw on the way in
       }
     },
     save(value: SavedRun): boolean {
-      if (!available) return false;
+      if (storage === null) return false;
       try {
-        localStorage.setItem(key, JSON.stringify(value));
+        storage.setItem(key, JSON.stringify(value));
         return true;
       } catch {
         return false; // quota (a very long run) or private mode — the caller must say so
       }
     },
     clear(): void {
-      if (!available) return;
+      if (storage === null) return;
       try {
-        localStorage.removeItem(key);
+        storage.removeItem(key);
       } catch {
         /* nothing useful to do, and a failed clear must not break leaving a run */
       }

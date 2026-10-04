@@ -199,12 +199,23 @@ const STEP_HEADS: Record<string, string> = {
  * `new_installs` row to divide by, is `—`.
  */
 export function newInstallSection(grid: NewInstallGrid): string {
+  const title = `New installs — first-day funnel and retention (${esc(grid.host)})`;
+  const picker = `<p>${grid.hosts
+    .map((h) =>
+      h === grid.host
+        ? `<b>${esc(h)}</b>`
+        : `<a href="/admin/?tab=retention&amp;host=${encodeURIComponent(h)}">${esc(h)}</a>`,
+    )
+    .join(' · ')}</p>`;
   const note = `<p class="ro">An install is new on the first UTC day it was ever seen. Funnel steps count
 distinct new installs that did the step <b>on that first day</b>; D<i>n</i> is the share active again
-<i>n</i> days later. <span class="dim">—</span> means not known yet, never 0%.</p>`;
+<i>n</i> days later. <b>ID not kept</b>: new installs whose id did not survive a storage write (a blocked
+embedded frame, a private window) — they can never be seen returning, so they hold D<i>n</i> down.
+<b>Deepest floor</b>: how far new installs got on their first day, as floor:count.
+<span class="dim">—</span> means not known yet, never 0%.</p>`;
 
   if (grid.rows.length === 0) {
-    return `<div class="card"><h2>New installs — first-day funnel and retention</h2>${note}
+    return `<div class="card"><h2>${title}</h2>${picker}${note}
 <p class="dim">No new-install rows yet. The rollup on matchsvc writes them hourly, back-filling the
 last 60 days that have activity.</p></div>`;
   }
@@ -212,16 +223,24 @@ last 60 days that have activity.</p></div>`;
   const stepHead = grid.steps.map((s) => `<th class="num">${esc(STEP_HEADS[s] ?? s)}</th>`).join('');
   const dHead = grid.offsets.map((d) => `<th class="num">D${d}</th>`).join('');
   const dash = '<td class="num dim">—</td>';
+  const ofInstalls = (n: number, installs: number | null): string =>
+    installs !== null && installs > 0 ? ` <span class="dim">${fmtPercent(n / installs)}</span>` : '';
   const rows = grid.rows
     .map((row) => {
       const steps = grid.steps
         .map((s) => {
           const n = row.funnel[s];
-          if (n === null) return dash;
-          const share = row.installs !== null && row.installs > 0 ? ` <span class="dim">${fmtPercent(n / row.installs)}</span>` : '';
-          return `<td class="num">${n}${share}</td>`;
+          return n === null ? dash : `<td class="num">${n}${ofInstalls(n, row.installs)}</td>`;
         })
         .join('');
+      const unpersisted =
+        row.unpersisted === null ? dash : `<td class="num">${row.unpersisted}${ofInstalls(row.unpersisted, row.installs)}</td>`;
+      // A depth cell is empty rather than dashed when the day is known and nobody reached a
+      // floor: the writer emits only floors somebody reached, so "no rows" IS the answer.
+      const depth =
+        row.installs === null
+          ? dash
+          : `<td>${row.depth.map(([floor, n]) => `${floor}:${n}`).join(' · ')}</td>`;
       const cells = grid.offsets
         .map((d) => {
           const cell = row.cells[d] ?? null;
@@ -230,11 +249,11 @@ last 60 days that have activity.</p></div>`;
         })
         .join('');
       const installs = row.installs === null ? dash : `<td class="num">${row.installs}</td>`;
-      return `<tr><td>${esc(row.day)}</td>${installs}${steps}${cells}</tr>`;
+      return `<tr><td>${esc(row.day)}</td>${installs}${steps}${unpersisted}${depth}${cells}</tr>`;
     })
     .join('');
 
-  return `<div class="card"><h2>New installs — first-day funnel and retention</h2>${note}
-<table><thead><tr><th>First day</th><th class="num">New</th>${stepHead}${dHead}</tr></thead>
+  return `<div class="card"><h2>${title}</h2>${picker}${note}
+<table><thead><tr><th>First day</th><th class="num">New</th>${stepHead}<th class="num">ID not kept</th><th>Deepest floor</th>${dHead}</tr></thead>
 <tbody>${rows}</tbody></table></div>`;
 }

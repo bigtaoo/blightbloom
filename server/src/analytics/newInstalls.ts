@@ -1,7 +1,8 @@
 /**
- * New-install analytics (design/21 §2.7) — the cohort that "次留 / 七留" actually means, and
- * the first-day funnel of that cohort. Split out of `rollup.ts` as an independent function
- * module; `rollup.ts` calls in, nothing here calls back.
+ * New-install analytics (design/21 §2.7, §2.8) — the cohort that D1/D7 retention actually
+ * means, the first-day funnel of that cohort, and both split by host. Split out of `rollup.ts`
+ * as an independent function module; `rollup.ts` calls in, nothing here calls back. The reads
+ * live in `newInstallQueries.ts`; this file decides which rows and gauges they become.
  *
  * ## Why a second cohort definition
  *
@@ -45,138 +46,34 @@
  * step can in principle exceed the one before it, and when it does that is a finding about the
  * instrument, not something to hide with a `min`.
  *
+ * ## Per host, and which zeros are measured
+ *
+ * Every row carries a `host` label: `all`, or one of the hosts. A host gets per-day rows only
+ * on a day it had ANY activity — then "no new installs" is a measurement and is written as 0;
+ * on a day it had none (before its build shipped, or with its analytics silently not
+ * reaching us — design/21 §9 lists three ways on WeChat) nothing is written, because the data
+ * cannot tell "nobody came" from "nothing arrived". A host with no new installs in a cohort
+ * gets no retention cell, for the same reason an empty `all` cohort does not.
+ *
  * Days are UTC (`ingest.ts`'s `dayKey`), like everything else in this store: a player in
  * Beijing has their "first day" end at 08:00 local time.
  */
-import type { Db, Document } from 'mongodb';
-import { DAILY_ACTIVE_COLLECTION, dailyActiveOf, dailyRollupOf, eventsOf } from './db';
+import type { Db } from 'mongodb';
+import { dailyRollupOf } from './db';
+import {
+  ALL_HOSTS,
+  FUNNEL_STEPS,
+  activeHostsByDay,
+  cohortReturns,
+  countByHost,
+  firstDays,
+  newCohort,
+  type Cohort,
+  type FirstDay,
+} from './newInstallQueries';
 import { RETENTION_OFFSETS, addDays, canonicalLabels, lastCompleteDay, newestKnownCohort } from './rollupKeys';
 
-/** The funnel steps, in the order a new player meets them. `installs` is not here: it is
- *  the cohort size, a separate metric, and every step is read against it. */
-export const FUNNEL_STEPS = ['menu', 'run_start', 'run_finished'] as const;
-export type FunnelStep = (typeof FUNNEL_STEPS)[number];
-
-/** The `run_end` outcomes that count as FINISHING a run. `abandon` is the run the player
- *  walked away from, and "started but never finished" is exactly what the funnel separates. */
-const FINISHED_OUTCOMES = ['win', 'loss'];
-
-/**
- * A `$lookup` stage that attaches `earlier: [..]` — at most one `dailyActive` document for the
- * same install on any day BEFORE `day`. An empty array is what "new on `day`" means.
- *
- * The concise `localField`/`foreignField` + `pipeline` form (MongoDB 5.0+), so the equality on
- * `install` is the join key and is served by `daily_active_install` (`{ install, day }`), and
- * the `day` range is a plain `$match` on a literal rather than an `$expr`.
- */
-function earlierActivity(day: string): Document {
-  return {
-    $lookup: {
-      from: DAILY_ACTIVE_COLLECTION,
-      localField: 'install',
-      foreignField: 'install',
-      pipeline: [{ $match: { day: { $lt: day } } }, { $limit: 1 }, { $project: { _id: 1 } }],
-      as: 'earlier',
-    },
-  };
-}
-
-/** The stages that narrow a stream with an `install` field down to installs NEW on `day`. */
-function onlyNewOn(day: string): Document[] {
-  return [earlierActivity(day), { $match: { 'earlier.0': { $exists: false } } }];
-}
-
-/** Installs whose first active day is `day`. Zero for a day nobody new arrived — and also for
- *  a day with no activity at all, which is why callers decide which days to ask about. */
-export async function newInstalls(db: Db, day: string): Promise<number> {
-  const got = await dailyActiveOf(db)
-    .aggregate<{ n: number }>([{ $match: { day } }, ...onlyNewOn(day), { $count: 'n' }])
-    .toArray();
-  return got[0]?.n ?? 0;
-}
-
-/** A new-install cohort's return rate at one offset. Same shape as `rollup.ts`'s
- *  `CohortRate`, restated here so this module does not import the one that imports it. */
-export interface NewCohortRate {
-  cohortDay: string;
-  offset: number;
-  size: number;
-  returned: number;
-  rate: number;
-}
-
-/**
- * The share of installs NEW on `cohortDay` that were active again on `cohortDay + offset`, or
- * `null` when the cohort is empty.
- *
- * Unlike `rollup.ts`'s `cohortRate` this does not check whether the offset day is complete —
- * its one caller (`newInstallRollupDocs`) only asks about cells that are, and owns that rule
- * in one place.
- */
-export async function newCohortRate(db: Db, cohortDay: string, offset: number, returnDay: string): Promise<NewCohortRate | null> {
-  const got = await dailyActiveOf(db)
-    .aggregate<{ size: number; returned: number }>([
-      { $match: { day: cohortDay } },
-      ...onlyNewOn(cohortDay),
-      {
-        $lookup: {
-          from: DAILY_ACTIVE_COLLECTION,
-          localField: 'install',
-          foreignField: 'install',
-          pipeline: [{ $match: { day: returnDay } }, { $limit: 1 }, { $project: { _id: 1 } }],
-          as: 'back',
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          size: { $sum: 1 },
-          returned: { $sum: { $cond: [{ $gt: [{ $size: '$back' }, 0] }, 1, 0] } },
-        },
-      },
-    ])
-    .toArray();
-  const row = got[0];
-  if (row === undefined) return null;
-  return { cohortDay, offset, size: row.size, returned: row.returned, rate: row.returned / row.size };
-}
-
-/**
- * Distinct installs NEW on `day` that did each funnel step on that same day. Every step is
- * present in the result, with `0` when nobody did it.
- *
- * Starts from `events` rather than from the cohort: the `{ day, name }` index narrows the scan
- * to one day's three relevant event names, and the per-install collapse happens BEFORE the
- * join, so the `$lookup` runs once per install rather than once per event.
- */
-export async function newInstallFunnel(db: Db, day: string): Promise<{ step: FunnelStep; n: number }[]> {
-  const flag = (cond: Document): Document => ({ $max: { $cond: [cond, 1, 0] } });
-  const got = await eventsOf(db)
-    .aggregate<Record<FunnelStep, number>>([
-      { $match: { day, name: { $in: ['screen_view', 'run_start', 'run_end'] } } },
-      {
-        $group: {
-          _id: '$install',
-          menu: flag({ $and: [{ $eq: ['$name', 'screen_view'] }, { $eq: ['$props.screen', 'menu'] }] }),
-          run_start: flag({ $eq: ['$name', 'run_start'] }),
-          run_finished: flag({ $and: [{ $eq: ['$name', 'run_end'] }, { $in: ['$props.outcome', FINISHED_OUTCOMES] }] }),
-        },
-      },
-      { $project: { install: '$_id', menu: 1, run_start: 1, run_finished: 1 } },
-      ...onlyNewOn(day),
-      {
-        $group: {
-          _id: null,
-          menu: { $sum: '$menu' },
-          run_start: { $sum: '$run_start' },
-          run_finished: { $sum: '$run_finished' },
-        },
-      },
-    ])
-    .toArray();
-  const row = got[0];
-  return FUNNEL_STEPS.map((step) => ({ step, n: row?.[step] ?? 0 }));
-}
+export { ALL_HOSTS, FUNNEL_STEPS, type FunnelStep } from './newInstallQueries';
 
 /** The `dailyRollup` metric names this module writes. Distinct from `rollup.ts`'s
  *  `retention` / `cohort_size`, which keep their all-active meaning — the two cohorts answer
@@ -184,6 +81,11 @@ export async function newInstallFunnel(db: Db, day: string): Promise<{ step: Fun
 export const NEW_METRICS = {
   installs: 'new_installs',
   funnel: 'new_funnel',
+  /** New installs whose id did not survive a write — they can never be seen returning. */
+  unpersisted: 'new_unpersisted',
+  /** New installs by the deepest floor they reached on their first day; one row per floor
+   *  that has anybody on it. A floor with no row, on a day with an `installs` row, is 0. */
+  depth: 'new_depth',
   retention: 'new_retention',
   cohortSize: 'new_cohort_size',
 } as const;
@@ -204,6 +106,45 @@ export interface NewInstallRow {
 }
 
 /**
+ * One first day's numbers, per host: the count, the funnel steps, the unpersisted count and
+ * the depth histogram. `hosts` is the set active that day; `all` is always included.
+ */
+export function firstDayNumbers(
+  cohort: Cohort,
+  profiles: Map<string, FirstDay>,
+  hosts: Iterable<string>,
+): { metric: string; labels: Record<string, string>; value: number }[] {
+  const out: { metric: string; labels: Record<string, string>; value: number }[] = [];
+  const keys = [ALL_HOSTS, ...[...hosts].filter((h) => h !== ALL_HOSTS).sort()];
+  const of = (install: string): FirstDay => profiles.get(install) as FirstDay;
+  const tally = (keep: (p: FirstDay) => boolean): Map<string, number> => countByHost(cohort, (i) => keep(of(i)));
+
+  const installs = countByHost(cohort);
+  const steps = FUNNEL_STEPS.map((step) => ({ step, n: tally((p) => p[step]) }));
+  const unpersisted = tally((p) => p.unpersisted);
+  const depths = new Map<string, Map<number, number>>();
+  for (const [install, host] of cohort) {
+    const d = of(install).depth;
+    if (d === 0) continue;
+    for (const key of [ALL_HOSTS, host]) {
+      const byFloor = depths.get(key) ?? new Map<number, number>();
+      byFloor.set(d, (byFloor.get(d) ?? 0) + 1);
+      depths.set(key, byFloor);
+    }
+  }
+
+  for (const host of keys) {
+    out.push({ metric: NEW_METRICS.installs, labels: { host }, value: installs.get(host) ?? 0 });
+    for (const { step, n } of steps) out.push({ metric: NEW_METRICS.funnel, labels: { host, step }, value: n.get(host) ?? 0 });
+    out.push({ metric: NEW_METRICS.unpersisted, labels: { host }, value: unpersisted.get(host) ?? 0 });
+    for (const [floor, n] of [...(depths.get(host) ?? [])].sort((a, b) => a[0] - b[0])) {
+      out.push({ metric: NEW_METRICS.depth, labels: { host, floor: String(floor) }, value: n });
+    }
+  }
+  return out;
+}
+
+/**
  * The new-install rows this cycle should write.
  *
  * `rollup.ts`'s all-active numbers are only ever computed for the NEWEST cell — yesterday's
@@ -213,23 +154,24 @@ export interface NewInstallRow {
  * begins empty when every `dailyActive` row needed to fill it already exists. So this fills
  * holes, within {@link NEW_INSTALL_BACKFILL_DAYS}:
  *
- *  - **Per-day rows** (`new_installs`, `new_funnel`) for every day in the window that has
- *    activity and no `new_installs` row yet — plus the last complete day ALWAYS, because late
- *    batches (`ingest.ts` accepts timestamps up to a day old) keep changing it while it is new.
- *  - **Retention cells** for every knowable (cohort, offset) with no row yet — plus the newest
- *    cohort at each offset always, for the same reason.
+ *  - **Per-day rows** (everything but retention) for every day in the window that has
+ *    activity and no `new_installs{host=all}` row yet — plus the last complete day ALWAYS,
+ *    because late batches (`ingest.ts` accepts timestamps up to a day old) keep changing it.
+ *  - **Retention cells** for every knowable (cohort, offset) with no `all` row yet — plus the
+ *    newest cohort at each offset always, for the same reason. All hosts of one cell are
+ *    computed together, so the `all` row stands for the set.
  *
  * A day with NO activity gets nothing, not zeros: before collection began, or while it was
  * switched off, "nobody new arrived" is not something the data says (design/21 §2.5, absent is
- * not zero). An empty cohort gets no retention cell for the same reason — `rollup.ts` already
- * treats a zero-size cohort as unknown.
+ * not zero). An empty cohort gets no retention cell for the same reason.
  *
- * Steady state, this is the newest cells plus one `find` over the window. The first cycle
+ * Steady state, this is the newest cells plus two reads over the window. The first cycle
  * after deploy computes up to sixty days of them, once.
  */
 export async function newInstallRollupRows(db: Db, todayKey: string): Promise<NewInstallRow[]> {
   const last = lastCompleteDay(todayKey);
   const first = addDays(last, -(NEW_INSTALL_BACKFILL_DAYS - 1));
+  const allLabel = (extra: Record<string, string> = {}): string => canonicalLabels({ host: ALL_HOSTS, ...extra });
 
   const stored = await dailyRollupOf(db)
     .find({ day: { $gte: first, $lte: last }, metric: { $in: [NEW_METRICS.installs, NEW_METRICS.retention] } })
@@ -237,38 +179,44 @@ export async function newInstallRollupRows(db: Db, todayKey: string): Promise<Ne
   const sizeByDay = new Map<string, number>();
   const haveCell = new Set<string>();
   for (const r of stored) {
-    if (r.metric === NEW_METRICS.installs) sizeByDay.set(r.day, r.value);
-    else haveCell.add(`${r.day}|${r.labels}`);
+    if (r.metric === NEW_METRICS.installs && r.labels === allLabel()) sizeByDay.set(r.day, r.value);
+    else if (r.metric === NEW_METRICS.retention) haveCell.add(`${r.day}|${r.labels}`);
   }
 
-  const activeDays = await dailyActiveOf(db)
-    .aggregate<{ _id: string }>([{ $match: { day: { $gte: first, $lte: last } } }, { $group: { _id: '$day' } }])
-    .toArray();
-  const dayTargets = new Set(activeDays.map((d) => d._id).filter((d) => !sizeByDay.has(d)));
+  const hostsByDay = await activeHostsByDay(db, first, last);
+  const dayTargets = new Set([...hostsByDay.keys()].filter((d) => !sizeByDay.has(d)));
   dayTargets.add(last);
+
+  const cohorts = new Map<string, Cohort>();
+  const cohortOf = async (day: string): Promise<Cohort> => {
+    const known = cohorts.get(day);
+    if (known !== undefined) return known;
+    const c = await newCohort(db, day);
+    cohorts.set(day, c);
+    return c;
+  };
 
   const out: NewInstallRow[] = [];
   for (const day of [...dayTargets].sort()) {
-    const n = await newInstalls(db, day);
-    sizeByDay.set(day, n);
-    out.push({ day, metric: NEW_METRICS.installs, labels: {}, value: n });
-    for (const f of await newInstallFunnel(db, day)) {
-      out.push({ day, metric: NEW_METRICS.funnel, labels: { step: f.step }, value: f.n });
-    }
+    const cohort = await cohortOf(day);
+    sizeByDay.set(day, cohort.size);
+    const numbers = firstDayNumbers(cohort, await firstDays(db, day, cohort), hostsByDay.get(day) ?? []);
+    for (const n of numbers) out.push({ day, ...n });
   }
 
   for (const offset of RETENTION_OFFSETS) {
     const newest = newestKnownCohort(todayKey, offset);
     const d = String(offset);
-    for (let cohort = first; cohort <= newest; cohort = addDays(cohort, 1)) {
-      if ((sizeByDay.get(cohort) ?? 0) === 0) continue;
-      if (cohort !== newest && haveCell.has(`${cohort}|${canonicalLabels({ d })}`)) continue;
-      const r = await newCohortRate(db, cohort, offset, addDays(cohort, offset));
-      // `sizeByDay` says the cohort is non-empty, so a null here means the two reads
-      // disagreed (a prune between them); skipping is the absent-not-zero answer.
-      if (r === null) continue;
-      out.push({ day: cohort, metric: NEW_METRICS.retention, labels: { d }, value: r.rate });
-      out.push({ day: cohort, metric: NEW_METRICS.cohortSize, labels: { d }, value: r.size });
+    for (let day = first; day <= newest; day = addDays(day, 1)) {
+      if ((sizeByDay.get(day) ?? 0) === 0) continue;
+      if (day !== newest && haveCell.has(`${day}|${allLabel({ d })}`)) continue;
+      // An empty map here, when `sizeByDay` says the cohort is non-empty, means the record and
+      // the source disagree (a prune between them, or a hand-written row); no cell is the
+      // absent-not-zero answer.
+      for (const [host, r] of await cohortReturns(db, await cohortOf(day), addDays(day, offset))) {
+        out.push({ day, metric: NEW_METRICS.retention, labels: { host, d }, value: r.rate });
+        out.push({ day, metric: NEW_METRICS.cohortSize, labels: { host, d }, value: r.size });
+      }
     }
   }
   return out;
@@ -284,49 +232,50 @@ export interface NewInstallGauge {
   labels?: Record<string, string>;
 }
 
+/** Rollup metric → gauge name and help. One table so a new metric cannot be written to the
+ *  record and forgotten on `/metrics` without this file visibly missing an entry. */
+const GAUGES: Record<string, { name: string; help: string }> = {
+  [NEW_METRICS.installs]: { name: 'bb_new_installs', help: 'Installs whose first active day was the last complete day.' },
+  [NEW_METRICS.funnel]: {
+    name: 'bb_new_funnel_installs',
+    help: 'New installs of the last complete day that reached each first-day funnel step.',
+  },
+  [NEW_METRICS.unpersisted]: {
+    name: 'bb_new_unpersisted_installs',
+    help: 'New installs of the last complete day whose install id did not survive a storage write.',
+  },
+  [NEW_METRICS.depth]: {
+    name: 'bb_new_depth_installs',
+    help: 'New installs of the last complete day by the deepest floor reached that day.',
+  },
+  [NEW_METRICS.retention]: { name: 'bb_new_retention_ratio', help: "Share of a day's NEW installs that were active again N days later." },
+  [NEW_METRICS.cohortSize]: { name: 'bb_new_cohort_size', help: 'New installs in the cohort behind bb_new_retention_ratio at this offset.' },
+};
+
+const gauge = (metric: string, labels: Record<string, string>, value: number): NewInstallGauge => ({
+  ...GAUGES[metric],
+  type: 'gauge',
+  value,
+  labels,
+});
+
 /**
- * The new-install gauges for `/metrics`: the last complete day's new installs and funnel, and
- * the newest new-install cohort at each offset. An empty cohort contributes no retention gauge
- * — absent, never 0 (see `rollup.ts`'s header).
+ * The new-install gauges for `/metrics`: the last complete day's first-day numbers, and the
+ * newest new-install cohort at each offset, all per host. A host with no new installs in a
+ * cohort contributes no retention gauge — absent, never 0 (see `rollup.ts`'s header).
  */
 export async function newInstallGauges(db: Db, todayKey: string): Promise<NewInstallGauge[]> {
   const day = lastCompleteDay(todayKey);
-  const out: NewInstallGauge[] = [
-    {
-      name: 'bb_new_installs',
-      help: 'Installs whose first active day was the last complete day.',
-      type: 'gauge',
-      value: await newInstalls(db, day),
-    },
-  ];
-  for (const f of await newInstallFunnel(db, day)) {
-    out.push({
-      name: 'bb_new_funnel_installs',
-      help: 'New installs of the last complete day that reached each first-day funnel step.',
-      type: 'gauge',
-      value: f.n,
-      labels: { step: f.step },
-    });
-  }
+  const cohort = await newCohort(db, day);
+  const hosts = (await activeHostsByDay(db, day, day)).get(day) ?? [];
+  const out = firstDayNumbers(cohort, await firstDays(db, day, cohort), hosts).map((n) => gauge(n.metric, n.labels, n.value));
   for (const offset of RETENTION_OFFSETS) {
-    const cohort = newestKnownCohort(todayKey, offset);
-    const r = await newCohortRate(db, cohort, offset, addDays(cohort, offset));
-    if (r === null) continue;
-    const labels = { d: String(offset) };
-    out.push({
-      name: 'bb_new_retention_ratio',
-      help: "Share of a day's NEW installs that were active again N days later.",
-      type: 'gauge',
-      value: r.rate,
-      labels,
-    });
-    out.push({
-      name: 'bb_new_cohort_size',
-      help: 'New installs in the cohort behind bb_new_retention_ratio at this offset.',
-      type: 'gauge',
-      value: r.size,
-      labels,
-    });
+    const start = newestKnownCohort(todayKey, offset);
+    const d = String(offset);
+    for (const [host, r] of await cohortReturns(db, await newCohort(db, start), addDays(start, offset))) {
+      out.push(gauge(NEW_METRICS.retention, { host, d }, r.rate));
+      out.push(gauge(NEW_METRICS.cohortSize, { host, d }, r.size));
+    }
   }
   return out;
 }

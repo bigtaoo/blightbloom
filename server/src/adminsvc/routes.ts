@@ -131,7 +131,8 @@ export async function getPage(
       deps.dbs.analytics === null
         ? unavailable('Retention', deps.dbs.errors.analytics)
         : // New-install retention first: it is the number a platform dashboard calls D1/D7.
-          newInstallSection(await newInstallGrid(deps.dbs.analytics)) +
+          // `host` is passed through (capped): an unknown one is an empty grid that names it.
+          newInstallSection(await newInstallGrid(deps.dbs.analytics, (url.searchParams.get('host') ?? 'all').slice(0, 32))) +
           retentionSection(await cohortGrid(deps.dbs.analytics));
   } else if (tab === 'integrity') {
     body =

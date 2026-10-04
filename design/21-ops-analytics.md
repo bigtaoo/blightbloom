@@ -151,9 +151,10 @@ First cut:
 
 | Event | Fields beyond the common ones | What it is for |
 |---|---|---|
-| `session_start` | — | DAU, the retention cohort |
+| `session_start` | storage: `stored` / `new` / `unpersisted` (added §2.8) | DAU, the retention cohort; whether the install id survived |
 | `session_end` | duration seconds (bounded) | Session length; the exit half of the funnel |
 | `run_start` | character | Q2's second step; whether the roster is used |
+| `floor_reached` | floor (added §2.8) | How deep a run got when it ended with no `run_end` (a closed tab) |
 | `run_end` | outcome, floor reached, duration | The difficulty curve, and where runs actually end |
 | `screen_view` | screen name (allowlisted) | Where people stop before they ever start a run |
 | `store_purchase` | sku | The commerce funnel, once anything is on sale. There is no `store_open`: opening the store is a `screen_view`, and the rollup counts those per screen |
@@ -374,9 +375,84 @@ What was added (`server/src/analytics/newInstalls.ts`):
   (`server/src/adminsvc/views/newInstalls.ts`) — with the all-active grid below it, labelled
   as such.
 
-Not done, and filed rather than forgotten: retention split by host (only DAU is), and
-first-day events finer than a run (a tutorial step, a floor reached). Per-floor depth is still
-answerable ad hoc from the `run_end.floor` raw rows for 90 days; it is not rolled up.
+The two things first filed as not done here — retention split by host, and first-day depth
+finer than a run — landed the same day as §2.8, which also gave every metric above a `host`
+label.
+
+### 2.8 By build target, first-day depth, and the install id that did not stick (2026-10-04)
+
+**Shipped 2026-10-04, the same day as §2.7, and this one touches the client and the
+vocabulary.** It is the rest of the same pre-launch audit: §2.7 made the numbers the right
+shape, this makes them answerable per platform and closes the two places where a new player
+could leave without the data saying how.
+
+**Every `new_*` metric is per host.** Labels are now `{host}`, `{host,step}`, `{host,d}` and
+so on, with `host` either `all` or a build target. A new install belongs to the host of its
+first-day `dailyActive` document — the one `store.ts` writes with `$setOnInsert` — so the
+per-host numbers PARTITION `all`, the same property DAU-by-host already has. The absent-is-
+not-zero rule moves one level down: a host gets per-day rows only on a day it had activity
+(then zero new installs is a measured 0); on a day it had none — before its build shipped, or
+with WeChat's three silent ways of sending nothing (§9) — nothing is written, because the
+data cannot tell "nobody came" from "nothing arrived". The reads were restructured to make
+this cheap (`server/src/analytics/newInstallQueries.ts`): a day's cohort is read once as
+`install → host` and every other question is an indexed `install: { $in }` read grouped in
+memory, rather than one `$lookup` aggregate per question per host.
+
+**Two new events, both small** (`client/src/net/analyticsEvents.ts`):
+
+- `floor_reached { floor }`, derived per frame like `run_start` (`analyticsTracking.ts`): the
+  floor is deeper than the last frame's. It exists for the run that ends with NO `run_end` —
+  a tab closed mid-run is gone before any phase changes, so its depth was unknowable, and that
+  is the commonest way a new player leaves. A run entered from outside the run phases starts
+  with no baseline (a run that ended on a result screen used to leave its snapshot behind), and
+  a run resumed from a save onto floor 3 reports nothing for the floors it skipped.
+- `session_start { storage }`: `stored` (the install id was read back from an earlier visit),
+  `new` (minted, and a read-back after the write returned it) or `unpersisted` (minted and
+  LOST). Every store fails soft on a write by design, so "the save did not throw" proves
+  nothing; the read-back is the only honest test (`net/identity.ts`'s `mint`). An
+  `unpersisted` install is a stranger on its next visit, so it can never be counted as
+  returning — before this it was indistinguishable from a player who left.
+
+**New metrics:** `new_unpersisted{host}` and `new_depth{host,floor}` (new installs by the
+deepest floor reached on their first day — max over `floor_reached` and `run_end`, at least 1
+for any install that started a run). `new_depth` rows exist only for floors somebody reached;
+on a day with a `new_installs` row a missing floor is 0. Gauges `bb_new_unpersisted_installs`
+and `bb_new_depth_installs`; every `bb_new_*` gauge carries `host`.
+
+**Read side:** the console's new-install grid takes `?host=` (links for every host that has
+rows; the same days stay in view, a host's silent day is a row of dashes) and gains an "ID not
+kept" column and a "Deepest floor" column (`floor:count`). The analytics dashboard gets a
+`$host` variable on the new-install panels, a depth panel, and a D1/D7-by-target comparison
+that ignores the variable on purpose.
+
+**A boot crash found on the way, and fixed** (`client/src/platform/webStorage.ts`). Checking
+what `unpersisted` would look like on the portal turned up that the five web stores (identity,
+session, meta, settings, run save) each opened with `typeof localStorage !== 'undefined'`
+OUTSIDE their `try`. `localStorage` is a getter, and when the browser denies storage to the
+document it THROWS `SecurityError` — `typeof` guards an undeclared name, not a throwing getter.
+Measured in a sandboxed frame: "Failed to read the 'localStorage' property from 'Window'". So
+in an embedded frame with storage blocked — the CrazyGames build, for viewers whose browser
+blocks third-party storage — the stores written to fail soft threw at construction, at boot.
+All five now go through one guarded accessor, and a test constructs, loads and saves each one
+under a throwing getter (it fails against the old line).
+
+**Still not done, deliberately:**
+
+- **`session_end` on WeChat.** Still absent (§9 has why `wx.onHide` is not a substitute). It
+  matters less than it looks: no rollup reads `session_end.duration_s` on any host — durations
+  are raw rows only — so a WeChat stand-in would buy a number no panel shows. If session
+  length ever gets a panel, derive it server-side from each session's event span, which works
+  on every host alike.
+- **Retention that excludes `unpersisted` installs.** The count is shown beside D1–D7 so the
+  reader can see how much of the loss is the id and not the player; folding it into the rate
+  would change the number's definition away from what a platform dashboard reports.
+- **A tutorial-step event.** The onboarding hints run inside the first run
+  (`TutorialHintController`), so first-day depth already places a leaver relative to them;
+  a step event is worth adding only if depth turns out too coarse.
+- **The portal's `SDK.data` store** for the install id, which would make the blocked-frame
+  viewers persist at all. It is a boot-ordering change (the stores are read before the SDK
+  initialises) — `new_unpersisted{host=crazygames}` is now the number that says whether it is
+  worth doing.
 
 ## 3. Phase B — the read-only console
 
