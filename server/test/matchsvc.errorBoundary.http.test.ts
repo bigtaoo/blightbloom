@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import { connect } from 'node:net';
 import { createMatchsvcServer } from '../src/matchsvc';
 import { freshAccounts } from './mongoHarness';
 import type { AccountsStore } from '../src/db';
@@ -98,16 +99,49 @@ describe('a store failure mid-request', () => {
   });
 });
 
-describe('a store failure on a route that already answered', () => {
-  it('does not try to write a second response over a sent one', async () => {
-    // `headersSent` guards this: a handler that already started a response cannot be given a
-    // status code, and writing one anyway throws ERR_HTTP_HEADERS_SENT from inside the
-    // boundary — a failure in the code whose whole job is to handle failures. Exercised
-    // through a successful request, which is the case where a late rejection would find
-    // headers already on the wire.
-    const ok = await register('hopper');
-    expect(ok.status).toBe(200);
-    const again = await fetch(`${baseUrl}/health`);
-    expect(again.status).toBe(200);
+describe('a request that fails before any handler runs', () => {
+  it('answers a malformed Host header with 500 and stays up — the SYNCHRONOUS arm', async () => {
+    // `dispatch` builds the request URL from the Host header before choosing a route, and
+    // `new URL` throws on a host it cannot parse. That throw is synchronous, so it is the
+    // boundary's try/catch that answers, not the promise arm the store failures above reach.
+    // Sent over a raw socket because fetch will not send a Host header it considers invalid.
+    const status = await new Promise<string>((resolve, reject) => {
+      const { port } = new URL(baseUrl);
+      const socket = connect(Number(port), '127.0.0.1', () =>
+        socket.write('GET /health HTTP/1.1\r\nHost: a b\r\nConnection: close\r\n\r\n'),
+      );
+      let raw = '';
+      socket.on('data', (chunk) => (raw += chunk));
+      socket.on('close', () => resolve(raw.split('\r\n')[0]!));
+      socket.on('error', reject);
+    });
+    expect(status).toBe('HTTP/1.1 500 Internal Server Error');
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toMatch(/Invalid URL/);
+    // Control: the same route with a well-formed host is fine, and the process is still here.
+    expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
   });
 });
+
+describe('a rejection that is not an Error', () => {
+  it('still answers 500 and logs the value itself', async () => {
+    // A driver or a stray `throw 'x'` can reject with a bare value; the log line must carry it
+    // rather than `undefined`, which is what reading `.message` off a string would give.
+    const real = store.accounts.findOne.bind(store.accounts);
+    store.accounts.findOne = () => Promise.reject('socket hang up');
+    try {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'ada', password: 'hunter22' }),
+      });
+      expect(res.status).toBe(500);
+    } finally {
+      store.accounts.findOne = real;
+    }
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toMatch(/error="socket hang up"/);
+  });
+});
+
+// The arm for a failure AFTER a response has started (`headersSent` → destroy) has no real
+// route that reaches it — every handler answers last — so it is driven with a stand-in
+// dispatch in `matchsvc.errorBoundary.sent.test.ts`.

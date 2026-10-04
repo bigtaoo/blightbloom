@@ -443,13 +443,15 @@ export { matchsvcMetrics } from './matchsvcMetrics';
  * The data-plane half of the startup banner. Extracted from `main` because it is the one
  * branch there — a matchsvc with no gameserver behind it starts fine and refuses every
  * `/find`, and the log line is the only place an operator learns that before a player
- * does. `main` itself stays a straight-line listen/log, which is why it needs no test.
+ * does. `main` itself is driven on port 0 by `test/matchsvc.main.test.ts`.
  */
 export function startupTarget(registry: GameRegistry): string {
   return registry.pick()?.wsUrl ?? '(no gameserver — /find will answer 503)';
 }
 
-async function main(): Promise<void> {
+/** The process entry point, exported with the bind address as parameters for that test. It
+ *  resolves once the cluster is reached and `listen` is called, as `billsvc/main.ts` does. */
+export async function main(port = PORT, host = HOST): Promise<Server> {
   const log = createLogger('matchsvc');
   const registry = new GameRegistry();
   // Connect BEFORE binding a port. A bad URI, a firewalled cluster or a wrong password is a
@@ -470,8 +472,8 @@ async function main(): Promise<void> {
     await ensureAnalyticsIndexes(analyticsDb);
   }
   const server = createMatchsvcServer({ registry, log, store: accountsStore(accountsDb), analyticsDb });
-  server.listen(PORT, HOST, () => {
-    log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
+  server.listen(port, host, () => {
+    log.info('control plane listening', { addr: `http://${host}:${port}`, gameserver: startupTarget(registry) });
     // Arms the flag poll, and does one immediate cycle — so a restarted process is on the
     // operator's current values rather than on its defaults for the first minute.
     startFlagPolling(server);
@@ -479,6 +481,7 @@ async function main(): Promise<void> {
     // store and a broken one are otherwise the same picture.
     startHeartbeat({ log });
   });
+  return server;
 }
 
 // Only auto-start when run directly (`node --import tsx/esm src/matchsvc.ts`), not when
