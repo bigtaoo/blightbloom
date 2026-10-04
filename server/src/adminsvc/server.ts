@@ -247,7 +247,9 @@ export async function createAdminsvcServer(opts: AdminsvcServerOptions = {}): Pr
   };
 
   const server = createServer((req, res) => {
-    const { url, path, method } = requestTarget(req);
+    const target = requestTarget(req);
+    if (!target) return sendJson(res, 400, { error: 'bad request' });
+    const { url, path, method } = target;
 
     // The audit line (§3.3). `authed` is read here, before the handler can change it, so a
     // login's line says "arrived without a session" — which is what makes the pair of lines

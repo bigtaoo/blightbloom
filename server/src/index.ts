@@ -17,7 +17,6 @@
  * build would swap in a binary codec behind this same seam.
  */
 import { createServer, type Server } from 'node:http';
-import { fileURLToPath } from 'node:url';
 import { createLogger, type Logger } from './log';
 import { startHeartbeat } from './heartbeat';
 import { gauge, processMetrics, renderMetrics, METRICS_CONTENT_TYPE, type Metric } from './metrics';
@@ -31,6 +30,8 @@ import { buildIntegrityReportBody } from './integrityReport';
 import { verifyTicket, type MatchMode } from './ticket';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
+import { requestUrl } from './requestUrl';
+import { runAsEntry } from './entry';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -172,6 +173,7 @@ class SocketConnection implements RoomConnection {
     private readonly ws: WebSocket,
     readonly accountId?: string,
     readonly name?: string,
+    readonly bot?: boolean,
   ) {}
   send(msg: ServerMsg): void {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(JSON.stringify(msg));
@@ -192,6 +194,8 @@ interface Seat {
    * handshake is trusted because nothing is configured, and a name is the one field a
    * spoofing client would actually want. */
   name?: string;
+  /** A practice bot's seat (ENGINE_VERSION 88), from the same verified ticket. */
+  bot?: boolean;
 }
 
 /**
@@ -213,6 +217,7 @@ function resolveSeat(url: URL, secret: string, isDev: boolean): Seat | null {
       mode: payload.mode ?? 'coop',
       accountId: payload.accountId,
       name: payload.name,
+      bot: payload.bot === true,
     };
   }
   if (!isDev) return null; // a configured secret ⇒ ticket mandatory
@@ -282,11 +287,19 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
     res.writeHead(426, { 'content-type': 'text/plain' });
     res.end('Upgrade Required');
   });
-  const wss = new WebSocketServer({ server: http, path: '/ws' });
+  // A handshake whose Host does not parse is refused with a 400 here, before the upgrade: the
+  // `connection` handler below has no URL to read a ticket from, and a throw there would be an
+  // uncaught exception (see requestUrl.ts).
+  const wss = new WebSocketServer({
+    server: http,
+    path: '/ws',
+    verifyClient: ({ req }, done) => done(requestUrl(req, 'ws') !== null, 400, 'Bad Request'),
+  });
   const { secret, isDev } = opts.ticketSecret ?? ticketSecret();
 
   wss.on('connection', (ws: WebSocket, req) => {
-    const url = new URL(req.url ?? '', `ws://${req.headers.host}`);
+    const url = requestUrl(req, 'ws')!; // non-null: `verifyClient` above refused the rest
+
     const seat = resolveSeat(url, secret, isDev);
     if (!seat) {
       // A configured secret makes a ticket mandatory; dev-with-no-secret also lands here
@@ -294,9 +307,9 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
       ws.close(4401, 'invalid or missing ticket');
       return;
     }
-    const { roomId, owner, seed, count, mode, accountId, name } = seat;
+    const { roomId, owner, seed, count, mode, accountId, name, bot } = seat;
 
-    const conn = new SocketConnection(owner, roomId, ws, accountId, name);
+    const conn = new SocketConnection(owner, roomId, ws, accountId, name, bot);
 
     // A room already IN_MATCH (or settled/OVER) can never be `join()`-ed — that call
     // only succeeds while seats are still filling (MatchRoom.join). Reaching here with
@@ -386,9 +399,6 @@ export function main(opts: MainOptions = {}): {
   return { server, wss, manager, shutdown };
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/index.ts`), not when
-// imported by a test — the same ESM `require.main === module` equivalent matchsvc.ts
-// uses now that `createGameserver` is a real importable export.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
-}
+// Boots only when run directly (`node dist/gameserver.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'gameserver', main);

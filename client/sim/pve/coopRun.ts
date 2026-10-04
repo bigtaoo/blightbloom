@@ -34,7 +34,9 @@ export interface CoopRun {
   /** `extracted` and `wiped` are the engine's own ends. `stranded`: the leader bled out with the
    *  ally still up. Any standing seat may open the portal since ENGINE_VERSION 87, but the ally
    *  never opens one itself (it only confirms), so such a run can never extract; it is cut there
-   *  rather than played out to the guard. */
+   *  rather than played out to the guard. Since ENGINE_VERSION 88 the ally's seat is flagged a
+   *  bot and the engine ends that run as a wipe on the same tick, so `stranded` should never
+   *  be read: `coopRevive.sim.ts` gates it at 0. */
   outcome: 'extracted' | 'wiped' | 'stranded' | 'timeout';
   ticks: number;
   floorReached: number;
@@ -51,6 +53,9 @@ export interface CoopOptions {
   profileName?: keyof typeof BOT_PROFILES;
   /** The ally's revive rule; `false` is the control. */
   allyRevives?: boolean;
+  /** The ally's held-back fight (`ai/holdBack.ts`); `false` is the ally that charged the nearest
+   *  enemy anywhere on the floor. */
+  allyHoldsBack?: boolean;
   /** The ally's revive rule laid over the leader too. */
   leaderRevives?: boolean;
   maxTicks?: number;
@@ -61,7 +66,7 @@ export function runCoop(opts: CoopOptions): CoopRun {
     buildDungeonRunConfig({ seed: opts.seed, coop: true, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'juggernaut' }),
   );
   const leader = new PveBotController(BOT_PROFILES[opts.profileName ?? 'careful']);
-  const ally = new AllyController({ revives: opts.allyRevives });
+  const ally = new AllyController({ revives: opts.allyRevives, holdsBack: opts.allyHoldsBack });
   const s = engine.state;
   const seats: [CoopSeat, CoopSeat] = [fresh(), fresh()];
   let channelTicks = 0;

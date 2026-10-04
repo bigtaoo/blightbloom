@@ -27,7 +27,7 @@ export function buildDungeonRunConfig(opts: {
     worldH: PLACEHOLDER_WORLD,
     waves: [],
     ...(opts.coop
-      ? { players: [opts.localSeat, { skinId: opts.allySkinId }] }
+      ? { players: [opts.localSeat, { skinId: opts.allySkinId, bot: true }] }
       : { skinId: opts.localSeat.skinId, loadout: opts.localSeat.loadout }),
     dungeon: { config: EMBER_DUNGEON, library: EMBER_L1_ROOMS },
   };

@@ -68,7 +68,6 @@
  */
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { randomInt, randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import type { Db } from 'mongodb';
 import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
@@ -95,6 +94,7 @@ import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
 import { dispatch, type DispatchContext } from './matchsvcDispatch';
 import { createLogger, type Logger } from './log';
+import { runAsEntry } from './entry';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
 import * as partyRoutes from './routes/party';
@@ -261,7 +261,9 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
     // gets is the same grant shape a PvP practice bot's is, and the bot learns which brain
     // to run from the `match_start` the gameserver sends it — not from anything minted
     // here, which is the only version of this that cannot disagree with the real clients in
-    // the same room (design/06 anti-drift).
+    // the same room (design/06 anti-drift). The one mark it does carry is `bot: true`
+    // (ENGINE_VERSION 88): the gameserver gathers those into `match_start.botSeats`, which
+    // every client in the room, the bots included, builds its config from.
     onBotFill: ({ roomId, seed, playerCount, mode, botOwners }) => {
       // Picked once for the room, not once per seat: the bots of one match belong on one
       // instance, exactly as its real players do. No gameserver → no socket for a bot to
@@ -275,7 +277,7 @@ export function createMatchsvcServer(opts: MatchsvcServerOptions): Server {
         // real seats in this room — a bot always joins the squad chunk its seat index
         // falls into, topping up a real party's understaffed squad first.
         const teamId = teamIdForOwner(owner, playerCount);
-        const grant: TicketPayload = { roomId, owner, seed, playerCount, teamId, exp, mode };
+        const grant: TicketPayload = { roomId, owner, seed, playerCount, teamId, exp, mode, bot: true };
         spawnBot({
           wsUrl: gs.wsUrl,
           token: signTicket(grant, secret),
@@ -441,13 +443,15 @@ export { matchsvcMetrics } from './matchsvcMetrics';
  * The data-plane half of the startup banner. Extracted from `main` because it is the one
  * branch there — a matchsvc with no gameserver behind it starts fine and refuses every
  * `/find`, and the log line is the only place an operator learns that before a player
- * does. `main` itself stays a straight-line listen/log, which is why it needs no test.
+ * does. `main` itself is driven on port 0 by `test/matchsvc.main.test.ts`.
  */
 export function startupTarget(registry: GameRegistry): string {
   return registry.pick()?.wsUrl ?? '(no gameserver — /find will answer 503)';
 }
 
-async function main(): Promise<void> {
+/** The process entry point, exported with the bind address as parameters for that test. It
+ *  resolves once the cluster is reached and `listen` is called, as `billsvc/main.ts` does. */
+export async function main(port = PORT, host = HOST): Promise<Server> {
   const log = createLogger('matchsvc');
   const registry = new GameRegistry();
   // Connect BEFORE binding a port. A bad URI, a firewalled cluster or a wrong password is a
@@ -468,8 +472,8 @@ async function main(): Promise<void> {
     await ensureAnalyticsIndexes(analyticsDb);
   }
   const server = createMatchsvcServer({ registry, log, store: accountsStore(accountsDb), analyticsDb });
-  server.listen(PORT, HOST, () => {
-    log.info('control plane listening', { addr: `http://${HOST}:${PORT}`, gameserver: startupTarget(registry) });
+  server.listen(port, host, () => {
+    log.info('control plane listening', { addr: `http://${host}:${port}`, gameserver: startupTarget(registry) });
     // Arms the flag poll, and does one immediate cycle — so a restarted process is on the
     // operator's current values rather than on its defaults for the first minute.
     startFlagPolling(server);
@@ -477,17 +481,9 @@ async function main(): Promise<void> {
     // store and a broken one are otherwise the same picture.
     startHeartbeat({ log });
   });
+  return server;
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/matchsvc.ts`), not when
-// imported by a test — the ESM equivalent of `require.main === module`, needed now that
-// `createMatchsvcServer` is a real importable export (design/16-accounts.md).
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  // `main` awaits the cluster now, so its rejection has to be handled here or it becomes an
-  // unhandled rejection with no log line at all — which is precisely the boot failure an
-  // operator most needs to read.
-  main().catch((e: unknown) => {
-    console.error(`[blightbloom] matchsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
-    process.exitCode = 1;
-  });
-}
+// Boots only when run directly (`node dist/matchsvc.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'matchsvc', main);

@@ -26,6 +26,7 @@
  * direction — and the reason no handler here has to defend against a half-read form.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { requestUrl } from '../requestUrl';
 
 /**
  * A username and a password and nothing else. 4 KB is roughly forty times the largest
@@ -64,14 +65,16 @@ const BASE_HEADERS: Record<string, string> = {
  * `path` comes off `URL`, so it is normalised and carries NO query string. That is
  * deliberate and it is what the audit line logs: a search term on this console is a
  * player's username, and a log store is not where it belongs.
+ *
+ * `null` when the Host header does not parse — see `requestUrl.ts`; the caller answers 400.
  */
 export function requestTarget(req: Pick<IncomingMessage, 'url' | 'method' | 'headers'>): {
   url: URL;
   path: string;
   method: string;
-} {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
-  return { url, path: url.pathname, method: req.method ?? 'GET' };
+} | null {
+  const url = requestUrl(req);
+  return url && { url, path: url.pathname, method: req.method ?? 'GET' };
 }
 
 export function sendHtml(res: ServerResponse, status: number, html: string, extra: Record<string, string> = {}): void {

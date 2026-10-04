@@ -48,6 +48,11 @@ export interface PlayerConfig {
   // squad build assigns the same teamId to several seats. Independent of the
   // seat's `owner`/array index (state/commands.ts) — see entities.ts's note.
   teamId?: number;
+  // A seat played by a bot, not a person (ENGINE_VERSION 88). ABSENT → a person, which every
+  // config before it was. In PvE a run whose people are all dead ends as a wipe even while a
+  // bot still stands (WinConditionSystem): a bot never opens the portal, so the player watched
+  // it fight on with no way to leave. Ignored in an arena.
+  bot?: boolean;
 }
 
 export interface EngineConfig {

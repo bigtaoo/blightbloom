@@ -64,7 +64,7 @@ function addPlayer(s: GameState, gx: number, gy: number): PlayerActor {
     solidRadius: PLAYER_BASE.solidRadius,
     alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [],
     energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY, coins: 0, shopBuyId: 0,
-    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, portalReady: false,
+    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, portalReady: false, bot: false,
     confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),

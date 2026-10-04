@@ -98,16 +98,27 @@ describe('a store failure mid-request', () => {
   });
 });
 
-describe('a store failure on a route that already answered', () => {
-  it('does not try to write a second response over a sent one', async () => {
-    // `headersSent` guards this: a handler that already started a response cannot be given a
-    // status code, and writing one anyway throws ERR_HTTP_HEADERS_SENT from inside the
-    // boundary — a failure in the code whose whole job is to handle failures. Exercised
-    // through a successful request, which is the case where a late rejection would find
-    // headers already on the wire.
-    const ok = await register('hopper');
-    expect(ok.status).toBe(200);
-    const again = await fetch(`${baseUrl}/health`);
-    expect(again.status).toBe(200);
+describe('a rejection that is not an Error', () => {
+  it('still answers 500 and logs the value itself', async () => {
+    // A driver or a stray `throw 'x'` can reject with a bare value; the log line must carry it
+    // rather than `undefined`, which is what reading `.message` off a string would give.
+    const real = store.accounts.findOne.bind(store.accounts);
+    store.accounts.findOne = () => Promise.reject('socket hang up');
+    try {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'ada', password: 'hunter22' }),
+      });
+      expect(res.status).toBe(500);
+    } finally {
+      store.accounts.findOne = real;
+    }
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toMatch(/error="socket hang up"/);
   });
 });
+
+// Two arms have no real route that reaches them, so they are driven with a stand-in dispatch
+// in `matchsvc.errorBoundary.standin.test.ts`: a SYNCHRONOUS throw (the one real trigger, a
+// Host header `new URL` rejects, is a 400 since 2026-10-04 — `badHost.http.test.ts`), and a
+// failure after the response has started (`headersSent` → destroy).

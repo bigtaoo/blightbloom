@@ -152,6 +152,9 @@ export function serializeState(s: GameState): unknown {
       p.cardVote,
       // Portal confirm (ENGINE_VERSION 87): decides whether the portal waits on this seat.
       p.portalReady,
+      // A bot's seat (ENGINE_VERSION 88): decides whether a run with no person left ends, so
+      // two clients that disagreed about it would disagree about the outcome.
+      p.bot,
       // Per-seat carry-out (design/05/14, ENGINE_VERSION 68): moved off shared GameState
       // onto each seat, so hashing them here (not at the top level any more) is what
       // catches a per-seat divergence — two clients disagreeing about WHICH seat picked

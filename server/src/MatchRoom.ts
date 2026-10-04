@@ -17,110 +17,21 @@ import {
   FrameBroadcast,
   CHECKPOINT_QUORUM,
   INTEGRITY_KICK_STREAK,
-  type FrameCmds,
   type PlayerCommand,
   type SeatNames,
   type ServerMsg,
   type Winner,
 } from '@dd/engine';
 import type { MatchMode } from './ticket';
-import type { IntervalHandle, Scheduler } from './scheduler';
+import type { IntervalHandle } from './scheduler';
 import { WindowClock } from './windowClock';
-import { judgeSettlement, SETTLE_TIMEOUT_MS, type BoundsFailure, type IntegrityVerdict, type SeatReport } from './settlement';
+import type { MatchRoomDeps, RoomConnection } from './matchRoomTypes';
+import { judgeSettlement, SETTLE_TIMEOUT_MS, type SeatReport } from './settlement';
 
 export type { IntegrityVerdict } from './settlement';
-
-/** A per-seat sink — one connected client. The transport wraps a socket as this. */
-export interface RoomConnection {
-  /** Which co-op seat this connection drives (its `owner` in every PlayerCommand). */
-  readonly owner: number;
-  /** The logged-in account behind this seat (design/16-accounts.md), if any — carried
-   * from the verified ticket. `undefined` for guests/bots. */
-  readonly accountId?: string;
-  /** The display name to show other players for this seat (design/20), from the same
-   *  verified ticket. `undefined` for guests/bots, which is most seats. */
-  readonly name?: string;
-  send(msg: ServerMsg): void;
-}
+export type { MatchIntegrity, MatchRoomDeps, RoomConnection, SettledMatch } from './matchRoomTypes';
 
 export type { IntervalHandle, Scheduler } from './scheduler';
-
-/** How a match settled, for the integrity record (design/15, "PvP integrity", 2026-09-26);
- *  the verdicts are defined beside the rule that picks them, `settlement.ts`. */
-export interface MatchIntegrity {
-  verdict: IntegrityVerdict;
-  /** Seats outside the agreed tuple, ascending. */
-  dissenters: number[];
-  /** Seats `reportCheckpoint` kicked at any point in the match, ascending — even ones that
-   *  reconnected and then voted with the majority, since the divergence still happened. */
-  kicked: number[];
-  /** Seats that never reported before `SETTLE_TIMEOUT_MS` ran out, ascending — treated as
-   *  offline, so they cast no vote. Not suspects: a dropped connection is not a cheat. */
-  absent: number[];
-  /** Set only when `verdict` is `bounds`. */
-  bounds?: BoundsFailure;
-  /** The server's broadcast frame when the room settled (the last report, or the timeout). */
-  settleFrame: number;
-  /** The room's seed, so an archived match can be re-run later. */
-  seed: number;
-  /** The whole input log (non-empty frames). Present only when `verdict` is not `clean` — a
-   *  clean match has nothing to judge, and every PvP match carrying it would be a payload
-   *  nobody reads. Shared by reference with the room, which is destroyed right after. */
-  log?: readonly FrameCmds[];
-}
-
-/** A settled match's outcome, handed to `MatchRoomDeps.onSettled` (design/15,
- * ROADMAP 4.6) — everything the ladder-rating caller needs, and nothing MatchRoom
- * doesn't already legitimately know. `mode` and `hashOk` together are the
- * "checkpoint/hash-verified PvP result" gate design/15 requires before a placement
- * can affect the ladder; a caller should ignore this callback unless BOTH hold. */
-export interface SettledMatch {
-  roomId: string;
-  /**
-   * What kind of match this ROOM was, taken from the verified ticket
-   * (`MatchRoomDeps.mode`, cross-checked across joiners by `RoomManager.join`) — never
-   * from anything a seat said at settlement. This is the field a ladder caller has to
-   * gate on, because `winner` and `placements` below are relayed straight off the
-   * seats' own `result` messages: a co-op room whose clients agree on a hash and all
-   * send a fabricated `placements` array plus a numeric `winner` would otherwise
-   * produce a ladder report for a match nobody competed in. Required rather than
-   * optional on purpose — a later producer has to state the mode instead of inheriting
-   * a default that happens to open the gate.
-   */
-  mode: MatchMode;
-  winner: Winner;
-  placements?: readonly number[];
-  /** Total seat count — needed by `ladderReport.ts` to recover the winning squad's
-   * OTHER members (design/15's squad-aware ladder follow-up), since `placements`
-   * only ever holds LOSING seats and `winner` names just one representative. */
-  playerCount: number;
-  /** True only when a tuple carried the settlement vote AND (for PvP) passed the bounds
-   *  check — the one condition under which a result may move a rating. The name predates the
-   *  vote, when it meant "every end hash matched". */
-  hashOk: boolean;
-  integrity: MatchIntegrity;
-  /** seat owner index → accountId (design/16-accounts.md), for whichever seats were
-   * logged in. Omits guest/bot seats entirely — `ladderReport.ts` falls back to its
-   * scaffold accountId for any seat missing here. */
-  seatAccounts?: Readonly<Record<number, string>>;
-}
-
-export interface MatchRoomDeps {
-  scheduler: Scheduler;
-  /** PvE co-op vs. PvP arena (design/15) — rides along in `match_start` so the client
-   * knows which EngineConfig shape to build. Absent (every pre-PvP caller/test) → 'coop'. */
-  mode?: MatchMode;
-  onDestroy: (roomId: string) => void;
-  /** Fired once, right before destroy(), with the settled outcome (design/15, ROADMAP
-   * 4.6) — e.g. wired to matchsvc's ladder-rating report in index.ts. Optional: every
-   * pre-4.6 caller (every existing test, every PvE/co-op deployment) omits it and
-   * nothing changes — MatchRoom stays generic infra, never importing matchsvc itself. */
-  onSettled?: (match: SettledMatch) => void;
-  /** Broadcast pulse period (ms). Default 100 (10 Hz, funny). */
-  batchMs?: number;
-  /** Sim frames per pulse. Default 3 (30 Hz sim ÷ 10 Hz net). Must match the client. */
-  framesPerBatch?: number;
-}
 
 // Exported so index.ts's handshake can tell "still filling seats" (a fresh `join`)
 // apart from "already running" (a reconnect must wait for an explicit `resume`
@@ -141,6 +52,8 @@ interface Seat {
   /** Kept across a disconnect for the same reason `accountId` is: a player who drops for
    *  three seconds must not have their nameplate replaced by a blank for everyone else. */
   name?: string;
+  /** Set on join from `conn.bot`; a seat stays a bot's for the whole match. */
+  bot?: boolean;
 }
 
 export class MatchRoom {
@@ -210,6 +123,7 @@ export class MatchRoom {
     seat.conn = conn;
     if (conn.accountId !== undefined) seat.accountId = conn.accountId;
     if (conn.name !== undefined) seat.name = conn.name;
+    if (conn.bot) seat.bot = true;
     if (this.connected) this.launch();
     return true;
   }
@@ -226,6 +140,17 @@ export class MatchRoom {
     return this.seats.map((seat) => seat.name ?? null);
   }
 
+  /**
+   * The seats practice bots hold, or `undefined` when none does: like `seatNames`, a room of
+   * people puts nothing new on the wire. Every client builds its engine config from this
+   * (`buildOnlineConfig`, ENGINE_VERSION 88), so it is sent once, in `match_start`, and never
+   * changes. `conn_resync` does not carry it: a reconnecting client keeps the engine it built.
+   */
+  private botSeats(): number[] | undefined {
+    const seats = this.seats.filter((seat) => seat.bot).map((seat) => seat.owner);
+    return seats.length > 0 ? seats : undefined;
+  }
+
   private launch(): void {
     this.phase = Phase.IN_MATCH;
     for (const seat of this.seats) {
@@ -237,6 +162,7 @@ export class MatchRoom {
         playerCount: this.playerCount,
         mode: this.mode,
         names: this.seatNames(),
+        botSeats: this.botSeats(),
       });
     }
     this.startMetronome();

@@ -1739,9 +1739,37 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-03** [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87) — volume 124's two gaps, settled by the owner. Any standing seat now opens a cleared floor's portal, which starts a 30 s countdown; every other seat sees the popup and card offer wherever it stands, and the portal goes when every living seat has confirmed or the countdown ends (`ENGINE_VERSION` 87). A downed seat is waited for, a dead one is not, and solo resolves on the press as before. The co-op ally confirms at once, takes the second plate of a big chest once its player stands on one, and walks there through the floor's doors (`ai/chestPlate.ts`, `ai/dungeonRoute.ts`). Big chests now open in co-op: 16 in 40 careful runs, none before. Still open: a bot left alone after its player dies never leaves. `engine` `ui` `tools` `test` `docs`
 
+**[2026-10-04 — The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md)**
+
+- **10-04** [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change) — the item volumes 124 and 125 left open: the ally charged the nearest enemy anywhere on the floor to 4 grid, so it went down first in 30 of 40 careful runs and its revive seldom got a turn. `ai/holdBack.ts` fights only in its own room or its leader's, from 7.5 grid off (outside every mob's engage range), backing off when closed on; a blade keeps the old shape. Against an `ally rushes` control that reproduces volume 125 exactly: careful extractions 6 to 13, ally downs with the leader up 30 to 21, leader downs answered 1 of 6 to 24 of 32, big chests 16 to 21. The leader now goes down more and is revived more. With its revive off, a held-back ally strands 34 of 40 aggressive runs, which makes the open "bot left alone" case sharper. `tools` `test` `docs`
+
+**[2026-10-04 — PvP character share](roadmap/127-2026-10-04-pvp-character-share.md)**
+
+- **10-04** [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change) — volume 123's vanguard-to-skirmisher swing, re-run over six blocks of 180 matches with the bot before and after looting: the swing was noise (+4 / −11 wins over 900 matches, about half a standard deviation). The raw counts were never comparable either: seat i gets the (i mod 3)-th character, so the juggernaut never plays 2 seats and is short at 4 and 5. Read against seat share at 2 to 6 seats, the bot-vs-bot juggernaut wins 1.45x its share (z +7.5) and vanguard 0.80x (z −5), with either bot and in every block. `test:pvp-sim` now prints wins over fair share and asserts the shares sum. Whether to playtest or tune is the owner's call. `tools` `test` `docs`
+
+**[2026-10-04 — The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md)**
+
+- **10-04** [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change) — volume 127's open choice, playtest or tune, answered from a sim first. The shipped PvP bot never disengages, so a shield never refills and the juggernaut, the one character without one, wins 1.40x its seat share over 900 matches. `pvp/ShieldRetreatBot`, the same bot backing off to refill a spent shield, puts it at 0.94 (to half) and 1.03 (to full) on the same matches. No character is tuned and the shipped bot is untouched; whether it should learn to disengage is the owner's call. `test:pvp-shield` holds the finding. `tools` `docs`
+
+**[2026-10-04 — A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md)**
+
+- **10-04** [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88) — the case volumes 124 to 126 left open: a co-op player who bled out with the bot ally still up watched it fight on, since a bot never opens the portal. A run now ends as a wipe once every person in it is dead, whatever bots stand (`ENGINE_VERSION` 88); downed is not dead, a second person is waited for, an all-bot run and the arena are untouched. Seats carry `bot`: the offline ally sets it, and online it rides a signed `bot: true` ticket claim from `onBotFill` into `MatchRoom` and `match_start.botSeats`, which `buildOnlineConfig` reads. The co-op sim's stranded runs all become wipes (34 of 40 aggressive with the revive off), every other number unchanged; `stranded` is now gated at 0. Still open: the integrity archive does not record bot seats. `engine` `net` `tools` `test` `docs`
+
+**[2026-10-04 — A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md)**
+
+- **10-04** [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change) — found while covering matchsvc's `main()`: every service built its routing URL with `new URL` over the client's Host header, which throws on one it cannot parse. matchsvc answered 500 and logged an ERROR. billsvc, adminsvc and the gameserver's WebSocket `connection` handler threw an uncaught exception, which ends the process. Caddy's host-matched site block kept that out of reach from outside. `src/requestUrl.ts` now parses with `URL.parse`. The three HTTP services answer 400; the gameserver refuses the handshake with 400 in `verifyClient`. `badHost.http.test.ts` sends three bad hosts to all four services, and all four cases failed before the fix. `net` `test` `docs`
+
+**[2026-10-04 — An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md)**
+
+- **10-04** [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change) — the follow-up volume 130 left open: no process had an `uncaughtException` handler, so a crash ended in Node's multi-line default trace, which Alloy files as level-less fragments. `src/processGuard.ts` writes one ERROR line through the service's logger (origin, message and stack as fields), then exits 1 for compose to restart. A rejection reaches it through Node's default, so there is no second listener. All five entry points install it in their run-as-main block. `deploy.bundle.test.ts` throws inside each running bundle through an `--import` preload and requires the tagged line and no trace. 11 of 11 mutants killed. `platform` `test` `docs`
+
+**[2026-10-04 — One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md)**
+
+- **10-04** [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change) — the last uncovered lines in the server were the five entry points' run-as-main blocks: false inside the vitest worker by construction, and a spawned child is not counted. They also disagreed on a failed boot (billsvc printed a raw multi-line stack, backup nothing). `src/entry.ts`'s `runAsEntry(import.meta.url, tag, start)` replaces all five, with the entry check, guard and exit code injectable. A failed boot is now one `ERROR [tag] failed to start` line and exit code 1. `entry.test.ts` drives both arms; `deploy.bundle.test.ts` boots three bundles against an unreachable cluster. 14 of 14 mutants killed; server coverage 99.71% lines, 98.78% branches. `platform` `test` `docs`
+
 ## The work log — by theme
 
-The same 238 entries, grouped. An entry with more than one tag appears more than once.
+The same 245 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1869,7 +1897,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(45)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(46)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1916,6 +1944,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A bullet turns back once](roadmap/118-2026-09-30-arena-body-reach.md#a-bullet-turns-back-once-2026-09-30-engine--tools--test--docs-engine_version-85)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 
 **`arena`** — the PvP launch map and its audit *(19)*
 
@@ -1958,7 +1987,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(149)*
+**`test`** — coverage sweeps, gates, mutation batteries *(155)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2109,6 +2138,12 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
+- 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(10)*
 
@@ -2123,7 +2158,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(35)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(37)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -2160,6 +2195,8 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`ui`** — HUD, screens, widgets *(49)*
 
@@ -2213,7 +2250,7 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 
-**`tools`** — sims, profilers, editors, build scripts *(43)*
+**`tools`** — sims, profilers, editors, build scripts *(47)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2258,8 +2295,12 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
+- 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
+- 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 
-**`docs`** — design docs and this log itself *(155)*
+**`docs`** — design docs and this log itself *(162)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2416,8 +2457,15 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [A co-op run, measured](roadmap/124-2026-10-03-coop-revive-sim.md#a-co-op-run-measured-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-04 [The co-op ally holds back](roadmap/126-2026-10-04-ally-holds-back.md#the-co-op-ally-holds-back-2026-10-04-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
+- 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
+- 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(39)*
+**`net`** — matchmaking, sockets, reconnect *(41)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2458,6 +2506,8 @@ The same 238 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [The local player leads by the measured delay](roadmap/119-2026-10-01-motion-comfort.md#the-local-player-leads-by-the-measured-delay-2026-10-01-client--net--test--docs-no-engine_version-change)
 - 10-03 [Commands land on their own frame, and the frames between hold](roadmap/121-2026-10-03-frame-alignment.md#commands-land-on-their-own-frame-and-the-frames-between-hold-2026-10-03-engine--server--net--test--docs-no-engine_version-change)
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
+- 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

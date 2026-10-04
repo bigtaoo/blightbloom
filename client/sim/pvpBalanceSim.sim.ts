@@ -15,51 +15,15 @@
  * anti-drift — no hand-mirrored second copy of the config logic).
  */
 import { describe, expect, it } from 'vitest';
-import { Button, createGameEngine, FP_SCALE, Prng, type EngineConfig, type PlayerActor } from '@dd/engine';
+import { Button, createGameEngine, FP_SCALE, type PlayerActor } from '@dd/engine';
 import { buildPvpEngineConfig, squadSizeForPlayerCount } from '../src/game/match/pvpConfig';
 import { PvpBotController } from '../src/game/controllers/PvpBotController';
 import { idleCommand } from '../src/game/controllers/ai/engage';
+import { countsTowardShare, fairShares } from './pvp/fairShare';
+import { deconfoundSkinSeating, MAX_START_DELAY, startDelays } from './pvp/matchSetup';
 
-// SIM-ONLY deconfounding: `buildPvpEngineConfig` skins seats BY INDEX (seat i -> the
-// i-th SKIN_DEFS entry) — a real, load-bearing property of the real match config
-// (design/15: spawns are system-assigned, no player choice), so this must NOT change
-// `pvpConfig.ts` itself. But that seat-index-is-character correlation means any
-// seat/spawn-position advantage silently reads as a character-balance signal in this
-// sim's win-rate report. Reusing `buildPvpEngineConfig` for the byte-identical base
-// config, then shuffling ONLY here which skinId lands on which seat (a distinct Prng
-// stream, seeded off the match seed but never touching a gameplay stream — same
-// isolation rule design/15's `integrityPrng` uses) breaks that correlation: over many
-// seeds, every character lands on every seat/spawn roughly equally, so a persistent
-// win-rate skew can no longer be explained by spawn position alone.
-function deconfoundSkinSeating(config: EngineConfig, seed: number): EngineConfig {
-  const players = config.players!;
-  const skinIds = players.map((p) => p.skinId);
-  new Prng(seed ^ 0x5eed0001).shuffle(skinIds);
-  return {
-    ...config,
-    players: players.map((p, i) => ({ ...p, skinId: skinIds[i]! })),
-  };
-}
-
-// SIM-ONLY deconfounding, the second one: per-seat reaction offsets at the drop. The arena is
-// one fixed map and `PvpBotController` is a pure function of state, so a seed only changes a
-// match through what it seeds. Measured 2026-09-29 (volume 114), when every seat still spawned
-// on one shared point, 30 seeds replayed only 12 (2 seats), 16, 22, 21, 23 and 9 (8 seats)
-// distinct matches. Each seat stands idle for 0..MAX_START_DELAY ticks off its own Prng stream
-// (never a gameplay one), which is also closer to real play: nobody moves on the first tick.
-// Since seats spawn at their own authored points (volume 115, `assignArenaStarts`) the seeded
-// spawn shuffle does most of this work (27-30 distinct with the offsets off); the offsets stay
-// as the second source. The gate below holds the result. Its control used to pin the spawns
-// and drop the offsets; once the bot fought mobs and walked round solids (volume 116), those
-// matches diverged on the skin shuffle and the loot rolls alone (23 distinct), so the control is
-// now the defect the gate exists for, a seed that changes nothing.
-const MAX_START_DELAY = 45;
-const MIN_DISTINCT = 20; // of SEEDS_PER_COUNT, per seat count
-
-function startDelays(seed: number, playerCount: number, maxDelay: number): number[] {
-  const prng = new Prng(seed ^ 0x0de1a7ed);
-  return Array.from({ length: playerCount }, () => prng.nextInt(maxDelay + 1));
-}
+// Of SEEDS_PER_COUNT, per seat count: see `pvp/matchSetup.ts` on the start delays.
+const MIN_DISTINCT = 20;
 
 // Matches Matchmaker.MAX_PLAYERS' 8-seat ceiling (design/15); 7 skipped, no special
 // meaning at odd counts a run of 6 doesn't already cover.
@@ -79,6 +43,8 @@ interface MatchResult {
   ticks: number;
   timedOut: boolean;
   winnerSkin: string; // 'tie' on the rare simultaneous-elimination edge case
+  /** The skin on each seat, after the shuffle: what a character's fair share of wins is read off. */
+  skins: string[];
   zoneStageAtEnd: number;
   placementsCount: number;
   /** Duration plus elimination order: two matches with the same one are the same match. */
@@ -145,6 +111,7 @@ function runMatch(seed: number, playerCount: number, maxDelay = MAX_START_DELAY)
     ticks,
     timedOut: ticks >= MAX_TICKS,
     winnerSkin,
+    skins: config.players!.map((p) => p.skinId ?? 'unknown'),
     zoneStageAtEnd: s.zone?.stage ?? -1,
     placementsCount: s.placements.length,
     fingerprint: `${ticks}:${JSON.stringify(s.placements)}`,
@@ -204,7 +171,7 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // pair fires at a time, so their hits never land together (volume 118).
     expect(ties.length).toBeLessThan(results.length * 0.08);
 
-    // Win rate per character. `deconfoundSkinSeating` (above) shuffles which skinId
+    // Win rate per character. `deconfoundSkinSeating` (`pvp/matchSetup.ts`) shuffles which skinId
     // lands on which seat per seed, independent of `buildPvpEngineConfig`'s own
     // seat-index assignment — so a seat/spawn-position advantage is no longer
     // entangled with a specific character across this seed sweep. Still first-signal
@@ -221,6 +188,13 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // report would need its own aggregation, deliberately not built here.
     const bySkin = new Map<string, number>();
     for (const r of results) bySkin.set(r.winnerSkin, (bySkin.get(r.winnerSkin) ?? 0) + 1);
+    // The raw counts above are NOT comparable across characters (`pvp/fairShare.ts` has why):
+    // wins against seat share is the number to read. Volume 127: raw totals read 357/360/352,
+    // level, while the juggernaut won 1.45x its share over 900 matches.
+    const share = fairShares(results);
+    // The shares of a decided match sum to one, so the fair shares sum to the decided matches.
+    const decided = results.filter(countsTowardShare).length;
+    expect([...share.values()].reduce((n, x) => n + x.fair, 0)).toBeCloseTo(decided, 6);
 
     const byPlayerCount = new Map<number, { avgTicks: number; maxZoneStage: number; n: number }>();
     for (const pc of PLAYER_COUNTS) {
@@ -235,7 +209,9 @@ describe('PvP balance sim (bot vs bot — first-signal data for PVP_SCALE_FACTOR
     // eslint-disable-next-line no-console
     console.log(`\n=== PvP balance sim: ${results.length} bot-vs-bot matches ===`);
     // eslint-disable-next-line no-console
-    console.log('Win rate by character:', JSON.stringify(Object.fromEntries(bySkin)));
+    console.log('Wins by character (raw, NOT comparable, see share below):', JSON.stringify(Object.fromEntries(bySkin)));
+    // eslint-disable-next-line no-console
+    console.log('Wins / fair share, 2-6 seats (1.00 = par):', [...share].map(([k, x]) => `${k} ${x.wins}/${x.fair.toFixed(1)} = ${(x.wins / x.fair).toFixed(2)}`).join(', '));
     // eslint-disable-next-line no-console
     console.log('Duration (ticks @30Hz) / max zone stage reached, by seat count:', JSON.stringify(Object.fromEntries(byPlayerCount)));
     // eslint-disable-next-line no-console

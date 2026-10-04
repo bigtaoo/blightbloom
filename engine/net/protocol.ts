@@ -70,6 +70,9 @@ export interface MatchStart {
   /** Who is in the other seats (design/20 — a game portal requires the platform's own
    *  usernames be shown so players can recognise their friends). */
   names?: SeatNames;
+  /** The seats practice bots hold (ENGINE_VERSION 88), absent when none does. The co-op
+   *  config flags them (`PlayerConfig.bot`), so a run whose people are all dead ends. */
+  botSeats?: readonly number[];
 }
 
 /** Reconnect catch-up (design/06 mirror of funny's conn_resync): replay the frame log past `lastFrame`. */

@@ -31,8 +31,8 @@
  * comment explains the general principle (design/19 §5's fail-closed rule); the specific
  * reason here is that this login page is on the public internet, beside Grafana's.
  */
-import { fileURLToPath } from 'node:url';
 import { createLogger } from '../log';
+import { runAsEntry } from '../entry';
 import { startHeartbeat } from '../heartbeat';
 import { createAdminsvcServer, type AdminsvcServer } from './server';
 import { AdminStartupError, type AdminEnv } from './credentials';
@@ -145,17 +145,6 @@ export async function runMain(
   }
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/adminsvc/main.ts`), not when
-// imported by a test — the ESM equivalent of `require.main === module`, the same guard every
-// other entry point here uses.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  // `runMain` awaits the cluster now, so its rejection has to be handled here or it becomes
-  // an unhandled rejection with no log line at all — which is precisely the boot failure an
-  // operator most needs to read. `AdminStartupError` is already turned into a line and an
-  // exit code inside; this catches everything else, which is most usefully a connection
-  // that never came up.
-  runMain().catch((e: unknown) => {
-    console.error(`[blightbloom] adminsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
-    process.exitCode = 1;
-  });
-}
+// Boots only when run directly (`node dist/adminsvc.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'adminsvc', runMain);

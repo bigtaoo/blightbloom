@@ -5,13 +5,16 @@
  * through `coopRun.ts`, at both bot profiles:
  *   - `solo`: the level sim's own single-seat run, for scale;
  *   - `ally off`: the ally with its revive rule switched off: the control;
+ *   - `ally rushes`: the ally before 2026-10-04's `ai/holdBack.ts`, charging the nearest enemy
+ *     anywhere on the floor: the control for the held-back fight;
  *   - `ally`: the ally as it ships, the leader not reviving (the leader bot has no rule of its own);
  *   - `ally + leader`: the same rule laid over the leader as well, a stand-in for a player who
  *     always goes back for the ally.
  *
  * What it gates is the instrument, not a balance verdict: nobody comes back up without a rule
  * that revives, the shipped ally does bring the leader back up, a seat is only revived from a down
- * its mate was still up for, and every run ends. The rest is printed.
+ * its mate was still up for, every run ends, and none is left with only the bot standing
+ * (ENGINE_VERSION 88). The rest is printed.
  */
 import { describe, expect, it } from 'vitest';
 import { runLevel } from './pve/levelSim';
@@ -19,8 +22,9 @@ import { runCoop, type CoopRun, type CoopSeat } from './pve/coopRun';
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => 1 + i);
 const PROFILES = ['careful', 'aggressive'] as const;
-const CONDS: [string, { allyRevives: boolean; leaderRevives: boolean }][] = [
+const CONDS: [string, { allyRevives: boolean; leaderRevives: boolean; allyHoldsBack?: boolean }][] = [
   ['ally off', { allyRevives: false, leaderRevives: false }],
+  ['ally rushes', { allyRevives: true, leaderRevives: false, allyHoldsBack: false }],
   ['ally', { allyRevives: true, leaderRevives: false }],
   ['ally + leader', { allyRevives: true, leaderRevives: true }],
 ];
@@ -84,6 +88,8 @@ describe('co-op PvE revive (shipped ally, bot leader — first-signal data, not 
           }
         }
         expect(x.outcomes.timeout, `${profileName} ${k}`).toBe(0);
+        // The ally's seat is a bot (ENGINE_VERSION 88): the leader dying with it up ends the run.
+        expect(x.outcomes.stranded, `${profileName} ${k}`).toBe(0);
       }
     }
     console.log(`\n${lines.join('\n')}\n`);

@@ -28,24 +28,24 @@ describe('requestTarget', () => {
     // The path is what the audit line logs, and a search term on this console is a player's
     // username — a log store is not where it belongs.
     const target = requestTarget({ url: '/admin/?tab=commerce&q=zoe', method: 'GET', headers: { host: 'x' } });
-    expect(target.path).toBe('/admin/');
-    expect(target.method).toBe('GET');
-    expect(target.url.searchParams.get('tab')).toBe('commerce');
+    expect(target!.path).toBe('/admin/');
+    expect(target!.method).toBe('GET');
+    expect(target!.url.searchParams.get('tab')).toBe('commerce');
   });
 
   it('normalises a path with a traversal segment before the dispatch chain sees it', () => {
     // `URL` resolves `..` itself, so `/admin/../etc/passwd` arrives at the chain as
     // `/etc/passwd` and simply matches none of the five allowed paths. Worth pinning: a
     // handler that compared the RAW `req.url` would see a string starting with `/admin/`.
-    expect(requestTarget({ url: '/admin/../etc/passwd', method: 'GET', headers: { host: 'x' } }).path).toBe(
+    expect(requestTarget({ url: '/admin/../etc/passwd', method: 'GET', headers: { host: 'x' } })!.path).toBe(
       '/etc/passwd',
     );
   });
 
   it('falls back to / and GET when the type\'s undefined is what arrives', () => {
     const target = requestTarget({ url: undefined, method: undefined, headers: { host: 'x' } });
-    expect(target.path).toBe('/');
-    expect(target.method).toBe('GET');
+    expect(target!.path).toBe('/');
+    expect(target!.method).toBe('GET');
   });
 
   it('tolerates a missing Host header', () => {
@@ -53,7 +53,13 @@ describe('requestTarget', () => {
     // `pathname` and `searchParams` are read — so the literal "undefined" hostname is
     // harmless, and what matters is that it does not throw.
     expect(() => requestTarget({ url: '/admin/', method: 'GET', headers: {} })).not.toThrow();
-    expect(requestTarget({ url: '/admin/', method: 'GET', headers: {} }).path).toBe('/admin/');
+    expect(requestTarget({ url: '/admin/', method: 'GET', headers: {} })!.path).toBe('/admin/');
+  });
+
+  it('answers null, not a throw, for a Host header that does not parse', () => {
+    // A throw here is outside the request boundary and was an uncaught exception; the
+    // server answers this null with a 400 (`badHost.http.test.ts`).
+    expect(requestTarget({ url: '/admin/', method: 'GET', headers: { host: 'a b' } })).toBeNull();
   });
 });
 
