@@ -33,6 +33,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../log';
+import { installProcessGuard } from '../processGuard';
 import { startHeartbeat } from '../heartbeat';
 import { createAdminsvcServer, type AdminsvcServer } from './server';
 import { AdminStartupError, type AdminEnv } from './credentials';
@@ -149,6 +150,7 @@ export async function runMain(
 // imported by a test — the ESM equivalent of `require.main === module`, the same guard every
 // other entry point here uses.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  installProcessGuard(createLogger('adminsvc'));
   // `runMain` awaits the cluster now, so its rejection has to be handled here or it becomes
   // an unhandled rejection with no log line at all — which is precisely the boot failure an
   // operator most needs to read. `AdminStartupError` is already turned into a line and an

@@ -456,3 +456,78 @@ describe('the backup worker bundle snapshots a real database', () => {
     expect(run.stderr).toContain('BB_MONGO_URI is not set');
   });
 });
+
+/**
+ * Every bundle installs the process guard (`src/processGuard.ts`), proven by throwing inside
+ * a RUNNING one.
+ *
+ * The guard is installed from each entry point's run-as-main block, which no in-process test
+ * reaches — and it has to be, since a handler that exits would take the vitest worker with
+ * it. So the evidence lives here, against the shipped artifact: a preload (`--import`) arms
+ * a stdin listener before the bundle loads, the test waits for the service's first heartbeat
+ * (every entry point beats only once it is up), then writes a line and the listener throws.
+ *
+ * The exit code alone proves nothing: Node's own default also exits 1. What separates a
+ * guarded process from an unguarded one is the OUTPUT — one tagged ERROR line, and none of
+ * the default's multi-line `    at ...` trace, which is what the log pipeline cannot parse.
+ */
+describe('each bundle turns an uncaught exception into one log line and exit 1', () => {
+  const PROBE = `data:text/javascript,${encodeURIComponent(
+    "process.stdin.on('data', (d) => { if (String(d).startsWith('reject')) void Promise.reject(new Error('probe rejection')); else throw new Error('probe exception'); });",
+  )}`;
+
+  async function crash(file: string, env: Record<string, string>, kind: 'throw' | 'reject') {
+    const child = spawn(process.execPath, ['--import', PROBE, join(outdir, file)], {
+      env: { ...process.env, HOST: '127.0.0.1', NODE_ENV: 'development', ...env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    children.push(child);
+    let output = '';
+    child.stdout?.on('data', (d) => (output += String(d)));
+    child.stderr?.on('data', (d) => (output += String(d)));
+    const exited = new Promise<number | null>((resolve) => child.on('exit', (code) => resolve(code)));
+    for (let i = 0; i < 100 && !output.includes('] heartbeat '); i += 1) await sleep(100);
+    expect(output, `${file} never beat in 10s`).toContain('] heartbeat ');
+    child.stdin!.write(`${kind}\n`);
+    return { code: await exited, output };
+  }
+
+  const mongo = (prefix: string) => ({ BB_MONGO_URI: inject('mongoUri'), BB_MONGO_DB_PREFIX: `${prefix}${process.pid}` });
+  const cases: [string, string, () => Promise<Record<string, string>>][] = [
+    ['index.mjs', 'gameserver', async () => ({ PORT: String(await freePort()) })],
+    ['matchsvc.mjs', 'matchsvc', async () => ({ MATCH_PORT: String(await freePort()), ...mongo('guardmatch') })],
+    [
+      'billsvc.mjs',
+      'billsvc',
+      async () => ({ BILL_PORT: String(await freePort()), BB_BILLING_DEV_STUB: '1', ...mongo('guardbill') }),
+    ],
+    [
+      'adminsvc.mjs',
+      'adminsvc',
+      async () => ({ ADMIN_PORT: String(await freePort()), BB_ADMIN_PASSWORD: 'x'.repeat(32) }),
+    ],
+    [
+      'backup.mjs',
+      'backup',
+      async () => ({
+        ...mongo('guardbackup'),
+        BB_BACKUP_DIR: mkdtempSync(join(tmpdir(), 'bb-guard-backup-')),
+        BB_BACKUP_INTERVAL_HOURS: '1',
+      }),
+    ],
+  ];
+
+  it.each(cases)('%s', async (file, tag, env) => {
+    const { code, output } = await crash(file, await env(), 'throw');
+    expect(code, output).toBe(1);
+    expect(output).toContain(`ERROR [${tag}] uncaught exception, exiting origin=uncaughtException error="probe exception" stack=`);
+    expect(output).not.toMatch(/^\s+at /m);
+  }, 30_000);
+
+  it('a rejected promise nobody handled takes the same path, named as a rejection', async () => {
+    const { code, output } = await crash('index.mjs', { PORT: String(await freePort()) }, 'reject');
+    expect(code, output).toBe(1);
+    expect(output).toContain('ERROR [gameserver] uncaught exception, exiting origin=unhandledRejection error="probe rejection"');
+    expect(output).not.toMatch(/^\s+at /m);
+  }, 30_000);
+});

@@ -41,6 +41,7 @@ import { connectMongo } from '../mongo';
 import { readBackupConfig, BackupConfigError, type BackupConfig } from './config';
 import { isHealthy, readStatus, runCycle, writeStatus, type CycleIo } from './runner';
 import { createLogger } from '../log';
+import { installProcessGuard } from '../processGuard';
 import { startHeartbeat } from '../heartbeat';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -164,5 +165,6 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Pro
 // what this file starts is a loop that never returns, so a test importing it without the
 // guard would hang rather than fail.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  installProcessGuard(createLogger('backup'));
   void main(process.argv.slice(2), process.env);
 }

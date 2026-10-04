@@ -26,6 +26,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '../log';
+import { installProcessGuard } from '../processGuard';
 import { startHeartbeat } from '../heartbeat';
 import { createBillsvcServer, type BillsvcServer } from './server';
 import { assertBillingStartupSafety, type StartupEnv } from './startupGuard';
@@ -92,6 +93,7 @@ export async function main(env: StartupEnv = process.env, port = PORT, host = HO
 // imported by a test — the ESM equivalent of `require.main === module`, same guard
 // `matchsvc.ts` and `index.ts` use.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  installProcessGuard(createLogger('billsvc'));
   // A rejected boot must kill the process rather than becoming an unhandled rejection: a
   // billsvc that logged a connection failure and kept running would serve a webhook it
   // cannot record.
