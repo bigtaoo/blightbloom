@@ -1759,9 +1759,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-04** [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change) — found while covering matchsvc's `main()`: every service built its routing URL with `new URL` over the client's Host header, which throws on one it cannot parse. matchsvc answered 500 and logged an ERROR. billsvc, adminsvc and the gameserver's WebSocket `connection` handler threw an uncaught exception, which ends the process. Caddy's host-matched site block kept that out of reach from outside. `src/requestUrl.ts` now parses with `URL.parse`. The three HTTP services answer 400; the gameserver refuses the handshake with 400 in `verifyClient`. `badHost.http.test.ts` sends three bad hosts to all four services, and all four cases failed before the fix. `net` `test` `docs`
 
+**[2026-10-04 — An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md)**
+
+- **10-04** [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change) — the follow-up volume 130 left open: no process had an `uncaughtException` handler, so a crash ended in Node's multi-line default trace, which Alloy files as level-less fragments. `src/processGuard.ts` writes one ERROR line through the service's logger (origin, message and stack as fields), then exits 1 for compose to restart. A rejection reaches it through Node's default, so there is no second listener. All five entry points install it in their run-as-main block. `deploy.bundle.test.ts` throws inside each running bundle through an `--import` preload and requires the tagged line and no trace. 11 of 11 mutants killed. `platform` `test` `docs`
+
 ## The work log — by theme
 
-The same 243 entries, grouped. An entry with more than one tag appears more than once.
+The same 244 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1979,7 +1983,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(153)*
+**`test`** — coverage sweeps, gates, mutation batteries *(154)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2134,6 +2138,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(10)*
 
@@ -2148,7 +2153,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 
-**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(35)*
+**`platform`** — web / WeChat / Electron / game-portal targets and deploys *(36)*
 
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
 - 08-15 [Web client auto-reloads on deploy — ported from `funny`](roadmap/02-2026-08-12--08-15.md#web-client-auto-reloads-on-deploy--ported-from-funny-2026-08-15)
@@ -2185,6 +2190,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 09-22 [The frame rate was fine and the frames were not](roadmap/88-2026-09-22-frame-pacing.md#the-frame-rate-was-fine-and-the-frames-were-not-2026-09-22-client--monitoring--docs-no-engine-change)
 - 09-22 [The loading screen was in front of the wrong door](roadmap/90-2026-09-22-transition-hold.md#the-loading-screen-was-in-front-of-the-wrong-door-2026-09-22-client--i18n--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`ui`** — HUD, screens, widgets *(49)*
 
@@ -2288,7 +2294,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 
-**`docs`** — design docs and this log itself *(160)*
+**`docs`** — design docs and this log itself *(161)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2450,6 +2456,7 @@ The same 243 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(41)*
 

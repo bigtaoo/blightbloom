@@ -32,6 +32,7 @@ import { verifyTicket, type MatchMode } from './ticket';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
 import { requestUrl } from './requestUrl';
+import { installProcessGuard } from './processGuard';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -403,5 +404,6 @@ export function main(opts: MainOptions = {}): {
 // imported by a test — the same ESM `require.main === module` equivalent matchsvc.ts
 // uses now that `createGameserver` is a real importable export.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  installProcessGuard(createLogger('gameserver'));
   main();
 }
