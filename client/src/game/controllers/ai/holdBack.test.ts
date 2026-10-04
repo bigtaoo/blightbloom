@@ -112,3 +112,48 @@ describe('holdBackFight — the standoff band', () => {
     expect(holdBackFight(gun, 1, 5, gun.players[1]!, gun.players[0]!, [at(7, 5)])!.moveMag).toBeGreaterThan(0);
   });
 });
+
+describe('holdBackFight — the edges', () => {
+  const east = (s: GameState, d: number) => holdBackFight(s, 1, 5, s.players[1]!, s.players[0]!, [{ gx: s.players[1]!.gx + d, gy: s.players[1]!.gy }])!;
+  /** A room 40 grid wide, so every distance below stays inside it. */
+  const wide = () => {
+    const s = floor([1, 5], [1, 2]);
+    s.dungeonRoomRects[0] = { id: 'A', rect: rect(0, 0, 40, 10) } as RoomRect;
+    return s;
+  };
+
+  it('the band is closed at both ends: one fp past either edge moves', () => {
+    const band = fp(1);
+    expect(east(wide(), HOLD_BACK_FP + band).moveMag).toBe(0);
+    expect(heading(east(wide(), HOLD_BACK_FP + band + 1).moveBrad).x).toBeGreaterThan(0.9); // closes
+    expect(east(wide(), HOLD_BACK_FP - band).moveMag).toBe(0);
+    expect(heading(east(wide(), HOLD_BACK_FP - band - 1).moveBrad).x).toBeLessThan(-0.9); // backs off
+  });
+
+  it('fires out to fire range exactly, and not one fp past it', () => {
+    expect(east(wide(), FIRE_RANGE_FP).buttons & Button.FIRE).toBeTruthy();
+    expect(east(wide(), FIRE_RANGE_FP + 1).buttons & Button.FIRE).toBe(0);
+  });
+
+  it('of two enemies at one distance, the first listed is the target', () => {
+    const s = floor([5, 5], [1, 2]);
+    const e = at(8, 5), w = at(2, 5); // 3 grid east and west: both inside the band
+    expect(heading(holdBackFight(s, 1, 5, s.players[1]!, s.players[0]!, [e, w])!.moveBrad).x).toBeLessThan(-0.9);
+    // Control: list the west one first and the ally backs off east instead.
+    expect(heading(holdBackFight(s, 1, 5, s.players[1]!, s.players[0]!, [w, e])!.moveBrad).x).toBeGreaterThan(0.9);
+  });
+
+  it('with no way to close on the target it stands and still fires', () => {
+    const s = floor([1.5, 1.5], [1, 9]);
+    const target = at(9.5, 8.5); // 10.6 grid off: past the band, inside fire range
+    // A closed box round the ally: no cell it can step to is any nearer the target.
+    s.walls.push(rect(0.5, 0.5, 2, 0.2), rect(0.5, 2.3, 2, 0.2), rect(0.5, 0.5, 0.2, 2), rect(2.3, 0.5, 0.2, 2));
+    s.rebuildSpatialIndex();
+    const cmd = holdBackFight(s, 1, 5, s.players[1]!, s.players[0]!, [target])!;
+    expect(cmd.moveMag).toBe(0);
+    expect(cmd.buttons & Button.FIRE).toBeTruthy();
+    // Control: without the box it walks.
+    const open = floor([1.5, 1.5], [1, 9]);
+    expect(holdBackFight(open, 1, 5, open.players[1]!, open.players[0]!, [target])!.moveMag).toBeGreaterThan(0);
+  });
+});

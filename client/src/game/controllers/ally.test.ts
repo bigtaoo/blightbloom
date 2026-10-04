@@ -69,6 +69,35 @@ describe('AllyController — command generation', () => {
     expect(cmd.moveMag).toBe(0); // holding
   });
 
+  it('with its leader dead, an enemy in the leader’s room is no longer its fight', () => {
+    // Two rooms sharing an edge, as `placeFloor` lays them: A to x10, B from x10 to x30 (grid).
+    const twoRooms = (leaderAlive: boolean) => {
+      const s = createGameState({ ...CFG, players: [{ start: [448, 160] }, { start: [256, 160] }] });
+      s.dungeonRoomRects.push(
+        { id: 'A', rect: { x: toFpGrid(0), y: toFpGrid(0), w: toFpGrid(10), h: toFpGrid(10) } } as never,
+        { id: 'B', rect: { x: toFpGrid(10), y: toFpGrid(0), w: toFpGrid(20), h: toFpGrid(10) } } as never,
+      );
+      s.players[0]!.alive = leaderAlive;
+      addEnemy(s, 544, 160); // in B, 9 grid east of the ally in A: in fire range
+      return s;
+    };
+    const dead = ally.build(twoRooms(false), 1, 0, 5);
+    expect(dead.buttons).toBe(0);
+    expect(dead.moveMag).toBe(0);
+    // Control: the leader standing in B makes the same enemy the ally's.
+    expect(ally.build(twoRooms(true), 1, 0, 5).buttons & Button.FIRE).toBeTruthy();
+  });
+
+  it('a dead enemy is not a target', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
+    addEnemy(s, 500, 400).alive = false;
+    expect(ally.build(s, 1, 0, 5).buttons).toBe(0);
+    // Control: alive, the same enemy draws fire.
+    const live = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [420, 400] }] });
+    addEnemy(live, 500, 400);
+    expect(ally.build(live, 1, 0, 5).buttons & Button.FIRE).toBeTruthy();
+  });
+
   it('holds fire and regroups toward the leader when no enemies remain', () => {
     const s = createGameState({ ...CFG, players: [{ start: [400, 400] }, { start: [900, 400] }] });
     // Leader (seat 0) is far WEST of the ally (seat 1) — the ally should move west, not fire.
