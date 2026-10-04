@@ -39,9 +39,11 @@
  */
 import type { Db } from 'mongodb';
 import { dailyActiveOf, dailyRollupOf, eventsOf, DAILY_ACTIVE_COLLECTION, type DailyRollupDoc } from './db';
+import { RETENTION_OFFSETS, addDays, canonicalLabels, lastCompleteDay, newestKnownCohort } from './rollupKeys';
+import { newInstallGauges, newInstallRollupRows } from './newInstalls';
 
-/** The offsets tracked, in one place — adding D14 is this line plus a dashboard panel. */
-export const RETENTION_OFFSETS = [1, 2, 3, 4, 5, 6, 7] as const;
+// Re-exported so the helpers' move to `rollupKeys.ts` is invisible to this module's importers.
+export { RETENTION_OFFSETS, addDays, canonicalLabels, lastCompleteDay, newestKnownCohort };
 
 /** A number this file produces. Structurally compatible with the server's `Metric`, but
  *  declared here so that computing a rollup does not depend on the exposition layer. */
@@ -51,17 +53,6 @@ export interface RollupMetric {
   type: 'gauge' | 'counter';
   value: number;
   labels?: Record<string, string>;
-}
-
-/** `YYYY-MM-DD` plus a signed number of days. Text in, text out — the format sorts
- *  chronologically, which is why every comparison in this module is a string compare. */
-export function addDays(day: string, delta: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + delta * 86_400_000).toISOString().slice(0, 10);
-}
-
-/** The most recent day that is over. Everything computed here is about this day or earlier. */
-export function lastCompleteDay(todayKey: string): string {
-  return addDays(todayKey, -1);
 }
 
 /** One bucket of a group-by, as every counter below returns it. */
@@ -177,17 +168,6 @@ export async function cohortRate(
   return { cohortDay, offset, size, returned, rate: returned / size };
 }
 
-/**
- * The newest cohort whose `offset`-day answer is known.
- *
- * Derived rather than passed in, because getting it wrong is the classic off-by-one here: a
- * cohort's D`n` is knowable once day `cohort + n` is COMPLETE, so the newest such cohort is
- * `lastCompleteDay - n`, not `today - n`.
- */
-export function newestKnownCohort(todayKey: string, offset: number): string {
-  return addDays(lastCompleteDay(todayKey), -offset);
-}
-
 /** Retention gauges for the newest cohort at each offset. A null rate contributes NOTHING —
  *  see the file header. */
 export async function retentionGauges(db: Db, todayKey: string): Promise<RollupMetric[]> {
@@ -242,7 +222,7 @@ export async function rollupMetrics(db: Db, todayKey: string): Promise<RollupMet
       labels: { screen },
     });
   }
-  return [...out, ...(await retentionGauges(db, todayKey))];
+  return [...out, ...(await retentionGauges(db, todayKey)), ...(await newInstallGauges(db, todayKey))];
 }
 
 /**
@@ -282,6 +262,10 @@ export async function persistRollup(db: Db, todayKey: string, nowMs: number): Pr
     retention.push({ day: r.cohortDay, metric: 'retention', labels: { d: String(offset) }, value: r.rate });
     retention.push({ day: r.cohortDay, metric: 'cohort_size', labels: { d: String(offset) }, value: r.size });
   }
+  // The new-install cohort and funnel (`newInstalls.ts`), which — unlike the rows above —
+  // also fills holes in the record, so its rows carry their own days. Same transaction, so a
+  // cycle's numbers land together or not at all.
+  retention.push(...(await newInstallRollupRows(db, todayKey)));
 
   const docs: DailyRollupDoc[] = [
     ...rows.map((r) => ({ day, metric: r.metric, labels: canonicalLabels(r.labels), value: r.value, computedAt: nowMs })),
@@ -310,10 +294,3 @@ export async function persistRollup(db: Db, todayKey: string, nowMs: number): Pr
   return docs.length;
 }
 
-/** Labels as a stable string, so the uniqueness key means what it looks like.
- *  `JSON.stringify` preserves insertion order, which two callers building the same object
- *  from different code paths would not — so the keys are sorted before serialising. */
-export function canonicalLabels(labels: Record<string, string>): string {
-  const keys = Object.keys(labels).sort();
-  return JSON.stringify(Object.fromEntries(keys.map((k) => [k, labels[k]])));
-}
