@@ -54,7 +54,11 @@ in all six blocks, at 1.18 to 1.55. Backing off to full, its six blocks run 0.87
 
 ### Files
 
-- `client/sim/pvp/ShieldRetreatBot.ts`: the sim-only bot.
+- `client/sim/pvp/ShieldRetreatBot.ts`: the sim-only bot. `ShieldRetreatBot.test.ts` beside it
+  (in the ordinary client suite) pins its policy: the shipped bot's command while any shield is
+  left, backing off on a spent shield until `exitFrac` of the pool is back, walking away from a
+  near opponent and standing with none near, still firing, and a no-shield or downed seat left
+  alone; each rule's mutant fails it (8 of 8).
 - `client/sim/pvpShieldRetreat.sim.ts` (`npm run test:pvp-shield`, own config, not in
   `test:sims`): 2 blocks by default, `PVP_SHIELD_BLOCKS=6` for the table above. It asserts no
   timeouts, that each retreating condition really regained shield, and that backing off to full

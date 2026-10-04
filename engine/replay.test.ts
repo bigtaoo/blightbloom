@@ -139,3 +139,15 @@ describe('serializeState: the deflect latch (ENGINE_VERSION 85)', () => {
     expect(hashState(s)).not.toBe(hashPlain);
   });
 });
+
+describe('serializeState: the bot flag (ENGINE_VERSION 88)', () => {
+  it('hashes which seats are bots, since that decides whether a run with no person left ends', () => {
+    const s = createGameEngine(ARENA).state;
+    const before = hashState(s);
+    expect(s.players[0]!.bot).toBe(false);
+    s.players[0]!.bot = true;
+    expect(hashState(s)).not.toBe(before);
+    s.players[0]!.bot = false;
+    expect(hashState(s)).toBe(before); // the flag alone moved it, nothing else did
+  });
+});
