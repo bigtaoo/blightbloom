@@ -47,12 +47,20 @@ describe('enemiesInReach — the ally’s room and its leader’s, nothing furth
     expect(enemiesInReach(s, s.players[1]!, undefined, [at(8, 5), at(20, 5)])).toEqual([at(8, 5)]);
   });
 
-  it('in a doorway, only an enemy already in fire range', () => {
-    const s = floor([11, 5], [2, 5]); // ally in the A–B door, in no room's rect
-    const near = at(20, 5); // 9 grid off, in B
-    const far = at(17, 21); // in C, past fire range
-    expect(Math.hypot(far.gx - fp(11), far.gy - fp(5))).toBeGreaterThan(FIRE_RANGE_FP);
-    expect(enemiesInReach(s, s.players[1]!, s.players[0]!, [near, far])).toEqual([near]);
+  it('an enemy in a third room is not in reach, even inside fire range', () => {
+    const s = floor([8, 5], [2, 5]); // both seats in A
+    const inB = at(16, 5); // 8 grid off, nothing in between
+    expect(Math.hypot(inB.gx - fp(8), inB.gy - fp(5))).toBeLessThan(FIRE_RANGE_FP);
+    expect(enemiesInReach(s, s.players[1]!, s.players[0]!, [inB])).toEqual([]);
+    // Control: the leader in B makes it the ally's.
+    const led = floor([8, 5], [14, 5]);
+    expect(enemiesInReach(led, led.players[1]!, led.players[0]!, [inB])).toEqual([inB]);
+  });
+
+  it('outside every room’s rect the ally has no room of its own, only its leader’s', () => {
+    const s = floor([11, 5], [14, 5]); // ally in the A–B gap, which only the test floor has
+    const inA = at(8, 5), inB = at(20, 5);
+    expect(enemiesInReach(s, s.players[1]!, s.players[0]!, [inA, inB])).toEqual([inB]);
   });
 
   it('with no room layout (an arena) every enemy counts, as before', () => {

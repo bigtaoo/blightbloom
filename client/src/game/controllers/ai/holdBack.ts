@@ -5,7 +5,8 @@
 //
 // Two changes, both the careful level-sim bot's (`sim/pve/PveBotController`):
 //   - who: only an enemy in the ally's own room or its leader's. A mob two rooms on is left alone
-//     until the leader gets there; standing in a doorway, only one already in fire range counts;
+//     until the leader gets there. Nothing in a third room can shoot it meanwhile: a room whose
+//     fight starts pulls every standing seat inside and locks its doors (`DoorSystem`);
 //   - where: hold 7.5 grid off the target, outside every mob's own engage range (5.6 grid), and
 //     back off when it closes in. A blade has no business at 7.5 grid, so a melee weapon in hand
 //     keeps the old close-in shape.
@@ -21,7 +22,7 @@ export const HOLD_BACK_FP = Math.round(7.5 * FP_SCALE);
 /** Half-width of the band round `HOLD_BACK_FP` in which the ally stands still. */
 const BAND_FP = gridFp(1);
 
-/** The room whose rect contains `p`, or undefined in a doorway. Array order decides ties. */
+/** The room whose rect contains `p`, or undefined outside every rect. Array order decides ties. */
 function roomAt(s: GameState, p: Point): string | undefined {
   for (const r of s.dungeonRoomRects) {
     const { x, y, w, h } = r.rect;
@@ -32,7 +33,9 @@ function roomAt(s: GameState, p: Point): string | undefined {
 
 /**
  * The enemies the ally may fight this tick: those in its own room or its leader's. With no room
- * layout at all (an arena), every enemy, as before.
+ * layout at all (an arena), every enemy, as before. It had a third arm until 2026-10-04: in a
+ * doorway, any enemy in fire range. Generated rooms share their edges, so every point is in some
+ * rect and the arm never fired outside a test floor.
  */
 export function enemiesInReach(s: GameState, me: Point, leader: Point | undefined, enemies: readonly Point[]): Point[] {
   if (s.dungeonRoomRects.length === 0) return [...enemies];
@@ -40,8 +43,7 @@ export function enemiesInReach(s: GameState, me: Point, leader: Point | undefine
   const theirs = leader ? roomAt(s, leader) : undefined;
   return enemies.filter((e) => {
     const room = roomAt(s, e);
-    if (room !== undefined && (room === mine || room === theirs)) return true;
-    return mine === undefined && Math.hypot(e.gx - me.gx, e.gy - me.gy) <= FIRE_RANGE_FP;
+    return room !== undefined && (room === mine || room === theirs);
   });
 }
 

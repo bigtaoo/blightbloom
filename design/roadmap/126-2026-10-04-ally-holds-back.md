@@ -15,8 +15,9 @@ Both halves come from the careful level-sim bot (`sim/pve/PveBotController`), wh
 range and has never had this problem:
 
 - **Who it fights:** only an enemy in its own room or its leader's. A mob two rooms on is left
-  alone until the leader gets there. In a doorway, where it stands in no room, only an enemy
-  already in fire range counts. With no room layout at all (an arena), every enemy, as before.
+  alone until the leader gets there. With no room layout at all (an arena), every enemy, as
+  before. It shipped with a third arm, in a doorway any enemy in fire range, removed the same day:
+  see "The doorway arm" below.
 - **Where it stands:** 7.5 grid off the target (`HOLD_BACK_FP`), outside every mob's own engage
   range of 5.6 grid. Inside a 1-grid band it stands still. Closer, it backs off, still firing. Further,
   it walks there, through the doors when the target is in the other seat's room (`walkTo`).
@@ -67,7 +68,8 @@ counts every down, and in brackets those with the other seat still standing.
 - `ai/holdBack.test.ts`, 10 cases on volume 125's L of three rooms:
   - the reach filter keeps either seat's room and drops a third;
   - with no leader it keeps only the ally's own room;
-  - in a doorway it keeps only enemies in fire range;
+  - an enemy in a third room stays out even inside fire range, and outside every rect only the
+    leader's room counts (both replaced the doorway case, see below);
   - with no rooms it keeps every enemy;
   - nothing in reach is null, with the old fight chasing the same enemy as the control;
   - it stands still in the band, backs off inside it, and closes from past fire range without
@@ -82,15 +84,25 @@ counts every down, and in brackets those with the other seat still standing.
   The held-back ally then backs off west, the PvP bot also walks west, and the two commands
   matched. The enemy moves to 9.4 grid.
 
+### The doorway arm, removed
+
+The first cut kept a third arm: standing in a doorway, in no room's rect, any enemy in fire range
+counted. It never fired on a generated floor. `placeFloor` lays adjacent rooms edge to edge and
+the door straddles the shared edge, so every point is in some room's rect; only the test floor
+has a gap.
+
+The worry it left was the reverse case: an enemy just across a door, in a room neither seat is
+in, shooting the ally unanswered. That cannot happen either. When a room's fight starts,
+`DoorSystem` pulls every standing seat onto its entrance and locks its doors. A rule that let the
+ally answer any enemy with a clear shot from fire range was built and measured: over
+`test:coop-revive`'s ten conditions, about a million held-back fight ticks, it never once found
+such an enemy, and every row of the table above came out unchanged. So the rule was not
+shipped, and the dead arm went instead. Reach is now the two seats' rooms and nothing else.
+
 ### Still open
 
 - **A bot left alone after its player dies** (volume 125). Above: holding back makes it likelier
   when the ally's revive cannot answer.
 - **Party-size scaling** for co-op PvE (volume 124).
-- **The doorway rule never fires on a generated floor.** `placeFloor` lays adjacent rooms edge to
-  edge and the door straddles the shared edge, so every point is in some room's rect; only the
-  test floor has a gap. What a real floor does instead: an enemy just across a door, in a room
-  neither seat is in, is not the ally's fight even while it shoots the ally. Left as it is for
-  the owner, next to the left-alone case above.
 - Whether a leader revived three times a run feels like help or like nagging. That needs a
   playtest.
