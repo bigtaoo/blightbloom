@@ -27,6 +27,11 @@ describe('ticket — round-trip', () => {
     // `payload` itself (no `mode` field) is the pre-PvP shape — still verifies clean.
     expect(verifyTicket(signTicket(payload, SECRET), SECRET, 0)).toEqual(payload);
   });
+
+  it('round-trips a bot seat’s claim (ENGINE_VERSION 88)', () => {
+    const bot: TicketPayload = { ...payload, bot: true };
+    expect(verifyTicket(signTicket(bot, SECRET), SECRET, 0)).toEqual(bot);
+  });
 });
 
 describe('ticket — rejection surface', () => {
@@ -113,6 +118,8 @@ describe('verifyTicket — a correctly signed body that is not a ticket', () => 
       { ...payload, exp: 'soon' },
       { ...payload, mode: 'solo' },
       { ...payload, accountId: 42 },
+      { ...payload, bot: false },
+      { ...payload, bot: 'yes' },
       null,
       [],
     ];

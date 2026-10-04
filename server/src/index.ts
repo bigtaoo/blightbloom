@@ -172,6 +172,7 @@ class SocketConnection implements RoomConnection {
     private readonly ws: WebSocket,
     readonly accountId?: string,
     readonly name?: string,
+    readonly bot?: boolean,
   ) {}
   send(msg: ServerMsg): void {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(JSON.stringify(msg));
@@ -192,6 +193,8 @@ interface Seat {
    * handshake is trusted because nothing is configured, and a name is the one field a
    * spoofing client would actually want. */
   name?: string;
+  /** A practice bot's seat (ENGINE_VERSION 88), from the same verified ticket. */
+  bot?: boolean;
 }
 
 /**
@@ -213,6 +216,7 @@ function resolveSeat(url: URL, secret: string, isDev: boolean): Seat | null {
       mode: payload.mode ?? 'coop',
       accountId: payload.accountId,
       name: payload.name,
+      bot: payload.bot === true,
     };
   }
   if (!isDev) return null; // a configured secret ⇒ ticket mandatory
@@ -294,9 +298,9 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
       ws.close(4401, 'invalid or missing ticket');
       return;
     }
-    const { roomId, owner, seed, count, mode, accountId, name } = seat;
+    const { roomId, owner, seed, count, mode, accountId, name, bot } = seat;
 
-    const conn = new SocketConnection(owner, roomId, ws, accountId, name);
+    const conn = new SocketConnection(owner, roomId, ws, accountId, name, bot);
 
     // A room already IN_MATCH (or settled/OVER) can never be `join()`-ed — that call
     // only succeeds while seats are still filling (MatchRoom.join). Reaching here with

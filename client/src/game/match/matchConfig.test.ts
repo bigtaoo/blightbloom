@@ -50,4 +50,17 @@ describe('buildOnlineConfig', () => {
     const cfg = buildOnlineConfig(m);
     for (const p of cfg.players!) expect('teamId' in p).toBe(false);
   });
+
+  it('flags the seats match_start names as bots, and only those (ENGINE_VERSION 88)', () => {
+    const cfg = buildOnlineConfig(matchStart({ mode: 'coop', playerCount: 3, botSeats: [2] }));
+    expect(cfg.players!.map((p) => p.bot === true)).toEqual([false, false, true]);
+    // A room of people builds the seat shape it always did: no `bot` key at all.
+    for (const p of buildOnlineConfig(matchStart({ mode: 'coop', playerCount: 3 })).players!) expect('bot' in p).toBe(false);
+    for (const p of cfg.players!.slice(0, 2)) expect('bot' in p).toBe(false);
+  });
+
+  it('ignores botSeats in an arena: the PvP config is the same with or without it', () => {
+    const m = matchStart({ mode: 'pvp', seed: 3, playerCount: 4 });
+    expect(buildOnlineConfig({ ...m, botSeats: [1, 2, 3] })).toEqual(buildOnlineConfig(m));
+  });
 });

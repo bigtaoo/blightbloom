@@ -331,7 +331,7 @@ describe('practice-bot backfill — the onBotFill block', () => {
         // Each bot's token has to verify against the SAME secret the gameserver checks, for
         // its OWN seat — a bot handed the wrong owner is refused at the handshake, silently.
         const payload = verifyTicket(bot.token, SECRET, Date.now());
-        expect(payload).toMatchObject({ roomId: seat.roomId, owner: bot.owner, mode: 'pvp' });
+        expect(payload).toMatchObject({ roomId: seat.roomId, owner: bot.owner, mode: 'pvp', bot: true });
         expect(typeof payload!.teamId).toBe('number');
       }
     } finally {
@@ -370,7 +370,7 @@ describe('practice-bot backfill — the onBotFill block', () => {
       // A bot minted with the wrong mode joins the right room and simulates a different
       // game in it.
       const payload = verifyTicket(ally.token, SECRET, Date.now());
-      expect(payload).toMatchObject({ roomId: seat.roomId, owner: 1, mode: 'coop' });
+      expect(payload).toMatchObject({ roomId: seat.roomId, owner: 1, mode: 'coop', bot: true });
     } finally {
       await ctx.close();
     }

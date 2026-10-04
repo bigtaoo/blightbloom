@@ -34,7 +34,9 @@ export interface CoopRun {
   /** `extracted` and `wiped` are the engine's own ends. `stranded`: the leader bled out with the
    *  ally still up. Any standing seat may open the portal since ENGINE_VERSION 87, but the ally
    *  never opens one itself (it only confirms), so such a run can never extract; it is cut there
-   *  rather than played out to the guard. */
+   *  rather than played out to the guard. Since ENGINE_VERSION 88 the ally's seat is flagged a
+   *  bot and the engine ends that run as a wipe on the same tick, so `stranded` should never
+   *  be read: `coopRevive.sim.ts` gates it at 0. */
   outcome: 'extracted' | 'wiped' | 'stranded' | 'timeout';
   ticks: number;
   floorReached: number;

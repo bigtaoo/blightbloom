@@ -44,6 +44,20 @@ export class WinConditionSystem {
       return;
     }
 
+    // Nor once every person is dead and only bots stand (ENGINE_VERSION 88). A bot never opens
+    // the portal, so a run its player bled out of could only end when the bot died too, with
+    // the player watching. A downed person is still alive, and the bot may yet revive them.
+    // With no bot seat at all (solo, and every config before 88) every person dead is nobody up,
+    // which the check above has already ended; with no person at all (a sim's all-bot run)
+    // there is nobody to strand.
+    const people = state.players.filter((p) => !p.bot);
+    if (people.length > 0 && people.every((p) => !p.alive)) {
+      state.winner = 'enemies';
+      state.phase = 'gameover';
+      state.events.push({ type: 'win', winner: 'enemies' });
+      return;
+    }
+
     if (state.floorsEnabled) return; // ExtractionSystem (12) owns the win transition instead
 
     if (state.wavesExhausted && state.enemies.length === 0) {

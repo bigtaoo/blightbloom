@@ -2820,3 +2820,17 @@ Both new fields are hashed in `serializeState`. The golden gate, run before this
 before the fields were hashed, was green: every scenario is single-seat. A recorded co-op run
 diverges at its first checkpoint. Golden fixture regenerated (version stamp and the two new
 fields).
+
+v88 (2026-10-04 — a run with only bots standing ends). A co-op run whose player died while
+the bot ally stood went on: the bot never opens the portal, so it fought until it died too,
+with the player watching (volume 124's "stranded" runs; volume 126 found holding back makes
+them likelier when the ally's revive cannot answer). The owner's call: a seat carries
+`PlayerConfig.bot` → `PlayerActor.bot`, and in PvE `WinConditionSystem` ends the run as a
+wipe once every seat that is not a bot is dead. A downed person is still alive and still
+waited for, since the bot may revive them. With no bot seat (solo, every arena, every config
+before 88) nothing changes.
+
+The new field is hashed in `serializeState`. The golden gate, run before this bump and before
+the field was hashed, was green: no scenario has a bot seat. A recorded co-op run with a bot
+ally whose player died diverges on that tick. Golden fixture regenerated (version stamp and
+the new field).

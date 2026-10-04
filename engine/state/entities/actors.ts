@@ -137,6 +137,8 @@ export interface PlayerActor extends Actor {
    *  (ENGINE_VERSION 87, `GameState.portalCountdownTicks`). Cleared when the portal
    *  resolves. */
   portalReady: boolean;
+  /** A bot's seat, not a person's (ENGINE_VERSION 88, `PlayerConfig.bot`). Set once at spawn. */
+  bot: boolean;
   // This tick's INTERACT hold state (mirrors `firing`'s FIRE mirror), set by
   // ApplyInputSystem. Read by ReviveSystem (sustained channel) — no longer by
   // PickupSystem (weapon collection is click-driven now, see `pickupTargetId` below)

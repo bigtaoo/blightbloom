@@ -42,7 +42,7 @@ function addPlayer(s: GameState, xpx: number, ypx: number): PlayerActor {
     facing: 0 as Brad, hp: 6, maxHp: 6, shield: 0, maxShield: 0, ticksSinceHit: 0,
     radius: PLAYER_BASE.radius, footprintRadius: PLAYER_BASE.footprintRadius, solidRadius: PLAYER_BASE.solidRadius,
     alive: true, weapon: w, weapons: [w], activeSlot: 0, buffs: [], energy: BASE_MAX_ENERGY, maxEnergy: BASE_MAX_ENERGY, coins: 0, shopBuyId: 0,
-    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, portalReady: false, confirmExtract: false, confirmDescend: false,
+    firing: false, interacting: false, pickupTargetId: 0, cardVote: 0, portalReady: false, bot: false, confirmExtract: false, confirmDescend: false,
     downed: false, bleedoutTicks: 0, reviveProgressTicks: 0,
     bandages: 0, prevButtons: 0, status: freshStatus(),
     floorMaterials: {}, bankedMaterials: {}, blueprintPickup: null, characterPickup: null,
@@ -109,6 +109,70 @@ describe('WinConditionSystem — a run ends only when NO player is up', () => {
     s.players[1]!.downed = true;
     new WinConditionSystem().tick(s);
     expect(s.winner).toBe('enemies');
+  });
+});
+
+describe('WinConditionSystem — a run with only bots standing ends (ENGINE_VERSION 88)', () => {
+  /** The player (seat 0) and a bot ally (seat 1), both up. */
+  const withBot = (bot = true) => {
+    const s = state();
+    addPlayer(s, 500, 400).bot = bot;
+    return s;
+  };
+
+  it('the config flag reaches the seat, and an absent one is a person', () => {
+    const s = createGameState({ ...CFG, players: [{}, { bot: true }, { bot: false }] });
+    expect(s.players.map((p) => p.bot)).toEqual([false, true, false]);
+  });
+
+  it('the player dead and the bot standing ends the run as a wipe, once', () => {
+    const s = withBot();
+    s.players[0]!.alive = false;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe('enemies');
+    expect(s.phase).toBe('gameover');
+    expect(s.events.filter((e) => e.type === 'win')).toEqual([{ type: 'win', winner: 'enemies' }]);
+    // Control: the same seat not flagged as a bot is a teammate, and the run goes on.
+    const mate = withBot(false);
+    mate.players[0]!.alive = false;
+    new WinConditionSystem().tick(mate);
+    expect(mate.winner).toBe(null);
+  });
+
+  it('a downed player is still alive: the bot may revive them, so the run goes on', () => {
+    const s = withBot();
+    s.players[0]!.downed = true;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe(null);
+  });
+
+  it('with two people and a bot, it waits for the second person', () => {
+    const s = withBot();
+    addPlayer(s, 600, 400); // a second person, seat 2
+    s.players[0]!.alive = false;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe(null);
+    s.players[2]!.alive = false;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe('enemies');
+  });
+
+  it('a bot left standing alone does not end a run that has no person in it', () => {
+    // Every seat a bot (a sim's all-bot run): there is nobody to strand, and the run plays out.
+    const s = withBot();
+    s.players[0]!.bot = true;
+    s.players[0]!.alive = false;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe(null);
+  });
+
+  it('an arena ignores the flag: the last seat standing wins, bot or not', () => {
+    const s = withBot();
+    (s as { zoneEnabled: boolean }).zoneEnabled = true; // an arena run, set on the state rather than built
+    s.players[1]!.teamId = 1;
+    s.players[0]!.alive = false;
+    new WinConditionSystem().tick(s);
+    expect(s.winner).toBe(1);
   });
 });
 

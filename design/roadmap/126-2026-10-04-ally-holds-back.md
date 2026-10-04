@@ -84,8 +84,8 @@ counts every down, and in brackets those with the other seat still standing.
 
 ### Still open
 
-- **A bot left alone after its player dies** (volume 125). Above: holding back makes it likelier
-  when the ally's revive cannot answer.
+- ~~**A bot left alone after its player dies**~~ (volume 125). Done in
+  [volume 129](129-2026-10-04-bot-only-wipe.md): every stranded run above is now a wipe.
 - **Party-size scaling** for co-op PvE (volume 124).
 - **The doorway rule never fires on a generated floor.** `placeFloor` lays adjacent rooms edge to
   edge and the door straddles the shared edge, so every point is in some room's rect; only the

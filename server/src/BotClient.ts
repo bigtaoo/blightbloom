@@ -3,9 +3,10 @@
  * bot-fills after sitting out its mode's backfill delay without enough real players,
  * matchsvc spawns one of these per empty seat. It redeems a ticket and opens the
  * gameserver socket EXACTLY like a real player's browser tab would (same
- * ticket-authenticated `/ws` handshake, same `join`/`cmd`/`result` wire messages) —
- * MatchRoom/RoomManager need no bot concept at all, because a bot connection is
- * byte-for-byte the same shape as a human one.
+ * ticket-authenticated `/ws` handshake, same `join`/`cmd`/`result` wire messages). The one
+ * difference is a signed `bot: true` on its ticket (ENGINE_VERSION 88), which MatchRoom
+ * only collects into `match_start.botSeats` so every client's co-op config flags the seat:
+ * a run whose people are all dead then ends instead of leaving them to watch the bot.
  *
  * It drives a real headless `CoopSession` off the server's confirmed frame stream (full
  * determinism, no shortcuts — the engine can't tell a bot from a remote player, design/08)

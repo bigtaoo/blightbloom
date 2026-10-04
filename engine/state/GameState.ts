@@ -452,10 +452,9 @@ export class GameState {
       // PvP rather than preserve its ratio. See `SkinDef.maxEnergy`.
       energy: skin.maxEnergy,
       maxEnergy: skin.maxEnergy,
-      // Coins start at zero in BOTH modes (design/05 "Shops"). Not a character stat and not
-      // a loadout field: a starting balance would be meta value reaching into a run, which
-      // is the wall `buildArenaSpecs` takes no meta param to hold. Everything a run can spend
-      // it earns inside the run.
+      // Coins start at zero in BOTH modes (design/05 "Shops"). Not a character stat and not a loadout
+      // field: a starting balance would be meta value reaching into a run, the wall `buildArenaSpecs`
+      // takes no meta param to hold. Everything a run can spend it earns inside the run.
       coins: 0,
       firing: false,
       interacting: false,
@@ -465,6 +464,7 @@ export class GameState {
       shopBuyId: 0,
       cardVote: 0,
       portalReady: false,
+      bot: seat.bot === true,
       downed: false, // co-op downed/revive (design/05/07, ROADMAP 3.2)
       bleedoutTicks: 0,
       reviveProgressTicks: 0,
