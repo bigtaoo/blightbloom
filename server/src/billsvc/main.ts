@@ -24,9 +24,8 @@
  * in `createBillsvcServer` because a builder that arms a background interval cannot be
  * called by a test without leaving one running.
  */
-import { fileURLToPath } from 'node:url';
 import { createLogger } from '../log';
-import { installProcessGuard } from '../processGuard';
+import { runAsEntry } from '../entry';
 import { startHeartbeat } from '../heartbeat';
 import { createBillsvcServer, type BillsvcServer } from './server';
 import { assertBillingStartupSafety, type StartupEnv } from './startupGuard';
@@ -89,16 +88,6 @@ export async function main(env: StartupEnv = process.env, port = PORT, host = HO
   return handle;
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/billsvc/main.ts`), not when
-// imported by a test — the ESM equivalent of `require.main === module`, same guard
-// `matchsvc.ts` and `index.ts` use.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  installProcessGuard(createLogger('billsvc'));
-  // A rejected boot must kill the process rather than becoming an unhandled rejection: a
-  // billsvc that logged a connection failure and kept running would serve a webhook it
-  // cannot record.
-  void main().catch((e: unknown) => {
-    console.error(e);
-    process.exitCode = 1;
-  });
-}
+// Boots only when run directly (`node dist/billsvc.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'billsvc', main);

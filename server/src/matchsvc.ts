@@ -68,7 +68,6 @@
  */
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { randomInt, randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import type { Db } from 'mongodb';
 import { Matchmaker } from './Matchmaker';
 import { RatingStore } from './rating';
@@ -95,7 +94,7 @@ import { createPortalKeyStore } from './portalKeys';
 import { send } from './routes/http';
 import { dispatch, type DispatchContext } from './matchsvcDispatch';
 import { createLogger, type Logger } from './log';
-import { installProcessGuard } from './processGuard';
+import { runAsEntry } from './entry';
 import { startHeartbeat } from './heartbeat';
 import { lokiPushUrl } from './lokiPush';
 import * as partyRoutes from './routes/party';
@@ -485,16 +484,6 @@ export async function main(port = PORT, host = HOST): Promise<Server> {
   return server;
 }
 
-// Only auto-start when run directly (`node --import tsx/esm src/matchsvc.ts`), not when
-// imported by a test — the ESM equivalent of `require.main === module`, needed now that
-// `createMatchsvcServer` is a real importable export (design/16-accounts.md).
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  installProcessGuard(createLogger('matchsvc'));
-  // `main` awaits the cluster now, so its rejection has to be handled here or it becomes an
-  // unhandled rejection with no log line at all — which is precisely the boot failure an
-  // operator most needs to read.
-  main().catch((e: unknown) => {
-    console.error(`[blightbloom] matchsvc: failed to start — ${e instanceof Error ? e.message : String(e)}`);
-    process.exitCode = 1;
-  });
-}
+// Boots only when run directly (`node dist/matchsvc.mjs`), never when a test imports this file;
+// the check, the process guard and the failed-boot line are shared, see `entry.ts`.
+runAsEntry(import.meta.url, 'matchsvc', main);
