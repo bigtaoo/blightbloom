@@ -13,6 +13,7 @@
  * account, and `migrate` below is what would have to be right about it.
  */
 import { defaultMetaState, type MetaState } from './MetaState';
+import { webStorage } from '../platform/webStorage';
 
 export interface MetaStore {
   load(): MetaState;
@@ -39,21 +40,21 @@ const DEFAULT_KEY = 'daydayup.meta.v1';
  * falls back to a fresh account rather than throwing (a corrupt save must not brick the
  * game). `migrate` backfills fields a newer build added, so old saves keep working. */
 export function createWebMetaStore(key: string = DEFAULT_KEY): MetaStore {
-  const available = typeof localStorage !== 'undefined';
+  const storage = webStorage();
   return {
     load(): MetaState {
-      if (!available) return defaultMetaState();
+      if (storage === null) return defaultMetaState();
       try {
-        const raw = localStorage.getItem(key);
+        const raw = storage.getItem(key);
         return raw ? migrate(JSON.parse(raw)) : defaultMetaState();
       } catch {
         return defaultMetaState();
       }
     },
     save(m: MetaState): void {
-      if (!available) return;
+      if (storage === null) return;
       try {
-        localStorage.setItem(key, JSON.stringify(m));
+        storage.setItem(key, JSON.stringify(m));
       } catch {
         /* quota / private-mode — a lost save is acceptable, a crash is not */
       }

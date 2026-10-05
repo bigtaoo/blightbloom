@@ -111,7 +111,7 @@ export interface DailyActiveDoc {
  * half of the uniqueness key: a unique index has to name its fields, and a label set whose
  * KEYS vary per metric (`{host}`, `{event}`, `{screen}`, `{d}`) cannot be named. One sorted
  * string is one indexable value, which is exactly what `PRIMARY KEY (day, metric, labels)`
- * meant. `rollup.ts`'s `canonicalLabels` is what keeps it canonical.
+ * meant. `rollupKeys.ts`'s `canonicalLabels` is what keeps it canonical.
  */
 export interface DailyRollupDoc {
   day: string;

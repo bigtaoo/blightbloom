@@ -4,7 +4,7 @@
  * environment (same reason settings/store.ts tests its web store separately).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getInstallId, getPlayerId, resetIdentityCacheForTests, setIdentityStore, type IdentityStore } from './identity';
+import { getInstallId, getPlayerId, installIdStorage, resetIdentityCacheForTests, setIdentityStore, type IdentityStore } from './identity';
 import { setSession, resetSessionCacheForTests } from './session';
 
 function fakeStore(initial: string | null = null): IdentityStore {
@@ -141,5 +141,40 @@ describe('setIdentityStore — the seam an entry point installs a platform store
     setIdentityStore(fakeStore('leaky'));
     resetIdentityCacheForTests();
     expect(getInstallId()).not.toBe('leaky');
+  });
+});
+
+describe('installIdStorage — what happened to the install id this visit (design/21 §2.8)', () => {
+  /** A store whose writes are accepted without error and never kept — a blocked embedded
+   *  frame, from the inside. */
+  const blackHole = (): IdentityStore => ({ load: () => null, save: () => undefined });
+
+  it('is `stored` when the id came from an earlier visit', () => {
+    getInstallId(fakeStore('earlier'));
+    expect(installIdStorage()).toBe('stored');
+  });
+
+  it('is `new` when the id was minted and the read-back returned it', () => {
+    getInstallId(fakeStore());
+    expect(installIdStorage()).toBe('new');
+  });
+
+  it('is `unpersisted` when the write was swallowed — the save not throwing proves nothing', () => {
+    const id = getInstallId(blackHole());
+    expect(id).toMatch(/.+/);
+    expect(installIdStorage()).toBe('unpersisted');
+  });
+
+  it('remembers a mint by getPlayerId, which getInstallId then reads back as if stored', () => {
+    const store = fakeStore();
+    getPlayerId(store);
+    getInstallId(store);
+    expect(installIdStorage()).toBe('new');
+  });
+
+  it('is forgotten by the test reset', () => {
+    getInstallId(blackHole());
+    resetIdentityCacheForTests();
+    expect(installIdStorage()).toBe('stored');
   });
 });

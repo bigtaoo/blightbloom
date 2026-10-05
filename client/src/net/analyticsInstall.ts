@@ -38,7 +38,7 @@
  */
 import { CLIENT_EVENTS_PATH, createAnalytics, setAnalytics, type Analytics } from './analytics';
 import type { AnalyticsBatch, AnalyticsHost } from './analyticsEvents';
-import { getInstallId } from './identity';
+import { getInstallId, installIdStorage } from './identity';
 
 export interface AnalyticsInstallOptions {
   /** Origin of matchsvc, as `main.ts` already resolves it for the log route. */
@@ -159,7 +159,8 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   setAnalytics(analytics);
   // The first event of the visit, and the row every retention cohort is built from. Last,
   // so that a throw anywhere above leaves nothing half-installed reporting a visit.
-  analytics.track('session_start');
+  // `storage` is read here, after `getInstallId()` above has minted or loaded the id.
+  analytics.track('session_start', { storage: installIdStorage() });
   return analytics;
 }
 

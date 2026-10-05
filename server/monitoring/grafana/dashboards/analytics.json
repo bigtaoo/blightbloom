@@ -16,7 +16,41 @@
     "to": "now"
   },
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "host",
+        "label": "Build target (new-install panels)",
+        "type": "custom",
+        "query": "all,web,wechat,crazygames",
+        "current": {
+          "text": "all",
+          "value": "all"
+        },
+        "options": [
+          {
+            "text": "all",
+            "value": "all",
+            "selected": true
+          },
+          {
+            "text": "web",
+            "value": "web",
+            "selected": false
+          },
+          {
+            "text": "wechat",
+            "value": "wechat",
+            "selected": false
+          },
+          {
+            "text": "crazygames",
+            "value": "crazygames",
+            "selected": false
+          }
+        ],
+        "description": "Which build target the new-install panels show. 'all' is the total; the per-target lines partition it (an install belongs to the target it was first seen on)."
+      }
+    ]
   },
   "panels": [
     {
@@ -131,8 +165,8 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Retention — D1 to D7",
-      "description": "For each offset N: of the installs active on some day, the share that were active again N days later. The cohort behind each line is the NEWEST one whose answer is known, which is `the last complete day minus N` — so the D7 line is about a cohort a week older than the D1 line, by construction. A missing line means no cohort has aged that far yet. **An absent line is not a zero.** This dashboard deliberately has no `or vector(0)` anywhere: the server omits a gauge it cannot answer, so a panel that says No data is saying we do not know yet, and a panel showing 0 is saying we measured zero. Those are different facts and the first week of a launch is full of the former.",
+      "title": "Return rate of ALL active installs — D1 to D7",
+      "description": "For each offset N: of ALL the installs active on some day — regulars included, so this is NOT the new-install D1/D7 a platform reports (that is the panel below) — the share that were active again N days later. The cohort behind each line is the NEWEST one whose answer is known, which is `the last complete day minus N` — so the D7 line is about a cohort a week older than the D1 line, by construction. A missing line means no cohort has aged that far yet. **An absent line is not a zero.** This dashboard deliberately has no `or vector(0)` anywhere: the server omits a gauge it cannot answer, so a panel that says No data is saying we do not know yet, and a panel showing 0 is saying we measured zero. Those are different facts and the first week of a launch is full of the former.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -501,6 +535,263 @@
           },
           "expr": "bb_events_day{event=\"ad_completed\"}",
           "legendFormat": "watched"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "New-install retention — D1 to D7 ($host)",
+      "description": "For each offset N: of the installs whose FIRST day was the cohort day, the share active again N days later — the number platform dashboards and benchmarks call D1/D7. Same newest-known-cohort rule and the same absent-is-not-zero rule as the all-active panel above; an empty cohort publishes no line. Gauges are 15 days deep — the console's retention tab holds the full history.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percentunit",
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_retention_ratio{host=\"$host\"}",
+          "legendFormat": "D{{d}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "New-install cohort size behind each line ($host)",
+      "description": "How many new installs each line on the left is a share of. Read it first: a D1 of 50% over two new installs is one player.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_cohort_size{host=\"$host\"}",
+          "legendFormat": "D{{d}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "New installs and their first-day funnel ($host)",
+      "description": "Per day: installs seen for the first time, and how many of THOSE distinct installs reached the menu, started a run and finished one (won or lost) on that same UTC day. Unlike the event-count funnel above, each install counts once per step. \"id not kept\" counts new installs whose install id did not survive a storage write (a blocked embedded frame, a private window): they can never be seen returning, so they hold retention down without having left.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_installs{host=\"$host\"}",
+          "legendFormat": "new installs"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_funnel_installs{host=\"$host\"}",
+          "legendFormat": "{{step}}"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_unpersisted_installs{host=\"$host\"}",
+          "legendFormat": "id not kept"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "New installs by deepest first-day floor ($host)",
+      "description": "Per day: the new installs whose deepest floor reached on their first day was N. Taken from floor_reached and run_end, so a run that ended with the tab closing still has a depth. Installs that started no run are not here — they are the gap between 'new installs' and 'run_start' in the funnel panel.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_depth_installs{host=\"$host\"}",
+          "legendFormat": "floor {{floor}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "New-install D1 and D7 — by build target",
+      "description": "D1 and D7 of the newest knowable cohort on each build target, side by side. Ignores the build-target selector on purpose: this panel is the comparison. A target with no new installs in a cohort publishes no line rather than 0%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percentunit",
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_retention_ratio{host!=\"all\",d=~\"1|7\"}",
+          "legendFormat": "{{host}} D{{d}}"
         }
       ]
     }

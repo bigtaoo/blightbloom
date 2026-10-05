@@ -1,5 +1,6 @@
-// The three analytics events that are DERIVED from the frame rather than announced by a
-// call site: `screen_view`, `run_start`, and the `abandon` half of `run_end` (design/21 §2.2).
+// The analytics events that are DERIVED from the frame rather than announced by a call site:
+// `screen_view`, `run_start`, `floor_reached`, and the `abandon` half of `run_end` (design/21
+// §2.2, §2.8).
 //
 // ## Why derived
 //
@@ -161,16 +162,33 @@ export function runSeconds(state: TrackedState): number {
  *  3. `run_start` — when the run phases are being ENTERED from outside them. Not on
  *     `paused → playing`, which is a run resuming.
  *
+ * And, on any frame of a run, `floor_reached` when the floor is deeper than the last frame's —
+ * ahead of all three, since it is about the state the frame shows, not the phase change.
+ *
  * Returns whether anything was emitted, which is what makes "exactly one per transition"
  * assertable without inspecting the queue.
  */
 export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
+  // A run being entered starts with no snapshot: the one left over from a run that ended on
+  // a result screen (which never clears it) would otherwise be the baseline the next run's
+  // floors are compared against, and every floor up to that run's depth would go unreported.
+  if (!inRun(lastPhase ?? 'menu') && inRun(phase)) lastRun = null;
+
   // Snapshot BEFORE the early return, so it keeps up on every frame of a run rather than
-  // only on the frames where something changed.
-  if (inRun(phase) && state !== null) lastRun = state;
+  // only on the frames where something changed. A floor deeper than the last snapshot's is
+  // `floor_reached` — compared against the snapshot rather than counted, so a run resumed
+  // from a save onto floor 3 reports nothing for the floors it skipped.
+  let floor = false;
+  if (inRun(phase) && state !== null) {
+    if (lastRun !== null && state.floorIndex > lastRun.floorIndex) {
+      track('floor_reached', { floor: state.floorIndex + 1 });
+      floor = true;
+    }
+    lastRun = state;
+  }
 
   const previous = lastPhase;
-  if (phase === previous) return false;
+  if (phase === previous) return floor;
   lastPhase = phase;
 
   if (previous !== null && inRun(previous) && !inRun(phase) && !isOutcome(phase)) {
