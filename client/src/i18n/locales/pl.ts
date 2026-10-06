@@ -30,6 +30,12 @@ export const pl: Translations<typeof en> = {
     syncedHint: 'Postęp zsynchronizowany',
     bestFloor: 'Rekord: piętro {floor}',
   },
+  chapter: {
+    number: 'ROZDZIAŁ {n}',
+    locked: 'Ukończ rozdział {n}',
+    ember: { name: 'Otchłań Żaru' },
+    frost: { name: 'Otchłań Mrozu' },
+  },
   loading: {
     boot: 'WCZYTYWANIE',
     art: 'WCZYTYWANIE GRAFIKI',

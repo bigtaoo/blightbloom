@@ -145,8 +145,9 @@ export type AudioCue =
 // music decision (which file, how long that file is, and whether the file is really its own).
 //
 // Three, not eight. design/11's original plan is one loop per elemental biome, but
-// `game/theme.ts`'s `BIOME_ID_TO_ELEMENT` maps the only authored dungeon to `fire`, and
-// ice/lightning/poison have art with no dungeon pointing at them — the same standard
+// `game/theme.ts`'s `BIOME_ID_TO_ELEMENT` maps chapter 1 to `fire` and chapter 2 to `ice`
+// (which borrows chapter 1's loop for now — `musicCatalogue.ts BIOME_ID_TO_TRACK`), and
+// lightning/poison have art with no dungeon pointing at them — the same standard
 // `assetPacks.json` already applies to art: do not pay bytes for content a run cannot reach.
 //
 // Unlike a cue, a track is never triggered by an engine event. `game/musicDirector.ts`

@@ -37,9 +37,15 @@
  * one-time schematic is stackable count, not a set, so unioning it would silently drop
  * duplicates a guest legitimately earned from more than one boss kill.
  *
- * `loadout` and `selectedSkin` are the ACCOUNT's: they are a staged choice rather than an
- * accumulation, two of them cannot be added, and "the account is the truth" has to mean
- * something. `hasSeenTutorial` is OR'd instead, because `MetaState` describes it as
+ * `clearedChapters` UNIONS: a chapter beaten on this device was beaten, and the unlock it
+ * earned is the player's whichever side it was recorded on. It is NOT progress for
+ * `hasGuestProgress`, for the reason `bestFloor` is not: the prompt counts materials,
+ * blueprints and characters, and a modal whose every number is zero asks nothing. A clear
+ * always banks a carry-out too, so a guest with a clear almost always has a bank to ask about.
+ *
+ * `loadout`, `selectedSkin` and `selectedChapter` are the ACCOUNT's: they are a staged choice
+ * rather than an accumulation, two of them cannot be added, and "the account is the truth"
+ * has to mean something. `hasSeenTutorial` is OR'd instead, because `MetaState` describes it as
  * guest-local and account-independent — a player who has already been through the tutorial
  * on this browser must not be recommended it again by a fresh account.
  */
@@ -130,6 +136,7 @@ export function mergeGuestIntoAccount(guest: MetaState, account: MetaState): Met
     unlockedBlueprints: union(account.unlockedBlueprints, guest.unlockedBlueprints),
     ownedCharacters: union(account.ownedCharacters, guest.ownedCharacters),
     hasSeenTutorial: account.hasSeenTutorial || guest.hasSeenTutorial,
+    clearedChapters: union(account.clearedChapters, guest.clearedChapters),
     // A record, not a count: the deeper of the two, never their sum.
     bestFloor: Math.max(account.bestFloor, guest.bestFloor),
   };

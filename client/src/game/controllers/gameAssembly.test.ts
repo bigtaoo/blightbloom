@@ -87,7 +87,7 @@ function build(over: { matchmaking?: unknown } = {}) {
     endRunAsDefeat: () => {},
   } as unknown as GameShellHost;
   const assembled = assembleGame(parts, host);
-  return { mainMenu, loadout, assembled };
+  return { mainMenu, loadout, assembled, run: (parts as unknown as { run: RunState }).run };
 }
 
 let store: ReturnType<typeof memRunSaveStore>;
@@ -148,6 +148,17 @@ describe('the lobby and the loadout screen cannot disagree about a saved run', (
     writeSavedRun(freshSave(), store);
     expect(mainMenu.resumableRun()).not.toBeNull();
     expect(loadout.savedRun()).not.toBeNull();
+  });
+});
+
+describe('the lobby chapter picker reads the live account', () => {
+  it('is wired to the run meta, read on every call rather than captured at boot', () => {
+    // The default provider answers a FRESH account, so an unwired assembly would look right
+    // until somebody cleared chapter 1 — which is why this clears it after assembly.
+    const { mainMenu, run } = build();
+    expect(mainMenu.chapterProgress().clearedChapters).toEqual([]);
+    run.meta = { ...run.meta, clearedChapters: ['ember'], selectedChapter: 'frost' };
+    expect(mainMenu.chapterProgress()).toMatchObject({ clearedChapters: ['ember'], selectedChapter: 'frost' });
   });
 });
 

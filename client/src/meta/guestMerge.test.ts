@@ -130,6 +130,25 @@ describe('mergeGuestIntoAccount', () => {
     hasSeenTutorial: false,
   });
 
+  it('UNIONS cleared chapters — an unlock earned on either side is kept', () => {
+    const merged = mergeGuestIntoAccount(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['frost'] }));
+    expect([...merged.clearedChapters].sort()).toEqual(['ember', 'frost']);
+    expect(mergeGuestIntoAccount(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['ember'] })).clearedChapters)
+      .toEqual(['ember']);
+  });
+
+  it('keeps the account chapter pick — a staged choice, like the character', () => {
+    const merged = mergeGuestIntoAccount(
+      state({ selectedChapter: 'frost', clearedChapters: ['ember'] }),
+      state({ selectedChapter: 'ember' }),
+    );
+    expect(merged.selectedChapter).toBe('ember');
+  });
+
+  it('does not count a cleared chapter as progress worth the merge prompt (nothing to show)', () => {
+    expect(hasGuestProgress(state({ clearedChapters: ['ember'] }))).toBe(false);
+  });
+
   it('keeps the DEEPER best floor from either side — a record, never a sum', () => {
     expect(mergeGuestIntoAccount(state({ bestFloor: 3 }), state({ bestFloor: 5 })).bestFloor).toBe(5);
     expect(mergeGuestIntoAccount(state({ bestFloor: 4 }), state({ bestFloor: 1 })).bestFloor).toBe(4);

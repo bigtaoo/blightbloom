@@ -7,7 +7,7 @@
  * channel order, wrong rounding, wrong amount) changes these constants.
  */
 import { describe, it, expect } from 'vitest';
-import { WEAPON_SIM_BY_ID, type WeaponSimSpec } from '@dd/engine';
+import { CHAPTERS, CHAPTER_ORDER, WEAPON_SIM_BY_ID, type WeaponSimSpec } from '@dd/engine';
 import { THEME, ELEMENT_COLORS, elementColor, biomePalette, biomeElementOf, rarityColor, mixHex } from './theme';
 
 describe('elementColor', () => {
@@ -25,8 +25,17 @@ describe('elementColor', () => {
 });
 
 describe('biomeElementOf', () => {
-  it('maps the one registered biome id to its element', () => {
+  it('maps each chapter biome id to its element', () => {
     expect(biomeElementOf('ember')).toBe('fire');
+    expect(biomeElementOf('frost')).toBe('ice');
+  });
+
+  it('gives every chapter in the engine catalog a real element, never the neutral fallback', () => {
+    // The compile-time `satisfies` guards the table's keys; this guards what a run DRAWS — a
+    // chapter landing on 'neutral' would ship as the flat grey palette with no swatches.
+    for (const id of CHAPTER_ORDER) {
+      expect(biomeElementOf(CHAPTERS[id].config.biomeId), id).not.toBe('neutral');
+    }
   });
 
   it('falls back to neutral for undefined (outside dungeon mode) and any unknown id', () => {

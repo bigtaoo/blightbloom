@@ -17,9 +17,9 @@
 // had no path to the renderer at all).
 //
 // What is still open is not art and not this file: WHICH biome id maps to `poison`. There is no
-// poison room set authored yet (`engine/world/rooms/` has only `ember`), and design/13's own
-// "biome difficulty/order" item keeps that a `05` balance question — poison stays off floor 1
-// regardless, per the green-on-green camouflage note. When one is authored, it is one entry in
+// poison room set authored yet (`engine/world/rooms/` has `ember` → fire and `frost` → ice),
+// and design/13's own "biome difficulty/order" item keeps that a `05` balance question — poison
+// stays off floor 1 regardless, per the green-on-green camouflage note. When one is authored, it is one entry in
 // `theme.ts`'s BIOME_ID_TO_ELEMENT, not a change here.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';

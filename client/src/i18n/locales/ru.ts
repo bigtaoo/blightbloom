@@ -35,6 +35,12 @@ export const ru: Translations<typeof en> = {
     syncedHint: 'Прогресс сохранён',
     bestFloor: 'Рекорд: этаж {floor}',
   },
+  chapter: {
+    number: 'ГЛАВА {n}',
+    locked: 'Сначала пройдите главу {n}',
+    ember: { name: 'Тлеющая бездна' },
+    frost: { name: 'Ледяная бездна' },
+  },
   loading: {
     boot: 'ЗАГРУЗКА',
     art: 'ЗАГРУЗКА ГРАФИКИ',

@@ -30,6 +30,12 @@ export const es: Translations<typeof en> = {
     syncedHint: 'Progreso sincronizado',
     bestFloor: 'Récord: piso {floor}',
   },
+  chapter: {
+    number: 'CAPÍTULO {n}',
+    locked: 'Completa el capítulo {n}',
+    ember: { name: 'El Descenso de Brasas' },
+    frost: { name: 'El Descenso Helado' },
+  },
   loading: {
     boot: 'CARGANDO',
     art: 'CARGANDO GRÁFICOS',

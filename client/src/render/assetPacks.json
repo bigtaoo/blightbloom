@@ -34,10 +34,10 @@
     "",
     "WHY THE UNREACHABLE-TODAY PACKS ARE IN THE `run` PHASE RATHER THAN LAZY AT POINT OF USE.",
     "`biome-ice` / `biome-lightning` / `biome-poison` / `boss` are still justified by content:",
-    "theme.ts's BIOME_ID_TO_ELEMENT maps the only authored dungeon ('ember') to 'fire' and",
-    "everything without a dungeonConfig (PvP, arena) to 'neutral', so the other three elements",
-    "cannot be reached at all today, and 'blightlord' (the only user of skins/boss-core) spawns on",
-    "floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
+    "theme.ts's BIOME_ID_TO_ELEMENT maps chapter 1 ('ember') to 'fire', chapter 2 ('frost') to",
+    "'ice' (locked until chapter 1 is cleared), and everything without a dungeonConfig (PvP,",
+    "arena) to 'neutral', so lightning and poison cannot be reached at all today, and",
+    "'blightlord' (the only user of skins/boss-core) spawns on floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
     "the set of available textures changes only at a PHASE boundary, never mid-room. Gating each",
     "one at its own point of use would mean re-running preloadBiomeTiles per pack and reasoning",
     "about a half-filled texture map, which is the partial-availability state that rule forbids.",
@@ -114,7 +114,7 @@
       "root": "packs/biome-ice",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "No authored dungeon maps to 'ice' yet (theme.ts BIOME_ID_TO_ELEMENT)."
+      "note": "Chapter 2 ('frost') maps to 'ice' (theme.ts BIOME_ID_TO_ELEMENT). Awaited at the run gate with every other run-phase pack, so a frost run never starts on the flat fallback palette."
     },
     {
       "name": "biome-lightning",

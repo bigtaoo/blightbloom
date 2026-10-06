@@ -1,4 +1,4 @@
-import { RARITY_TIERS, type DamageType, type WeaponSimSpec } from '@dd/engine';
+import { RARITY_TIERS, type ChapterId, type DamageType, type WeaponSimSpec } from '@dd/engine';
 
 // The palette everything on screen is drawn with.
 //
@@ -98,8 +98,8 @@ export function elementColor(damageType: DamageType): number {
 // close to the existing neutral dark palette, with only a SMALL mix of the biome's
 // element hue — the raw saturated hex is reserved for bullets/status FX/loot, so a
 // wall painted full ember-orange would fight bullets/auras for attention instead of
-// making them pop. `BIOME_ID_TO_ELEMENT` maps a `DungeonConfig.biomeId` (today only
-// 'ember' exists, content/world/rooms/ember.ts) to the stable element vocabulary
+// making them pop. `BIOME_ID_TO_ELEMENT` maps a `DungeonConfig.biomeId` (one per chapter,
+// engine world/chapters.ts — 'ember' and 'frost' today) to the stable element vocabulary
 // ELEMENT_COLORS already uses, so a future biome only needs one new entry there, not a
 // parallel colour table. No new art — this is what "per-biome palette" asks for.
 export function mixHex(base: number, tint: number, amount: number): number {
@@ -151,8 +151,8 @@ const NEUTRAL_VOID = mixHex(THEME.colors.ground, 0x000000, 0.45);
  * element hex lifts it more in relative terms than it lifts an already-lighter one, so
  * `mixHex(NEUTRAL_PALETTE.terrain, hex, 0.1)` pushed fire's terrain to 84% of its own ground's
  * luma while neutral's sat at 74% — i.e. the "never approaches the floor" bound held on the
- * biome it was measured against and quietly failed on the only biome that ships ('ember' is the
- * sole entry in `BIOME_ID_TO_ELEMENT`). Deriving from each palette's own two ends makes the
+ * biome it was measured against and quietly failed on the only biome that shipped then ('ember'
+ * was the sole entry in `BIOME_ID_TO_ELEMENT`). Deriving from each palette's own two ends makes the
  * ratio invariant by construction instead of something a future hue can break.
  *
  * Note what the invariant is NOT: a ratio of terrain's luma to `ground`'s. Every biome colour is
@@ -201,10 +201,12 @@ const BIOME_PALETTES: Record<BiomeElement, BiomePalette> = {
 
 // `biomeId` = `GameState.dungeonConfig?.biomeId` (undefined outside dungeon mode, e.g.
 // the flat EngineConfig.floors path or a PvP arena — both fall back to 'neutral',
-// i.e. today's existing palette unchanged).
-const BIOME_ID_TO_ELEMENT: Record<string, BiomeElement> = {
+// i.e. today's existing palette unchanged). `satisfies Record<ChapterId, …>` makes a new
+// chapter in the engine catalog a compile error here until it names its element.
+const BIOME_ID_TO_ELEMENT: Readonly<Record<string, BiomeElement>> = {
   ember: 'fire',
-};
+  frost: 'ice', // chapter 2 — the `biome-ice` swatch pack, awaited at the run gate like `run`
+} satisfies Record<ChapterId, BiomeElement>;
 
 export function biomePalette(biomeId: string | undefined): BiomePalette {
   return BIOME_PALETTES[biomeId ? (BIOME_ID_TO_ELEMENT[biomeId] ?? 'neutral') : 'neutral'];

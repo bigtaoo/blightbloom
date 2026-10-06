@@ -139,7 +139,7 @@ function make() {
     } as never,
     portalPrompt: screenStub('onExtract', 'onDescend') as never,
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
-    mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onCoop', 'onPvpSolo', 'onSquad',
+    mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onSelectChapter', 'onCoop', 'onPvpSolo', 'onSquad',
       'onForge', 'onTutorial', 'onAccount', 'onSettings'),
       setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
@@ -343,6 +343,22 @@ describe('wireScreens', () => {
     expect((t.d.mainMenu as unknown as { refreshAccountLabel: ReturnType<typeof vi.fn> }).refreshAccountLabel)
       .toHaveBeenCalledTimes(1);
     expect(t.net.syncMetaWithSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('wireScreens — the lobby chapter picker', () => {
+  it('persists an unlocked pick, and refuses a locked one', () => {
+    const t = make();
+    const saves: unknown[] = [];
+    (t.run.store as { save: (m: unknown) => void }).save = (m) => saves.push(m);
+    wireScreens(t.d);
+    const pick = (t.d.mainMenu as unknown as { onSelectChapter: (id: string) => void }).onSelectChapter;
+    pick('frost'); // locked on a fresh account
+    expect(t.run.meta.selectedChapter).toBe('ember');
+    t.run.meta = { ...t.run.meta, clearedChapters: ['ember'] };
+    pick('frost');
+    expect(t.run.meta.selectedChapter).toBe('frost');
+    expect(saves.at(-1)).toMatchObject({ selectedChapter: 'frost' });
   });
 });
 

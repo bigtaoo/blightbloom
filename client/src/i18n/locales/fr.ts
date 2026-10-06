@@ -30,6 +30,12 @@ export const fr: Translations<typeof en> = {
     syncedHint: 'Progression synchronisée',
     bestFloor: 'Record : étage {floor}',
   },
+  chapter: {
+    number: 'CHAPITRE {n}',
+    locked: 'Terminez le chapitre {n}',
+    ember: { name: 'La Descente des Braises' },
+    frost: { name: 'La Descente du Givre' },
+  },
   loading: {
     boot: 'CHARGEMENT',
     art: 'CHARGEMENT DES GRAPHISMES',

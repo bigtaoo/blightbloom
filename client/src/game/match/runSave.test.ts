@@ -251,6 +251,50 @@ describe('parseRunSave — untrusted storage', () => {
   });
 });
 
+describe('the chapter a save is in (design/gameplay/04)', () => {
+  const frostConfig = (): EngineConfig => buildDungeonRunConfig({
+    seed: 4242, chapterId: 'frost', coop: false, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'x',
+  });
+
+  it("records the run's chapter, read off the config's own dungeon", () => {
+    const pack = (config: EngineConfig) => packRunSave({ config, commands: [], ticks: 0, floorIndex: 0, score: 0, nowMs: 0 });
+    expect(pack(frostConfig()).chapterId).toBe('frost');
+    expect(pack(dungeonConfig()).chapterId).toBe('ember');
+    // A config outside the catalog names no chapter; the default is what a resume would
+    // have rebuilt before chapters existed.
+    expect(pack({ seed: 1, worldW: 800, worldH: 600, waves: [] }).chapterId).toBe('ember');
+  });
+
+  it('round-trips the chapter through storage', () => {
+    const save = packRunSave({ config: frostConfig(), commands: [scriptedCommand(1)], ticks: 1, floorIndex: 0, score: 0, nowMs: 0 });
+    expect(parseRunSave(JSON.parse(JSON.stringify(save)))!.chapterId).toBe('frost');
+  });
+
+  it('reads a save with no chapter (written before chapters existed) as chapter 1', () => {
+    const { chapterId, ...old } = JSON.parse(JSON.stringify(packRunSave({
+      config: dungeonConfig(), commands: [], ticks: 0, floorIndex: 0, score: 0, nowMs: 0,
+    }))) as Record<string, unknown>;
+    expect(chapterId).toBe('ember');
+    expect(parseRunSave(old)!.chapterId).toBe('ember');
+  });
+
+  it('refuses a save naming a chapter this build does not have — it cannot be rebuilt', () => {
+    const good = JSON.parse(JSON.stringify(packRunSave({
+      config: dungeonConfig(), commands: [], ticks: 0, floorIndex: 0, score: 0, nowMs: 0,
+    }))) as Record<string, unknown>;
+    expect(parseRunSave({ ...good, chapterId: 'storm' })).toBeNull();
+    expect(parseRunSave({ ...good, chapterId: 3 })).toBeNull();
+  });
+
+  it('a frost save checks clean against frost, and is refused as content drift against ember', () => {
+    // Why the chapter has to be in the save at all: rebuilt as chapter 1 (which is what every
+    // resume did before), a chapter-2 save fingerprints as a different dungeon.
+    const save = packRunSave({ config: frostConfig(), commands: [], ticks: 0, floorIndex: 0, score: 0, nowMs: 0 });
+    expect(checkResumable(save, frostConfig())).toBeNull();
+    expect(checkResumable(save, dungeonConfig())).toBe('content');
+  });
+});
+
 describe('packRunSave', () => {
   it('reads the loadout off the RUN CONFIG, which is where it still exists', () => {
     // `beginRun` spends the account's crafted loadout at run start, so by save time the meta

@@ -47,6 +47,7 @@ import type { Settings } from '../screens/Settings';
 import type { PauseMenu } from '../screens/PauseMenu';
 import { shouldSwapToSlot } from './weaponSlotSelect';
 import type { RunState } from '../runState';
+import { selectChapter } from '../../meta';
 
 export interface WiringDeps {
   run: RunState;
@@ -86,6 +87,9 @@ export function wireScreens(d: WiringDeps): void {
   // mode-select screen's four plus this screen's SQUAD). Every one of them hands off to
   // something that already existed; what the merge changed is which screen they are on.
   d.mainMenu.onSolo = () => d.nav.showLoadout();
+  // The chapter picker under SOLO (2026-10-06). `selectChapter` refuses a locked chapter, so
+  // the persisted pick is always one a run can start in.
+  d.mainMenu.onSelectChapter = (id) => d.run.setMeta(selectChapter(d.run.meta, id));
   d.mainMenu.onCoop = () => d.net.beginSoloQueue(false);
   d.mainMenu.onPvpSolo = () => d.net.beginSoloQueue(true);
   d.mainMenu.onSquad = () => d.nav.showSquad();

@@ -145,10 +145,10 @@ describe('what the first download contains', () => {
     for (const path of allSfxPaths()) expect(packOf(path), path).toBe(DEFAULT_PACK);
   });
 
-  it('keeps fire and neutral out of the element subpackages — the only elements a run can reach', () => {
-    // theme.ts's BIOME_ID_TO_ELEMENT maps the one authored dungeon ('ember') to 'fire', and
-    // anything without a dungeonConfig (PvP, arena) falls to 'neutral'. Both must be in the
-    // pack the run gate awaits, not in one of the unreachable-element packs.
+  it('keeps fire and neutral out of the element subpackages — the elements every player reaches', () => {
+    // theme.ts's BIOME_ID_TO_ELEMENT maps chapter 1 ('ember') to 'fire', and anything without
+    // a dungeonConfig (PvP, arena) falls to 'neutral'. Both must be in the default `run` pack.
+    // Chapter 2 ('frost') reaches 'ice', whose pack is awaited at the same run gate (below).
     for (const el of ['fire', 'neutral'] as const) {
       for (const kind of ['floor', 'wall', 'wallface'] as const) {
         expect(packOf(BIOME_TILE_ASSETS[`${kind}_${el}`])).toBe(DEFAULT_PACK);

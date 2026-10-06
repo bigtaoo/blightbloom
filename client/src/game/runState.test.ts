@@ -9,6 +9,7 @@
  * sends every request to the literal string "null".
  */
 import { describe, expect, it, vi } from 'vitest';
+import { CHAPTERS, type DungeonConfig } from '@dd/engine';
 import { defaultMetaState, type MetaState, type MetaStore } from '../meta';
 import type { GameQueryParams } from './match/gameQueryParams';
 import { DEFAULT_MATCH_BASE_URL, RunState, SEED_BASE, resolveMatchBaseUrl } from './runState';
@@ -233,6 +234,76 @@ describe('the best floor (MetaState.bestFloor, the lobby caption)', () => {
     s.replayUrl = null; // the control: the same run, counted
     s.noteFloorReached();
     expect(s.meta.bestFloor).toBe(3);
+  });
+});
+
+describe('a chapter clear (design/gameplay/04 — what unlocks the next chapter)', () => {
+  const run = (dungeonConfig: DungeonConfig | undefined, zoneEnabled = false) =>
+    ({ state: { floorIndex: 4, zoneEnabled, dungeonConfig } }) as never;
+
+  it('records the chapter on a PvE victory, and saves it', () => {
+    const f = fakeStore();
+    const s = new RunState(f.store);
+    s.engine = run(CHAPTERS.ember.config);
+    s.settleOutcome('victory');
+    expect(s.meta.clearedChapters).toEqual(['ember']);
+    expect(f.held().clearedChapters).toEqual(['ember']);
+  });
+
+  it('records the chapter the run was IN — a frost clear is a frost clear', () => {
+    const s = new RunState(fakeStore({ ...defaultMetaState(), clearedChapters: ['ember'] }).store);
+    s.meta = { ...s.meta, clearedChapters: ['ember'] };
+    s.engine = run(CHAPTERS.frost.config);
+    s.settleOutcome('victory');
+    expect(s.meta.clearedChapters).toEqual(['ember', 'frost']);
+  });
+
+  it('does not record a defeat — dying to the boss unlocks nothing', () => {
+    const s = new RunState(fakeStore().store);
+    s.engine = run(CHAPTERS.ember.config);
+    s.settleOutcome('defeat');
+    expect(s.meta.clearedChapters).toEqual([]);
+  });
+
+  it('reads the SESSION online — a squad clear counts for every seat in it', () => {
+    const s = new RunState(fakeStore().store);
+    s.online = true;
+    s.session = { state: { floorIndex: 4, zoneEnabled: false, dungeonConfig: CHAPTERS.ember.config } } as never;
+    s.settleOutcome('victory');
+    expect(s.meta.clearedChapters).toEqual(['ember']);
+  });
+
+  it('a second clear of the same chapter costs no save', () => {
+    const f = fakeStore();
+    const s = new RunState(f.store);
+    s.engine = run(CHAPTERS.ember.config);
+    s.settleOutcome('victory');
+    const saves = f.saves.length;
+    s.noteChapterCleared();
+    expect(f.saves.length).toBe(saves);
+  });
+
+  it('ignores no run, the tutorial, a PvP arena, a replay, and a config outside the catalog', () => {
+    const s = new RunState(fakeStore().store);
+    s.noteChapterCleared();
+    s.engine = run(CHAPTERS.ember.config);
+    s.tutorialActive = true;
+    s.noteChapterCleared();
+    s.tutorialActive = false;
+    s.engine = run(CHAPTERS.ember.config, true);
+    s.noteChapterCleared();
+    s.engine = run(CHAPTERS.ember.config);
+    s.replayUrl = '/r.json';
+    s.noteChapterCleared();
+    s.replayUrl = null;
+    s.engine = run({ ...CHAPTERS.ember.config }); // a fixture that reuses the biome id
+    s.noteChapterCleared();
+    s.engine = run(undefined); // a flat, non-dungeon level
+    s.noteChapterCleared();
+    expect(s.meta.clearedChapters).toEqual([]);
+    s.engine = run(CHAPTERS.ember.config); // the control: the same run, counted
+    s.noteChapterCleared();
+    expect(s.meta.clearedChapters).toEqual(['ember']);
   });
 });
 
