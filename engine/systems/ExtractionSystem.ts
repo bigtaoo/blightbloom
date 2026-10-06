@@ -114,23 +114,27 @@ export class ExtractionSystem {
     // The buttons are the floor's own: CONFIRM_EXTRACT on the last floor, CONFIRM_DESCEND
     // on every other, and a button the floor does not offer is ignored (ENGINE_VERSION 61 —
     // see the header). An endless boss floor offers both: the press that opens the portal
-    // picks the way (`portalChoice`), and only that button confirms it after.
+    // picks the way (`portalChoice`), and from then on a press confirms when it includes
+    // that way's button. A press holding both still confirms — the co-op ally bot confirms
+    // that way (`AllyController`'s PORTAL_CONFIRM), and reading it as EXTRACT would leave a
+    // descending squad waiting out the whole countdown for it.
     const both = offersExtract && offersDescend;
     for (const p of state.players) {
       if (!p.alive || p.downed || p.portalReady) continue;
-      const choice = this.pressedChoice(p, offersExtract, offersDescend);
-      if (choice === null) continue;
       // Descend needs a card chosen before the portal opens. The vote is the squad's,
       // not the presser's (2026-09-05: "whichever card the most people chose takes
       // effect"), and a tally of 0 means nobody has tapped a card yet, which HOLDS the
       // portal rather than descending without one. A vote can change but never return to
       // 0, so a tally that was non-zero at the opening press is non-zero at resolution.
       if (state.portalCountdownTicks === 0) {
+        const choice = this.pressedChoice(p, offersExtract, offersDescend);
+        if (choice === null) continue;
         if (choice === 'descend' && this.votedSlot(state) === 0) continue;
         state.portalCountdownTicks = PORTAL_COUNTDOWN_TICKS;
         if (both) state.portalChoice = choice;
-      } else if (both && choice !== state.portalChoice) {
-        continue;
+      } else {
+        const way = state.portalChoice ?? (offersExtract ? 'extract' : 'descend');
+        if (!(way === 'extract' ? p.confirmExtract : p.confirmDescend)) continue;
       }
       p.portalReady = true;
     }
