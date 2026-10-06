@@ -3,7 +3,7 @@
 //
 // WHY THIS EXISTS AT ALL. Until 2026-10-06 nothing in the game needed a credit: every SFX pack
 // is CC0 and the two music masters were AI-generated. The loops that replaced them are openly
-// licensed music written by people, and four of the five are CC-BY, whose one condition is
+// licensed music written by people, and five of the six are CC-BY, whose one condition is
 // that the work is credited where the people using it can see it. A credit kept only in
 // `art/audio/credits.json` is not that. Settings is the one screen every target (web, the game
 // portal, WeChat) can open, and plain text needs no outbound link, which WeChat cannot follow.
@@ -59,6 +59,14 @@ export const MUSIC_CREDITS: Record<MusicTrack, MusicCredit> = {
     author: 'Eric Matyas',
     license: 'CC-BY-4.0',
     line: "'Endless Cyber Runner' by Eric Matyas - CC-BY 4.0 - soundimage.org",
+  },
+  // Same composer, same shape: his requested credit ("Ominous Goings-On" by Eric Matyas
+  // Soundimage.org) with the licence added.
+  'dungeon.blight': {
+    title: 'Ominous Goings-On',
+    author: 'Eric Matyas',
+    license: 'CC-BY-4.0',
+    line: "'Ominous Goings-On' by Eric Matyas - CC-BY 4.0 - soundimage.org",
   },
   boss: {
     title: 'Colossal Boss Battle Theme',

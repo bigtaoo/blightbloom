@@ -175,6 +175,20 @@ describe('trackFor — the run bed', () => {
       .toBe('boss');
   });
 
+  it('gives chapter 4 its own bed, distinct from chapters 1 to 3', () => {
+    // The blight biome (chapter 4, poison, the finale). Pinned by name for the same reason as
+    // chapters 2 and 3. Keyed by the biome string alone, so this holds whether or not the
+    // engine's chapter table lists `blight` yet.
+    expect(BIOME_ID_TO_TRACK.blight).toBe('dungeon.blight');
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(DEFAULT_RUN_TRACK);
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(BIOME_ID_TO_TRACK.frost);
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(BIOME_ID_TO_TRACK.storm);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'blight'), localOwner: 0 }))
+      .toBe('dungeon.blight');
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'blight'), localOwner: 0 }))
+      .toBe('boss');
+  });
+
   it('falls back to the ember bed for a run whose biome names no track', () => {
     // An arena/PvP match, the tutorial, a flat `waves` config, or a biome authored before its
     // loop exists. design/11 asks the runtime to substitute rather than fall silent: a match with

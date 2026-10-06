@@ -148,6 +148,19 @@ TRACKS = {
             'each other through the crossfade. 50 s, not longer: the music subpackage has 3 MB and '
             'the four loops before it took 2.34 MB of it. The shelf: 20-250 Hz sat 6.2 dB above '
             'the mids. L/R correlation +0.49, so a mono speaker sums it without cancelling.'),
+    'dungeon.blight': dict(
+        src='music/eric-matyas_ominous-goings-on-looping_excerpt.ogg', region=(5.0, 49.5),
+        shelf=None, tempo=1.0,
+        why='"Ominous Goings-On" by Eric Matyas (CC-BY 4.0), the composer\'s looping version: '
+            '49.5 s from 15.0 s of its 99.7 s, band-diff 0.67 dB on the upstream file. Chosen '
+            'from 38 measured candidates for chapter 4 (the blight biome); art/audio/README.md '
+            '"Music" has the rest. Its overlap is uncorrelated (the two decks\' material '
+            'correlates +0.05, so the equal-power fade moves the level +0.14 dB), and it has no '
+            'beat for the two decks to flam on (onset-envelope correlation 0.15 at best). The '
+            'darkest run bed of the set (2-8 kHz 24.9 dB under the mids), so it sits under every '
+            'cue. Sub 4.2 dB over the mids in the region, under the 5.3-6.4 dB that got the shelf '
+            'on boss, ember and storm, so no shelf. '
+            'L/R correlation +0.28, so a mono speaker sums it without cancelling.'),
     'boss': dict(
         src='music/matthew-pablo_blackmoor-colossus-loop-no-vocals_excerpt.ogg',
         region=(5.0, 58.5), shelf=(80.0, -10.0), tempo=1.0,

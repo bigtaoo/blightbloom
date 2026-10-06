@@ -999,7 +999,7 @@
   "status.burn": "No fire crackle exists in any of the six packs. The closest family (scratch) centres at 6401-12076 Hz against a 2389 Hz target - a high scrape, not a burn - and every other candidate is a 5-second engine loop. The synth voice is a filtered noise burst at 1800 Hz, which is already the right shape."
  },
  "processing": "mono + trim(-40 dBFS, faded) + per-cue duration cap (faded) + smallest-bytes MP3 encode among bandwidth-legal sample rates + peak-match to the replaced synth cue. See tools/audio-pipeline/process_all.py. The four ui.* cues run the same steps through tools/audio-pipeline/process_ui.py, whose only difference is where the peak-match reference comes from: a UI synth voice is a single tone(), so its peak IS its gain argument and needs no re-render to measure.",
- "music_note": "Provenance for the design/11 music loops, kept SEPARATE from `cues` above and outside `packs.json`: `packs.json` declares every SFX source pack CC0 and `audioAssets.test.ts` asserts that of every entry, and four of these five tracks are CC-BY, which REQUIRES a credit the SFX never needed. Since 2026-10-06 every track is openly licensed music written by people (the 2026-08-31 Suno masters were judged not good enough by the owner and are gone). Allowed licences are CC0 and CC-BY only: both permit commercial use and an edited loop; NC is out because the game earns from ads, ND because cutting a loop region IS an adaptation, and SA is avoided. Each record names its upstream URL and SHA-256, so the full master can be fetched back; `source` under art/audio/sources/ is either that upstream file verbatim or an EXCERPT (the loop region plus 5 s either side, re-encoded to Vorbis), because the upstream downloads run to 20-50 MB. `region_start_s` is in the ARCHIVED file's seconds; `excerpt_start_s` places it in the upstream file. `attribution` is the exact line the game shows (Settings, AUDIO), and `client/src/audio/musicAssets.test.ts` holds it equal to `client/src/audio/musicCredits.ts`. `tools/audio-pipeline/process_music.py` cuts the loops and `audit.py --class music` gates the result.",
+ "music_note": "Provenance for the design/11 music loops, kept SEPARATE from `cues` above and outside `packs.json`: `packs.json` declares every SFX source pack CC0 and `audioAssets.test.ts` asserts that of every entry, and five of these six tracks are CC-BY, which REQUIRES a credit the SFX never needed. Since 2026-10-06 every track is openly licensed music written by people (the 2026-08-31 Suno masters were judged not good enough by the owner and are gone). Allowed licences are CC0 and CC-BY only: both permit commercial use and an edited loop; NC is out because the game earns from ads, ND because cutting a loop region IS an adaptation, and SA is avoided. Each record names its upstream URL and SHA-256, so the full master can be fetched back; `source` under art/audio/sources/ is either that upstream file verbatim or an EXCERPT (the loop region plus 5 s either side, re-encoded to Vorbis), because the upstream downloads run to 20-50 MB. `region_start_s` is in the ARCHIVED file's seconds; `excerpt_start_s` places it in the upstream file. `attribution` is the exact line the game shows (Settings, AUDIO), and `client/src/audio/musicAssets.test.ts` holds it equal to `client/src/audio/musicCredits.ts`. `tools/audio-pipeline/process_music.py` cuts the loops and `audit.py --class music` gates the result.",
  "music": [
   {
    "track": "menu",
@@ -1137,6 +1137,38 @@
    "source_sha256": "7e53c4a0c6bfa96aa1ec1168c11f22c3d08746c3f2bf46b38aaba8dcf177a63c",
    "source_length_s": 60.0,
    "bytes": 535464
+  },
+  {
+   "track": "dungeon.blight",
+   "file": "audio/music/dungeon-blight.mp3",
+   "title": "Ominous Goings-On",
+   "author": "Eric Matyas",
+   "author_url": "https://soundimage.org",
+   "license": "CC-BY-4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/",
+   "license_text": "licenses/music-ominous-goings-on-LICENSE.txt",
+   "source_page": "https://opengameart.org/content/ominous-goings-on",
+   "upstream_url": "https://opengameart.org/sites/default/files/ominous_goings-on_looping.ogg",
+   "upstream_sha256": "fbfc33b0730dd1948639e272af0b19cb9b3430606b3dfdb8e65b7f184a1b2a9e",
+   "upstream_member": null,
+   "upstream_length_s": 99.66,
+   "source": "music/eric-matyas_ominous-goings-on-looping_excerpt.ogg",
+   "archived_as": "excerpt",
+   "excerpt_start_s": 10.0,
+   "region_start_s": 5.0,
+   "length_s": 49.5,
+   "shelf": null,
+   "xfade_band_diff_db": 0.65,
+   "attribution": "'Ominous Goings-On' by Eric Matyas - CC-BY 4.0 - soundimage.org",
+   "rationale": "Chapter 4's run bed (the Blight Descent, poison: the finale, the source of the crystallising contamination). A dark, beatless suspense piece, the composer's looping version; 49.5 s from 15.0 s of its 99.7 s, band-diff 0.67 dB on the upstream file, 0.65 dB as shipped. Picked from 38 measured CC0/CC-BY candidates: its overlap material is uncorrelated (+0.05, so the equal-power fade moves the level +0.14 dB), it has no beat to flam (onset-envelope correlation 0.15 at best), L/R correlation +0.28 is mono-safe, and at 2-8 kHz 25.0 dB under the mids it is the darkest run bed, below every cue. 'Lightless Dawn' (Kevin MacLeod) closed at 0.53 dB with a +0.7 dB swell and needed the shelf; 'Gathering Darkness' (Kevin MacLeod) closed at 0.38 dB but its overlap anti-correlates (-0.31); 'They're Here' (Eric Matyas) could not close under 1.4 dB near 50 s. No shelf: 20-250 Hz sits 4.2 dB above the mids, under the 5.3-6.4 dB that got one. The page's licence field reads CC-BY 3.0 and the author's notice CC BY 4.0; the capture records both, and the credit line is the author's own format plus the licence.",
+   "sample_rate": 24000,
+   "channels": 2,
+   "mid_band_dbfs": -30.0,
+   "retrieved": "2026-10-06",
+   "tempo_factor": 1.0,
+   "source_sha256": "c393dfe37124497199af33af9aa4b29ea6a8cfb9e95a5b7e1b0eb79d0bb22bac",
+   "source_length_s": 59.5,
+   "bytes": 421608
   },
   {
    "track": "boss",
