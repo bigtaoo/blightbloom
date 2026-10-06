@@ -1780,9 +1780,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-06** [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change) — "继续做第四章": all four planned chapters now exist. `blightling` is the fifth locked element's first critter (poison; shrugs poison, burns to fire). `deriveChapter.mjs` learns the anti-diagonal mirror, so chapter 4 runs bottom-to-top, every emberling a blightling. The finale's boss is new, not the planned Blightlord, which never lands a hit on the bot (0 damage in 80 duels) and is weak to poison: Rotbloom sprays a short poison cone, "keep your distance". Its spores had to reach 7 grid/s before the bot's own fire stopped erasing them (35% kills / 65% deaths at 105 HP), and their flight time turned out to be invisible to the bot (every hit lands inside ~3.5 grid). At chapter 3's step the mirrored content read EASIER than chapter 3, so chapter 4 ships the steepest step (0.375/floor, boss floor x2.625). Three new `chapterSim` gates, a `poisoned%` column, a new golden scenario with no existing hash changed, a Mistral banner, and its own music bed. `content` `engine` `audio` `ui` `art` `tools` `docs`
 
+**[2026-10-06 — The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md)**
+
+- **10-06** [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change) — “能再加一章吗，作为无尽模式，给完全通关的玩家进行挑战”: a fifth catalog entry, `endless`, unlocked by clearing chapter 4, with no last floor. Its floors are the four chapters' twenty in rotation (each keeps its map, garrison, boss, palette and music), every fifth floor is a boss floor whose portal offers EXTRACT as well as DESCEND, and the run keeps its own record, `endlessBestFloor`. The engine half is one optional `DungeonConfig.endless` and one resolver, `floorSource.ts`, that answers every per-floor question exactly as before on a finite dungeon, so no golden hash moved; `portalChoice` decides a two-button portal in co-op. Tuned with the forge starter pair (the starter kit passes floor 1 in 1 run of 40): at 0.25/floor the median bot run ends on floor 3-4 and the best reach lap 2. The sweep found a pillar stand-off the bot cannot break (a player walks round it), so the softlock gate now tells a timeout inside a fight from one outside it, and an unkillable bot walks two whole laps as a gate. `engine` `content` `ui` `art` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 249 entries, grouped. An entry with more than one tag appears more than once.
+The same 250 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1864,7 +1868,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`art`** — authored assets and the art pipeline *(24)*
+**`art`** — authored assets and the art pipeline *(25)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1890,6 +1894,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(19)*
 
@@ -1913,7 +1918,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(49)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(50)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1964,6 +1969,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
 **`arena`** — the PvP launch map and its audit *(19)*
 
@@ -1987,7 +1993,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
 - 09-30 [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs)
 
-**`content`** — authored rooms, pieces, props, loot *(19)*
+**`content`** — authored rooms, pieces, props, loot *(20)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -2008,8 +2014,9 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(155)*
+**`test`** — coverage sweeps, gates, mutation batteries *(156)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2166,6 +2173,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2223,7 +2231,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`ui`** — HUD, screens, widgets *(53)*
+**`ui`** — HUD, screens, widgets *(54)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2278,8 +2286,9 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(51)*
+**`tools`** — sims, profilers, editors, build scripts *(52)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2332,8 +2341,9 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(166)*
+**`docs`** — design docs and this log itself *(167)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2501,6 +2511,7 @@ The same 249 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
+- 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(42)*
 

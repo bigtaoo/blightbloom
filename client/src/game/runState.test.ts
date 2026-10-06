@@ -235,6 +235,20 @@ describe('the best floor (MetaState.bestFloor, the lobby caption)', () => {
     s.noteFloorReached();
     expect(s.meta.bestFloor).toBe(3);
   });
+
+  it('an endless run writes its own record and leaves the chapters’ alone', () => {
+    const f = fakeStore();
+    const s = new RunState(f.store);
+    s.engine = { state: { floorIndex: 26, zoneEnabled: false, dungeonConfig: CHAPTERS.endless.config } } as never;
+    s.settleOutcome('defeat');
+    expect(s.meta.endlessBestFloor).toBe(27);
+    expect(s.meta.bestFloor).toBe(0);
+    expect(f.held().endlessBestFloor).toBe(27);
+    s.engine = { state: { floorIndex: 3, zoneEnabled: false, dungeonConfig: CHAPTERS.storm.config } } as never;
+    s.settleOutcome('defeat');
+    expect(s.meta.bestFloor).toBe(4);
+    expect(s.meta.endlessBestFloor).toBe(27);
+  });
 });
 
 describe('a chapter clear (design/gameplay/04 — what unlocks the next chapter)', () => {

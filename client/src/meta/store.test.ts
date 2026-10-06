@@ -129,6 +129,17 @@ describe('migrate()', () => {
     expect(migrate({ ...defaultMetaState(), bestFloor: 4.7 }).bestFloor).toBe(4);
   });
 
+  it('keeps a saved endless record, and backfills 0 for an older save or a bad value', () => {
+    expect(migrate({ ...defaultMetaState(), endlessBestFloor: 23 }).endlessBestFloor).toBe(23);
+    const { endlessBestFloor, ...older } = defaultMetaState();
+    void endlessBestFloor;
+    expect(migrate(older).endlessBestFloor).toBe(0);
+    for (const bad of [-2, Number.NaN, Number.POSITIVE_INFINITY, '7', null]) {
+      expect(migrate({ ...defaultMetaState(), endlessBestFloor: bad }).endlessBestFloor, String(bad)).toBe(0);
+    }
+    expect(migrate({ ...defaultMetaState(), endlessBestFloor: 11.9 }).endlessBestFloor).toBe(11);
+  });
+
   it('backfills chapter 1 and no clears for a save from before chapters existed', () => {
     const { selectedChapter, clearedChapters, ...older } = defaultMetaState();
     void selectedChapter;

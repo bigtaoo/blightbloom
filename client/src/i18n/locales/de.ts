@@ -37,6 +37,7 @@ export const de: Translations<typeof en> = {
     frost: { name: 'Der Frostabstieg' },
     storm: { name: 'Der Sturmabstieg' },
     blight: { name: 'Der Fäulnisabstieg' },
+    endless: { name: 'Der Endlose Abstieg', hint: 'ENDLOS', best: 'ENDLOS · REKORD ETAGE {floor}' },
   },
   loading: {
     boot: 'LÄDT',
@@ -341,6 +342,7 @@ export const de: Translations<typeof en> = {
     confirmButton: 'BESTÄTIGEN',
     timeLine: 'Zeit {m}:{ss}',
     floorLine: 'Etage {floor}/{floorCount}',
+    floorLineEndless: 'Etage {floor}',
     materialsBanked: 'Materialien gesichert: {count}',
     doubleMaterialsButton: 'WERBUNG ANSEHEN: MATERIAL x2',
     materialsDoubled: 'Materialien gesichert: {count} (Werbebonus x2)',
@@ -349,6 +351,7 @@ export const de: Translations<typeof en> = {
     blueprintLine: 'Blaupause erbeutet: {weapon}',
     characterLine: 'Charakter freigeschaltet: {character}',
     fellOnFloor: 'Gefallen auf Etage {floor}/{floorCount}',
+    fellOnFloorEndless: 'Gefallen auf Etage {floor}',
     materialsLost: 'Alle {count} mitgeführten Materialien sind verloren',
     placeOf: '1. Platz von {total}',
     placedOfTotal: 'Platz {place}/{total}',

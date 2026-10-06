@@ -40,7 +40,7 @@ function boxOf(b: { view: { children: unknown[] } }) {
 }
 
 /** A picker with every callback recorded. */
-function make(progress: { selectedChapter: ChapterId; clearedChapters: string[] }) {
+function make(progress: { selectedChapter: ChapterId; clearedChapters: string[]; endlessBestFloor?: number }) {
   const p = new ChapterPicker(W);
   const picks: ChapterId[] = [];
   const blocks: boolean[] = [];
@@ -118,6 +118,24 @@ describe('what it shows', () => {
     expect(p.chapter).toBe('blight');
     expect(p.blocked).toBe(false);
     expect(privateOf(p).card.hint.text).toBe(t('chapter.number', { n: 4 }));
+  });
+
+  it('the endless chapter stays locked behind chapter 4, then shows its record instead of a number', () => {
+    setLocale('en');
+    const { p } = make({ selectedChapter: 'blight', clearedChapters: ['ember', 'frost', 'storm'] });
+    p.cycle(1);
+    const c = privateOf(p).card;
+    expect(p.chapter).toBe('endless');
+    expect(p.blocked).toBe(true);
+    expect(c.label.text).toBe(t('chapter.endless.name'));
+    expect(c.hint.text).toBe(t('chapter.locked', { n: 4 }));
+    expect(c.style.art).toBe('chapter_endless');
+    const all = ['ember', 'frost', 'storm', 'blight'];
+    p.setProgress({ selectedChapter: 'endless', clearedChapters: all });
+    expect(p.blocked).toBe(false);
+    expect(privateOf(p).card.hint.text).toBe('ENDLESS'); // no record yet: no "best floor 0"
+    p.setProgress({ selectedChapter: 'endless', clearedChapters: all, endlessBestFloor: 27 });
+    expect(privateOf(p).card.hint.text).toBe('ENDLESS · BEST FLOOR 27');
   });
 
   it('snaps a locked pick (a hand-edited save) back to the chapter a run would really start in', () => {
@@ -204,5 +222,18 @@ describe('every locale', () => {
       expect(c.hint.text.endsWith('…'), `${locale} ${p.chapter}: "${c.hint.text}" was cut`).toBe(false);
       p.cycle(1);
     }
+  });
+
+  it.each(LOCALES)('%s: the endless record fits the card at three digits', async (locale) => {
+    await useLocale(locale);
+    const { p } = make({
+      selectedChapter: 'endless',
+      clearedChapters: ['ember', 'frost', 'storm', 'blight'],
+      endlessBestFloor: 188,
+    });
+    const c = privateOf(p).card;
+    expect(c.hint.text).toContain('188');
+    expect(c.hint.x + c.hint.width, `${locale}: "${c.hint.text}"`).toBeLessThanOrEqual(boxOf(c).width);
+    expect(c.hint.text.endsWith('…'), `${locale}: "${c.hint.text}" was cut`).toBe(false);
   });
 });

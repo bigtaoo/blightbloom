@@ -3,7 +3,7 @@
  * and the FREE_CHARACTERS roster derivation.
  */
 import { describe, it, expect } from 'vitest';
-import { defaultMetaState, FREE_CHARACTERS, recordFloorReached } from './MetaState';
+import { defaultMetaState, FREE_CHARACTERS, recordEndlessFloorReached, recordFloorReached } from './MetaState';
 import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, SKIN_DEFS, DEFAULT_CHAPTER_ID } from '@dd/engine';
 
 describe('FREE_CHARACTERS', () => {
@@ -73,5 +73,18 @@ describe('recordFloorReached()', () => {
     expect(recordFloorReached(m, 2)).toBe(m);
     expect(recordFloorReached(m, 3)).toBe(m);
     expect(recordFloorReached(m, Number.NaN)).toBe(m);
+  });
+});
+
+describe('recordEndlessFloorReached()', () => {
+  it('keeps its own record, apart from the chapters’ bestFloor', () => {
+    expect(defaultMetaState().endlessBestFloor).toBe(0);
+    const m = recordEndlessFloorReached(defaultMetaState(), 17);
+    expect(m.endlessBestFloor).toBe(17);
+    expect(m.bestFloor).toBe(0);
+    expect(recordEndlessFloorReached(m, 22.5).endlessBestFloor).toBe(22);
+    expect(recordEndlessFloorReached(m, 9)).toBe(m);
+    expect(recordEndlessFloorReached(m, 17)).toBe(m);
+    expect(recordEndlessFloorReached(m, Number.NaN)).toBe(m);
   });
 });

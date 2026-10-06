@@ -7,7 +7,9 @@
 // chapter, and a `›` arrow. The arrows (and a tap on the card, which is the bigger target on a
 // phone) cycle through `CHAPTER_ORDER`, wrapping. The card's hint is the chapter number, or,
 // for a locked chapter, what unlocks it ("Clear chapter 1 to unlock") — drawn dimmed in a
-// plain frame so a locked chapter never reads as a choice that was made.
+// plain frame so a locked chapter never reads as a choice that was made. The endless chapter
+// (the last entry, unlocked by clearing chapter 4) has no number: its hint says ENDLESS, with
+// the account's deepest endless floor once there is one (`MetaState.endlessBestFloor`).
 //
 // ## Showing is not choosing
 //
@@ -36,6 +38,7 @@ const CHAPTER_LOOK = {
   frost: { art: 'chapter_frost', fill: 0x2a4365, frame: 0x90cdf4 },
   storm: { art: 'chapter_storm', fill: 0x2d3250, frame: 0xfff176 },
   blight: { art: 'chapter_blight', fill: 0x2f3a28, frame: 0x9ccc65 },
+  endless: { art: 'chapter_endless', fill: 0x2a2140, frame: 0xd6bcfa },
 } as const satisfies Record<ChapterId, { art: string; fill: number; frame: number }>;
 
 const CHAPTER_NAME_KEY = {
@@ -43,6 +46,7 @@ const CHAPTER_NAME_KEY = {
   frost: 'chapter.frost.name',
   storm: 'chapter.storm.name',
   blight: 'chapter.blight.name',
+  endless: 'chapter.endless.name',
 } as const satisfies Record<ChapterId, TranslationKey>;
 
 const LOCKED_FILL = 0x2a3140;
@@ -96,7 +100,11 @@ export class ChapterPicker {
    *  actually start in. Called on every lobby `show()`. */
   setProgress(progress: ChapterProgress): void {
     const wasBlocked = this.blocked;
-    this.progress = { selectedChapter: progress.selectedChapter, clearedChapters: [...progress.clearedChapters] };
+    this.progress = {
+      selectedChapter: progress.selectedChapter,
+      clearedChapters: [...progress.clearedChapters],
+      endlessBestFloor: progress.endlessBestFloor ?? 0,
+    };
     this.shown = playableChapter(this.progress);
     this.redraw();
     if (this.blocked !== wasBlocked) this.onBlockedChange?.(this.blocked);
@@ -141,6 +149,13 @@ export class ChapterPicker {
     // A locked chapter always has a previous one: the first chapter is never locked.
     this.card.setHint(locked
       ? t('chapter.locked', { n: CHAPTER_ORDER.indexOf(previousChapterId(id)!) + 1 })
-      : t('chapter.number', { n: CHAPTER_ORDER.indexOf(id) + 1 }));
+      : this.unlockedHint(id));
+  }
+
+  /** The hint under an unlocked chapter: its number, or for the endless one its record. */
+  private unlockedHint(id: ChapterId): string {
+    if (id !== 'endless') return t('chapter.number', { n: CHAPTER_ORDER.indexOf(id) + 1 });
+    const best = this.progress.endlessBestFloor ?? 0;
+    return best > 0 ? t('chapter.endless.best', { floor: best }) : t('chapter.endless.hint');
   }
 }

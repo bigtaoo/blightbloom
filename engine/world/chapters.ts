@@ -4,7 +4,8 @@
  *
  * A chapter is a whole run: its own biome, five floors and boss. Clearing a chapter's boss
  * unlocks the next one (client `meta/chapterProgress.ts`); an unlocked chapter can be replayed
- * any time. Chapters are NOT chained into one run — the carry-out bag is only safe once the
+ * any time. The last entry, `endless`, is the exception that proves the shape: a run with no
+ * last floor, whose floors are the four chapters' in rotation (`rooms/endless.ts`). Chapters are NOT chained into one run — the carry-out bag is only safe once the
  * boss is dead, and a three-chapter run would put it at risk three times as long.
  *
  * The chapter id IS the config's `biomeId`. `DungeonConfig` has no id field of its own, and
@@ -24,9 +25,12 @@ import { EMBER_L1_ROOMS } from './rooms/emberLevel1';
 import { FROST_DUNGEON, FROST_L1_ROOMS } from './rooms/frost';
 import { STORM_DUNGEON, STORM_L1_ROOMS } from './rooms/storm';
 import { BLIGHT_DUNGEON, BLIGHT_L1_ROOMS } from './rooms/blight';
+import { ENDLESS_DUNGEON, ENDLESS_ROOMS } from './rooms/endless';
 
-/** Every chapter id, in unlock order. */
-export const CHAPTER_ORDER = ['ember', 'frost', 'storm', 'blight'] as const;
+/** Every chapter id, in unlock order. `endless` (2026-10-06) is the last entry, unlocked by
+ *  clearing `blight`: it cycles through the four chapters' floors with no last floor
+ *  (`rooms/endless.ts`), so it unlocks nothing itself. */
+export const CHAPTER_ORDER = ['ember', 'frost', 'storm', 'blight', 'endless'] as const;
 export type ChapterId = (typeof CHAPTER_ORDER)[number];
 
 /** The chapter a run starts in when nothing chose one: an old save, an old client's
@@ -44,6 +48,7 @@ export const CHAPTERS: Readonly<Record<ChapterId, ChapterContent>> = {
   frost: { config: FROST_DUNGEON, library: FROST_L1_ROOMS },
   storm: { config: STORM_DUNGEON, library: STORM_L1_ROOMS },
   blight: { config: BLIGHT_DUNGEON, library: BLIGHT_L1_ROOMS },
+  endless: { config: ENDLESS_DUNGEON, library: ENDLESS_ROOMS },
 };
 
 /** Narrow an untrusted value (a save file, a wire message, storage) to a chapter id. */

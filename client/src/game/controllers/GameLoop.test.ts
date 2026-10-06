@@ -971,7 +971,7 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
     expect(deps.roomBuilder.setPortalOpen).toHaveBeenCalledWith(true);
   });
 
-  it('passes isLastFloor=true through to the popup on the LAST floor, so it can hide Descend', () => {
+  it('tells the popup the LAST floor offers Extract alone, so it can hide Descend', () => {
     const { deps } = buildDeps();
     const s = dungeonStateWithRooms(2);
     s.dungeonRoomRuntime[1]!.activated = true;
@@ -982,7 +982,7 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
 
     loop.update(16);
 
-    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), 0, true);
+    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), 0, { extract: true, descend: false });
   });
 
   it('drives the floor-card offer off the SAME show condition as the portal popup', () => {

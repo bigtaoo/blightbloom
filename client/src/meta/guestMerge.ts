@@ -154,5 +154,6 @@ export function mergeGuestIntoAccount(guest: MetaState, account: MetaState): Met
     clearedChapters: union(account.clearedChapters, guest.clearedChapters),
     // A record, not a count: the deeper of the two, never their sum.
     bestFloor: Math.max(account.bestFloor, guest.bestFloor),
+    endlessBestFloor: Math.max(account.endlessBestFloor, guest.endlessBestFloor),
   };
 }

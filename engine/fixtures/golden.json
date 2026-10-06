@@ -247,6 +247,37 @@
       }
     },
     {
+      "name": "endless-descent",
+      "pins": "the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap",
+      "ticks": 700,
+      "hash": 1765305623,
+      "witness": {
+        "tick": 700,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 1,
+        "projectiles": 4,
+        "pickups": 2,
+        "floorIndex": 5,
+        "hpTotal": 6,
+        "energyTotal": 90,
+        "prngCursors": 11360228613,
+        "events": {
+          "bullet_fired": 101,
+          "room_enter": 6,
+          "door_locked": 6,
+          "hit": 43,
+          "death": 17,
+          "clash": 7,
+          "melee_swing": 39,
+          "deflect": 3,
+          "door_unlocked": 5,
+          "descend": 5
+        }
+      }
+    },
+    {
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,

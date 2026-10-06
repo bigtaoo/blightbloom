@@ -1,5 +1,6 @@
 import { Container, Text } from 'pixi.js';
 import { TICK_RATE, type GameState } from '@dd/engine';
+import type { PortalOffers } from '../match/floorCount';
 import { Panel, Button } from './widgets';
 import { t } from '../../i18n';
 
@@ -52,6 +53,12 @@ function totalCarryOut(s: GameState, localOwner: number): number {
  * measure every label in all eight locales, and a button whose text is only set when shown
  * would be measured as empty and skipped.
  *
+ * **Two again on an endless boss floor (2026-10-06).** The endless chapter has no last floor,
+ * so each of its boss floors offers both (design/gameplay/04 "The Endless Descent"): Descend on
+ * top, Extract under it, and the panel grows a slot to hold them. Once a press has opened the
+ * portal only the way it picked stays on screen (`GameState.portalChoice`), since the engine
+ * ignores the other button from then on.
+ *
  * **The co-op countdown (ENGINE_VERSION 87).** Once any seat opens the portal, the engine
  * runs `portalCountdownTicks` and every seat sees this panel wherever it stands (the caller
  * drops the proximity half of `show`). The title becomes the countdown and how many living
@@ -65,6 +72,9 @@ export class PortalPrompt {
   private readonly extractBtn: Button;
   private readonly descendBtn: Button;
   private _isOpen = false;
+  /** Where `reposition` put the panel, kept so `update` can grow it for a two-button floor. */
+  private frame = { x: 0, y: 0, w: 0 };
+  private twoButtons = false;
 
   onExtract: (() => void) | null = null;
   onDescend: (() => void) | null = null;
@@ -104,14 +114,12 @@ export class PortalPrompt {
   /** Re-anchor on viewport resize (Game's relayoutViewport, same convention as HudView). */
   reposition(screenPx: { w: number; h: number }): void {
     const w = Math.min(320, screenPx.w - 24);
-    // Title + one button. Was 150 for the two-button era; the panel shrank with the
-    // choice rather than keeping a dead slot (ENGINE_VERSION 61). `FloorCardPrompt`
-    // stacks itself off `screenPx.h * 0.6` — this panel's TOP — not off its height, so
-    // this does not move the card panel.
-    const h = 112;
-    this.panel.layout(w, h);
+    // Title + one button (`PANEL_H`), plus a second slot only on a floor offering both
+    // (`layoutButtons`). `FloorCardPrompt` stacks itself off `portalPanelTop` — this panel's
+    // TOP — not off its height, so the extra slot does not move the card panel.
     const x = screenPx.w / 2 - w / 2;
-    const y = screenPx.h * 0.6;
+    const y = portalPanelTop(screenPx.h);
+    this.frame = { x, y, w };
     this.panel.view.position.set(x, y);
     this.titleText.style.wordWrap = true;
     this.titleText.style.wordWrapWidth = w - 24;
@@ -123,12 +131,18 @@ export class PortalPrompt {
     // changing anything about how space-delimited English wraps.
     this.titleText.style.breakWords = true;
     this.titleText.position.set(screenPx.w / 2, y + 12);
-    // One slot, and both buttons sit in it — only one is ever visible (see the class
-    // header), so they cannot collide and neither needs a layout of its own.
+    this.layoutButtons();
+  }
+
+  /** One slot that both buttons share when only one can show, or two stacked slots on a floor
+   *  offering both (Descend first, Extract under it), with the panel grown to fit. */
+  private layoutButtons(): void {
+    const { x, y, w } = this.frame;
+    this.panel.layout(w, this.twoButtons ? PANEL_H + SLOT_H : PANEL_H);
     const btnX = x + w / 2 - BTN_W / 2;
     const btnY = y + 58;
-    this.extractBtn.view.position.set(btnX, btnY);
     this.descendBtn.view.position.set(btnX, btnY);
+    this.extractBtn.view.position.set(btnX, this.twoButtons ? btnY + SLOT_H : btnY);
   }
 
   /** `show` is the caller's already-computed "at an eligible checkpoint AND standing
@@ -136,27 +150,51 @@ export class PortalPrompt {
    *  duplicate it between here and RoomBuilder.setPortalOpen (which needs the same
    *  checkpoint half without the proximity half).
    *
-   *  `isLastFloor` picks WHICH single button this is (see the class header): Extract on
-   *  the boss floor, Descend on every other. The boss floor showing a button at all is
+   *  `offers` picks which buttons show (see the class header): Extract on a chapter's
+   *  boss floor, Descend on every other, and both on an endless boss floor. The boss floor showing a button at all is
    *  itself a fix (2026-08-12 live report: it used to skip this popup entirely and
    *  auto-resolve EXTRACT the instant the boss died, leaving no time to walk over to its
    *  death drops). The interior floors LOSING their Extract button is ENGINE_VERSION 61 —
    *  the title still names the extraction that is coming, one floor at a time, and the
    *  run's own exit is now the boss. */
-  update(s: GameState, show: boolean, localOwner: number, isLastFloor = false): void {
+  update(s: GameState, show: boolean, localOwner: number, offers: PortalOffers = DESCEND_ONLY): void {
     this._isOpen = show;
     this.view.visible = show;
     if (!show) return;
     const nextFloor = s.floorIndex + 2; // 1-based display, one floor further than current
-    this.titleText.text = s.portalCountdownTicks > 0 ? countdownTitle(s) : t(isLastFloor ? 'hud.portalTitleBoss' : 'hud.portalTitle');
+    this.titleText.text =
+      s.portalCountdownTicks > 0 ? countdownTitle(s) : t(offers.extract ? 'hud.portalTitleBoss' : 'hud.portalTitle');
     this.extractBtn.setText(t('hud.portalExtract', { pending: totalCarryOut(s, localOwner) }));
     this.descendBtn.setText(t('hud.portalDescend', { floor: nextFloor }));
     const me = s.players[localOwner];
     const canPress = !!me && me.alive && !me.downed && !me.portalReady;
-    this.extractBtn.view.visible = isLastFloor && canPress;
-    this.descendBtn.view.visible = !isLastFloor && canPress;
+    // A two-button portal that is already open shows only the way it is going.
+    const extract = offers.extract && s.portalChoice !== 'descend';
+    const descend = offers.descend && s.portalChoice !== 'extract';
+    const two = extract && descend;
+    if (two !== this.twoButtons) {
+      this.twoButtons = two;
+      this.layoutButtons();
+    }
+    this.extractBtn.view.visible = extract && canPress;
+    this.descendBtn.view.visible = descend && canPress;
   }
 }
+
+/** The panel's height with one button slot, and what a second slot adds. */
+const PANEL_H = 112;
+const SLOT_H = 48;
+
+/**
+ * Where the portal panel's top sits: 0.6 of the screen height, raised on a screen too short to
+ * hold the two-button panel under it (below about 420 px — a landscape iPhone SE is 375, where
+ * 0.6 would put the second button 10 px off the bottom). Shared with `FloorCardPrompt`, which
+ * stacks above it, so the two panels move together and never overlap.
+ */
+export function portalPanelTop(screenH: number): number {
+  return Math.min(screenH * 0.6, screenH - (PANEL_H + SLOT_H) - 8);
+}
+const DESCEND_ONLY: PortalOffers = { extract: false, descend: true };
 
 /** "Squad leaves in 23s — 1/2 ready": whole seconds rounded up, so it never reads 0 while
  *  the portal is still waiting. Counts living seats only, the ones the engine waits for. */

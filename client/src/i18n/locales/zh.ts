@@ -37,6 +37,7 @@ export const zh: Translations<typeof en> = {
     frost: { name: '霜寒深渊' },
     storm: { name: '雷暴深渊' },
     blight: { name: '枯潮深渊' },
+    endless: { name: '无尽深渊', hint: '无尽模式', best: '无尽模式 · 最深第 {floor} 层' },
   },
   loading: {
     boot: '加载中',
@@ -340,6 +341,7 @@ export const zh: Translations<typeof en> = {
     confirmButton: '确定',
     timeLine: '用时 {m}:{ss}',
     floorLine: '楼层 {floor}/{floorCount}',
+    floorLineEndless: '楼层 {floor}',
     materialsBanked: '已存入材料：{count}',
     doubleMaterialsButton: '看广告：材料 x2',
     materialsDoubled: '已存入材料：{count}（广告奖励 x2）',
@@ -348,6 +350,7 @@ export const zh: Translations<typeof en> = {
     blueprintLine: '获得图纸：{weapon}',
     characterLine: '解锁角色：{character}',
     fellOnFloor: '倒在第 {floor}/{floorCount} 层',
+    fellOnFloorEndless: '倒在第 {floor} 层',
     materialsLost: '携带的 {count} 个材料已全部丢失',
     placeOf: '第一名，共 {total} 名',
     placedOfTotal: '第 {place}/{total} 名',

@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
+  CHAPTERS,
   createGameState,
   EMBER_DUNGEON,
   EMBER_ROOMS,
@@ -161,6 +162,20 @@ describe('trackFor — the run bed', () => {
     // ...and its boss room still switches to the boss bed.
     expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'frost'), localOwner: 0 }))
       .toBe('boss');
+  });
+
+  it('plays each endless floor in the bed of the chapter it borrows the floor from', () => {
+    // The endless chapter has no bed of its own: floors 1-5 are chapter 1's, 6-10 chapter 2's,
+    // and so on, so the music changes with the palette every five floors.
+    const s = createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], dungeon: CHAPTERS.endless });
+    s.phase = 'playing';
+    const at = (floorIndex: number) => {
+      s.floorIndex = floorIndex;
+      return trackFor({ phase: 'playing', state: s, localOwner: 0 });
+    };
+    expect([0, 5, 10, 15, 20].map(at)).toEqual([
+      'dungeon.ember', 'dungeon.frost', 'dungeon.storm', 'dungeon.blight', 'dungeon.ember',
+    ]);
   });
 
   it('gives chapter 3 its own bed, distinct from chapters 1 and 2', () => {

@@ -247,6 +247,9 @@ export function serializeState(s: GameState): unknown {
     floorCards: s.floorCards,
     // The co-op portal countdown (ENGINE_VERSION 87): when it reaches 0 the floor ends.
     portalCountdownTicks: s.portalCountdownTicks,
+    // Which way it resolves on a two-button floor (an endless boss floor, 2026-10-06), appended
+    // only when set: it is null on every floor of every finite dungeon, whose hash is unchanged.
+    ...(s.portalChoice ? { portalChoice: s.portalChoice } : {}),
     // Dungeon-mode co-resident room/door state (design/05 "Room & door model",
     // 2026-08-04). Empty/stable for a non-dungeon config, so this is safe to add
     // without a bump (the golden-replay test compares two independent runs, so a new

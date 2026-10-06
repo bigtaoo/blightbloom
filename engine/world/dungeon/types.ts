@@ -69,6 +69,21 @@ export interface DungeonConfig {
    * the last entry past the end (`materialTierForFloor`). Absent, the tier is the floor index
    * itself — the identity curve every config shipped with. */
   materialTierByDepth?: readonly number[];
+  /** Optional: makes this an endless dungeon (design/gameplay/04-chapters.md "The Endless
+   * Descent", 2026-10-06). Its floors are its segments' floors, segment after segment, and
+   * after the last segment the cycle starts over, for ever (`dungeon/floorSource.ts`). Each
+   * floor reads its map, capstone and biome from its segment, while the difficulty curve and
+   * the two drop curves above are this config's own, read at the run's global floor index, so
+   * the second lap is harder than the first. Every segment's boss floor offers EXTRACT as well
+   * as DESCEND. `floorCount` is then one lap's length, and no floor is the last. Absent on
+   * every finite dungeon, which reads exactly as before the field existed. */
+  endless?: EndlessSpec;
+}
+
+/** An endless dungeon's cycle (`DungeonConfig.endless`). */
+export interface EndlessSpec {
+  /** Finite dungeons, in the order the run descends through them. None may be endless. */
+  readonly segments: readonly DungeonConfig[];
 }
 
 /** One resolved stage: normally a single `RoomPiece`; a `RoomPiece[]` (length

@@ -495,7 +495,8 @@ requires every registered file to load.
 Banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
 "The Ember Descent", fire), `chapter_frost` (chapter 2, "The Frost Descent", ice) and, added
 later the same day, `chapter_storm` (chapter 3, "The Storm Descent", lightning) and
-`chapter_blight` (chapter 4, "The Blight Descent", poison). Same
+`chapter_blight` (chapter 4, "The Blight Descent", poison), then `chapter_endless` (the endless
+chapter, every element). Same
 format as the `lobby_card_*` route banners above (3:1, opaque, shipped as 768x256 q85 JPEG,
 ~35 kB each, in the `lobby` pack) and the same rule for the left 40%: calm and low-detail,
 because the picker draws the chapter's name there.
@@ -592,6 +593,29 @@ green stone:
   luma 55): luma 54 on target, but G - R 23 (a dark teal-green), hue 83°;
 - "keep the stone's warm grey-brown, drained to ashen" with "red stays at or above green": luma
   71, G - R 15, the stone an olive drab.
+
+## `chapter_endless` — shipped (`chapter_endless_raw.png`)
+
+The fifth banner, for the endless chapter (2026-10-06, "The Endless Descent"), which has no
+element of its own: its floors are the four chapters' in turn. So the brief asks for all four
+element hues on the shaft's rings and a bottomless void, in lavender (`#d6bcfa`, the picker's
+frame colour for it; not an element colour).
+
+```
+Restyle this banner into an ENDLESS version of the descent while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark dusky violet-grey stone (around #3a3346), matte and unlit. The spiral shaft goes down for ever: each ring of the spiral is studded with glowing jagged crystals of a different element colour, in bands going down, ember orange (#ff7043) on the top ring, pale ice blue (#81d4fa) on the next, lemon yellow (#fff176) on the next and sickly yellow-green (#9ccc65) on the next, then the same four colours repeating smaller and smaller as the rings shrink into the distance. The very bottom of the shaft is a bottomless dark void with a faint soft lavender glow (#d6bcfa), so the descent never ends. The stone keeps its violet-grey colour everywhere and is not tinted by the crystals. The left 40% stays a calm, simple, mid-dark violet-grey floor of brightness about 55 out of 255 (not pure black), no crystals, no glow, no bright spots. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Shipped on the first roll (key B, after D and E were rate-limited by another session). Measured
+on the 768x256 JPEG (26,874 bytes):
+
+- left-40% luma 66.1 (std 3.1), floor RGB about 70/62/74: a little brighter than ember, storm and
+  blight (51-55), well under frost's 109;
+- the saturated bright pixels (HSV s > 100, v > 170, 0.3% of the frame) are mostly the violet void
+  glow (hue 250-330°) and ice-blue crystals; the orange and yellow-green crystals came back pale,
+  under the saturation cut, though they read as warm and lime at banner size.
+
+Asked for and not drawn: the four colours in clean bands, ring by ring. The crystals are mixed on
+every ring instead, which still reads as "every element" and is kept.
 
 ## Rejected (not kept)
 

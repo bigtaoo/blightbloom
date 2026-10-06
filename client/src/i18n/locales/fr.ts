@@ -37,6 +37,7 @@ export const fr: Translations<typeof en> = {
     frost: { name: 'La Descente du Givre' },
     storm: { name: 'La Descente de l’Orage' },
     blight: { name: 'La Descente du Fléau' },
+    endless: { name: 'La Descente sans Fin', hint: 'SANS FIN', best: 'SANS FIN · RECORD ÉTAGE {floor}' },
   },
   loading: {
     boot: 'CHARGEMENT',
@@ -341,6 +342,7 @@ export const fr: Translations<typeof en> = {
     confirmButton: 'CONFIRMER',
     timeLine: 'Temps {m}:{ss}',
     floorLine: 'Étage {floor}/{floorCount}',
+    floorLineEndless: 'Étage {floor}',
     materialsBanked: 'Matériaux stockés : {count}',
     doubleMaterialsButton: 'VOIR UNE PUB : MATÉRIAUX x2',
     materialsDoubled: 'Matériaux stockés : {count} (bonus pub x2)',
@@ -349,6 +351,7 @@ export const fr: Translations<typeof en> = {
     blueprintLine: 'Plan récupéré : {weapon}',
     characterLine: 'Personnage débloqué : {character}',
     fellOnFloor: 'Tombé à l\'étage {floor}/{floorCount}',
+    fellOnFloorEndless: 'Tombé à l\'étage {floor}',
     materialsLost: 'Les {count} matériaux transportés ont été perdus',
     placeOf: '1re place sur {total}',
     placedOfTotal: 'Classé {place}/{total}',

@@ -35,7 +35,7 @@ import { STORM_DUNGEON, STORM_L1_ROOMS } from '../world/rooms/storm';
 import { BLIGHT_DUNGEON, BLIGHT_L1_ROOMS } from '../world/rooms/blight';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
-import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
+import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ENDLESS, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
 import { CHEST_ROOM_DUNGEON, CHEST_ROOM_ROOMS } from './chestRoomFloor';
 
 /** A stable 32-bit integer hash. Pure, platform-independent, no floating point anywhere. */
@@ -410,6 +410,25 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     seats: 1,
     input: { interact: false, chest: false, descend: true, extract: true, press: false },
     salt: 0x6161,
+  },
+  {
+    name: 'endless-descent',
+    // The endless dungeon (2026-10-06) on the extraction gate's two rooms: no floor is the last,
+    // so a run that only ever presses DESCEND keeps going — off the boss floor, which a finite
+    // dungeon would refuse, and round the lap back to the segment's floor 0. The witness reads
+    // the floor index the run reached; a boss floor that stopped taking DESCEND leaves it at 1.
+    pins: 'the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap',
+    config: {
+      seed: 6202,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: EXTRACT_GATE_ENDLESS, library: EXTRACT_GATE_ROOMS },
+    },
+    ticks: 700,
+    seats: 1,
+    input: { interact: false, chest: false, descend: true, extract: false, press: false },
+    salt: 0x6262,
   },
   {
     name: 'launch-arena-pvp',

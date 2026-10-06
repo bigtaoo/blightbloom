@@ -38,6 +38,7 @@ export const en = {
     frost: { name: 'The Frost Descent' },
     storm: { name: 'The Storm Descent' },
     blight: { name: 'The Blight Descent' },
+    endless: { name: 'The Endless Descent', hint: 'ENDLESS', best: 'ENDLESS · BEST FLOOR {floor}' },
   },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
@@ -366,6 +367,7 @@ export const en = {
     confirmButton: 'CONFIRM',
     timeLine: 'Time {m}:{ss}',
     floorLine: 'Floor {floor}/{floorCount}',
+    floorLineEndless: 'Floor {floor}',
     materialsBanked: 'Materials banked: {count}',
     doubleMaterialsButton: 'WATCH AD: MATERIALS x2',
     materialsDoubled: 'Materials banked: {count} (ad bonus x2)',
@@ -374,6 +376,7 @@ export const en = {
     blueprintLine: 'Blueprint recovered: {weapon}',
     characterLine: 'Character unlocked: {character}',
     fellOnFloor: 'Fell on floor {floor}/{floorCount}',
+    fellOnFloorEndless: 'Fell on floor {floor}',
     materialsLost: 'All {count} carried materials were lost',
     placeOf: '1st place of {total}',
     placedOfTotal: 'Placed {place}/{total}',

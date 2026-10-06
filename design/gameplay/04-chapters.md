@@ -33,6 +33,10 @@ nothing new to play; the only reason to go again was the 5% schematic.
   2026-10-06 too, built the same way. Then "继续做第四章": chapter 4 shipped as well, with the
   poison critter it was waiting on. All four planned chapters exist; what none of them has yet
   is a player's verdict.
+- **Then an endless fifth (owner, 2026-10-06: "能再加一章吗，作为无尽模式，给完全通关的玩家进行
+  挑战").** Three calls, all the recommended option: each boss kill offers a cash-out, the floors
+  are the four chapters' own in rotation, and the record is a personal best. "The Endless
+  Descent" below.
 
 ### The order
 
@@ -42,6 +46,7 @@ nothing new to play; the only reason to go again was the 5% schematic.
 | 2 | The Frost Descent (`frost`) | ice | frostling | **glacimaw** (new) | ✅ this pass |
 | 3 | The Storm Descent (`storm`) | lightning | galvanist | **voltreaver** (new) | ✅ same day |
 | 4 | The Blight Descent (`blight`) | poison | **blightling** (new) | **rotbloom** (new), not blightlord: see below | ✅ same day |
+| ∞ | The Endless Descent (`endless`) | each floor its chapter's | the four chapters' garrisons in turn | every chapter's boss, every fifth floor | ✅ same day |
 
 Poison is last on purpose. [`design/13`](../13-worldview-art-direction.md) keeps it off the first
 floor because green effects camouflage against a green floor, and the Blight crystallising the
@@ -268,6 +273,76 @@ neutral). The chapter's music bed is `dungeon.blight`, "Ominous Goings-On" by Er
 (CC-BY 4.0; design/11), the one beatless loop of the six. It needed the music pack's own 3 MiB
 limit raised to 4 MiB, which WeChat allows for a standard subpackage.
 
+### The Endless Descent
+
+> 能再加一章吗，作为无尽模式，给完全通关的玩家进行挑战
+
+A fifth catalog entry, `endless`, unlocked by clearing chapter 4. It is a chapter in every way
+the plumbing cares about (the picker cycles to it, the co-op queue and the party carry it, a save
+resumes it, analytics tag it) and different in the one way the run cares about: **it has no last
+floor.** Three decisions, each the recommended option of the three the owner was shown:
+
+- **A cash-out after every boss.** Every fifth floor is a boss floor, and its portal offers
+  EXTRACT (end the run, keep the bag) as well as DESCEND (keep going, the bag still at risk). A
+  death still loses the whole bag, as in every chapter ([`01`](01-the-run-and-its-rooms.md) "Only
+  the boss floor ends a run"). So endless brings back the push-your-luck choice the chapters gave
+  up on 2026-09-10, but only at a boss kill: the rule "no banking without beating a boss" holds.
+  Rejected: endless as a record only (nothing to carry out, so nothing to play for past the
+  record) and keeping the bag on death (the safest farm in the game, which would empty the
+  chapters).
+- **The four chapters' floors in rotation.** Floors 1-5 are chapter 1's, 6-10 chapter 2's, 11-15
+  chapter 3's, 16-20 chapter 4's, and floor 21 is chapter 1's first floor again, for ever. Each
+  floor keeps everything its chapter gives it: map, branch layouts, garrison, boss, palette, tiles
+  and music bed, so the run changes biome every five floors. Nothing new had to be authored.
+  Rejected: blight's five floors on repeat (no variety) and a random floor each time (the palette
+  and music would jump every floor).
+- **A personal best.** `MetaState.endlessBestFloor`, synced with the account, shown on the
+  picker's endless card ("ENDLESS · BEST FLOOR 27"). Kept apart from `bestFloor`, the lobby
+  hero's number, which counts a chapter's five floors and would be buried by the first endless
+  run. Rejected for now: a global leaderboard, which needs the server to re-judge a whole run
+  before it can trust a number, and is its own project.
+
+**The curve is the endless config's own**, read at the run's global floor index: `base` 1.125,
+`perFloor` 0.25, so floor 1 is chapter 4's entrance and floor 20 spawns its mobs at x5.875. Only
+enemy HP scales, as everywhere, so a deep floor is a slower fight rather than a one-shot, and
+attrition is what ends a run. Material tiers plateau at 4, the deepest any chapter drops (the
+chapters' identity curve would hand out tier 20 on floor 21). Weapon rarity reads the default
+table, which plateaus at its last row.
+
+**Measured with the forge starter pair.** Nobody clears chapter 4 on the starter kit, and the
+bot does not either: on it, endless floor 1 lets 1 run in 40 through. So `client/sim/
+endlessSim.sim.ts` carries `repeater` + `hammer`, the two pre-unlocked forge weapons. Careful bot,
+40 seeds, floor index reached:
+
+| perFloor | median | top quarter | deepest |
+|---|---|---|---|
+| 0.1875 | 3 | 19+ | 29 |
+| **0.25 (shipped)** | **3** | **14+** | **22** |
+| 0.3125 | 3 | 9+ | 19 |
+| 0.375 | 3 | 5+ | 18 |
+
+The median does not move: most runs end on lap 1's early floors whatever the step. The step
+decides how far the best runs go, and at 0.25 the best few bots reach lap 2. The sim gates that
+the entrance is not a wall (most runs leave floor 1), that the curve bites (the median run ends
+on lap 1; at most a quarter reach lap 2), that some runs go past the first boss, that nothing
+softlocks, and that a bot with its HP pinned walks two whole laps (41 floors, every boss and the
+lap wrap) without getting stuck.
+
+**One stand-off, the bot's and not the game's.** Seed 404 never ends: on endless floor 2
+(chapter 1's kiln) the bot and two ranged mobs stand on opposite sides of a pillar, everyone
+holding position and firing into it. A player walks round the pillar; the bot's spacing keeps it
+where it is. The softlock gate reports a timeout inside a live fight and fails one anywhere else.
+
+**The engine half** is one new optional field and one resolver. `DungeonConfig.endless.segments`
+lists finite dungeons; `world/dungeon/floorSource.ts` answers, per floor, which segment and which
+of its floors it is, which biome it is drawn in, and which buttons its portal offers. On every
+finite dungeon each answer is what the call site read before, so all ten existing golden hashes
+are unchanged and `ENGINE_VERSION` did not move. An eleventh scenario, `endless-descent`, runs the
+extraction gate's two rooms as an endless segment pressing DESCEND only, and reaches floor index 5:
+off two boss floors and round the lap twice. The one piece of new state is
+`GameState.portalChoice`: on a two-button portal the press that opens it picks the way, and in
+co-op only that button confirms after. It is hashed only when set, which no finite floor does.
+
 ### The plumbing: one id, read everywhere
 
 - **The chapter id is the config's `biomeId`.** `DungeonConfig` has no id of its own, and a
@@ -286,9 +361,15 @@ limit raised to 4 MiB, which WeChat allows for a standard subpackage.
 
 - ~~Chapter 4 (blight)~~: done the same day, with its poison critter and its own boss.
 - ~~Chapter music~~: done the same day. Each chapter has its own bed (`dungeon.ember`,
-  `dungeon.frost`), open-licensed music like the rest of the soundtrack (design/11).
+  `dungeon.frost`, `dungeon.storm`, `dungeon.blight`), open-licensed music like the rest of the
+  soundtrack (design/11).
+- ~~An endless mode~~: done the same day, "The Endless Descent" above.
+- A global endless leaderboard, if players want one: the server re-judging a run's replay before
+  it accepts the floor, the way PvP results are judged.
 - Hand-authored frost, storm and blight layouts in the map editor, once players have seen the derived ones.
-- A player's verdict on all of it. Every number above is a bot that never dodges on purpose.
+- A player's verdict on all of it. Every number above is a bot that never dodges on purpose,
+  and endless's curve most of all: the bot carries the cheapest forge kit, and a player who
+  cleared chapter 4 carries better.
 - Whether chapter 3's entrance should be harder. Not by `base`, which is a cliff; a garrison
   change (fewer 3-HP basics, more galvanists) would be the knob, and it needs a player's
   verdict on chapter 2 first.

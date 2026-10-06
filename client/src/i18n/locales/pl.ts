@@ -37,6 +37,7 @@ export const pl: Translations<typeof en> = {
     frost: { name: 'Otchłań Mrozu' },
     storm: { name: 'Otchłań Burzy' },
     blight: { name: 'Otchłań Zarazy' },
+    endless: { name: 'Otchłań Bez Dna', hint: 'BEZ KOŃCA', best: 'BEZ KOŃCA · REKORD PIĘTRO {floor}' },
   },
   loading: {
     boot: 'WCZYTYWANIE',
@@ -341,6 +342,7 @@ export const pl: Translations<typeof en> = {
     confirmButton: 'POTWIERDŹ',
     timeLine: 'Czas {m}:{ss}',
     floorLine: 'Piętro {floor}/{floorCount}',
+    floorLineEndless: 'Piętro {floor}',
     materialsBanked: 'Złożone surowce: {count}',
     doubleMaterialsButton: 'ZOBACZ REKLAMĘ: SUROWCE x2',
     materialsDoubled: 'Złożone surowce: {count} (bonus z reklamy x2)',
@@ -349,6 +351,7 @@ export const pl: Translations<typeof en> = {
     blueprintLine: 'Odzyskany schemat: {weapon}',
     characterLine: 'Odblokowano postać: {character}',
     fellOnFloor: 'Poległ na piętrze {floor}/{floorCount}',
+    fellOnFloorEndless: 'Poległ na piętrze {floor}',
     materialsLost: 'Utracono wszystkie przenoszone surowce: {count}',
     placeOf: '1. miejsce z {total}',
     placedOfTotal: 'Miejsce {place}/{total}',

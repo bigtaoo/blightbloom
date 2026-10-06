@@ -16,7 +16,7 @@ import { resetSessionCacheForTests, setSession, type Session } from '../../net/s
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { ArenaMap } from '@dd/engine/content/arenas';
-import { EMBER_DUNGEON, FROST_DUNGEON, FROST_L1_ROOMS, TICK_RATE } from '@dd/engine';
+import { CHAPTERS, EMBER_DUNGEON, FROST_DUNGEON, FROST_L1_ROOMS, TICK_RATE } from '@dd/engine';
 import { resetAnalyticsForTests, setAnalytics } from '../../net/analytics';
 import type { PropValue } from '../../net/analyticsEvents';
 import { buildDungeonRunConfig } from '../match/offlineConfig';
@@ -438,6 +438,29 @@ describe('RunOutcome — a flat (non-dungeon) floors config reports its own floo
     new RunOutcome(host).handle(s);
 
     expect(host.shown?.lines[0]).toBe('Fell on floor 2/2');
+  });
+});
+
+describe('RunOutcome — the endless chapter has no floor count to show', () => {
+  const endlessState = () => createGameState({ seed: 1, worldW: 0, worldH: 0, waves: [], dungeon: CHAPTERS.endless });
+
+  it('win (extract after a boss): "Floor N", with no total', () => {
+    const s = endlessState();
+    s.floorIndex = 14;
+    s.winner = 0;
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.phaseSet).toEqual(['victory']);
+    expect(host.shown?.lines[0]).toBe('Floor 15');
+  });
+
+  it('lose (death): "Fell on floor N", with no total', () => {
+    const s = endlessState();
+    s.floorIndex = 31;
+    s.winner = 'enemies';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.shown?.lines[0]).toBe('Fell on floor 32');
   });
 });
 

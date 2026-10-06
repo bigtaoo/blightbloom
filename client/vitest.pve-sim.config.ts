@@ -11,7 +11,7 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      include: ['sim/pveLevelSim.sim.ts', 'sim/chapterSim.sim.ts'],
+      include: ['sim/pveLevelSim.sim.ts', 'sim/chapterSim.sim.ts', 'sim/endlessSim.sim.ts'],
       testTimeout: 600_000,
       hookTimeout: 600_000,
     },

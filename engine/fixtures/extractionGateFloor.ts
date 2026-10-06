@@ -126,3 +126,18 @@ export const EXTRACT_GATE_DUNGEON: DungeonConfig = {
     1: floorMap('extract_gate_f1', 'extract_gate_boss'),
   },
 };
+
+/**
+ * The same two floors as an ENDLESS dungeon's one segment (design/gameplay/04 "The Endless
+ * Descent", 2026-10-06): floor 0 interior, floor 1 a boss floor whose portal offers DESCEND as well
+ * as EXTRACT, floor 2 the segment's floor 0 again, and so on. The `endless-descent` golden scenario
+ * presses DESCEND only, so it pins the three things the endless dungeon adds to a run: the card
+ * offer rolled on a boss floor, the descend a finite boss floor ignores, and the lap wrap reading
+ * the segment's first map again. Its floor maps are the segment's, read through
+ * `dungeon/floorSource.ts`; the config carries none of its own.
+ */
+export const EXTRACT_GATE_ENDLESS: DungeonConfig = {
+  ...EXTRACT_GATE_DUNGEON,
+  floorMaps: undefined,
+  endless: { segments: [EXTRACT_GATE_DUNGEON] },
+};

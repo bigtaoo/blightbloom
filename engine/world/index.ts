@@ -7,4 +7,5 @@ export * from './rooms/emberLevel1';
 export * from './rooms/frost';
 export * from './rooms/storm';
 export * from './rooms/blight';
+export * from './rooms/endless';
 export * from './chapters';

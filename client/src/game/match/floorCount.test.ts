@@ -12,8 +12,10 @@
  * floor).
  */
 import { describe, it, expect } from 'vitest';
-import { createGameState, buildEnemyActor, toFp, EMBER_DUNGEON, EMBER_ROOMS, type DungeonConfig } from '@dd/engine';
-import { totalFloorCount, checkpointReached } from './floorCount';
+import {
+  createGameState, buildEnemyActor, toFp, CHAPTERS, EMBER_DUNGEON, EMBER_ROOMS, type DungeonConfig,
+} from '@dd/engine';
+import { totalFloorCount, checkpointReached, floorProgressText, isEndlessRun, portalOffers } from './floorCount';
 
 const TINY_DUNGEON: DungeonConfig = {
   ...EMBER_DUNGEON,
@@ -128,5 +130,45 @@ describe('checkpointReached — flat, non-dungeon mode (unchanged: wavesExhauste
     s.wavesExhausted = true;
     expect(s.enemies.length).toBe(0);
     expect(checkpointReached(s)).toBe(true);
+  });
+});
+
+describe('the endless chapter: no floor count, and both ways out on a boss floor', () => {
+  const endless = () =>
+    createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], dungeon: CHAPTERS.endless });
+  const chapter = () =>
+    createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], dungeon: { config: TINY_DUNGEON, library: EMBER_ROOMS } });
+
+  it('names an endless run, and only an endless run', () => {
+    expect(isEndlessRun(endless())).toBe(true);
+    expect(isEndlessRun(chapter())).toBe(false);
+    expect(isEndlessRun(createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], floors: [[]] }))).toBe(false);
+  });
+
+  it('shows the floor alone on an endless run, and floor/total everywhere else', () => {
+    const s = endless();
+    s.floorIndex = 22;
+    expect(floorProgressText(s)).toBe('23');
+    const c = chapter();
+    c.floorIndex = 2;
+    expect(floorProgressText(c)).toBe('3/5');
+  });
+
+  it('reads the engine’s offer: both on an endless boss floor, descend on its other floors', () => {
+    const s = endless();
+    s.floorIndex = 9;
+    expect(portalOffers(s)).toEqual({ extract: true, descend: true });
+    s.floorIndex = 10;
+    expect(portalOffers(s)).toEqual({ extract: false, descend: true });
+    const c = chapter();
+    c.floorIndex = 4;
+    expect(portalOffers(c)).toEqual({ extract: true, descend: false });
+  });
+
+  it('the flat floors list descends until its last floor, which extracts', () => {
+    const s = createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], floors: [[]] });
+    expect(portalOffers(s)).toEqual({ extract: false, descend: true });
+    s.floorIndex = 1;
+    expect(portalOffers(s)).toEqual({ extract: true, descend: false });
   });
 });

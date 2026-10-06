@@ -18,6 +18,7 @@ import { buildEnemyActor, BOSS_POOL } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
 import type { ArenaRoom } from '../content/arenas';
 import {
+  floorSourceAt,
   generateFloor,
   placeFloor,
   placeFloorGraph2d,
@@ -211,9 +212,17 @@ export class SpawnSystem {
    * draws — exactly the pre-Task-6 behavior for every floor that doesn't opt in.
    */
   private resolveAuthoredFloor(state: GameState): DungeonFloorMap | undefined {
-    const variants = state.dungeonConfig!.floorLayoutVariants?.[state.floorIndex];
+    // An endless dungeon reads each floor from its segment (`dungeon/floorSource.ts`); a
+    // finite one is its own source at the run's own floor index, as it always was.
+    const src = floorSourceAt(state.dungeonConfig!, state.floorIndex);
+    const variants = src.config.floorLayoutVariants?.[src.floor];
     if (variants && variants.length > 0) return variants[state.roomgenPrng.nextInt(variants.length)];
-    return state.dungeonConfig!.floorMaps?.[state.floorIndex];
+    return src.config.floorMaps?.[src.floor];
+  }
+
+  private generateFromSource(state: GameState): ReturnType<typeof generateFloor> {
+    const src = floorSourceAt(state.dungeonConfig!, state.floorIndex);
+    return generateFloor(src.config, src.floor, state.roomgenPrng, state.roomLibrary);
   }
 
   private generateAndPlaceFloor(state: GameState): void {
@@ -227,9 +236,7 @@ export class SpawnSystem {
     // 'graph2d' config never forks (`generateFloor` only forks for 'branching'), so
     // `stages` here is always plain `RoomPiece[]`, never a fork-array `FloorStage`.
     const authored = this.resolveAuthoredFloor(state);
-    const generated = authored
-      ? undefined
-      : generateFloor(state.dungeonConfig!, state.floorIndex, state.roomgenPrng, state.roomLibrary);
+    const generated = authored ? undefined : this.generateFromSource(state);
     const { placed, doors } = authored
       ? placeAuthoredFloor(authored, state.roomLibrary)
       : state.dungeonConfig!.layout === 'graph2d'

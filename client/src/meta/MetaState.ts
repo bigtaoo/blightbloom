@@ -58,6 +58,11 @@ export interface MetaState {
    *  `ChapterId[]` on purpose: an id a NEWER build wrote must survive a round trip through an
    *  older one (`store.ts migrate`), or playing on a stale tab would re-lock a chapter. */
   clearedChapters: string[];
+  /** The deepest floor (1-based) any run in the endless chapter has reached, win or lose; 0
+   *  before the first. Its own record rather than `bestFloor`'s, which counts a chapter's five
+   *  floors: one endless run would bury that number for good. Drawn on the lobby's chapter
+   *  picker when it shows the endless chapter. Only ever rises (`recordEndlessFloorReached`). */
+  endlessBestFloor: number;
 }
 
 /** The free character roster (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event",
@@ -84,6 +89,7 @@ export function defaultMetaState(): MetaState {
     bestFloor: 0,
     selectedChapter: DEFAULT_CHAPTER_ID,
     clearedChapters: [],
+    endlessBestFloor: 0,
   };
 }
 
@@ -92,4 +98,10 @@ export function defaultMetaState(): MetaState {
 export function recordFloorReached(m: MetaState, floor: number): MetaState {
   if (!Number.isFinite(floor) || floor <= m.bestFloor) return m;
   return { ...m, bestFloor: Math.floor(floor) };
+}
+
+/** `m` with `floor` folded into `endlessBestFloor`, the same object back when it is no deeper. */
+export function recordEndlessFloorReached(m: MetaState, floor: number): MetaState {
+  if (!Number.isFinite(floor) || floor <= m.endlessBestFloor) return m;
+  return { ...m, endlessBestFloor: Math.floor(floor) };
 }
