@@ -178,6 +178,17 @@ describe('connect', () => {
     });
   });
 
+  it('asks for the lobby’s chapter, falling back to chapter 1 for a locked pick', () => {
+    const spy = vi.spyOn(onlineConnect, 'connectOnlineSession').mockResolvedValue({} as never);
+    const t = make();
+    t.run.meta = { ...t.run.meta, selectedChapter: 'frost', clearedChapters: ['ember'] };
+    void t.net.connect({} as never);
+    expect(spy.mock.calls[0]![0].chapterId).toBe('frost');
+    t.run.meta = { ...t.run.meta, clearedChapters: [] };
+    void t.net.connect({} as never);
+    expect(spy.mock.calls[1]![0].chapterId).toBe('ember');
+  });
+
   it('adopts the seat the server assigned, rather than assuming 0', () => {
     // `localOwner` is what the camera follows and what every command is stamped with. Left
     // at 0, every non-host player watches someone else's character.
@@ -514,6 +525,40 @@ describe('the one-time device merge (design/16 hole 1)', () => {
     expect(t.accountPrompt.askGuestMerge).not.toHaveBeenCalled();
     expect(t.run.meta.materialBank).toEqual({ mat_fire: 5 });
     expect(authApi.claimGuestMerge).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges a clear-only guest WITHOUT asking — the unlock is kept, the device is claimed', async () => {
+    // The guest cleared chapter 1 and spent the carry-out at the Forge, so `hasGuestProgress`
+    // finds nothing. Taking the account's state would lock chapter 2 again, silently; the
+    // prompt has no number for a clear, so this merges the way an empty account does.
+    vi.spyOn(meta, 'pullAccountSnapshot').mockResolvedValue(ok(REMOTE, false));
+    const t = make();
+    t.run.matchBaseUrl = 'http://mm';
+    t.run.meta = { ...defaultMetaState(), clearedChapters: ['ember'], selectedChapter: 'frost' };
+    await t.net.syncMetaWithSession();
+    expect(t.accountPrompt.askGuestMerge).not.toHaveBeenCalled();
+    expect(authApi.claimGuestMerge).toHaveBeenCalledTimes(1);
+    expect(t.run.meta.clearedChapters).toEqual(['ember']);
+    expect(t.run.meta.materialBank).toEqual(REMOTE.materialBank);
+    expect(t.run.meta.selectedChapter).toBe(REMOTE.selectedChapter);
+  });
+
+  it('takes the account unchanged when its clears already cover the guest ones', async () => {
+    const remote: MetaState = { ...REMOTE, clearedChapters: ['ember'] };
+    vi.spyOn(meta, 'pullAccountSnapshot').mockResolvedValue(ok(remote, false));
+    const t = make();
+    t.run.meta = { ...defaultMetaState(), clearedChapters: ['ember'] };
+    await t.net.syncMetaWithSession();
+    expect(authApi.claimGuestMerge).not.toHaveBeenCalled();
+    expect(t.run.meta).toEqual(remote);
+  });
+
+  it('still ASKS a guest with a bank and a clear when the account holds something', async () => {
+    const t = firstLogin(withProgress({ clearedChapters: ['ember'] }));
+    t.accountPrompt.askGuestMerge.mockResolvedValue('merge');
+    await t.net.syncMetaWithSession();
+    expect(t.accountPrompt.askGuestMerge).toHaveBeenCalledTimes(1);
+    expect(t.run.meta.clearedChapters).toEqual(['ember']);
   });
 
   it('does NOT merge when another tab won the claim', async () => {

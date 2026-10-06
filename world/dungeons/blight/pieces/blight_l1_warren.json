@@ -1,0 +1,164 @@
+{
+  "id": "blight_l1_warren",
+  "tags": [
+    "blight_l1"
+  ],
+  "sizeGrid": {
+    "w": 16,
+    "h": 18
+  },
+  "solids": [
+    {
+      "x": 10,
+      "y": 12,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 10,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 12,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 15,
+      "y": 0,
+      "w": 1,
+      "h": 18
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 18
+    },
+    {
+      "x": 1,
+      "y": 17,
+      "w": 14,
+      "h": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "w": 14,
+      "h": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 10,
+        "y": 15.5
+      },
+      {
+        "x": 6,
+        "y": 15.5
+      }
+    ],
+    "enemy": [
+      {
+        "x": 13.5,
+        "y": 9.5,
+        "type": "basic"
+      },
+      {
+        "x": 13.5,
+        "y": 7.5,
+        "type": "blightling"
+      },
+      {
+        "x": 13.5,
+        "y": 3.5,
+        "type": "frostling"
+      },
+      {
+        "x": 11.5,
+        "y": 9.5,
+        "type": "basic"
+      },
+      {
+        "x": 9.5,
+        "y": 9.5,
+        "type": "blightling"
+      },
+      {
+        "x": 7.5,
+        "y": 9.5,
+        "type": "frostling"
+      },
+      {
+        "x": 7.5,
+        "y": 7.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 3.5,
+        "type": "blightling"
+      },
+      {
+        "x": 5.5,
+        "y": 9.5,
+        "type": "frostling"
+      },
+      {
+        "x": 3.5,
+        "y": 9.5,
+        "type": "basic"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 13.5,
+      "y": 15.5
+    },
+    {
+      "id": "rubble",
+      "x": 10,
+      "y": 11.5
+    },
+    {
+      "id": "rubble",
+      "x": 4,
+      "y": 6.5
+    },
+    {
+      "id": "barrel",
+      "x": 2,
+      "y": 2.5
+    }
+  ]
+}

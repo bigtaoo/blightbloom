@@ -62,7 +62,17 @@
  * collision-geometry stitching in ./dungeon/floorGeometry.ts. Re-exported wholesale
  * so every existing `import { ... } from '.../world/dungeon'` site is untouched.
  */
-export type { RoomTag, CurveSpec, DungeonConfig, FloorStage, FloorLayout, PlacedRoom, DungeonFloorMap } from './dungeon/types';
+export type { RoomTag, CurveSpec, DungeonConfig, EndlessSpec, FloorStage, FloorLayout, PlacedRoom, DungeonFloorMap } from './dungeon/types';
+export {
+  biomeIdAt,
+  floorOffersDescend,
+  floorOffersExtract,
+  floorSourceAt,
+  isBossFloor,
+  isEndlessDungeon,
+  lapFloorCount,
+  type FloorSource,
+} from './dungeon/floorSource';
 export { curveAt, generateFloor } from './dungeon/generateFloor';
 export { placeFloor } from './dungeon/placeFloor';
 export { placeFloorGraph2d } from './dungeon/placeFloorGraph2d';

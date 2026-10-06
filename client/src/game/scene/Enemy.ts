@@ -9,7 +9,7 @@ import { Actor } from './Actor';
 // `element` is the OTHER half of that same read (design/13's locked dual-channel law):
 // the tint is the colour channel, `element` drives the icon channel — a small badge on
 // the actor's health bar. Both come from the blueprint, both render-only. Undefined for
-// anything that is not one of the four locked elemental variants.
+// anything that is not one of the five locked elemental variants.
 export class Enemy extends Actor {
   constructor(radiusPx: number, tint?: number, boss = false, bodyRig?: string, element?: DamageType) {
     super('enemy', radiusPx, tint, boss, bodyRig, element);

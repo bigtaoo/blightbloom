@@ -16,7 +16,7 @@
  * never appears and the funnel has a hole in it with nothing anywhere going red.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TICK_RATE as ENGINE_TICK_RATE } from '@dd/engine';
+import { TICK_RATE as ENGINE_TICK_RATE, EMBER_DUNGEON, FROST_DUNGEON, type DungeonConfig } from '@dd/engine';
 import { EVENTS, ID_RE, coerceProp, type AnalyticsBatch, type AnalyticsEventName, type PropValue } from '../net/analyticsEvents';
 import { createAnalytics, resetAnalyticsForTests, setAnalytics } from '../net/analytics';
 import {
@@ -59,10 +59,11 @@ beforeEach(() => {
 });
 
 const names = (): string[] => sent.map((e) => e.name);
-const run = (over: { tick?: number; floorIndex?: number; character?: string } = {}) => ({
+const run = (over: { tick?: number; floorIndex?: number; character?: string; chapter?: string } = {}) => ({
   tick: over.tick ?? 0,
   floorIndex: over.floorIndex ?? 0,
   ...(over.character === undefined ? {} : { character: over.character }),
+  ...(over.chapter === undefined ? {} : { chapter: over.chapter }),
 });
 
 describe('screen_view', () => {
@@ -314,7 +315,7 @@ describe('runSeconds', () => {
   });
 
   it('agrees with the ENGINE about the tick rate', () => {
-    // The module duplicates the constant to stay free of engine imports, so the check has
+    // The module duplicates the constant rather than importing it, so the check has
     // to live here — and it has to compare against the engine's own value rather than
     // against a literal. Asserting `toBe(30)` would pass on the day the engine changes to
     // 60, and every reported duration would silently double.
@@ -348,5 +349,58 @@ describe('trackedRunFrom', () => {
 
   it('omits character when the seat index is out of range', () => {
     expect(trackedRunFrom(state([{ atlasKey: 'a' }]), 7)).toEqual({ tick: 120, floorIndex: 3 });
+  });
+});
+
+describe('chapter — the PvE chapter every run event carries', () => {
+  const chapterOf = (name: AnalyticsEventName): PropValue | undefined => sent.find((e) => e.name === name)?.props?.chapter;
+
+  it('rides on run_start, floor_reached and the abandon run_end', () => {
+    reportFrame('forge', null);
+    reportFrame('playing', run({ character: 'char_vanguard', chapter: 'frost' }));
+    reportFrame('playing', run({ floorIndex: 1, chapter: 'frost' }));
+    reportFrame('forge', null);
+    expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ character: 'char_vanguard', chapter: 'frost' });
+    expect(sent.find((e) => e.name === 'floor_reached')?.props).toEqual({ floor: 2, chapter: 'frost' });
+    expect(sent.find((e) => e.name === 'run_end')?.props).toEqual({ outcome: 'abandon', floor: 2, duration_s: 0, chapter: 'frost' });
+  });
+
+  it('is a run_start prop even when the character is unknown', () => {
+    reportFrame('playing', run({ chapter: 'ember' }));
+    expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ chapter: 'ember' });
+  });
+
+  it('is absent — no key at all — for a run outside the catalog (an arena)', () => {
+    // The control: if the spread were unconditional, every PvP event would carry
+    // `chapter: undefined`, which is a key on some serialisation paths and not on others.
+    reportFrame('playing', run({ character: 'char_vanguard' }));
+    reportFrame('playing', run({ floorIndex: 1 }));
+    reportFrame('forge', null);
+    for (const name of ['run_start', 'floor_reached', 'run_end'] as const) {
+      expect(chapterOf(name), name).toBeUndefined();
+      expect('chapter' in (sent.find((e) => e.name === name)?.props ?? {}), name).toBe(false);
+    }
+  });
+
+  it('is a value the server stores', () => {
+    for (const name of ['run_start', 'floor_reached', 'run_end'] as const) {
+      const spec = (EVENTS[name] as Record<string, Parameters<typeof coerceProp>[0]>).chapter!;
+      expect(coerceProp(spec, 'frost'), name).toBe('frost');
+    }
+  });
+});
+
+describe('trackedRunFrom — chapter', () => {
+  const state = (dungeonConfig?: DungeonConfig) => ({ tick: 0, floorIndex: 0, players: [{}], dungeonConfig });
+
+  it('reads the chapter off the dungeon config of the run itself', () => {
+    expect(trackedRunFrom(state(EMBER_DUNGEON), 0)!.chapter).toBe('ember');
+    expect(trackedRunFrom(state(FROST_DUNGEON), 0)!.chapter).toBe('frost');
+  });
+
+  it('omits it for an arena and for a config outside the catalog', () => {
+    expect('chapter' in trackedRunFrom(state(), 0)!).toBe(false);
+    // A fixture reusing a chapter's biome id is not that chapter (`chapterIdOfConfig`).
+    expect('chapter' in trackedRunFrom(state({ ...FROST_DUNGEON }), 0)!).toBe(false);
   });
 });

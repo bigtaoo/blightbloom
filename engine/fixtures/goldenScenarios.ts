@@ -30,9 +30,12 @@ import type { EngineConfig } from '../state/GameState';
 import type { GameState } from '../state/GameState';
 import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
+import { FROST_DUNGEON, FROST_L1_ROOMS } from '../world/rooms/frost';
+import { STORM_DUNGEON, STORM_L1_ROOMS } from '../world/rooms/storm';
+import { BLIGHT_DUNGEON, BLIGHT_L1_ROOMS } from '../world/rooms/blight';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
-import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
+import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ENDLESS, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
 import { CHEST_ROOM_DUNGEON, CHEST_ROOM_ROOMS } from './chestRoomFloor';
 
 /** A stable 32-bit integer hash. Pure, platform-independent, no floating point anywhere. */
@@ -307,6 +310,66 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     salt: 0x3333,
   },
   {
+    name: 'frost-dungeon-floor1',
+    // Chapter 2 (design/gameplay/04-chapters.md). Same honest scope as the ember scenario
+    // above — floor 1 only, never descends — but over chapter 2's own content: the
+    // TRANSPOSED geometry (doors on the other axis, so a different brim/door-carve path), the
+    // frost-led garrison, and `difficultyCurve.base` (1.125) scaling every spawn's HP. The
+    // ember scenario cannot see any of the three.
+    pins: 'chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base',
+    config: {
+      seed: 20261006,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: FROST_DUNGEON, library: FROST_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3434,
+  },
+  {
+    name: 'storm-dungeon-floor1',
+    // Chapter 3 (design/gameplay/04-chapters.md), the same floor-1 scope as the two chapter
+    // scenarios above, over chapter 3's own content: the HALF-TURNED geometry (every north
+    // wall's brim now on what chapter 1 had as a south wall, doors on mirrored edges) and the
+    // galvanist-led garrison, whose lightning chains between mobs. Neither earlier chapter's
+    // scenario can see either. Its boss is not reached from floor 1, as theirs are not.
+    pins: 'chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison',
+    config: {
+      seed: 20261007,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: STORM_DUNGEON, library: STORM_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3535,
+  },
+  {
+    name: 'blight-dungeon-floor1',
+    // Chapter 4, the finale (design/gameplay/04-chapters.md), the same floor-1 scope over its own
+    // content: the geometry MIRRORED across the anti-diagonal (rooms resized w <-> h like chapter
+    // 2's, but with every north wall's brim on what chapter 1 had as an east wall) and the
+    // blightling-led garrison — the first critter to carry the poison element. None of the three
+    // earlier chapters' scenarios can see either. Its boss is not reached from floor 1.
+    pins: 'chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison',
+    config: {
+      seed: 20261008,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: BLIGHT_DUNGEON, library: BLIGHT_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3636,
+  },
+  {
     name: 'brim-grinder',
     // The scenario that exists because a mutation check found the other four could not see
     // `WALL_NORTH_BRIM` at all. See brimGrinderFloor.ts for the full account — the short
@@ -347,6 +410,25 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     seats: 1,
     input: { interact: false, chest: false, descend: true, extract: true, press: false },
     salt: 0x6161,
+  },
+  {
+    name: 'endless-descent',
+    // The endless dungeon (2026-10-06) on the extraction gate's two rooms: no floor is the last,
+    // so a run that only ever presses DESCEND keeps going — off the boss floor, which a finite
+    // dungeon would refuse, and round the lap back to the segment's floor 0. The witness reads
+    // the floor index the run reached; a boss floor that stopped taking DESCEND leaves it at 1.
+    pins: 'the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap',
+    config: {
+      seed: 6202,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: EXTRACT_GATE_ENDLESS, library: EXTRACT_GATE_ROOMS },
+    },
+    ticks: 700,
+    seats: 1,
+    input: { interact: false, chest: false, descend: true, extract: false, press: false },
+    salt: 0x6262,
   },
   {
     name: 'launch-arena-pvp',

@@ -180,6 +180,9 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
     forgeReady: craftableNow(p.run.meta),
     bestFloor: p.run.meta.bestFloor,
   });
+  // The chapter picker's progress, read off the live meta on every show the same way — a
+  // chapter cleared by the run the player just left is unlocked on the screen they land on.
+  p.mainMenu.chapterProgress = () => p.run.meta;
 
   // The two account modals (design/16 holes 1 and 2) — the guest-merge confirmation and the
   // expired-session notice. Its `size` thunk is `ScreenNav.fit()`'s own body, because both

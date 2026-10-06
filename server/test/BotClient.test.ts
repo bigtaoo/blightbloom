@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { Button, hashState, makeCommand, type Brad, type ClientMsg, type PlayerCommand, type ServerMsg } from '@dd/engine';
+import { Button, FROST_DUNGEON, hashState, makeCommand, type Brad, type ClientMsg, type PlayerCommand, type ServerMsg } from '@dd/engine';
 import { createGameState, type GameState } from '@dd/engine/state/GameState';
 import { pxToFp } from '@dd/engine/content/convert';
 import { freshStatus } from '@dd/engine/content/damage';
@@ -395,6 +395,18 @@ describe('BotClient — a CO-OP room gets an ally, not a PvP practice bot', () =
 
     bot.stop();
   }, 60_000);
+
+  it('builds the dungeon of the room’s CHAPTER — a frost room’s ally plays frost', () => {
+    // The chapter, like the mode, reaches the bot only through `match_start`. A bot that built
+    // chapter 1 in a frost room would simulate a different dungeon in the same room.
+    const scheduler = new FakeScheduler();
+    const room = new MatchRoom('rf1', 7, 1, { scheduler, onDestroy: () => {}, mode: 'coop', chapterId: 'frost' });
+    const botBridge = new BridgeTransport(0);
+    const bot = runBotClient({ transport: botBridge, wsUrl: 'unused', token: 'unused', roomId: 'rf1', owner: 0, seed: 7, playerCount: 1 });
+    expect(room.join(botBridge.conn)).toBe(true); // a one-seat room launches on this join
+    expect(bot.session.state!.dungeonConfig).toBe(FROST_DUNGEON);
+    bot.stop();
+  });
 
   /**
    * The BRAIN, which fails loudly instead: `PvpBotController` fires at the nearest player on

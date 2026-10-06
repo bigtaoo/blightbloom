@@ -168,4 +168,121 @@ export const DROP_ONLY_WEAPON_SPECS: Record<string, WeaponSpec> = {
     deflect: false,
     deflectSpeed: 0,
   },
+
+  // ── Enemy shard fan (Glacimaw boss loadout — chapter 2, design/gameplay/04-chapters.md,
+  // not player-selectable) ─────────────────────────────────────────────────────────────
+  // The chapter-2 boss's whole threat: an AIMED cone of ice shards, where Pyrefang's
+  // `enemynova` is an unaimed ring. Every shard is ice, so a hit chills (HitResolveSystem's
+  // CHILL_SLOW) — and a chilled player is slower to leave the next cone. The counterplay is
+  // lateral movement BEFORE the volley, not distance after it. The jitter draws from
+  // combatPrng exactly like any spread weapon's pellets (WeaponFireSystem.fireRanged).
+  enemyshardfan: {
+    id: 'enemyshardfan',
+    kind: 'ranged',
+    nameKey: 'weapon.enemyshardfan.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.4, // 42 ticks — a touch quicker than the ring: a cone is easier to step out of
+    bullets: 5,
+    spreadDeg: 50, // wide enough that backing straight off still eats a shard
+    bulletSpeed: 11,
+    damage: 1, // per shard — the threat is the chill chaining volleys, not one big hit
+    damageType: 'ice', // GLACIMAW's element (design/07 payload → on-hit chill status)
+    ballistic: 'straight',
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 1.6,
+    bulletRadius: 0.14,
+    muzzleGrid: 0.875, // grid (28px/32) — GLACIMAW's own radius
+    bulletZ: 0.5,
+  },
+
+  // ── Enemy arc seeker (Voltreaver boss loadout — chapter 3, design/gameplay/04-chapters.md,
+  // not player-selectable) ─────────────────────────────────────────────────────────────
+  // The "out-turn it" fight. Three HOMING lightning orbs per volley, launched in a wide fan so
+  // they close from both flanks rather than down the line the player is shooting along: they
+  // follow, so neither stepping sideways (Glacimaw's answer) nor backing off clears a volley
+  // for free. The answer is a late, hard cut across their path — the turn rate is well under
+  // the player's own seeker's, so an orb that has committed overshoots — or shooting the ones
+  // that do come down the firing line (hostile bullets annihilate, and a fat, slowish orb is
+  // easy to catch). In co-op every hit also ARCS to the nearest teammate within `CHAIN_RANGE`
+  // (lightning's payload, design/07), so the party's answer adds a third: do not stand together.
+  //
+  // Set by a boss-duel sweep (`client/sim/chapterSim.sim.ts`, careful bot, 40 seeds, the boss
+  // alone at 90 HP, 2026-10-06). The fight is knife-edged on speed and turn rate, and each knob
+  // was walked until the orbs landed at all:
+  //   as first authored (3 orbs, 80° fan, 5 grid/s, 110°/s, every 1.8 s)  100% kills, 0 damage
+  //   160° fan, 6 grid/s, 160°/s, every 1.4 s                             100% kills, 0 damage
+  //   160° fan, 7 grid/s, 140°/s, every 1.4 s                              98% kills
+  //   160° fan, 7 grid/s, 160°/s, every 1.4 s   ← shipped                  57% kills, 43% deaths
+  //   160° fan, 7 grid/s, 180°/s, every 1.6 s                              33% kills, 70% deaths
+  // An orb under ~7 grid/s is simply erased by the bot's own fire, which crosses the fan's
+  // centre line. At chapter 3's shipped boss-floor scale (95 HP) the duel reads 50% / 50%:
+  // between Glacimaw (23% kills) and the chapter-1 bosses whose single aimed bullets never
+  // land on the bot (100%).
+  enemyarcseeker: {
+    id: 'enemyarcseeker',
+    kind: 'ranged',
+    nameKey: 'weapon.enemyarcseeker.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.4, // 42 ticks — the shardfan's cadence
+    bullets: 3,
+    spreadDeg: 160, // launched wide, so the orbs converge from the flanks
+    bulletSpeed: 7, // under the starter blaster's 10: still a bullet the player can catch
+    damage: 1, // per orb
+    damageType: 'lightning', // VOLTREAVER's element (design/07 payload → chain arc)
+    ballistic: 'homing',
+    turnRateDegPerSec: 160, // well under the player's seeker (260) — it can be out-turned
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 3.0, // ~21 grid of flight, then it fizzles
+    bulletRadius: 0.24, // the fattest enemy bullet: a target, not a needle
+    muzzleGrid: 0.875, // grid (28px/32) — VOLTREAVER's own radius
+    bulletZ: 0.5,
+  },
+
+  // ── Enemy spore spray (Rotbloom boss loadout — chapter 4, design/gameplay/04-chapters.md,
+  // not player-selectable) ─────────────────────────────────────────────────────────────
+  // The "keep your distance" fight. A dense, SHORT cone of poison spores: every spore that
+  // lands pushes an independent poison stack (design/07), and stacks are what kill — each one
+  // ticks on after the hit, and a poisoned actor's shield does not regenerate. Trading at close
+  // range ramps the stacks; the spores die ~5 grid out, so a player who kites the boss past
+  // that takes none.
+  //
+  // Set by a boss-duel sweep (`client/sim/chapterSim.sim.ts`, careful bot, 40 seeds, the boss
+  // alone at the boss floor's 105 HP, 2026-10-06):
+  //   as first authored (6 spores, 60°, 6 grid/s, 1.0 s life, every 1.0 s)  60% kills, 51 s median
+  //   + 6.5 grid/s                                                          15% kills, 85% deaths
+  //   + 7 grid/s, every 1.4 s   ← shipped                                   35% kills, 65% deaths, 35 s
+  //   8 spores in 80°, 6 grid/s                                              0% kills
+  // Like Voltreaver's orbs, a slow spore is erased by the bot's own fire (hostile bullets
+  // annihilate), so speed is the knob that decides whether the cone lands at all. The flight
+  // time is NOT a knob for the bot: 0.5 s and 2.0 s read the same, because every spore that
+  // lands does so inside ~3.5 grid — the boss walks the bot into a wall or corner first. 0.3 s
+  // (~2 grid) lands nothing. The shipped 0.7 s keeps the reach (~5 grid) under the bot's own
+  // 7.5-grid standoff, so the distance a human can hold is real.
+  enemysporespray: {
+    id: 'enemysporespray',
+    kind: 'ranged',
+    nameKey: 'weapon.enemysporespray.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.4, // 42 ticks — the shardfan's and the arc seeker's cadence
+    bullets: 6,
+    spreadDeg: 60,
+    bulletSpeed: 7, // the arc seeker's: the slowest a cone can be and still survive the bot's fire
+    damage: 1, // per spore — the threat is the stacks it leaves, not the hit
+    damageType: 'poison', // ROTBLOOM's element (design/07 payload → on-hit poison stack)
+    ballistic: 'straight',
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 0.7, // ~5 grid of flight: the whole fight is about staying past it
+    bulletRadius: 0.18,
+    muzzleGrid: 0.875, // grid (28px/32) — ROTBLOOM's own radius
+    bulletZ: 0.5,
+  },
 };

@@ -96,20 +96,29 @@ export const EVENTS = {
    * from, whereas an actor keeps `atlasKey` because something has to draw it. Declaring a
    * field nothing can populate would put an always-absent column in the table and an
    * always-empty panel on the dashboard, so it is left out until there is a source for it.
+   *
+   * `chapter` (here, on `floor_reached` and on `run_end`) is the PvE chapter the run is in —
+   * `@dd/engine`'s `chapterIdOfConfig` of the run's own dungeon config, never the lobby's
+   * selection, so it names the dungeon actually played (a co-op guest plays the HOST's
+   * chapter). Absent for a PvP arena and from a client that predates chapters, which could
+   * only play chapter 1. An `id` rather than an `enum` of the catalog on purpose: an enum
+   * would have to be a second copy of the chapter list here (this module imports nothing),
+   * and a client one chapter ahead of the server would have that field silently dropped.
    */
-  run_start: { character: { kind: 'id' } },
+  run_start: { character: { kind: 'id' }, chapter: { kind: 'id' } },
   /**
    * A run reached a new floor (1-based; the first is implied by `run_start`, so this starts at
    * 2). Derived from the frame like `run_start` (`analyticsTracking.ts`). It exists for the
    * run that ends with NO `run_end`: a tab closed mid-run is gone before any phase changes, so
    * its depth was otherwise unknowable — and that is the commonest way a new player leaves.
    */
-  floor_reached: { floor: { kind: 'int', min: 1, max: 999 } },
+  floor_reached: { floor: { kind: 'int', min: 1, max: 999 }, chapter: { kind: 'id' } },
   /** A run ended, however it ended. `abandon` is the one this exists for. */
   run_end: {
     outcome: { kind: 'enum', values: ['win', 'loss', 'abandon'] },
     floor: { kind: 'int', min: 0, max: 999 },
     duration_s: { kind: 'int', min: 0, max: 86_400 },
+    chapter: { kind: 'id' },
   },
   /**
    * A purchase completed.

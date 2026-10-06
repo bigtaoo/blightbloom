@@ -1,0 +1,181 @@
+{
+  "id": "storm_l1_conduit",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 19,
+    "h": 19
+  },
+  "solids": [
+    {
+      "x": 0,
+      "y": 18,
+      "w": 19,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 19,
+      "h": 1
+    },
+    {
+      "x": 18,
+      "y": 1,
+      "w": 1,
+      "h": 17
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 17
+    }
+  ],
+  "pillars": [
+    {
+      "center": {
+        "x": 14,
+        "y": 14
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 5,
+        "y": 14
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 14,
+        "y": 5
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 5,
+        "y": 5
+      },
+      "radius": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 16.5,
+        "y": 12
+      },
+      {
+        "x": 16.5,
+        "y": 8
+      }
+    ],
+    "enemy": [
+      {
+        "x": 12.5,
+        "y": 16.5,
+        "type": "basic"
+      },
+      {
+        "x": 8.5,
+        "y": 16.5,
+        "type": "emberling"
+      },
+      {
+        "x": 2.5,
+        "y": 16.5,
+        "type": "frostling"
+      },
+      {
+        "x": 2.5,
+        "y": 14.5,
+        "type": "floater"
+      },
+      {
+        "x": 6.5,
+        "y": 12.5,
+        "type": "basic"
+      },
+      {
+        "x": 10.5,
+        "y": 10.5,
+        "type": "emberling"
+      },
+      {
+        "x": 4.5,
+        "y": 10.5,
+        "type": "frostling"
+      },
+      {
+        "x": 8.5,
+        "y": 8.5,
+        "type": "stalker"
+      },
+      {
+        "x": 2.5,
+        "y": 8.5,
+        "type": "basic"
+      },
+      {
+        "x": 8.5,
+        "y": 6.5,
+        "type": "emberling"
+      },
+      {
+        "x": 10.5,
+        "y": 4.5,
+        "type": "frostling"
+      },
+      {
+        "x": 12.5,
+        "y": 2.5,
+        "type": "stalker"
+      },
+      {
+        "x": 6.5,
+        "y": 2.5,
+        "type": "basic"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 16.5,
+      "y": 16.5
+    },
+    {
+      "id": "rubble",
+      "x": 5,
+      "y": 17
+    },
+    {
+      "id": "barrel",
+      "x": 16.5,
+      "y": 2.5
+    },
+    {
+      "id": "rubble",
+      "x": 2.5,
+      "y": 1.5
+    }
+  ]
+}

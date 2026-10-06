@@ -4,15 +4,16 @@
  * HudView's checkpointPanel/checkpointText, see HudView.test.ts history). `show` is
  * computed by the caller (GameLoop.ts: at an eligible checkpoint AND standing near the
  * portal) — this class only renders it and reads `s` for the pending/floor text.
- * `isLastFloor` picks WHICH single button is shown (ENGINE_VERSION 61): Extract on the boss
- * floor, Descend on every other one. It used to only HIDE Descend on the last floor, leaving
+ * `offers` picks WHICH buttons are shown (ENGINE_VERSION 61): Extract on the boss floor,
+ * Descend on every other one, and both on an endless boss floor (2026-10-06). It used to only HIDE Descend on the last floor, leaving
  * a two-button choice everywhere else — see the exclusion suite below for what changed and
  * why the interior floor losing Extract had to be paired with `ExtractionSystem` ignoring it.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
 import type { EngineConfig } from '@dd/engine/state/GameState';
-import { PortalPrompt } from './PortalPrompt';
+import { PortalPrompt, portalPanelTop } from './PortalPrompt';
+import { FloorCardPrompt, PANEL_H as CARD_PANEL_H } from './FloorCardPrompt';
 import { setLocale, resetLocaleForTests } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 
@@ -27,6 +28,11 @@ function privateOf(p: PortalPrompt) {
 }
 
 const PVE_CFG: EngineConfig = { seed: 1, worldW: 800, worldH: 600, waves: [] };
+/** What `portalOffers` reads back for a chapter's last floor, an interior floor, and an endless
+ *  boss floor. */
+const LAST = { extract: true, descend: false };
+const INTERIOR = { extract: false, descend: true };
+const BOTH = { extract: true, descend: true };
 
 describe('PortalPrompt — visibility follows the caller-computed `show` flag', () => {
   it('is hidden when show is false, regardless of state content', () => {
@@ -86,7 +92,7 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('the last floor offers Extract and no Descend', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, LAST);
     const p = privateOf(prompt);
     expect(p.descendBtn.view.visible).toBe(false);
     expect(p.extractBtn.view.visible).toBe(true);
@@ -95,11 +101,11 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('swaps back and forth across updates rather than latching', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, 0, true);
-    prompt.update(s, true, 0, false);
+    prompt.update(s, true, 0, LAST);
+    prompt.update(s, true, 0, INTERIOR);
     expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
     expect(privateOf(prompt).extractBtn.view.visible).toBe(false);
-    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, LAST);
     expect(privateOf(prompt).extractBtn.view.visible).toBe(true);
   });
 
@@ -112,7 +118,7 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
     const s = createGameState(PVE_CFG);
     s.players[0]!.floorMaterials = { mat_fire: 3, mat_ice: undefined };
     s.players[0]!.bankedMaterials = { mat_poison: undefined };
-    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, LAST);
     expect(privateOf(prompt).extractBtn.label.text).toContain('3');
     expect(privateOf(prompt).extractBtn.label.text).not.toContain('NaN');
   });
@@ -120,9 +126,9 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
   it('titles the two cases differently — the boss floor is where the run ends', () => {
     const prompt = new PortalPrompt();
     const s = createGameState(PVE_CFG);
-    prompt.update(s, true, 0, false);
+    prompt.update(s, true, 0, INTERIOR);
     const interior = privateOf(prompt).titleText.text;
-    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, LAST);
     expect(privateOf(prompt).titleText.text).not.toBe(interior);
   });
 
@@ -135,7 +141,7 @@ describe('PortalPrompt — exactly one choice, and the floor picks it', () => {
     const s = createGameState(PVE_CFG);
     s.players[0]!.floorMaterials = { mat_fire: 5 };
     s.players[0]!.bankedMaterials = { mat_ice: 12 };
-    prompt.update(s, true, 0, true);
+    prompt.update(s, true, 0, LAST);
     const label = privateOf(prompt).extractBtn.label.text;
     expect(label).toContain('17');
     expect(label).not.toContain('5 materials');
@@ -221,7 +227,7 @@ describe('PortalPrompt — the co-op countdown (ENGINE_VERSION 87)', () => {
     prompt.update(s, true, 0);
     expect(privateOf(prompt).descendBtn.view.visible).toBe(false); // seat 0 has
     s.players[1]!.downed = true;
-    prompt.update(s, true, 1, true);
+    prompt.update(s, true, 1, LAST);
     expect(privateOf(prompt).extractBtn.view.visible).toBe(false); // downed: cannot press
   });
 
@@ -231,5 +237,75 @@ describe('PortalPrompt — the co-op countdown (ENGINE_VERSION 87)', () => {
     prompt.onPressStart = () => presses++;
     (prompt.view as unknown as { emit(e: string): void }).emit('pointerdowncapture');
     expect(presses).toBe(1);
+  });
+});
+
+/**
+ * An endless boss floor offers both ways out (design/gameplay/04 "The Endless Descent",
+ * 2026-10-06): the panel grows a slot and stacks Extract under Descend, and once a press has
+ * opened the portal only the way it picked stays (`GameState.portalChoice`).
+ */
+describe('PortalPrompt — both buttons on an endless boss floor', () => {
+  type Placed = { view: { visible: boolean; position: { x: number; y: number } } };
+  const placed = (p: PortalPrompt) =>
+    p as unknown as { extractBtn: Placed; descendBtn: Placed; panel: { view: { height: number } } };
+
+  it('shows both, Extract stacked under Descend, in a taller panel', () => {
+    const prompt = new PortalPrompt();
+    prompt.reposition({ w: 800, h: 600 });
+    const s = createGameState(PVE_CFG);
+    prompt.update(s, true, 0, INTERIOR);
+    const oneSlot = placed(prompt).panel.view.height;
+    prompt.update(s, true, 0, BOTH);
+    const p = placed(prompt);
+    expect(p.descendBtn.view.visible).toBe(true);
+    expect(p.extractBtn.view.visible).toBe(true);
+    expect(p.extractBtn.view.position.y).toBeGreaterThan(p.descendBtn.view.position.y);
+    expect(p.extractBtn.view.position.x).toBe(p.descendBtn.view.position.x);
+    expect(p.panel.view.height).toBeGreaterThan(oneSlot);
+    expect(privateOf(prompt).titleText.text).toBe('BOSS DOWN — the extraction portal is open');
+  });
+
+  it('keeps only the picked way once the portal is open, back in one slot', () => {
+    const prompt = new PortalPrompt();
+    prompt.reposition({ w: 800, h: 600 });
+    const s = createGameState(PVE_CFG);
+    prompt.update(s, true, 0, BOTH);
+    s.portalCountdownTicks = 300;
+    s.portalChoice = 'extract';
+    prompt.update(s, true, 0, BOTH);
+    const p = placed(prompt);
+    expect(p.extractBtn.view.visible).toBe(true);
+    expect(p.descendBtn.view.visible).toBe(false);
+    expect(p.extractBtn.view.position.y).toBe(p.descendBtn.view.position.y);
+    s.portalChoice = 'descend';
+    prompt.update(s, true, 0, BOTH);
+    expect(p.extractBtn.view.visible).toBe(false);
+    expect(p.descendBtn.view.visible).toBe(true);
+  });
+});
+
+describe('PortalPrompt — a short screen still holds both buttons', () => {
+  type Placed = { view: { position: { y: number } } };
+  const placed = (p: PortalPrompt) => p as unknown as { extractBtn: Placed; panel: { view: { y: number; height: number } } };
+
+  it.each([375, 414, 600, 900])('h=%i: the two-button panel ends on screen, and tall screens keep 0.6', (h) => {
+    const prompt = new PortalPrompt();
+    prompt.reposition({ w: 667, h });
+    prompt.update(createGameState(PVE_CFG), true, 0, BOTH);
+    const p = placed(prompt);
+    expect(p.panel.view.y + p.panel.view.height).toBeLessThanOrEqual(h);
+    expect(p.extractBtn.view.position.y + 40).toBeLessThanOrEqual(h);
+    if (h >= 420) expect(p.panel.view.y).toBe(h * 0.6);
+  });
+
+  it('the card panel stacks above the raised portal panel without touching it', () => {
+    for (const h of [375, 600]) {
+      const top = portalPanelTop(h);
+      const cards = new FloorCardPrompt();
+      cards.reposition({ w: 667, h });
+      expect(cards.view.position.y + CARD_PANEL_H * cards.view.scale.y).toBeLessThanOrEqual(top);
+      expect(cards.view.position.y).toBeGreaterThanOrEqual(8);
+    }
   });
 });

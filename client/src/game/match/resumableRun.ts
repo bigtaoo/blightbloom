@@ -70,6 +70,7 @@
  * the slot on the next run, and `resumeSavedRun` still clears on its own refusal — which is
  * now belt and braces rather than the live path.
  */
+import type { EngineConfig } from '@dd/engine';
 import type { SavedRun, SavedRunSummary } from './runSave';
 import { checkResumable } from './runSave';
 import { loadSavedRun } from './runSaveStore';
@@ -79,15 +80,26 @@ let memoSave: SavedRun | null = null;
 let memoRefusal: ReturnType<typeof checkResumable> = null;
 let memoValid = false;
 
+/**
+ * The run config a save describes, rebuilt from TODAY's content: the save's own seed, loadout
+ * and chapter. The one builder both this module's check and `RunLifecycle.resumeSavedRun`'s
+ * replay call, so the config that is fingerprinted is the config that is replayed. The
+ * chapter is the save's, not the lobby's current pick — a run resumes where it was left.
+ */
+export function rebuildSavedRunConfig(save: SavedRun, allySkinId = ''): EngineConfig {
+  return buildDungeonRunConfig({
+    seed: save.seed,
+    chapterId: save.chapterId,
+    coop: false, // see the header — single-player only, so the ally skin is never read
+    localSeat: { skinId: save.skinId, loadout: save.loadout },
+    allySkinId,
+  });
+}
+
 /** The refusal for this save under today's build, or null if it can be resumed. */
 export function refuseResume(save: SavedRun): ReturnType<typeof checkResumable> {
   if (memoValid && memoSave === save) return memoRefusal;
-  const config = buildDungeonRunConfig({
-    seed: save.seed,
-    coop: false, // see the header — single-player only, so the ally skin is never read
-    localSeat: { skinId: save.skinId, loadout: save.loadout },
-    allySkinId: '',
-  });
+  const config = rebuildSavedRunConfig(save);
   memoRefusal = checkResumable(save, config);
   memoSave = save;
   memoValid = true;

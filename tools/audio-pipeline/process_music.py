@@ -1,34 +1,50 @@
-"""Produce the shipped music loops from AI-generated masters (design/11 "Music & ambience").
+"""Produce the shipped music loops from their source recordings (design/11 "Music & ambience").
 
 The third driver beside `process_all.py` (combat SFX) and `process_ui.py` (screen cues).
 It is separate because all three of its inputs differ from a cue's, and each difference
 changes a step rather than a parameter:
 
-  * The input is a 4-6 minute SONG, not a cue. A loop REGION has to be chosen, and its two
-    endpoints have to match each other across the player's crossfade window -- so the
-    region is an authored decision recorded in TRACKS below, measured by `music_probe`-style
-    band analysis rather than eyeballed.
-  * The input is mastered to 0 dBFS; the shipped cue set was deliberately peak-matched DOWN
-    to the synth voices it replaced and lives at -14..-21 dBFS. There is no synth voice for
-    music to match, so level is set by a BAND TARGET: the 250-2000 Hz RMS, which is the band
-    `impact`, `muzzle` and `ui.tap` all peak in. Both masters measured ~20 dB hot.
+  * The input is a SONG, not a cue. A loop REGION has to be chosen, and its two endpoints
+    have to match each other across the player's crossfade window -- so the region is an
+    authored decision recorded in TRACKS below, measured by `music_probe`-style band
+    analysis rather than eyeballed.
+  * The input is mastered near 0 dBFS; the shipped cue set was deliberately peak-matched
+    DOWN to the synth voices it replaced and lives at -14..-21 dBFS. There is no synth voice
+    for music to match, so level is set by a BAND TARGET: the 250-2000 Hz RMS, which is the
+    band `impact`, `muzzle` and `ui.tap` all peak in.
   * It is stereo and it STAYS stereo. `audit.py`'s sfx/ui gates forbid stereo ("wastes
     bytes") because a 100 ms cue's second channel is pure overhead; a 76 s bed streams, so
     the bytes amortise and the RAM argument for mono does not apply at all.
-  * The tempo is baked in here, not applied by the player. See `TEMPO_FACTOR` below for why
-    this is a source-pipeline decision rather than a runtime `playbackRate` knob.
+  * A tempo change, when a track has one, is baked in here, not applied by the player. See
+    `time_stretch` below for why this is a source-pipeline decision rather than a runtime
+    `playbackRate` knob.
+
+The sources (2026-10-06). The first two masters were AI-generated (Suno) and the owner judged
+them not good enough; every track now comes from openly licensed music written by people:
+CC0 or CC-BY, chosen because both allow commercial use and an edited loop. NC (the game earns
+from ads) and ND (cutting a loop region IS an adaptation) are excluded, and SA is avoided.
+Provenance, licence and the exact attribution line per track live in
+`art/audio/credits.json`'s `music` block; `client/src/audio/musicCredits.ts` is the in-game
+attribution, and a test holds the two together.
+
+What is archived under `art/audio/sources/music/` is either the upstream file verbatim (when
+it is small) or an EXCERPT: the loop region plus 5 s either side, re-encoded to Vorbis. The
+upstream downloads run to 20-50 MB each (a 320 kbps mp3, a FLAC inside a 7z, a WAV inside a
+zip), and a region is all this script reads. `credits.json` records each upstream URL and
+SHA-256, so the full master can be fetched back and checked. `region` below is in the
+ARCHIVED file's seconds.
 
 One property worth stating because it is not obvious: every filter here runs as a single
 zero-phase multiply over the WHOLE region's spectrum. That is circular convolution, and a
 loop region IS circular -- so filtering cannot introduce the endpoint discontinuity that a
 windowed/overlap-add filter would.
 
-Usage:  ./venv/Scripts/python process_music.py [--track menu|boss] [--out DIR]
+Usage:  ./venv/Scripts/python process_music.py [--track TRACK] [--out DIR] [--search TRACK_OR_FILE]
 """
 import argparse, os, shutil
 import numpy as np
 import soundfile as sf
-import pedalboard  # pip install pedalboard -- pitch-preserving time-stretch (Rubber Band), see TEMPO_FACTOR
+import pedalboard  # pip install pedalboard -- pitch-preserving time-stretch (Rubber Band), see time_stretch
 
 # The band measurement lives in audit.py -- it is the measurement+gate module, and the
 # producer sharing it is what keeps the number this script reports and the number the gate
@@ -54,82 +70,105 @@ PEAK_CEILING_DBFS = -3.0     # headroom for inter-sample peaks and MP3 encode ov
 RATE_LADDER = [24000, 32000, 44100, 48000]
 QUALITY_LADDER = [0.6, 0.4, 0.2]     # libsndfile VBR quality; higher number = smaller file
 
-# Tempo, 2026-09-06 balance pass: the shipped beds read as not relaxed enough, and there is no
-# synthesized "tempo" to turn a knob on -- every track is a fixed AI-generated master, so a
-# tempo change has to happen to the AUDIO, not to a runtime parameter.
-#
-# THIS WAS TRIED THE OTHER WAY FIRST, at the deck level (`HTMLMediaElement.playbackRate` /
-# `InnerAudioContext.playbackRate`), and reverted: `preservesPitch` is a web guarantee, but
-# WeChat's `InnerAudioContext` documents no pitch-preservation behaviour for its own
-# `playbackRate`, so the identical multiplier would have shipped a DIFFERENT pitch on each
-# platform -- an asset that sounds one way on web and another on WeChat is worse than the
-# problem it was solving. Baking the stretch into the file at build time means every platform
-# ships the same bytes.
-#
-# `pedalboard.time_stretch` (Rubber Band under the hood) is applied to the RAW region, before
-# the shelf/level/measurement steps below -- so every band-diff and level number this script
-# prints, and everything `audit.py --class music` gates, describes what actually ships, not
-# the pre-stretch master. Its own convention is inverted from what "tempo" suggests: a HIGHER
-# `stretch_factor` is a FASTER, SHORTER output, so slowing down means a factor BELOW 1.0.
-#
-# KNOWN GAP: `search_regions` (below) ranks candidate regions on the PRE-stretch master --
-# same asymmetry this file's own docstring already warns about for the shelf ("it also
-# searches the PROCESSED signal... the shelf is what forced it"). `menu`/`boss` did not need
-# to be re-searched for this pass (their existing regions still measure inside the gate after
-# stretching -- see `process()`'s printed band-diff), but a FUTURE region search that ignores
-# this factor could rank a region that does not survive being stretched, for the same reason
-# a region ranked on the raw master did not survive being shelved.
-TEMPO_FACTOR = 0.7
 
+def time_stretch(x: np.ndarray, sr: int, factor: float) -> np.ndarray:
+    """Change `x`'s tempo by `factor`, keeping pitch. 1.0 is a no-op.
 
-def time_stretch(x: np.ndarray, sr: int) -> np.ndarray:
-    """Slow `x` down by `TEMPO_FACTOR`, keeping pitch. `x` is (samples, channels) float64,
-    matching every other function in this file; pedalboard wants float32 and hands back
-    whatever shape it was given, so the cast is the only adaptation needed at either end."""
-    if TEMPO_FACTOR == 1.0:
+    Per TRACK, not global (2026-10-06). The 2026-09-06 balance pass asked for the beds at
+    "0.7x the current tempo", and every track then was a Suno master, so it shipped as one
+    module-wide factor. That request was about those two recordings; the open-licence tracks
+    that replaced them were picked as slow beds in the first place and ship at their written
+    tempo, because a 30% Rubber Band stretch is audible processing on a played recording.
+    The mechanism stays for the day a track wants it.
+
+    WHY IN THE FILE AND NOT THE PLAYER, which was tried first: `preservesPitch` is a web
+    guarantee, but WeChat's `InnerAudioContext` documents no pitch-preservation behaviour for
+    its own `playbackRate`, so the identical multiplier would have shipped a DIFFERENT pitch
+    on each platform. Baking the stretch into the file means every platform ships the same
+    bytes. `pedalboard.time_stretch`'s own convention is inverted from what "tempo" suggests:
+    a HIGHER `stretch_factor` is a FASTER, SHORTER output, so slowing down means below 1.0.
+
+    Stretch the WHOLE source before slicing a region (see `process`), and SEARCH on the
+    stretched signal (see `search_regions`): the algorithm is content-adaptive, so a region
+    picked at native tempo does not survive being stretched. `x` is (samples, channels)
+    float64, matching every other function in this file; pedalboard wants float32.
+    """
+    if factor == 1.0:
         return x
-    stretched = pedalboard.time_stretch(x.astype(np.float32), sr, stretch_factor=TEMPO_FACTOR)
+    stretched = pedalboard.time_stretch(x.astype(np.float32), sr, stretch_factor=factor)
     return stretched.astype(np.float64)
 
-# track id -> the authored decision. `region` came from the crossfade-aware loop search
-# (see the band-diff figures in `why`); `shelf` is (corner Hz, gain dB) or None.
-
-# `region` is (start, dur) in SHIPPED/STRETCHED-track seconds -- i.e. positions in the file
-# that actually ships, after `TEMPO_FACTOR` -- not in the Suno master's own timeline. See
-# `search_regions`'s TEMPO_FACTOR paragraph for why: a region chosen on the raw master does
-# not survive being stretched (`pedalboard.time_stretch` is content-adaptive, not a uniform
-# transform), so both entries below were RE-SEARCHED directly on the stretched signal
-# (2026-09-06) rather than reusing the native-tempo regions from 2026-08-31. Each `why` gives
-# the native-master position too, for anyone who wants to find the passage by ear in the
-# original Suno file.
+# track id -> the authored decision. `src` is under SRC_DIR; `region` is (start, dur) in the
+# shipped file's seconds, i.e. the archived source's timeline after `tempo`; `shelf` is
+# (corner Hz, gain dB) or None; `tempo` is `time_stretch`'s factor.
+#
+# Every region came from `--search` on the UPSTREAM file (the archive is cut from it, and the
+# excerpt places that region at 5.0 s), ranked by the same full-window band difference the
+# gate measures, with the track's shelf applied. Where a track had a near-perfect candidate at
+# 0.1-0.3 dB it was NOT taken: that figure means the head and the tail are the SAME bars (the
+# piece repeats), and an equal-power crossfade of correlated material swells by up to 3 dB and
+# combs wherever the two decks start a few ms apart. Both shipped Suno loops crossfaded
+# different material at 1.6-1.8 dB, which is the case this player was built and measured for.
 TRACKS = {
     'menu': dict(
-        src='suno/Crystal Menu.mp3', region=(81.0, 68.0), shelf=None,
-        why='Suno, 2026-08-31; region re-picked 2026-09-06 after TEMPO_FACTOR=0.7 made the '
-            '2026-08-31 region (69 s from 218.5 s, band-diff 1.15 dB natively) measure 6.6 dB '
-            'once stretched -- FAR over the 2.5 dB gate. Re-searched on the stretched whole '
-            'track directly: 68 s from 81.0 s (native master position ~56.7 s), band-diff '
-            '1.76 dB / level-diff 0.02 dB post-stretch, close in length to the original pick '
-            'and comfortably inside the gate. Shorter candidates measured better still (down '
-            'to 0.83 dB at 24.5 s) but were not worth trading away this much loop length for, '
-            'sight unseen -- see `search_regions`\' printed table for the full ranking. Energy '
-            'sits 160 Hz-1.2 kHz with no sub problem, so still no shelf.'),
+        src='music/scott-buckley_aurora_excerpt.ogg', region=(5.0, 85.0), shelf=None, tempo=1.0,
+        why='"Aurora" by Scott Buckley (CC-BY 4.0), 85.0 s from 86.0 s of the 8:19 upstream '
+            'mp3: the slow, warm build well before the climax the composer places at 5:00. '
+            'Band-diff 0.84 dB / level-diff 0.17 dB on the upstream file. A 105 s region from '
+            '44.0 s measured 0.85 dB and was cut and shipped first, then failed the music '
+            'gate\'s 90 s ceiling; the ceiling is a bytes decision and this is the track a '
+            'player hears longest, so the 85 s is the longest region that keeps both. Sub '
+            'sits below the mids, so no shelf.'),
+    'dungeon.ember': dict(
+        src='music/wolfgang_lavaland-one-loop.ogg', region=(12.5, 60.0), shelf=(80.0, -10.0),
+        tempo=1.0,
+        why='"Lava Area Theme" by Wolfgang_ (CC-BY 4.0), the upstream ogg archived verbatim. '
+            '60.0 s from 12.5 s, band-diff 1.60 dB with the shelf applied. A 40.5 s region '
+            'measured 0.21 dB, which is the piece repeating (see the note above TRACKS), and '
+            'every candidate past 80 s measured 2.5 dB or more. The shelf: 20-250 Hz sat '
+            '6.4 dB above the mids, the most sub-heavy source of the set.'),
+    'dungeon.frost': dict(
+        src='music/synth-thetic_beyond-the-frozen-veil-loop_excerpt.ogg', region=(5.0, 71.5),
+        shelf=None, tempo=1.0,
+        why='"Beyond the Frozen Veil" by Synth-thetic (CC0), the composer\'s own loop version: '
+            '71.5 s from 34.5 s of its 142.2 s, band-diff 1.40 dB. The quietest source of the '
+            'four (mids -30.4 dBFS raw, so it needs almost no gain), sub level with the mids, '
+            'no shelf. Its channels are nearly uncorrelated (L/R 0.02), which a mono phone '
+            'speaker sums without cancelling; the anti-correlated candidate "The Frigid Seas" '
+            '(-0.64) was rejected for exactly that.'),
+    'dungeon.storm': dict(
+        src='music/eric-matyas_endless-cyber-runner_excerpt.ogg', region=(5.0, 50.0),
+        shelf=(80.0, -10.0), tempo=1.0,
+        why='"Endless Cyber Runner" by Eric Matyas (CC-BY 4.0), the composer\'s looping version: '
+            '50.0 s from 27.5 s of its 96.0 s, band-diff 1.21 dB with the shelf on the upstream '
+            'file. Chosen from 16 measured candidates for chapter 3 (the storm biome); '
+            'art/audio/README.md "Music" has the rest. Its overlap is uncorrelated '
+            '(the two decks\' material correlates +0.06, so the equal-power fade moves the level '
+            '+0.3 dB), and at 120 bpm every 0.5 s length keeps the two decks\' beat grids on top of '
+            'each other through the crossfade. 50 s, not longer: the music subpackage has 3 MB and '
+            'the four loops before it took 2.34 MB of it. The shelf: 20-250 Hz sat 6.2 dB above '
+            'the mids. L/R correlation +0.49, so a mono speaker sums it without cancelling.'),
+    'dungeon.blight': dict(
+        src='music/eric-matyas_ominous-goings-on-looping_excerpt.ogg', region=(5.0, 49.5),
+        shelf=None, tempo=1.0,
+        why='"Ominous Goings-On" by Eric Matyas (CC-BY 4.0), the composer\'s looping version: '
+            '49.5 s from 15.0 s of its 99.7 s, band-diff 0.67 dB on the upstream file. Chosen '
+            'from 38 measured candidates for chapter 4 (the blight biome); art/audio/README.md '
+            '"Music" has the rest. Its overlap is uncorrelated (the two decks\' material '
+            'correlates +0.05, so the equal-power fade moves the level +0.14 dB), and it has no '
+            'beat for the two decks to flam on (onset-envelope correlation 0.15 at best). The '
+            'darkest run bed of the set (2-8 kHz 24.9 dB under the mids), so it sits under every '
+            'cue. Sub 4.2 dB over the mids in the region, under the 5.3-6.4 dB that got the shelf '
+            'on boss, ember and storm, so no shelf. '
+            'L/R correlation +0.28, so a mono speaker sums it without cancelling.'),
     'boss': dict(
-        src='suno/Frozen Resonance.mp3', region=(147.5, 47.5), shelf=(80.0, -14.0),
-        why='Suno, 2026-08-31; region re-picked 2026-09-06 for the same reason as `menu` -- '
-            'the 2026-08-31 region (64.5 s from 145.0 s, band-diff 1.62 dB natively) measured '
-            '2.2-2.9 dB once stretched, too close to the 2.5 dB gate to keep. Re-searched on '
-            'the stretched, SHELVED track directly (shelf changes the energy weighting, same '
-            'as the 2026-08-31 search already accounted for): 47.5 s from 147.5 s (native '
-            'master position ~103.2 s), band-diff 1.68 dB / level-diff 0.38 dB post-stretch. '
-            'A tighter 20-30 s cluster measured noticeably better (down to 1.27 dB / 0.04 dB '
-            'level-diff) but roughly halves the loop length; kept the longer region since '
-            'nobody has heard either to judge whether the shorter one reads as repetitive in '
-            'a boss fight. Generated against the MENU brief and measured as a sub-bass drone '
-            'instead -- 90% of its energy below 109 Hz, nothing above 2 kHz -- which is dread, '
-            'not a calm hub, so it became the boss bed. The shelf tames a 40-49 Hz band '
-            'sitting 13 dB above every other: inaudible on a phone speaker, the only thing '
-            'audible on headphones, and it costs MP3 bits either way.'),
+        src='music/matthew-pablo_blackmoor-colossus-loop-no-vocals_excerpt.ogg',
+        region=(5.0, 58.5), shelf=(80.0, -10.0), tempo=1.0,
+        why='"Colossal Boss Battle Theme" by Matthew Pablo (CC-BY 3.0), the no-vocals loop, '
+            '58.5 s from 49.5 s, band-diff 1.25 dB with the shelf. A 105.5 s region measured '
+            '0.70 dB, but the median boss fight is 25 s and that length cost ~350 kB more of the '
+            'music subpackage. No vocals because a choir sits in the band every combat cue '
+            'peaks in. The shelf: 20-250 Hz sat 5.3 dB above the mids (drums and low brass).'),
 }
 
 
@@ -137,8 +176,8 @@ def db(x: float) -> float:
     return -np.inf if x <= 1e-12 else 20.0 * np.log10(x)
 
 
-def search_regions(src: str, shelf: tuple | None = None, lo_s: float = 20.0,
-                   hi_s: float = 90.0, hop_s: float = 0.5) -> list[tuple]:
+def search_regions(src: str, shelf: tuple | None = None, tempo: float = 1.0, lo_s: float = 20.0,
+                   hi_s: float = 130.0, hop_s: float = 0.5) -> list[tuple]:
     """Rank loop regions by the SAME measure the shipped file is then judged by.
 
     The first version of this search scored a candidate from four 4096-point frames spaced
@@ -159,7 +198,7 @@ def search_regions(src: str, shelf: tuple | None = None, lo_s: float = 20.0,
     it. Level normalisation is a scalar and cannot change a dB difference, and the 24 kHz
     resample only drops bands near -80 dBFS, so the shelf is the one step that matters here.
 
-    `TEMPO_FACTOR` (2026-09-06) is the fourth form, and the one that mattered most: a region
+    A track's `tempo` (2026-09-06) is the fourth form, and the one that mattered most: a region
     picked at native tempo does NOT survive being stretched, because `pedalboard.time_stretch`
     is content-adaptive (its transient handling reacts to what is locally there) rather than a
     uniform circular transform like the shelf -- `menu`'s region measured 1.15 dB natively and
@@ -171,7 +210,7 @@ def search_regions(src: str, shelf: tuple | None = None, lo_s: float = 20.0,
     track's own median (which is how a search lands on the intro).
     """
     x, sr = sf.read(src, dtype='float32', always_2d=True)
-    x = time_stretch(x.astype(np.float64), sr)
+    x = time_stretch(x.astype(np.float64), sr, tempo)
     if shelf:
         x = low_shelf(x.astype(np.float64), sr, *shelf)
     mono = x.mean(axis=1)
@@ -198,27 +237,29 @@ def search_regions(src: str, shelf: tuple | None = None, lo_s: float = 20.0,
 
 
 def report_search(name: str) -> None:
-    """`name` is a track id (searched with that track's shelf) or a bare source filename."""
+    """`name` is a track id (searched with that track's shelf and tempo) or a bare source
+    filename (searched raw, at its own tempo)."""
     spec = TRACKS.get(name)
     src = os.path.join(SRC_DIR, spec['src']) if spec else (
         name if os.path.isabs(name) else os.path.join(SRC_DIR, name))
     shelf = spec['shelf'] if spec else None
-    best = search_regions(src, shelf=shelf)
+    tempo = spec['tempo'] if spec else 1.0
+    best = search_regions(src, shelf=shelf, tempo=tempo)
     print()
-    print(f'{os.path.basename(src)}: {len(best)} candidate regions (SHIPPED/stretched '
-          f'seconds, x{TEMPO_FACTOR} tempo already applied), ranked by full-window band '
+    print(f'{os.path.basename(src)}: {len(best)} candidate regions (SHIPPED '
+          f'seconds, x{tempo} tempo already applied), ranked by full-window band '
           f'difference'
           + (f', shelf {shelf[1]:+.0f} dB below {shelf[0]:.0f} Hz applied' if shelf
              else ' (no shelf)'))
     print('    bucket     cost   start      len   band-diff  lvl-diff   head    tail   '
           '(native start)')
-    for lo, hi in ((20, 30), (30, 45), (45, 60), (60, 75), (75, 90)):
+    for lo, hi in ((20, 30), (30, 45), (45, 60), (60, 75), (75, 90), (90, 110), (110, 131)):
         sel = [r for r in best if lo <= r[2] < hi]
         if not sel:
             continue
         c, st, ln, d, dl, hr, tr = sel[0]
         print(f'    {lo:3}-{hi:3}s  {c:6.2f}  {st:6.1f}s  {ln:5.1f}s   {d:6.2f}dB   '
-              f'{dl:5.2f}dB  {hr:6.1f}  {tr:6.1f}   ({st * TEMPO_FACTOR:.1f}s)')
+              f'{dl:5.2f}dB  {hr:6.1f}  {tr:6.1f}   ({st * tempo:.1f}s)')
 
 
 def low_shelf(x: np.ndarray, sr: int, f0: float, gain_db: float) -> np.ndarray:
@@ -395,11 +436,11 @@ def selfcheck() -> None:
     got_lurch = xfade_band_diff(lurch, sr)
     assert got_lurch > 5.0, got_lurch
 
-    # time_stretch: duration scales by 1/TEMPO_FACTOR, and -- the property that justifies
+    # time_stretch: duration scales by 1/factor, and -- the property that justifies
     # reaching for it over a naive resample -- pitch does NOT move with it.
     tone = np.tile((0.3 * np.sin(2 * np.pi * 440.0 * t))[:, None], (1, 2))
-    stretched = time_stretch(tone, sr)
-    want_s = len(tone) / sr / TEMPO_FACTOR
+    stretched = time_stretch(tone, sr, 0.7)
+    want_s = len(tone) / sr / 0.7
     assert abs(len(stretched) / sr - want_s) < 0.05, \
         f'time_stretch duration {len(stretched) / sr:.2f}s, wanted ~{want_s:.2f}s'
     spec = np.abs(np.fft.rfft(stretched[:, 0]))
@@ -430,13 +471,13 @@ def process(track: str, out_dir: str) -> None:
     # which is also why `region` moved to that unit (see TRACKS above).
     whole, sr_read = sf.read(src, dtype='float64', always_2d=True)
     assert sr_read == sr
-    whole = time_stretch(whole, sr)
+    whole = time_stretch(whole, sr, spec['tempo'])
     start = int(round(t0 * sr))
     stop = int(round((t0 + dur) * sr))
     x = whole[start:stop]
 
     print(f'\n{track}  <- {spec["src"]}  region {t0}-{t0 + dur}s ({dur}s, {x.shape[1]} ch)'
-          f'  (native master ~{t0 * TEMPO_FACTOR:.1f}-{(t0 + dur) * TEMPO_FACTOR:.1f}s)')
+          f'  (native source ~{t0 * spec["tempo"]:.1f}-{(t0 + dur) * spec["tempo"]:.1f}s)')
 
     print(f'  in   peak {db(float(np.max(np.abs(x)))):+7.2f} dBFS   '
           f'mid {band_rms(x, sr, *MID_BAND):7.2f}   '
@@ -461,7 +502,8 @@ def process(track: str, out_dir: str) -> None:
         print(f'  peak guard {trim:+.2f} dB (mid target missed by that much)')
 
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f'{track}.mp3')
+    # A track id's dot becomes a hyphen, the separator every shipped audio filename uses.
+    path = os.path.join(out_dir, f'{track.replace(".", "-")}.mp3')
     rate, nbytes, q, err = encode_smallest(x, sr, path)
 
     back, bsr = sf.read(path, dtype='float64', always_2d=True)

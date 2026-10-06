@@ -19,6 +19,9 @@
 //  - **A track may be a PLACEHOLDER**, and that is a field rather than a comment. See
 //    `borrowedFrom`.
 //
+// Every loop is openly licensed music (CC0/CC-BY) since 2026-10-06; who wrote each one, and
+// the credit line the game shows, is `musicCredits.ts`.
+//
 // The level decision is NOT here. It lives in the asset: every shipped loop is normalised so
 // its 250-2000 Hz RMS lands at -30 dBFS (`tools/audio-pipeline/process_music.py`'s
 // `MID_TARGET_DBFS`, gated by `audit.py --class music`), which leaves every cue's peak 9-16 dB
@@ -35,10 +38,10 @@ export const MUSIC_DIR = '/audio/music';
 /**
  * Crossfade length, seconds. **This number is shared with the asset pipeline and must not be
  * changed on one side alone.** `tools/audio-pipeline/audit.py`'s `XFADE_S` is the same 2.0,
- * and both shipped loops were MEASURED against it: the `music` gate's `xfade_band_diff`
+ * and every shipped loop was MEASURED against it: the `music` gate's `xfade_band_diff`
  * compares the head and tail windows of exactly this width, and it is the reason the files
- * only had to be tonally compatible over 2 s rather than sample-continuous (`menu` measures
- * 1.76 dB, `boss` 1.60 dB, both post the 2026-09-06 tempo stretch — see `MUSIC_CATALOGUE`).
+ * only had to be tonally compatible over 2 s rather than sample-continuous (0.65-1.54 dB
+ * across the six — see `MUSIC_CATALOGUE`).
  * Widening it here would judge the loops on a window nobody measured; narrowing it would leave
  * measured seam quality on the table.
  */
@@ -64,10 +67,10 @@ export interface TrackDef {
    * `null` when this track has its own master. Otherwise the track whose FILE it is borrowing,
    * because its own does not exist yet.
    *
-   * Explicit, non-optional and machine-readable on purpose. Two of the three launch loops have
-   * masters (`art/audio/README.md`'s Music table); `dungeon.ember` does not, and "the runtime
-   * should substitute an existing loop rather than fall silent" is design/11's own
-   * instruction. A substitution recorded only in a comment is a substitution that ships
+   * Explicit, non-optional and machine-readable on purpose. No shipped track borrows today
+   * (`dungeon.ember` did until 2026-10-06, playing `menu.mp3`); the field stays because the
+   * next track added before its file exists needs it, and "the runtime should substitute an
+   * existing loop rather than fall silent" is design/11's own instruction. A substitution recorded only in a comment is a substitution that ships
    * forever: `musicAssets.test.ts` asserts exactly which tracks are standing in, so
    * replacing this entry with a real master is a visible, one-line change rather than an
    * archaeology exercise.
@@ -82,41 +85,54 @@ export interface TrackDef {
  * has an entry here, which is the guarantee `cueCatalogue.ts` already provides for cues.
  */
 export const MUSIC_CATALOGUE: Record<MusicTrack, TrackDef> = {
-  // `Crystal Menu.mp3`, 68.0 s from 81.0 s of the STRETCHED master (native master position
-  // ~56.7 s). 2026-09-06: tempo x0.7 is baked into this file by `process_music.py`'s
-  // `TEMPO_FACTOR` (`pedalboard.time_stretch`, pitch preserved) — the region itself was
-  // RE-PICKED that pass, because the 2026-08-31 region (69.0 s from 218.5 s, band-diff
-  // 1.15 dB natively) measured 6.6 dB once stretched, far over the gate. This region measures
-  // 1.76 dB post-stretch. Energy sits 160 Hz-1.2 kHz, so still no shelf.
-  menu: { path: `${MUSIC_DIR}/menu.mp3`, lengthS: 68.0, gain: 1.0, borrowedFrom: null },
+  // "Aurora" (Scott Buckley, CC-BY 4.0): 85.0 s from 86.0 s of the 8:19 track, the slow build
+  // well before its climax. The bed a player hears longest (menus, the Forge, result screens),
+  // so it is the longest loop the gate's 90 s ceiling allows; seam 0.83 dB. No shelf.
+  menu: { path: `${MUSIC_DIR}/menu.mp3`, lengthS: 85.0, gain: 1.0, borrowedFrom: null },
 
-  // NO MASTER YET — this entry plays `menu.mp3`.
-  //
-  // WHY IT BORROWS `menu` AND NOT `boss`, which is the closer match in mood: if the dungeon
-  // bed and the boss bed were the same file, walking into the boss room would produce no
-  // audible change at all, and "the music never switches" is indistinguishable from "the music
-  // feature is broken". A bed that is wrong for the room is a taste complaint; a transition
-  // that cannot be heard is a bug report. So the placeholder is chosen to keep the MECHANISM
-  // visible, deliberately at the cost of fit.
-  //
-  // Closing this is one file plus one line: drop the master in, re-cut it with
-  // `process_music.py`, and change `path`/`lengthS`/`borrowedFrom` here. Nothing else in the
-  // client knows this track is a stand-in.
+  // "Lava Area Theme" (Wolfgang_, CC-BY 4.0): 60.0 s from 12.5 s, with a 4th-order zero-phase
+  // shelf at 80 Hz / -10 dB; seam 1.54 dB. Chapter 1's own bed since 2026-10-06 — before that
+  // this entry borrowed `menu.mp3` (and deliberately not `boss.mp3`, so the boss-room switch
+  // stayed audible).
   'dungeon.ember': {
-    path: `${MUSIC_DIR}/menu.mp3`,
-    lengthS: 68.0,
+    path: `${MUSIC_DIR}/dungeon-ember.mp3`,
+    lengthS: 60.0,
     gain: 1.0,
-    borrowedFrom: 'menu',
+    borrowedFrom: null,
   },
 
-  // `Frozen Resonance.mp3`, 47.5 s from 147.5 s of the STRETCHED master (native master
-  // position ~103.2 s), with a 4th-order zero-phase shelf at 80 Hz / -14 dB. Generated against
-  // the MENU brief and measured as a sub-bass drone instead (90% of its energy below 109 Hz),
-  // which is dread rather than a calm hub — so it became the boss bed. Same 2026-09-06
-  // tempo x0.7 pass as `menu`, same reason the region was re-picked (the 2026-08-31 region
-  // measured 2.2-2.9 dB once stretched, too close to the gate to keep); this region measures
-  // 1.60 dB post-stretch.
-  boss: { path: `${MUSIC_DIR}/boss.mp3`, lengthS: 47.5, gain: 1.0, borrowedFrom: null },
+  // "Beyond the Frozen Veil" (Synth-thetic, CC0): 71.5 s from 34.5 s of the composer's loop
+  // version; seam 1.40 dB. No shelf. Chapter 2 shared chapter 1's bed until 2026-10-06.
+  'dungeon.frost': {
+    path: `${MUSIC_DIR}/dungeon-frost.mp3`,
+    lengthS: 71.5,
+    gain: 1.0,
+    borrowedFrom: null,
+  },
+
+  // "Endless Cyber Runner" (Eric Matyas, CC-BY 4.0): 50.0 s from 27.5 s of the composer's
+  // looping version, with the 80 Hz / -10 dB shelf; seam 1.20 dB. Chapter 3's bed (the storm
+  // biome). 120 bpm, so the 50.0 s length keeps both decks' beats aligned through the fade.
+  'dungeon.storm': {
+    path: `${MUSIC_DIR}/dungeon-storm.mp3`,
+    lengthS: 50.0,
+    gain: 1.0,
+    borrowedFrom: null,
+  },
+
+  // "Ominous Goings-On" (Eric Matyas, CC-BY 4.0): 49.5 s from 15.0 s of the composer's looping
+  // version; seam 0.65 dB, no shelf. Chapter 4's bed (the blight biome, the finale). Beatless,
+  // so there is no drum grid to keep aligned through the fade, and its overlap is uncorrelated.
+  'dungeon.blight': {
+    path: `${MUSIC_DIR}/dungeon-blight.mp3`,
+    lengthS: 49.5,
+    gain: 1.0,
+    borrowedFrom: null,
+  },
+
+  // "Colossal Boss Battle Theme" (Matthew Pablo, CC-BY 3.0), the no-vocals loop: 58.5 s from
+  // 49.5 s, with the same 80 Hz / -10 dB shelf; seam 1.31 dB. Both chapters' boss rooms.
+  boss: { path: `${MUSIC_DIR}/boss.mp3`, lengthS: 58.5, gain: 1.0, borrowedFrom: null },
 };
 
 /** Every track, at runtime. Derived from the catalogue, so it cannot drift from the union the
@@ -145,6 +161,11 @@ export function musicPaths(): readonly string[] {
  */
 export const BIOME_ID_TO_TRACK: Record<string, MusicTrack> = {
   ember: 'dungeon.ember',
+  frost: 'dungeon.frost',
+  storm: 'dungeon.storm',
+  // Chapter 4 (`blight`, poison). Keyed by string like the rest, so it can land before the
+  // engine's chapter does; until then nothing asks for it.
+  blight: 'dungeon.blight',
 };
 
 /**

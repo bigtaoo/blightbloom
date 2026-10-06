@@ -1,0 +1,125 @@
+{
+  "id": "storm_l1_floor_3_branch",
+  "rooms": [
+    {
+      "id": "r1_gallery",
+      "pieceId": "storm_l1_gallery",
+      "offsetXGrid": 2,
+      "offsetYGrid": 69
+    },
+    {
+      "id": "r2_coil",
+      "pieceId": "storm_l1_coil",
+      "offsetXGrid": 0,
+      "offsetYGrid": 53
+    },
+    {
+      "id": "r3_court",
+      "pieceId": "storm_l1_court",
+      "offsetXGrid": 18,
+      "offsetYGrid": 52
+    },
+    {
+      "id": "r4_dynamo",
+      "pieceId": "storm_l1_dynamo",
+      "offsetXGrid": 17,
+      "offsetYGrid": 35
+    },
+    {
+      "id": "r5_bastion",
+      "pieceId": "storm_l1_bastion",
+      "offsetXGrid": 37,
+      "offsetYGrid": 34
+    },
+    {
+      "id": "r6_conduit",
+      "pieceId": "storm_l1_conduit",
+      "offsetXGrid": 18,
+      "offsetYGrid": 16
+    },
+    {
+      "id": "b1_vault",
+      "pieceId": "storm_l1_vault",
+      "offsetXGrid": 36,
+      "offsetYGrid": 52
+    },
+    {
+      "id": "r7_extraction",
+      "pieceId": "storm_l1_extraction",
+      "offsetXGrid": 19,
+      "offsetYGrid": 0
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_gallery",
+      "roomB": "r2_coil",
+      "passageGrid": {
+        "x": 4,
+        "y": 68,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r2_coil",
+      "roomB": "r3_court",
+      "passageGrid": {
+        "x": 17,
+        "y": 63,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_court",
+      "roomB": "r4_dynamo",
+      "passageGrid": {
+        "x": 20,
+        "y": 51,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_dynamo",
+      "roomB": "r5_bastion",
+      "passageGrid": {
+        "x": 36,
+        "y": 39,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r4_dynamo",
+      "roomB": "r6_conduit",
+      "passageGrid": {
+        "x": 26,
+        "y": 34,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r6_conduit",
+      "roomB": "r7_extraction",
+      "passageGrid": {
+        "x": 25,
+        "y": 15,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_court",
+      "roomB": "b1_vault",
+      "passageGrid": {
+        "x": 35,
+        "y": 59,
+        "w": 2,
+        "h": 4
+      }
+    }
+  ]
+}

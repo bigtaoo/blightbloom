@@ -277,5 +277,8 @@ function defaultMetaLike() {
     selectedSkin: 'default',
     hasSeenTutorial: false,
     bestFloor: 0,
+    selectedChapter: 'ember' as const,
+    clearedChapters: [] as string[],
+    endlessBestFloor: 0,
   };
 }

@@ -47,6 +47,7 @@ function privateOf(m: MainMenu) {
       forgeBadge: Pt & { visible: boolean };
       forgeBadgeText: { text: string };
       tutorialBtn: Btn;
+      chapters: { chapter: string; cycle: (step: 1 | -1) => void };
       height: number;
       recommendedTag: { text: string; visible: boolean; position: { x: number; y: number } };
     };
@@ -978,5 +979,55 @@ describe('MainMenu — lobby art that lands after the first frame (2026-09-28)',
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('MainMenu — the chapter picker (2026-10-06)', () => {
+  it('reads the provider on every show, so a chapter cleared since the last one is on screen', () => {
+    const m = new MainMenu();
+    let progress = { selectedChapter: 'ember' as const, clearedChapters: [] as string[] };
+    m.chapterProgress = () => progress;
+    m.show(800, 600);
+    expect(privateOf(m).routes.chapters.chapter).toBe('ember');
+    progress = { selectedChapter: 'frost' as never, clearedChapters: ['ember'] };
+    m.show(800, 600);
+    expect(privateOf(m).routes.chapters.chapter).toBe('frost');
+  });
+
+  it('defaults to a fresh account — chapter 1 — for a lobby nobody wired', () => {
+    const m = new MainMenu();
+    m.show(800, 600);
+    expect(privateOf(m).routes.chapters.chapter).toBe('ember');
+  });
+
+  it('hands an unlocked pick to onSelectChapter', () => {
+    const m = new MainMenu();
+    const picks: string[] = [];
+    m.onSelectChapter = (id) => picks.push(id);
+    m.chapterProgress = () => ({ selectedChapter: 'ember', clearedChapters: ['ember'] });
+    m.show(800, 600);
+    privateOf(m).routes.chapters.cycle(1);
+    expect(picks).toEqual(['frost']);
+  });
+
+  it('takes the portal PLAY out of play with SOLO while a locked chapter is shown', () => {
+    const m = new MainMenu();
+    m.setQuickPlay(true);
+    m.show(800, 600);
+    const play = privateOf(m).playBtn.view as unknown as { alpha: number; eventMode: string };
+    expect(play.eventMode).toBe('static');
+    privateOf(m).routes.chapters.cycle(1); // frost, locked on a fresh account
+    expect(play.alpha).toBeLessThan(1);
+    expect(play.eventMode).toBe('none');
+    privateOf(m).routes.chapters.cycle(-1); // back to ember
+    expect(play.alpha).toBe(1);
+    expect(play.eventMode).toBe('static');
+  });
+
+  it('is safe to cycle with no onSelectChapter installed', () => {
+    const m = new MainMenu();
+    m.chapterProgress = () => ({ selectedChapter: 'ember', clearedChapters: ['ember'] });
+    m.show(800, 600);
+    expect(() => privateOf(m).routes.chapters.cycle(1)).not.toThrow();
   });
 });

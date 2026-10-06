@@ -27,9 +27,12 @@
 //
 // `src/game/pureLayerBoundary.test.ts` is what keeps it that way; the 90% coverage gate
 // cannot (see that file's header for why a percentage can never guard a boundary).
-import type { GameEngine, GameState } from '@dd/engine';
+import { chapterIdOfConfig, type GameEngine, type GameState } from '@dd/engine';
 import type { CoopSession } from '../net/CoopSession';
-import { defaultMetaState, recordFloorReached, selectCharacter, type MetaState, type MetaStore } from '../meta';
+import {
+  defaultMetaState, recordChapterCleared, recordEndlessFloorReached, recordFloorReached, selectCharacter,
+  type MetaState, type MetaStore,
+} from '../meta';
 import type { ArenaId } from './match/arenaCatalog';
 import type { GameQueryParams } from './match/gameQueryParams';
 import type { Phase } from './phase';
@@ -234,12 +237,31 @@ export class RunState {
    * floor" caption, design/10, 2026-09-27). Called at both ends a run can have: a result
    * screen (`settleOutcome`) and a quit or save-and-quit (`endRun`) — a player who walked
    * away from floor 4 still reached floor 4. Only a real dungeon counts: not the tutorial's
-   * fixed level, not a PvP arena (it has no floors), not a replay someone else played.
+   * fixed level, not a PvP arena (it has no floors), not a replay someone else played. An
+   * endless run writes its own record, `endlessBestFloor`, and leaves the chapters' alone.
    */
   noteFloorReached(): void {
     const s = this.activeState();
     if (!s || this.tutorialActive || this.replayUrl !== null || s.zoneEnabled) return;
-    const next = recordFloorReached(this.meta, s.floorIndex + 1);
+    const record = chapterIdOfConfig(s.dungeonConfig) === 'endless' ? recordEndlessFloorReached : recordFloorReached;
+    const next = record(this.meta, s.floorIndex + 1);
+    if (next !== this.meta) this.setMeta(next);
+  }
+
+  /**
+   * Record the live run's chapter as cleared (`meta/chapterProgress.ts`) — which is what
+   * unlocks the next one. Only reached on a PvE VICTORY, and a PvE victory IS a clear: the
+   * extraction that ends a dungeon run only resolves after a boss (`ExtractionSystem`) — on
+   * a chapter's last floor, or on any boss floor of the endless one, which unlocks nothing. Same exclusions as `noteFloorReached`, plus a config outside the
+   * chapter catalog (a test fixture), which has no chapter to record. Online co-op counts —
+   * the squad beat that boss — and its config is the server's, which names the chapter.
+   */
+  noteChapterCleared(): void {
+    const s = this.activeState();
+    if (!s || this.tutorialActive || this.replayUrl !== null || s.zoneEnabled) return;
+    const id = chapterIdOfConfig(s.dungeonConfig);
+    if (id === null) return;
+    const next = recordChapterCleared(this.meta, id);
     if (next !== this.meta) this.setMeta(next);
   }
 
@@ -247,6 +269,7 @@ export class RunState {
   settleOutcome(phase: 'victory' | 'defeat'): void {
     this.phase = phase;
     this.noteFloorReached();
+    if (phase === 'victory') this.noteChapterCleared();
   }
 
   /**

@@ -59,9 +59,9 @@
  *
  *   - Lifesteal: no RANGED weapon in the catalog carries it (`leech` is melee, and melee
  *     lifesteal is read off the weapon spec in `HitResolveSystem`, never off a projectile).
- *     So the freeze sweep's lifesteal line compares `undefined` to `undefined` for all 17
- *     of them — a green assertion with nothing behind it. Pinned as its own named case
- *     below so it cannot stay quietly vacuous.
+ *     So the freeze sweep's lifesteal line compares `undefined` to `undefined` for every one
+ *     of them (17 when this was written, 21 by 2026-10-06) — a green assertion with nothing
+ *     behind it. Pinned as its own named case below so it cannot stay quietly vacuous.
  *   - `beamDir`: every shipped beam weapon is single-pellet, so `dir === a.facing` and the
  *     two expressions agree on all real content. `WeaponFireSystem.test.ts` kills this one
  *     with a synthetic multi-pellet beam, which is the right place for it — a catalog sweep
@@ -270,12 +270,15 @@ describe('BEHAVE — straight: every pellet advances by its own bulletSpeed, per
 
 describe('BEHAVE — homing: turns toward a foe, clamped by its own turnRateBrad', () => {
   const group = ofShape('homing');
-  it('the group is non-empty (seeker AND its elemental sibling)', () => {
-    expect(group.map(([id]) => id).sort()).toEqual(['frostseeker', 'seeker']);
+  it("the group is non-empty (seeker, its elemental sibling, and Voltreaver's orbs)", () => {
+    expect(group.map(([id]) => id).sort()).toEqual(['enemyarcseeker', 'frostseeker', 'seeker']);
   });
 
   it.each(group.map(([id]) => id))('%s turns at most its own rate, and preserves speed', (id) => {
-    const spec = group.find(([n]) => n === id)![1];
+    // One pellet, no spread: a fan's pellets leave at jittered angles, and a float atan2 read of
+    // a jittered fixed-point vector is off by a few brad — more than this test's one-brad bound.
+    // The clamp is a per-pellet rule, so one pellet flying due east tests all of them.
+    const spec: RangedSimSpec = { ...group.find(([n]) => n === id)![1], bullets: 1, spreadHalf: 0 as Brad };
     const { s, shots } = fireOnce(spec, 0); // flying east
     const b = shots[0]!;
     // Due SOUTH of the shooter: the required turn is 90°, far more than one tick's clamp,

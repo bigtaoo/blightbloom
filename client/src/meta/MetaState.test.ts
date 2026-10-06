@@ -3,8 +3,8 @@
  * and the FREE_CHARACTERS roster derivation.
  */
 import { describe, it, expect } from 'vitest';
-import { defaultMetaState, FREE_CHARACTERS, recordFloorReached } from './MetaState';
-import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, SKIN_DEFS } from '@dd/engine';
+import { defaultMetaState, FREE_CHARACTERS, recordEndlessFloorReached, recordFloorReached } from './MetaState';
+import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, SKIN_DEFS, DEFAULT_CHAPTER_ID } from '@dd/engine';
 
 describe('FREE_CHARACTERS', () => {
   it('is exactly vanguard (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event", 2026-09-23)', () => {
@@ -61,6 +61,11 @@ describe('recordFloorReached()', () => {
     expect(defaultMetaState().bestFloor).toBe(0);
   });
 
+  it('starts in chapter 1 with no chapter cleared', () => {
+    expect(defaultMetaState().selectedChapter).toBe(DEFAULT_CHAPTER_ID);
+    expect(defaultMetaState().clearedChapters).toEqual([]);
+  });
+
   it('keeps the deeper floor, and hands back the SAME object when nothing changed', () => {
     const m = recordFloorReached(defaultMetaState(), 3);
     expect(m.bestFloor).toBe(3);
@@ -68,5 +73,18 @@ describe('recordFloorReached()', () => {
     expect(recordFloorReached(m, 2)).toBe(m);
     expect(recordFloorReached(m, 3)).toBe(m);
     expect(recordFloorReached(m, Number.NaN)).toBe(m);
+  });
+});
+
+describe('recordEndlessFloorReached()', () => {
+  it('keeps its own record, apart from the chapters’ bestFloor', () => {
+    expect(defaultMetaState().endlessBestFloor).toBe(0);
+    const m = recordEndlessFloorReached(defaultMetaState(), 17);
+    expect(m.endlessBestFloor).toBe(17);
+    expect(m.bestFloor).toBe(0);
+    expect(recordEndlessFloorReached(m, 22.5).endlessBestFloor).toBe(22);
+    expect(recordEndlessFloorReached(m, 9)).toBe(m);
+    expect(recordEndlessFloorReached(m, 17)).toBe(m);
+    expect(recordEndlessFloorReached(m, Number.NaN)).toBe(m);
   });
 });

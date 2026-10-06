@@ -47,6 +47,7 @@ import type { Settings } from '../screens/Settings';
 import type { PauseMenu } from '../screens/PauseMenu';
 import { shouldSwapToSlot } from './weaponSlotSelect';
 import type { RunState } from '../runState';
+import { playableChapter, selectChapter } from '../../meta';
 
 export interface WiringDeps {
   run: RunState;
@@ -86,6 +87,9 @@ export function wireScreens(d: WiringDeps): void {
   // mode-select screen's four plus this screen's SQUAD). Every one of them hands off to
   // something that already existed; what the merge changed is which screen they are on.
   d.mainMenu.onSolo = () => d.nav.showLoadout();
+  // The chapter picker under SOLO (2026-10-06). `selectChapter` refuses a locked chapter, so
+  // the persisted pick is always one a run can start in.
+  d.mainMenu.onSelectChapter = (id) => d.run.setMeta(selectChapter(d.run.meta, id));
   d.mainMenu.onCoop = () => d.net.beginSoloQueue(false);
   d.mainMenu.onPvpSolo = () => d.net.beginSoloQueue(true);
   d.mainMenu.onSquad = () => d.nav.showSquad();
@@ -135,6 +139,8 @@ export function wireScreens(d: WiringDeps): void {
   d.matchmaking.onCancelled = () => d.net.onCancelled();
   d.partyScreen.onBack = () => d.nav.showMenu();
   d.partyScreen.onStartMatch = (partyId, mode) => d.net.beginPartyMatch(partyId, mode);
+  // The chapter a co-op party the leader starts will play — the leader's own lobby pick.
+  d.partyScreen.chapterOf = () => playableChapter(d.run.meta);
   // The two multiplayer doors a HOST can push the game through (design/20's multiplayer
   // requirements): "put me in a match" and "put me in this friend's party". Installed for
   // every target because the registry is inert unless something calls it, and only a portal

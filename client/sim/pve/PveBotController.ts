@@ -31,7 +31,7 @@
 import { Button, makeCommand, quantizeMove, CHEST_MECHANISM_RADIUS_GRID, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
 import { profileForWeaponId } from './weaponStandoff';
 import { bladeSwapDue, gunWorth } from './weaponChoice';
-import { checkpointReached, totalFloorCount } from '../../src/game/match/floorCount';
+import { checkpointReached, portalOffers } from '../../src/game/match/floorCount';
 import { bfsPath, capstoneRoomId, doorCentre, pointInRect, rectCentre, roomIdAt, roomRect, roomRuntime, type Vec } from './pveNav';
 
 const g = (grid: number): number => grid * FP_SCALE;
@@ -161,11 +161,13 @@ export class PveBotController {
 
     // Checkpoint: walk into the capstone room and confirm the portal. Descend while
     // floors remain, extract on the last one (ExtractionSystem ignores DESCEND there).
+    // An endless boss floor offers both, and the bot always descends: the sweep measures
+    // how deep a run gets, which a bot cashing out at the first boss would never show.
     if (checkpointReached(s)) {
       const capstone = capstoneRoomId(s);
       const rect = capstone === undefined ? undefined : roomRect(s, capstone);
       if (rect && pointInRect(self.x, self.y, rect)) {
-        const last = s.floorIndex >= totalFloorCount(s) - 1;
+        const last = !portalOffers(s).descend;
         return makeCommand({
           owner,
           tick,

@@ -1,0 +1,155 @@
+{
+  "id": "storm_l1_span",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 16,
+    "h": 19
+  },
+  "solids": [
+    {
+      "x": 9,
+      "y": 11,
+      "w": 3,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 7,
+      "w": 3,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 18,
+      "w": 16,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 16,
+      "h": 1
+    },
+    {
+      "x": 15,
+      "y": 1,
+      "w": 1,
+      "h": 17
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 17
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 13.5,
+        "y": 12
+      },
+      {
+        "x": 13.5,
+        "y": 8
+      }
+    ],
+    "enemy": [
+      {
+        "x": 9.5,
+        "y": 16.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 16.5,
+        "type": "floater"
+      },
+      {
+        "x": 3.5,
+        "y": 16.5,
+        "type": "emberling"
+      },
+      {
+        "x": 5.5,
+        "y": 14.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 12.5,
+        "type": "floater"
+      },
+      {
+        "x": 3.5,
+        "y": 12.5,
+        "type": "emberling"
+      },
+      {
+        "x": 7.5,
+        "y": 10.5,
+        "type": "basic"
+      },
+      {
+        "x": 3.5,
+        "y": 10.5,
+        "type": "stalker"
+      },
+      {
+        "x": 5.5,
+        "y": 4.5,
+        "type": "emberling"
+      },
+      {
+        "x": 9.5,
+        "y": 2.5,
+        "type": "basic"
+      },
+      {
+        "x": 5.5,
+        "y": 2.5,
+        "type": "stalker"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 13.5,
+      "y": 15.5
+    },
+    {
+      "id": "rubble",
+      "x": 8.5,
+      "y": 11.5
+    },
+    {
+      "id": "rubble",
+      "x": 7.5,
+      "y": 8
+    },
+    {
+      "id": "barrel",
+      "x": 3,
+      "y": 2.5
+    }
+  ]
+}

@@ -7,8 +7,8 @@
  * channel order, wrong rounding, wrong amount) changes these constants.
  */
 import { describe, it, expect } from 'vitest';
-import { WEAPON_SIM_BY_ID, type WeaponSimSpec } from '@dd/engine';
-import { THEME, ELEMENT_COLORS, elementColor, biomePalette, biomeElementOf, rarityColor, mixHex } from './theme';
+import { CHAPTERS, CHAPTER_ORDER, ENDLESS_DUNGEON, WEAPON_SIM_BY_ID, type GameState, type WeaponSimSpec } from '@dd/engine';
+import { THEME, ELEMENT_COLORS, elementColor, biomePalette, biomeElementOf, floorBiomeId, rarityColor, mixHex } from './theme';
 
 describe('elementColor', () => {
   it('maps each elemental damage type to its status-fx hue', () => {
@@ -25,8 +25,26 @@ describe('elementColor', () => {
 });
 
 describe('biomeElementOf', () => {
-  it('maps the one registered biome id to its element', () => {
+  it('maps each chapter biome id to its element', () => {
     expect(biomeElementOf('ember')).toBe('fire');
+    expect(biomeElementOf('frost')).toBe('ice');
+  });
+
+  it('gives every chapter in the engine catalog a real element, never the neutral fallback', () => {
+    // The compile-time `satisfies` guards the table's keys; this guards what a run DRAWS — a
+    // chapter landing on 'neutral' would ship as the flat grey palette with no swatches.
+    for (const id of CHAPTER_ORDER) {
+      if (id === 'endless') continue; // no biome of its own: see the next test
+      expect(biomeElementOf(CHAPTERS[id].config.biomeId), id).not.toBe('neutral');
+    }
+  });
+
+  it('draws each endless floor in the element of the chapter it borrows the floor from', () => {
+    const at = (floorIndex: number) =>
+      biomeElementOf(floorBiomeId({ dungeonConfig: ENDLESS_DUNGEON, floorIndex } as Pick<GameState, 'dungeonConfig' | 'floorIndex'>));
+    expect([0, 4, 5, 10, 15, 19, 20].map(at)).toEqual(['fire', 'fire', 'ice', 'lightning', 'poison', 'poison', 'fire']);
+    expect(floorBiomeId({ dungeonConfig: undefined, floorIndex: 3 })).toBeUndefined();
+    expect(floorBiomeId({ dungeonConfig: CHAPTERS.frost.config, floorIndex: 3 })).toBe('frost');
   });
 
   it('falls back to neutral for undefined (outside dungeon mode) and any unknown id', () => {

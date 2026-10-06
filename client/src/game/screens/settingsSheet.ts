@@ -39,6 +39,8 @@ export interface SettingsSheetParts {
   display: readonly OptionRow[];
   game: readonly OptionRow[];
   tutorialBtn: Button;
+  /** The music credits, under both columns and as wide as both. */
+  credits: Text;
 }
 
 /** Heading text plus the hairline under it; returns the y the first row starts at. */
@@ -100,8 +102,16 @@ export function layoutSettingsSheet(p: SettingsSheetParts): number {
   left += WIDE_BUTTON_H;
 
   // The gutter's own hairline, so the two columns read as two lists rather than one ragged one.
-  const bottom = Math.max(left, right);
-  p.rules.rect(COL_W + COL_GAP / 2, 4, 1, bottom - 4).fill({ color: MENU_COLORS.frameInner, alpha: 0.8 });
+  const columns = Math.max(left, right);
+  p.rules.rect(COL_W + COL_GAP / 2, 4, 1, columns - 4).fill({ color: MENU_COLORS.frameInner, alpha: 0.8 });
+
+  // The music credits close the sheet, across both columns: a licence condition rather than a
+  // setting, so they sit below every control instead of inside a section.
+  const creditsTop = columns + SECTION_GAP;
+  p.rules.rect(0, creditsTop - SECTION_GAP / 2, CONTENT_W, 1).fill({ color: MENU_COLORS.frameInner, alpha: 0.8 });
+  p.credits.style.wordWrapWidth = CONTENT_W;
+  p.credits.position.set(0, creditsTop);
+  const bottom = creditsTop + p.credits.height;
 
   // `MenuSheet.layout`'s own sums: the title plate, the gap under it, and the bottom padding.
   return SHEET_TITLE_H + 18 + bottom + SHEET_PAD;

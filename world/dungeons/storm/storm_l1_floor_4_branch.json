@@ -1,0 +1,125 @@
+{
+  "id": "storm_l1_floor_4_branch",
+  "rooms": [
+    {
+      "id": "r1_dynamo",
+      "pieceId": "storm_l1_dynamo",
+      "offsetXGrid": 0,
+      "offsetYGrid": 1
+    },
+    {
+      "id": "r2_bastion",
+      "pieceId": "storm_l1_bastion",
+      "offsetXGrid": 20,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r3_conduit",
+      "pieceId": "storm_l1_conduit",
+      "offsetXGrid": 20,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r4_rampart",
+      "pieceId": "storm_l1_rampart",
+      "offsetXGrid": 39,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r5_maelstrom",
+      "pieceId": "storm_l1_maelstrom",
+      "offsetXGrid": 19,
+      "offsetYGrid": 37
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "storm_l1_cache",
+      "offsetXGrid": 42,
+      "offsetYGrid": 3
+    },
+    {
+      "id": "b2_market",
+      "pieceId": "storm_l1_market",
+      "offsetXGrid": 4,
+      "offsetYGrid": 21
+    },
+    {
+      "id": "r6_extraction",
+      "pieceId": "storm_l1_extraction",
+      "offsetXGrid": 39,
+      "offsetYGrid": 39
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_dynamo",
+      "roomB": "r2_bastion",
+      "passageGrid": {
+        "x": 19,
+        "y": 5,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r2_bastion",
+      "roomB": "r3_conduit",
+      "passageGrid": {
+        "x": 24,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_conduit",
+      "roomB": "r4_rampart",
+      "passageGrid": {
+        "x": 38,
+        "y": 22,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_conduit",
+      "roomB": "r5_maelstrom",
+      "passageGrid": {
+        "x": 28,
+        "y": 36,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r5_maelstrom",
+      "roomB": "r6_extraction",
+      "passageGrid": {
+        "x": 38,
+        "y": 45,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r4_rampart",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 49,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_conduit",
+      "roomB": "b2_market",
+      "passageGrid": {
+        "x": 19,
+        "y": 27,
+        "w": 2,
+        "h": 4
+      }
+    }
+  ]
+}

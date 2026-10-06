@@ -29,6 +29,17 @@ export const en = {
     syncedHint: 'Progress synced',
     bestFloor: 'Best: floor {floor}',
   },
+  // PvE chapters (engine world/chapters.ts): one `name` per catalog id, plus the lobby
+  // picker's caption and its lock line (`game/ui/ChapterPicker.ts`).
+  chapter: {
+    number: 'CHAPTER {n}',
+    locked: 'Clear chapter {n} to unlock',
+    ember: { name: 'The Ember Descent' },
+    frost: { name: 'The Frost Descent' },
+    storm: { name: 'The Storm Descent' },
+    blight: { name: 'The Blight Descent' },
+    endless: { name: 'The Endless Descent', hint: 'ENDLESS', best: 'ENDLESS · BEST FLOOR {floor}' },
+  },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
   // player is meant to see, held for `MIN_TRANSITION_MS` whether anything is downloading or
@@ -51,6 +62,7 @@ export const en = {
     sectionAudio: 'AUDIO',
     sectionDisplay: 'DISPLAY',
     sectionGame: 'GAME',
+    musicCredits: 'Music',
     master: 'Master',
     sfx: 'SFX',
     music: 'Music',
@@ -355,6 +367,7 @@ export const en = {
     confirmButton: 'CONFIRM',
     timeLine: 'Time {m}:{ss}',
     floorLine: 'Floor {floor}/{floorCount}',
+    floorLineEndless: 'Floor {floor}',
     materialsBanked: 'Materials banked: {count}',
     doubleMaterialsButton: 'WATCH AD: MATERIALS x2',
     materialsDoubled: 'Materials banked: {count} (ad bonus x2)',
@@ -363,6 +376,7 @@ export const en = {
     blueprintLine: 'Blueprint recovered: {weapon}',
     characterLine: 'Character unlocked: {character}',
     fellOnFloor: 'Fell on floor {floor}/{floorCount}',
+    fellOnFloorEndless: 'Fell on floor {floor}',
     materialsLost: 'All {count} carried materials were lost',
     placeOf: '1st place of {total}',
     placedOfTotal: 'Placed {place}/{total}',
@@ -420,6 +434,9 @@ export const en = {
     enemyclaw: { name: 'Raider Claw' },
     enemymaul: { name: 'Raider Maul' },
     enemynova: { name: 'Raider Nova' },
+    enemyshardfan: { name: 'Raider Shard Fan' },
+    enemyarcseeker: { name: 'Raider Arc Seeker' },
+    enemysporespray: { name: 'Raider Spore Spray' },
     flamer: { name: 'Flamethrower' },
     cryobolt: { name: 'Cryobolt' },
     teslagun: { name: 'Tesla Gun' },

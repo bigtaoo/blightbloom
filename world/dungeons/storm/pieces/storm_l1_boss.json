@@ -1,0 +1,149 @@
+{
+  "id": "storm_l1_boss",
+  "role": "boss",
+  "sizeGrid": {
+    "w": 20,
+    "h": 20
+  },
+  "solids": [
+    {
+      "x": 0,
+      "y": 19,
+      "w": 20,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 20,
+      "h": 1
+    },
+    {
+      "x": 19,
+      "y": 1,
+      "w": 1,
+      "h": 18
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 18
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 17.5,
+        "y": 12
+      },
+      {
+        "x": 17.5,
+        "y": 8
+      }
+    ],
+    "enemy": [
+      {
+        "x": 13.5,
+        "y": 17.5,
+        "type": "voltreaver"
+      },
+      {
+        "x": 7.5,
+        "y": 17.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 11.5,
+        "y": 15.5,
+        "type": "emberling"
+      },
+      {
+        "x": 5.5,
+        "y": 15.5,
+        "type": "brute"
+      },
+      {
+        "x": 9.5,
+        "y": 13.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 3.5,
+        "y": 13.5,
+        "type": "emberling"
+      },
+      {
+        "x": 7.5,
+        "y": 11.5,
+        "type": "brute"
+      },
+      {
+        "x": 11.5,
+        "y": 9.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 5.5,
+        "y": 9.5,
+        "type": "emberling"
+      },
+      {
+        "x": 9.5,
+        "y": 7.5,
+        "type": "ravager"
+      },
+      {
+        "x": 3.5,
+        "y": 7.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 7.5,
+        "y": 5.5,
+        "type": "emberling"
+      },
+      {
+        "x": 13.5,
+        "y": 3.5,
+        "type": "ravager"
+      },
+      {
+        "x": 7.5,
+        "y": 3.5,
+        "type": "ironclad"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "rubble",
+      "x": 17.5,
+      "y": 17.5
+    },
+    {
+      "id": "rubble",
+      "x": 2.5,
+      "y": 17
+    },
+    {
+      "id": "rubble",
+      "x": 17,
+      "y": 2.5
+    }
+  ]
+}

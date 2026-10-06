@@ -1,0 +1,166 @@
+{
+  "id": "blight_l1_gallery",
+  "tags": [
+    "blight_l1"
+  ],
+  "sizeGrid": {
+    "w": 18,
+    "h": 15
+  },
+  "solids": [
+    {
+      "x": 17,
+      "y": 0,
+      "w": 1,
+      "h": 15
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 15
+    },
+    {
+      "x": 1,
+      "y": 14,
+      "w": 16,
+      "h": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "w": 16,
+      "h": 1
+    }
+  ],
+  "pillars": [
+    {
+      "center": {
+        "x": 13,
+        "y": 10
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 13,
+        "y": 5
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 5,
+        "y": 10
+      },
+      "radius": 1
+    },
+    {
+      "center": {
+        "x": 5,
+        "y": 5
+      },
+      "radius": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 11,
+        "y": 12.5
+      },
+      {
+        "x": 7,
+        "y": 12.5
+      }
+    ],
+    "enemy": [
+      {
+        "x": 15.5,
+        "y": 8.5,
+        "type": "basic"
+      },
+      {
+        "x": 15.5,
+        "y": 6.5,
+        "type": "floater"
+      },
+      {
+        "x": 15.5,
+        "y": 2.5,
+        "type": "blightling"
+      },
+      {
+        "x": 13.5,
+        "y": 2.5,
+        "type": "basic"
+      },
+      {
+        "x": 11.5,
+        "y": 2.5,
+        "type": "floater"
+      },
+      {
+        "x": 9.5,
+        "y": 4.5,
+        "type": "blightling"
+      },
+      {
+        "x": 9.5,
+        "y": 2.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 4.5,
+        "type": "stalker"
+      },
+      {
+        "x": 7.5,
+        "y": 2.5,
+        "type": "blightling"
+      },
+      {
+        "x": 3.5,
+        "y": 6.5,
+        "type": "basic"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 15.5,
+      "y": 12.5
+    },
+    {
+      "id": "rubble",
+      "x": 14.5,
+      "y": 3.5
+    },
+    {
+      "id": "barrel",
+      "x": 2,
+      "y": 12.5
+    },
+    {
+      "id": "rubble",
+      "x": 1.5,
+      "y": 3.5
+    }
+  ]
+}

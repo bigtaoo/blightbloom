@@ -2,12 +2,11 @@
  * The shipped music loops' own rules, read from the SHIPPED files under
  * `public/audio/music/` and the provenance record in `art/audio/credits.json`.
  *
- * WHY THIS FILE HAD TO EXIST. Until it did, the two loops were outside every TypeScript-side
+ * WHY THIS FILE HAD TO EXIST. Until it did, the loops were outside every TypeScript-side
  * gate in the repo — and not because anyone decided that. `platform/audioAssets.test.ts` reads
  * `public/audio/` with a NON-recursive `readdirSync`, so the moment music shipped into a
  * subdirectory it fell out of that file's byte budget, its credits cross-check, its format check
- * and its licence sweep, silently and all at once. 1.09 MB of assets with no gate is exactly the
- * situation that file was written to end for the cues.
+ * and its licence sweep, silently and all at once.
  *
  * It is not a copy of that file. Music's rules are inverted or absent in three places, and each
  * inversion is a real decision worth pinning:
@@ -19,18 +18,19 @@
  *    `length - XFADE_S` because the loop is closed by the player, not the file. A catalogue
  *    length that drifts from the shipped file puts the crossfade in the wrong place, which is
  *    audible as a badly cut loop and invisible everywhere else.
- *  - **The licence is NOT CC0.** These are AI-generated masters, so they cannot go through
- *    `packs.json` (whose every entry that file asserts is CC0). The provenance lives in
- *    `credits.json`'s own `music`/`music_terms` block, and what this file checks is that the
- *    record exists and stays HONEST about what it does not have — an unarchived licence text and
- *    an uncaptured prompt are recorded gaps, and a test that demanded they be filled would only
- *    invite them to be filled with a guess.
+ *  - **The licence is NOT always CC0, and CC-BY carries a condition.** `packs.json` asserts CC0
+ *    of every SFX pack, so the music cannot be filed there. Since 2026-10-06 every loop is
+ *    openly licensed music (the AI-generated masters before it are gone), five of the six
+ *    CC-BY, and CC-BY is only honoured if the credit is SHOWN. So this file checks the licence
+ *    against an allow-list, the captured licence text, the archived source's bytes, and that the
+ *    record's credit line is the one `musicCredits.ts` puts on the Settings screen.
  *
  * Nothing here decodes audio; the mp3s are parsed at the MPEG frame level (`audio/mp3Frames.ts`,
  * shared with the cue gate). Whether a loop sounds RIGHT is not testable and is not tested — see
- * `art/audio/README.md` on what measurement can and cannot say about these two files.
+ * `art/audio/README.md` on what measurement can and cannot say about these files.
  */
 import { describe, it, expect } from 'vitest';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseMp3 } from './mp3Frames';
@@ -42,56 +42,68 @@ import {
   XFADE_S,
   musicPaths,
 } from './musicCatalogue';
+import { MUSIC_CREDITS, musicCreditLines } from './musicCredits';
 
 const MUSIC_ON_DISK_DIR = new URL('../../public/audio/music/', import.meta.url);
 const CREDITS = new URL('../../../art/audio/credits.json', import.meta.url);
 const ART_AUDIO = new URL('../../../art/audio/', import.meta.url);
 
 /**
- * Total budget for the music set. 0.84 MB shipped (menu + boss, since the 2026-09-06 tempo
- * pass re-picked both regions shorter — was 1.09 MB); the third launch track has no master yet
- * and `assetPacks.json`'s `music` pack allows 3.00 MB, so this is the finer drift check between
- * "a third loop lands" and "a package overrun with no name on it".
+ * Total budget for the music set. 3,414,960 bytes shipped (six loops, 2026-10-06: `dungeon.storm`
+ * added 535 kB to 2.46 MB, then `dungeon.blight` 422 kB). `assetPacks.json`'s `music` pack allows
+ * 4 MiB (4,194,304 bytes) since the sixth loop: it is a standard WeChat subpackage, which WeChat
+ * caps only through the 30 MB whole-game total, so the old 3 MiB was our own guard and was raised
+ * as a decision rather than squeezed under. This number is the finer drift check between "a
+ * seventh loop lands" and "a package overrun with no name on it".
  *
- * Deliberately NOT generous. Music is by far the heaviest asset class in the game — the two
- * loops together outweigh the whole cue set by ~7x (0.84 MB against 122.7 kB) — so the one
- * thing this number has to do is make a
+ * Deliberately NOT generous. Music is by far the heaviest asset class in the game — the six
+ * loops outweigh the whole cue set ~25x — so the one thing this number has to do is make a
  * re-encode at a higher bitrate an explicit decision rather than a silent 40% increase.
  */
-const MUSIC_BUDGET_BYTES = 1_800_000;
+const MUSIC_BUDGET_BYTES = 3_500_000;
+
+/** The chapters' run beds, one per chapter (`BIOME_ID_TO_TRACK`'s values), listed by name so a
+ *  bed that quietly falls back to another's file fails rather than shrinking the list. */
+const RUN_BEDS = ['dungeon.ember', 'dungeon.frost', 'dungeon.storm', 'dungeon.blight'] as const;
+
+/** CC0 and CC-BY only: both allow commercial use and an edited loop. NC is out because the game
+ *  earns from ads; ND because cutting a loop region is an adaptation. Mirrors `MusicLicense`. */
+const ALLOWED_LICENSES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0'];
 
 interface MusicRecord {
   track: string;
   file: string;
+  title: string;
+  author: string;
+  license: string;
+  license_url: string;
+  license_text: string;
+  source_page: string;
+  upstream_url: string;
+  upstream_sha256: string;
+  upstream_member: string | null;
+  upstream_length_s: number;
   source: string;
-  generator: string;
-  generated: string;
-  brief: string;
-  prompt: string | null;
-  prompt_archived: boolean;
+  source_sha256: string;
+  archived_as: 'verbatim' | 'excerpt';
+  excerpt_start_s: number;
   region_start_s: number;
   length_s: number;
   source_length_s: number;
   shelf: { hz: number; db: number; order: number } | null;
+  tempo_factor: number;
   sample_rate: number;
   channels: number;
   bytes: number;
   xfade_band_diff_db: number;
   mid_band_dbfs: number;
+  attribution: string;
   rationale: string;
-}
-interface MusicTerms {
-  license: string;
-  generator: string;
-  terms_url: string;
-  license_text_archived: boolean;
-  accepted_by: string;
-  accepted_on: string;
-  note: string;
+  retrieved: string;
 }
 interface Credits {
   music: MusicRecord[];
-  music_terms: MusicTerms;
+  music_terms?: unknown;
   cues: { files: { file: string }[] }[];
 }
 
@@ -208,24 +220,25 @@ describe('the music catalogue and the files on disk', () => {
   });
 });
 
-describe('the placeholder track', () => {
-  it('marks exactly the tracks that have no master of their own', () => {
+describe('the placeholder mechanism', () => {
+  it('marks exactly the tracks that have no file of their own', () => {
     // The whole point of `borrowedFrom` being a field rather than a comment: what is real and
-    // what is standing in is assertable. `dungeon.ember` has no master (art/audio/README.md);
-    // when one lands this expectation is what tells whoever swaps the file that they are done.
-    expect(PLACEHOLDER_TRACKS).toEqual(['dungeon.ember']);
+    // what is standing in is assertable. None stands in since 2026-10-06 (`dungeon.ember`
+    // borrowed `menu.mp3` until then); a track added before its file exists shows up here.
+    expect(PLACEHOLDER_TRACKS).toEqual([]);
     for (const track of ALL_TRACKS) {
       const def = MUSIC_CATALOGUE[track];
       const borrowed = def.borrowedFrom !== null;
-      // A track with its own master must have a provenance record; a borrower must NOT — a
-      // record for a file that was never generated is a fabricated master.
+      // A track with its own file must have a provenance record; a borrower must NOT — a record
+      // for a file that does not exist is a fabricated source.
       const recorded = credits.music.some((m) => m.track === track);
       expect(recorded, `${track} provenance record`).toBe(!borrowed);
     }
   });
 
   it('borrows a real track, and borrows its file and length verbatim', () => {
-    // A borrowed entry that copied the path but not the length would put the crossfade at the
+    // Vacuous while nothing borrows, and kept: it is the rule the next placeholder must obey. A
+    // borrowed entry that copied the path but not the length would put the crossfade at the
     // lender's seam minus the borrower's guess.
     for (const track of PLACEHOLDER_TRACKS) {
       const def = MUSIC_CATALOGUE[track];
@@ -237,13 +250,17 @@ describe('the placeholder track', () => {
     }
   });
 
-  it('does not borrow the track it has to sound DIFFERENT from', () => {
-    // The design decision, as an assertion. `dungeon.ember` could plausibly borrow `boss` — it
-    // is the closer match in mood — and that would be the worse choice: with one file on both
-    // sides of the boss-room threshold there is no audible change at all, and "the music never
-    // switches" is indistinguishable from "the music feature is broken". A bed that is wrong for
-    // the room is a taste complaint; a transition nobody can hear is a bug report.
-    expect(MUSIC_CATALOGUE['dungeon.ember'].path).not.toBe(MUSIC_CATALOGUE.boss.path);
+  it('never plays the same file in a dungeon and in its boss room', () => {
+    // With one file on both sides of the boss-room threshold there is no audible change at all,
+    // and "the music never switches" is indistinguishable from "the music feature is broken".
+    for (const run of RUN_BEDS) {
+      expect(MUSIC_CATALOGUE[run].path, run).not.toBe(MUSIC_CATALOGUE.boss.path);
+    }
+  });
+
+  it('gives each chapter a bed of its own', () => {
+    const runBeds = RUN_BEDS.map((t) => MUSIC_CATALOGUE[t].path);
+    expect(new Set(runBeds).size).toBe(runBeds.length);
   });
 });
 
@@ -266,22 +283,45 @@ describe('music provenance', () => {
     }
   });
 
-  it('archives the master behind every shipped loop', () => {
-    // art/ holds source, public/ holds shipped (art/README.md's convention). Without the master
-    // the region cannot be re-cut, and for an AI-generated track it also cannot be re-requested:
-    // the same prompt does not return the same song.
+  it('archives the source behind every shipped loop, byte for byte as recorded', () => {
+    // art/ holds source, public/ holds shipped (art/README.md's convention). Without the source
+    // the region cannot be re-cut. The hash is what makes "this is the file the loop came from"
+    // a checked claim rather than a filename.
     for (const m of credits.music) {
       const src = new URL(`sources/${m.source}`, ART_AUDIO);
       expect(existsSync(fileURLToPath(src)), `${m.source} not archived`).toBe(true);
+      const sha = createHash('sha256').update(readFileSync(src)).digest('hex');
+      expect(sha, `${m.source} changed since it was recorded`).toBe(m.source_sha256);
+      expect(m.source.startsWith('music/'), `${m.track} source dir`).toBe(true);
     }
   });
 
-  it('records the region it was cut from, and that the region fits inside the master', () => {
+  it('can always fetch the full master back', () => {
+    // An excerpt is a deliberate loss (the upstream downloads are 20-50 MB), so it is only
+    // acceptable with a way back to the whole recording: where it came from and what it hashed
+    // to. A verbatim archive IS the upstream file, so the two hashes must agree.
+    for (const m of credits.music) {
+      expect(m.upstream_url, `${m.track} upstream url`).toMatch(/^https:\/\//);
+      expect(m.source_page, `${m.track} source page`).toMatch(/^https:\/\//);
+      expect(m.upstream_sha256, `${m.track} upstream hash`).toMatch(/^[0-9a-f]{64}$/);
+      expect(['verbatim', 'excerpt'], `${m.track} archived_as`).toContain(m.archived_as);
+      if (m.archived_as === 'verbatim') {
+        expect(m.source_sha256, `${m.track} verbatim archive`).toBe(m.upstream_sha256);
+        expect(m.excerpt_start_s, `${m.track} verbatim excerpt start`).toBe(0);
+      }
+      expect(
+        m.excerpt_start_s + m.region_start_s + m.length_s,
+        `${m.track} region runs past the end of the upstream file`,
+      ).toBeLessThanOrEqual(m.upstream_length_s);
+    }
+  });
+
+  it('records the region it was cut from, and that the region fits inside the archive', () => {
     for (const m of credits.music) {
       expect(m.region_start_s, `${m.track} region start`).toBeGreaterThanOrEqual(0);
       expect(
         m.region_start_s + m.length_s,
-        `${m.track} region runs past the end of its master`,
+        `${m.track} region runs past the end of its archived source`,
       ).toBeLessThanOrEqual(m.source_length_s);
     }
   });
@@ -298,54 +338,79 @@ describe('music provenance', () => {
     }
   });
 
-  it('names the generator, the date and the brief for every master', () => {
+  it('carries only a licence that allows a commercial, edited loop', () => {
+    // The assertion that earns its place on a monetised title. An NC track would be a breach the
+    // day an ad loads; an ND track would be one the moment its loop region was cut.
     for (const m of credits.music) {
-      expect(m.generator, `${m.track} generator`).toBe('Suno');
-      expect(m.generated, `${m.track} date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(m.brief.length, `${m.track} brief`).toBeGreaterThan(40);
+      expect(ALLOWED_LICENSES, `${m.track} licence ${m.license}`).toContain(m.license);
+      expect(m.license_url, `${m.track} licence url`).toMatch(/^https:\/\/creativecommons\.org\//);
+      expect(m.retrieved, `${m.track} retrieved`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(m.rationale.length, `${m.track} rationale`).toBeGreaterThan(40);
-      // Both masters sit under sources/suno/, and the record's `source` has to agree with the
-      // generator it is attributed to.
-      expect(m.source.startsWith('suno/'), `${m.track} source dir`).toBe(true);
     }
   });
 
-  it('is honest about the prompt it does not have', () => {
-    // Not "every master has a prompt" — none of them does, because the verbatim text was never
-    // captured. The assertion is that the gap is DECLARED: a null prompt with the flag set false
-    // is a recorded gap, while a missing key is an omission nobody will notice, and a
-    // reconstructed prompt would be a guess that reads like a record. When the next master is
-    // generated with its prompt archived, this flips to true and the assertion below inverts.
+  it('archives the licence statement it was taken under, captured from the source', () => {
+    // The statement on the source page is what was agreed to; a page can change. The capture
+    // must name the page it came from and the licence the record claims, so a record that is
+    // edited to a different licence without a new capture fails here.
     for (const m of credits.music) {
-      expect(m).toHaveProperty('prompt');
-      expect(m.prompt_archived, `${m.track} prompt_archived`).toBe(false);
-      expect(m.prompt, `${m.track} prompt`).toBe(null);
+      const url = new URL(m.license_text, ART_AUDIO);
+      expect(existsSync(fileURLToPath(url)), `${m.license_text} missing`).toBe(true);
+      const text = readFileSync(url, 'utf8');
+      expect(text, `${m.track} capture names its page`).toContain(m.source_page);
+      expect(text, `${m.track} capture names the work`).toContain(m.title);
+      expect(text, `${m.track} capture names the licence`).toContain(m.license_url);
     }
   });
 
-  it('keeps the AI masters OUT of the CC0 licence path, with terms of their own', () => {
-    // The assertion that earns its place on a monetised title (design/14), and it runs in the
-    // opposite direction from the cue sweep. `audioAssets.test.ts` asserts every SFX source pack
-    // is CC0; these two are not CC0 at all, so what matters is that they are not filed as
-    // though they were, and that whatever they ARE filed as says who accepted it and when.
-    const t = credits.music_terms;
-    expect(t.license).not.toBe('CC0-1.0');
-    expect(t.generator).toBe('Suno');
-    expect(t.terms_url).toMatch(/^https:\/\//);
-    expect(t.accepted_by.length).toBeGreaterThan(0);
-    expect(t.accepted_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // The second recorded gap: no licence text is archived under licenses/. Pinned as false for
-    // the same reason as the prompt — a declared gap is reviewable, a missing key is not.
-    expect(t.license_text_archived).toBe(false);
-    expect(t.note.length).toBeGreaterThan(100);
+  it('has no service-terms block left over from the AI-generated masters', () => {
+    // `music_terms` described Suno's terms. With no generated track left, a block still saying
+    // "the owner accepted these terms" would be a record of something nothing ships under.
+    expect(credits).not.toHaveProperty('music_terms');
   });
 
   it('does not let a music file leak into the SFX cue records', () => {
-    // The two records are gated by different rules (mono vs stereo, CC0 vs service terms), so a
-    // music file listed under `cues` would be held to the wrong one — and would be reported as
-    // "too long" and "stereo wastes bytes", which is exactly what the Python gate did before it
+    // The two records are gated by different rules (mono vs stereo, CC0 vs CC-BY), so a music
+    // file listed under `cues` would be held to the wrong one — and would be reported as "too
+    // long" and "stereo wastes bytes", which is exactly what the Python gate did before it
     // learned to route by directory.
     const cueFiles = credits.cues.flatMap((c) => c.files.map((f) => f.file));
     for (const f of cueFiles) expect(f.startsWith('audio/music/')).toBe(false);
+  });
+});
+
+describe('the in-game credit', () => {
+  it('shows, for every track, exactly the credit its provenance record names', () => {
+    // CC-BY's one condition is a visible credit. `musicCredits.ts` is what the Settings screen
+    // renders; this holds it to the record, field by field, so swapping a file without its
+    // credit (or editing one side alone) fails.
+    for (const m of credits.music) {
+      const c = MUSIC_CREDITS[m.track as keyof typeof MUSIC_CREDITS];
+      expect(c, `${m.track} has no in-game credit`).toBeDefined();
+      expect(c.line, `${m.track} line`).toBe(m.attribution);
+      expect(c.title, `${m.track} title`).toBe(m.title);
+      expect(c.author, `${m.track} author`).toBe(m.author);
+      expect(c.license, `${m.track} licence`).toBe(m.license);
+    }
+  });
+
+  it('names the title, the author and the licence in each line', () => {
+    // What a CC-BY credit has to carry, checked on the rendered string rather than the fields
+    // beside it — the fields are not what a player sees.
+    const shortLicence: Record<string, string> = {
+      'CC0-1.0': 'CC0',
+      'CC-BY-4.0': 'CC-BY 4.0',
+      'CC-BY-3.0': 'CC-BY 3.0',
+    };
+    for (const track of ALL_TRACKS) {
+      const c = MUSIC_CREDITS[track];
+      expect(c.line, track).toContain(`'${c.title}'`);
+      expect(c.line, track).toContain(c.author);
+      expect(c.line, track).toContain(shortLicence[c.license]);
+    }
+  });
+
+  it('lists one line per distinct file, in track order', () => {
+    expect(musicCreditLines()).toEqual(credits.music.map((m) => m.attribution));
   });
 });

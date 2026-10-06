@@ -9,6 +9,7 @@
  * `fetch`/`sleep` are injected so the whole flow is unit-testable with a fake — the ONLY
  * real-network dependency, mirroring how transport.ts isolates the WebSocket.
  */
+import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import { getSession } from './session';
 
 /** Everything needed to open the gameserver socket for the assigned seat. */
@@ -71,6 +72,14 @@ export interface FindMatchOptions {
    * them into one squad chunk. Omitted (every pre-party caller) → plain solo queue. */
   partyId?: string;
   /**
+   * The PvE chapter to queue for (`@dd/engine`'s `world/chapters.ts`) — co-op only; a PvP
+   * request never sends it. Default {@link DEFAULT_CHAPTER_ID}. The control plane only groups
+   * co-op players who asked for the same chapter, and the room it forms plays that chapter
+   * (`match_start.chapterId`). For a party member the server uses the PARTY's chapter (its
+   * host's choice, fixed at `/party/start`) and ignores this.
+   */
+  chapterId?: ChapterId;
+  /**
    * The logged-in session's bearer token, sent as `Authorization: Bearer` so matchsvc can
    * VERIFY who this seat belongs to (design/16-accounts.md hole 3, design/20's seat names).
    * Default: the stored session's token, or none at all for a guest.
@@ -118,6 +127,7 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
   // that passes an empty string is saying "queue as a guest", and must not be handed the
   // stored session the way an OMITTED field is. The two are different requests.
   const token = opts.token !== undefined ? opts.token : getSession()?.token;
+  const mode = opts.mode ?? 'coop';
   const findRes = await doFetch(`${baseUrl}/find`, {
     method: 'POST',
     headers: {
@@ -128,8 +138,9 @@ export async function findMatch(baseUrl: string, opts: FindMatchOptions): Promis
     },
     body: JSON.stringify({
       playerCount: opts.playerCount,
-      mode: opts.mode ?? 'coop',
+      mode,
       partyId: opts.partyId,
+      ...(mode === 'coop' ? { chapterId: opts.chapterId ?? DEFAULT_CHAPTER_ID } : {}),
     }),
   });
   const found = (await findRes.json()) as { queueId?: string; match?: MatchInfo; error?: string; botFillInMs?: number };

@@ -16,11 +16,10 @@
 // this pass was closing in the first place (the fifth element of a LOCKED five-colour language
 // had no path to the renderer at all).
 //
-// What is still open is not art and not this file: WHICH biome id maps to `poison`. There is no
-// poison room set authored yet (`engine/world/rooms/` has only `ember`), and design/13's own
-// "biome difficulty/order" item keeps that a `05` balance question — poison stays off floor 1
-// regardless, per the green-on-green camouflage note. When one is authored, it is one entry in
-// `theme.ts`'s BIOME_ID_TO_ELEMENT, not a change here.
+// Every element now has a chapter drawing it (`engine/world/rooms/` has `ember` → fire, `frost` → ice,
+// `storm` → lightning and, since 2026-10-06, `blight` → poison, the finale — design/13 keeps poison off
+// chapter 1 per the green-on-green camouflage note). Each is one entry in `theme.ts`'s
+// BIOME_ID_TO_ELEMENT, not a change here.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';
 import type { BiomeElement } from '../game/theme';

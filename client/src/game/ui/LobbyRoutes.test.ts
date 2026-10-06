@@ -14,7 +14,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Graphics } from 'pixi.js';
 import { installFakeTextCanvas } from '../screens/fakeTextCanvas';
-import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_ROUTES_DEMOTED_H, LOBBY_PRIMARY_H } from './LobbyRoutes';
+import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_ROUTES_H, LOBBY_ROUTES_DEMOTED_H, LOBBY_PRIMARY_H, LOBBY_GAP } from './LobbyRoutes';
 import { MainMenu } from '../screens/MainMenu';
 import { LOCALES, setLocale, resetLocaleForTests, t } from '../../i18n';
 import type { SavedRunSummary } from '../match/runSave';
@@ -47,6 +47,7 @@ function privateOf(r: LobbyRoutes) {
     forgeBtn: Btn;
     tutorialBtn: Btn;
     recommendedTag: { visible: boolean; position: { x: number; y: number } };
+    chapters: { view: { position: { x: number; y: number } }; height: number; cycle: (step: 1 | -1) => void; chapter: string };
   };
 }
 
@@ -263,5 +264,75 @@ describe("TUTORIAL does not borrow ACCOUNT's colour (2026-09-22)", () => {
     const account = (m as unknown as { accountBtn: { borderColor: number } }).accountBtn;
     expect(tutorial.borderColor).toBeDefined();
     expect(tutorial.borderColor).not.toBe(account.borderColor);
+  });
+});
+
+describe('the chapter picker sits under SOLO, and a locked chapter takes SOLO out of play (2026-10-06)', () => {
+  /** [state name, has a save, owns the primary] — every arrangement SOLO can be drawn in. */
+  const STATES: Array<[string, SavedRunSummary | null, boolean]> = [
+    ['SOLO primary', null, true],
+    ['CONTINUE primary', SAVED, true],
+    ['portal PLAY primary', null, false],
+  ];
+
+  it.each(STATES)('%s: directly under SOLO and above CO-OP, never sharing a slot', (_name, saved, owns) => {
+    const r = new LobbyRoutes();
+    r.setSoloPrimary(owns);
+    r.setContinue(saved);
+    r.layout();
+    const p = privateOf(r);
+    const soloBottom = p.soloBtn.view.position.y + boxOf(p.soloBtn).height;
+    const pickerY = p.chapters.view.position.y;
+    expect(pickerY).toBeGreaterThanOrEqual(soloBottom - SLACK);
+    expect(pickerY - soloBottom).toBeLessThanOrEqual(LOBBY_GAP + SLACK); // tied to SOLO, not floating
+    expect(pickerY + p.chapters.height).toBeLessThanOrEqual(p.coopBtn.view.position.y);
+    // ...and the declared height still accounts for every card, picker included.
+    expect(p.squadBtn.view.position.y + boxOf(p.squadBtn).height).toBeLessThanOrEqual(r.height + SLACK);
+  });
+
+  it('dims SOLO and CO-OP and stops them taking taps while a locked chapter is shown, and reports it', () => {
+    const r = new LobbyRoutes();
+    const reports: boolean[] = [];
+    r.onStartBlockedChange = (b) => reports.push(b);
+    r.setChapterProgress({ selectedChapter: 'ember', clearedChapters: [] });
+    const solo = privateOf(r).soloBtn.view as unknown as { alpha: number; eventMode: string };
+    const coop = privateOf(r).coopBtn.view as unknown as { alpha: number; eventMode: string };
+    const pvp = privateOf(r).pvpSoloBtn.view as unknown as { alpha: number; eventMode: string };
+    expect(r.startBlocked).toBe(false);
+    expect(solo.eventMode).toBe('static');
+    expect(coop.eventMode).toBe('static');
+    privateOf(r).chapters.cycle(1); // onto frost, still locked
+    expect(r.startBlocked).toBe(true);
+    for (const v of [solo, coop]) {
+      expect(v.alpha).toBeLessThan(1);
+      expect(v.eventMode).toBe('none');
+    }
+    // PvP never plays a chapter, so a locked chapter on screen says nothing about it.
+    expect(pvp.alpha).toBe(1);
+    expect(pvp.eventMode).toBe('static');
+    privateOf(r).chapters.cycle(-1); // and back to ember
+    for (const v of [solo, coop]) {
+      expect(v.alpha).toBe(1);
+      expect(v.eventMode).toBe('static');
+    }
+    expect(reports).toEqual([true, false]);
+  });
+
+  it('routes an unlocked pick out through onSelectChapter', () => {
+    const r = new LobbyRoutes();
+    const picks: string[] = [];
+    r.onSelectChapter = (id) => picks.push(id);
+    r.setChapterProgress({ selectedChapter: 'ember', clearedChapters: ['ember'] });
+    privateOf(r).chapters.cycle(1);
+    expect(picks).toEqual(['frost']);
+  });
+
+  it('is safe with neither callback installed', () => {
+    const r = new LobbyRoutes();
+    r.setChapterProgress({ selectedChapter: 'ember', clearedChapters: ['ember'] });
+    expect(() => privateOf(r).chapters.cycle(1)).not.toThrow();
+    r.setChapterProgress({ selectedChapter: 'ember', clearedChapters: [] });
+    expect(() => privateOf(r).chapters.cycle(1)).not.toThrow();
+    expect(r.startBlocked).toBe(true);
   });
 });

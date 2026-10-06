@@ -1,0 +1,109 @@
+{
+  "id": "frost_l1_floor_2",
+  "rooms": [
+    {
+      "id": "r1_alcove",
+      "pieceId": "frost_l1_alcove",
+      "offsetXGrid": 0,
+      "offsetYGrid": 1
+    },
+    {
+      "id": "r2_drift",
+      "pieceId": "frost_l1_drift",
+      "offsetXGrid": 15,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r3_span",
+      "pieceId": "frost_l1_span",
+      "offsetXGrid": 31,
+      "offsetYGrid": 1
+    },
+    {
+      "id": "r4_hollow",
+      "pieceId": "frost_l1_hollow",
+      "offsetXGrid": 33,
+      "offsetYGrid": 17
+    },
+    {
+      "id": "r5_court",
+      "pieceId": "frost_l1_court",
+      "offsetXGrid": 32,
+      "offsetYGrid": 34
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "frost_l1_cache",
+      "offsetXGrid": 15,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r6_extraction",
+      "pieceId": "frost_l1_extraction",
+      "offsetXGrid": 16,
+      "offsetYGrid": 35
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_alcove",
+      "roomB": "r2_drift",
+      "passageGrid": {
+        "x": 14,
+        "y": 3,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r2_drift",
+      "roomB": "r3_span",
+      "passageGrid": {
+        "x": 30,
+        "y": 11,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_span",
+      "roomB": "r4_hollow",
+      "passageGrid": {
+        "x": 37,
+        "y": 16,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_hollow",
+      "roomB": "r5_court",
+      "passageGrid": {
+        "x": 43,
+        "y": 33,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r5_court",
+      "roomB": "r6_extraction",
+      "passageGrid": {
+        "x": 31,
+        "y": 45,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r2_drift",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 20,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    }
+  ]
+}

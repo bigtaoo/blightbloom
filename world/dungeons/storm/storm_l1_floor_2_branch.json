@@ -1,0 +1,109 @@
+{
+  "id": "storm_l1_floor_2_branch",
+  "rooms": [
+    {
+      "id": "r1_alcove",
+      "pieceId": "storm_l1_alcove",
+      "offsetXGrid": 34,
+      "offsetYGrid": 34
+    },
+    {
+      "id": "r2_coil",
+      "pieceId": "storm_l1_coil",
+      "offsetXGrid": 33,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r3_span",
+      "pieceId": "storm_l1_span",
+      "offsetXGrid": 51,
+      "offsetYGrid": 15
+    },
+    {
+      "id": "r4_spire",
+      "pieceId": "storm_l1_spire",
+      "offsetXGrid": 33,
+      "offsetYGrid": 2
+    },
+    {
+      "id": "r5_court",
+      "pieceId": "storm_l1_court",
+      "offsetXGrid": 15,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "storm_l1_cache",
+      "offsetXGrid": 0,
+      "offsetYGrid": 3
+    },
+    {
+      "id": "r6_extraction",
+      "pieceId": "storm_l1_extraction",
+      "offsetXGrid": 16,
+      "offsetYGrid": 18
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_alcove",
+      "roomB": "r2_coil",
+      "passageGrid": {
+        "x": 40,
+        "y": 33,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r2_coil",
+      "roomB": "r3_span",
+      "passageGrid": {
+        "x": 50,
+        "y": 25,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r2_coil",
+      "roomB": "r4_spire",
+      "passageGrid": {
+        "x": 40,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_spire",
+      "roomB": "r5_court",
+      "passageGrid": {
+        "x": 32,
+        "y": 8,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r5_court",
+      "roomB": "r6_extraction",
+      "passageGrid": {
+        "x": 22,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r5_court",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 14,
+        "y": 8,
+        "w": 2,
+        "h": 4
+      }
+    }
+  ]
+}

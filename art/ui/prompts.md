@@ -489,3 +489,147 @@ arrive: add the three keys to `UI_ASSETS` in `render/uiSkins.ts` (they load in t
 tier, before a run) together with the files in `client/public/ui/` and their
 `assetPacks.json` entries. The keys cannot be registered earlier: `wechatAssetLoad.test.ts`
 requires every registered file to load.
+
+# Chapter banners (2026-10-06 pass)
+
+Banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
+"The Ember Descent", fire), `chapter_frost` (chapter 2, "The Frost Descent", ice) and, added
+later the same day, `chapter_storm` (chapter 3, "The Storm Descent", lightning) and
+`chapter_blight` (chapter 4, "The Blight Descent", poison), then `chapter_endless` (the endless
+chapter, every element). Same
+format as the `lobby_card_*` route banners above (3:1, opaque, shipped as 768x256 q85 JPEG,
+~35 kB each, in the `lobby` pack) and the same rule for the left 40%: calm and low-detail,
+because the picker draws the chapter's name there.
+
+**Generator: Mistral's image agent**, via the sibling repo's `D:/standing/tools/edit_image.sh`
+and `generate_image.sh` (the owner's instruction for this batch, not GPT Image 2). Every call ran
+on key C, first try, with no rate limiting.
+
+**Approach that shipped: an EDIT of `lobby_card_descend_raw.png`, not a fresh generation.** Each
+chapter is "a descent", and restyling the descend card's spiral shaft into the chapter's element
+keeps the banners and the route card visibly one family. The colours follow design/13's
+locked element hues (fire `#FF7043`, ice `#81D4FA`, lightning `#FFF176`), which these banners
+may use because they DO name an element, unlike the UI icons above.
+
+## `chapter_ember` — shipped (`chapter_ember_raw.png`)
+
+```
+Restyle this banner into a VOLCANIC fire version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark warm charcoal-brown basalt with thin glowing orange-red molten cracks running through the blocks inside the shaft, make every crystal a jagged glowing ember-orange crystal (around #ff7043), and fill the depths of the spiral shaft with a bright molten orange glow, with a few glowing embers rising. The left 40% stays a calm, simple, mid-dark warm charcoal-brown basalt floor (not pure black), no crystals, no lava, no bright spots. No cyan, no blue. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 54 (std 2.6). The molten cracks asked for did not appear; the glow in the depths
+and the warm walls carry the element on their own.
+
+## `chapter_frost` — shipped (`chapter_frost_raw.png`)
+
+```
+Restyle this banner into an ice version while keeping the exact same composition, camera angle, flat-cel 2D style, bold dark outlines and the calm, low-detail empty area on the left 40%. Turn the stone into cold frosted blue-grey stone with patches of snow and frost and a few hanging icicles on the rings, and make the crystals jagged glowing pale ice-blue crystals (around #81d4fa) that get brighter toward the frozen depths, with a few snowflakes drifting down. The left 40% stays calm, simple and mid-to-dark cold blue-grey, with no crystals or bright spots. No orange, no warm brown. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 109 (std 4.5), the same as the shipped `lobby_card_pvp`. Snow and icicles were
+asked for and not drawn; the cold stone and the ice crystals read as frozen at banner size.
+`chapter_frost_alt.png` is a re-roll with a stronger snow/icicle paragraph: it did draw thin
+icicles inside the shaft, but its floor came back at luma 159 (too bright under a label) and its
+depths lost their glow. Darkening it with a gamma curve was tried and rejected in favour of an
+unmodified generation.
+
+## `chapter_storm` — shipped (`chapter_storm_raw.png`)
+
+```
+Restyle this banner into a lightning version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into cold dark slate stone with a deep indigo-violet tint, make every crystal a sharp jagged glowing lemon-yellow crystal (around #fff176), add bright yellow forked lightning arcs crackling across the inside of the spiral shaft, and fill the depths with a brilliant white-yellow electric glow. Slanted rain streaks fall through the shaft. The left 40% stays a calm, simple, mid-dark cool grey floor (not pure black), no crystals, no lightning, no bright spots. Only cool greys, indigo and electric yellow: no orange, no warm brown, no pale ice-blue, no snow. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 55 (std 3.2), next to ember's 54. The bright crystal pixels' median hue is 54°,
+on `#FFF176` itself. The lightning came out as thin yellow hairline arcs running down the shaft
+walls rather than bold forks, but they are visible at 768x256 and, with the lemon crystals,
+separate the banner from ember's orange at a glance. Asked for and not drawn: the indigo-violet
+tint (the stone came back a dark teal-slate, RGB about 36/61/73 on the floor) and the rain.
+
+Four candidates were rolled on the same descend raw, one call each (key C hit its quota and was
+abandoned; the others ran on keys D and E). The three not kept:
+
+- the same brief worded as "STORM lightning" with "thin crackling lightning arcs jumping between
+  the rings" and rain: luma 68, crystals paler and amber (hue 49°), two or three faint arcs;
+- a "thunderstorm" wording with "wet, dark" stone and zig-zag bolts: luma 42, no lightning at all,
+  amber crystals (hue 50°) that read as candlelight rather than electricity;
+- the shipped prompt pushed harder ("several clearly visible forked bolts", "not teal"): luma 51,
+  bolder forks but drawn pale bluish-white (too close to frost), crystals amber (hue 50°), and the
+  stone still teal.
+
+## `chapter_blight` — shipped (`chapter_blight_raw.png`)
+
+```
+Restyle this banner into a toxic poison version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark dusky plum-grey stone (a muted aubergine grey, around #3d3542), matte and unlit, so the green crystals stand out against it. Wild-grown clusters of jagged glowing sickly yellow-green crystals (exactly #9ccc65, a muted lime yellow-green, not emerald) bloom out of the rings like a creeping crystal infection, and the depths of the spiral shaft hold a bright toxic yellow-green glow, with a few small glowing spores drifting up. IMPORTANT: the green belongs ONLY to the crystals, the spores and the glow in the depths. The stone keeps its plum-grey colour everywhere and is NOT tinted green, olive or teal by the glow. The left 40% stays a calm, simple, mid-dark plum-grey floor of brightness about 55 out of 255 (not pure black), no crystals, no glow, no bright spots. No orange, no blue, no teal. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Poison carries the one extra clause the other three do not: design/13's "the poison biome's
+ambient green must be dialled down", so the stone itself must not read as green. That clause,
+not the glow, is what took five rolls. Measured on the shipped 768x256 JPEG (33,178 bytes):
+
+- left-40% luma 51.8 (std 2.8), beside ember's 54 and storm's 55; floor RGB about 51/51/57;
+- the bright crystal pixels (HSV s > 100, v > 170, 1.6% of the frame) have a median hue of
+  92° (p10-p90 85-97°), against `#9CCC65`'s 88°;
+- the dark stone (luma < 100, 96% of the frame) averages G - R = 5.8, inside the poison
+  swatches' "no more than ~10" rule (`art/biome/prompts.md`); inside the shaft, where the
+  crystals' glow spills onto it, the right 60% alone reads 10.0. For scale, storm's stone
+  reads 22.
+
+Asked for and not drawn: the plum/aubergine cast (the stone came back an almost neutral
+charcoal, with a faint cool lean only on the floor) and the drifting spores (a few specks at
+most). Asking for a slightly purple stone is what made a neutral one: every roll that asked for
+neutral or cold stone came back green-tinted, as if the edit model pulls the stone toward the
+crystal hue and asking for its complement cancels the pull. Plum is not an element colour, and
+the blightlord boss is the game's purple anyway.
+
+Five candidates were rolled on the descend raw, one call each (keys D and E; D hit its rate
+limit after two calls). The four not kept, all with good crystals and composition, all with
+green stone:
+
+- "cold dark ash-grey stone, almost colourless (NOT green-tinted)": luma 73, stone G - R 24
+  (a mossy grey-green), crystal hue 96°;
+- "charcoal-grey with a faint cool blue-grey cast ... NOT green, NOT olive": luma 74, G - R 26,
+  hue 82°;
+- "charcoal-navy" plus the poison swatches' numeric targets (blue highest, G - R <= 10, floor
+  luma 55): luma 54 on target, but G - R 23 (a dark teal-green), hue 83°;
+- "keep the stone's warm grey-brown, drained to ashen" with "red stays at or above green": luma
+  71, G - R 15, the stone an olive drab.
+
+## `chapter_endless` — shipped (`chapter_endless_raw.png`)
+
+The fifth banner, for the endless chapter (2026-10-06, "The Endless Descent"), which has no
+element of its own: its floors are the four chapters' in turn. So the brief asks for all four
+element hues on the shaft's rings and a bottomless void, in lavender (`#d6bcfa`, the picker's
+frame colour for it; not an element colour).
+
+```
+Restyle this banner into an ENDLESS version of the descent while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark dusky violet-grey stone (around #3a3346), matte and unlit. The spiral shaft goes down for ever: each ring of the spiral is studded with glowing jagged crystals of a different element colour, in bands going down, ember orange (#ff7043) on the top ring, pale ice blue (#81d4fa) on the next, lemon yellow (#fff176) on the next and sickly yellow-green (#9ccc65) on the next, then the same four colours repeating smaller and smaller as the rings shrink into the distance. The very bottom of the shaft is a bottomless dark void with a faint soft lavender glow (#d6bcfa), so the descent never ends. The stone keeps its violet-grey colour everywhere and is not tinted by the crystals. The left 40% stays a calm, simple, mid-dark violet-grey floor of brightness about 55 out of 255 (not pure black), no crystals, no glow, no bright spots. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Shipped on the first roll (key B, after D and E were rate-limited by another session). Measured
+on the 768x256 JPEG (26,874 bytes):
+
+- left-40% luma 66.1 (std 3.1), floor RGB about 70/62/74: a little brighter than ember, storm and
+  blight (51-55), well under frost's 109;
+- the saturated bright pixels (HSV s > 100, v > 170, 0.3% of the frame) are mostly the violet void
+  glow (hue 250-330°) and ice-blue crystals; the orange and yellow-green crystals came back pale,
+  under the saturation cut, though they read as warm and lime at banner size.
+
+Asked for and not drawn: the four colours in clean bands, ring by ring. The crystals are mixed on
+every ring instead, which still reads as "every element" and is kept.
+
+## Rejected (not kept)
+
+- **Text-to-image** with the route-card template above (`SUBJECT` = a spiral cavern shaft in the
+  element): both came back 1024x768 (4:3), centred, more painterly, and ignored the left-40% rule
+  entirely — no crop of them leaves a calm label area.
+- **Edit of an edit** (the shipped-candidate fed back with "add snow caps / molten cracks"): both
+  zoomed in, cutting off the glowing depths, and the frost one still drew no snow.
+
+## Workflow for this batch
+
+The edit endpoint returns a 1568x672 PNG (2.33:1) whatever the input's aspect, re-composed rather
+than letterboxed. The raws are that file unmodified; the shipped JPEG is a straight NON-uniform
+LANCZOS resize to 768x256, which flattens the shaft's rings back to the descend card's own
+ellipse (a centre crop to 3:1 instead cuts off the glowing bottom of the shaft). Pillow, q85,
+4:2:0, baseline — the same encoding as the route cards. `lobbyArt.test.ts` pins the 3:1/768
+size and folds every chapter banner into the lobby set's byte budget.

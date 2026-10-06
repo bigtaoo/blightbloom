@@ -111,6 +111,9 @@ export const WEAPON_DEFS: Partial<Record<string, WeaponVisualDef>> = {
   // shared raider-gun silhouette rather than a borrowed PLAYER weapon's, so it never reads
   // as loot.
   enemynova: { path: '/weapons/gun_enemygun.png', anchor: { x: 0.35, y: 0.35 }, scale: 80 / 160, rotationOffsetRad: deg(-14.4) },
+  enemyshardfan: { path: '/weapons/gun_enemygun.png', anchor: { x: 0.35, y: 0.35 }, scale: 80 / 160, rotationOffsetRad: deg(-14.4) },
+  enemyarcseeker: { path: '/weapons/gun_enemygun.png', anchor: { x: 0.35, y: 0.35 }, scale: 80 / 160, rotationOffsetRad: deg(-14.4) },
+  enemysporespray: { path: '/weapons/gun_enemygun.png', anchor: { x: 0.35, y: 0.35 }, scale: 80 / 160, rotationOffsetRad: deg(-14.4) },
   saber: { path: '/weapons/sword_saber.png', anchor: { x: 0.22, y: 0.42 }, scale: 100 / 160, rotationOffsetRad: deg(-12.1) },
   emberblade: { path: '/weapons/sword_emberblade.png', anchor: { x: 0.22, y: 0.4 }, scale: 100 / 160, rotationOffsetRad: deg(-9.8) },
   frostbrand: { path: '/weapons/sword_frostbrand.png', anchor: { x: 0.22, y: 0.32 }, scale: 100 / 160, rotationOffsetRad: deg(-15.1) },

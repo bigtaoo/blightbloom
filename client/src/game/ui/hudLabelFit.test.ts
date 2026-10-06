@@ -168,8 +168,8 @@ describe('the portal popup’s buttons fit their box', () => {
     it(`${locale}: neither Extract nor Descend runs out of its button`, async () => {
       await useLocale(locale);
       const p = new PortalPrompt();
-      for (const isLastFloor of [true, false]) {
-        p.update(portalState(), true, 0, isLastFloor);
+      for (const extract of [true, false]) {
+        p.update(portalState(), true, 0, { extract, descend: !extract });
         for (const label of portalLabels(p)) {
           const worst = widest(label, BTN_FONT);
           expect(worst.px, `[${locale}] "${worst.line}"`).toBeLessThanOrEqual(MAX_W);

@@ -11,6 +11,7 @@ import { t, LOCALES, type Locale } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 import { QUALITY_SETTINGS, activeQuality, type QualitySetting } from '../../render/quality';
 import { FRAME_RATE_SETTINGS, type FrameRateSetting } from '../powerBudget';
+import { musicCreditLines } from '../../audio/musicCredits';
 
 function nextControlLayout(current: ControlLayout): ControlLayout {
   return current === 'standard' ? 'mirrored' : 'standard';
@@ -123,6 +124,10 @@ export class Settings {
    *  take it off the screen" rather than dim it), and a route may not become fully
    *  unreachable, so this is where a returning player who wants to see it again finds it. */
   private tutorialBtn: Button;
+  /** Who wrote the music (`audio/musicCredits.ts`, 2026-10-06). Five of the six loops are
+   *  CC-BY, which requires the credit where a player can see it; plain text, because WeChat
+   *  cannot follow an outbound link. */
+  private creditsText: Text;
 
   onChange: ((s: SettingsState) => void) | null = null;
   onBack: (() => void) | null = null;
@@ -245,6 +250,8 @@ export class Settings {
     this.tutorialBtn.onTap = () => this.onTutorial?.();
     whenUiTexture('icon_play', (tex) => this.tutorialBtn.setIcon(tex));
 
+    this.creditsText = new Text({ text: '', style: menuText('caption') });
+
     this.shell.content.addChild(
       this.rules, this.audioHeading, this.displayHeading, this.gameHeading,
       this.masterLabel, this.masterValue, this.masterSlider.view,
@@ -254,7 +261,7 @@ export class Settings {
       this.qualityLabel, this.qualityBtn.view, this.frameRateLabel, this.frameRateBtn.view,
       this.reduceMotionLabel, this.reduceMotionBtn.view,
       this.languageLabel, this.languageBtn.view, this.controlLayoutLabel, this.controlLayoutBtn.view,
-      this.tutorialBtn.view,
+      this.tutorialBtn.view, this.creditsText,
     );
     this.shell.mount(this.view);
     this.view.eventMode = 'static';
@@ -276,6 +283,7 @@ export class Settings {
     this.displayHeading.text = t('settings.sectionDisplay');
     this.gameHeading.text = t('settings.sectionGame');
     this.tutorialBtn.setText(t('settings.tutorial'));
+    this.creditsText.text = [t('settings.musicCredits'), ...musicCreditLines()].join('\n');
 
     const volumes: Array<[Text, Text, Slider, string, number]> = [
       [this.masterLabel, this.masterValue, this.masterSlider, t('settings.master'), this.state.master],
@@ -332,6 +340,7 @@ export class Settings {
     return {
       audioHeading: this.audioHeading, displayHeading: this.displayHeading, gameHeading: this.gameHeading,
       rules: this.rules, volume, muteBtn: this.muteBtn, display, game, tutorialBtn: this.tutorialBtn,
+      credits: this.creditsText,
     };
   }
 

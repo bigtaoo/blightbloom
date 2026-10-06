@@ -84,7 +84,7 @@ export interface HealthBarStyle {
    *  (design/10's "which one is me" cue, chosen 2026-08-14 over a ground ring because a bar
    *  above the head never shares screen space with the shield rim-glow). */
   local: boolean;
-  /** Which of design/13's five elements this actor IS, if it is one of the four locked
+  /** Which of design/13's five elements this actor IS, if it is one of the five locked
    *  elemental variants (`EnemyActor.element`). Draws the ICON half of that doc's locked
    *  dual-channel law at the bar's left end. Undefined draws no badge at all and leaves the
    *  bar byte-identical to what it was before badges existed — which is every player, every

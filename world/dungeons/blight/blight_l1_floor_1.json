@@ -1,0 +1,93 @@
+{
+  "id": "blight_l1_floor_1",
+  "rooms": [
+    {
+      "id": "r1_cell",
+      "pieceId": "blight_l1_cell",
+      "offsetXGrid": 17,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r2_alcove",
+      "pieceId": "blight_l1_alcove",
+      "offsetXGrid": 17,
+      "offsetYGrid": 15
+    },
+    {
+      "id": "r3_gallery",
+      "pieceId": "blight_l1_gallery",
+      "offsetXGrid": 15,
+      "offsetYGrid": 31
+    },
+    {
+      "id": "r4_mire",
+      "pieceId": "blight_l1_mire",
+      "offsetXGrid": 16,
+      "offsetYGrid": 46
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "blight_l1_cache",
+      "offsetXGrid": 0,
+      "offsetYGrid": 31
+    },
+    {
+      "id": "r5_extraction",
+      "pieceId": "blight_l1_extraction",
+      "offsetXGrid": 0,
+      "offsetYGrid": 46
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_cell",
+      "roomB": "r2_alcove",
+      "passageGrid": {
+        "x": 20,
+        "y": 14,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r2_alcove",
+      "roomB": "r3_gallery",
+      "passageGrid": {
+        "x": 26,
+        "y": 30,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_gallery",
+      "roomB": "r4_mire",
+      "passageGrid": {
+        "x": 20,
+        "y": 45,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_mire",
+      "roomB": "r5_extraction",
+      "passageGrid": {
+        "x": 15,
+        "y": 56,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_gallery",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 14,
+        "y": 36,
+        "w": 2,
+        "h": 4
+      }
+    }
+  ]
+}

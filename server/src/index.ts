@@ -27,7 +27,8 @@ import { nodeScheduler } from './nodeScheduler';
 import { Phase, type RoomConnection, type SettledMatch } from './MatchRoom';
 import { buildRatingReportBody } from './ladderReport';
 import { buildIntegrityReportBody } from './integrityReport';
-import { verifyTicket, type MatchMode } from './ticket';
+import { verifyTicket, type ChapterId, type MatchMode } from './ticket';
+import { roomChapter } from './matchRoomTypes';
 import { INTERNAL_CALLER_GAMESERVER, internalKeyFor, ticketSecret } from './config';
 import { internalFetch, type InternalFetchInit } from './internalFetch';
 import { requestUrl } from './requestUrl';
@@ -186,6 +187,8 @@ interface Seat {
   seed: number;
   count: number;
   mode: MatchMode;
+  /** The co-op chapter the signed ticket names (absent: the first chapter). */
+  chapterId?: ChapterId;
   /** The logged-in account behind this seat (design/16-accounts.md), from the verified
    * ticket. `undefined` for guests/bots or the legacy dev raw-param handshake. */
   accountId?: string;
@@ -215,6 +218,7 @@ function resolveSeat(url: URL, secret: string, isDev: boolean): Seat | null {
       seed: payload.seed,
       count: payload.playerCount,
       mode: payload.mode ?? 'coop',
+      chapterId: payload.chapterId,
       accountId: payload.accountId,
       name: payload.name,
       bot: payload.bot === true,
@@ -307,7 +311,7 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
       ws.close(4401, 'invalid or missing ticket');
       return;
     }
-    const { roomId, owner, seed, count, mode, accountId, name, bot } = seat;
+    const { roomId, owner, seed, count, mode, chapterId, accountId, name, bot } = seat;
 
     const conn = new SocketConnection(owner, roomId, ws, accountId, name, bot);
 
@@ -322,12 +326,15 @@ export function createGameserver(opts: GameserverOptions = {}): { server: Server
     // there's no seat-claim work to do here at handshake time the way a fresh `join` has.
     const existing = manager.room(roomId);
     if (existing && existing.phase !== Phase.WAITING) {
-      if (existing.seedValue !== seed || existing.playerCountValue !== count || existing.modeValue !== mode) {
+      if (
+        existing.seedValue !== seed || existing.playerCountValue !== count || existing.modeValue !== mode ||
+        existing.chapterValue !== roomChapter(mode, chapterId)
+      ) {
         ws.close(4403, 'seat unavailable / room mismatch');
         return;
       }
     } else {
-      const seated = manager.join(conn, roomId, seed, count, mode);
+      const seated = manager.join(conn, roomId, seed, count, mode, chapterId);
       if (!seated) {
         ws.close(4403, 'seat unavailable / room mismatch');
         return;

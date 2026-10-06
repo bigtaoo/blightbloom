@@ -21,7 +21,7 @@ import { ReviveBanner } from './ReviveBanner';
 import type { HudIconId } from './hudIcons';
 import type { GameState, SeatNames } from '@dd/engine';
 import { t, type TranslationKey } from '../../i18n';
-import { totalFloorCount } from '../match/floorCount';
+import { floorProgressText } from '../match/floorCount';
 
 /** The bits of Game's own state updateHud needs that aren't already on GameState. */
 export interface HudContext {
@@ -260,7 +260,7 @@ export class HudView {
       // is clamped to "room 1" for the chip text below.
       const rooms = s.dungeonRooms.length;
       const roomIndex = p?.roomId !== undefined ? s.dungeonRoomIndexById.get(p.roomId) ?? -1 : -1;
-      this.chips.get('floor')!.set(t('hud.chips.floor'), `${s.floorIndex + 1}/${totalFloorCount(s)}`);
+      this.chips.get('floor')!.set(t('hud.chips.floor'), floorProgressText(s));
       this.chips.get('room')!.set(t('hud.chips.room'), `${Math.max(1, roomIndex + 1)}/${rooms}`);
       this.chips.get('enemies')!.set(t('hud.chips.enemies'), `${s.enemies.length}`);
       // Per-seat since ENGINE_VERSION 68 (design/14) — same rule the coins chip's own

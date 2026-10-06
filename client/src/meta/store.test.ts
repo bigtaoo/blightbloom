@@ -129,6 +129,41 @@ describe('migrate()', () => {
     expect(migrate({ ...defaultMetaState(), bestFloor: 4.7 }).bestFloor).toBe(4);
   });
 
+  it('keeps a saved endless record, and backfills 0 for an older save or a bad value', () => {
+    expect(migrate({ ...defaultMetaState(), endlessBestFloor: 23 }).endlessBestFloor).toBe(23);
+    const { endlessBestFloor, ...older } = defaultMetaState();
+    void endlessBestFloor;
+    expect(migrate(older).endlessBestFloor).toBe(0);
+    for (const bad of [-2, Number.NaN, Number.POSITIVE_INFINITY, '7', null]) {
+      expect(migrate({ ...defaultMetaState(), endlessBestFloor: bad }).endlessBestFloor, String(bad)).toBe(0);
+    }
+    expect(migrate({ ...defaultMetaState(), endlessBestFloor: 11.9 }).endlessBestFloor).toBe(11);
+  });
+
+  it('backfills chapter 1 and no clears for a save from before chapters existed', () => {
+    const { selectedChapter, clearedChapters, ...older } = defaultMetaState();
+    void selectedChapter;
+    void clearedChapters;
+    const m = migrate(older);
+    expect(m.selectedChapter).toBe('ember');
+    expect(m.clearedChapters).toEqual([]);
+  });
+
+  it('keeps a known chapter pick and falls back to chapter 1 for anything else', () => {
+    expect(migrate({ ...defaultMetaState(), selectedChapter: 'frost' }).selectedChapter).toBe('frost');
+    for (const bad of ['sand', 3, null, '']) {
+      expect(migrate({ ...defaultMetaState(), selectedChapter: bad }).selectedChapter, String(bad)).toBe('ember');
+    }
+  });
+
+  it('keeps cleared chapter ids, de-duplicated, dropping non-strings — and KEEPS an id this build does not know', () => {
+    // An id a newer build wrote (chapter 3) must survive a round trip through this one, or a
+    // stale tab would re-lock a chapter the player already opened.
+    const m = migrate({ ...defaultMetaState(), clearedChapters: ['ember', 'ember', 7, null, 'storm'] });
+    expect(m.clearedChapters).toEqual(['ember', 'storm']);
+    expect(migrate({ ...defaultMetaState(), clearedChapters: 'ember' }).clearedChapters).toEqual([]);
+  });
+
   it('unions unlockedBlueprints with the current defaults rather than replacing them', () => {
     const saved = { ...defaultMetaState(), unlockedBlueprints: ['custom_bp'] };
     const result = migrate(saved).unlockedBlueprints;

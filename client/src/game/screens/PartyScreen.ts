@@ -1,4 +1,5 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import { Button } from '../ui/widgets';
 import { MenuShell } from '../ui/MenuShell';
 import type { LobbyBackdrop } from '../ui/LobbyBackdrop';
@@ -99,6 +100,11 @@ export class PartyScreen {
    * observing the leader already started. Game.ts hands off to the online connect path
    * for `mode` (a co-op room, or the PvP queue `?pvp=1` uses), with this partyId attached. */
   onStartMatch: ((partyId: string, mode: PartyMode) => void) | null = null;
+  /** The PvE chapter the leader's START fixes on a co-op party — read at the moment START is
+   * tapped, so it is whatever the lobby has selected then. Every member's room plays it (the
+   * server seats each member's `/find` in the party's chapter). Defaults to the first chapter
+   * until something assigns it; a PvP squad's server side ignores it. */
+  chapterOf: () => ChapterId = () => DEFAULT_CHAPTER_ID;
 
   constructor(opts: { matchBaseUrl: string; playerId?: string; api?: PartyApi }) {
     this.matchBaseUrl = opts.matchBaseUrl;
@@ -333,7 +339,7 @@ export class PartyScreen {
     this.statusText.text = '';
     const token = this.attemptToken;
     try {
-      const info = await this.api.startPartyMatching(this.matchBaseUrl, this.party.partyId, this.playerId);
+      const info = await this.api.startPartyMatching(this.matchBaseUrl, this.party.partyId, this.playerId, this.chapterOf());
       if (token !== this.attemptToken) return; // backed out before matching actually started
       this.party = info;
       this.onStartMatch?.(info.partyId, info.mode);

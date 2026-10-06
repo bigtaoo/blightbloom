@@ -37,9 +37,16 @@
  * one-time schematic is stackable count, not a set, so unioning it would silently drop
  * duplicates a guest legitimately earned from more than one boss kill.
  *
- * `loadout` and `selectedSkin` are the ACCOUNT's: they are a staged choice rather than an
- * accumulation, two of them cannot be added, and "the account is the truth" has to mean
- * something. `hasSeenTutorial` is OR'd instead, because `MetaState` describes it as
+ * `clearedChapters` UNIONS: a chapter beaten on this device was beaten, and the unlock it
+ * earned is the player's whichever side it was recorded on. It is NOT progress for
+ * `hasGuestProgress`, for the reason `bestFloor` is not: the prompt counts materials,
+ * blueprints and characters, and a modal whose every number is zero asks nothing. A guest
+ * whose ONLY progress is a clear the account lacks (the bank it earned already spent) is
+ * merged without asking instead — see `guestAddsChapterClears`.
+ *
+ * `loadout`, `selectedSkin` and `selectedChapter` are the ACCOUNT's: they are a staged choice
+ * rather than an accumulation, two of them cannot be added, and "the account is the truth"
+ * has to mean something. `hasSeenTutorial` is OR'd instead, because `MetaState` describes it as
  * guest-local and account-independent — a player who has already been through the tutorial
  * on this browser must not be recommended it again by a fresh account.
  */
@@ -90,6 +97,20 @@ export function hasGuestProgress(m: MetaState): boolean {
   return m.ownedCharacters.some((id) => !FREE_CHARACTERS.includes(id));
 }
 
+/**
+ * Does this device hold a chapter clear the account lacks?
+ *
+ * The one kind of guest progress `hasGuestProgress` cannot count, and the reason it needs its
+ * own question: without it, a guest who cleared chapter 1 and spent the carry-out at the Forge
+ * would log in and find chapter 2 locked again, with no prompt and no message. A clear is
+ * merged silently rather than asked about, because the prompt has no number for it and an
+ * unlock is not a thing one player can hand another of any value: on a shared computer the
+ * worst case is a chapter opened a run early.
+ */
+export function guestAddsChapterClears(guest: MetaState, account: MetaState): boolean {
+  return guest.clearedChapters.some((id) => !account.clearedChapters.includes(id));
+}
+
 /** What the guest side would add to the account side — the numbers the prompt shows. */
 export function guestMergeOffer(guest: MetaState, account: MetaState): GuestMergeOffer {
   const ownedBp = new Set(account.unlockedBlueprints);
@@ -130,7 +151,9 @@ export function mergeGuestIntoAccount(guest: MetaState, account: MetaState): Met
     unlockedBlueprints: union(account.unlockedBlueprints, guest.unlockedBlueprints),
     ownedCharacters: union(account.ownedCharacters, guest.ownedCharacters),
     hasSeenTutorial: account.hasSeenTutorial || guest.hasSeenTutorial,
+    clearedChapters: union(account.clearedChapters, guest.clearedChapters),
     // A record, not a count: the deeper of the two, never their sum.
     bestFloor: Math.max(account.bestFloor, guest.bestFloor),
+    endlessBestFloor: Math.max(account.endlessBestFloor, guest.endlessBestFloor),
   };
 }

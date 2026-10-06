@@ -24,7 +24,7 @@
     "  - `main`: root '', WeChat's first download. Code only. A rule is required to opt INTO it.",
     "  - `lobby`: awaited at boot before `new Game(...)`. The UI art the lobby draws (uiSkins.ts's",
     "    `boot` and `lobby` tiers); the rest of ui/* is the `ui-late` pack, in the `run` phase.",
-    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 0.84 MB,",
+    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 3.41 MB,",
     "    and music is the one asset class a game can start without. See MusicPlayer.invalidate():",
     "    a deck handed a path inside an unfetched pack plays nothing and never retries, so the",
     "    pack's completion clears the director's memo instead of being awaited.",
@@ -34,10 +34,11 @@
     "",
     "WHY THE UNREACHABLE-TODAY PACKS ARE IN THE `run` PHASE RATHER THAN LAZY AT POINT OF USE.",
     "`biome-ice` / `biome-lightning` / `biome-poison` / `boss` are still justified by content:",
-    "theme.ts's BIOME_ID_TO_ELEMENT maps the only authored dungeon ('ember') to 'fire' and",
-    "everything without a dungeonConfig (PvP, arena) to 'neutral', so the other three elements",
-    "cannot be reached at all today, and 'blightlord' (the only user of skins/boss-core) spawns on",
-    "floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
+    "theme.ts's BIOME_ID_TO_ELEMENT maps chapter 1 ('ember') to 'fire', chapter 2 ('frost') to",
+    "'ice' (locked until chapter 1 is cleared), chapter 3 ('storm') to 'lightning' (locked until",
+    "chapter 2 is cleared), chapter 4 ('blight') to 'poison' (locked until chapter 3 is cleared),",
+    "and everything without a dungeonConfig (PvP, arena) to 'neutral', and",
+    "every boss (all six draw skins/boss-core) spawns on a chapter's floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
     "the set of available textures changes only at a PHASE boundary, never mid-room. Gating each",
     "one at its own point of use would mean re-running preloadBiomeTiles per pack and reasoning",
     "about a half-filled texture map, which is the partial-availability state that rule forbids.",
@@ -92,8 +93,8 @@
       "name": "music",
       "root": "packs/music",
       "phase": "background",
-      "limitBytes": 3145728,
-      "note": "audio/music/*.mp3 — the design/11 loops. 0.84 MB shipped (menu + boss); the third launch track (dungeon.ember) has no master yet, and the limit leaves room for it and not for much else. Never awaited: see MusicPlayer.invalidate()."
+      "limitBytes": 4194304,
+      "note": "audio/music/*.mp3 — the design/11 loops. 3.41 MB shipped (3.26 of the 4 MiB the package check counts: menu, dungeon-ember, dungeon-frost, dungeon-storm, dungeon-blight, boss; openly licensed since 2026-10-06). Raised from 3 MiB to 4 MiB for the sixth loop (chapter 4, 2026-10-06): this is a standard subpackage, which WeChat caps only through the 30 MB whole-game total, so the 3 MiB was our own guard and moving it was a decision, not an overrun. ~0.74 MiB left, room for one more loop of this kind. Never awaited: see MusicPlayer.invalidate()."
     },
     {
       "name": "forge",
@@ -114,28 +115,28 @@
       "root": "packs/biome-ice",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "No authored dungeon maps to 'ice' yet (theme.ts BIOME_ID_TO_ELEMENT)."
+      "note": "Chapter 2 ('frost') maps to 'ice' (theme.ts BIOME_ID_TO_ELEMENT). Awaited at the run gate with every other run-phase pack, so a frost run never starts on the flat fallback palette."
     },
     {
       "name": "biome-lightning",
       "root": "packs/biome-lightning",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "No authored dungeon maps to 'lightning' yet."
+      "note": "Chapter 3 ('storm') maps to 'lightning' (theme.ts BIOME_ID_TO_ELEMENT). Awaited at the run gate like biome-ice, so a storm run never starts on the flat fallback palette."
     },
     {
       "name": "biome-poison",
       "root": "packs/biome-poison",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "No authored dungeon maps to 'poison' yet; design/13 also keeps poison off floor 1 deliberately."
+      "note": "Chapter 4 ('blight', the finale) maps to 'poison' (theme.ts BIOME_ID_TO_ELEMENT); design/13 keeps poison off chapter 1 deliberately. Awaited at the run gate like biome-ice, so a blight run never starts on the flat fallback palette."
     },
     {
       "name": "boss",
       "root": "packs/boss",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "skins/boss-core — 'blightlord' only, floor 5 only."
+      "note": "skins/boss-core — every boss (blightlord, pyrefang, ironwarden, glacimaw, voltreaver, rotbloom), each chapter's floor 5 only."
     }
   ],
   "rules": [

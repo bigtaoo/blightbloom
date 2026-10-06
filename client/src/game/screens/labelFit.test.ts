@@ -281,7 +281,8 @@ describe('the sweep measured what it claims to', () => {
     // it was written, which is what makes it a measurement rather than a snapshot of
     // whatever the walk happened to do. Two of them only agree because the walk reaches
     // further than a screen's own fields: MainMenu is 3 of its own plus LobbyRoutes' 7
-    // (a composed widget — FORGE joined it on 2026-09-21), and StoreScreen is 4 plus its
+    // (a composed widget — FORGE joined it on 2026-09-21) plus the 3 of LobbyRoutes' own
+    // composed ChapterPicker (two arrows and the chapter card, 2026-10-06), and StoreScreen is 4 plus its
     // five row buttons (an array).
     expect([...seen].map(([name, fields]) => `${name}: ${fields.length}`).sort()).toEqual([
       'AccountPrompt (merge): 3',
@@ -289,10 +290,10 @@ describe('the sweep measured what it claims to', () => {
       'Loadout (saved run): 6',
       'Loadout: 6',
       'LoginScreen: 6',
-      'MainMenu (portal): 10',
-      'MainMenu (saved run): 10',
-      'MainMenu (signed in): 10',
-      'MainMenu: 10',
+      'MainMenu (portal): 13',
+      'MainMenu (saved run): 13',
+      'MainMenu (signed in): 13',
+      'MainMenu: 13',
       'Matchmaking (connecting): 3',
       'Matchmaking (error): 3',
       'PartyScreen: 6',

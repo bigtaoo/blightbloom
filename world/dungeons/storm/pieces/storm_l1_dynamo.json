@@ -1,0 +1,174 @@
+{
+  "id": "storm_l1_dynamo",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 20,
+    "h": 17
+  },
+  "solids": [
+    {
+      "x": 14,
+      "y": 11,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 11,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 14,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 16,
+      "w": 20,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 20,
+      "h": 1
+    },
+    {
+      "x": 19,
+      "y": 1,
+      "w": 1,
+      "h": 15
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 15
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 17.5,
+        "y": 11
+      },
+      {
+        "x": 17.5,
+        "y": 7
+      }
+    ],
+    "enemy": [
+      {
+        "x": 11.5,
+        "y": 14.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 14.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 3.5,
+        "y": 14.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 7.5,
+        "y": 12.5,
+        "type": "basic"
+      },
+      {
+        "x": 9.5,
+        "y": 10.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 11.5,
+        "y": 8.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 5.5,
+        "y": 8.5,
+        "type": "basic"
+      },
+      {
+        "x": 11.5,
+        "y": 6.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 7.5,
+        "y": 6.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 7.5,
+        "y": 4.5,
+        "type": "basic"
+      },
+      {
+        "x": 11.5,
+        "y": 2.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 7.5,
+        "y": 2.5,
+        "type": "ironclad"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 17.5,
+      "y": 14.5
+    },
+    {
+      "id": "rubble",
+      "x": 13.5,
+      "y": 11
+    },
+    {
+      "id": "rubble",
+      "x": 5,
+      "y": 3
+    },
+    {
+      "id": "barrel",
+      "x": 2,
+      "y": 13.5
+    }
+  ]
+}

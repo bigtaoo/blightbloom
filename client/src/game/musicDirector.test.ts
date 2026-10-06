@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
+  CHAPTERS,
   createGameState,
   EMBER_DUNGEON,
   EMBER_ROOMS,
@@ -139,25 +140,68 @@ describe('trackFor — the run bed', () => {
   });
 
   it('routes every biome in the table to the track the table names', () => {
-    // Table-driven rather than hard-coded, and worth being explicit about what it does and does
-    // not currently prove. A mutation battery (2026-08-31) deleted the table lookup entirely and
-    // NOTHING failed — because the one biome that exists, `ember`, maps to `dungeon.ember`, which
-    // IS `DEFAULT_RUN_TRACK`. That mutant is genuinely equivalent today, not an untested gap: no
-    // reachable run can tell the two code paths apart. It stops being equivalent the instant a
-    // second biome loop ships, and the loop below is what will catch it then, so it is written
-    // now rather than remembered later.
+    // Table-driven rather than hard-coded. A mutation battery (2026-08-31) deleted the table
+    // lookup entirely and NOTHING failed, because the one biome that existed mapped to
+    // `DEFAULT_RUN_TRACK`: an equivalent mutant, recorded here with an assertion of its own
+    // vacuity. Chapter 2's own bed (2026-10-06) ended it, and the next test pins that it did.
     for (const [biomeId, track] of Object.entries(BIOME_ID_TO_TRACK)) {
       expect(
         trackFor({ phase: 'playing', state: dungeonState('normal', biomeId), localOwner: 0 }),
         biomeId,
       ).toBe(track);
     }
-    // The vacuity, stated as an assertion so it is visible in a diff when it ends.
-    expect(
-      Object.values(BIOME_ID_TO_TRACK).every((t) => t === DEFAULT_RUN_TRACK),
-      'a biome now maps somewhere other than the fallback: the loop above is a real gate, ' +
-        'and this line should be deleted',
-    ).toBe(true);
+  });
+
+  it('gives chapter 2 its own bed, not the fallback', () => {
+    // What makes the table above a real gate: a biome whose track is NOT `DEFAULT_RUN_TRACK`,
+    // so deleting the lookup now plays chapter 1's bed in chapter 2 and fails here.
+    expect(BIOME_ID_TO_TRACK.frost).toBe('dungeon.frost');
+    expect(BIOME_ID_TO_TRACK.frost).not.toBe(DEFAULT_RUN_TRACK);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'frost'), localOwner: 0 }))
+      .toBe('dungeon.frost');
+    // ...and its boss room still switches to the boss bed.
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'frost'), localOwner: 0 }))
+      .toBe('boss');
+  });
+
+  it('plays each endless floor in the bed of the chapter it borrows the floor from', () => {
+    // The endless chapter has no bed of its own: floors 1-5 are chapter 1's, 6-10 chapter 2's,
+    // and so on, so the music changes with the palette every five floors.
+    const s = createGameState({ seed: 1, worldW: 800, worldH: 800, waves: [], dungeon: CHAPTERS.endless });
+    s.phase = 'playing';
+    const at = (floorIndex: number) => {
+      s.floorIndex = floorIndex;
+      return trackFor({ phase: 'playing', state: s, localOwner: 0 });
+    };
+    expect([0, 5, 10, 15, 20].map(at)).toEqual([
+      'dungeon.ember', 'dungeon.frost', 'dungeon.storm', 'dungeon.blight', 'dungeon.ember',
+    ]);
+  });
+
+  it('gives chapter 3 its own bed, distinct from chapters 1 and 2', () => {
+    // The storm biome (chapter 3, lightning). Pinned by name for the same reason as chapter 2:
+    // the table-driven test above passes for any track at all, including the fallback.
+    expect(BIOME_ID_TO_TRACK.storm).toBe('dungeon.storm');
+    expect(BIOME_ID_TO_TRACK.storm).not.toBe(DEFAULT_RUN_TRACK);
+    expect(BIOME_ID_TO_TRACK.storm).not.toBe(BIOME_ID_TO_TRACK.frost);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'storm'), localOwner: 0 }))
+      .toBe('dungeon.storm');
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'storm'), localOwner: 0 }))
+      .toBe('boss');
+  });
+
+  it('gives chapter 4 its own bed, distinct from chapters 1 to 3', () => {
+    // The blight biome (chapter 4, poison, the finale). Pinned by name for the same reason as
+    // chapters 2 and 3. Keyed by the biome string alone, so this holds whether or not the
+    // engine's chapter table lists `blight` yet.
+    expect(BIOME_ID_TO_TRACK.blight).toBe('dungeon.blight');
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(DEFAULT_RUN_TRACK);
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(BIOME_ID_TO_TRACK.frost);
+    expect(BIOME_ID_TO_TRACK.blight).not.toBe(BIOME_ID_TO_TRACK.storm);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'blight'), localOwner: 0 }))
+      .toBe('dungeon.blight');
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'blight'), localOwner: 0 }))
+      .toBe('boss');
   });
 
   it('falls back to the ember bed for a run whose biome names no track', () => {

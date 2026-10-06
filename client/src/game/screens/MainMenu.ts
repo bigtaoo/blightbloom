@@ -7,6 +7,8 @@ import { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { LobbyHero } from '../ui/LobbyHero';
 import { lobbyScale, lobbyColumnScale, sharpenText } from '../ui/lobbyScale';
 import type { SavedRunSummary } from '../match/runSave';
+import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
+import type { ChapterProgress } from '../../meta';
 import { getSession } from '../../net/session';
 import { getUiTexture, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
 import { t, getLocale } from '../../i18n';
@@ -129,6 +131,13 @@ export class MainMenu {
    *  FORGE badge. */
   lobbyProfile: () => { skinId: string; forgeReady: number; bestFloor: number } | null = () => null;
 
+  /** The account's chapter progress, for the picker under SOLO (`ChapterPicker`) — a provider
+   *  for the same reason as `resumableRun`. Defaults to a fresh account: chapter 1, nothing
+   *  cleared. */
+  chapterProgress: () => ChapterProgress = () => ({ selectedChapter: DEFAULT_CHAPTER_ID, clearedChapters: [] });
+  /** The player picked an unlocked chapter — the shell persists it (`selectChapter`). */
+  onSelectChapter: ((id: ChapterId) => void) | null = null;
+
   /** Quick-play only — see `setQuickPlay`. Every other route is on `routes`. */
   onPlay: (() => void) | null = null;
   /** CONTINUE RUN — only ever called while `resumableRun()` answers non-null. */
@@ -158,6 +167,13 @@ export class MainMenu {
     this.playBtn.view.visible = false;
 
     this.routes.onContinue = () => this.onContinue?.();
+    this.routes.onSelectChapter = (id) => this.onSelectChapter?.(id);
+    // PLAY starts a new run in the picked chapter exactly like SOLO, so it follows SOLO out of
+    // play while the picker shows a locked one (`LobbyRoutes`'s header).
+    this.routes.onStartBlockedChange = (blocked) => {
+      this.playBtn.view.alpha = blocked ? 0.45 : 1;
+      this.playBtn.view.eventMode = blocked ? 'none' : 'static';
+    };
     this.routes.onSolo = () => this.onSolo?.();
     this.routes.onCoop = () => this.onCoop?.();
     this.routes.onPvpSolo = () => this.onPvpSolo?.();
@@ -273,6 +289,7 @@ export class MainMenu {
     // CONTINUE card changes the column's height.
     this.saved = this.resumableRun();
     this.routes.setContinue(this.saved);
+    this.routes.setChapterProgress(this.chapterProgress());
     this.applyPrimary();
     const profile = this.lobbyProfile();
     this.hero.setCharacter(profile?.skinId ?? null);

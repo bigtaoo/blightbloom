@@ -89,6 +89,103 @@
       }
     },
     {
+      "name": "frost-dungeon-floor1",
+      "pins": "chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base",
+      "ticks": 1500,
+      "hash": 2429603993,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 3,
+        "pickups": 0,
+        "floorIndex": 0,
+        "hpTotal": 6,
+        "energyTotal": 98,
+        "prngCursors": 15548694433,
+        "events": {
+          "bullet_fired": 146,
+          "room_enter": 1,
+          "door_locked": 1,
+          "hit": 34,
+          "clash": 3,
+          "melee_swing": 67,
+          "death": 8,
+          "pickup": 8,
+          "deflect": 1,
+          "shield_break": 2,
+          "door_unlocked": 1
+        }
+      }
+    },
+    {
+      "name": "storm-dungeon-floor1",
+      "pins": "chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison",
+      "ticks": 1500,
+      "hash": 1859638503,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 1,
+        "pickups": 7,
+        "floorIndex": 0,
+        "hpTotal": 3,
+        "energyTotal": 94,
+        "prngCursors": 16563226598,
+        "events": {
+          "bullet_fired": 189,
+          "room_enter": 2,
+          "door_locked": 2,
+          "hit": 73,
+          "clash": 6,
+          "melee_swing": 76,
+          "deflect": 4,
+          "death": 17,
+          "pickup": 10,
+          "shield_break": 2,
+          "door_unlocked": 2,
+          "force_regroup": 1
+        }
+      }
+    },
+    {
+      "name": "blight-dungeon-floor1",
+      "pins": "chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison",
+      "ticks": 1500,
+      "hash": 2944369070,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 5,
+        "pickups": 0,
+        "floorIndex": 0,
+        "hpTotal": 3,
+        "energyTotal": 95,
+        "prngCursors": 15609670155,
+        "events": {
+          "bullet_fired": 187,
+          "room_enter": 1,
+          "door_locked": 1,
+          "hit": 31,
+          "clash": 7,
+          "death": 8,
+          "melee_swing": 84,
+          "shield_break": 1,
+          "pickup": 8,
+          "deflect": 1,
+          "door_unlocked": 1
+        }
+      }
+    },
+    {
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
@@ -146,6 +243,37 @@
           "clash": 2,
           "deflect": 1,
           "win": 1
+        }
+      }
+    },
+    {
+      "name": "endless-descent",
+      "pins": "the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap",
+      "ticks": 700,
+      "hash": 1765305623,
+      "witness": {
+        "tick": 700,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 1,
+        "projectiles": 4,
+        "pickups": 2,
+        "floorIndex": 5,
+        "hpTotal": 6,
+        "energyTotal": 90,
+        "prngCursors": 11360228613,
+        "events": {
+          "bullet_fired": 101,
+          "room_enter": 6,
+          "door_locked": 6,
+          "hit": 43,
+          "death": 17,
+          "clash": 7,
+          "melee_swing": 39,
+          "deflect": 3,
+          "door_unlocked": 5,
+          "descend": 5
         }
       }
     },

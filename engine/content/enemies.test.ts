@@ -210,7 +210,7 @@ describe('EnemyBlueprint.element — design/13 icon channel', () => {
     return entries.reduce((best, e) => (e[1] < best[1] ? e : best))[0];
   }
 
-  it('exactly design/13\'s four locked elemental variants carry an element', () => {
+  it('exactly design/13\'s five locked elemental variants carry an element', () => {
     // Enumerated from the authored registry, so a fifth variant added without an element (or
     // an element added to something that is not a locked variant) fails here rather than
     // shipping a mob whose badge silently disagrees with the doc.
@@ -218,7 +218,9 @@ describe('EnemyBlueprint.element — design/13 icon channel', () => {
       .filter((bp) => bp.element !== undefined)
       .map((bp) => bp.type)
       .sort();
-    expect(badged).toEqual(['emberling', 'frostling', 'galvanist', 'ironclad']);
+    // The fifth, `blightling` (poison), joined 2026-10-06 with chapter 4: until then poison was
+    // the one locked element with no critter to wear its badge.
+    expect(badged).toEqual(['blightling', 'emberling', 'frostling', 'galvanist', 'ironclad']);
   });
 
   it('each badged variant names the element it is, matching design/13\'s own list', () => {
@@ -226,6 +228,7 @@ describe('EnemyBlueprint.element — design/13 icon channel', () => {
       emberling: 'fire',
       frostling: 'ice',
       galvanist: 'lightning',
+      blightling: 'poison',
       ironclad: 'physical',
     };
     for (const [type, element] of Object.entries(want)) {
@@ -233,7 +236,7 @@ describe('EnemyBlueprint.element — design/13 icon channel', () => {
     }
   });
 
-  it('a derived "strongest resist" rule would agree on all four badged variants…', () => {
+  it('a derived "strongest resist" rule would agree on all five badged variants…', () => {
     for (const bp of Object.values(ENEMY_BLUEPRINTS)) {
       if (!bp.element) continue;
       expect(toughestAgainst(bp), bp.type).toBe(bp.element);

@@ -85,9 +85,10 @@ describe('uiSkins — every texture is loaded WITH a mip chain, bar the named fe
     for (const opt of calls) {
       expect(typeof opt).toBe('object');
       // PNG, or JPEG for OPAQUE art (the lobby painting and route banners, 2026-09-27; the
-      // menu background, 2026-09-28) — never anything else a platform might not decode.
+      // menu background, 2026-09-28; the chapter banners, 2026-10-06) — never anything else a
+      // platform might not decode.
       expect(opt.src).toMatch(/^\/ui\/.+\.(png|jpg)$/);
-      if (opt.src!.endsWith('.jpg')) expect(opt.src).toMatch(/^\/ui\/(lobby_(bg|card_\w+)|hub_bg)\.jpg$/);
+      if (opt.src!.endsWith('.jpg')) expect(opt.src).toMatch(/^\/ui\/(lobby_(bg|card_\w+)|hub_bg|chapter_\w+)\.jpg$/);
       const key = keyOf.get(opt.src!)!;
       expect(opt.data?.autoGenerateMipmaps, key).toBe(uiUsesMipmaps(key));
       expect(opt.data?.addressMode).toBeUndefined();

@@ -1,0 +1,125 @@
+{
+  "id": "blight_l1_floor_3",
+  "rooms": [
+    {
+      "id": "r1_gallery",
+      "pieceId": "blight_l1_gallery",
+      "offsetXGrid": 70,
+      "offsetYGrid": 2
+    },
+    {
+      "id": "r2_warren",
+      "pieceId": "blight_l1_warren",
+      "offsetXGrid": 54,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r3_court",
+      "pieceId": "blight_l1_court",
+      "offsetXGrid": 53,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r4_thicket",
+      "pieceId": "blight_l1_thicket",
+      "offsetXGrid": 36,
+      "offsetYGrid": 17
+    },
+    {
+      "id": "r5_bastion",
+      "pieceId": "blight_l1_bastion",
+      "offsetXGrid": 35,
+      "offsetYGrid": 37
+    },
+    {
+      "id": "r6_sump",
+      "pieceId": "blight_l1_sump",
+      "offsetXGrid": 16,
+      "offsetYGrid": 37
+    },
+    {
+      "id": "b1_vault",
+      "pieceId": "blight_l1_vault",
+      "offsetXGrid": 53,
+      "offsetYGrid": 36
+    },
+    {
+      "id": "r7_extraction",
+      "pieceId": "blight_l1_extraction",
+      "offsetXGrid": 0,
+      "offsetYGrid": 38
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_gallery",
+      "roomB": "r2_warren",
+      "passageGrid": {
+        "x": 69,
+        "y": 4,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r2_warren",
+      "roomB": "r3_court",
+      "passageGrid": {
+        "x": 64,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_court",
+      "roomB": "r4_thicket",
+      "passageGrid": {
+        "x": 52,
+        "y": 20,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r4_thicket",
+      "roomB": "r5_bastion",
+      "passageGrid": {
+        "x": 40,
+        "y": 36,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r5_bastion",
+      "roomB": "r6_sump",
+      "passageGrid": {
+        "x": 34,
+        "y": 41,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r6_sump",
+      "roomB": "r7_extraction",
+      "passageGrid": {
+        "x": 15,
+        "y": 42,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_court",
+      "roomB": "b1_vault",
+      "passageGrid": {
+        "x": 60,
+        "y": 35,
+        "w": 4,
+        "h": 2
+      }
+    }
+  ]
+}

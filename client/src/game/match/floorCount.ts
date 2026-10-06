@@ -1,4 +1,4 @@
-import { EMBER_DUNGEON, type GameState } from '@dd/engine';
+import { EMBER_DUNGEON, floorOffersDescend, floorOffersExtract, isEndlessDungeon, type GameState } from '@dd/engine';
 
 /**
  * The run's total floor count, derived from the SAME state fields
@@ -18,6 +18,37 @@ export function totalFloorCount(s: GameState): number {
   if (s.dungeonEnabled) return s.dungeonConfig?.floorCount ?? EMBER_DUNGEON.floorCount;
   if (s.floorsEnabled) return s.extraFloors.length + 1;
   return EMBER_DUNGEON.floorCount;
+}
+
+/** Whether the run is in the endless chapter, which has no last floor and so no floor count. */
+export function isEndlessRun(s: GameState): boolean {
+  return s.dungeonEnabled && !!s.dungeonConfig && isEndlessDungeon(s.dungeonConfig);
+}
+
+/** "3/5" on a chapter floor; just "23" on an endless one, where there is no total to show. */
+export function floorProgressText(s: GameState): string {
+  const floor = s.floorIndex + 1;
+  return isEndlessRun(s) ? `${floor}` : `${floor}/${totalFloorCount(s)}`;
+}
+
+/** Which buttons the floor's portal offers — `ExtractionSystem`'s own rule, read back. */
+export interface PortalOffers {
+  readonly extract: boolean;
+  readonly descend: boolean;
+}
+
+/** `ExtractionSystem`'s offer for the current floor: a dungeon asks the engine (both on an
+ *  endless boss floor), and the flat `floors` list descends until its last floor, which
+ *  extracts. */
+export function portalOffers(s: GameState): PortalOffers {
+  if (s.dungeonEnabled && s.dungeonConfig) {
+    return {
+      extract: floorOffersExtract(s.dungeonConfig, s.floorIndex),
+      descend: floorOffersDescend(s.dungeonConfig, s.floorIndex),
+    };
+  }
+  const last = s.floorIndex + 1 >= totalFloorCount(s);
+  return { extract: last, descend: !last };
 }
 
 /**

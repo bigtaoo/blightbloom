@@ -12,7 +12,7 @@
  */
 import type { GameState } from '@dd/engine';
 import { fpToPx } from '../coords';
-import { checkpointReached, totalFloorCount } from '../match/floorCount';
+import { checkpointReached, portalOffers } from '../match/floorCount';
 import type { RoomBuilder } from '../scene/RoomBuilder';
 import type { PortalPrompt } from '../ui/PortalPrompt';
 import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
@@ -43,10 +43,10 @@ export interface CheckpointOverlayDeps {
  * portal at all — dropped 2026-08-12 after a live report that the boss's own death drops
  * never had a chance to be collected, since the run ended before the player could walk
  * to them. It now opens the same portal as any other checkpoint; `PortalPrompt` hides
- * its Descend button, and no card offer is rolled (there is nowhere to spend one).
+ * its Descend button, and no card offer is rolled (there is nowhere to spend one). An
+ * endless boss floor offers both buttons (`portalOffers`), and its card offer is rolled.
  */
 export function updateCheckpointOverlays(s: GameState, localOwner: number, d: CheckpointOverlayDeps): void {
-  const isLastFloor = s.floorIndex + 1 >= totalFloorCount(s);
   const eligible = !s.zoneEnabled && s.phase !== 'gameover' && checkpointReached(s);
   d.roomBuilder.setPortalOpen(eligible);
 
@@ -59,7 +59,7 @@ export function updateCheckpointOverlays(s: GameState, localOwner: number, d: Ch
   // wherever it stands, to confirm or vote before the countdown takes it. Fire stays gated
   // only at the portal: away from it the panels swallow their own presses instead.
   const countdown = s.portalCountdownTicks > 0;
-  d.portalPrompt.update(s, eligible && (nearPortal || countdown), localOwner, isLastFloor);
+  d.portalPrompt.update(s, eligible && (nearPortal || countdown), localOwner, portalOffers(s));
   d.floorCardPrompt.update(s, eligible && (nearPortal || countdown), localOwner);
   d.suppressFire(d.portalPrompt.isOpen && nearPortal);
 }

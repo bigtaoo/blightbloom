@@ -1,0 +1,12 @@
+"Lava Area Theme" by Wolfgang_ -- licence statement, captured verbatim 2026-10-06
+Source page: https://opengameart.org/content/lava-area-theme
+File:        https://opengameart.org/sites/default/files/LavaLand%20-%20One%20Loop_0.ogg
+Author page: https://opengameart.org/users/wolfgang
+
+From the source page:
+  License(s): CC-BY 4.0
+  The page carries no Copyright/Attribution Notice of its own, so the credit follows the
+  licence: the author's name, the title, a link to the work, and the licence.
+
+Licence: CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+Where this game credits it: Settings, under the AUDIO section (client/src/audio/musicCredits.ts).

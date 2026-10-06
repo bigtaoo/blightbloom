@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { STARTER_BLUEPRINTS } from '@dd/engine';
 import { defaultMetaState, FREE_CHARACTERS, type MetaState } from './MetaState';
-import { guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount } from './guestMerge';
+import { guestAddsChapterClears, guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount } from './guestMerge';
 
 const state = (over: Partial<MetaState> = {}): MetaState => ({ ...defaultMetaState(), ...over });
 
@@ -64,6 +64,17 @@ describe('hasGuestProgress', () => {
     const stock = { flamer: undefined, spear: 2 } as unknown as Record<string, number>;
     expect(hasGuestProgress(state({ blueprintStock: stock }))).toBe(true);
     expect(guestMergeOffer(state({ blueprintStock: stock }), defaultMetaState()).blueprints).toBe(2);
+  });
+});
+
+describe('guestAddsChapterClears', () => {
+  it('is true only for a clear the account does not already hold', () => {
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember'] }), state())).toBe(true);
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember', 'frost'] }), state({ clearedChapters: ['ember'] })))
+      .toBe(true);
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['ember', 'frost'] })))
+      .toBe(false);
+    expect(guestAddsChapterClears(state(), state({ clearedChapters: ['ember'] }))).toBe(false);
   });
 });
 
@@ -130,9 +141,33 @@ describe('mergeGuestIntoAccount', () => {
     hasSeenTutorial: false,
   });
 
+  it('UNIONS cleared chapters — an unlock earned on either side is kept', () => {
+    const merged = mergeGuestIntoAccount(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['frost'] }));
+    expect([...merged.clearedChapters].sort()).toEqual(['ember', 'frost']);
+    expect(mergeGuestIntoAccount(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['ember'] })).clearedChapters)
+      .toEqual(['ember']);
+  });
+
+  it('keeps the account chapter pick — a staged choice, like the character', () => {
+    const merged = mergeGuestIntoAccount(
+      state({ selectedChapter: 'frost', clearedChapters: ['ember'] }),
+      state({ selectedChapter: 'ember' }),
+    );
+    expect(merged.selectedChapter).toBe('ember');
+  });
+
+  it('does not count a cleared chapter as progress worth the merge prompt (nothing to show)', () => {
+    expect(hasGuestProgress(state({ clearedChapters: ['ember'] }))).toBe(false);
+  });
+
   it('keeps the DEEPER best floor from either side — a record, never a sum', () => {
     expect(mergeGuestIntoAccount(state({ bestFloor: 3 }), state({ bestFloor: 5 })).bestFloor).toBe(5);
     expect(mergeGuestIntoAccount(state({ bestFloor: 4 }), state({ bestFloor: 1 })).bestFloor).toBe(4);
+  });
+
+  it('keeps the DEEPER endless record from either side, the same way', () => {
+    expect(mergeGuestIntoAccount(state({ endlessBestFloor: 9 }), state({ endlessBestFloor: 31 })).endlessBestFloor).toBe(31);
+    expect(mergeGuestIntoAccount(state({ endlessBestFloor: 12 }), state({ endlessBestFloor: 0 })).endlessBestFloor).toBe(12);
   });
 
   it('ADDS the material bank per key, keeping keys only one side has', () => {

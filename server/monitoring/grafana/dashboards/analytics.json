@@ -703,7 +703,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "New installs by deepest first-day floor ($host)",
-      "description": "Per day: the new installs whose deepest floor reached on their first day was N. Taken from floor_reached and run_end, so a run that ended with the tab closing still has a depth. Installs that started no run are not here — they are the gap between 'new installs' and 'run_start' in the funnel panel.",
+      "description": "Per day: the new installs whose deepest chapter-1 floor reached on their first day was N (floor numbers are per chapter; a run in another chapter does not count). Taken from floor_reached and run_end, so a run that ended with the tab closing still has a depth. Installs that started no run are not here — they are the gap between 'new installs' and 'run_start' in the funnel panel.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

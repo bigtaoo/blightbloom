@@ -2,7 +2,7 @@
  *  pvpConfig.test.ts's plain input->output style. See matchConfig.ts's doc comment for
  *  why `m.mode === 'pvp'` branches to the arena shape (buildPvpEngineConfig) instead. */
 import { describe, it, expect } from 'vitest';
-import { SKIN_DEFS, type MatchStart } from '@dd/engine';
+import { SKIN_DEFS, EMBER_DUNGEON, EMBER_L1_ROOMS, FROST_DUNGEON, FROST_L1_ROOMS, type MatchStart } from '@dd/engine';
 import { buildOnlineConfig } from './matchConfig';
 import { buildPvpEngineConfig } from './pvpConfig';
 
@@ -62,5 +62,33 @@ describe('buildOnlineConfig', () => {
   it('ignores botSeats in an arena: the PvP config is the same with or without it', () => {
     const m = matchStart({ mode: 'pvp', seed: 3, playerCount: 4 });
     expect(buildOnlineConfig({ ...m, botSeats: [1, 2, 3] })).toEqual(buildOnlineConfig(m));
+  });
+
+  // Chapters (world/chapters.ts). Identity (`toBe`), not equality: every client in a room must
+  // build the SAME catalog objects, and a chapter-1 room must build exactly what it built
+  // before chapters existed — a structurally-equal copy would pass `toEqual` and still be a
+  // second definition that could drift.
+  it('builds chapter 1 — the very same catalog objects — when match_start names no chapter', () => {
+    const cfg = buildOnlineConfig(matchStart({ mode: 'coop' }));
+    expect(cfg.dungeon!.config).toBe(EMBER_DUNGEON);
+    expect(cfg.dungeon!.library).toBe(EMBER_L1_ROOMS);
+    // And naming chapter 1 explicitly is the same room.
+    expect(buildOnlineConfig(matchStart({ mode: 'coop', chapterId: 'ember' }))).toEqual(cfg);
+  });
+
+  it('builds the chapter match_start names', () => {
+    const cfg = buildOnlineConfig(matchStart({ mode: 'coop', chapterId: 'frost' }));
+    expect(cfg.dungeon!.config).toBe(FROST_DUNGEON);
+    expect(cfg.dungeon!.library).toBe(FROST_L1_ROOMS);
+  });
+
+  it('falls back to chapter 1 for a chapter id this build does not know', () => {
+    const cfg = buildOnlineConfig(matchStart({ mode: 'coop', chapterId: 'abyss' as never }));
+    expect(cfg.dungeon!.config).toBe(EMBER_DUNGEON);
+  });
+
+  it('ignores chapterId in an arena: the PvP config is the same with or without it', () => {
+    const m = matchStart({ mode: 'pvp', seed: 3, playerCount: 4 });
+    expect(buildOnlineConfig({ ...m, chapterId: 'frost' })).toEqual(buildOnlineConfig(m));
   });
 });

@@ -195,6 +195,29 @@ describe('PartyService — code uniqueness', () => {
   });
 });
 
+describe('PartyService — a co-op party’s chapter', () => {
+  it('is the first chapter until START, then the one the leader named', () => {
+    const { svc } = make();
+    const p = svc.create('alice', 'coop');
+    expect(p.chapterId).toBe('ember');
+    expect(svc.startMatching(p.partyId, 'alice', 'frost')!.chapterId).toBe('frost');
+    expect(svc.get(p.partyId)!.chapterId).toBe('frost');
+  });
+
+  it('defaults a START that names none to the first chapter', () => {
+    const { svc } = make();
+    const p = svc.create('alice', 'coop');
+    expect(svc.startMatching(p.partyId, 'alice')!.chapterId).toBe('ember');
+  });
+
+  it('is absent from a PvP squad, even one started with a chapter', () => {
+    const { svc } = make();
+    const p = svc.create('alice', 'pvp');
+    expect(p).not.toHaveProperty('chapterId');
+    expect(svc.startMatching(p.partyId, 'alice', 'frost')).not.toHaveProperty('chapterId');
+  });
+});
+
 describe('PartyService — startMatching', () => {
   it('only the leader can start matching', () => {
     const { svc } = make();

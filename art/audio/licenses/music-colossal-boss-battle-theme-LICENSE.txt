@@ -1,0 +1,20 @@
+"Colossal Boss Battle Theme" by Matthew Pablo -- licence statement, captured verbatim 2026-10-06
+Source page: https://opengameart.org/content/colossal-boss-battle-theme
+File:        https://opengameart.org/sites/default/files/Colossal%20Boss%20Battle%20Theme_0.zip
+             (used: "Blackmoor Colossus Loop (No Vocals).wav" inside it)
+Author page: http://opengameart.org/users/matthewpablo
+
+From the source page:
+  License(s): CC-BY 3.0
+  Attribution Instructions: "Please read this page for attribution instructions:
+  http://www.matthewpablo.com/services"
+
+RECORDED GAP: that page is offline (the author's OpenGameArt profile says the site has been
+inactive since 2018), and the Wayback Machine refused the request on 2026-10-06 (HTTP 429),
+so the author's own preferred wording is not captured here. The credit used follows the
+licence itself (CC BY 3.0 section 4(b)): the author's name, the title, a link to the work,
+and the licence. Capture the archived instructions and adjust the credit if they ask for
+something different.
+
+Licence: CC BY 3.0, https://creativecommons.org/licenses/by/3.0/
+Where this game credits it: Settings, under the AUDIO section (client/src/audio/musicCredits.ts).

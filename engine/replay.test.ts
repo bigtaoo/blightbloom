@@ -151,3 +151,19 @@ describe('serializeState: the bot flag (ENGINE_VERSION 88)', () => {
     expect(hashState(s)).toBe(before); // the flag alone moved it, nothing else did
   });
 });
+
+describe('serializeState: the portal choice (an endless boss floor, 2026-10-06)', () => {
+  it('hashes which way a two-button portal is going, and is absent while no choice is open', () => {
+    const s = createGameEngine(ARENA).state;
+    const before = hashState(s);
+    expect(s.portalChoice).toBeNull();
+    expect(serializeState(s)).not.toHaveProperty('portalChoice'); // every finite floor's hash is unchanged
+    s.portalChoice = 'descend';
+    const descending = hashState(s);
+    expect(descending).not.toBe(before);
+    s.portalChoice = 'extract';
+    expect(hashState(s)).not.toBe(descending); // two peers disagreeing on the way is a desync
+    s.portalChoice = null;
+    expect(hashState(s)).toBe(before);
+  });
+});

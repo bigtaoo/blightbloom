@@ -314,6 +314,7 @@ describe('Matchmaker — co-op ally backfill (design/10 front-door audit)', () =
       seed: expect.any(Number),
       playerCount: 2,
       mode: 'coop',
+      chapterId: 'ember', // the bot tickets must name the room's chapter, or the gameserver refuses them
       // Exactly ONE seat, and seat 1 — `BotClient.brainFor` hands the ally
       // `LEADER_SEAT` (0) to regroup on, which is only sound while the bots take the
       // trailing indices. This is the assertion that keeps that true.

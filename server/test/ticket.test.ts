@@ -28,6 +28,11 @@ describe('ticket — round-trip', () => {
     expect(verifyTicket(signTicket(payload, SECRET), SECRET, 0)).toEqual(payload);
   });
 
+  it('round-trips a co-op room’s chapter', () => {
+    const frost: TicketPayload = { ...payload, mode: 'coop', chapterId: 'frost' };
+    expect(verifyTicket(signTicket(frost, SECRET), SECRET, 0)).toEqual(frost);
+  });
+
   it('round-trips a bot seat’s claim (ENGINE_VERSION 88)', () => {
     const bot: TicketPayload = { ...payload, bot: true };
     expect(verifyTicket(signTicket(bot, SECRET), SECRET, 0)).toEqual(bot);
@@ -120,6 +125,11 @@ describe('verifyTicket — a correctly signed body that is not a ticket', () => 
       { ...payload, accountId: 42 },
       { ...payload, bot: false },
       { ...payload, bot: 'yes' },
+      // A chapter this gameserver's catalog does not know: a room built from it would tell
+      // every client to build a dungeon some of them do not have.
+      { ...payload, chapterId: 'abyss' },
+      { ...payload, chapterId: 2 },
+      { ...payload, chapterId: null },
       null,
       [],
     ];

@@ -19,8 +19,14 @@
  * SOLO QUEUE with an empty server gets a match, not an expiry. Expiry (`queueTtlMs`) is
  * still the rule, and still the one an operator can put back in front by raising a
  * backfill delay above it; it is just no longer what a lone player meets.
+ *
+ * **A co-op queue is per chapter** (2026-10-06, `@dd/engine`'s `world/chapters.ts`). A co-op
+ * room plays ONE chapter, so two co-op waiters who asked for different chapters must never be
+ * grouped — see {@link QueueShape}. The cost is a thinner queue per chapter, which the 5 s
+ * ally backfill already absorbs: nobody waits longer than they did with one chapter.
  */
-import type { MatchMode, TicketPayload } from './ticket';
+import { DEFAULT_CHAPTER_ID } from '@dd/engine';
+import type { ChapterId, MatchMode, TicketPayload } from './ticket';
 import { squadSizeForPlayerCount, teamIdForOwner } from './config';
 
 export interface MatchmakerDeps {
@@ -92,6 +98,9 @@ export interface MatchmakerDeps {
     seed: number;
     playerCount: number;
     mode: MatchMode;
+    /** The co-op room's chapter — the bot tickets must name it too, or the gameserver
+     *  refuses them as disagreeing with the room. Absent for PvP. */
+    chapterId?: ChapterId;
     /** Seat indices left empty by real waiters — the shell mints one bot ticket each. */
     botOwners: readonly number[];
   }) => void;
@@ -141,10 +150,26 @@ const DEFAULT_QUEUE_TTL_MS = 30_000;
  * agree today is how they stop agreeing tomorrow for no stated reason. */
 const DEFAULT_BOT_FILL_MS = 5_000;
 
-interface Waiter {
-  queueId: string;
+/**
+ * What a waiter queues for. Only waiters with the same shape are ever grouped: a coop 2-seat
+ * waiter and a pvp 2-seat waiter must not share a room, and neither may two co-op waiters who
+ * chose different chapters. `chapterId` is set exactly when `mode` is `'coop'` ({@link
+ * shapeOf} is the one place that decides it), so the PvP keys are the ones they always were.
+ */
+interface QueueShape {
   playerCount: number;
   mode: MatchMode;
+  chapterId?: ChapterId;
+}
+
+/** A request's shape, normalised: a co-op request without a chapter (every client older than
+ *  chapters) queues for the first one; a PvP request has none, whatever it sent. */
+function shapeOf(playerCount: number, mode: MatchMode, chapterId?: ChapterId): QueueShape {
+  return mode === 'coop' ? { playerCount, mode, chapterId: chapterId ?? DEFAULT_CHAPTER_ID } : { playerCount, mode };
+}
+
+interface Waiter extends QueueShape {
+  queueId: string;
   enqueuedAt: number;
   ticket: MatchTicket | null; // filled the instant its group forms
   /** A pre-formed party's id (design/05/15's PvP squad follow-up) — every waiter
@@ -168,13 +193,13 @@ interface Waiter {
   name?: string;
 }
 
-/** A coop 2-seat waiter and a pvp 2-seat waiter must never group together — key the
- * queue by BOTH, not playerCount alone. */
-const queueKey = (playerCount: number, mode: MatchMode): string => `${mode}:${playerCount}`;
+/** The queue a shape waits in — see {@link QueueShape}. */
+const queueKey = (s: QueueShape): string =>
+  s.chapterId === undefined ? `${s.mode}:${s.playerCount}` : `${s.mode}:${s.chapterId}:${s.playerCount}`;
 
 export class Matchmaker {
   private readonly waiters = new Map<string, Waiter>();
-  /** FIFO of still-waiting queueIds per requested (mode, playerCount) shape. */
+  /** FIFO of still-waiting queueIds per requested {@link QueueShape}. */
   private readonly queues = new Map<string, string[]>();
   private counter = 0;
   private readonly ticketTtlMs: number;
@@ -200,9 +225,9 @@ export class Matchmaker {
     this.sign = deps.sign ?? (() => '');
   }
 
-  /** Live waiter count for a (playerCount, mode) shape (test/observability). Reaps expired entries first. */
-  waiting(playerCount: number, mode: MatchMode = 'coop'): number {
-    return this.liveQueue(playerCount, mode).length;
+  /** Live waiter count for a (playerCount, mode, chapter) shape (test/observability). Reaps expired entries first. */
+  waiting(playerCount: number, mode: MatchMode = 'coop', chapterId?: ChapterId): number {
+    return this.liveQueue(shapeOf(playerCount, mode, chapterId)).length;
   }
 
   /**
@@ -215,7 +240,8 @@ export class Matchmaker {
    * too. Throws a RangeError for an out-of-bounds playerCount (the shell maps it to
    * HTTP 400). `accountId` (design/16-accounts.md) is the logged-in caller's real
    * account id, if any — carried into the signed ticket for ladder-rating attribution.
-   * `groupSize` is how many members that party has — see `Waiter.groupSize`.
+   * `groupSize` is how many members that party has — see `Waiter.groupSize`. `chapterId` is
+   * the co-op chapter asked for (default the first; ignored for PvP) — see {@link QueueShape}.
    */
   enqueue(
     playerCount: number,
@@ -224,18 +250,20 @@ export class Matchmaker {
     accountId?: string,
     name?: string,
     groupSize?: number,
+    chapterId?: ChapterId,
   ): EnqueueResult {
     if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > MAX_PLAYERS) {
       throw new RangeError(`playerCount must be an integer in [1, ${MAX_PLAYERS}]`);
     }
     const queueId = `q${++this.counter}`;
+    const shape = shapeOf(playerCount, mode, chapterId);
     const waiter: Waiter = {
-      queueId, playerCount, mode, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, groupSize, accountId, name,
+      ...shape, queueId, enqueuedAt: this.deps.nowMs(), ticket: null, groupId, groupSize, accountId, name,
     };
     this.waiters.set(queueId, waiter);
-    this.liveQueue(playerCount, mode).push(queueId);
+    this.liveQueue(shape).push(queueId);
 
-    this.formIfReady(playerCount, mode);
+    this.formIfReady(shape);
     return waiter.ticket ? { queueId, ticket: waiter.ticket } : { queueId, botFillInMs: this.botFillMs[mode]() };
   }
 
@@ -257,7 +285,7 @@ export class Matchmaker {
     // refusing to start a mode it can already play (design/10's front-door audit).
     const botFillMs = this.botFillMs[waiter.mode]();
     if (waited >= botFillMs) {
-      this.formWithBots(waiter.playerCount, waiter.mode, queueId);
+      this.formWithBots(waiter, queueId);
       if (waiter.ticket) {
         this.waiters.delete(queueId);
         return { status: 'matched', ticket: waiter.ticket };
@@ -273,7 +301,7 @@ export class Matchmaker {
   // ───────────────────────── internals ─────────────────────────
 
   /**
-   * The (playerCount, mode) shape's queue with expired still-waiting entries reaped out.
+   * The shape's queue with expired still-waiting entries reaped out.
    *
    * `keepId` is the ONE waiter this call must not reap by age: the one whose own `poll`
    * is forming this room right now. Without it the age sweep races `formWithBots` into
@@ -286,8 +314,8 @@ export class Matchmaker {
    * would linger forever and be grouped into a stranger's room, which then never starts
    * because nobody is coming to sit in that seat.
    */
-  private liveQueue(playerCount: number, mode: MatchMode, keepId?: string): string[] {
-    const key = queueKey(playerCount, mode);
+  private liveQueue(shape: QueueShape, keepId?: string): string[] {
+    const key = queueKey(shape);
     let q = this.queues.get(key);
     if (!q) {
       q = [];
@@ -310,10 +338,11 @@ export class Matchmaker {
     return q;
   }
 
-  /** Form a match while the (playerCount, mode) shape has a full group of live waiters.
+  /** Form a match while the shape has a full group of live waiters.
    * Fills seats in squad-sized chunks (design/05/15) — see `pullChunk`. */
-  private formIfReady(playerCount: number, mode: MatchMode): void {
-    const live = this.liveQueue(playerCount, mode);
+  private formIfReady(shape: QueueShape): void {
+    const { playerCount } = shape;
+    const live = this.liveQueue(shape);
     // Only whole parties — see `Waiter.groupSize`. A filtered COPY: `pullChunk` consumes it,
     // and a granted waiter leaves the real queue on the next `liveQueue` by carrying a ticket.
     const q = live.filter((id) => this.partyPresent(id, live));
@@ -321,21 +350,22 @@ export class Matchmaker {
     while (q.length >= playerCount) {
       const group: string[] = [];
       while (group.length < playerCount) group.push(...this.pullChunk(q, squadSize));
-      this.grantGroup(group, playerCount, mode);
+      this.grantGroup(group, shape);
     }
   }
 
   /**
-   * Form a room right now from every currently-live waiter of this (playerCount, mode)
-   * shape — however many that is (at least 1; `poll` never calls this on an empty
+   * Form a room right now from every currently-live waiter of this shape — however many
+   * that is (at least 1; `poll` never calls this on an empty
    * queue) — and report the leftover seats as `botOwners` via `onBotFill`. When the
    * eligible waiters already fill a room (a partly-queued party just aged in — see below),
    * the room forms with no bots and `onBotFill` is not called. Real waiters still fill
    * squad chunks together first (a party gets bots only to top up ITS OWN squad, not
    * scattered across others) via the same `pullChunk` grouping `formIfReady` uses.
    */
-  private formWithBots(playerCount: number, mode: MatchMode, keepId?: string): void {
-    const live = this.liveQueue(playerCount, mode, keepId);
+  private formWithBots(shape: QueueShape, keepId?: string): void {
+    const { playerCount, mode, chapterId } = shape;
+    const live = this.liveQueue(shape, keepId);
     // A partly-queued party still waits for its missing member — until one of ITS OWN
     // waiters has sat through the backfill delay, at which point that friend is not coming
     // and the party plays with a bot instead. Without this, any solo waiter's backfill
@@ -351,11 +381,11 @@ export class Matchmaker {
     const squadSize = squadSizeForPlayerCount(playerCount);
     const group: string[] = [];
     while (q.length > 0 && group.length < playerCount) group.push(...this.pullChunk(q, squadSize));
-    const { roomId, seed } = this.grantGroup(group, playerCount, mode);
+    const { roomId, seed } = this.grantGroup(group, shape);
     const botOwners: number[] = [];
     for (let owner = group.length; owner < playerCount; owner++) botOwners.push(owner);
     if (botOwners.length > 0) {
-      this.deps.onBotFill?.({ roomId, seed, playerCount, mode, botOwners });
+      this.deps.onBotFill?.({ roomId, seed, playerCount, mode, chapterId, botOwners });
     }
   }
 
@@ -407,7 +437,8 @@ export class Matchmaker {
    * derived purely from seat index via `teamIdForOwner` — the single source of truth
    * shared with `matchsvc`'s bot-ticket minting, so real and bot seats can never
    * disagree about which squad a seat belongs to. */
-  private grantGroup(group: readonly string[], playerCount: number, mode: MatchMode): { roomId: string; seed: number } {
+  private grantGroup(group: readonly string[], shape: QueueShape): { roomId: string; seed: number } {
+    const { playerCount, mode, chapterId } = shape;
     const roomId = this.deps.newRoomId();
     const seed = this.deps.nextSeed();
     const exp = this.deps.nowMs() + this.ticketTtlMs;
@@ -416,7 +447,7 @@ export class Matchmaker {
       if (!w) return;
       const teamId = teamIdForOwner(owner, playerCount);
       const grant: TicketPayload = {
-        roomId, owner, seed, playerCount, teamId, exp, mode, accountId: w.accountId, name: w.name,
+        roomId, owner, seed, playerCount, teamId, exp, mode, accountId: w.accountId, name: w.name, chapterId,
       };
       w.ticket = { roomId, owner, seed, playerCount, teamId, mode, token: this.sign(grant) };
     });
@@ -425,7 +456,7 @@ export class Matchmaker {
 
   private dropWaiting(waiter: Waiter): void {
     this.waiters.delete(waiter.queueId);
-    const q = this.queues.get(queueKey(waiter.playerCount, waiter.mode));
+    const q = this.queues.get(queueKey(waiter));
     if (q) {
       const i = q.indexOf(waiter.queueId);
       if (i >= 0) q.splice(i, 1);

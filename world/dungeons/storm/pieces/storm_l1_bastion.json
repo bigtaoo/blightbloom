@@ -1,0 +1,160 @@
+{
+  "id": "storm_l1_bastion",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 19,
+    "h": 18
+  },
+  "solids": [
+    {
+      "x": 7,
+      "y": 8,
+      "w": 6,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 9,
+      "y": 6,
+      "w": 2,
+      "h": 6,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 17,
+      "w": 19,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 19,
+      "h": 1
+    },
+    {
+      "x": 18,
+      "y": 1,
+      "w": 1,
+      "h": 16
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 16
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 16.5,
+        "y": 11
+      },
+      {
+        "x": 16.5,
+        "y": 7
+      }
+    ],
+    "enemy": [
+      {
+        "x": 12.5,
+        "y": 15.5,
+        "type": "basic"
+      },
+      {
+        "x": 8.5,
+        "y": 15.5,
+        "type": "brute"
+      },
+      {
+        "x": 4.5,
+        "y": 15.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 10.5,
+        "y": 13.5,
+        "type": "basic"
+      },
+      {
+        "x": 6.5,
+        "y": 13.5,
+        "type": "brute"
+      },
+      {
+        "x": 2.5,
+        "y": 13.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 2.5,
+        "y": 11.5,
+        "type": "basic"
+      },
+      {
+        "x": 2.5,
+        "y": 9.5,
+        "type": "ravager"
+      },
+      {
+        "x": 2.5,
+        "y": 7.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 4.5,
+        "y": 5.5,
+        "type": "basic"
+      },
+      {
+        "x": 10.5,
+        "y": 3.5,
+        "type": "ravager"
+      },
+      {
+        "x": 6.5,
+        "y": 3.5,
+        "type": "ironclad"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 16.5,
+      "y": 15.5
+    },
+    {
+      "id": "barrel",
+      "x": 3,
+      "y": 15.5
+    },
+    {
+      "id": "rubble",
+      "x": 14.5,
+      "y": 8
+    },
+    {
+      "id": "rubble",
+      "x": 6.5,
+      "y": 6
+    }
+  ]
+}

@@ -93,15 +93,16 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   > spectrum is centred; it says nothing about whether the listener's speaker reaches it. For any
   > cue that has to survive a phone, measure the band.
 
-- **`process_music.py`** — the music loops (2026-08-31), from AI-generated masters. A
-  separate driver because every one of its inputs differs from a cue's: the input is a 4-6
-  minute *song*, so a loop **region** has to be chosen; it arrives mastered to ~0 dBFS where
+- **`process_music.py`** — the music loops (2026-08-31; open-licensed sources since
+  2026-10-06, see "Music sourcing" below). A separate driver because every one of its inputs
+  differs from a cue's: the input is a *song*, so a loop **region** has to be chosen; it
+  arrives mastered near 0 dBFS where
   the shipped cue set peaks at -14..-21, so level is set by a **band target** (the 250-2000 Hz
   RMS, the band `impact`/`muzzle`/`ui.tap` all peak in) rather than by peak-matching a synth
   voice that does not exist for music; and it stays stereo.
 
-      ./venv/Scripts/python process_music.py --search boss     # rank loop regions
-      ./venv/Scripts/python process_music.py [--track menu|boss]
+      ./venv/Scripts/python process_music.py --search boss     # rank loop regions (20-130 s)
+      ./venv/Scripts/python process_music.py [--track menu|dungeon.ember|dungeon.frost|dungeon.storm|dungeon.blight|boss]
 
   Its filters are single zero-phase multiplies over the **whole region's** spectrum. That is
   circular convolution and a loop region *is* circular, so filtering cannot introduce the
@@ -117,15 +118,19 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   | 3.01 dB | 5.61 dB | the search sampled four 4096-point frames of the 2 s crossfade window instead of measuring it |
   | 2.44 dB | 3.39 dB | the gate weighted band differences by energy; the search averaged all 30 equally |
   | 1.41 dB | 3.69 dB | the search read the *raw* master, but the shelf that always applies to that track moves the energy weighting onto the mids |
-  | 1.15 dB / 1.63 dB | 6.6 dB / 2.2-2.9 dB | (2026-09-06) the region was picked at NATIVE tempo, but `TEMPO_FACTOR`'s `pedalboard.time_stretch` is content-adaptive rather than a uniform transform, so a region that closed well natively did not survive being stretched. Fix was the same shape as row 3: search the signal that will actually ship — the whole track stretched, THEN sliced — not the raw master |
+  | 1.15 dB / 1.63 dB | 6.6 dB / 2.2-2.9 dB | (2026-09-06) the region was picked at NATIVE tempo, but the tempo factor's `pedalboard.time_stretch` is content-adaptive rather than a uniform transform, so a region that closed well natively did not survive being stretched. Fix was the same shape as row 3: search the signal that will actually ship — the whole track stretched, THEN sliced — not the raw master |
 
   Both now call `audit.profile_diff(band_profile(...), band_profile(...))`, and `--search`
-  applies the track's shelf AND its tempo stretch. Search, extraction and post-encode figures
-  agree to within 0.02-0.05 dB (`menu` 1.76 / 1.76 / 1.77; `boss` 1.68 / 1.61 / 1.60). If you add
+  applies the track's shelf AND its tempo stretch. Search and post-encode figures agree to
+  within 0.01-0.06 dB on the 2026-10-06 set (`menu` 0.84 / 0.83, `dungeon.ember` 1.60 / 1.54,
+  `dungeon.frost` 1.40 / 1.40, `dungeon.storm` 1.21 / 1.20, `dungeon.blight` 0.67 / 0.65 (the
+  first figure on the upstream file, before the excerpt's Vorbis re-encode), `boss` 1.25 / 1.31).
+  If you add
   a processing step that changes a measured property, `--search` has to apply it too — the
   2026-09-06 tempo pass is the fourth time this exact lesson landed, see the table row above.
 
-  **`TEMPO_FACTOR`** (2026-09-06) needs `pip install pedalboard` in this `venv/` — a pitch-
+  **A track's `tempo`** (2026-09-06; per track since 2026-10-06, and 1.0 for every shipped
+  loop) needs `pip install pedalboard` in this `venv/` — a pitch-
   preserving time-stretch (Rubber Band under the hood), the one thing this pipeline reaches
   outside `numpy`/`soundfile` for. Baked into the shipped file rather than applied at the deck
   (`client/src/audio/musicCatalogue.ts` has why: WeChat's `InnerAudioContext.playbackRate` has no
@@ -182,20 +187,41 @@ needs no Python at all; these scripts are for the batch itself. `process_all.py`
 conversion, and re-running it reproduces `client/public/audio/` byte-for-byte — all 46 files
 verified identical after the last refactor.
 
-## Music sourcing (2026-08-31)
+## Music sourcing (2026-10-06; first pass 2026-08-31)
 
-Unlike the SFX set, the music is **AI-generated** (Suno), not CC0 library material — CC0
-music turned out to be almost entirely chiptune, a direct style mismatch for design/13's
-flat-cel direction. Masters live in `art/audio/sources/suno/`, one directory per source
-exactly like the Kenney packs. Two findings from the first two tracks, both likely to repeat:
+The music is **openly licensed work by people** since 2026-10-06: CC0 or CC-BY, from OpenGameArt
+and Scott Buckley's library, archived under `art/audio/sources/music/`. The 2026-08-31 pass had
+used AI masters (Suno) on the belief that open music is chiptune; that holds for CC0 and not for
+CC-BY. The owner judged the AI tracks not good enough, and `art/audio/README.md`'s "Music" has the
+six picks (chapter 3's `dungeon.storm` and chapter 4's `dungeon.blight` were the fifth and sixth),
+the measurements that chose them, and the licensing. What is worth knowing before sourcing the next
+one:
 
-- **Suno masters to ~0 dBFS.** The shipped cues were deliberately peak-matched *down* to the
-  synth voices they replaced and sit at -14..-21 dBFS. Every AI master therefore needs 13-15
-  dB of attenuation before it belongs in this mix; that is what `MID_TARGET_DBFS = -30` is,
-  and `mid_band_dbfs` in the `music` gate is what stops a track shipping without it.
-- **It places energy about two octaves below where the prompt asks.** Both tracks were
-  prompted for crystalline bell/glass timbres. The first came back with 90% of its energy
-  below 109 Hz and nothing above 2 kHz, so it became the `boss` bed rather than the menu one;
-  the second, after `sub-bass`/`drone` went into the exclude list, moved up to 160 Hz-1.2 kHz
-  but still produced nothing above 4 kHz. Naming instruments and registers explicitly helps;
-  excluding the register you do *not* want helps more.
+- **The `music` subpackage's limit is our own.** Six loops are 3.26 of its 4 MiB. It was 3 MiB until
+  the sixth loop, and raising it was a decision: a standard WeChat subpackage has no individual cap,
+  only the 30 MB whole-game total. Raise it again the same way (with `MUSIC_BUDGET_BYTES` in
+  `musicAssets.test.ts`) rather than re-encoding the shipped loops.
+
+- **Licence filter first:** CC0 or CC-BY. NC is out (ads), ND is out (a cut loop is an
+  adaptation). CC-BY needs its credit in `client/src/audio/musicCredits.ts`, which a test holds
+  equal to `credits.json`'s `attribution`.
+- **A near-zero seam is a warning, not a prize.** `--search` scoring 0.06-0.3 dB means the piece
+  repeats and the head and tail are the same bars; the equal-power crossfade swells and combs on
+  correlated material. Take a 1-2 dB region of different material. (The storm pass measured the
+  swell directly: overlaps of two repeating candidates correlated +0.4 to +0.9 and rose 1.0-1.9 dB.)
+  The warning is about the correlation, not the number: measure the overlap, and a low seam whose
+  overlap is uncorrelated is fine. `dungeon.blight` ships at 0.65 dB with an overlap correlation of
+  +0.05 and a +0.14 dB swell, on a beatless piece that cannot flam.
+- **A beat-driven bed can flam.** If the loop length minus the 2 s crossfade is not a whole number
+  of beats, the two decks' drums land apart through the whole fade; band-diff cannot see it.
+  Compare onset envelopes of the tail and head windows (best cross-correlation lag should be 0).
+  A 120 bpm source is aligned at every 0.5 s length the search tries; other tempos are not.
+- **Measure L/R correlation.** A phone sums to mono; an anti-correlated mix (one candidate read
+  -0.64) partly cancels there.
+- **Archive an excerpt when the upstream is large.** Region plus 5 s either side, Vorbis, with the
+  upstream URL and SHA-256 in `credits.json`. libsndfile's Vorbis encoder overflows the stack on
+  one large `sf.write`; write in 4096-frame blocks through `sf.SoundFile`.
+- **Levels are still ~10 dB hot** on arrival (peaks near 0 dBFS, mids -19..-21 dBFS), apart from
+  quiet ambient pieces ("Beyond the Frozen Veil" needed +0.2 dB). `MID_TARGET_DBFS = -30` and the
+  gate's `mid_band_dbfs` handle it, as they did for the AI masters, which arrived ~20 dB hot and
+  placed their energy about two octaves below what the prompt asked.

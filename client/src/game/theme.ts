@@ -1,4 +1,4 @@
-import { RARITY_TIERS, type DamageType, type WeaponSimSpec } from '@dd/engine';
+import { biomeIdAt, RARITY_TIERS, type ChapterId, type DamageType, type GameState, type WeaponSimSpec } from '@dd/engine';
 
 // The palette everything on screen is drawn with.
 //
@@ -98,8 +98,8 @@ export function elementColor(damageType: DamageType): number {
 // close to the existing neutral dark palette, with only a SMALL mix of the biome's
 // element hue — the raw saturated hex is reserved for bullets/status FX/loot, so a
 // wall painted full ember-orange would fight bullets/auras for attention instead of
-// making them pop. `BIOME_ID_TO_ELEMENT` maps a `DungeonConfig.biomeId` (today only
-// 'ember' exists, content/world/rooms/ember.ts) to the stable element vocabulary
+// making them pop. `BIOME_ID_TO_ELEMENT` maps a `DungeonConfig.biomeId` (one per chapter,
+// engine world/chapters.ts — 'ember', 'frost', 'storm' and 'blight' today) to the stable element vocabulary
 // ELEMENT_COLORS already uses, so a future biome only needs one new entry there, not a
 // parallel colour table. No new art — this is what "per-biome palette" asks for.
 export function mixHex(base: number, tint: number, amount: number): number {
@@ -151,8 +151,8 @@ const NEUTRAL_VOID = mixHex(THEME.colors.ground, 0x000000, 0.45);
  * element hex lifts it more in relative terms than it lifts an already-lighter one, so
  * `mixHex(NEUTRAL_PALETTE.terrain, hex, 0.1)` pushed fire's terrain to 84% of its own ground's
  * luma while neutral's sat at 74% — i.e. the "never approaches the floor" bound held on the
- * biome it was measured against and quietly failed on the only biome that ships ('ember' is the
- * sole entry in `BIOME_ID_TO_ELEMENT`). Deriving from each palette's own two ends makes the
+ * biome it was measured against and quietly failed on the only biome that shipped then ('ember'
+ * was the sole entry in `BIOME_ID_TO_ELEMENT`). Deriving from each palette's own two ends makes the
  * ratio invariant by construction instead of something a future hue can break.
  *
  * Note what the invariant is NOT: a ratio of terrain's luma to `ground`'s. Every biome colour is
@@ -199,12 +199,27 @@ const BIOME_PALETTES: Record<BiomeElement, BiomePalette> = {
   ) as Record<Exclude<BiomeElement, 'neutral'>, BiomePalette>),
 };
 
-// `biomeId` = `GameState.dungeonConfig?.biomeId` (undefined outside dungeon mode, e.g.
+// `biomeId` = the floor's biome, `floorBiomeId` below (undefined outside dungeon mode, e.g.
 // the flat EngineConfig.floors path or a PvP arena — both fall back to 'neutral',
-// i.e. today's existing palette unchanged).
-const BIOME_ID_TO_ELEMENT: Record<string, BiomeElement> = {
+// i.e. today's existing palette unchanged). `satisfies Record<…>` makes a new chapter in the
+// engine catalog a compile error here until it names its element. The endless chapter is the
+// one exception: it has no biome of its own, since each of its floors is drawn in the biome
+// of the chapter it borrows the floor from (`biomeIdAt`).
+const BIOME_ID_TO_ELEMENT: Readonly<Record<string, BiomeElement>> = {
   ember: 'fire',
-};
+  frost: 'ice', // chapter 2 — the `biome-ice` swatch pack, awaited at the run gate like `run`
+  storm: 'lightning', // chapter 3 — the `biome-lightning` pack, the same way
+  blight: 'poison', // chapter 4, the finale — the `biome-poison` pack; design/13 keeps poison off chapter 1
+} satisfies Record<Exclude<ChapterId, 'endless'>, BiomeElement>;
+
+/**
+ * The biome the run's CURRENT floor is drawn in: the dungeon's own for a chapter, and for the
+ * endless one the biome of the chapter whose floor this is, so its palette, tiles and music
+ * change every five floors. Undefined outside dungeon mode.
+ */
+export function floorBiomeId(s: Pick<GameState, 'dungeonConfig' | 'floorIndex'>): string | undefined {
+  return s.dungeonConfig ? biomeIdAt(s.dungeonConfig, s.floorIndex) : undefined;
+}
 
 export function biomePalette(biomeId: string | undefined): BiomePalette {
   return BIOME_PALETTES[biomeId ? (BIOME_ID_TO_ELEMENT[biomeId] ?? 'neutral') : 'neutral'];

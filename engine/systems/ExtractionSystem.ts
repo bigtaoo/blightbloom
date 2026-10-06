@@ -32,6 +32,9 @@
  *     so "leave with what I have" became "come back to it" rather than
  *     "cash out early". Both directions of the old choice are still reachable; what
  *     is not reachable any more is banking materials without beating the boss.
+ *   - an ENDLESS dungeon (2026-10-06, design/gameplay/04 "The Endless Descent") has no
+ *     last floor, so every one of its boss floors offers both: extract with the bag, or
+ *     descend with it still at risk. Still never banking without beating a boss.
  *
  * Both resolutions bank each seat's own floorMaterials into its own bankedMaterials
  * (design/05 "materials so far are locked in" on descend; "keep materials" on extract,
@@ -50,6 +53,7 @@
 import type { GameState } from '../state/GameState';
 import { cardBuffId, rollFloorCardOffer, tallyCardVote } from '../balance/floorCards';
 import { PORTAL_COUNTDOWN_TICKS } from '../config';
+import { floorOffersDescend, floorOffersExtract } from '../world/dungeon';
 import type { PlayerActor } from '../state/entities';
 
 export class ExtractionSystem {
@@ -78,19 +82,23 @@ export class ExtractionSystem {
       if (!(state.wavesExhausted && state.enemies.length === 0)) return;
     }
 
-    // Last-floor test differs by mode: the flat-`floors` list counts extraFloors; a
-    // generated dungeon counts its configured floorCount (design/05 "the last floor's
-    // boss room IS its extraction room" — it just has no Descend option, below).
-    const isLastFloor = state.dungeonEnabled
-      ? state.floorIndex >= state.dungeonConfig!.floorCount - 1
+    // Which buttons this floor's portal offers. The flat-`floors` list: descend until its
+    // last floor, which extracts. A dungeon asks `dungeon/floorSource.ts`: a finite one the
+    // same way by its configured floorCount (design/05 "the last floor's boss room IS its
+    // extraction room"); an endless one offers both on every boss floor, descend elsewhere.
+    const offersExtract = state.dungeonEnabled
+      ? floorOffersExtract(state.dungeonConfig!, state.floorIndex)
       : state.floorIndex >= state.extraFloors.length;
+    const offersDescend = state.dungeonEnabled
+      ? floorOffersDescend(state.dungeonConfig!, state.floorIndex)
+      : state.floorIndex < state.extraFloors.length;
 
     // The floor-card offer (design/05, ENGINE_VERSION 58) opens with the portal and
     // only on a floor there is somewhere to descend TO — a card the last floor hands
     // out could never be spent, and rolling one would cost `cardPrng` draws for a
     // choice with no consequence. Rolled once: a non-empty offer is the "already
     // open" flag, and `resolveDescend` is the only thing that empties it.
-    if (!isLastFloor && state.floorCardOffer.length === 0) {
+    if (offersDescend && state.floorCardOffer.length === 0) {
       state.floorCardOffer = rollFloorCardOffer(state.cardPrng);
     }
 
@@ -103,19 +111,30 @@ export class ExtractionSystem {
     // not. A solo press confirms the only seat there is, so a solo run resolves on the
     // press, exactly as before.
     //
-    // The button is the floor's own: CONFIRM_EXTRACT on the last floor, CONFIRM_DESCEND
-    // on every other. The other one is ignored (ENGINE_VERSION 61 — see the header).
-    const pressed = (p: PlayerActor) => (isLastFloor ? p.confirmExtract : p.confirmDescend);
+    // The buttons are the floor's own: CONFIRM_EXTRACT on the last floor, CONFIRM_DESCEND
+    // on every other, and a button the floor does not offer is ignored (ENGINE_VERSION 61 —
+    // see the header). An endless boss floor offers both: the press that opens the portal
+    // picks the way (`portalChoice`), and from then on a press confirms when it includes
+    // that way's button. A press holding both still confirms — the co-op ally bot confirms
+    // that way (`AllyController`'s PORTAL_CONFIRM), and reading it as EXTRACT would leave a
+    // descending squad waiting out the whole countdown for it.
+    const both = offersExtract && offersDescend;
     for (const p of state.players) {
-      if (!p.alive || p.downed || p.portalReady || !pressed(p)) continue;
+      if (!p.alive || p.downed || p.portalReady) continue;
       // Descend needs a card chosen before the portal opens. The vote is the squad's,
       // not the presser's (2026-09-05: "whichever card the most people chose takes
       // effect"), and a tally of 0 means nobody has tapped a card yet, which HOLDS the
       // portal rather than descending without one. A vote can change but never return to
       // 0, so a tally that was non-zero at the opening press is non-zero at resolution.
       if (state.portalCountdownTicks === 0) {
-        if (!isLastFloor && this.votedSlot(state) === 0) continue;
+        const choice = this.pressedChoice(p, offersExtract, offersDescend);
+        if (choice === null) continue;
+        if (choice === 'descend' && this.votedSlot(state) === 0) continue;
         state.portalCountdownTicks = PORTAL_COUNTDOWN_TICKS;
+        if (both) state.portalChoice = choice;
+      } else {
+        const way = state.portalChoice ?? (offersExtract ? 'extract' : 'descend');
+        if (!(way === 'extract' ? p.confirmExtract : p.confirmDescend)) continue;
       }
       p.portalReady = true;
     }
@@ -129,8 +148,17 @@ export class ExtractionSystem {
     if (waiting && state.portalCountdownTicks > 0) return;
     // EXTRACT ends the run, so whatever the squad had voted for is moot — the card is
     // deliberately NOT applied on the way out.
-    if (isLastFloor) this.resolveExtract(state);
+    const extract = both ? state.portalChoice === 'extract' : offersExtract;
+    if (extract) this.resolveExtract(state);
     else this.resolveDescend(state, state.floorCardOffer[this.votedSlot(state) - 1]);
+  }
+
+  /** Which way `p`'s press this tick asks the portal to go, or null for no press the floor
+   *  offers. Pressing both buttons on the same tick reads as EXTRACT, the safe way. */
+  private pressedChoice(p: PlayerActor, offersExtract: boolean, offersDescend: boolean): 'extract' | 'descend' | null {
+    if (offersExtract && p.confirmExtract) return 'extract';
+    if (offersDescend && p.confirmDescend) return 'descend';
+    return null;
   }
 
   /** The squad's winning card slot, 1-based; 0 while nobody has voted. */
@@ -141,6 +169,7 @@ export class ExtractionSystem {
   /** Close the portal countdown: every resolution passes through here. */
   private closePortal(state: GameState): void {
     state.portalCountdownTicks = 0;
+    state.portalChoice = null;
     for (const p of state.players) p.portalReady = false;
   }
 

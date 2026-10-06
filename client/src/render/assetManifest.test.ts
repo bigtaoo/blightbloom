@@ -137,18 +137,18 @@ describe('what the first download contains', () => {
     }
   });
 
-  it('defers both music tracks and no SFX to the never-awaited pack', () => {
+  it('defers every music track and no SFX to the never-awaited pack', () => {
     // SFX are ~123 kB across 61 files and every cue has a procedural voice, so they ride along
-    // in `run` rather than needing a phase of their own. Music is 0.84 MB and is the pack
+    // in `run` rather than needing a phase of their own. Music is 3.41 MB and is the pack
     // nothing awaits.
     for (const def of Object.values(MUSIC_CATALOGUE)) expect(packOf(def.path), def.path).toBe('music');
     for (const path of allSfxPaths()) expect(packOf(path), path).toBe(DEFAULT_PACK);
   });
 
-  it('keeps fire and neutral out of the element subpackages — the only elements a run can reach', () => {
-    // theme.ts's BIOME_ID_TO_ELEMENT maps the one authored dungeon ('ember') to 'fire', and
-    // anything without a dungeonConfig (PvP, arena) falls to 'neutral'. Both must be in the
-    // pack the run gate awaits, not in one of the unreachable-element packs.
+  it('keeps fire and neutral out of the element subpackages — the elements every player reaches', () => {
+    // theme.ts's BIOME_ID_TO_ELEMENT maps chapter 1 ('ember') to 'fire', and anything without
+    // a dungeonConfig (PvP, arena) falls to 'neutral'. Both must be in the default `run` pack.
+    // Chapter 2 ('frost') reaches 'ice', whose pack is awaited at the same run gate (below).
     for (const el of ['fire', 'neutral'] as const) {
       for (const kind of ['floor', 'wall', 'wallface'] as const) {
         expect(packOf(BIOME_TILE_ASSETS[`${kind}_${el}`])).toBe(DEFAULT_PACK);

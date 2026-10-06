@@ -1,0 +1,21 @@
+"Ominous Goings-On" by Eric Matyas -- licence statement, captured verbatim 2026-10-06
+Source page: https://opengameart.org/content/ominous-goings-on
+             (page title "Ominous Goings-On"; it carries three files: an mp3, the full ogg and
+             the composer's looping version, which is the one used here)
+File:        https://opengameart.org/sites/default/files/ominous_goings-on_looping.ogg
+Author site: https://soundimage.org
+
+From the source page:
+  License(s): CC-BY 3.0
+  Copyright/Attribution Notice: "This work is licensed under a Creative Commons Attribution 4.0
+  International License. Please credit as follows: "Ominous Goings-On" by Eric Matyas
+  Soundimage.org"
+
+The page's licence field (selected at upload, 2014) reads CC-BY 3.0; the author's own notice on the
+same page states CC BY 4.0. Both are attribution-only licences that allow commercial use and an
+adaptation (a cut loop region); this game takes the work under the author's stated 4.0 and credits
+it in the form he asks for, which satisfies the attribution term of either.
+
+Licence: CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+Where this game credits it: Settings, under the AUDIO section (client/src/audio/musicCredits.ts),
+in the author's requested form with the licence added.

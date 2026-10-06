@@ -17,7 +17,7 @@ import { createGameEngine, ReplayInputSource, type EngineConfig, type GameEngine
 import type { Container } from 'pixi.js';
 import { t } from '../../i18n';
 import { THEME } from '../theme';
-import { clearLoadout } from '../../meta';
+import { clearLoadout, playableChapter } from '../../meta';
 import type { CoopSession } from '../../net/CoopSession';
 import { buildArenaDemoConfig, buildDungeonRunConfig } from '../match/offlineConfig';
 import { buildTutorialConfig } from '../match/tutorialConfig';
@@ -25,6 +25,7 @@ import type { MatchRecorder } from '../match/MatchRecorder';
 import { saveMarkedReplay } from '../match/replayDownload';
 import { loadReplayFile, replayStopTick } from '../match/replayPlayback';
 import { checkResumable, packRunSave, unpackCommands } from '../match/runSave';
+import { rebuildSavedRunConfig } from '../match/resumableRun';
 import { clearSavedRun, loadSavedRun, writeSavedRun } from '../match/runSaveStore';
 import type { Layers } from '../scene/layers';
 import type { Scene } from '../scene/Scene';
@@ -151,12 +152,14 @@ export class RunLifecycle {
       return;
     }
 
-    // Carry the chosen character + the crafted loadout into the run (design/14) — see
-    // offlineConfig.ts's buildDungeonRunConfig doc comment for the coop/single-player shape.
+    // Carry the chosen character, crafted loadout and chapter into the run (design/14) — see
+    // buildDungeonRunConfig for the coop/single-player shape; `playableChapter` falls back to
+    // chapter 1 for a pick that is not (or no longer) unlocked.
     this.startOfflineEngine(
       'dungeon',
       buildDungeonRunConfig({
         seed: d.run.nextRunSeed(),
+        chapterId: playableChapter(d.run.meta),
         coop: d.run.coop,
         localSeat: { skinId: d.run.meta.selectedSkin, loadout: d.run.meta.loadout },
         allySkinId: d.allySkinId(),
@@ -254,7 +257,7 @@ export class RunLifecycle {
    * CONTINUE RUN (design/05 "Only the boss floor ends a run", ENGINE_VERSION 61) — resume the
    * unfinished single-player run `saveAndQuitRun` put away.
    *
-   * The whole resume is: rebuild the config from the save's seed + loadout, replay the saved
+   * The whole resume is: rebuild the config from the save's seed/loadout/chapter, replay the saved
    * command stream through a fresh engine, and hand the same input source to the live command
    * builder, which appends to it from the next tick on. There is no restore step, because
    * there is nothing to restore — see `runSave.ts`'s header for why a seed and an input
@@ -286,12 +289,8 @@ export class RunLifecycle {
     if (d.transitions.deferRunBoundary('run', () => this.resumeSavedRun())) return; // a run boundary
     const save = loadSavedRun();
     if (!save) return; // nothing to continue — the button should not have been there
-    const config = buildDungeonRunConfig({
-      seed: save.seed,
-      coop: false, // savableRun() admits single-player runs only, so this is not a choice
-      localSeat: { skinId: save.skinId, loadout: save.loadout },
-      allySkinId: d.allySkinId(),
-    });
+    // The save's own seed, loadout and CHAPTER — the same rebuild `resumableRun.ts` checked.
+    const config = rebuildSavedRunConfig(save, d.allySkinId());
     const refusal = checkResumable(save, config);
     if (refusal !== null) {
       clearSavedRun();

@@ -40,6 +40,15 @@
 // second door so the route never becomes unreachable. The dock re-divides its width between
 // SQUAD and FORGE when it goes, so no hole is left where it was.
 //
+// ## The chapter picker (2026-10-06)
+//
+// `ChapterPicker` sits directly under SOLO in every state — under the banner, under the slim
+// bar — because the chapter is what a NEW run starts in, and SOLO (with the portal's PLAY above
+// it) is what starts one. CONTINUE ignores it: a saved run resumes in its own chapter. While
+// the picker shows a locked chapter, SOLO is taken out of play (`setStartBlocked`) and the
+// shell does the same to PLAY, so no card on the screen can start a run the picker is not
+// showing.
+//
 // ## FORGE's badge (2026-09-28)
 //
 // A count of the weapons the forge would craft right now (`meta/forge.ts craftableNow`), on
@@ -50,7 +59,9 @@ import { Container, Graphics, Text } from 'pixi.js';
 import { Button } from './widgets';
 import { LobbyCard } from './LobbyCard';
 import { whenUiTexture } from '../../render/uiSkins';
-import { TICK_RATE } from '@dd/engine';
+import { TICK_RATE, type ChapterId } from '@dd/engine';
+import { ChapterPicker, CHAPTER_PICKER_H } from './ChapterPicker';
+import type { ChapterProgress } from '../../meta';
 import type { SavedRunSummary } from '../match/runSave';
 import { t } from '../../i18n';
 
@@ -69,11 +80,16 @@ export const LOBBY_GAP = 8;
 const TIER_GAP = 14;
 const DOCK_GAP = 8;
 
+/** The chapter picker under SOLO, and the gap that ties it to SOLO rather than to CO-OP. */
+const PICKER_SLOT = LOBBY_GAP + CHAPTER_PICKER_H;
+/** A run-starting card while the picker shows a locked chapter. */
+const BLOCKED_ALPHA = 0.45;
+
 /** The block's height when SOLO is the primary (no save, not a portal). */
-export const LOBBY_ROUTES_H = LOBBY_PRIMARY_H + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
+export const LOBBY_ROUTES_H = LOBBY_PRIMARY_H + PICKER_SLOT + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
 /** The block's height when something above SOLO holds the primary — CONTINUE here, or
  *  `MainMenu`'s PLAY — and SOLO is the slim bar. Includes that primary's own slot. */
-export const LOBBY_ROUTES_DEMOTED_H = LOBBY_PRIMARY_H + LOBBY_GAP + SOLO_SLIM_H + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
+export const LOBBY_ROUTES_DEMOTED_H = LOBBY_PRIMARY_H + LOBBY_GAP + SOLO_SLIM_H + PICKER_SLOT + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
 
 /** The "go" green every primary action in this project uses, and its brighter border. */
 const PRIMARY_FILL = 0x2f855a;
@@ -92,6 +108,8 @@ export class LobbyRoutes {
   /** CONTINUE RUN — drawn only for a save `resumableRun.ts` says this build can rebuild. */
   private continueBtn: LobbyCard;
   private soloBtn: LobbyCard;
+  /** Which chapter a new run starts in — see the header. */
+  private chapters = new ChapterPicker(LOBBY_ROUTES_W);
   private coopBtn: LobbyCard;
   private pvpSoloBtn: LobbyCard;
   private squadBtn: Button;
@@ -114,6 +132,10 @@ export class LobbyRoutes {
   private ownsPrimary = true;
 
   onContinue: (() => void) | null = null;
+  /** The player picked an unlocked chapter in the picker — persist it. */
+  onSelectChapter: ((id: ChapterId) => void) | null = null;
+  /** The picker moved onto (true) or off (false) a locked chapter — the shell's PLAY follows. */
+  onStartBlockedChange: ((blocked: boolean) => void) | null = null;
   onSolo: (() => void) | null = null;
   onCoop: (() => void) | null = null;
   onPvpSolo: (() => void) | null = null;
@@ -128,6 +150,11 @@ export class LobbyRoutes {
 
     this.soloBtn = new LobbyCard(t('mainMenu.solo'), LOBBY_ROUTES_W, LOBBY_PRIMARY_H, { art: 'lobby_card_descend', fill: PRIMARY_FILL, frame: PRIMARY_FRAME, fontSize: 26, glow: true });
     this.soloBtn.onTap = () => this.onSolo?.();
+    this.chapters.onSelect = (id) => this.onSelectChapter?.(id);
+    this.chapters.onBlockedChange = (blocked) => {
+      this.setStartBlocked(blocked);
+      this.onStartBlockedChange?.(blocked);
+    };
 
     this.coopBtn = new LobbyCard(t('mainMenu.coop'), LOBBY_ROUTES_W, SECONDARY_H, { art: 'lobby_card_coop', fill: 0x234e52, frame: COOP_FRAME, fontSize: 19 });
     this.coopBtn.onTap = () => this.onCoop?.();
@@ -163,7 +190,7 @@ export class LobbyRoutes {
     this.forgeBadge.visible = false;
 
     this.view.addChild(
-      this.continueBtn.view, this.soloBtn.view, this.coopBtn.view, this.pvpSoloBtn.view,
+      this.continueBtn.view, this.soloBtn.view, this.chapters.view, this.coopBtn.view, this.pvpSoloBtn.view,
       this.squadBtn.view, this.forgeBtn.view, this.tutorialBtn.view, this.recommendedTag,
       this.forgeBadge,
     );
@@ -182,6 +209,27 @@ export class LobbyRoutes {
     this.continueBtn.view.visible = saved !== null;
     this.retextContinue();
     this.applyHierarchy();
+  }
+
+  /** The account's chapter progress — the picker snaps to the chapter a run would start in.
+   *  `MainMenu.show` calls it on every show. */
+  setChapterProgress(progress: ChapterProgress): void {
+    this.chapters.setProgress(progress);
+  }
+
+  /** Whether the picker is showing a locked chapter, i.e. no new run may start. */
+  get startBlocked(): boolean {
+    return this.chapters.blocked;
+  }
+
+  /** Take SOLO and CO-OP out of play (dimmed, not hit-testable) or put them back. CO-OP too,
+   *  because its queue plays the picked chapter as well (`OnlineMatch.connect`): leaving it live
+   *  while a locked chapter is on screen would queue a chapter the lobby is not showing. */
+  private setStartBlocked(blocked: boolean): void {
+    for (const btn of [this.soloBtn, this.coopBtn]) {
+      btn.view.alpha = blocked ? BLOCKED_ALPHA : 1;
+      btn.view.eventMode = blocked ? 'none' : 'static';
+    }
   }
 
   /** What this block occupies vertically — the primary's slot included when SOLO is demoted
@@ -266,7 +314,9 @@ export class LobbyRoutes {
       y += LOBBY_PRIMARY_H + LOBBY_GAP;
     }
     this.soloBtn.view.position.set(0, y);
-    y += this.soloBtn.height + TIER_GAP;
+    y += this.soloBtn.height + LOBBY_GAP;
+    this.chapters.view.position.set(0, y);
+    y += CHAPTER_PICKER_H + TIER_GAP;
     this.coopBtn.view.position.set(0, y);
     y += SECONDARY_H + LOBBY_GAP;
     this.pvpSoloBtn.view.position.set(0, y);
@@ -291,12 +341,14 @@ export class LobbyRoutes {
   /** Advance the primary card's glow, and any banner's fade-in. */
   update(dtMs: number): void {
     for (const card of this.cards()) card.update(dtMs);
+    this.chapters.update(dtMs);
   }
 
   /** Redraw any banner whose art has landed since it was drawn (`MainMenu`, as lobby art
    *  arrives). */
   refreshArt(): void {
     for (const card of this.cards()) card.refreshArt();
+    this.chapters.refreshArt();
   }
 
   private cards(): LobbyCard[] {
@@ -326,6 +378,7 @@ export class LobbyRoutes {
   retext(): void {
     this.retextContinue();
     this.retextSolo();
+    this.chapters.retext();
     this.coopBtn.setText(t('mainMenu.coop'));
     this.coopBtn.setHint(t('mainMenu.coopHint'));
     this.pvpSoloBtn.setText(t('mainMenu.pvpSolo'));

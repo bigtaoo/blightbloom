@@ -1,0 +1,155 @@
+{
+  "id": "blight_l1_span",
+  "tags": [
+    "blight_l1"
+  ],
+  "sizeGrid": {
+    "w": 19,
+    "h": 16
+  },
+  "solids": [
+    {
+      "x": 11,
+      "y": 9,
+      "w": 2,
+      "h": 3,
+      "freeStanding": true
+    },
+    {
+      "x": 7,
+      "y": 4,
+      "w": 2,
+      "h": 3,
+      "freeStanding": true
+    },
+    {
+      "x": 18,
+      "y": 0,
+      "w": 1,
+      "h": 16
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 16
+    },
+    {
+      "x": 1,
+      "y": 15,
+      "w": 17,
+      "h": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "w": 17,
+      "h": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 12,
+        "y": 13.5
+      },
+      {
+        "x": 8,
+        "y": 13.5
+      }
+    ],
+    "enemy": [
+      {
+        "x": 16.5,
+        "y": 9.5,
+        "type": "basic"
+      },
+      {
+        "x": 16.5,
+        "y": 7.5,
+        "type": "floater"
+      },
+      {
+        "x": 16.5,
+        "y": 3.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 14.5,
+        "y": 5.5,
+        "type": "basic"
+      },
+      {
+        "x": 12.5,
+        "y": 7.5,
+        "type": "floater"
+      },
+      {
+        "x": 12.5,
+        "y": 3.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 10.5,
+        "y": 7.5,
+        "type": "basic"
+      },
+      {
+        "x": 10.5,
+        "y": 3.5,
+        "type": "stalker"
+      },
+      {
+        "x": 4.5,
+        "y": 5.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 2.5,
+        "y": 9.5,
+        "type": "basic"
+      },
+      {
+        "x": 2.5,
+        "y": 5.5,
+        "type": "stalker"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 15.5,
+      "y": 13.5
+    },
+    {
+      "id": "rubble",
+      "x": 11.5,
+      "y": 8.5
+    },
+    {
+      "id": "rubble",
+      "x": 8,
+      "y": 7.5
+    },
+    {
+      "id": "barrel",
+      "x": 2.5,
+      "y": 3
+    }
+  ]
+}
