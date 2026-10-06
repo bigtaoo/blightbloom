@@ -117,6 +117,19 @@ weapon are content no existing scenario reaches.
 
 38 kB.
 
+**The lightning floor had been drawn as a fire floor, and chapter 3 was the first to show it.**
+Starting a storm run in the browser put galvanists on a floor with red-orange crack glow.
+`floor_lightning.png` had shipped on 2026-08-02. Its glow measures hue 12°, exactly
+`floor_fire`'s, against a prompt asking for a yellow static glow. No dungeon had ever mapped to
+`lightning`, so nothing could show it. The fix is a documented mechanical step, with the raw
+left as the generator's bytes:
+- the warm, saturated pixels (0.70%, the crack glow alone) have their hue set to 54°;
+- the result is compressed to 256 px as before;
+- the stone's mean colour is unchanged (`art/biome/prompts.md`).
+
+The other two lightning swatches were measured as well: the wall top is cool blue-grey, and the
+wall face has a few amber pixels that read as light, not fire. Both were left alone.
+
 ### Music
 
 `dungeon.storm`, the chapter's own bed: see the music section below, filled in from the music
