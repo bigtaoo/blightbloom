@@ -121,6 +121,39 @@
       }
     },
     {
+      "name": "storm-dungeon-floor1",
+      "pins": "chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison",
+      "ticks": 1500,
+      "hash": 1859638503,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 1,
+        "pickups": 7,
+        "floorIndex": 0,
+        "hpTotal": 3,
+        "energyTotal": 94,
+        "prngCursors": 16563226598,
+        "events": {
+          "bullet_fired": 189,
+          "room_enter": 2,
+          "door_locked": 2,
+          "hit": 73,
+          "clash": 6,
+          "melee_swing": 76,
+          "deflect": 4,
+          "death": 17,
+          "pickup": 10,
+          "shield_break": 2,
+          "door_unlocked": 2,
+          "force_regroup": 1
+        }
+      }
+    },
+    {
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,

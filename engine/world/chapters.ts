@@ -22,9 +22,10 @@ import type { DungeonConfig } from './dungeon';
 import { EMBER_DUNGEON } from './rooms/ember';
 import { EMBER_L1_ROOMS } from './rooms/emberLevel1';
 import { FROST_DUNGEON, FROST_L1_ROOMS } from './rooms/frost';
+import { STORM_DUNGEON, STORM_L1_ROOMS } from './rooms/storm';
 
 /** Every chapter id, in unlock order. */
-export const CHAPTER_ORDER = ['ember', 'frost'] as const;
+export const CHAPTER_ORDER = ['ember', 'frost', 'storm'] as const;
 export type ChapterId = (typeof CHAPTER_ORDER)[number];
 
 /** The chapter a run starts in when nothing chose one: an old save, an old client's
@@ -40,6 +41,7 @@ export interface ChapterContent {
 export const CHAPTERS: Readonly<Record<ChapterId, ChapterContent>> = {
   ember: { config: EMBER_DUNGEON, library: EMBER_L1_ROOMS },
   frost: { config: FROST_DUNGEON, library: FROST_L1_ROOMS },
+  storm: { config: STORM_DUNGEON, library: STORM_L1_ROOMS },
 };
 
 /** Narrow an untrusted value (a save file, a wire message, storage) to a chapter id. */

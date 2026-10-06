@@ -59,10 +59,10 @@ describe('recordChapterCleared', () => {
   });
 
   it('clearing the last chapter keeps the pick — there is nothing after it to move to', () => {
-    const m: MetaState = { ...cleared('ember'), selectedChapter: 'frost' };
-    const next = recordChapterCleared(m, 'frost');
-    expect(next.clearedChapters).toEqual(['ember', 'frost']);
-    expect(next.selectedChapter).toBe('frost');
+    const m: MetaState = { ...cleared('ember', 'frost'), selectedChapter: 'storm' };
+    const next = recordChapterCleared(m, 'storm');
+    expect(next.clearedChapters).toEqual(['ember', 'frost', 'storm']);
+    expect(next.selectedChapter).toBe('storm');
   });
 });
 

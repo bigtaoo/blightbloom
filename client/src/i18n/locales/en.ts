@@ -36,6 +36,7 @@ export const en = {
     locked: 'Clear chapter {n} to unlock',
     ember: { name: 'The Ember Descent' },
     frost: { name: 'The Frost Descent' },
+    storm: { name: 'The Storm Descent' },
   },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
@@ -430,6 +431,7 @@ export const en = {
     enemymaul: { name: 'Raider Maul' },
     enemynova: { name: 'Raider Nova' },
     enemyshardfan: { name: 'Raider Shard Fan' },
+    enemyarcseeker: { name: 'Raider Arc Seeker' },
     flamer: { name: 'Flamethrower' },
     cryobolt: { name: 'Cryobolt' },
     teslagun: { name: 'Tesla Gun' },

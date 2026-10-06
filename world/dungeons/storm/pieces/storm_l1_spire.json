@@ -1,0 +1,150 @@
+{
+  "id": "storm_l1_spire",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 17,
+    "h": 16
+  },
+  "solids": [
+    {
+      "x": 6,
+      "y": 7,
+      "w": 6,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 8,
+      "y": 5,
+      "w": 2,
+      "h": 6,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 15,
+      "w": 17,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 17,
+      "h": 1
+    },
+    {
+      "x": 16,
+      "y": 1,
+      "w": 1,
+      "h": 14
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 14
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 14.5,
+        "y": 10
+      },
+      {
+        "x": 14.5,
+        "y": 6
+      }
+    ],
+    "enemy": [
+      {
+        "x": 8.5,
+        "y": 13.5,
+        "type": "basic"
+      },
+      {
+        "x": 6.5,
+        "y": 13.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 2.5,
+        "y": 13.5,
+        "type": "brute"
+      },
+      {
+        "x": 4.5,
+        "y": 11.5,
+        "type": "basic"
+      },
+      {
+        "x": 4.5,
+        "y": 9.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 4.5,
+        "y": 7.5,
+        "type": "brute"
+      },
+      {
+        "x": 2.5,
+        "y": 7.5,
+        "type": "basic"
+      },
+      {
+        "x": 4.5,
+        "y": 5.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 8.5,
+        "y": 3.5,
+        "type": "ravager"
+      },
+      {
+        "x": 4.5,
+        "y": 3.5,
+        "type": "basic"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 14.5,
+      "y": 13.5
+    },
+    {
+      "id": "rubble",
+      "x": 13,
+      "y": 8
+    },
+    {
+      "id": "rubble",
+      "x": 5.5,
+      "y": 4.5
+    },
+    {
+      "id": "barrel",
+      "x": 2.5,
+      "y": 2
+    }
+  ]
+}

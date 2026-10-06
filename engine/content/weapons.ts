@@ -128,7 +128,7 @@ export function toSimSpec(spec: WeaponSpec): WeaponSimSpec {
 /** Mob loadouts — authored in WEAPON_SPECS like everything else, but never
  *  player-facing: excluded from `WEAPON_SIM_BY_ID` so they can neither roll as a
  *  weapon drop (`WEAPON_DROP_POOL` resolves through that map) nor be crafted. */
-export const MOB_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul', 'enemynova', 'enemyshardfan'];
+export const MOB_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul', 'enemynova', 'enemyshardfan', 'enemyarcseeker'];
 
 export const WEAPON_SIM_BY_ID: Record<string, WeaponSimSpec> = Object.fromEntries(
   Object.entries(WEAPON_SPECS)
@@ -149,6 +149,8 @@ export const ENEMY_MAUL_SIM = toSimSpec(WEAPON_SPECS.enemymaul!) as MeleeSimSpec
 export const ENEMY_NOVA_SIM = toSimSpec(WEAPON_SPECS.enemynova!) as RangedSimSpec;
 // Glacimaw's aimed ice cone (chapter 2, design/gameplay/04-chapters.md).
 export const ENEMY_SHARDFAN_SIM = toSimSpec(WEAPON_SPECS.enemyshardfan!) as RangedSimSpec;
+// Voltreaver's homing lightning orbs (chapter 3).
+export const ENEMY_ARCSEEKER_SIM = toSimSpec(WEAPON_SPECS.enemyarcseeker!) as RangedSimSpec;
 export const SCATTERGUN_SIM = WEAPON_SIM_BY_ID.scattergun as RangedSimSpec;
 export const SEEKER_SIM = WEAPON_SIM_BY_ID.seeker as RangedSimSpec;
 export const MORTAR_SIM = WEAPON_SIM_BY_ID.mortar as RangedSimSpec;

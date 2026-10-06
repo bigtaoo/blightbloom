@@ -35,6 +35,7 @@ export const it: Translations<typeof en> = {
     locked: 'Completa il capitolo {n}',
     ember: { name: 'La Discesa delle Braci' },
     frost: { name: 'La Discesa del Gelo' },
+    storm: { name: 'La Discesa della Tempesta' },
   },
   loading: {
     boot: 'CARICAMENTO',
@@ -399,6 +400,7 @@ export const it: Translations<typeof en> = {
     enemymaul: { name: 'Maglio del predone' },
     enemynova: { name: 'Nova del predone' },
     enemyshardfan: { name: 'Ventaglio di schegge del predone' },
+    enemyarcseeker: { name: 'Cercatore d’archi del predone' },
     flamer: { name: 'Lanciafiamme' },
     cryobolt: { name: 'Criobolt' },
     teslagun: { name: 'Cannone Tesla' },

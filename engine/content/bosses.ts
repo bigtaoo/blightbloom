@@ -1,8 +1,8 @@
-// Enemy blueprints, the boss half (split out of `enemies.ts`, which re-exports it): the four
+// Enemy blueprints, the boss half (split out of `enemies.ts`, which re-exports it): the five
 // bosses and the random-boss pool chapter 1's boss room draws from.
 import { pxToFp } from './convert';
 import type { EnemyBlueprint } from './enemies';
-import { ENEMY_GUN_SIM, ENEMY_NOVA_SIM, ENEMY_SHARDFAN_SIM } from './weapons';
+import { ENEMY_ARCSEEKER_SIM, ENEMY_GUN_SIM, ENEMY_NOVA_SIM, ENEMY_SHARDFAN_SIM } from './weapons';
 
 // ── Boss ────────────────────────────────────────────────────────────────────────
 // The durable finale — a big, tanky mob that survives long enough to *show* the
@@ -122,6 +122,38 @@ export const GLACIMAW: EnemyBlueprint = {
   bodyRig: 'boss-core',
   moveSpeedPerTick: pxToFp(2.2), // under the roster default (2.6) — it plants and aims
   enrage: { hpThresholdPermille: 400, bonusDamagePermille: 0, bonusFireratePermille: 500 },
+};
+
+/**
+ * Chapter 3's boss (the Storm descent, design/gameplay/04-chapters.md) — the "out-turn it"
+ * axis, beside Pyrefang's "keep moving", Ironwarden's "burst to the break" and Glacimaw's
+ * "don't get pinned". Its loadout fires HOMING lightning orbs (`enemyarcseeker`) in a wide fan,
+ * so the dodges the other three teach do not clear a volley on their own: the orbs follow.
+ * Their turn rate is modest, so a late, hard cut across their path makes them overshoot, and
+ * they are fat and slower than the player's bullets, so the ones that come down the firing
+ * line can be shot out of the air (hostile bullets annihilate). In co-op
+ * each hit arcs to the nearest teammate (lightning's chain), which makes standing together
+ * the mistake. Resist profile mirrors GALVANIST's ratios boss-scaled (shrugs lightning, rots
+ * to poison), as Glacimaw mirrors FROSTLING's — the chapter's poison drops are the answer.
+ *
+ * Not in `BOSS_POOL`: chapter 3's boss room names it directly. A touch faster than the
+ * roster default, because a homing volley from a boss that stands still is a turret; it
+ * keeps its distance while the orbs do the work. `enrage` alone: below 40% the volleys come
+ * 40% faster, no damage bonus.
+ */
+export const VOLTREAVER: EnemyBlueprint = {
+  type: 'voltreaver',
+  // No `element` badge — see PYREFANG's own note.
+  maxHp: 40,
+  radius: pxToFp(28),
+  footprintRadius: pxToFp(13),
+  weapon: ENEMY_ARCSEEKER_SIM,
+  resist: { lightning: 400, poison: 1800 },
+  tint: 0xfff176, // charged yellow — GALVANIST's exact hue, boss-scaled
+  boss: true,
+  bodyRig: 'boss-core',
+  moveSpeedPerTick: pxToFp(3.0), // over the roster default (2.6) — it repositions between volleys
+  enrage: { hpThresholdPermille: 400, bonusDamagePermille: 0, bonusFireratePermille: 400 },
 };
 
 /** The random-boss pool floor 5's boss room draws from (`SpawnSystem`'s `'boss_random'`

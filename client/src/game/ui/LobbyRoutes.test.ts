@@ -310,7 +310,7 @@ describe('the chapter picker sits under SOLO, and a locked chapter takes SOLO ou
     // PvP never plays a chapter, so a locked chapter on screen says nothing about it.
     expect(pvp.alpha).toBe(1);
     expect(pvp.eventMode).toBe('static');
-    privateOf(r).chapters.cycle(1); // and back to ember
+    privateOf(r).chapters.cycle(-1); // and back to ember
     for (const v of [solo, coop]) {
       expect(v.alpha).toBe(1);
       expect(v.eventMode).toBe('static');

@@ -35,6 +35,7 @@ export const de: Translations<typeof en> = {
     locked: 'Erst Kapitel {n} abschließen',
     ember: { name: 'Der Glutabstieg' },
     frost: { name: 'Der Frostabstieg' },
+    storm: { name: 'Der Sturmabstieg' },
   },
   loading: {
     boot: 'LÄDT',
@@ -399,6 +400,7 @@ export const de: Translations<typeof en> = {
     enemymaul: { name: 'Räuberhammer' },
     enemynova: { name: 'Räubernova' },
     enemyshardfan: { name: 'Räuber-Splitterfächer' },
+    enemyarcseeker: { name: 'Räuber-Funkensucher' },
     flamer: { name: 'Flammenwerfer' },
     cryobolt: { name: 'Kryobolzen' },
     teslagun: { name: 'Teslakanone' },

@@ -1019,7 +1019,7 @@ describe('MainMenu — the chapter picker (2026-10-06)', () => {
     privateOf(m).routes.chapters.cycle(1); // frost, locked on a fresh account
     expect(play.alpha).toBeLessThan(1);
     expect(play.eventMode).toBe('none');
-    privateOf(m).routes.chapters.cycle(1);
+    privateOf(m).routes.chapters.cycle(-1); // back to ember
     expect(play.alpha).toBe(1);
     expect(play.eventMode).toBe('static');
   });
