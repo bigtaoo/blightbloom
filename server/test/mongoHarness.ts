@@ -95,8 +95,8 @@ let sharedClient: MongoClient | undefined;
  *
  *  - the database name carries a counter nobody else can compute, so nothing leaks BETWEEN
  *    tests even though nothing is dropped;
- *  - `mongoGlobalSetup.ts` destroys the entire mongod when the run ends, so nothing leaks
- *    AFTER it either.
+ *  - `mongoGlobalSetup.ts` destroys the entire mongod and its dbPath when the run ends, so
+ *    nothing leaks AFTER it either.
  *
  * What still has to be closed is the SOCKET, because an open client keeps the worker alive
  * and vitest would hang rather than fail — `mongoSetup.ts` does that in a file-scoped

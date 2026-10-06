@@ -22,10 +22,17 @@
  */
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { TestProject } from 'vitest/node';
+import { sweepOrphanedDbPaths, teardownMongo } from './mongoTeardown';
 
 let replSet: MongoMemoryReplSet | undefined;
 
 export async function setup(project: TestProject): Promise<void> {
+  // Clean up after runs that died before their teardown (see mongoTeardown.ts).
+  const swept = sweepOrphanedDbPaths();
+  if (swept.length > 0) {
+    console.log(`server test setup: removed ${swept.length} orphaned mongo-mem-* dbPath(s) left by interrupted runs`);
+  }
+
   replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1 },
     // Pinned rather than "whatever is newest". The binary is downloaded on a cold CI
@@ -39,8 +46,11 @@ export async function setup(project: TestProject): Promise<void> {
 }
 
 export async function teardown(): Promise<void> {
-  await replSet?.stop();
+  // NOT a bare `replSet.stop()`: on Windows that leaked the whole ~0.5 GB dbPath on every
+  // green run. mongoTeardown.ts has the account.
+  const rs = replSet;
   replSet = undefined;
+  if (rs) await teardownMongo({ servers: rs.servers, stop: (opts) => rs.stop(opts) });
 }
 
 declare module 'vitest' {
