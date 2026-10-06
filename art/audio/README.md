@@ -13,6 +13,11 @@ Mirrors the `art/` convention: this directory holds the **source** audio and its
 paperwork. Nothing here is loaded at runtime — what the game ships is the processed copy
 under `client/public/audio/`.
 
+> **Status (2026-10-06, later): a fifth loop, `dungeon.storm`, for chapter 3.** "Endless Cyber
+> Runner" by Eric Matyas (CC-BY 4.0), 50.0 s, seam 1.20 dB, chosen by measurement from 16 CC0/CC-BY
+> candidates. The music set is now 2.99 MB, 2.85 of the `music` subpackage's 3 MiB: there is no room
+> for a sixth loop at this encoding. See "Music" below.
+>
 > **Status (2026-10-06): the music is now open-licensed, and there are four loops.** The two
 > AI-generated (Suno) masters are gone; the owner judged them not good enough. `menu`, `dungeon.ember`
 > (which had borrowed `menu.mp3` since 2026-08-31), the new `dungeon.frost` (chapter 2) and `boss` are
@@ -293,11 +298,12 @@ loops, where the fixed header amortises away.
 
 ## Music (2026-10-06; first built 2026-08-31)
 
-Four loops, all **openly licensed music written by people**, from OpenGameArt and Scott Buckley's
-CC library. They replaced the two AI-generated (Suno) masters of 2026-08-31, which the owner judged
-not good enough ("音乐我发现ai生成的并不好"). The earlier belief that open music meant chiptune held
+Five loops, all **openly licensed music written by people**, from OpenGameArt and Scott Buckley's
+CC library. The first four replaced the two AI-generated (Suno) masters of 2026-08-31, which the owner
+judged not good enough ("音乐我发现ai生成的并不好"); the fifth, `dungeon.storm`, was added the same day
+for chapter 3. The earlier belief that open music meant chiptune held
 for CC0 and not for CC-BY: CC-BY has orchestral and ambient work at a production standard, and
-three of these four are CC-BY. Sources are archived under `sources/music/`.
+four of these five are CC-BY. Sources are archived under `sources/music/`.
 `tools/audio-pipeline/process_music.py` cuts them; `audit.py --class music` gates them.
 
 | shipped | track | from | licence | region (upstream) | length | bytes | seam | shelf |
@@ -305,10 +311,12 @@ three of these four are CC-BY. Sources are archived under `sources/music/`.
 | `music/menu.mp3` | `menu` | "Aurora", Scott Buckley | CC-BY 4.0 | 86.0 s of 498.8 s | 85.0 s | 721.9 kB | 0.83 dB | none |
 | `music/dungeon-ember.mp3` | `dungeon.ember` | "Lava Area Theme", Wolfgang_ | CC-BY 4.0 | 12.5 s of 105.6 s | 60.0 s | 578.6 kB | 1.54 dB | 80 Hz / -10 dB |
 | `music/dungeon-frost.mp3` | `dungeon.frost` | "Beyond the Frozen Veil" (loop version), Synth-thetic | CC0 | 34.5 s of 142.2 s | 71.5 s | 529.7 kB | 1.40 dB | none |
+| `music/dungeon-storm.mp3` | `dungeon.storm` | "Endless Cyber Runner" (looping version), Eric Matyas | CC-BY 4.0 | 27.5 s of 96.0 s | 50.0 s | 522.9 kB | 1.20 dB | 80 Hz / -10 dB |
 | `music/boss.mp3` | `boss` | "Colossal Boss Battle Theme" (no-vocals loop), Matthew Pablo | CC-BY 3.0 | 49.5 s of 117.6 s | 58.5 s | 570.1 kB | 1.31 dB | 80 Hz / -10 dB |
 
-All 24 kHz stereo at -30.00 dBFS mid-band; 2.46 MB together (2.34 MB counted by the WeChat package
-check), inside the `music` subpackage's 3 MB.
+All 24 kHz stereo at -30.00 dBFS mid-band; 2.99 MB together (2.85 MB counted by the WeChat package
+check, which counts MiB), inside the `music` subpackage's 3 MB with ~150 kB left: a sixth loop of
+this kind does not fit without re-encoding the others or raising the pack limit.
 
 **How they were chosen.** Licences first: CC0 and CC-BY only, since both permit commercial use and an
 edited loop. NC is out (the game earns from ads), ND is out (cutting a loop region is an adaptation),
@@ -329,26 +337,62 @@ listens for a living and I cannot hear at all:
 - **Sub:** `dungeon.ember` and `boss` sat 6.4 and 5.3 dB above their own mids in 20-250 Hz, which
   a phone does not reproduce and MP3 pays for, so both get the pipeline's zero-phase shelf.
 - **Taste, stated as taste:** `menu` is a slow synth-and-strings build (the lobby is where a player sits
-  longest), `dungeon.ember` a lava-level theme, `dungeon.frost` an ice-kingdom ambient piece, `boss`
+  longest), `dungeon.ember` a lava-level theme, `dungeon.frost` an ice-kingdom ambient piece,
+  `dungeon.storm` a driving 120 bpm electronic piece, `boss`
   orchestra and heavy drums with the choir version passed over because a choir sits in the band every
   combat cue peaks in. Nobody has listened to the result in the game yet.
 
+**The chapter-3 bed (`dungeon.storm`, added later the same day).** Sixteen CC0/CC-BY candidate files for a
+tense, electric, driving-but-not-boss bed were downloaded from OpenGameArt and measured; OGA-BY,
+CC-BY-SA and GPL listings were skipped on licence alone. Three measurements beyond the gate decided it,
+each run on the region with its shelf applied:
+
+- **What the two decks sound like together.** The correlation of the outgoing tail and the incoming
+  head over the 2 s overlap, and the level change the equal-power fade produces there. This is the
+  "near-zero seam swells and combs" warning above, measured directly: "Blitz Kaskade" (FoxSynergy)
+  and "Thunderous Fall" (iamoneabe) close at 0.0-0.4 dB because they repeat, and their overlaps
+  correlate +0.4 to +0.9 and swell 1.0-1.9 dB. "Energy Storm" (iamoneabe, CC0) is the same
+  repetition: its best region in every length bucket from 20 to 56 s reads 0.17-0.27 dB. The pick
+  correlates +0.06 and moves +0.3 dB.
+- **Whether the drums flam.** A beat-driven bed adds a failure an ambient one cannot have: if the
+  loop length minus the crossfade is not a whole number of beats, the two decks' drums land apart for
+  the whole fade. Measured as the lag of the best onset-envelope cross-correlation between tail and
+  head. "Endless Cyber Runner" is 120 bpm, so every 0.5 s length the search tries lands on the grid
+  (lag 0). "Electric Exodus" (FoxSynergy, CC-BY 3.0) closed at 1.05 dB but flams by 80 ms unless cut
+  to an off-grid 52.92 s.
+- **Brightness against the cues.** 2-8 kHz (where `deflect` cuts through) relative to the mids:
+  `boss` -12.6 dB, `dungeon.ember` -13.1, `dungeon.frost` -19.0, `menu` -28.1. "Electric Exodus" read
+  -3.0, ten dB brighter than any shipped bed, and near-mono (L/R +0.93); "Endless Cyber Runner" reads
+  -14.9 and L/R +0.49. That, with the flam, is why the better-named track lost.
+
+Also measured and passed over: "Perpetual Tension" (Zander Noriega; 20-250 Hz 13.4 dB above its mids),
+"Trepidation" and "Sabotage" (Tsorthan Grove; seams 0.9-1.4 dB, passed over for character: suspense
+pieces rather than driving ones), "Storm Chasers" (Eldritch Grim; an epic trailer cue, closer to a
+boss theme, whose 1.23 dB seam flams by 400 ms), "Meteor (fight)" (Jan125; best seam 1.85 dB with a
++0.9 dB swell), "Tense Drive" (beardalaxy; best real seam 0.95 dB, flamming by 90 ms), "Tense Future
+Loop" (gmason; a 59 s repeating loop whose seams are 0.4-0.5 dB or dip ~1 dB in the fade), "ICI
+Storm" (an uplifting dance build whose master peaks above 0 dBFS), "Heart of Machine" (Alexandr
+Zhelanov; 1.94 dB at best) and "The Memory Factory" (Eric Matyas; a 32.5 s file, too short to cut a
+40 s region from).
+The 50 s length is the byte budget's: 522.9 kB took the pack to 2.85 of 3 MiB.
+
 **Tempo.** Every loop ships at its written tempo. The 2026-09-06 "0.7x" request was about the two
 Suno masters and was applied as one module-wide factor; it is now a per-track `tempo` in
-`process_music.py`, 1.0 for all four, because a 30% Rubber Band stretch is audible processing on a
+`process_music.py`, 1.0 for all five, because a 30% Rubber Band stretch is audible processing on a
 played recording. The mechanism (`time_stretch`, stretch-before-slice, search-on-the-stretched-signal)
 is unchanged for the day a track wants it.
 
 **Archive: verbatim or excerpt.** The upstream downloads are a 20 MB 320 kbps mp3, a 24 MB 7z holding
 FLACs and a 50 MB zip holding WAVs. Archiving those would add ~95 MB to the repository for loops that
 read ~60-85 s of each, so `sources/music/` holds the upstream file verbatim when it is small (the lava
-ogg, 1.96 MB) and otherwise an EXCERPT: the loop region plus 5 s either side, Vorbis-encoded. Each
+ogg, 1.96 MB) and otherwise an EXCERPT: the loop region plus 5 s either side, Vorbis-encoded (the
+storm excerpt keeps its upstream's 96 kHz and is 1.06 MB of a 6 MB file). Each
 `credits.json` record carries the upstream URL and SHA-256 (and the member file inside an archive),
 so the whole master can be fetched back and checked; `region_start_s` is in the archived file's
 seconds and `excerpt_start_s` places it upstream. `musicAssets.test.ts` hashes every archived file
 against its record.
 
-**Licensing and the credit.** Three loops are CC-BY, so for the first time something in the game
+**Licensing and the credit.** Four loops are CC-BY, so for the first time something in the game
 REQUIRES a visible credit. It is on the Settings screen, under both columns
 (`client/src/audio/musicCredits.ts`): plain text, because WeChat cannot follow an outbound link, and
 untranslated except for its label, because a title, a name and a licence are proper nouns. The CC0

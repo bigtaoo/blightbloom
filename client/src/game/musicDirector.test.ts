@@ -163,6 +163,18 @@ describe('trackFor — the run bed', () => {
       .toBe('boss');
   });
 
+  it('gives chapter 3 its own bed, distinct from chapters 1 and 2', () => {
+    // The storm biome (chapter 3, lightning). Pinned by name for the same reason as chapter 2:
+    // the table-driven test above passes for any track at all, including the fallback.
+    expect(BIOME_ID_TO_TRACK.storm).toBe('dungeon.storm');
+    expect(BIOME_ID_TO_TRACK.storm).not.toBe(DEFAULT_RUN_TRACK);
+    expect(BIOME_ID_TO_TRACK.storm).not.toBe(BIOME_ID_TO_TRACK.frost);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'storm'), localOwner: 0 }))
+      .toBe('dungeon.storm');
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'storm'), localOwner: 0 }))
+      .toBe('boss');
+  });
+
   it('falls back to the ember bed for a run whose biome names no track', () => {
     // An arena/PvP match, the tutorial, a flat `waves` config, or a biome authored before its
     // loop exists. design/11 asks the runtime to substitute rather than fall silent: a match with

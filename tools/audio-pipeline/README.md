@@ -102,7 +102,7 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   voice that does not exist for music; and it stays stereo.
 
       ./venv/Scripts/python process_music.py --search boss     # rank loop regions (20-130 s)
-      ./venv/Scripts/python process_music.py [--track menu|dungeon.ember|dungeon.frost|boss]
+      ./venv/Scripts/python process_music.py [--track menu|dungeon.ember|dungeon.frost|dungeon.storm|boss]
 
   Its filters are single zero-phase multiplies over the **whole region's** spectrum. That is
   circular convolution and a loop region *is* circular, so filtering cannot introduce the
@@ -123,7 +123,7 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   Both now call `audit.profile_diff(band_profile(...), band_profile(...))`, and `--search`
   applies the track's shelf AND its tempo stretch. Search and post-encode figures agree to
   within 0.01-0.06 dB on the 2026-10-06 set (`menu` 0.84 / 0.83, `dungeon.ember` 1.60 / 1.54,
-  `dungeon.frost` 1.40 / 1.40, `boss` 1.25 / 1.31). If you add
+  `dungeon.frost` 1.40 / 1.40, `dungeon.storm` 1.21 / 1.20, `boss` 1.25 / 1.31). If you add
   a processing step that changes a measured property, `--search` has to apply it too — the
   2026-09-06 tempo pass is the fourth time this exact lesson landed, see the table row above.
 
@@ -191,15 +191,23 @@ The music is **openly licensed work by people** since 2026-10-06: CC0 or CC-BY, 
 and Scott Buckley's library, archived under `art/audio/sources/music/`. The 2026-08-31 pass had
 used AI masters (Suno) on the belief that open music is chiptune; that holds for CC0 and not for
 CC-BY. The owner judged the AI tracks not good enough, and `art/audio/README.md`'s "Music" has the
-four picks, the measurements that chose them, and the licensing. What is worth knowing before
-sourcing the next one:
+five picks (chapter 3's `dungeon.storm` was the fifth), the measurements that chose them, and the
+licensing. What is worth knowing before sourcing the next one:
+
+- **The `music` subpackage is nearly full.** Five loops are 2.85 of its 3 MiB; a sixth needs the
+  pack limit raised or a re-encode of the others, which is a decision, not a side effect.
 
 - **Licence filter first:** CC0 or CC-BY. NC is out (ads), ND is out (a cut loop is an
   adaptation). CC-BY needs its credit in `client/src/audio/musicCredits.ts`, which a test holds
   equal to `credits.json`'s `attribution`.
 - **A near-zero seam is a warning, not a prize.** `--search` scoring 0.06-0.3 dB means the piece
   repeats and the head and tail are the same bars; the equal-power crossfade swells and combs on
-  correlated material. Take a 1-2 dB region of different material.
+  correlated material. Take a 1-2 dB region of different material. (The storm pass measured the
+  swell directly: overlaps of two repeating candidates correlated +0.4 to +0.9 and rose 1.0-1.9 dB.)
+- **A beat-driven bed can flam.** If the loop length minus the 2 s crossfade is not a whole number
+  of beats, the two decks' drums land apart through the whole fade; band-diff cannot see it.
+  Compare onset envelopes of the tail and head windows (best cross-correlation lag should be 0).
+  A 120 bpm source is aligned at every 0.5 s length the search tries; other tempos are not.
 - **Measure L/R correlation.** A phone sums to mono; an anti-correlated mix (one candidate read
   -0.64) partly cancels there.
 - **Archive an excerpt when the upstream is large.** Region plus 5 s either side, Vorbis, with the

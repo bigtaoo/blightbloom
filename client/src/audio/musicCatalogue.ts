@@ -41,7 +41,7 @@ export const MUSIC_DIR = '/audio/music';
  * and every shipped loop was MEASURED against it: the `music` gate's `xfade_band_diff`
  * compares the head and tail windows of exactly this width, and it is the reason the files
  * only had to be tonally compatible over 2 s rather than sample-continuous (0.83-1.54 dB
- * across the four — see `MUSIC_CATALOGUE`).
+ * across the five — see `MUSIC_CATALOGUE`).
  * Widening it here would judge the loops on a window nobody measured; narrowing it would leave
  * measured seam quality on the table.
  */
@@ -110,6 +110,16 @@ export const MUSIC_CATALOGUE: Record<MusicTrack, TrackDef> = {
     borrowedFrom: null,
   },
 
+  // "Endless Cyber Runner" (Eric Matyas, CC-BY 4.0): 50.0 s from 27.5 s of the composer's
+  // looping version, with the 80 Hz / -10 dB shelf; seam 1.20 dB. Chapter 3's bed (the storm
+  // biome). 120 bpm, so the 50.0 s length keeps both decks' beats aligned through the fade.
+  'dungeon.storm': {
+    path: `${MUSIC_DIR}/dungeon-storm.mp3`,
+    lengthS: 50.0,
+    gain: 1.0,
+    borrowedFrom: null,
+  },
+
   // "Colossal Boss Battle Theme" (Matthew Pablo, CC-BY 3.0), the no-vocals loop: 58.5 s from
   // 49.5 s, with the same 80 Hz / -10 dB shelf; seam 1.31 dB. Both chapters' boss rooms.
   boss: { path: `${MUSIC_DIR}/boss.mp3`, lengthS: 58.5, gain: 1.0, borrowedFrom: null },
@@ -142,6 +152,7 @@ export function musicPaths(): readonly string[] {
 export const BIOME_ID_TO_TRACK: Record<string, MusicTrack> = {
   ember: 'dungeon.ember',
   frost: 'dungeon.frost',
+  storm: 'dungeon.storm',
 };
 
 /**

@@ -136,6 +136,18 @@ TRACKS = {
             'no shelf. Its channels are nearly uncorrelated (L/R 0.02), which a mono phone '
             'speaker sums without cancelling; the anti-correlated candidate "The Frigid Seas" '
             '(-0.64) was rejected for exactly that.'),
+    'dungeon.storm': dict(
+        src='music/eric-matyas_endless-cyber-runner_excerpt.ogg', region=(5.0, 50.0),
+        shelf=(80.0, -10.0), tempo=1.0,
+        why='"Endless Cyber Runner" by Eric Matyas (CC-BY 4.0), the composer\'s looping version: '
+            '50.0 s from 27.5 s of its 96.0 s, band-diff 1.21 dB with the shelf on the upstream '
+            'file. Chosen from 16 measured candidates for chapter 3 (the storm biome); '
+            'art/audio/README.md "Music" has the rest. Its overlap is uncorrelated '
+            '(the two decks\' material correlates +0.06, so the equal-power fade moves the level '
+            '+0.3 dB), and at 120 bpm every 0.5 s length keeps the two decks\' beat grids on top of '
+            'each other through the crossfade. 50 s, not longer: the music subpackage has 3 MB and '
+            'the four loops before it took 2.34 MB of it. The shelf: 20-250 Hz sat 6.2 dB above '
+            'the mids. L/R correlation +0.49, so a mono speaker sums it without cancelling.'),
     'boss': dict(
         src='music/matthew-pablo_blackmoor-colossus-loop-no-vocals_excerpt.ogg',
         region=(5.0, 58.5), shelf=(80.0, -10.0), tempo=1.0,
