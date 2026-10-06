@@ -48,7 +48,15 @@ import type { Actor } from './state/entities';
 /**
  * How far an actor may be inside a wall before it counts as a breach.
  *
- * One fp unit — a tolerance for the push's own `Math.trunc` residue and nothing more. It was
+ * √2 fp — a tolerance for the push's own `Math.trunc` residue and nothing more. Against a wall's
+ * FACE the push moves one axis and leaves under 1 fp; against a CORNER `pushOutOfWall` moves
+ * along the diagonal normal and truncates x and y separately, leaving under 1 fp on EACH, so up
+ * to √2 in the Euclidean depth measured here. It was 1 until 2026-10-06, the face-only figure:
+ * chapter 4's mirrored floor 1 put an enemy on a free-standing block's corner at 1.156 fp
+ * (dx 294, dy -403 from the corner, one wall, nothing pushing it back in), the first scenario to
+ * catch a corner at the wrong tick, and later in the same run an actor ~1 fp into a round pillar,
+ * whose push (`pushOutOfObstacle`) truncates both axes the same way. Both checks share this bound.
+ * It was
  * 200 until ENGINE_VERSION 49, as a MEASURED allowance for a real shipping behaviour this file
  * found: `MovementSystem` resolved walls before `resolveActorPairs`, so a pair shove was the
  * last thing in a tick and could push an actor back into stone. The tradition around that
@@ -64,7 +72,7 @@ import type { Actor } from './state/entities';
  * round per design/07: two actors may now overlap each other slightly more than the pair push
  * intended, because a solid gets the final say over a body.
  */
-const WALL_PENETRATION_ALLOWANCE = 1;
+const WALL_PENETRATION_ALLOWANCE = Math.SQRT2;
 
 /** One violation, with enough context to act on without re-running anything. */
 interface Breach {
@@ -91,8 +99,8 @@ const INVARIANTS: readonly { name: string; check(s: GameState): string | null }[
           const rect = { x: b.left, y: b.top, w: (b.right - b.left) as Fp, h: (b.bottom - b.top) as Fp };
           if (!circleOverlapsAabb(a.gx, a.gy, r, rect)) continue;
           // Tangency is legal and common (see boundaryParity.test.ts) — `circleOverlapsAabb` is
-          // closed while the push is open, so only a REAL penetration counts here. One fp unit
-          // of slack absorbs the push's own `Math.trunc` residue.
+          // closed while the push is open, so only a REAL penetration counts here. √2 fp of
+          // slack absorbs the push's own per-axis `Math.trunc` residue (see the constant).
           const cx = Math.max(b.left, Math.min(a.gx, b.right));
           const cy = Math.max(b.top, Math.min(a.gy, b.bottom));
           const dx = (a.gx as number) - cx;
@@ -107,7 +115,8 @@ const INVARIANTS: readonly { name: string; check(s: GameState): string | null }[
           const dx = (a.gx as number) - (o.gx as number);
           const dy = (a.gy as number) - (o.gy as number);
           const depth = (r as number) + (o.radius as number) - Math.sqrt(dx * dx + dy * dy);
-          if (depth > 1) return `actor ${a.id} is ${Math.round(depth)} fp inside a pillar`;
+          // `pushOutOfObstacle` truncates x and y separately too, so the same √2 bound holds.
+          if (depth > WALL_PENETRATION_ALLOWANCE) return `actor ${a.id} is ${Math.round(depth)} fp inside a pillar`;
         }
       }
       return null;
