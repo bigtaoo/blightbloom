@@ -1,0 +1,149 @@
+{
+  "id": "blight_l1_boss",
+  "role": "boss",
+  "sizeGrid": {
+    "w": 20,
+    "h": 20
+  },
+  "solids": [
+    {
+      "x": 19,
+      "y": 0,
+      "w": 1,
+      "h": 20
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 20
+    },
+    {
+      "x": 1,
+      "y": 19,
+      "w": 18,
+      "h": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "w": 18,
+      "h": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 12,
+        "y": 17.5
+      },
+      {
+        "x": 8,
+        "y": 17.5
+      }
+    ],
+    "enemy": [
+      {
+        "x": 17.5,
+        "y": 13.5,
+        "type": "rotbloom"
+      },
+      {
+        "x": 17.5,
+        "y": 7.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 15.5,
+        "y": 11.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 15.5,
+        "y": 5.5,
+        "type": "brute"
+      },
+      {
+        "x": 13.5,
+        "y": 9.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 13.5,
+        "y": 3.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 11.5,
+        "y": 7.5,
+        "type": "brute"
+      },
+      {
+        "x": 9.5,
+        "y": 11.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 9.5,
+        "y": 5.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 7.5,
+        "y": 9.5,
+        "type": "ravager"
+      },
+      {
+        "x": 7.5,
+        "y": 3.5,
+        "type": "ironclad"
+      },
+      {
+        "x": 5.5,
+        "y": 7.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 3.5,
+        "y": 13.5,
+        "type": "ravager"
+      },
+      {
+        "x": 3.5,
+        "y": 7.5,
+        "type": "ironclad"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    }
+  ],
+  "props": [
+    {
+      "id": "rubble",
+      "x": 17.5,
+      "y": 17.5
+    },
+    {
+      "id": "rubble",
+      "x": 17,
+      "y": 2.5
+    },
+    {
+      "id": "rubble",
+      "x": 2.5,
+      "y": 17
+    }
+  ]
+}

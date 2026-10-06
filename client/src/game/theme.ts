@@ -99,7 +99,7 @@ export function elementColor(damageType: DamageType): number {
 // element hue — the raw saturated hex is reserved for bullets/status FX/loot, so a
 // wall painted full ember-orange would fight bullets/auras for attention instead of
 // making them pop. `BIOME_ID_TO_ELEMENT` maps a `DungeonConfig.biomeId` (one per chapter,
-// engine world/chapters.ts — 'ember', 'frost' and 'storm' today) to the stable element vocabulary
+// engine world/chapters.ts — 'ember', 'frost', 'storm' and 'blight' today) to the stable element vocabulary
 // ELEMENT_COLORS already uses, so a future biome only needs one new entry there, not a
 // parallel colour table. No new art — this is what "per-biome palette" asks for.
 export function mixHex(base: number, tint: number, amount: number): number {
@@ -207,6 +207,7 @@ const BIOME_ID_TO_ELEMENT: Readonly<Record<string, BiomeElement>> = {
   ember: 'fire',
   frost: 'ice', // chapter 2 — the `biome-ice` swatch pack, awaited at the run gate like `run`
   storm: 'lightning', // chapter 3 — the `biome-lightning` pack, the same way
+  blight: 'poison', // chapter 4, the finale — the `biome-poison` pack; design/13 keeps poison off chapter 1
 } satisfies Record<ChapterId, BiomeElement>;
 
 export function biomePalette(biomeId: string | undefined): BiomePalette {

@@ -36,6 +36,7 @@ export const pl: Translations<typeof en> = {
     ember: { name: 'Otchłań Żaru' },
     frost: { name: 'Otchłań Mrozu' },
     storm: { name: 'Otchłań Burzy' },
+    blight: { name: 'Otchłań Zarazy' },
   },
   loading: {
     boot: 'WCZYTYWANIE',
@@ -401,6 +402,7 @@ export const pl: Translations<typeof en> = {
     enemynova: { name: 'Nova najeźdźcy' },
     enemyshardfan: { name: 'Wachlarz odłamków najeźdźcy' },
     enemyarcseeker: { name: 'Łowca łuków najeźdźcy' },
+    enemysporespray: { name: 'Rozpylacz zarodników najeźdźcy' },
     flamer: { name: 'Miotacz ognia' },
     cryobolt: { name: 'Kriobełt' },
     teslagun: { name: 'Działo Tesli' },

@@ -1,8 +1,8 @@
-// Enemy blueprints, the boss half (split out of `enemies.ts`, which re-exports it): the five
+// Enemy blueprints, the boss half (split out of `enemies.ts`, which re-exports it): the six
 // bosses and the random-boss pool chapter 1's boss room draws from.
 import { pxToFp } from './convert';
 import type { EnemyBlueprint } from './enemies';
-import { ENEMY_ARCSEEKER_SIM, ENEMY_GUN_SIM, ENEMY_NOVA_SIM, ENEMY_SHARDFAN_SIM } from './weapons';
+import { ENEMY_ARCSEEKER_SIM, ENEMY_GUN_SIM, ENEMY_NOVA_SIM, ENEMY_SHARDFAN_SIM, ENEMY_SPORESPRAY_SIM } from './weapons';
 
 // ── Boss ────────────────────────────────────────────────────────────────────────
 // The durable finale — a big, tanky mob that survives long enough to *show* the
@@ -50,8 +50,8 @@ export const BLIGHTLORD: EnemyBlueprint = {
 export const PYREFANG: EnemyBlueprint = {
   type: 'pyrefang',
   // No `element` badge — like BLIGHTLORD/BRUTE/RAVAGER, a boss/body-form variant is
-  // deliberately NOT one of design/13's four locked elemental variants, even though
-  // its resist profile mirrors one (`enemies.test.ts` pins the exact four).
+  // deliberately NOT one of design/13's five locked elemental variants, even though
+  // its resist profile mirrors one (`enemies.test.ts` pins the exact five).
   maxHp: 36,
   radius: pxToFp(28),
   footprintRadius: pxToFp(13),
@@ -153,6 +153,41 @@ export const VOLTREAVER: EnemyBlueprint = {
   boss: true,
   bodyRig: 'boss-core',
   moveSpeedPerTick: pxToFp(3.0), // over the roster default (2.6) — it repositions between volleys
+  enrage: { hpThresholdPermille: 400, bonusDamagePermille: 0, bonusFireratePermille: 400 },
+};
+
+/**
+ * Chapter 4's boss and the finale (the Blight descent, design/gameplay/04-chapters.md) — the
+ * "keep your distance" axis. Its loadout is a short, dense cone of poison spores
+ * (`enemysporespray`): each spore that lands adds a poison stack, the stacks keep ticking after
+ * the hit and stop the shield regenerating, so the losing play is trading at close range. The
+ * spores die a few grid out, and it walks toward you to close that gap, so the answer is to
+ * kite it: back off, shoot, back off. Resist profile mirrors BLIGHTLING's ratios boss-scaled
+ * (shrugs poison, burns to fire), as Glacimaw and Voltreaver mirror their chapters' critters.
+ *
+ * Why not `blightlord`, the boss chapter 4 was planned around. Its single aimed bullets never
+ * land on a strafing player (0 damage in 80 bot duels), so the finale would have been the
+ * easiest boss in the game, and it is WEAK to poison, the one element a poison chapter's boss
+ * should shrug. It stays in chapter 1's pool, unchanged.
+ *
+ * Not in `BOSS_POOL`: chapter 4's boss room names it directly. Measured alone against the bot at
+ * the boss floor's 105 HP: 35% kills, 65% bot deaths, 35 s median kill, the bot carrying poison
+ * for 19% of the fight — a step past Voltreaver's 50% / 50%, as a finale should be, and short of
+ * Pyrefang's 100% deaths. `enrage` alone: below 40% the spray comes 40% faster.
+ */
+export const ROTBLOOM: EnemyBlueprint = {
+  type: 'rotbloom',
+  // No `element` badge — see PYREFANG's own note.
+  maxHp: 40,
+  radius: pxToFp(28),
+  footprintRadius: pxToFp(13),
+  weapon: ENEMY_SPORESPRAY_SIM,
+  resist: { poison: 400, fire: 1800 },
+  tint: 0x9ccc65, // sickly green — BLIGHTLING's exact hue, boss-scaled
+  boss: true,
+  bodyRig: 'boss-core',
+  moveSpeedPerTick: pxToFp(3.4), // over the roster default (2.6), under the player's 6.4 — it closes, you can still out-walk it
+  engageRangeFp: pxToFp(128), // 4 grid — it walks inside its own spray's reach before it stops
   enrage: { hpThresholdPermille: 400, bonusDamagePermille: 0, bonusFireratePermille: 400 },
 };
 

@@ -69,6 +69,8 @@ export interface BossTrialStats {
   /** Boss HP left over the runs that did NOT kill it — how close a loss was. */
   avgHpLeftOnFail: number | null;
   chilledPct: number;
+  /** Average share of the fight the player carried a poison stack, as a percentage. */
+  poisonedPct: number;
 }
 
 export function bossTrialStats(trials: readonly BossTrialRun[]): BossTrialStats {
@@ -87,6 +89,7 @@ export function bossTrialStats(trials: readonly BossTrialRun[]): BossTrialStats 
     effectiveHp: trials[0]?.effectiveHp ?? 0,
     avgHpLeftOnFail: fails.length > 0 ? round2(fails.reduce((a, t) => a + t.bossHpLeftFrac, 0) / fails.length) : null,
     chilledPct: Math.round((trials.reduce((a, t) => a + t.chilledFrac, 0) / n) * 100),
+    poisonedPct: Math.round((trials.reduce((a, t) => a + t.poisonedFrac, 0) / n) * 100),
   };
 }
 
@@ -115,10 +118,10 @@ export function formatFloorTrialTable(rows: readonly { chapter: string; floorInd
 }
 
 export function formatBossTrialTable(rows: readonly { label: string; stats: BossTrialStats }[]): string {
-  const lines = ['condition                          bossHp  runs  kill%  died%  ttk(med/avg s)  fightDmg/effHp  hpLeftOnFail  chilled%'];
+  const lines = ['condition                          bossHp  runs  kill%  died%  ttk(med/avg s)  fightDmg/effHp  hpLeftOnFail  chilled%  poisoned%'];
   for (const { label, stats: s } of rows) {
     lines.push(
-      `${label.padEnd(35)}${String(s.bossMaxHp).padEnd(8)}${String(s.runs).padEnd(6)}${pct(s.killRate).padEnd(7)}${pct(s.deathRate).padEnd(7)}${`${dash(s.medianTtkSec)}/${dash(s.avgTtkSec)}`.padEnd(16)}${`${s.avgFightDamage}/${s.effectiveHp}`.padEnd(16)}${(s.avgHpLeftOnFail === null ? '-' : pct(s.avgHpLeftOnFail)).padEnd(14)}${s.chilledPct}`,
+      `${label.padEnd(35)}${String(s.bossMaxHp).padEnd(8)}${String(s.runs).padEnd(6)}${pct(s.killRate).padEnd(7)}${pct(s.deathRate).padEnd(7)}${`${dash(s.medianTtkSec)}/${dash(s.avgTtkSec)}`.padEnd(16)}${`${s.avgFightDamage}/${s.effectiveHp}`.padEnd(16)}${(s.avgHpLeftOnFail === null ? '-' : pct(s.avgHpLeftOnFail)).padEnd(14)}${String(s.chilledPct).padEnd(10)}${s.poisonedPct}`,
     );
   }
   return lines.join('\n');

@@ -36,9 +36,9 @@
     "`biome-ice` / `biome-lightning` / `biome-poison` / `boss` are still justified by content:",
     "theme.ts's BIOME_ID_TO_ELEMENT maps chapter 1 ('ember') to 'fire', chapter 2 ('frost') to",
     "'ice' (locked until chapter 1 is cleared), chapter 3 ('storm') to 'lightning' (locked until",
-    "chapter 2 is cleared), and everything without a dungeonConfig (PvP, arena) to 'neutral', so",
-    "poison cannot be reached at all today, and",
-    "'blightlord' (the only user of skins/boss-core) spawns on floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
+    "chapter 2 is cleared), chapter 4 ('blight') to 'poison' (locked until chapter 3 is cleared),",
+    "and everything without a dungeonConfig (PvP, arena) to 'neutral', and",
+    "every boss (all six draw skins/boss-core) spawns on a chapter's floor 5 only. Awaiting them anyway costs a bounded 654 kB and buys the rule design/12 states:",
     "the set of available textures changes only at a PHASE boundary, never mid-room. Gating each",
     "one at its own point of use would mean re-running preloadBiomeTiles per pack and reasoning",
     "about a half-filled texture map, which is the partial-availability state that rule forbids.",
@@ -129,14 +129,14 @@
       "root": "packs/biome-poison",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "No authored dungeon maps to 'poison' yet; design/13 also keeps poison off floor 1 deliberately."
+      "note": "Chapter 4 ('blight', the finale) maps to 'poison' (theme.ts BIOME_ID_TO_ELEMENT); design/13 keeps poison off chapter 1 deliberately. Awaited at the run gate like biome-ice, so a blight run never starts on the flat fallback palette."
     },
     {
       "name": "boss",
       "root": "packs/boss",
       "phase": "run",
       "limitBytes": 2097152,
-      "note": "skins/boss-core — 'blightlord' only, floor 5 only."
+      "note": "skins/boss-core — every boss (blightlord, pyrefang, ironwarden, glacimaw, voltreaver, rotbloom), each chapter's floor 5 only."
     }
   ],
   "rules": [

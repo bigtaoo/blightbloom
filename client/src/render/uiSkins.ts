@@ -91,6 +91,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   chapter_ember: '/ui/chapter_ember.jpg',
   chapter_frost: '/ui/chapter_frost.jpg',
   chapter_storm: '/ui/chapter_storm.jpg',
+  chapter_blight: '/ui/chapter_blight.jpg',
   // The painting's three sky rocks, lifted out of it (the sky painted back under them) so
   // `LobbyBackdrop` can drift them. `art/ui/prompts.md`, "The drifting rocks".
   lobby_rock_a: '/ui/lobby_rock_a.png',
@@ -116,7 +117,7 @@ const LOBBY_KEYS: ReadonlySet<string> = new Set([
   'lobby_hero_orb', 'lobby_hero_skirmisher', 'lobby_hero_juggernaut', 'lobby_weapon',
   'lobby_card_descend', 'lobby_card_coop', 'lobby_card_pvp',
   // The chapter picker's banners — drawn by the lobby, never by its first frame.
-  'chapter_ember', 'chapter_frost', 'chapter_storm',
+  'chapter_ember', 'chapter_frost', 'chapter_storm', 'chapter_blight',
   'lobby_rock_a', 'lobby_rock_b', 'lobby_rock_c',
 ]);
 

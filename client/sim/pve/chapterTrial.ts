@@ -128,6 +128,8 @@ export interface BossTrialRun {
   bossHpLeftFrac: number;
   /** Share of fight ticks the player spent chilled — Glacimaw's whole mechanic. */
   chilledFrac: number;
+  /** Share of fight ticks the player carried at least one poison stack — Rotbloom's. */
+  poisonedFrac: number;
   playerDied: boolean;
 }
 
@@ -141,6 +143,7 @@ export function runBossTrial(seed: number, spec: BossTrialSpec, profileName: key
   let fightDamage = 0;
   let fightTicks = 0;
   let chilledTicks = 0;
+  let poisonedTicks = 0;
   const onTick = (s: GameState): void => {
     const roomIdx = s.dungeonRooms.length - 1;
     if (start === null && s.dungeonRoomRuntime[roomIdx]?.activated) start = s.tick;
@@ -160,6 +163,7 @@ export function runBossTrial(seed: number, spec: BossTrialSpec, profileName: key
     if (p.alive) {
       fightTicks++;
       if (p.status.chillTicks > 0) chilledTicks++;
+      if (p.status.poison.length > 0) poisonedTicks++;
     }
     if (bossId !== null && bossHp <= 0) killedAt = s.tick;
   };
@@ -174,6 +178,7 @@ export function runBossTrial(seed: number, spec: BossTrialSpec, profileName: key
     effectiveHp: run.effectiveHp,
     bossHpLeftFrac: bossMaxHp > 0 ? Math.max(0, bossHp) / bossMaxHp : 1,
     chilledFrac: fightTicks > 0 ? chilledTicks / fightTicks : 0,
+    poisonedFrac: fightTicks > 0 ? poisonedTicks / fightTicks : 0,
     playerDied: run.outcome === 'died',
   };
 }

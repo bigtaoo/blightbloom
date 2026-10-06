@@ -1,0 +1,93 @@
+{
+  "id": "blight_l1_floor_5",
+  "rooms": [
+    {
+      "id": "r1_court",
+      "pieceId": "blight_l1_court",
+      "offsetXGrid": 2,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r2_sump",
+      "pieceId": "blight_l1_sump",
+      "offsetXGrid": 1,
+      "offsetYGrid": 18
+    },
+    {
+      "id": "r3_rampart",
+      "pieceId": "blight_l1_rampart",
+      "offsetXGrid": 1,
+      "offsetYGrid": 37
+    },
+    {
+      "id": "r4_canker",
+      "pieceId": "blight_l1_canker",
+      "offsetXGrid": 0,
+      "offsetYGrid": 57
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "blight_l1_cache",
+      "offsetXGrid": 20,
+      "offsetYGrid": 40
+    },
+    {
+      "id": "r5_boss",
+      "pieceId": "blight_l1_boss",
+      "offsetXGrid": 20,
+      "offsetYGrid": 57
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_court",
+      "roomB": "r2_sump",
+      "passageGrid": {
+        "x": 6,
+        "y": 17,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r2_sump",
+      "roomB": "r3_rampart",
+      "passageGrid": {
+        "x": 3,
+        "y": 36,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_rampart",
+      "roomB": "r4_canker",
+      "passageGrid": {
+        "x": 3,
+        "y": 56,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_canker",
+      "roomB": "r5_boss",
+      "passageGrid": {
+        "x": 19,
+        "y": 59,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "b1_cache",
+      "roomB": "r3_rampart",
+      "passageGrid": {
+        "x": 19,
+        "y": 47,
+        "w": 2,
+        "h": 4
+      }
+    }
+  ]
+}

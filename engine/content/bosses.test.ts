@@ -1,15 +1,27 @@
 /**
- * The chapter-2 and chapter-3 bosses (design/gameplay/04-chapters.md). The three chapter-1
+ * The chapter-2, -3 and -4 bosses (design/gameplay/04-chapters.md). The three chapter-1
  * bosses are pinned where their mechanics are exercised (`systems/bossai.test.ts`,
- * `systems/dungeonrun.test.ts`); this file pins what makes GLACIMAW and VOLTREAVER different
- * fights and keeps both out of chapter 1's pool.
+ * `systems/dungeonrun.test.ts`); this file pins what makes GLACIMAW, VOLTREAVER and ROTBLOOM
+ * different fights and keeps all three out of chapter 1's pool.
  */
 import { describe, expect, it } from 'vitest';
-import { BOSS_POOL, ENEMY_BLUEPRINTS, GALVANIST, GLACIMAW, PYREFANG, VOLTREAVER } from '@dd/engine/content/enemies';
+import {
+  BLIGHTLING,
+  BOSS_POOL,
+  DEFAULT_ENEMY_MOVE_SPEED_PER_TICK,
+  ENEMY_BLUEPRINTS,
+  GALVANIST,
+  GLACIMAW,
+  PYREFANG,
+  ROTBLOOM,
+  VOLTREAVER,
+} from '@dd/engine/content/enemies';
+import { PLAYER_BASE } from '@dd/engine/content/players';
 import {
   BLASTER_SIM,
   ENEMY_ARCSEEKER_SIM,
   ENEMY_SHARDFAN_SIM,
+  ENEMY_SPORESPRAY_SIM,
   MOB_WEAPON_IDS,
   SEEKER_SIM,
   WEAPON_SIM_BY_ID,
@@ -93,5 +105,61 @@ describe('VOLTREAVER — chapter 3 boss', () => {
   it('its loadout is a mob weapon — it can never roll as a drop or be crafted', () => {
     expect(MOB_WEAPON_IDS).toContain('enemyarcseeker');
     expect(WEAPON_SIM_BY_ID.enemyarcseeker).toBeUndefined();
+  });
+});
+
+describe('ROTBLOOM — chapter 4 boss, the finale', () => {
+  /** How far a bullet of this loadout flies before it fizzles, in fixed-point grid. */
+  const reach = (w: { bulletSpeed: number; bulletLifeTicks: number }): number => w.bulletSpeed * w.bulletLifeTicks;
+
+  it('is registered, is a boss, and draws the shared boss rig', () => {
+    expect(ENEMY_BLUEPRINTS.rotbloom).toBe(ROTBLOOM);
+    expect(ROTBLOOM.boss).toBe(true);
+    expect(ROTBLOOM.bodyRig).toBe('boss-core');
+  });
+
+  it('is NOT in the random pool', () => {
+    expect(BOSS_POOL).not.toContain('rotbloom');
+  });
+
+  it('sprays a short, jittered cone of poison: the shortest reach of any boss loadout', () => {
+    const w = ENEMY_SPORESPRAY_SIM;
+    expect(ROTBLOOM.weapon).toBe(w);
+    expect(w.kind).toBe('ranged');
+    expect(w.ballistic).toBe('straight');
+    expect(w.pattern ?? 'spread').toBe('spread');
+    expect(w.bullets).toBeGreaterThan(1);
+    expect(w.damageType).toBe('poison'); // every spore that lands adds a stack
+    // "Keep your distance" only means something if the distance exists: every other boss's
+    // shot outranges the spray.
+    for (const other of [ENEMY_SHARDFAN_SIM, ENEMY_ARCSEEKER_SIM, PYREFANG.weapon, GLACIMAW.weapon]) {
+      if (other.kind !== 'ranged') continue;
+      expect(reach(w)).toBeLessThan(reach(other));
+    }
+  });
+
+  it('closes the gap but can be out-walked, and stops inside its own reach', () => {
+    // Faster than the roster default, so backing off does not end the fight by itself; slower
+    // than the player, so kiting it is always possible.
+    expect(ROTBLOOM.moveSpeedPerTick!).toBeGreaterThan(DEFAULT_ENEMY_MOVE_SPEED_PER_TICK);
+    expect(ROTBLOOM.moveSpeedPerTick!).toBeLessThan(PLAYER_BASE.speedPerTick);
+    expect(ROTBLOOM.engageRangeFp!).toBeLessThan(reach(ENEMY_SPORESPRAY_SIM));
+  });
+
+  it('mirrors the poison mob: shrugs poison, burns to fire', () => {
+    expect(ROTBLOOM.resist).toEqual(BLIGHTLING.resist);
+    expect(BLIGHTLING.resist).toEqual({ poison: 400, fire: 1800 });
+    expect(ROTBLOOM.tint).toBe(BLIGHTLING.tint);
+  });
+
+  it('escalates by firing faster, never by hitting harder', () => {
+    expect(ROTBLOOM.enrage?.bonusDamagePermille).toBe(0);
+    expect(ROTBLOOM.enrage?.bonusFireratePermille).toBeGreaterThan(0);
+    expect(ROTBLOOM.onDeathSpawn).toBeUndefined();
+  });
+
+  it('its loadout is a mob weapon — it can never roll as a drop or be crafted', () => {
+    expect(MOB_WEAPON_IDS).toContain('enemysporespray');
+    expect(WEAPON_SIM_BY_ID.enemysporespray).toBeUndefined();
   });
 });

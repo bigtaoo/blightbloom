@@ -36,6 +36,7 @@ export const de: Translations<typeof en> = {
     ember: { name: 'Der Glutabstieg' },
     frost: { name: 'Der Frostabstieg' },
     storm: { name: 'Der Sturmabstieg' },
+    blight: { name: 'Der Fäulnisabstieg' },
   },
   loading: {
     boot: 'LÄDT',
@@ -401,6 +402,7 @@ export const de: Translations<typeof en> = {
     enemynova: { name: 'Räubernova' },
     enemyshardfan: { name: 'Räuber-Splitterfächer' },
     enemyarcseeker: { name: 'Räuber-Funkensucher' },
+    enemysporespray: { name: 'Räuber-Sporensprüher' },
     flamer: { name: 'Flammenwerfer' },
     cryobolt: { name: 'Kryobolzen' },
     teslagun: { name: 'Teslakanone' },
