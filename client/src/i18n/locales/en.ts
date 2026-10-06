@@ -29,6 +29,14 @@ export const en = {
     syncedHint: 'Progress synced',
     bestFloor: 'Best: floor {floor}',
   },
+  // PvE chapters (engine world/chapters.ts): one `name` per catalog id, plus the lobby
+  // picker's caption and its lock line (`game/ui/ChapterPicker.ts`).
+  chapter: {
+    number: 'CHAPTER {n}',
+    locked: 'Clear chapter {n} to unlock',
+    ember: { name: 'The Ember Descent' },
+    frost: { name: 'The Frost Descent' },
+  },
   // The progress screens. `boot` waits for the `lobby` pack (design/12 asset phases) and
   // `art` for the `run` ones; the other two are the RUN BOUNDARY itself — a transition the
   // player is meant to see, held for `MIN_TRANSITION_MS` whether anything is downloading or

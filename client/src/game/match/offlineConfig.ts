@@ -1,4 +1,4 @@
-import { EMBER_DUNGEON, EMBER_L1_ROOMS, type EngineConfig } from '@dd/engine';
+import { CHAPTERS, DEFAULT_CHAPTER_ID, type ChapterId, type EngineConfig } from '@dd/engine';
 import { toFpGrid } from '@dd/engine/content/convert';
 import type { ArenaMap } from '@dd/engine/content/arenas';
 import type { Point } from '@dd/engine/content/rooms';
@@ -14,9 +14,18 @@ const PLACEHOLDER_WORLD = 800;
  * second seat — the bot ally, a distinct free character — via EngineConfig.players;
  * single-player passes the top-level skin/loadout and is byte-identical (an absent
  * `players` list → the same one-seat construction). Pulled out of Game.ts 2026-07-28.
+ *
+ * `chapterId` picks the dungeon (engine `world/chapters.ts`). `dungeon` is a fresh wrapper
+ * around the catalog's own config and library objects — for 'ember' exactly the
+ * `EMBER_DUNGEON` / `EMBER_L1_ROOMS` pair this always passed — so a chapter-1 run, its save's
+ * content hash and its replay are byte-identical to before chapters existed. The caller
+ * decides WHICH chapter (and whether it is unlocked); this only builds it. Optional only so
+ * the balance sims under `client/sim/` keep measuring chapter 1 unchanged; every game-side
+ * caller passes it.
  */
 export function buildDungeonRunConfig(opts: {
   seed: number;
+  chapterId?: ChapterId;
   coop: boolean;
   localSeat: { skinId: string; loadout: string[] };
   allySkinId: string;
@@ -29,8 +38,14 @@ export function buildDungeonRunConfig(opts: {
     ...(opts.coop
       ? { players: [opts.localSeat, { skinId: opts.allySkinId, bot: true }] }
       : { skinId: opts.localSeat.skinId, loadout: opts.localSeat.loadout }),
-    dungeon: { config: EMBER_DUNGEON, library: EMBER_L1_ROOMS },
+    dungeon: chapterDungeon(opts.chapterId ?? DEFAULT_CHAPTER_ID),
   };
+}
+
+/** `EngineConfig.dungeon` for a chapter: a new wrapper object, the catalog's own content. */
+function chapterDungeon(id: ChapterId): NonNullable<EngineConfig['dungeon']> {
+  const { config, library } = CHAPTERS[id];
+  return { config, library };
 }
 
 /**

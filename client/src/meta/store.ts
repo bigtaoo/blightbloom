@@ -12,6 +12,7 @@
  * has never persisted on that host means the first load after wiring it reads a fresh
  * account, and `migrate` below is what would have to be right about it.
  */
+import { chapterIdOr } from '@dd/engine';
 import { defaultMetaState, type MetaState } from './MetaState';
 import { webStorage } from '../platform/webStorage';
 
@@ -96,5 +97,9 @@ export function migrate(parsed: unknown): MetaState {
     selectedSkin: typeof p.selectedSkin === 'string' ? p.selectedSkin : d.selectedSkin,
     hasSeenTutorial: typeof p.hasSeenTutorial === 'boolean' ? p.hasSeenTutorial : d.hasSeenTutorial,
     bestFloor: typeof p.bestFloor === 'number' && Number.isFinite(p.bestFloor) && p.bestFloor > 0 ? Math.floor(p.bestFloor) : d.bestFloor,
+    // An id this build does not know falls back to the first chapter; a cleared id it does not
+    // know is KEPT (a string from a newer build — `MetaState.clearedChapters` says why).
+    selectedChapter: chapterIdOr(p.selectedChapter),
+    clearedChapters: union(d.clearedChapters, p.clearedChapters),
   };
 }

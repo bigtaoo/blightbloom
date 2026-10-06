@@ -9,7 +9,7 @@
  * Everything here is plain serializable data (persisted via meta/store). The forge
  * transactions that evolve it are pure functions in meta/forge.
  */
-import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID } from '@dd/engine';
+import { STARTER_BLUEPRINTS, DEFAULT_SKIN_ID, DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 
 export interface MetaState {
   /** Banked materials, keyed by (element, rolled tier) via `bankKey` → total qty (tier 0
@@ -48,6 +48,16 @@ export interface MetaState {
    * first one ends. Drawn under the lobby's hero (design/10, 2026-09-27). Only ever rises —
    * see `recordFloorReached`. The tutorial, the PvP arena and replays never write it. */
   bestFloor: number;
+  /** The PvE chapter the next solo run starts in (engine `world/chapters.ts`), picked in the
+   *  lobby. Only ever set to an UNLOCKED chapter by `selectChapter`, and read through
+   *  `playableChapter`, which falls back to the first chapter for one that is not — see
+   *  `meta/chapterProgress.ts`. */
+  selectedChapter: ChapterId;
+  /** Chapter ids whose boss this account has beaten (a last-floor extraction). Clearing chapter
+   *  N unlocks chapter N+1; chapter 1 is always unlocked. A plain `string[]` rather than
+   *  `ChapterId[]` on purpose: an id a NEWER build wrote must survive a round trip through an
+   *  older one (`store.ts migrate`), or playing on a stale tab would re-lock a chapter. */
+  clearedChapters: string[];
 }
 
 /** The free character roster (Task 8, "vanguard=free, skirmisher=paid, juggernaut=event",
@@ -72,6 +82,8 @@ export function defaultMetaState(): MetaState {
     selectedSkin: DEFAULT_SKIN_ID,
     hasSeenTutorial: false,
     bestFloor: 0,
+    selectedChapter: DEFAULT_CHAPTER_ID,
+    clearedChapters: [],
   };
 }
 

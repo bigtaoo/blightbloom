@@ -145,6 +145,10 @@ export function musicPaths(): readonly string[] {
  */
 export const BIOME_ID_TO_TRACK: Record<string, MusicTrack> = {
   ember: 'dungeon.ember',
+  // Chapter 2 has no loop of its own yet and reuses chapter 1's dungeon bed BY NAME — an
+  // explicit borrow rather than a fall to `DEFAULT_RUN_TRACK`, so the day a `dungeon.frost`
+  // track is authored this one line is the whole change, and nothing reads as forgotten.
+  frost: 'dungeon.ember',
 };
 
 /**

@@ -68,7 +68,10 @@
  * because the one unacceptable outcome is telling a player their run was saved when it was
  * not.
  */
-import { ENGINE_VERSION, type EngineConfig, type PlayerCommand } from '@dd/engine';
+import {
+  ENGINE_VERSION, DEFAULT_CHAPTER_ID, chapterIdOfConfig, isChapterId,
+  type ChapterId, type EngineConfig, type PlayerCommand,
+} from '@dd/engine';
 import type { Brad } from '@dd/engine/math/trig';
 import { BRAD_FULL } from '@dd/engine/math/trig';
 
@@ -91,6 +94,12 @@ export interface SavedRun {
    *  edited between sessions refuses the save instead of diverging. */
   contentHash: number;
   seed: number;
+  /** The PvE chapter the run is in (engine `world/chapters.ts`) — the resume rebuilds THAT
+   *  chapter's dungeon, or a frost save would be refused as `content` drift against ember's.
+   *  Absent from a save written before chapters existed, which can only be chapter 1, so the
+   *  parser reads absent as the default chapter; an id this build does not know refuses the
+   *  save instead (it cannot be rebuilt). Additive, so `RUN_SAVE_VERSION` is unchanged. */
+  chapterId: ChapterId;
   skinId: string;
   /** The loadout the run STARTED with. Read back from the run's own config rather than from
    *  the account, because `RunLifecycle.beginRun` spends the crafted loadout the moment the
@@ -180,6 +189,9 @@ export function packRunSave(opts: {
     engineVersion: ENGINE_VERSION,
     contentHash: contentHashOf(opts.config),
     seed: opts.config.seed,
+    // A config outside the catalog (a test fixture) has no chapter to name; the default is
+    // what the resume would have rebuilt before chapters existed.
+    chapterId: chapterIdOfConfig(opts.config.dungeon?.config) ?? DEFAULT_CHAPTER_ID,
     skinId: opts.config.skinId ?? '',
     loadout: [...(opts.config.loadout ?? [])],
     commands: opts.commands.map(
@@ -212,6 +224,7 @@ export function parseRunSave(value: unknown): SavedRun | null {
   if (!isInt(o.ticks) || o.ticks < 0) return null;
   if (!isInt(o.floorIndex) || o.floorIndex < 0) return null;
   if (typeof o.skinId !== 'string') return null;
+  if (o.chapterId !== undefined && !isChapterId(o.chapterId)) return null;
   if (!Array.isArray(o.commands)) return null;
 
   const commands: PackedCommand[] = [];
@@ -225,6 +238,7 @@ export function parseRunSave(value: unknown): SavedRun | null {
     engineVersion: o.engineVersion,
     contentHash: o.contentHash,
     seed: o.seed,
+    chapterId: isChapterId(o.chapterId) ? o.chapterId : DEFAULT_CHAPTER_ID,
     skinId: o.skinId,
     loadout: Array.isArray(o.loadout) ? o.loadout.filter((x): x is string => typeof x === 'string') : [],
     commands,

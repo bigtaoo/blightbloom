@@ -7,7 +7,7 @@ import { toFpGrid } from '@dd/engine/content/convert';
 import { ARENA_CATALOG } from './arenaCatalog';
 import { buildDungeonRunConfig, buildArenaDemoConfig } from './offlineConfig';
 import { parseGameQueryParams } from './gameQueryParams';
-import { createGameEngine } from '@dd/engine';
+import { createGameEngine, CHAPTERS, CHAPTER_ORDER, EMBER_DUNGEON, EMBER_L1_ROOMS } from '@dd/engine';
 import type { EngineConfig } from '@dd/engine';
 import { PLAYER_BASE } from '@dd/engine/content/players';
 
@@ -35,6 +35,26 @@ describe('buildDungeonRunConfig', () => {
     expect(cfg.dungeon).toBeDefined();
     expect(cfg.arena).toBeUndefined();
     expect(cfg.waves).toEqual([]);
+  });
+
+  it('builds chapter 1 from the very same content objects when no chapter is named', () => {
+    // The byte-identity promise for chapter 1 (design/gameplay/04): the same EMBER_DUNGEON /
+    // EMBER_L1_ROOMS objects as before chapters existed, so saves, replays and goldens agree.
+    const cfg = buildDungeonRunConfig({ seed: 1, coop: false, localSeat, allySkinId: 'juggernaut' });
+    expect(cfg.dungeon!.config).toBe(EMBER_DUNGEON);
+    expect(cfg.dungeon!.library).toBe(EMBER_L1_ROOMS);
+    expect(buildDungeonRunConfig({ seed: 1, chapterId: 'ember', coop: false, localSeat, allySkinId: 'x' }).dungeon)
+      .toEqual(cfg.dungeon);
+  });
+
+  it("builds each catalog chapter from that chapter's own config and library", () => {
+    for (const id of CHAPTER_ORDER) {
+      const cfg = buildDungeonRunConfig({ seed: 1, chapterId: id, coop: false, localSeat, allySkinId: 'x' });
+      expect(cfg.dungeon!.config, id).toBe(CHAPTERS[id].config);
+      expect(cfg.dungeon!.library, id).toBe(CHAPTERS[id].library);
+    }
+    // ...and the two really are different dungeons, or the loop above proves nothing.
+    expect(CHAPTERS.frost.config).not.toBe(CHAPTERS.ember.config);
   });
 
   it('is a pure function of its opts — identical config on every call', () => {

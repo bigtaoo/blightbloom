@@ -9,13 +9,15 @@
  * save that failed to parse, which is a different bug wearing the same answer.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ENGINE_VERSION } from '@dd/engine';
+import { CHAPTERS, ENGINE_VERSION } from '@dd/engine';
 import { contentHashOf, packRunSave, type RunSaveStore, type SavedRun } from './runSave';
 import {
   loadSavedRun, savedRunSummary, writeSavedRun, clearSavedRun, resetRunSaveCacheForTests,
 } from './runSaveStore';
 import { buildDungeonRunConfig } from './offlineConfig';
-import { resumableRunSummary, refuseResume, resetResumableCacheForTests } from './resumableRun';
+import {
+  rebuildSavedRunConfig, resumableRunSummary, refuseResume, resetResumableCacheForTests,
+} from './resumableRun';
 
 /** The same in-memory store shape `runSaveStore.test.ts` uses — no localStorage anywhere. */
 function memStore(): RunSaveStore {
@@ -89,6 +91,23 @@ describe('resumableRunSummary', () => {
     });
     expect(save.contentHash).toBe(contentHashOf(todayConfig));
     expect(resumableRunSummary()).not.toBeNull();
+  });
+});
+
+describe('a save in another chapter (design/gameplay/04)', () => {
+  it("rebuilds the save's own chapter, so a frost save is offered rather than refused as stale", () => {
+    const config = buildDungeonRunConfig({
+      seed: 9, chapterId: 'frost', coop: false, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: '',
+    });
+    const save = packRunSave({ config, commands: [], ticks: 30, floorIndex: 2, score: 0, nowMs: 5 });
+    put(save);
+    expect(rebuildSavedRunConfig(save).dungeon!.config).toBe(CHAPTERS.frost.config);
+    expect(resumableRunSummary()).toEqual({ floorIndex: 2, ticks: 30, savedAtMs: 5 });
+  });
+
+  it('passes the ally skin through, and it changes nothing a resume checks', () => {
+    const save = freshSave();
+    expect(contentHashOf(rebuildSavedRunConfig(save, 'skirmisher'))).toBe(contentHashOf(rebuildSavedRunConfig(save)));
   });
 });
 

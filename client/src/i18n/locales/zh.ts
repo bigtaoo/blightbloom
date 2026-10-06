@@ -30,6 +30,12 @@ export const zh: Translations<typeof en> = {
     syncedHint: '进度已同步',
     bestFloor: '最深到达：第 {floor} 层',
   },
+  chapter: {
+    number: '第 {n} 章',
+    locked: '通关第 {n} 章后解锁',
+    ember: { name: '余烬深渊' },
+    frost: { name: '霜寒深渊' },
+  },
   loading: {
     boot: '加载中',
     art: '正在加载素材',

@@ -27,9 +27,11 @@
 //
 // `src/game/pureLayerBoundary.test.ts` is what keeps it that way; the 90% coverage gate
 // cannot (see that file's header for why a percentage can never guard a boundary).
-import type { GameEngine, GameState } from '@dd/engine';
+import { chapterIdOfConfig, type GameEngine, type GameState } from '@dd/engine';
 import type { CoopSession } from '../net/CoopSession';
-import { defaultMetaState, recordFloorReached, selectCharacter, type MetaState, type MetaStore } from '../meta';
+import {
+  defaultMetaState, recordChapterCleared, recordFloorReached, selectCharacter, type MetaState, type MetaStore,
+} from '../meta';
 import type { ArenaId } from './match/arenaCatalog';
 import type { GameQueryParams } from './match/gameQueryParams';
 import type { Phase } from './phase';
@@ -243,10 +245,28 @@ export class RunState {
     if (next !== this.meta) this.setMeta(next);
   }
 
+  /**
+   * Record the live run's chapter as cleared (`meta/chapterProgress.ts`) — which is what
+   * unlocks the next one. Only reached on a PvE VICTORY, and a PvE victory IS a clear: the
+   * extraction that ends a dungeon run only resolves on its last floor, after the boss
+   * (`ExtractionSystem`). Same exclusions as `noteFloorReached`, plus a config outside the
+   * chapter catalog (a test fixture), which has no chapter to record. Online co-op counts —
+   * the squad beat that boss — and its config is the server's, which names the chapter.
+   */
+  noteChapterCleared(): void {
+    const s = this.activeState();
+    if (!s || this.tutorialActive || this.replayUrl !== null || s.zoneEnabled) return;
+    const id = chapterIdOfConfig(s.dungeonConfig);
+    if (id === null) return;
+    const next = recordChapterCleared(this.meta, id);
+    if (next !== this.meta) this.setMeta(next);
+  }
+
   /** A run reached its result screen (`RunOutcomeHost.setPhase`). */
   settleOutcome(phase: 'victory' | 'defeat'): void {
     this.phase = phase;
     this.noteFloorReached();
+    if (phase === 'victory') this.noteChapterCleared();
   }
 
   /**

@@ -6,3 +6,4 @@ export * from './forge';
 export * from './store';
 export * from './accountSync';
 export * from './guestMerge';
+export * from './chapterProgress';

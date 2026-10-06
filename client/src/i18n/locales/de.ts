@@ -30,6 +30,12 @@ export const de: Translations<typeof en> = {
     syncedHint: 'Fortschritt synchronisiert',
     bestFloor: 'Bestwert: Ebene {floor}',
   },
+  chapter: {
+    number: 'KAPITEL {n}',
+    locked: 'Erst Kapitel {n} abschließen',
+    ember: { name: 'Der Glutabstieg' },
+    frost: { name: 'Der Frostabstieg' },
+  },
   loading: {
     boot: 'LÄDT',
     art: 'LADE GRAFIKEN',
