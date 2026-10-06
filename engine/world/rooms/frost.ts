@@ -78,10 +78,22 @@ export const FROST_L1_FLOORS: Partial<Record<number, DungeonFloorMap>> = {
  *  - `biomeId: 'frost'` — the chapter id (`world/chapters.ts`) and the ice palette
  *    (client `theme.ts`'s `BIOME_ID_TO_ELEMENT`).
  *  - its own piece tag and role pieces.
- *  - `difficultyCurve.base` 1.25, against chapter 1's 1: every floor of chapter 2 scales mob HP
- *    a quarter higher than the same floor of chapter 1 (floor 1 ×1.25 → boss floor ×2.25). The
+ *  - `difficultyCurve.base` 1.125, against chapter 1's 1: every floor of chapter 2 scales mob HP
+ *    an eighth higher than the same floor of chapter 1 (floor 1 ×1.125 → boss floor ×2.125). The
  *    garrisons themselves are chapter 1's, so this is the one knob that makes the second chapter
- *    the harder one; `npm run test:pve-sim` is what it was set against.
+ *    the harder one. The HP a player meets is still a whole number (`Math.round(maxHp × scale)`:
+ *    on floor 1 a 3-HP mob stays 3, a 4 becomes 5, a 6 becomes 7).
+ *
+ * Set by `client/sim/chapterSim.sim.ts` (2026-10-06), careful bot, 80 seeds, full runs. Of the
+ * runs, the share that got off floor 0 (the bot's wall in both chapters):
+ *    chapter 1 (base 1)          25%   (20/80)
+ *    chapter 2 at base 1         21%   (17/80)  ← the content swap alone is ~neutral
+ *    chapter 2 at base 1.125     13%   (10/80)  ← shipped: half of chapter 1's rate
+ *    chapter 2 at base 1.25       5%    (4/80)  ← first authored value; 0/40 on the gated seeds,
+ *                                                 under chapter 1's own "not a wall" bar of 10%
+ * The knob is steep on floor 0 because each step re-rounds the 4- and 6-HP mobs upward; a
+ * fresh-start trial of floor 2 (×1.375 at 1.125) clears 35% against chapter 1's floor 2 (×1.25)
+ * at ~99%, so the chapter is still clearly the harder one past its entrance.
  */
 export const FROST_DUNGEON: DungeonConfig = {
   biomeId: 'frost',
@@ -92,7 +104,7 @@ export const FROST_DUNGEON: DungeonConfig = {
   layout: 'graph2d',
   extractionPieceId: 'frost_l1_extraction',
   bossPieceId: 'frost_l1_boss',
-  difficultyCurve: { base: 1.25, perFloor: 0.25 },
+  difficultyCurve: { base: 1.125, perFloor: 0.25 }, // was 1.25 — see the doc comment above
   floorMaps: FROST_L1_FLOORS,
   floorLayoutVariants: {
     1: [FROST_L1_FLOORS[1]!, floor2Branch as DungeonFloorMap],

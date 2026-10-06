@@ -31,7 +31,7 @@
  * "500-line file convention") and are re-exported below, so this stays the one
  * import site for every existing caller.
  */
-import { createGameEngine } from '@dd/engine';
+import { CHAPTERS, createGameEngine, DEFAULT_CHAPTER_ID } from '@dd/engine';
 import { buildDungeonRunConfig } from '../../src/game/match/offlineConfig';
 import { BOT_PROFILES, PveBotController } from './PveBotController';
 import { EncounterTracker } from './levelSimTracker';
@@ -50,14 +50,18 @@ export function runLevel(opts: RunOptions): RunMetrics {
   const skinId = opts.skinId ?? 'vanguard';
   const maxTicks = opts.maxTicks ?? DEFAULT_MAX_TICKS;
 
-  const engine = createGameEngine(
-    buildDungeonRunConfig({
-      seed: opts.seed,
-      coop: false,
-      localSeat: { skinId, loadout: opts.loadout ?? [] },
-      allySkinId: 'juggernaut', // ignored: single-player config has no ally seat
-    }),
-  );
+  const config = buildDungeonRunConfig({
+    seed: opts.seed,
+    coop: false,
+    localSeat: { skinId, loadout: opts.loadout ?? [] },
+    allySkinId: 'juggernaut', // ignored: single-player config has no ally seat
+  });
+  // The client config only knows chapter 1 (no chapter select ships yet); another chapter or
+  // a trial dungeon replaces its `dungeon` and nothing else. Chapter 1 keeps the client's own
+  // object, so its sweep cannot drift from what pressing START builds.
+  const chapter = opts.chapter ?? DEFAULT_CHAPTER_ID;
+  const dungeon = opts.dungeon ?? (chapter === DEFAULT_CHAPTER_ID ? undefined : CHAPTERS[chapter]);
+  const engine = createGameEngine(dungeon ? { ...config, dungeon } : config);
   const bot = new PveBotController(profile);
   const tracker = new EncounterTracker();
 
@@ -68,6 +72,7 @@ export function runLevel(opts: RunOptions): RunMetrics {
     engine.step([bot.build(engine.state, 0, nextTick)]);
     ticks++;
     tracker.observe(engine.state);
+    opts.onTick?.(engine.state);
     if (engine.state.phase === 'gameover') {
       outcome = engine.state.winner === 0 ? 'extracted' : 'died';
       break;

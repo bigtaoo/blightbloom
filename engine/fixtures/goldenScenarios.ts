@@ -312,7 +312,7 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     // Chapter 2 (design/gameplay/04-chapters.md). Same honest scope as the ember scenario
     // above — floor 1 only, never descends — but over chapter 2's own content: the
     // TRANSPOSED geometry (doors on the other axis, so a different brim/door-carve path), the
-    // frost-led garrison, and `difficultyCurve.base` 1.25 scaling every spawn's HP. The
+    // frost-led garrison, and `difficultyCurve.base` (1.125) scaling every spawn's HP. The
     // ember scenario cannot see any of the three.
     pins: 'chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base',
     config: {
