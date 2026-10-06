@@ -16,8 +16,8 @@
 import { t } from '../../i18n';
 import { THEME } from '../theme';
 import {
-  guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount, playableChapter, pullAccountSnapshot,
-  type AccountSnapshot, type GuestMergeOffer, type MetaState,
+  guestAddsChapterClears, guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount, playableChapter,
+  pullAccountSnapshot, type AccountSnapshot, type GuestMergeOffer, type MetaState,
 } from '../../meta';
 import { claimGuestMerge } from '../../net/auth';
 import { getInstallId } from '../../net/identity';
@@ -254,7 +254,8 @@ export class OnlineMatch {
    *  - **Already merged, or nothing local to merge** → the account's state, unchanged. That
    *    is every login after the first on a given browser, and it is the point of the whole
    *    mechanism rather than a shortcut through it: the account is the truth afterwards.
-   *  - **Nothing on the account's side either** → merge silently. There is no choice to
+   *  - **Nothing on the account's side either, or the only local progress is a chapter clear
+   *    the account lacks** → merge silently. There is no choice to
    *    offer between a player's guest progress and an empty account, and a modal whose two
    *    buttons do the same thing is worse than none. Taking the account's empty state here
    *    would be hole 1 again, on the account shape where it is most obviously wrong.
@@ -275,8 +276,11 @@ export class OnlineMatch {
   ): Promise<MetaState> {
     const d = this.deps;
     const local = d.run.meta;
-    if (guestMerged || !hasGuestProgress(local)) return remote;
-    const choice = hasGuestProgress(remote)
+    if (guestMerged) return remote;
+    const progress = hasGuestProgress(local);
+    if (!progress && !guestAddsChapterClears(local, remote)) return remote;
+    // A clear-only guest has nothing the prompt can count, so it merges like an empty account.
+    const choice = progress && hasGuestProgress(remote)
       ? await d.accountPrompt.askGuestMerge(guestMergeOffer(local, remote), username)
       : 'merge';
     let claimed = false;

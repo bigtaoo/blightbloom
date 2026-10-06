@@ -527,6 +527,40 @@ describe('the one-time device merge (design/16 hole 1)', () => {
     expect(authApi.claimGuestMerge).toHaveBeenCalledTimes(1);
   });
 
+  it('merges a clear-only guest WITHOUT asking — the unlock is kept, the device is claimed', async () => {
+    // The guest cleared chapter 1 and spent the carry-out at the Forge, so `hasGuestProgress`
+    // finds nothing. Taking the account's state would lock chapter 2 again, silently; the
+    // prompt has no number for a clear, so this merges the way an empty account does.
+    vi.spyOn(meta, 'pullAccountSnapshot').mockResolvedValue(ok(REMOTE, false));
+    const t = make();
+    t.run.matchBaseUrl = 'http://mm';
+    t.run.meta = { ...defaultMetaState(), clearedChapters: ['ember'], selectedChapter: 'frost' };
+    await t.net.syncMetaWithSession();
+    expect(t.accountPrompt.askGuestMerge).not.toHaveBeenCalled();
+    expect(authApi.claimGuestMerge).toHaveBeenCalledTimes(1);
+    expect(t.run.meta.clearedChapters).toEqual(['ember']);
+    expect(t.run.meta.materialBank).toEqual(REMOTE.materialBank);
+    expect(t.run.meta.selectedChapter).toBe(REMOTE.selectedChapter);
+  });
+
+  it('takes the account unchanged when its clears already cover the guest ones', async () => {
+    const remote: MetaState = { ...REMOTE, clearedChapters: ['ember'] };
+    vi.spyOn(meta, 'pullAccountSnapshot').mockResolvedValue(ok(remote, false));
+    const t = make();
+    t.run.meta = { ...defaultMetaState(), clearedChapters: ['ember'] };
+    await t.net.syncMetaWithSession();
+    expect(authApi.claimGuestMerge).not.toHaveBeenCalled();
+    expect(t.run.meta).toEqual(remote);
+  });
+
+  it('still ASKS a guest with a bank and a clear when the account holds something', async () => {
+    const t = firstLogin(withProgress({ clearedChapters: ['ember'] }));
+    t.accountPrompt.askGuestMerge.mockResolvedValue('merge');
+    await t.net.syncMetaWithSession();
+    expect(t.accountPrompt.askGuestMerge).toHaveBeenCalledTimes(1);
+    expect(t.run.meta.clearedChapters).toEqual(['ember']);
+  });
+
   it('does NOT merge when another tab won the claim', async () => {
     // Two tabs answering at once is the case the atomic server-side claim exists for. The
     // loser must take the account's state: the winner has already folded this bank in, and a

@@ -40,8 +40,9 @@
  * `clearedChapters` UNIONS: a chapter beaten on this device was beaten, and the unlock it
  * earned is the player's whichever side it was recorded on. It is NOT progress for
  * `hasGuestProgress`, for the reason `bestFloor` is not: the prompt counts materials,
- * blueprints and characters, and a modal whose every number is zero asks nothing. A clear
- * always banks a carry-out too, so a guest with a clear almost always has a bank to ask about.
+ * blueprints and characters, and a modal whose every number is zero asks nothing. A guest
+ * whose ONLY progress is a clear the account lacks (the bank it earned already spent) is
+ * merged without asking instead — see `guestAddsChapterClears`.
  *
  * `loadout`, `selectedSkin` and `selectedChapter` are the ACCOUNT's: they are a staged choice
  * rather than an accumulation, two of them cannot be added, and "the account is the truth"
@@ -94,6 +95,20 @@ export function hasGuestProgress(m: MetaState): boolean {
   if (m.unlockedBlueprints.some((id) => !STARTER_BLUEPRINTS.includes(id))) return true;
   if (Object.values(m.blueprintStock).some((qty) => (qty ?? 0) > 0)) return true;
   return m.ownedCharacters.some((id) => !FREE_CHARACTERS.includes(id));
+}
+
+/**
+ * Does this device hold a chapter clear the account lacks?
+ *
+ * The one kind of guest progress `hasGuestProgress` cannot count, and the reason it needs its
+ * own question: without it, a guest who cleared chapter 1 and spent the carry-out at the Forge
+ * would log in and find chapter 2 locked again, with no prompt and no message. A clear is
+ * merged silently rather than asked about, because the prompt has no number for it and an
+ * unlock is not a thing one player can hand another of any value: on a shared computer the
+ * worst case is a chapter opened a run early.
+ */
+export function guestAddsChapterClears(guest: MetaState, account: MetaState): boolean {
+  return guest.clearedChapters.some((id) => !account.clearedChapters.includes(id));
 }
 
 /** What the guest side would add to the account side — the numbers the prompt shows. */

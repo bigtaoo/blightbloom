@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { STARTER_BLUEPRINTS } from '@dd/engine';
 import { defaultMetaState, FREE_CHARACTERS, type MetaState } from './MetaState';
-import { guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount } from './guestMerge';
+import { guestAddsChapterClears, guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount } from './guestMerge';
 
 const state = (over: Partial<MetaState> = {}): MetaState => ({ ...defaultMetaState(), ...over });
 
@@ -64,6 +64,17 @@ describe('hasGuestProgress', () => {
     const stock = { flamer: undefined, spear: 2 } as unknown as Record<string, number>;
     expect(hasGuestProgress(state({ blueprintStock: stock }))).toBe(true);
     expect(guestMergeOffer(state({ blueprintStock: stock }), defaultMetaState()).blueprints).toBe(2);
+  });
+});
+
+describe('guestAddsChapterClears', () => {
+  it('is true only for a clear the account does not already hold', () => {
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember'] }), state())).toBe(true);
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember', 'frost'] }), state({ clearedChapters: ['ember'] })))
+      .toBe(true);
+    expect(guestAddsChapterClears(state({ clearedChapters: ['ember'] }), state({ clearedChapters: ['ember', 'frost'] })))
+      .toBe(false);
+    expect(guestAddsChapterClears(state(), state({ clearedChapters: ['ember'] }))).toBe(false);
   });
 });
 
