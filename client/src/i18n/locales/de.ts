@@ -391,6 +391,7 @@ export const de: Translations<typeof en> = {
     enemyclaw: { name: 'Räuberklaue' },
     enemymaul: { name: 'Räuberhammer' },
     enemynova: { name: 'Räubernova' },
+    enemyshardfan: { name: 'Räuber-Splitterfächer' },
     flamer: { name: 'Flammenwerfer' },
     cryobolt: { name: 'Kryobolzen' },
     teslagun: { name: 'Teslakanone' },

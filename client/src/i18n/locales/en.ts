@@ -420,6 +420,7 @@ export const en = {
     enemyclaw: { name: 'Raider Claw' },
     enemymaul: { name: 'Raider Maul' },
     enemynova: { name: 'Raider Nova' },
+    enemyshardfan: { name: 'Raider Shard Fan' },
     flamer: { name: 'Flamethrower' },
     cryobolt: { name: 'Cryobolt' },
     teslagun: { name: 'Tesla Gun' },

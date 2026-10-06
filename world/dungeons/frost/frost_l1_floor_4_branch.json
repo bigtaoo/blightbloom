@@ -1,0 +1,125 @@
+{
+  "id": "frost_l1_floor_4_branch",
+  "rooms": [
+    {
+      "id": "r1_glacier",
+      "pieceId": "frost_l1_glacier",
+      "offsetXGrid": 39,
+      "offsetYGrid": 39
+    },
+    {
+      "id": "r2_bastion",
+      "pieceId": "frost_l1_bastion",
+      "offsetXGrid": 39,
+      "offsetYGrid": 20
+    },
+    {
+      "id": "r3_cistern",
+      "pieceId": "frost_l1_cistern",
+      "offsetXGrid": 20,
+      "offsetYGrid": 20
+    },
+    {
+      "id": "r4_rampart",
+      "pieceId": "frost_l1_rampart",
+      "offsetXGrid": 20,
+      "offsetYGrid": 0
+    },
+    {
+      "id": "r5_cirque",
+      "pieceId": "frost_l1_cirque",
+      "offsetXGrid": 0,
+      "offsetYGrid": 20
+    },
+    {
+      "id": "b1_cache",
+      "pieceId": "frost_l1_cache",
+      "offsetXGrid": 39,
+      "offsetYGrid": 2
+    },
+    {
+      "id": "b2_market",
+      "pieceId": "frost_l1_market",
+      "offsetXGrid": 20,
+      "offsetYGrid": 39
+    },
+    {
+      "id": "r6_extraction",
+      "pieceId": "frost_l1_extraction",
+      "offsetXGrid": 2,
+      "offsetYGrid": 4
+    }
+  ],
+  "doors": [
+    {
+      "roomA": "r1_glacier",
+      "roomB": "r2_bastion",
+      "passageGrid": {
+        "x": 48,
+        "y": 38,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r2_bastion",
+      "roomB": "r3_cistern",
+      "passageGrid": {
+        "x": 38,
+        "y": 31,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_cistern",
+      "roomB": "r4_rampart",
+      "passageGrid": {
+        "x": 31,
+        "y": 19,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r3_cistern",
+      "roomB": "r5_cirque",
+      "passageGrid": {
+        "x": 19,
+        "y": 27,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r5_cirque",
+      "roomB": "r6_extraction",
+      "passageGrid": {
+        "x": 8,
+        "y": 19,
+        "w": 4,
+        "h": 2
+      }
+    },
+    {
+      "roomA": "r4_rampart",
+      "roomB": "b1_cache",
+      "passageGrid": {
+        "x": 38,
+        "y": 6,
+        "w": 2,
+        "h": 4
+      }
+    },
+    {
+      "roomA": "r3_cistern",
+      "roomB": "b2_market",
+      "passageGrid": {
+        "x": 26,
+        "y": 38,
+        "w": 4,
+        "h": 2
+      }
+    }
+  ]
+}

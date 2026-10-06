@@ -168,4 +168,33 @@ export const DROP_ONLY_WEAPON_SPECS: Record<string, WeaponSpec> = {
     deflect: false,
     deflectSpeed: 0,
   },
+
+  // ── Enemy shard fan (Glacimaw boss loadout — chapter 2, design/gameplay/04-chapters.md,
+  // not player-selectable) ─────────────────────────────────────────────────────────────
+  // The chapter-2 boss's whole threat: an AIMED cone of ice shards, where Pyrefang's
+  // `enemynova` is an unaimed ring. Every shard is ice, so a hit chills (HitResolveSystem's
+  // CHILL_SLOW) — and a chilled player is slower to leave the next cone. The counterplay is
+  // lateral movement BEFORE the volley, not distance after it. The jitter draws from
+  // combatPrng exactly like any spread weapon's pellets (WeaponFireSystem.fireRanged).
+  enemyshardfan: {
+    id: 'enemyshardfan',
+    kind: 'ranged',
+    nameKey: 'weapon.enemyshardfan.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.4, // 42 ticks — a touch quicker than the ring: a cone is easier to step out of
+    bullets: 5,
+    spreadDeg: 50, // wide enough that backing straight off still eats a shard
+    bulletSpeed: 11,
+    damage: 1, // per shard — the threat is the chill chaining volleys, not one big hit
+    damageType: 'ice', // GLACIMAW's element (design/07 payload → on-hit chill status)
+    ballistic: 'straight',
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 1.6,
+    bulletRadius: 0.14,
+    muzzleGrid: 0.875, // grid (28px/32) — GLACIMAW's own radius
+    bulletZ: 0.5,
+  },
 };

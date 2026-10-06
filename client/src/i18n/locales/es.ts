@@ -391,6 +391,7 @@ export const es: Translations<typeof en> = {
     enemyclaw: { name: 'Garra saqueadora' },
     enemymaul: { name: 'Mazo saqueador' },
     enemynova: { name: 'Nova saqueadora' },
+    enemyshardfan: { name: 'Abanico de esquirlas saqueador' },
     flamer: { name: 'Lanzallamas' },
     cryobolt: { name: 'Criobolt' },
     teslagun: { name: 'Pistola Tesla' },

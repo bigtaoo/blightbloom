@@ -30,6 +30,7 @@ import type { EngineConfig } from '../state/GameState';
 import type { GameState } from '../state/GameState';
 import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
+import { FROST_DUNGEON, FROST_L1_ROOMS } from '../world/rooms/frost';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
 import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
@@ -305,6 +306,26 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     seats: 1,
     input: { interact: true, chest: false, descend: true, extract: false, press: false },
     salt: 0x3333,
+  },
+  {
+    name: 'frost-dungeon-floor1',
+    // Chapter 2 (design/gameplay/04-chapters.md). Same honest scope as the ember scenario
+    // above — floor 1 only, never descends — but over chapter 2's own content: the
+    // TRANSPOSED geometry (doors on the other axis, so a different brim/door-carve path), the
+    // frost-led garrison, and `difficultyCurve.base` 1.25 scaling every spawn's HP. The
+    // ember scenario cannot see any of the three.
+    pins: 'chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base',
+    config: {
+      seed: 20261006,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: FROST_DUNGEON, library: FROST_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3434,
   },
   {
     name: 'brim-grinder',

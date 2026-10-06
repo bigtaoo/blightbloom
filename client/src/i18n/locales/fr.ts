@@ -391,6 +391,7 @@ export const fr: Translations<typeof en> = {
     enemyclaw: { name: 'Griffe pillarde' },
     enemymaul: { name: 'Maillet pillard' },
     enemynova: { name: 'Nova pillarde' },
+    enemyshardfan: { name: 'Éventail d’éclats pillard' },
     flamer: { name: 'Lance-flammes' },
     cryobolt: { name: 'Éclair de givre' },
     teslagun: { name: 'Fusil Tesla' },

@@ -4,3 +4,5 @@
 export * from './dungeon';
 export * from './rooms/ember';
 export * from './rooms/emberLevel1';
+export * from './rooms/frost';
+export * from './chapters';

@@ -390,6 +390,7 @@ export const zh: Translations<typeof en> = {
     enemyclaw: { name: '掠夺者利爪' },
     enemymaul: { name: '掠夺者重锤' },
     enemynova: { name: '掠夺者新星' },
+    enemyshardfan: { name: '掠夺者冰棱扇' },
     flamer: { name: '火焰喷射器' },
     cryobolt: { name: '寒冰箭' },
     teslagun: { name: '特斯拉枪' },

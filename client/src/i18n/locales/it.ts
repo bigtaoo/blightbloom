@@ -391,6 +391,7 @@ export const it: Translations<typeof en> = {
     enemyclaw: { name: 'Artiglio del predone' },
     enemymaul: { name: 'Maglio del predone' },
     enemynova: { name: 'Nova del predone' },
+    enemyshardfan: { name: 'Ventaglio di schegge del predone' },
     flamer: { name: 'Lanciafiamme' },
     cryobolt: { name: 'Criobolt' },
     teslagun: { name: 'Cannone Tesla' },

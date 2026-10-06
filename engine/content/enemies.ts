@@ -21,7 +21,13 @@ import type { DamageType, ResistMap } from './damage';
 import { freshStatus } from './damage';
 import { pxToFp } from './convert';
 import { PLAYER_BASE } from './players';
-import { ENEMY_CLAW_SIM, ENEMY_GUN_SIM, ENEMY_MAUL_SIM, ENEMY_NOVA_SIM, makeWeapon } from './weapons';
+import { ENEMY_CLAW_SIM, ENEMY_GUN_SIM, ENEMY_MAUL_SIM, makeWeapon } from './weapons';
+import { BLIGHTLORD, GLACIMAW, IRONWARDEN, PYREFANG } from './bosses';
+
+// The boss blueprints and the random-boss pool live in their own file (split 2026-10-06 when
+// chapter 2's boss pushed this one past 500 lines); re-exported so every existing import of
+// `./enemies` keeps working.
+export * from './bosses';
 import { curveAt } from '../world/dungeon';
 
 export interface EnemyBlueprint {
@@ -271,105 +277,6 @@ export const RAVAGER: EnemyBlueprint = {
   engageRangeFp: pxToFp(40), // inside `enemymaul`'s 1.5-grid (48 px) reach
 };
 
-// ── Boss ────────────────────────────────────────────────────────────────────────
-// The durable finale — a big, tanky mob that survives long enough to *show* the
-// combat systems working (design/03/07): its huge HP pool lets poison stacks ramp
-// to full and lingering burn/chill/poison auras persist visibly, while its broad
-// resist profile forces the player to find the right damage type. It shrugs bullets
-// (physical, floored to min-1) and partially resists fire/ice/lightning, but is
-// doubly WEAK to poison — so the intended kill is to stack venom and let the DoT
-// melt it, the clearest showcase of independent poison stacks on a target that
-// doesn't die first. Neutral-ish elements still land, so their auras read too.
-export const BLIGHTLORD: EnemyBlueprint = {
-  type: 'blightlord',
-  maxHp: 40, // ~a dozen full-poison DoT ticks; bullets alone take forever (min-1)
-  radius: pxToFp(30), // twice a basic mob — reads as a boss; auras/bar scale with it
-  footprintRadius: pxToFp(14),
-  weapon: ENEMY_GUN_SIM,
-  resist: { physical: 400, fire: 800, ice: 800, lightning: 800, poison: 2000 },
-  tint: 0x8e24aa, // toxic purple
-  boss: true,
-  bodyRig: 'boss-core', // design/13's "giant failed core" — its own rig, not a scaled critter-core
-  // Boss AI depth (design/09 aspirational `traits`/`onDeathSpawn`, ENGINE_VERSION 27,
-  // first-pass numbers — tune against real play like every other constant here).
-  // Below 30% HP (the "poison is really biting now" moment): +50% damage, +50% fire
-  // rate — a real, felt escalation rather than a slow HP-bar melt with no counterplay
-  // change. On death, two basic adds spawn around its body — the fight doesn't just
-  // end the instant the bar hits 0.
-  enrage: { hpThresholdPermille: 300, bonusDamagePermille: 500, bonusFireratePermille: 500 },
-  onDeathSpawn: { type: 'basic', count: 2 },
-};
-
-/**
- * Fire/AoE specialist (Task 2's second boss, ENGINE_VERSION 70) — the "keep moving"
- * axis, distinct from Blightlord's "race the DoT" one. Its threat is the omnidirectional
- * `enemynova` ring (`weaponSpecs/dropOnly.ts`), not sustained single-target dps: standing
- * still to trade damage is the losing play, same as `novaburst`'s own player-facing
- * "panic button" read but authored as the boss's BASELINE attack rather than a burst
- * option. Elemental like the four basic variants (fire, weak to ice — `EMBERLING`'s exact
- * ratios, boss-scaled resist instead of a flat bump so the counterplay reads the same at
- * both tiers), and faster/wider-perceiving than the roster default so it can reposition
- * between volleys instead of standing in the ring it just fired (`STALKER`'s own
- * precedent for both knobs). Carries `enrage` alone, no `onDeathSpawn` — Blightlord
- * already owns the "adds on death" beat; this boss's escalation is entirely its own ring
- * firing faster, never more shooters.
- */
-export const PYREFANG: EnemyBlueprint = {
-  type: 'pyrefang',
-  // No `element` badge — like BLIGHTLORD/BRUTE/RAVAGER, a boss/body-form variant is
-  // deliberately NOT one of design/13's four locked elemental variants, even though
-  // its resist profile mirrors one (`enemies.test.ts` pins the exact four).
-  maxHp: 36,
-  radius: pxToFp(28),
-  footprintRadius: pxToFp(13),
-  weapon: ENEMY_NOVA_SIM,
-  resist: { fire: 400, ice: 1800 },
-  tint: 0xff7043, // ember orange — EMBERLING's exact hue, boss-scaled
-  boss: true,
-  bodyRig: 'boss-core',
-  moveSpeedPerTick: pxToFp(3.6), // faster than the roster default (2.6) — repositions between rings
-  aggroRangeFp: pxToFp(400), // STALKER's wider perception — wakes before the player is on top of it
-  // Below 30% HP: the ring fires 60% faster, no damage bonus (its threat is the AoE
-  // itself, not a bigger single hit) — the escalation is "dodge more often," not
-  // "dodge harder."
-  enrage: { hpThresholdPermille: 300, bonusDamagePermille: 0, bonusFireratePermille: 600 },
-};
-
-/**
- * Armor/phase specialist (Task 2's third boss, ENGINE_VERSION 70) — the "burst it to
- * the break-point, then finish" axis: a DEFENSIVE trait that changes once, the mirror
- * image of `enrage`'s offensive one (see `armorBreak` on `EnemyBlueprint` and
- * `WeaponFireSystem.latchArmorBreak`). Armored phase resist matches `IRONCLAD`'s own
- * ratios boss-scaled (shrugs bullets/fire, weak to lightning); once hp first crosses
- * 50%, its `armorBreak.resist` REPLACES that map with a far weaker one — the "core
- * exposed" moment — and never reverts. Slower than the roster default (a stand-and-
- * tank read, the opposite of Pyrefang's kiting) and carries neither `enrage` nor
- * `onDeathSpawn`: its escalation is entirely the one-time defensive break, so the
- * player's read is "the same enemy became easier," not "harder."
- */
-export const IRONWARDEN: EnemyBlueprint = {
-  type: 'ironwarden',
-  // No `element` badge — see PYREFANG's own note. IRONCLAD already carries the
-  // locked `physical` badge; a second physical-flavoured mob does not get a second one.
-  maxHp: 44,
-  radius: pxToFp(30),
-  footprintRadius: pxToFp(14),
-  weapon: ENEMY_GUN_SIM,
-  resist: { physical: 300, fire: 700, ice: 700, lightning: 1900 },
-  tint: 0x90a4ae, // steel grey — IRONCLAD's exact hue, boss-scaled
-  boss: true,
-  bodyRig: 'boss-core',
-  moveSpeedPerTick: pxToFp(1.8), // slower than the roster default — a wall you can outrun
-  armorBreak: { hpThresholdPermille: 500, resist: { physical: 1000, fire: 900, ice: 900, lightning: 2200 } },
-};
-
-/** The random-boss pool floor 5's boss room draws from (`SpawnSystem`'s `'boss_random'`
- *  sentinel, `world/dungeons/ember/pieces/ember_l1_boss.json`) — one `aiPrng` draw the
- *  tick that room activates, so which boss a run gets is decided once and stays fixed
- *  for the run, exactly like any other spawn-time roll. Order is insignificant (an
- *  index into this array, not a weight); Blightlord is included so the pre-Task-2
- *  boss stays reachable, not replaced. */
-export const BOSS_POOL: readonly string[] = ['blightlord', 'pyrefang', 'ironwarden'];
 
 /** Blueprint registry, keyed by `type` (design/09 "content is plain data keyed by
  *  type"). SpawnSystem resolves a wave entry's type through this; unknown → basic. */
@@ -386,6 +293,7 @@ export const ENEMY_BLUEPRINTS: Record<string, EnemyBlueprint> = {
   blightlord: BLIGHTLORD,
   pyrefang: PYREFANG,
   ironwarden: IRONWARDEN,
+  glacimaw: GLACIMAW,
 };
 
 /**

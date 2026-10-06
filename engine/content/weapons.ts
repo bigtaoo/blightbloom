@@ -128,7 +128,7 @@ export function toSimSpec(spec: WeaponSpec): WeaponSimSpec {
 /** Mob loadouts — authored in WEAPON_SPECS like everything else, but never
  *  player-facing: excluded from `WEAPON_SIM_BY_ID` so they can neither roll as a
  *  weapon drop (`WEAPON_DROP_POOL` resolves through that map) nor be crafted. */
-export const MOB_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul', 'enemynova'];
+export const MOB_WEAPON_IDS: readonly string[] = ['enemygun', 'enemyclaw', 'enemymaul', 'enemynova', 'enemyshardfan'];
 
 export const WEAPON_SIM_BY_ID: Record<string, WeaponSimSpec> = Object.fromEntries(
   Object.entries(WEAPON_SPECS)
@@ -147,6 +147,8 @@ export const ENEMY_CLAW_SIM = toSimSpec(WEAPON_SPECS.enemyclaw!) as MeleeSimSpec
 export const ENEMY_MAUL_SIM = toSimSpec(WEAPON_SPECS.enemymaul!) as MeleeSimSpec;
 // Pyrefang's ring attack (Task 2, ENGINE_VERSION 70) — the boss roster's first radial loadout.
 export const ENEMY_NOVA_SIM = toSimSpec(WEAPON_SPECS.enemynova!) as RangedSimSpec;
+// Glacimaw's aimed ice cone (chapter 2, design/gameplay/04-chapters.md).
+export const ENEMY_SHARDFAN_SIM = toSimSpec(WEAPON_SPECS.enemyshardfan!) as RangedSimSpec;
 export const SCATTERGUN_SIM = WEAPON_SIM_BY_ID.scattergun as RangedSimSpec;
 export const SEEKER_SIM = WEAPON_SIM_BY_ID.seeker as RangedSimSpec;
 export const MORTAR_SIM = WEAPON_SIM_BY_ID.mortar as RangedSimSpec;

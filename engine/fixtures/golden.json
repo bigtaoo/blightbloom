@@ -89,6 +89,38 @@
       }
     },
     {
+      "name": "frost-dungeon-floor1",
+      "pins": "chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base",
+      "ticks": 1500,
+      "hash": 2070252883,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 3,
+        "pickups": 0,
+        "floorIndex": 0,
+        "hpTotal": 5,
+        "energyTotal": 98,
+        "prngCursors": 15548694433,
+        "events": {
+          "bullet_fired": 149,
+          "room_enter": 1,
+          "door_locked": 1,
+          "hit": 40,
+          "clash": 4,
+          "melee_swing": 67,
+          "death": 8,
+          "pickup": 8,
+          "shield_break": 2,
+          "deflect": 2,
+          "door_unlocked": 1
+        }
+      }
+    },
+    {
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
