@@ -42,6 +42,7 @@ export const ru: Translations<typeof en> = {
     frost: { name: 'Ледяная бездна' },
     storm: { name: 'Грозовая бездна' },
     blight: { name: 'Гнилая бездна' },
+    endless: { name: 'Бездонная бездна', hint: 'БЕСКОНЕЧНО', best: 'БЕСКОНЕЧНО · РЕКОРД ЭТАЖ {floor}' },
   },
   loading: {
     boot: 'ЗАГРУЗКА',
@@ -346,6 +347,7 @@ export const ru: Translations<typeof en> = {
     confirmButton: 'ПОДТВЕРДИТЬ',
     timeLine: 'Время {m}:{ss}',
     floorLine: 'Этаж {floor}/{floorCount}',
+    floorLineEndless: 'Этаж {floor}',
     materialsBanked: 'Сохранено материалов: {count}',
     doubleMaterialsButton: 'СМОТРЕТЬ РЕКЛАМУ: МАТЕРИАЛЫ x2',
     materialsDoubled: 'Сохранено материалов: {count} (бонус за рекламу x2)',
@@ -354,6 +356,7 @@ export const ru: Translations<typeof en> = {
     blueprintLine: 'Чертёж получен: {weapon}',
     characterLine: 'Персонаж открыт: {character}',
     fellOnFloor: 'Пал на этаже {floor}/{floorCount}',
+    fellOnFloorEndless: 'Пал на этаже {floor}',
     materialsLost: 'Все переносимые материалы потеряны: {count}',
     placeOf: '1-е место из {total}',
     placedOfTotal: 'Место {place}/{total}',

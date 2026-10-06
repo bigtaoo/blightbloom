@@ -350,6 +350,14 @@ describe('PveBotController — the portal', () => {
     expect(cmd.buttons & Button.CONFIRM_EXTRACT).toBe(Button.CONFIRM_EXTRACT);
     expect(cmd.buttons & Button.CONFIRM_DESCEND).toBe(0);
   });
+
+  it('presses DESCEND on an endless boss floor, which offers both — the sweep measures depth', () => {
+    const s = atCheckpoint([15, 5], 4);
+    (s as { dungeonConfig: unknown }).dungeonConfig = { floorCount: 5, endless: { segments: [{ floorCount: 5 }] } };
+    const cmd = bot().build(s, 0, 501);
+    expect(cmd.buttons & Button.CONFIRM_DESCEND).toBe(Button.CONFIRM_DESCEND);
+    expect(cmd.buttons & Button.CONFIRM_EXTRACT).toBe(0);
+  });
 });
 
 describe('PveBotController — circling a target nothing is killing', () => {

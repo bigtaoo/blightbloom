@@ -37,6 +37,7 @@ export const it: Translations<typeof en> = {
     frost: { name: 'La Discesa del Gelo' },
     storm: { name: 'La Discesa della Tempesta' },
     blight: { name: 'La Discesa della Piaga' },
+    endless: { name: 'La Discesa Infinita', hint: 'INFINITA', best: 'INFINITA · RECORD PIANO {floor}' },
   },
   loading: {
     boot: 'CARICAMENTO',
@@ -341,6 +342,7 @@ export const it: Translations<typeof en> = {
     confirmButton: 'CONFERMA',
     timeLine: 'Tempo {m}:{ss}',
     floorLine: 'Piano {floor}/{floorCount}',
+    floorLineEndless: 'Piano {floor}',
     materialsBanked: 'Materiali depositati: {count}',
     doubleMaterialsButton: 'GUARDA UN ANNUNCIO: MATERIALI x2',
     materialsDoubled: 'Materiali depositati: {count} (bonus annuncio x2)',
@@ -349,6 +351,7 @@ export const it: Translations<typeof en> = {
     blueprintLine: 'Progetto recuperato: {weapon}',
     characterLine: 'Personaggio sbloccato: {character}',
     fellOnFloor: 'Caduto al piano {floor}/{floorCount}',
+    fellOnFloorEndless: 'Caduto al piano {floor}',
     materialsLost: 'Tutti i {count} materiali trasportati sono andati persi',
     placeOf: '1° posto su {total}',
     placedOfTotal: 'Posizione {place}/{total}',

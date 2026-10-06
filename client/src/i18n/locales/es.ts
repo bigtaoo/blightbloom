@@ -37,6 +37,7 @@ export const es: Translations<typeof en> = {
     frost: { name: 'El Descenso Helado' },
     storm: { name: 'El Descenso Tormentoso' },
     blight: { name: 'El Descenso de la Plaga' },
+    endless: { name: 'El Descenso Infinito', hint: 'INFINITO', best: 'INFINITO · RÉCORD PISO {floor}' },
   },
   loading: {
     boot: 'CARGANDO',
@@ -341,6 +342,7 @@ export const es: Translations<typeof en> = {
     confirmButton: 'CONFIRMAR',
     timeLine: 'Tiempo {m}:{ss}',
     floorLine: 'Piso {floor}/{floorCount}',
+    floorLineEndless: 'Piso {floor}',
     materialsBanked: 'Materiales guardados: {count}',
     doubleMaterialsButton: 'VER ANUNCIO: MATERIALES x2',
     materialsDoubled: 'Materiales guardados: {count} (bonus de anuncio x2)',
@@ -349,6 +351,7 @@ export const es: Translations<typeof en> = {
     blueprintLine: 'Plano recuperado: {weapon}',
     characterLine: 'Personaje desbloqueado: {character}',
     fellOnFloor: 'Caído en el piso {floor}/{floorCount}',
+    fellOnFloorEndless: 'Caído en el piso {floor}',
     materialsLost: 'Se perdieron los {count} materiales que llevabas',
     placeOf: '1er puesto de {total}',
     placedOfTotal: 'Puesto {place}/{total}',

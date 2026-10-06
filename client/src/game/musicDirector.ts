@@ -35,6 +35,7 @@ import type { GameState } from '@dd/engine';
 import type { AudioBus, MusicTrack } from '../platform/types';
 import { BIOME_ID_TO_TRACK, DEFAULT_RUN_TRACK } from '../audio/musicCatalogue';
 import type { Phase } from './phase';
+import { floorBiomeId } from './theme';
 
 /** Everything the decision needs, and nothing else — narrow so a test can state a situation in
  *  one object literal instead of standing up a `Game`. */
@@ -76,7 +77,7 @@ export function trackFor(sit: MusicSituation): MusicTrack | null {
   // own phase is what says whether a run is live — not the presence of a state.
   if (!s || s.phase !== 'playing') return 'menu';
   if (inBossRoom(s, sit.localOwner)) return 'boss';
-  return BIOME_ID_TO_TRACK[s.dungeonConfig?.biomeId ?? ''] ?? DEFAULT_RUN_TRACK;
+  return BIOME_ID_TO_TRACK[floorBiomeId(s) ?? ''] ?? DEFAULT_RUN_TRACK;
 }
 
 /**

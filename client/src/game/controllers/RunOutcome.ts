@@ -1,7 +1,7 @@
 import { SKIN_DEFS, TICK_RATE, WEAPON_SPECS, chapterIdOfConfig, type GameState } from '@dd/engine';
 import { SCORE } from '../score';
 import { t, tName } from '../../i18n';
-import { totalFloorCount } from '../match/floorCount';
+import { isEndlessRun, totalFloorCount } from '../match/floorCount';
 import { clearSavedRun } from '../match/runSaveStore';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
@@ -177,7 +177,7 @@ export class RunOutcome {
     const characterLine =
       character === null ? [] : [t('results.characterLine', { character: tName(SKIN_DEFS[character]?.nameKey ?? character) })];
     const lines = (materials: string): readonly string[] => [
-      t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
+      isEndlessRun(s) ? t('results.floorLineEndless', { floor }) : t('results.floorLine', { floor, floorCount: totalFloorCount(s) }),
       materials,
       ...blueprint,
       ...characterLine,
@@ -251,7 +251,9 @@ export class RunOutcome {
     this.host.setPhase('defeat');
     this.host.hideHud();
     this.host.showOutcomeScreen(false, t('results.defeatTitle'), [
-      t('results.fellOnFloor', { floor, floorCount: totalFloorCount(s) }),
+      isEndlessRun(s)
+        ? t('results.fellOnFloorEndless', { floor })
+        : t('results.fellOnFloor', { floor, floorCount: totalFloorCount(s) }),
       t('results.materialsLost', { count: totalForfeited(s, this.host.localOwner) }),
       timeText(s),
       t('results.scoreLine', { score: this.host.currentScore() }),

@@ -58,11 +58,20 @@ describe('recordChapterCleared', () => {
     expect(recordChapterCleared(m, 'ember').selectedChapter).toBe('ember');
   });
 
-  it('clearing the last chapter keeps the pick — there is nothing after it to move to', () => {
+  it('clearing chapter 4 unlocks the endless chapter and moves the pick to it', () => {
     const m: MetaState = { ...cleared('ember', 'frost', 'storm'), selectedChapter: 'blight' };
     const next = recordChapterCleared(m, 'blight');
     expect(next.clearedChapters).toEqual(['ember', 'frost', 'storm', 'blight']);
-    expect(next.selectedChapter).toBe('blight');
+    expect(next.selectedChapter).toBe('endless');
+    expect(isChapterUnlocked(next, 'endless')).toBe(true);
+    expect(isChapterUnlocked(m, 'endless')).toBe(false);
+  });
+
+  it('clearing the endless chapter keeps the pick — there is nothing after it to move to', () => {
+    const m: MetaState = { ...cleared('ember', 'frost', 'storm', 'blight'), selectedChapter: 'endless' };
+    const next = recordChapterCleared(m, 'endless');
+    expect(next.clearedChapters).toContain('endless');
+    expect(next.selectedChapter).toBe('endless');
   });
 });
 

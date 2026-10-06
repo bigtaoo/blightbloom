@@ -97,6 +97,10 @@ export function migrate(parsed: unknown): MetaState {
     selectedSkin: typeof p.selectedSkin === 'string' ? p.selectedSkin : d.selectedSkin,
     hasSeenTutorial: typeof p.hasSeenTutorial === 'boolean' ? p.hasSeenTutorial : d.hasSeenTutorial,
     bestFloor: typeof p.bestFloor === 'number' && Number.isFinite(p.bestFloor) && p.bestFloor > 0 ? Math.floor(p.bestFloor) : d.bestFloor,
+    endlessBestFloor:
+      typeof p.endlessBestFloor === 'number' && Number.isFinite(p.endlessBestFloor) && p.endlessBestFloor > 0
+        ? Math.floor(p.endlessBestFloor)
+        : d.endlessBestFloor,
     // An id this build does not know falls back to the first chapter; a cleared id it does not
     // know is KEPT (a string from a newer build — `MetaState.clearedChapters` says why).
     selectedChapter: chapterIdOr(p.selectedChapter),

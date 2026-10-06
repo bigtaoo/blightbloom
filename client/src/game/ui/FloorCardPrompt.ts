@@ -4,6 +4,7 @@ import { FLOOR_CARDS, floorCardDescVars } from '@dd/engine';
 import { Panel, Button } from './widgets';
 import { getUiTexture } from '../../render/uiSkins';
 import { t, tName, getLocale } from '../../i18n';
+import { portalPanelTop } from './PortalPrompt';
 
 /**
  * The floor-card offer (design/05/10, ENGINE_VERSION 58) — three upgrade cards shown
@@ -122,11 +123,11 @@ export class FloorCardPrompt {
     this.panel.layout(PANEL_W, PANEL_H);
     const scale = Math.min(1, (screenPx.w - 16) / PANEL_W);
     this.view.scale.set(scale);
-    // Above the portal popup (which sits at 0.6 of the screen height), so the two read
-    // as one stack: "here is what you won, here is where you go".
+    // Above the portal popup (`portalPanelTop`: 0.6 of the screen height, raised on a short
+    // screen), so the two read as one stack: "here is what you won, here is where you go".
     this.view.position.set(
       screenPx.w / 2 - (PANEL_W * scale) / 2,
-      Math.max(8, screenPx.h * 0.6 - PANEL_H * scale - 12),
+      Math.max(8, portalPanelTop(screenPx.h) - PANEL_H * scale - 12),
     );
     this.panel.view.position.set(0, 0);
     this.titleText.position.set(PANEL_W / 2, 8);

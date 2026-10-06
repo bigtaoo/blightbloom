@@ -165,6 +165,11 @@ describe('mergeGuestIntoAccount', () => {
     expect(mergeGuestIntoAccount(state({ bestFloor: 4 }), state({ bestFloor: 1 })).bestFloor).toBe(4);
   });
 
+  it('keeps the DEEPER endless record from either side, the same way', () => {
+    expect(mergeGuestIntoAccount(state({ endlessBestFloor: 9 }), state({ endlessBestFloor: 31 })).endlessBestFloor).toBe(31);
+    expect(mergeGuestIntoAccount(state({ endlessBestFloor: 12 }), state({ endlessBestFloor: 0 })).endlessBestFloor).toBe(12);
+  });
+
   it('ADDS the material bank per key, keeping keys only one side has', () => {
     // The durable half of the whole mechanism: the bank is what a guest accumulates and what
     // `POST /account/meta` stores verbatim. A union (rather than a sum) would silently drop

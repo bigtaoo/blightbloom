@@ -1,4 +1,4 @@
-import { RARITY_TIERS, type ChapterId, type DamageType, type WeaponSimSpec } from '@dd/engine';
+import { biomeIdAt, RARITY_TIERS, type ChapterId, type DamageType, type GameState, type WeaponSimSpec } from '@dd/engine';
 
 // The palette everything on screen is drawn with.
 //
@@ -199,16 +199,27 @@ const BIOME_PALETTES: Record<BiomeElement, BiomePalette> = {
   ) as Record<Exclude<BiomeElement, 'neutral'>, BiomePalette>),
 };
 
-// `biomeId` = `GameState.dungeonConfig?.biomeId` (undefined outside dungeon mode, e.g.
+// `biomeId` = the floor's biome, `floorBiomeId` below (undefined outside dungeon mode, e.g.
 // the flat EngineConfig.floors path or a PvP arena — both fall back to 'neutral',
-// i.e. today's existing palette unchanged). `satisfies Record<ChapterId, …>` makes a new
-// chapter in the engine catalog a compile error here until it names its element.
+// i.e. today's existing palette unchanged). `satisfies Record<…>` makes a new chapter in the
+// engine catalog a compile error here until it names its element. The endless chapter is the
+// one exception: it has no biome of its own, since each of its floors is drawn in the biome
+// of the chapter it borrows the floor from (`biomeIdAt`).
 const BIOME_ID_TO_ELEMENT: Readonly<Record<string, BiomeElement>> = {
   ember: 'fire',
   frost: 'ice', // chapter 2 — the `biome-ice` swatch pack, awaited at the run gate like `run`
   storm: 'lightning', // chapter 3 — the `biome-lightning` pack, the same way
   blight: 'poison', // chapter 4, the finale — the `biome-poison` pack; design/13 keeps poison off chapter 1
-} satisfies Record<ChapterId, BiomeElement>;
+} satisfies Record<Exclude<ChapterId, 'endless'>, BiomeElement>;
+
+/**
+ * The biome the run's CURRENT floor is drawn in: the dungeon's own for a chapter, and for the
+ * endless one the biome of the chapter whose floor this is, so its palette, tiles and music
+ * change every five floors. Undefined outside dungeon mode.
+ */
+export function floorBiomeId(s: Pick<GameState, 'dungeonConfig' | 'floorIndex'>): string | undefined {
+  return s.dungeonConfig ? biomeIdAt(s.dungeonConfig, s.floorIndex) : undefined;
+}
 
 export function biomePalette(biomeId: string | undefined): BiomePalette {
   return BIOME_PALETTES[biomeId ? (BIOME_ID_TO_ELEMENT[biomeId] ?? 'neutral') : 'neutral'];

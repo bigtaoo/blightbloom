@@ -37,6 +37,8 @@ function state(o: {
   distPx?: number;
   floorIndex?: number;
   floorCount?: number;
+  /** An endless dungeon cycling one two-floor segment: odd floors are its boss floors. */
+  endless?: boolean;
   zone?: boolean;
   phase?: string;
 }): GameState {
@@ -47,7 +49,9 @@ function state(o: {
     phase: o.phase ?? 'playing',
     floorIndex: o.floorIndex ?? 0,
     dungeonEnabled: true,
-    dungeonConfig: { floorCount: o.floorCount ?? 3 },
+    dungeonConfig: o.endless
+      ? { floorCount: 2, endless: { segments: [{ floorCount: 2 }] } }
+      : { floorCount: o.floorCount ?? 3 },
     dungeonRooms: rooms,
     dungeonRoomRuntime: [
       { activated: true, hasLiveEnemy: false },
@@ -130,10 +134,19 @@ describe('what each consumer is told', () => {
   it('tells the popup when it is the LAST floor, so it can hide Descend', () => {
     const t = fakeDeps();
     updateCheckpointOverlays(state({ floorIndex: 2, floorCount: 3 }), 0, t.deps);
-    expect(t.portalPrompt.update.mock.calls.at(-1)![3]).toBe(true);
+    expect(t.portalPrompt.update.mock.calls.at(-1)![3]).toEqual({ extract: true, descend: false });
     const mid = fakeDeps();
     updateCheckpointOverlays(state({ floorIndex: 0, floorCount: 3 }), 0, mid.deps);
-    expect(mid.portalPrompt.update.mock.calls.at(-1)![3]).toBe(false);
+    expect(mid.portalPrompt.update.mock.calls.at(-1)![3]).toEqual({ extract: false, descend: true });
+  });
+
+  it('tells the popup an endless boss floor offers both, and its other floors descend', () => {
+    const boss = fakeDeps();
+    updateCheckpointOverlays(state({ floorIndex: 3, endless: true }), 0, boss.deps);
+    expect(boss.portalPrompt.update.mock.calls.at(-1)![3]).toEqual({ extract: true, descend: true });
+    const mid = fakeDeps();
+    updateCheckpointOverlays(state({ floorIndex: 4, endless: true }), 0, mid.deps);
+    expect(mid.portalPrompt.update.mock.calls.at(-1)![3]).toEqual({ extract: false, descend: true });
   });
 
   it('tells the card panel which seat is LOCAL, so it highlights the right vote', () => {

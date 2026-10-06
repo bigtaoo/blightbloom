@@ -2,7 +2,7 @@ import { Graphics } from 'pixi.js';
 import type { GameState } from '@dd/engine';
 import type { Layers } from './layers';
 import { Entity } from './Entity';
-import { biomePalette, biomeElementOf, type BiomeElement, type BiomePalette } from '../theme';
+import { biomePalette, biomeElementOf, floorBiomeId, type BiomeElement, type BiomePalette } from '../theme';
 import { fpToPx } from '../coords';
 import { getFloorTexture, getWallTexture, getWallFaceTexture } from '../../render/biomeTiles';
 import { getDoorCurtainTexture, getDoorTexture } from '../../render/environmentSprites';
@@ -175,11 +175,11 @@ export class RoomBuilder {
     // and the dressing step refills it further down this same build.
     this.occluders.length = 0;
 
-    // design/13 "per-biome background palette" — derived from the run's dungeon
-    // biomeId (undefined outside dungeon mode, e.g. flat EngineConfig.floors/PvP
-    // arena, which fall back to today's neutral palette unchanged).
-    const palette = biomePalette(s.dungeonConfig?.biomeId);
-    const element = biomeElementOf(s.dungeonConfig?.biomeId);
+    // design/13 "per-biome background palette" — derived from the floor's biome (the
+    // endless chapter changes it every five floors; undefined outside dungeon mode, e.g.
+    // flat EngineConfig.floors/PvP arena, which fall back to the neutral palette).
+    const palette = biomePalette(floorBiomeId(s));
+    const element = biomeElementOf(floorBiomeId(s));
     this.backdrop.setPalette(palette);
     // The far-side ground under the whole world (Terrain.ts). Recoloured with the backdrop
     // because the fog over it IS `palette.void` — the two have to move together or the plane

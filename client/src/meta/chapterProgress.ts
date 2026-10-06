@@ -11,8 +11,10 @@
 import { CHAPTER_ORDER, DEFAULT_CHAPTER_ID, isChapterId, nextChapterId, type ChapterId } from '@dd/engine';
 import type { MetaState } from './MetaState';
 
-/** The two fields chapter progress reads — what the lobby's picker is handed. */
-export type ChapterProgress = Pick<MetaState, 'selectedChapter' | 'clearedChapters'>;
+/** The fields chapter progress reads — what the lobby's picker is handed. The endless record
+ *  is optional so a caption-less caller need not invent one; absent reads as 0. */
+export type ChapterProgress = Pick<MetaState, 'selectedChapter' | 'clearedChapters'> &
+  Partial<Pick<MetaState, 'endlessBestFloor'>>;
 
 /** The chapter before `id` in unlock order — the one whose clear unlocks `id` — or null for
  *  the first chapter, which nothing has to unlock. */

@@ -30,7 +30,8 @@
 import { chapterIdOfConfig, type GameEngine, type GameState } from '@dd/engine';
 import type { CoopSession } from '../net/CoopSession';
 import {
-  defaultMetaState, recordChapterCleared, recordFloorReached, selectCharacter, type MetaState, type MetaStore,
+  defaultMetaState, recordChapterCleared, recordEndlessFloorReached, recordFloorReached, selectCharacter,
+  type MetaState, type MetaStore,
 } from '../meta';
 import type { ArenaId } from './match/arenaCatalog';
 import type { GameQueryParams } from './match/gameQueryParams';
@@ -236,20 +237,22 @@ export class RunState {
    * floor" caption, design/10, 2026-09-27). Called at both ends a run can have: a result
    * screen (`settleOutcome`) and a quit or save-and-quit (`endRun`) — a player who walked
    * away from floor 4 still reached floor 4. Only a real dungeon counts: not the tutorial's
-   * fixed level, not a PvP arena (it has no floors), not a replay someone else played.
+   * fixed level, not a PvP arena (it has no floors), not a replay someone else played. An
+   * endless run writes its own record, `endlessBestFloor`, and leaves the chapters' alone.
    */
   noteFloorReached(): void {
     const s = this.activeState();
     if (!s || this.tutorialActive || this.replayUrl !== null || s.zoneEnabled) return;
-    const next = recordFloorReached(this.meta, s.floorIndex + 1);
+    const record = chapterIdOfConfig(s.dungeonConfig) === 'endless' ? recordEndlessFloorReached : recordFloorReached;
+    const next = record(this.meta, s.floorIndex + 1);
     if (next !== this.meta) this.setMeta(next);
   }
 
   /**
    * Record the live run's chapter as cleared (`meta/chapterProgress.ts`) — which is what
    * unlocks the next one. Only reached on a PvE VICTORY, and a PvE victory IS a clear: the
-   * extraction that ends a dungeon run only resolves on its last floor, after the boss
-   * (`ExtractionSystem`). Same exclusions as `noteFloorReached`, plus a config outside the
+   * extraction that ends a dungeon run only resolves after a boss (`ExtractionSystem`) — on
+   * a chapter's last floor, or on any boss floor of the endless one, which unlocks nothing. Same exclusions as `noteFloorReached`, plus a config outside the
    * chapter catalog (a test fixture), which has no chapter to record. Online co-op counts —
    * the squad beat that boss — and its config is the server's, which names the chapter.
    */
