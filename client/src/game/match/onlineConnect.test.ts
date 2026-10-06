@@ -158,6 +158,20 @@ describe('connectOnlineSession — success', () => {
     expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject({ playerCount: 2, mode: 'coop', partyId: 'party-3' });
   });
 
+  it('forwards the chapter a co-op caller asks for into the /find request', async () => {
+    const fetch = fakeFetch([{ queueId: 'q1', match: MATCH }]);
+    await connectOnlineSession({
+      matchBaseUrl: 'http://mm', pvp: false, pvpSeats: 8, lagMs: 0, chapterId: 'frost',
+      onMatchStart: () => {},
+      fetch,
+      sleep: noSleep,
+      createTransport: () => new FakeTransport(),
+      matchStartTimeoutMs: 1,
+    }).catch(() => {});
+    await flush();
+    expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject({ mode: 'coop', chapterId: 'frost' });
+  });
+
   it('joins the room with the seat/seed/playerCount the ticket assigned', async () => {
     let transport!: FakeTransport;
     const promise = connectOnlineSession({

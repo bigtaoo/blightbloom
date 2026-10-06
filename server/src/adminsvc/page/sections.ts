@@ -211,7 +211,7 @@ export function newInstallSection(grid: NewInstallGrid): string {
 distinct new installs that did the step <b>on that first day</b>; D<i>n</i> is the share active again
 <i>n</i> days later. <b>ID not kept</b>: new installs whose id did not survive a storage write (a blocked
 embedded frame, a private window) — they can never be seen returning, so they hold D<i>n</i> down.
-<b>Deepest floor</b>: how far new installs got on their first day, as floor:count.
+<b>Deepest floor</b>: how far new installs got in chapter 1 on their first day, as floor:count.
 <span class="dim">—</span> means not known yet, never 0%.</p>`;
 
   if (grid.rows.length === 0) {

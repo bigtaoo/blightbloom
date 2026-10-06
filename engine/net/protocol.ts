@@ -15,6 +15,7 @@
  */
 import type { PlayerCommand } from '../state/commands';
 import type { Winner } from '../state/entities';
+import type { ChapterId } from '../world/chapters';
 
 /**
  * The confirmed command set for one frame, in the server's authoritative order
@@ -73,6 +74,16 @@ export interface MatchStart {
   /** The seats practice bots hold (ENGINE_VERSION 88), absent when none does. The co-op
    *  config flags them (`PlayerConfig.bot`), so a run whose people are all dead ends. */
   botSeats?: readonly number[];
+  /**
+   * The PvE chapter this room plays (`world/chapters.ts`) — the dungeon every client in the
+   * room builds its config from (`buildOnlineConfig`). Absent means the first chapter, which
+   * is what every server that predates chapters sends, so an old server and a new client
+   * still agree. A co-op room's chapter is the queueing player's or the party host's choice,
+   * carried through the signed ticket; it is never set for PvP.
+   *
+   * Untrusted on arrival like any wire value: a reader narrows it with `chapterIdOr`.
+   */
+  chapterId?: ChapterId;
 }
 
 /** Reconnect catch-up (design/06 mirror of funny's conn_resync): replay the frame log past `lastFrame`. */

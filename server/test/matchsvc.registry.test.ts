@@ -163,7 +163,8 @@ describe('the ticket carries no topology', () => {
       // Not `not.toHaveProperty('wsUrl')` alone: an id, a host or a shard index would be
       // just as much topology, so the assertion is over the payload's whole key set.
       expect(Object.keys(payload).sort()).toEqual(
-        ['exp', 'mode', 'owner', 'playerCount', 'roomId', 'seed', 'teamId'].sort(),
+        // `chapterId`: a co-op room's dungeon (2026-10-06) — game content, not topology.
+        ['chapterId', 'exp', 'mode', 'owner', 'playerCount', 'roomId', 'seed', 'teamId'].sort(),
       );
     } finally {
       await ctx.close();

@@ -162,6 +162,25 @@ describe('firstDays', () => {
     expect(p.get('b')?.depth).toBe(5);
   });
 
+  it('counts depth in chapter 1 only — floor numbers are per chapter', async () => {
+    const frost = { chapter: 'frost' };
+    // a: an ember run to floor 2, then a guest seat in a friend's frost run to floor 4.
+    await on(YESTERDAY, 'a', [
+      { name: 'run_start', props: { chapter: 'ember' } }, { name: 'floor_reached', props: { floor: 2, chapter: 'ember' } },
+      { name: 'run_start', props: frost }, { name: 'floor_reached', props: { floor: 4, ...frost } },
+      { name: 'run_end', props: { outcome: 'loss', floor: 4, ...frost } },
+    ]);
+    // b: ONLY a frost run — it started a run (the funnel says so) but has no chapter-1 depth,
+    // not even the implied floor 1.
+    await on(YESTERDAY, 'b', [{ name: 'run_start', props: frost }, { name: 'floor_reached', props: { floor: 3, ...frost } }]);
+    // c: a pre-chapter client's events (no `chapter` at all) are chapter 1 — the control.
+    await on(YESTERDAY, 'c', [START, floorAt(3)]);
+    const p = await firstDays(db, YESTERDAY, await newCohort(db, YESTERDAY));
+    expect(p.get('a')?.depth).toBe(2);
+    expect(p.get('b')).toMatchObject({ run_start: true, depth: 0 });
+    expect(p.get('c')?.depth).toBe(3);
+  });
+
   it('flags an install whose session_start said its id was not kept', async () => {
     await on(YESTERDAY, 'lost', [lostId]);
     await on(YESTERDAY, 'kept', [{ name: 'session_start', props: { storage: 'new' } }]);

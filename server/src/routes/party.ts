@@ -23,6 +23,7 @@ import { CodeSpaceExhausted, type PartyService } from '../PartyService';
 // uses for `SQUAD_SIZE`, so the list of things this server borrows from the client's pure
 // layer is readable in one place.
 import { ROOM_CODE_DIGITS, ROOM_CODE_LENGTH, isRoomCode, normalizeRoomCode, parsePartyMode } from '../config';
+import { readChapterField, UNKNOWN_CHAPTER } from '../chapterField';
 import type { Logger } from '../log';
 import type { Budget } from '../rateLimit';
 import { spendBudget, type BudgetDeps } from './limits';
@@ -233,7 +234,11 @@ export const postStart: RouteHandler<PartyRouteDeps> = (req, res, _url, deps) =>
     if (typeof partyId !== 'string' || typeof playerId !== 'string') {
       return send(res, 400, { error: 'partyId and playerId required' });
     }
-    const info = deps.parties.startMatching(partyId, playerId);
+    // The chapter the host chose for a co-op party (`chapterField.ts` has the absent/unknown
+    // policy). Refused before the party is touched, so a bad id leaves it not yet matching.
+    const chapterId = readChapterField((body as { chapterId?: unknown }).chapterId);
+    if (chapterId === null) return send(res, 400, UNKNOWN_CHAPTER);
+    const info = deps.parties.startMatching(partyId, playerId, chapterId);
     if (!info) return send(res, 404, { error: 'party not found or not leader' });
     send(res, 200, info);
   });

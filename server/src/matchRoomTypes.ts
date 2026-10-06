@@ -3,8 +3,8 @@
  * the per-seat connection, the room's injected deps, and the settled outcome it reports.
  * `MatchRoom.ts` re-exports every one, so callers import them from there as before.
  */
-import type { FrameCmds, ServerMsg, Winner } from '@dd/engine';
-import type { MatchMode } from './ticket';
+import { DEFAULT_CHAPTER_ID, type FrameCmds, type ServerMsg, type Winner } from '@dd/engine';
+import type { ChapterId, MatchMode } from './ticket';
 import type { Scheduler } from './scheduler';
 import type { BoundsFailure, IntegrityVerdict } from './settlement';
 
@@ -83,11 +83,25 @@ export interface SettledMatch {
   seatAccounts?: Readonly<Record<number, string>>;
 }
 
+/**
+ * The chapter a room of `mode` plays when its first ticket said `chapterId`: that chapter (or
+ * the first one, for a ticket minted before chapters) for co-op, and none for PvP. The ONE
+ * normalisation — `MatchRoom` builds its room with it and both join cross-checks (a fresh
+ * `join`, a reconnect's handshake) compare a joiner against the room through it, so a
+ * chapter-less co-op ticket and an explicit first-chapter one are the same room.
+ */
+export function roomChapter(mode: MatchMode, chapterId: ChapterId | undefined): ChapterId | undefined {
+  return mode === 'coop' ? (chapterId ?? DEFAULT_CHAPTER_ID) : undefined;
+}
+
 export interface MatchRoomDeps {
   scheduler: Scheduler;
   /** PvE co-op vs. PvP arena (design/15) — rides along in `match_start` so the client
    * knows which EngineConfig shape to build. Absent (every pre-PvP caller/test) → 'coop'. */
   mode?: MatchMode;
+  /** The PvE chapter a co-op room plays — from the signed ticket, sent in `match_start`.
+   *  Absent → the first chapter. Ignored for PvP, which has none. */
+  chapterId?: ChapterId;
   onDestroy: (roomId: string) => void;
   /** Fired once, right before destroy(), with the settled outcome (design/15, ROADMAP
    * 4.6) — e.g. wired to matchsvc's ladder-rating report in index.ts. Optional: every

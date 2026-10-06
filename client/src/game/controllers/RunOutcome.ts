@@ -1,4 +1,4 @@
-import { SKIN_DEFS, TICK_RATE, WEAPON_SPECS, type GameState } from '@dd/engine';
+import { SKIN_DEFS, TICK_RATE, WEAPON_SPECS, chapterIdOfConfig, type GameState } from '@dd/engine';
 import { SCORE } from '../score';
 import { t, tName } from '../../i18n';
 import { totalFloorCount } from '../match/floorCount';
@@ -135,11 +135,13 @@ export class RunOutcome {
     // split picks which copy to show — and one call cannot disagree with itself about the
     // outcome the way four could. The abandon case is NOT here: it has no gameover state to
     // reach this method with, and is detected from the phase change instead
-    // (`analyticsTracking.ts`).
+    // (`analyticsTracking.ts`). `chapter` is the run's own dungeon's, absent in an arena.
+    const chapter = chapterIdOfConfig(s.dungeonConfig);
     track('run_end', {
       outcome: won ? 'win' : 'loss',
       floor: s.floorIndex + 1,
       duration_s: Math.max(0, Math.floor(s.tick / TICK_RATE)),
+      ...(chapter === null ? {} : { chapter }),
     });
     if (s.zoneEnabled) {
       if (won) this.winArena(s);

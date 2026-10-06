@@ -27,6 +27,7 @@
  * SHAPE belongs to whoever supplies `newCode` (six digits, `routes/party.ts`); what belongs
  * here is that it is UNIQUE across every live party — see {@link CODE_DRAW_ATTEMPTS}.
  */
+import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import { SQUAD_SIZE, partyCapacity, type PartyMode } from './config';
 
 export interface PartyServiceDeps {
@@ -52,6 +53,11 @@ export interface PartyInfo {
   /** Set once the leader calls `startMatching` — other members' polls observe this
    * flip and each independently call their own `POST /find` with this `partyId`. */
   matching: boolean;
+  /** A co-op party's PvE chapter (2026-10-06): the one its leader named at
+   *  {@link PartyService.startMatching}, the first chapter until then. Every member's `/find`
+   *  is seated in it (`routes/match.ts`), whatever that member's own client would have picked —
+   *  the host chooses, and everyone in the room plays it. Absent for a PvP squad. */
+  chapterId?: ChapterId;
 }
 
 /** The largest party of ANY mode (design/05/15) — the same `SQUAD_SIZE` `Matchmaker`'s
@@ -112,6 +118,7 @@ interface Party {
   leaderId: string;
   members: string[];
   matching: boolean;
+  chapterId: ChapterId;
   updatedAt: number;
 }
 
@@ -139,7 +146,9 @@ export class PartyService {
     this.sweepExpired();
     const partyId = this.deps.newPartyId();
     const code = this.drawFreeCode();
-    const party: Party = { code, mode, leaderId: playerId, members: [playerId], matching: false, updatedAt: this.deps.nowMs() };
+    const party: Party = {
+      code, mode, leaderId: playerId, members: [playerId], matching: false, chapterId: DEFAULT_CHAPTER_ID, updatedAt: this.deps.nowMs(),
+    };
     this.parties.set(partyId, party);
     this.codeToPartyId.set(code, partyId);
     return this.toInfo(partyId, party);
@@ -185,12 +194,16 @@ export class PartyService {
   }
 
   /** Only the leader may start matching. Returns `null` on an unknown party or a
-   * non-leader caller (the shell maps either to a 4xx, not a crash). */
-  startMatching(partyId: string, playerId: string): PartyInfo | null {
+   * non-leader caller (the shell maps either to a 4xx, not a crash). `chapterId` is the PvE
+   * chapter the leader chose — fixed on the party here, at START rather than at create, so it
+   * is what the host has selected when the room is actually asked for. Kept on a PvP squad's
+   * record too, where nothing reads it. */
+  startMatching(partyId: string, playerId: string, chapterId: ChapterId = DEFAULT_CHAPTER_ID): PartyInfo | null {
     this.sweepExpired();
     const party = this.parties.get(partyId);
     if (!party || party.leaderId !== playerId) return null;
     party.matching = true;
+    party.chapterId = chapterId;
     party.updatedAt = this.deps.nowMs();
     return this.toInfo(partyId, party);
   }
@@ -214,6 +227,7 @@ export class PartyService {
       mode: party.mode,
       capacity: partyCapacity(party.mode),
       matching: party.matching,
+      ...(party.mode === 'coop' ? { chapterId: party.chapterId } : {}),
     };
   }
 

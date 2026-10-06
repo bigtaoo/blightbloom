@@ -305,8 +305,22 @@ describe('PartyScreen — start matching', () => {
     s.onStartMatch = onStart;
     await p.doCreate();
     await p.doStart();
-    expect(api.startPartyMatching).toHaveBeenCalledWith('http://mm', 'p1', 'me');
+    expect(api.startPartyMatching).toHaveBeenCalledWith('http://mm', 'p1', 'me', 'ember');
     expect(onStart).toHaveBeenCalledWith('p1', 'pvp');
+  });
+
+  it('START sends the chapter chapterOf names at the moment it is tapped', async () => {
+    const api = fakeApi({
+      createParty: vi.fn().mockResolvedValue(COOP_PARTY),
+      startPartyMatching: vi.fn().mockResolvedValue({ ...COOP_PARTY, matching: true }),
+    });
+    const s = makeScreen(api);
+    let selected: 'ember' | 'frost' = 'ember';
+    s.chapterOf = () => selected;
+    await privateOf(s).doCreate('coop');
+    selected = 'frost'; // changed after the party was made: START reads it now, not at create
+    await privateOf(s).doStart();
+    expect(api.startPartyMatching).toHaveBeenCalledWith('http://mm', 'p1', 'me', 'frost');
   });
 
   it('a non-leader polling and seeing matching flip to true also fires onStartMatch, without tapping anything', async () => {

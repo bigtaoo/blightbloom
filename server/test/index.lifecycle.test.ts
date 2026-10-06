@@ -381,6 +381,21 @@ describe('gameserver WS — a room that is already in match', () => {
     }
   });
 
+  it('REJECTS a reconnect ticket for a different chapter than the live room (4403)', async () => {
+    const ctx = startServer();
+    await new Promise<void>((r) => ctx.server.listen(0, r));
+    try {
+      const first = firstOutcome(`${ctx.wsBase}?ticket=${ticketFor({ roomId: 'room-ch', chapterId: 'frost' })}`);
+      // The ticket -> seat -> room -> wire chain: the signed chapter is the one match_start names.
+      expect((await first.outcome).msg).toMatchObject({ type: 'match_start', chapterId: 'frost' });
+      const stale = firstOutcome(`${ctx.wsBase}?ticket=${ticketFor({ roomId: 'room-ch' })}`); // no chapter = ember
+      expect((await stale.outcome).closeCode).toBe(4403);
+      first.ws.close();
+    } finally {
+      await ctx.close();
+    }
+  });
+
   it('carries a bot ticket’s claim through to match_start.botSeats (ENGINE_VERSION 88)', async () => {
     // The ticket -> seat -> room -> wire chain end to end. The control is the plain ticket
     // in the tests above: its match_start has no botSeats at all.
