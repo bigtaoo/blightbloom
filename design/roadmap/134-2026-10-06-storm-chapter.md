@@ -103,6 +103,14 @@ weapon are content no existing scenario reaches.
   says what it meant: the last chapter is `storm`; an unknown chapter is `blight`; going back to
   ember is `cycle(-1)`. `ChapterPicker.test.ts` gains chapter 3: locked behind chapter 2, not
   chapter 1.
+- **Checked in the browser.**
+  - On a fresh account the picker wraps back from chapter 1 to "The Storm Descent". It shows
+    "Clear chapter 2 to unlock", with SOLO and CO-OP dimmed.
+  - With chapters 1 and 2 cleared it reads "CHAPTER 3" in its yellow frame.
+  - A solo run opens on a galvanist-led room, and the live music deck plays
+    `dungeon-storm.mp3` (50 s).
+  - The Settings sheet's five credit lines fit at 375x812.
+  - The dev account's progress was restored afterwards.
 - Server, analytics and the dashboards needed nothing. They all read the engine catalog, which
   was the point of the chapter-2 plumbing.
 
