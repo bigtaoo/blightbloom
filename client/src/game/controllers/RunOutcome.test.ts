@@ -16,7 +16,9 @@ import { resetSessionCacheForTests, setSession, type Session } from '../../net/s
 import { createGameState } from '@dd/engine/state/GameState';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { ArenaMap } from '@dd/engine/content/arenas';
-import { EMBER_DUNGEON, TICK_RATE } from '@dd/engine';
+import { EMBER_DUNGEON, FROST_DUNGEON, FROST_L1_ROOMS, TICK_RATE } from '@dd/engine';
+import { resetAnalyticsForTests, setAnalytics } from '../../net/analytics';
+import type { PropValue } from '../../net/analyticsEvents';
 import { buildDungeonRunConfig } from '../match/offlineConfig';
 import { packRunSave } from '../match/runSave';
 import { loadSavedRun, resetRunSaveCacheForTests, writeSavedRun } from '../match/runSaveStore';
@@ -738,5 +740,28 @@ describe('RunOutcome — every outcome drops the saved run', () => {
     new RunOutcome(mockHost()).handle(s);
     resetRunSaveCacheForTests();
     expect(loadSavedRun()).toBeNull();
+  });
+});
+
+describe('RunOutcome — run_end analytics', () => {
+  let sent: { name: string; props?: Readonly<Record<string, PropValue>> }[];
+  beforeEach(() => {
+    sent = [];
+    setAnalytics({ track: (name, props) => void sent.push({ name, props }), flush: () => {}, pending: () => 0 });
+  });
+  afterEach(() => resetAnalyticsForTests());
+
+  it('names the chapter of the dungeon the run was played in', () => {
+    const s = createGameState({ seed: 1, worldW: 0, worldH: 0, waves: [], dungeon: { config: FROST_DUNGEON, library: FROST_L1_ROOMS } });
+    new RunOutcome(mockHost()).handle(s);
+    expect(sent.find((e) => e.name === 'run_end')?.props?.chapter).toBe('frost');
+  });
+
+  it('carries no chapter key for a run outside the catalog or an arena', () => {
+    new RunOutcome(mockHost()).handle(pveState());
+    new RunOutcome(mockHost()).handle(pvpState(2));
+    const ends = sent.filter((e) => e.name === 'run_end');
+    expect(ends).toHaveLength(2);
+    for (const e of ends) expect('chapter' in e.props!).toBe(false);
   });
 });

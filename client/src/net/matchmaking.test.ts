@@ -139,6 +139,24 @@ describe('findMatch', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({ partyId: 'party-123' });
   });
 
+  it('sends the chapter of a co-op request, defaulting to the first one', async () => {
+    const fetch = fakeFetch([{ queueId: 'q1', match: MATCH }]);
+    await findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep });
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({ mode: 'coop', chapterId: 'ember' });
+
+    const fetch2 = fakeFetch([{ queueId: 'q2', match: MATCH }]);
+    await findMatch('http://mm', { playerCount: 2, mode: 'coop', chapterId: 'frost', fetch: fetch2, sleep: noSleep });
+    expect(JSON.parse((fetch2.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({ mode: 'coop', chapterId: 'frost' });
+  });
+
+  it('never sends a chapter with a PvP request, even when one is passed', async () => {
+    // The control for the case above: a PvP arena has no chapter, and a body that carried one
+    // would make the server's PvP queue look chapter-aware when it is not.
+    const fetch = fakeFetch([{ queueId: 'q1', match: MATCH }]);
+    await findMatch('http://mm', { playerCount: 8, mode: 'pvp', chapterId: 'frost', fetch, sleep: noSleep });
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).not.toHaveProperty('chapterId');
+  });
+
   it('omits partyId entirely for a plain solo queue (no behavior change for existing callers)', async () => {
     const fetch = fakeFetch([{ queueId: 'q1', match: MATCH }]);
     await findMatch('http://mm', { playerCount: 2, fetch, sleep: noSleep });
@@ -179,7 +197,7 @@ describe('findMatch identity', () => {
     // The regression this file exists to catch: the guest's local id used to travel here,
     // and matchsvc scored the match under it. A guest now carries no identity whatsoever.
     expect(bodyOf(fetch)).not.toHaveProperty('accountId');
-    expect(bodyOf(fetch)).toEqual({ playerCount: 2, mode: 'coop' });
+    expect(bodyOf(fetch)).toEqual({ playerCount: 2, mode: 'coop', chapterId: 'ember' });
   });
 
   it('lets an explicit empty token queue as a guest even while a session is stored', async () => {

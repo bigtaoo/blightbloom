@@ -97,10 +97,20 @@ describe('party client calls', () => {
     }
   });
 
-  it('startPartyMatching posts partyId+playerId', async () => {
+  it('startPartyMatching posts partyId+playerId and the chapter, defaulting to the first one', async () => {
     const fetch = fakeFetch(200, { ...PARTY, matching: true });
-    const info = await startPartyMatching('http://mm', 'p1', 'alice', { fetch });
+    const info = await startPartyMatching('http://mm', 'p1', 'alice', undefined, { fetch });
     expect(info.matching).toBe(true);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe('http://mm/party/start');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ partyId: 'p1', playerId: 'alice', chapterId: 'ember' });
+  });
+
+  it('startPartyMatching sends the chapter it is given', async () => {
+    const fetch = fakeFetch(200, { ...PARTY, mode: 'coop', matching: true, chapterId: 'frost' });
+    const info = await startPartyMatching('http://mm', 'p1', 'alice', 'frost', { fetch });
+    expect(info.chapterId).toBe('frost');
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({ chapterId: 'frost' });
   });
 
   it('leaveParty returns null when the server reports the party dissolved', async () => {

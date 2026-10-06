@@ -42,6 +42,17 @@ describe('the vocabulary', () => {
     ]);
   });
 
+  it('gives the run events exactly these fields — chapter included (privacy.html names it)', () => {
+    // Hand-written for the same reason as the list above: a new FIELD changes what is
+    // collected as much as a new event does.
+    expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character']);
+    expect(Object.keys(EVENTS.floor_reached).sort()).toEqual(['chapter', 'floor']);
+    expect(Object.keys(EVENTS.run_end).sort()).toEqual(['chapter', 'duration_s', 'floor', 'outcome']);
+    // An id, not an enum of the catalog: a client a chapter ahead of the server keeps the field.
+    expect(coerceProp(EVENTS.run_end.chapter, 'a_chapter_this_build_has_never_heard_of')).toBe('a_chapter_this_build_has_never_heard_of');
+    expect(coerceProp(EVENTS.run_end.chapter, '<script>')).toBeUndefined();
+  });
+
   it('names the three build targets and nothing else', () => {
     expect([...HOSTS]).toEqual(['web', 'wechat', 'crazygames']);
   });

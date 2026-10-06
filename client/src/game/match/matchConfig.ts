@@ -1,4 +1,4 @@
-import { SKIN_DEFS, EMBER_DUNGEON, EMBER_L1_ROOMS, type EngineConfig, type MatchStart } from '@dd/engine';
+import { SKIN_DEFS, CHAPTERS, chapterIdOr, type EngineConfig, type MatchStart } from '@dd/engine';
 import { buildPvpEngineConfig } from './pvpConfig';
 
 // Ignored once `dungeon`/`arena` is set (each mode's own geometry defines the bounds) —
@@ -19,10 +19,16 @@ const PLACEHOLDER_WORLD = 800;
  * `GameState.buildSeat` resolve each seat's weapons/HP through `buildArenaSpecs`
  * instead of the PvE run-builder path — no `loadout` needs setting here at all, since
  * an arena seat never reads it.
+ *
+ * The PvE dungeon is the room's chapter (`m.chapterId`, narrowed with `chapterIdOr`: absent —
+ * every pre-chapter server — or unknown both mean chapter 1). It is the catalog's own
+ * `{config, library}` objects rather than copies, so a chapter-1 room builds exactly the
+ * config it did before chapters existed.
  */
 export function buildOnlineConfig(m: MatchStart): EngineConfig {
   if (m.mode === 'pvp') return buildPvpEngineConfig(m.seed, m.playerCount);
   const ids = Object.keys(SKIN_DEFS);
+  const chapter = CHAPTERS[chapterIdOr(m.chapterId)];
   return {
     seed: m.seed,
     worldW: PLACEHOLDER_WORLD,
@@ -31,6 +37,6 @@ export function buildOnlineConfig(m: MatchStart): EngineConfig {
     // A bot's seat is flagged (ENGINE_VERSION 88) only when `match_start` names it, so a room of
     // people builds the same config it always did.
     players: Array.from({ length: m.playerCount }, (_, i) => ({ skinId: ids[i % ids.length]!, ...(m.botSeats?.includes(i) ? { bot: true } : {}) })),
-    dungeon: { config: EMBER_DUNGEON, library: EMBER_L1_ROOMS },
+    dungeon: { config: chapter.config, library: chapter.library },
   };
 }

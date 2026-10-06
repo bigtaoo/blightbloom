@@ -14,9 +14,9 @@
  * without configuration and either side (svc/server) wires its own secret.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { MatchMode } from '@dd/engine';
+import { isChapterId, type ChapterId, type MatchMode } from '@dd/engine';
 
-export type { MatchMode };
+export type { ChapterId, MatchMode };
 
 /** The signed seat grant. `exp` is an absolute epoch-ms deadline (verify rejects past it).
  * `teamId` (design/05/15's PvP squad follow-up) groups seats into a squad — every
@@ -55,6 +55,15 @@ export interface TicketPayload {
    * client that could flag its own seat a bot could change when its run ends.
    */
   bot?: true;
+  /**
+   * The PvE chapter a co-op room plays (`@dd/engine`'s `world/chapters.ts`). The gameserver
+   * builds the room from the first ticket redeemed for it and sends this in `match_start`, so
+   * it is signed for the same reason `seed` is: a value a client could choose is a dungeon a
+   * client could choose for everyone else in the room. Never set on a PvP ticket; absent on a
+   * co-op one (every ticket minted before chapters) means the first chapter. A present value
+   * this build's catalog does not know fails verification — see `verifyTicket`.
+   */
+  chapterId?: ChapterId;
 }
 
 const b64urlEncode = (s: string): string =>
@@ -124,7 +133,10 @@ export function verifyTicket(
     typeof payload.exp !== 'number' ||
     (payload.mode !== undefined && payload.mode !== 'coop' && payload.mode !== 'pvp') ||
     (payload.accountId !== undefined && typeof payload.accountId !== 'string') ||
-    (payload.bot !== undefined && payload.bot !== true)
+    (payload.bot !== undefined && payload.bot !== true) ||
+    // Signed, so an unknown id is an issuer newer than this gameserver rather than a forgery —
+    // but a room built from it would send every client a chapter half of them may not have.
+    (payload.chapterId !== undefined && !isChapterId(payload.chapterId))
   ) {
     return null;
   }

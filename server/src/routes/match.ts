@@ -15,7 +15,8 @@
  */
 import type { Matchmaker, MatchTicket } from '../Matchmaker';
 import type { Budget } from '../rateLimit';
-import { signTicket, verifyTicket, type MatchMode, type TicketPayload } from '../ticket';
+import { signTicket, verifyTicket, type ChapterId, type MatchMode, type TicketPayload } from '../ticket';
+import { readChapterField, UNKNOWN_CHAPTER } from '../chapterField';
 import { spendBudget, type BudgetDeps } from './limits';
 import { readJsonBody, send, type RouteHandler } from './http';
 
@@ -71,11 +72,12 @@ export interface MatchRouteDeps {
   /**
    * The party lookup, for the two things `/find` needs to know about a `partyId`
    * (2026-09-26, co-op room codes): how many members it has, so `Matchmaker` waits for all of
-   * them before seating anyone, and which mode it was made for. Narrowed to `get` for the
+   * them before seating anyone, and which mode it was made for — plus, for a co-op party, the
+   * chapter its host fixed at START, which every member is seated in. Narrowed to `get` for the
    * same reason as `auth`. Optional: without it a `partyId` is a bare grouping tag, which is
    * what it was before this existed — every member counted as present on arrival.
    */
-  parties?: { get(partyId: string): { members: readonly string[]; mode: MatchMode } | null };
+  parties?: { get(partyId: string): { members: readonly string[]; mode: MatchMode; chapterId?: ChapterId } | null };
 }
 
 /**
@@ -145,6 +147,16 @@ export const postFind: RouteHandler<FindRouteDeps> = async (req, res, _url, deps
     // reverse) is a client bug, and seating it would put friends in a room shaped for the
     // other game — refused rather than quietly re-moded, so the bug surfaces.
     if (party && party.mode !== mode) return send(res, 400, { error: 'party is for a different mode' });
+    // The co-op chapter (`chapterField.ts` has the absent/unknown policy). A party member is
+    // seated in the PARTY's chapter — its host's choice — rather than the one its own client
+    // sent: the host picks, and everyone in that room plays it. PvP has no chapter at all, so
+    // a PvP request's field is not even read.
+    let chapterId: ChapterId | undefined;
+    if (mode === 'coop') {
+      const asked = readChapterField((body as { chapterId?: unknown })?.chapterId);
+      if (asked === null) return send(res, 400, UNKNOWN_CHAPTER);
+      chapterId = party?.chapterId ?? asked;
+    }
     // Who this seat belongs to. ONE source, and that is the whole point (design/16 hole 3,
     // closed 2026-09-17; design/20 for the name).
     //
@@ -177,7 +189,7 @@ export const postFind: RouteHandler<FindRouteDeps> = async (req, res, _url, deps
       const gs = deps.pickGameserver();
       if (!gs) return send(res, 503, NO_GAMESERVER);
       const { queueId, ticket, botFillInMs } = deps.matchmaker.enqueue(
-        playerCount, mode, groupId, accountId, name, party?.members.length,
+        playerCount, mode, groupId, accountId, name, party?.members.length, chapterId,
       );
       send(res, 200, { queueId, match: ticket ? withUrl(ticket, gs.wsUrl) : undefined, botFillInMs });
     } catch (e) {
