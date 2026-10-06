@@ -117,6 +117,16 @@ describe('in co-op the opening press picks the way', () => {
     expect(eng.state.portalChoice).toBeNull();
   });
 
+  it('a press holding both buttons confirms whichever way the portal is going, as the ally bot presses', () => {
+    const eng = engine(2);
+    toBossFloor(eng, 2);
+    step(eng, [Button.CONFIRM_DESCEND, 0]);
+    expect(eng.state.portalChoice).toBe('descend');
+    step(eng, [0, Button.CONFIRM_EXTRACT | Button.CONFIRM_DESCEND]);
+    expect(eng.state.phase).toBe('playing');
+    expect(eng.state.floorIndex).toBe(2); // went at once, without waiting out the countdown
+  });
+
   it('a countdown opened by DESCEND descends when it runs out', () => {
     const eng = engine(2);
     toBossFloor(eng, 2);
