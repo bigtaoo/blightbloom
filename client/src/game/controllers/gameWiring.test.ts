@@ -144,7 +144,7 @@ function make() {
       setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
-    partyScreen: screenStub('onBack', 'onStartMatch') as never,
+    partyScreen: screenStub('onBack', 'onStartMatch', 'chapterOf') as never,
     loginScreen: screenStub('onBack', 'onSessionChange') as never,
     forge: screenStub('onBack', 'onCraftAt', 'onStore') as never,
     loadout: screenStub('onBack', 'onCycleCharacter', 'onClear', 'onStart', 'onContinue',
@@ -359,6 +359,17 @@ describe('wireScreens — the lobby chapter picker', () => {
     pick('frost');
     expect(t.run.meta.selectedChapter).toBe('frost');
     expect(saves.at(-1)).toMatchObject({ selectedChapter: 'frost' });
+  });
+
+  it('starts a co-op party in the leader’s playable pick, read live', () => {
+    const t = make();
+    wireScreens(t.d);
+    const chapterOf = (t.d.partyScreen as unknown as { chapterOf: () => string }).chapterOf;
+    expect(chapterOf()).toBe('ember');
+    t.run.meta = { ...t.run.meta, selectedChapter: 'frost', clearedChapters: ['ember'] };
+    expect(chapterOf()).toBe('frost');
+    t.run.meta = { ...t.run.meta, clearedChapters: [] }; // locked again (a hand-edited save)
+    expect(chapterOf()).toBe('ember');
   });
 });
 

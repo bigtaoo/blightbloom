@@ -16,7 +16,7 @@
 import { t } from '../../i18n';
 import { THEME } from '../theme';
 import {
-  guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount, pullAccountSnapshot,
+  guestMergeOffer, hasGuestProgress, mergeGuestIntoAccount, playableChapter, pullAccountSnapshot,
   type AccountSnapshot, type GuestMergeOffer, type MetaState,
 } from '../../meta';
 import { claimGuestMerge } from '../../net/auth';
@@ -71,6 +71,9 @@ export class OnlineMatch {
       pvpSeats: d.run.pvpSeats,
       lagMs: d.run.lagMs,
       partyId: d.run.partyId,
+      // The lobby picker's chapter (a locked pick falls back to chapter 1). Only a co-op queue
+      // sends it; a party member plays the PARTY's chapter, which the server decides.
+      chapterId: playableChapter(d.run.meta),
       signal,
       onQueued,
       onMatchStart: (localOwner) => {

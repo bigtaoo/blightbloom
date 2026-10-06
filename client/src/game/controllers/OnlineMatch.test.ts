@@ -178,6 +178,17 @@ describe('connect', () => {
     });
   });
 
+  it('asks for the lobby’s chapter, falling back to chapter 1 for a locked pick', () => {
+    const spy = vi.spyOn(onlineConnect, 'connectOnlineSession').mockResolvedValue({} as never);
+    const t = make();
+    t.run.meta = { ...t.run.meta, selectedChapter: 'frost', clearedChapters: ['ember'] };
+    void t.net.connect({} as never);
+    expect(spy.mock.calls[0]![0].chapterId).toBe('frost');
+    t.run.meta = { ...t.run.meta, clearedChapters: [] };
+    void t.net.connect({} as never);
+    expect(spy.mock.calls[1]![0].chapterId).toBe('ember');
+  });
+
   it('adopts the seat the server assigned, rather than assuming 0', () => {
     // `localOwner` is what the camera follows and what every command is stamped with. Left
     // at 0, every non-host player watches someone else's character.
