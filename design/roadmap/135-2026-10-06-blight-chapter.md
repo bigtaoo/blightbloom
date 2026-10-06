@@ -156,11 +156,16 @@ WeChat caps only through the 30 MB whole-game total, so the 3 MiB was this repo'
 It is now 4 MiB, with the set at 3.26 MiB of it, and `MUSIC_BUDGET_BYTES` is 3,500,000. The whole
 game is 8.63 MB of 30. No existing loop was re-encoded. The Settings sheet lists six credit lines.
 
-Nobody has listened to it in the game.
+Nobody has listened to it in the game. What was checked in the dev build: a chapter 4 run
+switches the music deck to `dungeon.blight` and the browser fetches `dungeon-blight.mp3`; that
+proves the wiring, not how it sounds.
 
 ### Not done
 
-- Nobody has played chapter 4 by hand. Its boss is measured by a bot that kites at a fixed
+- Nobody has played chapter 4 by hand. The dev build was only driven far enough to see the
+  locked and unlocked picker, the entrance garrison (four 3-HP basic mobs, four 5-HP
+  blightlings) and the minimap's rooms stacking upward; a player left standing in the entrance
+  died in about 6 s. Its boss is measured by a bot that kites at a fixed
   standoff and never dodges on purpose.
 - Hand-authored layouts for chapters 2-4, once players have seen the derived ones.
 - Chapter 1's boss pool still includes Blightlord, the boss that never lands a hit on the bot.
