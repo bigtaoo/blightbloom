@@ -13,10 +13,16 @@ Mirrors the `art/` convention: this directory holds the **source** audio and its
 paperwork. Nothing here is loaded at runtime — what the game ships is the processed copy
 under `client/public/audio/`.
 
+> **Status (2026-10-06, last): a sixth loop, `dungeon.blight`, for chapter 4.** "Ominous Goings-On"
+> by Eric Matyas (CC-BY 4.0), 49.5 s, seam 0.65 dB, no shelf, chosen by measurement from 38 CC0/CC-BY
+> candidates. To make room the `music` subpackage's own limit went from 3 MiB to 4 MiB (a standard
+> WeChat subpackage has no individual cap; only the 30 MB whole-game total binds it). The music set
+> is now 3.41 MB, 3.26 of the 4 MiB. See "Music" below.
+>
 > **Status (2026-10-06, later): a fifth loop, `dungeon.storm`, for chapter 3.** "Endless Cyber
 > Runner" by Eric Matyas (CC-BY 4.0), 50.0 s, seam 1.20 dB, chosen by measurement from 16 CC0/CC-BY
-> candidates. The music set is now 2.99 MB, 2.85 of the `music` subpackage's 3 MiB: there is no room
-> for a sixth loop at this encoding. See "Music" below.
+> candidates. The music set was then 2.99 MB, 2.85 of the `music` subpackage's 3 MiB (the limit the
+> sixth loop raised). See "Music" below.
 >
 > **Status (2026-10-06): the music is now open-licensed, and there are four loops.** The two
 > AI-generated (Suno) masters are gone; the owner judged them not good enough. `menu`, `dungeon.ember`
@@ -298,12 +304,12 @@ loops, where the fixed header amortises away.
 
 ## Music (2026-10-06; first built 2026-08-31)
 
-Five loops, all **openly licensed music written by people**, from OpenGameArt and Scott Buckley's
+Six loops, all **openly licensed music written by people**, from OpenGameArt and Scott Buckley's
 CC library. The first four replaced the two AI-generated (Suno) masters of 2026-08-31, which the owner
-judged not good enough ("音乐我发现ai生成的并不好"); the fifth, `dungeon.storm`, was added the same day
-for chapter 3. The earlier belief that open music meant chiptune held
-for CC0 and not for CC-BY: CC-BY has orchestral and ambient work at a production standard, and
-four of these five are CC-BY. Sources are archived under `sources/music/`.
+judged not good enough ("音乐我发现ai生成的并不好"); the fifth, `dungeon.storm`, and the sixth,
+`dungeon.blight`, were added the same day for chapters 3 and 4. The earlier belief that open music
+meant chiptune held for CC0 and not for CC-BY: CC-BY has orchestral and ambient work at a production
+standard, and five of these six are CC-BY. Sources are archived under `sources/music/`.
 `tools/audio-pipeline/process_music.py` cuts them; `audit.py --class music` gates them.
 
 | shipped | track | from | licence | region (upstream) | length | bytes | seam | shelf |
@@ -312,11 +318,14 @@ four of these five are CC-BY. Sources are archived under `sources/music/`.
 | `music/dungeon-ember.mp3` | `dungeon.ember` | "Lava Area Theme", Wolfgang_ | CC-BY 4.0 | 12.5 s of 105.6 s | 60.0 s | 578.6 kB | 1.54 dB | 80 Hz / -10 dB |
 | `music/dungeon-frost.mp3` | `dungeon.frost` | "Beyond the Frozen Veil" (loop version), Synth-thetic | CC0 | 34.5 s of 142.2 s | 71.5 s | 529.7 kB | 1.40 dB | none |
 | `music/dungeon-storm.mp3` | `dungeon.storm` | "Endless Cyber Runner" (looping version), Eric Matyas | CC-BY 4.0 | 27.5 s of 96.0 s | 50.0 s | 522.9 kB | 1.20 dB | 80 Hz / -10 dB |
+| `music/dungeon-blight.mp3` | `dungeon.blight` | "Ominous Goings-On" (looping version), Eric Matyas | CC-BY 4.0 | 15.0 s of 99.7 s | 49.5 s | 411.7 kB | 0.65 dB | none |
 | `music/boss.mp3` | `boss` | "Colossal Boss Battle Theme" (no-vocals loop), Matthew Pablo | CC-BY 3.0 | 49.5 s of 117.6 s | 58.5 s | 570.1 kB | 1.31 dB | 80 Hz / -10 dB |
 
-All 24 kHz stereo at -30.00 dBFS mid-band; 2.99 MB together (2.85 MB counted by the WeChat package
-check, which counts MiB), inside the `music` subpackage's 3 MB with ~150 kB left: a sixth loop of
-this kind does not fit without re-encoding the others or raising the pack limit.
+All 24 kHz stereo at -30.00 dBFS mid-band; 3.41 MB together (3.26 MB counted by the WeChat package
+check, which counts MiB), inside the `music` subpackage's 4 MiB with ~0.74 MiB left. The limit was
+3 MiB until the sixth loop, and the five before it left ~150 kB: rather than re-encode the shipped
+loops, the limit was raised, because it is this project's own guard and not WeChat's (a standard
+subpackage has no individual cap; the whole game is 8.6 of its 30 MB).
 
 **How they were chosen.** Licences first: CC0 and CC-BY only, since both permit commercial use and an
 edited loop. NC is out (the game earns from ads), ND is out (cutting a loop region is an adaptation),
@@ -338,7 +347,8 @@ listens for a living and I cannot hear at all:
   a phone does not reproduce and MP3 pays for, so both get the pipeline's zero-phase shelf.
 - **Taste, stated as taste:** `menu` is a slow synth-and-strings build (the lobby is where a player sits
   longest), `dungeon.ember` a lava-level theme, `dungeon.frost` an ice-kingdom ambient piece,
-  `dungeon.storm` a driving 120 bpm electronic piece, `boss`
+  `dungeon.storm` a driving 120 bpm electronic piece, `dungeon.blight` a dark, beatless suspense
+  piece, `boss`
   orchestra and heavy drums with the choir version passed over because a choir sits in the band every
   combat cue peaks in. Nobody has listened to the result in the game yet.
 
@@ -376,9 +386,61 @@ Zhelanov; 1.94 dB at best) and "The Memory Factory" (Eric Matyas; a 32.5 s file,
 40 s region from).
 The 50 s length is the byte budget's: 522.9 kB took the pack to 2.85 of 3 MiB.
 
+**The chapter-4 bed (`dungeon.blight`, added last the same day).** Chapter 4, the Blight Descent, is
+the poison biome and the finale: the source of the crystallising contamination. The brief was
+ominous, organic and creeping rather than driving, and distinct from the four beds before it. 38
+candidate files were measured: 28 from OpenGameArt (every Eric Matyas upload with a dark or eerie
+title, plus searches for swamp, toxic, poison, plague, creeping, ominous, sinister, dread, sewer and
+cavern) and 10 from Kevin MacLeod's incompetech library (CC-BY 4.0); OGA-BY, CC-BY-SA and GPL
+listings were skipped on licence alone. The storm pass's three extra measurements were run on each
+source's best regions from 40 to 62 s, and on the finalists again over a fine grid from 46 to 56 s:
+
+- **The pick, "Ominous Goings-On"** (Eric Matyas, the composer's looping version): 49.5 s from 15.0 s
+  closes at 0.67 dB on the upstream file (0.65 dB shipped), the overlap material correlates +0.05 and
+  the equal-power fade moves the level +0.14 dB. It has no beat to flam: the best onset-envelope
+  correlation between tail and head is 0.15, against 0.7-0.95 for the rhythmic sources below. At 2-8
+  kHz it sits 25.0 dB under its mids (spectral centroid 404 Hz), the darkest run bed, so nothing in it
+  competes with `deflect`; L/R +0.28. 20-250 Hz is 4.2 dB over the mids, under the 5.3-6.4 dB that got
+  the shelf on the other three, so it ships without one. Its 0.65 dB is lower than the 1-2 dB the
+  warning above asks for, and it was taken anyway because the warning is about correlated overlap and
+  this overlap measures uncorrelated; regions of the same piece that do correlate (+0.39 at
+  16.0 s / 47.0 s) swell +1.1 dB and were passed over.
+- **Runners-up.** "Lightless Dawn" (Kevin MacLeod; 0.53 dB at 48.5 s, but a +0.7 dB swell and a
+  sub 6.9 dB over the mids that wants the shelf); "Gathering Darkness" (Kevin MacLeod; 0.38 dB whose
+  overlap anti-correlates -0.31 and dips 0.8 dB, or 0.74 dB with a +0.6 dB swell); "They're Here"
+  (Eric Matyas; an alien-horror cue whose best region near 50 s is 1.43 dB with a 1.4 dB level step);
+  "Sector Off Limits" (Eric Matyas; 0.35 dB, but a dystopian-city piece rather than an organic one);
+  "Static Motion" (Kevin MacLeod; 0.53 dB only at 62 s, and 0.94 dB with a 0.9 dB dip near 48 s).
+- **Rejected on a measurement.** "Diabolical Swamp" (Android128) repeats: overlaps correlate +0.97
+  and swell 1.9-2.2 dB, and it is near-mono (L/R +0.93) with 20-250 Hz 10.4 dB over its mids.
+  "Insistent" (yd) closes at 0.06-0.18 dB, the repeating-piece signature, and its best region
+  correlates +0.55 and swells 1.3 dB. "Netherplace", "Lost and Faltering" (Eric Matyas), "Darkness is
+  Coming" (Kevin MacLeod), "Menace" (yd) and "Imaginary Dystopia" (Spring Spring) are beat-driven and
+  flam by 10-215 ms in every region the search ranked best. "Dark Cavern Ambient" (Paul Wortmann) and
+  "Dark Fog" (Kevin MacLeod) are sub drones (14-18 dB over their mids). "Cryptic Dreams" (Eric
+  Matyas) anti-correlates across the fade (-0.29, a 1.8 dB dip), "Mesmerize" (Kevin MacLeod) dips
+  0.9-1.2 dB, "Hazy Darkness" (Eric Matyas) swells 2.2 dB at its only region under 2 dB, and
+  "Ossuary 5 - Rest" (Kevin MacLeod) steps 0.9 dB in level at its best. "Disturbed Soundscape",
+  "Uneasy Anticipation", "The Wizard's Concoction", "Sewer Creepers Down the Drain" (Eric Matyas),
+  "Spider Eyes" (Kevin MacLeod), "Mysterious Sewer" (smark, and mono) and "Damp Cavern"
+  (tcarisland) could not close under 1.9 dB; "Troubled Forest" (Eric Matyas) reached 1.87 dB only in a
+  48 s file; "The Bog of Doom", "Mysterious Anomaly" and "Night Stalker" (Eric Matyas) are 30-36 s
+  files, too short for a 40 s region.
+- **Rejected on character, stated as taste.** "Dark Descent" (Matthew Pablo; 0.78 dB, but an epic
+  choir-and-action cue, closer to `boss` and with the choir `boss` was cut to avoid); "The Plague"
+  (Indieteur, CC0; an electronic apocalypse piece, 2-8 kHz only 7.9 dB under its mids, brighter than
+  any shipped bed, and a master that peaks above 0 dBFS); "The Swamps" (fluffclipse; tagged calm, a
+  swamp party theme); "Dubious Dungeon" (Bogart VGM; near-mono, L/R +0.97); "The Monster Factory"
+  and "Dystopian Wasteland" (Eric Matyas; a funky industrial piece, and a drone 41 dB dark in
+  2-8 kHz); "Long Note Four" (Kevin MacLeod; a ten-minute static drone); "Unseen Horrors" (Kevin
+  MacLeod; 2-8 kHz 7 dB under its mids).
+
+It costs 411.7 kB, the smallest of the six (a dark, slow piece is cheap to encode). Like the others,
+nobody has listened to it in the game.
+
 **Tempo.** Every loop ships at its written tempo. The 2026-09-06 "0.7x" request was about the two
 Suno masters and was applied as one module-wide factor; it is now a per-track `tempo` in
-`process_music.py`, 1.0 for all five, because a 30% Rubber Band stretch is audible processing on a
+`process_music.py`, 1.0 for all six, because a 30% Rubber Band stretch is audible processing on a
 played recording. The mechanism (`time_stretch`, stretch-before-slice, search-on-the-stretched-signal)
 is unchanged for the day a track wants it.
 
@@ -386,13 +448,14 @@ is unchanged for the day a track wants it.
 FLACs and a 50 MB zip holding WAVs. Archiving those would add ~95 MB to the repository for loops that
 read ~60-85 s of each, so `sources/music/` holds the upstream file verbatim when it is small (the lava
 ogg, 1.96 MB) and otherwise an EXCERPT: the loop region plus 5 s either side, Vorbis-encoded (the
-storm excerpt keeps its upstream's 96 kHz and is 1.06 MB of a 6 MB file). Each
+storm excerpt keeps its upstream's 96 kHz and is 1.06 MB of a 6 MB file; the blight excerpt is
+59.5 s, 0.79 MB of a 4.9 MB file). Each
 `credits.json` record carries the upstream URL and SHA-256 (and the member file inside an archive),
 so the whole master can be fetched back and checked; `region_start_s` is in the archived file's
 seconds and `excerpt_start_s` places it upstream. `musicAssets.test.ts` hashes every archived file
 against its record.
 
-**Licensing and the credit.** Four loops are CC-BY, so for the first time something in the game
+**Licensing and the credit.** Five loops are CC-BY, so for the first time something in the game
 REQUIRES a visible credit. It is on the Settings screen, under both columns
 (`client/src/audio/musicCredits.ts`): plain text, because WeChat cannot follow an outbound link, and
 untranslated except for its label, because a title, a name and a licence are proper nouns. The CC0

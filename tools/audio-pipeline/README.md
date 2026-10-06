@@ -102,7 +102,7 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   voice that does not exist for music; and it stays stereo.
 
       ./venv/Scripts/python process_music.py --search boss     # rank loop regions (20-130 s)
-      ./venv/Scripts/python process_music.py [--track menu|dungeon.ember|dungeon.frost|dungeon.storm|boss]
+      ./venv/Scripts/python process_music.py [--track menu|dungeon.ember|dungeon.frost|dungeon.storm|dungeon.blight|boss]
 
   Its filters are single zero-phase multiplies over the **whole region's** spectrum. That is
   circular convolution and a loop region *is* circular, so filtering cannot introduce the
@@ -123,7 +123,9 @@ files. A fixed inventory cannot answer "does this sound exist"; only a queryable
   Both now call `audit.profile_diff(band_profile(...), band_profile(...))`, and `--search`
   applies the track's shelf AND its tempo stretch. Search and post-encode figures agree to
   within 0.01-0.06 dB on the 2026-10-06 set (`menu` 0.84 / 0.83, `dungeon.ember` 1.60 / 1.54,
-  `dungeon.frost` 1.40 / 1.40, `dungeon.storm` 1.21 / 1.20, `boss` 1.25 / 1.31). If you add
+  `dungeon.frost` 1.40 / 1.40, `dungeon.storm` 1.21 / 1.20, `dungeon.blight` 0.67 / 0.65 (the
+  first figure on the upstream file, before the excerpt's Vorbis re-encode), `boss` 1.25 / 1.31).
+  If you add
   a processing step that changes a measured property, `--search` has to apply it too — the
   2026-09-06 tempo pass is the fourth time this exact lesson landed, see the table row above.
 
@@ -191,11 +193,14 @@ The music is **openly licensed work by people** since 2026-10-06: CC0 or CC-BY, 
 and Scott Buckley's library, archived under `art/audio/sources/music/`. The 2026-08-31 pass had
 used AI masters (Suno) on the belief that open music is chiptune; that holds for CC0 and not for
 CC-BY. The owner judged the AI tracks not good enough, and `art/audio/README.md`'s "Music" has the
-five picks (chapter 3's `dungeon.storm` was the fifth), the measurements that chose them, and the
-licensing. What is worth knowing before sourcing the next one:
+six picks (chapter 3's `dungeon.storm` and chapter 4's `dungeon.blight` were the fifth and sixth),
+the measurements that chose them, and the licensing. What is worth knowing before sourcing the next
+one:
 
-- **The `music` subpackage is nearly full.** Five loops are 2.85 of its 3 MiB; a sixth needs the
-  pack limit raised or a re-encode of the others, which is a decision, not a side effect.
+- **The `music` subpackage's limit is our own.** Six loops are 3.26 of its 4 MiB. It was 3 MiB until
+  the sixth loop, and raising it was a decision: a standard WeChat subpackage has no individual cap,
+  only the 30 MB whole-game total. Raise it again the same way (with `MUSIC_BUDGET_BYTES` in
+  `musicAssets.test.ts`) rather than re-encoding the shipped loops.
 
 - **Licence filter first:** CC0 or CC-BY. NC is out (ads), ND is out (a cut loop is an
   adaptation). CC-BY needs its credit in `client/src/audio/musicCredits.ts`, which a test holds
@@ -204,6 +209,9 @@ licensing. What is worth knowing before sourcing the next one:
   repeats and the head and tail are the same bars; the equal-power crossfade swells and combs on
   correlated material. Take a 1-2 dB region of different material. (The storm pass measured the
   swell directly: overlaps of two repeating candidates correlated +0.4 to +0.9 and rose 1.0-1.9 dB.)
+  The warning is about the correlation, not the number: measure the overlap, and a low seam whose
+  overlap is uncorrelated is fine. `dungeon.blight` ships at 0.65 dB with an overlap correlation of
+  +0.05 and a +0.14 dB swell, on a beatless piece that cannot flam.
 - **A beat-driven bed can flam.** If the loop length minus the 2 s crossfade is not a whole number
   of beats, the two decks' drums land apart through the whole fade; band-diff cannot see it.
   Compare onset envelopes of the tail and head windows (best cross-correlation lag should be 0).

@@ -124,7 +124,7 @@ export class Settings {
    *  take it off the screen" rather than dim it), and a route may not become fully
    *  unreachable, so this is where a returning player who wants to see it again finds it. */
   private tutorialBtn: Button;
-  /** Who wrote the music (`audio/musicCredits.ts`, 2026-10-06). Four of the five loops are
+  /** Who wrote the music (`audio/musicCredits.ts`, 2026-10-06). Five of the six loops are
    *  CC-BY, which requires the credit where a player can see it; plain text, because WeChat
    *  cannot follow an outbound link. */
   private creditsText: Text;

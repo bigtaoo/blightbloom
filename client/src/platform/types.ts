@@ -144,11 +144,11 @@ export type AudioCue =
 // `Record<MusicTrack, TrackDef>`, so adding a track here is a COMPILE error until it has a
 // music decision (which file, how long that file is, and whether the file is really its own).
 //
-// Five, not eight. design/11's original plan is one loop per elemental biome, and a run bed
+// Six, not eight. design/11's original plan is one loop per elemental biome, and a run bed
 // exists for exactly the biomes a chapter uses (`game/theme.ts`'s `BIOME_ID_TO_ELEMENT` maps
-// chapter 1 to `fire` and chapter 2 to `ice`; chapter 3's `storm` biome is lightning). Poison has
-// art with no dungeon pointing at it — the same standard `assetPacks.json` already applies to art: do not
-// pay bytes for content a run cannot reach.
+// chapter 1 to `fire` and chapter 2 to `ice`; chapter 3's `storm` biome is lightning and
+// chapter 4's `blight` biome is poison) — the same standard `assetPacks.json` already applies
+// to art: do not pay bytes for content a run cannot reach.
 //
 // Unlike a cue, a track is never triggered by an engine event. `game/musicDirector.ts`
 // DERIVES which one should be playing from the situation every render frame, so there is no
@@ -159,6 +159,7 @@ export type MusicTrack =
   | 'dungeon.ember' // chapter 1's run bed (the fire biome)
   | 'dungeon.frost' // chapter 2's run bed (the ice biome)
   | 'dungeon.storm' // chapter 3's run bed (the lightning biome)
+  | 'dungeon.blight' // chapter 4's run bed (the poison biome)
   | 'boss';
 
 // A swappable audio device, symmetric to InputSource. Both backends now run the SAME cue
