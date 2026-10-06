@@ -489,3 +489,60 @@ arrive: add the three keys to `UI_ASSETS` in `render/uiSkins.ts` (they load in t
 tier, before a run) together with the files in `client/public/ui/` and their
 `assetPacks.json` entries. The keys cannot be registered earlier: `wechatAssetLoad.test.ts`
 requires every registered file to load.
+
+# Chapter banners (2026-10-06 pass)
+
+Two banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
+"The Ember Descent", fire) and `chapter_frost` (chapter 2, "The Frost Descent", ice). Same
+format as the `lobby_card_*` route banners above (3:1, opaque, shipped as 768x256 q85 JPEG,
+~35 kB each, in the `lobby` pack) and the same rule for the left 40%: calm and low-detail,
+because the picker draws the chapter's name there.
+
+**Generator: Mistral's image agent**, via the sibling repo's `D:/standing/tools/edit_image.sh`
+and `generate_image.sh` (the owner's instruction for this batch, not GPT Image 2). Every call ran
+on key C, first try, with no rate limiting.
+
+**Approach that shipped: an EDIT of `lobby_card_descend_raw.png`, not a fresh generation.** Each
+chapter is "a descent", and restyling the descend card's spiral shaft into the chapter's element
+keeps the two banners and the route card visibly one family. The colours follow design/13's
+locked element hues (fire `#FF7043`, ice `#81D4FA`), which these banners may use because they
+DO name an element, unlike the UI icons above.
+
+## `chapter_ember` — shipped (`chapter_ember_raw.png`)
+
+```
+Restyle this banner into a VOLCANIC fire version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark warm charcoal-brown basalt with thin glowing orange-red molten cracks running through the blocks inside the shaft, make every crystal a jagged glowing ember-orange crystal (around #ff7043), and fill the depths of the spiral shaft with a bright molten orange glow, with a few glowing embers rising. The left 40% stays a calm, simple, mid-dark warm charcoal-brown basalt floor (not pure black), no crystals, no lava, no bright spots. No cyan, no blue. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 54 (std 2.6). The molten cracks asked for did not appear; the glow in the depths
+and the warm walls carry the element on their own.
+
+## `chapter_frost` — shipped (`chapter_frost_raw.png`)
+
+```
+Restyle this banner into an ice version while keeping the exact same composition, camera angle, flat-cel 2D style, bold dark outlines and the calm, low-detail empty area on the left 40%. Turn the stone into cold frosted blue-grey stone with patches of snow and frost and a few hanging icicles on the rings, and make the crystals jagged glowing pale ice-blue crystals (around #81d4fa) that get brighter toward the frozen depths, with a few snowflakes drifting down. The left 40% stays calm, simple and mid-to-dark cold blue-grey, with no crystals or bright spots. No orange, no warm brown. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 109 (std 4.5), the same as the shipped `lobby_card_pvp`. Snow and icicles were
+asked for and not drawn; the cold stone and the ice crystals read as frozen at banner size.
+`chapter_frost_alt.png` is a re-roll with a stronger snow/icicle paragraph: it did draw thin
+icicles inside the shaft, but its floor came back at luma 159 (too bright under a label) and its
+depths lost their glow. Darkening it with a gamma curve was tried and rejected in favour of an
+unmodified generation.
+
+## Rejected (not kept)
+
+- **Text-to-image** with the route-card template above (`SUBJECT` = a spiral cavern shaft in the
+  element): both came back 1024x768 (4:3), centred, more painterly, and ignored the left-40% rule
+  entirely — no crop of them leaves a calm label area.
+- **Edit of an edit** (the shipped-candidate fed back with "add snow caps / molten cracks"): both
+  zoomed in, cutting off the glowing depths, and the frost one still drew no snow.
+
+## Workflow for this batch
+
+The edit endpoint returns a 1568x672 PNG (2.33:1) whatever the input's aspect, re-composed rather
+than letterboxed. The raws are that file unmodified; the shipped JPEG is a straight NON-uniform
+LANCZOS resize to 768x256, which flattens the shaft's rings back to the descend card's own
+ellipse (a centre crop to 3:1 instead cuts off the glowing bottom of the shaft). Pillow, q85,
+4:2:0, baseline — the same encoding as the route cards. `lobbyArt.test.ts` pins the 3:1/768
+size and folds both into the lobby set's byte budget.
