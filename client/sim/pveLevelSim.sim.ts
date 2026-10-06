@@ -22,6 +22,7 @@
 import { describe, expect, it } from 'vitest';
 import { runLevel, type RunMetrics } from './pve/levelSim';
 import {
+  entranceRoomStats,
   floorDropStats,
   floorFireStats,
   floorVitalsStats,
@@ -183,9 +184,12 @@ describe('PvE level 1 balance sim (bot-driven real runs — first-signal data, n
   // ── Balance gates (design/05 "Room encounter budget") ────────────────────────
 
   it("gate: the entrance room gives the player time to react — it is the first thing they ever see", () => {
-    const rows = roomStats(runs('careful'));
-    const entrance = rows.find((r) => r.floorIndex === 0);
+    // The spawn room, found by encounter order — NOT the first floor-0 row of `roomStats`,
+    // which sorts by id and has been the enemy-free `b1_cache` since 2026-09-14, so this gate
+    // passed on `null ?? Infinity` without measuring anything (`entranceRoomStats`' comment).
+    const entrance = entranceRoomStats(runs('careful'));
     expect(entrance).toBeDefined();
+    expect(entrance!.garrison, `entrance ${entrance!.roomId} has no garrison — the gate below would be vacuous`).toBeGreaterThan(0);
     // ~1s @30Hz. A room that lands damage faster than a player can read it is the
     // reported bug, restated as a number.
     expect(entrance!.medianReactionTicks ?? Infinity).toBeGreaterThanOrEqual(30);
@@ -204,8 +208,13 @@ describe('PvE level 1 balance sim (bot-driven real runs — first-signal data, n
 
   it('gate: a careful player always clears the entrance room, and floor 1 is passable but not free', () => {
     const rows = runs('careful');
-    const cleared = rows.filter((r) => r.encounters.some((e) => e.floorIndex === 0 && e.clearedTick !== null));
-    expect(cleared.length).toBe(rows.length);
+    // The ENTRANCE room, not "any floor-0 room": an enemy-free side room reads cleared the
+    // tick it activates, so the old any-room test could pass for a run that never cleared the
+    // spawn room (same trap as the reaction-window gate above).
+    const entrance = entranceRoomStats(rows);
+    expect(entrance?.garrison ?? 0).toBeGreaterThan(0);
+    expect(entrance!.samples).toBe(rows.length);
+    expect(entrance!.clearRate, `${entrance!.roomId} clear rate`).toBe(1);
 
     // Difficulty target (chosen 2026-08-17: "整体偏难" — hard overall). Descending off
     // floor 0 means its whole roster plus the capstone went down, which is the real

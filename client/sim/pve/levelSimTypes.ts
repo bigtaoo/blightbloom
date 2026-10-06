@@ -6,7 +6,7 @@
  * re-exports everything here, so `from './levelSim'` stays the one import site for
  * every existing caller.
  */
-import type { PickupItem, RarityTier, ShopOffer } from '@dd/engine';
+import type { ChapterContent, ChapterId, GameState, PickupItem, RarityTier, ShopOffer } from '@dd/engine';
 import type { BotProfile, BOT_PROFILES } from './PveBotController';
 
 /** One room's fight, from the tick it woke up to the tick it went quiet. */
@@ -181,4 +181,15 @@ export interface RunOptions {
   profileName?: keyof typeof BOT_PROFILES;
   profile?: BotProfile;
   maxTicks?: number;
+  /** Which chapter (`engine/world/chapters.ts`) the run plays. Default `'ember'`, and for
+   *  `'ember'` the config is `buildDungeonRunConfig`'s own, untouched — chapter 1's sweep is
+   *  byte-for-byte what it was before this option existed. Any other chapter swaps only the
+   *  config's `dungeon` for `CHAPTERS[chapter]`; nothing else about a run differs. */
+  chapter?: ChapterId;
+  /** A hand-built dungeon in place of a chapter's — `chapterTrial.ts`'s single-floor and
+   *  boss-room trials. Wins over `chapter`. */
+  dungeon?: ChapterContent;
+  /** Called after every engine step with the post-step state: a trial's own observer, for a
+   *  measurement `RunMetrics` has no field for (e.g. one actor's time-to-kill). */
+  onTick?: (s: GameState) => void;
 }

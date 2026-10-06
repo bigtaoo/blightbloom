@@ -124,6 +124,21 @@ export function roomStats(runs: readonly RunMetrics[]): RoomStats[] {
 }
 
 /**
+ * The room every run starts in — the FIRST encounter each run opened, which is floor 0's
+ * spawn room — as its `roomStats` row; undefined when no run opened any room.
+ *
+ * Not `roomStats(...).find(floorIndex === 0)`: rows sort by room id, and since the side rooms
+ * landed (2026-09-14) floor 0's first id is `b1_cache` — an enemy-free room whose reaction
+ * window is null. The entrance gate read that row for three weeks and passed on
+ * `null ?? Infinity` without ever looking at the entrance (found 2026-10-06).
+ */
+export function entranceRoomStats(runs: readonly RunMetrics[]): RoomStats | undefined {
+  const firstRoom = runs.find((r) => r.encounters.length > 0)?.encounters[0];
+  if (!firstRoom) return undefined;
+  return roomStats(runs).find((r) => r.floorIndex === firstRoom.floorIndex && r.roomId === firstRoom.roomId);
+}
+
+/**
  * One floor's loot economy, aggregated across every run that played it (design/09
  * `DROP_TABLE`). Two targets live here, both stated as user requests on 2026-09-05:
  * a floor should hand out **2-3 weapons**, and a monster's chance of a health potion
