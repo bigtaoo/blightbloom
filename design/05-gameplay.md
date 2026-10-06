@@ -84,6 +84,18 @@ The cost side of firing, and the roster change that had to land with it.
   - [Melee mobs: the roster had none, and it was a TYPE that said so](gameplay/03-weapon-energy-and-melee-mobs.md#melee-mobs-the-roster-had-none-and-it-was-a-type-that-said-so)
   - [What the re-run measured](gameplay/03-weapon-energy-and-melee-mobs.md#what-the-re-run-measured)
 
+### [PvE chapters](gameplay/04-chapters.md)
+
+How the game grows past its one dungeon: what a chapter is, their order, and what a second one buys.
+
+- **[PvE chapters: one dungeon becomes a sequence ✅ (2026-10-06)](gameplay/04-chapters.md#pve-chapters-one-dungeon-becomes-a-sequence--2026-10-06)** — A chapter is a whole run; clearing one unlocks the next; the lobby picks.
+  - [The decisions (owner, 2026-10-06: "按推荐的来")](gameplay/04-chapters.md#the-decisions-owner-2026-10-06-按推荐的来)
+  - [The order](gameplay/04-chapters.md#the-order)
+  - [What a chapter buys a player today, and what it does not](gameplay/04-chapters.md#what-a-chapter-buys-a-player-today-and-what-it-does-not)
+  - [Chapter 2, the Frost Descent](gameplay/04-chapters.md#chapter-2-the-frost-descent)
+  - [The plumbing: one id, read everywhere](gameplay/04-chapters.md#the-plumbing-one-id-read-everywhere)
+  - [Next](gameplay/04-chapters.md#next)
+
 ## PvP (PvPvE arena) — battle royale
 
 **(DECIDED, ROADMAP Phase 4.1 — full schema in `15-pvp-arena.md`.)** PvP is a **last-player-standing (or last-SQUAD-standing) battle royale with a shrinking safe zone**, not a symmetric team arena. This revises the "3v3/4v4" framing below to an 8-player mode first.
