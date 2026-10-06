@@ -282,7 +282,7 @@ describe('the chapter a save is in (design/gameplay/04)', () => {
     const good = JSON.parse(JSON.stringify(packRunSave({
       config: dungeonConfig(), commands: [], ticks: 0, floorIndex: 0, score: 0, nowMs: 0,
     }))) as Record<string, unknown>;
-    expect(parseRunSave({ ...good, chapterId: 'storm' })).toBeNull();
+    expect(parseRunSave({ ...good, chapterId: 'blight' })).toBeNull();
     expect(parseRunSave({ ...good, chapterId: 3 })).toBeNull();
   });
 

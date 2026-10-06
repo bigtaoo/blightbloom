@@ -492,8 +492,9 @@ requires every registered file to load.
 
 # Chapter banners (2026-10-06 pass)
 
-Two banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
-"The Ember Descent", fire) and `chapter_frost` (chapter 2, "The Frost Descent", ice). Same
+Banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
+"The Ember Descent", fire), `chapter_frost` (chapter 2, "The Frost Descent", ice) and, added
+later the same day, `chapter_storm` (chapter 3, "The Storm Descent", lightning). Same
 format as the `lobby_card_*` route banners above (3:1, opaque, shipped as 768x256 q85 JPEG,
 ~35 kB each, in the `lobby` pack) and the same rule for the left 40%: calm and low-detail,
 because the picker draws the chapter's name there.
@@ -504,9 +505,9 @@ on key C, first try, with no rate limiting.
 
 **Approach that shipped: an EDIT of `lobby_card_descend_raw.png`, not a fresh generation.** Each
 chapter is "a descent", and restyling the descend card's spiral shaft into the chapter's element
-keeps the two banners and the route card visibly one family. The colours follow design/13's
-locked element hues (fire `#FF7043`, ice `#81D4FA`), which these banners may use because they
-DO name an element, unlike the UI icons above.
+keeps the banners and the route card visibly one family. The colours follow design/13's
+locked element hues (fire `#FF7043`, ice `#81D4FA`, lightning `#FFF176`), which these banners
+may use because they DO name an element, unlike the UI icons above.
 
 ## `chapter_ember` — shipped (`chapter_ember_raw.png`)
 
@@ -530,6 +531,29 @@ icicles inside the shaft, but its floor came back at luma 159 (too bright under 
 depths lost their glow. Darkening it with a gamma curve was tried and rejected in favour of an
 unmodified generation.
 
+## `chapter_storm` — shipped (`chapter_storm_raw.png`)
+
+```
+Restyle this banner into a lightning version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into cold dark slate stone with a deep indigo-violet tint, make every crystal a sharp jagged glowing lemon-yellow crystal (around #fff176), add bright yellow forked lightning arcs crackling across the inside of the spiral shaft, and fill the depths with a brilliant white-yellow electric glow. Slanted rain streaks fall through the shaft. The left 40% stays a calm, simple, mid-dark cool grey floor (not pure black), no crystals, no lightning, no bright spots. Only cool greys, indigo and electric yellow: no orange, no warm brown, no pale ice-blue, no snow. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Left-40% luma 55 (std 3.2), next to ember's 54. The bright crystal pixels' median hue is 54°,
+on `#FFF176` itself. The lightning came out as thin yellow hairline arcs running down the shaft
+walls rather than bold forks, but they are visible at 768x256 and, with the lemon crystals,
+separate the banner from ember's orange at a glance. Asked for and not drawn: the indigo-violet
+tint (the stone came back a dark teal-slate, RGB about 36/61/73 on the floor) and the rain.
+
+Four candidates were rolled on the same descend raw, one call each (key C hit its quota and was
+abandoned; the others ran on keys D and E). The three not kept:
+
+- the same brief worded as "STORM lightning" with "thin crackling lightning arcs jumping between
+  the rings" and rain: luma 68, crystals paler and amber (hue 49°), two or three faint arcs;
+- a "thunderstorm" wording with "wet, dark" stone and zig-zag bolts: luma 42, no lightning at all,
+  amber crystals (hue 50°) that read as candlelight rather than electricity;
+- the shipped prompt pushed harder ("several clearly visible forked bolts", "not teal"): luma 51,
+  bolder forks but drawn pale bluish-white (too close to frost), crystals amber (hue 50°), and the
+  stone still teal.
+
 ## Rejected (not kept)
 
 - **Text-to-image** with the route-card template above (`SUBJECT` = a spiral cavern shaft in the
@@ -545,4 +569,4 @@ than letterboxed. The raws are that file unmodified; the shipped JPEG is a strai
 LANCZOS resize to 768x256, which flattens the shaft's rings back to the descend card's own
 ellipse (a centre crop to 3:1 instead cuts off the glowing bottom of the shaft). Pillow, q85,
 4:2:0, baseline — the same encoding as the route cards. `lobbyArt.test.ts` pins the 3:1/768
-size and folds both into the lobby set's byte budget.
+size and folds every chapter banner into the lobby set's byte budget.

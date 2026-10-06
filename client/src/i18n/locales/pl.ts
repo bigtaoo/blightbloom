@@ -35,6 +35,7 @@ export const pl: Translations<typeof en> = {
     locked: 'Ukończ rozdział {n}',
     ember: { name: 'Otchłań Żaru' },
     frost: { name: 'Otchłań Mrozu' },
+    storm: { name: 'Otchłań Burzy' },
   },
   loading: {
     boot: 'WCZYTYWANIE',
@@ -399,6 +400,7 @@ export const pl: Translations<typeof en> = {
     enemymaul: { name: 'Młot najeźdźcy' },
     enemynova: { name: 'Nova najeźdźcy' },
     enemyshardfan: { name: 'Wachlarz odłamków najeźdźcy' },
+    enemyarcseeker: { name: 'Łowca łuków najeźdźcy' },
     flamer: { name: 'Miotacz ognia' },
     cryobolt: { name: 'Kriobełt' },
     teslagun: { name: 'Działo Tesli' },

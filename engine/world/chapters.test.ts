@@ -11,10 +11,11 @@ import {
 import { EMBER_DUNGEON, EMBER_PROCEDURAL_DUNGEON } from '@dd/engine/world/rooms/ember';
 import { EMBER_L1_ROOMS } from '@dd/engine/world/rooms/emberLevel1';
 import { FROST_DUNGEON } from '@dd/engine/world/rooms/frost';
+import { STORM_DUNGEON } from '@dd/engine/world/rooms/storm';
 
 describe('the chapter catalog', () => {
   it('lists every chapter once, in unlock order, starting with the default', () => {
-    expect([...CHAPTER_ORDER]).toEqual(['ember', 'frost']);
+    expect([...CHAPTER_ORDER]).toEqual(['ember', 'frost', 'storm']);
     expect(CHAPTER_ORDER[0]).toBe(DEFAULT_CHAPTER_ID);
     expect(Object.keys(CHAPTERS).sort()).toEqual([...CHAPTER_ORDER].sort());
   });
@@ -27,6 +28,7 @@ describe('the chapter catalog', () => {
     expect(CHAPTERS.ember.config).toBe(EMBER_DUNGEON);
     expect(CHAPTERS.ember.library).toBe(EMBER_L1_ROOMS);
     expect(CHAPTERS.frost.config).toBe(FROST_DUNGEON);
+    expect(CHAPTERS.storm.config).toBe(STORM_DUNGEON);
   });
 
   it('every chapter boss piece and extraction piece resolves in that chapter library', () => {
@@ -43,7 +45,8 @@ describe('chapter id helpers', () => {
   it('isChapterId accepts exactly the catalog ids', () => {
     expect(isChapterId('ember')).toBe(true);
     expect(isChapterId('frost')).toBe(true);
-    for (const bad of ['storm', '', 'EMBER', 1, null, undefined, {}]) expect(isChapterId(bad)).toBe(false);
+    expect(isChapterId('storm')).toBe(true);
+    for (const bad of ['blight', '', 'EMBER', 1, null, undefined, {}]) expect(isChapterId(bad)).toBe(false);
   });
 
   it('chapterIdOr falls back to the default for anything untrusted', () => {
@@ -55,15 +58,18 @@ describe('chapter id helpers', () => {
   it('chapterIdOfConfig names a catalog config and refuses everything else', () => {
     expect(chapterIdOfConfig(EMBER_DUNGEON)).toBe('ember');
     expect(chapterIdOfConfig(FROST_DUNGEON)).toBe('frost');
+    expect(chapterIdOfConfig(STORM_DUNGEON)).toBe('storm');
     expect(chapterIdOfConfig(undefined)).toBeNull();
     // Same biome id, different config: a fixture is not mistaken for the shipped chapter.
     expect(EMBER_PROCEDURAL_DUNGEON.biomeId).toBe('ember');
     expect(chapterIdOfConfig(EMBER_PROCEDURAL_DUNGEON)).toBeNull();
     expect(chapterIdOfConfig({ ...EMBER_DUNGEON, biomeId: 'storm' })).toBeNull();
+    expect(chapterIdOfConfig({ ...EMBER_DUNGEON, biomeId: 'blight' })).toBeNull();
   });
 
   it('nextChapterId walks the unlock order and stops after the last chapter', () => {
     expect(nextChapterId('ember')).toBe('frost');
-    expect(nextChapterId('frost')).toBeNull();
+    expect(nextChapterId('frost')).toBe('storm');
+    expect(nextChapterId('storm')).toBeNull();
   });
 });

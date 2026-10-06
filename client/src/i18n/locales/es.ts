@@ -35,6 +35,7 @@ export const es: Translations<typeof en> = {
     locked: 'Completa el capítulo {n}',
     ember: { name: 'El Descenso de Brasas' },
     frost: { name: 'El Descenso Helado' },
+    storm: { name: 'El Descenso Tormentoso' },
   },
   loading: {
     boot: 'CARGANDO',
@@ -399,6 +400,7 @@ export const es: Translations<typeof en> = {
     enemymaul: { name: 'Mazo saqueador' },
     enemynova: { name: 'Nova saqueadora' },
     enemyshardfan: { name: 'Abanico de esquirlas saqueador' },
+    enemyarcseeker: { name: 'Buscador de arcos saqueador' },
     flamer: { name: 'Lanzallamas' },
     cryobolt: { name: 'Criobolt' },
     teslagun: { name: 'Pistola Tesla' },

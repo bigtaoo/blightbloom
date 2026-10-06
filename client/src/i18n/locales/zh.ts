@@ -35,6 +35,7 @@ export const zh: Translations<typeof en> = {
     locked: '通关第 {n} 章后解锁',
     ember: { name: '余烬深渊' },
     frost: { name: '霜寒深渊' },
+    storm: { name: '雷暴深渊' },
   },
   loading: {
     boot: '加载中',
@@ -398,6 +399,7 @@ export const zh: Translations<typeof en> = {
     enemymaul: { name: '掠夺者重锤' },
     enemynova: { name: '掠夺者新星' },
     enemyshardfan: { name: '掠夺者冰棱扇' },
+    enemyarcseeker: { name: '掠夺者追踪雷球' },
     flamer: { name: '火焰喷射器' },
     cryobolt: { name: '寒冰箭' },
     teslagun: { name: '特斯拉枪' },

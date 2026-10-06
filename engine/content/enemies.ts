@@ -22,7 +22,7 @@ import { freshStatus } from './damage';
 import { pxToFp } from './convert';
 import { PLAYER_BASE } from './players';
 import { ENEMY_CLAW_SIM, ENEMY_GUN_SIM, ENEMY_MAUL_SIM, makeWeapon } from './weapons';
-import { BLIGHTLORD, GLACIMAW, IRONWARDEN, PYREFANG } from './bosses';
+import { BLIGHTLORD, GLACIMAW, IRONWARDEN, PYREFANG, VOLTREAVER } from './bosses';
 
 // The boss blueprints and the random-boss pool live in their own file (split 2026-10-06 when
 // chapter 2's boss pushed this one past 500 lines); re-exported so every existing import of
@@ -294,6 +294,7 @@ export const ENEMY_BLUEPRINTS: Record<string, EnemyBlueprint> = {
   pyrefang: PYREFANG,
   ironwarden: IRONWARDEN,
   glacimaw: GLACIMAW,
+  voltreaver: VOLTREAVER,
 };
 
 /**

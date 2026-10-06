@@ -197,4 +197,50 @@ export const DROP_ONLY_WEAPON_SPECS: Record<string, WeaponSpec> = {
     muzzleGrid: 0.875, // grid (28px/32) — GLACIMAW's own radius
     bulletZ: 0.5,
   },
+
+  // ── Enemy arc seeker (Voltreaver boss loadout — chapter 3, design/gameplay/04-chapters.md,
+  // not player-selectable) ─────────────────────────────────────────────────────────────
+  // The "out-turn it" fight. Three HOMING lightning orbs per volley, launched in a wide fan so
+  // they close from both flanks rather than down the line the player is shooting along: they
+  // follow, so neither stepping sideways (Glacimaw's answer) nor backing off clears a volley
+  // for free. The answer is a late, hard cut across their path — the turn rate is well under
+  // the player's own seeker's, so an orb that has committed overshoots — or shooting the ones
+  // that do come down the firing line (hostile bullets annihilate, and a fat, slowish orb is
+  // easy to catch). In co-op every hit also ARCS to the nearest teammate within `CHAIN_RANGE`
+  // (lightning's payload, design/07), so the party's answer adds a third: do not stand together.
+  //
+  // Set by a boss-duel sweep (`client/sim/chapterSim.sim.ts`, careful bot, 40 seeds, the boss
+  // alone at 90 HP, 2026-10-06). The fight is knife-edged on speed and turn rate, and each knob
+  // was walked until the orbs landed at all:
+  //   as first authored (3 orbs, 80° fan, 5 grid/s, 110°/s, every 1.8 s)  100% kills, 0 damage
+  //   160° fan, 6 grid/s, 160°/s, every 1.4 s                             100% kills, 0 damage
+  //   160° fan, 7 grid/s, 140°/s, every 1.4 s                              98% kills
+  //   160° fan, 7 grid/s, 160°/s, every 1.4 s   ← shipped                  57% kills, 43% deaths
+  //   160° fan, 7 grid/s, 180°/s, every 1.6 s                              33% kills, 70% deaths
+  // An orb under ~7 grid/s is simply erased by the bot's own fire, which crosses the fan's
+  // centre line. At chapter 3's shipped boss-floor scale (95 HP) the duel reads 50% / 50%:
+  // between Glacimaw (23% kills) and the chapter-1 bosses whose single aimed bullets never
+  // land on the bot (100%).
+  enemyarcseeker: {
+    id: 'enemyarcseeker',
+    kind: 'ranged',
+    nameKey: 'weapon.enemyarcseeker.name',
+    skinRef: 'gun_default',
+    rarity: 'common', // 白 — mob loadout, never player-facing
+
+    cooldownSec: 1.4, // 42 ticks — the shardfan's cadence
+    bullets: 3,
+    spreadDeg: 160, // launched wide, so the orbs converge from the flanks
+    bulletSpeed: 7, // under the starter blaster's 10: still a bullet the player can catch
+    damage: 1, // per orb
+    damageType: 'lightning', // VOLTREAVER's element (design/07 payload → chain arc)
+    ballistic: 'homing',
+    turnRateDegPerSec: 160, // well under the player's seeker (260) — it can be out-turned
+    // Energy per trigger pull (design/03/05, balance/energy.ts): enemies are never charged — required by the schema, read by nothing
+    energyCost: 0,
+    lifespanSec: 3.0, // ~21 grid of flight, then it fizzles
+    bulletRadius: 0.24, // the fattest enemy bullet: a target, not a needle
+    muzzleGrid: 0.875, // grid (28px/32) — VOLTREAVER's own radius
+    bulletZ: 0.5,
+  },
 };

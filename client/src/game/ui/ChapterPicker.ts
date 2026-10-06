@@ -34,11 +34,13 @@ const ARROW_GAP = 4;
 const CHAPTER_LOOK = {
   ember: { art: 'chapter_ember', fill: 0x7b341e, frame: 0xf6ad55 },
   frost: { art: 'chapter_frost', fill: 0x2a4365, frame: 0x90cdf4 },
+  storm: { art: 'chapter_storm', fill: 0x2d3250, frame: 0xfff176 },
 } as const satisfies Record<ChapterId, { art: string; fill: number; frame: number }>;
 
 const CHAPTER_NAME_KEY = {
   ember: 'chapter.ember.name',
   frost: 'chapter.frost.name',
+  storm: 'chapter.storm.name',
 } as const satisfies Record<ChapterId, TranslationKey>;
 
 const LOCKED_FILL = 0x2a3140;

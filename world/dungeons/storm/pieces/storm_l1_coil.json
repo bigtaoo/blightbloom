@@ -1,0 +1,164 @@
+{
+  "id": "storm_l1_coil",
+  "tags": [
+    "storm_l1"
+  ],
+  "sizeGrid": {
+    "w": 18,
+    "h": 16
+  },
+  "solids": [
+    {
+      "x": 12,
+      "y": 10,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 10,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 12,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 0,
+      "y": 15,
+      "w": 18,
+      "h": 1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 18,
+      "h": 1
+    },
+    {
+      "x": 17,
+      "y": 1,
+      "w": 1,
+      "h": 14
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "w": 1,
+      "h": 14
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 15.5,
+        "y": 10
+      },
+      {
+        "x": 15.5,
+        "y": 6
+      }
+    ],
+    "enemy": [
+      {
+        "x": 9.5,
+        "y": 13.5,
+        "type": "basic"
+      },
+      {
+        "x": 7.5,
+        "y": 13.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 3.5,
+        "y": 13.5,
+        "type": "frostling"
+      },
+      {
+        "x": 9.5,
+        "y": 11.5,
+        "type": "basic"
+      },
+      {
+        "x": 9.5,
+        "y": 9.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 9.5,
+        "y": 7.5,
+        "type": "frostling"
+      },
+      {
+        "x": 7.5,
+        "y": 7.5,
+        "type": "basic"
+      },
+      {
+        "x": 3.5,
+        "y": 7.5,
+        "type": "galvanist"
+      },
+      {
+        "x": 9.5,
+        "y": 5.5,
+        "type": "frostling"
+      },
+      {
+        "x": 9.5,
+        "y": 3.5,
+        "type": "basic"
+      }
+    ]
+  },
+  "exits": [
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    },
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 15.5,
+      "y": 13.5
+    },
+    {
+      "id": "rubble",
+      "x": 11.5,
+      "y": 10
+    },
+    {
+      "id": "rubble",
+      "x": 6.5,
+      "y": 4
+    },
+    {
+      "id": "barrel",
+      "x": 2.5,
+      "y": 2
+    }
+  ]
+}

@@ -40,6 +40,7 @@ export const ru: Translations<typeof en> = {
     locked: 'Сначала пройдите главу {n}',
     ember: { name: 'Тлеющая бездна' },
     frost: { name: 'Ледяная бездна' },
+    storm: { name: 'Грозовая бездна' },
   },
   loading: {
     boot: 'ЗАГРУЗКА',
@@ -404,6 +405,7 @@ export const ru: Translations<typeof en> = {
     enemymaul: { name: 'Молот мародёра' },
     enemynova: { name: 'Нова мародёра' },
     enemyshardfan: { name: 'Веер осколков мародёра' },
+    enemyarcseeker: { name: 'Дуговой искатель мародёра' },
     flamer: { name: 'Огнемёт' },
     cryobolt: { name: 'Криоболт' },
     teslagun: { name: 'Пушка Теслы' },

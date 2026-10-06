@@ -31,6 +31,7 @@ import type { GameState } from '../state/GameState';
 import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
 import { FROST_DUNGEON, FROST_L1_ROOMS } from '../world/rooms/frost';
+import { STORM_DUNGEON, STORM_L1_ROOMS } from '../world/rooms/storm';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
 import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
@@ -326,6 +327,26 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     seats: 1,
     input: { interact: true, chest: false, descend: true, extract: false, press: false },
     salt: 0x3434,
+  },
+  {
+    name: 'storm-dungeon-floor1',
+    // Chapter 3 (design/gameplay/04-chapters.md), the same floor-1 scope as the two chapter
+    // scenarios above, over chapter 3's own content: the HALF-TURNED geometry (every north
+    // wall's brim now on what chapter 1 had as a south wall, doors on mirrored edges) and the
+    // galvanist-led garrison, whose lightning chains between mobs. Neither earlier chapter's
+    // scenario can see either. Its boss is not reached from floor 1, as theirs are not.
+    pins: 'chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison',
+    config: {
+      seed: 20261007,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: STORM_DUNGEON, library: STORM_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3535,
   },
   {
     name: 'brim-grinder',

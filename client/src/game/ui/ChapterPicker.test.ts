@@ -86,6 +86,23 @@ describe('what it shows', () => {
     expect(privateOf(p).card.view.alpha).toBe(1);
   });
 
+  it('chapter 3 stays locked behind chapter 2, not chapter 1, and is drawn in its own art', () => {
+    setLocale('en');
+    const { p } = make({ selectedChapter: 'frost', clearedChapters: ['ember'] });
+    p.cycle(1);
+    const c = privateOf(p).card;
+    expect(p.chapter).toBe('storm');
+    expect(p.blocked).toBe(true);
+    expect(c.label.text).toBe(t('chapter.storm.name'));
+    expect(c.hint.text).toBe(t('chapter.locked', { n: 2 }));
+    expect(c.style.art).toBe('chapter_storm');
+    // Cleared chapter 2 as well: chapter 3 is a choice like any other.
+    p.setProgress({ selectedChapter: 'storm', clearedChapters: ['ember', 'frost'] });
+    expect(p.chapter).toBe('storm');
+    expect(p.blocked).toBe(false);
+    expect(privateOf(p).card.hint.text).toBe(t('chapter.number', { n: 3 }));
+  });
+
   it('snaps a locked pick (a hand-edited save) back to the chapter a run would really start in', () => {
     const { p, blocks } = make({ selectedChapter: 'frost', clearedChapters: [] });
     expect(p.chapter).toBe('ember');

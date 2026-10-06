@@ -35,6 +35,7 @@ export const fr: Translations<typeof en> = {
     locked: 'Terminez le chapitre {n}',
     ember: { name: 'La Descente des Braises' },
     frost: { name: 'La Descente du Givre' },
+    storm: { name: 'La Descente de l’Orage' },
   },
   loading: {
     boot: 'CHARGEMENT',
@@ -399,6 +400,7 @@ export const fr: Translations<typeof en> = {
     enemymaul: { name: 'Maillet pillard' },
     enemynova: { name: 'Nova pillarde' },
     enemyshardfan: { name: 'Éventail d’éclats pillard' },
+    enemyarcseeker: { name: 'Chercheur d’arcs pillard' },
     flamer: { name: 'Lance-flammes' },
     cryobolt: { name: 'Éclair de givre' },
     teslagun: { name: 'Fusil Tesla' },
