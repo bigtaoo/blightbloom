@@ -187,7 +187,8 @@ One careful full run reached chapter 3's boss and won.
 **Art and music.** The lightning floor swatches had shipped in the `biome-lightning` pack since
 2026-08-25 with no dungeon mapped to them; `theme.ts` now maps `storm` to `lightning`. The
 picker banner `chapter_storm` was made with Mistral like the other two (`art/ui/prompts.md`).
-The chapter's music bed is `dungeon.storm` (design/11).
+The chapter's music bed is `dungeon.storm`, "Endless Cyber Runner" by Eric Matyas (CC-BY 4.0;
+design/11).
 
 ### The plumbing: one id, read everywhere
 

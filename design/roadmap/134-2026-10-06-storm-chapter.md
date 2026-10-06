@@ -132,8 +132,24 @@ wall face has a few amber pixels that read as light, not fire. Both were left al
 
 ### Music
 
-`dungeon.storm`, the chapter's own bed: see the music section below, filled in from the music
-pass's own report when it merged.
+`dungeon.storm` is the chapter's own bed: "Endless Cyber Runner" by Eric Matyas (CC-BY 4.0,
+soundimage.org), chosen the way the other four loops were (`art/audio/README.md`):
+- **The loop:** 50.0 s from 27.5 s of the composer's own looping version.
+- **Measurements:** seam 1.20 dB, mid band -29.99 dBFS. L/R correlation is +0.49, so it is
+  mono-safe.
+- **Processing:** the 80 Hz / -10 dB shelf, because its sub band sat 6.2 dB over the mids.
+- **Two checks beyond the gate:**
+  - the overlap between the two decks correlates +0.06 and swells 0.3 dB;
+  - at 120 bpm a 50 s loop keeps both decks' beats aligned through the fade.
+
+  The second check is what ruled out "Electric Exodus", the runner-up: its drums flammed 80 ms
+  at any round length.
+- **The other rejects:** 16 files were measured. Several more repeated (their seams were
+  0.0-0.4 dB, the swell problem), one was 13 dB bass-heavy, and one was too short.
+
+The credit joins the Settings sheet's list. The music pack is now 2.85 MB of WeChat's 3.00 MB.
+That leaves ~150 kB, so no sixth loop of this kind fits without raising the limit or
+re-encoding. `MUSIC_BUDGET_BYTES` is 3,000,000. Nobody has listened to it in the game.
 
 ### Not done
 
