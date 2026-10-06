@@ -59,6 +59,7 @@ export const ru: Translations<typeof en> = {
     sectionAudio: 'ЗВУК',
     sectionDisplay: 'ГРАФИКА',
     sectionGame: 'ИГРА',
+    musicCredits: 'Музыка',
     master: 'Общая',
     sfx: 'Эффекты',
     music: 'Музыка',

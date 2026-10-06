@@ -134,5 +134,6 @@ picker's two chapter banners are the only new images.
 
 - Chapter 3 (storm): a lightning boss, a lightning-led derivation or hand-authored floors.
 - Chapter 4 (blight): a poison critter first; it is what the chapter's garrison leads with.
-- Chapter music: chapters 2+ reuse chapter 1's dungeon track until they have their own.
+- ~~Chapter music~~: done the same day. Each chapter has its own bed (`dungeon.ember`,
+  `dungeon.frost`), open-licensed music like the rest of the soundtrack (design/11).
 - Hand-authored frost layouts in the map editor, once players have seen the derived ones.

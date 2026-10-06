@@ -54,6 +54,7 @@ export const it: Translations<typeof en> = {
     sectionAudio: 'AUDIO',
     sectionDisplay: 'GRAFICA',
     sectionGame: 'GIOCO',
+    musicCredits: 'Musica',
     master: 'Generale',
     sfx: 'Effetti',
     music: 'Musica',

@@ -54,6 +54,7 @@ export const zh: Translations<typeof en> = {
     sectionAudio: '音频',
     sectionDisplay: '画面',
     sectionGame: '游戏',
+    musicCredits: '音乐',
     master: '总音量',
     sfx: '音效',
     music: '音乐',

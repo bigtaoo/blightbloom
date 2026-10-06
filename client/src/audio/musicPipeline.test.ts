@@ -205,7 +205,7 @@ describe('the music pipeline — a frame of the real director reaches a real str
     expect(playingFiles()).toEqual([MUSIC_CATALOGUE.menu.path]);
     // And it is a file that actually exists and is really decodable audio — a path that 404s
     // would look identical to this test through a fake element otherwise. (Note what it is NOT:
-    // these two loops carry no ID3v2 tag, unlike every shipped cue, so a byte-0 check copied
+    // these loops carry no ID3v2 tag, unlike every shipped cue, so a byte-0 check copied
     // from the cue gate would be testing the wrong container.)
     const bytes = readFileSync(new URL(`../../public${MUSIC_CATALOGUE.menu.path}`, import.meta.url));
     const info = parseMp3(new Uint8Array(bytes));
@@ -306,10 +306,10 @@ describe('the music pipeline — the situation drives the file', () => {
   });
 
   it('makes the boss room AUDIBLY different from the dungeon it is in', () => {
-    // The reason `dungeon.ember` borrows `menu.mp3` and not `boss.mp3` while it has no master of
-    // its own. With one file on both sides of that threshold there would be no change to hear,
-    // and "the music never switches" is indistinguishable from "music is broken". This is that
-    // decision pinned where it would actually break: at the moment a player crosses the door.
+    // With one file on both sides of that threshold there would be no change to hear, and "the
+    // music never switches" is indistinguishable from "music is broken" (it is why
+    // `dungeon.ember`, while it had no file of its own, borrowed `menu.mp3` and not
+    // `boss.mp3`). Pinned where it would actually break: at the moment a player crosses the door.
     bootedAudio();
     run(inRun(undefined), XFADE_S * 1000 + 500);
     const before = playingFiles()[0];

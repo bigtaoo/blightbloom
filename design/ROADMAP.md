@@ -1770,10 +1770,11 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 **[2026-10-06 — PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md)**
 
 - **10-06** [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change) — the game had one PvE dungeon and no field anywhere that said which. `engine/world/chapters.ts` is the catalog (the id is `biomeId`); chapter 2, the Frost Descent, is chapter 1's tuned JSON transposed with fire/ice mobs swapped, plus a new boss, Glacimaw (aimed ice-shard cone). Saves, `match_start`, tickets, per-chapter co-op queues, parties, fill bots, analytics and meta carry the chapter; the lobby picks it, and clearing a chapter unlocks the next. The PvE sim measured the authored difficulty base 1.25 as a wall (5% past floor 0 vs chapter 1's 25%) and it ships at 1.125 (13%). Lobby banners generated with Mistral. Seven golden hashes unchanged. `content` `engine` `net` `ui` `art` `tools` `docs`
+- **10-06** [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change) — the owner judged the two AI-generated loops not good enough. Four open-licensed loops replace them, one per slot: `menu` "Aurora" (Scott Buckley, CC-BY 4.0), `dungeon.ember` "Lava Area Theme" (Wolfgang_, CC-BY 4.0; its first file of its own), a new `dungeon.frost` "Beyond the Frozen Veil" (Synth-thetic, CC0) for chapter 2, and `boss` "Colossal Boss Battle Theme" (Matthew Pablo, CC-BY 3.0); 2.46 MB, seams 0.83-1.54 dB, all at written tempo. Picked by measurement since nobody listened: a 0.06-0.3 dB seam turned out to mean the piece repeats (refused, it swells under an equal-power crossfade), and an anti-correlated mix was dropped for cancelling on a phone. CC-BY needed the game's first visible credit, now on the Settings sheet and held equal to `credits.json` by a test. `audio` `ui` `tools` `docs`
 
 ## The work log — by theme
 
-The same 246 entries, grouped. An entry with more than one tag appears more than once.
+The same 247 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -2152,7 +2153,7 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`audio`** — cues, music, the engine to sound channel *(10)*
+**`audio`** — cues, music, the engine to sound channel *(11)*
 
 - 08-31 [The search and the gate were the same number three times, and never the same ruler](roadmap/12-2026-08-31-audio.md#the-search-and-the-gate-were-the-same-number-three-times-and-never-the-same-ruler-2026-08-31-tools--assets)
 - 08-31 [Everything existed and nothing was connected](roadmap/12-2026-08-31-audio.md#everything-existed-and-nothing-was-connected-2026-08-31-client-runtime)
@@ -2164,6 +2165,7 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Twelve voices is what real play needs, measured](roadmap/113-2026-09-29-voice-demand.md#twelve-voices-is-what-real-play-needs-measured-2026-09-29-audio--tools--test--docs-no-game-code-change)
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
+- 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 
 **`platform`** — web / WeChat / Electron / game-portal targets and deploys *(37)*
 
@@ -2205,7 +2207,7 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`ui`** — HUD, screens, widgets *(50)*
+**`ui`** — HUD, screens, widgets *(51)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2257,8 +2259,9 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(48)*
+**`tools`** — sims, profilers, editors, build scripts *(49)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2308,8 +2311,9 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(163)*
+**`docs`** — design docs and this log itself *(164)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2474,6 +2478,7 @@ The same 246 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(42)*
 

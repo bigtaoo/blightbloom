@@ -59,6 +59,7 @@ export const en = {
     sectionAudio: 'AUDIO',
     sectionDisplay: 'DISPLAY',
     sectionGame: 'GAME',
+    musicCredits: 'Music',
     master: 'Master',
     sfx: 'SFX',
     music: 'Music',

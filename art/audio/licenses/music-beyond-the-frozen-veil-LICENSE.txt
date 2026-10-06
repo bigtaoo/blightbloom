@@ -1,0 +1,13 @@
+"Beyond the Frozen Veil" by Synth-thetic -- licence statement, captured verbatim 2026-10-06
+Source page: https://opengameart.org/content/beyond-the-frozen-veil
+File:        https://opengameart.org/sites/default/files/synth-thetic_-_beyond_the_frozen_veil_-_cc0.7z
+             (used: "Beyond the Frozen Veil (Loop).flac" inside it)
+
+From the source page:
+  License(s): CC0
+  Copyright/Attribution Notice: "CC0 / Public Domain. No Rights Reserved. Free to use
+  however you like with no attribution required."
+
+Licence: CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/
+Credited in Settings anyway (client/src/audio/musicCredits.ts): no attribution is required,
+but leaving one of four composers out of the list would read as an omission.

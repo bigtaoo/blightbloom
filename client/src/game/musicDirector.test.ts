@@ -139,25 +139,28 @@ describe('trackFor — the run bed', () => {
   });
 
   it('routes every biome in the table to the track the table names', () => {
-    // Table-driven rather than hard-coded, and worth being explicit about what it does and does
-    // not currently prove. A mutation battery (2026-08-31) deleted the table lookup entirely and
-    // NOTHING failed — because the one biome that exists, `ember`, maps to `dungeon.ember`, which
-    // IS `DEFAULT_RUN_TRACK`. That mutant is genuinely equivalent today, not an untested gap: no
-    // reachable run can tell the two code paths apart. It stops being equivalent the instant a
-    // second biome loop ships, and the loop below is what will catch it then, so it is written
-    // now rather than remembered later.
+    // Table-driven rather than hard-coded. A mutation battery (2026-08-31) deleted the table
+    // lookup entirely and NOTHING failed, because the one biome that existed mapped to
+    // `DEFAULT_RUN_TRACK`: an equivalent mutant, recorded here with an assertion of its own
+    // vacuity. Chapter 2's own bed (2026-10-06) ended it, and the next test pins that it did.
     for (const [biomeId, track] of Object.entries(BIOME_ID_TO_TRACK)) {
       expect(
         trackFor({ phase: 'playing', state: dungeonState('normal', biomeId), localOwner: 0 }),
         biomeId,
       ).toBe(track);
     }
-    // The vacuity, stated as an assertion so it is visible in a diff when it ends.
-    expect(
-      Object.values(BIOME_ID_TO_TRACK).every((t) => t === DEFAULT_RUN_TRACK),
-      'a biome now maps somewhere other than the fallback: the loop above is a real gate, ' +
-        'and this line should be deleted',
-    ).toBe(true);
+  });
+
+  it('gives chapter 2 its own bed, not the fallback', () => {
+    // What makes the table above a real gate: a biome whose track is NOT `DEFAULT_RUN_TRACK`,
+    // so deleting the lookup now plays chapter 1's bed in chapter 2 and fails here.
+    expect(BIOME_ID_TO_TRACK.frost).toBe('dungeon.frost');
+    expect(BIOME_ID_TO_TRACK.frost).not.toBe(DEFAULT_RUN_TRACK);
+    expect(trackFor({ phase: 'playing', state: dungeonState('normal', 'frost'), localOwner: 0 }))
+      .toBe('dungeon.frost');
+    // ...and its boss room still switches to the boss bed.
+    expect(trackFor({ phase: 'playing', state: dungeonState('boss', 'frost'), localOwner: 0 }))
+      .toBe('boss');
   });
 
   it('falls back to the ember bed for a run whose biome names no track', () => {

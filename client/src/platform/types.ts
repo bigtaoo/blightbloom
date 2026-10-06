@@ -139,16 +139,16 @@ export type AudioCue =
   | 'ui.toggle'
   | 'ui.denied';
 
-// Music vocabulary (design/11 "Music & ambience") — the three launch loops, and a closed
+// Music vocabulary (design/11 "Music & ambience") — the shipped loops, and a closed
 // union for the same reason `AudioCue` is one: `audio/musicCatalogue.ts` holds an exhaustive
 // `Record<MusicTrack, TrackDef>`, so adding a track here is a COMPILE error until it has a
 // music decision (which file, how long that file is, and whether the file is really its own).
 //
-// Three, not eight. design/11's original plan is one loop per elemental biome, but
-// `game/theme.ts`'s `BIOME_ID_TO_ELEMENT` maps chapter 1 to `fire` and chapter 2 to `ice`
-// (which borrows chapter 1's loop for now — `musicCatalogue.ts BIOME_ID_TO_TRACK`), and
-// lightning/poison have art with no dungeon pointing at them — the same standard
-// `assetPacks.json` already applies to art: do not pay bytes for content a run cannot reach.
+// Four, not eight. design/11's original plan is one loop per elemental biome, and a run bed
+// exists for exactly the biomes a chapter uses (`game/theme.ts`'s `BIOME_ID_TO_ELEMENT` maps
+// chapter 1 to `fire` and chapter 2 to `ice`). Lightning/poison have art with no dungeon
+// pointing at them — the same standard `assetPacks.json` already applies to art: do not pay
+// bytes for content a run cannot reach.
 //
 // Unlike a cue, a track is never triggered by an engine event. `game/musicDirector.ts`
 // DERIVES which one should be playing from the situation every render frame, so there is no
@@ -156,7 +156,8 @@ export type AudioCue =
 // gap while the autoplay gate is still closed.
 export type MusicTrack =
   | 'menu' // menus, the forge outpost, and every result screen
-  | 'dungeon.ember' // the fire biome's run bed — NO MASTER YET, see musicCatalogue.ts
+  | 'dungeon.ember' // chapter 1's run bed (the fire biome)
+  | 'dungeon.frost' // chapter 2's run bed (the ice biome)
   | 'boss';
 
 // A swappable audio device, symmetric to InputSource. Both backends now run the SAME cue
