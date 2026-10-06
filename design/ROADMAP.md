@@ -1767,9 +1767,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-04** [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change) — the last uncovered lines in the server were the five entry points' run-as-main blocks: false inside the vitest worker by construction, and a spawned child is not counted. They also disagreed on a failed boot (billsvc printed a raw multi-line stack, backup nothing). `src/entry.ts`'s `runAsEntry(import.meta.url, tag, start)` replaces all five, with the entry check, guard and exit code injectable. A failed boot is now one `ERROR [tag] failed to start` line and exit code 1. `entry.test.ts` drives both arms; `deploy.bundle.test.ts` boots three bundles against an unreachable cluster. 14 of 14 mutants killed; server coverage 99.71% lines, 98.78% branches. `platform` `test` `docs`
 
+**[2026-10-06 — PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md)**
+
+- **10-06** [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change) — the game had one PvE dungeon and no field anywhere that said which. `engine/world/chapters.ts` is the catalog (the id is `biomeId`); chapter 2, the Frost Descent, is chapter 1's tuned JSON transposed with fire/ice mobs swapped, plus a new boss, Glacimaw (aimed ice-shard cone). Saves, `match_start`, tickets, per-chapter co-op queues, parties, fill bots, analytics and meta carry the chapter; the lobby picks it, and clearing a chapter unlocks the next. The PvE sim measured the authored difficulty base 1.25 as a wall (5% past floor 0 vs chapter 1's 25%) and it ships at 1.125 (13%). Lobby banners generated with Mistral. Seven golden hashes unchanged. `content` `engine` `net` `ui` `art` `tools` `docs`
+
 ## The work log — by theme
 
-The same 245 entries, grouped. An entry with more than one tag appears more than once.
+The same 246 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1851,7 +1855,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`art`** — authored assets and the art pipeline *(21)*
+**`art`** — authored assets and the art pipeline *(22)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1874,6 +1878,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-15 [The chest nobody could open](roadmap/62-2026-09-15-chest-interact.md#the-chest-nobody-could-open-2026-09-15-engine--client--art--audio--docs-engine_version-6566)
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(19)*
 
@@ -1897,7 +1902,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(46)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(47)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1945,6 +1950,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
 **`arena`** — the PvP launch map and its audit *(19)*
 
@@ -1968,7 +1974,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
 - 09-30 [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs)
 
-**`content`** — authored rooms, pieces, props, loot *(16)*
+**`content`** — authored rooms, pieces, props, loot *(17)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1986,6 +1992,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [Nothing spawns where no body can go](roadmap/118-2026-09-30-arena-body-reach.md#nothing-spawns-where-no-body-can-go-2026-09-30-engine--arena--content--test--docs-engine_version-80)
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
 **`test`** — coverage sweeps, gates, mutation batteries *(155)*
 
@@ -2198,7 +2205,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`ui`** — HUD, screens, widgets *(49)*
+**`ui`** — HUD, screens, widgets *(50)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2249,8 +2256,9 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-03 [The minimap marks where to go next](roadmap/120-2026-10-03-minimap-wayfinding.md#the-minimap-marks-where-to-go-next-2026-10-03-client--ui--test--docs-no-engine-change)
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(47)*
+**`tools`** — sims, profilers, editors, build scripts *(48)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2299,8 +2307,9 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [The PvP win counts, read against seat share](roadmap/127-2026-10-04-pvp-character-share.md#the-pvp-win-counts-read-against-seat-share-2026-10-04-tools--test--docs-no-engine_version-change)
 - 10-04 [The juggernaut's PvP lead is the bot's](roadmap/128-2026-10-04-pvp-shield-retreat.md#the-juggernauts-pvp-lead-is-the-bots-2026-10-04-tools--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(162)*
+**`docs`** — design docs and this log itself *(163)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2464,8 +2473,9 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(41)*
+**`net`** — matchmaking, sockets, reconnect *(42)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2508,6 +2518,7 @@ The same 245 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [The PvP bot parries](roadmap/122-2026-10-03-pvp-bot-parry.md#the-pvp-bot-parries-2026-10-03-client--server--tools--test--docs-no-engine_version-change)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
+- 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

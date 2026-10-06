@@ -8,7 +8,7 @@
  * the first time chapter N is cleared (its boss beaten — a last-floor extraction). An unlocked
  * chapter stays unlocked and can be replayed any time; `clearedChapters` only ever grows.
  */
-import { CHAPTER_ORDER, DEFAULT_CHAPTER_ID, isChapterId, type ChapterId } from '@dd/engine';
+import { CHAPTER_ORDER, DEFAULT_CHAPTER_ID, isChapterId, nextChapterId, type ChapterId } from '@dd/engine';
 import type { MetaState } from './MetaState';
 
 /** The two fields chapter progress reads — what the lobby's picker is handed. */
@@ -27,10 +27,22 @@ export function isChapterUnlocked(m: Pick<MetaState, 'clearedChapters'>, id: Cha
   return prev === null || m.clearedChapters.includes(prev);
 }
 
-/** `m` with `id` recorded as cleared — the same object back when it already was. */
+/**
+ * `m` with `id` recorded as cleared — the same object back when it already was.
+ *
+ * The FIRST clear also moves the pick to the chapter it unlocks, when there is one: the lobby
+ * snaps to the pick, so without this the unlock would happen off screen and the player would
+ * walk back into the chapter they just finished. A repeat clear never moves the pick — a player
+ * replaying chapter 1 on purpose keeps it.
+ */
 export function recordChapterCleared(m: MetaState, id: ChapterId): MetaState {
   if (m.clearedChapters.includes(id)) return m;
-  return { ...m, clearedChapters: [...m.clearedChapters, id] };
+  const unlocked = nextChapterId(id);
+  return {
+    ...m,
+    clearedChapters: [...m.clearedChapters, id],
+    ...(unlocked !== null ? { selectedChapter: unlocked } : {}),
+  };
 }
 
 /**

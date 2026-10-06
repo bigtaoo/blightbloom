@@ -222,10 +222,14 @@ export class LobbyRoutes {
     return this.chapters.blocked;
   }
 
-  /** Take SOLO out of play (dimmed, not hit-testable) or put it back. */
+  /** Take SOLO and CO-OP out of play (dimmed, not hit-testable) or put them back. CO-OP too,
+   *  because its queue plays the picked chapter as well (`OnlineMatch.connect`): leaving it live
+   *  while a locked chapter is on screen would queue a chapter the lobby is not showing. */
   private setStartBlocked(blocked: boolean): void {
-    this.soloBtn.view.alpha = blocked ? BLOCKED_ALPHA : 1;
-    this.soloBtn.view.eventMode = blocked ? 'none' : 'static';
+    for (const btn of [this.soloBtn, this.coopBtn]) {
+      btn.view.alpha = blocked ? BLOCKED_ALPHA : 1;
+      btn.view.eventMode = blocked ? 'none' : 'static';
+    }
   }
 
   /** What this block occupies vertically — the primary's slot included when SOLO is demoted

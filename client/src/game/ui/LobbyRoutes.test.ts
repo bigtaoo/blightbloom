@@ -290,21 +290,31 @@ describe('the chapter picker sits under SOLO, and a locked chapter takes SOLO ou
     expect(p.squadBtn.view.position.y + boxOf(p.squadBtn).height).toBeLessThanOrEqual(r.height + SLACK);
   });
 
-  it('dims SOLO and stops it taking taps while a locked chapter is shown, and reports it', () => {
+  it('dims SOLO and CO-OP and stops them taking taps while a locked chapter is shown, and reports it', () => {
     const r = new LobbyRoutes();
     const reports: boolean[] = [];
     r.onStartBlockedChange = (b) => reports.push(b);
     r.setChapterProgress({ selectedChapter: 'ember', clearedChapters: [] });
     const solo = privateOf(r).soloBtn.view as unknown as { alpha: number; eventMode: string };
+    const coop = privateOf(r).coopBtn.view as unknown as { alpha: number; eventMode: string };
+    const pvp = privateOf(r).pvpSoloBtn.view as unknown as { alpha: number; eventMode: string };
     expect(r.startBlocked).toBe(false);
     expect(solo.eventMode).toBe('static');
+    expect(coop.eventMode).toBe('static');
     privateOf(r).chapters.cycle(1); // onto frost, still locked
     expect(r.startBlocked).toBe(true);
-    expect(solo.alpha).toBeLessThan(1);
-    expect(solo.eventMode).toBe('none');
+    for (const v of [solo, coop]) {
+      expect(v.alpha).toBeLessThan(1);
+      expect(v.eventMode).toBe('none');
+    }
+    // PvP never plays a chapter, so a locked chapter on screen says nothing about it.
+    expect(pvp.alpha).toBe(1);
+    expect(pvp.eventMode).toBe('static');
     privateOf(r).chapters.cycle(1); // and back to ember
-    expect(solo.alpha).toBe(1);
-    expect(solo.eventMode).toBe('static');
+    for (const v of [solo, coop]) {
+      expect(v.alpha).toBe(1);
+      expect(v.eventMode).toBe('static');
+    }
     expect(reports).toEqual([true, false]);
   });
 

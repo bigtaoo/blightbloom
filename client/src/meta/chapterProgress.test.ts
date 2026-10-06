@@ -46,6 +46,24 @@ describe('recordChapterCleared', () => {
     const m = cleared('ember');
     expect(recordChapterCleared(m, 'ember')).toBe(m);
   });
+
+  it('a first clear moves the pick to the chapter it unlocks, so the lobby shows the unlock', () => {
+    const next = recordChapterCleared(defaultMetaState(), 'ember');
+    expect(next.selectedChapter).toBe('frost');
+    expect(playableChapter(next)).toBe('frost');
+  });
+
+  it('a repeat clear leaves a deliberate replay pick alone', () => {
+    const m: MetaState = { ...cleared('ember'), selectedChapter: 'ember' };
+    expect(recordChapterCleared(m, 'ember').selectedChapter).toBe('ember');
+  });
+
+  it('clearing the last chapter keeps the pick — there is nothing after it to move to', () => {
+    const m: MetaState = { ...cleared('ember'), selectedChapter: 'frost' };
+    const next = recordChapterCleared(m, 'frost');
+    expect(next.clearedChapters).toEqual(['ember', 'frost']);
+    expect(next.selectedChapter).toBe('frost');
+  });
 });
 
 describe('selectChapter', () => {

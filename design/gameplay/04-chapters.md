@@ -21,7 +21,9 @@ nothing new to play; the only reason to go again was the 5% schematic.
   would put a bag at risk three times as long; the run save holds one slot; and a phone session
   is not getting longer.
 - **Sequential unlock, free replay.** Chapter 1 is always open. Clearing chapter N (killing its
-  boss) unlocks chapter N+1, permanently. Any unlocked chapter can be replayed.
+  boss) unlocks chapter N+1, permanently. Any unlocked chapter can be replayed. The first clear
+  also moves the lobby's pick to the chapter it unlocks, so the unlock is seen rather than
+  found; a repeat clear leaves a deliberate replay pick alone.
 - **The lobby picks the chapter.** Solo picks for itself; in co-op the player who queues or
   hosts the party picks, and everyone seated in that room plays it. The matchmaker only groups
   players who picked the same chapter.
@@ -80,9 +82,23 @@ frost is hand-edited in the map editor, that block is deleted and chapter 1's pe
 assertions are copied across. Hand-authored frost layouts are the obvious follow-up, not a
 prerequisite.
 
-**Harder by one knob.** `difficultyCurve.base` is 1.25 against chapter 1's 1.0 (same 0.25 per
-floor), so every chapter-2 floor scales mob HP a quarter above the same chapter-1 floor. The
-garrisons are chapter 1's, mirrored, so this is the only difficulty change.
+**Harder by one knob, set by measurement.** `difficultyCurve.base` is **1.125** against chapter 1's
+1.0 (same 0.25 per floor), so every chapter-2 floor scales mob HP an eighth above the same
+chapter-1 floor. The garrisons are chapter 1's, mirrored, so this is the only difficulty change.
+It was authored at 1.25 and measured down (`client/sim/chapterSim.sim.ts`, careful bot, starter
+kit, 80 seeds; a lower bound on a human, since the bot never dodges on purpose):
+
+| Config | Runs past floor 0 |
+|---|---|
+| chapter 1 (base 1.0) | 25% |
+| chapter 2 at base 1.0 (control) | 21% |
+| **chapter 2 at base 1.125 (shipped)** | **13%** |
+| chapter 2 at base 1.25 (as authored) | 5%, and 0 of the 40 gated seeds |
+
+The control row is the finding: the transposed layout and the swapped roster on their own barely
+move difficulty, so the curve is the whole knob. At 1.125 chapter 2's floor 1 clears 28% of fresh
+trials against chapter 1's 98%. The sim now gates chapter 2 between 1/16 of seeds and 3/4 of
+chapter 1's pass count, which both 1.0 and 1.25 fail.
 
 **Glacimaw** (`engine/content/bosses.ts`). The "don't get pinned" fight, beside pyrefang's "keep
 moving" and ironwarden's "burst to the break". Its loadout, `enemyshardfan`, is an aimed cone of
@@ -90,6 +106,10 @@ five ice shards. Every shard chills (40% slow), and a slowed player is late leav
 so the counterplay is stepping sideways before the volley rather than backing off after it. It
 mirrors the frostling's resists (shrugs ice, melts to fire) and enrages below 40% by firing 50%
 faster, never by hitting harder. It is not in `BOSS_POOL`: chapter 1's draw is unchanged.
+Measured alone against the bot (40 seeds): 23% kills, 78% bot deaths, 25 s median kill, chilled
+for 46% of the fight. That sits between blightlord/ironwarden (single aimed bullets the strafing
+bot never takes, 0 damage in 80 fights) and pyrefang (100% bot deaths), and the same numbers in
+chapter 1's room and scale show the danger is the cone, not the chapter. Left as authored.
 
 **No new art was needed for the run itself.** Every boss is the shared `boss-core` rig tinted,
 every critter the shared rig tinted, and all five biome swatch sets already shipped
