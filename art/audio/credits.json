@@ -999,7 +999,7 @@
   "status.burn": "No fire crackle exists in any of the six packs. The closest family (scratch) centres at 6401-12076 Hz against a 2389 Hz target - a high scrape, not a burn - and every other candidate is a 5-second engine loop. The synth voice is a filtered noise burst at 1800 Hz, which is already the right shape."
  },
  "processing": "mono + trim(-40 dBFS, faded) + per-cue duration cap (faded) + smallest-bytes MP3 encode among bandwidth-legal sample rates + peak-match to the replaced synth cue. See tools/audio-pipeline/process_all.py. The four ui.* cues run the same steps through tools/audio-pipeline/process_ui.py, whose only difference is where the peak-match reference comes from: a UI synth voice is a single tone(), so its peak IS its gain argument and needs no re-render to measure.",
- "music_note": "Provenance for the design/11 music loops, kept SEPARATE from `cues` above and outside `packs.json`: `packs.json` declares every SFX source pack CC0 and `audioAssets.test.ts` asserts that of every entry, and three of these four tracks are CC-BY, which REQUIRES a credit the SFX never needed. Since 2026-10-06 every track is openly licensed music written by people (the 2026-08-31 Suno masters were judged not good enough by the owner and are gone). Allowed licences are CC0 and CC-BY only: both permit commercial use and an edited loop; NC is out because the game earns from ads, ND because cutting a loop region IS an adaptation, and SA is avoided. Each record names its upstream URL and SHA-256, so the full master can be fetched back; `source` under art/audio/sources/ is either that upstream file verbatim or an EXCERPT (the loop region plus 5 s either side, re-encoded to Vorbis), because the upstream downloads run to 20-50 MB. `region_start_s` is in the ARCHIVED file's seconds; `excerpt_start_s` places it in the upstream file. `attribution` is the exact line the game shows (Settings, AUDIO), and `client/src/audio/musicAssets.test.ts` holds it equal to `client/src/audio/musicCredits.ts`. `tools/audio-pipeline/process_music.py` cuts the loops and `audit.py --class music` gates the result.",
+ "music_note": "Provenance for the design/11 music loops, kept SEPARATE from `cues` above and outside `packs.json`: `packs.json` declares every SFX source pack CC0 and `audioAssets.test.ts` asserts that of every entry, and four of these five tracks are CC-BY, which REQUIRES a credit the SFX never needed. Since 2026-10-06 every track is openly licensed music written by people (the 2026-08-31 Suno masters were judged not good enough by the owner and are gone). Allowed licences are CC0 and CC-BY only: both permit commercial use and an edited loop; NC is out because the game earns from ads, ND because cutting a loop region IS an adaptation, and SA is avoided. Each record names its upstream URL and SHA-256, so the full master can be fetched back; `source` under art/audio/sources/ is either that upstream file verbatim or an EXCERPT (the loop region plus 5 s either side, re-encoded to Vorbis), because the upstream downloads run to 20-50 MB. `region_start_s` is in the ARCHIVED file's seconds; `excerpt_start_s` places it in the upstream file. `attribution` is the exact line the game shows (Settings, AUDIO), and `client/src/audio/musicAssets.test.ts` holds it equal to `client/src/audio/musicCredits.ts`. `tools/audio-pipeline/process_music.py` cuts the loops and `audit.py --class music` gates the result.",
  "music": [
   {
    "track": "menu",
@@ -1101,6 +1101,42 @@
    "source_sha256": "bf2159a8766c0c3a30e11bb0381034027391c9e9d958db8ff6ef12ece86ea43b",
    "source_length_s": 81.5,
    "bytes": 542448
+  },
+  {
+   "track": "dungeon.storm",
+   "file": "audio/music/dungeon-storm.mp3",
+   "title": "Endless Cyber Runner",
+   "author": "Eric Matyas",
+   "author_url": "https://soundimage.org",
+   "license": "CC-BY-4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/",
+   "license_text": "licenses/music-endless-cyber-runner-LICENSE.txt",
+   "source_page": "https://opengameart.org/content/endless-cyber-runner-looping",
+   "upstream_url": "https://opengameart.org/sites/default/files/endless_cyber_runner.ogg",
+   "upstream_sha256": "7c312f5dabae92c1b8ee345b9ea0f3104cea0ed030079d819821b6aaaba5a83b",
+   "upstream_member": null,
+   "upstream_length_s": 96.004,
+   "source": "music/eric-matyas_endless-cyber-runner_excerpt.ogg",
+   "archived_as": "excerpt",
+   "excerpt_start_s": 22.5,
+   "region_start_s": 5.0,
+   "length_s": 50.0,
+   "shelf": {
+    "hz": 80,
+    "db": -10,
+    "order": 4
+   },
+   "xfade_band_diff_db": 1.2,
+   "attribution": "'Endless Cyber Runner' by Eric Matyas - CC-BY 4.0 - soundimage.org",
+   "rationale": "Chapter 3's run bed (the Storm Descent, lightning). A driving electronic piece, the composer's looping version; 50.0 s from 27.5 s of its 96.0 s, band-diff 1.21 dB with the shelf on the upstream file, 1.20 dB as shipped. Picked from 16 measured CC0/CC-BY candidates: its overlap material is uncorrelated (+0.06, so the equal-power fade moves the level +0.3 dB), at 120 bpm every 0.5 s length keeps both decks' beat grids aligned through the fade, L/R correlation +0.49 is mono-safe, and its 2-8 kHz band sits where boss and ember do. 'Electric Exodus' (FoxSynergy) closed at 1.05 dB but is 10 dB brighter in 2-8 kHz than any shipped bed, near-mono, and its two decks' drums flam by 80 ms at the crossfade unless the loop is cut to an off-grid 52.92 s; 'Blitz Kaskade' and 'Thunderous Fall' repeat (0.0-0.4 dB) and their overlaps correlate +0.4-0.9, swelling 1.0-1.9 dB. Kept to 50 s for the music subpackage's 3 MB. The 80 Hz / -10 dB shelf: 20-250 Hz sat 6.2 dB above the mids. The credit line is the author's own format plus the licence.",
+   "sample_rate": 24000,
+   "channels": 2,
+   "mid_band_dbfs": -30.0,
+   "retrieved": "2026-10-06",
+   "tempo_factor": 1.0,
+   "source_sha256": "7e53c4a0c6bfa96aa1ec1168c11f22c3d08746c3f2bf46b38aaba8dcf177a63c",
+   "source_length_s": 60.0,
+   "bytes": 535464
   },
   {
    "track": "boss",

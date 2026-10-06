@@ -1,0 +1,14 @@
+"Endless Cyber Runner" by Eric Matyas -- licence statement, captured verbatim 2026-10-06
+Source page: https://opengameart.org/content/endless-cyber-runner-looping
+             (page title "Endless Cyber Runner (Looping)")
+File:        https://opengameart.org/sites/default/files/endless_cyber_runner.ogg
+Author site: https://soundimage.org
+
+From the source page:
+  License(s): CC-BY 4.0
+  Copyright/Attribution Notice: "Please credit as: "Endless Cyber Runner" by Eric Matyas
+  soundimage.org"
+
+Licence: CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+Where this game credits it: Settings, under the AUDIO section (client/src/audio/musicCredits.ts),
+in the author's requested form with the licence added.

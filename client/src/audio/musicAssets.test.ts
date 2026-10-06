@@ -20,7 +20,7 @@
  *    audible as a badly cut loop and invisible everywhere else.
  *  - **The licence is NOT always CC0, and CC-BY carries a condition.** `packs.json` asserts CC0
  *    of every SFX pack, so the music cannot be filed there. Since 2026-10-06 every loop is
- *    openly licensed music (the AI-generated masters before it are gone), three of the four
+ *    openly licensed music (the AI-generated masters before it are gone), four of the five
  *    CC-BY, and CC-BY is only honoured if the credit is SHOWN. So this file checks the licence
  *    against an allow-list, the captured licence text, the archived source's bytes, and that the
  *    record's credit line is the one `musicCredits.ts` puts on the Settings screen.
@@ -49,15 +49,17 @@ const CREDITS = new URL('../../../art/audio/credits.json', import.meta.url);
 const ART_AUDIO = new URL('../../../art/audio/', import.meta.url);
 
 /**
- * Total budget for the music set. 2.46 MB shipped (four loops, 2026-10-06); `assetPacks.json`'s
- * `music` pack allows 3.00 MB, so this is the finer drift check between "a fifth loop lands" and
- * "a package overrun with no name on it".
+ * Total budget for the music set. 2,993,352 bytes shipped (five loops, 2026-10-06: the fifth,
+ * `dungeon.storm`, added 535 kB to 2.46 MB); `assetPacks.json`'s `music` pack allows 3 MiB
+ * (3,145,728 bytes), so this is the finer drift check between "a sixth loop lands" and "a package
+ * overrun with no name on it". There is no room for a sixth loop of this kind: the pack has
+ * ~150 kB left.
  *
- * Deliberately NOT generous. Music is by far the heaviest asset class in the game — the four
- * loops outweigh the whole cue set ~20x — so the one thing this number has to do is make a
+ * Deliberately NOT generous. Music is by far the heaviest asset class in the game — the five
+ * loops outweigh the whole cue set ~22x — so the one thing this number has to do is make a
  * re-encode at a higher bitrate an explicit decision rather than a silent 40% increase.
  */
-const MUSIC_BUDGET_BYTES = 2_600_000;
+const MUSIC_BUDGET_BYTES = 3_000_000;
 
 /** CC0 and CC-BY only: both allow commercial use and an edited loop. NC is out because the game
  *  earns from ads; ND because cutting a loop region is an adaptation. Mirrors `MusicLicense`. */
@@ -246,13 +248,16 @@ describe('the placeholder mechanism', () => {
   it('never plays the same file in a dungeon and in its boss room', () => {
     // With one file on both sides of the boss-room threshold there is no audible change at all,
     // and "the music never switches" is indistinguishable from "the music feature is broken".
-    for (const run of ['dungeon.ember', 'dungeon.frost'] as const) {
+    for (const run of ['dungeon.ember', 'dungeon.frost', 'dungeon.storm'] as const) {
       expect(MUSIC_CATALOGUE[run].path, run).not.toBe(MUSIC_CATALOGUE.boss.path);
     }
   });
 
   it('gives each chapter a bed of its own', () => {
-    expect(MUSIC_CATALOGUE['dungeon.frost'].path).not.toBe(MUSIC_CATALOGUE['dungeon.ember'].path);
+    const runBeds = (['dungeon.ember', 'dungeon.frost', 'dungeon.storm'] as const).map(
+      (t) => MUSIC_CATALOGUE[t].path,
+    );
+    expect(new Set(runBeds).size).toBe(runBeds.length);
   });
 });
 
