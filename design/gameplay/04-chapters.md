@@ -341,7 +341,7 @@ are unchanged and `ENGINE_VERSION` did not move. An eleventh scenario, `endless-
 extraction gate's two rooms as an endless segment pressing DESCEND only, and reaches floor index 5:
 off two boss floors and round the lap twice. The one piece of new state is
 `GameState.portalChoice`: on a two-button portal the press that opens it picks the way, and in
-co-op only that button confirms after. It is hashed only when set, which no finite floor does.
+co-op a later press confirms only if it includes that way's button. It is hashed only when set, which no finite floor does.
 
 ### The plumbing: one id, read everywhere
 
