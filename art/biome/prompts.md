@@ -57,6 +57,22 @@ raw saturated element hue is reserved for bullets/status FX/loot, not the floor 
 > grey-navy first) and a few thin hairline cracks with a faint yellow static-charge glow
 > inside them, like stone charged with latent electricity.
 
+**Shipped off-hue for two months, recoloured 2026-10-06.** The generator drew the crack glow
+red-orange, not yellow: measured median hue **12°**, exactly `floor_fire`'s, against the
+lightning hue's 54°. Nothing could show it, because no dungeon mapped to `lightning` until
+chapter 3 (the Storm Descent). Its first run looked like a dimmer ember run. The fix is one
+mechanical step between the raw and the compress, so `floor_lightning_raw.png` stays the
+generator's bytes:
+- every pixel whose hue is warm (345°-45°) with saturation above 0.25 has its hue set to 54°,
+  keeping its saturation and value;
+- that was 0.70% of the raw's pixels, the crack glow and nothing else;
+- the stone's mean colour is unchanged to the third decimal;
+- then `compress.mjs --long-axis=256` as usual.
+
+Seamlessness is untouched, since no pixel moved. `wallface_lightning`'s few glow pixels read
+amber (hue ~40°, 0.1% of the image) and were left alone: at wall scale they read as warm light
+rather than as fire.
+
 ## Wall swatches (4)
 
 ### `wall_neutral` — entry-zone / default wall
