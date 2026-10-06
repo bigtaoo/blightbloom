@@ -206,12 +206,8 @@ export class GameState {
   readonly floorsEnabled: boolean;
   readonly extraFloors: readonly (readonly WaveDef[])[]; // config.floors ?? []
   floorIndex = 0; // 0-based; floor 0 is the original `waves`, floor k>=1 is extraFloors[k-1]
-  // Materials and the boss's one-time schematic drop used to carry a per-run buffer
-  // here (design/05/09, ROADMAP 1.4/1.5) — moved to per-seat fields on `PlayerActor`
-  // (ENGINE_VERSION 68, design/05/14): whichever seat's actor overlaps the pickup is
-  // the one whose own bag grows, matching how `coins` and every weapon pickup already
-  // worked, rather than a shared pool every seat's client applied identically to its
-  // own account. See `PlayerActor.floorMaterials`/`bankedMaterials`/`blueprintPickup`.
+  // Materials and the schematic drop are per seat since ENGINE_VERSION 68 (design/05/14):
+  // see `PlayerActor.floorMaterials`/`bankedMaterials`/`blueprintPickup`.
 
   // ── Floor cards (design/05, ENGINE_VERSION 58) ──────────────────────────────
   // The checkpoint's "pick one of three". `floorCardOffer` holds THIS checkpoint's
@@ -229,6 +225,10 @@ export class GameState {
   floorCards: string[] = [];
   /** Ticks left on the co-op portal countdown, 0 when none runs (ENGINE_VERSION 87, `ExtractionSystem`). */
   portalCountdownTicks = 0;
+  /** The opening press's button on a floor offering EXTRACT and DESCEND both (an endless boss
+   *  floor, `ExtractionSystem`). Null otherwise, which is every floor of every finite dungeon,
+   *  so their state hash is unchanged. */
+  portalChoice: 'extract' | 'descend' | null = null;
   /** Guards the boss's one-time schematic roll to at most once per run (design/14,
    *  ENGINE_VERSION 68) — a boss with `onDeathSpawn` adds re-entering `rollBlueprint`'s
    *  branch must not pay twice. Purely a roll guard: WHO ends up carrying the dropped
