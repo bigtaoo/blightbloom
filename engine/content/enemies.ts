@@ -22,7 +22,7 @@ import { freshStatus } from './damage';
 import { pxToFp } from './convert';
 import { PLAYER_BASE } from './players';
 import { ENEMY_CLAW_SIM, ENEMY_GUN_SIM, ENEMY_MAUL_SIM, makeWeapon } from './weapons';
-import { BLIGHTLORD, GLACIMAW, IRONWARDEN, PYREFANG, VOLTREAVER } from './bosses';
+import { BLIGHTLORD, GLACIMAW, IRONWARDEN, PYREFANG, ROTBLOOM, VOLTREAVER } from './bosses';
 
 // The boss blueprints and the random-boss pool live in their own file (split 2026-10-06 when
 // chapter 2's boss pushed this one past 500 lines); re-exported so every existing import of
@@ -57,8 +57,8 @@ export interface EnemyBlueprint {
   // free and would also have been wrong twice over: `brute` resists physical without
   // being the physical variant, and `blightlord` — the boss whose whole flavour is
   // poison — resists physical hardest and is WEAK to poison, so it would have been
-  // badged as the physical mob. Only the four locked variants carry this; everything
-  // else is deliberately unbadged (see the design/13 sentence naming exactly four).
+  // badged as the physical mob. Only the five locked variants carry this; everything
+  // else is deliberately unbadged (see the design/13 sentence naming exactly five).
   element?: DamageType;
   // Render-only body rig atlas key (design/13 "roster variety beyond the base body: a
   // heavy brute, a floating ranged form") — like `tint`, the sim never reads it.
@@ -170,6 +170,22 @@ export const GALVANIST: EnemyBlueprint = {
   weapon: ENEMY_GUN_SIM,
   resist: { lightning: 400, poison: 1800 },
   tint: 0xfff176, // charged yellow — matches design/13's locked lightning element hue (ELEMENT_COLORS.lightning)
+};
+
+/** Rot mob (chapter 4, design/gameplay/04-chapters.md): shrugs off poison, burns to fire.
+ *  The fifth of design/13's locked elements to get a critter; until it existed the poison read
+ *  lived only on `blightlord`, which is WEAK to poison. Fire is the counter because the Blight
+ *  is rot, and rot burns; it also leaves ice as fire's only counter and fire as the counter to
+ *  both ice and poison, which chapter 4 leans on: its garrison is the one where fire drops shine. */
+export const BLIGHTLING: EnemyBlueprint = {
+  type: 'blightling',
+  element: 'poison',
+  maxHp: 4,
+  radius: pxToFp(15),
+  footprintRadius: pxToFp(7),
+  weapon: ENEMY_GUN_SIM,
+  resist: { poison: 400, fire: 1800 },
+  tint: 0x9ccc65, // sickly green — matches design/13's locked poison element hue (ELEMENT_COLORS.poison)
 };
 
 /** Armoured mob: shrugs off bullets (physical) and fire, but conducts lightning.
@@ -285,6 +301,7 @@ export const ENEMY_BLUEPRINTS: Record<string, EnemyBlueprint> = {
   emberling: EMBERLING,
   frostling: FROSTLING,
   galvanist: GALVANIST,
+  blightling: BLIGHTLING,
   ironclad: IRONCLAD,
   brute: BRUTE,
   floater: FLOATER,
@@ -295,6 +312,7 @@ export const ENEMY_BLUEPRINTS: Record<string, EnemyBlueprint> = {
   ironwarden: IRONWARDEN,
   glacimaw: GLACIMAW,
   voltreaver: VOLTREAVER,
+  rotbloom: ROTBLOOM,
 };
 
 /**

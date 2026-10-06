@@ -45,7 +45,7 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
 }
 
 function trial(over: Partial<BossTrialRun> = {}): BossTrialRun {
-  return { seed: 1, boss: 'glacimaw', run: run(), bossMaxHp: 85, ttkTicks: null, fightDamage: 10, effectiveHp: 10, bossHpLeftFrac: 0.5, chilledFrac: 0.4, playerDied: true, ...over };
+  return { seed: 1, boss: 'glacimaw', run: run(), bossMaxHp: 85, ttkTicks: null, fightDamage: 10, effectiveHp: 10, bossHpLeftFrac: 0.5, chilledFrac: 0.4, poisonedFrac: 0, playerDied: true, ...over };
 }
 
 describe('entranceRoomStats', () => {
@@ -127,11 +127,11 @@ describe('chapter report aggregation', () => {
 
   it('bossTrialStats separates kills from losses', () => {
     const s = bossTrialStats([
-      trial({ ttkTicks: 600, bossHpLeftFrac: 0, playerDied: false, fightDamage: 4, chilledFrac: 0.2 }),
-      trial({ ttkTicks: 900, bossHpLeftFrac: 0, playerDied: false, fightDamage: 6, chilledFrac: 0.4 }),
+      trial({ ttkTicks: 600, bossHpLeftFrac: 0, playerDied: false, fightDamage: 4, chilledFrac: 0.2, poisonedFrac: 0.5 }),
+      trial({ ttkTicks: 900, bossHpLeftFrac: 0, playerDied: false, fightDamage: 6, chilledFrac: 0.4, poisonedFrac: 0.1 }),
       trial({ bossHpLeftFrac: 0.3, chilledFrac: 0.6 }),
     ]);
-    expect(s).toMatchObject({ runs: 3, bossMaxHp: 85, killRate: 0.67, deathRate: 0.33, medianTtkSec: 25, avgTtkSec: 25, avgHpLeftOnFail: 0.3, chilledPct: 40 });
+    expect(s).toMatchObject({ runs: 3, bossMaxHp: 85, killRate: 0.67, deathRate: 0.33, medianTtkSec: 25, avgTtkSec: 25, avgHpLeftOnFail: 0.3, chilledPct: 40, poisonedPct: 20 });
     const none = bossTrialStats([trial()]);
     expect([none.medianTtkSec, none.avgTtkSec]).toEqual([null, null]);
     expect(formatBossTrialTable([{ label: 'x', stats: none }])).toContain('-/-');

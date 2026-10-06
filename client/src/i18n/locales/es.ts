@@ -36,6 +36,7 @@ export const es: Translations<typeof en> = {
     ember: { name: 'El Descenso de Brasas' },
     frost: { name: 'El Descenso Helado' },
     storm: { name: 'El Descenso Tormentoso' },
+    blight: { name: 'El Descenso de la Plaga' },
   },
   loading: {
     boot: 'CARGANDO',
@@ -401,6 +402,7 @@ export const es: Translations<typeof en> = {
     enemynova: { name: 'Nova saqueadora' },
     enemyshardfan: { name: 'Abanico de esquirlas saqueador' },
     enemyarcseeker: { name: 'Buscador de arcos saqueador' },
+    enemysporespray: { name: 'Rociador de esporas saqueador' },
     flamer: { name: 'Lanzallamas' },
     cryobolt: { name: 'Criobolt' },
     teslagun: { name: 'Pistola Tesla' },

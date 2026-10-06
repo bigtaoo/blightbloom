@@ -41,6 +41,7 @@ export const ru: Translations<typeof en> = {
     ember: { name: 'Тлеющая бездна' },
     frost: { name: 'Ледяная бездна' },
     storm: { name: 'Грозовая бездна' },
+    blight: { name: 'Гнилая бездна' },
   },
   loading: {
     boot: 'ЗАГРУЗКА',
@@ -406,6 +407,7 @@ export const ru: Translations<typeof en> = {
     enemynova: { name: 'Нова мародёра' },
     enemyshardfan: { name: 'Веер осколков мародёра' },
     enemyarcseeker: { name: 'Дуговой искатель мародёра' },
+    enemysporespray: { name: 'Споровый распылитель мародёра' },
     flamer: { name: 'Огнемёт' },
     cryobolt: { name: 'Криоболт' },
     teslagun: { name: 'Пушка Теслы' },

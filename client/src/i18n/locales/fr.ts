@@ -36,6 +36,7 @@ export const fr: Translations<typeof en> = {
     ember: { name: 'La Descente des Braises' },
     frost: { name: 'La Descente du Givre' },
     storm: { name: 'La Descente de l’Orage' },
+    blight: { name: 'La Descente du Fléau' },
   },
   loading: {
     boot: 'CHARGEMENT',
@@ -401,6 +402,7 @@ export const fr: Translations<typeof en> = {
     enemynova: { name: 'Nova pillarde' },
     enemyshardfan: { name: 'Éventail d’éclats pillard' },
     enemyarcseeker: { name: 'Chercheur d’arcs pillard' },
+    enemysporespray: { name: 'Pulvérisateur de spores pillard' },
     flamer: { name: 'Lance-flammes' },
     cryobolt: { name: 'Éclair de givre' },
     teslagun: { name: 'Fusil Tesla' },

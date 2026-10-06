@@ -1,18 +1,18 @@
 /**
- * PvE chapter balance sim — chapters 2 and 3 against chapter 1 (2026-10-06). Runs with
+ * PvE chapter balance sim — chapters 2, 3 and 4 against chapter 1 (2026-10-06). Runs with
  * `npm run test:pve-sim`, next to `pveLevelSim.sim.ts` (chapter 1's own sweep and gates,
  * which this file does not touch).
  *
  * Three measurements, each answering a question the other two cannot:
  *   1. FULL RUNS of each chapter (the same sweep `pveLevelSim` does for chapter 1) — how far
  *      a run gets, and of the runs that reach floor k, how many pass it.
- *   2. FLOOR TRIALS (`sim/pve/chapterTrial.ts`) — every floor of both chapters from a fresh
+ *   2. FLOOR TRIALS (`sim/pve/chapterTrial.ts`) — every floor of every chapter from a fresh
  *      start at that floor's own difficulty scale. Full runs never reach the deep floors, so
  *      this is the only per-floor comparison past floor 1.
  *   3. BOSS TRIALS — each boss in its own chapter's boss room at its boss-floor scale, with
- *      the room's adds (the real fight) and alone (where all damage is the boss's), plus
- *      Glacimaw staged in chapter 1's room at chapter 1's scale as the control that
- *      separates "Glacimaw is a harder boss" from "chapter 2 scales everything harder".
+ *      the room's adds (the real fight) and alone (where all damage is the boss's), plus each
+ *      later chapter's boss staged in chapter 1's room at chapter 1's scale as the control that
+ *      separates "this is a harder boss" from "this chapter scales everything harder".
  *
  * Read every number as a LOWER bound on a human (the bot never dodges a shot on purpose) and
  * the trials as "how hard is this floor/boss", not "how hard is it to arrive there".
@@ -43,9 +43,9 @@ const SEEDS = Array.from({ length: 40 }, (_, i) => 101 + i * 101);
  */
 const WIDE_SEEDS = Array.from({ length: 80 }, (_, i) => 101 + i * 101);
 const PROFILES = ['careful', 'aggressive'] as const;
-const CHAPTER_IDS: readonly ChapterId[] = ['ember', 'frost', 'storm'];
+const CHAPTER_IDS: readonly ChapterId[] = ['ember', 'frost', 'storm', 'blight'];
 /** The chapters this file gates; chapter 1 is `pveLevelSim.sim.ts`'s. */
-const LATER_CHAPTERS: readonly ChapterId[] = ['frost', 'storm'];
+const LATER_CHAPTERS: readonly ChapterId[] = ['frost', 'storm', 'blight'];
 const FLOORS = [0, 1, 2, 3, 4] as const;
 
 const CH1_BOSSES = ['blightlord', 'pyrefang', 'ironwarden'] as const;
@@ -67,9 +67,13 @@ const BOSS_CONDITIONS: readonly BossCondition[] = [
   { label: 'storm voltreaver alone', spec: { room: 'storm', boss: 'voltreaver', adds: false } },
   // Control: chapter 3's boss under chapter 1's room and scale.
   { label: 'control: voltreaver in ember alone', spec: { room: 'ember', boss: 'voltreaver', adds: false } },
+  { label: 'blight rotbloom +adds', spec: { room: 'blight', boss: 'rotbloom', adds: true } },
+  { label: 'blight rotbloom alone', spec: { room: 'blight', boss: 'rotbloom', adds: false } },
+  // Control: chapter 4's boss under chapter 1's room and scale.
+  { label: 'control: rotbloom in ember alone', spec: { room: 'ember', boss: 'rotbloom', adds: false } },
 ];
 
-describe('PvE chapter sim — chapters 2 (frost) and 3 (storm) against chapter 1 (ember)', () => {
+describe('PvE chapter sim — chapters 2 (frost), 3 (storm) and 4 (blight) against chapter 1 (ember)', () => {
   const memo = new Map<string, unknown>();
   function cached<T>(key: string, make: () => T): T {
     if (!memo.has(key)) memo.set(key, make());
@@ -85,7 +89,7 @@ describe('PvE chapter sim — chapters 2 (frost) and 3 (storm) against chapter 1
   const bossRuns = (c: BossCondition): BossTrialRun[] => cached(`boss:${c.label}`, () => SEEDS.map((seed) => runBossTrial(seed, c.spec)));
   const boss = (label: string): BossTrialStats => bossTrialStats(bossRuns(BOSS_CONDITIONS.find((c) => c.label === label)!));
 
-  it('reports full runs of chapters 2 and 3, and how far each chapter gets floor by floor', () => {
+  it('reports full runs of the later chapters, and how far each chapter gets floor by floor', () => {
     for (const c of LATER_CHAPTERS) {
       for (const p of PROFILES) {
         const rows = fullRuns(c, p);
@@ -104,7 +108,7 @@ describe('PvE chapter sim — chapters 2 (frost) and 3 (storm) against chapter 1
     for (const c of LATER_CHAPTERS) expect(fullRuns(c, 'careful').length).toBe(WIDE_SEEDS.length);
   }, 600_000);
 
-  it('reports every floor of both chapters from a fresh start (floor trials, careful)', () => {
+  it('reports every floor of every chapter from a fresh start (floor trials, careful)', () => {
     const rows = CHAPTER_IDS.flatMap((chapter) => FLOORS.map((k) => ({ chapter, floorIndex: k, scale: floorScale(chapter, k), stats: floorRuns(chapter, k) })));
     // eslint-disable-next-line no-console
     console.log(`\n--- floor trials: fresh careful bot, starter kit, floor k at floor k's scale ---\n${formatFloorTrialTable(rows)}`);
@@ -119,6 +123,7 @@ describe('PvE chapter sim — chapters 2 (frost) and 3 (storm) against chapter 1
     // Anti-vacuity: the duel conditions must actually be fought.
     expect(boss('frost glacimaw alone').bossMaxHp).toBeGreaterThan(0);
     expect(boss('storm voltreaver alone').bossMaxHp).toBeGreaterThan(0);
+    expect(boss('blight rotbloom alone').bossMaxHp).toBeGreaterThan(0);
   }, 600_000);
 
   // ── Chapter-2 gates — the same shapes as `pveLevelSim.sim.ts`'s chapter-1 gates, plus the
@@ -239,7 +244,51 @@ describe('PvE chapter sim — chapters 2 (frost) and 3 (storm) against chapter 1
     expect(volt.medianTtkSec!).toBeGreaterThanOrEqual(0.5 * Math.min(...ch1Ttk));
   }, 600_000);
 
-  it('gate: nothing in chapters 2 or 3 softlocks — full runs, floor trials and boss trials all end in a real outcome', () => {
+  // ── Chapter-4 gates, the finale. The same three shapes as chapter 3's, one chapter on: not a
+  // wall at the entrance, harder than chapter 3 past it, and a boss of the earlier bosses' kind.
+
+  it('gate: chapter 4 is not a wall — a careful player clears its entrance and sometimes floor 1', () => {
+    const blight = fullRuns('blight', 'careful');
+    const entrance = entranceRoomStats(blight);
+    expect(entrance!.samples).toBe(blight.length);
+    expect(entrance!.clearRate, `${entrance!.roomId} clear rate`).toBe(1);
+    // Measured 15/80 (chapter 3: 13); the base is chapter 3's, so this is the content's doing.
+    const d4 = blight.filter((r) => r.floorReached >= 1).length;
+    expect(d4, `${d4}/${blight.length} careful chapter-4 runs descended off floor 0`).toBeGreaterThanOrEqual(Math.round(blight.length / 16));
+  }, 600_000);
+
+  it("gate: chapter 4's deep floors are harder than chapter 3's (floor trials)", () => {
+    // BLIGHT_DUNGEON's doc comment has the sweep. Measured 3.6 floor-2 kills against chapter 3's
+    // 14; chapter 4 at chapter 3's own step read 22 (and cleared floor 1 68% against 33%), so
+    // both bounds below fail that control.
+    const k4 = floorRuns('blight', 2).avgKills;
+    const k3 = floorRuns('storm', 2).avgKills;
+    expect(k3, 'the chapter-3 floor-2 trial killed too little to compare against').toBeGreaterThan(8);
+    expect(k4, `floor-2 trial kills: chapter 4 ${k4}, chapter 3 ${k3}`).toBeLessThanOrEqual(k3 * 0.75);
+    for (const k of FLOORS) {
+      const c3 = floorRuns('storm', k).clearRate;
+      const c4 = floorRuns('blight', k).clearRate;
+      expect(c4, `floor ${k}: chapter 4 clears ${c4}, chapter 3 ${c3}`).toBeLessThanOrEqual(c3 + 0.1);
+    }
+  }, 600_000);
+
+  it("gate: Rotbloom is a fight of the earlier bosses' kind — a live threat through its poison, beatable, no deadlier than the deadliest", () => {
+    // Like Voltreaver's orbs, a spore slower than 7 grid/s is erased by the bot's own fire
+    // (`enemysporespray`'s comment). Measured 35% kills / 65% deaths at the boss floor's 105 HP,
+    // the bot poisoned for 19% of the fight.
+    const rot = boss('blight rotbloom alone');
+    const ch1 = CH1_BOSSES.map((b) => boss(`ember ${b} alone`));
+    expect(rot.avgFightDamage, 'no spore ever lands — the spray is shot down or outranged every time').toBeGreaterThan(0);
+    expect(rot.poisonedPct, 'the player is never poisoned — the spray has lost its payload').toBeGreaterThanOrEqual(10);
+    expect(rot.deathRate, 'Rotbloom (almost) never kills').toBeGreaterThanOrEqual(0.1);
+    expect(rot.killRate, 'Rotbloom is (almost) never killed in a duel').toBeGreaterThanOrEqual(0.05);
+    expect(rot.deathRate).toBeLessThanOrEqual(Math.max(...ch1.map((s) => s.deathRate)));
+    const ch1Ttk = ch1.map((s) => s.medianTtkSec).filter((t): t is number => t !== null);
+    expect(rot.medianTtkSec!).toBeLessThanOrEqual(2 * Math.max(...ch1Ttk));
+    expect(rot.medianTtkSec!).toBeGreaterThanOrEqual(0.5 * Math.min(...ch1Ttk));
+  }, 600_000);
+
+  it('gate: nothing in the later chapters softlocks — full runs, floor trials and boss trials all end in a real outcome', () => {
     for (const c of LATER_CHAPTERS) {
       for (const p of PROFILES) {
         expect(fullRuns(c, p).filter((r) => r.outcome === 'timeout').map((r) => `${c}/${p}/seed=${r.seed}/${r.endRoom}`)).toEqual([]);

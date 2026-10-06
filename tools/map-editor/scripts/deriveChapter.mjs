@@ -19,6 +19,10 @@
  *      - `rotate180` (storm): every piece turned half a circle inside its own box, every
  *        floor turned half a circle inside its bounding box; north <-> south, east <-> west.
  *        A floor that ran left-to-right and downward runs right-to-left and upward.
+ *      - `antitranspose` (blight): the mirror across the other diagonal, i.e. a transpose
+ *        followed by a half-turn: (x, y) -> (h - y, w - x), w <-> h, west <-> south,
+ *        north <-> east. A floor that ran left-to-right and downward runs bottom-to-top and
+ *        leftward, the one direction of the four the earlier chapters left unused.
  *   2. ROSTER SWAP (`roster`): chapter 1's fire mobs trade places with the chapter's own
  *      element, so the garrison is led by that element; the boss sentinel becomes the
  *      chapter's own boss instead of a draw from chapter 1's random pool.
@@ -31,7 +35,7 @@
  * `engine/world/rooms/<chapter>Level1.test.ts` pins that the committed JSON still IS this
  * transform of chapter 1 — delete that block the day the chapter is hand-edited away from it.
  *
- * Usage: node tools/map-editor/scripts/deriveChapter.mjs <frost|storm>
+ * Usage: node tools/map-editor/scripts/deriveChapter.mjs <frost|storm|blight>
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -53,11 +57,19 @@ export const CHAPTERS = {
     roster: { emberling: 'galvanist', galvanist: 'emberling', boss_random: 'voltreaver' },
     names: { forge: 'spire', kiln: 'coil', furnace: 'dynamo', crucible: 'conduit', caldera: 'maelstrom' },
   },
+  // Chapter 1 has no poison mob to trade back, so the swap is one-way: every emberling becomes a
+  // blightling, and the frostlings and galvanists stay.
+  blight: {
+    geometry: 'antitranspose',
+    roster: { emberling: 'blightling', boss_random: 'rotbloom' },
+    names: { forge: 'mire', kiln: 'warren', furnace: 'thicket', crucible: 'sump', caldera: 'canker' },
+  },
 };
 
 const EDGE = {
   transpose: { west: 'north', north: 'west', east: 'south', south: 'east' },
   rotate180: { west: 'east', east: 'west', north: 'south', south: 'north' },
+  antitranspose: { west: 'south', south: 'west', north: 'east', east: 'north' },
 };
 
 /**
@@ -78,6 +90,13 @@ function geometry(kind, w, h) {
       size: { w, h },
       rect: (r) => ({ ...r, x: w - r.x - r.w, y: h - r.y - r.h }),
       point: (p) => ({ ...p, x: w - p.x, y: h - p.y }),
+    };
+  }
+  if (kind === 'antitranspose') {
+    return {
+      size: { w: h, h: w },
+      rect: (r) => ({ ...r, x: h - r.y - r.h, y: w - r.x - r.w, w: r.h, h: r.w }),
+      point: (p) => ({ ...p, x: h - p.y, y: w - p.x }),
     };
   }
   throw new Error(`deriveChapter: unknown geometry ${kind}`);

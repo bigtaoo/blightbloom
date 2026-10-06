@@ -32,6 +32,7 @@ import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { EMBER_L1_ROOMS } from '../world/rooms/emberLevel1';
 import { FROST_DUNGEON, FROST_L1_ROOMS } from '../world/rooms/frost';
 import { STORM_DUNGEON, STORM_L1_ROOMS } from '../world/rooms/storm';
+import { BLIGHT_DUNGEON, BLIGHT_L1_ROOMS } from '../world/rooms/blight';
 import { LAUNCH_ARENA } from '../world/arenas/launchArena';
 import { BRIM_GRINDER_DUNGEON, BRIM_GRINDER_ROOMS } from './brimGrinderFloor';
 import { EXTRACT_GATE_DUNGEON, EXTRACT_GATE_ROOMS } from './extractionGateFloor';
@@ -347,6 +348,26 @@ export const GOLDEN_SCENARIOS: readonly GoldenScenario[] = [
     seats: 1,
     input: { interact: true, chest: false, descend: true, extract: false, press: false },
     salt: 0x3535,
+  },
+  {
+    name: 'blight-dungeon-floor1',
+    // Chapter 4, the finale (design/gameplay/04-chapters.md), the same floor-1 scope over its own
+    // content: the geometry MIRRORED across the anti-diagonal (rooms resized w <-> h like chapter
+    // 2's, but with every north wall's brim on what chapter 1 had as an east wall) and the
+    // blightling-led garrison — the first critter to carry the poison element. None of the three
+    // earlier chapters' scenarios can see either. Its boss is not reached from floor 1.
+    pins: 'chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison',
+    config: {
+      seed: 20261008,
+      worldW: 800,
+      worldH: 800,
+      waves: [],
+      dungeon: { config: BLIGHT_DUNGEON, library: BLIGHT_L1_ROOMS },
+    },
+    ticks: 1500,
+    seats: 1,
+    input: { interact: true, chest: false, descend: true, extract: false, press: false },
+    salt: 0x3636,
   },
   {
     name: 'brim-grinder',

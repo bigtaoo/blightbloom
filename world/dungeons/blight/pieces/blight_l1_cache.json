@@ -1,0 +1,101 @@
+{
+  "id": "blight_l1_cache",
+  "tags": [
+    "blight_l1"
+  ],
+  "sizeGrid": {
+    "w": 15,
+    "h": 15
+  },
+  "solids": [
+    {
+      "x": 9,
+      "y": 9,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 4,
+      "y": 4,
+      "w": 2,
+      "h": 2,
+      "freeStanding": true
+    },
+    {
+      "x": 14,
+      "y": 0,
+      "w": 1,
+      "h": 15
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 15
+    },
+    {
+      "x": 1,
+      "y": 14,
+      "w": 13,
+      "h": 1
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "w": 13,
+      "h": 1
+    }
+  ],
+  "spawns": {
+    "player": [
+      {
+        "x": 10,
+        "y": 12.5
+      },
+      {
+        "x": 6,
+        "y": 12.5
+      }
+    ],
+    "enemy": []
+  },
+  "exits": [
+    {
+      "edge": "south"
+    },
+    {
+      "edge": "north"
+    },
+    {
+      "edge": "east"
+    },
+    {
+      "edge": "west"
+    }
+  ],
+  "props": [
+    {
+      "id": "crate",
+      "x": 12.5,
+      "y": 12.5
+    },
+    {
+      "id": "rubble",
+      "x": 12.5,
+      "y": 3
+    },
+    {
+      "id": "barrel",
+      "x": 3,
+      "y": 3
+    }
+  ],
+  "chests": [
+    {
+      "kind": "small",
+      "x": 7.5,
+      "y": 7.5
+    }
+  ]
+}

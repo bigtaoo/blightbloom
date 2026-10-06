@@ -203,8 +203,8 @@ function enemyCarriers(): Carrier[] {
   for (const bp of Object.values(ENEMY_BLUEPRINTS)) {
     const rigName = bp.bodyRig ?? 'critter-core';
     if (resolveWeaponMount(RIG_DEFS[rigName]!.rig) === 'none') continue;
-    // Keyed by rig+radius: the four elemental re-tints are the same body at the same size and
-    // would otherwise repeat one row four times. The radius stays part of the key (and of the
+    // Keyed by rig+radius: the five elemental re-tints are the same body at the same size and
+    // would otherwise repeat one row five times. The radius stays part of the key (and of the
     // label) because it scales the whole rig — `ironclad` is a critter-core at 17 px where the
     // rest are 15, which is a different drawn muzzle for the same gun.
     const radiusPx = fpToPx(bp.radius);

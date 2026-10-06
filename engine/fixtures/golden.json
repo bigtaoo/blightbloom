@@ -154,6 +154,38 @@
       }
     },
     {
+      "name": "blight-dungeon-floor1",
+      "pins": "chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison",
+      "ticks": 1500,
+      "hash": 2944369070,
+      "witness": {
+        "tick": 1500,
+        "phase": "playing",
+        "winner": "null",
+        "seats": 1,
+        "enemiesAlive": 0,
+        "projectiles": 5,
+        "pickups": 0,
+        "floorIndex": 0,
+        "hpTotal": 3,
+        "energyTotal": 95,
+        "prngCursors": 15609670155,
+        "events": {
+          "bullet_fired": 187,
+          "room_enter": 1,
+          "door_locked": 1,
+          "hit": 31,
+          "clash": 7,
+          "death": 8,
+          "melee_swing": 84,
+          "shield_break": 1,
+          "pickup": 8,
+          "deflect": 1,
+          "door_unlocked": 1
+        }
+      }
+    },
+    {
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
