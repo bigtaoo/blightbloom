@@ -93,6 +93,7 @@ How the game grows past its one dungeon: what a chapter is, their order, and wha
   - [The order](gameplay/04-chapters.md#the-order)
   - [What a chapter buys a player today, and what it does not](gameplay/04-chapters.md#what-a-chapter-buys-a-player-today-and-what-it-does-not)
   - [Chapter 2, the Frost Descent](gameplay/04-chapters.md#chapter-2-the-frost-descent)
+  - [Chapter 3, the Storm Descent](gameplay/04-chapters.md#chapter-3-the-storm-descent)
   - [The plumbing: one id, read everywhere](gameplay/04-chapters.md#the-plumbing-one-id-read-everywhere)
   - [Next](gameplay/04-chapters.md#next)
 

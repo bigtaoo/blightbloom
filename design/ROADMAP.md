@@ -1772,9 +1772,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **10-06** [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change) — the game had one PvE dungeon and no field anywhere that said which. `engine/world/chapters.ts` is the catalog (the id is `biomeId`); chapter 2, the Frost Descent, is chapter 1's tuned JSON transposed with fire/ice mobs swapped, plus a new boss, Glacimaw (aimed ice-shard cone). Saves, `match_start`, tickets, per-chapter co-op queues, parties, fill bots, analytics and meta carry the chapter; the lobby picks it, and clearing a chapter unlocks the next. The PvE sim measured the authored difficulty base 1.25 as a wall (5% past floor 0 vs chapter 1's 25%) and it ships at 1.125 (13%). Lobby banners generated with Mistral. Seven golden hashes unchanged. `content` `engine` `net` `ui` `art` `tools` `docs`
 - **10-06** [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change) — the owner judged the two AI-generated loops not good enough. Four open-licensed loops replace them, one per slot: `menu` "Aurora" (Scott Buckley, CC-BY 4.0), `dungeon.ember` "Lava Area Theme" (Wolfgang_, CC-BY 4.0; its first file of its own), a new `dungeon.frost` "Beyond the Frozen Veil" (Synth-thetic, CC0) for chapter 2, and `boss` "Colossal Boss Battle Theme" (Matthew Pablo, CC-BY 3.0); 2.46 MB, seams 0.83-1.54 dB, all at written tempo. Picked by measurement since nobody listened: a 0.06-0.3 dB seam turned out to mean the piece repeats (refused, it swells under an equal-power crossfade), and an anti-correlated mix was dropped for cancelling on a phone. CC-BY needed the game's first visible credit, now on the Settings sheet and held equal to `credits.json` by a test. `audio` `ui` `tools` `docs`
 
+**[2026-10-06 — Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md)**
+
+- **10-06** [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change) — the owner asked to carry on after chapter 2, so chapter 3 shipped the same day. `deriveChapter.mjs` now takes the chapter; storm is chapter 1's tuned JSON turned half a circle, emberlings and galvanists swapped, and re-deriving frost through it reproduces its JSON exactly. New boss Voltreaver fires homing lightning orbs, and as authored they never landed: the bot's own fire erased every volley (100% kills, 0 damage in 40 duels) until a sweep found 7 grid/s and a 160°/s turn (50%/50% at 95 HP). The authored base 1.25 was a cliff, not a step (any base over 1.125 gives the 3-HP basic mob a fourth hit point; 1.1875 read 0/80 off floor 0), so chapter 3 ships chapter 2's base with a steeper step (0.3125/floor), gated in `chapterSim`. Mistral banner, its own music bed `dungeon.storm`, one new golden scenario, no existing hash changed. `content` `engine` `audio` `ui` `art` `tools` `docs`
+
 ## The work log — by theme
 
-The same 247 entries, grouped. An entry with more than one tag appears more than once.
+The same 248 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(77)*
 
@@ -1856,7 +1860,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`art`** — authored assets and the art pipeline *(22)*
+**`art`** — authored assets and the art pipeline *(23)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1880,6 +1884,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 09-26 [Floating damage numbers, from a generated digit atlas](roadmap/95-2026-09-26-damage-numbers.md#floating-damage-numbers-from-a-generated-digit-atlas-2026-09-26-ui--render--art--tools--test--docs-no-engine-change)
 - 09-27 [The lobby becomes a scene](roadmap/102-2026-09-27-lobby-scene.md#the-lobby-becomes-a-scene-2026-09-27-client--ui--art--test--i18n--docs-no-engine-change)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(19)*
 
@@ -1903,7 +1908,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [The dev cold start is a second or two as well](roadmap/112-2026-09-29-dev-cold-start.md#the-dev-cold-start-is-a-second-or-two-as-well-2026-09-29-perf--tools--docs-no-game-code-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 
-**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(47)*
+**`engine`** — the deterministic sim — anything that can bump `ENGINE_VERSION` *(48)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-12 [Boss-room instant-extract bug fix](roadmap/02-2026-08-12--08-15.md#boss-room-instant-extract-bug-fix--2026-08-12)
@@ -1952,6 +1957,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
 **`arena`** — the PvP launch map and its audit *(19)*
 
@@ -1975,7 +1981,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [No 9-row room is a chevron](roadmap/118-2026-09-30-arena-body-reach.md#no-9-row-room-is-a-chevron-2026-09-30-engine--arena--test--docs-engine_version-84)
 - 09-30 [A squad starts together](roadmap/118-2026-09-30-arena-body-reach.md#a-squad-starts-together-2026-09-30-arena--test--docs)
 
-**`content`** — authored rooms, pieces, props, loot *(17)*
+**`content`** — authored rooms, pieces, props, loot *(18)*
 
 - 08-04 [Room & door model — co-resident PvE floors](roadmap/01-2026-07-24--08-05.md#room--door-model--co-resident-pve-floors--2026-08-04-engine_version-3334)
 - 08-21 [Room props stop being a dead field, and three parked follow-ups get cleared](roadmap/05-2026-08-21--08-24.md#room-props-stop-being-a-dead-field-and-three-parked-follow-ups-get-cleared-2026-08-21-client-only)
@@ -1994,6 +2000,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 09-30 [The pockets are stone](roadmap/118-2026-09-30-arena-body-reach.md#the-pockets-are-stone-2026-09-30-engine--arena--content--test--docs-engine_version-81)
 - 09-30 [Every room is one piece](roadmap/118-2026-09-30-arena-body-reach.md#every-room-is-one-piece-2026-09-30-arena--content--test--docs-engine_version-82)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
 **`test`** — coverage sweeps, gates, mutation batteries *(155)*
 
@@ -2153,7 +2160,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`audio`** — cues, music, the engine to sound channel *(11)*
+**`audio`** — cues, music, the engine to sound channel *(12)*
 
 - 08-31 [The search and the gate were the same number three times, and never the same ruler](roadmap/12-2026-08-31-audio.md#the-search-and-the-gate-were-the-same-number-three-times-and-never-the-same-ruler-2026-08-31-tools--assets)
 - 08-31 [Everything existed and nothing was connected](roadmap/12-2026-08-31-audio.md#everything-existed-and-nothing-was-connected-2026-08-31-client-runtime)
@@ -2166,6 +2173,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 09-29 [Seats start apart, and point-blank shots land](roadmap/115-2026-09-29-arena-spawns.md#seats-start-apart-and-point-blank-shots-land-2026-09-29-engine--arena--audio--test--tools--docs)
 - 10-03 [The PvP bot loots, and draws its blade when its gun runs dry](roadmap/123-2026-10-03-pvp-bot-loot-dry-blade.md#the-pvp-bot-loots-and-draws-its-blade-when-its-gun-runs-dry-2026-10-03-client--tools--test--docs-no-engine_version-change)
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
 **`platform`** — web / WeChat / Electron / game-portal targets and deploys *(37)*
 
@@ -2207,7 +2215,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`ui`** — HUD, screens, widgets *(51)*
+**`ui`** — HUD, screens, widgets *(52)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2260,8 +2268,9 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-03 [Any seat opens the portal](roadmap/125-2026-10-03-any-seat-portal.md#any-seat-opens-the-portal-2026-10-03-engine--client--ui--tools--test--docs-engine_version-87)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(49)*
+**`tools`** — sims, profilers, editors, build scripts *(50)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2312,8 +2321,9 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(164)*
+**`docs`** — design docs and this log itself *(165)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2479,6 +2489,7 @@ The same 247 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-06 [Open-licensed music replaces the AI loops, and each chapter gets its own bed](roadmap/133-2026-10-06-pve-chapters.md#open-licensed-music-replaces-the-ai-loops-and-each-chapter-gets-its-own-bed-2026-10-06-client--assets--tools--docs-no-engine_version-change)
+- 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(42)*
 

@@ -29,6 +29,9 @@ nothing new to play; the only reason to go again was the 5% schematic.
   players who picked the same chapter.
 - **Plan four, build two, then look.** The order below is the plan; this pass ships chapter 1
   (unchanged) and chapter 2. Chapters 3 and 4 wait for player feedback on chapter 2.
+  *Amended the same day:* the owner asked to carry on ("继续pve"), so chapter 3 shipped on
+  2026-10-06 too, built the same way. Chapter 4 is the one still waiting, and it waits on
+  content (a poison critter) as much as on feedback.
 
 ### The order
 
@@ -36,7 +39,7 @@ nothing new to play; the only reason to go again was the 5% schematic.
 |---|---|---|---|---|---|
 | 1 | The Ember Descent (`ember`) | fire | emberling | random of blightlord / pyrefang / ironwarden | shipped |
 | 2 | The Frost Descent (`frost`) | ice | frostling | **glacimaw** (new) | ✅ this pass |
-| 3 | storm (planned) | lightning | galvanist | new lightning boss needed | planned |
+| 3 | The Storm Descent (`storm`) | lightning | galvanist | **voltreaver** (new) | ✅ same day |
 | 4 | blight (planned) | poison | **a poison critter, which does not exist yet** | blightlord, as the finale's "giant failed core" | planned |
 
 Poison is last on purpose. [`design/13`](../13-worldview-art-direction.md) keeps it off the first
@@ -116,6 +119,76 @@ every critter the shared rig tinted, and all five biome swatch sets already ship
 (the `biome-ice` pack had been waiting since 2026-08-02 for a dungeon to map to it). The lobby
 picker's two chapter banners are the only new images.
 
+### Chapter 3, the Storm Descent
+
+**Derived again, turned a different way.** `deriveChapter.mjs` now takes the chapter
+(`node tools/map-editor/scripts/deriveChapter.mjs storm`) and holds each chapter's choices in one
+table. Chapter 3 is chapter 1's JSON **turned half a circle**: every piece inside its own box,
+every floor inside its bounding box, north and south swapped, east and west swapped. Chapter 1
+runs left-to-right and down, chapter 2 (transposed) top-to-bottom, chapter 3 right-to-left and
+up, and `stormLevel1.test.ts` asserts no floor places its rooms where either earlier chapter
+does. The roster swap trades emberlings and galvanists (23 and 13 in chapter 1), so the
+garrison is lightning-led. The galvanist's lightning also chains between mobs. Re-deriving
+frost through the generalised script reproduces its committed JSON exactly. The passability
+suite passes on the turned geometry, where every north-wall brim now sits on what chapter 1
+had as a south wall.
+
+**Voltreaver, the "out-turn it" fight.** Its loadout, `enemyarcseeker`, fires three **homing**
+lightning orbs in a 160° fan. The orbs follow, so neither of the earlier answers clears a volley
+on its own: stepping sideways (Glacimaw) or backing off. The answer is a late, hard cut across
+their path, since their turn rate (160°/s) is under the player's own seeker's (260°/s).
+Alternatively, the player can shoot the orbs that come down the firing line: hostile bullets
+annihilate, and these are the fattest bullets in the game and slower than the starter blaster's.
+In co-op each hit arcs to the nearest teammate, so a party must also spread out. Its resists
+mirror the galvanist's (shrugs lightning, rots to poison). It enrages below 40% by firing 40%
+faster, and it is not in `BOSS_POOL`.
+
+The orbs' danger is knife-edged, and the duel sweep (careful bot, 40 seeds, boss alone) walked
+it from nothing:
+
+| Arc seeker | Duel |
+|---|---|
+| as first authored: 80° fan, 5 grid/s, 110°/s, every 1.8 s | 100% kills, **0 damage taken** |
+| 160° fan, 6 grid/s, 160°/s, every 1.4 s | 100% kills, 0 damage |
+| 160° fan, 7 grid/s, 140°/s, every 1.4 s | 98% kills |
+| **160° fan, 7 grid/s, 160°/s, every 1.4 s (shipped)** | 57% kills at 90 HP; **50% / 50% at the boss floor's 95 HP** |
+| 160° fan, 7 grid/s, 180°/s, every 1.6 s | 33% kills, 70% deaths |
+
+Under ~7 grid/s the bot's own stream of fire crosses the fan's centre line and erases every
+volley. Staged in chapter 1's room at chapter 1's scale it reads 78% kills, so as with
+Glacimaw the fight is the weapon, not the chapter.
+
+**Harder past the entrance, not at it.** Chapter 3 takes chapter 2's `base` (1.125) and a
+steeper step: 0.3125 per floor against 0.25. Its boss floor scales HP ×2.375 against chapter
+2's ×2.125. The base could not move. Runs off floor 0, 80 seeds:
+
+| Chapter 3 at base | Runs off floor 0 |
+|---|---|
+| 1 (content alone; chapter 1 reads 20, chapter 2 reads 17) | 21/80 |
+| **1.125 (shipped; chapter 2 reads 10 at the same base)** | **13/80** |
+| 1.1875 | 0/80 |
+| 1.25 | 3/80 |
+
+Every base above 1.125 rounds the 3-HP basic mob, the commonest in the game, up to 4. The
+entrance therefore has no step between chapter 2's difficulty and a wall. The deeper floors do
+have room, and they are where a player who has cleared chapter 2 brings that chapter's gear.
+On a fresh-start floor-2 trial the steeper step cuts the bot to 14 kills, against 27 in chapter
+2 and 23 in chapter 3 at chapter 2's own step.
+
+`chapterSim.sim.ts` gates chapter 3 on four things:
+- it is not a wall: at least 1/16 of seeds leave floor 0;
+- its floor-2 trial kills are at most three quarters of chapter 2's (the control at chapter 2's
+  step fails this);
+- no floor of it clears more often than chapter 2's;
+- Voltreaver is beatable, lands damage, and is no deadlier than Pyrefang.
+
+One careful full run reached chapter 3's boss and won.
+
+**Art and music.** The lightning floor swatches had shipped in the `biome-lightning` pack since
+2026-08-25 with no dungeon mapped to them; `theme.ts` now maps `storm` to `lightning`. The
+picker banner `chapter_storm` was made with Mistral like the other two (`art/ui/prompts.md`).
+The chapter's music bed is `dungeon.storm` (design/11).
+
 ### The plumbing: one id, read everywhere
 
 - **The chapter id is the config's `biomeId`.** `DungeonConfig` has no id of its own, and a
@@ -132,8 +205,10 @@ picker's two chapter banners are the only new images.
 
 ### Next
 
-- Chapter 3 (storm): a lightning boss, a lightning-led derivation or hand-authored floors.
 - Chapter 4 (blight): a poison critter first; it is what the chapter's garrison leads with.
 - ~~Chapter music~~: done the same day. Each chapter has its own bed (`dungeon.ember`,
   `dungeon.frost`), open-licensed music like the rest of the soundtrack (design/11).
-- Hand-authored frost layouts in the map editor, once players have seen the derived ones.
+- Hand-authored frost and storm layouts in the map editor, once players have seen the derived ones.
+- Whether chapter 3's entrance should be harder. Not by `base`, which is a cliff; a garrison
+  change (fewer 3-HP basics, more galvanists) would be the knob, and it needs a player's
+  verdict on chapter 2 first.
