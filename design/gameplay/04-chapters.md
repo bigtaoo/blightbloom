@@ -30,8 +30,9 @@ nothing new to play; the only reason to go again was the 5% schematic.
 - **Plan four, build two, then look.** The order below is the plan; this pass ships chapter 1
   (unchanged) and chapter 2. Chapters 3 and 4 wait for player feedback on chapter 2.
   *Amended the same day:* the owner asked to carry on ("继续pve"), so chapter 3 shipped on
-  2026-10-06 too, built the same way. Chapter 4 is the one still waiting, and it waits on
-  content (a poison critter) as much as on feedback.
+  2026-10-06 too, built the same way. Then "继续做第四章": chapter 4 shipped as well, with the
+  poison critter it was waiting on. All four planned chapters exist; what none of them has yet
+  is a player's verdict.
 
 ### The order
 
@@ -40,13 +41,13 @@ nothing new to play; the only reason to go again was the 5% schematic.
 | 1 | The Ember Descent (`ember`) | fire | emberling | random of blightlord / pyrefang / ironwarden | shipped |
 | 2 | The Frost Descent (`frost`) | ice | frostling | **glacimaw** (new) | ✅ this pass |
 | 3 | The Storm Descent (`storm`) | lightning | galvanist | **voltreaver** (new) | ✅ same day |
-| 4 | blight (planned) | poison | **a poison critter, which does not exist yet** | blightlord, as the finale's "giant failed core" | planned |
+| 4 | The Blight Descent (`blight`) | poison | **blightling** (new) | **rotbloom** (new), not blightlord: see below | ✅ same day |
 
 Poison is last on purpose. [`design/13`](../13-worldview-art-direction.md) keeps it off the first
 floor because green effects camouflage against a green floor, and the Blight crystallising the
 world is the story's end state, so its own biome is the natural finale. That closes design/13's
-open "Biome difficulty/order" question. Chapter 1 keeps its three-boss random pool for now;
-whether it narrows to pyrefang alone once chapter 4 claims blightlord is a later call.
+open "Biome difficulty/order" question. Chapter 1 keeps its three-boss random pool, blightlord
+included: chapter 4 did not claim it after all ("Chapter 4, the Blight Descent" below).
 
 ### What a chapter buys a player today, and what it does not
 
@@ -190,6 +191,83 @@ picker banner `chapter_storm` was made with Mistral like the other two (`art/ui/
 The chapter's music bed is `dungeon.storm`, "Endless Cyber Runner" by Eric Matyas (CC-BY 4.0;
 design/11).
 
+### Chapter 4, the Blight Descent
+
+**The poison critter first.** `blightling` (`engine/content/enemies.ts`) is the fifth re-tint of
+the shared critter, at design/13's locked `#9CCC65`. It shrugs poison and burns to fire. Fire is
+the counter because the Blight is rot, and rot burns; it also makes fire the answer to two of the
+four elemental critters (frostling and blightling), which is what chapter 4's garrison leans on.
+It is badged with the skull like any locked variant, and the element tests now pin five.
+
+**Derived a third way.** `deriveChapter.mjs blight` mirrors chapter 1 across the anti-diagonal,
+(x, y) -> (h - y, w - x), the one transform left that runs in a direction no earlier chapter does:
+chapter 4 runs bottom-to-top and left. Chapter 1 has no poison mob to trade back, so the roster
+swap is one-way: all 23 emberlings become blightlings and everything else stays. Re-deriving
+frost and storm through the extended script reproduces both. `blightLevel1.test.ts` restates the
+mirror independently, checks no floor places its rooms where any earlier chapter does, and runs
+the passability suite on the mirrored geometry. It passed first time, with every north-wall brim
+now sitting on what chapter 1 had as an east wall.
+
+**Rotbloom, not Blightlord.** The plan named blightlord as the finale's boss. Two measured facts
+said otherwise. Blightlord's single aimed bullets never land on a strafing player: 0 damage in 80
+bot duels, which would have made the finale the easiest boss in the game. And it is *weak* to
+poison, the one element a poison chapter's boss should shrug. It stays in chapter 1's pool,
+unchanged. The finale's boss is new: **Rotbloom**, the "keep your distance" fight, beside
+Pyrefang's "keep moving", Ironwarden's "burst to the break", Glacimaw's "don't get pinned" and
+Voltreaver's "out-turn it". Its loadout, `enemysporespray`, is a short cone of six poison spores
+(~5 grid of reach, the shortest of any boss). Every spore that lands adds a poison stack, the
+stacks keep ticking after the hit, and a poisoned actor's shield does not regenerate, so trading
+at close range is the losing play. It walks toward you faster than the roster default and slower
+than you, so kiting it is always possible and never free. It mirrors the blightling's resists and
+enrages below 40% by spraying 40% faster.
+
+The duel sweep (careful bot, 40 seeds, boss alone at the boss floor's 105 HP):
+
+| Spore spray | Duel |
+|---|---|
+| as first authored: 6 spores, 60°, 6 grid/s, every 1.0 s | 60% kills, but a 51 s median kill, over the 2x-chapter-1 bound |
+| 6.5 grid/s | 15% kills, 85% deaths |
+| **7 grid/s, every 1.4 s (shipped)** | **35% kills, 65% deaths, 35 s, poisoned 19% of the fight** |
+| 8 spores in 80°, 6 grid/s | 0% kills |
+
+Speed decides whether the cone lands at all: a spore slower than the bot's fire is erased by it,
+as Voltreaver's orbs were. The flight time is not a knob for the bot. 0.5 s and 2.0 s read the
+same, because every spore that lands does so inside ~3.5 grid, after the boss has walked the bot
+into a wall; 0.3 s (~2 grid) lands nothing. So the duel measures the bot losing the distance
+fight, and a player who holds the distance does better than these numbers. 35% / 65% puts the
+finale a step past Voltreaver's 50% / 50% and short of Pyrefang's 100% deaths. Staged in chapter
+1's room at chapter 1's scale (80 HP) it still reads 30% / 70%, where Voltreaver's control reads
+78% kills: the danger is the spray, not the chapter's scaling.
+
+**The steepest step, because the content alone was easier.** Chapter 4 keeps the 1.125 base (the
+cliff chapter 3 found) and steps 0.375 per floor, so the boss floor scales ×2.625. Fresh-start
+floor trials, 40 seeds:
+
+| | Floor 1 kills / clears | Floor 2 kills | Boss duel |
+|---|---|---|---|
+| chapter 3 (0.3125) | 27 / 33% | 14 | |
+| chapter 4 at 0.3125 | 48 / 68% | 22 | 95 HP: 35% kills |
+| **chapter 4 at 0.375 (shipped)** | **34 / 30%** | **3.6** | **105 HP: 35% kills** |
+| chapter 4 at 0.4375 | 36 / 50% | 3.6 | 115 HP: 20% kills |
+
+At chapter 3's own step the mirrored layout and the blightling garrison read *easier* than
+chapter 3 on floor 1, so the finale needs the steeper curve just to match chapter 3 there. Floor
+2 is another rounding edge: at ×1.875 the 3-HP basic mob becomes 6 HP (5 at chapter 3's ×1.75),
+which is the drop from 22 kills to 3.6. Runs off floor 0 read 15/80 against chapter 3's 13: the
+entrance is no harder. `chapterSim.sim.ts` gates chapter 4 the way it gates chapter 3, one
+chapter on (not a wall; floor-2 kills at most three quarters of chapter 3's; no floor clearing
+more often than chapter 3's; Rotbloom lands damage and poison, is beatable, and is no deadlier
+than Pyrefang).
+
+**Art and music.** The poison swatches had shipped on 2026-08-25 with no dungeon to draw them;
+`theme.ts` maps `blight` to `poison`. Unlike the lightning floor, they were measured before use
+and needed nothing: no saturated glow at all, as design/13's anti-camouflage rule asks. The
+picker banner `chapter_blight` was made with Mistral like the other three (`art/ui/prompts.md`;
+the model kept tinting the stone green, and asking for plum-grey stone is what came back
+neutral). The chapter's music bed is `dungeon.blight`, "Ominous Goings-On" by Eric Matyas
+(CC-BY 4.0; design/11), the one beatless loop of the six. It needed the music pack's own 3 MiB
+limit raised to 4 MiB, which WeChat allows for a standard subpackage.
+
 ### The plumbing: one id, read everywhere
 
 - **The chapter id is the config's `biomeId`.** `DungeonConfig` has no id of its own, and a
@@ -206,10 +284,11 @@ design/11).
 
 ### Next
 
-- Chapter 4 (blight): a poison critter first; it is what the chapter's garrison leads with.
+- ~~Chapter 4 (blight)~~: done the same day, with its poison critter and its own boss.
 - ~~Chapter music~~: done the same day. Each chapter has its own bed (`dungeon.ember`,
   `dungeon.frost`), open-licensed music like the rest of the soundtrack (design/11).
-- Hand-authored frost and storm layouts in the map editor, once players have seen the derived ones.
+- Hand-authored frost, storm and blight layouts in the map editor, once players have seen the derived ones.
+- A player's verdict on all of it. Every number above is a bot that never dodges on purpose.
 - Whether chapter 3's entrance should be harder. Not by `base`, which is a cliff; a garrison
   change (fewer 3-HP basics, more galvanists) would be the knob, and it needs a player's
   verdict on chapter 2 first.

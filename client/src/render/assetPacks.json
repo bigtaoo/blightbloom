@@ -24,7 +24,7 @@
     "  - `main`: root '', WeChat's first download. Code only. A rule is required to opt INTO it.",
     "  - `lobby`: awaited at boot before `new Game(...)`. The UI art the lobby draws (uiSkins.ts's",
     "    `boot` and `lobby` tiers); the rest of ui/* is the `ui-late` pack, in the `run` phase.",
-    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 2.99 MB,",
+    "  - `background`: fetched from the lobby, never awaited by anything. `music` only -- 3.41 MB,",
     "    and music is the one asset class a game can start without. See MusicPlayer.invalidate():",
     "    a deck handed a path inside an unfetched pack plays nothing and never retries, so the",
     "    pack's completion clears the director's memo instead of being awaited.",
@@ -93,8 +93,8 @@
       "name": "music",
       "root": "packs/music",
       "phase": "background",
-      "limitBytes": 3145728,
-      "note": "audio/music/*.mp3 — the design/11 loops. 2.99 MB shipped (2.85 of the 3 MiB the package check counts: menu, dungeon-ember, dungeon-frost, dungeon-storm, boss; openly licensed since 2026-10-06), so the limit has ~150 kB left and no room for another loop. Never awaited: see MusicPlayer.invalidate()."
+      "limitBytes": 4194304,
+      "note": "audio/music/*.mp3 — the design/11 loops. 3.41 MB shipped (3.26 of the 4 MiB the package check counts: menu, dungeon-ember, dungeon-frost, dungeon-storm, dungeon-blight, boss; openly licensed since 2026-10-06). Raised from 3 MiB to 4 MiB for the sixth loop (chapter 4, 2026-10-06): this is a standard subpackage, which WeChat caps only through the 30 MB whole-game total, so the 3 MiB was our own guard and moving it was a decision, not an overrun. ~0.74 MiB left, room for one more loop of this kind. Never awaited: see MusicPlayer.invalidate()."
     },
     {
       "name": "forge",
