@@ -494,7 +494,8 @@ requires every registered file to load.
 
 Banners for the lobby's PvE chapter picker, one per chapter: `chapter_ember` (chapter 1,
 "The Ember Descent", fire), `chapter_frost` (chapter 2, "The Frost Descent", ice) and, added
-later the same day, `chapter_storm` (chapter 3, "The Storm Descent", lightning). Same
+later the same day, `chapter_storm` (chapter 3, "The Storm Descent", lightning) and
+`chapter_blight` (chapter 4, "The Blight Descent", poison). Same
 format as the `lobby_card_*` route banners above (3:1, opaque, shipped as 768x256 q85 JPEG,
 ~35 kB each, in the `lobby` pack) and the same rule for the left 40%: calm and low-detail,
 because the picker draws the chapter's name there.
@@ -553,6 +554,44 @@ abandoned; the others ran on keys D and E). The three not kept:
 - the shipped prompt pushed harder ("several clearly visible forked bolts", "not teal"): luma 51,
   bolder forks but drawn pale bluish-white (too close to frost), crystals amber (hue 50°), and the
   stone still teal.
+
+## `chapter_blight` — shipped (`chapter_blight_raw.png`)
+
+```
+Restyle this banner into a toxic poison version while keeping the exact same composition, framing, camera angle, flat-cel 2D style and bold dark outlines, and the calm, low-detail empty floor area on the left 40%. Turn all the stone into dark dusky plum-grey stone (a muted aubergine grey, around #3d3542), matte and unlit, so the green crystals stand out against it. Wild-grown clusters of jagged glowing sickly yellow-green crystals (exactly #9ccc65, a muted lime yellow-green, not emerald) bloom out of the rings like a creeping crystal infection, and the depths of the spiral shaft hold a bright toxic yellow-green glow, with a few small glowing spores drifting up. IMPORTANT: the green belongs ONLY to the crystals, the spores and the glow in the depths. The stone keeps its plum-grey colour everywhere and is NOT tinted green, olive or teal by the glow. The left 40% stays a calm, simple, mid-dark plum-grey floor of brightness about 55 out of 255 (not pure black), no crystals, no glow, no bright spots. No orange, no blue, no teal. No text, no letters, no frame, no border. Keep the 3:1 wide format, 1536x512.
+```
+
+Poison carries the one extra clause the other three do not: design/13's "the poison biome's
+ambient green must be dialled down", so the stone itself must not read as green. That clause,
+not the glow, is what took five rolls. Measured on the shipped 768x256 JPEG (33,178 bytes):
+
+- left-40% luma 51.8 (std 2.8), beside ember's 54 and storm's 55; floor RGB about 51/51/57;
+- the bright crystal pixels (HSV s > 100, v > 170, 1.6% of the frame) have a median hue of
+  92° (p10-p90 85-97°), against `#9CCC65`'s 88°;
+- the dark stone (luma < 100, 96% of the frame) averages G - R = 5.8, inside the poison
+  swatches' "no more than ~10" rule (`art/biome/prompts.md`); inside the shaft, where the
+  crystals' glow spills onto it, the right 60% alone reads 10.0. For scale, storm's stone
+  reads 22.
+
+Asked for and not drawn: the plum/aubergine cast (the stone came back an almost neutral
+charcoal, with a faint cool lean only on the floor) and the drifting spores (a few specks at
+most). Asking for a slightly purple stone is what made a neutral one: every roll that asked for
+neutral or cold stone came back green-tinted, as if the edit model pulls the stone toward the
+crystal hue and asking for its complement cancels the pull. Plum is not an element colour, and
+the blightlord boss is the game's purple anyway.
+
+Five candidates were rolled on the descend raw, one call each (keys D and E; D hit its rate
+limit after two calls). The four not kept, all with good crystals and composition, all with
+green stone:
+
+- "cold dark ash-grey stone, almost colourless (NOT green-tinted)": luma 73, stone G - R 24
+  (a mossy grey-green), crystal hue 96°;
+- "charcoal-grey with a faint cool blue-grey cast ... NOT green, NOT olive": luma 74, G - R 26,
+  hue 82°;
+- "charcoal-navy" plus the poison swatches' numeric targets (blue highest, G - R <= 10, floor
+  luma 55): luma 54 on target, but G - R 23 (a dark teal-green), hue 83°;
+- "keep the stone's warm grey-brown, drained to ashen" with "red stays at or above green": luma
+  71, G - R 15, the stone an olive drab.
 
 ## Rejected (not kept)
 
