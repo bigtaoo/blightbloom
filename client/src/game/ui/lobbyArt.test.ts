@@ -103,7 +103,8 @@ describe('the painting and the route banners', () => {
     expect([width, height]).toEqual([1920, 1080]);
   });
 
-  it.each(['lobby_card_descend.jpg', 'lobby_card_coop.jpg', 'lobby_card_pvp.jpg'])(
+  // The route cards, and the PvE chapter picker's banners (2026-10-06) in the same format.
+  it.each(['lobby_card_descend.jpg', 'lobby_card_coop.jpg', 'lobby_card_pvp.jpg', 'chapter_ember.jpg', 'chapter_frost.jpg'])(
     '%s is a 3:1 banner', (name) => {
       const { width, height } = jpegSize(name);
       expect(width / height).toBeCloseTo(3, 5);
@@ -115,7 +116,8 @@ describe('the painting and the route banners', () => {
     // The `lobby` pack is what the player waits for at boot (assetPacks.json); the redesign's
     // art is budgeted at about 1 MB of its 2 MB limit, and this keeps a re-export from quietly
     // shipping the generator's multi-megabyte originals instead.
-    const names = [...SPRITES.map(([n]) => n), 'lobby_bg.jpg', 'lobby_card_descend.jpg', 'lobby_card_coop.jpg', 'lobby_card_pvp.jpg'];
+    const names = [...SPRITES.map(([n]) => n), 'lobby_bg.jpg', 'lobby_card_descend.jpg', 'lobby_card_coop.jpg', 'lobby_card_pvp.jpg',
+      'chapter_ember.jpg', 'chapter_frost.jpg'];
     const bytes = names.reduce((n, name) => n + statSync(new URL(name, UI)).size, 0);
     expect(bytes).toBeLessThan(1.1 * 1024 * 1024);
   });

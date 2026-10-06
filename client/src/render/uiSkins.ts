@@ -85,6 +85,11 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
   lobby_card_descend: '/ui/lobby_card_descend.jpg',
   lobby_card_coop: '/ui/lobby_card_coop.jpg',
   lobby_card_pvp: '/ui/lobby_card_pvp.jpg',
+  // The PvE chapter picker's banners (2026-10-06), one per chapter: the same 768x256 opaque
+  // JPEG format and flat-cel style as the route cards above, in the chapter's element hue.
+  // Raws and prompts: `art/ui/chapter_*_raw.png`, `art/ui/prompts.md`.
+  chapter_ember: '/ui/chapter_ember.jpg',
+  chapter_frost: '/ui/chapter_frost.jpg',
   // The painting's three sky rocks, lifted out of it (the sky painted back under them) so
   // `LobbyBackdrop` can drift them. `art/ui/prompts.md`, "The drifting rocks".
   lobby_rock_a: '/ui/lobby_rock_a.png',
@@ -109,6 +114,8 @@ const BOOT_KEYS: ReadonlySet<string> = new Set([
 const LOBBY_KEYS: ReadonlySet<string> = new Set([
   'lobby_hero_orb', 'lobby_hero_skirmisher', 'lobby_hero_juggernaut', 'lobby_weapon',
   'lobby_card_descend', 'lobby_card_coop', 'lobby_card_pvp',
+  // The chapter picker's banners — drawn by the lobby, never by its first frame.
+  'chapter_ember', 'chapter_frost',
   'lobby_rock_a', 'lobby_rock_b', 'lobby_rock_c',
 ]);
 
