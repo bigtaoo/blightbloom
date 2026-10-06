@@ -22,10 +22,10 @@ import {
   type ServerMsg,
   type Winner,
 } from '@dd/engine';
-import type { MatchMode } from './ticket';
+import type { ChapterId, MatchMode } from './ticket';
 import type { IntervalHandle } from './scheduler';
 import { WindowClock } from './windowClock';
-import type { MatchRoomDeps, RoomConnection } from './matchRoomTypes';
+import { roomChapter, type MatchRoomDeps, type RoomConnection } from './matchRoomTypes';
 import { judgeSettlement, SETTLE_TIMEOUT_MS, type SeatReport } from './settlement';
 
 export type { IntegrityVerdict } from './settlement';
@@ -77,6 +77,8 @@ export class MatchRoom {
   private readonly kicked = new Set<number>();
 
   private readonly mode: MatchMode;
+  /** The co-op room's chapter; `undefined` for PvP, which has none. */
+  private readonly chapterId: ChapterId | undefined;
 
   constructor(
     readonly roomId: string,
@@ -85,6 +87,7 @@ export class MatchRoom {
     private readonly deps: MatchRoomDeps,
   ) {
     this.mode = deps.mode ?? 'coop';
+    this.chapterId = roomChapter(this.mode, deps.chapterId);
     this.batchMs = deps.batchMs ?? DEFAULT_BATCH_MS;
     const framesPerBatch = deps.framesPerBatch ?? DEFAULT_FRAMES_PER_BATCH;
     this.broadcast = new FrameBroadcast({ framesPerBatch, startFrame: START_FRAME });
@@ -100,6 +103,9 @@ export class MatchRoom {
   }
   get modeValue(): MatchMode {
     return this.mode;
+  }
+  get chapterValue(): ChapterId | undefined {
+    return this.chapterId;
   }
   get frame(): number {
     return this.broadcast.frame;
@@ -163,6 +169,9 @@ export class MatchRoom {
         mode: this.mode,
         names: this.seatNames(),
         botSeats: this.botSeats(),
+        // Every co-op room names its chapter, the first one included: a reader treats absence
+        // as chapter 1 only for the sake of servers that predate the field.
+        chapterId: this.chapterId,
       });
     }
     this.startMetronome();

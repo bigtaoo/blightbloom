@@ -74,8 +74,8 @@ export const DAILY_ROLLUP_COLLECTION = 'dailyRollup';
  * `json_extract`, and as a subdocument it is a plain `$group` on `props.screen` that an
  * index could serve. The keys are safe to nest because they are not client-chosen — they
  * come from the compiled-in spec in `@dd/net/analyticsEvents` (`screen`, `character`,
- * `outcome`, `floor`, `duration_s`, `sku`), and `ingest.ts` walks the SPEC rather than the
- * payload, so nothing a caller sends can become a field name here.
+ * `outcome`, `floor`, `duration_s`, `chapter`, `sku`), and `ingest.ts` walks the SPEC rather
+ * than the payload, so nothing a caller sends can become a field name here.
  *
  * `accountId` carries no reference to `accounts`, deliberately, and the reason is the same
  * shape as `ratings`': most documents have none at all (a player who never logged in is

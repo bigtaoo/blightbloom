@@ -401,6 +401,36 @@ describe('RoomManager — routing + room parameter cross-check', () => {
     expect(mgr.join(b, 'room', 7, 2, 'pvp')).toBe(true); // agrees → seated
   });
 
+  it('rejects a co-op joiner that disagrees on the chapter, and reads no chapter as the first one', () => {
+    const scheduler = new FakeScheduler();
+    const mgr = new RoomManager({ scheduler });
+    expect(mgr.join(new FakeConn(0), 'room', 7, 2, 'coop', 'frost')).toBe(true);
+    expect(mgr.join(new FakeConn(1), 'room', 7, 2, 'coop')).toBe(false); // no chapter = ember ≠ frost
+    expect(mgr.join(new FakeConn(1), 'room', 7, 2, 'coop', 'ember')).toBe(false);
+    expect(mgr.join(new FakeConn(1), 'room', 7, 2, 'coop', 'frost')).toBe(true); // agrees → seated
+
+    // A chapter-less co-op ticket (minted before chapters) and an explicit first-chapter one
+    // are the SAME room — the control for the refusals above.
+    expect(mgr.join(new FakeConn(0), 'old', 7, 2, 'coop')).toBe(true);
+    expect(mgr.join(new FakeConn(1), 'old', 7, 2, 'coop', 'ember')).toBe(true);
+  });
+
+  it('sends every co-op seat the room chapter in match_start, and a PvP room none', () => {
+    const scheduler = new FakeScheduler();
+    const mgr = new RoomManager({ scheduler });
+    const frost = new FakeConn(0);
+    mgr.join(frost, 'f', 7, 1, 'coop', 'frost');
+    expect(frost.ofType('match_start')[0]!.chapterId).toBe('frost');
+    const plain = new FakeConn(0);
+    mgr.join(plain, 'p', 7, 1); // the pre-chapter call shape
+    expect(plain.ofType('match_start')[0]!.chapterId).toBe('ember');
+    const arena = new FakeConn(0);
+    mgr.join(arena, 'a', 7, 1, 'pvp', 'frost'); // a chapter on a PvP join is meaningless and dropped
+    expect('chapterId' in JSON.parse(JSON.stringify(arena.ofType('match_start')[0]!))).toBe(false);
+    expect(mgr.room('a')!.chapterValue).toBeUndefined();
+    mgr.destroyAll();
+  });
+
   it('routes cmd/resume/result by roomId and cleans up on the last disconnect', () => {
     const scheduler = new FakeScheduler();
     const mgr = new RoomManager({ scheduler });

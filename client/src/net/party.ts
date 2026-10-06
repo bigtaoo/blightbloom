@@ -3,6 +3,7 @@
  * matchsvc's /party/* routes, same injected-fetch shape as matchmaking.ts so both are
  * unit-testable without a network.
  */
+import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import type { PartyMode } from '../game/match/partyShape';
 
 export interface PartyInfo {
@@ -15,6 +16,10 @@ export interface PartyInfo {
   /** The server's member cap for `mode` (`partyCapacity`), drawn as the lobby's `1/2`. */
   capacity: number;
   matching: boolean;
+  /** A co-op party's chapter — the one its leader chose at {@link startPartyMatching}, which
+   *  every member's room plays. The first chapter until then; absent for a PvP squad and
+   *  from a server that predates chapters. */
+  chapterId?: ChapterId;
 }
 
 /**
@@ -80,8 +85,19 @@ export function leaveParty(baseUrl: string, partyId: string, playerId: string, o
   return post(baseUrl, '/party/leave', { partyId, playerId }, opts);
 }
 
-export async function startPartyMatching(baseUrl: string, partyId: string, playerId: string, opts: PartyCallOptions = {}): Promise<PartyInfo> {
-  return (await post(baseUrl, '/party/start', { partyId, playerId }, opts))!;
+/**
+ * The leader starts matching. `chapterId` is the PvE chapter a CO-OP party will play (default
+ * the first chapter): the server fixes it on the party here, and every member's `/find` is
+ * seated in it whatever that member's own client would have picked. A PvP squad ignores it.
+ */
+export async function startPartyMatching(
+  baseUrl: string,
+  partyId: string,
+  playerId: string,
+  chapterId: ChapterId = DEFAULT_CHAPTER_ID,
+  opts: PartyCallOptions = {},
+): Promise<PartyInfo> {
+  return (await post(baseUrl, '/party/start', { partyId, playerId, chapterId }, opts))!;
 }
 
 /** Poll current party state. `null` once the party is gone (dissolved/expired) —

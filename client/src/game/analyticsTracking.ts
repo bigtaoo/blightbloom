@@ -26,6 +26,7 @@
 // frame. All three entry points install one — the WeChat build since 2026-09-09, when the
 // `wx.getStorageSync` identity store made its install id persist; see `main.wechat.ts` for
 // why a per-visit id was a reason to send nothing at all.
+import { chapterIdOfConfig, type DungeonConfig } from '@dd/engine';
 import { track } from '../net/analytics';
 import type { Phase } from './phase';
 
@@ -44,10 +45,12 @@ export interface TrackedState {
   floorIndex: number;
   /** The local seat's render key (`SkinDef.atlasKey`, e.g. `char_vanguard`), when known. */
   character?: string;
+  /** The PvE chapter the run is in, when it is one of the catalog's (not a PvP arena). */
+  chapter?: string;
 }
 
-/** Ticks per second, matching the engine's own rate. Duplicated rather than imported so
- *  this module stays free of engine imports; asserted equal in its test. */
+/** Ticks per second, matching the engine's own rate. Duplicated rather than imported (it
+ *  predates this module's one engine import, `chapterIdOfConfig`); asserted equal in its test. */
 export const TICK_RATE = 30;
 
 /**
@@ -117,12 +120,14 @@ let lastPhase: Phase | null = null;
  */
 let lastRun: TrackedState | null = null;
 
-/** The shape `trackedRunFrom` reads out of a live `GameState`, narrowed to the three
- *  fields it needs so this module still needs no engine import. */
+/** The shape `trackedRunFrom` reads out of a live `GameState`, narrowed to the fields it
+ *  needs so a test can hand it a plain object. */
 export interface RunStateLike {
   tick: number;
   floorIndex: number;
   players: readonly { atlasKey?: string }[];
+  /** The run's dungeon config (`GameState.dungeonConfig`) — absent in an arena. */
+  dungeonConfig?: DungeonConfig;
 }
 
 /**
@@ -136,11 +141,20 @@ export interface RunStateLike {
 export function trackedRunFrom(state: RunStateLike | null, localOwner: number): TrackedState | null {
   if (state === null) return null;
   const character = state.players[localOwner]?.atlasKey;
+  // From the run's OWN config, not the lobby selection: a co-op guest plays the host's chapter.
+  const chapter = chapterIdOfConfig(state.dungeonConfig);
   return {
     tick: state.tick,
     floorIndex: state.floorIndex,
     ...(character === undefined ? {} : { character }),
+    ...(chapter === null ? {} : { chapter }),
   };
+}
+
+/** `{ chapter }` when the run is in a catalog chapter, else nothing — spread into the run
+ *  events so an arena run carries no `chapter` key at all rather than an empty one. */
+export function chapterProp(state: { chapter?: string }): { chapter?: string } {
+  return state.chapter === undefined ? {} : { chapter: state.chapter };
 }
 
 /** Whole seconds of simulated time. `Math.max(0, …)` because a state handed in before its
@@ -181,7 +195,7 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
   let floor = false;
   if (inRun(phase) && state !== null) {
     if (lastRun !== null && state.floorIndex > lastRun.floorIndex) {
-      track('floor_reached', { floor: state.floorIndex + 1 });
+      track('floor_reached', { floor: state.floorIndex + 1, ...chapterProp(state) });
       floor = true;
     }
     lastRun = state;
@@ -201,7 +215,7 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
       'run_end',
       ending === null
         ? { outcome: 'abandon' }
-        : { outcome: 'abandon', floor: ending.floorIndex + 1, duration_s: runSeconds(ending) },
+        : { outcome: 'abandon', floor: ending.floorIndex + 1, duration_s: runSeconds(ending), ...chapterProp(ending) },
     );
     lastRun = null;
   }
@@ -210,7 +224,8 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
 
   if (!inRun(previous ?? 'menu') && inRun(phase)) {
     const character = state?.character;
-    track('run_start', character === undefined ? undefined : { character });
+    const props = { ...(character === undefined ? {} : { character }), ...chapterProp(state ?? {}) };
+    track('run_start', Object.keys(props).length === 0 ? undefined : props);
   }
   return true;
 }

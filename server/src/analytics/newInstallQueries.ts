@@ -21,6 +21,7 @@
 // the web and the portal, `wx.setStorageSync` on WeChat), so one id seen on two hosts is the
 // web build and the portal build sharing a browser profile, which only happens on our domain.
 import type { Db } from 'mongodb';
+import { DEFAULT_CHAPTER_ID } from '@dd/engine';
 import { DAILY_ACTIVE_COLLECTION, dailyActiveOf, eventsOf } from './db';
 
 /** The label value for the total across hosts — the same spelling `rollup.ts` uses for DAU. */
@@ -107,17 +108,32 @@ export interface FirstDay {
   run_finished: boolean;
   /** Its first `session_start` said the install id did not survive a write (design/21 §2.8). */
   unpersisted: boolean;
-  /** The deepest floor it reached in any run that day (1-based), or 0 if it reached none. */
+  /** The deepest floor it reached that day in a CHAPTER-1 run (1-based), or 0 if none. */
   depth: number;
 }
 
 const EMPTY_DAY: FirstDay = { menu: false, run_start: false, run_finished: false, unpersisted: false, depth: 0 };
 
 /**
+ * The chapter whose floors `depth` counts: the first. Floor numbers are per chapter (every
+ * chapter has its own floors 1..5), so a max over all of them would put "floor 3 of chapter 2"
+ * in the same bucket as "floor 3 of chapter 1" — two very different distances into the game.
+ * And the first chapter is the one a new install's first day is ABOUT: chapter 2 unlocks only
+ * by clearing chapter 1, so a new player meets any other chapter on day one only as a guest
+ * in a friend's co-op party, which says nothing about how far the game's own on-ramp took them.
+ *
+ * An event with no `chapter` prop counts as chapter 1: it is from a client that predates the
+ * field, and those could play nothing else. A PvP run carries no chapter either, and never
+ * carried a meaningful floor — the same as before this split existed.
+ */
+const DEPTH_CHAPTER = DEFAULT_CHAPTER_ID;
+
+/**
  * Each cohort member's first day, from that day's events. An install with no relevant event
  * (a `dailyActive` row whose events were all something else) gets {@link EMPTY_DAY}.
  *
- * `depth` is the max over `floor_reached.floor` and `run_end.floor`. The first is what makes
+ * `depth` is the max over `floor_reached.floor` and `run_end.floor` of CHAPTER-1 runs only —
+ * see {@link DEPTH_CHAPTER} for why one chapter and why that one. The first is what makes
  * it honest: a run the player left by closing the tab ends with no `run_end` at all (the page
  * is gone before the phase changes), and before `floor_reached` existed that run's depth was
  * simply missing — the most common way a new player leaves was the one case without a number.
@@ -126,9 +142,10 @@ export async function firstDays(db: Db, day: string, cohort: Cohort): Promise<Ma
   const out = new Map<string, FirstDay>();
   if (cohort.size === 0) return out;
   const flag = (cond: object): object => ({ $max: { $cond: [cond, true, false] } });
-  const isFloor = { $in: ['$name', ['floor_reached', 'run_end']] };
+  const inDepthChapter = { $eq: [{ $ifNull: ['$props.chapter', DEPTH_CHAPTER] }, DEPTH_CHAPTER] };
+  const isFloor = { $and: [{ $in: ['$name', ['floor_reached', 'run_end']] }, inDepthChapter] };
   const got = await eventsOf(db)
-    .aggregate<FirstDay & { _id: string }>([
+    .aggregate<FirstDay & { _id: string; depth_start: boolean }>([
       {
         $match: {
           day,
@@ -141,6 +158,8 @@ export async function firstDays(db: Db, day: string, cohort: Cohort): Promise<Ma
           _id: '$install',
           menu: flag({ $and: [{ $eq: ['$name', 'screen_view'] }, { $eq: ['$props.screen', 'menu'] }] }),
           run_start: flag({ $eq: ['$name', 'run_start'] }),
+          // Whether a run of the depth chapter was started — what the floor-1 floor below rests on.
+          depth_start: flag({ $and: [{ $eq: ['$name', 'run_start'] }, inDepthChapter] }),
           run_finished: flag({ $and: [{ $eq: ['$name', 'run_end'] }, { $in: ['$props.outcome', FINISHED_OUTCOMES] }] }),
           unpersisted: flag({ $and: [{ $eq: ['$name', 'session_start'] }, { $eq: ['$props.storage', 'unpersisted'] }] }),
           // `$ifNull` because an abandon reported without its numbers has no `floor`.
@@ -150,10 +169,10 @@ export async function firstDays(db: Db, day: string, cohort: Cohort): Promise<Ma
     ])
     .toArray();
   for (const r of got) {
-    const { _id, ...profile } = r;
+    const { _id, depth_start, ...profile } = r;
     // A run that was started reached floor 1, whether or not anything said so: a tab closed
-    // on the first floor leaves a `run_start` and nothing after it.
-    out.set(_id, { ...profile, depth: profile.run_start ? Math.max(1, profile.depth) : profile.depth });
+    // on the first floor leaves a `run_start` and nothing after it. Only a depth-chapter run.
+    out.set(_id, { ...profile, depth: depth_start ? Math.max(1, profile.depth) : profile.depth });
   }
   for (const install of cohort.keys()) if (!out.has(install)) out.set(install, EMPTY_DAY);
   return out;

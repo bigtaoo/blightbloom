@@ -83,7 +83,8 @@ export const NEW_METRICS = {
   funnel: 'new_funnel',
   /** New installs whose id did not survive a write — they can never be seen returning. */
   unpersisted: 'new_unpersisted',
-  /** New installs by the deepest floor they reached on their first day; one row per floor
+  /** New installs by the deepest floor they reached on their first day IN CHAPTER 1 (floor
+   *  numbers are per chapter — `newInstallQueries.ts`'s `DEPTH_CHAPTER`); one row per floor
    *  that has anybody on it. A floor with no row, on a day with an `installs` row, is 0. */
   depth: 'new_depth',
   retention: 'new_retention',
@@ -246,7 +247,7 @@ const GAUGES: Record<string, { name: string; help: string }> = {
   },
   [NEW_METRICS.depth]: {
     name: 'bb_new_depth_installs',
-    help: 'New installs of the last complete day by the deepest floor reached that day.',
+    help: 'New installs of the last complete day by the deepest chapter-1 floor reached that day.',
   },
   [NEW_METRICS.retention]: { name: 'bb_new_retention_ratio', help: "Share of a day's NEW installs that were active again N days later." },
   [NEW_METRICS.cohortSize]: { name: 'bb_new_cohort_size', help: 'New installs in the cohort behind bb_new_retention_ratio at this offset.' },

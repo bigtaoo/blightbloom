@@ -1,3 +1,4 @@
+import type { ChapterId } from '@dd/engine';
 import { CoopSession } from '../../net/CoopSession';
 import { WebSocketTransport, LaggyTransport, type Transport } from '../../net/transport';
 import { findMatch, type QueueProgress } from '../../net/matchmaking';
@@ -14,6 +15,10 @@ export interface OnlineConnectOptions {
   /** A pre-formed party's id (design/05/15's PvP squad follow-up) — see
    * `findMatch`'s `FindMatchOptions.partyId`. Omitted → plain solo queue. */
   partyId?: string;
+  /** The PvE chapter a co-op queue asks for — `findMatch`'s `FindMatchOptions.chapterId`
+   * (default: the first chapter). Ignored for PvP. The room's chapter comes back in
+   * `match_start`, which is what `buildOnlineConfig` actually builds from. */
+  chapterId?: ChapterId;
   /** The ticket assigns THIS client's seat — the caller's camera/HUD should follow it. */
   onMatchStart: (localOwner: number) => void;
   /** Cooperative cancel (design/10 Matchmaking screen's Cancel button) — threaded
@@ -78,6 +83,7 @@ export async function connectOnlineSession(opts: OnlineConnectOptions): Promise<
     playerCount: opts.pvp ? opts.pvpSeats : COOP_SEATS,
     mode: opts.pvp ? 'pvp' : 'coop',
     partyId: opts.partyId,
+    chapterId: opts.chapterId,
     signal: opts.signal,
     onQueued: opts.onQueued,
     fetch: opts.fetch,

@@ -7,7 +7,8 @@
  */
 import type { ClientMsg } from '@dd/engine';
 import { MatchRoom, type RoomConnection, type Scheduler, type SettledMatch } from './MatchRoom';
-import type { MatchMode } from './ticket';
+import type { ChapterId, MatchMode } from './ticket';
+import { roomChapter } from './matchRoomTypes';
 
 export interface RoomManagerDeps {
   scheduler: Scheduler;
@@ -30,24 +31,31 @@ export class RoomManager {
   }
 
   /**
-   * Handle a `join`: create the room if new (this joiner's seed/playerCount define it),
-   * else cross-check the joiner agrees with the existing room, then seat the connection.
+   * Handle a `join`: create the room if new (this joiner's seed/playerCount/mode/chapter
+   * define it), else cross-check the joiner agrees with the existing room, then seat the
+   * connection. A co-op joiner with no chapter means the first one, as the room does.
    * Returns false if the room parameters mismatch or the seat is taken/out of range —
    * the caller closes the socket.
    */
-  join(conn: RoomConnection, roomId: string, seed: number, playerCount: number, mode: MatchMode = 'coop'): boolean {
+  join(
+    conn: RoomConnection, roomId: string, seed: number, playerCount: number, mode: MatchMode = 'coop', chapterId?: ChapterId,
+  ): boolean {
     let room = this.rooms.get(roomId);
     if (!room) {
       room = new MatchRoom(roomId, seed, playerCount, {
         scheduler: this.deps.scheduler,
         mode,
+        chapterId,
         onDestroy: (id) => this.rooms.delete(id),
         onSettled: this.deps.onSettled,
         batchMs: this.deps.batchMs,
         framesPerBatch: this.deps.framesPerBatch,
       });
       this.rooms.set(roomId, room);
-    } else if (room.seedValue !== seed || room.playerCountValue !== playerCount || room.modeValue !== mode) {
+    } else if (
+      room.seedValue !== seed || room.playerCountValue !== playerCount || room.modeValue !== mode ||
+      room.chapterValue !== roomChapter(mode, chapterId)
+    ) {
       return false; // a joiner disagreeing about the match cannot share the room
     }
     return room.join(conn);
