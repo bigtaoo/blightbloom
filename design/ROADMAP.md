@@ -1788,9 +1788,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-08** [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change) — "pvp的地图，看起来一片空白": online PvP drew players, loot and the minimap over bare gray terrain with no floor or walls. The client builds a floor on the engine's `room_enter`, which only dungeon mode emits, or up front in `enterPrimedRun` (offline arena demo, tutorial, replay); `finalizeOnlineRun`, the one online entry, cleared the last run's geometry and did neither, so an online arena was never built. It now builds `session.state` when it carries an `arenaMap`, leaving a dungeon to tick 1. The `?arena=` walks missed it because they boot the offline demo. Verified in a real bot-filled match on a local backend (in-memory Mongo + gameserver + matchsvc), with the line removed reproducing the gray screen. Three tests hold the two facts the fix rests on: the build itself, a real `connectOnlineSession` resolving a PvP session with its `arenaMap` at tick 0, and the golden arena scenario firing no `room_enter`. `render` `arena` `test` `docs`
 
+**[2026-10-08 — Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md)**
+
+- **10-08** [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change) — "和机器人组队之后，这里的ui点了没用" and "机器人不要像一个跟班一样老是跟随玩家": two co-op-with-a-bot reports. Online, the floor-card cards and the Descend button did nothing: the sparse held-input sync sends a command only when it changed, its comparison was a hand-written field list without `cardVote`, and a player standing still at the portal changes nothing else, so the vote was dropped as a duplicate and `ExtractionSystem`, which descends only for a voted seat, never opened the portal. Offline `?coop=1` skips the filter. It now compares every field but `type`/`owner`/`tick`, and a test enumerates the command's real keys so the next field cannot be forgotten either; the loopback test runs a standing-still vote through server and engine. And the ally no longer steps after every step its player takes in a quiet room: `ai/roam.ts` gives it a hashed spot 2-6 grid from the leader each 2.5 s, or a rest, regrouping only past 8 grid or when the leader changes room. It never picks a spot outside the leader's room (a started fight would pull the player in) and never fetches loot (the collector keeps it). Live, a corner-standing leader first had the ally milling at their feet; a spot is now accepted only if it is still in the ring after being pulled inside the walls. `net` `test` `docs`
+
 ## The work log — by theme
 
-The same 251 entries, grouped. An entry with more than one tag appears more than once.
+The same 252 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(78)*
 
@@ -2022,7 +2026,7 @@ The same 251 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(157)*
+**`test`** — coverage sweeps, gates, mutation batteries *(158)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2181,6 +2185,7 @@ The same 251 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
+- 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2350,7 +2355,7 @@ The same 251 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(168)*
+**`docs`** — design docs and this log itself *(169)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2520,8 +2525,9 @@ The same 251 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
+- 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 
-**`net`** — matchmaking, sockets, reconnect *(42)*
+**`net`** — matchmaking, sockets, reconnect *(43)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 09-03 [The client was already over 90%, and nothing had ever measured it](roadmap/19-2026-09-03-coverage-gate.md#the-client-was-already-over-90-and-nothing-had-ever-measured-it-2026-09-03-build--client--server--engine-no-engine-bump)
@@ -2565,6 +2571,7 @@ The same 251 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [A run with only bots standing ends](roadmap/129-2026-10-04-bot-only-wipe.md#a-run-with-only-bots-standing-ends-2026-10-04-engine--client--server--tools--test--docs-engine_version-88)
 - 10-04 [A Host header that does not parse is a 400](roadmap/130-2026-10-04-bad-host-400.md#a-host-header-that-does-not-parse-is-a-400-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
+- 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 
 **`i18n`** — locales and text layout *(22)*
 

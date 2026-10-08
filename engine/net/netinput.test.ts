@@ -128,6 +128,40 @@ describe('NetInputSource — sparse held-input sync (design/15, ROADMAP 4.5)', (
     expect(sink.sent[1]?.pickupTargetId).toBe(7);
   });
 
+  it('submit() DOES resend a floor-card vote on an otherwise-idle tick (the 2026-10-08 report)', () => {
+    // A card tap happens standing still at the portal, so the vote is the ONLY field that
+    // differs. It was swallowed as a duplicate, and online a squad could neither pick a card
+    // nor descend (a descend waits for a vote).
+    const sink = collectingSink();
+    const net = new NetInputSource(sink);
+    const base = cmd(0, 1);
+    net.submit(base);
+    net.submit({ ...base, tick: 2, cardVote: 2 });
+    expect(sink.sent).toHaveLength(2);
+    expect(sink.sent[1]?.cardVote).toBe(2);
+  });
+
+  it('submit() resends when ANY command field but type/owner/tick changes — a new field cannot be forgotten', () => {
+    // Enumerated from a real command, not from a list in this file: a field added to
+    // `PlayerCommand` (and `makeCommand`) is covered here without anyone touching the test.
+    const base = cmd(0, 1);
+    const fields = Object.keys(base).filter((k) => !['type', 'owner', 'tick'].includes(k));
+    expect(fields).toEqual(expect.arrayContaining(['moveBrad', 'moveMag', 'buttons', 'pickupTargetId', 'cardVote', 'shopBuyId']));
+    for (const k of fields) {
+      const sink = collectingSink();
+      const net = new NetInputSource(sink);
+      net.submit(base);
+      net.submit({ ...base, tick: 2, [k]: (base[k as keyof PlayerCommand] as number) + 1 });
+      expect(sink.sent, k).toHaveLength(2);
+    }
+    // ...and the three that never count stay out.
+    const sink = collectingSink();
+    const net = new NetInputSource(sink);
+    net.submit(base);
+    net.submit({ ...base, owner: 3, tick: 9 });
+    expect(sink.sent).toHaveLength(1);
+  });
+
   it('a pure metronome pulse (frames: []) holds every known owner\'s last command instead of going idle', () => {
     const net = new NetInputSource(collectingSink(), { bufferFrames: 0 });
     net.handleServerMsg(START);
