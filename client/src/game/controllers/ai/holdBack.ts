@@ -23,7 +23,7 @@ export const HOLD_BACK_FP = Math.round(7.5 * FP_SCALE);
 const BAND_FP = gridFp(1);
 
 /** The room whose rect contains `p`, or undefined outside every rect. Array order decides ties. */
-function roomAt(s: GameState, p: Point): string | undefined {
+export function roomAt(s: GameState, p: Point): string | undefined {
   for (const r of s.dungeonRoomRects) {
     const { x, y, w, h } = r.rect;
     if (p.gx >= x && p.gx <= x + w && p.gy >= y && p.gy <= y + h) return r.id;
