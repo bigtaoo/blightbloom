@@ -17,7 +17,7 @@
  *  - `recorder.end()` on an online run is what stops F9 exporting the previous OFFLINE run's
  *    stream, which would hand a bug report a file of the wrong match entirely.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import { LocalInputSource, createGameEngine, hashState, type EngineConfig, type PlayerCommand } from '@dd/engine';
 import { makeCommand } from '@dd/engine/state/input';
 import type { Brad } from '@dd/engine/math/trig';
@@ -318,6 +318,26 @@ describe('finalizeOnlineRun', () => {
     for (const hidden of ['matchmaking.hide', 'forge.hide', 'loadout.hide', 'screens.hide', 'partyScreen.hide']) {
       expect(t.order, hidden).toContain(hidden);
     }
+  });
+
+  it('builds an ARENA match\'s geometry at once, after the reset clears the last one', () => {
+    // Live 2026-10-08: online PvP drew no floor and no walls, only actors, loot and the minimap.
+    // The engine fires `room_enter` in dungeon mode only, and finalize was the one run entry that
+    // neither built nor waited on that event, so an arena match was never built at all.
+    const t = make();
+    const state = { arenaMap: { rooms: [] } };
+    t.runs.finalizeOnlineRun({ close: vi.fn(), state } as never);
+    const built = t.order.indexOf('roomBuilder.build');
+    expect(built).toBeGreaterThan(t.order.indexOf('roomBuilder.clear'));
+    expect((t.deps.roomBuilder.build as Mock).mock.calls[0]?.[0]).toBe(state);
+  });
+
+  it('leaves a DUNGEON match to its first room_enter, which builds the floor tick 1 places', () => {
+    // A co-op dungeon has no rooms at tick 0; building here would only set the floor key and
+    // turn tick 1's real build into a staged one behind the descend cover.
+    const t = make();
+    t.runs.finalizeOnlineRun({ close: vi.fn(), state: { dungeonRooms: [] } } as never);
+    expect(t.order).not.toContain('roomBuilder.build');
   });
 
   it('ENDS the previous offline recording, so F9 cannot export the wrong run', () => {

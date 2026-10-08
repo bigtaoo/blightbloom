@@ -8,8 +8,8 @@
 // Behaviour: revive a downed teammate (volume 118, `ai/revive.ts`: the rule the arena bot
 // ships), else fight an enemy in its own room or the leader's from 7.5 grid off
 // (`ai/holdBack.ts`, 2026-10-04 — facing is engine-decided, design/10 v33), and when the
-// room is quiet, regroup toward the local player
-// so the two stay together through room transitions. When the player stands on a big
+// room is quiet, wander it on its own (`ai/roam.ts`, 2026-10-08): a stroll to a spot in the
+// leader's room or a rest, coming back only when the leader leaves the room or the leash. When the player stands on a big
 // chest's plate, the ally takes another (`ai/chestPlate.ts`), and when a squadmate opens the
 // portal it confirms at once (ENGINE_VERSION 87): a bot never holds its player back. All from the engine's fp state, no
 // wall-clock / RNG — a bot is just another command source, and keeping it state-derived
@@ -19,17 +19,20 @@ import { engageNearest, idleCommand, gridFp, FIRE_RANGE_FP, type Point } from '.
 import { holdBackFight } from './ai/holdBack';
 import { reviveMove } from './ai/revive';
 import { plateMove } from './ai/chestPlate';
+import { roamMove } from './ai/roam';
 
 /** Whichever portal button the floor reads; the engine ignores the other one. */
 const PORTAL_CONFIRM = Button.CONFIRM_DESCEND | Button.CONFIRM_EXTRACT;
 
-const REGROUP_FP = gridFp(3); // when idle, only close to the leader if further than this
+const REGROUP_FP = gridFp(3); // `roams: false` only: when idle, close to the leader if further than this
 
 export class AllyController {
   /** The co-op revive sim's controls (`sim/coopRevive.sim.ts`): `revives: false` is the ally as
    *  it fought before volume 118 gave it the revive rule, `holdsBack: false` the ally before
-   *  2026-10-04's `ai/holdBack.ts`, charging the nearest enemy anywhere on the floor. */
-  constructor(private readonly opts: { revives?: boolean; holdsBack?: boolean } = {}) {}
+   *  2026-10-04's `ai/holdBack.ts`, charging the nearest enemy anywhere on the floor, and
+   *  `roams: false` the ally before 2026-10-08's `ai/roam.ts`, closing on its leader whenever
+   *  it was more than 3 grid off. */
+  constructor(private readonly opts: { revives?: boolean; holdsBack?: boolean; roams?: boolean } = {}) {}
 
   /** Build the ally seat's command for this tick. `leaderOwner` is the seat to regroup on. */
   build(s: GameState, owner: number, leaderOwner: number, tick: number): PlayerCommand {
@@ -62,7 +65,12 @@ export class AllyController {
     const engaged = this.opts.holdsBack === false ? engageNearest(owner, tick, me, enemies) : holdBackFight(s, owner, tick, me, leader?.alive ? leader : undefined, enemies);
     if (engaged) return engaged;
 
-    // Nothing to fight here: regroup on the leader so the pair traverses rooms together.
+    // Nothing to fight here: the quiet room is the ally's own (`ai/roam.ts`), on a leash to the
+    // leader so the pair still traverses rooms together.
+    if (leader && leader.alive && this.opts.roams !== false) {
+      const roam = roamMove(s, owner, me, leader, tick);
+      return makeCommand({ owner, tick, ...roam, buttons: 0 });
+    }
     if (leader && leader.alive) {
       const dx = leader.gx - me.gx;
       const dy = leader.gy - me.gy;

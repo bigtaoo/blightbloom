@@ -247,20 +247,22 @@ export function confirmedStream(log: readonly FrameCmds[], toFrame: number, star
  * mechanism (determinism quantization) doing double duty as the compression key,
  * not a second threshold invented on top. Buttons are already edge-shaped
  * (bit-flip = a real change); `owner`/`tick`/`type` never factor in.
- * `pickupTargetId` (ENGINE_VERSION 32) is a one-shot click latch, not a held button —
- * a click can land on a tick where every other field happens to be unchanged (e.g.
- * standing still, already firing), so it must factor in here too or the click is
- * silently swallowed as a duplicate and never reaches the server; `shopBuyId` (2026-09-14)
- * is the same latch for a shop counter. */
+ *
+ * Every OTHER field does, by construction rather than by list (2026-10-08). This was a
+ * hand-written list of fields, and each value-carrying latch added to `PlayerCommand`
+ * had to be remembered here too: `pickupTargetId` and `shopBuyId` were, `cardVote`
+ * (ENGINE_VERSION 58) never was. A card tap from a seat standing still at the portal —
+ * which is where every card tap happens — differed from the last command in `cardVote`
+ * alone, so it was swallowed as a duplicate and never reached the server. And since a
+ * descend waits for a vote (`ExtractionSystem`), the Descend button then did nothing
+ * either: online, a squad could neither pick a card nor leave the floor (live report,
+ * co-op with a bot backfill). A new field is now sent the moment it differs, with no
+ * line here to forget. */
+const IGNORED: ReadonlySet<string> = new Set<keyof PlayerCommand>(['type', 'owner', 'tick']);
+
 function changed(a: PlayerCommand, b: PlayerCommand): boolean {
-  return (
-    a.moveBrad !== b.moveBrad ||
-    a.moveMag !== b.moveMag ||
-    a.buttons !== b.buttons ||
-    a.pickupTargetId !== b.pickupTargetId ||
-    // Same reasoning as `pickupTargetId` above, one verb along: a shop tap can land on a
-    // tick where nothing else moved, and a swallowed tap is a purchase the server never
-    // hears about.
-    a.shopBuyId !== b.shopBuyId
-  );
+  for (const k of Object.keys(b) as (keyof PlayerCommand)[]) {
+    if (!IGNORED.has(k) && a[k] !== b[k]) return true;
+  }
+  return false;
 }

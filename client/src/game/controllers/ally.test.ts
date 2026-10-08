@@ -208,6 +208,10 @@ describe('AllyController — a big chest’s second plate (2026-10-03)', () => {
   // A two-plate chest at grid (20, 10): plates due east (20 + ring, 10) and due west.
   const CX = 20;
   const R = CHEST_MECHANISM_RING_GRID;
+  // The follow-only ally (`roams: false`): these tests read "walks to the leader" as the
+  // control for "no plate to take". The plate rule runs before the roam, so it is the same
+  // rule either way; roaming has its own block below.
+  const ally = new AllyController({ roams: false });
   function chestState(leaderGx: number, allyGx: number): { s: GameState; chest: Chest } {
     const s = createGameState({ ...CFG, players: [{ start: [0, 0] }, { start: [0, 0] }] });
     Object.assign(s.players[0]!, { gx: toFpGrid(leaderGx), gy: toFpGrid(10) });
