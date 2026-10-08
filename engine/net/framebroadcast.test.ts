@@ -146,4 +146,15 @@ describe('loopback: FrameBroadcast → NetInputSource → engine == the local ru
     const sparse = server.log.flatMap((fc) => fc.cmds.map((c) => ({ ...c, tick: fc.frame })));
     expect(hashState(runReplay(toReplay(config, sparse), N).state)).not.toBe(hashState(ref.state));
   });
+
+  it('a card vote from a seat standing still reaches the sim (2026-10-08: it was filtered as a duplicate)', () => {
+    // Idle throughout, one tap on frame 40 — the shape of a player choosing a card at the
+    // portal. The vote is the only field that ever changes.
+    const intent = Array.from({ length: N }, (_, i) =>
+      makeCommand({ owner: 0, tick: i + 1, moveBrad: 0 as Brad, moveMag: 0, buttons: 0, cardVote: i + 1 === 40 ? 2 : 0 }));
+    const { engine, server } = online(intent);
+    expect(server.log.map((f) => f.frame)).toEqual([1, 40, 41]);
+    expect(engine.state.players[0]!.cardVote).toBe(2);
+    expect(hashState(engine.state)).toBe(hashState(local(intent).state));
+  });
 });
