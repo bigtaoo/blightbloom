@@ -231,5 +231,10 @@ describe('anti-vacuity — every scenario actually exercised the engine', () => 
     const arena = by('launch-arena-pvp');
     expect(arena.seats).toBe(2);
     expect(arena.events.zone_warn ?? arena.events.zone_close ?? 0, 'the zone never moved').toBeGreaterThan(0);
+    // An arena's map exists whole at tick 0, so it never fires `room_enter` — and the client
+    // depends on that ABSENCE: the event is what builds a dungeon's geometry, so an arena has
+    // to be built at run entry instead (`RunLifecycle.finalizeOnlineRun`, 2026-10-08, after
+    // online PvP drew a blank floor). If arena mode ever starts emitting it, revisit that.
+    expect(arena.events.room_enter ?? 0, 'the arena fired room_enter — see RunLifecycle').toBe(0);
   });
 });

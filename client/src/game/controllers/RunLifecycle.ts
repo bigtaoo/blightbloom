@@ -378,10 +378,8 @@ export class RunLifecycle {
   //
   // Connection setup (matchmaking + ticket redemption) lives in onlineConnect.ts, and the
   // run-config shape it needs in matchConfig.ts (both pure of run state) — this just owns
-  // the session's lifecycle and phase transition. The matchmaking ATTEMPT itself (design/10
-  // screen-flow gap) lives entirely in the Matchmaking screen, so this method only runs once
-  // that screen already has a connected session in hand: there is no "blank playing phase
-  // while invisibly connecting" window any more.
+  // the session's lifecycle and phase transition. The matchmaking ATTEMPT lives in the
+  // Matchmaking screen (design/10), so this only runs with a connected session in hand.
 
   /** A match actually started — enter `playing` with the now-live session.
    *
@@ -405,6 +403,9 @@ export class RunLifecycle {
     d.run.session?.close();
     d.run.session = session;
     d.gameLoop.resetOnlinePrediction(); // re-anchors on the first confirmed frame of the new run
+    // An arena's whole map exists at tick 0 and `room_enter` is dungeon-only, so nothing else
+    // builds it: online PvP played on a blank floor until this (2026-10-08). Same as `enterPrimedRun`.
+    if (session.state?.arenaMap) d.roomBuilder.build(session.state);
     d.matchmaking.hide();
     d.run.phase = 'playing';
     d.hudView.visible = true;
