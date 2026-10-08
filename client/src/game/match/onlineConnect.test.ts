@@ -85,6 +85,34 @@ describe('connectOnlineSession — success', () => {
     expect(session.started).toBe(true);
   });
 
+  it('hands back a PvP session whose ARENA map already exists, and a co-op one with no rooms yet', async () => {
+    // `RunLifecycle.finalizeOnlineRun` builds the arena from `session.state` the moment this
+    // resolves, because the engine never fires `room_enter` in arena mode (2026-10-08: online
+    // PvP drew a blank floor). That fix tests against a fake session; this is the real one,
+    // pinning its precondition: a state that only appeared AFTER resolution would make it a
+    // silent no-op and the blank floor would be back with every unit test still green.
+    const connect = async (pvp: boolean, mode: 'pvp' | 'coop') => {
+      let transport!: FakeTransport;
+      const promise = connectOnlineSession({
+        matchBaseUrl: 'http://mm', pvp, pvpSeats: 2, lagMs: 0,
+        onMatchStart: () => {},
+        fetch: fakeFetch([{ queueId: 'q1', match: MATCH }]),
+        sleep: noSleep,
+        createTransport: () => (transport = new FakeTransport()),
+      });
+      await flush();
+      transport.deliver({ ...MATCH_START, mode });
+      return promise;
+    };
+    const pvp = await connect(true, 'pvp');
+    expect(pvp.state?.tick).toBe(0);
+    expect(pvp.state?.arenaMap?.rooms.length).toBeGreaterThan(0);
+    // The other arm of the same condition: a dungeon is built by its first `room_enter`.
+    const coop = await connect(false, 'coop');
+    expect(coop.state).not.toBeNull();
+    expect(coop.state?.arenaMap).toBeUndefined();
+  });
+
   it('calls onMatchStart with the ticket-assigned localOwner before resolving', async () => {
     let transport!: FakeTransport;
     const seen: number[] = [];
