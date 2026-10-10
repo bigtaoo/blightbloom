@@ -66,7 +66,8 @@ describe('preloadBiomeTiles — swatch keys and sprite keys are loaded different
 
   it('still wraps every first-generation swatch, and asks no mipmaps of them', async () => {
     await preloadBiomeTiles();
-    for (const tex of [getFloorTexture('ice'), getWallTexture('ice')] as unknown as FakeTexture[]) {
+    // `neutral` (the PvP arena) is the one element still on the first generation.
+    for (const tex of [getFloorTexture('neutral'), getWallTexture('neutral')] as unknown as FakeTexture[]) {
       expect(tex).toBeDefined();
       expect(tex.source.addressMode).toBe('repeat');
       expect(tex.__mipmaps).toBe(false);

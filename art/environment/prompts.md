@@ -638,8 +638,8 @@ Files:
   - The image is cropped to the alpha bounding box.
 - `client/public/environment/torch_wall.png`: 88x200, drawn 48 world px tall (`TORCH_DRAW_H`).
 
-It is one file for every chapter that is torch-lit (`torches.TORCH_ELEMENTS`). It is iron and fire,
-so it carries no biome stone to disagree with.
+It is one file for every chapter that is torch-lit (`torches.TORCH_ELEMENTS`): all four since
+2026-10-10, frost included. It is iron and fire, so it carries no biome stone to disagree with.
 
 What placing it needed, all found live and all now pinned by `torches.test.ts` /
 `torchPlacement.test.ts`:

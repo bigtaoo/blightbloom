@@ -20,10 +20,12 @@ import {
   TORCH_DRAW_H,
   TORCH_LIGHT_INTENSITY,
   TORCH_LIGHT_RADIUS,
+  TORCH_ELEMENTS,
   TORCH_MOUNT_Z,
   TorchSet,
   type TorchLightSink,
 } from './torches';
+import { WARM_STONE_ELEMENTS } from '../theme';
 
 /** 88x200, the shipped sconce's proportions: drawn 48 tall it is 21.12 wide. */
 const TEX = new Texture({ source: new TextureSource({ width: 88, height: 200 }) });
@@ -122,11 +124,21 @@ describe('TorchSet.buildFor — which chapters are torch-lit', () => {
     mocks.torchTexture = undefined;
   });
 
-  it('hangs nothing in a chapter whose stone has not moved to the new direction, and clears the last floor', () => {
+  it.each(['ice', 'lightning', 'poison'] as const)('hangs the %s chapter too, now that its stone is warm-stone', (element) => {
+    const set = new TorchSet(layers());
+    set.buildFor(plan, element);
+    expect(set.count).toBe(2);
+  });
+
+  it('lights exactly the warm-stone chapters — the torch is part of that look, not of every room', () => {
+    expect([...TORCH_ELEMENTS].sort()).toEqual([...WARM_STONE_ELEMENTS].sort());
+  });
+
+  it('hangs nothing on first-generation stone (a PvP arena), and clears the last floor', () => {
     const l = layers();
     const set = new TorchSet(l);
     set.buildFor(plan, 'fire');
-    set.buildFor(plan, 'ice');
+    set.buildFor(plan, 'neutral');
     expect(set.count).toBe(0);
     expect(l.entities.children).toHaveLength(0);
   });

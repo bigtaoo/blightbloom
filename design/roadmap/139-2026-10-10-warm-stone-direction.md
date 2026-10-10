@@ -127,3 +127,95 @@ The `RoomBuilder` suites' mocks of `biomeTiles` and `environmentSprites` gained 
 
 The other chapters in the same direction, each with its own stone. A chapter's torches turn on when
 its swatches are `authoredTone`.
+
+## Frost, storm and blight in warm stone: every chapter in the new direction (2026-10-10, client + art + test + docs, no ENGINE_VERSION change)
+
+> 继续把其他章节也换成新美术风格
+
+The ember pilot above left the other three chapters on first-generation art. They follow it here,
+the same day, with the same rules and the same pipeline. Each chapter gets its own stone, so the four
+floors do not read as one place in four tints:
+
+| chapter | floor | wall top | wall face |
+|---|---|---|---|
+| ember | warm beige crazy paving | dark grey blocks | warm brown brick |
+| frost | pale cold-grey flagstone, rime in the seams | dark slate, snow in a few joints | blue-grey blocks with frosted edges |
+| storm | neutral granite in random ashlar | dark charcoal basalt | slate ashlar with a riveted bronze band |
+| blight | ashen violet-grey flagstone, cracked | dark grey-plum blocks | dusty plum-brown brick |
+
+All nine swatches are 512 px JPEG encoded from masters in `art/biome`, graded onto the ember
+targets: floor median luma about 170, cap about 75, face about 92-100. `art/biome/prompts.md` has
+the prompts, which candidate each came from, and every pipeline flag.
+
+### Decisions
+
+- **One warm torch in every chapter, frost included.** `torches.TORCH_ELEMENTS` is now exactly
+  `theme.WARM_STONE_ELEMENTS`. Warm light on cold stone reads as a lit room, which is the key
+  frame. A pale-blue pool would also tint every actor toward `statusChill`, the colour that means
+  "this one is chilled". `neutral`, a PvP arena's stone, is the one element left on the first
+  generation, and it gets no torches.
+- **Blight carries design/13's poison clause by hue, not value.** The first-generation version held
+  dark stone far below the `#9CCC65` FX green's luma. A light floor cannot do that. So green is the
+  lowest channel in all three blight swatches, the opposite side of the wheel from the poison bullet,
+  aura and blightling. In the frame the green blightlings stand out against the floor.
+- **Violet-grey, not mauve.** The first blight floor was mauve (mean 164/139/152). Under the warm
+  torch light it read pink. It was regraded to 158/141/157.
+
+### Found on the way
+
+- **The storm floor's first tiling cut through stone.** `makeTileable.mjs` at its defaults left a
+  sawtooth where the seam path crossed slabs. `--overlap=0.25 --jump=3 --mortar=2` routed it
+  through the mortar.
+- **The blight floor's left-right seam failed the 2.5x ratio** (10.9 against 7.3). `--overlap=0.3`
+  fixed it (1.6).
+- **The first blight face grade came out bright magenta.** `--flatten` lifted a large pink patch
+  in the source. A different candidate, desaturated 0.75, fixed it. Its mortar was then too light for
+  the crown-row check (joint 37 against 90 brick), so a levels pass (black point 34) went in before
+  the median grade.
+- **The crown rows moved.** The warm faces have no lit coping, so `FACE_CROWN_ROWS` is each face's
+  darkest joint in its top third:
+  - ice 34/256;
+  - lightning and poison 63/256, because their first joints are faint or partial and the third is
+    the one that runs the full width.
+
+  `FACE_CROWN_FRACTION_MIN` is now ice's 34/256.
+- **The dev server served the shared tree.** `client-dev-alt` runs `--prefix client` from
+  `D:/daydayup`, so it showed the OLD frost art. The worktree was checked from a temporary launch
+  entry with an absolute `--prefix`, removed afterwards.
+- **Mistral workspace A's key expired on 2026-10-08,** and after about twenty generations every
+  other key was rate-limited for fifteen minutes.
+
+### Tests
+
+`warmStoneArt.test.ts` now runs over all four chapters:
+
+- JPEG equals master, and the package budget;
+- density;
+- the key frame's tonal rules;
+- every floor not green;
+- every tiled swatch wraps, and every face wraps left-right only. The face check now compares
+  against the face's mean adjacent-row step, because storm's top bevel makes row 0 to row 1 one of
+  its largest steps.
+
+Per-chapter hue rules:
+
+- frost: blue over red by 10-45, cold grey and not the chill blue;
+- storm: neutral, and not yellow;
+- blight: green the lowest channel, and no pixel a green mark.
+
+A pairwise check keeps the four floors at least 12 apart in mean colour; storm and blight are the
+closest pair, at about 14.
+
+Other suites:
+
+- `biomeSwatchArt.test.ts` measures `neutral` alone, and its poison block moved into the warm test
+  as the hue clause.
+- `torches.test.ts` hangs torches in all four chapters and none on `neutral`.
+- `wallComposition`, `texturePowerOfTwo` (ice and lightning left the non-power-of-two list),
+  `biomeTilesLoad`, `assetManifest` and `wechatAssetLoad` follow the new files.
+
+The asset-pack rules name `.jpg`. Each chapter's pack is now 0.14-0.17 MB.
+
+### What is next
+
+`neutral`, the PvP arena's stone, in the same direction.
