@@ -528,10 +528,117 @@ rules:
 - the cap is cool;
 - the brick is warm.
 
+## Frost, storm and blight in warm stone (9) — 2026-10-10, the same day as ember
+
+The other three chapters were moved to the direction above with the same framing paragraphs and
+the same pipeline. Only the material and colour lines change, so each chapter reads as its own
+place. Every prompt opens with the ember floor's framing for a floor (the text up to "clean and
+readable."), the cap's framing for a cap ("Material: the flat TOP of a thick castle wall …") and
+the face's framing for a face. The face framing is the ember face prompt minus its material and
+colour sentences, with "dark outlines on the block seams" in place of "dark-brown outlines on the
+brick seams".
+
+Every floor also carries the "NO long straight lines, NO grid, NO 2x2" paragraph. The storm floor's
+first wording asked for RANDOM ASHLAR, and those candidates still read as rectangular slabs.
+
+### The material and colour lines
+
+- **`floor_ice`** (`floor_ice_warm_raw.png`, candidate 4 of 5): crazy paving. "Seams are THIN dark
+  slate-blue lines … Slab faces are smooth light cool blue-grey stone (around #B4BCC4) … a thin
+  dusting of white frost and rime crystals along some seams and slab edges … NO snow drifts, NO ice
+  sheet, NO glossy reflections, NO glow, NO saturated blue." Every candidate still came back a
+  saturated mid blue, and `--desat` does the rest.
+- **`wall_ice`**: "cold dark slate stone (block tops around hex #4E5864 to #5C6672), mortar
+  near-black #161A20, a little packed white snow caught in a few mortar joints."
+- **`wallface_ice`**: "rectangular cold grey-blue stone blocks in running bond, 6 courses tall and
+  about 5 blocks across … (block faces hex #6C7A88 to #808E9C), dark mortar #1E242C, a thin line of
+  white frost along the top edge of some blocks … NO icicles, NO snow piles."
+- **`floor_lightning`** (candidate 1 of 5): "FLAT weathered GRANITE PAVING in a RANDOM ASHLAR
+  pattern: about 12 to 16 flat cut stone slabs, roughly rectangular but each a DIFFERENT size and
+  proportion … light neutral grey granite (around #B2B0AC) with a fine darker speckle … NO puddles,
+  NO water, NO glow, NO lightning, NO yellow." The crazy-paving rewording (candidates 4-7) mostly hit
+  the rate limit, and the one that came back was pillowy cobbles with wide black gaps.
+- **`wall_lightning`**: "dark charcoal basalt stone (block tops around hex #4A4B50 to #57585E),
+  mortar near-black #18181C. NO glow, NO moss, NO metal."
+- **`wallface_lightning`**: "large rectangular dark slate-grey ashlar stone blocks in running bond …
+  (block faces hex #5E636C to #707680), dark mortar #1C1E24, and one continuous horizontal band of
+  weathered dull bronze metal plates with small round rivets running along the full width at the
+  fourth course … NO green patina, NO yellow." The band is the storm chapter's one built thing: the
+  keep is wired.
+- **`floor_poison`** (candidate 4 of 4): crazy paving. "Seams are THIN dark plum-grey lines … light
+  ashen grey stone with a faint dusty mauve tint (around #B6ACB2) … on a few slabs a dull faded
+  grey-purple stain spreading from a crack, like dried residue … IMPORTANT: NO green anywhere, NO
+  slime, NO puddles, NO liquid, NO glow, NO moss, NO pebbles, NO bones."
+- **`wall_poison`**: "dark grey-plum stone (block tops around hex #4E4650 to #5A525C), mortar
+  near-black #1A161C, a few block edges slightly eroded and pitted. IMPORTANT: NO green anywhere."
+- **`wallface_poison`**: "rectangular crumbling dark plum-brown stone bricks in running bond …
+  (brick faces hex #6E5862 to #806872), dark mortar #241A20, several bricks cracked or eroded …
+  IMPORTANT: NO green anywhere, NO slime, NO drips, NO glow, NO moss, NO vines." The accepted face is
+  candidate 2, which came back as warm red-brown brick and was graded to plum. Candidate 1 was plum
+  already, but `--flatten` turned a large lighter patch in it bright magenta.
+
+### Pipeline (crops as ember: floors and caps `(128, 0, 896, 768)`, faces the whole 1024x768)
+
+| key | makeTileable | colorGrade |
+|---|---|---|
+| `floor_ice` | `--overlap=0.2 --jump=2` | `--flatten=0.25 --desat=0.45 --median=172` |
+| `wall_ice` | defaults | `--flatten=0.2 --desat=0.2 --median=75` |
+| `wallface_ice` | `--axes=x` | `--flatten=0.2 --desat=0.35 --median=100` |
+| `floor_lightning` | `--overlap=0.25 --jump=3 --mortar=2` | `--flatten=0.25 --desat=0.25 --gain=1.0,0.97,1.02 --median=170` |
+| `wall_lightning` | defaults | `--flatten=0.2 --median=72` |
+| `wallface_lightning` | `--axes=x` | `--flatten=0.2 --median=92` |
+| `floor_poison` | `--overlap=0.3 --jump=2` | `--flatten=0.25 --desat=0.55 --gain=0.99,0.92,1.04 --median=168` |
+| `wall_poison` | defaults | `--flatten=0.2 --median=74` |
+| `wallface_poison` | `--axes=x` | `--flatten=0.4 --desat=0.75 --gain=1.0,0.92,1.02 --median=92`, then levels with black point 34, then `--median=92` again |
+
+Then Lanczos to 512x512 (512x256 for a face), save the master and encode JPEG q90 from it.
+
+What each non-default flag fixed:
+
+- **Storm floor tiling.** At the defaults the seam path cut through slabs and left a visible
+  sawtooth. A wider overlap with a stronger mortar preference routed it through the joints.
+- **Blight floor tiling.** At 0.2 overlap its left-right wrap was 10.9 against an adjacent-column
+  7.3 (`warmStoneArt.test.ts` allows 2.5x). At 0.3 it is 1.6.
+- **The storm floor's gain.** Graded neutral, its mean came out green-highest (153/156/150), and
+  green is the poison colour. `--gain=1.0,0.97,1.02` lands it at 158/153/151.
+- **The blight floor's gain.** The first grade was mauve (164/139/152), and under the warm torch
+  light it read pink in the frame. It is now violet-grey (158/141/157): green the lowest channel,
+  red and blue level.
+- **The blight face's levels pass.** After desaturation its joints were 37 against 90 brick, too
+  light to read as the line a back wall is read by (`wallComposition.test.ts` wants under 0.25x).
+  A black point of 34 took them to 17.
+
+The masters, measured:
+
+| key | median luma | mean RGB |
+|---|---|---|
+| `floor_ice` | 173.5 | 135/153/164 |
+| `wall_ice` | 75.6 | 65/73/81 |
+| `wallface_ice` | 100.9 | 74/92/105 |
+| `floor_lightning` | 169.4 | 158/153/151 |
+| `wall_lightning` | 72.7 | 68/76/86 |
+| `wallface_lightning` | 91.5 | 84/85/85 |
+| `floor_poison` | 165.1 | 158/141/157 |
+| `wall_poison` | 72.6 | 73/67/83 |
+| `wallface_poison` | 88.4 | 99/71/85 |
+
+`warmStoneArt.test.ts` holds every chapter to the key frame's rules and each to its own hue:
+
+- frost is blue over red by 10-45: cold grey, not the `statusChill` blue;
+- storm is neutral and not yellow;
+- blight has green as the lowest channel and no pixel a green mark.
+
+A pairwise check keeps the four floors at least 12 apart in mean colour.
+
+The generator: Mistral workspace A's key expired on 2026-10-08. After about twenty generations in a
+few minutes, every other workspace was rate-limited for fifteen minutes. Launch candidates in
+parallel across B-G, and expect a second batch to wait.
+
 ## Workflow reminder
 
 Save accepted generations as `art/biome/<name>_raw.png`. The warm-stone family saves
-`<key>_warm_raw.png` plus its graded `<key>_master.png`. Save rejects as `art/biome/<name>_alt.png`,
+`<key>_warm_raw.png` plus its graded `<key>_master.png`, for every chapter: the `<key>_raw.png`
+files beside them are the first-generation sources, kept as history. Save rejects as `art/biome/<name>_alt.png`,
 the same convention as `art/weapon`/`art/ui`.
 
 **Verify tileability, not just style**: the image models have no seamless mode. For a new swatch,

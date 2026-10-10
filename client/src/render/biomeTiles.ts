@@ -22,32 +22,32 @@
 // BIOME_ID_TO_ELEMENT, not a change here.
 import { Assets, Texture } from 'pixi.js';
 import { resolveAssetUrl } from './assetHost';
-import type { BiomeElement } from '../game/theme';
+import { WARM_STONE_ELEMENTS, type BiomeElement } from '../game/theme';
 
 /** Exported alongside the key list so the WeChat package checks can enumerate the real
  *  FILES this loader will ask for (`wechatAssetLoad.test.ts`, build/checkWeChatPackage.mjs) —
  *  a key alone does not say which file it resolves to. */
 export const BIOME_TILE_ASSETS: Readonly<Record<string, string>> = {
   floor_fire: '/biome/floor_fire.jpg',
-  floor_ice: '/biome/floor_ice.png',
-  floor_lightning: '/biome/floor_lightning.png',
+  floor_ice: '/biome/floor_ice.jpg',
+  floor_lightning: '/biome/floor_lightning.jpg',
   floor_neutral: '/biome/floor_neutral.png',
-  floor_poison: '/biome/floor_poison.png',
+  floor_poison: '/biome/floor_poison.jpg',
   wall_fire: '/biome/wall_fire.jpg',
-  wall_ice: '/biome/wall_ice.png',
-  wall_lightning: '/biome/wall_lightning.png',
+  wall_ice: '/biome/wall_ice.jpg',
+  wall_lightning: '/biome/wall_lightning.jpg',
   wall_neutral: '/biome/wall_neutral.png',
-  wall_poison: '/biome/wall_poison.png',
+  wall_poison: '/biome/wall_poison.jpg',
   // Front ELEVATION of a wall, for the standing-wall pass (design/01, 2026-08-18) —
   // a separate asset from `wall_*` above, which is the top-down surface and is now
   // reused as the raised wall's top cap. Tiles horizontally only: its top rows are a
   // lit coping edge and its bottom rows a dark base, so it is used at exactly one
   // height (WALL_HEIGHT) and never repeated vertically.
   wallface_fire: '/biome/wallface_fire.jpg',
-  wallface_ice: '/biome/wallface_ice.png',
-  wallface_lightning: '/biome/wallface_lightning.png',
+  wallface_ice: '/biome/wallface_ice.jpg',
+  wallface_lightning: '/biome/wallface_lightning.jpg',
   wallface_neutral: '/biome/wallface_neutral.png',
-  wallface_poison: '/biome/wallface_poison.png',
+  wallface_poison: '/biome/wallface_poison.jpg',
   // A whole pillar, as one SPRITE — not a swatch (2026-08-20). Unlike everything above
   // it is never tiled and never repeated: a pillar is a fixed-size round object, and
   // sampling a 256 px wall swatch through a ~35 px cap window was tried in 2026-08-18
@@ -92,12 +92,14 @@ const WARM_STONE: SwatchMeta = { density: 2.56, seamless: true, authoredTone: tr
 
 /** Keys drawn in the warm-stone direction. Everything else is a first-generation swatch. The
  *  front ELEVATION has no density: it is always stretched to the wall's own height. */
-export const SWATCH_META: Readonly<Record<string, SwatchMeta>> = {
-  floor_fire: WARM_STONE,
-  // 512 px over one 64 px cap cell.
-  wall_fire: { ...WARM_STONE, density: 8 },
-  wallface_fire: { density: 1, seamless: true, authoredTone: true },
-};
+export const SWATCH_META: Readonly<Record<string, SwatchMeta>> = Object.fromEntries(
+  WARM_STONE_ELEMENTS.flatMap((el) => [
+    [`floor_${el}`, WARM_STONE],
+    // 512 px over one 64 px cap cell.
+    [`wall_${el}`, { ...WARM_STONE, density: 8 }],
+    [`wallface_${el}`, { density: 1, seamless: true, authoredTone: true }],
+  ]),
+);
 
 const metaByTexture = new WeakMap<Texture, SwatchMeta>();
 

@@ -11,22 +11,19 @@
  * disagrees with its neighbours — measured twice already, in the per-element pillar attempt
  * (`art/biome/prompts.md`) and in the four face swatches' crown rows (`wallTone.ts`).
  *
- * Poison additionally carries a HARD gameplay clause the other four do not, from design/13's
- * "environment desaturated, hazards saturated": *"the poison biome's ambient green must be dialled
- * down … or green FX/enemies camouflage against a green floor."* A green floor is not a style
- * miss here, it is the poison bullet and the poison-tinted mob becoming invisible. That clause is
- * asserted on the pixels, because it is exactly the kind of thing that looks fine in a preview.
+ * Since 2026-10-10 every chapter is drawn in design/13's warm-stone direction — light flagstone,
+ * dark wall tops, torch light — which is deliberately NOT this family: its floor is brighter than
+ * its wall cap, which inverts the old rule below. An element whose swatches carry `SWATCH_META` is
+ * measured by `warmStoneArt.test.ts` instead, and the family checks here run over the
+ * first-generation elements that are left: `neutral` alone, the PvP arena's stone. Shipping, though,
+ * is still asserted for all five.
  *
- * Since 2026-10-10 the chapters are moving, one at a time, to design/13's warm-stone direction —
- * light flagstone, dark wall tops, torch light — which is deliberately NOT this family: its floor is
- * brighter than its wall cap, which inverts the old rule below. An element whose swatches carry
- * `SWATCH_META` is measured by `warmStoneArt.test.ts` instead, and the family checks here run over
- * the first-generation elements that are left. Shipping, though, is still asserted for all five.
+ * Poison's hard clause moved with its art. The first-generation version held its dark stone to a
+ * value gap under the bright #9CCC65; the warm-stone floor is light, so `warmStoneArt.test.ts` holds
+ * it to a hue gap instead (green the lowest channel, no saturated green pixel).
  *
- * Import steps this pins as having actually run (nothing else records them):
- *   - downsample to a 256 px long axis (`compress.mjs`)
- *   - the elevation's border crop + top-half crop + bottom re-darken, which is what makes
- *     `wallface_poison` 256x128 rather than the 1254x1254 the generator returned
+ * Import step this pins as having actually run (nothing else records it): the downsample to a
+ * 256 px long axis (`compress.mjs`).
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -61,19 +58,6 @@ function quantiles(img: Img): { median: number; p95: number; max: number } {
   l.sort((a, b) => a - b);
   const q = (p: number) => l[Math.floor(p * (l.length - 1))]!;
   return { median: q(0.5), p95: q(0.95), max: q(1) };
-}
-
-function channelMeans(img: Img): { r: number; g: number; b: number } {
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  const n = img.width * img.height;
-  for (let i = 0; i < n; i++) {
-    r += img.data[i * 4]!;
-    g += img.data[i * 4 + 1]!;
-    b += img.data[i * 4 + 2]!;
-  }
-  return { r: r / n, g: g / n, b: b / n };
 }
 
 function rowLuma(img: Img, y: number): number {
@@ -211,85 +195,5 @@ describe('biome swatches — the seam rules, which differ by kind', () => {
     const coping = band(img, 0, 0.12);
     const base = band(img, 0.85, 1);
     expect(coping, `${el} coping vs base`).toBeGreaterThan(base * 1.5);
-  });
-});
-
-describe('poison — design/13\'s hard "dial the green down" clause, on the pixels', () => {
-  const POISON = ['floor_poison', 'wall_poison', 'wallface_poison'] as const;
-
-  it.each(POISON)('%s still reads as charcoal-NAVY stone: blue is the highest channel', (name) => {
-    const m = channelMeans(load(name));
-    expect(m.b, `${name} blue vs red`).toBeGreaterThan(m.r);
-    expect(m.b, `${name} blue vs green`).toBeGreaterThan(m.g);
-  });
-
-  it.each(POISON)('%s keeps its green tint under the 10/255 ceiling over red', (name) => {
-    // The stated numeric spec in `art/biome/prompts.md`. Above this the stone starts reading as
-    // green ground, and design/13's own words for that are "a gameplay defect": the saturated
-    // #9CCC65 is reserved for poison bullets, auras and mob tint, which then camouflage.
-    const m = channelMeans(load(name));
-    expect(m.g - m.r, `${name} G-R`).toBeLessThanOrEqual(10);
-    expect(m.g - m.r, `${name} G-R`).toBeGreaterThan(0); // …but there IS a tint; it is not neutral
-  });
-
-  it('is not MORE green than the elements whose hue is not reserved against the FX palette', () => {
-    // A relative check, so it survives a future palette pass: poison's tint has to be the quiet
-    // one, since it is the only element whose environment hue collides with its own combat FX.
-    const greenness = (name: string) => {
-      const m = channelMeans(load(name));
-      return m.g - m.r;
-    };
-    for (const kind of ['floor', 'wall'] as const) {
-      // Against the first-generation neighbours only: a warm-stone chapter is a different palette.
-      const others = FIRST_GEN.filter((el) => el !== 'poison').map((el) => greenness(`${kind}_${el}`));
-      expect(greenness(`${kind}_poison`), `${kind}_poison vs the loudest other`).toBeLessThanOrEqual(
-        Math.max(...others) + 4,
-      );
-    }
-  });
-
-  it('no single pixel is a saturated green MARK (no slime, no glow, no vivid moss)', () => {
-    // Per-pixel "green-ness" = how far green runs ahead of BOTH other channels. `#9CCC65` scores
-    // 48 on it; the shipped poison swatches score 4-7, and the other four elements 0-1.
-    //
-    // Worth being precise about what this does and does not catch, because the mean-channel test
-    // above is the one doing most of the work: the dull OLIVE residue in these seams reads olive
-    // by having a LOW BLUE, not a high green, so it barely registers here. This assertion's job is
-    // narrower — a patch of the reserved saturated hue painted into the stone.
-    for (const name of POISON) {
-      const img = load(name);
-      let worst = 0;
-      for (let i = 0; i < img.width * img.height; i++) {
-        const r = img.data[i * 4]!;
-        const g = img.data[i * 4 + 1]!;
-        const b = img.data[i * 4 + 2]!;
-        worst = Math.max(worst, g - Math.max(r, b));
-      }
-      expect(worst, `${name} greenest pixel`).toBeLessThan(40);
-    }
-  });
-
-  it('the FX green stays far brighter than any poison stone, which is what stops camouflage', () => {
-    // The channel tests above are about hue; THIS is the one that actually answers design/13's
-    // worry. A poison bullet, its trail and a poison-tinted mob are all drawn at `#9CCC65`, luma
-    // ~186. Whatever the hue does, a saturated mark at 186 cannot hide on stone whose brightest
-    // pixel is a fraction of that — the value gap is the guarantee, and it is the one that would
-    // actually be lost if a future regeneration came back "prettier".
-    const FX_GREEN_LUMA = luma(0x9c, 0xcc, 0x65);
-    for (const name of POISON) {
-      const q = quantiles(load(name));
-      expect(q.max, `${name} brightest pixel vs FX green`).toBeLessThan(FX_GREEN_LUMA * 0.7);
-    }
-  });
-
-  it('the elevation import ran: its base is re-darkened and its drawn border is gone', () => {
-    // Two mechanical steps that leave no other trace. The generator returned a 1254x1254 image
-    // with a near-black 1-2 px frame (row 0 measured 2.4) and a bright base band at the BOTTOM
-    // that the top-half crop discards; the shipped file must show neither.
-    const img = load('wallface_poison');
-    expect(rowLuma(img, 0), 'top row is coping, not a black frame line').toBeGreaterThan(60);
-    // The re-darkening ramp: the last row is well below the brick plateau above it.
-    const brick = band(img, 0.35, 0.7);
-    expect(rowLuma(img, img.height - 1), 'base shadow').toBeLessThan(brick * 0.7);
   });
 });

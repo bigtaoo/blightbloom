@@ -123,7 +123,11 @@ export const FACE_COPING_SUPPRESS = 0.55;
  * would have sliced straight through an ice room's crown, which is the exact defect this whole
  * corner treatment exists to prevent, shipped invisibly on two biomes out of four.
  *
- * Row-luma scans behind the numbers (256-wide swatches, mean per row):
+ * The paragraph above and the scans below are the FIRST-GENERATION swatches, which only `neutral`
+ * still ships; the four chapters moved to warm stone on 2026-10-10 and their rows are in the table.
+ * The warm faces disagree with each other just as much (0.13 to 0.25 of the height).
+ *
+ * Row-luma scans behind the first-generation numbers (256-wide swatches, mean per row):
  *   - fire 127 rows: coping 0-20 at 97-173, mortar 21-30 (76 -> 7 -> 22), brick 31+ at ~50
  *   - ice 125 rows: coping 0-13 at 75-186, mortar 14-19 (58 -> 10 -> 25), brick 20+ at ~44
  *   - lightning 127 rows: coping 0-24 at 62-180, mortar 25-30 (51 -> 22 -> 37), brick 31+ at ~48
@@ -140,13 +144,19 @@ export const FACE_COPING_SUPPRESS = 0.55;
  * it does not. Its fraction (0.203) lands within 0.01 of fire/lightning/neutral anyway.
  */
 export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>> = {
-  // The warm-stone face (design/13, 2026-10-10): 512x256, no lit coping — its first brick joint,
-  // measured off `art/biome/wallface_fire_master.png`, which the shipped JPEG is encoded from.
+  // The warm-stone faces (design/13, 2026-10-10): 512x256, no lit coping — the darkest joint in the
+  // top third, measured off `art/biome/wallface_<element>_master.png`, which the shipped JPEG is
+  // encoded from. Row-luma scans (mean per row):
+  //   - fire: course 0-32 at 92-61, joint 37-38 (16 -> 8), brick 41+ at ~100
+  //   - ice: course 0-30 at 117-56, joint 33-34 (27 -> 14), brick 37+ at ~110
+  //   - lightning: small irregular courses, joints at 21 (53), 41 (32) and 63 (12) — the third is
+  //     the only one that runs the whole width, so it is the line a back wall is read by
+  //   - poison: joints at 18 (25), 40 (35) and 63 (17), brick between at ~95
   fire: [38, 256],
-  ice: [17, 125],
-  lightning: [27, 127],
+  ice: [34, 256],
+  lightning: [63, 256],
   neutral: [25, 125],
-  poison: [26, 128],
+  poison: [63, 256],
 };
 
 /** The SHALLOWEST crown of any shipped swatch, and therefore the safe default for an element with
@@ -156,7 +166,7 @@ export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>
  *  nothing in the game takes this path — it is the fallback for a sixth element, or for a swatch
  *  that ships before anyone measures it. `wallComposition.test.ts` keeps it honest by asserting it
  *  equals the minimum of the measured table rather than a literal. */
-export const FACE_CROWN_FRACTION_MIN = 17 / 125;
+export const FACE_CROWN_FRACTION_MIN = 34 / 256;
 
 /** The measured crown fraction for `element`, or the conservative default. */
 export function faceCrownFraction(element: string): number {

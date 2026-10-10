@@ -58,7 +58,7 @@ interface PackRule {
 }
 const RULES: readonly PackRule[] = packs.rules as readonly PackRule[];
 
-/** Which package a public-relative asset path ('/biome/floor_ice.png') belongs to.
+/** Which package a public-relative asset path ('/biome/floor_ice.jpg') belongs to.
  *  First matching prefix rule wins; unmatched paths fall to `defaultPack`. */
 export function packOf(path: string): string {
   return RULES.find((r) => path.startsWith(r.prefix))?.pack ?? DEFAULT_PACK;

@@ -111,6 +111,13 @@ export function mixHex(base: number, tint: number, amount: number): number {
 
 export type BiomeElement = 'fire' | 'ice' | 'lightning' | 'poison' | 'neutral';
 
+/** The chapters drawn in design/13's warm-stone direction, each in its own stone (`art/biome/prompts.md`):
+ *  ember 2026-10-10 as the pilot, then frost, storm and blight the same day. `neutral` (a PvP arena,
+ *  the flat floors path) is the one element still on first-generation art. `render/biomeTiles.ts`
+ *  registers these elements' swatches as warm stone and `scene/torches.ts` lights exactly these
+ *  chapters; it lives here, beside the element type, so neither has to import the other. */
+export const WARM_STONE_ELEMENTS: readonly BiomeElement[] = ['fire', 'ice', 'lightning', 'poison'];
+
 // 'neutral' has no element hue to hint at — it's not in this table, so it stays
 // EXACTLY today's existing palette (below), byte-identical, never run through
 // mixHex (mixing toward the bright #E2E8F0 neutral hex would visibly LIGHTEN it —

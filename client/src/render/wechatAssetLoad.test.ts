@@ -246,7 +246,7 @@ describe('WeChat runtime — a missing package file degrades instead of failing 
 
 describe('WeChat runtime — subpackaged art', () => {
   it('addresses a subpackaged asset under its pack root, not at the project root', () => {
-    expect(packedPathFor('/biome/floor_ice.png')).toBe('packs/biome-ice/biome/floor_ice.png');
+    expect(packedPathFor('/biome/floor_ice.jpg')).toBe('packs/biome-ice/biome/floor_ice.jpg');
     expect(packedPathFor('/skins/boss-core/core.png')).toBe('packs/boss/skins/boss-core/core.png');
     // ...and since 2026-09-01 there is no art at the project root at all: the main package is
     // js/game.js alone, so the reachable-today swatches address under `packs/run` rather than

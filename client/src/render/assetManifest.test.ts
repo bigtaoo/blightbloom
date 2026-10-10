@@ -194,7 +194,7 @@ describe('packedPathFor', () => {
     // that takes that branch, because the first download is code only. A rule that opts a file
     // back into `main` would exercise it again.
     expect(packedPathFor('/biome/floor_fire.png')).toBe('packs/run/biome/floor_fire.png');
-    expect(packedPathFor('/biome/floor_ice.png')).toBe('packs/biome-ice/biome/floor_ice.png');
+    expect(packedPathFor('/biome/floor_ice.jpg')).toBe('packs/biome-ice/biome/floor_ice.jpg');
     expect(packedPathFor('/ui/hub_bg.jpg')).toBe('packs/lobby/ui/hub_bg.jpg');
     expect(packedPathFor('/ui/icon_back.png')).toBe('packs/ui-late/ui/icon_back.png');
     expect(packedPathFor('/weapons/gun_blaster.png')).toBe('packs/forge/weapons/gun_blaster.png');
