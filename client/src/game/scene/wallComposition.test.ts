@@ -551,7 +551,7 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
     // a back wall is read by is simply the first joint: far darker than the course above it AND the
     // one below, not merely the darkest row of a gradient.
     const warm = SWATCHES.filter((e) => SWATCH_META[`wallface_${e}`]);
-    expect(warm).toEqual(['fire']);
+    expect(warm).toEqual(['fire', 'ice', 'lightning', 'poison']);
     for (const el of warm) {
       const rows = faceRows(el);
       const line = FACE_CROWN_ROWS[el]![0];

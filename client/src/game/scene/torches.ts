@@ -18,12 +18,16 @@ import { planTorches, type TorchSpot } from './torchPlacement';
 import type { RectPx } from './wallGeometry';
 import type { WallRun } from './wallRuns';
 import type { LightSource } from '../fx/lighting';
-import type { BiomeElement } from '../theme';
+import { WARM_STONE_ELEMENTS, type BiomeElement } from '../theme';
 import { getTorchTexture } from '../../render/environmentSprites';
 
-/** Chapters whose rooms are torch-lit. Ember first — the pilot chapter of the warm-stone direction;
- *  each other chapter joins when its own stone art does, so a cold room never gets a warm torch. */
-export const TORCH_ELEMENTS: ReadonlySet<BiomeElement> = new Set<BiomeElement>(['fire']);
+/** Chapters whose rooms are torch-lit: every chapter drawn in warm stone (`theme.WARM_STONE_ELEMENTS`).
+ *  A room still on first-generation art (a PvP arena's `neutral`) gets none — the torch is part of
+ *  the warm-stone look, and on the old dark, desaturated stone it is a lamp in the wrong picture.
+ *  Every chapter shares the one warm flame on purpose, frost included: the key frame's warm light
+ *  against cold stone reads as a lit room, and a pale-blue pool would tint actors toward
+ *  `statusChill`, the colour that says "this one is chilled". */
+export const TORCH_ELEMENTS: ReadonlySet<BiomeElement> = new Set<BiomeElement>(WARM_STONE_ELEMENTS);
 
 /** What `TorchSet` needs from `LightRegistry` — two methods, so a test can hand it a recorder. */
 export interface TorchLightSink {

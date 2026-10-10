@@ -41,7 +41,7 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** Which pack a public-relative path ('/biome/floor_ice.png') belongs to. Mirrors
+/** Which pack a public-relative path ('/biome/floor_ice.jpg') belongs to. Mirrors
  *  assetManifest.ts's `packOf` exactly — first matching prefix wins, else the default. */
 export function packOf(packs, webPath) {
   return packs.rules.find((r) => webPath.startsWith(r.prefix))?.pack ?? packs.defaultPack;

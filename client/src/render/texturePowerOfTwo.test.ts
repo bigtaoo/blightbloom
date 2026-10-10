@@ -81,8 +81,9 @@ describe('WebGL1 fallback — a wrapping texture must be power-of-two', () => {
       const { width, height } = dimensions(BIOME_TILE_ASSETS[k]);
       return !isPot(width) || !isPot(height);
     });
-    // `wallface_fire` left the list on 2026-10-10: the warm-stone face shipped at 512x256.
-    expect(broken.sort()).toEqual(['wallface_ice', 'wallface_lightning', 'wallface_neutral']);
+    // `wallface_fire` left the list on 2026-10-10 (the warm-stone face shipped at 512x256), and
+    // ice and lightning the same day, when their chapters moved to warm stone too.
+    expect(broken.sort()).toEqual(['wallface_neutral']);
   });
 
   it('wall faces tile horizontally, so their WIDTH is the axis that matters, and it is clean', () => {

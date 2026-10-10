@@ -71,7 +71,8 @@ bob phase).
 
 **Revised for authored warm-stone floors (2026-10-10, design/13 "Environment: warm stone, dark
 edges, light pools").** Two rows of the table above do not apply to a floor whose `SwatchMeta`
-is `seamless` and `authoredTone`. The first ember floor of the new direction is one.
+is `seamless` and `authoredTone`. Every chapter's floor is one since 2026-10-10 (ember first, then
+frost, storm and blight the same day); only a PvP arena's `neutral` floor still takes both rows.
 
 - **The stamp does not mirror it.** That swatch was cut to wrap EXACTLY (`makeTileable.mjs`), so a
   flip hides no mismatch. On irregular flagstones it only turns the stone into a kaleidoscope.
