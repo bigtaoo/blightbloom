@@ -612,6 +612,50 @@ flag is `door_curtain_raw.png` as HAZE, which is expected: it is the open door's
 (`blendMode: 'add'`), so a graduated alpha IS the content (`art/README.md`, 2026-08-30b). The
 `door_open_raw.png` HAZE flag of 2026-08-20 was fixed on 2026-08-21 and does not recur.
 
+## `torch_wall` — the wall sconce (2026-10-10, the warm-stone direction)
+
+This is the fixture the key frame hangs on every perimeter wall
+(`art/concept/direction-2026-10-10/4_hybrid_a.png`, design/13 "Environment: warm stone, dark edges,
+light pools"). The sprite is the least of it. The light is a real point light in the scene pass
+(`scene/torches.ts`), and the sprite only has to say where that light comes from. It was generated
+with Mistral on a magenta key, because the model cannot return alpha.
+
+> A single game sprite of a WALL-MOUNTED IRON TORCH SCONCE, seen straight-on from the front,
+> centred, on a completely flat solid pure magenta background (#FF00FF) with nothing else in the
+> image. The sconce: a small dark iron bracket plate and a cup-shaped iron basket holding a bright
+> warm orange-yellow flame with a white-hot core, flame pointing straight up. No wall, no bricks, no
+> shadow, no glow halo on the background, no smoke, no text. Style: hand-painted 2D mobile game prop,
+> clean bold dark outlines, soft cel shading, polished cartoon fantasy quality, matching a cozy
+> fantasy dungeon.
+
+Files:
+
+- `art/environment/torch_wall_original.png`: the 1024x768 generation.
+- `torch_wall_raw.png` (264x602): keyed and cropped.
+  - The background is found by a flood fill of magenta-ish pixels (R−G > 50 and B−G > 25) from the
+    border, not by a colour threshold, so the flame's own pinks survive.
+  - The alpha is shaved by one pixel to remove the magenta fringe, then softened by a 0.7 px blur.
+  - The image is cropped to the alpha bounding box.
+- `client/public/environment/torch_wall.png`: 88x200, drawn 48 world px tall (`TORCH_DRAW_H`).
+
+It is one file for every chapter that is torch-lit (`torches.TORCH_ELEMENTS`). It is iron and fire,
+so it carries no biome stone to disagree with.
+
+What placing it needed, all found live and all now pinned by `torches.test.ts` /
+`torchPlacement.test.ts`:
+
+- **The flame sits in the wall's upper middle, not on the floor line.** The foot hangs 24 px up a
+  104 px face (`TORCH_MOUNT_Z`).
+- **North torches are lowered.** At first they sat above the top of the screen.
+- **A side-wall torch takes the wall's own sort key.** A side wall is one entity sorted at its south
+  end, so a torch sorted on its own y drew under the whole wall and vanished (`TorchSpot.sortY`).
+- **A side-wall torch is pushed into the room by half its width.** Centred on the wall's edge, it
+  read as standing ON the cap instead of hung from it.
+- **The light is small.** Six overlapping 250 px lights washed the whole frame orange. Now each is
+  140 px at intensity 1.2, and the room's edges are darkened so a pool has something to be lighter
+  than.
+
+
 ## Workflow reminder
 
 The order that works, and the order this batch followed: state the output resolution and derive it

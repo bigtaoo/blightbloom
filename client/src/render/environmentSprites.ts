@@ -86,6 +86,10 @@ export const ENV_SPRITE_ASSETS: Readonly<Record<string, string>> = {
   // `SHOP_INTERACT_RANGE_GRID` proximity, so a missing file costs the room a person and
   // costs the run nothing.
   npc_shopkeeper: '/environment/npc_shopkeeper.png',
+  // A wall-mounted torch sconce (2026-10-10, design/13 "Environment: warm stone, dark edges,
+  // light pools"). The sprite is only the fixture: the light it throws is a real point light in
+  // the scene pass (`scene/torches.ts`), which is what makes it a light rather than a sticker.
+  torch_wall: '/environment/torch_wall.png',
 };
 
 /** Every key the getters below can resolve once preloaded — exposed so tests can assert a
@@ -191,4 +195,10 @@ export function getShopCounterTexture(): Texture | undefined {
  *  lands on a counter that was built before it. */
 export function getShopkeeperTexture(): Texture | undefined {
   return textures.get('npc_shopkeeper');
+}
+
+/** The wall torch sconce (`scene/torches.ts`). Undefined until preloaded — a room whose torch
+ *  art never arrives still gets the torches' LIGHT, just no fixture drawn at its source. */
+export function getTorchTexture(): Texture | undefined {
+  return textures.get('torch_wall');
 }

@@ -12,6 +12,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { DoorFxDriver, isRefused, nearness, overlapsView, tickDoors, type CameraRect } from './doorTick';
 import type { RectPx } from './wallGeometry';
+import type { TorchLightSink } from './torches';
 
 const DOOR: RectPx = { x: 200, y: 300, w: 64, h: 20 };
 const VIEW = { x: 0, y: 0, w: 800, h: 600 };
@@ -163,7 +164,12 @@ describe('DoorFxDriver', () => {
   });
   const target = () => ({
     tickFixtures: vi.fn(
-      (_dt: number, _view: CameraRect | null, _playerPx: { x: number; y: number } | null): void => undefined,
+      (
+        _dt: number,
+        _view: CameraRect | null,
+        _playerPx: { x: number; y: number } | null,
+        _lights?: TorchLightSink,
+      ): void => undefined,
     ),
     doorFootprint: vi.fn((_i: number): RectPx | null => DOOR),
     rejectDoor: vi.fn((_i: number): void => undefined),
@@ -176,7 +182,15 @@ describe('DoorFxDriver', () => {
     const t = target();
     const c = cam();
     d.frame(16, [], t, c, null, { rad: 0, mag: 0 });
-    expect(t.tickFixtures).toHaveBeenCalledWith(16, { x: 0, y: 0, w: 800, h: 600 }, null);
+    expect(t.tickFixtures).toHaveBeenCalledWith(16, { x: 0, y: 0, w: 800, h: 600 }, null, undefined);
+  });
+
+  it("hands the fixture pass the camera's light registry, when it has one", () => {
+    const d = new DoorFxDriver();
+    const t = target();
+    const lights = { addPersistent: vi.fn(), removePersistent: vi.fn() };
+    d.frame(16, [], t, { ...cam(), lights }, null, { rad: 0, mag: 0 });
+    expect(t.tickFixtures).toHaveBeenCalledWith(16, { x: 0, y: 0, w: 800, h: 600 }, null, lights);
   });
 
   it('flashes the refused door and shakes the camera, exactly once', () => {

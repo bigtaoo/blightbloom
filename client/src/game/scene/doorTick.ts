@@ -4,6 +4,7 @@
 // that class stayed under the 500-line convention, and because both rules below are pure geometry
 // that is worth testing without building a room.
 import type { RectPx } from './wallGeometry';
+import type { TorchLightSink } from './torches';
 
 /** This frame's visible world rect, in world px — `FxController.worldView`. */
 export interface CameraRect {
@@ -137,7 +138,12 @@ const REJECT_MOVE_MAG = 40;
 /** What the reject scan needs from `RoomBuilder`, narrowed to the two methods it calls (CLAUDE.md:
  *  "narrow that dependency to a small interface declaring just those methods"). */
 export interface DoorFxTarget {
-  tickFixtures(dt: number, view: CameraRect | null, playerPx: { x: number; y: number } | null): void;
+  tickFixtures(
+    dt: number,
+    view: CameraRect | null,
+    playerPx: { x: number; y: number } | null,
+    lights?: TorchLightSink,
+  ): void;
   doorFootprint(index: number): RectPx | null;
   rejectDoor(index: number): void;
 }
@@ -166,6 +172,8 @@ const REJECT_SHAKE = 0.05;
 export interface DoorFxCamera {
   readonly worldView: { x: number; y: number; width: number; height: number };
   addShake(amount: number): void;
+  /** Where the room's torches register their lights (`torches.ts`) — `FxController.lights`. */
+  readonly lights?: TorchLightSink;
 }
 
 /**
@@ -198,7 +206,8 @@ export class DoorFxDriver {
     move: { rad: number; mag: number },
   ): void {
     const v = cam.worldView;
-    target.tickFixtures(dt, { x: v.x, y: v.y, w: v.width, h: v.height }, player ? { x: player.curX, y: player.curY } : null);
+    const playerPx = player ? { x: player.curX, y: player.curY } : null;
+    target.tickFixtures(dt, { x: v.x, y: v.y, w: v.width, h: v.height }, playerPx, cam.lights);
     for (let i = 0; i < this.cooldown.length; i++) {
       if (this.cooldown[i]! > 0) this.cooldown[i] = Math.max(0, this.cooldown[i]! - dt);
     }

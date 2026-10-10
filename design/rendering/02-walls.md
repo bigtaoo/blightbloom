@@ -429,8 +429,8 @@ arithmetic was right.
 at the far wall's FOOT — everything in the room starts at the back wall's foot, the convention most
 top-down games of this shape use — shipped a render and was rejected: *"感觉还是不对，我觉得应该要覆盖
 到我标记的区域"*, with a rectangle drawn over the brick immediately above the run. Measured against
-the frame, that rectangle's top edge sat at world y **−10**; a row-luma scan of
-`wallface_fire.png` puts the underside of its **crown course** (rows 0-31 of 127: lit coping, then
+the frame, that rectangle's top edge sat at world y **−10**; a row-luma scan of the
+first-generation ember face (shipped until 2026-10-10; source `wallface_fire_raw.png`) puts the underside of its **crown course** (rows 0-31 of 127: lit coping, then
 the dark mortar line) at world y **−14.6**. The ask was precise, and it was not "cover more" or
 "cover less" — it was *this line*:
 
@@ -447,7 +447,7 @@ coping course looks like — and the swatch's own mortar line lands on the junct
 out looking authored rather than clipped.
 
 **And the crown line is per ELEMENT, which only the test found.** `FACE_CROWN_FRACTION` shipped for
-one round as a single constant measured off `wallface_fire.png`. The first run of
+one round as a single constant measured off the first-generation ember face. The first run of
 `wallComposition.test.ts` (below) scanned all four shipped face swatches and reported ice's mortar
 line at row **17** where the constant said 31: fire and lightning put theirs at 27 of 127, neutral at
 25 of 125, and **ice's coping band is a third shorter than the others'**. So two biomes out of four

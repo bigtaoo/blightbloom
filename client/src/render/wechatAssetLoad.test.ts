@@ -54,6 +54,7 @@ import {
   getChestPlateTexture,
   getShopCounterTexture,
   getShopkeeperTexture,
+  getTorchTexture,
 } from './environmentSprites';
 import { WEAPON_DEFS, KIND_DEFAULTS, getWeaponTexture } from './weaponSkins';
 
@@ -191,6 +192,7 @@ describe('WeChat runtime — every sprite loader resolved', () => {
       door_curtain: () => getDoorCurtainTexture(),
       portal_arch: () => getPortalArchTexture(),
       npc_shopkeeper: () => getShopkeeperTexture(),
+      torch_wall: () => getTorchTexture(),
       shop_counter: () => getShopCounterTexture(),
       // Named before the `chest_` split below, which would otherwise read them as a chest KIND
       // called `plate` (2026-10-01).

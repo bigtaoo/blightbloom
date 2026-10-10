@@ -9,7 +9,7 @@
  * (wash/mottle/decals/light). `floorCoverage.test.ts` measures WHY they differ; this pins that the
  * two functions actually answer differently.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Container, Graphics, Sprite, Texture, TextureSource } from 'pixi.js';
 import { createGameState } from '@dd/engine/state/GameState';
 import { pxToFp, toFpGrid } from '@dd/engine/content/convert';
@@ -18,6 +18,14 @@ import { buildGroundLayer, floorRegionsPx, roomRectsPx, type GroundDeps } from '
 import { ARENA_CATALOG } from '../match/arenaCatalog';
 import { fpToPx } from '../coords';
 import type { RectPx } from './wallGeometry';
+import type { SwatchMeta } from '../../render/biomeTiles';
+
+// `swatchMeta` reads a WeakMap that only `loadBiomeTiles` fills; a test texture is tagged here instead.
+const meta = vi.hoisted(() => new Map<unknown, SwatchMeta>());
+vi.mock('../../render/biomeTiles', async (orig) => ({
+  ...(await orig<object>()),
+  swatchMeta: (t: unknown) => (t ? meta.get(t) : undefined),
+}));
 
 const PALETTE = biomePalette('ember');
 
@@ -286,5 +294,39 @@ describe('the real launch arena, end to end through the ground stage', () => {
     expect(painted).toBeCloseTo(roomArea, 5);
     // ...and that really is less than the world box, or "stops at the rooms" is vacuous here.
     expect(roomArea).toBeLessThan(arena.w * arena.h);
+  });
+});
+
+describe('buildGroundLayer — an authored warm-stone floor (design/13, 2026-10-10)', () => {
+  const stone = tex(256);
+  meta.set(stone, { density: 2.56, seamless: true, authoredTone: true });
+  const room: RectPx = { x: 0, y: 0, w: 512, h: 512 };
+  const north: RectPx = { x: 0, y: 0, w: 512, h: 64 };
+
+  it('draws no grid over it — the lattice would read as a second, unrelated paving', () => {
+    const { graphics } = build(deps({ floorTex: stone }));
+    expect(graphics).toHaveLength(3); // the two variation halves and the light; the control is 4 above
+  });
+
+  it('never mirrors a swatch that wraps exactly', () => {
+    const { tiles } = build(deps({ floorTex: stone }));
+    expect(tiles.length).toBeGreaterThan(0);
+    expect(tiles.every((t) => t.scale.x > 0 && t.scale.y > 0)).toBe(true);
+    // The control: the same texture untagged is mirrored on some cells.
+    const plain = build(deps({ floorTex: tex(256) })).tiles;
+    expect(plain.some((t) => t.scale.x < 0 || t.scale.y < 0)).toBe(true);
+  });
+
+  it('darkens its edges harder than the default, starting at the foot of the walls', () => {
+    const warm = build(deps({ floorTex: stone, rooms: [room], wallRects: [north] })).graphics.at(-1)!;
+    const plain = build(deps({ rooms: [room], wallRects: [north] })).graphics.at(-1)!;
+    const firstStroke = (g: Graphics) => {
+      const i = g.context.instructions.find((x) => x.action === 'stroke')!;
+      const d = i.data as { style: { alpha: number }; path: { instructions: { data: number[] }[] } };
+      return { alpha: d.style.alpha, y: d.path.instructions[0]!.data[1]! };
+    };
+    expect(firstStroke(warm).alpha).toBeGreaterThan(firstStroke(plain).alpha);
+    expect(firstStroke(warm).y).toBeGreaterThan(64); // below the wall, not under it
+    expect(firstStroke(plain).y).toBeLessThan(64);
   });
 });
