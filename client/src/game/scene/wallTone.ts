@@ -140,7 +140,9 @@ export const FACE_COPING_SUPPRESS = 0.55;
  * it does not. Its fraction (0.203) lands within 0.01 of fire/lightning/neutral anyway.
  */
 export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>> = {
-  fire: [27, 127],
+  // The warm-stone face (design/13, 2026-10-10): 512x256, no lit coping — its first brick joint,
+  // measured off `art/biome/wallface_fire_master.png`, which the shipped JPEG is encoded from.
+  fire: [38, 256],
   ice: [17, 125],
   lightning: [27, 127],
   neutral: [25, 125],

@@ -69,6 +69,25 @@ Everything here is hashed, never `Math.random` — a room must draw the identica
 and on every client (design/06's rule applied to the render layer, as with `Pickup`'s golden-angle
 bob phase).
 
+**Revised for authored warm-stone floors (2026-10-10, design/13 "Environment: warm stone, dark
+edges, light pools").** Two rows of the table above do not apply to a floor whose `SwatchMeta`
+is `seamless` and `authoredTone`. The first ember floor of the new direction is one.
+
+- **The stamp does not mirror it.** That swatch was cut to wrap EXACTLY (`makeTileable.mjs`), so a
+  flip hides no mismatch. On irregular flagstones it only turns the stone into a kaleidoscope.
+- **The 64 px grid is not drawn over it.** On painted paving the lattice reads as a second,
+  unrelated set of joints.
+
+Its room light uses `WARM_STONE_ROOM_LIGHT`, which differs from the default in two ways:
+
+- it is much darker at the edge, because the key frame's corners are in shadow, and on a light floor
+  the old 0.26 barely registers;
+- it starts at the foot of the room's walls (`roomLight.insetByWalls`), because walls are authored
+  inside the room rect.
+
+The wash, mottle and wear layers are unchanged. The torches' light pools come from the scene light
+pass (`scene/torches.ts`), not from this layer.
+
 ---
 
 ## The same sweeps, on the arena (2026-08-26)

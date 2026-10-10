@@ -1792,11 +1792,15 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-08** [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change) — "和机器人组队之后，这里的ui点了没用" and "机器人不要像一个跟班一样老是跟随玩家": two co-op-with-a-bot reports. Online, the floor-card cards and the Descend button did nothing: the sparse held-input sync sends a command only when it changed, its comparison was a hand-written field list without `cardVote`, and a player standing still at the portal changes nothing else, so the vote was dropped as a duplicate and `ExtractionSystem`, which descends only for a voted seat, never opened the portal. Offline `?coop=1` skips the filter. It now compares every field but `type`/`owner`/`tick`, and a test enumerates the command's real keys so the next field cannot be forgotten either; the loopback test runs a standing-still vote through server and engine. And the ally no longer steps after every step its player takes in a quiet room: `ai/roam.ts` gives it a hashed spot 2-6 grid from the leader each 2.5 s, or a rest, regrouping only past 8 grid or when the leader changes room. It never picks a spot outside the leader's room (a started fight would pull the player in) and never fetches loot (the collector keeps it). Live, a corner-standing leader first had the ally milling at their feet; a spot is now accepted only if it is still in the ring after being pulled inside the walls. `net` `test` `docs`
 
+**[2026-10-10 — Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md)**
+
+- **10-10** [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change) — "现在的游戏场景看起来质量很低，相对于大厅，这画面看起来就像demo": next to the painted, lit hub, a room was a dark near-uniform floor under a 64 px grid, charcoal walls and no light that came from anywhere. A new direction chosen from five concept frames (`art/concept/direction-2026-10-10/4_hybrid_a.png`) replaces design/13's "environment desaturated" for the ember chapter first. Its swatches are a light warm flagstone floor, a dark grey wall top and warm brick on the face, shipped as 512 px JPEG encoded from lossless masters. A new min-cut `makeTileable.mjs` makes them seamless and a new median-targeting `colorGrade.mjs` grades them. `SWATCH_META` gives each swatch a density, a seamless flag and an authored tone, so the floor grid, face tint and cap lift are skipped for authored art. Wall torches are placed by pure geometry over the wall plan and carry real point lights in the scene pass: at most six lit, nearest the view first, with `MAX_SCENE_LIGHTS` raised from 8 to 12. Room edges are darker and start at the walls' foot rather than under them. Found live: six 250 px lights washed the frame orange, side sconces drew under their own wall, and 0.62 edges crushed the torch pools because the light pass multiplies. `warmStoneArt.test.ts` holds the masters to the key frame's tonal rules. `render` `art` `tools` `test` `docs`
+
 ## The work log — by theme
 
-The same 252 entries, grouped. An entry with more than one tag appears more than once.
+The same 253 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(78)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(79)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1876,8 +1880,9 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-01 [Online frames play at 30 Hz](roadmap/119-2026-10-01-motion-comfort.md#online-frames-play-at-30-hz-2026-10-01-client--net--test--docs-no-engine-change)
 - 10-01 [Even frames on every refresh rate](roadmap/119-2026-10-01-motion-comfort.md#even-frames-on-every-refresh-rate-2026-10-01-client--perf--platform--test--docs-no-engine-change)
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
+- 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 
-**`art`** — authored assets and the art pipeline *(25)*
+**`art`** — authored assets and the art pipeline *(26)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1904,6 +1909,7 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
+- 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(19)*
 
@@ -2026,7 +2032,7 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(158)*
+**`test`** — coverage sweeps, gates, mutation batteries *(159)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2186,6 +2192,7 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
 - 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
+- 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2300,7 +2307,7 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(52)*
+**`tools`** — sims, profilers, editors, build scripts *(53)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2354,8 +2361,9 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 3, the Storm Descent, and its boss Voltreaver](roadmap/134-2026-10-06-storm-chapter.md#chapter-3-the-storm-descent-and-its-boss-voltreaver-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
+- 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(169)*
+**`docs`** — design docs and this log itself *(170)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2526,6 +2534,7 @@ The same 252 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
 - 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
+- 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(43)*
 

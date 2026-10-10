@@ -37,7 +37,8 @@ import { fpToPx } from '../coords';
 import type { RectPx } from './wallGeometry';
 import { drawDoorWear, drawFloorDecals, drawFloorMottle, drawRoomWash, hash2, stampFloor } from './floorRender';
 import { staticGraphics } from '../../render/staticGraphics';
-import { drawRoomLight } from './roomLight';
+import { swatchMeta } from '../../render/biomeTiles';
+import { DEFAULT_ROOM_LIGHT, WARM_STONE_ROOM_LIGHT, drawRoomLight } from './roomLight';
 import { cellExtent, roomsCoverReachableSpace } from './floorPartition';
 import { tagGroundPiece } from './groundCulling';
 import { StagedBuild, solo, type BuildStep } from './stagedBuild';
@@ -83,6 +84,9 @@ export function buildGroundLayer(ground: Container, deps: GroundDeps): void {
 export function groundSteps(ground: Container, deps: GroundDeps): BuildStep[] {
   const { rooms, floorRegions, wallRects, doorRects, palette, floorTex } = deps;
   const tileSize = floorTex?.width ?? FALLBACK_TILE;
+  // A warm-stone floor (design/13, 2026-10-10) is drawn stone by stone: the 64 px lattice over it
+  // reads as a second, unrelated paving, and its edges are meant to fall much further into shadow.
+  const authored = swatchMeta(floorTex)?.authoredTone === true;
   const steps: BuildStep[] = [];
 
   // (1) the floor itself. One container per region rather than 322 loose sprites, so the piece the
@@ -92,7 +96,7 @@ export function groundSteps(ground: Container, deps: GroundDeps): BuildStep[] {
     steps.push(() => {
       const tiles = new Container();
       if (floorTex) {
-        for (const tile of stampFloor(floorTex, region)) tiles.addChild(tile);
+        for (const tile of stampFloor(floorTex, region, !swatchMeta(floorTex)?.seamless)) tiles.addChild(tile);
       } else {
         const fill = staticGraphics();
         fill.rect(region.x, region.y, region.w, region.h).fill({ color: palette.ground });
@@ -139,7 +143,7 @@ export function groundSteps(ground: Container, deps: GroundDeps): BuildStep[] {
   }
 
   // (3) the grid, per region, and (4) the light pool, per room.
-  for (const region of floorRegions) {
+  for (const region of authored ? [] : floorRegions) {
     steps.push(() => {
       const grid = staticGraphics();
       drawRegionGrid(grid, region, palette);
@@ -149,7 +153,7 @@ export function groundSteps(ground: Container, deps: GroundDeps): BuildStep[] {
   for (const room of rooms) {
     steps.push(() => {
       const light = staticGraphics();
-      drawRoomLight(light, room);
+      drawRoomLight(light, room, authored ? WARM_STONE_ROOM_LIGHT : DEFAULT_ROOM_LIGHT, wallRects);
       mountPainted(ground, light);
     });
   }

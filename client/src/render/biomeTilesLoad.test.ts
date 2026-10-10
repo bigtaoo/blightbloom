@@ -25,20 +25,32 @@ vi.mock('pixi.js', async (importOriginal) => {
   return { ...actual, Assets: { ...actual.Assets, load: mocks.assetsLoad } };
 });
 
-import { preloadBiomeTiles, getFloorTexture, getWallTexture, getPillarTexture } from './biomeTiles';
+import {
+  preloadBiomeTiles,
+  getFloorTexture,
+  getWallTexture,
+  getWallFaceTexture,
+  getPillarTexture,
+  swatchMeta,
+  SWATCH_META,
+} from './biomeTiles';
 
 interface FakeTexture {
   __src: string;
   __mipmaps: boolean;
+  __resolution: number | undefined;
   source: { addressMode?: string; width: number; height: number };
 }
 
+type LoadArg = string | { src: string; data?: { autoGenerateMipmaps?: boolean; resolution?: number } };
+
 beforeEach(() => {
   mocks.assetsLoad.mockReset();
-  mocks.assetsLoad.mockImplementation(async (arg: string | { src: string; data?: { autoGenerateMipmaps?: boolean } }) => {
+  mocks.assetsLoad.mockImplementation(async (arg: LoadArg) => {
     const src = typeof arg === 'string' ? arg : arg.src;
     const mipmaps = typeof arg === 'string' ? false : arg.data?.autoGenerateMipmaps === true;
-    return { __src: src, __mipmaps: mipmaps, source: { width: 326, height: 384 } } as FakeTexture;
+    const resolution = typeof arg === 'string' ? undefined : arg.data?.resolution;
+    return { __src: src, __mipmaps: mipmaps, __resolution: resolution, source: { width: 326, height: 384 } } as FakeTexture;
   });
 });
 
@@ -52,13 +64,38 @@ describe('preloadBiomeTiles — swatch keys and sprite keys are loaded different
     expect(pillar.source.addressMode).toBeUndefined();
   });
 
-  it('still wraps every tileable swatch, and asks no mipmaps of them', async () => {
+  it('still wraps every first-generation swatch, and asks no mipmaps of them', async () => {
     await preloadBiomeTiles();
-    for (const tex of [getFloorTexture('fire'), getWallTexture('fire')] as unknown as FakeTexture[]) {
+    for (const tex of [getFloorTexture('ice'), getWallTexture('ice')] as unknown as FakeTexture[]) {
       expect(tex).toBeDefined();
       expect(tex.source.addressMode).toBe('repeat');
       expect(tex.__mipmaps).toBe(false);
+      expect(tex.__resolution).toBeUndefined();
+      expect(swatchMeta(tex as never)).toBeUndefined();
     }
+  });
+
+  it('loads a warm-stone swatch at its density, mipmapped, wrapping, and tagged with its metadata', async () => {
+    // The density IS the texture resolution, so `texture.width` comes back in world px for every
+    // consumer; and a swatch minified by its own density needs the chain a sprite does.
+    await preloadBiomeTiles();
+    const cases = [
+      [getFloorTexture('fire'), 'floor_fire'],
+      [getWallTexture('fire'), 'wall_fire'],
+      [getWallFaceTexture('fire'), 'wallface_fire'],
+    ] as const;
+    for (const [tex, key] of cases) {
+      const fake = tex as unknown as FakeTexture;
+      expect(fake.__src).toBe(`/biome/${key}.jpg`);
+      expect(fake.__mipmaps).toBe(true);
+      expect(fake.__resolution).toBe(SWATCH_META[key]!.density);
+      expect(fake.source.addressMode).toBe('repeat');
+      expect(swatchMeta(tex)).toBe(SWATCH_META[key]);
+    }
+  });
+
+  it('reads no metadata off a missing texture', () => {
+    expect(swatchMeta(undefined)).toBeUndefined();
   });
 
   it('resolves the pillar for every element off the one shipped file', async () => {

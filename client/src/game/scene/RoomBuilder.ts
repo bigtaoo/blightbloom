@@ -33,21 +33,11 @@ import { Terrain } from './Terrain';
 import { Portal } from './Portal';
 import { portalCenterPx } from './portalPlacement';
 import { floorKeyOf, isSameFloor, type FloorKey } from './floorKey';
+import { TorchSet, type TorchLightSink } from './torches';
 
-// Standing walls used to optionally take a per-segment `NormalLitFilter` on top of their
-// hand-authored cap/face/side tints (2026-08-18 — one render-target pass per segment, up to 32
-// per room, by far the most expensive thing in the wall pass), gated behind a `LIT_WALLS`
-// switch that had been off since 2026-08-19: an A/B of the live frame with the filter stripped
-// differed by a MEAN of 0.48 out of 765 (0.06%), max 5%, only 0.05% of pixels moving more than
-// 5/255. The tuning that made it safe (`WALL_LIT_AMBIENT` above `1 - key`, a much gentler
-// gradient gain than an actor's — both needed to stop a wall going darker than its own floor)
-// is also what left it with no visible amplitude, and the relief walls actually have now comes
-// free from `wallTone.ts` (cap wash, cap depth gradient, face ramp, fold line). Removed
-// entirely 2026-08-20 rather than left as a permanently-off switch: a re-tune was never
-// scheduled, "kept for the experiment" had become "dead code nobody revisits," and the switch
-// was still costing a render target per wall the one time it was ever flipped on. The shader
-// itself (`NormalLitFilter`) and its actor-facing tuning (`ACTOR_*`) are unaffected — this only
-// removes the wall-specific `WALL_LIT_*` look and its call site.
+// Standing walls once took a per-segment `NormalLitFilter` (2026-08-18), off from 2026-08-19 and
+// removed 2026-08-20: a live A/B moved a mean of 0.06% of the frame for a render target per wall.
+// Walls get their relief from `wallTone.ts`; the actor-facing filter is unaffected.
 
 /** Build time a staged build may spend per render frame. Its own frame also pays for triangulating
  *  whatever that slice added (on the render that first draws it), and a normal frame here is ~4 ms
@@ -114,6 +104,8 @@ export class RoomBuilder {
   private readonly cover: DescendCover;
   private readonly warmup: FilterWarmup;
   private warmPending = false;
+  /** The wall torches and their lights (`torches.ts`), rebuilt with the floor like the dressing. */
+  private readonly torches: TorchSet;
 
   constructor(
     private readonly layers: Layers,
@@ -122,6 +114,7 @@ export class RoomBuilder {
     this.terrain = new Terrain(layers);
     this.cover = new DescendCover(layers.ui);
     this.warmup = new FilterWarmup(layers.ui);
+    this.torches = new TorchSet(layers);
   }
 
   /** `room_enter`: rebuild only when the floor itself changed — see `floorKey.ts` for why a room
@@ -239,6 +232,7 @@ export class RoomBuilder {
       this.layers.shadow.addChild(shadows);
     }));
     steps.push(solo(() => this.buildDressing(s, palette, element)));
+    steps.push(() => this.torches.buildFor(plan, element));
     steps.push(() => this.buildPortal(s, w, h));
     return steps;
   }
@@ -391,7 +385,7 @@ export class RoomBuilder {
    * ever since. Both are driven from here; the doors' own cull-and-proximity rule is
    * `doorTick.tickDoors`.
    */
-  tickFixtures(dt: number, view: CameraRect | null, playerPx: { x: number; y: number } | null): void {
+  tickFixtures(dt: number, view: CameraRect | null, playerPx: { x: number; y: number } | null, lights?: TorchLightSink): void {
     // A staged build (a descend) advances here because this is called once per render frame on
     // every render path — and first, so the doors ticked below are this frame's doors.
     if (this.staged.busy) this.staged.runFor(STAGED_BUILD_BUDGET_MS);
@@ -400,6 +394,7 @@ export class RoomBuilder {
     else this.warmup.tick();
     this.warmPending = false;
     tickDoors(dt, this.doorFixtures, this.doorFootprints, view, playerPx);
+    this.torches.tick(dt, view, lights);
     // The portal animates only while it is open — it is `visible = false` otherwise, and a hidden
     // vortex advancing its own clock is pure cost. `alpha` is 1 because a portal never
     // interpolates a POSITION: it is placed once per room, and only its own layers move.
@@ -458,9 +453,6 @@ export class RoomBuilder {
     this.portal?.setOpen(open);
   }
 
-  /** Round pillars for the current room, from the engine's obstacle solids. Tall
-   *  Y-sortable objects (occlusion + collision). Rebuilt per room; the drawn body is a
-   *  little wider than the collision footprint so the player can stand against it. */
   /** The pillars and the props are `roomDressing.ts` (split out 2026-08-27, 500-line
    *  convention). Both lists stay here because this class owns their lifetimes — they live on
    *  the Y-sorted `entities` layer, which `build()`/`clear()` never sweep wholesale — and the
@@ -489,6 +481,7 @@ export class RoomBuilder {
     this.clearWalls();
     destroyDressing(this.props);
     destroyDressing(this.pillars);
+    this.torches.clear();
     this.occluders.length = 0;
     // `Entity.destroy` unparents and destroys the shadow itself, so the explicit
     // `portal.shadow?.destroy()` that used to precede this (at both portal sites) was the same

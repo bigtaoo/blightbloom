@@ -7,7 +7,7 @@
  * composition, where each surface lands in local coords, the per-surface tints that carry the
  * volume, and the shadow hull's own maths (a pure function, checked exactly).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Graphics, TilingSprite, Texture, TextureSource } from 'pixi.js';
 import {
   addColors,
@@ -54,6 +54,14 @@ import {
 import { SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
 import { biomePalette } from '../theme';
 import { WALL_H_KERB, type RectPx } from './wallGeometry';
+import type { SwatchMeta } from '../../render/biomeTiles';
+
+// `swatchMeta` reads a WeakMap only `loadBiomeTiles` fills; a test swatch is tagged here instead.
+const meta = vi.hoisted(() => new Map<unknown, SwatchMeta>());
+vi.mock('../../render/biomeTiles', async (orig) => ({
+  ...(await orig<object>()),
+  swatchMeta: (t: unknown) => (t ? meta.get(t) : undefined),
+}));
 
 /** The colours a Graphics actually filled with, in call order — the only way to read a drawn
  *  look back out of Pixi headlessly (same shape as `Actor.test.ts`'s contour check). */
@@ -1037,6 +1045,37 @@ describe('addWallFace — the deep pass reaches a body and stops there', () => {
       expect(p.alpha).toBe(1);
       expect(p.tint).toBe(FACE_TINT);
       expect(p.blendMode).toBe('inherit');
+    }
+  });
+});
+
+describe('warm-stone art is drawn as authored (design/13, 2026-10-10)', () => {
+  function warmSkin(): WallSkin {
+    const s = skin(true);
+    meta.set(s.cap, { density: 8, seamless: true, authoredTone: true });
+    meta.set(s.face, { density: 1, seamless: true, authoredTone: true });
+    return s;
+  }
+
+  it('lays the cap once, untinted and unbaked: a dark wall top is the target', () => {
+    const s = warmSkin();
+    const caps = capTiles(buildWallBlock(RECT, HEIGHT, s));
+    expect(caps).toHaveLength(1);
+    expect(caps[0]!.texture).toBe(s.cap);
+    expect(caps[0]!.tint).toBe(0xffffff);
+    // The control: first-generation art on the same block is tinted (and lifted).
+    expect(capTiles(buildWallBlock(RECT, HEIGHT, skin(true)))[0]!.tint).toBe(CAP_TINT);
+  });
+
+  it('leaves the face untinted: the swatch is already graded onto its target', () => {
+    for (const p of facePieces(buildWallBlock(RECT, HEIGHT, warmSkin()))) expect(p.tint).toBe(0xffffff);
+  });
+
+  it('continues the brick courses across block boundaries, in world space', () => {
+    // At 0 every block restarted the swatch at its own origin, so a straight run split into two
+    // blocks showed a brick seam at the split.
+    for (const s of [warmSkin(), skin(true)]) {
+      for (const p of facePieces(buildWallBlock(RECT, HEIGHT, s))) expect(p.tilePosition.x).toBe(-RECT.x);
     }
   });
 });

@@ -19,6 +19,7 @@ import {
   getChestPlateTexture,
   getShopCounterTexture,
   getShopkeeperTexture,
+  getTorchTexture,
   ENV_SPRITE_ASSETS,
   ENV_SPRITE_ASSET_KEYS,
 } from './environmentSprites';
@@ -41,6 +42,7 @@ const GETTERS: Readonly<Record<string, () => { source: { label: string } } | und
   door_curtain: () => getDoorCurtainTexture(),
   portal_arch: () => getPortalArchTexture(),
   npc_shopkeeper: () => getShopkeeperTexture(),
+  torch_wall: () => getTorchTexture(),
   pickup_material: () => getPickupTexture('material'),
   pickup_heal: () => getPickupTexture('heal'),
   pickup_buff: () => getPickupTexture('buff'),
