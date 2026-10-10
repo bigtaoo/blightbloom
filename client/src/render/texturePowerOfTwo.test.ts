@@ -30,9 +30,20 @@ import { BIOME_TILE_ASSETS } from './biomeTiles';
 
 const PUBLIC = new URL('../../public/', import.meta.url);
 
+/** A PNG's IHDR, or a JPEG's first start-of-frame marker (the warm-stone swatches are JPEG). */
 function dimensions(webPath: string): { width: number; height: number } {
   const buf = readFileSync(new URL(webPath.slice(1), PUBLIC));
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  if (!webPath.endsWith('.jpg')) return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  let o = 2;
+  while (o < buf.length) {
+    const marker = buf[o + 1]!;
+    // SOF0-SOF15, minus DHT (C4), JPG (C8) and DAC (CC), which share the range.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { width: buf.readUInt16BE(o + 7), height: buf.readUInt16BE(o + 5) };
+    }
+    o += 2 + buf.readUInt16BE(o + 2);
+  }
+  throw new Error(`${webPath}: no JPEG frame header`);
 }
 
 const isPot = (n: number): boolean => n > 0 && (n & (n - 1)) === 0;
@@ -70,7 +81,8 @@ describe('WebGL1 fallback — a wrapping texture must be power-of-two', () => {
       const { width, height } = dimensions(BIOME_TILE_ASSETS[k]);
       return !isPot(width) || !isPot(height);
     });
-    expect(broken.sort()).toEqual(['wallface_fire', 'wallface_ice', 'wallface_lightning', 'wallface_neutral']);
+    // `wallface_fire` left the list on 2026-10-10: the warm-stone face shipped at 512x256.
+    expect(broken.sort()).toEqual(['wallface_ice', 'wallface_lightning', 'wallface_neutral']);
   });
 
   it('wall faces tile horizontally, so their WIDTH is the axis that matters, and it is clean', () => {

@@ -66,6 +66,7 @@ import type { RectPx } from './wallGeometry';
 import { blockCapTop, NO_JOINS, unjoinedSpans, type WallJoins } from './wallRuns';
 import { deepFadeReach, XRAY_DEEP_LABEL, XRAY_LABEL } from './occlusion';
 import { bakeLitCap } from './capLight';
+import { swatchMeta } from '../../render/biomeTiles';
 import {
   drawBaseContactCrease,
   drawCapDepthGradient,
@@ -248,8 +249,13 @@ function addFacePiece(
   const piece = new TilingSprite({ texture, width: r.w, height: to - from });
   piece.position.set(0, -height + from);
   piece.tileScale.set(height / texture.height);
-  piece.tilePosition.set(0, -from);
-  piece.tint = FACE_TINT;
+  // Horizontally in WORLD space, like the cap (2026-10-10): the block entity sits at `r.x`, so
+  // `-r.x` makes the courses continue across every block boundary. At 0 the swatch restarted at
+  // each block's own origin and a straight run split into blocks showed a brick seam per split.
+  piece.tilePosition.set(-r.x, -from);
+  // Warm-stone art is graded onto its own target; `FACE_TINT` is the darkening the first-generation
+  // charcoal faces needed (`wallTone.ts`).
+  piece.tint = swatchMeta(texture)?.authoredTone ? 0xffffff : FACE_TINT;
   piece.label = label;
   seg.addChild(piece);
 }
@@ -329,8 +335,14 @@ export function addCapLayers(seg: Entity, r: RectPx, capTop: number, capH: numbe
     // measurement that chose additive over a white wash). It is now pre-multiplied into the texture
     // instead — same pixels, one sprite, and no per-block blend-mode change to cut the batch on
     // (`capLight.ts`, which also documents the fallback below).
-    const lit = bakeLitCap(skin.cap);
-    if (lit) {
+    const authored = swatchMeta(skin.cap)?.authoredTone === true;
+    const lit = authored ? undefined : bakeLitCap(skin.cap);
+    if (authored) {
+      // Warm-stone art is drawn as authored: a dark wall top under a lit floor is the target frame
+      // (design/13), and the height read comes from the face and the base shadow instead of from
+      // a lifted cap — see `wallTone.ts` for why the first-generation art needed the lift.
+      seg.addChild(capTile(skin.cap, r, capTop, capH, 0xffffff, 1, 'inherit'));
+    } else if (lit) {
       seg.addChild(capTile(lit, r, capTop, capH, CAP_TINT, 1, 'inherit'));
     } else {
       seg.addChild(capTile(skin.cap, r, capTop, capH, CAP_TINT, 1, 'inherit'));

@@ -17,18 +17,29 @@
  * miss here, it is the poison bullet and the poison-tinted mob becoming invisible. That clause is
  * asserted on the pixels, because it is exactly the kind of thing that looks fine in a preview.
  *
+ * Since 2026-10-10 the chapters are moving, one at a time, to design/13's warm-stone direction —
+ * light flagstone, dark wall tops, torch light — which is deliberately NOT this family: its floor is
+ * brighter than its wall cap, which inverts the old rule below. An element whose swatches carry
+ * `SWATCH_META` is measured by `warmStoneArt.test.ts` instead, and the family checks here run over
+ * the first-generation elements that are left. Shipping, though, is still asserted for all five.
+ *
  * Import steps this pins as having actually run (nothing else records them):
  *   - downsample to a 256 px long axis (`compress.mjs`)
  *   - the elevation's border crop + top-half crop + bottom re-darken, which is what makes
  *     `wallface_poison` 256x128 rather than the 1254x1254 the generator returned
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { decodePNG } from '../../../../tools/png-pipeline/pngCodec.mjs';
+import { BIOME_TILE_ASSETS, SWATCH_META } from '../../render/biomeTiles';
 
 /** design/13's closed five. Listed, so a sixth element's art cannot land unmeasured. */
 const ELEMENTS = ['fire', 'ice', 'lightning', 'neutral', 'poison'] as const;
 type Element = (typeof ELEMENTS)[number];
+const KINDS = ['floor', 'wall', 'wallface'] as const;
+
+/** The elements still on the first-generation art — the ones this family's checks are about. */
+const FIRST_GEN = ELEMENTS.filter((el) => KINDS.every((kind) => !SWATCH_META[`${kind}_${el}`]));
 
 interface Img {
   width: number;
@@ -106,14 +117,26 @@ function rowDiff(img: Img, y1: number, y2: number): number {
 describe('biome swatches — the set is complete', () => {
   it('every element has all three kinds shipped', () => {
     for (const el of ELEMENTS) {
-      for (const kind of ['floor', 'wall', 'wallface'] as const) {
-        expect(() => load(`${kind}_${el}`), `${kind}_${el}`).not.toThrow();
+      for (const kind of KINDS) {
+        const path = BIOME_TILE_ASSETS[`${kind}_${el}`];
+        expect(path, `${kind}_${el} registered`).toBeDefined();
+        expect(existsSync(new URL(`../../../public${path}`, import.meta.url)), `${kind}_${el} shipped`).toBe(true);
       }
     }
   });
 
-  it('every swatch was downsampled to the shared 256 px long axis', () => {
+  it('every element is wholly in one generation or the other, never a mix of the two', () => {
+    // A warm floor under a first-generation wall would pass every per-file check in both files and
+    // still be the outlier neighbour this file exists to catch.
     for (const el of ELEMENTS) {
+      const warm = KINDS.filter((kind) => SWATCH_META[`${kind}_${el}`]).length;
+      expect([0, KINDS.length], `${el} warm-stone kinds`).toContain(warm);
+    }
+    expect(FIRST_GEN.length).toBeGreaterThan(0); // or everything below is vacuous
+  });
+
+  it('every swatch was downsampled to the shared 256 px long axis', () => {
+    for (const el of FIRST_GEN) {
       for (const kind of ['floor', 'wall', 'wallface'] as const) {
         const img = load(`${kind}_${el}`);
         expect(Math.max(img.width, img.height), `${kind}_${el}`).toBe(256);
@@ -122,7 +145,7 @@ describe('biome swatches — the set is complete', () => {
   });
 
   it('floor and wall swatches are square; an elevation is used at one height and is not', () => {
-    for (const el of ELEMENTS) {
+    for (const el of FIRST_GEN) {
       expect(load(`floor_${el}`).width, `floor_${el}`).toBe(load(`floor_${el}`).height);
       expect(load(`wall_${el}`).width, `wall_${el}`).toBe(load(`wall_${el}`).height);
       const face = load(`wallface_${el}`);
@@ -145,7 +168,7 @@ describe('biome swatches — one tonal family', () => {
   } as const;
 
   for (const kind of ['floor', 'wall', 'wallface'] as const) {
-    it.each(ELEMENTS)(`${kind}_%s sits inside the family's tonal range`, (el: Element) => {
+    it.each(FIRST_GEN)(`${kind}_%s sits inside the family's tonal range`, (el: Element) => {
       const q = quantiles(load(`${kind}_${el}`));
       expect(q.median, `${kind}_${el} median`).toBeGreaterThanOrEqual(RANGE[kind].median[0]);
       expect(q.median, `${kind}_${el} median`).toBeLessThanOrEqual(RANGE[kind].median[1]);
@@ -158,14 +181,14 @@ describe('biome swatches — one tonal family', () => {
     // The tilted view's most basic light rule: the wall's top surface faces the sky more squarely
     // than the floor does. It held across the original four by construction (#161A24 vs #2A3140)
     // and is the cheapest single check that a new element's pair was authored from the same brief.
-    for (const el of ELEMENTS) {
+    for (const el of FIRST_GEN) {
       expect(quantiles(load(`floor_${el}`)).median, el).toBeLessThan(quantiles(load(`wall_${el}`)).median);
     }
   });
 });
 
 describe('biome swatches — the seam rules, which differ by kind', () => {
-  it.each(ELEMENTS)('floor_%s and wall_%s tile on all four edges', (el: Element) => {
+  it.each(FIRST_GEN)('floor_%s and wall_%s tile on all four edges', (el: Element) => {
     for (const kind of ['floor', 'wall'] as const) {
       const img = load(`${kind}_${el}`);
       // The wrap difference is compared against the ADJACENT-column difference in the same image,
@@ -180,7 +203,7 @@ describe('biome swatches — the seam rules, which differ by kind', () => {
     }
   });
 
-  it.each(ELEMENTS)('wallface_%s tiles LEFT-RIGHT only, and is lit top / dark bottom', (el: Element) => {
+  it.each(FIRST_GEN)('wallface_%s tiles LEFT-RIGHT only, and is lit top / dark bottom', (el: Element) => {
     const img = load(`wallface_${el}`);
     expect(colDiff(img, 0, img.width - 1), `${el} L/R`).toBeLessThan(Math.max(colDiff(img, 0, 1), 1) * 6);
     // …and vertically it must NOT match, because the top is a lit coping and the bottom meets the
@@ -217,7 +240,8 @@ describe('poison — design/13\'s hard "dial the green down" clause, on the pixe
       return m.g - m.r;
     };
     for (const kind of ['floor', 'wall'] as const) {
-      const others = (['fire', 'ice', 'lightning', 'neutral'] as const).map((el) => greenness(`${kind}_${el}`));
+      // Against the first-generation neighbours only: a warm-stone chapter is a different palette.
+      const others = FIRST_GEN.filter((el) => el !== 'poison').map((el) => greenness(`${kind}_${el}`));
       expect(greenness(`${kind}_poison`), `${kind}_poison vs the loudest other`).toBeLessThanOrEqual(
         Math.max(...others) + 4,
       );

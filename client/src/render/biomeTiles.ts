@@ -28,12 +28,12 @@ import type { BiomeElement } from '../game/theme';
  *  FILES this loader will ask for (`wechatAssetLoad.test.ts`, build/checkWeChatPackage.mjs) —
  *  a key alone does not say which file it resolves to. */
 export const BIOME_TILE_ASSETS: Readonly<Record<string, string>> = {
-  floor_fire: '/biome/floor_fire.png',
+  floor_fire: '/biome/floor_fire.jpg',
   floor_ice: '/biome/floor_ice.png',
   floor_lightning: '/biome/floor_lightning.png',
   floor_neutral: '/biome/floor_neutral.png',
   floor_poison: '/biome/floor_poison.png',
-  wall_fire: '/biome/wall_fire.png',
+  wall_fire: '/biome/wall_fire.jpg',
   wall_ice: '/biome/wall_ice.png',
   wall_lightning: '/biome/wall_lightning.png',
   wall_neutral: '/biome/wall_neutral.png',
@@ -43,7 +43,7 @@ export const BIOME_TILE_ASSETS: Readonly<Record<string, string>> = {
   // reused as the raised wall's top cap. Tiles horizontally only: its top rows are a
   // lit coping edge and its bottom rows a dark base, so it is used at exactly one
   // height (WALL_HEIGHT) and never repeated vertically.
-  wallface_fire: '/biome/wallface_fire.png',
+  wallface_fire: '/biome/wallface_fire.jpg',
   wallface_ice: '/biome/wallface_ice.png',
   wallface_lightning: '/biome/wallface_lightning.png',
   wallface_neutral: '/biome/wallface_neutral.png',
@@ -65,6 +65,48 @@ export const BIOME_TILE_ASSETS: Readonly<Record<string, string>> = {
  *  texture does nothing. */
 const SPRITE_KEYS: ReadonlySet<string> = new Set(['pillar_neutral']);
 
+/**
+ * What a warm-stone swatch (design/13 "Environment: warm stone, dark edges, light pools",
+ * 2026-10-10) carries that the first-generation 256 px swatches do not.
+ *
+ * - `density`: texels per WORLD px. Loaded as the texture's `resolution`, so `texture.width` is
+ *   already in world px for every consumer — the floor stamp, the cap's TilingSprite, a crop —
+ *   and none of them has to know a swatch can be finer than 1:1. The old swatches were 256 px drawn
+ *   1:1 and then magnified ~3.5x by the camera, which is most of why the floor read soft.
+ * - `seamless`: the swatch wraps exactly (`tools/png-pipeline/makeTileable.mjs`), so the floor
+ *   stamp must NOT mirror alternate tiles — a mirror is what the old, roughly-matching edges
+ *   needed, and on an exact wrap it only turns stone into a kaleidoscope at every tile line.
+ * - `authoredTone`: the art already sits on its tonal target (`colorGrade.mjs --median`), so the
+ *   wall code must not apply the lifts and tints `scene/wallTone.ts` tuned for the old charcoal art.
+ */
+export interface SwatchMeta {
+  readonly density: number;
+  readonly seamless: boolean;
+  readonly authoredTone: boolean;
+}
+
+/** 512 px over 200 world px: a floor slab is about two hero-widths, the key frame's proportion. The
+ *  texel count stays a power of two (`texturePowerOfTwo.test.ts`: a WebGL1 context clamps a
+ *  non-power-of-two texture that asks to wrap), so the density is the free number, not the size. */
+const WARM_STONE: SwatchMeta = { density: 2.56, seamless: true, authoredTone: true };
+
+/** Keys drawn in the warm-stone direction. Everything else is a first-generation swatch. The
+ *  front ELEVATION has no density: it is always stretched to the wall's own height. */
+export const SWATCH_META: Readonly<Record<string, SwatchMeta>> = {
+  floor_fire: WARM_STONE,
+  // 512 px over one 64 px cap cell.
+  wall_fire: { ...WARM_STONE, density: 8 },
+  wallface_fire: { density: 1, seamless: true, authoredTone: true },
+};
+
+const metaByTexture = new WeakMap<Texture, SwatchMeta>();
+
+/** The swatch metadata a loaded texture was registered with, or `undefined` for a
+ *  first-generation swatch (and for anything that is not a swatch at all). */
+export function swatchMeta(tex: Texture | undefined): SwatchMeta | undefined {
+  return tex ? metaByTexture.get(tex) : undefined;
+}
+
 const textures = new Map<string, Texture>();
 
 /** Every key `getFloorTexture`/`getWallTexture` can resolve once preloaded — exposed
@@ -78,9 +120,17 @@ export async function preloadBiomeTiles(): Promise<void> {
     Object.entries(BIOME_TILE_ASSETS).map(async ([key, path]) => {
       try {
         const isSprite = SPRITE_KEYS.has(key);
-        const tex = isSprite
-          ? await Assets.load<Texture>({ src: resolveAssetUrl(path), data: { autoGenerateMipmaps: true } })
-          : await Assets.load<Texture>(resolveAssetUrl(path));
+        const meta = SWATCH_META[key];
+        // A warm-stone swatch is minified by its own density before the camera ever sees it (and a
+        // kerb's face is squeezed 5x), so it needs the same mip chain a sprite does.
+        const tex =
+          isSprite || meta
+            ? await Assets.load<Texture>({
+                src: resolveAssetUrl(path),
+                data: { autoGenerateMipmaps: true, resolution: meta?.density ?? 1 },
+              })
+            : await Assets.load<Texture>(resolveAssetUrl(path));
+        if (meta) metaByTexture.set(tex, meta);
         // Tiling textures must wrap, not clamp-to-edge (Pixi's default) — otherwise a
         // TilingSprite repeats the same clamped border pixel instead of the swatch.
         // A sprite key keeps the default clamp: wrapping a lone object's edge would

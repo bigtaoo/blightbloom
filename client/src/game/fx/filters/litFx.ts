@@ -27,9 +27,11 @@ import { FRAME_UV, hexToRgb } from './shaderPrelude';
 /** Point lights the one pass can carry. A frame with more (a big fight throws a transient
  *  per impact, each ~170ms long) keeps the STRONGEST this many — `LightRegistry.snapshot`
  *  does the picking and is where that truncation is documented. Sized for one persistent
- *  player glow plus a burst of impacts; every slot costs a per-texel iteration over the
- *  whole screen, so this is the knob that decides the pass's fill cost. */
-export const MAX_SCENE_LIGHTS = 8;
+ *  player glow, up to `torches.MAX_LIT_TORCHES` wall torches (2026-10-10: 8 -> 12 for them, so
+ *  a torch-lit room still leaves five slots to a burst of impacts); every slot costs a
+ *  per-texel iteration over the whole screen, so this is the knob that decides the pass's fill
+ *  cost — and the loop breaks at `uLightCount`, so an unused slot costs nothing. */
+export const MAX_SCENE_LIGHTS = 12;
 
 /** Ambient floor + fake-normal gain, unchanged from the per-actor filter this replaces:
  *  ambient 0.55 with key 0.55 means a surface facing fully away from the key light drops to

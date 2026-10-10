@@ -49,12 +49,16 @@ vi.mock('../../render/biomeTiles', () => ({
   getWallTexture: () => mocks.tex,
   getWallFaceTexture: () => mocks.tex,
   getPillarTexture: () => mocks.tex,
+  // Every swatch here is first-generation (no warm-stone metadata) unless a test says otherwise.
+  swatchMeta: () => undefined,
 }));
 
 vi.mock('../../render/environmentSprites', () => ({
   getDoorTexture: () => undefined,
   getDoorCurtainTexture: () => undefined,
   getPortalArchTexture: () => undefined,
+  // No torch art: a torch-lit chapter still hangs its lights, just no sconce sprite.
+  getTorchTexture: () => undefined,
   getPickupTexture: () => undefined,
   getPropTexture: () => undefined,
 }));

@@ -1220,8 +1220,8 @@ describe('GameLoop — the animated fixtures are driven every render frame (2026
     builder.build(1, 0);
   };
 
-  it("steps the fixtures with this frame's dt and the camera's own world rect", () => {
-    const { deps, scene, roomBuilder } = buildDeps();
+  it("steps the fixtures with this frame's dt, the camera's own world rect, and the scene's lights", () => {
+    const { deps, scene, roomBuilder, fx } = buildDeps();
     scene.player = at(1200, 140.8);
     const loop = new GameLoop(deps, buildHost({ getPhase: () => 'playing' }));
 
@@ -1233,6 +1233,9 @@ describe('GameLoop — the animated fixtures are driven every render frame (2026
       16,
       { x: -1e4, y: -1e4, w: 2e4, h: 2e4 },
       { x: 1200, y: 140.8 },
+      // The registry a torch-lit room hangs its lights in (`torches.ts`) — the same one the
+      // player's own glow goes to, so the two share the scene pass's slots.
+      fx.lights,
     );
   });
 
@@ -1243,7 +1246,7 @@ describe('GameLoop — the animated fixtures are driven every render frame (2026
 
     loop.update(16);
 
-    expect(roomBuilder.tickFixtures).toHaveBeenCalledWith(16, expect.anything(), null);
+    expect(roomBuilder.tickFixtures).toHaveBeenCalledWith(16, expect.anything(), null, expect.anything());
   });
 
   it('flashes a locked door the player walked into, and shakes the camera once', () => {

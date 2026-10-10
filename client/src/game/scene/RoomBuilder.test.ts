@@ -117,6 +117,8 @@ vi.mock('../../render/biomeTiles', () => ({
     mocks.pillarTexElement = el;
     return mocks.pillarTex;
   },
+  // Every swatch here is first-generation (no warm-stone metadata) unless a test says otherwise.
+  swatchMeta: () => undefined,
 }));
 
 vi.mock('../../render/environmentSprites', () => ({
@@ -130,6 +132,8 @@ vi.mock('../../render/environmentSprites', () => ({
   // arch (2026-08-20). Left unloaded here so a portal keeps its Graphics fallback — this
   // file's subject is the room, and Portal.test.ts owns both of the arch's paths.
   getPortalArchTexture: () => undefined,
+  // No torch art: a torch-lit chapter still hangs its lights, just no sconce sprite.
+  getTorchTexture: () => undefined,
   getPickupTexture: () => undefined,
   // No prop art exists yet (propRender.ts's own Graphics fallback) — undefined here matches
   // that, and keeps this file's props coverage independent of a future art pass.

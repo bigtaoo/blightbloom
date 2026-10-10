@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Graphics } from 'pixi.js';
-import { drawRoomLight } from './roomLight';
+import { DEFAULT_ROOM_LIGHT, drawRoomLight, insetByWalls, WARM_STONE_ROOM_LIGHT } from './roomLight';
 import { drawWallShadow } from './wallRender';
 import type { RectPx } from './wallGeometry';
 
@@ -118,6 +118,94 @@ describe('drawRoomLight — a room has a centre and it has corners', () => {
     drawRoomLight(g, { x: 900, y: 0, w: 400, h: 400 });
     expect(g.bounds.minX).toBeLessThan(400);
     expect(g.bounds.maxX).toBeGreaterThan(900);
+  });
+});
+
+describe('drawRoomLight — the warm-stone style (design/13, 2026-10-10)', () => {
+  const NORTH: RectPx = { x: 200, y: 300, w: 480, h: 64 };
+  const WEST: RectPx = { x: 200, y: 300, w: 32, h: 480 };
+
+  it('is the default when no style is passed', () => {
+    const g = new Graphics();
+    drawRoomLight(g, ROOM, DEFAULT_ROOM_LIGHT);
+    expect(bands(g)).toEqual(bands(newLight(ROOM)));
+  });
+
+  it('falls off harder and further than the default — a light floor needs a darker edge to read', () => {
+    const g = new Graphics();
+    drawRoomLight(g, ROOM, { ...WARM_STONE_ROOM_LIGHT, wallInset: false });
+    expect(bands(g)[0]!.alpha).toBeGreaterThan(bands(newLight(ROOM))[0]!.alpha * 1.5);
+    expect(reach(g)).toBeGreaterThan(reach(newLight(ROOM)));
+  });
+
+  it('starts the ramp at the foot of the walls, not under them', () => {
+    const g = new Graphics();
+    drawRoomLight(g, ROOM, WARM_STONE_ROOM_LIGHT, [NORTH, WEST]);
+    const outer = bands(g)[0]!;
+    // The outermost band's stroke straddles its own rect: its outer edge is the wall's foot.
+    expect(outer.rect[0]! - outer.width / 2).toBeCloseTo(WEST.x + WEST.w, 6);
+    expect(outer.rect[1]! - outer.width / 2).toBeCloseTo(NORTH.y + NORTH.h, 6);
+  });
+
+  it('ignores the walls when the style does not ask for the inset', () => {
+    const g = new Graphics();
+    drawRoomLight(g, ROOM, DEFAULT_ROOM_LIGHT, [NORTH, WEST]);
+    expect(bands(g)).toEqual(bands(newLight(ROOM)));
+  });
+
+  it("still leaves floor to see where it stacks with a wall's crease and cast shadow", () => {
+    // The default's first rule (the pool fainter than the crease) is deliberately given up here:
+    // the key frame's corners ARE dark. Its second is not — a black corner is a hole in any style.
+    const g = new Graphics();
+    drawRoomLight(g, ROOM, WARM_STONE_ROOM_LIGHT);
+    const pool = bands(g)[0]!.alpha;
+    const wall = new Graphics();
+    drawWallShadow(wall, { x: 0, y: 0, w: 100, h: 100 }, 40);
+    const { cast, hug } = wallDarkening(wall);
+    expect(1 - (1 - pool) * (1 - hug) * (1 - cast)).toBeLessThan(0.8);
+  });
+});
+
+describe('insetByWalls — the floor a player can see', () => {
+  const R: RectPx = { x: 0, y: 0, w: 640, h: 480 };
+
+  it('takes each edge in to the foot of the deepest wall along it', () => {
+    const walls: RectPx[] = [
+      { x: 0, y: 0, w: 640, h: 64 }, // north
+      { x: 0, y: 0, w: 320, h: 80 }, // a deeper stretch of north wall: it wins
+      { x: 0, y: 448, w: 640, h: 32 }, // south kerb
+      { x: 0, y: 0, w: 32, h: 480 }, // west
+      { x: 608, y: 0, w: 32, h: 480 }, // east
+    ];
+    expect(insetByWalls(R, walls)).toEqual({ x: 32, y: 80, w: 576, h: 368 });
+  });
+
+  it('leaves an edge with no wall where it is — a room open onto the next', () => {
+    expect(insetByWalls(R, [])).toEqual(R);
+    expect(insetByWalls(R, [{ x: 0, y: 0, w: 640, h: 64 }])).toEqual({ x: 0, y: 64, w: 640, h: 416 });
+  });
+
+  it('accepts a wall a few px off the edge, and not one further in', () => {
+    expect(insetByWalls(R, [{ x: 0, y: 4, w: 640, h: 60 }]).y).toBe(64);
+    expect(insetByWalls(R, [{ x: 0, y: 5, w: 640, h: 60 }]).y).toBe(0);
+  });
+
+  it("ignores a wall that misses the room, and one standing across an edge rather than along it", () => {
+    const outside: RectPx = { x: 700, y: 0, w: 640, h: 64 };
+    const below: RectPx = { x: 0, y: 500, w: 640, h: 64 };
+    // Taller than wide and touching the north edge: a side wall's end, not a north wall.
+    const stub: RectPx = { x: 300, y: 0, w: 32, h: 200 };
+    expect(insetByWalls(R, [outside, below, stub])).toEqual(R);
+  });
+
+  it('never returns a negative size, whatever the walls', () => {
+    const r = insetByWalls(R, [
+      { x: 0, y: 0, w: 640, h: 400 },
+      { x: 0, y: 100, w: 640, h: 380 },
+      { x: 0, y: 0, w: 400, h: 400 },
+    ]);
+    expect(r.w).toBeGreaterThanOrEqual(0);
+    expect(r.h).toBe(0);
   });
 });
 

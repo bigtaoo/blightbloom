@@ -75,6 +75,7 @@ import { AUTO_BATCH_VERTEX_LIMIT } from '../../perf/drawAttribution';
 import { readRampFill, resetShadeRampCache, shadeRampCacheSize } from '../../render/shadeRamp';
 import { voidEdges, type VoidEdges } from './wallVoidEdge';
 import { VOID_RETURN_PX } from './wallTone';
+import { SWATCH_META } from '../../render/biomeTiles';
 
 /** One floor, taken all the way through the sequence `RoomBuilder.build` uses. */
 interface Floor {
@@ -498,12 +499,19 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
     return at;
   }
 
+  /** A face's rows, measured off what it was ENCODED from. A first-generation face ships as the PNG
+   *  itself; a warm-stone face (design/13, 2026-10-10) ships as a JPEG with no decoder in this
+   *  environment, so it is measured off the lossless master in `art/biome` the JPEG is encoded
+   *  from — `warmStoneArt.test.ts` pins the two to the same dimensions. */
+  const faceRows = (el: string): number[] =>
+    SWATCH_META[`wallface_${el}`] ? pngRowLuma(`../../art/biome/wallface_${el}_master.png`) : pngRowLuma(`biome/wallface_${el}.png`);
+
   it('has an entry for every shipped face swatch', () => {
     // A new biome whose art lands without being measured would otherwise fall back to the
     // conservative default and quietly clip its corners in the wrong place.
     const shipped = readdirSync(new URL('biome/', PUBLIC))
-      .filter((f) => f.startsWith('wallface_') && f.endsWith('.png'))
-      .map((f) => f.slice('wallface_'.length, -'.png'.length));
+      .filter((f) => f.startsWith('wallface_') && /\.(png|jpg)$/.test(f))
+      .map((f) => f.slice('wallface_'.length).replace(/\.(png|jpg)$/, ''));
     expect(shipped.length).toBeGreaterThan(0);
     for (const el of shipped) expect(FACE_CROWN_ROWS[el], `no crown measured for '${el}'`).toBeDefined();
     expect([...SWATCHES].sort()).toEqual(shipped.sort());
@@ -511,14 +519,14 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
 
   it('records each swatch\'s real pixel height, so a re-export at a new size fails here', () => {
     for (const el of SWATCHES) {
-      const rows = pngRowLuma(`biome/wallface_${el}.png`);
+      const rows = faceRows(el);
       expect(FACE_CROWN_ROWS[el]![1], `${el} row count`).toBe(rows.length);
     }
   });
 
   it('puts the line exactly on each swatch\'s mortar line', () => {
     for (const el of SWATCHES) {
-      const rows = pngRowLuma(`biome/wallface_${el}.png`);
+      const rows = faceRows(el);
       expect(FACE_CROWN_ROWS[el]![0], `${el} mortar line`).toBe(mortarRow(rows));
     }
   });
@@ -527,13 +535,31 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
     // What makes the mortar line the right place to stop: a markedly brighter coping course above it
     // and the brick plateau below. That contrast is why the crown is the line the eye reads a back
     // wall by, and it is what would stop holding if the art lost its coping course entirely.
-    for (const el of SWATCHES) {
-      const rows = pngRowLuma(`biome/wallface_${el}.png`);
+    // First-generation faces only: a warm-stone face has no lit coping (the next test).
+    for (const el of SWATCHES.filter((e) => !SWATCH_META[`wallface_${e}`])) {
+      const rows = faceRows(el);
       const line = FACE_CROWN_ROWS[el]![0];
       const mean = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
       const coping = mean(rows.slice(0, Math.max(1, line - 8)));
       const brick = mean(rows.slice(line + 4, Math.round(rows.length * 0.75)));
       expect(coping, `${el} coping vs brick`).toBeGreaterThan(brick * 1.3);
+    }
+  });
+
+  it('is a real mortar joint on a warm-stone face, which has no lit coping to read instead', () => {
+    // The warm faces are courses of brick from top to bottom (`art/biome/prompts.md`), so the line
+    // a back wall is read by is simply the first joint: far darker than the course above it AND the
+    // one below, not merely the darkest row of a gradient.
+    const warm = SWATCHES.filter((e) => SWATCH_META[`wallface_${e}`]);
+    expect(warm).toEqual(['fire']);
+    for (const el of warm) {
+      const rows = faceRows(el);
+      const line = FACE_CROWN_ROWS[el]![0];
+      const mean = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
+      const above = mean(rows.slice(Math.max(0, line - 24), line - 6));
+      const below = mean(rows.slice(line + 6, line + 24));
+      expect(rows[line]!, `${el} joint vs the course above`).toBeLessThan(above * 0.25);
+      expect(rows[line]!, `${el} joint vs the course below`).toBeLessThan(below * 0.25);
     }
   });
 
@@ -572,7 +598,7 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
     // Guards the assertions above against being vacuously true: 40% down the elevation is inside the
     // brick courses, and must not pass as the mortar line for any swatch.
     for (const el of SWATCHES) {
-      const rows = pngRowLuma(`biome/wallface_${el}.png`);
+      const rows = faceRows(el);
       expect(mortarRow(rows), el).not.toBe(Math.round(rows.length * 0.4));
     }
   });

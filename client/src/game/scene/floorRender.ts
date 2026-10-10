@@ -157,8 +157,10 @@ export function tileVariant(i: number, j: number): { flipX: boolean; flipY: bool
  * A tile only partly inside the region is CROPPED to the part that is (source frame offset to
  * match, so its stone still lines up) and left unflipped — the crop already ends its seam, and
  * mirroring it too would put a mismatched edge where the floor meets the void.
+ *
+ * `mirror: false` for a seamless swatch — see the comment at the flip.
  */
-export function stampFloor(tile: Texture, region: RectPx): Sprite[] {
+export function stampFloor(tile: Texture, region: RectPx, mirror = true): Sprite[] {
   const size = tile.width;
   if (size <= 0 || region.w <= 0 || region.h <= 0) return [];
   const out: Sprite[] = [];
@@ -177,7 +179,9 @@ export function stampFloor(tile: Texture, region: RectPx): Sprite[] {
       if (x1 - x0 <= 0.01 || y1 - y0 <= 0.01) continue;
       const full = x1 - x0 >= size - 0.01 && y1 - y0 >= size - 0.01;
       if (full) {
-        const v = tileVariant(i, j);
+        // An exactly-wrapping swatch is never mirrored: a flip only hides an edge that does not
+        // quite match, and on one that does it turns the stone into a kaleidoscope (`biomeTiles`).
+        const v = mirror ? tileVariant(i, j) : { flipX: false, flipY: false };
         const sprite = new Sprite(tile);
         // Mirror about the tile's own centre, so a flip never moves the tile off its cell.
         sprite.anchor.set(0.5);

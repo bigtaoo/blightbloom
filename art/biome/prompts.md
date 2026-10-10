@@ -412,16 +412,133 @@ Seven generations, six rejected — all six kept as `pillar_*_alt*.png`. Measure
 | `pillar_fire_alt2.png` | no warm tint at all (R−B = −14.9 against the neutral's −18.5, i.e. inside the noise), cap only 23% of the height, and the art touched all four frame edges. |
 | `pillar_fire_alt.png` | the one real near-miss, and the reason there is no per-element pillar art: it followed the canvas/margin/aspect spec exactly, but its course joints came back **straight** (centre-vs-edge sag of −2 px against the accepted file's +53) and its top surface occupies **21%** of the height against the accepted file's 30% — two files that would ship as two different camera angles. A `Sprite.tint` gets the warmth without either defect. |
 
+## The warm-stone ember swatches (3) — the new direction, 2026-10-10
+
+The ember chapter's three swatches were replaced outright when the environment's direction changed
+from "dark, desaturated stone under a game that carries the colour" to the key frame
+`art/concept/direction-2026-10-10/4_hybrid_a.png`: **a light warm flagstone floor, a dark grey wall
+top, warm brown brick on the face, torches on the walls, dark room edges** (design/13 "Environment:
+warm stone, dark edges, light pools"). Two of the first family's tonal rules are inverted on purpose:
+the floor is now the lightest stone in the room and the wall top the darkest. So
+`biomeSwatchArt.test.ts` measures only the first generation, and `warmStoneArt.test.ts` measures these.
+
+Generated with Mistral (`D:/standing/tools/generate_image.sh <out> <promptfile>`, which returns 1024x768).
+
+### Three things that are new with this family
+
+- **Masters and JPEG.** A painted 512 px stone swatch is ~55 KB as JPEG and several times that as
+  PNG, and these ride in the WeChat main package, so `client/public/biome/<key>.jpg` ships (q90).
+  Nothing in the test environment decodes JPEG. Every measurement therefore reads the lossless
+  `art/biome/<key>_master.png` the JPEG was encoded from, and `warmStoneArt.test.ts` pins the
+  JPEG's frame-header size to the master's. **Re-encode from the master, never from the JPEG.**
+- **Seamless by construction.** `tools/png-pipeline/makeTileable.mjs` cuts each wrap seam along a
+  minimum-error path through the dark mortar both sides share (image quilting, applied to an image
+  against itself). The swatch then wraps EXACTLY and is never mirrored on the floor
+  (`SwatchMeta.seamless`). A crossfade ghosts the outlines into double lines, and mirror-tiling
+  turns irregular flagstones into a kaleidoscope.
+- **Graded, not re-rolled.** The model treats a hex colour as a suggestion: a floor asked for at
+  #B8A38C came back at median luma 187 with twice the chroma. `tools/png-pipeline/colorGrade.mjs`
+  flattens low-frequency drift, desaturates, applies a per-channel gain, and lands the MEDIAN luma
+  on a target number. It uses the median so a thin dark mortar tail does not move it.
+
+### `floor_fire` — the accepted prompt (`floor_fire_warm_raw.png`)
+
+> A single seamless TEXTURE SWATCH ONLY, filling the entire image edge to edge, a flat material
+> sample meant to be repeated like a game texture tile. NOT a room, NOT a scene, NO perspective, NO
+> characters, NO props, NO walls, NO border, NO frame, NO vignette, NO darker corners, NO
+> spotlight, lit perfectly evenly from straight above. Straight-down orthographic top view.
+> Style: hand-painted 2D cartoon dungeon floor for a polished top-down action RPG, clean and
+> readable. Material: FLAT CRACKED FLAGSTONE PAVING laid in a RANDOM CRAZY-PAVING pattern: about 12
+> to 16 large flat irregular polygon slabs of different sizes, fitted tightly together, every seam
+> is short and changes direction. IMPORTANT: there are NO long straight lines, NO seam runs across
+> the whole image, NO grid, NO rows, NO square tiles, NO 2x2 or 4-panel layout. The slabs are FLAT
+> with very low relief: no bulging pillow shapes, no thick bevels, no rounded cobbles. Seams are THIN
+> dark-brown lines (2-3 px), never wide black gaps. Slab faces are smooth light warm beige-grey
+> (around #BDAA92), each slab a slightly different shade, with soft painterly tone and one or two
+> thin hairline cracks. Low contrast, calm surface. NO pebbles, NO gravel, NO moss, NO lava, NO glow.
+
+This batch needed the "NO long straight lines / NO 2x2" paragraph. Without it, two of seven
+candidates came back as a 2x2 panel grid, and the cross reads as a lattice once the tile repeats.
+The first accepted floor was kept as `floor_fire_warm_alt.png`. Its chunky rounded cobbles and wide
+black mortar read as busy gravel under the actors, and it was replaced the same day.
+
+Pipeline:
+
+1. Crop `(128, 0, 896, 768)`.
+2. `makeTileable.mjs --overlap=0.2 --jump=2` gives 614².
+3. `colorGrade.mjs --flatten=0.25 --desat=0.2 --gain=1.02,0.98,1.0 --median=172`.
+4. Lanczos to 512, giving `floor_fire_master.png`.
+5. Encode JPEG q90.
+
+Density is 2.56 (`biomeTiles.SWATCH_META`): 512 px over 200 world px, so a slab is about two
+hero-widths across. At 96 world px per tile the slabs read as cobbles the hero's own size; at 245
+they read as paving three heroes across. A `--gain` of 1.06/0.96 read pink in the frame.
+
+### `wall_fire` (top cap) and `wallface_fire` (front elevation)
+
+> Cap: A single seamless TEXTURE SWATCH ONLY [... the floor's framing ...]. Material: the flat TOP of
+> a thick castle wall seen from directly above: chunky rectangular dark grey stone blocks in a
+> running bond pattern, about 4 blocks across and 5 rows, clean bevelled edges with a lighter
+> top-left bevel. Colour: cool-to-neutral dark grey stone (block tops around hex #5A5658 to
+> #6A6566), mortar near-black #1E1A1A. NO lava, NO glow, NO moss.
+
+> Face: A flat seamless TEXTURE SWATCH: the vertical FRONT FACE of a stone wall, filling the ENTIRE
+> image edge to edge, seen perfectly straight-on, orthographic, completely flat like a scanned
+> texture. The wall face is the ONLY thing in the image: NO floor, NO ground, NO side walls, NO
+> corners, NO room, NO door, NO torch, NO light source, NO glow, NO spotlight, NO vignette, NO
+> border. Lit perfectly evenly. Material: rectangular brown stone bricks in running bond, 6 courses
+> tall and about 5 bricks across, each brick slightly different in tone, warm brown stone (brick
+> faces hex #7A5A46 to #8E6A52), dark mortar #2A1E18, a few chipped corners. Style: hand-painted 2D
+> mobile game texture, clean bold dark-brown outlines on the brick seams only, soft cel shading on
+> each brick (slightly lighter top edge, darker bottom edge), polished cartoon fantasy quality.
+
+**Cap pipeline:**
+
+1. Square crop.
+2. `makeTileable.mjs`.
+3. `colorGrade.mjs --flatten=0.2 --median=75`.
+4. Resize to 512 and encode JPEG.
+
+Density is 8: 512 px over one 64 px cap cell.
+
+**Face pipeline:**
+
+1. `makeTileable.mjs --axes=x`. It wraps left-right only, because the top is the coping course and
+   the bottom meets the floor.
+2. `colorGrade.mjs --flatten=0.2 --gain=1.08,1,0.92 --median=95`.
+3. Resize to 512x256 and encode JPEG.
+
+Density is 1: the face is stretched to the wall height. `wallTone.FACE_CROWN_ROWS.fire` is measured
+off this master's courses.
+
+The masters, measured:
+
+| swatch | median luma | mean RGB |
+|---|---|---|
+| floor | 170.7 | 171/149/130 |
+| cap | 75.4 | 62/66/69 |
+| face | 93.9 | 100/81/60 |
+
+`warmStoneArt.test.ts` does not pin these exact numbers. It holds the masters to the key frame's
+rules:
+
+- the floor is light (median luma 150-195) and lighter than the face;
+- the cap is under 0.6x the floor;
+- the floor is warm beige but not orange (R−B < 60), because the torches are the orange in the frame;
+- the cap is cool;
+- the brick is warm.
+
 ## Workflow reminder
 
-Save accepted generations as `art/biome/<name>_raw.png`, rejects as `art/biome/<name>_alt.png`
-(same convention as `art/weapon`/`art/ui`). **Verify tileability, not just style**, before
-accepting: decode with `tools/png-pipeline/pngCodec.mjs`, and eyeball whether the left/right
-and top/bottom edges roughly match — GPT Image 2 has no native "seamless tile" mode, so
-some edge mismatch is likely even on an otherwise on-style result and may need a manual
-edge-blend pass (`png-pipeline` doesn't have one yet — flag it if this becomes a recurring
-problem, don't build one preemptively). After judging, run through
-`node tools/png-pipeline/compress.mjs --long-axis=256 <file>` and drop the result into
-`client/public/biome/<name>.png`. `render/biomeTiles.ts`'s asset table already has all 8
-keys wired, and `RoomBuilder.ts` already renders via `TilingSprite` when a texture exists —
-no code change needed once a file lands at its expected path.
+Save accepted generations as `art/biome/<name>_raw.png`. The warm-stone family saves
+`<key>_warm_raw.png` plus its graded `<key>_master.png`. Save rejects as `art/biome/<name>_alt.png`,
+the same convention as `art/weapon`/`art/ui`.
+
+**Verify tileability, not just style**: the image models have no seamless mode. For a new swatch,
+run `tools/png-pipeline/makeTileable.mjs` instead of eyeballing the edges. Use `colorGrade.mjs`
+instead of re-rolling for colour (see the warm-stone section above).
+
+The first-generation PNG swatches went through `node tools/png-pipeline/compress.mjs
+--long-axis=256 <file>` into `client/public/biome/<name>.png`. The warm-stone family ships JPEG
+encoded from its master. `render/biomeTiles.ts`'s asset table names every key's file. A swatch
+whose world-px size is not "one texel per px" declares it in `SWATCH_META`.
