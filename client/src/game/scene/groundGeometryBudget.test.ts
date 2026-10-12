@@ -333,11 +333,13 @@ describe('the ground stage is painted PER ROOM, and that is what its cost scales
     // merits, and after the split that is a real share of them.
     // ...and the two variation halves of every room are still far past the auto cutoff, which is
     // what keeps the override load-bearing. NOT every piece: after the split a grid (~120 floats)
-    // and a light pool (288) would batch on their own merits, and so would a door's worn patch.
+    // would batch on its own merits, and so would a door's worn patch. A light pool (576 since its
+    // 24 nested rings, 2026-10-12; 288 at 12 bands) is now just over the cutoff, not far past it.
     const twelve = slice(12);
     const big = twelve.floats.filter((f) => f > AUTO_BATCH_VERTEX_LIMIT);
-    expect(big).toHaveLength(24); // 12 rooms x {dark, light}
-    expect(Math.min(...big)).toBeGreaterThan(AUTO_BATCH_VERTEX_LIMIT * 5);
+    expect(big).toHaveLength(36); // 12 rooms x {dark, light, pool}
+    const halves = big.slice().sort((a, b) => b - a).slice(0, 24);
+    expect(Math.min(...halves)).toBeGreaterThan(AUTO_BATCH_VERTEX_LIMIT * 5);
   });
 
   it('tags every piece it mounts, or the cull silently leaves it resident', () => {
@@ -522,21 +524,25 @@ const REAL = {
    *  since the three 9-row chevron rooms were refurnished (84). */
   additive: 228_060,
   /** Everything else on the layer: the dark half, the fallback flat fill this headless build gets in
-   *  place of a stamped swatch (480), the grid (6,400) and the light pools (17,280). 289,726 before
+   *  place of a stamped swatch (480), the grid (6,400) and the light pools (34,560 since their 24
+   *  nested rings, 2026-10-12; 17,280 at 12 bands). 289,726 before
    *  the room clip; 232,318 until the 2026-09-30 pocket fill, 231,674 with it (81), 232,426 with
    *  the kit fixes (82), 232,434 since five chevron runs moved a row south (83), and this since
-   *  the three 9-row chevron rooms were refurnished (84). */
-  rest: 232_342,
-  total: 460_402,
+   *  the three 9-row chevron rooms were refurnished (84), and 232,342 until the light pools went to
+   *  24 rings (+17,280). */
+  rest: 249_622,
+  total: 477_682,
   /** Largest single piece, and the worst any one camera submits. 5,840 / 76,646 before the clip. */
   largestPiece: 5_558,
   /** 26,150 until 2026-09-28, when MAX_ZOOM fell 4.5 -> 3.5: a lower cap shows a little more of the
-   *  floor around a small room, so the worst camera submits a little more. */
-  worstCamera: 26_226,
+   *  floor around a small room, so the worst camera submits a little more. 26,226 until the light
+   *  pools went to 24 rings (2026-10-12). */
+  worstCamera: 27_090,
   /** Unchanged by the clip, on purpose — see the note above. 49,392 until the 2026-09-30 pocket
    *  fill, 49,728 with it (81); the kit fixes (82) took out pillars and most of the fill (48,384),
-   *  and the three refurnished 9-row rooms (84) put blocks and pillars back in. */
-  shadowLargest: 48_720,
+   *  and the three refurnished 9-row rooms (84) put blocks and pillars back in (48,720); the cast
+   *  shadow's six nested passes in place of four (2026-10-12) add two hulls per wall. */
+  shadowLargest: 55_680,
   /** `staticGraphics.ts`'s stated envelope for the wall-shadow pass, for comparison. */
   shadowMeasuredAt: 24_000,
 };

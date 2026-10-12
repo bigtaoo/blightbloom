@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { colorGrade, flattenGains, medianLuma } from './colorGrade.mjs';
+import { colorGrade, flattenGains, medianLuma, soften } from './colorGrade.mjs';
 import { decodePNG, encodePNG } from './pngCodec.mjs';
 
 /**
@@ -32,6 +32,56 @@ describe('medianLuma', () => {
   it('ignores fully transparent pixels', () => {
     const img = image(5, 1, (x) => (x < 2 ? [100, 100, 100, 255] : [0, 0, 0, 0]));
     expect(medianLuma(img)).toBe(100);
+  });
+});
+
+describe('colorGrade — contrast, the joints toward the stone (2026-10-12)', () => {
+  // Seven stone pixels, three mortar: the median is the stone.
+  const paving = () => image(10, 1, (x) => (x < 7 ? [180, 160, 140, 255] : [40, 30, 20, 255]));
+
+  it('lifts the mortar toward the median and leaves the stone where it is', () => {
+    const before = paving();
+    const img = colorGrade(paving(), { contrast: 0.4 });
+    expect(luma(px(img, 0))).toBeCloseTo(luma(px(before, 0)), 0);
+    // 0.4 of the original gap, to within byte rounding on three channels.
+    const gap = luma(px(before, 0)) - luma(px(before, 9));
+    expect(Math.abs(luma(px(img, 0)) - luma(px(img, 9)) - gap * 0.4)).toBeLessThan(1);
+  });
+
+  it('keeps each pixel\'s hue: the three channels move together', () => {
+    const [r, g, b] = px(colorGrade(paving(), { contrast: 0.4 }), 9);
+    expect(r / b).toBeCloseTo(40 / 20, 1);
+    expect(r).toBeGreaterThan(g);
+    expect(g).toBeGreaterThan(b);
+  });
+
+  it('runs before the median lands, so the median is still the target', () => {
+    expect(medianLuma(colorGrade(paving(), { contrast: 0.4, median: 105 }))).toBe(105);
+  });
+
+  it('is the identity at 1', () => {
+    expect(colorGrade(paving(), { contrast: 1 }).data).toEqual(paving().data);
+  });
+});
+
+describe('soften — half a wrapped box blur', () => {
+  it('softens a hard edge and leaves a flat field alone', () => {
+    const edge = soften(image(8, 8, (x) => (x < 4 ? [200, 200, 200, 255] : [0, 0, 0, 255])), 1);
+    expect(px(edge, 3)[0]).toBeLessThan(200);
+    expect(px(edge, 3)[0]).toBeGreaterThan(100);
+    expect(px(edge, 1)[0]).toBe(200);
+  });
+
+  it('wraps, so a tileable swatch stays tileable', () => {
+    // A one-pixel stripe on column 0 bleeds into column 7 exactly as into column 1.
+    const img = soften(image(8, 2, (x) => (x === 0 ? [240, 240, 240, 255] : [0, 0, 0, 255])), 1);
+    expect(px(img, 7)[0]).toBe(px(img, 1)[0]);
+    expect(px(img, 7)[0]).toBeGreaterThan(0);
+  });
+
+  it('never touches alpha', () => {
+    const img = soften(image(4, 4, (x) => [x * 60, 0, 0, 77]), 1);
+    for (let i = 3; i < img.data.length; i += 4) expect(img.data[i]).toBe(77);
   });
 });
 

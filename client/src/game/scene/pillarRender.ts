@@ -19,7 +19,7 @@ import {
  *  bottom corners are (small — a cylinder's sides are straight; only the base curves). */
 const PILLAR_CAP_RY_FRACTION = 0.22;
 const PILLAR_CAP_OVERHANG_PX = 2;
-const PILLAR_BASE_PX = 10;
+export const PILLAR_BASE_PX = 10;
 const PILLAR_CORNER_FRACTION = 0.12;
 
 /**
@@ -70,7 +70,7 @@ const PILLAR_MOTTLE: ReadonlyArray<readonly [number, number, number, number]> = 
 
 /** The top ellipse's radii, for a shaft `bodyW` px wide. Shared with `pillarArtExtent` so the
  *  occlusion x-ray measures the same overhang the cap is actually drawn at. */
-function pillarCapRadii(bodyW: number): { capRx: number; capRy: number } {
+export function pillarCapRadii(bodyW: number): { capRx: number; capRy: number } {
   return {
     capRx: bodyW / 2 + PILLAR_CAP_OVERHANG_PX,
     capRy: Math.max(8, bodyW * PILLAR_CAP_RY_FRACTION),
@@ -159,6 +159,23 @@ export function buildPillarSprite(
   return c;
 }
 
+/**
+ * A warm-stone pillar painted from the chapter's own wall art (`pillarBake.bakeStonePillar`,
+ * 2026-10-12). The same sprite box as `buildPillarSprite`, with neither of its two additions: no
+ * tint, because the art IS the chapter's stone already, and no crease, because the bake paints the
+ * crease along the drum's curved foot, where the flat one would hang below both limbs.
+ */
+export function buildStonePillarSprite(bodyW: number, tex: Texture): Container {
+  const c = new Container();
+  const { w, h } = pillarSpriteMetrics(bodyW, tex);
+  const s = new Sprite(tex);
+  s.anchor.set(0.5, 1);
+  s.setSize(w, h);
+  s.y = PILLAR_BASE_PX;
+  c.addChild(s);
+  return c;
+}
+
 /** The base contact crease, shared by both bodies: the same smooth ramp a wall face gets, at
  *  the same constants, so a pillar and a wall meet the floor the same way. */
 function buildPillarBaseCrease(bodyW: number, height: number): Graphics {
@@ -226,6 +243,10 @@ function drawPillarBaseCrease(g: Graphics, bodyW: number, height: number): Graph
  *      256 px WALL swatch through a pillar-sized window, and what works is art authored at
  *      pillar scale. This function stays as the fallback for a missing texture, exactly like
  *      every other biome swatch in `render/biomeTiles.ts`.
+ *   5. **Painting the pillar FROM the wall art (2026-10-12) is what a warm-stone chapter gets**
+ *      (`pillarBake.ts`): the sprite above was authored for the charcoal walls, and next to warm
+ *      stone it read as another material. Not ② again: the bake unrolls the 512 px face around
+ *      the drum with its courses curved, rather than windowing a swatch onto a flat box.
  */
 export function buildPillarBody(bodyW: number, height: number, palette: BiomePalette): Graphics {
   const g = new Graphics();

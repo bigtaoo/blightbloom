@@ -85,18 +85,23 @@ export interface SwatchMeta {
   readonly authoredTone: boolean;
 }
 
-/** 512 px over 200 world px: a floor slab is about two hero-widths, the key frame's proportion. The
- *  texel count stays a power of two (`texturePowerOfTwo.test.ts`: a WebGL1 context clamps a
+/** The texel count stays a power of two (`texturePowerOfTwo.test.ts`: a WebGL1 context clamps a
  *  non-power-of-two texture that asks to wrap), so the density is the free number, not the size. */
 const WARM_STONE: SwatchMeta = { density: 2.56, seamless: true, authoredTone: true };
+
+/** 512 px over 320 world px: a floor slab is about three hero-widths. 200 world px (2.56, the key
+ *  frame's two hero-widths) until 2026-10-12, when the floor read as too many joints and the joints
+ *  crawled as the camera moved: 1.6x larger slabs put ~40% fewer joints on screen. */
+const WARM_FLOOR: SwatchMeta = { ...WARM_STONE, density: 1.6 };
 
 /** Keys drawn in the warm-stone direction. Everything else is a first-generation swatch. The
  *  front ELEVATION has no density: it is always stretched to the wall's own height. */
 export const SWATCH_META: Readonly<Record<string, SwatchMeta>> = Object.fromEntries(
   WARM_STONE_ELEMENTS.flatMap((el) => [
-    [`floor_${el}`, WARM_STONE],
-    // 512 px over one 64 px cap cell.
-    [`wall_${el}`, { ...WARM_STONE, density: 8 }],
+    [`floor_${el}`, WARM_FLOOR],
+    // 512 px over two 64 px cap cells. One cell (density 8) until 2026-10-12: next to the calmer
+    // floor the wall top's small bricks were the busiest surface in the frame.
+    [`wall_${el}`, { ...WARM_STONE, density: 4 }],
     [`wallface_${el}`, { density: 1, seamless: true, authoredTone: true }],
   ]),
 );

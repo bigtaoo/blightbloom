@@ -70,7 +70,12 @@ function shade(
   const keyColor = (f.resources.sceneLightUniforms as { uniforms: Record<string, unknown> })
     .uniforms.uKeyColor as Vec3;
 
-  const normal = norm(opts.normal ?? [0, 0, 1]);
+  // `opts.normal` is the shader's UNnormalised (-dx, -dy, 1): the point lights see the same slope
+  // scaled by `uPointRelief`, exactly as the GLSL builds `pointNormal`.
+  const raw = opts.normal ?? [0, 0, 1];
+  const normal = norm(raw);
+  const pr = f.pointRelief;
+  const pointNormal = norm([(raw[0] / raw[2]) * pr, (raw[1] / raw[2]) * pr, 1]);
   const [wx, wy] = opts.world ?? [0, 0];
 
   const keyTerm = Math.max(0, dot(normal, KEY_DIR));
@@ -87,7 +92,7 @@ function shade(
     const falloff = Math.max(0, 1 - dist / Math.max(1, l.radius));
     if (falloff <= 0) continue;
     const dir = norm([dx / Math.max(dist, 0.0001), dy / Math.max(dist, 0.0001), POINT_HEIGHT]);
-    const term = Math.max(0, dot(normal, dir)) * l.intensity * falloff;
+    const term = Math.max(0, dot(pointNormal, dir)) * l.intensity * falloff;
     const c = l.color ?? [1, 1, 1];
     lit[0] += term * c[0];
     lit[1] += term * c[1];
@@ -245,6 +250,34 @@ describe('SceneLightFilter shading model — a retuned look', () => {
   });
 });
 
+describe('SceneLightFilter shading model — point-light relief (2026-10-12)', () => {
+  const light: Light = { x: 30, y: 0, radius: 100, intensity: 1 };
+  const slope: Vec3 = [-0.4, 0, 1];
+
+  it('defaults to the full relief, the look every pass had before', () => {
+    expect(new SceneLightFilter().pointRelief).toBe(1);
+  });
+
+  it('at 0, a point light shades a slope exactly as it shades a flat texel', () => {
+    // The point light's own contribution, with the (static) key term subtracted out: that is the
+    // part that moves when the player's glow does, and at 0 relief it no longer depends on the art.
+    const f = new SceneLightFilter({ pointRelief: 0 });
+    const pointPart = (n: Vec3) => g(shade(f, { normal: n, lights: [light] })) - g(shade(f, { normal: n }));
+    expect(pointPart(slope)).toBeCloseTo(pointPart([0, 0, 1]), 9);
+  });
+
+  it('at 0, the KEY light still shows the relief — it never moves, so it cannot crawl', () => {
+    const f = new SceneLightFilter({ pointRelief: 0 });
+    expect(g(shade(f, { normal: slope }))).not.toBeCloseTo(g(shade(f)), 3);
+  });
+
+  it('at 1, a slope facing a point light catches more of it than a flat texel', () => {
+    const f = new SceneLightFilter({ pointRelief: 1 });
+    const pointPart = (n: Vec3) => g(shade(f, { normal: n, lights: [light] })) - g(shade(f, { normal: n }));
+    expect(pointPart([0.4, 0, 1])).toBeGreaterThan(pointPart([0, 0, 1]));
+  });
+});
+
 // The model above is a PARALLEL implementation, so a shader edit it does not follow would
 // otherwise leave every test above passing against a stale mirror. These pin the
 // correspondence line by line: if the GLSL stops saying this, the mirror is stale and this
@@ -269,7 +302,11 @@ describe('the model mirrors the shipped shader', () => {
   it('ADDS each light rather than keeping a maximum', () => {
     // `lit +=`, not `lit = max(lit, ...)`. This one character is the whole difference from
     // the per-actor filter's one-winning-light model.
-    expect(src()).toContain('lit += max(0.0, dot(normal, dir)) * light.w * falloff * uLightColors[i];');
+    expect(src()).toContain('lit += max(0.0, dot(pointNormal, dir)) * light.w * falloff * uLightColors[i];');
+  });
+
+  it('gives the point lights the same slope, scaled by uPointRelief', () => {
+    expect(src()).toContain('vec3 pointNormal = normalize(vec3(-dx * uPointRelief, -dy * uPointRelief, 1.0));');
   });
 
   it('divides by the flat reference at the very end, after every light has been added', () => {

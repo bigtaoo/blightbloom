@@ -17,10 +17,18 @@ import { Entity, SHADOW_SLANT_X, SHADOW_SLANT_Y } from './Entity';
 import { tagStandingPiece } from './groundCulling';
 import type { BiomeElement, BiomePalette } from '../theme';
 import { fpToPx, PX_PER_GRID } from '../coords';
-import { getPillarTexture } from '../../render/biomeTiles';
+import { getPillarTexture, getWallFaceTexture, getWallTexture, swatchMeta } from '../../render/biomeTiles';
 import { getPropTexture } from '../../render/environmentSprites';
 import { WALL_HEIGHT } from './wallGeometry';
-import { buildPillarBody, buildPillarSprite, pillarArtExtent } from './pillarRender';
+import {
+  buildPillarBody,
+  buildPillarSprite,
+  buildStonePillarSprite,
+  PILLAR_BASE_PX,
+  pillarArtExtent,
+  pillarCapRadii,
+} from './pillarRender';
+import { bakeStonePillar } from './pillarBake';
 import { buildPropBody, propShadowRadius, resolvePropKind } from './propRender';
 import { fadeableBlock, type FadeableOccluder } from './occlusion';
 
@@ -50,20 +58,24 @@ export function buildPillarEntities(
 ): { pillars: Entity[]; occluders: FadeableOccluder[] } {
   const pillars: Entity[] = [];
   const occluders: FadeableOccluder[] = [];
-  const pillarTex = getPillarTexture(element);
+  const spriteTex = getPillarTexture(element);
   for (const o of s.obstacles) {
     const rad = fpToPx(o.radius);
     const bodyW = rad * 2 + 16; // visual body a touch wider than the footprint
     const height = WALL_HEIGHT; // one height for every standing thing in a room
     const p = new Entity();
-    // Real pillar art where it exists (`biome/pillar_neutral.png`, 2026-08-20), else the
-    // hand-toned cylinder that stood in for it — see `pillarRender.buildPillarBody`'s doc
-    // for the four attempts behind that choice, including why sampling the WALL swatches
-    // at pillar scale was tried and was worse.
+    // A warm-stone chapter paints its pillars from its own wall art (`pillarBake.ts`, 2026-10-12),
+    // so they are the walls' stone in every chapter. Elsewhere, or where the bake cannot run, the
+    // pillar sprite (`biome/pillar_neutral.png`, 2026-08-20), else the hand-toned cylinder that
+    // stood in for it — see `pillarRender.buildPillarBody`'s doc for the attempts behind those.
+    const stoneTex = stonePillarTexture(element, bodyW, height);
+    const pillarTex = stoneTex ?? spriteTex;
     p.addChild(
-      pillarTex
-        ? buildPillarSprite(bodyW, height, palette, pillarTex)
-        : buildPillarBody(bodyW, height, palette),
+      stoneTex
+        ? buildStonePillarSprite(bodyW, stoneTex)
+        : pillarTex
+          ? buildPillarSprite(bodyW, height, palette, pillarTex)
+          : buildPillarBody(bodyW, height, palette),
     );
     // A pillar's shadow has to be displaced by hand (2026-08-18): the height that throws
     // it is the DRAWN body's, and a pillar is drawn upward from a grounded origin rather
@@ -96,6 +108,18 @@ export function buildPillarEntities(
     );
   }
   return { pillars, occluders };
+}
+
+/** The painted pillar for a warm-stone chapter, or `undefined` for first-generation art, a missing
+ *  swatch, or a host with no canvas to paint on. */
+function stonePillarTexture(element: BiomeElement, bodyW: number, height: number) {
+  const face = getWallFaceTexture(element);
+  const cap = getWallTexture(element);
+  const faceMeta = swatchMeta(face);
+  const capMeta = swatchMeta(cap);
+  if (!face || !cap || !faceMeta?.authoredTone || !capMeta) return undefined;
+  const { capRx, capRy } = pillarCapRadii(bodyW);
+  return bakeStonePillar(face, cap, capMeta.density, { bodyW, height, capRx, capRy, basePx: PILLAR_BASE_PX });
 }
 
 /**
