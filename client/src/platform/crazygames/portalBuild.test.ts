@@ -150,7 +150,10 @@ describe('vite.crazygames.config.js', () => {
     // `runtime-chunk-preload` IS expected here — the portal build wants the same
     // `<link rel="modulepreload">` for Pixi's runtime chunks as the web one, and it reads
     // Vite's `base` so the relative paths this target requires come out right.
-    expect(names).toEqual(['crazygames-html', 'runtime-chunk-preload']);
+    // `dd-asset-version` is expected too: it ships no file, only a build define that puts a
+    // content hash on every art URL (build/assetVersionPlugin.mjs), and the portal's CDN caches
+    // a same-named, regraded image exactly as ours does.
+    expect(names).toEqual(['crazygames-html', 'runtime-chunk-preload', 'dd-asset-version']);
   });
 });
 

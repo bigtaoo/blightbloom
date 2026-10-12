@@ -60,13 +60,38 @@ export interface AssetHost {
   loadPack?(name: string, root: string): Promise<void>;
 }
 
+/** The build's content hashes, from `build/assetVersionPlugin.mjs`. Absent in dev, in vitest
+ *  and in the WeChat build, which therefore all keep the bare paths. */
+declare const __DD_ASSET_VERSIONS__: Readonly<Record<string, string>> | undefined;
+
+/** Read per call rather than captured at module load: in a build the define is a literal and
+ *  this costs nothing, and it lets a test stand the global in for the plugin. */
+function buildAssetVersions(): Readonly<Record<string, string>> {
+  return typeof __DD_ASSET_VERSIONS__ === 'undefined' ? {} : __DD_ASSET_VERSIONS__;
+}
+
+/**
+ * `path` with its content hash appended (`?v=<hash>`), or unchanged when the file has none.
+ *
+ * Why a web URL carries this at all: the art keeps its filename across a re-export, and
+ * `public/_headers` lets a returning player paint from a cached copy before revalidating. On
+ * 2026-10-12 that put the old, bright floor under the new, 1.6x larger slab density — art and
+ * code from two different deploys in one frame. A hash in the URL makes a changed file a new
+ * URL; see `build/assetVersionPlugin.mjs`. Keyed by the public path BEFORE any base rewrite,
+ * which is the one form every caller already uses.
+ */
+export function versionedPath(path: string, versions: Readonly<Record<string, string>> = buildAssetVersions()): string {
+  const v = versions[path];
+  return v ? `${path}?v=${v}` : path;
+}
+
 export const webAssetHost: AssetHost = {
   // Web keeps the detections: they are what let a webp/avif variant win where the browser
   // supports it, and every DOM probe they make is available here.
   assetsInit: {},
-  resolveUrl: (path) => path,
-  readJson: async <T>(path: string): Promise<T> => (await fetch(path)).json() as Promise<T>,
-  readBinary: async (path: string): Promise<ArrayBuffer> => (await fetch(path)).arrayBuffer(),
+  resolveUrl: (path) => versionedPath(path),
+  readJson: async <T>(path: string): Promise<T> => (await fetch(versionedPath(path))).json() as Promise<T>,
+  readBinary: async (path: string): Promise<ArrayBuffer> => (await fetch(versionedPath(path))).arrayBuffer(),
 };
 
 /**
@@ -97,7 +122,7 @@ export const webAssetHost: AssetHost = {
 export function baseAssetHost(base: string): AssetHost {
   // A leading './' would survive into every path and break the suffix test described above.
   const prefix = base.replace(/^\.\//, '');
-  const rewrite = (path: string): string => prefix + path.replace(/^\//, '');
+  const rewrite = (path: string): string => prefix + versionedPath(path).replace(/^\//, '');
   return {
     assetsInit: webAssetHost.assetsInit,
     resolveUrl: rewrite,
