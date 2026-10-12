@@ -1,7 +1,11 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { engineAlias } from '../build/ddAlias.mjs';
 import { versionManifestPlugin } from '../build/versionManifestPlugin.mjs';
 import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
+import { assetVersionPlugin } from '../build/assetVersionPlugin.mjs';
+
+const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
 
 export default defineConfig({
   // @dd/engine — deterministic sim core (design/06), a sibling package at the repo root
@@ -15,7 +19,10 @@ export default defineConfig({
   // dynamic import, which the browser therefore cannot discover until the entry chunk has run.
   // Worth ~1.5 s of serialised round trips in front of the first screen — see that file for the
   // measurement.
-  plugins: [versionManifestPlugin(), runtimeChunkPreload()],
+  //
+  // ...and `?v=<content hash>` on every art URL, so a re-exported image is a new URL rather than
+  // a week of stale-while-revalidate behind the old one (build/assetVersionPlugin.mjs).
+  plugins: [versionManifestPlugin(), runtimeChunkPreload(), assetVersionPlugin({ publicDir: PUBLIC_DIR })],
   server: { port: 5173, host: true },
   build: { target: 'es2020', outDir: 'dist' },
   // Vitest reads this same file — deliberately, so the `@dd/engine` alias above has exactly

@@ -14,7 +14,7 @@
     "tools/desktop-shell"
   ],
   "scripts": {
-    "test": "npm run test --workspaces --if-present && npx vitest run build/versionManifestPlugin.test.mjs build/runtimeChunkPreload.test.mjs build/checkAssetHeaders.test.mjs build/checkScriptChain.test.mjs build/wechatAssetSync.test.mjs build/checkDocPaths.test.mjs build/checkRoadmapIndex.test.mjs build/checkCoverageThreshold.test.mjs build/coverageScope.test.mjs build/logicConsistency.test.mjs",
+    "test": "npm run test --workspaces --if-present && npx vitest run build/versionManifestPlugin.test.mjs build/assetVersionPlugin.test.mjs build/runtimeChunkPreload.test.mjs build/checkAssetHeaders.test.mjs build/checkScriptChain.test.mjs build/wechatAssetSync.test.mjs build/checkDocPaths.test.mjs build/checkRoadmapIndex.test.mjs build/checkCoverageThreshold.test.mjs build/coverageScope.test.mjs build/logicConsistency.test.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "coverage:report": "node build/coverageReport.mjs",
     "check:coverage": "node build/checkCoverageThreshold.mjs",

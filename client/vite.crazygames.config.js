@@ -1,6 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { engineAlias } from '../build/ddAlias.mjs';
 import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
+import { assetVersionPlugin } from '../build/assetVersionPlugin.mjs';
 
 // The CrazyGames build. `npm run build:crazygames` → `client/dist-crazygames/`, which is the
 // directory to zip and upload. `npm run dev:crazygames` runs the same shape on the dev server.
@@ -131,7 +133,13 @@ export default defineConfig({
   resolve: { alias: engineAlias },
   // The same renderer-chunk preload as the web build. It reads Vite's `base`, so the relative
   // paths this target requires come out right without a second list.
-  plugins: [portalHtml(), runtimeChunkPreload()],
+  // The same content-hashed art URLs too: a portal serves the upload through its own CDN, with
+  // caching this repository does not control at all.
+  plugins: [
+    portalHtml(),
+    runtimeChunkPreload(),
+    assetVersionPlugin({ publicDir: fileURLToPath(new URL('./public', import.meta.url)) }),
+  ],
   // No `versionManifestPlugin` — the auto-reload it feeds is deliberately absent from this
   // target (see `main.crazygames.ts` note 4), so emitting the manifest would ship a file
   // nothing reads.
