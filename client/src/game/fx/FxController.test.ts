@@ -31,7 +31,13 @@ vi.mock('./filters', () => ({
   MAX_SCENE_LIGHTS: 8,
   SceneLightFilter: class {
     antialias: string;
-    constructor(opts: { antialias?: string } = {}) { this.antialias = opts.antialias ?? 'off'; }
+    gradient: number;
+    pointRelief: number;
+    constructor(opts: { antialias?: string; gradient?: number; pointRelief?: number } = {}) {
+      this.antialias = opts.antialias ?? 'off';
+      this.gradient = opts.gradient ?? 7;
+      this.pointRelief = opts.pointRelief ?? 1;
+    }
     region: number[] = [0, 0, 1, 1];
     lights: { x: number; y: number; radius: number; intensity: number; color: number }[] = [];
     setRegion(x: number, y: number, w: number, h: number) { this.region = [x, y, w, h]; }
@@ -294,8 +300,10 @@ describe('FxController scene-light sync', () => {
     const fx = new FxController(layers);
     fx.attach();
     expect(layers.lit.filters).toEqual([]);
-    expect(layers.litFloor.filters).toEqual([fx.sceneLight]);
-    expect(layers.litStand.filters).toEqual([fx.sceneLightStand]);
+    // Identity, not `toEqual`: the stub instances deep-equal each other, so `toEqual` cannot tell
+    // which pass is mounted where.
+    expect(layers.litFloor.filters?.[0]).toBe(fx.sceneLightFloor);
+    expect(layers.litStand.filters?.[0]).toBe(fx.sceneLightStand);
     expect(layers.litFloor.filterArea).not.toBeNull();
     expect(layers.litStand.filterArea).toBe(layers.litFloor.filterArea);
     expect(layers.lit.filterArea).toBe(layers.litFloor.filterArea);
@@ -310,6 +318,30 @@ describe('FxController scene-light sync', () => {
     const fx = new FxController(new Layers());
     expect(fx.sceneLightStand.antialias).toBe('on');
     expect(fx.sceneLight.antialias).toBe('off');
+    expect(fx.sceneLightFloor.antialias).toBe('off');
+  });
+
+  it('lights the floor half flat — no relief off the luminance gradient', () => {
+    // 2026-10-12: on the floor, the fake normal turned every flagstone joint and shadow band edge
+    // into an embossed rim that the player's own glow re-shaded as it moved. The stand half and
+    // the one-pass tier keep the default relief, which is what makes a sprite read as a body.
+    const fx = new FxController(new Layers());
+    const gradient = (f: unknown) => (f as { gradient: number }).gradient;
+    expect(gradient(fx.sceneLightFloor)).toBe(0);
+    expect(gradient(fx.sceneLightStand)).toBeGreaterThan(0);
+    expect(gradient(fx.sceneLight)).toBeGreaterThan(0);
+  });
+
+  it('keeps the moving lights off the relief in the passes that still have it', () => {
+    // 2026-10-12, the calmer walls: walls and pillars share the stand pass with the actors (Y-sort
+    // needs one container), so their relief cannot be switched off on its own. The key light's
+    // relief is fixed to the art; a point light's swings with the player's glow every frame, and
+    // under it every wall joint re-shaded as the player walked. Both relief-carrying passes run the
+    // point lights flat; the floor pass has no relief to scale.
+    const fx = new FxController(new Layers());
+    const relief = (f: unknown) => (f as { pointRelief: number }).pointRelief;
+    expect(relief(fx.sceneLightStand)).toBe(0);
+    expect(relief(fx.sceneLight)).toBe(0);
   });
 
   it('feeds both halves the same region and lights, or the two would be lit differently', () => {
@@ -318,11 +350,14 @@ describe('FxController scene-light sync', () => {
     fx.attach();
     fx.flash(420, 360, 0x66e0ff, 20);
     fx.updateCamera(1, { vw: 800, vh: 600 }, { w: 1600, h: 1200 }, fakePlayer(800, 600));
-    const floor = recorded(fx);
-    const stand = fx.sceneLightStand as unknown as typeof floor;
-    expect(floor.lights).toHaveLength(1);
-    expect(stand.region).toEqual(floor.region);
-    expect(stand.lights).toEqual(floor.lights);
+    const single = recorded(fx);
+    const stand = fx.sceneLightStand as unknown as typeof single;
+    const floor = fx.sceneLightFloor as unknown as typeof single;
+    expect(single.lights).toHaveLength(1);
+    expect(stand.region).toEqual(single.region);
+    expect(stand.lights).toEqual(single.lights);
+    expect(floor.region).toEqual(single.region);
+    expect(floor.lights).toEqual(single.lights);
   });
 
   it('leaves terrain, fx and hud out of the pass — three different reasons, one exclusion', () => {
@@ -438,8 +473,10 @@ describe('FxController quality tiers', () => {
     expect(m.fx).toHaveLength(1); // the bloom blur
     // ...and the lighting pass split in two, so the stand half can be multisampled.
     expect(m.lit).toEqual([]);
-    expect(m.litFloor).toEqual([fx.sceneLight]);
-    expect(m.litStand).toEqual([fx.sceneLightStand]);
+    expect(m.litFloor).toHaveLength(1);
+    expect(m.litFloor[0]).toBe(fx.sceneLightFloor);
+    expect(m.litStand).toHaveLength(1);
+    expect(m.litStand[0]).toBe(fx.sceneLightStand);
   });
 
   it('mounts ONLY the lighting pass on the medium tier — the rung is the pass count', () => {
@@ -453,7 +490,8 @@ describe('FxController quality tiers', () => {
     fx.attach();
     const m = mounted(layers);
     // ONE lighting pass, on `lit` — the split would double exactly what this rung exists to cut.
-    expect(m.lit).toEqual([fx.sceneLight]);
+    expect(m.lit).toHaveLength(1);
+    expect(m.lit[0]).toBe(fx.sceneLight);
     expect(m.litFloor).toEqual([]);
     expect(m.litStand).toEqual([]);
     expect(m.world).toEqual([]);
@@ -487,13 +525,13 @@ describe('FxController quality tiers', () => {
     expect(layers.lit.filterArea).toBe(area);
     expect(layers.litFloor.filterArea).toBe(area);
     expect(layers.litStand.filterArea).toBe(area);
-    expect(layers.litFloor.filters).toEqual([fx.sceneLight]);
-    expect(layers.litStand.filters).toEqual([fx.sceneLightStand]);
+    expect(layers.litFloor.filters?.[0]).toBe(fx.sceneLightFloor);
+    expect(layers.litStand.filters?.[0]).toBe(fx.sceneLightStand);
     // ...and back down to medium puts the ONE pass back on `lit`, off both halves — never both,
     // or the stand half would be lit twice.
     setActiveQuality('medium');
     fx.applyQuality();
-    expect(layers.lit.filters).toEqual([fx.sceneLight]);
+    expect(layers.lit.filters?.[0]).toBe(fx.sceneLight);
     expect(layers.litFloor.filters).toEqual([]);
     expect(layers.litStand.filters).toEqual([]);
   });

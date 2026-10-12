@@ -106,14 +106,17 @@ describe('warm-stone swatches — the shipped JPEG is its master', () => {
 });
 
 describe('warm-stone swatches — sized in world px by their density', () => {
-  it.each(ELEMENTS)('lays a %s floor tile over 200 world px, so a slab is about two hero-widths', (el) => {
-    // The key frame's proportion: a slab ~2.1 hero-widths. Measured 2026-10-10: at 96 world px per
-    // tile the slabs read as cobbles the hero's own size; at 245 as paving three heroes across.
-    expect(master(`floor_${el}`).width / SWATCH_META[`floor_${el}`]!.density).toBe(200);
+  it.each(ELEMENTS)('lays a %s floor tile over 320 world px, so a slab is about three hero-widths', (el) => {
+    // 200 world px (the key frame's ~2.1 hero-widths) until 2026-10-12, when the floor read as too
+    // many joints, crawling as the camera moved; 1.6x larger slabs put ~40% fewer on screen.
+    // Measured 2026-10-10: at 96 world px per tile the slabs read as cobbles the hero's own size.
+    expect(master(`floor_${el}`).width / SWATCH_META[`floor_${el}`]!.density).toBe(320);
   });
 
-  it.each(ELEMENTS)('lays the %s wall top over exactly one 64 px cap cell', (el) => {
-    expect(master(`wall_${el}`).width / SWATCH_META[`wall_${el}`]!.density).toBe(64);
+  it.each(ELEMENTS)('lays the %s wall top over exactly two 64 px cap cells', (el) => {
+    // One cell until 2026-10-12: beside the calmer floor, the wall top's small bricks were the
+    // busiest surface in the frame. Whole cells either way, so the cap still tiles on the grid.
+    expect(master(`wall_${el}`).width / SWATCH_META[`wall_${el}`]!.density).toBe(128);
   });
 
   it.each(ELEMENTS)('stretches the %s face to the wall height, so its density is 1', (el) => {
@@ -122,15 +125,44 @@ describe('warm-stone swatches — sized in world px by their density', () => {
 });
 
 describe("warm-stone swatches — the key frame's tonal rules, in every chapter", () => {
-  it.each(ELEMENTS)('%s has a light floor, the lightest stone in the room', (el) => {
+  it.each(ELEMENTS)('%s has a mid-tone floor, still the lightest stone in the room', (el) => {
+    // 150-195 (the key frame's light floor) until 2026-10-12: at median ~170 the floor was the
+    // brightest thing on screen and its joints the highest-contrast lines in the frame, and both
+    // were what the eye caught moving. Regraded to 105 (`colorGrade --contrast=0.4 --median=105`).
     const floor = median(master(`floor_${el}`));
-    expect(floor).toBeGreaterThan(150);
-    expect(floor).toBeLessThan(195); // light, not the white of an unlit page
+    expect(floor).toBeGreaterThan(95);
+    expect(floor).toBeLessThan(120);
     expect(floor).toBeGreaterThan(median(master(`wallface_${el}`)));
   });
 
   it.each(ELEMENTS)('%s has a dark wall top under it — the inverse of the first-generation rule', (el) => {
-    expect(median(master(`wall_${el}`))).toBeLessThan(median(master(`floor_${el}`)) * 0.6);
+    // Darkest stone in the room: under the face, and well under the floor.
+    const cap = median(master(`wall_${el}`));
+    expect(cap).toBeLessThan(median(master(`floor_${el}`)) * 0.75);
+    expect(cap).toBeLessThan(median(master(`wallface_${el}`)));
+  });
+
+  it.each(ELEMENTS)('%s floor joints are soft: the dark tail sits close to the stone', (el) => {
+    // The other half of 2026-10-12. The 5th-percentile luma is the mortar; before the regrade it sat
+    // at 0.15-0.28 of the median across the four chapters, now 0.67-0.73. A re-export from a raw
+    // generator image would put the black joints back, and this is what says so.
+    const img = master(`floor_${el}`);
+    const l: number[] = [];
+    for (let i = 0; i < img.width * img.height; i++) l.push(luma(img.data, i * 4));
+    l.sort((a, b) => a - b);
+    expect(l[Math.floor(l.length * 0.05)]! / median(img)).toBeGreaterThan(0.6);
+  });
+
+  it.each(ELEMENTS.flatMap((el) => [`wall_${el}`, `wallface_${el}`]))('%s joints are soft too — the walls were calmed with the floor', (key) => {
+    // 2026-10-12, the calmer walls. With the floor regraded, the walls' near-black mortar (5th
+    // percentile 0.00-0.32 of the median) was the hardest line work left in the frame, and the
+    // wall face the busiest surface: 3-8x the floor's pixel-to-pixel variation. Regraded with
+    // `colorGrade --soften=2 --contrast=0.45` (and `--desat=0.3` on the face): now 0.60-0.73.
+    const img = master(key);
+    const l: number[] = [];
+    for (let i = 0; i < img.width * img.height; i++) l.push(luma(img.data, i * 4));
+    l.sort((a, b) => a - b);
+    expect(l[Math.floor(l.length * 0.05)]! / median(img)).toBeGreaterThan(0.55);
   });
 
   it.each(ELEMENTS)('%s keeps its wall top a cool dark grey, so the floor and the face read against it', (el) => {
@@ -145,13 +177,21 @@ describe("warm-stone swatches — the key frame's tonal rules, in every chapter"
 
   it('keeps the four floors apart: no two chapters share one grey', () => {
     // The hue rules below each pass on their own and could still land two chapters on the same
-    // stone. The closest pair at the time of writing is storm and blight, ~14 apart.
+    // stone. Measured on each floor's mean colour divided by its own mean, so it is a statement about
+    // hue and not about brightness: the 2026-10-12 regrade darkened every floor by ~0.6 and moved
+    // the closest pair, storm and blight, from 14 to 10 apart in raw RGB while their normalised
+    // distance went 0.089 -> 0.092.
+    const norm = (el: string) => {
+      const m = means(master(`floor_${el}`));
+      const l = (m.r + m.g + m.b) / 3;
+      return { r: m.r / l, g: m.g / l, b: m.b / l };
+    };
     for (let i = 0; i < ELEMENTS.length; i++) {
       for (let j = i + 1; j < ELEMENTS.length; j++) {
-        const a = means(master(`floor_${ELEMENTS[i]}`));
-        const b = means(master(`floor_${ELEMENTS[j]}`));
+        const a = norm(ELEMENTS[i]!);
+        const b = norm(ELEMENTS[j]!);
         const d = Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-        expect(d, `${ELEMENTS[i]} vs ${ELEMENTS[j]}`).toBeGreaterThan(12);
+        expect(d, `${ELEMENTS[i]} vs ${ELEMENTS[j]}`).toBeGreaterThan(0.07);
       }
     }
   });
@@ -226,14 +266,45 @@ describe('warm-stone swatches — the seams', () => {
     expect(lineDiff(img, 0, img.height - 1, 'row')).toBeLessThan(Math.max(lineDiff(img, 0, 1, 'row'), 1) * 2.5);
   });
 
-  it.each(ELEMENTS)('wraps the %s face left-right only — its top and bottom are different courses', (el) => {
+  it.each(ELEMENTS)('wraps the %s face left-right only', (el) => {
+    // The face is fitted to the wall's height once, never repeated up it, so only the horizontal
+    // wrap matters. Until 2026-10-12 this also asserted the top and bottom rows DIFFER, as proof
+    // the vertical axis was left alone; the coursed faces start and end on a half joint by
+    // construction (the next test), so their top and bottom rows are both mortar.
     const img = master(`wallface_${el}`);
     expect(lineDiff(img, 0, img.width - 1, 'col')).toBeLessThan(Math.max(lineDiff(img, 0, 1, 'col'), 1) * 2.5);
-    // Against the face's typical adjacent-row step, not the top edge's own: a top course's lit bevel
-    // makes row 0 to row 1 one of the largest steps in the image (storm's measures 39).
-    let step = 0;
-    for (let y = 0; y < img.height - 1; y++) step += lineDiff(img, y, y + 1, 'row');
-    expect(lineDiff(img, 0, img.height - 1, 'row')).toBeGreaterThan((step / (img.height - 1)) * 2.5);
+  });
+
+  it.each(ELEMENTS)('lays the %s face in exactly four even courses (coursed ashlar, 2026-10-12)', (el) => {
+    // The key frame's back wall is coursed brick, and the 2026-10-10 faces were not: up to eleven
+    // irregular courses that read as rubble at wall height. Every chapter now has four courses of a
+    // quarter of the height each, so a 70 px wall shows ~17 px courses and the pillar painted from
+    // the same face (`pillarBake.ts`) carries the same four. Storm's riveted band stands in for its
+    // middle joint, and is as dark.
+    const img = master(`wallface_${el}`);
+    const rows: number[] = [];
+    for (let y = 0; y < img.height; y++) {
+      let sum = 0;
+      for (let x = 0; x < img.width; x++) {
+        const o = (y * img.width + x) * 4;
+        sum += 0.299 * img.data[o]! + 0.587 * img.data[o + 1]! + 0.114 * img.data[o + 2]!;
+      }
+      rows.push(sum / img.width);
+    }
+    const q = img.height / 4;
+    const course = (k: number) => {
+      const c = Math.round(q * k + q / 2);
+      return rows.slice(c - 8, c + 8).reduce((a, v) => a + v, 0) / 16;
+    };
+    for (let k = 1; k < 4; k++) {
+      const joint = Math.min(...rows.slice(Math.round(q * k - q / 5), Math.round(q * k + q / 5)));
+      expect(joint, `${el} joint ${k}`).toBeLessThan(Math.min(course(k - 1), course(k)) * 0.85);
+    }
+    // ...and no fifth course hiding inside one: the middle of every course is stone, not a joint.
+    for (let k = 0; k < 4; k++) {
+      const c = Math.round(q * k + q / 2);
+      expect(Math.min(...rows.slice(c - 12, c + 12)), `${el} course ${k} centre`).toBeGreaterThan(course(k) * 0.9);
+    }
   });
 
   it('would catch an unwrapped swatch — the ratio has teeth', () => {

@@ -1797,11 +1797,18 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **10-10** [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change) — "现在的游戏场景看起来质量很低，相对于大厅，这画面看起来就像demo": next to the painted, lit hub, a room was a dark near-uniform floor under a 64 px grid, charcoal walls and no light that came from anywhere. A new direction chosen from five concept frames (`art/concept/direction-2026-10-10/4_hybrid_a.png`) replaces design/13's "environment desaturated" for the ember chapter first. Its swatches are a light warm flagstone floor, a dark grey wall top and warm brick on the face, shipped as 512 px JPEG encoded from lossless masters. A new min-cut `makeTileable.mjs` makes them seamless and a new median-targeting `colorGrade.mjs` grades them. `SWATCH_META` gives each swatch a density, a seamless flag and an authored tone, so the floor grid, face tint and cap lift are skipped for authored art. Wall torches are placed by pure geometry over the wall plan and carry real point lights in the scene pass: at most six lit, nearest the view first, with `MAX_SCENE_LIGHTS` raised from 8 to 12. Room edges are darker and start at the walls' foot rather than under them. Found live: six 250 px lights washed the frame orange, side sconces drew under their own wall, and 0.62 edges crushed the torch pools because the light pass multiplies. `warmStoneArt.test.ts` holds the masters to the key frame's tonal rules. `render` `art` `tools` `test` `docs`
 - **10-10** [Frost, storm and blight in warm stone: every chapter in the new direction](roadmap/139-2026-10-10-warm-stone-direction.md#frost-storm-and-blight-in-warm-stone-every-chapter-in-the-new-direction-2026-10-10-client--art--test--docs-no-engine_version-change) — "继续把其他章节也换成新美术风格": the three chapters the ember pilot left on first-generation art follow it the same day, each in its own stone under the same rules: frost a pale cold-grey flagstone with rimed seams and blue-grey block walls, storm a neutral granite ashlar with a bronze-banded slate face, blight an ashen violet-grey flagstone with plum-brown brick. Nine 512 px JPEGs from graded masters. Every chapter shares the one warm torch (`TORCH_ELEMENTS` is now exactly `WARM_STONE_ELEMENTS`); `neutral`, the PvP arena, is the only first-generation stone left and gets none. Blight carries design/13's poison clause by hue rather than value (green its lowest channel), and was regraded from mauve to violet-grey after the warm light turned the mauve pink in the frame. Found on the way: a storm seam cut through stone, a blight seam over the wrap ratio, a magenta face grade, and joints too light for the crown-row check. `FACE_CROWN_ROWS` re-measured off the new faces. `warmStoneArt.test.ts` runs over all four chapters with per-chapter hue rules and a pairwise check that keeps the floors apart. `render` `art` `test` `docs`
 
+**[2026-10-12 — A calmer floor](roadmap/140-2026-10-12-calmer-floor.md)**
+
+- **10-12** [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change) — "现在房间地图有个问题，我感觉地板太亮了而且缝隙特别多，移动的时候缝隙抖动导致头晕": the warm-stone floors were too bright, too busy with joints, and the joints crawled under a walking player. Four layers each drew lines on the floor. The swatch had median 172 with near-black joints. The lighting pass embossed every joint with its luminance-gradient normal, and the player's own glow re-shaded those rims as it moved. The room light's 12 side-by-side bands left an antialiasing hairline at each boundary, and the wall base hug's strokes left 0.5 px gaps. Now: every floor is regraded to median 105 with joints at 40% contrast (new `colorGrade --contrast/--soften`), slabs are 1.6x larger, the high tier lights the floor flat (`sceneLightFloor`, gradient 0), and the room light, base hug and cast shadow are nested shapes anchored at one edge (`nestedRings.ts`). On screen: mean floor luma 153 -> 110, edge contrast 10.66 -> 2.40 per pixel. The user chose the grade from four live frames. `render` `art` `tools` `test` `docs`
+
+- **10-12** [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change) — "把房间里的墙和柱子也一起处理一下" / "我觉得墙和柱子的图片本身也有点不匹配": after the floor, the room still showed three stones: a bright orange rubble face with near-black joints (8.3 total variation per pixel against the floor's 1.0), small grey brick on the top, and pillars still on the 2026-08-20 charcoal sprite. Faces and tops regraded to soft joints (face less orange), top slabs doubled (density 8 -> 4), the moving lights no longer see relief (`SceneLightFilter.pointRelief` 0 on the stand and single passes: face shimmer under a 4 px light move 0.365 -> 0.147), and pillars are painted at load from each chapter's own face and top with the courses curved around the drum (`scene/pillarBake.ts`). `render` `art` `test` `docs`
+- **10-12** [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change) — "墙面图案还是碎石，参考图里是整齐的砖缝，要改得重新出图" / "柱顶目前是墙顶贴图压扁后用的": the two items the walls pass left open. New face art in all four chapters: the model will not count courses, so each face is cropped from one joint to the fourth below it and is now exactly four even courses of coursed ashlar (`warmStoneArt.test.ts` holds it), graded onto the old hue and median; the crown rows moved to the first full joint (66-69 of 256). The pillar top is laid as masonry in its own plan (`pillarBake.capMasonry`): eight wedge coping stones round a centre slab, per-stone tone and lit bevels, in the wall top's stone with its square joints filtered out. `render` `art` `test` `docs`
+
 ## The work log — by theme
 
-The same 254 entries, grouped. An entry with more than one tag appears more than once.
+The same 257 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(80)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(83)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1883,8 +1890,11 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-08 [Online PvP builds its arena](roadmap/137-2026-10-08-online-arena-build.md#online-pvp-builds-its-arena-2026-10-08-client--engine-test--docs-no-engine_version-change)
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-10 [Frost, storm and blight in warm stone: every chapter in the new direction](roadmap/139-2026-10-10-warm-stone-direction.md#frost-storm-and-blight-in-warm-stone-every-chapter-in-the-new-direction-2026-10-10-client--art--test--docs-no-engine_version-change)
+- 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
+- 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 
-**`art`** — authored assets and the art pipeline *(27)*
+**`art`** — authored assets and the art pipeline *(30)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1913,6 +1923,9 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-10 [Frost, storm and blight in warm stone: every chapter in the new direction](roadmap/139-2026-10-10-warm-stone-direction.md#frost-storm-and-blight-in-warm-stone-every-chapter-in-the-new-direction-2026-10-10-client--art--test--docs-no-engine_version-change)
+- 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
+- 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(19)*
 
@@ -2035,7 +2048,7 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(160)*
+**`test`** — coverage sweeps, gates, mutation batteries *(163)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2197,6 +2210,9 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-10 [Frost, storm and blight in warm stone: every chapter in the new direction](roadmap/139-2026-10-10-warm-stone-direction.md#frost-storm-and-blight-in-warm-stone-every-chapter-in-the-new-direction-2026-10-10-client--art--test--docs-no-engine_version-change)
+- 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
+- 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2311,7 +2327,7 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(53)*
+**`tools`** — sims, profilers, editors, build scripts *(54)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2366,8 +2382,9 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
+- 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(171)*
+**`docs`** — design docs and this log itself *(174)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2540,6 +2557,9 @@ The same 254 entries, grouped. An entry with more than one tag appears more than
 - 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-10 [Frost, storm and blight in warm stone: every chapter in the new direction](roadmap/139-2026-10-10-warm-stone-direction.md#frost-storm-and-blight-in-warm-stone-every-chapter-in-the-new-direction-2026-10-10-client--art--test--docs-no-engine_version-change)
+- 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
+- 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(43)*
 
