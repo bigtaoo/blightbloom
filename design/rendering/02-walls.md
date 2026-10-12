@@ -620,3 +620,53 @@ beside it — the same stone, the same key light, one of them reading as a diffe
 luma-keyed curve (`--lo=85 --hi=95 --lo-gain=0.68 --hi-gain=1`) leaves the top alone and pulls the
 shaft down, which is the same fold between a bright top and a much darker face that `wallTone.ts`
 already builds for the walls, applied once offline instead of as a per-object filter.
+
+---
+
+## One stone: calmer walls, and pillars painted from the walls (2026-10-12)
+
+Asked right after the calmer floor ([05](05-floor-arena-void.md)): *"把房间里的墙和柱子也一起处理一下"*,
+then *"我觉得墙和柱子的图片本身也有点不匹配"*. Measured on ember floor 1, against the key frame
+(`art/concept/direction-2026-10-10/4_hybrid_a.png`), the room had three stones where it should have
+one:
+
+- **The face** was a bright orange rubble with near-black joints: 8.3 total variation per pixel on
+  screen against the new floor's 1.0, and the 5th-percentile luma of its mortar 0.00-0.14 of the
+  median. The key frame's face is a muted brick that reads warm only where a torch hits it.
+- **The top** was small, regular grey bricks, one 512 px tile per 64 px cell. The key frame's top is
+  large grey slabs.
+- **The pillars** were still the 2026-08-20 sprite, authored for the charcoal walls: a smooth drum at
+  median 43 with almost no texture, the same file in every chapter, beside painted warm brick.
+
+On top of that, both wall surfaces sat in the stand light pass with the actors, so every joint was
+embossed by the moving lights; the face's fine-detail change when every light moved 4 px was 0.365
+per pixel, nearly twice the floor's.
+
+What changed:
+
+- **Faces and tops regraded** (`colorGrade --soften=2 --contrast=0.45`, plus `--desat=0.3` on the
+  face, the face's median kept and the top's lowered to 67). Joints now sit at 0.60-0.73 of the
+  median, and the face is less orange, so it reads as the top's stone, warmed by the torches.
+- **Top slabs twice as large**: `wall_<el>` density 8 -> 4, so one tile covers two cap cells.
+- **The moving lights no longer see relief** (`SceneLightFilter.pointRelief`, 0 on the stand pass
+  and on the medium tier's single pass). The key light's relief stays: it never moves, so it pans
+  with the art and cannot crawl. That also removes the moving half of the medium tier's floor relief,
+  which the floor pass left in place.
+- **Pillars painted from the chapter's own wall art** (`scene/pillarBake.ts`). The face is unrolled
+  around the drum by arc length and each column dropped by `capRy·cos θ`, so the courses sag toward
+  the viewer the way the top ellipse does and the foot curves with them; the face's vertical scale
+  is the wall's, so a pillar's courses sit level with the wall beside it. The drum is lit from the
+  west (the hand-toned cylinder's terminator), the silhouette and coping are `wallTone.ts`'s numbers,
+  the top is the wall-top swatch foreshortened into the ellipse, and the contact crease is painted
+  along the curved foot. One bake per chapter, drawn as one sprite in the same box as the sprite it
+  replaces, so the occluder, the shadow and the batching are unchanged. The sprite path stays for
+  the first-generation `neutral` art and for a host with no 2D canvas.
+
+On the same frame and rows: the face 8.53 -> 3.69 total variation per pixel and 0.365 -> 0.154
+fine-detail change under a 4 px light move; the top 6.94 -> 2.74 and 0.254 -> 0.18, with its mean
+on screen unchanged (79.5 -> 80.5).
+
+Why this works where 2026-08-18's texturing failed (`pillarRender.buildPillarBody`'s doc, item ②):
+that attempt windowed a 256 px swatch through a 35 px `TilingSprite`, so the top was one dark patch
+and the brick ran straight across a round shaft. The bake samples 512 px art at the walls' own scale
+and bends every course around the drum.

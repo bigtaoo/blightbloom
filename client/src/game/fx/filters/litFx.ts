@@ -63,6 +63,10 @@ uniform vec3 uKeyColor;
 uniform float uKeyIntensity;
 uniform float uAmbient;
 uniform float uGradient;
+// How much of that relief the POINT lights see, 0..1. The key light's direction never changes, so
+// its relief is fixed to the art and moves with it; a point light's does change, every frame the
+// player walks, and relief under it is every joint re-shading as its light swings past.
+uniform float uPointRelief;
 uniform float uFlatReference;
 // World-space rect this filtered region covers: xy = origin, zw = size. Supplied by
 // \`FxController.syncSceneLight\` together with a \`filterArea\` pinned to exactly that rect,
@@ -101,6 +105,7 @@ void main(void)
     float dx = (hR - hL) * uGradient;
     float dy = (hD - hU) * uGradient;
     vec3 normal = normalize(vec3(-dx, -dy, 1.0));
+    vec3 pointNormal = normalize(vec3(-dx * uPointRelief, -dy * uPointRelief, 1.0));
 
     float keyTerm = max(0.0, dot(normal, KEY_DIR));
     vec3 lit = vec3(uAmbient) + keyTerm * uKeyIntensity * uKeyColor;
@@ -118,7 +123,7 @@ void main(void)
         float falloff = max(0.0, 1.0 - dist / max(1.0, light.z));
         if (falloff <= 0.0) continue;
         vec3 dir = normalize(vec3(delta / max(dist, 0.0001), POINT_HEIGHT));
-        lit += max(0.0, dot(normal, dir)) * light.w * falloff * uLightColors[i];
+        lit += max(0.0, dot(pointNormal, dir)) * light.w * falloff * uLightColors[i];
     }
 
     // Normalized so a FLAT, unlit-by-points texel comes out at exactly 1.0. Without this the
@@ -141,6 +146,9 @@ export interface SceneLightOptions {
   ambient?: number;
   /** Gain on the luminance gradient that stands in for a normal map. */
   gradient?: number;
+  /** The share of that relief the point lights shade, 0..1 (default 1, all of it). See
+   *  `FxController.sceneLightStand` for why the live passes run at 0. */
+  pointRelief?: number;
   keyColor?: number;
   keyIntensity?: number;
   /** Multisampling of the pass's own render target. Pixi's filter default is `'off'`, which
@@ -196,6 +204,7 @@ export class SceneLightFilter extends Filter {
           uKeyIntensity: { value: keyIntensity, type: 'f32' },
           uAmbient: { value: ambient, type: 'f32' },
           uGradient: { value: opts.gradient ?? GRADIENT, type: 'f32' },
+          uPointRelief: { value: opts.pointRelief ?? 1, type: 'f32' },
           uFlatReference: { value: flatReference(ambient, keyIntensity), type: 'f32' },
           // Harmless default: with uLightCount 0 the region is never read, so a filter that
           // has not been synced yet simply applies the key light alone.
@@ -221,6 +230,7 @@ export class SceneLightFilter extends Filter {
 
   get ambient(): number { return this.uniforms.uAmbient as number; }
   get gradient(): number { return this.uniforms.uGradient as number; }
+  get pointRelief(): number { return this.uniforms.uPointRelief as number; }
   get flatReference(): number { return this.uniforms.uFlatReference as number; }
   get lightCount(): number { return this.uniforms.uLightCount as number; }
   /** The world rect currently mapped onto the filtered region — `[x, y, w, h]`. */

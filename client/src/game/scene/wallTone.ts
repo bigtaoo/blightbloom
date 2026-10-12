@@ -152,6 +152,10 @@ export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>
   //   - lightning: small irregular courses, joints at 21 (53), 41 (32) and 63 (12) — the third is
   //     the only one that runs the whole width, so it is the line a back wall is read by
   //   - poison: joints at 18 (25), 40 (35) and 63 (17), brick between at ~95
+  // Regraded 2026-10-12 (the calmer walls: `--soften=2 --desat=0.3 --contrast=0.45`). No joint
+  // moved; they are shallower, 62-68 against courses of 86-105, and close enough to one another
+  // that "darkest in the top third" no longer singles out these rows (`wallComposition.test.ts`
+  // now asserts each is the darkest row of a real joint instead).
   fire: [38, 256],
   ice: [34, 256],
   lightning: [63, 256],

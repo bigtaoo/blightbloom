@@ -32,9 +32,11 @@ vi.mock('./filters', () => ({
   SceneLightFilter: class {
     antialias: string;
     gradient: number;
-    constructor(opts: { antialias?: string; gradient?: number } = {}) {
+    pointRelief: number;
+    constructor(opts: { antialias?: string; gradient?: number; pointRelief?: number } = {}) {
       this.antialias = opts.antialias ?? 'off';
       this.gradient = opts.gradient ?? 7;
+      this.pointRelief = opts.pointRelief ?? 1;
     }
     region: number[] = [0, 0, 1, 1];
     lights: { x: number; y: number; radius: number; intensity: number; color: number }[] = [];
@@ -328,6 +330,18 @@ describe('FxController scene-light sync', () => {
     expect(gradient(fx.sceneLightFloor)).toBe(0);
     expect(gradient(fx.sceneLightStand)).toBeGreaterThan(0);
     expect(gradient(fx.sceneLight)).toBeGreaterThan(0);
+  });
+
+  it('keeps the moving lights off the relief in the passes that still have it', () => {
+    // 2026-10-12, the calmer walls: walls and pillars share the stand pass with the actors (Y-sort
+    // needs one container), so their relief cannot be switched off on its own. The key light's
+    // relief is fixed to the art; a point light's swings with the player's glow every frame, and
+    // under it every wall joint re-shaded as the player walked. Both relief-carrying passes run the
+    // point lights flat; the floor pass has no relief to scale.
+    const fx = new FxController(new Layers());
+    const relief = (f: unknown) => (f as { pointRelief: number }).pointRelief;
+    expect(relief(fx.sceneLightStand)).toBe(0);
+    expect(relief(fx.sceneLight)).toBe(0);
   });
 
   it('feeds both halves the same region and lights, or the two would be lit differently', () => {

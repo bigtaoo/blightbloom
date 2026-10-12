@@ -42,15 +42,24 @@ export class FxController {
   readonly lights = new LightRegistry();
   /** The one lighting pass (design/01 milestone 2) — replaced a per-actor filter 2026-08-24,
    *  see fx/filters/litFx.ts. Mounted on `layers.lit` by `attach`. */
-  readonly sceneLight = new SceneLightFilter();
+  readonly sceneLight = new SceneLightFilter({ pointRelief: 0 });
   /** The same pass over `layers.litStand` when the tier splits it (`standAntialias`): a second
    *  instance only so its target can be multisampled. `'on'`, NOT `'inherit'`: Pixi resolves
    *  `'inherit'` against the CURRENT render target, and on the high tier that is `world`'s
    *  vignette pass — a pool texture with no MSAA — so `'inherit'` silently meant off (measured:
    *  no change at all to the stepping). A WebGL1 host gets none either way; Pixi only
    *  multisamples where `supports.msaa`. Same uniforms as `sceneLight` every frame
-   *  (`syncCamera`), or the two halves would be lit differently. */
-  readonly sceneLightStand = new SceneLightFilter({ antialias: 'on' });
+   *  (`syncCamera`), or the two halves would be lit differently.
+   *
+   *  `pointRelief: 0` here and on `sceneLight` (2026-10-12, the calmer walls). Walls and pillars
+   *  are lit in this pass with the actors (Y-sort needs them in one container), so their relief
+   *  cannot be removed on its own; what can be removed is the part that MOVES. The key light's
+   *  relief is fixed to the art and pans with it. A point light's turns with the light, and the
+   *  player's glow moves every frame they walk, re-shading every wall joint as it passes. Measured
+   *  on ember floor 1, moving every light 4 world px: the wall face's fine-detail change went 0.365
+   *  -> 0.147 per pixel, the level of the relief-free floor (0.19). Actors keep the key light's
+   *  relief, which is what makes a small sprite read as a body. */
+  readonly sceneLightStand = new SceneLightFilter({ antialias: 'on', pointRelief: 0 });
   /** The floor half's pass when the tier splits it: the same light, with NO relief (gradient 0).
    *  The fake normal `litFx` reads off the luminance gradient is what makes a sprite read as
    *  relief, and the floor is flat ground: on it, every flagstone joint and every shadow band
@@ -59,8 +68,9 @@ export class FxController {
    *  (2026-10-12, "移动的时候缝隙抖动"). Measured on ember floor 1: the floor's total variation
    *  along a row 772 with relief, 282 without. A flat texel lights to exactly 1.0 either way
    *  (`flatReference`), so this removes rims and changes no tone. The medium tier keeps one pass
-   *  for floor and actors together and so keeps the relief on the floor — splitting it there
-   *  would cost the extra pass that tier exists to save. */
+   *  for floor and actors together, since splitting it would cost the extra pass that tier exists
+   *  to save, so its floor keeps the key light's relief; its point lights run flat like the stand
+   *  pass's, which removes the part of that relief that moved. */
   readonly sceneLightFloor = new SceneLightFilter({ gradient: 0 });
   /** Bloom-lite blur over the additive fx layer. A field rather than a `new` inside `attach()`
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a

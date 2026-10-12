@@ -525,7 +525,12 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
   });
 
   it('puts the line exactly on each swatch\'s mortar line', () => {
-    for (const el of SWATCHES) {
+    // First-generation faces only. A warm-stone face's joints were softened on 2026-10-12 (the
+    // calmer walls, `art/biome/prompts.md`) until they are all about as deep as each other, so
+    // "darkest row in the top third" picks between near-ties there (ice's first and second joints
+    // measure 66 and 65) while the joints themselves have not moved. The warm-stone test below
+    // holds those faces to the recorded row being the darkest row of a real joint instead.
+    for (const el of SWATCHES.filter((e) => !SWATCH_META[`wallface_${e}`])) {
       const rows = faceRows(el);
       expect(FACE_CROWN_ROWS[el]![0], `${el} mortar line`).toBe(mortarRow(rows));
     }
@@ -558,8 +563,11 @@ describe('FACE_CROWN_ROWS — measured off the shipped art, and still true of it
       const mean = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
       const above = mean(rows.slice(Math.max(0, line - 24), line - 6));
       const below = mean(rows.slice(line + 6, line + 24));
-      expect(rows[line]!, `${el} joint vs the course above`).toBeLessThan(above * 0.25);
-      expect(rows[line]!, `${el} joint vs the course below`).toBeLessThan(below * 0.25);
+      // The joint's own darkest row, not a row beside it.
+      expect(Math.min(...rows.slice(line - 4, line + 5)), `${el} darkest row of its joint`).toBe(rows[line]);
+      // 0.25 until 2026-10-12, when the joints were softened to 0.63-0.79 of their courses.
+      expect(rows[line]!, `${el} joint vs the course above`).toBeLessThan(above * 0.85);
+      expect(rows[line]!, `${el} joint vs the course below`).toBeLessThan(below * 0.85);
     }
   });
 

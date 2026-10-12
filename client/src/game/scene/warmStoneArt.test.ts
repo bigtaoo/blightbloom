@@ -113,8 +113,10 @@ describe('warm-stone swatches — sized in world px by their density', () => {
     expect(master(`floor_${el}`).width / SWATCH_META[`floor_${el}`]!.density).toBe(320);
   });
 
-  it.each(ELEMENTS)('lays the %s wall top over exactly one 64 px cap cell', (el) => {
-    expect(master(`wall_${el}`).width / SWATCH_META[`wall_${el}`]!.density).toBe(64);
+  it.each(ELEMENTS)('lays the %s wall top over exactly two 64 px cap cells', (el) => {
+    // One cell until 2026-10-12: beside the calmer floor, the wall top's small bricks were the
+    // busiest surface in the frame. Whole cells either way, so the cap still tiles on the grid.
+    expect(master(`wall_${el}`).width / SWATCH_META[`wall_${el}`]!.density).toBe(128);
   });
 
   it.each(ELEMENTS)('stretches the %s face to the wall height, so its density is 1', (el) => {
@@ -149,6 +151,18 @@ describe("warm-stone swatches — the key frame's tonal rules, in every chapter"
     for (let i = 0; i < img.width * img.height; i++) l.push(luma(img.data, i * 4));
     l.sort((a, b) => a - b);
     expect(l[Math.floor(l.length * 0.05)]! / median(img)).toBeGreaterThan(0.6);
+  });
+
+  it.each(ELEMENTS.flatMap((el) => [`wall_${el}`, `wallface_${el}`]))('%s joints are soft too — the walls were calmed with the floor', (key) => {
+    // 2026-10-12, the calmer walls. With the floor regraded, the walls' near-black mortar (5th
+    // percentile 0.00-0.32 of the median) was the hardest line work left in the frame, and the
+    // wall face the busiest surface: 3-8x the floor's pixel-to-pixel variation. Regraded with
+    // `colorGrade --soften=2 --contrast=0.45` (and `--desat=0.3` on the face): now 0.60-0.73.
+    const img = master(key);
+    const l: number[] = [];
+    for (let i = 0; i < img.width * img.height; i++) l.push(luma(img.data, i * 4));
+    l.sort((a, b) => a - b);
+    expect(l[Math.floor(l.length * 0.05)]! / median(img)).toBeGreaterThan(0.55);
   });
 
   it.each(ELEMENTS)('%s keeps its wall top a cool dark grey, so the floor and the face read against it', (el) => {

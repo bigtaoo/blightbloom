@@ -99,8 +99,9 @@ const WARM_FLOOR: SwatchMeta = { ...WARM_STONE, density: 1.6 };
 export const SWATCH_META: Readonly<Record<string, SwatchMeta>> = Object.fromEntries(
   WARM_STONE_ELEMENTS.flatMap((el) => [
     [`floor_${el}`, WARM_FLOOR],
-    // 512 px over one 64 px cap cell.
-    [`wall_${el}`, { ...WARM_STONE, density: 8 }],
+    // 512 px over two 64 px cap cells. One cell (density 8) until 2026-10-12: next to the calmer
+    // floor the wall top's small bricks were the busiest surface in the frame.
+    [`wall_${el}`, { ...WARM_STONE, density: 4 }],
     [`wallface_${el}`, { density: 1, seamless: true, authoredTone: true }],
   ]),
 );

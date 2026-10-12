@@ -488,6 +488,22 @@ toward the stone. The four floors' hues survive: storm against blight, the close
 0.089 → 0.092 apart in luma-normalised colour. The floor density also dropped to 1.6, so a tile
 covers 320 world px and a slab is about three hero-widths across.
 
+**Walls regraded 2026-10-12, all four chapters**, after the floor, for the same reasons (and see
+`design/rendering/02-walls.md` "One stone"). Each master was regraded IN PLACE from the 2026-10-10
+file (in git history):
+
+```
+node tools/png-pipeline/colorGrade.mjs --soften=2 --contrast=0.45 --median=67 wall_<el>_master.png wall_<el>_master.png
+node tools/png-pipeline/colorGrade.mjs --soften=2 --desat=0.3 --contrast=0.45 --median=<its own median> wallface_<el>_master.png wallface_<el>_master.png
+```
+
+with the face's own median kept (fire 95, ice 100, lightning 92, poison 92) and the JPEGs re-encoded
+at q90. The top's median moved 72-75 -> 67 because lifting the joints raises the MEAN: on screen the
+top measured 79.5 before and 80.5 after. The wall top's density also dropped 8 -> 4, so a tile covers
+two cap cells. **The pillars have no art of their own in a warm-stone chapter any more**: they are
+painted at load from that chapter's face and top (`client/src/game/scene/pillarBake.ts`), so a
+regrade here regrades them too. `pillar_neutral.png` now only dresses the `neutral` arena.
+
 ### `wall_fire` (top cap) and `wallface_fire` (front elevation)
 
 > Cap: A single seamless TEXTURE SWATCH ONLY [... the floor's framing ...]. Material: the flat TOP of
