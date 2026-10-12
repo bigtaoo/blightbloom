@@ -6,11 +6,16 @@
  * the wall-top stone and closes the drum, and the foot carries the walls' contact crease. The
  * canvas plumbing is exercised through a fake `DOMAdapter` canvas, the way `capLight.test.ts` does
  * it, because this repo's vitest has no 2D canvas.
+ *
+ * The top's masonry (`capMasonry`, a ring of coping stones round a centre slab) is a pure function
+ * of the top's plan, so its joints, bevels and stone count are read off it directly.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { DOMAdapter, Texture, TextureSource } from 'pixi.js';
 import {
   bakeStonePillar,
+  capMasonry,
+  capStoneColour,
   drumShade,
   paintStonePillar,
   PILLAR_BAKE_SCALE,
@@ -191,6 +196,74 @@ describe('paintStonePillar — the top', () => {
     const centre = at(img, 0, -HEIGHT);
     expect(back[0]!).toBeGreaterThan(centre[0]!);
     expect(front[0]!).toBeLessThanOrEqual(centre[0]!);
+  });
+});
+
+describe('capMasonry — the top laid as a ring of coping round a centre slab', () => {
+  const R = capRx;
+  const deg = Math.PI / 180;
+  const polar = (rho: number, phi: number) => capMasonry(rho * Math.cos(phi), rho * Math.sin(phi), R);
+
+  it('draws the ring joint between the centre slab and the coping', () => {
+    // 0.56 of the radius: the joint is as dark as the walls' softened joints, the stone beside it is not.
+    expect(polar(0.56 * R, 90 * deg)).toBeCloseTo(0.66, 2);
+    expect(polar(0.3 * R, 90 * deg)).toBeGreaterThan(0.85);
+    expect(polar(0.78 * R, 0)).toBeGreaterThan(0.85);
+  });
+
+  it('cuts the coping into eight stones, rotated so no joint runs straight toward the viewer', () => {
+    let joints = 0;
+    let inJoint = false;
+    for (let a = 0; a < 360; a += 0.25) {
+      const j = polar(0.78 * R, a * deg) < 0.75;
+      if (j && !inJoint) joints++;
+      inJoint = j;
+    }
+    expect(joints).toBe(8);
+    // Toward the viewer (+z, 90 degrees) is the middle of a stone; half a stone round is a joint.
+    expect(polar(0.78 * R, 90 * deg)).toBeGreaterThan(0.85);
+    expect(polar(0.78 * R, 112.5 * deg)).toBeCloseTo(0.66, 2);
+  });
+
+  it('gives each stone its own tone, so the ring reads as separate stones', () => {
+    const centres = Array.from({ length: 8 }, (_, k) => polar(0.78 * R, k * 45 * deg).toFixed(3));
+    expect(new Set(centres).size).toBeGreaterThan(4);
+    for (const c of centres) expect(Math.abs(Number(c) - 1)).toBeLessThan(0.08);
+  });
+
+  it('bevels every stone toward the key light: lit on its north-west edges, shaded on its south-east', () => {
+    // The centre slab's rim, just inside the ring joint, on the side facing the light and away.
+    const d = (0.56 * R - 1) / Math.SQRT2;
+    expect(capMasonry(-d, -d, R)).toBeGreaterThan(capMasonry(0, 0, R) + 0.05);
+    expect(capMasonry(d, d, R)).toBeLessThan(capMasonry(0, 0, R) - 0.05);
+    // A coping stone's inner edge faces the centre, so on the far side of the slab that edge faces
+    // the viewer and away from the light, and on the near side toward it.
+    const far = 0.56 * R + 1;
+    expect(polar(far, -90 * deg)).toBeLessThan(polar(0.78 * R, -90 * deg));
+    expect(polar(far, 90 * deg)).toBeGreaterThan(polar(0.78 * R, 90 * deg));
+  });
+});
+
+describe("capStoneColour — the wall top's stone, without its joints", () => {
+  it('is the colour of the block faces, not the mean the dark joints pull down', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => i * 3); // 10 of 32 rows are joints
+    const c = capStoneColour(swatch(32, 32, [60, 70, 200], 4, rows));
+    expect(c.rgb.map(Math.round)).toEqual([60, 70, 200]);
+    expect(c.luma).toBeCloseTo(0.299 * 60 + 0.587 * 70 + 0.114 * 200, 6);
+  });
+
+  it("keeps the wall top's joints out of the painted top: only the top's own joints show", () => {
+    const plain = paintStonePillar(FACE, CAP, SHAPE);
+    // Joints every 4 texels: one world px apart at the cap's density, so the slab is crossed by many.
+    const jointed = swatch(32, 32, [60, 70, 200], 4, Array.from({ length: 8 }, (_, i) => i * 4));
+    const img = paintStonePillar(FACE, jointed, SHAPE);
+    // A joint texel is 10 against stone of ~80: sampled raw it would read at an eighth of the stone.
+    // Lifted to the grain floor and halved, it survives as at most a 4% dip.
+    for (let x = -10; x <= 10; x += 0.25) {
+      const a = at(plain, x, -HEIGHT);
+      const b = at(img, x, -HEIGHT);
+      for (let k = 0; k < 3; k++) expect(b[k]! / a[k]!, `x=${x} ch${k}`).toBeGreaterThan(0.955);
+    }
   });
 });
 

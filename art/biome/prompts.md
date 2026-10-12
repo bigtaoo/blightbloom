@@ -664,6 +664,63 @@ The generator: Mistral workspace A's key expired on 2026-10-08. After about twen
 few minutes, every other workspace was rate-limited for fifteen minutes. Launch candidates in
 parallel across B-G, and expect a second batch to wait.
 
+## Coursed faces (4) — 2026-10-12, replacing the four warm-stone faces
+
+The 2026-10-10 faces were 5-11 courses of irregular rubble; the key frame
+(`art/concept/direction-2026-10-10/4_hybrid_a.png`) has about four courses of large, flat,
+outlined ashlar. Work log: `design/roadmap/140-2026-10-12-calmer-floor.md` "Coursed walls and a
+built pillar top".
+
+**The lesson, for any future face: the model does not count courses.** "EXACTLY 4 courses", "ONLY
+FOUR rows" and "each row one quarter of the image height" all came back as 8-12 courses. Ask for
+the style and for EVEN courses, then take the count from the crop.
+
+### Round 2 — the prompt that set the style (`ice_4` was the pick)
+
+Round 1 (the 2026-10-10 face frame rewritten for coursed ashlar) came back photographic. Round 2
+spelled the style out; per chapter only the closing colour line changed. Frost:
+
+```
+A flat seamless TEXTURE SWATCH for a 2D game: the vertical FRONT FACE of a dungeon wall made of big cut stone blocks, filling the ENTIRE image edge to edge, seen perfectly straight-on, orthographic, flat like a scanned texture. ONLY the wall: NO floor, NO top edge, NO corners, NO door, NO torch, NO light source, NO glow, NO vignette, NO border, lit perfectly evenly. LAYOUT, very important: ONLY FOUR horizontal rows of stone blocks from the top of the image to the bottom, so every block is VERY LARGE: each row is one quarter of the image height, and each row holds only 3 or 4 blocks across the full width, every block about twice as wide as it is tall. Running bond: each row is offset by half a block. Each horizontal joint is one straight line across the whole width. STYLE, very important: stylized cel-shaded cartoon, like a hand-painted mobile action RPG: each block is a simple FLAT colour shape with slightly rounded corners, a bold dark outline around every block, one soft lighter band along the top of each block and a slightly darker band along its bottom, almost no surface detail, NO realistic rock texture, NO photo texture, NO noise, NO cracks except one or two tiny chips. The joints are dark and narrow. Colour: cold blue-grey stone, block faces around hex #6E7C8C, joints near-black slate #182028, a thin streak of white frost along the top edge of a few blocks.
+```
+
+`ice_4` was the only round-two result with even courses in a clean running bond. The others mixed
+course heights.
+
+### Round 3 — editing `ice_4` into each chapter (`edit_image.sh`, 1184x880)
+
+```
+Repaint this exact stone wall texture. Keep EXACTLY the same layout: the same rows, the same blocks in the same places, the same sizes and the same straight horizontal joints, the same flat straight-on view, the same cartoon cel-shaded style with a bold dark outline around every block. Make the dark joints between blocks a little narrower. Remove all the white frost and ice. Keep it an evenly lit flat texture filling the whole image, NO vignette, NO light source, NO border. <material line>
+```
+
+| chapter | material line | pick |
+|---|---|---|
+| ember | New material: warm reddish-brown sandstone, block faces around hex #8A604A with slight per-block variation, a soft lighter band along the top of each block, joints dark brown #24160F. | `fire_6` |
+| storm | New material: dark neutral slate-grey basalt, block faces around hex #666B74 with slight per-block variation, joints near-black #16181C. Replace the joint between the fourth and fifth rows with one continuous narrow horizontal strip of dull bronze metal with small round rivets across the full width. NO yellow, NO glow. | `lightning_6` |
+| blight | New material: dark dusky plum-brown stone, block faces around hex #765E6A with slight per-block variation, a few block corners slightly worn, joints near-black #20161C. NO green anywhere. | `poison_5` |
+
+Frost used a lighter edit of its own: `Keep EXACTLY this stone wall texture: the same rows, blocks, joints, colours and cartoon style. Only make the dark joints between blocks narrower, about half as wide, and reduce the white frost to a thin line along the top edge of some blocks. Evenly lit flat texture filling the whole image, NO vignette, NO border.` Pick: `ice_5`.
+
+The edits redrew rather than recoloured (the layout moved), but every result kept even running bond
+and the cel style. That was what the edits were for.
+
+### Pipeline
+
+1. **Crop exactly four courses**, from one horizontal joint to the fourth joint below it (measured
+   on the row-luma profile), the full width: ember y 242-625, frost 243-619, storm 244-627, blight
+   240-610 of 880. Saved as `wallface_<el>_coursed_raw.png`.
+2. `makeTileable.mjs --axes=x --overlap=0.2`. The face wraps left-right only.
+3. `colorGrade.mjs --flatten=0.2 --desat=0.5 --gain=<r,g,b> --median=<m>`. The gain was iterated
+   until the normalised hue matched the previous master's. Medians: ember 95, frost 100, storm 92,
+   blight 92.
+4. Lanczos to 512x256, then `colorGrade.mjs --soften=2 --contrast=0.45 --median=<m>`, the walls'
+   2026-10-12 calm pass. Overwrites `wallface_<el>_master.png`; PIL q90 to
+   `client/public/biome/wallface_<el>.jpg` (13-16 KB).
+
+Measured means (R/G/B): ember 99.9/85.6/70.2, frost 79.5/93.4/105.8, storm 85.9/87.3/87.8, blight
+97.8/76.4/88.4. Every face is four courses of 64 rows, with joints at about 3/67/128/192 (row 3 is a
+half joint under the cap's fold). `warmStoneArt.test.ts` holds the four even courses.
+
 ## Workflow reminder
 
 Save accepted generations as `art/biome/<name>_raw.png`. The warm-stone family saves

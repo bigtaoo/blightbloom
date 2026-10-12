@@ -144,23 +144,20 @@ export const FACE_COPING_SUPPRESS = 0.55;
  * it does not. Its fraction (0.203) lands within 0.01 of fire/lightning/neutral anyway.
  */
 export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>> = {
-  // The warm-stone faces (design/13, 2026-10-10): 512x256, no lit coping — the darkest joint in the
-  // top third, measured off `art/biome/wallface_<element>_master.png`, which the shipped JPEG is
-  // encoded from. Row-luma scans (mean per row):
-  //   - fire: course 0-32 at 92-61, joint 37-38 (16 -> 8), brick 41+ at ~100
-  //   - ice: course 0-30 at 117-56, joint 33-34 (27 -> 14), brick 37+ at ~110
-  //   - lightning: small irregular courses, joints at 21 (53), 41 (32) and 63 (12) — the third is
-  //     the only one that runs the whole width, so it is the line a back wall is read by
-  //   - poison: joints at 18 (25), 40 (35) and 63 (17), brick between at ~95
-  // Regraded 2026-10-12 (the calmer walls: `--soften=2 --desat=0.3 --contrast=0.45`). No joint
-  // moved; they are shallower, 62-68 against courses of 86-105, and close enough to one another
-  // that "darkest in the top third" no longer singles out these rows (`wallComposition.test.ts`
-  // now asserts each is the darkest row of a real joint instead).
-  fire: [38, 256],
-  ice: [34, 256],
-  lightning: [63, 256],
+  // The warm-stone faces (design/13): 512x256, no lit coping — the first full joint under the top
+  // course, measured off `art/biome/wallface_<element>_master.png`, which the shipped JPEG is
+  // encoded from. Redrawn 2026-10-12 as coursed ashlar (`art/biome/prompts.md` "Coursed faces"):
+  // exactly four courses of ~64 rows in every chapter, so the joints sit at ~3, ~67, ~128 and ~192
+  // (storm's riveted band replaces the one at ~128). The row-3 line is the half joint the crop
+  // starts on, under the cap's own fold, so the line a back wall is read by is the next one down.
+  // The joints are soft (61-66 against courses of 83-98, the calmer walls of the same day), close
+  // enough to one another that "darkest in the top third" would pick between near-ties, so
+  // `wallComposition.test.ts` asserts each is the darkest row of a real joint instead.
+  fire: [69, 256],
+  ice: [68, 256],
+  lightning: [66, 256],
   neutral: [25, 125],
-  poison: [63, 256],
+  poison: [66, 256],
 };
 
 /** The SHALLOWEST crown of any shipped swatch, and therefore the safe default for an element with
@@ -170,7 +167,7 @@ export const FACE_CROWN_ROWS: Readonly<Record<string, readonly [number, number]>
  *  nothing in the game takes this path — it is the fallback for a sixth element, or for a swatch
  *  that ships before anyone measures it. `wallComposition.test.ts` keeps it honest by asserting it
  *  equals the minimum of the measured table rather than a literal. */
-export const FACE_CROWN_FRACTION_MIN = 34 / 256;
+export const FACE_CROWN_FRACTION_MIN = 25 / 125;
 
 /** The measured crown fraction for `element`, or the conservative default. */
 export function faceCrownFraction(element: string): number {
