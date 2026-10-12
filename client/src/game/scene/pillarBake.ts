@@ -1,5 +1,6 @@
 // A warm-stone pillar, painted once per chapter out of that chapter's own WALL art (2026-10-12):
-// the shaft from the wall face, the top from the wall top. Sibling of `pillarRender.ts`, which
+// the shaft from the wall face, the top from the wall top's stone laid as a ring of coping round a
+// centre slab (`capMasonry`). Sibling of `pillarRender.ts`, which
 // draws the result as an ordinary sprite.
 //
 // Why: the pillar sprite (`biome/pillar_neutral.png`, 2026-08-20) was authored for the first-
@@ -45,6 +46,111 @@ const DARK_LIMB = 0.4;
  *  the coping and the fold line; a round top has only its rim, so it is lifted slightly to stay a
  *  closed surface rather than a dark opening (the "open-topped well" of 2026-08-18). */
 const TOP_LIFT = 1.15;
+
+/** The top's own masonry (2026-10-12), in the top's PLAN (the circle before it is foreshortened):
+ *  a ring of `CAP_STONES` wedge-shaped coping stones round one round centre slab, like the capital
+ *  of a built column. Until then the top was the wall-top swatch squeezed into the ellipse, and
+ *  its square blocks read as a patch of wall top cut out with a cookie cutter. The stones still
+ *  carry the wall top's own paint (sampled as before), so the material stays the chapter's.
+ *  Eight stones on a ~42 px top make each one about twice as long as the ring is wide: the
+ *  proportions of the wall's blocks. */
+const CAP_STONES = 8;
+/** The centre slab's radius, as a fraction of the top's. */
+const CAP_INNER = 0.56;
+/** Half a joint's width, world px in plan. */
+const CAP_JOINT = 0.55;
+/** A joint's value, as a multiply on the stone either side: as soft as the calmer walls' joints
+ *  (0.63-0.79 of their courses, `wallTone.FACE_CROWN_ROWS`). */
+const CAP_JOINT_SHADE = 0.66;
+/** Each stone's bevel: how far in from a joint it reaches (world px in plan) and how much it
+ *  lifts the edge that faces the key light and drops the one facing away. */
+const CAP_BEVEL = 1.6;
+const CAP_BEVEL_LIFT = 0.22;
+/** How far one stone's tone may sit from another's, so the ring reads as separate stones. */
+const CAP_TONE_SPREAD = 0.07;
+/** The key light's direction in the top's plan: from the upper left, the walls' own (north-west,
+ *  with north up the screen). */
+const LIGHT_X = -Math.SQRT1_2;
+const LIGHT_Z = -Math.SQRT1_2;
+
+/** How much of the wall top's painted grain each top stone keeps, and the floor under it: a texel
+ *  darker than `CAP_GRAIN_FLOOR` of the stone's value is one of the wall top's own joints, which
+ *  would draw a second, square masonry through the ring's. */
+const CAP_GRAIN = 0.5;
+const CAP_GRAIN_FLOOR = 0.92;
+
+const luma = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
+
+/** The wall top's STONE, without its joints: the mean colour of its texels at or above the median
+ *  luma (the block faces; the joints are the dark tail), and that median. */
+export function capStoneColour(cap: Swatch): { rgb: [number, number, number]; luma: number } {
+  const n = cap.width * cap.height;
+  const ls = new Float32Array(n);
+  for (let i = 0; i < n; i++) ls[i] = luma(cap.data[i * 4]!, cap.data[i * 4 + 1]!, cap.data[i * 4 + 2]!);
+  const median = Float32Array.from(ls).sort()[n >> 1]!;
+  const sum = [0, 0, 0];
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (ls[i]! < median) continue;
+    for (let k = 0; k < 3; k++) sum[k]! += cap.data[i * 4 + k]!;
+    count++;
+  }
+  const rgb = sum.map((v) => v / count) as [number, number, number];
+  return { rgb, luma: luma(...rgb) };
+}
+
+/** A stable tone per stone, in [-1, 1]: a small integer hash, no `Math.random`. */
+function stoneTone(k: number): number {
+  const h = Math.imul(k + 1, 0x9e3779b1) >>> 0;
+  return ((h >>> 8) % 1000) / 500 - 1;
+}
+
+/**
+ * The top's masonry at one point of its plan: a multiply for the stone's paint there, combining
+ * the joints, each stone's bevel and its own tone. `x`/`z` are world px from the top's centre in
+ * plan (`z` positive toward the viewer), `radius` the top's. Exported for the test.
+ */
+export function capMasonry(x: number, z: number, radius: number, scale = PILLAR_BAKE_SCALE): number {
+  const rho = Math.hypot(x, z);
+  const inner = radius * CAP_INNER;
+  // Toward the light is "lit": a bevel whose outward normal points at the light lifts.
+  const bevel = (dist: number, nx: number, nz: number) =>
+    CAP_BEVEL_LIFT * (nx * LIGHT_X + nz * LIGHT_Z) * clamp01(1 - dist / CAP_BEVEL);
+  // Distance to the nearest joint, and the shade of the bevel beside it.
+  let joint: number;
+  let shade: number;
+  let tone: number;
+  if (rho < inner) {
+    // The centre slab: one stone, its only edge the ring joint.
+    joint = inner - rho;
+    const n = rho > 1e-6 ? 1 / rho : 0;
+    shade = bevel(joint, x * n, z * n);
+    tone = stoneTone(CAP_STONES);
+  } else {
+    const phi = Math.atan2(z, x);
+    const step = (Math.PI * 2) / CAP_STONES;
+    // Rotated half a stone so no joint runs straight down the middle toward the viewer.
+    const a = phi / step + 0.5;
+    const k = ((Math.floor(a) % CAP_STONES) + CAP_STONES) % CAP_STONES;
+    const f = a - Math.floor(a);
+    // Arc distance to the two radial joints, and to the ring joint inside.
+    const toPrev = f * step * rho;
+    const toNext = (1 - f) * step * rho;
+    const toRing = rho - inner;
+    joint = Math.min(toPrev, toNext, toRing);
+    // Outward normals of the stone's three inner edges, in plan.
+    const t0 = (Math.floor(a) - 0.5) * step;
+    const t1 = t0 + step;
+    shade =
+      bevel(toPrev, Math.sin(t0), -Math.cos(t0)) +
+      bevel(toNext, -Math.sin(t1), Math.cos(t1)) +
+      bevel(toRing, -x / rho, -z / rho);
+    tone = stoneTone(k);
+  }
+  const line = clamp01((CAP_JOINT - joint) * scale + 0.5);
+  const stone = (1 + shade) * (1 + CAP_TONE_SPREAD * tone);
+  return stone + (CAP_JOINT_SHADE - stone) * line;
+}
 
 /** RGBA pixels of a swatch, plus how many of its texels make one world px. */
 export interface Swatch {
@@ -119,6 +225,7 @@ export function paintStonePillar(
   // Start the unrolled face part-way along, so the drum's centre line is not a tile seam.
   const uOffset = face.width * 0.37;
   const aoH = p.height * BASE_AO_FRACTION;
+  const stone = capStoneColour(cap);
   const px: number[] = [0, 0, 0];
   for (let j = 0; j < height; j++) {
     const ly = (j + 0.5) / scale - (p.height + p.capRy);
@@ -166,7 +273,14 @@ export function paintStonePillar(
       if (capCover > 0) {
         // Foreshortened: the top is a circle seen from above at an angle, so the swatch is squeezed
         // vertically by the ellipse's own ratio.
-        sample(cap, lx * cap.texelsPerPx, ey * (p.capRx / p.capRy) * cap.texelsPerPx, true, px);
+        const z = ey * (p.capRx / p.capRy);
+        sample(cap, lx * cap.texelsPerPx, z * cap.texelsPerPx, true, px);
+        const masonry = capMasonry(lx, z, p.capRx, scale);
+        // The wall top's grain, with its joints lifted out and its amplitude halved, over its
+        // stone colour: the top's only joints are its own (`capMasonry`).
+        const l = luma(px[0]!, px[1]!, px[2]!) / stone.luma;
+        const grain = 1 + CAP_GRAIN * (Math.max(l, CAP_GRAIN_FLOOR) - 1);
+        for (let k = 0; k < 3; k++) px[k] = stone.rgb[k]! * grain;
         // The walls' coping is lit along the edges that face the key light, the far ones: here the
         // back half of the rim, faded out toward the sides.
         const back = clamp01(-ey / p.capRy);
@@ -174,7 +288,7 @@ export function paintStonePillar(
         const edge = EDGE_ALPHA * clamp01(1 - inside / EDGE_WIDTH);
         const cs: number[] = [0, 0, 0];
         for (let k = 0; k < 3; k++) {
-          let c = Math.min(255, px[k]! * TOP_LIFT);
+          let c = Math.min(255, px[k]! * TOP_LIFT * masonry);
           c += (255 - c) * coping;
           c += (EDGE[k]! - c) * edge;
           cs[k] = c;

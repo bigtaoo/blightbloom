@@ -266,14 +266,45 @@ describe('warm-stone swatches — the seams', () => {
     expect(lineDiff(img, 0, img.height - 1, 'row')).toBeLessThan(Math.max(lineDiff(img, 0, 1, 'row'), 1) * 2.5);
   });
 
-  it.each(ELEMENTS)('wraps the %s face left-right only — its top and bottom are different courses', (el) => {
+  it.each(ELEMENTS)('wraps the %s face left-right only', (el) => {
+    // The face is fitted to the wall's height once, never repeated up it, so only the horizontal
+    // wrap matters. Until 2026-10-12 this also asserted the top and bottom rows DIFFER, as proof
+    // the vertical axis was left alone; the coursed faces start and end on a half joint by
+    // construction (the next test), so their top and bottom rows are both mortar.
     const img = master(`wallface_${el}`);
     expect(lineDiff(img, 0, img.width - 1, 'col')).toBeLessThan(Math.max(lineDiff(img, 0, 1, 'col'), 1) * 2.5);
-    // Against the face's typical adjacent-row step, not the top edge's own: a top course's lit bevel
-    // makes row 0 to row 1 one of the largest steps in the image (storm's measures 39).
-    let step = 0;
-    for (let y = 0; y < img.height - 1; y++) step += lineDiff(img, y, y + 1, 'row');
-    expect(lineDiff(img, 0, img.height - 1, 'row')).toBeGreaterThan((step / (img.height - 1)) * 2.5);
+  });
+
+  it.each(ELEMENTS)('lays the %s face in exactly four even courses (coursed ashlar, 2026-10-12)', (el) => {
+    // The key frame's back wall is coursed brick, and the 2026-10-10 faces were not: up to eleven
+    // irregular courses that read as rubble at wall height. Every chapter now has four courses of a
+    // quarter of the height each, so a 70 px wall shows ~17 px courses and the pillar painted from
+    // the same face (`pillarBake.ts`) carries the same four. Storm's riveted band stands in for its
+    // middle joint, and is as dark.
+    const img = master(`wallface_${el}`);
+    const rows: number[] = [];
+    for (let y = 0; y < img.height; y++) {
+      let sum = 0;
+      for (let x = 0; x < img.width; x++) {
+        const o = (y * img.width + x) * 4;
+        sum += 0.299 * img.data[o]! + 0.587 * img.data[o + 1]! + 0.114 * img.data[o + 2]!;
+      }
+      rows.push(sum / img.width);
+    }
+    const q = img.height / 4;
+    const course = (k: number) => {
+      const c = Math.round(q * k + q / 2);
+      return rows.slice(c - 8, c + 8).reduce((a, v) => a + v, 0) / 16;
+    };
+    for (let k = 1; k < 4; k++) {
+      const joint = Math.min(...rows.slice(Math.round(q * k - q / 5), Math.round(q * k + q / 5)));
+      expect(joint, `${el} joint ${k}`).toBeLessThan(Math.min(course(k - 1), course(k)) * 0.85);
+    }
+    // ...and no fifth course hiding inside one: the middle of every course is stone, not a joint.
+    for (let k = 0; k < 4; k++) {
+      const c = Math.round(q * k + q / 2);
+      expect(Math.min(...rows.slice(c - 12, c + 12)), `${el} course ${k} centre`).toBeGreaterThan(course(k) * 0.9);
+    }
   });
 
   it('would catch an unwrapped swatch — the ratio has teeth', () => {

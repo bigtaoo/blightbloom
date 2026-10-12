@@ -670,3 +670,13 @@ Why this works where 2026-08-18's texturing failed (`pillarRender.buildPillarBod
 that attempt windowed a 256 px swatch through a 35 px `TilingSprite`, so the top was one dark patch
 and the brick ran straight across a round shaft. The bake samples 512 px art at the walls' own scale
 and bends every course around the drum.
+
+**Coursed faces and a built top (2026-10-12, later the same day).** Calming the faces could not
+change their pattern: they were still rubble. The four faces are new art, cropped to exactly four
+even courses of coursed ashlar, so a 70 px wall shows four 17 px courses, as in the key frame, and
+the pillars painted from them carry the same four (`art/biome/prompts.md` "Coursed faces"). The
+pillar top stopped being the wall top foreshortened. It is laid in its own plan
+(`pillarBake.capMasonry`): eight wedge coping stones round a centre slab at 0.56 R, a tone per
+stone, bevels lit toward the north-west key light. It keeps the wall top's stone colour
+(`capStoneColour`), without the square joints that drew a second masonry through the ring. Work
+log: [roadmap/140](../roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change).
