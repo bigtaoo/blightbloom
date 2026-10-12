@@ -78,6 +78,7 @@ import {
 import { drawCornerAO, drawTuckCapCrease, drawTuckFaceCrease } from './wallShadingJoins';
 import { NO_VOID_EDGES, type VoidEdges } from './wallVoidEdge';
 import { addVoidReturns } from './wallVoidReturn';
+import { nestedAlphas } from './nestedRings';
 import {
   CAP_BOOST_ALPHA,
   CAP_BOOST_TINT,
@@ -93,27 +94,27 @@ import {
 
 
 /**
- * Cast-shadow passes: `[slant multiplier, alpha]`, widest/faintest first. Four graduated
- * passes rather than two (2026-08-19): the two-pass version had visibly straight polygon
- * edges — its convex hulls are hard-edged quads and at two alphas you see both of them, which
- * reads as a flat grey shape laid on the floor rather than as a shadow. Both slant by the fixed
- * key-light direction every shadow in this project uses (`Entity`'s SHADOW_SLANT_*).
- *
- * Alphas per pass are lower than the old two, but they composite over the same region, so the
- * region nearest the wall still ends up around 0.45 — measured east of a run as floor luma
- * 40 -> 26, which is the one place the old version already worked.
+ * Cast-shadow passes: nested swept hulls at slant multipliers `1/6 .. 6/6`, whose composite falls
+ * linearly from `CAST_DARKEST` beside the wall to one sixth of it at the shadow's tip. Graduated
+ * because one hull at one alpha is a hard-edged quad, which reads as a flat grey shape laid on the
+ * floor rather than as a shadow (two passes, until 2026-08-19); six rather than the four that
+ * replaced them (2026-10-12), because on the light warm-stone floor each of those four ~0.13 steps
+ * was a ~23-luma line, and the outermost — 0.14 straight onto bare floor — the hardest of them.
+ * Six and not eight for the shadow layer's float budget: eight measured 62,640 of
+ * `groundGeometryBudget`'s 64,000.
+ * All slant by the fixed key-light direction every shadow in this project uses (`Entity`'s
+ * SHADOW_SLANT_*). The darkest band is where the four-pass version already landed (0.43).
  */
-const CAST_PASSES: ReadonlyArray<readonly [number, number]> = [
-  [1, 0.14],
-  [0.72, 0.13],
-  [0.45, 0.13],
-  [0.22, 0.12],
-];
+const CAST_STEPS = 6;
+const CAST_DARKEST = 0.43;
+const CAST_ALPHAS = nestedAlphas(Array.from({ length: CAST_STEPS }, (_, j) => (CAST_DARKEST * (CAST_STEPS - j)) / CAST_STEPS));
 
 /**
- * Ambient occlusion hugging the OUTSIDE of the footprint: `[outset px, alpha]`, drawn as
- * strokes so the bands never overlap. New 2026-08-19, and it replaces a contact pass that
- * could never be seen.
+ * Ambient occlusion hugging the OUTSIDE of the footprint: `[outer edge px, darkness]` per band,
+ * nearest first, drawn as nested rings from the footprint out (`nestedRings.ts`). Until
+ * 2026-10-12 these were 3 px strokes centred 1.5/4/7/10.5/14 px out, which left 0.5 px of bare floor
+ * between the third and fourth and the fourth and fifth: two bright lines around every wall at any
+ * zoom. New 2026-08-19, and it replaces a contact pass that could never be seen.
  *
  * The old contact shadow filled the footprint itself — but a block's art spans
  * `south - height - depth .. south`, which covers its whole footprint and then intrudes one
@@ -125,13 +126,13 @@ const CAST_PASSES: ReadonlyArray<readonly [number, number]> = [
  * cue that plants the mass on the floor at all.
  */
 const BASE_HUG: ReadonlyArray<readonly [number, number]> = [
-  [1.5, 0.34],
-  [4, 0.26],
-  [7, 0.19],
-  [10.5, 0.12],
-  [14, 0.06],
+  [2.75, 0.34],
+  [5.5, 0.26],
+  [8.75, 0.19],
+  [12.25, 0.12],
+  [15.5, 0.06],
 ];
-const HUG_WIDTH = 3;
+const HUG_ALPHAS = nestedAlphas(BASE_HUG.map(([, c]) => c));
 const SHADOW_COLOR = 0x000000;
 
 /** Textures + colours one wall block is drawn from. `cap` is the top-down swatch
@@ -455,20 +456,20 @@ export function drawBlockShading(r: RectPx, height: number, joins: WallJoins = N
  *
  * A box of height `height` lit from the upper left throws its footprint down-right by
  * `height * SHADOW_SLANT_*`; the union of the footprint and that displaced copy is a hexagon
- * (the two rects' convex hull), which is what each pass fills, at four graduated slants so the
+ * (the two rects' convex hull), which is what each pass fills, at six nested slants so the
  * result ramps instead of showing its own polygon edges. Then `BASE_HUG` darkens the floor all
  * the way around the footprint — see its doc for why the old contact pass was invisible.
  */
 export function drawWallShadow(g: Graphics, r: RectPx, height: number): void {
-  for (const [mul, alpha] of CAST_PASSES) {
-    const dx = height * SHADOW_SLANT_X * mul;
-    const dy = height * SHADOW_SLANT_Y * mul;
-    g.poly(sweptHull(r, dx, dy)).fill({ color: SHADOW_COLOR, alpha });
-  }
-  for (const [out, alpha] of BASE_HUG) {
-    g.rect(r.x - out, r.y - out, r.w + out * 2, r.h + out * 2)
-      .stroke({ color: SHADOW_COLOR, width: HUG_WIDTH, alpha });
-  }
+  CAST_ALPHAS.forEach((alpha, k) => {
+    const mul = (k + 1) / CAST_STEPS;
+    g.poly(sweptHull(r, height * SHADOW_SLANT_X * mul, height * SHADOW_SLANT_Y * mul)).fill({ color: SHADOW_COLOR, alpha });
+  });
+  // Ring k covers [0, edge] out from the footprint: a stroke that wide, centred half of it out.
+  BASE_HUG.forEach(([edge], k) => {
+    const c = edge / 2;
+    g.rect(r.x - c, r.y - c, r.w + c * 2, r.h + c * 2).stroke({ color: SHADOW_COLOR, width: edge, alpha: HUG_ALPHAS[k]! });
+  });
 }
 
 /**

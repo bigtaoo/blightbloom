@@ -106,10 +106,11 @@ describe('warm-stone swatches — the shipped JPEG is its master', () => {
 });
 
 describe('warm-stone swatches — sized in world px by their density', () => {
-  it.each(ELEMENTS)('lays a %s floor tile over 200 world px, so a slab is about two hero-widths', (el) => {
-    // The key frame's proportion: a slab ~2.1 hero-widths. Measured 2026-10-10: at 96 world px per
-    // tile the slabs read as cobbles the hero's own size; at 245 as paving three heroes across.
-    expect(master(`floor_${el}`).width / SWATCH_META[`floor_${el}`]!.density).toBe(200);
+  it.each(ELEMENTS)('lays a %s floor tile over 320 world px, so a slab is about three hero-widths', (el) => {
+    // 200 world px (the key frame's ~2.1 hero-widths) until 2026-10-12, when the floor read as too
+    // many joints, crawling as the camera moved; 1.6x larger slabs put ~40% fewer on screen.
+    // Measured 2026-10-10: at 96 world px per tile the slabs read as cobbles the hero's own size.
+    expect(master(`floor_${el}`).width / SWATCH_META[`floor_${el}`]!.density).toBe(320);
   });
 
   it.each(ELEMENTS)('lays the %s wall top over exactly one 64 px cap cell', (el) => {
@@ -122,15 +123,32 @@ describe('warm-stone swatches — sized in world px by their density', () => {
 });
 
 describe("warm-stone swatches — the key frame's tonal rules, in every chapter", () => {
-  it.each(ELEMENTS)('%s has a light floor, the lightest stone in the room', (el) => {
+  it.each(ELEMENTS)('%s has a mid-tone floor, still the lightest stone in the room', (el) => {
+    // 150-195 (the key frame's light floor) until 2026-10-12: at median ~170 the floor was the
+    // brightest thing on screen and its joints the highest-contrast lines in the frame, and both
+    // were what the eye caught moving. Regraded to 105 (`colorGrade --contrast=0.4 --median=105`).
     const floor = median(master(`floor_${el}`));
-    expect(floor).toBeGreaterThan(150);
-    expect(floor).toBeLessThan(195); // light, not the white of an unlit page
+    expect(floor).toBeGreaterThan(95);
+    expect(floor).toBeLessThan(120);
     expect(floor).toBeGreaterThan(median(master(`wallface_${el}`)));
   });
 
   it.each(ELEMENTS)('%s has a dark wall top under it — the inverse of the first-generation rule', (el) => {
-    expect(median(master(`wall_${el}`))).toBeLessThan(median(master(`floor_${el}`)) * 0.6);
+    // Darkest stone in the room: under the face, and well under the floor.
+    const cap = median(master(`wall_${el}`));
+    expect(cap).toBeLessThan(median(master(`floor_${el}`)) * 0.75);
+    expect(cap).toBeLessThan(median(master(`wallface_${el}`)));
+  });
+
+  it.each(ELEMENTS)('%s floor joints are soft: the dark tail sits close to the stone', (el) => {
+    // The other half of 2026-10-12. The 5th-percentile luma is the mortar; before the regrade it sat
+    // at 0.15-0.28 of the median across the four chapters, now 0.67-0.73. A re-export from a raw
+    // generator image would put the black joints back, and this is what says so.
+    const img = master(`floor_${el}`);
+    const l: number[] = [];
+    for (let i = 0; i < img.width * img.height; i++) l.push(luma(img.data, i * 4));
+    l.sort((a, b) => a - b);
+    expect(l[Math.floor(l.length * 0.05)]! / median(img)).toBeGreaterThan(0.6);
   });
 
   it.each(ELEMENTS)('%s keeps its wall top a cool dark grey, so the floor and the face read against it', (el) => {
@@ -145,13 +163,21 @@ describe("warm-stone swatches — the key frame's tonal rules, in every chapter"
 
   it('keeps the four floors apart: no two chapters share one grey', () => {
     // The hue rules below each pass on their own and could still land two chapters on the same
-    // stone. The closest pair at the time of writing is storm and blight, ~14 apart.
+    // stone. Measured on each floor's mean colour divided by its own mean, so it is a statement about
+    // hue and not about brightness: the 2026-10-12 regrade darkened every floor by ~0.6 and moved
+    // the closest pair, storm and blight, from 14 to 10 apart in raw RGB while their normalised
+    // distance went 0.089 -> 0.092.
+    const norm = (el: string) => {
+      const m = means(master(`floor_${el}`));
+      const l = (m.r + m.g + m.b) / 3;
+      return { r: m.r / l, g: m.g / l, b: m.b / l };
+    };
     for (let i = 0; i < ELEMENTS.length; i++) {
       for (let j = i + 1; j < ELEMENTS.length; j++) {
-        const a = means(master(`floor_${ELEMENTS[i]}`));
-        const b = means(master(`floor_${ELEMENTS[j]}`));
+        const a = norm(ELEMENTS[i]!);
+        const b = norm(ELEMENTS[j]!);
         const d = Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-        expect(d, `${ELEMENTS[i]} vs ${ELEMENTS[j]}`).toBeGreaterThan(12);
+        expect(d, `${ELEMENTS[i]} vs ${ELEMENTS[j]}`).toBeGreaterThan(0.07);
       }
     }
   });

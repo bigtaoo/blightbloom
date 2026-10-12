@@ -51,6 +51,17 @@ export class FxController {
    *  multisamples where `supports.msaa`. Same uniforms as `sceneLight` every frame
    *  (`syncCamera`), or the two halves would be lit differently. */
   readonly sceneLightStand = new SceneLightFilter({ antialias: 'on' });
+  /** The floor half's pass when the tier splits it: the same light, with NO relief (gradient 0).
+   *  The fake normal `litFx` reads off the luminance gradient is what makes a sprite read as
+   *  relief, and the floor is flat ground: on it, every flagstone joint and every shadow band
+   *  edge became an embossed rim, bright on one side and dark on the other, and the player's own
+   *  glow re-shaded those rims as it moved — the joints crawling under a walking player
+   *  (2026-10-12, "移动的时候缝隙抖动"). Measured on ember floor 1: the floor's total variation
+   *  along a row 772 with relief, 282 without. A flat texel lights to exactly 1.0 either way
+   *  (`flatReference`), so this removes rims and changes no tone. The medium tier keeps one pass
+   *  for floor and actors together and so keeps the relief on the floor — splitting it there
+   *  would cost the extra pass that tier exists to save. */
+  readonly sceneLightFloor = new SceneLightFilter({ gradient: 0 });
   /** Bloom-lite blur over the additive fx layer. A field rather than a `new` inside `attach()`
    *  (as it was until 2026-08-25) so `applyQuality` can mount and unmount it without building a
    *  fresh filter — and its GL program — every time the tier changes. */
@@ -136,7 +147,7 @@ export class FxController {
     // half would be lit twice. See `Layers.litFloor` for the measurement behind the split.
     const split = q.sceneLight && q.standAntialias;
     this.layers.lit.filters = q.sceneLight && !split ? [this.sceneLight] : [];
-    this.layers.litFloor.filters = split ? [this.sceneLight] : [];
+    this.layers.litFloor.filters = split ? [this.sceneLightFloor] : [];
     this.layers.litStand.filters = split ? [this.sceneLightStand] : [];
     this.particles.setBudget(q.particleBudget);
   }
@@ -397,7 +408,7 @@ export class FxController {
     // Nothing reads these uniforms while the pass is unmounted (low tier).
     if (!activeQuality().sceneLight) return;
     const count = this.lights.snapshot(this.lightBuffer);
-    for (const pass of [this.sceneLight, this.sceneLightStand]) {
+    for (const pass of [this.sceneLight, this.sceneLightStand, this.sceneLightFloor]) {
       pass.setRegion(this.litArea.x, this.litArea.y, this.litArea.width, this.litArea.height);
       pass.setLights(this.lightBuffer, count);
     }

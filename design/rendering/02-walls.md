@@ -114,9 +114,12 @@ extruded block on the `entities` layer — `scene/wallRender.ts` owns the drawin
     as an **inset** dark band — inset, not extruded, so it can never cross into the
     neighbouring segment of the same perimeter run.
   - **A ground shadow.** Each wall sweeps its footprint down-right by
-    `height × SHADOW_SLANT_*` and fills the convex hull of the two rects — four graduated
-    passes since 2026-08-19, two before that, because two alphas over hard-edged quads let you
-    see both quads. One shared `Graphics` on `layers.shadow` carries a whole room's set. Walls
+    `height × SHADOW_SLANT_*` and fills the convex hull of the two rects — six NESTED passes
+    since 2026-10-12 (four from 2026-08-19, two before that), because two alphas over hard-edged
+    quads let you see both quads, and on the light warm-stone floor each of the four ~0.13 steps
+    was a ~23-luma line. The six composite to a linear fall from 0.43 beside the wall to a sixth of
+    that at the tip (`scene/nestedRings.ts`); eight measured 62,640 of the shadow layer's 64,000-float
+    budget. One shared `Graphics` on `layers.shadow` carries a whole room's set. Walls
     were the one tall thing in a room *not* using what this doc already calls "the cheapest 3D
     cheat". The alphas are higher than they look like they should be because the ember floor is
     near-black: what a shadow has to modulate on that biome is the floor's lava cracks, the only
@@ -124,7 +127,10 @@ extruded block on the `entities` layer — `scene/wallRender.ts` owns the drawin
     itself**, which could never be seen — a block's art covers its whole footprint and then
     intrudes a wall height north of it, so every pixel of that fill was behind the block casting
     it. Replaced 2026-08-19 by an ambient-occlusion band hugging the footprint from the
-    **outside**, which is both visible and where the crease physically belongs.
+    **outside**, which is both visible and where the crease physically belongs. Since 2026-10-12
+    that band is five nested rings anchored at the footprint, not five 3 px strokes on
+    1.5/4/7/10.5/14 px centres: the strokes left 0.5 px of bare floor between the third and fourth
+    and the fourth and fifth, two bright lines around every wall.
   - **A dark silhouette.** The outline was `palette.wallEdge` — a light salmon/steel,
     authored as the highlight edge of a wall lying **flat**, where a light rim is right. On a
     standing block, magnified by the room camera, it read as a bright wireframe box drawn

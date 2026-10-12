@@ -89,6 +89,24 @@ Its room light uses `WARM_STONE_ROOM_LIGHT`, which differs from the default in t
 The wash, mottle and wear layers are unchanged. The torches' light pools come from the scene light
 pass (`scene/torches.ts`), not from this layer.
 
+**Revised again 2026-10-12: a calmer floor** (roadmap volume 140). The report was that the floor
+was too bright, had too many joints, and the joints crawled as the player moved. Four changes, each
+measured on ember floor 1:
+
+- **The swatches are darker, with soft joints.** Median luma 172 → 105 and the joints compressed to
+  40% of their contrast (`colorGrade.mjs --soften=2 --contrast=0.4 --median=105`, all four chapters).
+- **The slabs are 1.6x larger.** Floor density 2.56 → 1.6, so a tile covers 320 world px instead of
+  200 and ~40% fewer joints are on screen.
+- **The floor is lit without relief.** On the high tier the floor half of the split light pass is its
+  own instance with gradient 0 (`FxController.sceneLightFloor`). The luminance-gradient normal had
+  embossed every joint and band edge, and the player's own glow re-shaded those rims as it moved.
+  The medium tier still lights floor and actors in one pass, and keeps the relief.
+- **The room light is nested rings, 24 instead of 12 side-by-side bands** (`scene/nestedRings.ts`).
+  Each side-by-side boundary drew an antialiasing hairline parallel to the wall.
+
+Together: mean floor luma on screen 153 → 110, and edge contrast along the same rows 10.66 → 2.40
+per pixel.
+
 ---
 
 ## The same sweeps, on the arena (2026-08-26)

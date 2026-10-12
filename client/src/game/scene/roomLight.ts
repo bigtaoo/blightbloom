@@ -15,16 +15,19 @@
 // ground layer. The lightmap milestone stays open for the dynamic half.
 import type { Graphics } from 'pixi.js';
 import type { RectPx } from './wallGeometry';
+import { nestedAlphas } from './nestedRings';
 
 /** How far the falloff reaches in from the room's edge, as a fraction of its SHORTER side, and
  *  the ceiling on that in world px so a large arena doesn't get an enormous gradient. */
 const FALLOFF_FRACTION = 0.2;
 const FALLOFF_MAX_PX = 110;
-/** Bands, and the alpha the outermost one reaches. Non-overlapping strokes, so each band's alpha
- *  is exactly its ramp value — the same reason the cap gradient and the sphere shading are built
- *  this way. Kept moderate: a wall's base hug and its cast shadow both land in this same region,
- *  and three dark things stacked in one corner reads as a hole rather than as ambience. */
-const BANDS = 12;
+/** Bands, and the darkness the outermost one reaches. Kept moderate: a wall's base hug and its cast
+ *  shadow both land in this same region, and three dark things stacked in one corner reads as a
+ *  hole rather than as ambience.
+ *
+ *  24 rather than the original 12 (2026-10-12): on the light warm-stone floor a 12-band ramp
+ *  stepped by ~20 luma per band, and every step was a straight line parallel to the wall. */
+export const BANDS = 24;
 const EDGE_ALPHA = 0.26;
 const LIGHT_COLOR = 0x000000;
 
@@ -56,10 +59,13 @@ export const WARM_STONE_ROOM_LIGHT: RoomLightStyle = { edgeAlpha: 0.45, fraction
  * Paint one room's falloff into `g` (one shared Graphics for the whole floor, on
  * `layers.ground` above the floor tiling).
  *
- * Concentric stroked rects from the room's own bounds inward, fading to nothing by
- * `FALLOFF_*`. A rect rather than a radial pool because these rooms ARE rectangles and their
- * corners are where the enclosure should read; a circular pool in a square room lights the
- * corners least along the diagonal, which is the wrong axis.
+ * Nested rings, every one anchored at the room's edge (`nestedRings.ts` says why): ring `k` is a
+ * single stroke covering the outer `(k + 1) / BANDS` of the falloff, so a point sits under every
+ * ring that reaches past it and its darkness is their composite. Until 2026-10-12 the bands were
+ * side by side, which drew a hairline at each of the 11 boundaries parallel to every wall. A rect
+ * rather than a radial pool because these rooms ARE rectangles and their corners are where the
+ * enclosure should read; a circular pool in a square room lights the corners least along the
+ * diagonal, which is the wrong axis.
  */
 export function drawRoomLight(
   g: Graphics,
@@ -71,13 +77,23 @@ export function drawRoomLight(
   const reach = Math.min(style.maxPx, Math.min(room.w, room.h) * style.fraction);
   if (reach <= 0) return;
   const width = reach / BANDS;
-  for (let i = 0; i < BANDS; i++) {
-    // t: 1 at the room's edge, → 0 at the inner end of the falloff.
-    const t = 1 - (i + 0.5) / BANDS;
-    const inset = i * width + width / 2;
+  const alphas = nestedAlphas(Array.from({ length: BANDS }, (_, j) => bandDarkness(j, style.edgeAlpha)));
+  for (let k = 0; k < BANDS; k++) {
+    // Ring k spans [0, (k + 1) * width] in from the edge: a stroke of that width centred half of it in.
+    const ringW = (k + 1) * width;
+    const inset = ringW / 2;
     g.rect(room.x + inset, room.y + inset, room.w - inset * 2, room.h - inset * 2)
-      .stroke({ color: LIGHT_COLOR, width, alpha: t * t * style.edgeAlpha });
+      .stroke({ color: LIGHT_COLOR, width: ringW, alpha: alphas[k]! });
   }
+}
+
+/**
+ * The darkness band `j` (0 at the room's edge) composites to: `edgeAlpha * t²`, with `t` 1 at the
+ * edge and 0 at the inner end of the falloff, sampled at the band's centre. Exported for tests.
+ */
+export function bandDarkness(j: number, edgeAlpha: number): number {
+  const t = 1 - (j + 0.5) / BANDS;
+  return t * t * edgeAlpha;
 }
 
 /** Slack for "this wall hugs this room edge" — the same 4 px `wallGeometry.wallTier` uses. */
