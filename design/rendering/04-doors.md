@@ -720,3 +720,30 @@ right on this door and wrong on the next size.
 `fillFloorPool` and the two ring constants — moved to **`doorFloorPlane.ts`** (CLAUDE.md form 1),
 with `doorLights.ts` re-exporting every name so no caller or test changed. Full account:
 [`../roadmap/55-2026-09-11-door-ellipse-aspect.md`](../roadmap/55-2026-09-11-door-ellipse-aspect.md).
+
+## The frame is the wall's own stone (2026-10-13)
+
+The two leaf elevations were drawn for the first-generation charcoal walls, with a frame of small
+navy bricks and a black cartoon outline. Once every chapter's walls became warm coursed ashlar
+(volumes 139-140), that frame was the last fixture in the old art. On every chapter whose face has
+an authored tone, the leaf is now **baked at load** from that face (`scene/doorBake.ts`,
+`stoneDoorLeaf`). `RoomBuilder.buildDoors` / `updateDoors` hand the baked texture to
+`buildDoorBlock` as the skin's `leaf`, so nothing downstream of the leaf changed.
+
+- **Plan.** A flat arch of three stones (voussoir, keystone, voussoir) above `FLAME_BAND.y0`, five
+  ashlar blocks per jamb with inner edges at 0.23 of the leaf (outside `OPEN_HOLE`), and on a locked
+  door a sill from `FLAME_BAND.y1` down. `doorStones` is the pure polygon list, and the test checks
+  that it tiles the frame.
+- **Paint.** The pillar top's stone recipe (`capStoneColour` plus grain, per-stone tone, a bevel lit
+  from the north-west), with joints matching the face's mortar and the walls' `EDGE_COLOR` along the
+  opening.
+- **The opening.** Locked: the fire from `door_locked_raw.png` at the same fraction of the leaf.
+  `doorFx`'s flame overlay, fitted to `FLAME_BAND`, still lands on it. Open: transparent, so the
+  curtain and recess show through.
+- **Size.** Both states are 294 x 434, the locked art's aspect. `doorLeafFrame` reads only the
+  aspect, so the crop rules (a kerb door shows its bottom half) hold unchanged, and the frame no
+  longer shifts by a few px when a door unlocks.
+- **Fallback.** The shipped elevation is still used for a first-generation face (`neutral`), no face,
+  a locked door without its fire art, or no 2D canvas. Each case is memoised per (face, state).
+
+Full account: [`../roadmap/141-2026-10-13-stone-door.md`](../roadmap/141-2026-10-13-stone-door.md).

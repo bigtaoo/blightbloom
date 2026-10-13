@@ -1804,15 +1804,19 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 - **10-12** [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change) — "把房间里的墙和柱子也一起处理一下" / "我觉得墙和柱子的图片本身也有点不匹配": after the floor, the room still showed three stones: a bright orange rubble face with near-black joints (8.3 total variation per pixel against the floor's 1.0), small grey brick on the top, and pillars still on the 2026-08-20 charcoal sprite. Faces and tops regraded to soft joints (face less orange), top slabs doubled (density 8 -> 4), the moving lights no longer see relief (`SceneLightFilter.pointRelief` 0 on the stand and single passes: face shimmer under a 4 px light move 0.365 -> 0.147), and pillars are painted at load from each chapter's own face and top with the courses curved around the drum (`scene/pillarBake.ts`). `render` `art` `test` `docs`
 - **10-12** [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change) — "墙面图案还是碎石，参考图里是整齐的砖缝，要改得重新出图" / "柱顶目前是墙顶贴图压扁后用的": the two items the walls pass left open. New face art in all four chapters: the model will not count courses, so each face is cropped from one joint to the fourth below it and is now exactly four even courses of coursed ashlar (`warmStoneArt.test.ts` holds it), graded onto the old hue and median; the crown rows moved to the first full joint (66-69 of 256). The pillar top is laid as masonry in its own plan (`pillarBake.capMasonry`): eight wedge coping stones round a centre slab, per-stone tone and lit bevels, in the wall top's stone with its square joints filtered out. `render` `art` `test` `docs`
 
+**[2026-10-13 — A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md)**
+
+- **10-13** [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change) — "按照目前的美术设定，这个门就显得很不协调了": every doorway was still the 2026-08-20 frame of navy cartoon bricks with a black outline, standing in the warm-stone walls of volumes 139-140. The surround is now painted at load from each chapter's own wall face (`scene/doorBake.ts`, the pillar bake's recipe): a flat arch of two voussoirs and a keystone, five ashlar blocks per jamb, and a sill under a locked door, each stone with its own tone, a lit bevel and mortar joints matching the face. The shipped fire fills a locked opening inside `FLAME_BAND` and an open opening stays transparent for the curtain. Both states are baked at one aspect, so the frame no longer changes shape on unlock. First-generation faces and canvas-free hosts keep the shipped art. 13 tests, 16 of 16 mutants killed. `render` `test` `docs`
+
 **[2026-10-13 — A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md)**
 
 - **10-13** [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change) — "玩家靠近物品却无法拾取，感觉非常奇怪。要么给个提示，要么直接拾取": a full-energy player beside an energy cell that stayed on the floor. The engine was right, since `pickupWouldApply` leaves a heal, energy or shield at a full pool and an EMP with no enemy in range, and with no item bag a pickup at the cap is destroyed for nothing. Nothing on screen said so. Now a drop the LOCAL player would refuse is dimmed (alpha 0.45, glow off), and walking onto one puts up a fading label in the pool's colour ("Energy full", "HP full", "Shield full", "No enemies in range", in eight locales). It fires from a 48 px ring (the 31 px sim gate plus the body's float height), edge-triggered with a 3 s per-drop cooldown. The decision is pure (`ui/pickupRefusal.ts`) and swept against `pickupWouldApply` over every `PickupKind`. A HUD-bar flash was dropped because `GameLoop.ts` is at 499 lines. `ui` `i18n` `test` `docs`
 
 ## The work log — by theme
 
-The same 258 entries, grouped. An entry with more than one tag appears more than once.
+The same 259 entries, grouped. An entry with more than one tag appears more than once.
 
-**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(83)*
+**`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(84)*
 
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
 - 08-12 [Viewport-fill bug-fix pass](roadmap/02-2026-08-12--08-15.md#viewport-fill-bug-fix-pass--2026-08-12)
@@ -1897,6 +1901,7 @@ The same 258 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 
 **`art`** — authored assets and the art pipeline *(30)*
 
@@ -2052,7 +2057,7 @@ The same 258 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(164)*
+**`test`** — coverage sweeps, gates, mutation batteries *(165)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2217,6 +2222,7 @@ The same 258 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
@@ -2390,7 +2396,7 @@ The same 258 entries, grouped. An entry with more than one tag appears more than
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(175)*
+**`docs`** — design docs and this log itself *(176)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2566,6 +2572,7 @@ The same 258 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
+- 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(43)*

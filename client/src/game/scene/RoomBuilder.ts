@@ -21,6 +21,7 @@ import {
 } from './occlusion';
 import { blockCapTop, doorCapless, effectiveWallHeight, wallJoins, type WallRun } from './wallRuns';
 import { buildDoorBlock, type DoorFixture, type DoorSkin } from './doorRender';
+import { stoneDoorLeaf } from './doorBake';
 import { tickDoors, type CameraRect } from './doorTick';
 import { groundSteps } from './groundLayer';
 import { planRoomWalls, type RoomWallPlan } from './roomWallPlan';
@@ -78,6 +79,8 @@ export class RoomBuilder {
   // itself: is this door on screen at all, and how close is the player to it. Rebuilt with the
   // room by `buildDoors`, cleared by `clearDoors`.
   private readonly doorFootprints: RectPx[] = [];
+  // The wall face the current floor's door leaves are painted from (`doorBake.stoneDoorLeaf`).
+  private doorFace: DoorSkin['face'];
   // Decorative room dressing (`RoomPiece.props`, design/09 "decorative + Y-sortable"),
   // read straight off `s.dungeonRooms` — the same `PlacedRoom[]` SpawnSystem already
   // populates for walls/obstacles, so no new engine-side plumbing is needed to reach a
@@ -320,13 +323,14 @@ export class RoomBuilder {
     s: GameState,
     runs: readonly WallRun[],
     doorRects: readonly RectPx[],
-    // Everything a door is drawn from except the leaf, which is per-door (`getDoorTexture`) and
+    // Everything a door is drawn from except the leaf, which is per-door (`stoneDoorLeaf`) and
     // is added at the `buildDoorBlock` call below.
     skin: Omit<DoorSkin, 'leaf'>,
     shadows: Graphics,
     element: string,
   ): void {
     this.clearDoors();
+    this.doorFace = skin.face;
     // A door stands at `DOOR_H` — ONE height for every door, whatever wall it is cut into and
     // however thick (see `wallGeometry.DOOR_H` for the report that replaced `doorFlankTier`'s
     // shortest-flank rule, and what it spends). `DOOR_TIER` is only for `wallJoins` below, which
@@ -351,7 +355,8 @@ export class RoomBuilder {
       // `i` is the door's phase offset (`doorFx.ts`: two doors in one room must not breathe in
       // unison), so it has to be the index within the FLOOR's door list — stable across rebuilds
       // and identical on every client — not a per-room counter.
-      const fixture = buildDoorBlock(rect, height, { ...skin, leaf: getDoorTexture(dr.locked) }, dr.locked, joins, i);
+      const leaf = stoneDoorLeaf(skin.face, getDoorTexture(dr.locked), dr.locked);
+      const fixture = buildDoorBlock(rect, height, { ...skin, leaf }, dr.locked, joins, i);
       drawWallShadow(shadows, rect, height);
       this.layers.entities.addChild(fixture.view);
       tagStandingPiece(fixture.view);
@@ -420,7 +425,7 @@ export class RoomBuilder {
     if (this.doorFixtures.length !== s.dungeonDoors.length) return;
     for (let i = 0; i < s.dungeonDoors.length; i++) {
       const locked = s.dungeonDoors[i]!.locked;
-      this.doorFixtures[i]!.setLocked(locked, getDoorTexture(locked));
+      this.doorFixtures[i]!.setLocked(locked, stoneDoorLeaf(this.doorFace, getDoorTexture(locked), locked));
     }
   }
 

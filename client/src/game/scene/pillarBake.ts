@@ -170,8 +170,9 @@ export interface PillarShape {
   readonly basePx: number;
 }
 
-/** Bilinear sample, wrapping horizontally; `wrapY` wraps vertically too, else clamps. */
-function sample(s: Swatch, u: number, v: number, wrapY: boolean, out: number[]): void {
+/** Bilinear sample, wrapping horizontally; `wrapY` wraps vertically too, else clamps. Shared with
+ *  `doorBake.ts`. */
+export function sample(s: Swatch, u: number, v: number, wrapY: boolean, out: number[]): void {
   const x0 = Math.floor(u);
   const y0 = Math.floor(v);
   const fx = u - x0;
@@ -314,9 +315,9 @@ export function paintStonePillar(
 }
 
 /** A texture's pixels through a 2D canvas, or `undefined` where there is none (headless tests, a
- *  tainted source) — the caller keeps the shipped pillar sprite. Through `DOMAdapter` for the
+ *  tainted source) — the caller keeps the shipped sprite (here and in `doorBake.ts`). Through `DOMAdapter` for the
  *  reason `capLight.ts` documents: the WeChat runtime has no `document`. */
-function readSwatch(tex: Texture, texelsPerPx: number): Swatch | undefined {
+export function readSwatch(tex: Texture, texelsPerPx: number): Swatch | undefined {
   const src = tex.source;
   const w = src.pixelWidth;
   const h = src.pixelHeight;
@@ -353,22 +354,29 @@ export function bakeStonePillar(
   const c = f && readSwatch(cap, capTexelsPerPx);
   if (f && c) {
     try {
-      const img = paintStonePillar(f, c, shape);
-      const canvas = DOMAdapter.get().createCanvas(img.width, img.height);
-      const ctx = canvas.getContext('2d') as ICanvasRenderingContext2D | null;
-      if (ctx) {
-        const id = ctx.createImageData(img.width, img.height);
-        id.data.set(img.data);
-        ctx.putImageData(id, 0, 0);
-        // Minified ~2x on screen, like the shipped sprite, so it needs the same mip chain.
-        out = new Texture({ source: new CanvasSource({ resource: canvas, autoGenerateMipmaps: true }) });
-        out.label = `stone-pillar:${key}`;
-      }
+      out = pixelsToTexture(paintStonePillar(f, c, shape), `stone-pillar:${key}`);
     } catch {
       out = undefined;
     }
   }
   baked.set(key, out);
+  return out;
+}
+
+/** Painted RGBA bytes as a mipmapped canvas texture, or `undefined` with no 2D context. Shared
+ *  with `doorBake.ts`. Minified ~2x on screen, like a shipped sprite, so it needs the mip chain. */
+export function pixelsToTexture(
+  img: { data: Uint8ClampedArray; width: number; height: number },
+  label: string,
+): Texture | undefined {
+  const canvas = DOMAdapter.get().createCanvas(img.width, img.height);
+  const ctx = canvas.getContext('2d') as ICanvasRenderingContext2D | null;
+  if (!ctx) return undefined;
+  const id = ctx.createImageData(img.width, img.height);
+  id.data.set(img.data);
+  ctx.putImageData(id, 0, 0);
+  const out = new Texture({ source: new CanvasSource({ resource: canvas, autoGenerateMipmaps: true }) });
+  out.label = label;
   return out;
 }
 
