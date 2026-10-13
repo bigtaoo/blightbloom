@@ -215,10 +215,8 @@ export const en = {
       lightning: 'lightning',
       poison: 'poison',
     },
-    // Compact material-bank/cost-line abbreviation (Forge.ts) — a separate namespace
-    // from `element` above (the full noun) since a short code isn't the same string as
-    // the full word in every language. Values here match Forge.ts's old hardcoded
-    // `e.slice(0,3).toUpperCase()` output byte-for-byte, so English is unchanged.
+    // Compact material-bank/cost-line abbreviation (Forge.ts) — its own namespace, since a
+    // short code is not the full `element` noun cut short in every language.
     elementShort: {
       physical: 'PHY',
       fire: 'FIR',
@@ -226,8 +224,7 @@ export const en = {
       lightning: 'LIG',
       poison: 'POI',
     },
-    // Blueprint unlock source (Forge.ts's lockedSource line) — 'drop' isn't listed
-    // here, it has its own dedicated `forge.lockedFind` string instead.
+    // Blueprint unlock source (Forge.ts's lockedSource); 'drop' has `forge.lockedFind`.
     source: {
       purchase: 'purchase',
       event: 'event',
@@ -252,8 +249,11 @@ export const en = {
     portalDescend: 'Descend to Floor {floor}',
     portalTitleBoss: 'BOSS DOWN — the extraction portal is open',
     portalCountdown: 'Squad leaves in {seconds}s — {ready}/{total} ready',
-    floorCardTitle: 'Choose an Upgrade',
+    floorCardTitle: 'FLOOR CLEARED — choose an upgrade',
     floorCardVotes: '{n} votes',
+    floorCardChosen: 'Upgrade: {card}',
+    floorCardSquadPick: 'Squad pick: {card} ({n} votes)',
+    floorCardChange: 'Change',
   },
   auth: {
     title: 'ACCOUNT',

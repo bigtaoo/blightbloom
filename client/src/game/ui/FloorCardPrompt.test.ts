@@ -283,3 +283,118 @@ describe('layout and press handling', () => {
     expect(presses).toBe(1);
   });
 });
+
+/**
+ * Pick, then descend (2026-10-13 live report: the cards and the portal opened together, the
+ * player pressed Descend first, and the engine — which holds that press until a card is
+ * voted — did nothing). The panel's mode is keyed off the LOCAL seat's own vote.
+ */
+function stepOf(p: FloorCardPrompt) {
+  return p as unknown as {
+    titleText: { visible: boolean; text: string };
+    summaryText: { visible: boolean; text: string };
+    changeBtn: { view: { visible: boolean }; onTap: (() => void) | null; label: { text: string } };
+    cards: Array<{ view: { visible: boolean }; onTap: (() => void) | null }>;
+  };
+}
+
+describe('two steps: pick, then a summary with Change', () => {
+  const OFFER = ['edge', 'cadence', 'bulwark'];
+
+  it('shows the cards — and only the cards — while this seat has not voted', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [0]), true, 0);
+    expect(p.isPicking).toBe(true);
+    const v = stepOf(p);
+    expect(v.titleText.visible).toBe(true);
+    expect(v.cards.every((c) => c.view.visible)).toBe(true);
+    expect(v.summaryText.visible).toBe(false);
+    expect(v.changeBtn.view.visible).toBe(false);
+  });
+
+  it('collapses to the summary once this seat has voted, naming the card and what it does', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [3]), true, 0);
+    expect(p.isOpen).toBe(true);
+    expect(p.isPicking).toBe(false);
+    const v = stepOf(p);
+    expect(v.cards.some((c) => c.view.visible)).toBe(false);
+    expect(v.titleText.visible).toBe(false);
+    expect(v.summaryText.visible).toBe(true);
+    expect(v.changeBtn.view.visible).toBe(true);
+    expect(v.changeBtn.label.text).toBe(t('hud.floorCardChange'));
+    const name = t(FLOOR_CARDS.bulwark!.nameKey as never);
+    expect(v.summaryText.text).toContain(t('hud.floorCardChosen', { card: name }));
+    expect(v.summaryText.text).toContain(String(RUN_BUFFS.vit_up!.value)); // the description, numbers and all
+  });
+
+  it('a closed panel is never "picking" — the Descend lock only applies while it shows', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [0]), false, 0);
+    expect(p.isPicking).toBe(false);
+    p.update(state([], [0]), true, 0); // the last floor: no offer
+    expect(p.isPicking).toBe(false);
+  });
+
+  it('Change reopens the cards with this seat’s vote still drawn selected', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [2]), true, 0);
+    stepOf(p).changeBtn.onTap!();
+    p.update(state(OFFER, [2]), true, 0);
+    expect(p.isPicking).toBe(true);
+    expect(stepOf(p).cards.every((c) => c.view.visible)).toBe(true);
+  });
+
+  it('a card tap closes the reopened pick, and still votes', () => {
+    const p = new FloorCardPrompt();
+    const onVote = vi.fn();
+    p.onVote = onVote;
+    p.update(state(OFFER, [2]), true, 0);
+    stepOf(p).changeBtn.onTap!();
+    p.update(state(OFFER, [2]), true, 0);
+    stepOf(p).cards[0]!.onTap!();
+    expect(onVote).toHaveBeenCalledWith(1);
+    p.update(state(OFFER, [1]), true, 0);
+    expect(p.isPicking).toBe(false);
+    expect(stepOf(p).summaryText.text).toContain(t(FLOOR_CARDS.edge!.nameKey as never));
+  });
+
+  it('a new floor’s offer starts back at a clean pick, not at a stale Change', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [2]), true, 0);
+    stepOf(p).changeBtn.onTap!();
+    p.update(state(['precision', 'edge', 'cadence'], [1]), true, 0); // next floor, already voted
+    expect(p.isPicking).toBe(false);
+  });
+
+  it('in co-op the summary names the SQUAD’s pick with its votes, even when it is not mine', () => {
+    // Seat 0 (local) picked slot 1; seats 1 and 2 picked slot 3. Slot 3 is what applies.
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [1, 3, 3]), true, 0);
+    const name = t(FLOOR_CARDS.bulwark!.nameKey as never);
+    expect(stepOf(p).summaryText.text).toContain(t('hud.floorCardSquadPick', { card: name, n: 2 }));
+    expect(stepOf(p).summaryText.text).not.toContain(t(FLOOR_CARDS.edge!.nameKey as never));
+  });
+
+  it('co-op: a teammate’s vote does not skip MY pick', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(OFFER, [0, 3]), true, 0);
+    expect(p.isPicking).toBe(true);
+  });
+
+  it('names a card this client does not know by its raw id in the summary', () => {
+    const p = new FloorCardPrompt();
+    p.update(state(['card_from_the_future', 'edge', 'cadence'], [1]), true, 0);
+    expect(stepOf(p).summaryText.text).toBe(t('hud.floorCardChosen', { card: 'card_from_the_future' }));
+  });
+
+  it('re-lays itself out on a mode change after reposition, moving the strip down to the portal', () => {
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 1280, h: 720 });
+    p.update(state(OFFER, [0]), true, 0);
+    const pickY = p.view.y;
+    p.update(state(OFFER, [1]), true, 0);
+    // The collapsed strip is shorter and sits on the same bottom edge, so its top is lower.
+    expect(p.view.y).toBeGreaterThan(pickY);
+  });
+});

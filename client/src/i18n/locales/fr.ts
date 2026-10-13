@@ -230,8 +230,11 @@ export const fr: Translations<typeof en> = {
     portalDescend: "Descendre à l'étage {floor}",
     portalTitleBoss: "BOSS VAINCU — le portail d'extraction est ouvert",
     portalCountdown: "L'équipe part dans {seconds}s — {ready}/{total} prêts",
-    floorCardTitle: 'Choisissez une amélioration',
+    floorCardTitle: 'ÉTAGE NETTOYÉ — choisissez une amélioration',
     floorCardVotes: '{n} votes',
+    floorCardChosen: 'Amélioration : {card}',
+    floorCardSquadPick: 'Choix de l\'escouade : {card} ({n} votes)',
+    floorCardChange: 'Changer',
   },
   auth: {
     title: 'COMPTE',

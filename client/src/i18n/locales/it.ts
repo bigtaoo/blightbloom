@@ -230,8 +230,11 @@ export const it: Translations<typeof en> = {
     portalDescend: 'Scendi al piano {floor}',
     portalTitleBoss: 'BOSS SCONFITTO — il portale di estrazione è aperto',
     portalCountdown: 'La squadra parte tra {seconds}s — {ready}/{total} pronti',
-    floorCardTitle: 'Scegli un potenziamento',
+    floorCardTitle: 'PIANO RIPULITO — scegli un potenziamento',
     floorCardVotes: '{n} voti',
+    floorCardChosen: 'Potenziamento: {card}',
+    floorCardSquadPick: 'Scelta della squadra: {card} ({n} voti)',
+    floorCardChange: 'Cambia',
   },
   auth: {
     title: 'ACCOUNT',

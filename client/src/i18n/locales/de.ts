@@ -230,8 +230,11 @@ export const de: Translations<typeof en> = {
     portalDescend: 'Zu Etage {floor} absteigen',
     portalTitleBoss: 'BOSS BESIEGT — das Extraktionsportal ist offen',
     portalCountdown: 'Trupp bricht in {seconds}s auf — {ready}/{total} bereit',
-    floorCardTitle: 'Verbesserung wählen',
+    floorCardTitle: 'ETAGE GESÄUBERT — wähle eine Verbesserung',
     floorCardVotes: '{n} Stimmen',
+    floorCardChosen: 'Verbesserung: {card}',
+    floorCardSquadPick: 'Wahl des Trupps: {card} ({n} Stimmen)',
+    floorCardChange: 'Ändern',
   },
   auth: {
     title: 'KONTO',
