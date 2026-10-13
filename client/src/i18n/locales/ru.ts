@@ -364,6 +364,12 @@ export const ru: Translations<typeof en> = {
     connectionLostTitle: 'СОЕДИНЕНИЕ ПОТЕРЯНО',
     connectionLostBody: 'Не удалось переподключиться к матчу.',
   },
+  pickupHint: {
+    hpFull: 'Здоровье полное',
+    energyFull: 'Энергия полная',
+    shieldFull: 'Щит полный',
+    noTarget: 'Нет врагов рядом',
+  },
   toast: {
     heal: '+1 ОЗ',
     shield: 'Щит перезаряжен',

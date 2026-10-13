@@ -359,6 +359,12 @@ export const pl: Translations<typeof en> = {
     connectionLostTitle: 'UTRACONO POŁĄCZENIE',
     connectionLostBody: 'Nie udało się ponownie połączyć z meczem.',
   },
+  pickupHint: {
+    hpFull: 'Pełne zdrowie',
+    energyFull: 'Pełna energia',
+    shieldFull: 'Pełna tarcza',
+    noTarget: 'Brak wrogów w zasięgu',
+  },
   toast: {
     heal: '+1 PŻ',
     shield: 'Tarcza naładowana',

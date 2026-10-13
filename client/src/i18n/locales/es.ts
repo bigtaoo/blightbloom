@@ -359,6 +359,12 @@ export const es: Translations<typeof en> = {
     connectionLostTitle: 'CONEXIÓN PERDIDA',
     connectionLostBody: 'No se pudo reconectar a la partida.',
   },
+  pickupHint: {
+    hpFull: 'Vida llena',
+    energyFull: 'Energía llena',
+    shieldFull: 'Escudo lleno',
+    noTarget: 'Ningún enemigo cerca',
+  },
   toast: {
     heal: '+1 PV',
     shield: 'Escudo recargado',

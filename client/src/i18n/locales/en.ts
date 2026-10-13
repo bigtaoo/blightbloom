@@ -384,6 +384,13 @@ export const en = {
     connectionLostTitle: 'CONNECTION LOST',
     connectionLostBody: "Couldn't reconnect to the match.",
   },
+  // Why a drop the player is standing on stays on the floor (`scene/PickupRefusalLayer.ts`).
+  pickupHint: {
+    hpFull: 'HP full',
+    energyFull: 'Energy full',
+    shieldFull: 'Shield full',
+    noTarget: 'No enemies in range',
+  },
   toast: {
     heal: '+1 HP',
     shield: 'Shield recharged',
