@@ -145,6 +145,9 @@ const PURE_FILES = [
   // without one is the reason the book is its own file.
   'controllers/damageNumberReactions.ts',
   'fx/damageNumberModel.ts',
+  // Which drop the local player would be refused, and when to say so (2026-10-13, the "standing
+  // on it and nothing happens" report). Its Pixi half, `scene/PickupRefusalLayer.ts`, is not here.
+  'ui/pickupRefusal.ts',
 ] as const;
 
 /**
