@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Texture, TextureSource, Graphics, Sprite } from 'pixi.js';
 import { WEAPON_SIM_BY_ID } from '@dd/engine';
-import { Pickup, type PickupKind } from './Pickup';
+import { Pickup, REFUSED_ALPHA, type PickupKind } from './Pickup';
 import { pipCount } from '../rarityOverlay';
 import { elementColor } from '../theme';
 
@@ -625,5 +625,36 @@ describe('Pickup.bodySilhouette — what the occlusion x-ray measures a wall aga
     for (const kind of ALL_KINDS) {
       expect(new Pickup(kind).bodySilhouette.halfW, kind).toBeGreaterThanOrEqual(GLOW_RADIUS - 1e-9);
     }
+  });
+});
+
+describe('Pickup.setRefused — a drop the local player would not take reads as such (2026-10-13)', () => {
+  it('dims the drop and turns its glow off, and undoes both', () => {
+    const p = new Pickup('energy');
+    expect(p.refused).toBe(false);
+    expect(p.alpha).toBe(1);
+    p.setRefused(true);
+    expect(p.refused).toBe(true);
+    expect(p.alpha).toBe(REFUSED_ALPHA);
+    expect(glowOf(p).visible).toBe(false);
+    p.setRefused(false);
+    expect(p.alpha).toBe(1);
+    expect(glowOf(p).visible).toBe(true);
+  });
+
+  it('the hover keeps breathing the glow without turning it back on', () => {
+    const p = new Pickup('heal');
+    p.setRefused(true);
+    p.interpolate(1, 500);
+    expect(glowOf(p).visible).toBe(false);
+    expect(p.alpha).toBe(REFUSED_ALPHA);
+  });
+
+  it('a repeated call is a no-op', () => {
+    const p = new Pickup('shield');
+    p.setRefused(true);
+    p.alpha = 0.9; // anything a repeat call would overwrite
+    p.setRefused(true);
+    expect(p.alpha).toBe(0.9);
   });
 });

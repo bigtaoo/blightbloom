@@ -81,6 +81,11 @@ const WEAPON_BADGE_X = -8;
 const WEAPON_BADGE_Y = 7;
 const WEAPON_BADGE_GLYPH_R = 3;
 
+/** A drop the local player would be refused right now (`ui/pickupRefusal.ts`) draws at this
+ *  opacity with its glow off — readable as "there, but not for you yet" from across the room,
+ *  before anyone walks up to it and wonders why nothing happens. */
+export const REFUSED_ALPHA = 0.45;
+
 // Pickup view — an in-run drop (health / coin / weapon). Pure presentation:
 // the engine owns the drop roll and collection; the hover bob here is render-only
 // eye candy (it is NOT part of the sim, which is why PickupItem has no z). Position
@@ -91,6 +96,7 @@ export class Pickup extends Entity {
   private bob: number;
   private readonly glow: Graphics;
   readonly kind: PickupKind;
+  private refusedState = false;
 
   /** `id` is the engine entity id, used only to spread the hover's start phase (see
    *  GOLDEN_ANGLE) — the view stays a pure function of it, so two clients drawing the
@@ -276,6 +282,20 @@ export class Pickup extends Entity {
   get bodySilhouette(): { halfW: number; bodyH: number } {
     const b = this.getLocalBounds();
     return { halfW: Math.max(-b.x, b.x + b.width), bodyH: Math.max(-b.y, b.y + b.height) };
+  }
+
+  /** Whether the local player would be refused this drop right now (`Scene.reconcile`). */
+  get refused(): boolean {
+    return this.refusedState;
+  }
+
+  /** Dim the drop and drop its glow while it would be refused — the glow is the "pick me up" cue,
+   *  so a drop nothing will happen on should not wear it. Idempotent; costs two writes on a change. */
+  setRefused(on: boolean): void {
+    if (on === this.refusedState) return;
+    this.refusedState = on;
+    this.alpha = on ? REFUSED_ALPHA : 1;
+    this.glow.visible = !on;
   }
 
   override interpolate(alpha: number, frameDt: number): void {
