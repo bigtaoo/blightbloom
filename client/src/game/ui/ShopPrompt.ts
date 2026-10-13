@@ -2,6 +2,7 @@ import { Container, Text } from 'pixi.js';
 import { FLOOR_CARDS, WEAPON_SIM_BY_ID, RUN_BUFFS, type Shop, type ShopOffer } from '@dd/engine';
 import { getWeaponTexture } from '../../render/weaponSkins';
 import { getUiTexture } from '../../render/uiSkins';
+import { getPickupTexture } from '../../render/environmentSprites';
 import { rarityColor, THEME } from '../theme';
 import { Panel, Button } from './widgets';
 import { t, tName, getLocale } from '../../i18n';
@@ -150,13 +151,21 @@ export class ShopPrompt {
         // promising a success it cannot see.
         sound: 'silent',
       });
+      // Every row carries an icon, because `Button` CENTRES a label that has none — a row
+      // without one sat mid-row between left-aligned neighbours (the shield battery, until
+      // 2026-10-13). Consumables and the buff line borrow the sprite the same thing wears on
+      // the floor, so the counter and the room speak one visual language.
       if (offer.kind === 'weapon' && offer.weaponId) {
         const spec = WEAPON_SIM_BY_ID[offer.weaponId];
         if (spec) row.setIcon(getWeaponTexture(offer.weaponId, spec.kind), rarityColor(spec));
-      }
-      if (line.choiceBuff !== undefined) {
+      } else if (line.choiceBuff !== undefined) {
         const card = cardForBuff(line.choiceBuff);
-        row.setIcon(card ? getUiTexture(`icon_card_${card}`) : undefined);
+        row.setIcon(card ? getUiTexture(`icon_card_${card}`) : getPickupTexture('buff'));
+      } else if (offer.kind === 'buff') {
+        const card = offer.buffId ? cardForBuff(offer.buffId) : undefined;
+        row.setIcon(card ? getUiTexture(`icon_card_${card}`) : getPickupTexture('buff'));
+      } else {
+        row.setIcon(getPickupTexture(offer.kind));
       }
       row.view.position.set(PAD, HEADER_H + i * (ROW_H + ROW_GAP));
       const id = line.tapId;
@@ -202,16 +211,18 @@ export class ShopPrompt {
     ];
   }
 
-  /** What one row says. Data-driven values (a weapon's name, a buff's family) come from the
-   *  catalogues and are deliberately NOT translated — the same rule design/17 applies to every
-   *  other enum-shaped value in the HUD. */
+  /** What one row says. A weapon is named by its `nameKey`, the same translated name the HUD's
+   *  weapon card shows — the raw catalogue id ("repeater") read as untranslated text in every
+   *  non-English locale until 2026-10-13. */
   private rowLabel(offer: ShopOffer): string {
     if (offer.sold) return t('hud.shop.sold');
     switch (offer.kind) {
       case 'weapon':
-        return (offer.weaponId ? WEAPON_SIM_BY_ID[offer.weaponId]?.name : undefined) ?? offer.weaponId ?? '?';
+        return weaponLabel(offer.weaponId);
       case 'buff':
-        return offer.buffId ? t(RUN_BUFFS[offer.buffId]?.nameKey as never) : '?';
+        // Same fallback as a choice row: an id `RUN_BUFFS` does not know names itself rather
+        // than reaching `t(undefined)` and throwing the whole panel down.
+        return offer.buffId ? tName(RUN_BUFFS[offer.buffId]?.nameKey ?? offer.buffId) : '?';
       case 'heal':
         return t('hud.shop.heal');
       case 'energy':
@@ -241,4 +252,10 @@ function cardForBuff(buffId: string): string | undefined {
     const e = FLOOR_CARDS[id]!.effect;
     return e.kind === 'buff' && e.buffId === buffId;
   });
+}
+
+/** A weapon offer's row label: its translated name, else its id, else '?'. */
+function weaponLabel(weaponId: string | undefined): string {
+  const spec = weaponId ? WEAPON_SIM_BY_ID[weaponId] : undefined;
+  return spec ? tName(spec.nameKey) : (weaponId ?? '?');
 }

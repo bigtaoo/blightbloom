@@ -50,11 +50,12 @@ import { LoadingScreen } from '../ui/loadingScreen';
 /**
  * How long a RUN-BOUNDARY transition screen stays up at the very least.
  *
- * Three seconds, asked for by name. It is a floor and not a duration: a transition that has
+ * One second, asked for by name (2026-10-13: down from the original three, which players
+ * found too long). It is a floor and not a duration: a transition that has
  * real work behind it (run art still downloading) takes as long as that work takes, and this
  * only decides how short the fast case is allowed to be.
  */
-export const MIN_TRANSITION_MS = 3000;
+export const MIN_TRANSITION_MS = 1000;
 
 /**
  * After a run-boundary retry, the screen stays up until the frames have SETTLED: `SETTLE_FRAMES`
@@ -83,7 +84,7 @@ export interface TransitionGateDeps {
   ticker: Ticker;
   /** The live viewport, read on every tick so a resize mid-wait re-lays-out. */
   screenSize(): { w: number; h: number };
-  /** Injected so a test does not sit through a real three seconds. */
+  /** Injected so a test does not sit through a real second. */
   sleep?(ms: number): Promise<void>;
 }
 

@@ -722,7 +722,7 @@ to one line:
 
 The second reason the gate holds a screen, and the only one a player is meant to notice: the
 in-game switches — into a map, back out to the lobby — show the same `LoadingScreen` for at least
-`MIN_TRANSITION_MS` (3 s) whether anything is downloading or not, so a transition reads as one
+`MIN_TRANSITION_MS` (1 s since 2026-10-13; it was 3 s, which read as too long) whether anything is downloading or not, so a transition reads as one
 thing ending and another beginning rather than as a jump cut. `deferRunBoundary('run' | 'hub', …)`
 is the verb; the caption is the only thing the argument decides.
 
@@ -734,8 +734,8 @@ that screen's MENU button.
 
 Two things it deliberately does NOT hold:
 
-- **`finalizeOnlineRun`.** The far side is a server that has already started ticking, so three
-  seconds here is three seconds of confirmed frames arriving for a run nobody can see — including
+- **`finalizeOnlineRun`.** The far side is a server that has already started ticking, so a
+  second here is a second of confirmed frames arriving for a run nobody can see — including
   the first one, which `GameLoop.resetOnlinePrediction` anchors on. That route has its own
   transition screen (Matchmaking) and it reports something real.
 - **Plain hub navigation.** `showMenu` and `showLoadout` are also reached by the loadout screen's
@@ -745,7 +745,7 @@ Two things it deliberately does NOT hold:
 The floor is safe to sit on only because the sim is already stopped at every one of those call
 sites — the pause menu runs at phase `paused`, the outcome screen at `victory`/`defeat`, and every
 entry point holds *before* the engine is built. A hold while the phase was still `playing` would
-be three seconds of a player being hit by things they cannot see.
+be a second of a player being hit by things they cannot see.
 
 `beginDeferredArt()` is called BEFORE `new Game(...)` in every entry, and that ordering is
 load-bearing rather than tidy: the call is what ARMS the gate, and `Game.start()` can enter a run

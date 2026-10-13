@@ -1812,9 +1812,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-13** [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change) — "玩家靠近物品却无法拾取，感觉非常奇怪。要么给个提示，要么直接拾取": a full-energy player beside an energy cell that stayed on the floor. The engine was right, since `pickupWouldApply` leaves a heal, energy or shield at a full pool and an EMP with no enemy in range, and with no item bag a pickup at the cap is destroyed for nothing. Nothing on screen said so. Now a drop the LOCAL player would refuse is dimmed (alpha 0.45, glow off), and walking onto one puts up a fading label in the pool's colour ("Energy full", "HP full", "Shield full", "No enemies in range", in eight locales). It fires from a 48 px ring (the 31 px sim gate plus the body's float height), edge-triggered with a 3 s per-drop cooldown. The decision is pure (`ui/pickupRefusal.ts`) and swept against `pickupWouldApply` over every `PickupKind`. A HUD-bar flash was dropped because `GameLoop.ts` is at 499 lines. `ui` `i18n` `test` `docs`
 
+**[2026-10-13 — Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md)**
+
+- **10-13** [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change) — "1，枪没有翻译。2，护盾电池为何没有图标，而且居中显示？": the shop counter printed a weapon's catalogue id (`repeater`) where the HUD's weapon card prints its translated `nameKey`, and every row without an icon (heal, energy, shield, EMP, single buffs) drew centred because `Button` centres an icon-less label. Weapon rows now use `tName(spec.nameKey)`; every row carries an icon (the drop's floor sprite, or the buff's card icon). The tests found a single buff row with an unknown `buffId` threw the panel down; it now falls back to the id like a choice row. `hudLabelFit` now sweeps every weapon plus shield and EMP in eight locales. `ui` `i18n` `test` `docs`
+
 ## The work log — by theme
 
-The same 259 entries, grouped. An entry with more than one tag appears more than once.
+The same 260 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(84)*
 
@@ -2057,7 +2061,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(165)*
+**`test`** — coverage sweeps, gates, mutation batteries *(166)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2224,6 +2228,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
+- 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2281,7 +2286,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-04 [An uncaught exception is one log line and exit 1](roadmap/131-2026-10-04-process-guard.md#an-uncaught-exception-is-one-log-line-and-exit-1-2026-10-04-server--test--docs-no-engine_version-change)
 - 10-04 [One shared run-as-main block, and a failed boot is one log line](roadmap/132-2026-10-04-entry-guard.md#one-shared-run-as-main-block-and-a-failed-boot-is-one-log-line-2026-10-04-server--test--docs-no-engine_version-change)
 
-**`ui`** — HUD, screens, widgets *(55)*
+**`ui`** — HUD, screens, widgets *(56)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-12 [Live-play bug-fix pass](roadmap/02-2026-08-12--08-15.md#live-play-bug-fix-pass--2026-08-12-user-report-from-a-dungeon-mode-screenshot)
@@ -2338,6 +2343,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
+- 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
 **`tools`** — sims, profilers, editors, build scripts *(54)*
 
@@ -2396,7 +2402,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(176)*
+**`docs`** — design docs and this log itself *(177)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2574,6 +2580,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
+- 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(43)*
 
@@ -2621,7 +2628,7 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [PvE chapters: the Frost Descent, and every path learns which dungeon](roadmap/133-2026-10-06-pve-chapters.md#pve-chapters-the-frost-descent-and-every-path-learns-which-dungeon-2026-10-06-engine--client--server--art--sim--docs-no-engine_version-change)
 - 10-08 [Co-op with a bot: the card vote that never arrived, and an ally with its own time](roadmap/138-2026-10-08-coop-bot-card-vote-and-roam.md#co-op-with-a-bot-the-card-vote-that-never-arrived-and-an-ally-with-its-own-time-2026-10-08-engine--client--test--docs-no-engine_version-change)
 
-**`i18n`** — locales and text layout *(23)*
+**`i18n`** — locales and text layout *(24)*
 
 - 08-15 [Russian settings labels render outside their buttons — Pixi's measure canvas ≠ its paint canvas](roadmap/02-2026-08-12--08-15.md#russian-settings-labels-render-outside-their-buttons--pixis-measure-canvas--its-paint-canvas-2026-08-15)
 - 08-31 [The save verb gets a button, and the tests that were still missing](roadmap/11-2026-08-28--08-31.md#the-save-verb-gets-a-button-and-the-tests-that-were-still-missing-2026-08-31-client)
@@ -2646,4 +2653,5 @@ The same 259 entries, grouped. An entry with more than one tag appears more than
 - 09-27 [One shell for every menu](roadmap/103-2026-09-27-menu-shell.md#one-shell-for-every-menu-2026-09-27-client--ui--test--i18n--docs-no-engine-change)
 - 09-30 [A reviver cannot attack, and the shipped bot revives](roadmap/118-2026-09-30-arena-body-reach.md#a-reviver-cannot-attack-and-the-shipped-bot-revives-2026-09-30-engine--ui--tools--test--docs-engine_version-86)
 - 10-13 [A drop that will not come says why](roadmap/142-2026-10-13-pickup-refusal-hint.md#a-drop-that-will-not-come-says-why-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
+- 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
