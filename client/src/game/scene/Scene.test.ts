@@ -1407,6 +1407,36 @@ describe('Scene.reconcile — refused drops (2026-10-13)', () => {
     expect(layers.numbers.children.length).toBe(0);
   });
 
+  it('the dim follows the pool both ways: lifted once the player is hurt, back once they are full', () => {
+    // Every case above is one reconcile on a fresh view, which starts undimmed — so a Scene that
+    // only ever called setRefused(true) would pass them all. This is the case that would not.
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    heal(s, 500, 400);
+    const scene = new Scene(new Layers());
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([true]);
+    p.hp = p.maxHp - 1;
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([false]);
+    p.hp = p.maxHp;
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([true]);
+  });
+
+  it('a crate that resolves into a heal the full player cannot use is dimmed on its rebuilt view', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    const crate: PickupItem = { id: s.nextId(), kind: 'crate', gx: pxToFp(500), gy: pxToFp(400), spawnTick: 0, alive: true };
+    s.pickups.push(crate);
+    const scene = new Scene(new Layers());
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => [v.kind, v.refused])).toEqual([['crate', false]]);
+    crate.kind = 'heal'; // PickupSystem resolves a crate in place: same id, new kind
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => [v.kind, v.refused])).toEqual([['heal', true]]);
+  });
+
   it('the label runs on the render clock and leaves on its own', () => {
     const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
     heal(s, 100, 100);
