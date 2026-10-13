@@ -37,7 +37,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Texture } from 'pixi.js';
 import type { GameState, Shop, ShopOffer, Fp } from '@dd/engine';
-import { FLOOR_CARD_IDS, RUN_BUFFS } from '@dd/engine';
+import { FLOOR_CARD_IDS, RUN_BUFFS, WEAPON_SIM_BY_ID } from '@dd/engine';
 import { FloorCardPrompt, CARD_W, CARD_H, CARD_FONT } from './FloorCardPrompt';
 import { PortalPrompt, BTN_W, BTN_FONT } from './PortalPrompt';
 import { ShopPrompt, ROW_FONT, ROW_TEXT_W } from './ShopPrompt';
@@ -184,9 +184,11 @@ describe('the portal popup’s buttons fit their box', () => {
 
 const fp = (n: number) => n as Fp;
 
-/** One row per buff family plus the two consumables — the whole set of translated labels a
- *  counter can show. Weapon rows are left out on purpose: a weapon's name comes off the
- *  engine's spec and is the same string in every locale. */
+/** One row per buff family, per weapon and per consumable — the whole set of translated labels
+ *  a counter can show. Weapons are in since 2026-10-13: a weapon row used to print the raw id,
+ *  the same string in every locale, and now prints the translated `nameKey`. Every catalogue
+ *  weapon rather than the shop's roll pool — a superset, so a weapon later added to the pool
+ *  is already measured. */
 function shopStock(): ShopOffer[] {
   const buffs: ShopOffer[] = Object.keys(RUN_BUFFS).map((buffId, i) => ({
     id: i + 1,
@@ -199,8 +201,17 @@ function shopStock(): ShopOffer[] {
     ...buffs,
     // A pick-one-of-three buff line (ROADMAP B2): its header is a string of its own.
     { id: 80, kind: 'buff', price: 40, sold: false, choices: [{ id: 81, buffId: 'dmg_up' }, { id: 82, buffId: 'cell_up' }, { id: 83, buffId: 'crit_up' }] },
+    ...Object.keys(WEAPON_SIM_BY_ID).map((weaponId, i): ShopOffer => ({
+      id: 100 + i,
+      kind: 'weapon',
+      weaponId,
+      price: 45,
+      sold: false,
+    })),
     { id: 90, kind: 'heal', price: 12, sold: false },
     { id: 91, kind: 'energy', price: 12, sold: false },
+    { id: 92, kind: 'shield', price: 12, sold: false },
+    { id: 93, kind: 'emp', price: 12, sold: false },
   ];
 }
 
