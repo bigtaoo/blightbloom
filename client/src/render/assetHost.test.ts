@@ -18,6 +18,7 @@ import {
   resetAssetHost,
   resolveAssetUrl,
   setAssetHost,
+  versionedPath,
   webAssetHost,
 } from './assetHost';
 
@@ -105,5 +106,41 @@ describe('setAssetHost / resetAssetHost', () => {
     expect(resolveAssetUrl('/a.png')).toBe('fake/a.png');
     resetAssetHost();
     expect(resolveAssetUrl('/a.png')).toBe('/a.png');
+  });
+});
+
+describe('content-hashed URLs (build/assetVersionPlugin.mjs)', () => {
+  // The 2026-10-12 regression: `/biome/floor_fire.jpg` was regraded under the same name, and a
+  // returning player painted the cached, bright floor under the new code's larger slabs. A
+  // hash in the URL is what makes a changed file a new URL.
+  const versions = { '/biome/floor_fire.jpg': 'abc123', '/skins/orb-core.json': 'f00d', '/audio/sfx/shot.mp3': 'beef' };
+
+  it('appends the hash of a known file and leaves an unknown one bare', () => {
+    expect(versionedPath('/biome/floor_fire.jpg', versions)).toBe('/biome/floor_fire.jpg?v=abc123');
+    expect(versionedPath('/biome/floor_ice.jpg', versions)).toBe('/biome/floor_ice.jpg');
+  });
+
+  it('is the identity with no build define, which is dev, vitest and WeChat', () => {
+    expect(versionedPath('/biome/floor_fire.jpg')).toBe('/biome/floor_fire.jpg');
+  });
+
+  it('reaches every web-host route once the build defines the map', async () => {
+    vi.stubGlobal('__DD_ASSET_VERSIONS__', versions);
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      fetched.push(url);
+      return { json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) };
+    });
+    expect(webAssetHost.resolveUrl('/biome/floor_fire.jpg')).toBe('/biome/floor_fire.jpg?v=abc123');
+    await webAssetHost.readJson('/skins/orb-core.json');
+    await webAssetHost.readBinary('/audio/sfx/shot.mp3');
+    expect(fetched).toEqual(['/skins/orb-core.json?v=f00d', '/audio/sfx/shot.mp3?v=beef']);
+  });
+
+  it('looks the hash up BEFORE the base rewrite, so the portal build is versioned too', () => {
+    // The map is keyed by the public path; looking it up after stripping the leading slash
+    // would silently version nothing on the portal build.
+    vi.stubGlobal('__DD_ASSET_VERSIONS__', versions);
+    expect(baseAssetHost('./').resolveUrl('/biome/floor_fire.jpg')).toBe('biome/floor_fire.jpg?v=abc123');
   });
 });
