@@ -38,7 +38,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Texture } from 'pixi.js';
 import type { GameState, Shop, ShopOffer, Fp } from '@dd/engine';
 import { FLOOR_CARD_IDS, RUN_BUFFS } from '@dd/engine';
-import { FloorCardPrompt, CARD_W, CARD_H, CARD_FONT } from './FloorCardPrompt';
+import { FloorCardPrompt, CARD_W, CARD_H, CARD_FONT, SUMMARY_H, SUMMARY_FONT, SUMMARY_TEXT_W, CHANGE_W } from './FloorCardPrompt';
 import { PortalPrompt, BTN_W, BTN_FONT } from './PortalPrompt';
 import { ShopPrompt, ROW_FONT, ROW_TEXT_W } from './ShopPrompt';
 import { estimateMonoWidth } from './textWidth';
@@ -174,6 +174,39 @@ describe('the portal popup’s buttons fit their box', () => {
           const worst = widest(label, BTN_FONT);
           expect(worst.px, `[${locale}] "${worst.line}"`).toBeLessThanOrEqual(MAX_W);
           expect(lines(label).length, `[${locale}] "${label}"`).toBeLessThanOrEqual(MAX_LINES);
+        }
+      }
+    });
+  }
+});
+
+// ------------------------------------------------------- the chosen-card strip
+
+/**
+ * The collapsed card panel (2026-10-13): the chosen card's name and description, wrapped by
+ * Pixi to `SUMMARY_TEXT_W`, beside a Change button. Pixi does the wrapping, so the line count
+ * is estimated the way it would fold — each `
+` segment takes ceil(width / room) lines — and
+ * the worst case is the co-op head, which is the longer of the two.
+ */
+describe('the chosen-card strip fits its strip', () => {
+  const LINE_H = SUMMARY_FONT * 1.25;
+  const foldedLines = (text: string) =>
+    lines(text).reduce((n, line) => n + Math.max(1, Math.ceil(estimateMonoWidth(line, SUMMARY_FONT) / SUMMARY_TEXT_W)), 0);
+
+  for (const locale of LOCALES) {
+    it(`${locale}: every card's summary, solo and co-op, and the Change label`, async () => {
+      await useLocale(locale);
+      for (const id of FLOOR_CARD_IDS) {
+        for (const votes of [[1], [1, 1]]) {
+          const p = new FloorCardPrompt();
+          p.update({ floorCardOffer: [id], players: votes.map((cardVote) => ({ cardVote })) } as unknown as GameState, true, 0);
+          const inner = p as unknown as { summaryText: { text: string }; changeBtn: { label: { text: string } } };
+          const text = inner.summaryText.text;
+          expect(text.length, `[${locale}] ${id}`).toBeGreaterThan(0); // the control: there IS a strip to measure
+          expect(foldedLines(text) * LINE_H, `[${locale}] "${text}"`).toBeLessThanOrEqual(SUMMARY_H - 8);
+          const change = widest(inner.changeBtn.label.text, SUMMARY_FONT);
+          expect(change.px, `[${locale}] "${change.line}"`).toBeLessThanOrEqual(CHANGE_W - 16);
         }
       }
     });

@@ -309,3 +309,54 @@ describe('PortalPrompt — a short screen still holds both buttons', () => {
     }
   });
 });
+
+/**
+ * The Descend lock (2026-10-13): while the card panel is still asking this seat to pick, the
+ * engine would hold a Descend press — so the button is not drawn, and a panel with nothing
+ * left to say stays shut. Every case pairs the locked read with the unlocked control, since
+ * "Descend is hidden" would also pass against a popup that never showed it at all.
+ */
+describe('PortalPrompt — Descend waits for the card', () => {
+  it('an interior floor still picking shows no popup at all; once picked, Descend', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    prompt.update(s, true, 0, INTERIOR, true);
+    expect(prompt.isOpen).toBe(false);
+    expect(prompt.view.visible).toBe(false);
+    prompt.update(s, true, 0, INTERIOR, false);
+    expect(prompt.isOpen).toBe(true);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
+  });
+
+  it('a running countdown keeps the popup up — title only — for a seat still picking', () => {
+    // A squadmate opened the portal: this seat must see how long it has left to pick.
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    s.portalCountdownTicks = 300;
+    prompt.update(s, true, 0, INTERIOR, true);
+    expect(prompt.isOpen).toBe(true);
+    expect(privateOf(prompt).titleText.text).toContain('10');
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(false);
+    prompt.update(s, true, 0, INTERIOR, false);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
+  });
+
+  it('an endless boss floor still picking offers Extract alone — leaving needs no card', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    prompt.update(s, true, 0, BOTH, true);
+    expect(prompt.isOpen).toBe(true);
+    expect(privateOf(prompt).extractBtn.view.visible).toBe(true);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(false);
+    prompt.update(s, true, 0, BOTH, false);
+    expect(privateOf(prompt).descendBtn.view.visible).toBe(true);
+  });
+
+  it('the lock never opens a popup the caller closed', () => {
+    const prompt = new PortalPrompt();
+    const s = createGameState(PVE_CFG);
+    s.portalCountdownTicks = 300;
+    prompt.update(s, false, 0, BOTH, true);
+    expect(prompt.isOpen).toBe(false);
+  });
+});

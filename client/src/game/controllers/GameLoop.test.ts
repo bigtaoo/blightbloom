@@ -97,7 +97,7 @@ function fakeRoomBuilder() {
 }
 
 function fakePortalPrompt() {
-  return { update: vi.fn(), isOpen: false };
+  return { update: vi.fn(), isOpen: false, isPicking: false };
 }
 
 /** `extra` overrides a dep for the one test that needs a non-default: `pickupDebugOverlay` is
@@ -982,7 +982,7 @@ describe('GameLoop — portal/checkpoint eligibility (dungeon mode, 2026-08-12 s
 
     loop.update(16);
 
-    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), 0, { extract: true, descend: false });
+    expect(deps.portalPrompt.update).toHaveBeenCalledWith(s, expect.any(Boolean), 0, { extract: true, descend: false }, expect.any(Boolean));
   });
 
   it('drives the floor-card offer off the SAME show condition as the portal popup', () => {

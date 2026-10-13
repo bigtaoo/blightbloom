@@ -235,8 +235,11 @@ export const ru: Translations<typeof en> = {
     portalDescend: 'Спуститься на этаж {floor}',
     portalTitleBoss: 'БОСС ПОВЕРЖЕН — портал эвакуации открыт',
     portalCountdown: 'Отряд уходит через {seconds} с — готовы {ready}/{total}',
-    floorCardTitle: 'Выберите улучшение',
+    floorCardTitle: 'ЭТАЖ ЗАЧИЩЕН — выберите улучшение',
     floorCardVotes: '{n} голосов',
+    floorCardChosen: 'Улучшение: {card}',
+    floorCardSquadPick: 'Выбор отряда: {card} ({n} голосов)',
+    floorCardChange: 'Изменить',
   },
   auth: {
     title: 'АККАУНТ',

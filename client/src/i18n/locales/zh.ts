@@ -230,8 +230,11 @@ export const zh: Translations<typeof en> = {
     portalDescend: '下降至第 {floor} 层',
     portalTitleBoss: 'BOSS 已被击败 —— 撤离传送门已开启',
     portalCountdown: '{seconds} 秒后全队出发 —— 已确认 {ready}/{total}',
-    floorCardTitle: '选择一张升级卡',
+    floorCardTitle: '楼层已清空 — 选择一项强化',
     floorCardVotes: '{n} 票',
+    floorCardChosen: '已选：{card}',
+    floorCardSquadPick: '小队选择：{card}（{n} 票）',
+    floorCardChange: '更换',
   },
   auth: {
     title: '账户',
