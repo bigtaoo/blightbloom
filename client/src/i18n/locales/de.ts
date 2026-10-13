@@ -359,6 +359,12 @@ export const de: Translations<typeof en> = {
     connectionLostTitle: 'VERBINDUNG VERLOREN',
     connectionLostBody: 'Verbindung zum Match konnte nicht wiederhergestellt werden.',
   },
+  pickupHint: {
+    hpFull: 'Leben voll',
+    energyFull: 'Energie voll',
+    shieldFull: 'Schild voll',
+    noTarget: 'Keine Gegner in Reichweite',
+  },
   toast: {
     heal: '+1 LP',
     shield: 'Schild aufgeladen',

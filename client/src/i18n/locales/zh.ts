@@ -358,6 +358,12 @@ export const zh: Translations<typeof en> = {
     connectionLostTitle: '连接已断开',
     connectionLostBody: '无法重新连接到对局。',
   },
+  pickupHint: {
+    hpFull: '生命已满',
+    energyFull: '能量已满',
+    shieldFull: '护盾已满',
+    noTarget: '附近没有敌人',
+  },
   toast: {
     heal: '+1 生命',
     shield: '护盾已充能',

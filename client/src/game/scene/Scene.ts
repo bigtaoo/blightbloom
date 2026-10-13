@@ -4,7 +4,7 @@
 // position pushed (for interpolation), and ids that vanished (compacted out, dead)
 // have their views removed. Nothing here decides gameplay — it only draws what the
 // engine already computed (design/08 "render/server only read").
-import type { GameEvent, GameState } from '@dd/engine';
+import type { GameEvent, GameState, PlayerActor } from '@dd/engine';
 import type { Layers } from './layers';
 import { Entity } from './Entity';
 import { Actor } from './Actor';
@@ -14,6 +14,8 @@ import { Pickup, BOB_REST_Z } from './Pickup';
 import { PickupFlightLayer, type FlightPoint } from './pickupFlight';
 import { ChestLayer } from './ChestLayer';
 import { ShopLayer } from './ShopLayer';
+import { PickupRefusalLayer } from './PickupRefusalLayer';
+import { RefusalHintTracker, pickupRefusalReason } from '../ui/pickupRefusal';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
 
@@ -57,6 +59,11 @@ export class Scene {
    *  the same reason `chests`/`shops` are: this class is the one thing whose job is the display
    *  list's lifecycle, and a flight is exactly a view that outlives the entity it mirrored. */
   private readonly flights = new PickupFlightLayer(this.layers.entities, this.layers.shadow);
+  /** Why a drop the local player is standing on stays put (`ui/pickupRefusal.ts`): the tracker
+   *  decides which drops to announce, the layer draws the labels. Owned here for the same reason
+   *  `flights` is — this class already knows the local seat and every drop's view. */
+  private readonly refusalTracker = new RefusalHintTracker();
+  private readonly refusalHints = new PickupRefusalLayer(this.layers.numbers);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -133,6 +140,8 @@ export class Scene {
     this.chests.clear();
     this.shops.clear();
     this.flights.clear();
+    this.refusalTracker.clear();
+    this.refusalHints.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -157,6 +166,7 @@ export class Scene {
     const seen = this.seenScratch;
     seen.clear();
     this.spawnedActors = 0;
+    let local: PlayerActor | undefined;
 
     for (const p of state.players) {
       if (!p.alive) continue;
@@ -180,7 +190,10 @@ export class Scene {
       const isLocal =
         p.id === localPlayerId ||
         (localPlayerId === -1 && (this.playerView === null || this.playerView === v));
-      if (isLocal) this.playerView = v;
+      if (isLocal) {
+        this.playerView = v;
+        local = p;
+      }
       // "Which one is me" cue (design/10 legibility, 2026-08-02) — a teal ground ring +
       // teal health-bar outline on the local seat only. See Actor.setLocal.
       v.setLocal(isLocal);
@@ -281,8 +294,10 @@ export class Scene {
       } else {
         v.pushState(fpToPx(it.gx), fpToPx(it.gy), 0, 0);
       }
+      v.setRefused(local !== undefined && pickupRefusalReason(local, it, state) !== null);
       seen.add(it.id);
     }
+    this.refusalHints.show(this.refusalTracker.update(state, local));
 
     this.chests.update(state);
     this.shops.update(state);
@@ -349,6 +364,7 @@ export class Scene {
     // Flights run on the RENDER clock, like the death dissolve below — they are already
     // detached from any engine entity, so there is nothing left to interpolate them against.
     this.flights.update(frameDt);
+    this.refusalHints.update(frameDt);
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const v = this.dying[i];
       v.interpolate(alpha, frameDt);

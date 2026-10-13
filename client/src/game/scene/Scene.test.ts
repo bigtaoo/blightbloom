@@ -1358,3 +1358,62 @@ describe('Scene.reconcile — a collected drop flies to whoever took it', () => 
     expect(layers.entities.children.length).toBe(0);
   });
 });
+
+// Live report 2026-10-13, "玩家靠近物品却无法拾取，感觉非常奇怪": a drop the LOCAL player would be
+// refused (`ui/pickupRefusal.ts`) is dimmed wherever it is, and walking onto it puts a label up.
+describe('Scene.reconcile — refused drops (2026-10-13)', () => {
+  function heal(s: GameState, xpx: number, ypx: number): PickupItem {
+    const it: PickupItem = { id: s.nextId(), kind: 'heal', gx: pxToFp(xpx), gy: pxToFp(ypx), spawnTick: 0, alive: true };
+    s.pickups.push(it);
+    return it;
+  }
+
+  it('dims a heal for a full-HP local player and explains it once they stand on it', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    heal(s, 100, 100); // under the player
+    heal(s, 500, 400); // across the room
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([true, true]);
+    expect(layers.numbers.children.length).toBe(1); // only the one underfoot is announced
+    scene.clear();
+    expect(layers.numbers.children.length).toBe(0);
+  });
+
+  it('a hurt player sees both heals at full strength and no label', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    const p = s.players[0]!;
+    p.hp = p.maxHp - 1;
+    heal(s, 100, 100);
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, p.id);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([false]);
+    expect(layers.numbers.children.length).toBe(0);
+  });
+
+  it('judges by the LOCAL seat: a teammate at full HP does not dim a heal the local player needs', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }, { start: [300, 100] }] });
+    const [me, mate] = [s.players[0]!, s.players[1]!];
+    me.hp = me.maxHp - 1;
+    heal(s, 300, 100); // under the full-HP teammate
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, me.id);
+    expect(mate.hp).toBe(mate.maxHp);
+    expect(scene.pickups.map((v) => v.refused)).toEqual([false]);
+    expect(layers.numbers.children.length).toBe(0);
+  });
+
+  it('the label runs on the render clock and leaves on its own', () => {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 100] }] });
+    heal(s, 100, 100);
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 5000);
+    expect(layers.numbers.children.length).toBe(0);
+  });
+});
