@@ -162,3 +162,8 @@ stops mentioning a decision it reversed is how the next pass makes the same mist
 Client 7,333 → **7,344** green (7,330 before the battery: `bootHold.ts` went out with its nine
 cases, and the pass had put six back; the battery added fourteen more). No `ENGINE_VERSION`
 bump.
+
+**Addendum 2026-10-13 — the floor is now 1 s.** Three seconds read as too long in play, so
+`MIN_TRANSITION_MS` went 3000 → 1000 on request. Nothing else about the hold changed: it is
+still a floor on top of whatever the run art costs, on the same entry points and the same exit,
+and `TransitionGate.test.ts` still pins the exact value.

@@ -191,7 +191,7 @@ export class ScreenNav {
    * Safe to hold because the sim is already stopped at every one of those call sites — the
    * pause menu runs at phase `paused` and the outcome screen at `victory`/`defeat`, neither
    * of which `GameLoop` advances. A gate here while the phase was still `playing` would be
-   * three seconds of a player being hit by things they cannot see.
+   * a second of a player being hit by things they cannot see.
    */
   leaveRunTo(hub: 'menu' | 'loadout'): void {
     if (this.deps.transitions.deferRunBoundary('hub', () => this.leaveRunTo(hub))) return;
