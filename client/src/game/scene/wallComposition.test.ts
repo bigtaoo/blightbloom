@@ -32,7 +32,7 @@
 import { describe, it, expect } from 'vitest';
 import { Graphics, GraphicsContextSystem, Texture, TextureSource, TilingSprite } from 'pixi.js';
 import { readdirSync, readFileSync } from 'node:fs';
-import { inflateSync } from 'node:zlib';
+import { decodePNG } from '../../../../tools/png-pipeline/pngCodec.mjs';
 import {
   EMBER_L1_FLOORS,
   EMBER_L1_ROOMS,
@@ -422,57 +422,20 @@ describe('shipped level-1 walls — nothing tall stands on the floor of the room
 
 const PUBLIC = new URL('../../../public/', import.meta.url);
 
-/** Decode an 8-bit RGB/RGBA PNG far enough to average its rows. Small and deliberate: the point
- *  is to read the ACTUAL shipped pixels, and the alternative (trusting a recorded number) is the
- *  failure mode this whole file exists to catch. */
+/** Average the rows of a shipped PNG. Decoded through the repo's own codec (RGB, RGBA and
+ *  palette — the shipped art is libimagequant-quantised since 2026-10-15): the point is to read
+ *  the ACTUAL shipped pixels, and the alternative (trusting a recorded number) is the failure
+ *  mode this whole file exists to catch. */
 function pngRowLuma(path: string): number[] {
-  const buf = readFileSync(new URL(path, PUBLIC));
-  const width = buf.readUInt32BE(16);
-  const height = buf.readUInt32BE(20);
-  const bitDepth = buf.readUInt8(24);
-  const colorType = buf.readUInt8(25);
-  expect(bitDepth, `${path} bit depth`).toBe(8);
-  expect([2, 6], `${path} colour type`).toContain(colorType);
-  const channels = colorType === 6 ? 4 : 3;
-
-  const idat: Buffer[] = [];
-  for (let at = 8; at + 8 <= buf.length; ) {
-    const len = buf.readUInt32BE(at);
-    const type = buf.toString('ascii', at + 4, at + 8);
-    if (type === 'IDAT') idat.push(buf.subarray(at + 8, at + 8 + len));
-    at += len + 12;
-  }
-  const raw = inflateSync(Buffer.concat(idat));
-
-  const stride = width * channels;
-  const prev = Buffer.alloc(stride);
-  const line = Buffer.alloc(stride);
+  const { width, height, data } = decodePNG(readFileSync(new URL(path, PUBLIC)));
   const out: number[] = [];
   for (let y = 0; y < height; y++) {
-    const filter = raw[y * (stride + 1)]!;
-    raw.copy(line, 0, y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
-    for (let i = 0; i < stride; i++) {
-      const a = i >= channels ? line[i - channels]! : 0;
-      const b = prev[i]!;
-      const c = i >= channels ? prev[i - channels]! : 0;
-      if (filter === 1) line[i] = (line[i]! + a) & 0xff;
-      else if (filter === 2) line[i] = (line[i]! + b) & 0xff;
-      else if (filter === 3) line[i] = (line[i]! + ((a + b) >> 1)) & 0xff;
-      else if (filter === 4) {
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        line[i] = (line[i]! + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 0xff;
-      }
-    }
     let sum = 0;
     for (let x = 0; x < width; x++) {
-      const o = x * channels;
-      sum += 0.2126 * line[o]! + 0.7152 * line[o + 1]! + 0.0722 * line[o + 2]!;
+      const o = (y * width + x) * 4;
+      sum += 0.2126 * data[o]! + 0.7152 * data[o + 1]! + 0.0722 * data[o + 2]!;
     }
     out.push(sum / width);
-    line.copy(prev);
   }
   return out;
 }

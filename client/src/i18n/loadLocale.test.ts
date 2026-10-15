@@ -128,11 +128,17 @@ describe('the entry points', () => {
     // half translated, on the machines that are slowest to fetch a chunk.
     for (const entry of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
       const src = readFileSync(new URL(`../${entry}`, import.meta.url), 'utf8');
-      const kick = src.indexOf('const localeReady = ensureLocale(persistedLocale())');
+      const read = src.indexOf('const bootLocale = persistedLocale();');
+      const kick = src.indexOf('const localeReady = ensureLocale(bootLocale)');
       const lobby = src.indexOf('await preloadLobbyArt(');
       const settle = src.indexOf('await localeReady;');
       const construct = src.indexOf('new Game(app, input, audio)');
       expect(kick, `${entry}: no ensureLocale kick`).toBeGreaterThan(-1);
+      expect(read, `${entry}: the persisted locale is not read once, ahead of both uses`).toBeGreaterThan(-1);
+      expect(read).toBeLessThan(kick);
+      // The SAME value tells the art loader which logo the first frame draws (uiSkins.ts) —
+      // dropped, the boot quietly goes back to fetching both.
+      expect(src.slice(lobby, src.indexOf(';', lobby)), `${entry}: preloadLobbyArt is not told the locale`).toMatch(/, bootLocale\)$/);
       expect(settle, `${entry}: nothing awaits the locale`).toBeGreaterThan(-1);
       // Kicked BEFORE the lobby wait, so the chunk's round trip overlaps it rather than
       // being a round trip of its own added after the bundle has already downloaded...

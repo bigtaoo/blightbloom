@@ -114,6 +114,11 @@ jobs:
           path: ~/.cache/mongodb-binaries
           key: mongod-${{ runner.os }}-7.0.14
       - run: npm run check
+      # The shipped-size budgets (build/checkBundleSize.mjs): the entry bundle and the art each
+      # load phase waits on, read off a real build. Here rather than in `npm run check` because it
+      # needs that build; in this job rather than its own so the four required gates stay four.
+      - run: npm run build:crazygames -w client
+      - run: npm run check:bundlesize
 
   # Coverage on EVERY event, including pull requests — deliberately, and it is the expensive
   # choice. The sibling project `funny` ran coverage only on the pre-deploy push for exactly

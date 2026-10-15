@@ -432,6 +432,28 @@ only for a LOCAL bot ally or the arena harness (`showAlly` is `isCoop() || isAre
 online co-op match sets neither), so a name put there would never be seen in the only place a name
 exists.
 
+## First-download size (2026-10-15)
+
+A portal judges a game on its first wait. The four numbers that make it up are read out of the
+real `build:crazygames` output by `build/checkBundleSize.mjs` (`npm run check:bundlesize`, ported
+from `funny`) and held under absolute budgets in `build/bundle-size-budget.json`:
+
+| | measured 2026-10-15 | budget | what it is |
+| --- | --- | --- | --- |
+| `entry.brotli` | 305.3 KiB | 350 KiB | the entry module + its modulepreloads, brotli q11 (a relative metric; the edge compresses lower) |
+| `lobby.wait` | 836.0 KiB | 1000 KiB | `main` + `lobby` phase art; only the uiSkins `boot` tier (~338 kB) is awaited behind the splash |
+| `run.wait` | 2548.7 KiB | 3000 KiB | `run` phase art, awaited by the run gate on the first Play |
+| `dist.total` | 8130.3 KiB | 9500 KiB | the upload, ~3.4 MB of it the six never-awaited music loops |
+
+The budgets are decisions with written reasons, not high-water marks. Raising one means editing
+its reason. The gate needs a build, so it sits outside `npm run check`; CI runs it in the
+`check` job right after `build:crazygames`. It fails on an unbuilt tree, so an unbuilt tree can
+never pass. What got the numbers there, palette quantisation of the run art and a one-logo
+boot, is design/12's 2026-10-15 update.
+
+Not measured here: wire time on a real portal page, and a cold load through the CrazyGames QA
+tool. Both need the registered domain listed under "What remains".
+
 ## What remains
 
 - **A registered portal domain.** Everything above ran on `local`, where the SDK renders

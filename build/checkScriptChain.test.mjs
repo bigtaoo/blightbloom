@@ -5,7 +5,7 @@
 // when invoked by hand, still has a green test suite of its own — and never runs again, in CI
 // or locally. Nothing turns red; the drift it was watching simply resumes.
 //
-// The exemptions below are the two gates that are deliberately NOT in `check`, each with the
+// The exemptions below are the gates that are deliberately NOT in `check`, each with the
 // reason, because "a working way to be exempt is an invitation to use it" (the coverage gate's
 // own note in CLAUDE.md) — so the list is short, stated, and itself checked: an exemption that
 // stops matching a real script fails this file rather than sitting there.
@@ -19,6 +19,10 @@ const EXEMPT = [
   {
     script: 'check:coverage',
     why: 'measured by `npm run coverage`, which is minutes rather than seconds — CI runs it as its own job (CLAUDE.md, "Test coverage: 90/90")',
+  },
+  {
+    script: 'check:bundlesize',
+    why: 'measures the BUILT client (dist-crazygames), and a checkout that has not been built is not a failure — CI runs it in the `check` job right after `build:crazygames`',
   },
   {
     script: 'check:logic',

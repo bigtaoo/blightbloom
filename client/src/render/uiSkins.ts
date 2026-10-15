@@ -10,8 +10,10 @@
 // Loaded in three TIERS (2026-09-28), because the boot used to await all ~40 files (1.65 MB)
 // before the first menu frame, and on a slow link that was most of the wait:
 //   boot   awaited by `preloadLobbyArt` — what the lobby's first frame cannot do without: the
-//          painting, the menu background, both logos, and every icon on a lobby BUTTON (a
+//          painting, the menu background, the logo, and every icon on a lobby BUTTON (a
 //          button that gains its icon later re-flows its label, which reads as a glitch).
+//          ONE logo (2026-10-15): the boot is told the persisted locale (`setBootLocale`) and
+//          the other language's logo — 65-78 kB the first frame never draws — rides `lobby`.
 //   lobby  kicked the moment `boot` is in, never awaited — the lobby's decoration: portraits,
 //          route-card banners, the drifting rocks, the orbiting weapon. Each is a lone image
 //          whose absence the lobby already draws (`MainMenu` re-lays itself out on arrival
@@ -108,7 +110,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
 export type UiTier = 'boot' | 'lobby' | 'late';
 
 const BOOT_KEYS: ReadonlySet<string> = new Set([
-  'lobby_bg', 'hub', 'lobby_logo_en', 'lobby_logo_zh',
+  'lobby_bg', 'hub',
   // The lobby's buttons: the corner account/settings pair, and the route column's squad,
   // forge (the forger's portrait) and tutorial tiles.
   'icon_account', 'icon_settings', 'icon_party_create', 'npc_forger',
@@ -122,7 +124,28 @@ const LOBBY_KEYS: ReadonlySet<string> = new Set([
   'lobby_rock_a', 'lobby_rock_b', 'lobby_rock_c',
 ]);
 
+/** The logo the lobby draws in `locale`: zh has its own lettering, every other locale the
+ *  English one. `MainMenu` draws this key, and the boot tier fetches only this one. */
+export function lobbyLogoKey(locale: string): 'lobby_logo_zh' | 'lobby_logo_en' {
+  return locale === 'zh' ? 'lobby_logo_zh' : 'lobby_logo_en';
+}
+
+const LOGO_KEYS: ReadonlySet<string> = new Set(['lobby_logo_en', 'lobby_logo_zh']);
+
+// Unset means "not told": both logos stay `boot`, which is what every caller that never thinks
+// about locale (the tests, `preloadUiArt`) gets — the safe direction, a longer boot, not a
+// missing logo.
+let bootLocale: string | undefined;
+
+/** Tell the loader which locale the first frame will be drawn in, BEFORE `boot` is loaded:
+ *  the other language's logo moves to `lobby`. Each entry point reads it off the persisted
+ *  settings, the same value its `ensureLocale` call is handed. */
+export function setBootLocale(locale: string): void {
+  bootLocale = locale;
+}
+
 export function uiTierOf(key: string): UiTier {
+  if (LOGO_KEYS.has(key)) return bootLocale === undefined || key === lobbyLogoKey(bootLocale) ? 'boot' : 'lobby';
   if (BOOT_KEYS.has(key)) return 'boot';
   if (LOBBY_KEYS.has(key)) return 'lobby';
   return 'late';
@@ -221,4 +244,5 @@ export function resetUiSkinsForTests(): void {
   textures.clear();
   tierLoads.clear();
   listeners.clear();
+  bootLocale = undefined;
 }

@@ -80,7 +80,8 @@ async function boot() {
   // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
   // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
   // than asked of `Game`, because `Game` is what loads them.
-  const localeReady = ensureLocale(persistedLocale());
+  const bootLocale = persistedLocale();
+  const localeReady = ensureLocale(bootLocale);
 
 
   // (1) Asset paths, BEFORE the first preload — `preloadLobbyArt` resolves URLs through the
@@ -147,7 +148,7 @@ async function boot() {
   setUiAudio(audio);
   setMusicAudio(audio);
 
-  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)));
+  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)), bootLocale);
   // AFTER the lobby pack, same as `main.ts` and for the same reason: 70 sample requests
   // fired beside the one download the player is waiting on only make that wait longer.
   void audio.preload();

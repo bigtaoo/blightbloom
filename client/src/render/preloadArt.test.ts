@@ -285,6 +285,22 @@ describe('the UI tiers each phase waits for (2026-09-28)', () => {
     loads.release();
   });
 
+  it('preloadLobbyArt told the locale does not wait for the other language logo, and still fetches it', async () => {
+    // The en logo held forever: a boot that still awaited it would never resolve.
+    setAssetHost(countingHost().host);
+    const loads = watchLoads([UI_ASSETS.lobby_logo_en!]);
+
+    let resolved = false;
+    const boot = preloadLobbyArt(undefined, 'zh').then(() => { resolved = true; });
+    await vi.waitFor(() => expect(resolved).toBe(true));
+    await boot;
+
+    expect(loads.srcs).toContain(UI_ASSETS.lobby_logo_zh);
+    // ...kicked with `lobby`, so a switch to English finds it already on the way.
+    expect(loads.srcs).toContain(UI_ASSETS.lobby_logo_en);
+    loads.release();
+  });
+
   it('ensureRunArt holds the run gate until every `late` file has settled', async () => {
     // A run draws the floor-card icons and the result art; a gate that opened without them
     // would put a text-only card in front of the player. One late file held back is enough.

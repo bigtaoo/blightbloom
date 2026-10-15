@@ -80,7 +80,8 @@ async function boot() {
   // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
   // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
   // than asked of `Game`, because `Game` is what loads them.
-  const localeReady = ensureLocale(persistedLocale());
+  const bootLocale = persistedLocale();
+  const localeReady = ensureLocale(bootLocale);
 
 
   // Browser logs (design/19 §10). AFTER the declaration above, for the reason just given. No
@@ -193,7 +194,7 @@ async function boot() {
   // `wx.loadSubpackage` has to fetch before any `/ui/` path names a file at all. Drawn with
   // Graphics + Text only, because at this point in boot there IS no art (ui/loadingScreen.ts).
   const loading = showBootLoading(app);
-  await preloadLobbyArt(loading.onProgress);
+  await preloadLobbyArt(loading.onProgress, bootLocale);
 
   // The SFX set (design/11), same fire-and-forget as the web entry, and with two orderings on
   // it rather than one. It must come AFTER the host swap, because that is what turns

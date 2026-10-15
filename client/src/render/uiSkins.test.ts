@@ -15,7 +15,7 @@ import { Texture } from 'pixi.js';
 import { FLOOR_CARD_IDS } from '@dd/engine';
 import {
   preloadUiArt, preloadUiTier, getUiTexture, whenUiTexture, onUiTexture, uiTierOf, uiUsesMipmaps,
-  resetUiSkinsForTests, UI_ASSETS, UI_ASSET_KEYS,
+  resetUiSkinsForTests, setBootLocale, lobbyLogoKey, UI_ASSETS, UI_ASSET_KEYS,
 } from './uiSkins';
 
 // The 2026-08 icon pass (LoginScreen/PauseMenu/PartyScreen/Forge) + the Forger NPC
@@ -104,7 +104,7 @@ describe('uiSkins — load tiers (2026-09-28)', () => {
   it('keeps the tier the boot waits for small, in bytes, off the real files', () => {
     // The point of the tiers: `preloadLobbyArt` awaits `boot` alone. Measured on the shipped
     // files so a heavy image moved into `boot` fails here rather than on a player's phone.
-    // 500 kB is headroom over the ~440 kB it weighs today, not a target.
+    // 500 kB is headroom over the ~340 kB it weighs today (one logo since 2026-10-15), not a target.
     const bytes = UI_ASSET_KEYS.filter((k) => uiTierOf(k) === 'boot').reduce((sum, k) => sum + fileSize(UI_ASSETS[k]!), 0);
     expect(bytes).toBeGreaterThan(100_000); // a sweep over nothing proves nothing
     expect(bytes).toBeLessThan(500_000);
@@ -117,6 +117,32 @@ describe('uiSkins — load tiers (2026-09-28)', () => {
     // The menu background (Panel's 'hub') and the painting are the first frame itself.
     expect(uiTierOf('hub')).toBe('boot');
     expect(uiTierOf('lobby_bg')).toBe('boot');
+  });
+
+  it('fetches one logo at boot once told the locale, and the other one right after (2026-10-15)', () => {
+    resetUiSkinsForTests();
+    try {
+      // Not told: both, the safe direction — a longer boot, never a missing logo.
+      expect(uiTierOf('lobby_logo_en')).toBe('boot');
+      expect(uiTierOf('lobby_logo_zh')).toBe('boot');
+      setBootLocale('zh');
+      expect([uiTierOf('lobby_logo_zh'), uiTierOf('lobby_logo_en')]).toEqual(['boot', 'lobby']);
+      // Every non-zh locale draws the English lettering, so French boots with the en logo.
+      setBootLocale('fr');
+      expect([uiTierOf('lobby_logo_en'), uiTierOf('lobby_logo_zh')]).toEqual(['boot', 'lobby']);
+      // The cut is real bytes off the awaited tier, not a reshuffle inside it.
+      const bootBytes = () => UI_ASSET_KEYS.filter((k) => uiTierOf(k) === 'boot').reduce((sum, k) => sum + fileSize(UI_ASSETS[k]!), 0);
+      const told = bootBytes();
+      resetUiSkinsForTests();
+      expect(bootBytes() - told).toBe(fileSize(UI_ASSETS.lobby_logo_zh!));
+    } finally {
+      resetUiSkinsForTests();
+    }
+  });
+
+  it('names the logo MainMenu draws: zh lettering for zh, English for every other locale', () => {
+    expect(lobbyLogoKey('zh')).toBe('lobby_logo_zh');
+    for (const locale of ['en', 'de', 'ru', 'it']) expect(lobbyLogoKey(locale)).toBe('lobby_logo_en');
   });
 
   it('files an unknown key under `late`, the direction that cannot lengthen the boot', () => {
