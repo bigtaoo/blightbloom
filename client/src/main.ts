@@ -49,7 +49,8 @@ async function boot() {
   // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
   // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
   // than asked of `Game`, because `Game` is what loads them.
-  const localeReady = ensureLocale(persistedLocale());
+  const bootLocale = persistedLocale();
+  const localeReady = ensureLocale(bootLocale);
 
 
   // Browser logs, on their way to the same store the backend writes to (design/19 §10).
@@ -120,7 +121,7 @@ async function boot() {
   // than Pixi can, before the WebGL context even exists (`index.html`'s `#boot-loading`, removed
   // further down); the Pixi `LoadingScreen` is for the WeChat entry, which has no DOM, and for
   // the run gate on both.
-  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)));
+  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)), bootLocale);
 
   // The SFX set (design/11) — deliberately NOT awaited, and deliberately kicked HERE rather
   // than beside `createAudio()` where it used to sit. It is 70 files, and on the live deploy

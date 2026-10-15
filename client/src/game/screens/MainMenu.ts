@@ -10,7 +10,7 @@ import type { SavedRunSummary } from '../match/runSave';
 import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import type { ChapterProgress } from '../../meta';
 import { getSession } from '../../net/session';
-import { getUiTexture, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
+import { getUiTexture, lobbyLogoKey, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
 import { t, getLocale } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
@@ -360,7 +360,7 @@ export class MainMenu {
 
     // The header — logo (or the text title) and the tagline — centred over the dais, kept
     // clear of both screen edges and of the column.
-    const logoTex = getUiTexture(getLocale() === 'zh' ? 'lobby_logo_zh' : 'lobby_logo_en');
+    const logoTex = getUiTexture(lobbyLogoKey(getLocale()));
     this.logo.visible = !!logoTex;
     this.title.visible = !logoTex;
     let headerH: number;
