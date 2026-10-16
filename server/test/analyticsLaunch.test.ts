@@ -292,5 +292,21 @@ describe('the launch rows in the new-install rollup', () => {
     expect(gauges.find((g) => g.name === 'bb_new_playtime_measured_installs' && g.labels?.host === 'all')?.value).toBe(0);
     expect(gauges.some((g) => g.name === 'bb_new_playtime_avg_seconds')).toBe(false);
     expect(gauges.some((g) => g.name.includes('seg'))).toBe(false);
+    expect(gauges.some((g) => g.name.startsWith('bb_open_'))).toBe(false); // the 11th opened nothing
+  });
+
+  it('gauges the open funnel and boot time of the last complete day, per host', async () => {
+    const day = '2026-09-11';
+    await send(day, 'i-a', 'v-a', [{ name: 'page_open' }, { name: 'session_start', props: { boot_ms: 4000 } }]);
+    await send(day, 'v-b', 'v-b', [{ name: 'page_open' }], 'crazygames');
+    const gauges = await newInstallGauges(db, '2026-09-12');
+    const at = (name: string, labels: Record<string, string>): number | undefined =>
+      gauges.find((g) => g.name === name && JSON.stringify(g.labels) === JSON.stringify(labels))?.value;
+    expect(at('bb_open_funnel_visits', { host: 'all', step: 'open' })).toBe(2);
+    expect(at('bb_open_funnel_visits', { host: 'all', step: 'boot' })).toBe(1);
+    expect(at('bb_open_funnel_visits', { host: 'crazygames', step: 'boot' })).toBe(0);
+    expect(at('bb_open_boot_ms', { host: 'web', q: 'p90' })).toBe(4000);
+    // A host where nothing booted has no boot time — absent, not 0.
+    expect(gauges.some((g) => g.name === 'bb_open_boot_ms' && g.labels?.host === 'crazygames')).toBe(false);
   });
 });
