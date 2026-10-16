@@ -3,7 +3,7 @@
  * THROWS (storage denied to an embedded or sandboxed frame), which `typeof` does not catch.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { webStorage } from './webStorage';
+import { browserStorage, setStorageOverride, webStorage } from './webStorage';
 import { createWebIdentityStore } from '../net/identity';
 import { createWebSessionStore } from '../net/session';
 import { createWebMetaStore } from '../meta/store';
@@ -64,5 +64,20 @@ describe('the web stores, with storage denied', () => {
       expect(runs.load()).toBeNull();
       runs.clear();
     }).not.toThrow();
+  });
+});
+
+describe('the storage override', () => {
+  afterEach(() => setStorageOverride(null));
+
+  it('wins over localStorage while installed, and browserStorage still sees the real one', () => {
+    const real = { getItem: () => 'real' } as unknown as Storage;
+    defineStorage(() => real);
+    const over = { getItem: () => 'over', setItem: () => {}, removeItem: () => {} };
+    setStorageOverride(over);
+    expect(webStorage()).toBe(over);
+    expect(browserStorage()).toBe(real);
+    setStorageOverride(null);
+    expect(webStorage()).toBe(real);
   });
 });

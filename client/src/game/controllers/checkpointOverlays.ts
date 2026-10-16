@@ -27,13 +27,14 @@ export interface CheckpointOverlayDeps {
   roomBuilder: RoomBuilder;
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
-  /** Fire is suppressed while the PORTAL popup is open — its buttons are a run-level
+  /** Fire is suppressed while the PORTAL popup — or the card panel, which on a floor still
+   *  picking is the only one open — is open at the portal: its buttons are a run-level
    *  choice made in a cleared room, so gating the whole button on it costs nothing. The
    *  weapon-pickup panel is deliberately NOT OR'd in (2026-09-02 live report: it opens
    *  mid-fight from `SIM.lootRevealRadius` away every time anything drops a weapon, so
    *  gating fire on it disarmed the player standing in their own loot). That panel — and
-   *  the card panel — swallow their own presses instead, via `onPressStart` ->
-   *  `CommandBuilder.suppressFireUntilRelease`. */
+   *  both of these away from the portal — swallow their own presses instead, via
+   *  `onPressStart` -> `CommandBuilder.suppressFireUntilRelease`. */
   suppressFire: (active: boolean) => void;
 }
 
@@ -59,7 +60,14 @@ export function updateCheckpointOverlays(s: GameState, localOwner: number, d: Ch
   // wherever it stands, to confirm or vote before the countdown takes it. Fire stays gated
   // only at the portal: away from it the panels swallow their own presses instead.
   const countdown = s.portalCountdownTicks > 0;
-  d.portalPrompt.update(s, eligible && (nearPortal || countdown), localOwner, portalOffers(s));
-  d.floorCardPrompt.update(s, eligible && (nearPortal || countdown), localOwner);
-  d.suppressFire(d.portalPrompt.isOpen && nearPortal);
+  //
+  // Cards first, then the portal (2026-10-13): the card panel decides whether this seat is
+  // still picking, and Descend is hidden until it is not — the engine would hold the press
+  // anyway, and a button that does nothing when pressed is what made the old layout read as
+  // broken. The cards are updated FIRST so the portal reads this tick's answer.
+  const show = eligible && (nearPortal || countdown);
+  d.floorCardPrompt.update(s, show, localOwner);
+  d.portalPrompt.update(s, show, localOwner, portalOffers(s), d.floorCardPrompt.isPicking);
+  // Either panel counts: on a floor still picking, the card panel is the only one open.
+  d.suppressFire((d.portalPrompt.isOpen || d.floorCardPrompt.isOpen) && nearPortal);
 }

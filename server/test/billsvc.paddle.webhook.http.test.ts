@@ -23,7 +23,12 @@ import { GRANT_PATH, REVOKE_PATH } from '../src/billsvc/deliveryPump';
 const KEY = 'test-internal-key';
 const SECRET = 'pdl_ntfset_test_secret';
 const CANNON_PRICE = 'pri_01j9cannon0000000000000000';
-const ENV = { BB_PADDLE_WEBHOOK_SECRET: SECRET, BB_PADDLE_PRICE_IDS: `bp.cannon=${CANNON_PRICE}` };
+const ENV = {
+  BB_PADDLE_WEBHOOK_SECRET: SECRET,
+  BB_PADDLE_PRICE_IDS: `bp.cannon=${CANNON_PRICE}`,
+  BB_PADDLE_CLIENT_TOKEN: 'test_client_tok',
+  BB_PADDLE_ENVIRONMENT: 'sandbox',
+};
 const TXN = 'txn_01hv8wptq8987qeep44cyrewp9';
 const COMPLETED = readFileSync(new URL('./fixtures/paddle/transaction.completed.json', import.meta.url), 'utf8');
 const REFUND = readFileSync(new URL('./fixtures/paddle/adjustment.updated.refund.json', import.meta.url), 'utf8');
@@ -104,7 +109,10 @@ const drain = async () => {
 describe('transaction.completed', () => {
   it('createOrder hands out the configured price id and the order id for custom_data', async () => {
     const { id, payment } = await newOrder();
-    expect(payment).toMatchObject({ configured: true, params: { priceId: CANNON_PRICE, customDataOrderId: id } });
+    expect(payment).toMatchObject({
+      configured: true,
+      params: { priceId: CANNON_PRICE, customDataOrderId: id, clientToken: 'test_client_tok', environment: 'sandbox' },
+    });
     const unpriced = await newOrder('bp.seeker');
     expect(unpriced.payment.configured).toBe(false);
   });

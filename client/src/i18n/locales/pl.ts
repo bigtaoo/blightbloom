@@ -146,6 +146,9 @@ export const pl: Translations<typeof en> = {
     orderFailed: 'Nie udało się rozpocząć zakupu. Nic nie zostało pobrane.',
     paymentFailed: 'Płatność nie doszła do skutku. Nic nie zostało pobrane.',
     pending: 'Wciąż czekamy na płatność. Jeśli się powiedzie, przedmiot pojawi się przy następnym logowaniu.',
+    checkoutClosed: 'Płatność zamknięta przed jej ukończeniem. Jeśli zapłacono, przedmiot pojawi się przy następnym logowaniu.',
+    checkoutUnavailable: 'Nie udało się otworzyć okna płatności. Sprawdź połączenie lub blokadę reklam. Nic nie zostało pobrane.',
+    confirming: 'Otrzymano płatność za {item} — potwierdzanie z serwerem…',
     listFailed: 'Nie udało się wczytać sklepu. Sprawdź połączenie i spróbuj ponownie.',
   },
   hud: {
@@ -230,8 +233,11 @@ export const pl: Translations<typeof en> = {
     portalDescend: 'Zejdź na piętro {floor}',
     portalTitleBoss: 'BOSS POKONANY — portal ewakuacyjny jest otwarty',
     portalCountdown: 'Drużyna rusza za {seconds}s — gotowi: {ready}/{total}',
-    floorCardTitle: 'Wybierz ulepszenie',
+    floorCardTitle: 'PIĘTRO OCZYSZCZONE — wybierz ulepszenie',
     floorCardVotes: '{n} głosów',
+    floorCardChosen: 'Ulepszenie: {card}',
+    floorCardSquadPick: 'Wybór drużyny: {card} ({n} głosów)',
+    floorCardChange: 'Zmień',
   },
   auth: {
     title: 'KONTO',

@@ -33,6 +33,7 @@ import { getSession, type Session } from '../../net/session';
 import * as billingApi from '../../net/billing';
 import type { StoreOrder, StoreSku } from '../../net/billing';
 import type { StorePlatform } from '../../platform/storePlatform';
+import type { CheckoutOutcome } from '../../platform/paddleCheckout';
 import { track } from '../../net/analytics';
 import { playUiCue } from '../../audio/uiSound';
 
@@ -59,6 +60,12 @@ export type PurchaseFailure =
   | 'order-failed'
   /** The platform settled the order as failed/cancelled. */
   | 'payment-failed'
+  /** The player closed the platform's checkout before it completed. The order stays open and
+   * unpolled, like `not-configured`; if money did move after all, the webhook still settles it
+   * and the next login reads the entitlement. */
+  | 'checkout-closed'
+  /** The platform's checkout could not be opened (its script was blocked or failed). */
+  | 'checkout-unavailable'
   | 'timed-out';
 
 export type PurchaseResult =
@@ -79,6 +86,14 @@ export interface StorePurchaseDeps {
   session?: () => Session | null;
   platform: () => StorePlatform | null;
   api?: StorePurchaseApi;
+  /**
+   * The client-side payment handoff for a `configured` order — Paddle.js's overlay for the
+   * web store (`platform/paddleCheckout.ts`, wired by the assembly). Absent, or answering
+   * `'completed'`, the flow goes straight to the poll: that is the dev stub, whose "payment"
+   * is a webhook posted by hand. Injected rather than imported because this file is in the
+   * pure layer and a checkout is a page script.
+   */
+  checkout?: (platform: StorePlatform, payment: billingApi.PaymentParams) => Promise<CheckoutOutcome>;
   /**
    * Re-read this account's server-side ownership and apply it locally (the assembly wires
    * this to `pullAccountMeta` → `run.setMeta` → re-render the forge).
@@ -147,11 +162,12 @@ export class StorePurchase {
    * the transaction knows whether the press did anything, so `ui.tap` vs `ui.denied` cannot
    * be decided at the widget (design/11 UI cues).
    */
-  async buy(sku: string): Promise<PurchaseResult> {
-    const result = await this.attempt(sku);
+  async buy(sku: string, hooks: PurchaseHooks = {}): Promise<PurchaseResult> {
+    const result = await this.attempt(sku, hooks);
     playUiCue(result.ok ? 'ui.tap' : 'ui.denied');
-    // Reported here rather than in `attempt`, and only on success: `attempt` has seven
-    // failure arms and every one of them means no money moved, so a `store_purchase` event
+    // Reported here rather than in `attempt`, and only on success: `attempt` has nine
+    // failure arms and none of them is a delivery (a closed checkout can at most leave an order
+    // the webhook settles later, which the next login reads), so a `store_purchase` event
     // covering them would count refusals as purchases. The conversion DENOMINATOR is the
     // store's own `screen_view` (design/21 §2.2 — there is no `store_open`), so a failed
     // attempt is visible as a view with no purchase after it, which is what it is.
@@ -159,7 +175,7 @@ export class StorePurchase {
     return result;
   }
 
-  private async attempt(sku: string): Promise<PurchaseResult> {
+  private async attempt(sku: string, hooks: PurchaseHooks): Promise<PurchaseResult> {
     // BEFORE `busy` is claimed: a rejected press must not lock the button out, and the
     // second of two rapid taps has to reach the `busy` arm rather than a stale guard.
     if (this.busy) return { ok: false, code: 'busy' };
@@ -183,12 +199,14 @@ export class StorePurchase {
       // `detail` (logs/dev tooling) and never used as the player-facing line.
       if (!payment.configured) return { ok: false, code: 'not-configured', detail: payment.note };
 
-      // Between here and the poll is where a real platform SDK handoff will go — Apple's
-      // StoreKit purchase, or the web processor's checkout. There is none today (no merchant
-      // credentials exist anywhere in this project, design/19 §9), so the only `configured`
-      // platform is the dev stub, whose "payment" is a webhook someone posts by hand. The
-      // poll below is unchanged either way: settlement is always reported by the server, never
+      // The platform handoff (design/22 §1.1): Paddle's overlay on the web, nothing for the dev
+      // stub. Its `'completed'` is NOT settlement — the poll below is unchanged either way,
+      // because settlement is always reported by the server (from the signed webhook), never
       // by whatever the client thinks happened at the till.
+      const handoff = this.deps.checkout ? await this.deps.checkout(platform, payment) : 'completed';
+      if (handoff === 'closed') return { ok: false, code: 'checkout-closed' };
+      if (handoff === 'unavailable') return { ok: false, code: 'checkout-unavailable' };
+      hooks.onConfirming?.();
       const settled = await this.poll(baseUrl, session.token, order.id);
       if (settled === 'failed') return { ok: false, code: 'payment-failed' };
       if (settled === 'timed-out') return { ok: false, code: 'timed-out' };
@@ -233,3 +251,10 @@ export class StorePurchase {
 }
 
 type OrderOutcome = 'settled' | 'failed' | 'timed-out';
+
+/** Progress the screen may show while a purchase is in flight. */
+export interface PurchaseHooks {
+  /** The handoff is over and the server is being asked whether the order settled — the
+   * pending state, between "the overlay said paid" and "the server delivered". */
+  onConfirming?: () => void;
+}

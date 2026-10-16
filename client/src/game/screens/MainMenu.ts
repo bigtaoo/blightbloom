@@ -3,6 +3,8 @@ import { Button } from '../ui/widgets';
 import { LobbyRoutes, LOBBY_ROUTES_W, LOBBY_PRIMARY_H, LOBBY_ROUTES_DEMOTED_H } from '../ui/LobbyRoutes';
 import { LobbyCard } from '../ui/LobbyCard';
 import { AccountCard } from '../ui/AccountCard';
+import { PlayerPicture } from '../ui/PlayerPicture';
+import { onPlayerAvatarChanged, playerAvatar } from '../../platform/playerAvatar';
 import { LobbyBackdrop } from '../ui/LobbyBackdrop';
 import { LobbyHero } from '../ui/LobbyHero';
 import { lobbyScale, lobbyColumnScale, sharpenText } from '../ui/lobbyScale';
@@ -10,7 +12,7 @@ import type { SavedRunSummary } from '../match/runSave';
 import { DEFAULT_CHAPTER_ID, type ChapterId } from '@dd/engine';
 import type { ChapterProgress } from '../../meta';
 import { getSession } from '../../net/session';
-import { getUiTexture, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
+import { getUiTexture, lobbyLogoKey, onUiTexture, uiTierOf, whenUiTexture } from '../../render/uiSkins';
 import { t, getLocale } from '../../i18n';
 import { openPolicy, policyUrl } from '../../platform/policyLinks';
 import { publicFlag } from '../../net/clientFlags';
@@ -94,6 +96,8 @@ export class MainMenu {
   /** Shown INSTEAD of the ACCOUNT button where a host forbids a login entry point — see
    *  `setAccountEntry`. It states who the player is; it does not offer to change it. */
   private accountLabel: Text;
+  /** The portal avatar beside `accountLabel` (design/20); hidden until a picture has loaded. */
+  private picture = new PlayerPicture(CHROME_H);
   /** The data notice a host may require at the point of collection — see `setAccountEntry`. */
   private dataNotice: Text;
   /** The hosted-policy link that goes WITH the notice — only where a URL actually exists. */
@@ -190,7 +194,8 @@ export class MainMenu {
     this.accountLabel.anchor.set(0, 0.5);
     this.accountLabel.position.set(0, CHROME_H / 2);
     this.accountLabel.visible = false;
-    this.topLeft.addChild(this.accountBtn.view, this.accountLabel);
+    this.topLeft.addChild(this.accountBtn.view, this.picture.view, this.accountLabel);
+    onPlayerAvatarChanged(() => this.refreshAccountLabel());
 
     this.settingsBtn = new Button(t('mainMenu.settings'), { w: 120, h: CHROME_H, fontSize: 13, color: 0x1f2532, borderColor: 0x718096, autoWidth: true });
     this.settingsBtn.onTap = () => this.onSettings?.();
@@ -360,7 +365,7 @@ export class MainMenu {
 
     // The header — logo (or the text title) and the tagline — centred over the dais, kept
     // clear of both screen edges and of the column.
-    const logoTex = getUiTexture(getLocale() === 'zh' ? 'lobby_logo_zh' : 'lobby_logo_en');
+    const logoTex = getUiTexture(lobbyLogoKey(getLocale()));
     this.logo.visible = !!logoTex;
     this.title.visible = !logoTex;
     let headerH: number;
@@ -448,6 +453,11 @@ export class MainMenu {
     // label at all rather than a prompt the player cannot act on.
     this.accountLabel.text = session ? t('mainMenu.greeting', { username: session.username }) : '';
     this.accountLabel.visible = !this.accountEntry && session !== null;
+    // The picture rides the label: only where the label is, and the label steps right of it
+    // once (and only once) it has actually loaded.
+    const placeLabel = () => (this.accountLabel.x = this.picture.shown ? CHROME_H + 8 : 0);
+    void this.picture.setUrl(this.accountLabel.visible ? playerAvatar() : null, placeLabel);
+    placeLabel();
     if (this.size) {
       const k = lobbyScale(this.size.w, this.size.h);
       sharpenText(this.topLeft, k);

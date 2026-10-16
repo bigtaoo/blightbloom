@@ -8,7 +8,8 @@
  * an unaffordable row looks unaffordable, and a sold row stays on the counter saying so instead
  * of quietly vanishing.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { Texture } from 'pixi.js';
 import type { Shop, ShopOffer } from '@dd/engine';
 import type { Fp } from '@dd/engine';
 import { ShopPrompt } from './ShopPrompt';
@@ -16,6 +17,19 @@ import { resetLocaleForTests, t } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 
 afterEach(() => resetLocaleForTests());
+
+// Headless, nothing is preloaded, so every pickup sprite would be `undefined` and every row
+// centred — the very bug the icon test below is about. Hand out a texture for the kinds a
+// counter can stock, and nothing for anything else (the control in that test).
+const PICKUP_KINDS = new Set(['heal', 'energy', 'shield', 'emp', 'buff']);
+// The floor-card icons a buff row borrows, likewise: every UI icon resolves.
+vi.mock('../../render/uiSkins', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../render/uiSkins')>()),
+  getUiTexture: () => Texture.WHITE,
+}));
+vi.mock('../../render/environmentSprites', () => ({
+  getPickupTexture: (kind: string) => (PICKUP_KINDS.has(kind) ? Texture.WHITE : undefined),
+}));
 
 const fp = (n: number) => n as Fp;
 
@@ -105,13 +119,24 @@ describe('ShopPrompt — what a row says before it is tapped', () => {
     expect(privateOf(p).priceLabels).toHaveLength(0); // a sold line has no price to pay
   });
 
-  it('names a weapon by its catalogue name and a buff by its translated one', () => {
-    // design/17's rule, applied per kind: a weapon id is data and stays untranslated; a buff's
-    // name is a `nameKey` because it is prose.
+  it('names a weapon and a buff by their translated names', () => {
     const p = new ShopPrompt();
     p.update(shop([offer({ id: 1, kind: 'weapon', weaponId: 'repeater' }), offer({ id: 2, kind: 'buff', buffId: 'dmg_up' })]), 500);
-    expect(privateOf(p).rows[0]!.label.text.toLowerCase()).toContain('repeat');
+    expect(privateOf(p).rows[0]!.label.text).toBe(t('weapon.repeater.name' as never));
     expect(privateOf(p).rows[1]!.label.text).toBe(t('buff.dmg_up.name' as never));
+  });
+
+  it('translates the weapon name — the raw id "repeater" is not a Chinese row', async () => {
+    // Control: the English row DOES contain the id's word, so the zh assertion below is
+    // checking a translation and not a row that never said "repeater" to begin with.
+    const en = new ShopPrompt();
+    en.update(shop([offer({ id: 1, kind: 'weapon', weaponId: 'repeater' })]), 500);
+    expect(privateOf(en).rows[0]!.label.text.toLowerCase()).toContain('repeater');
+
+    await useLocale('zh');
+    const zh = new ShopPrompt();
+    zh.update(shop([offer({ id: 1, kind: 'weapon', weaponId: 'repeater' })]), 500);
+    expect(privateOf(zh).rows[0]!.label.text).toBe('连发枪');
   });
 
   it('puts the wallet in the title, so the number you spend and the number you have are together', () => {
@@ -217,5 +242,71 @@ describe('ShopPrompt — a buff line is a pick-one-of-three (ROADMAP B2, 2026-09
     rows[0]!.onTap!();
     rows[5]!.onTap!();
     expect(bought).toEqual([1, 2]);
+  });
+});
+
+describe('ShopPrompt — every row carries an icon', () => {
+  // `Button` centres a label with no icon, so an icon-less consumable sat mid-row between
+  // left-aligned weapon rows (the shield battery, 2026-10-13). Label anchor 0 = icon present.
+  const labelAnchor = (p: ShopPrompt, i: number) =>
+    (privateOf(p).rows[i] as unknown as { label: { anchor: { x: number } } }).label.anchor.x;
+
+  it('gives heal, energy, shield and emp rows their pickup sprite', () => {
+    const p = new ShopPrompt();
+    const kinds = ['heal', 'energy', 'shield', 'emp'] as const;
+    p.update(shop(kinds.map((kind, i) => offer({ id: i + 1, kind }))), 500);
+    kinds.forEach((_, i) => expect(labelAnchor(p, i)).toBe(0));
+  });
+
+  it('control: a row whose sprite is missing falls back to a centred label', () => {
+    PICKUP_KINDS.delete('shield');
+    try {
+      const p = new ShopPrompt();
+      p.update(shop([offer({ id: 1, kind: 'shield' })]), 500);
+      expect(labelAnchor(p, 0)).toBe(0.5);
+    } finally {
+      PICKUP_KINDS.add('shield');
+    }
+  });
+});
+
+describe('ShopPrompt — fallbacks a row never shows in play, but must not break on', () => {
+  it('names a weapon id the catalogue does not know by the id itself', () => {
+    const p = new ShopPrompt();
+    p.update(shop([offer({ id: 1, kind: 'weapon', weaponId: 'no_such_gun' })]), 500);
+    expect(privateOf(p).rows[0]!.label.text).toBe('no_such_gun');
+  });
+
+  it("names a weapon offer with no id at all '?'", () => {
+    const p = new ShopPrompt();
+    p.update(shop([offer({ id: 1, kind: 'weapon' })]), 500);
+    expect(privateOf(p).rows[0]!.label.text).toBe('?');
+  });
+
+  it('names a buff id RUN_BUFFS does not know by the id, instead of throwing', () => {
+    const p = new ShopPrompt();
+    expect(() => p.update(shop([offer({ id: 1, kind: 'buff', buffId: 'no_such_buff' })]), 500)).not.toThrow();
+    expect(privateOf(p).rows[0]!.label.text).toBe('no_such_buff');
+  });
+});
+
+describe('ShopPrompt — buff rows carry an icon too', () => {
+  const labelAnchor = (p: ShopPrompt, i: number) =>
+    (privateOf(p).rows[i] as unknown as { label: { anchor: { x: number } } }).label.anchor.x;
+
+  it('a single buff row, its header-less sibling and the pick-one-of-three header are all left-aligned', () => {
+    const p = new ShopPrompt();
+    p.update(
+      shop([
+        offer({ id: 1, kind: 'buff', buffId: 'dmg_up' }),
+        // A buff no floor card wraps still gets the buff pickup sprite, not a centred label.
+        offer({ id: 2, kind: 'buff', buffId: 'no_such_buff' }),
+        offer({ id: 3, kind: 'buff', choices: [{ id: 4, buffId: 'dmg_up' }, { id: 5, buffId: 'no_such_buff' }] }),
+      ]),
+      500,
+    );
+    // rows: single, unknown single, choice header, choice dmg_up, choice no_such_buff
+    expect(privateOf(p).rows).toHaveLength(5);
+    for (let i = 0; i < 5; i++) expect(labelAnchor(p, i), `row ${i}`).toBe(0);
   });
 });

@@ -432,6 +432,28 @@ only for a LOCAL bot ally or the arena harness (`showAlly` is `isCoop() || isAre
 online co-op match sets neither), so a name put there would never be seen in the only place a name
 exists.
 
+## First-download size (2026-10-15)
+
+A portal judges a game on its first wait. The four numbers that make it up are read out of the
+real `build:crazygames` output by `build/checkBundleSize.mjs` (`npm run check:bundlesize`, ported
+from `funny`) and held under absolute budgets in `build/bundle-size-budget.json`:
+
+| | measured 2026-10-15 | budget | what it is |
+| --- | --- | --- | --- |
+| `entry.brotli` | 305.3 KiB | 350 KiB | the entry module + its modulepreloads, brotli q11 (a relative metric; the edge compresses lower) |
+| `lobby.wait` | 836.0 KiB | 1000 KiB | `main` + `lobby` phase art; only the uiSkins `boot` tier (~338 kB) is awaited behind the splash |
+| `run.wait` | 2548.7 KiB | 3000 KiB | `run` phase art, awaited by the run gate on the first Play |
+| `dist.total` | 8130.3 KiB | 9500 KiB | the upload, ~3.4 MB of it the six never-awaited music loops |
+
+The budgets are decisions with written reasons, not high-water marks. Raising one means editing
+its reason. The gate needs a build, so it sits outside `npm run check`; CI runs it in the
+`check` job right after `build:crazygames`. It fails on an unbuilt tree, so an unbuilt tree can
+never pass. What got the numbers there, palette quantisation of the run art and a one-logo
+boot, is design/12's 2026-10-15 update.
+
+Not measured here: wire time on a real portal page, and a cold load through the CrazyGames QA
+tool. Both need the registered domain listed under "What remains".
+
 ## What remains
 
 - **A registered portal domain.** Everything above ran on `local`, where the SDK renders
@@ -503,17 +525,35 @@ exists.
   `getUserToken`'s token — never `id`.)
 - **`BB_CG_GAME_ID` on the deployed matchsvc.** Until it is set, `/auth/portal` accepts a user
   token minted for any game on the platform (warned once at startup, `config.portalGameId`).
-- **The CrazyGames AVATAR is not drawn anywhere.** The requirements name username *and* avatar;
-  only the username is shown. The avatar is an external image URL, which means a texture load
-  across an origin this page does not control — a real piece of work, not a line.
+- **The CrazyGames avatar — drawn since 2026-10-16.** The requirements name username *and*
+  avatar. `portalAuth.ts` publishes `user.profilePictureUrl` through `platform/playerAvatar.ts`
+  (https only; cleared on logout, and published even when our own exchange fails, since it is
+  the portal's picture, not our account's), and `game/ui/PlayerPicture.ts` draws it as a
+  masked disc left of the menu's "Hi, {name}" label. It is a cross-origin WebGL texture:
+  `images.crazygames.com` sends `Access-Control-Allow-Origin: *` (checked 2026-10-16), and its
+  URLs serve JPEG bytes behind `.png`, so the loader names its parser instead of trusting the
+  extension. Every failure — 404, CORS withdrawn, a load that lands after a sign-out or an
+  account switch — ends with the disc hidden and the label where it always was.
 - **No PvP-specific roster beyond that one line.** `SeatRoster` is correct in PvP and shown there,
   but nothing labels who eliminated you, and in an eight-seat FFA the line is the whole social
   signal. Adequate rather than good.
-- **`SDK.data` is deliberately not adopted.** A third-party iframe can have `localStorage`
-  blocked, in which case a guest's progress silently does not persist between sessions — all three
-  stores (`net/session.ts`, `settings/store.ts`, `meta/store.ts`) fail soft, so nothing crashes and
-  nothing warns. The platform's data module exists for exactly this and is a drop-in for the
-  `localStorage` API, but the stores are read SYNCHRONOUSLY at boot, before the SDK has
-  initialised, so adopting it is a boot-ordering change rather than a swap. A signed-in player is
-  unaffected (their progress lives on our server); a guest on a browser that blocks third-party
-  storage is the case this leaves open.
+- **`SDK.data` is adopted (2026-10-16) — for three keys, and only once the submission enables it.**
+  The install id, the Forge (`meta`) state and the settings go through the platform's data
+  module, which follows a signed-in portal user across devices; `platform/crazygames/
+  portalStorage.ts` installs it behind `platform/webStorage.ts` as a per-key override, so no
+  store changed. It was a boot-ordering change, as predicted: `main.crazygames.ts` now awaits
+  `sdk.init()` (memoized — `PortalSession.start()` reuses it) BEFORE the first store read, and
+  skips the wait entirely when the synchronous SDK `<script>` never ran (blocked), so an
+  adblocked boot pays nothing. The same reorder fixed a silent bug: `loadingStart()` used to be
+  called before `init()` and was a no-op, so the portal never saw the loading bracket open.
+  - **Not synced, on purpose:** the run save (~400 KB, written on the way out of a run, and the
+    module DEBOUNCES saves 1–30 s and caps at 1 MB — a debounced write at tab close is a save
+    the player was told had landed), the session token (re-obtained by `PortalAuth` every
+    visit) and the perf toggles. They stay in `localStorage`.
+  - **Migration:** each synced key the module lacks is copied in from `localStorage`; one the
+    module already has is never overwritten, and the `localStorage` copy is left as the
+    rollback. Verified on a `local` page: a pre-existing guest id arrived in `SDK_DATA_local`.
+  - **OWNER: the submission's "Progress Save" toggle must be ON.** With it off the module
+    throws `dataModuleDisabled`; the adapter probes once, falls back to `localStorage` and logs
+    `SDK.data not adopted: unavailable` — so a missing toggle is visible in the client logs,
+    not a silent loss.

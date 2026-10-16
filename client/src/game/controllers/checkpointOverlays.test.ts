@@ -15,7 +15,7 @@ import { pxToFp } from '@dd/engine';
 
 function fakeDeps(portalPx: { x: number; y: number } | null = { x: 0, y: 0 }) {
   const portalPrompt = { update: vi.fn(), isOpen: false };
-  const floorCardPrompt = { update: vi.fn() };
+  const floorCardPrompt = { update: vi.fn(), isOpen: false, isPicking: false };
   const roomBuilder = { setPortalOpen: vi.fn(), portalPx };
   const suppressFire = vi.fn();
   return {
@@ -214,5 +214,47 @@ describe('the co-op countdown (ENGINE_VERSION 87)', () => {
     near.portalPrompt.isOpen = true;
     updateCheckpointOverlays(counting({ distPx: 0 }), 0, near.deps);
     expect(near.suppressFire).toHaveBeenLastCalledWith(true);
+  });
+});
+
+/**
+ * Pick, then descend (2026-10-13 live report: "players find it hard to understand, and
+ * Descend does nothing"). The engine holds a Descend press until a card is voted; the popup
+ * hides the button while the card panel is still asking — and that only works if the
+ * popup reads the card panel's answer for THIS tick, not the last one.
+ */
+describe('cards first, then the portal', () => {
+  it('hands the popup the card panel’s picking state as the Descend lock', () => {
+    for (const picking of [true, false]) {
+      const t = fakeDeps();
+      t.floorCardPrompt.isPicking = picking;
+      updateCheckpointOverlays(state({}), 0, t.deps);
+      expect(t.portalPrompt.update.mock.calls.at(-1)![4]).toBe(picking);
+    }
+  });
+
+  it('updates the card panel BEFORE the popup, so the lock is this tick’s', () => {
+    const t = fakeDeps();
+    const order: string[] = [];
+    t.floorCardPrompt.update.mockImplementation(() => {
+      order.push('cards');
+      t.floorCardPrompt.isPicking = true; // the vote this tick reopened the pick
+    });
+    t.portalPrompt.update.mockImplementation(() => order.push('portal'));
+    updateCheckpointOverlays(state({}), 0, t.deps);
+    expect(order).toEqual(['cards', 'portal']);
+    expect(t.portalPrompt.update.mock.calls.at(-1)![4]).toBe(true);
+  });
+
+  it('gates fire on the card panel too while it is the only panel open at the portal', () => {
+    const near = fakeDeps();
+    near.floorCardPrompt.isOpen = true;
+    updateCheckpointOverlays(state({ distPx: 0 }), 0, near.deps);
+    expect(near.suppressFire).toHaveBeenLastCalledWith(true);
+    // Away from the portal (a squadmate's countdown) it swallows its own presses instead.
+    const far = fakeDeps();
+    far.floorCardPrompt.isOpen = true;
+    updateCheckpointOverlays(Object.assign(state({ distPx: 400 }), { portalCountdownTicks: 300 }), 0, far.deps);
+    expect(far.suppressFire).toHaveBeenLastCalledWith(false);
   });
 });

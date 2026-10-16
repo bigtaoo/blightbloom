@@ -7,7 +7,8 @@ import { adSuspension } from './platform/crazygames/suspension';
 import { PortalSession } from './platform/crazygames/PortalSession';
 import { portalRewardedAd } from './platform/crazygames/portalRewardedAd';
 import { setRewardedAd } from './platform/rewardedAd';
-import { CrazyGamesSdk } from './platform/crazygames/sdk';
+import { CrazyGamesSdk, type CgGlobal } from './platform/crazygames/sdk';
+import { adoptPortalStorage } from './platform/crazygames/portalStorage';
 import { baseAssetHost, setAssetHost } from './render/assetHost';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
@@ -74,13 +75,28 @@ async function boot() {
   pinTextMeasurementToPaintCanvas();
   disableBrokenLetterSpacing();
 
+  // (0) The SDK first, and the stores behind it. Every store reads `webStorage()` once, when
+  // it is constructed, and the first one is the settings read just below — so `SDK.data`
+  // (design/20 "Progress save", `portalStorage.ts`) has to be in place before it or the
+  // install id, Forge state and settings would be read from `localStorage` and never synced.
+  // This is also where the loading bracket opens: `loadingStart()` is a no-op until `init()`
+  // has found the script, and it used to be called before it. Costs nothing when the script
+  // was blocked (`scriptLoaded`), and at most `SDK_WAIT_MS` when the portal is slow to answer.
+  const sdk = new CrazyGamesSdk();
+  const storage = await adoptPortalStorage({
+    sdk,
+    scriptLoaded: Boolean((globalThis as CgGlobal).CrazyGames?.SDK),
+  });
+  sdk.loadingStart();
+
   // The active locale's table, which since 2026-09-21 is its own chunk rather than one of
   // eight inside the bundle (i18n/loadLocale.ts — 22 kB of brotli off the first download).
   // KICKED here and AWAITED below, so its round trip overlaps the renderer coming up and the
   // `lobby` pack landing instead of being added after them; on the live deploy's numbers the
   // fetch is ~130 ms and the wait it hides is seconds. Read off the persisted settings rather
   // than asked of `Game`, because `Game` is what loads them.
-  const localeReady = ensureLocale(persistedLocale());
+  const bootLocale = persistedLocale();
+  const localeReady = ensureLocale(bootLocale);
 
 
   // (1) Asset paths, BEFORE the first preload — `preloadLobbyArt` resolves URLs through the
@@ -133,11 +149,10 @@ async function boot() {
   // effect on the next run that ends.
   installPublicFlags({ baseUrl: resolveMatchBaseUrl(parseGameQueryParams(location.search)) });
 
-  // (3a) Announce the download. The SDK measures the span from page open to the first
-  // `gameplayStart` as the "initial download", so this bracket opens before the art phase
-  // below and `PortalSession.start()` closes it once there is a game to play.
-  const sdk = new CrazyGamesSdk();
-  sdk.loadingStart();
+  // (3a) The download is announced at (0) above — the SDK measures the span from page open
+  // to the first `gameplayStart` as the "initial download", so that bracket is open before
+  // the art phase below and `PortalSession.start()` closes it once there is a game to play.
+  if (storage !== 'adopted') clientLog()?.log('info', 'portal', `SDK.data not adopted: ${storage}`);
 
   const platform = new WebPlatform();
   const app = await platform.createApp();
@@ -147,7 +162,7 @@ async function boot() {
   setUiAudio(audio);
   setMusicAudio(audio);
 
-  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)));
+  await preloadLobbyArt((done, total) => setBootProgress(0.2 + 0.7 * (done / total)), bootLocale);
   // AFTER the lobby pack, same as `main.ts` and for the same reason: 70 sample requests
   // fired beside the one download the player is waiting on only make that wait longer.
   void audio.preload();

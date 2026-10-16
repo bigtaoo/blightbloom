@@ -19,6 +19,7 @@ import type { CrazyGamesSdk } from './sdk';
 import type { CgSdkShape } from './sdk';
 import { getSession, setSession } from '../../net/session';
 import { notifySessionChanged, onSessionChanged, resetSessionEvents } from '../sessionEvents';
+import { playerAvatar, setPlayerAvatar } from '../playerAvatar';
 
 type UserApi = CgSdkShape['user'];
 
@@ -479,5 +480,24 @@ describe('the notification is the seam the game reacts through', () => {
     off();
     notifySessionChanged();
     expect(late).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('PortalAuth — the portal avatar (design/20: username AND avatar)', () => {
+  afterEach(() => setPlayerAvatar(null));
+
+  it('publishes the picture of a signed-in player, even when our exchange fails', async () => {
+    const host = userHost({ getUser: async () => ({ ...ADA, profilePictureUrl: 'https://images.example/a.png' }) });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => { throw new Error('down'); } });
+    await auth.start();
+    expect(playerAvatar()).toBe('https://images.example/a.png');
+  });
+
+  it('clears it when the portal reports a logout', async () => {
+    const host = userHost({ getUser: async () => ({ ...ADA, profilePictureUrl: 'https://images.example/a.png' }) });
+    const auth = new PortalAuth({ sdk: host.sdk, baseUrl: 'https://svc', exchange: async () => RESULT });
+    await auth.start();
+    await host.fire(null);
+    expect(playerAvatar()).toBeNull();
   });
 });

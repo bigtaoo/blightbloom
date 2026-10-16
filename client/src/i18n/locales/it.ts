@@ -146,6 +146,9 @@ export const it: Translations<typeof en> = {
     orderFailed: 'Impossibile avviare l’acquisto. Non è stato addebitato nulla.',
     paymentFailed: 'Il pagamento non è andato a buon fine. Non è stato addebitato nulla.',
     pending: 'Pagamento ancora in attesa. Se andrà a buon fine, l’oggetto comparirà al prossimo accesso.',
+    checkoutClosed: 'Pagamento chiuso prima del completamento. Se hai pagato, l’oggetto comparirà al prossimo accesso.',
+    checkoutUnavailable: 'Impossibile aprire la finestra di pagamento. Controlla la connessione o il blocco annunci. Non è stato addebitato nulla.',
+    confirming: 'Pagamento ricevuto per {item} — conferma dal server in corso…',
     listFailed: 'Impossibile caricare il negozio. Controlla la connessione e riprova.',
   },
   hud: {
@@ -230,8 +233,11 @@ export const it: Translations<typeof en> = {
     portalDescend: 'Scendi al piano {floor}',
     portalTitleBoss: 'BOSS SCONFITTO — il portale di estrazione è aperto',
     portalCountdown: 'La squadra parte tra {seconds}s — {ready}/{total} pronti',
-    floorCardTitle: 'Scegli un potenziamento',
+    floorCardTitle: 'PIANO RIPULITO — scegli un potenziamento',
     floorCardVotes: '{n} voti',
+    floorCardChosen: 'Potenziamento: {card}',
+    floorCardSquadPick: 'Scelta della squadra: {card} ({n} voti)',
+    floorCardChange: 'Cambia',
   },
   auth: {
     title: 'ACCOUNT',

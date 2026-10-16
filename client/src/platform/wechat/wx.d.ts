@@ -189,6 +189,12 @@ interface Wx {
    * entry point that assumes a lifecycle API exists turns a missing one into a boot failure.
    */
   onHide?: (cb: () => void) => void;
+  /** The mini-game came back to the foreground — `onHide`'s other half. Together they are
+   *  this shell's `visibilitychange` for the playtime clock (`weChatVisibility.ts`). */
+  onShow?: (cb: () => void) => void;
+  /** The device's OS as WeChat names it (`ios`, `android`, `windows`, `mac`, `devtools`, …).
+   *  Optional: read once for the analytics device split, and absent on old base libraries. */
+  getDeviceInfo?: () => { platform?: string };
   getWindowInfo(): WxWindowInfo;
   onTouchStart(cb: (e: WxTouchEvent) => void): void;
   onTouchMove(cb: (e: WxTouchEvent) => void): void;

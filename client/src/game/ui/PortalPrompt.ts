@@ -157,7 +157,13 @@ export class PortalPrompt {
    *  death drops). The interior floors LOSING their Extract button is ENGINE_VERSION 61 —
    *  the title still names the extraction that is coming, one floor at a time, and the
    *  run's own exit is now the boss. */
-  update(s: GameState, show: boolean, localOwner: number, offers: PortalOffers = DESCEND_ONLY): void {
+  update(s: GameState, show: boolean, localOwner: number, offers: PortalOffers = DESCEND_ONLY, descendLocked = false): void {
+    // `descendLocked`: the card panel is still asking this seat to pick (`FloorCardPrompt.
+    // isPicking`), and the engine holds a Descend press until a card is voted — so the button
+    // is not drawn until pressing it can work (2026-10-13). A panel left with no button and no
+    // countdown to report says nothing the card panel above it does not, so it stays shut.
+    const lockedOut = descendLocked && !offers.extract && !(s.portalCountdownTicks > 0);
+    show = show && !lockedOut;
     this._isOpen = show;
     this.view.visible = show;
     if (!show) return;
@@ -170,7 +176,7 @@ export class PortalPrompt {
     const canPress = !!me && me.alive && !me.downed && !me.portalReady;
     // A two-button portal that is already open shows only the way it is going.
     const extract = offers.extract && s.portalChoice !== 'descend';
-    const descend = offers.descend && s.portalChoice !== 'extract';
+    const descend = offers.descend && s.portalChoice !== 'extract' && !descendLocked;
     const two = extract && descend;
     if (two !== this.twoButtons) {
       this.twoButtons = two;

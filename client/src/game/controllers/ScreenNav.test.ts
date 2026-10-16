@@ -119,7 +119,7 @@ describe('leaveRunTo — the one exit, and the only held hub entry', () => {
 
   it('tells the gate it is crossing OUT of a run, not into one', () => {
     // The caption is the whole argument, and it is the half of this call a behavioural
-    // assertion cannot see: both directions hold for the same three seconds and land on the
+    // assertion cannot see: both directions hold for the same floor and land on the
     // same screen. "ENTERING THE DUNGEON" on the way back to the lobby is a wrong sentence
     // held in front of the player's face, and nothing else in this suite would say so.
     const t = make();

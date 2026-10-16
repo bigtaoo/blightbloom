@@ -129,11 +129,8 @@ export const en = {
     continueRun: 'CONTINUE RUN ▸',
     savedRunLine: 'Saved run: floor {floor}, {m}:{ss} played — CONTINUE to resume it, START RUN to discard it',
   },
-  // The store (design/19-server-platform.md §4, design/14's bounded direct purchase).
-  // Two rules shape this copy, and both are about not lying to someone about money:
-  // every refusal states plainly that nothing was charged, and `purchasedNoRefresh` —
-  // delivered, but this client could not re-read it — must NOT read as a failure, because
-  // the purchase stands.
+  // The store (design/19 §4). Never lie about money: every refusal says whether anything was
+  // charged, and `purchasedNoRefresh` (delivered, not re-read) must NOT read as a failure.
   store: {
     title: 'STORE',
     back: 'FORGE',
@@ -156,6 +153,9 @@ export const en = {
     orderFailed: 'Could not start the purchase. Nothing was charged.',
     paymentFailed: 'The payment did not go through. Nothing was charged.',
     pending: 'Still waiting on the payment. If it goes through, the item appears next time you log in.',
+    checkoutClosed: 'Checkout closed before the payment finished. If you did pay, the item appears next time you log in.',
+    checkoutUnavailable: 'Could not open the payment window. Check your connection or ad blocker. Nothing was charged.',
+    confirming: 'Payment received for {item} — confirming with the server…',
     listFailed: 'Could not load the store. Check your connection and try again.',
   },
   hud: {
@@ -215,10 +215,8 @@ export const en = {
       lightning: 'lightning',
       poison: 'poison',
     },
-    // Compact material-bank/cost-line abbreviation (Forge.ts) — a separate namespace
-    // from `element` above (the full noun) since a short code isn't the same string as
-    // the full word in every language. Values here match Forge.ts's old hardcoded
-    // `e.slice(0,3).toUpperCase()` output byte-for-byte, so English is unchanged.
+    // Compact material-bank/cost-line abbreviation (Forge.ts) — its own namespace, since a
+    // short code is not the full `element` noun cut short in every language.
     elementShort: {
       physical: 'PHY',
       fire: 'FIR',
@@ -226,8 +224,7 @@ export const en = {
       lightning: 'LIG',
       poison: 'POI',
     },
-    // Blueprint unlock source (Forge.ts's lockedSource line) — 'drop' isn't listed
-    // here, it has its own dedicated `forge.lockedFind` string instead.
+    // Blueprint unlock source (Forge.ts's lockedSource); 'drop' has `forge.lockedFind`.
     source: {
       purchase: 'purchase',
       event: 'event',
@@ -252,8 +249,11 @@ export const en = {
     portalDescend: 'Descend to Floor {floor}',
     portalTitleBoss: 'BOSS DOWN — the extraction portal is open',
     portalCountdown: 'Squad leaves in {seconds}s — {ready}/{total} ready',
-    floorCardTitle: 'Choose an Upgrade',
+    floorCardTitle: 'FLOOR CLEARED — choose an upgrade',
     floorCardVotes: '{n} votes',
+    floorCardChosen: 'Upgrade: {card}',
+    floorCardSquadPick: 'Squad pick: {card} ({n} votes)',
+    floorCardChange: 'Change',
   },
   auth: {
     title: 'ACCOUNT',

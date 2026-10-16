@@ -722,7 +722,7 @@ to one line:
 
 The second reason the gate holds a screen, and the only one a player is meant to notice: the
 in-game switches — into a map, back out to the lobby — show the same `LoadingScreen` for at least
-`MIN_TRANSITION_MS` (3 s) whether anything is downloading or not, so a transition reads as one
+`MIN_TRANSITION_MS` (1 s since 2026-10-13; it was 3 s, which read as too long) whether anything is downloading or not, so a transition reads as one
 thing ending and another beginning rather than as a jump cut. `deferRunBoundary('run' | 'hub', …)`
 is the verb; the caption is the only thing the argument decides.
 
@@ -734,8 +734,8 @@ that screen's MENU button.
 
 Two things it deliberately does NOT hold:
 
-- **`finalizeOnlineRun`.** The far side is a server that has already started ticking, so three
-  seconds here is three seconds of confirmed frames arriving for a run nobody can see — including
+- **`finalizeOnlineRun`.** The far side is a server that has already started ticking, so a
+  second here is a second of confirmed frames arriving for a run nobody can see — including
   the first one, which `GameLoop.resetOnlinePrediction` anchors on. That route has its own
   transition screen (Matchmaking) and it reports something real.
 - **Plain hub navigation.** `showMenu` and `showLoadout` are also reached by the loadout screen's
@@ -745,7 +745,7 @@ Two things it deliberately does NOT hold:
 The floor is safe to sit on only because the sim is already stopped at every one of those call
 sites — the pause menu runs at phase `paused`, the outcome screen at `victory`/`defeat`, and every
 entry point holds *before* the engine is built. A hold while the phase was still `playing` would
-be three seconds of a player being hit by things they cannot see.
+be a second of a player being hit by things they cannot see.
 
 `beginDeferredArt()` is called BEFORE `new Game(...)` in every entry, and that ordering is
 load-bearing rather than tidy: the call is what ARMS the gate, and `Game.start()` can enter a run
@@ -1070,7 +1070,7 @@ resource timing — the server has to count it.)
 **Three UI tiers** (`render/uiSkins.ts`, header and `uiTierOf`):
 
 - `boot` — awaited in `preloadLobbyArt`: the painting, the menu background, both logos (so a
-  language switch never waits), and every icon on a lobby BUTTON — a button that gains its icon
+  language switch never waits; **since 2026-10-15 only the boot locale's logo**, see below), and every icon on a lobby BUTTON — a button that gains its icon
   later re-flows its label, which reads as a glitch where a portrait fading in does not.
 - `lobby` — kicked as `preloadLobbyArt` returns, never awaited: portraits, route banners, the
   drifting rocks, the orbiting weapon. `MainMenu` listens (`onUiTexture`), marks its art stale,
@@ -1120,6 +1120,42 @@ always magnified, and only it loads without one (`uiUsesMipmaps`).
 **Code splitting stays out, and not for lack of a lever** (see "the first download itself"
 above): some target platforms cannot load code dynamically at all, so a lazily-imported chunk is
 not an option there. Every boot win has to come from assets and ordering.
+
+## Update (2026-10-15): every shipped PNG is palette unless it fails the bar
+
+The 2026-09-28 quantisation covered the lobby set only. The `run` phase, the art the run gate
+awaits on a first Play, was still 4.26 MB of mostly RGBA PNG, and on a portal it is part of the
+time to gameplay. `tools/png-pipeline/quantize.py` extends the same encoder (libimagequant,
+dithering 1.0, ≤256 colours plus tRNS) to all of `client/public` and measures every file
+before rewriting it:
+
+- **The metric.** Composite old and new over three dark backdrops, (0,0,0), (16,16,24) and
+  (64,64,72), since the game never shows art on light ground. Take the per-pixel max-channel
+  difference over every pixel visible in either, and keep the worst backdrop's mean and p99.
+- **The bar.** Mean ≤ 2.93 and p99 ≤ 14: the worst reading inside the lobby set already
+  signed off. That makes the decision a measurement, not a per-file taste call. A file is
+  rewritten only if it passes and is smaller.
+- **The result.** 110 files pass, and `run.wait` drops from 4258 to 2549 KiB (design/20
+  "First-download size"). Eight fail and stay RGBA: the emberblade, frostbrand, leech and
+  stormglaive swords, the skirmisher's shell and belly, and `icon_party_create` /
+  `icon_result_extract`. All are fine gradients or thin glints, which is where 256 colours
+  band. The curtain stays as it is (2026-09-01b). On a 2–3× contact sheet, the ten passing
+  files that scored worst read the same as their originals.
+
+**The guard moved from one tier to the whole tree.** `client/src/render/shippedPngFormat.test.ts`
+reads each shipped PNG's IHDR colour type and fails any RGBA file outside its reasoned allowlist.
+Stale allowlist entries fail too. `compress.mjs` still writes RGBA only, so running it over a
+shipped file needs a `quantize.py --apply` pass afterwards; new art needs the same. The script
+skips files that are already palette, so a re-run only touches what changed. Shipped-art tests
+that read pixels go through `decodePNG`: `wallComposition.test.ts` was inflating rows by hand
+and assumed RGBA until this pass.
+
+**One logo at boot.** The `boot` tier no longer awaits both logos. Each entry point reads
+`persistedLocale()` before the art loads and hands it to `preloadLobbyArt`, which calls
+`setBootLocale`. `uiTierOf` then files the other language's logo under `lobby`, so it is
+fetched right after but not waited for (418,048 → 338,252 awaited bytes, en). A language
+switch shows the other logo one fetch later: `MainMenu` already re-lays itself out on a
+`lobby` arrival.
 
 ## Open questions
 

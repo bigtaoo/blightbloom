@@ -34,6 +34,7 @@
 import { getSession, setSession } from '../../net/session';
 import { portalLogin } from '../../net/auth';
 import { notifySessionChanged } from '../sessionEvents';
+import { setPlayerAvatar } from '../playerAvatar';
 import type { CrazyGamesSdk } from './sdk';
 import { readUserReporting, readUserToken, subscribeAuth, userAvailable, type CgUser } from './sdkUser';
 
@@ -139,6 +140,9 @@ export class PortalAuth {
 
   private async applyUser(user: CgUser | null): Promise<void> {
     this.portalUser = user;
+    // The picture before anything that can return early or fail: it is the portal's, so it
+    // is right for this player whether or not our own exchange succeeds (design/20).
+    setPlayerAvatar(user?.profilePictureUrl);
     // A user arriving through the auth listener proves the read works after all, so a
     // failure recorded at boot must not outlive it and keep accusing a working SDK.
     if (user) this.userReadFailed = false;

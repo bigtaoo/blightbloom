@@ -151,6 +151,9 @@ export const ru: Translations<typeof en> = {
     orderFailed: 'Не удалось начать покупку. Ничего не списано.',
     paymentFailed: 'Оплата не прошла. Ничего не списано.',
     pending: 'Оплата ещё обрабатывается. Если она пройдёт, предмет появится при следующем входе.',
+    checkoutClosed: 'Оплата закрыта до завершения. Если вы всё же заплатили, предмет появится при следующем входе.',
+    checkoutUnavailable: 'Не удалось открыть окно оплаты. Проверьте соединение или блокировщик рекламы. Ничего не списано.',
+    confirming: 'Оплата за {item} получена — ждём подтверждения сервера…',
     listFailed: 'Не удалось загрузить магазин. Проверьте соединение и попробуйте снова.',
   },
   hud: {
@@ -235,8 +238,11 @@ export const ru: Translations<typeof en> = {
     portalDescend: 'Спуститься на этаж {floor}',
     portalTitleBoss: 'БОСС ПОВЕРЖЕН — портал эвакуации открыт',
     portalCountdown: 'Отряд уходит через {seconds} с — готовы {ready}/{total}',
-    floorCardTitle: 'Выберите улучшение',
+    floorCardTitle: 'ЭТАЖ ЗАЧИЩЕН — выберите улучшение',
     floorCardVotes: '{n} голосов',
+    floorCardChosen: 'Улучшение: {card}',
+    floorCardSquadPick: 'Выбор отряда: {card} ({n} голосов)',
+    floorCardChange: 'Изменить',
   },
   auth: {
     title: 'АККАУНТ',

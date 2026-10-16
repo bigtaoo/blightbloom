@@ -31,7 +31,7 @@ import { packOf, packsForPhase } from './assetManifest';
 import { ensureAllPacks, ensurePack, ensurePacks } from './packLoader';
 import { preloadRigSkin } from './skinRegistry';
 import { preloadWeaponSkins } from './weaponSkins';
-import { preloadUiArt, preloadUiTier } from './uiSkins';
+import { preloadUiArt, preloadUiTier, setBootLocale } from './uiSkins';
 import { preloadBiomeTiles } from './biomeTiles';
 import { preloadEnvironmentSprites } from './environmentSprites';
 import { invalidateMusicTrack } from '../game/musicDirector';
@@ -89,7 +89,10 @@ function tickRun(): void {
  * otherwise, which on WeChat throws inside the format detection and silently costs whichever
  * texture happened to race there first — see AssetHost.assetsInit for the full account.
  */
-export async function preloadLobbyArt(onProgress?: ArtProgress): Promise<void> {
+export async function preloadLobbyArt(onProgress?: ArtProgress, locale?: string): Promise<void> {
+  // The locale the first frame is drawn in, so `boot` fetches one logo rather than both
+  // (uiSkins.ts's header). Omitted, both stay in `boot`: slower, never wrong.
+  if (locale !== undefined) setBootLocale(locale);
   await Assets.init(getAssetHost().assetsInit);
   const lobby = packsForPhase('lobby');
   const tick = ticker(lobby.length + 1, onProgress);

@@ -1,0 +1,21 @@
+{
+  "_readme": "Shipped-size budgets for the built web client, enforced by build/checkBundleSize.mjs (design/20 'First-download size'). Any '_'-prefixed key is a comment. ABSOLUTE budgets with deliberate headroom, not high-water marks: raising one is a decision that needs a written reason here. If a number goes red, the first question is what got bigger and whether it had to.",
+  "_measured": "Baselined 2026-10-15 against `npm run build:crazygames -w client`, after the palette pass (tools/png-pipeline/quantize.py): entry.brotli 305.3 KiB, lobby.wait 836.0 KiB, run.wait 2548.7 KiB, dist.total 8130.3 KiB. The same build before the pass: 305.2 / 858.5 / 4258.4 / 9862.3.",
+
+  "entry.brotli": {
+    "maxBytes": 358400,
+    "reason": "350 KiB — ~15% over the 305.3 KiB measured 2026-10-15. The bundle is deliberately NOT code-split (design/12: some targets cannot load code at runtime; only the locale tables and Pixi's renderer chunks are separate), which is exactly why it needs a ceiling instead: it is the first thing every player downloads, and nothing else can start until it has. Local brotli q11 is a stable relative metric, not the wire size."
+  },
+  "lobby.wait": {
+    "maxBytes": 1024000,
+    "reason": "1000 KiB — ~20% over the 836.0 KiB measured 2026-10-15. This is the whole `lobby` phase (assetPacks.json), which the web boot fetches in two parts: the uiSkins `boot` tier is awaited behind the splash (~340 kB since the one-logo boot), the rest is kicked right after. The opaque art is JPEG and every PNG is palette-quantised already, so growth here is new art, not re-encoding. The pack's own `limitBytes` (2 MB) is the WeChat subpackage guard and much looser; this is the web player's number."
+  },
+  "run.wait": {
+    "maxBytes": 3072000,
+    "reason": "3000 KiB — ~18% over the 2548.7 KiB measured 2026-10-15 (4258.4 before the palette pass). Everything the run gate awaits on the first Play: rigs, environment fixtures, every chapter's biome swatches, the forge's weapons, SFX, the `late` UI tier. The portal's time-to-gameplay is the lobby wait plus this, so it is budgeted as tightly as the lobby."
+  },
+  "dist.total": {
+    "maxBytes": 9728000,
+    "reason": "9500 KiB — ~17% over the 8130.3 KiB measured 2026-10-15 (9862.3 before the palette pass). The upload. ~3.4 MB of it is the six music loops (`background` phase, never awaited, openly licensed and not re-encoded). Catches art bloat the two wait figures cannot see, e.g. a `background` addition."
+  }
+}

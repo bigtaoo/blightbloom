@@ -14,7 +14,7 @@
     "tools/desktop-shell"
   ],
   "scripts": {
-    "test": "npm run test --workspaces --if-present && npx vitest run build/versionManifestPlugin.test.mjs build/assetVersionPlugin.test.mjs build/runtimeChunkPreload.test.mjs build/checkAssetHeaders.test.mjs build/checkScriptChain.test.mjs build/wechatAssetSync.test.mjs build/checkDocPaths.test.mjs build/checkRoadmapIndex.test.mjs build/checkCoverageThreshold.test.mjs build/coverageScope.test.mjs build/logicConsistency.test.mjs",
+    "test": "npm run test --workspaces --if-present && npx vitest run build/versionManifestPlugin.test.mjs build/assetVersionPlugin.test.mjs build/runtimeChunkPreload.test.mjs build/checkAssetHeaders.test.mjs build/checkScriptChain.test.mjs build/wechatAssetSync.test.mjs build/checkDocPaths.test.mjs build/checkRoadmapIndex.test.mjs build/checkCoverageThreshold.test.mjs build/coverageScope.test.mjs build/logicConsistency.test.mjs build/checkBundleSize.test.mjs build/pageOpenBeacon.test.mjs",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "coverage:report": "node build/coverageReport.mjs",
     "check:coverage": "node build/checkCoverageThreshold.mjs",
@@ -22,6 +22,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "check:filelength": "npm run check:filelength --workspaces --if-present",
     "check:wechatpackage": "node build/checkWeChatPackage.mjs",
+    "check:bundlesize": "node build/checkBundleSize.mjs",
     "check:assetheaders": "node build/checkAssetHeaders.mjs",
     "check:docpaths": "node build/checkDocPaths.mjs",
     "check:roadmapindex": "node build/checkRoadmapIndex.mjs",

@@ -122,8 +122,10 @@ export class PortalSession {
   /**
    * Announce the game to the portal and read back what it can do here.
    *
-   * `loadingStart` is called by the entry point BEFORE this (it has to bracket the art
-   * preload, which happens before there is a `Game` to hand us), so this only stops it.
+   * The entry point has already run `init()` (to adopt `SDK.data` before the first store
+   * read) and called `loadingStart` after it (it has to bracket the art preload, which
+   * happens before there is a `Game` to hand us), so this only stops it. `init()` is memoized,
+   * so the await below is the entry's result, not a second handshake.
    */
   async start(): Promise<void> {
     await this.sdk.init();

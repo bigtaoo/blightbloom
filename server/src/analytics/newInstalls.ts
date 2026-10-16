@@ -72,6 +72,16 @@ import {
   type FirstDay,
 } from './newInstallQueries';
 import { RETENTION_OFFSETS, addDays, canonicalLabels, lastCompleteDay, newestKnownCohort } from './rollupKeys';
+import {
+  SEGMENT_METRICS,
+  SEGMENT_RETURN_OFFSETS,
+  firstDayVisits,
+  playtimeNumbers,
+  segmentNumbers,
+  segmentReturns,
+  type Visit,
+} from './newInstallSegments';
+import { OPEN_METRICS, openFunnelNumbers, openVisits } from './pageOpens';
 
 export { ALL_HOSTS, FUNNEL_STEPS, type FunnelStep } from './newInstallQueries';
 
@@ -197,11 +207,30 @@ export async function newInstallRollupRows(db: Db, todayKey: string): Promise<Ne
     return c;
   };
 
+  const visits = new Map<string, Map<string, Visit>>();
+  const visitsOf = async (day: string): Promise<Map<string, Visit>> => {
+    const known = visits.get(day);
+    if (known !== undefined) return known;
+    const v = await firstDayVisits(db, day, await cohortOf(day));
+    visits.set(day, v);
+    return v;
+  };
+
   const out: NewInstallRow[] = [];
   for (const day of [...dayTargets].sort()) {
     const cohort = await cohortOf(day);
     sizeByDay.set(day, cohort.size);
-    const numbers = firstDayNumbers(cohort, await firstDays(db, day, cohort), hostsByDay.get(day) ?? []);
+    const hosts = hostsByDay.get(day) ?? [];
+    const profiles = await firstDays(db, day, cohort);
+    const v = await visitsOf(day);
+    // Design/21 §2.9's rows ride the same per-day targets: the playtime and segment split of
+    // the same cohort, and the open funnel of the same day (which reads its own visits).
+    const numbers = [
+      ...firstDayNumbers(cohort, profiles, hosts),
+      ...playtimeNumbers(cohort, v, hosts),
+      ...segmentNumbers(cohort, profiles, v),
+      ...openFunnelNumbers(await openVisits(db, day)),
+    ];
     for (const n of numbers) out.push({ day, ...n });
   }
 
@@ -217,6 +246,9 @@ export async function newInstallRollupRows(db: Db, todayKey: string): Promise<Ne
       for (const [host, r] of await cohortReturns(db, await cohortOf(day), addDays(day, offset))) {
         out.push({ day, metric: NEW_METRICS.retention, labels: { host, d }, value: r.rate });
         out.push({ day, metric: NEW_METRICS.cohortSize, labels: { host, d }, value: r.size });
+      }
+      if ((SEGMENT_RETURN_OFFSETS as readonly number[]).includes(offset)) {
+        for (const n of await segmentReturns(db, await cohortOf(day), await visitsOf(day), offset, addDays(day, offset))) out.push({ day, ...n });
       }
     }
   }
@@ -251,6 +283,31 @@ const GAUGES: Record<string, { name: string; help: string }> = {
   },
   [NEW_METRICS.retention]: { name: 'bb_new_retention_ratio', help: "Share of a day's NEW installs that were active again N days later." },
   [NEW_METRICS.cohortSize]: { name: 'bb_new_cohort_size', help: 'New installs in the cohort behind bb_new_retention_ratio at this offset.' },
+  [SEGMENT_METRICS.playtimeMeasured]: {
+    name: 'bb_new_playtime_measured_installs',
+    help: 'New installs of the last complete day with at least one visible-time report.',
+  },
+  [SEGMENT_METRICS.playtimeAvg]: {
+    name: 'bb_new_playtime_avg_seconds',
+    help: 'Mean first-day visible playtime of the measured new installs of the last complete day.',
+  },
+  [SEGMENT_METRICS.playtimeP50]: {
+    name: 'bb_new_playtime_p50_seconds',
+    help: 'Median first-day visible playtime of the measured new installs of the last complete day.',
+  },
+  [SEGMENT_METRICS.playtime]: {
+    name: 'bb_new_playtime_installs',
+    help: 'Measured new installs of the last complete day by first-day playtime bucket (lower bound, minutes).',
+  },
+  // Per VISIT, not per install: the first step counts the visitor who left during the download.
+  [OPEN_METRICS.funnel]: {
+    name: 'bb_open_funnel_visits',
+    help: 'Visits of the last complete day that opened the page, and of those, how many booted, reached the menu and started a run.',
+  },
+  [OPEN_METRICS.bootMs]: {
+    name: 'bb_open_boot_ms',
+    help: 'Boot time (page open to session start, download included) of the visits of the last complete day that booted, by quantile.',
+  },
 };
 
 const gauge = (metric: string, labels: Record<string, string>, value: number): NewInstallGauge => ({
@@ -261,15 +318,20 @@ const gauge = (metric: string, labels: Record<string, string>, value: number): N
 });
 
 /**
- * The new-install gauges for `/metrics`: the last complete day's first-day numbers, and the
- * newest new-install cohort at each offset, all per host. A host with no new installs in a
- * cohort contributes no retention gauge — absent, never 0 (see `rollup.ts`'s header).
+ * The new-install gauges for `/metrics`: the last complete day's first-day numbers and open
+ * funnel, and the newest new-install cohort at each offset, all per host. A host with no new
+ * installs in a cohort contributes no retention gauge — absent, never 0 (see `rollup.ts`'s
+ * header). The `new_seg` segment rows are never gauged (design/21 §2.9).
  */
 export async function newInstallGauges(db: Db, todayKey: string): Promise<NewInstallGauge[]> {
   const day = lastCompleteDay(todayKey);
   const cohort = await newCohort(db, day);
   const hosts = (await activeHostsByDay(db, day, day)).get(day) ?? [];
-  const out = firstDayNumbers(cohort, await firstDays(db, day, cohort), hosts).map((n) => gauge(n.metric, n.labels, n.value));
+  const out = [
+    ...firstDayNumbers(cohort, await firstDays(db, day, cohort), hosts),
+    ...playtimeNumbers(cohort, await firstDayVisits(db, day, cohort), hosts),
+    ...openFunnelNumbers(await openVisits(db, day)),
+  ].map((n) => gauge(n.metric, n.labels, n.value));
   for (const offset of RETENTION_OFFSETS) {
     const start = newestKnownCohort(todayKey, offset);
     const d = String(offset);

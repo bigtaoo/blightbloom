@@ -352,14 +352,12 @@ describe('the transitions that are gated', () => {
 });
 
 describe('the run boundary, which is held on purpose', () => {
-  it('is three seconds, which is the number that was asked for', () => {
+  it('is one second, which is the number that was asked for', () => {
     // Every other case here compares `clock.slept` against `MIN_TRANSITION_MS`, which is a
     // tautology over the one quantity the request actually named: "held for at least 3
-    // seconds". Retuning the constant to 300 passed the whole suite until this line existed
-    // (mutation battery, 2026-09-22). Asserted as a floor rather than an equality so a
-    // deliberate lengthening is not a test edit, and a silent shortening is.
-    expect(MIN_TRANSITION_MS).toBeGreaterThanOrEqual(3000);
-    expect(MIN_TRANSITION_MS).toBe(3000);
+    // seconds", cut to 1 second on 2026-10-13 because 3 was too long. Retuning the constant to 300 passed the whole suite until this line existed
+    // (mutation battery, 2026-09-22).
+    expect(MIN_TRANSITION_MS).toBe(1000);
   });
 
   it('holds the screen for MIN_TRANSITION_MS with the art already in', async () => {

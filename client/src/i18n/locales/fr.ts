@@ -146,6 +146,9 @@ export const fr: Translations<typeof en> = {
     orderFailed: 'Impossible de lancer l’achat. Rien n’a été débité.',
     paymentFailed: 'Le paiement n’a pas abouti. Rien n’a été débité.',
     pending: 'Paiement toujours en attente. S’il aboutit, l’objet apparaîtra à votre prochaine connexion.',
+    checkoutClosed: 'Paiement fermé avant la fin. Si vous avez payé, l’objet apparaîtra à votre prochaine connexion.',
+    checkoutUnavailable: 'Impossible d’ouvrir la fenêtre de paiement. Vérifiez votre connexion ou votre bloqueur de publicités. Rien n’a été débité.',
+    confirming: 'Paiement reçu pour {item} — confirmation auprès du serveur…',
     listFailed: 'Impossible de charger la boutique. Vérifiez votre connexion et réessayez.',
   },
   hud: {
@@ -230,8 +233,11 @@ export const fr: Translations<typeof en> = {
     portalDescend: "Descendre à l'étage {floor}",
     portalTitleBoss: "BOSS VAINCU — le portail d'extraction est ouvert",
     portalCountdown: "L'équipe part dans {seconds}s — {ready}/{total} prêts",
-    floorCardTitle: 'Choisissez une amélioration',
+    floorCardTitle: 'ÉTAGE NETTOYÉ — choisissez une amélioration',
     floorCardVotes: '{n} votes',
+    floorCardChosen: 'Amélioration : {card}',
+    floorCardSquadPick: 'Choix de l\'escouade : {card} ({n} votes)',
+    floorCardChange: 'Changer',
   },
   auth: {
     title: 'COMPTE',
