@@ -89,14 +89,16 @@
   </ul>
 
   <h2>4. Local Storage in Your Browser</h2>
-  <p>The game stores a small amount of data in your browser's local storage rather than in cookies. There are four items, and you can clear them at any time through your browser's site-data controls:</p>
+  <p>The game stores a small amount of data in your browser's local storage rather than in cookies. There are five items, and you can clear them at any time through your browser's site-data controls:</p>
   <ul>
     <li><code>daydayup.session.v1</code> — your session token, if you are signed in</li>
     <li><code>daydayup.settings.v1</code> — your settings, such as volume and language</li>
     <li><code>daydayup.meta.v1</code> — your local progress</li>
+    <li><code>daydayup.runsave.v1</code> — an unfinished run you chose to save and continue later</li>
     <li><code>daydayup.playerId.v1</code> — a random installation id, created by your browser. It identifies this installation of the game to itself: it is how a guest is recognised in multiplayer, and it is the id attached to the gameplay statistics in §2. Clearing it makes this browser a new installation as far as we are concerned.</li>
   </ul>
   <p>These keys carry the project's original working name, which is why they do not match the game's title. We use no third-party tracking cookies.</p>
+  <p>On CrazyGames, three of these items — your settings, your local progress and the installation id — are kept through the portal's own save feature instead of directly in your browser. For a guest the portal still stores them in your browser; if you are signed in to CrazyGames, the portal keeps them with your CrazyGames account so they follow you to another device, under CrazyGames' privacy policy (§7). The other items stay in your browser as described above.</p>
   <p>On a game portal the game runs inside an embedded frame, and some browsers block storage for embedded content. If that happens, a guest's progress simply does not persist between sessions; nothing breaks, and a signed-in player is unaffected because their progress is held on our server.</p>
 
   <h2>5. Payments</h2>

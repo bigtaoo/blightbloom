@@ -23,7 +23,8 @@ export class MemorySettingsStore implements SettingsStore {
   }
 }
 
-const DEFAULT_KEY = 'daydayup.settings.v1';
+export const SETTINGS_STORAGE_KEY = 'daydayup.settings.v1';
+const DEFAULT_KEY = SETTINGS_STORAGE_KEY;
 
 export interface SettingsStoreDeps {
   /** Overrides `navigator.languages`/`navigator.language` for first-boot locale

@@ -35,7 +35,8 @@ export class MemoryMetaStore implements MetaStore {
   }
 }
 
-const DEFAULT_KEY = 'daydayup.meta.v1';
+export const META_STORAGE_KEY = 'daydayup.meta.v1';
+const DEFAULT_KEY = META_STORAGE_KEY;
 
 /** localStorage-backed store for the web build. Fails soft: any load/parse/quota error
  * falls back to a fresh account rather than throwing (a corrupt save must not brick the

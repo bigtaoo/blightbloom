@@ -531,11 +531,23 @@ tool. Both need the registered domain listed under "What remains".
 - **No PvP-specific roster beyond that one line.** `SeatRoster` is correct in PvP and shown there,
   but nothing labels who eliminated you, and in an eight-seat FFA the line is the whole social
   signal. Adequate rather than good.
-- **`SDK.data` is deliberately not adopted.** A third-party iframe can have `localStorage`
-  blocked, in which case a guest's progress silently does not persist between sessions — all three
-  stores (`net/session.ts`, `settings/store.ts`, `meta/store.ts`) fail soft, so nothing crashes and
-  nothing warns. The platform's data module exists for exactly this and is a drop-in for the
-  `localStorage` API, but the stores are read SYNCHRONOUSLY at boot, before the SDK has
-  initialised, so adopting it is a boot-ordering change rather than a swap. A signed-in player is
-  unaffected (their progress lives on our server); a guest on a browser that blocks third-party
-  storage is the case this leaves open.
+- **`SDK.data` is adopted (2026-10-16) — for three keys, and only once the submission enables it.**
+  The install id, the Forge (`meta`) state and the settings go through the platform's data
+  module, which follows a signed-in portal user across devices; `platform/crazygames/
+  portalStorage.ts` installs it behind `platform/webStorage.ts` as a per-key override, so no
+  store changed. It was a boot-ordering change, as predicted: `main.crazygames.ts` now awaits
+  `sdk.init()` (memoized — `PortalSession.start()` reuses it) BEFORE the first store read, and
+  skips the wait entirely when the synchronous SDK `<script>` never ran (blocked), so an
+  adblocked boot pays nothing. The same reorder fixed a silent bug: `loadingStart()` used to be
+  called before `init()` and was a no-op, so the portal never saw the loading bracket open.
+  - **Not synced, on purpose:** the run save (~400 KB, written on the way out of a run, and the
+    module DEBOUNCES saves 1–30 s and caps at 1 MB — a debounced write at tab close is a save
+    the player was told had landed), the session token (re-obtained by `PortalAuth` every
+    visit) and the perf toggles. They stay in `localStorage`.
+  - **Migration:** each synced key the module lacks is copied in from `localStorage`; one the
+    module already has is never overwritten, and the `localStorage` copy is left as the
+    rollback. Verified on a `local` page: a pre-existing guest id arrived in `SDK_DATA_local`.
+  - **OWNER: the submission's "Progress Save" toggle must be ON.** With it off the module
+    throws `dataModuleDisabled`; the adapter probes once, falls back to `localStorage` and logs
+    `SDK.data not adopted: unavailable` — so a missing toggle is visible in the client logs,
+    not a silent loss.
