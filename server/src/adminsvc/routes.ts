@@ -44,6 +44,8 @@ import { searchPlayers } from './views/players';
 import { commerceSnapshot } from './views/commerce';
 import { cohortGrid } from './views/retention';
 import { newInstallGrid } from './views/newInstalls';
+import { launchView } from './views/launch';
+import { launchSection } from './page/launch';
 import { flagsSection, flagsUnavailable, type FlagsView } from './page/flags';
 import { effectiveFlags, listOverrides } from '../flags/store';
 import { FLAG_DEFS, FLAG_NAMES } from '../flags/defs';
@@ -127,12 +129,14 @@ export async function getPage(
         ? unavailable('Commerce', deps.dbs.errors.billing)
         : commerceSection(await commerceSnapshot(deps.dbs.billing));
   } else if (tab === 'retention') {
+    const host = (url.searchParams.get('host') ?? 'all').slice(0, 32);
     body =
       deps.dbs.analytics === null
         ? unavailable('Retention', deps.dbs.errors.analytics)
         : // New-install retention first: it is the number a platform dashboard calls D1/D7.
           // `host` is passed through (capped): an unknown one is an empty grid that names it.
-          newInstallSection(await newInstallGrid(deps.dbs.analytics, (url.searchParams.get('host') ?? 'all').slice(0, 32))) +
+          newInstallSection(await newInstallGrid(deps.dbs.analytics, host)) +
+          launchSection(await launchView(deps.dbs.analytics, host)) +
           retentionSection(await cohortGrid(deps.dbs.analytics));
   } else if (tab === 'integrity') {
     body =

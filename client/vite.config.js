@@ -4,6 +4,7 @@ import { engineAlias } from '../build/ddAlias.mjs';
 import { versionManifestPlugin } from '../build/versionManifestPlugin.mjs';
 import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
 import { assetVersionPlugin } from '../build/assetVersionPlugin.mjs';
+import { pageOpenBeacon } from '../build/pageOpenBeacon.mjs';
 
 const PUBLIC_DIR = fileURLToPath(new URL('./public', import.meta.url));
 
@@ -22,7 +23,16 @@ export default defineConfig({
   //
   // ...and `?v=<content hash>` on every art URL, so a re-exported image is a new URL rather than
   // a week of stale-while-revalidate behind the old one (build/assetVersionPlugin.mjs).
-  plugins: [versionManifestPlugin(), runtimeChunkPreload(), assetVersionPlugin({ publicDir: PUBLIC_DIR })],
+  //
+  // ...and the inline `page_open` beacon at the top of `<head>`, which counts the visitors who
+  // never wait out the download (build/pageOpenBeacon.mjs). Inert when `VITE_MATCHSVC_URL` is
+  // not an https origin, i.e. in every local dev run.
+  plugins: [
+    pageOpenBeacon({ host: 'web' }),
+    versionManifestPlugin(),
+    runtimeChunkPreload(),
+    assetVersionPlugin({ publicDir: PUBLIC_DIR }),
+  ],
   server: { port: 5173, host: true },
   build: { target: 'es2020', outDir: 'dist' },
   // Vitest reads this same file — deliberately, so the `@dd/engine` alias above has exactly

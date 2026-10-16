@@ -21,6 +21,7 @@ import { installPublicFlags } from './net/clientFlags';
 import { setIdentityStore } from './net/identity';
 import { createWeChatIdentityStore } from './platform/wechat/weChatStorage';
 import { createWeChatFetch } from './platform/wechat/weChatFetch';
+import { createWeChatVisibility, weChatDevice } from './platform/wechat/weChatVisibility';
 import { resolveMatchBaseUrl } from './game/runState';
 import { getLocale } from './i18n';
 import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
@@ -112,6 +113,18 @@ async function boot() {
   // is a gap in one funnel; a plausible wrong one is the trap this host was switched off for.
   // The queue is flushed on hide instead, below, which is the half of `pagehide` that is
   // honest here.
+  //
+  // The visit's device split comes from `wx.getDeviceInfo` (there is no user agent, and no
+  // referrer or link to carry a source tag), and its playtime clock pauses on `onHide` and
+  // resumes on `onShow` — the pair is a fine VISIBILITY signal even though it is no
+  // visit-ended one (design/21 §2.9).
+  const wxApi = typeof wx === 'undefined' ? undefined : wx;
+  let wxPlatform: string | undefined;
+  try {
+    wxPlatform = wxApi?.getDeviceInfo?.().platform;
+  } catch {
+    /* an old base library: the split reads `other`, the game boots */
+  }
   const analytics = installAnalytics({
     baseUrl: resolveMatchBaseUrl({ matchBaseUrl: null }),
     token: sessionToken,
@@ -119,6 +132,9 @@ async function boot() {
     build: () => null,
     locale: getLocale,
     fetchImpl: wxFetch,
+    visit: { ...weChatDevice(wxPlatform), browser: 'wechat' },
+    pageOpen: null,
+    doc: wxApi === undefined ? null : createWeChatVisibility(wxApi),
   });
 
   // The public feature flags (design/21 §9's delivery path) — installed here since

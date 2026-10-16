@@ -33,6 +33,14 @@
 export const HOSTS = ['web', 'wechat', 'crazygames'] as const;
 export type AnalyticsHost = (typeof HOSTS)[number];
 
+/** The coarse device split on `session_start` (`visitContext.ts` decides which is which). */
+export const DEVICE_CLASSES = ['phone', 'tablet', 'desktop'] as const;
+export type DeviceClass = (typeof DEVICE_CLASSES)[number];
+export const OS_FAMILIES = ['windows', 'macos', 'ios', 'android', 'chromeos', 'linux', 'other'] as const;
+export type OsFamily = (typeof OS_FAMILIES)[number];
+export const BROWSER_FAMILIES = ['chrome', 'safari', 'firefox', 'edge', 'samsung', 'opera', 'wechat', 'other'] as const;
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number];
+
 /**
  * Caps on every client-supplied value. Sized so that a full batch at the wire limit is a
  * few tens of KB rather than a megabyte, and so that no single field can carry a payload.
@@ -82,9 +90,44 @@ export const EVENTS = {
    * new one again next visit, so it can never be counted as returning. Without this the loss
    * is invisible — it reads as a player who left.
    */
-  session_start: { storage: { kind: 'enum', values: ['stored', 'new', 'unpersisted'] } },
-  /** A visit ended (a timer, a hidden tab, or the page going away). */
-  session_end: { duration_s: { kind: 'int', min: 0, max: 86_400 } },
+  session_start: {
+    storage: { kind: 'enum', values: ['stored', 'new', 'unpersisted'] },
+    /**
+     * Where the visit came from and what it runs on (design/21 §2.9, `visitContext.ts`). A
+     * campaign tag (`?src=`), or `ref:<referrer host>`, or absent for a direct visit.
+     */
+    source: { kind: 'id' },
+    device: { kind: 'enum', values: DEVICE_CLASSES },
+    os: { kind: 'enum', values: OS_FAMILIES },
+    browser: { kind: 'enum', values: BROWSER_FAMILIES },
+    /** Milliseconds from the page's first byte of script (`page_open`) to this event — how
+     *  long the boot made the player wait. Absent when there was no `page_open` (WeChat). */
+    boot_ms: { kind: 'int', min: 0, max: 600_000 },
+  },
+  /**
+   * A visit ended (a timer, a hidden tab, or the page going away). `duration_s` is wall time;
+   * `active_s` is the part of it the page was VISIBLE, which is what "playtime" means — a tab
+   * left open behind another for an hour is not an hour of play.
+   */
+  session_end: {
+    duration_s: { kind: 'int', min: 0, max: 86_400 },
+    active_s: { kind: 'int', min: 0, max: 86_400 },
+  },
+  /**
+   * The visit's visible time so far, sent about once a minute while it grows (design/21
+   * §2.9). It exists because `session_end` is the least reliable event there is — a mobile
+   * browser killed in the background fires no `pagehide`, and the WeChat shell never fires
+   * one — so playtime read from it alone undercounts exactly the short visits that matter.
+   * Cumulative, so the server takes the visit's MAX and a lost batch costs a minute at most.
+   */
+  active_time: { active_s: { kind: 'int', min: 0, max: 86_400 } },
+  /**
+   * The page started executing — sent by the inline script in `index.html`, before the
+   * bundle has even been requested (design/21 §2.9). Its `session` is the one the game's own
+   * `session_start` later carries, so "opened but never booted" is a join by visit. It never
+   * creates a `dailyActive` document (`store.ts`): a page that never booted is not an install.
+   */
+  page_open: {},
   /** A screen was shown. The funnel's early steps live here. */
   screen_view: { screen: { kind: 'id' } },
   /**

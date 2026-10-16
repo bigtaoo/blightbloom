@@ -28,11 +28,13 @@ import {
 const SCREENISH = ['store_open', 'forge_open', 'menu_open', 'settings_open'];
 
 describe('the vocabulary', () => {
-  it('is exactly the events design/21 §2.2 and §2.8 name', () => {
+  it('is exactly the events design/21 §2.2, §2.8 and §2.9 name', () => {
     expect([...EVENT_NAMES].sort()).toEqual([
+      'active_time',
       'ad_completed',
       'ad_offer_shown',
       'floor_reached',
+      'page_open',
       'run_end',
       'run_start',
       'screen_view',
@@ -51,6 +53,17 @@ describe('the vocabulary', () => {
     // An id, not an enum of the catalog: a client a chapter ahead of the server keeps the field.
     expect(coerceProp(EVENTS.run_end.chapter, 'a_chapter_this_build_has_never_heard_of')).toBe('a_chapter_this_build_has_never_heard_of');
     expect(coerceProp(EVENTS.run_end.chapter, '<script>')).toBeUndefined();
+  });
+
+  it('gives the visit events exactly these fields (privacy.html names each)', () => {
+    expect(Object.keys(EVENTS.session_start).sort()).toEqual(['boot_ms', 'browser', 'device', 'os', 'source', 'storage']);
+    expect(Object.keys(EVENTS.session_end).sort()).toEqual(['active_s', 'duration_s']);
+    expect(Object.keys(EVENTS.active_time)).toEqual(['active_s']);
+    expect(Object.keys(EVENTS.page_open)).toEqual([]);
+    // A referrer host is folded into the id alphabet; anything else is dropped, not stored.
+    expect(coerceProp(EVENTS.session_start.source, 'ref:www.reddit.com')).toBe('ref:www.reddit.com');
+    expect(coerceProp(EVENTS.session_start.source, 'ref:a b')).toBeUndefined();
+    expect(coerceProp(EVENTS.session_start.device, 'toaster')).toBeUndefined();
   });
 
   it('names the three build targets and nothing else', () => {
@@ -96,8 +109,11 @@ describe('the vocabulary', () => {
   });
 
   it('holds no event with more fields than a batch can carry meaning for', () => {
+    // `session_start` is the one exception, and a bounded one: it is sent once per visit,
+    // and every field on it is a property of the VISIT (where from, what on, how long the
+    // boot took) that the rollups split by. A per-action event never needs that many.
     for (const [name, spec] of Object.entries(EVENTS)) {
-      expect(Object.keys(spec).length, name).toBeLessThanOrEqual(4);
+      expect(Object.keys(spec).length, name).toBeLessThanOrEqual(name === 'session_start' ? 6 : 4);
     }
   });
 });
