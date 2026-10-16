@@ -77,6 +77,16 @@ describe('readPaddleConfig', () => {
     });
     expect(cfg).toMatchObject({ webhookSecret: 's', apiKey: 'k', apiBase: PADDLE_SANDBOX_API });
     expect(cfg.priceErrors).toHaveLength(1);
+    expect(cfg.client).toBeUndefined();
+  });
+
+  it('reads the Paddle.js client token with the SAME environment as the API host', () => {
+    expect(readPaddleConfig({ BB_PADDLE_CLIENT_TOKEN: ' test_abc ', BB_PADDLE_ENVIRONMENT: 'sandbox' }).client).toEqual({
+      token: 'test_abc',
+      environment: 'sandbox',
+    });
+    expect(readPaddleConfig({ BB_PADDLE_CLIENT_TOKEN: 'live_abc' }).client).toEqual({ token: 'live_abc', environment: 'production' });
+    expect(readPaddleConfig({ BB_PADDLE_CLIENT_TOKEN: '  ' }).client).toBeUndefined();
   });
 });
 
@@ -91,14 +101,18 @@ describe('platform plumbing', () => {
     expect(res.ok === false && res.reason).toContain('push-only');
   });
 
-  it('the payment block needs a price id, and carries the order id for custom_data', () => {
+  it('the payment block needs a price id AND a client token, and carries the order id for custom_data', () => {
     const order = { id: 'o-1', sku: 'bp.cannon', amountCents: 1800, currency: 'CNY' };
+    const client = { token: 'test_tok', environment: 'sandbox' as const };
     const bare = paymentParamsFor('paddle', order, false);
     expect(bare.configured).toBe(false);
     expect(bare.note).toContain('priceId');
-    expect(paymentParamsFor('paddle', order, false, CANNON)).toMatchObject({
+    expect(paymentParamsFor('paddle', order, false, { priceId: CANNON }).configured).toBe(false);
+    expect(paymentParamsFor('paddle', order, false, { client }).configured).toBe(false);
+    expect(paymentParamsFor('paddle', order, false, { priceId: CANNON, client })).toEqual({
       configured: true,
-      params: { priceId: CANNON, customDataOrderId: 'o-1' },
+      params: { priceId: CANNON, customDataOrderId: 'o-1', clientToken: 'test_tok', environment: 'sandbox' },
+      note: expect.stringContaining('customData'),
     });
   });
 

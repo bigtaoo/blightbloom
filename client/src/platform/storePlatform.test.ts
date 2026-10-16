@@ -45,7 +45,7 @@ describe('isWebStoreHost', () => {
 
 describe('detectStorePlatform', () => {
   it('returns the web processor on a browser', () => {
-    expect(detectStorePlatform(WEB)).toBe('stripe');
+    expect(detectStorePlatform(WEB)).toBe('paddle');
   });
 
   it('returns NULL on the mini-game runtime — the entry must not exist there', () => {
@@ -75,15 +75,15 @@ describe('detectStorePlatform', () => {
   it.each(['', '?store=', '?store=stripe', '?storedev=1', '?other=dev'])(
     'ignores a search string that is not the opt-in (%s)',
     (search) => {
-      expect(detectStorePlatform({ ...WEB, location: { search } })).toBe('stripe');
+      expect(detectStorePlatform({ ...WEB, location: { search } })).toBe('paddle');
     },
   );
 
   it('survives a host with a location that carries no search at all', () => {
     // The mini-game's compat `location` shape, minus the `wx` that would have caught it —
     // this is the guard being a property of the function rather than of the caller.
-    expect(detectStorePlatform({ document: {}, fetch: () => {}, location: {} })).toBe('stripe');
-    expect(detectStorePlatform({ document: {}, fetch: () => {} })).toBe('stripe');
+    expect(detectStorePlatform({ document: {}, fetch: () => {}, location: {} })).toBe('paddle');
+    expect(detectStorePlatform({ document: {}, fetch: () => {} })).toBe('paddle');
   });
 });
 
@@ -107,11 +107,11 @@ describe('detectStorePlatform — the game-portal host', () => {
   it('still sells on the same runtime when the host is not declared a portal', () => {
     // The control this pair needs to mean anything: the host object is IDENTICAL in both
     // cases, so the only thing that changed the answer is the declaration.
-    expect(detectStorePlatform(WEB, 'web')).toBe('stripe');
+    expect(detectStorePlatform(WEB, 'web')).toBe('paddle');
   });
 
   it('defaults to the process-wide declaration when none is passed', () => {
-    expect(detectStorePlatform(WEB)).toBe('stripe');
+    expect(detectStorePlatform(WEB)).toBe('paddle');
     setHostKind('crazygames');
     try {
       expect(detectStorePlatform(WEB)).toBeNull();

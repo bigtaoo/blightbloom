@@ -218,6 +218,7 @@ export function createBillsvcServer(opts: BillsvcServerOptions): BillsvcServer {
       newOrderId: opts.newOrderId,
       devStubOn: devStubEnabled(env),
       paddlePrices: paddle.prices,
+      paddleClient: paddle.client,
     });
   const pump = new DeliveryPump({
     matchsvcUrl: controlPlaneUrl(),

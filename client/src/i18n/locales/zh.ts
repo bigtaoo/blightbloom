@@ -146,6 +146,9 @@ export const zh: Translations<typeof en> = {
     orderFailed: '下单失败，没有产生任何扣款。',
     paymentFailed: '支付未完成，没有产生任何扣款。',
     pending: '仍在等待支付结果。若支付成功，下次登录时物品会出现。',
+    checkoutClosed: '支付在完成前被关闭。如果你已付款，下次登录时物品会出现。',
+    checkoutUnavailable: '无法打开支付窗口，请检查网络或广告拦截插件。没有产生任何扣款。',
+    confirming: '已收到 {item} 的付款，正在向服务器确认…',
     listFailed: '商店载入失败，请检查网络后重试。',
   },
   hud: {

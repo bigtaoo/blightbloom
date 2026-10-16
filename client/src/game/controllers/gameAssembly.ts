@@ -70,6 +70,7 @@ import { ScreenNav } from './ScreenNav';
 import { AccountPrompt } from '../ui/AccountPrompt';
 import { StorePurchase } from './StorePurchase';
 import { detectStorePlatform } from '../../platform/storePlatform';
+import { PaddleCheckout, browserPaddleHost } from '../../platform/paddleCheckout';
 import { resumableRunSummary } from '../match/resumableRun';
 import { pullAccountMeta } from '../../meta/accountSync';
 import { craftableNow } from '../../meta';
@@ -143,9 +144,13 @@ export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGa
   // rule 3.1.1 for an iOS build, no WeChat merchant credentials for the mini-game) — the
   // point of resolving it here is that no screen ever gets to have an opinion about it.
   const storePlatform = detectStorePlatform();
+  // Constructed eagerly, loaded lazily: `browserPaddleHost` adds Paddle.js's script tag only
+  // on the first BUY, and a host with no store never reaches it.
+  const paddle = new PaddleCheckout(browserPaddleHost());
   const storePurchase = new StorePurchase({
     baseUrl: () => p.run.matchBaseUrl,
     platform: () => storePlatform,
+    checkout: async (platform, payment) => (platform === 'paddle' ? paddle.open(payment.params) : 'completed'),
     // Unlike `OnlineMatch.syncMetaWithSession`, this deliberately does NOT swallow its
     // failure: a delivered purchase whose ownership could not be re-read has its own
     // player-facing line, and swallowing the error here would make that line unreachable.

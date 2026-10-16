@@ -258,6 +258,8 @@ describe('every refusal reaches the player as a line', () => {
     ['a rejected order', { api: { createOrder: vi.fn(async () => { throw new Error('unknown sku'); }) } } as Over, 'store.orderFailed'],
     ['a payment that failed', { poll: ['failed'] } as Over, 'store.paymentFailed'],
     ['a poll that timed out', { poll: ['created'] } as Over, 'store.pending'],
+    ['a checkout closed unpaid', { deps: { checkout: async () => 'closed' } } as Over, 'store.checkoutClosed'],
+    ['a checkout that could not open', { deps: { checkout: async () => 'unavailable' } } as Over, 'store.checkoutUnavailable'],
   ] as const)('%s shows its own line and plays ui.denied', async (_why, over, key) => {
     const log = cueLog();
     const f = await shown(over);
@@ -272,6 +274,7 @@ describe('every refusal reaches the player as a line', () => {
     // land on the same string, which would make the exhaustiveness worth nothing.
     const lines = ([
       'store.notConfigured', 'store.orderFailed', 'store.paymentFailed', 'store.pending',
+      'store.checkoutClosed', 'store.checkoutUnavailable',
       'store.loginRequired', 'store.unavailableHere', 'store.listFailed', 'store.busy',
     ] as const).map((k) => t(k));
     expect(new Set(lines).size).toBe(lines.length);
@@ -407,5 +410,31 @@ describe('i18n (design/17-i18n.md)', () => {
     expect(f.ui.backBtn.label.text).toBe('锻造场');
     expect(f.ui.backBtn.label.text).not.toContain('←');
     expect(f.ui.prevPageBtn.label.text).toBe('‹ 上一页');
+  });
+});
+
+describe('the pending state (design/22 §1.1)', () => {
+  it('says the payment is being confirmed while the server is polled', async () => {
+    let f!: Fixture;
+    const during: string[] = [];
+    f = await shown({
+      api: { fetchOrder: vi.fn(async () => { during.push(f.ui.statusText.text); return order('settled'); }) },
+    });
+    const item = rowItem(f, 0);
+    await tapRow(f, 0);
+    expect(during).toEqual([t('store.confirming', { item })]);
+    expect(f.ui.statusText.text).toBe(t('store.purchased', { item }));
+  });
+
+  it('does not repaint a screen the player already left', async () => {
+    let f!: Fixture;
+    f = await shown({ deps: { checkout: async () => { f.screen.hide(); return 'completed'; } } });
+    const buying = t('store.purchasing', { item: rowItem(f, 0) });
+    f.ui.rows[0]!.onTap?.();
+    // The purchase runs to the end behind the hidden screen; neither the pending line nor the
+    // result may land on it.
+    await vi.waitFor(() => expect(f.purchase.inFlight).toBe(false));
+    expect(f.api.fetchOrder).toHaveBeenCalled();
+    expect(f.ui.statusText.text).toBe(buying);
   });
 });

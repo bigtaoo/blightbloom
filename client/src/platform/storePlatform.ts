@@ -2,7 +2,8 @@
 //
 // ## Why this is a hard gate and not polish
 //
-// The web payment processor (`stripe` in `server/src/billsvc/iap/`) is WEB ONLY. Shipping a
+// The web payment processor (`paddle` in `server/src/billsvc/paddle/`, design/22 §1.1 — it
+// replaced the never-configured `stripe` placeholder as the web answer on 2026-10-16) is WEB ONLY. Shipping a
 // web checkout inside an iOS store build breaks App Store rule 3.1.1, which requires
 // in-app purchase of digital goods to go through StoreKit and forbids steering the player
 // anywhere else — and a store button that merely LOOKS unavailable is still a store button
@@ -28,7 +29,7 @@ import { getHostKind, isPortalHost, type HostKind } from './hostKind';
 
 /** The platforms this client can start a purchase on. Values are the `IapPlatform` strings
  * `POST /store/order` takes; anything not listed here is a platform the client never names. */
-export type StorePlatform = 'stripe' | 'dev';
+export type StorePlatform = 'paddle' | 'dev';
 
 /** The ambient globals this gate reads. Structural so a test passes a plain object. */
 export interface StoreHost {
@@ -92,5 +93,5 @@ export function detectStorePlatform(
   if (typeof search === 'string' && typeof URLSearchParams !== 'undefined') {
     if (new URLSearchParams(search).get('store') === 'dev') return 'dev';
   }
-  return 'stripe';
+  return 'paddle';
 }

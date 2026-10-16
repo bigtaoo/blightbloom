@@ -146,6 +146,9 @@ export const es: Translations<typeof en> = {
     orderFailed: 'No se pudo iniciar la compra. No se ha cobrado nada.',
     paymentFailed: 'El pago no se completó. No se ha cobrado nada.',
     pending: 'Seguimos esperando el pago. Si se completa, el objeto aparecerá la próxima vez que inicies sesión.',
+    checkoutClosed: 'Se cerró el pago antes de completarse. Si llegaste a pagar, el objeto aparecerá la próxima vez que inicies sesión.',
+    checkoutUnavailable: 'No se pudo abrir la ventana de pago. Revisa tu conexión o tu bloqueador de anuncios. No se ha cobrado nada.',
+    confirming: 'Pago de {item} recibido: confirmando con el servidor…',
     listFailed: 'No se pudo cargar la tienda. Comprueba tu conexión e inténtalo de nuevo.',
   },
   hud: {
