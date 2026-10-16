@@ -553,3 +553,34 @@ describe('CrazyGamesSdk.instantMultiplayer', () => {
     ).toBe(false);
   });
 });
+
+describe('CrazyGamesSdk.init memoization and the data module', () => {
+  it('runs the SDK handshake once however many callers await it', async () => {
+    const init = vi.fn(() => Promise.resolve());
+    const sdk = fastSdk({ CrazyGames: { SDK: fakeSdk({ init }) } });
+    const both = await Promise.all([sdk.init(), sdk.init()]);
+    expect(both).toEqual(['crazygames', 'crazygames']);
+    expect(await sdk.init()).toBe('crazygames');
+    expect(init).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands out SDK.data only once an enabled environment is known', async () => {
+    const data = { getItem: vi.fn() };
+    const sdk = fastSdk({ CrazyGames: { SDK: fakeSdk({ data }) } });
+    expect(sdk.dataModule()).toBeNull();
+    await sdk.init();
+    expect(sdk.dataModule()).toBe(data);
+  });
+
+  it('is null on a disabled page even when the script carries the module', async () => {
+    const sdk = fastSdk({ CrazyGames: { SDK: fakeSdk({ environment: 'disabled', data: { getItem: vi.fn() } }) } });
+    await sdk.init();
+    expect(sdk.dataModule()).toBeNull();
+  });
+
+  it('is null when the script has no data module', async () => {
+    const sdk = fastSdk({ CrazyGames: { SDK: fakeSdk() } });
+    await sdk.init();
+    expect(sdk.dataModule()).toBeNull();
+  });
+});

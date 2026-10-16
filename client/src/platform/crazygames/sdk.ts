@@ -133,6 +133,10 @@ export interface CgSdkShape {
     addAuthListener?: (listener: (user: unknown) => void) => unknown;
     removeAuthListener?: (listener: (user: unknown) => void) => unknown;
   };
+  /** The data module (v3): a `localStorage`-shaped store the portal keeps per account and
+   *  syncs across devices. `portalStorage.ts` adopts it; it THROWS when the submission's
+   *  "Progress Save" toggle is off (`dataModuleDisabled`), hence the probe there. */
+  data?: { getItem?: (k: string) => unknown; setItem?: (k: string, v: string) => unknown; removeItem?: (k: string) => unknown };
   banner?: {
     requestBanner?: (opts: { id: string; width: number; height: number }) => unknown;
     requestResponsiveBanner?: (containerId: string) => unknown;
@@ -169,6 +173,7 @@ export class CrazyGamesSdk {
   private sdk: CgSdkShape | null = null;
   private env: CgEnvironment = 'disabled';
   private adblock: boolean | null = null;
+  private initOnce: Promise<CgEnvironment> | null = null;
 
   constructor(
     private readonly global: CgGlobal = globalThis as CgGlobal,
@@ -182,8 +187,19 @@ export class CrazyGamesSdk {
    *
    * Resolves `'disabled'` rather than rejecting on every failure path there is, so the one
    * caller (`main.crazygames.ts`) needs no error handling and boot has no new way to fail.
+   * Memoized: the entry awaits it to adopt `SDK.data` and `PortalSession.start()` awaits it
+   * again, and the SDK's own `init()` must run once.
    */
-  async init(): Promise<CgEnvironment> {
+  init(): Promise<CgEnvironment> {
+    return (this.initOnce ??= this.runInit());
+  }
+
+  /** The data module, once `init()` has found an enabled environment; `null` otherwise. */
+  dataModule(): CgSdkShape['data'] | null {
+    return this.isEnabled() ? (this.sdk?.data ?? null) : null;
+  }
+
+  private async runInit(): Promise<CgEnvironment> {
     const deadline = this.now() + SDK_WAIT_MS;
     // 1. Wait for the script. The failure being waited out is a BLOCKED request (an
     //    adblocker, an offline machine), which never arrives at all.
