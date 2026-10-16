@@ -856,7 +856,7 @@ spine can answer.
 | --- | --- | --- |
 | **1 — Validation** | Prove the gameplay and the art actually work. Content stays deliberately thin. | **Closed 2026-09-17**, scoped to TECHNICAL validation — see below |
 | **2 — Polish** | Tune the core experience and the systems around it, on a loop that has been proven. | **Open since 2026-09-17**, starting at the front door |
-| **3 — Launch** | Ship it. Payments go live (Phase 9), store pages, real acquisition. | Not started |
+| **3 — Launch** | Ship it. Payments go live (Phase 9), store pages, real acquisition. | Not started — what it is missing: [22-launch-readiness.md](22-launch-readiness.md) |
 
 **What Stage 1 has answered.** Map and character presentation (one 5-floor hand-authored PvE
 level, one 60-room hand-authored arena, three rigged orb-core characters, real art on everything
@@ -915,6 +915,13 @@ local guest progress, a stored token nothing ever verifies, and a guest ladder k
 every match (`design/16`, "Three holes"). Work log:
 [volume 70](roadmap/70-2026-09-17-home-and-login-design.md), which also records the half of that
 design pass that was reversed on reflection.
+
+**What Stage 3 is missing (audited 2026-10-16).** [22-launch-readiness.md](22-launch-readiness.md)
+lists it per channel and by who can close it. Two of its gaps are recorded nowhere else: the web
+client still asks for `stripe` and never opens Paddle.js, so Phase 9 has no client half; and the
+WeChat build has no revenue path at all — no store and no ad unit — which decides how it must be
+filed. The rest is owner work: Paddle credentials, the CrazyGames upload, WeChat's filings and
+device checklist, and a closed test with players who are not the developer.
 
 Deliberately **not** Stage 1 blockers: Phase 9 payments (Stage 3 by definition), **B3**
 (skippable rooms), **B4** (the depth-curve fields), and **B2** (what a chest or a counter
