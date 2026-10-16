@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { pageOpenBeacon } from '../build/pageOpenBeacon.mjs';
 import { engineAlias } from '../build/ddAlias.mjs';
 import { runtimeChunkPreload } from '../build/runtimeChunkPreload.mjs';
 import { assetVersionPlugin } from '../build/assetVersionPlugin.mjs';
@@ -135,8 +136,11 @@ export default defineConfig({
   // paths this target requires come out right without a second list.
   // The same content-hashed art URLs too: a portal serves the upload through its own CDN, with
   // caching this repository does not control at all.
+  // The `page_open` beacon too, with the backend baked in from the default above — this is the
+  // host whose "conversion to gameplay" the platform grades (build/pageOpenBeacon.mjs).
   plugins: [
     portalHtml(),
+    pageOpenBeacon({ host: 'crazygames', baseUrl: process.env.VITE_MATCHSVC_URL }),
     runtimeChunkPreload(),
     assetVersionPlugin({ publicDir: fileURLToPath(new URL('./public', import.meta.url)) }),
   ],

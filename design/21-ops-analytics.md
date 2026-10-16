@@ -151,8 +151,10 @@ First cut:
 
 | Event | Fields beyond the common ones | What it is for |
 |---|---|---|
-| `session_start` | storage: `stored` / `new` / `unpersisted` (added §2.8) | DAU, the retention cohort; whether the install id survived |
-| `session_end` | duration seconds (bounded) | Session length; the exit half of the funnel |
+| `session_start` | storage: `stored` / `new` / `unpersisted` (added §2.8); source, device, os, browser, boot_ms (added §2.9) | DAU, the retention cohort; whether the install id survived; who came from where, on what |
+| `session_end` | duration seconds (bounded); visible seconds (added §2.9) | Session length; the exit half of the funnel |
+| `active_time` | visible seconds so far (added §2.9) | Playtime that survives a visit killed without `pagehide` |
+| `page_open` | — (added §2.9; sent by `index.html`, not the bundle) | The visitor who left before the game booted |
 | `run_start` | character | Q2's second step; whether the roster is used |
 | `floor_reached` | floor (added §2.8) | How deep a run got when it ended with no `run_end` (a closed tab) |
 | `run_end` | outcome, floor reached, duration | The difficulty curve, and where runs actually end |
@@ -453,6 +455,73 @@ under a throwing getter (it fails against the old line).
   viewers persist at all. It is a boot-ordering change (the stores are read before the SDK
   initialises) — `new_unpersisted{host=crazygames}` is now the number that says whether it is
   worth doing.
+
+### 2.9 Launch metrics: where they came from, whether the page ever booted, how long they played (2026-10-16)
+
+**Built 2026-10-16 in `feat/analytics-gaps`; not yet deployed.** The four measurement gaps
+design/22 (launch readiness) names before any traffic is bought or a portal launch is
+attempted. CrazyGames grades a Basic Launch on conversion to gameplay, average playtime and
+D1/D7, and §2.7–2.8 could answer only the last of the three — and could not say which channel
+or device a number came from.
+
+**1. Traffic source** (`client/src/net/visitContext.ts`). `session_start.source` is a campaign
+tag (`?src=` first, then `utm_source`, lower-cased, refused rather than truncated if it is not
+a short id) or `ref:<referrer host>` without `www.`; absent for a direct visit or one referred
+by the game's own site. A referrer is only ever reduced to its HOST — the path of a Reddit
+link is somebody's post. WeChat has no referrer and no link to tag, so it sends none.
+
+**2. Device split** (same file). `device` (phone / tablet / desktop), `os` and `browser`
+families, each a closed enum, from the user agent plus `maxTouchPoints` — the ordering rules
+exist because the UAs nest (every Chromium says Safari, Edge and WeChat say Chrome, an iPadOS
+13+ Safari says Macintosh and gives itself away only by touch). WeChat reads
+`wx.getDeviceInfo().platform` instead (`platform/wechat/weChatVisibility.ts`). Never the raw
+user agent: the families are the whole of what is stored.
+
+**3. The page-open beacon** (`build/pageOpenBeacon.mjs`). A Vite plugin inlines a ~600-byte ES5
+script straight after `<meta charset>` in the web and portal builds' `index.html`. It sends
+`page_open` before the bundle is even requested, and parks `window.__bbOpen = {session, at}`;
+`analyticsInstall.ts` adopts that session id, so the game's own events join the open by visit,
+and `session_start.boot_ms` is measured from the beacon's clock — the whole wait the player sat
+through, download included. The beacon is inert unless the matchsvc origin is `https:`, so
+no dev run sends one. `page_open` never creates a `dailyActive` document (`store.ts`'s
+`PRE_BOOT_EVENT`): a page that never booted is not an install, and on a first visit its
+`install` is the visit id, because no install id exists yet. The open funnel
+(`server/src/analytics/pageOpens.ts`) is therefore per VISIT: `open_funnel{host,step}` over
+open → boot → menu → run_start, and `open_boot_ms{host,q}` at p50 / p90. On a day with no
+opens, nothing is written: there are no zeros.
+
+**4. Day-0 playtime** (`client/src/net/activeClock.ts`, `server/src/analytics/newInstallSegments.ts`).
+Playtime means VISIBLE time: a tab left behind another for an hour is not an hour of play.
+The client counts it with a clock that pauses on `visibilitychange` (WeChat: `onHide` /
+`onShow`). It reports the running total as `active_time` once a minute while it grows, on a
+hide, and on `session_end.active_s`. The reports are cumulative because `session_end` is the
+least reliable event there is (a mobile browser killed in the background fires no
+`pagehide`), so the server takes each visit's MAX and sums an install's first-day visits.
+An install with no report at all is UNMEASURED, not zero. `new_playtime_measured{host}` is
+written beside `new_playtime_avg_s`, `new_playtime_p50_s` and the histogram
+`new_playtime{host,bucket}` (lower bounds 0, 1, 3, 5, 10, 20, 30 and 60 minutes), and all four are gauges.
+
+**Segments.** `new_seg{host,dim,value,stat}` splits a day's new installs by each of the four
+`session_start` dimensions. It stores COUNTS, not rates: installs, every funnel step, the
+measured playtime's sum and count, and the D1/D7 returns, written as those days complete. At
+tens of installs a day a per-day rate per segment is noise, and pooled counts are not. More
+than 20 sources on one day fold the smallest into `other`. A pre-split client, or a host that
+cannot know, reads `unknown` (`direct` for source). These rows are never gauges.
+
+**Read side.** The console's retention tab gains a "Launch metrics" card, built by
+`server/src/adminsvc/views/launch.ts` and `page/launch.ts` and honouring the same `?host=`. It
+has a per-day table (opens, the open funnel as % of opens, boot p50 / p90, measured installs,
+avg and median playtime, the bucket histogram) and one table per dimension. Those tables pool
+the last seven days, and each D1/D7 rate is taken only over the days whose return is already
+known.
+
+**Privacy.** The policy's gameplay-statistics row (`client/public/privacy.html`) now names
+the page opening, the device type and OS and browser family, the referring site's domain or
+campaign tag, and the time the game was visible — dated 2026-10-16.
+
+**Not done:** deploying it. Also not done: a Grafana panel for the open
+funnel and the segments, which the console covers for now. And no attribution beyond the first
+visit: an install's segment is its first day's first `session_start`.
 
 ## 3. Phase B — the read-only console
 

@@ -152,8 +152,10 @@ describe('vite.crazygames.config.js', () => {
     // Vite's `base` so the relative paths this target requires come out right.
     // `dd-asset-version` is expected too: it ships no file, only a build define that puts a
     // content hash on every art URL (build/assetVersionPlugin.mjs), and the portal's CDN caches
-    // a same-named, regraded image exactly as ours does.
-    expect(names).toEqual(['crazygames-html', 'runtime-chunk-preload', 'dd-asset-version']);
+    // a same-named, regraded image exactly as ours does. `page-open-beacon` is expected as well:
+    // this is the host whose conversion to gameplay the platform grades, and the beacon is what
+    // counts the visitor who leaves during the download (build/pageOpenBeacon.mjs).
+    expect(names).toEqual(['crazygames-html', 'page-open-beacon', 'runtime-chunk-preload', 'dd-asset-version']);
   });
 });
 

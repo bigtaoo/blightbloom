@@ -59,6 +59,9 @@ import {
   type EventDoc,
 } from './db';
 
+/** The one event that never marks an install active — see {@link writeBatch}. */
+export const PRE_BOOT_EVENT = 'page_open';
+
 /** What a write reported. `events` is the number of documents stored, which the route
  *  echoes back as `accepted` so a client can tell "refused" from "stored" without a 4xx. */
 export interface WriteResult {
@@ -92,7 +95,13 @@ export async function writeBatch(db: Db, batch: IngestedBatch, accountId: string
   }));
   // Deduped in memory first: a 100-event batch is usually one day, and one upsert per event
   // would be 99 no-op writes inside the transaction.
-  const days = [...new Set(docs.map((d) => d.day))];
+  //
+  // `page_open` is excluded (design/21 §2.9): it is sent by `index.html` before the game has
+  // booted, and a page that never booted is not an active install — counting it would put
+  // every visitor who bounced off the loading screen into the day-0 cohort that retention
+  // and the first-day funnel are both built on, with nothing else of theirs to find. Its
+  // `install` may not even be one (the beacon uses the visit id when no install id exists).
+  const days = [...new Set(docs.filter((d) => d.name !== PRE_BOOT_EVENT).map((d) => d.day))];
 
   const session = db.client.startSession();
   try {
