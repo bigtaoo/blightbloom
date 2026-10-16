@@ -146,6 +146,9 @@ export const de: Translations<typeof en> = {
     orderFailed: 'Der Kauf konnte nicht gestartet werden. Es wurde nichts abgebucht.',
     paymentFailed: 'Die Zahlung ist fehlgeschlagen. Es wurde nichts abgebucht.',
     pending: 'Warte weiterhin auf die Zahlung. Geht sie durch, erscheint der Gegenstand bei der nächsten Anmeldung.',
+    checkoutClosed: 'Kasse geschlossen, bevor die Zahlung abgeschlossen war. Falls du bezahlt hast, erscheint der Gegenstand bei der nächsten Anmeldung.',
+    checkoutUnavailable: 'Das Zahlungsfenster konnte nicht geöffnet werden. Prüfe deine Verbindung oder deinen Werbeblocker. Es wurde nichts abgebucht.',
+    confirming: 'Zahlung für {item} erhalten – wird mit dem Server bestätigt …',
     listFailed: 'Der Shop konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.',
   },
   hud: {

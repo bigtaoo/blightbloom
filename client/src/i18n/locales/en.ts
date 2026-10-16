@@ -129,11 +129,8 @@ export const en = {
     continueRun: 'CONTINUE RUN ▸',
     savedRunLine: 'Saved run: floor {floor}, {m}:{ss} played — CONTINUE to resume it, START RUN to discard it',
   },
-  // The store (design/19-server-platform.md §4, design/14's bounded direct purchase).
-  // Two rules shape this copy, and both are about not lying to someone about money:
-  // every refusal states plainly that nothing was charged, and `purchasedNoRefresh` —
-  // delivered, but this client could not re-read it — must NOT read as a failure, because
-  // the purchase stands.
+  // The store (design/19 §4). Never lie about money: every refusal says whether anything was
+  // charged, and `purchasedNoRefresh` (delivered, not re-read) must NOT read as a failure.
   store: {
     title: 'STORE',
     back: 'FORGE',
@@ -156,6 +153,9 @@ export const en = {
     orderFailed: 'Could not start the purchase. Nothing was charged.',
     paymentFailed: 'The payment did not go through. Nothing was charged.',
     pending: 'Still waiting on the payment. If it goes through, the item appears next time you log in.',
+    checkoutClosed: 'Checkout closed before the payment finished. If you did pay, the item appears next time you log in.',
+    checkoutUnavailable: 'Could not open the payment window. Check your connection or ad blocker. Nothing was charged.',
+    confirming: 'Payment received for {item} — confirming with the server…',
     listFailed: 'Could not load the store. Check your connection and try again.',
   },
   hud: {

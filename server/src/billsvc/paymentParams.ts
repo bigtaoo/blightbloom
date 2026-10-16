@@ -17,6 +17,7 @@
  */
 import { devStubReceiptFor } from './iap/devStub';
 import type { IapPlatform } from './iap/types';
+import type { PaddleClient } from './paddle/config';
 
 export interface PaymentParams {
   /** False when this platform has no usable credentials — the client must not proceed. */
@@ -38,14 +39,14 @@ const NOT_CONFIGURED = (platform: string, fields: readonly string[]): PaymentPar
 /**
  * @param devStubOn `devStubEnabled(env)` from `iap/factory.ts` — passed in rather than
  * read here so this file stays a pure dispatch and the policy lives in exactly one place.
- * @param paddlePriceId the SKU's Paddle price id (`paddle/config.ts`), when one is
- * configured. Same reasoning: resolved by the caller, so this file reads no env.
+ * @param paddle the SKU's Paddle price id and the Paddle.js client (`paddle/config.ts`), each
+ * when configured. Same reasoning: resolved by the caller, so this file reads no env.
  */
 export function paymentParamsFor(
   platform: IapPlatform,
   order: { id: string; sku: string; amountCents: number; currency: string },
   devStubOn: boolean,
-  paddlePriceId?: string,
+  paddle: { priceId?: string; client?: PaddleClient } = {},
 ): PaymentParams {
   switch (platform) {
     case 'paddle':
@@ -56,10 +57,19 @@ export function paymentParamsFor(
       // (ROADMAP 9.2: an unknown price id fails closed). `orderId` rides in `customData`
       // and comes back on the signed `transaction.completed` as `custom_data.orderId`,
       // the join back to this order (design/19 §9, funny trap 2 — snake_case on the wire).
-      if (!paddlePriceId) return NOT_CONFIGURED('paddle', ['priceId', 'customData.orderId']);
+      // The client token is the other half: Paddle.js cannot open without it, and it must
+      // belong to the same environment as the price id, so both come from one config.
+      if (!paddle.priceId || !paddle.client) {
+        return NOT_CONFIGURED('paddle', ['priceId', 'clientToken', 'environment', 'customData.orderId']);
+      }
       return {
         configured: true,
-        params: { priceId: paddlePriceId, customDataOrderId: order.id },
+        params: {
+          priceId: paddle.priceId,
+          customDataOrderId: order.id,
+          clientToken: paddle.client.token,
+          environment: paddle.client.environment,
+        },
         note: 'paddle: open Paddle.js checkout with items [{ priceId, quantity: 1 }] and customData { orderId }',
       };
     case 'dev':

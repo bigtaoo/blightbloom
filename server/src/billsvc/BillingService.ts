@@ -55,7 +55,7 @@ import { findSku, listSkus, type SkuDef } from './skus';
 import { paymentParamsFor, type PaymentParams } from './paymentParams';
 import { ledgerOnlyDelivery, type EntitlementDelivery } from './delivery';
 import { asIapPlatform, type IapPlatform, type IapVerifyResult, type ReceiptVerifier } from './iap/types';
-import type { PaddlePriceTable } from './paddle/config';
+import type { PaddleClient, PaddlePriceTable } from './paddle/config';
 import { chargedFields, toLedgerView, toOrderView, type LedgerView, type OrderView } from './orderViews';
 
 export type { LedgerView, OrderState, OrderView } from './orderViews';
@@ -106,6 +106,8 @@ export interface BillingServiceDeps {
   devStubOn?: boolean;
   /** Paddle's sku ↔ price id table (`paddle/config.ts`), for `createOrder`'s payment block. */
   paddlePrices?: Pick<PaddlePriceTable, 'priceFor'>;
+  /** Paddle.js's client token and environment, carried in the same payment block. */
+  paddleClient?: PaddleClient;
 }
 
 /** Thrown inside the settlement transaction to roll it back with a named reason.
@@ -130,6 +132,7 @@ export class BillingService {
   private readonly newOrderId: () => string;
   private readonly devStubOn: boolean;
   private readonly paddlePrices?: Pick<PaddlePriceTable, 'priceFor'>;
+  private readonly paddleClient?: PaddleClient;
 
   constructor(deps: BillingServiceDeps) {
     this.db = deps.db;
@@ -140,6 +143,7 @@ export class BillingService {
     this.newOrderId = deps.newOrderId ?? (() => randomUUID());
     this.devStubOn = deps.devStubOn ?? false;
     this.paddlePrices = deps.paddlePrices;
+    this.paddleClient = deps.paddleClient;
   }
 
   listSkus(): readonly SkuDef[] {
@@ -187,7 +191,10 @@ export class BillingService {
       createdAt,
       settledAt: null,
     };
-    return { ok: true, order, payment: paymentParamsFor(platform, order, this.devStubOn, this.paddlePrices?.priceFor(def.sku)) };
+    return { ok: true, order, payment: paymentParamsFor(platform, order, this.devStubOn, {
+      priceId: this.paddlePrices?.priceFor(def.sku),
+      client: this.paddleClient,
+    }) };
   }
 
   /** The `GET /order/:id` poll view. Says what the SERVER believes, which is the only input. */

@@ -146,6 +146,63 @@ describe('payment.configured === false', () => {
   });
 });
 
+describe('the checkout handoff (design/22 §1.1)', () => {
+  const PAID = { configured: true, params: { priceId: 'pri_1', customDataOrderId: 'ord-1', clientToken: 'test_t' } };
+  const paddleOrder = { api: { createOrder: vi.fn(async () => ({ order: order('created'), payment: PAID })) } };
+
+  it('hands the platform and the payment block to the checkout, then polls', async () => {
+    const checkout = vi.fn(async () => 'completed' as const);
+    const onConfirming = vi.fn();
+    const t = make({ ...paddleOrder, deps: { platform: () => 'paddle', checkout } });
+    expect(await t.p.buy(SKU.sku, { onConfirming })).toEqual({ ok: true, sku: SKU.sku, refreshed: true });
+    expect(checkout).toHaveBeenCalledWith('paddle', PAID);
+    expect(onConfirming).toHaveBeenCalledTimes(1);
+    expect(t.api.fetchOrder).toHaveBeenCalled();
+  });
+
+  it('the pending state is announced BEFORE the first poll, not after', async () => {
+    const seq: string[] = [];
+    const t = make({
+      api: { fetchOrder: vi.fn(async () => { seq.push('poll'); return order('settled'); }) },
+      deps: { checkout: async () => 'completed' },
+    });
+    await t.p.buy(SKU.sku, { onConfirming: () => seq.push('confirming') });
+    expect(seq).toEqual(['confirming', 'poll']);
+  });
+
+  it.each([
+    ['closed', 'checkout-closed'],
+    ['unavailable', 'checkout-unavailable'],
+  ] as const)('a checkout that ends %s is %s: nothing is polled, nothing re-read, ui.denied', async (outcome, code) => {
+    const log = cueLog();
+    const onConfirming = vi.fn();
+    const t = make({ deps: { checkout: async () => outcome } });
+    expect(await t.p.buy(SKU.sku, { onConfirming })).toEqual({ ok: false, code });
+    expect(t.api.fetchOrder).not.toHaveBeenCalled();
+    expect(t.refreshOwnership).not.toHaveBeenCalled();
+    expect(onConfirming).not.toHaveBeenCalled();
+    expect(log).toEqual(['ui.denied']);
+    expect(t.p.inFlight).toBe(false);
+  });
+
+  it('is never reached for an order that cannot be paid', async () => {
+    const checkout = vi.fn(async () => 'completed' as const);
+    const t = make({
+      api: { createOrder: vi.fn(async () => ({ order: order('created'), payment: { configured: false, params: {} } })) },
+      deps: { checkout },
+    });
+    expect((await t.p.buy(SKU.sku)).ok).toBe(false);
+    expect(checkout).not.toHaveBeenCalled();
+  });
+
+  it('without a checkout (the dev stub) goes straight to the poll, still announcing it', async () => {
+    const onConfirming = vi.fn();
+    const t = make();
+    expect((await t.p.buy(SKU.sku, { onConfirming })).ok).toBe(true);
+    expect(onConfirming).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('polling the order', () => {
   it('settles, then re-reads what the account owns', async () => {
     const log = cueLog();

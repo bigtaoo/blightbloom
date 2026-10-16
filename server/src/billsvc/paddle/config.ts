@@ -4,7 +4,7 @@
  * which price ids exist or whether a secret is set. Pure: it takes a `BillingEnv` record,
  * never `process.env` directly.
  *
- * The four variables, none of which has a value anywhere in this repository — the owner
+ * The five variables, none of which has a value anywhere in this repository — the owner
  * provisions them through the separate secrets store (design/19 §9, "What is reusable"):
  *
  *   BB_PADDLE_WEBHOOK_SECRET  the notification destination's secret key. Per DESTINATION, so
@@ -16,6 +16,14 @@
  *   BB_PADDLE_ENVIRONMENT     `sandbox` selects sandbox-api.paddle.com; anything else, unset
  *                             included, means the live API. A sandbox key against the live
  *                             host is refused by Paddle, which is the loud direction.
+ *   BB_PADDLE_CLIENT_TOKEN    the client-side token Paddle.js initialises with (`test_…` in
+ *                             sandbox, `live_…` live). PUBLIC by design — Paddle issues it to be
+ *                             embedded in a page — but it is served from here, inside the order's
+ *                             payment block, rather than baked into the client build, because it
+ *                             is bound to one environment exactly like the price ids are: a
+ *                             sandbox token with live price ids opens a checkout that fails.
+ *                             One place, one environment. Unset = every Paddle order reports
+ *                             `configured: false`.
  *   BB_PADDLE_PRICE_IDS       `sku=pri_...,sku=pri_...`. Overrides the static `paddlePriceId`
  *                             in `skus.ts` per environment — sandbox and live price ids differ,
  *                             which is why the env is the primary source and the catalogue
@@ -43,9 +51,17 @@ export interface PaddleConfig {
   webhookSecret?: string;
   apiKey?: string;
   apiBase: string;
+  /** What the browser needs to open the overlay — `undefined` until a token is set. */
+  client?: PaddleClient;
   prices: PaddlePriceTable;
   /** Entries of `BB_PADDLE_PRICE_IDS` that were refused, one operator-readable line each. */
   priceErrors: string[];
+}
+
+/** Paddle.js's `Initialize` token and the environment it belongs to. */
+export interface PaddleClient {
+  token: string;
+  environment: 'sandbox' | 'production';
 }
 
 const PRICE_ID = /^pri_[a-z0-9]+$/i;
@@ -106,10 +122,13 @@ export function buildPaddlePriceTable(raw: string | undefined): { prices: Paddle
 
 export function readPaddleConfig(env: BillingEnv): PaddleConfig {
   const { prices, errors } = buildPaddlePriceTable(env.BB_PADDLE_PRICE_IDS);
+  const sandbox = nonEmpty(env.BB_PADDLE_ENVIRONMENT) === 'sandbox';
+  const token = nonEmpty(env.BB_PADDLE_CLIENT_TOKEN);
   return {
     webhookSecret: nonEmpty(env.BB_PADDLE_WEBHOOK_SECRET),
     apiKey: nonEmpty(env.BB_PADDLE_API_KEY),
-    apiBase: nonEmpty(env.BB_PADDLE_ENVIRONMENT) === 'sandbox' ? PADDLE_SANDBOX_API : PADDLE_LIVE_API,
+    apiBase: sandbox ? PADDLE_SANDBOX_API : PADDLE_LIVE_API,
+    ...(token ? { client: { token, environment: sandbox ? ('sandbox' as const) : ('production' as const) } } : {}),
     prices,
     priceErrors: errors,
   };

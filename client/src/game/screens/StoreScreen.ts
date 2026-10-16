@@ -33,6 +33,8 @@ const PURCHASE_MESSAGE: Record<PurchaseFailure, TranslationKey> = {
   'not-configured': 'store.notConfigured',
   'order-failed': 'store.orderFailed',
   'payment-failed': 'store.paymentFailed',
+  'checkout-closed': 'store.checkoutClosed',
+  'checkout-unavailable': 'store.checkoutUnavailable',
   'timed-out': 'store.pending',
 };
 
@@ -201,7 +203,15 @@ export class StoreScreen {
 
     // `buy` plays the cue (it is the half that knows the outcome) and carries its own
     // re-entrancy guard, so a double tap lands on `busy` rather than booking two orders.
-    const result = await this.purchase.buy(sku.sku);
+    const result = await this.purchase.buy(sku.sku, {
+      // The pending state: the checkout is done and the server has not confirmed yet. Same
+      // stale-screen guard as the result below.
+      onConfirming: () => {
+        if (token !== this.attemptToken) return;
+        this.statusText.text = t('store.confirming', { item: this.skuLabel(sku) });
+        this.render(this.lastW, this.lastH);
+      },
+    });
     if (token !== this.attemptToken) return;
     if (result.ok) this.boughtHere.add(sku.sku);
 

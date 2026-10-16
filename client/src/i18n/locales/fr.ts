@@ -146,6 +146,9 @@ export const fr: Translations<typeof en> = {
     orderFailed: 'Impossible de lancer l’achat. Rien n’a été débité.',
     paymentFailed: 'Le paiement n’a pas abouti. Rien n’a été débité.',
     pending: 'Paiement toujours en attente. S’il aboutit, l’objet apparaîtra à votre prochaine connexion.',
+    checkoutClosed: 'Paiement fermé avant la fin. Si vous avez payé, l’objet apparaîtra à votre prochaine connexion.',
+    checkoutUnavailable: 'Impossible d’ouvrir la fenêtre de paiement. Vérifiez votre connexion ou votre bloqueur de publicités. Rien n’a été débité.',
+    confirming: 'Paiement reçu pour {item} — confirmation auprès du serveur…',
     listFailed: 'Impossible de charger la boutique. Vérifiez votre connexion et réessayez.',
   },
   hud: {
