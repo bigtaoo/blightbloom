@@ -81,7 +81,7 @@ import {
   segmentReturns,
   type Visit,
 } from './newInstallSegments';
-import { openFunnelNumbers, openVisits } from './pageOpens';
+import { OPEN_METRICS, openFunnelNumbers, openVisits } from './pageOpens';
 
 export { ALL_HOSTS, FUNNEL_STEPS, type FunnelStep } from './newInstallQueries';
 
@@ -299,6 +299,15 @@ const GAUGES: Record<string, { name: string; help: string }> = {
     name: 'bb_new_playtime_installs',
     help: 'Measured new installs of the last complete day by first-day playtime bucket (lower bound, minutes).',
   },
+  // Per VISIT, not per install: the first step counts the visitor who left during the download.
+  [OPEN_METRICS.funnel]: {
+    name: 'bb_open_funnel_visits',
+    help: 'Visits of the last complete day that opened the page, and of those, how many booted, reached the menu and started a run.',
+  },
+  [OPEN_METRICS.bootMs]: {
+    name: 'bb_open_boot_ms',
+    help: 'Boot time (page open to session start, download included) of the visits of the last complete day that booted, by quantile.',
+  },
 };
 
 const gauge = (metric: string, labels: Record<string, string>, value: number): NewInstallGauge => ({
@@ -309,9 +318,10 @@ const gauge = (metric: string, labels: Record<string, string>, value: number): N
 });
 
 /**
- * The new-install gauges for `/metrics`: the last complete day's first-day numbers, and the
- * newest new-install cohort at each offset, all per host. A host with no new installs in a
- * cohort contributes no retention gauge — absent, never 0 (see `rollup.ts`'s header).
+ * The new-install gauges for `/metrics`: the last complete day's first-day numbers and open
+ * funnel, and the newest new-install cohort at each offset, all per host. A host with no new
+ * installs in a cohort contributes no retention gauge — absent, never 0 (see `rollup.ts`'s
+ * header). The `new_seg` segment rows are never gauged (design/21 §2.9).
  */
 export async function newInstallGauges(db: Db, todayKey: string): Promise<NewInstallGauge[]> {
   const day = lastCompleteDay(todayKey);
@@ -320,6 +330,7 @@ export async function newInstallGauges(db: Db, todayKey: string): Promise<NewIns
   const out = [
     ...firstDayNumbers(cohort, await firstDays(db, day, cohort), hosts),
     ...playtimeNumbers(cohort, await firstDayVisits(db, day, cohort), hosts),
+    ...openFunnelNumbers(await openVisits(db, day)),
   ].map((n) => gauge(n.metric, n.labels, n.value));
   for (const offset of RETENTION_OFFSETS) {
     const start = newestKnownCohort(todayKey, offset);

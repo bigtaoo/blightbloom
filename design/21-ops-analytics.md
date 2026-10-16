@@ -519,9 +519,16 @@ known.
 the page opening, the device type and OS and browser family, the referring site's domain or
 campaign tag, and the time the game was visible — dated 2026-10-16.
 
-**Not done:** deploying it. Also not done: a Grafana panel for the open
-funnel and the segments, which the console covers for now. And no attribution beyond the first
-visit: an install's segment is its first day's first `session_start`.
+**Grafana (2026-10-16).** The open funnel is gauged too: `bb_open_funnel_visits{host,step}`
+and `bb_open_boot_ms{host,q}`, the last complete day's, like every `bb_new_*` gauge. The
+analytics dashboard gained a "Launch metrics" block: the open funnel, conversion to gameplay
+(run / open), boot p50 and p90, first-day playtime mean and median beside the measured count,
+and the playtime histogram. The segments stay console-only, because they are never gauges (above).
+Until then the four playtime gauges had been emitted with no panel. The dashboard-metrics gate
+now pins all six names.
+
+**Not done:** deploying it. And no attribution beyond the first visit: an install's segment is
+its first day's first `session_start`.
 
 ## 3. Phase B — the read-only console
 
@@ -863,6 +870,32 @@ sentence.
   stores for gameplay means analytics creates no new storage access. Neither of those settles
   the ePrivacy question for an EU audience, and that is a decision for the operator (with
   advice if they want it) rather than something this document should quietly assert.
+
+### The portal data declaration — draft answers (2026-10-16)
+
+The CrazyGames declaration was filled in when "a guest's data never leaves the browser" was
+true. These are the answers as they stand now, each traceable to `client/public/privacy.html`,
+which stays the authority. The portal's form wording is not reproduced here, because it is the
+portal's and may change; the owner maps these answers onto whatever the form asks at upload.
+
+| Question the form is about | Answer | Where it is true |
+|---|---|---|
+| Does the game collect data at all? | **Yes**, including from guests: anonymous gameplay events and error reports go to our own server | privacy §2, `client/src/net/analytics.ts`, `client/src/net/clientLog.ts` |
+| What identifies the player? | A random installation id created in the browser, plus a per-visit id. For a signed-in portal player, the portal's user id and display name, received from the portal | privacy §2 and §4 |
+| Personal data a player enters? | None. No email, no free text, no chat. A username and password exist only for an optional account on our own site | privacy §3 |
+| Device and usage data? | Device class (phone/tablet/computer), OS family and browser family (never the user-agent string), load time, a referrer DOMAIN or a campaign tag, game version, language, platform | privacy §2 |
+| Third-party analytics or ad SDKs? | **None.** No tracking script; the only third-party code is the portal's own SDK. Ads are the portal's, player-initiated rewarded video only | privacy §3 and §6 |
+| Advertising id or cross-site tracking? | No | privacy §3 |
+| Shared or sold? | Neither. Processors only: Cloudflare (client), the server host | privacy §7 |
+| Retention | Events 90 days, day-level activity rows 180 days, error reports 14 days, id-free daily totals unlimited, account data until deletion is requested | privacy §8 |
+| Data stored through the portal's save feature? | **Yes, since 2026-10-16**: settings, local progress and the installation id go through `SDK.data`, held with the CrazyGames account for a signed-in player (`design/20`) | privacy §4 |
+| Payments | None today. Revisit this row when the Paddle web store ships; it is web-only and never offered on the portal (`design/22` §1) | privacy §5 |
+| Children | Not directed at children under 13; no personal data is needed to play | privacy §10 |
+| Data requests | support@gamestao.com, within 30 days; a guest's records can only be cleared from the guest's own browser, and the policy says so | privacy §9 |
+
+`/terms` was re-checked against this table the same day. It still makes no collection claim,
+so analytics and `SDK.data` need no change there. The sentence that does go stale is §4
+"Purchases", and that belongs to the payments work (`design/22` §1.4), not to this table.
 
 ## 6. Deliberately not built (from `funny`'s admin)
 

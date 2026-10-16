@@ -119,7 +119,7 @@ describe('dashboard metric names', () => {
 
   it('the analytics dashboard asks for every gauge the rollup publishes', () => {
     // The other direction, asserted for THIS dashboard only — because these names are
-    // the entire output of design/21 §2.5, §2.7 and §2.8, and a rollup gauge with no panel is a number
+    // the entire output of design/21 §2.5, §2.7, §2.8 and §2.9, and a rollup gauge with no panel is a number
     // nobody will ever look at. Not a general rule (see the file header), just a specific
     // one where the whole set is small and known.
     const names = new Set(queried().filter((q) => q.where.startsWith('analytics.json')).map((q) => q.name));
@@ -130,8 +130,14 @@ describe('dashboard metric names', () => {
       'bb_new_depth_installs',
       'bb_new_funnel_installs',
       'bb_new_installs',
+      'bb_new_playtime_avg_seconds',
+      'bb_new_playtime_installs',
+      'bb_new_playtime_measured_installs',
+      'bb_new_playtime_p50_seconds',
       'bb_new_retention_ratio',
       'bb_new_unpersisted_installs',
+      'bb_open_boot_ms',
+      'bb_open_funnel_visits',
       'bb_retention_cohort_size',
       'bb_retention_ratio',
       'bb_screen_views_day',

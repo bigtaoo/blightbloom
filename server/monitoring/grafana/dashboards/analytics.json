@@ -794,6 +794,304 @@
           "legendFormat": "{{host}} D{{d}}"
         }
       ]
+    },
+    {
+      "id": 101,
+      "type": "text",
+      "title": "Launch metrics — what a portal's Basic Launch is graded on",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Conversion to gameplay, first-day playtime and D1/D7 (the D1/D7 lines are the new-install retention panels above). All of these describe the **last complete UTC day** (design/21 §2.9).\n\n**Split by traffic source, device, OS and browser lives in the admin console's \"Launch metrics\" card, not here**: segment rows are deliberately never gauges, because at tens of installs a day a per-day rate per segment is noise and the console pools seven days of counts instead."
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Open funnel — opened, booted, menu, run ($host)",
+      "description": "Per day, counted per VISIT: pages that sent the `page_open` beacon (sent from index.html before the bundle downloads), and of those, how many booted, reached the menu and started a run. The gap between \"open\" and \"boot\" is the visitor who left during the download, which no other panel can see.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_open_funnel_visits{host=\"$host\"}",
+          "legendFormat": "{{step}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Conversion to gameplay — share of opens that started a run ($host)",
+      "description": "Visits that started a run over visits that opened the page, same day. This is the number a portal's \"conversion to gameplay\" grades.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percentunit",
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_open_funnel_visits{host=\"$host\",step=\"run_start\"} / ignoring(step) bb_open_funnel_visits{host=\"$host\",step=\"open\"}",
+          "legendFormat": "run / open"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_open_funnel_visits{host=\"$host\",step=\"boot\"} / ignoring(step) bb_open_funnel_visits{host=\"$host\",step=\"open\"}",
+          "legendFormat": "boot / open"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Boot time, open to session start — p50 and p90 ($host)",
+      "description": "Measured from the beacon's clock, so the bundle download is included: the wait a player actually sat through. Only visits that booted have one; those that gave up are the open funnel's first gap.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 80
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_open_boot_ms{host=\"$host\"}",
+          "legendFormat": "{{q}}"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "First-day playtime of new installs — mean and median ($host)",
+      "description": "Visible time only (the clock pauses while the tab is hidden), summed over an install's first-day visits. Over MEASURED installs: one with no time report at all is unmeasured, not zero, and the measured count is on the right axis.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 80
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_playtime_avg_seconds{host=\"$host\"}",
+          "legendFormat": "mean"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_playtime_p50_seconds{host=\"$host\"}",
+          "legendFormat": "median"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_playtime_measured_installs{host=\"$host\"}",
+          "legendFormat": "measured installs"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "First-day playtime histogram — measured new installs per bucket ($host)",
+      "description": "Each line is a bucket's lower bound in minutes (0, 1, 3, 5, 10, 20, 30, 60): \"5\" means at least 5 and under 10 minutes of visible play on the first day.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measured installs"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "bb_new_playtime_installs{host=\"$host\"}",
+          "legendFormat": "≥ {{bucket}} min"
+        }
+      ]
     }
   ]
 }
