@@ -525,9 +525,15 @@ tool. Both need the registered domain listed under "What remains".
   `getUserToken`'s token — never `id`.)
 - **`BB_CG_GAME_ID` on the deployed matchsvc.** Until it is set, `/auth/portal` accepts a user
   token minted for any game on the platform (warned once at startup, `config.portalGameId`).
-- **The CrazyGames AVATAR is not drawn anywhere.** The requirements name username *and* avatar;
-  only the username is shown. The avatar is an external image URL, which means a texture load
-  across an origin this page does not control — a real piece of work, not a line.
+- **The CrazyGames avatar — drawn since 2026-10-16.** The requirements name username *and*
+  avatar. `portalAuth.ts` publishes `user.profilePictureUrl` through `platform/playerAvatar.ts`
+  (https only; cleared on logout, and published even when our own exchange fails, since it is
+  the portal's picture, not our account's), and `game/ui/PlayerPicture.ts` draws it as a
+  masked disc left of the menu's "Hi, {name}" label. It is a cross-origin WebGL texture:
+  `images.crazygames.com` sends `Access-Control-Allow-Origin: *` (checked 2026-10-16), and its
+  URLs serve JPEG bytes behind `.png`, so the loader names its parser instead of trusting the
+  extension. Every failure — 404, CORS withdrawn, a load that lands after a sign-out or an
+  account switch — ends with the disc hidden and the label where it always was.
 - **No PvP-specific roster beyond that one line.** `SeatRoster` is correct in PvP and shown there,
   but nothing labels who eliminated you, and in an eight-seat FFA the line is the whole social
   signal. Adequate rather than good.
