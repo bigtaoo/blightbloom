@@ -382,6 +382,9 @@ the nearest a few grid from the spawn, all awake on tick 0.
   shoot 5 s later ends the room on 5/6 HP (3/6 with three mobs, which is why it is two). A player
   who never shoots still dies — `ROOM_FIRE_BUDGET` lets any room field two shooters — and that
   is what the attack lesson is for.
+- **The rest of floor 1 stays gentle** (`ENGINE_VERSION` 90): the next room killed the owner
+  anyway, so chapter 1's first floor fields one shooter per room and chapter 1 mobs start at
+  ×0.6 HP. design/22 §4.1 has the measurements.
 
 ## The multiplayer requirements (2026-09-08)
 

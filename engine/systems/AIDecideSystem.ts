@@ -73,7 +73,7 @@ import {
   DEFAULT_ENEMY_ENGAGE_RANGE_FP,
   DEFAULT_ENEMY_AGGRO_RANGE_FP,
 } from '../content/enemies';
-import { ROOM_FIRE_BUDGET, HOLD_RELEASE_PERMILLE, noticeDelayTicks } from '../balance/encounter';
+import { HOLD_RELEASE_PERMILLE, noticeDelayTicks, roomFireBudget } from '../balance/encounter';
 import type { GameState } from '../state/GameState';
 import type { Actor, EnemyActor } from '../state/entities';
 import { standoffRadius } from '../state/actorRadius';
@@ -166,7 +166,7 @@ export class AIDecideSystem {
         else contenders.set(key, [{ e, distSq }]);
       }
     }
-    this.grantFireSlots(contenders);
+    this.grantFireSlots(contenders, roomFireBudget(state.dungeonConfig?.fireBudgetByFloor, state.floorIndex));
   }
 
   /**
@@ -291,7 +291,8 @@ export class AIDecideSystem {
   }
 
   /**
-   * Hand each room's `ROOM_FIRE_BUDGET` fire slots to its NEAREST contenders
+   * Hand each room's `budget` fire slots (`roomFireBudget`: `ROOM_FIRE_BUDGET` unless the
+   * dungeon sets one for this floor) to its NEAREST contenders
    * (balance/encounter.ts — the anti-alpha-strike rule). Everyone else stays in
    * range with `firing` false: present, closing off nothing, waiting for a slot to
    * free up when a shooter dies or the player moves and reorders the queue.
@@ -302,10 +303,10 @@ export class AIDecideSystem {
    * rest of the engine uses. Distances are exact integer products of Fp, never
    * floats.
    */
-  private grantFireSlots(contenders: Map<string, FireContender[]>): void {
+  private grantFireSlots(contenders: Map<string, FireContender[]>, budget: number): void {
     for (const list of contenders.values()) {
-      if (list.length > ROOM_FIRE_BUDGET) list.sort((a, b) => a.distSq - b.distSq);
-      const slots = Math.min(ROOM_FIRE_BUDGET, list.length);
+      if (list.length > budget) list.sort((a, b) => a.distSq - b.distSq);
+      const slots = Math.min(budget, list.length);
       for (let i = 0; i < slots; i++) list[i]!.e.firing = true;
     }
   }

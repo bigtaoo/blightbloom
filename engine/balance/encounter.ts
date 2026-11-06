@@ -46,6 +46,16 @@
 export const ROOM_FIRE_BUDGET = 2;
 
 /**
+ * The fire budget a room on `floorIndex` runs with: the dungeon's own
+ * `fireBudgetByFloor` entry for that floor (`DungeonConfig`, ENGINE_VERSION 90), else
+ * `ROOM_FIRE_BUDGET`. Chapter 1 sets `[1]`: its first floor is where a first-time player
+ * learns to move and shoot, and one shooter at a time is what lets them (design/22).
+ */
+export function roomFireBudget(byFloor: readonly number[] | undefined, floorIndex: number): number {
+  return byFloor?.[floorIndex] ?? ROOM_FIRE_BUDGET;
+}
+
+/**
  * A woken room's mobs may move immediately but may not fire for this many ticks
  * after activation — the reaction window a player needs to read the room they just
  * walked into. Spread per enemy over `NOTICE_SPREAD_TICKS` so the first volley

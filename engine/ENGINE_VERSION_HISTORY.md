@@ -2856,3 +2856,29 @@ the shot is the lesson panel's job, not the room's.
 The golden gate, run before this bump, was red on the four `*-dungeon-floor1` scenarios and
 green on every other: their floor's first room changed. Any recorded dungeon run diverges at
 tick 0. Golden fixture regenerated.
+
+v90 (2026-11-06 — chapter 1 is the learning chapter). The same sandbox player, past the new
+warm-up room, died walking into floor 1's second room, `ember_l1_alcove`: nine mobs of four
+types, all spawned at tick 0, the nearest a few grid from the east door the player enters by
+(the spawn-clearance rule measures against the piece's player spawns, which only floor 2 uses).
+`client/sim/pveLevelSim` saw the same wall: the careful bot got off floor 1 in 4 of 40 runs and
+the aggressive one in 0 of 40, and the alcove alone took 5 of the starter's 10 effective HP.
+
+Two changes, both on `EMBER_DUNGEON` only, so chapters 2-4 keep the difficulty they were tuned
+at (the sibling games' shared rule: the first chapter teaches, the second tests):
+ - New optional `DungeonConfig.fireBudgetByFloor`, read through `balance/encounter.ts`
+   `roomFireBudget` by `AIDecideSystem.grantFireSlots`. Chapter 1 sets `[1]`: on its first
+   floor one mob per room shoots at a time. Absent on every other config, which reads exactly
+   as before.
+ - `EMBER_DUNGEON.difficultyCurve` `{ base: 0.6, perFloor: 0.35 }` (was `{ 1, 0.25 }`): mob HP
+   ×0.6 on floor 1 (a 3-HP mob has 2), meeting the old curve's ×2 at the boss floor. The chapter
+   tests that pinned "same perFloor as chapter 1" now state their real property floor by floor:
+   every later chapter scales HP above chapter 1 on every floor.
+
+Measured on the same sim (40 seeds per profile): both bots clear floor 1 in 40 of 40 runs; the
+alcove costs 1-2 HP; the careful bot extracts in 4 of 40 (was 0), inside the "passable, not
+free" gate. HP alone (without the budget) got the careful bot off floor 1 in 30 of 40 and the
+aggressive one in 0, which is why both changes ship.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1` only (the other
+dungeon scenarios run chapter-agnostic fixture configs). Golden fixture regenerated.

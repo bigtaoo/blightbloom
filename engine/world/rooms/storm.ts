@@ -77,7 +77,8 @@ export const STORM_L1_FLOORS: Partial<Record<number, DungeonFloorMap>> = {
  * Chapter 3's config. Differs from `FROST_DUNGEON` in its biome, its pieces and one number:
  *  - `biomeId: 'storm'` — the chapter id (`world/chapters.ts`) and the lightning palette
  *    (client `theme.ts`'s `BIOME_ID_TO_ELEMENT`, the `biome-lightning` swatch pack).
- *  - `difficultyCurve.perFloor` 0.3125 against chapters 1 and 2's 0.25, on chapter 2's own
+ *  - `difficultyCurve.perFloor` 0.3125 against chapter 2's 0.25 (and chapter 1's, until ENGINE_VERSION
+ *    90 gave chapter 1 its own learning-chapter curve — `ember.ts`), on chapter 2's own
  *    `base` of 1.125: the same entrance as chapter 2, and every floor after it steeper
  *    (floor 2 ×1.4375, the boss floor ×2.375 against chapter 2's ×2.125).
  *

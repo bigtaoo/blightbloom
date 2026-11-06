@@ -225,6 +225,20 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * gradient carry the larger share of the job — which is also the one a future
  * room-content pass can retune directly, without touching this global multiplier.
  *
+ * **Chapter 1 becomes the learning chapter (`ENGINE_VERSION` 90, 2026-11-06).** A first-time
+ * sandbox player died walking into floor 1's second room (`ember_l1_alcove`: nine mobs, every
+ * one of them a few grid from the door the player comes in by). `client/sim/pveLevelSim` showed
+ * the same wall from the bots' side: the careful bot cleared floor 1 in 4 of 40 runs, the
+ * aggressive one in 0 of 40, and the alcove alone took half the starter's 10 effective HP. Two
+ * changes, both on this config only, so chapter 2 onward keeps the difficulty it was tuned at
+ * (the sibling games' shared lesson: the first chapter teaches, the second tests):
+ *  - `fireBudgetByFloor: [1]` — on floor 1, one mob per room shoots at a time, not two.
+ *  - `difficultyCurve` `{ base: 0.6, perFloor: 0.35 }` (was `{ base: 1, perFloor: 0.25 }`) — mobs
+ *    die faster early, and the curve meets the old one's ×2 at the boss floor, so the ending is
+ *    as hard as before and the climb to it is steeper.
+ * Re-measured: both bots clear floor 1 in 40 of 40 runs, the alcove costs 1-2 HP, and the
+ * careful bot extracts in 4 of 40 (it was 0), still inside the sim's "passable, not free" gate.
+ *
  * `layout: 'graph2d'` (design/05, 2026-08-05 follow-up; was `'linear'`) — the
  * module doc above lists which pieces actually make a floor bend now. Only the
  * fallback path reads it at all, since every floor here is authored.
@@ -258,7 +272,8 @@ export const EMBER_DUNGEON: DungeonConfig = {
   layout: 'graph2d',
   extractionPieceId: 'ember_l1_extraction',
   bossPieceId: 'ember_l1_boss',
-  difficultyCurve: { base: 1, perFloor: 0.25 },
+  difficultyCurve: { base: 0.6, perFloor: 0.35 },
+  fireBudgetByFloor: [1],
   floorMaps: EMBER_L1_FLOORS,
   floorLayoutVariants: {
     1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH],

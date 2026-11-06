@@ -11,7 +11,9 @@ import {
   NOTICE_SPREAD_TICKS,
   ROOM_FIRE_BUDGET,
   noticeDelayTicks,
+  roomFireBudget,
 } from './encounter';
+import { EMBER_DUNGEON } from '../world/rooms/ember';
 import { DEFAULT_ENEMY_ENGAGE_RANGE_FP } from '../content/enemies';
 import { WEAPON_SPECS } from '../content/weapons';
 import { SKIN_DEFS } from '../content/skins';
@@ -30,6 +32,29 @@ describe('ROOM_FIRE_BUDGET', () => {
     const damagePerSecond = (ROOM_FIRE_BUDGET * gun.damage) / gun.cooldownSec;
     const frailest = Math.min(...Object.values(SKIN_DEFS).map((s) => s.maxHp + s.maxShield));
     expect(damagePerSecond * 3).toBeLessThan(frailest);
+  });
+});
+
+describe('roomFireBudget (ENGINE_VERSION 90)', () => {
+  it("reads the floor's own entry, and ROOM_FIRE_BUDGET with no entry or no table", () => {
+    expect(roomFireBudget([1, 3], 0)).toBe(1);
+    expect(roomFireBudget([1, 3], 1)).toBe(3);
+    expect(roomFireBudget([1, 3], 2)).toBe(ROOM_FIRE_BUDGET);
+    expect(roomFireBudget(undefined, 0)).toBe(ROOM_FIRE_BUDGET);
+  });
+
+  it("chapter 1's first floor is the one-shooter opener, and only its first", () => {
+    // The 2026-11-06 report: a first-time player died walking into floor 1's second room.
+    expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, 0)).toBe(1);
+    for (let f = 1; f < EMBER_DUNGEON.floorCount; f++) expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, f), `floor ${f}`).toBe(ROOM_FIRE_BUDGET);
+  });
+
+  it('every authored entry is a whole number from 1 up to ROOM_FIRE_BUDGET — an opener is never the harder floor', () => {
+    for (const b of EMBER_DUNGEON.fireBudgetByFloor ?? []) {
+      expect(Number.isInteger(b)).toBe(true);
+      expect(b).toBeGreaterThanOrEqual(1);
+      expect(b).toBeLessThanOrEqual(ROOM_FIRE_BUDGET);
+    }
   });
 });
 
