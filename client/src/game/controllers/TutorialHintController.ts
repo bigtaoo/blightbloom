@@ -1,7 +1,13 @@
 import type { GameEvent, GameState, PlayerActor } from '@dd/engine';
-import type { HudView } from '../ui/HudView';
-import { THEME } from '../theme';
 import { t } from '../../i18n';
+
+/** The one HUD widget the lessons draw on: `HudView.tutorialPrompt` (ui/TutorialPrompt.ts),
+ *  narrowed to what this calls so the step machine stays testable without Pixi. */
+export interface TutorialPromptSink {
+  show(text: string, step: number, of: number): void;
+  finish(text: string | null): void;
+  hide(): void;
+}
 
 /** The bits of Game a hint reaction needs — same tiny-callback-interface convention as
  * EventReactorHost, kept separate from it since the tutorial is the only caller. */
@@ -9,53 +15,64 @@ export interface TutorialHintHost {
   readonly localOwner: number;
 }
 
-type Step = 'move' | 'swap' | 'deflect' | 'done';
+type Lesson = 'move' | 'attack' | 'swap' | 'deflect';
+type Step = Lesson | 'done';
 
-/** How long the move/aim/fire hint stays the active step before yielding to the
- * weapon-swap hint — a render-only timer off the sim's own tick counter (never an engine
- * hook), long enough to read, short enough not to nag a player who's already moving. */
-const MOVE_HINT_TICKS = 90; // 3s at the engine's fixed 30Hz step (design/06)
+const LESSONS: readonly Lesson[] = ['move', 'attack', 'swap', 'deflect'];
+
+/** How far the seat must travel from where the move lesson started for it to count as
+ *  learned: 1.5 grid, in the sim's fixed-point units (`FP_SCALE` 1000). Enough that a stray
+ *  key tap does not tick the lesson off, little enough that one deliberate step does. */
+const MOVE_LEARNED_FP = 1500;
+
+/** The deflect lesson is the one a player can fail to complete for reasons that are not
+ *  theirs (no bullet comes at them, the room is already clear). After this long it is
+ *  dropped without congratulation rather than parking a panel on the screen for the rest of
+ *  the run: 20 s at the engine's fixed 30 Hz step (design/06). */
+export const DEFLECT_GIVE_UP_TICKS = 600;
 
 /**
- * The teaching beats (design/10 screen-flow gap) — render-only, follows EventReactor's exact
- * shape (reads `GameState` + the per-tick `events` queue, never mutates the engine,
- * design/10's "UI reads state+events" rule). A step machine (move → swap → deflect → done)
- * drives one-shot HUD toasts as each lesson's condition is met — reuses the existing
- * `HudView.toast` (ToastQueue) rather than a new persistent widget, same transient-feedback
- * channel every pickup/buff toast already uses.
+ * The teaching beats (design/10 screen-flow gap, design/20 onboarding) — render-only, follows
+ * EventReactor's exact shape (reads `GameState` + the per-tick `events` queue, never mutates
+ * the engine, design/10's "UI reads state+events" rule).
  *
- * Conditions are read entirely off state already present regardless of run mode:
- * `PlayerActor.activeSlot` (weapon-swap) and the `'deflect'` `GameEvent` (melee parry) —
- * no tutorial-specific engine field or hook was added for this.
+ * ## Each lesson waits for the player (2026-11-06)
+ *
+ * The first version drove one-shot HUD toasts: the move lesson ("move with WASD, hold the
+ * mouse to attack") sat in the 15 px toast lane for 1.4 s and yielded to the next on a 3 s
+ * timer whether or not the player had moved. A first-time sandbox player read none of it and
+ * was dead inside ten seconds. Now each lesson is one instruction in a large top-centre panel
+ * (`TutorialPrompt`) that stays until the player DOES it, read entirely off state and events
+ * already present regardless of run mode — no tutorial-specific engine field or hook:
+ *
+ * 1. **move** — the seat is 1.5 grid from where the lesson started.
+ * 2. **attack** — a `bullet_fired` or `melee_swing` owned by the seat.
+ * 3. **swap** — `PlayerActor.activeSlot` differs from the slot the lesson started on.
+ * 4. **deflect** — a `'deflect'` event; dropped after `DEFLECT_GIVE_UP_TICKS`.
  *
  * ## Two things this learned when it stopped being tutorial-only (2026-09-08)
  *
- * It used to run for the standalone tutorial level and nothing else, over a loadout
- * `tutorialConfig.ts` chose (a repeater + a hammer). Since design/20's onboarding pass it
- * also runs for a player's FIRST REAL RUN, whose loadout is whatever they carry — so two
- * assumptions that were true by construction had to become checks:
- *
  * - **A step that cannot apply is SKIPPED, not waited on.** "Swing your melee weapon into
- *   incoming bullets" is bad advice to a player carrying two ranged weapons, and the step
- *   machine would have parked on it forever. `applies` decides per step, off the same state.
- * - **The text depends on the input device, not on the platform.** The old single string
- *   named both ("left stick / WASD"), which is unreadable on both, and it also described an
- *   aim stick that design/10 v33 removed — it told players to aim manually in a game that
- *   auto-faces. `touch` picks one truthful sentence instead of printing two.
+ *   incoming bullets" is bad advice to a player carrying two ranged weapons. `applies`
+ *   decides per step, off the same state, and the panel's "step n of m" counts only the
+ *   lessons that apply.
+ * - **The text depends on the input device, not on the platform.** `touch` picks one
+ *   truthful sentence instead of printing two.
  */
 export class TutorialHintController {
   private step: Step = 'move';
-  private startTick = -1;
-  private baselineSlot: number | null = null;
+  private stepStartTick = -1;
+  private originX = 0;
+  private originY = 0;
+  private baselineSlot = 0;
+  private lessons: readonly Lesson[] = [];
   private shownForStep: Step | null = null;
-  /** Whether `done` was EARNED (the last lesson was completed) rather than arrived at by
-   *  skipping lessons this loadout cannot teach. Only an earned one says "nicely done" — a
-   *  player carrying one ranged weapon would otherwise be congratulated three seconds into
-   *  their first run, for nothing. */
+  /** Whether `done` was EARNED (the last lesson was completed) rather than arrived at by the
+   *  deflect lesson timing out. Only an earned one says "nicely done". */
   private doneEarned = false;
 
   constructor(
-    private readonly hud: HudView,
+    private readonly prompt: TutorialPromptSink,
     private readonly host: TutorialHintHost,
     /** Whether this session is being played with touch controls — `InputSource.
      *  getTouchVisual().active`, which is true on a phone from the first frame (the
@@ -65,73 +82,94 @@ export class TutorialHintController {
   ) {}
 
   consume(s: GameState, events: readonly GameEvent[]): void {
-    if (this.startTick < 0) this.startTick = s.tick;
     const p = s.players[this.host.localOwner];
     if (!p) return;
+    if (this.stepStartTick < 0) {
+      this.lessons = LESSONS.filter((l) => this.applies(l, p));
+      this.begin('move', s, p);
+    }
 
-    if (this.step === 'move' && s.tick - this.startTick >= MOVE_HINT_TICKS) {
-      this.advance('swap', p);
-    }
-    if (this.step === 'swap' && this.baselineSlot !== null && p.activeSlot !== this.baselineSlot) {
-      this.advance('deflect', p);
-    }
-    if (this.step === 'deflect' && events.some((e) => e.type === 'deflect')) {
-      this.doneEarned = true;
-      this.advance('done', p);
+    if (this.step !== 'done' && this.learned(this.step, p, events)) {
+      this.begin(this.next(this.step), s, p);
+    } else if (this.step === 'deflect' && s.tick - this.stepStartTick >= DEFLECT_GIVE_UP_TICKS) {
+      this.begin('done', s, p);
     }
 
     if (this.step !== this.shownForStep) {
       this.shownForStep = this.step;
-      const message = this.messageFor(this.step);
-      if (message) this.hud.toast(message, this.step === 'done' ? THEME.colors.extractGlow : THEME.colors.pickupBuff);
+      if (this.step === 'done') {
+        // The last lesson that applied was learned — the only way to `done` but the deflect
+        // timeout — so a loadout with no melee weapon still earns its congratulation.
+        this.prompt.finish(this.doneEarned ? t('tutorial.hintCleared') : null);
+      } else {
+        this.prompt.show(this.messageFor(this.step), this.lessons.indexOf(this.step) + 1, this.lessons.length);
+      }
     }
   }
 
-  /**
-   * Move to `next`, then keep moving while the step cannot be taught to THIS player.
-   *
-   * The skip is a loop rather than one check because the steps are skippable
-   * independently: a single-weapon loadout skips `swap`, an all-ranged loadout skips
-   * `deflect`, and a single ranged weapon skips both and lands on `done`.
-   */
-  private advance(next: Step, p: PlayerActor): void {
-    let step = next;
-    while (step !== 'done' && !this.applies(step, p)) step = step === 'swap' ? 'deflect' : 'done';
-    this.step = step;
-    // The swap lesson compares against the slot the player was on when the lesson STARTED,
-    // so the baseline is taken here rather than at construction — a player who had already
-    // swapped before the move hint expired must still be able to complete it.
-    if (step === 'swap') this.baselineSlot = p.activeSlot;
+  private learned(step: Lesson, p: PlayerActor, events: readonly GameEvent[]): boolean {
+    switch (step) {
+      case 'move':
+        return Math.hypot(p.gx - this.originX, p.gy - this.originY) >= MOVE_LEARNED_FP;
+      case 'attack':
+        return events.some((e) => (e.type === 'bullet_fired' || e.type === 'melee_swing') && e.ownerId === p.id);
+      case 'swap':
+        return p.activeSlot !== this.baselineSlot;
+      case 'deflect':
+        return events.some((e) => e.type === 'deflect');
+    }
   }
 
-  private applies(step: Step, p: PlayerActor): boolean {
+  /** The lesson after `step` that applies to this loadout, or `done`. A completed last lesson
+   *  is earned whichever it is. */
+  private next(step: Lesson): Step {
+    const i = this.lessons.indexOf(step);
+    const next = this.lessons[i + 1];
+    if (!next) this.doneEarned = true;
+    return next ?? 'done';
+  }
+
+  /** Start `step`: every lesson measures from where the player was when it began, so a
+   *  player who already swapped (or walked) during an earlier lesson still has to do it once
+   *  more, on cue — that is the lesson. */
+  private begin(step: Step, s: GameState, p: PlayerActor): void {
+    this.step = step;
+    this.stepStartTick = s.tick;
+    this.originX = p.gx;
+    this.originY = p.gy;
+    this.baselineSlot = p.activeSlot;
+  }
+
+  private applies(step: Lesson, p: PlayerActor): boolean {
     if (step === 'swap') return p.weapons.length > 1;
     if (step === 'deflect') return p.weapons.some((w) => w.spec.kind === 'melee');
     return true;
   }
 
-  private messageFor(step: Step): string | null {
+  private messageFor(step: Lesson): string {
     const touch = this.touch();
     switch (step) {
       case 'move':
         return t(touch ? 'tutorial.hintMoveTouch' : 'tutorial.hintMoveKeys');
+      case 'attack':
+        return t(touch ? 'tutorial.hintAttackTouch' : 'tutorial.hintAttackKeys');
       case 'swap':
         return t(touch ? 'tutorial.hintSwapTouch' : 'tutorial.hintSwapKeys');
       case 'deflect':
         return t('tutorial.hintDeflect');
-      case 'done':
-        return this.doneEarned ? t('tutorial.hintCleared') : null;
     }
   }
 
-  /** Call once per fresh attempt — resets the step machine to the beginning. Every run that
-   *  teaches (the standalone tutorial, and a player's first real run) calls it, so a second
-   *  taught run starts from `move` rather than from wherever the last one stopped. */
+  /** Call once per fresh attempt — resets the step machine to the beginning and clears the
+   *  panel. Every run that teaches (the standalone tutorial, and a player's first real run)
+   *  calls it, so a second taught run starts from `move` rather than from wherever the last
+   *  one stopped. */
   reset(): void {
     this.step = 'move';
-    this.startTick = -1;
-    this.baselineSlot = null;
+    this.stepStartTick = -1;
+    this.lessons = [];
     this.shownForStep = null;
     this.doneEarned = false;
+    this.prompt.hide();
   }
 }

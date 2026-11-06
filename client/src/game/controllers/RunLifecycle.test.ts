@@ -432,7 +432,9 @@ describe('RunLifecycle — teaching a first-time player (design/20 onboarding)',
     t.run.setMeta({ ...t.run.meta, hasSeenTutorial: true });
     t.runs.beginRun();
     expect(t.run.firstRunHints).toBe(false);
-    expect(t.order).not.toContain('tutorialHints.reset');
+    // The machine is still reset — that is what clears a lesson panel a taught run left up —
+    // but nothing is armed: `firstRunHints` is what lets `GameLoop` feed it.
+    expect(t.order).toContain('tutorialHints.reset');
   });
 
   it('arms them through the one-click portal entry too', () => {

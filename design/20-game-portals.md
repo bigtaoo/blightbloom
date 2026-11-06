@@ -359,6 +359,30 @@ Like the hints, it is not behind a host branch. One accepted cost: the browser k
 until the first input, so the first run's opening seconds are silent until the player presses a
 key or touches the screen, which the hint on screen asks them to do anyway.
 
+### Onboarding, third pass (2026-11-06): lessons that wait, and a room that lets them
+
+The first sandbox play report after the second pass: *dead in under ten seconds, and no tutorial
+at all.* Both halves were true. The hints were running — as 15 px toasts in the toast lane, each
+gone after 1.4 s and replaced on a 3 s timer whether or not the player had done what it said — and
+the room they ran in, `ember_l1_cell`, held the full ramp's eight mobs (four of them emberlings),
+the nearest a few grid from the spawn, all awake on tick 0.
+
+- **The lessons wait.** `ui/TutorialPrompt.ts` is a large panel at the top centre ("STEP 1/4"
+  over one instruction) that stays until the player does it. `TutorialHintController` now reads
+  completion off state and events it already had: move = 1.5 grid from where the lesson started;
+  attack = a `bullet_fired` / `melee_swing` owned by the seat; swap = `activeSlot` changed since
+  the lesson started; deflect = a `deflect` event, dropped silently after 20 s since it can fail
+  for reasons that are not the player's. The counter counts only the lessons this loadout can be
+  taught. Move and attack are now separate lessons — the old first hint said both in one toast.
+  The panel never takes pointer input, and the toast lane moves below it while it shows.
+- **The entry room is a warm-up** (`ENGINE_VERSION` 89): two `basic` mobs in the far corners,
+  over 9 grid from either spawn, so outside their 10-grid aggro range of a player who has not
+  moved. The derived chapters' `*_l1_cell` pieces carry it through `derivePiece`. Measured
+  headless on the real first-run config: standing still is safe; walking in and only starting to
+  shoot 5 s later ends the room on 5/6 HP (3/6 with three mobs, which is why it is two). A player
+  who never shoots still dies — `ROOM_FIRE_BUDGET` lets any room field two shooters — and that
+  is what the attack lesson is for.
+
 ## The multiplayer requirements (2026-09-08)
 
 Applies because the project owner decided the **first submission keeps multiplayer**. The

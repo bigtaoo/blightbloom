@@ -1,11 +1,11 @@
 {
-  "engineVersion": 88,
+  "engineVersion": 89,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 1739956551,
+      "hash": 4253340106,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -33,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 2145001753,
+      "hash": 410723786,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -59,7 +59,7 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 3389193738,
+      "hash": 2412084327,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -67,24 +67,23 @@
         "seats": 1,
         "enemiesAlive": 1,
         "projectiles": 0,
-        "pickups": 11,
+        "pickups": 8,
         "floorIndex": 0,
-        "hpTotal": 5,
+        "hpTotal": 6,
         "energyTotal": 99,
-        "prngCursors": 12533580684,
+        "prngCursors": 13236560966,
         "events": {
-          "bullet_fired": 173,
+          "bullet_fired": 151,
           "room_enter": 2,
           "door_locked": 2,
-          "hit": 61,
-          "clash": 12,
+          "hit": 31,
           "melee_swing": 67,
-          "death": 16,
-          "deflect": 2,
-          "pickup": 5,
-          "shield_break": 1,
+          "death": 10,
           "door_unlocked": 1,
-          "force_regroup": 1
+          "force_regroup": 1,
+          "deflect": 2,
+          "clash": 4,
+          "pickup": 2
         }
       }
     },
@@ -92,7 +91,7 @@
       "name": "frost-dungeon-floor1",
       "pins": "chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base",
       "ticks": 1500,
-      "hash": 2429603993,
+      "hash": 3802781429,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -104,19 +103,17 @@
         "floorIndex": 0,
         "hpTotal": 6,
         "energyTotal": 98,
-        "prngCursors": 15548694433,
+        "prngCursors": 13767452322,
         "events": {
-          "bullet_fired": 146,
+          "bullet_fired": 127,
           "room_enter": 1,
           "door_locked": 1,
-          "hit": 34,
-          "clash": 3,
+          "hit": 6,
+          "death": 2,
           "melee_swing": 67,
-          "death": 8,
-          "pickup": 8,
-          "deflect": 1,
-          "shield_break": 2,
-          "door_unlocked": 1
+          "clash": 1,
+          "door_unlocked": 1,
+          "pickup": 2
         }
       }
     },
@@ -124,7 +121,7 @@
       "name": "storm-dungeon-floor1",
       "pins": "chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison",
       "ticks": 1500,
-      "hash": 1859638503,
+      "hash": 3372182970,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -132,24 +129,24 @@
         "seats": 1,
         "enemiesAlive": 0,
         "projectiles": 1,
-        "pickups": 7,
+        "pickups": 5,
         "floorIndex": 0,
-        "hpTotal": 3,
-        "energyTotal": 94,
-        "prngCursors": 16563226598,
+        "hpTotal": 5,
+        "energyTotal": 100,
+        "prngCursors": 12752218032,
         "events": {
-          "bullet_fired": 189,
+          "bullet_fired": 147,
           "room_enter": 2,
           "door_locked": 2,
-          "hit": 73,
-          "clash": 6,
-          "melee_swing": 76,
-          "deflect": 4,
-          "death": 17,
-          "pickup": 10,
-          "shield_break": 2,
+          "hit": 39,
+          "melee_swing": 67,
+          "death": 11,
           "door_unlocked": 2,
-          "force_regroup": 1
+          "force_regroup": 1,
+          "clash": 2,
+          "deflect": 1,
+          "pickup": 6,
+          "shield_break": 1
         }
       }
     },
@@ -157,31 +154,28 @@
       "name": "blight-dungeon-floor1",
       "pins": "chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison",
       "ticks": 1500,
-      "hash": 2944369070,
+      "hash": 81714270,
       "witness": {
         "tick": 1500,
         "phase": "playing",
         "winner": "null",
         "seats": 1,
         "enemiesAlive": 0,
-        "projectiles": 5,
-        "pickups": 0,
+        "projectiles": 3,
+        "pickups": 1,
         "floorIndex": 0,
-        "hpTotal": 3,
-        "energyTotal": 95,
-        "prngCursors": 15609670155,
+        "hpTotal": 6,
+        "energyTotal": 99,
+        "prngCursors": 17289853339,
         "events": {
-          "bullet_fired": 187,
+          "bullet_fired": 125,
           "room_enter": 1,
           "door_locked": 1,
-          "hit": 31,
-          "clash": 7,
-          "death": 8,
-          "melee_swing": 84,
-          "shield_break": 1,
-          "pickup": 8,
-          "deflect": 1,
-          "door_unlocked": 1
+          "hit": 6,
+          "melee_swing": 67,
+          "death": 2,
+          "door_unlocked": 1,
+          "pickup": 1
         }
       }
     },
@@ -189,7 +183,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 23565745,
+      "hash": 3792680912,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -217,7 +211,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 2781853899,
+      "hash": 1673586362,
       "witness": {
         "tick": 252,
         "phase": "gameover",
@@ -250,7 +244,7 @@
       "name": "endless-descent",
       "pins": "the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap",
       "ticks": 700,
-      "hash": 1765305623,
+      "hash": 929641934,
       "witness": {
         "tick": 700,
         "phase": "playing",
@@ -281,7 +275,7 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 3136242391,
+      "hash": 1393805798,
       "witness": {
         "tick": 900,
         "phase": "playing",
@@ -311,7 +305,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 1041819916,
+      "hash": 146756779,
       "witness": {
         "tick": 400,
         "phase": "playing",

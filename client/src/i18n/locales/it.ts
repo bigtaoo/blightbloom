@@ -331,12 +331,15 @@ export const it: Translations<typeof en> = {
     errorThrottled: 'Troppi tentativi — attendi qualche minuto prima di cercare di nuovo.',
   },
   tutorial: {
-    hintMoveKeys: 'Muoviti con WASD. Tieni premuto il tasto sinistro del mouse per attaccare: la mira è automatica.',
-    hintMoveTouch: 'Trascina il lato sinistro dello schermo per muoverti e tieni premuto il lato destro per attaccare: la mira è automatica.',
+    step: 'PASSO {n}/{of}',
+    hintMoveKeys: 'Muoviti con WASD.',
+    hintMoveTouch: 'Trascina il lato sinistro dello schermo per muoverti.',
+    hintAttackKeys: 'Tieni premuto il tasto sinistro del mouse per attaccare: la mira è automatica.',
+    hintAttackTouch: 'Tieni premuto il lato destro dello schermo per attaccare: la mira è automatica.',
     hintSwapKeys: 'Premi 1 o 2 per cambiare arma.',
     hintSwapTouch: 'Tocca un pulsante arma per cambiare arma.',
     hintDeflect: 'Colpisci i proiettili in arrivo con la tua arma da mischia per deviarli.',
-    hintCleared: 'Ben fatto — dirigiti al portale.',
+    hintCleared: 'Ben fatto — conosci le basi.',
     skip: 'SALTA TUTORIAL',
   },
   results: {

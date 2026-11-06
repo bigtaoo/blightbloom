@@ -2834,3 +2834,25 @@ The new field is hashed in `serializeState`. The golden gate, run before this bu
 the field was hashed, was green: no scenario has a bot seat. A recorded co-op run with a bot
 ally whose player died diverges on that tick. Golden fixture regenerated (version stamp and
 the new field).
+
+v89 (2026-11-06 — the entry room is a warm-up). A first-time sandbox player was dead inside
+ten seconds: floor 1 starts in `ember_l1_cell`, which held eight mobs (four `basic`, four
+`emberling`) that all spawn at tick 0 and the nearest of which stood a few grid from the
+player spawn. The owner's call: the entry room teaches, it does not test. Its garrison is now
+two `basic` mobs in the far corners, each more than 9 grid from either player spawn
+(`emberLevel1.test.ts` pins both, and that the piece is used nowhere else). The three derived
+chapters' `*_l1_cell` pieces carry the same change through `deriveChapter.mjs`'s own
+`derivePiece`, so they are still the transform of chapter 1 their tests say they are; with
+four emberlings gone, chapter 4's blightlings now tie its ironclads instead of leading them.
+
+Why two and not three: measured headless on the real first-run config (seed 0xda1d, solo).
+Standing still is safe at any count (no mob is within aggro range of the spawn). A player who
+walks in and only starts shooting 5 s later ends the room on 3/6 HP against three mobs and
+5/6 against two; one who walks along the near wall without shooting is killed at 17 s by three
+and untouched by two. One mob is barely a fight. A player who walks in and NEVER shoots still
+dies (~8 s): `ROOM_FIRE_BUDGET` caps the room at two shooters whatever its size, and teaching
+the shot is the lesson panel's job, not the room's.
+
+The golden gate, run before this bump, was red on the four `*-dungeon-floor1` scenarios and
+green on every other: their floor's first room changed. Any recorded dungeon run diverges at
+tick 0. Golden fixture regenerated.

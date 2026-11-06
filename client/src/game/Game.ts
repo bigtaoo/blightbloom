@@ -251,7 +251,7 @@ export class Game {
     // Built here (not as a field initializer) — it needs `this.audio`, which isn't
     // assigned yet when field initializers run.
     this.events = new EventReactor(this.fx, this.hud, this.audio, this);
-    this.tutorialHints = new TutorialHintController(this.hud, this, () => input.getTouchVisual().active);
+    this.tutorialHints = new TutorialHintController(this.hud.tutorialPrompt, this, () => input.getTouchVisual().active);
     this.builder = new CommandBuilder(input);
     // Load persistent meta (bank / unlocks / loadout / chosen character, design/14).
     this.run.loadMeta();

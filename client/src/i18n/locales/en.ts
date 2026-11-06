@@ -350,12 +350,15 @@ export const en = {
     errorThrottled: 'Too many attempts — wait a few minutes before searching again.',
   },
   tutorial: {
-    hintMoveKeys: 'Move with WASD. Hold the left mouse button to attack — aiming is automatic.',
-    hintMoveTouch: 'Drag the left side of the screen to move. Hold the right side to attack — aiming is automatic.',
+    step: 'STEP {n}/{of}',
+    hintMoveKeys: 'Move with WASD.',
+    hintMoveTouch: 'Drag the left side of the screen to move.',
+    hintAttackKeys: 'Hold the left mouse button to attack — aiming is automatic.',
+    hintAttackTouch: 'Hold the right side of the screen to attack — aiming is automatic.',
     hintSwapKeys: 'Press 1 or 2 to switch weapon.',
     hintSwapTouch: 'Tap a weapon button to switch weapon.',
     hintDeflect: 'Swing your melee weapon into incoming bullets to deflect them.',
-    hintCleared: 'Nicely done — head to the portal.',
+    hintCleared: 'Nicely done — you know the basics.',
     skip: 'SKIP TUTORIAL',
   },
   results: {
@@ -426,12 +429,9 @@ export const en = {
     no: 'no',
     vs: 'vs',
   },
-  // Content display names (design/09's `nameKey` scaffolding, resolved via `tName()`
-  // rather than `t()` — see i18n/index.ts's doc comment). One leaf per catalog id in
-  // engine/content/weaponSpecs/*.ts, skins.ts, materials.ts, balance/runbuffs.ts —
-  // `i18n/contentNames.test.ts` asserts every real catalog id resolves here in every
-  // locale (the test-time parity check standing in for `TranslationKey`'s compile-time
-  // one, which doesn't apply to these dynamic ids).
+  // Content display names (design/09 `nameKey`, resolved via `tName()`, see i18n/index.ts): one
+  // leaf per catalog id in engine/content (weaponSpecs, skins, materials, runbuffs).
+  // `i18n/contentNames.test.ts` checks every real id resolves here in every locale.
   weapon: {
     blaster: { name: 'Blaster' },
     saber: { name: 'Saber' },
