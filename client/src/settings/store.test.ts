@@ -4,7 +4,7 @@
  * pre-existing-shape save" convention (see meta/store.ts, net/session.ts).
  */
 import { describe, it, expect } from 'vitest';
-import { createWebSettingsStore, MemorySettingsStore, persistedLocale } from './store';
+import { createWebSettingsStore, MemorySettingsStore, persistedLocale, setPreferredLanguages } from './store';
 import { defaultSettingsState } from './SettingsState';
 import { QUALITY_SETTINGS } from '../render/quality';
 import { FRAME_RATE_SETTINGS } from '../game/powerBudget';
@@ -286,5 +286,39 @@ describe('persistedLocale — what the entry points read before `Game` exists', 
     };
     expect(() => persistedLocale(exploding)).not.toThrow();
     expect(persistedLocale(exploding)).toBe('en');
+  });
+});
+
+describe('setPreferredLanguages — a portal states the language itself', () => {
+  it('replaces the browser languages on a first boot, and null restores them', () => {
+    const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { languages: ['en-US'], language: 'en-US' }, configurable: true,
+    });
+    try {
+      withFakeLocalStorage(() => {
+        expect(createWebSettingsStore('t.settings.pref.1').load().locale).toBe('en');
+        setPreferredLanguages(['de']);
+        expect(createWebSettingsStore('t.settings.pref.2').load().locale).toBe('de');
+        setPreferredLanguages(null);
+        expect(createWebSettingsStore('t.settings.pref.3').load().locale).toBe('en');
+      });
+    } finally {
+      setPreferredLanguages(null);
+      if (nav) Object.defineProperty(globalThis, 'navigator', nav);
+      else delete (globalThis as { navigator?: unknown }).navigator;
+    }
+  });
+
+  it('never outranks a locale the player already saved', () => {
+    try {
+      withFakeLocalStorage(() => {
+        localStorage.setItem('t.settings.pref.4', JSON.stringify({ ...defaultSettingsState(), locale: 'en' }));
+        setPreferredLanguages(['de']);
+        expect(createWebSettingsStore('t.settings.pref.4').load().locale).toBe('en');
+      });
+    } finally {
+      setPreferredLanguages(null);
+    }
   });
 });

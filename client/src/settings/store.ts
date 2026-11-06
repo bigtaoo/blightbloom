@@ -32,7 +32,20 @@ export interface SettingsStoreDeps {
   languages?: readonly string[];
 }
 
+let preferred: readonly string[] | null = null;
+
+/**
+ * Languages an entry point knows better than the browser does, used INSTEAD of the browser's on
+ * a first boot. A portal states the player's language itself (Playgama's `platform.language`,
+ * which its requirements say the game must follow, with English where it is not supported), and
+ * the frame's `navigator` may not agree with it. `null` restores the browser's.
+ */
+export function setPreferredLanguages(langs: readonly string[] | null): void {
+  preferred = langs;
+}
+
 function browserLanguages(): readonly string[] {
+  if (preferred !== null) return preferred;
   if (typeof navigator === 'undefined') return [];
   return navigator.languages && navigator.languages.length > 0 ? navigator.languages : [navigator.language];
 }

@@ -262,6 +262,11 @@ export class MainMenu {
     this.routes.setSoloPrimary(!showPlay);
   }
 
+  /** Whether the lobby draws its online routes at all — see `LobbyRoutes.setOnline`. */
+  setOnlineRoutes(online: boolean): void {
+    this.routes.setOnline(online);
+  }
+
   /** Call before `show()` so TUTORIAL reflects `!MetaState.hasSeenTutorial`. */
   setRecommendTutorial(recommend: boolean): void {
     this.routes.setRecommendTutorial(recommend);
@@ -273,15 +278,16 @@ export class MainMenu {
    * account-integration`) and signs the player in silently instead. What replaces the button
    * is a plain LABEL naming the player (the platform requires the username be shown), plus the
    * data notice — nobody typed anything, so the one screen they do see has to say what is
-   * stored.
+   * stored. `notice` is false where nothing is stored at all (Playgama: no server to store it
+   * on), so the notice would describe a collection that does not happen.
    */
-  setAccountEntry(enabled: boolean): void {
+  setAccountEntry(enabled: boolean, notice = !enabled): void {
     this.accountEntry = enabled;
     this.accountBtn.view.visible = enabled;
-    this.dataNotice.visible = !enabled;
+    this.dataNotice.visible = notice;
     // Same gate as the notice, AND a URL has to exist — design/20's rule that nothing renders
     // a link until one does.
-    this.privacyLink.visible = !enabled && policyUrl('privacy') !== null;
+    this.privacyLink.visible = notice && policyUrl('privacy') !== null;
     this.refreshAccountLabel();
   }
 

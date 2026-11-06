@@ -61,3 +61,4 @@ tools/audio-pipeline/process*.json
 # `npm run test:coverage`; the gate reads coverage-summary.json out of it and CI uploads the
 # html half as an artifact. Never source.
 coverage/
+client/dist-playgama/

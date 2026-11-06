@@ -92,3 +92,13 @@ describe('openPolicy', () => {
     expect(() => openPolicy('privacy', { urls })).not.toThrow();
   });
 });
+
+describe('policyUrl — a host that forbids linking out', () => {
+  const urls: PolicyUrls = { privacy: 'https://b.gamestao.com/privacy', terms: 'https://b.gamestao.com/terms' };
+  it('returns null for every page on playgama, and the URL elsewhere', () => {
+    expect(policyUrl('privacy', urls, 'playgama')).toBeNull();
+    expect(policyUrl('terms', urls, 'playgama')).toBeNull();
+    expect(policyUrl('privacy', urls, 'crazygames')).toBe(urls.privacy);
+    expect(policyUrl('privacy', urls)).toBe(urls.privacy); // the default host is web
+  });
+});

@@ -37,6 +37,16 @@ declare module '*/vite.crazygames.config.js' {
   export const portalHtml: unknown;
 }
 
+/** The Playgama build config, for `platform/playgama/playgamaBuild.test.ts` — same reason. */
+declare module '*/vite.playgama.config.js' {
+  const config: unknown;
+  export default config;
+  export const rewritePlaygamaHtml: (html: string) => string;
+  export const playgamaHtml: unknown;
+  export const BRIDGE_CONFIG: { advertisement: { minimumDelayBetweenInterstitial: number } };
+  export const DROPPED_FILES: readonly string[];
+}
+
 /** `import source from './file.ts?raw'` — Vite hands back the file's text unparsed.
  * Used by textMetrics.test.ts to assert an entry point still calls a boot-order-critical
  * function, which importing the entry itself cannot check (importing it runs `boot()`). */
