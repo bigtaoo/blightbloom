@@ -341,6 +341,10 @@ export const es: Translations<typeof en> = {
     hintDeflect: 'Golpea las balas entrantes con tu arma cuerpo a cuerpo para desviarlas.',
     hintCleared: 'Bien hecho — ya conoces lo básico.',
     skip: 'OMITIR TUTORIAL',
+    guideFoe: 'Enemigos adelante: sigue la flecha roja',
+    guideDoor: 'Sala despejada: sigue la flecha verde a la siguiente sala',
+    guideMoveKeys: 'Moverse: WASD o flechas',
+    guideMoveTouch: 'Moverse: arrastra el lado izquierdo de la pantalla',
   },
   results: {
     mainMenuButton: 'MENÚ PRINCIPAL',

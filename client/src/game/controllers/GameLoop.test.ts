@@ -540,7 +540,7 @@ describe('GameLoop — the render frame every per-actor clock rides on', () => {
     const loop = new GameLoop(deps, buildHost({ getEngine: () => createGameEngine(CFG) }));
     loop.update(16);
     expect(scene.drawGuides).toHaveBeenCalledTimes(1);
-    expect(scene.drawGuides).toHaveBeenCalledWith(16);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16, false);
     expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
   });
 });
@@ -660,7 +660,7 @@ describe('GameLoop — online path (advanceOnline)', () => {
     const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
     loop.update(16);
     expect(scene.drawGuides).toHaveBeenCalledTimes(1);
-    expect(scene.drawGuides).toHaveBeenCalledWith(16);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16, false);
     expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
   });
 

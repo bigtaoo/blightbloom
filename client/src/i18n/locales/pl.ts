@@ -341,6 +341,10 @@ export const pl: Translations<typeof en> = {
     hintDeflect: 'Zamachnij się bronią do walki wręcz na nadlatujące pociski, by je odbić.',
     hintCleared: 'Świetnie — znasz już podstawy.',
     skip: 'POMIŃ SAMOUCZEK',
+    guideFoe: 'Wrogowie przed tobą — idź za czerwoną strzałką',
+    guideDoor: 'Pokój oczyszczony — idź za zieloną strzałką do następnego pokoju',
+    guideMoveKeys: 'Ruch: WASD lub strzałki',
+    guideMoveTouch: 'Ruch: przeciągnij lewą stronę ekranu',
   },
   results: {
     mainMenuButton: 'MENU GŁÓWNE',

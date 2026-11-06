@@ -447,7 +447,7 @@ export class GameLoop {
     const worldSize = s ? { w: fpToPx(s.worldW), h: fpToPx(s.worldH) } : null;
     const { w: vw, h: vh } = this.host.screenSize();
     this.deps.fx.updateCamera(alpha, { vw, vh }, worldSize, this.deps.scene.player, this.cameraFrame(s), dt);
-    this.deps.scene.drawGuides(dt); // after the camera's whole-pixel nudge: posed where the player is drawn
+    this.deps.scene.drawGuides(dt, this.deps.input.getTouchVisual().active); // after the camera's whole-pixel nudge: posed where the player is drawn
   }
 
   /**
