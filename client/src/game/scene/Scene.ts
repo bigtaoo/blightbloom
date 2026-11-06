@@ -15,6 +15,8 @@ import { PickupFlightLayer, type FlightPoint } from './pickupFlight';
 import { ChestLayer } from './ChestLayer';
 import { ShopLayer } from './ShopLayer';
 import { PickupRefusalLayer } from './PickupRefusalLayer';
+import { NextRoomArrow } from './NextRoomArrow';
+import { nextRoomGuide } from '../ui/nextRoomGuide';
 import { RefusalHintTracker, pickupRefusalReason } from '../ui/pickupRefusal';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
@@ -64,6 +66,8 @@ export class Scene {
    *  `flights` is — this class already knows the local seat and every drop's view. */
   private readonly refusalTracker = new RefusalHintTracker();
   private readonly refusalHints = new PickupRefusalLayer(this.layers.numbers);
+  /** The arrow toward the next room once the local player's room is done (`ui/nextRoomGuide.ts`). */
+  private readonly nextRoom = new NextRoomArrow(this.layers.numbers);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -142,6 +146,7 @@ export class Scene {
     this.flights.clear();
     this.refusalTracker.clear();
     this.refusalHints.clear();
+    this.nextRoom.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -298,6 +303,7 @@ export class Scene {
       seen.add(it.id);
     }
     this.refusalHints.show(this.refusalTracker.update(state, local));
+    this.nextRoom.setTarget(local?.alive ? nextRoomGuide(state, local.roomId) : null);
 
     this.chests.update(state);
     this.shops.update(state);
@@ -365,6 +371,7 @@ export class Scene {
     // detached from any engine entity, so there is nothing left to interpolate them against.
     this.flights.update(frameDt);
     this.refusalHints.update(frameDt);
+    this.nextRoom.update(frameDt, this.playerView);
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const v = this.dying[i];
       v.interpolate(alpha, frameDt);

@@ -31,7 +31,23 @@ type SessionBridge = Pick<
 >;
 
 /** Why the game is stopped or silent right now; it runs again only when this is empty. */
-type Hold = 'ad' | 'pause';
+type Hold = 'ad' | 'pause' | 'unsized';
+
+/**
+ * The frame the game is drawn into. Playgama's sandbox mounts the game in an iframe that starts
+ * at 0x0 and is sized later; a run that ticks in that window is played by nobody — the first-run
+ * autostart puts a new player straight into combat, so the frames they miss are the ones that
+ * teach. Injected so the rule is testable without a window.
+ */
+export interface SessionViewport {
+  size(): { w: number; h: number };
+  onResize(fn: () => void): void;
+}
+
+const windowViewport: SessionViewport = {
+  size: () => ({ w: globalThis.innerWidth ?? 1, h: globalThis.innerHeight ?? 1 }),
+  onResize: (fn) => globalThis.addEventListener?.('resize', fn),
+};
 
 export class PlaygamaSession {
   private readonly bracket: GameplayBracket;
@@ -46,6 +62,7 @@ export class PlaygamaSession {
     private readonly bridge: SessionBridge,
     private readonly clock: SuspendableClock,
     private readonly mute: (muted: boolean) => void = setExternalMute,
+    private readonly viewport: SessionViewport = windowViewport,
   ) {
     this.bracket = new GameplayBracket({
       gameplayStart: () => bridge.send('gameplay_started'),
@@ -65,6 +82,20 @@ export class PlaygamaSession {
   /** The first playable frame is on screen: the loading screen may come down. */
   ready(): void {
     this.bridge.send('game_ready');
+  }
+
+  /**
+   * Hold the game while its frame has no area (`SessionViewport`'s doc). Armed only after
+   * `ready()`: the boot waits for one rendered frame before it may send `game_ready`, and a
+   * stopped ticker would never render it — the same order D:/jump's boot keeps.
+   */
+  watchViewport(): void {
+    const check = (): void => {
+      const { w, h } = this.viewport.size();
+      this.setHold('unsized', !(w > 0 && h > 0));
+    };
+    check();
+    this.viewport.onResize(check);
   }
 
   update(): void {
@@ -116,6 +147,8 @@ export class PlaygamaSession {
     if (was !== now) {
       if (now) this.clock.stop();
       else this.clock.start();
+      // `update()` rides the clock just stopped, so the bracket is told here or not at all.
+      this.bracket.update(this.game.getPhase(), now);
     }
     this.applyMute();
   }

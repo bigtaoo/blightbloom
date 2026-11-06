@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import playgamaConfig, {
-  BRIDGE_CONFIG, DROPPED_FILES, playgamaHtml, rewritePlaygamaHtml,
+  BRIDGE_CONFIG, DROPPED_FILES, gameVersion, playgamaHtml, rewritePlaygamaHtml,
 } from '../../../vite.playgama.config.js';
 
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -104,6 +104,22 @@ describe('vite.playgama.config.js', () => {
   });
 });
 
+describe('gameVersion', () => {
+  it('is the package version plus the short commit', () => {
+    expect(gameVersion(() => 'abc1234')).toMatch(/^\d+\.\d+\.\d+\+abc1234$/);
+  });
+
+  it('still builds without git', () => {
+    expect(gameVersion(() => { throw new Error('not a repo'); })).toMatch(/\+unknown$/);
+    expect(gameVersion(() => '')).toMatch(/\+unknown$/);
+  });
+
+  it('is defined into the bundle as import.meta.env.VITE_GAME_VERSION', () => {
+    const define = (playgamaConfig as { define?: Record<string, string> }).define ?? {};
+    expect(JSON.parse(define['import.meta.env.VITE_GAME_VERSION']!)).toMatch(/^\d+\.\d+\.\d+\+/);
+  });
+});
+
 describe('main.playgama.ts — the boot order', () => {
   const at = (needle: string): number => {
     const i = ENTRY.indexOf(needle);
@@ -112,7 +128,7 @@ describe('main.playgama.ts — the boot order', () => {
   };
 
   it('awaits Bridge, then adopts its storage, before any store or the Game exists', () => {
-    const init = at('await bridge.init()');
+    const init = at('await bridge.init(import.meta.env.VITE_GAME_VERSION)');
     const storage = at('await adoptBridgeStorage(');
     expect(init).toBeLessThan(storage);
     for (const later of ['persistedLocale()', 'installAnalytics(', 'new Game(']) {
@@ -129,6 +145,17 @@ describe('main.playgama.ts — the boot order', () => {
     for (const banned of ['VITE_MATCHSVC_URL', 'installClientLog', 'fetchPublicFlags', 'pageOpenBeacon']) {
       expect(ENTRY, banned).not.toContain(banned);
     }
+  });
+
+  it('stamps the build version on Bridge and on the analytics batch', () => {
+    expect(ENTRY).toContain('build: () => import.meta.env.VITE_GAME_VERSION ?? null');
+  });
+
+  it('watches the frame size only after game_ready, so a 0x0 frame cannot deadlock the boot', () => {
+    // The ready signal waits for a rendered frame; a hold armed first would stop the ticker
+    // that has to render it (PlaygamaSession.watchViewport).
+    expect(at('await afterFirstRenderedFrame(')).toBeLessThan(at('session.ready();'));
+    expect(at('session.ready();')).toBeLessThan(at('session.watchViewport();'));
   });
 
   it('auto-starts the first run right after start(), before the session exists', () => {

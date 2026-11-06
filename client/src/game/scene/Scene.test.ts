@@ -1447,3 +1447,58 @@ describe('Scene.reconcile — refused drops (2026-10-13)', () => {
     expect(layers.numbers.children.length).toBe(0);
   });
 });
+
+describe('Scene — the arrow to the next room (2026-11-06)', () => {
+  /** Two rooms side by side, A (0..320 px) and B (384..704 px), the door between them at x 320..384. */
+  function twoRooms(): GameState {
+    const s = createGameState({ ...CFG, players: [{ start: [100, 160] }] });
+    const r = (x: number, w: number) => ({ x: pxToFp(x), y: pxToFp(0), w: pxToFp(w), h: pxToFp(320) });
+    for (const [i, id] of ['A', 'B'].entries()) {
+      s.dungeonRoomRects.push({ id, rect: r(i * 384, 320) } as never);
+      s.dungeonRooms.push({ id, piece: {} } as never);
+      s.dungeonRoomRuntime.push({ activated: i === 0, roomTick: 0, schedule: [], cursor: 0, hasLiveEnemy: false });
+      s.dungeonRoomIndexById.set(id, i);
+    }
+    s.dungeonDoors.push({
+      door: { roomA: 'A', roomB: 'B', passageGrid: { x: 10, y: 4, w: 2, h: 2 } },
+      passageAabb: { x: pxToFp(320), y: pxToFp(128), w: pxToFp(64), h: pxToFp(64) },
+      locked: false,
+    } as never);
+    s.players[0]!.roomId = 'A';
+    return s;
+  }
+
+  it('points the local player at the door once their room is done, and leaves when a fight starts', () => {
+    const s = twoRooms();
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 2000);
+    const arrow = layers.numbers.children.at(-1)!;
+    expect(arrow.visible).toBe(true);
+    expect(arrow.rotation).toBeCloseTo(0, 1); // east, toward the door
+    expect(arrow.x).toBeGreaterThan(100);
+
+    s.dungeonRoomRuntime[0]!.hasLiveEnemy = true;
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 16);
+    expect(arrow.visible).toBe(false);
+  });
+
+  it('shows nothing for a dead local player, and nothing after clear()', () => {
+    const s = twoRooms();
+    s.players[0]!.alive = false;
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 2000);
+    expect(layers.numbers.children.some((c) => c.visible)).toBe(false);
+
+    s.players[0]!.alive = true;
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 2000);
+    expect(layers.numbers.children.some((c) => c.visible)).toBe(true);
+    scene.clear();
+    expect(layers.numbers.children.some((c) => c.visible)).toBe(false);
+  });
+});

@@ -281,6 +281,24 @@ run, not on the menu, which is what the 60 s survival gate below assumes. It sit
 beside the first one. Its check PASSED (Bridge 2.4.1) and the sandbox was **re-published** with
 it on the owner's yes, same link, so every player the test measures starts in the first run.
 
+**Ported from the sibling project `jump` (2026-11-06, the next archive).** Four pieces:
+
+- **Hold while the iframe is 0×0.** Portals mount the game hidden and size it later. While the
+  window reports a zero size, `PlaygamaSession` holds an `'unsized'` reason: the ticker and sim
+  stop and audio mutes, and the hold lifts on the first non-zero `resize`
+  (`PlaygamaSession.watchViewport`, called after `session.ready()`).
+- **Away-pause.** Window blur or a hidden tab pauses a local run (`gameWiring.ts`, the
+  `canPause` guard), so a player who tabs away does not come back dead.
+- **Arrow to the next room.** Once a room is cleared (activated, no live enemy, wave schedule
+  done), a chevron orbits the player after 1.2 s and points along open doors to the nearest
+  unentered room, or to the exit room once all are entered (`ui/nextRoomGuide.ts`, pure;
+  `scene/NextRoomArrow.ts`). It hides within 72 px of the door.
+- **`performance_sample`.** Playgama's frame-time event (`platform/playgama/perfSample.ts`):
+  30 s windows of active, visible play, with p10 fps, frame-time percentiles, long-frame counts,
+  errors, lost contexts and long tasks, tagged with `build_version` (`VITE_GAME_VERSION`,
+  `<package version>+<short sha>`, also set as `bridge.gameVersion`). It goes straight to
+  `bridge.track`, not through `net/analytics.ts`.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

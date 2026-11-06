@@ -62,6 +62,18 @@ function manualWait() {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+describe('init — the game version', () => {
+  it('is set on the SDK before initialize() runs, and left alone when absent', async () => {
+    const seen: Array<string | undefined> = [];
+    const sdk: BridgeShape = { initialize: () => void seen.push(sdk.gameVersion) };
+    expect(await new PlaygamaBridge({ bridge: sdk }, manualWait().wait).init('0.0.1+abc')).toBe(true);
+    expect(seen).toEqual(['0.0.1+abc']);
+    const bare: BridgeShape = { initialize: () => undefined };
+    await new PlaygamaBridge({ bridge: bare }, manualWait().wait).init();
+    expect('gameVersion' in bare).toBe(false);
+  });
+});
+
 async function ready(over: Partial<BridgeShape> = {}) {
   const f = fakeSdk(over);
   const w = manualWait();

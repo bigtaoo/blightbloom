@@ -20,7 +20,7 @@ import { RunState } from '../runState';
 import { resetHostKind, setHostKind } from '../../platform/hostKind';
 import { notifySessionChanged, resetSessionEvents } from '../../platform/sessionEvents';
 import { onlineEntry, setOnlineEntry } from '../../platform/onlineEntry';
-import { keydownAction, wireHud, wireScreens, type WiringDeps } from './gameWiring';
+import { canPause, keydownAction, wireHud, wireScreens, wireWindow, type WiringDeps } from './gameWiring';
 import { setPublicFlags, setPublicFlagsListener } from '../../net/clientFlags';
 import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
@@ -712,5 +712,75 @@ describe('wireScreens — the two multiplayer doors a host can push (design/20)'
     onlineEntry()!.joinPartyByCode('ABCD');
     expect(t.called).toEqual(['nav.showSquad']);
     expect(joins).toEqual(['ABCD']);
+  });
+});
+
+describe('wireWindow — leaving the window pauses a local run (D:/jump awayPause)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubWindow() {
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { hidden: false });
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', doc);
+    vi.stubGlobal('requestAnimationFrame', (fn: () => void) => fn());
+    return { win, doc };
+  }
+
+  it('canPause: a running local run, and nothing else', () => {
+    expect(canPause('playing', false)).toBe(true);
+    expect(canPause('playing', true)).toBe(false);
+    for (const p of ['menu', 'paused', 'settings', 'victory', 'defeat']) expect(canPause(p, false), p).toBe(false);
+  });
+
+  it('a blur or a hidden tab opens the pause menu mid-run; a visible one does not', () => {
+    const { win, doc } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'playing';
+    wireWindow(t.d);
+    doc.dispatchEvent(new Event('visibilitychange')); // became visible: no pause
+    expect(t.nav.pause).not.toHaveBeenCalled();
+    win.dispatchEvent(new Event('blur'));
+    expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(t.nav.pause).toHaveBeenCalledTimes(2);
+  });
+
+  it('never pauses an online match or a screen that is not a run', () => {
+    const { win } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'menu';
+    wireWindow(t.d);
+    win.dispatchEvent(new Event('blur'));
+    t.d.run.phase = 'playing';
+    t.d.run.online = true;
+    win.dispatchEvent(new Event('blur'));
+    expect(t.nav.pause).not.toHaveBeenCalled();
+  });
+
+  it('wires the blur alone when the host has no document, or one with no listeners', () => {
+    for (const doc of [undefined, { hidden: true }]) {
+      const win = new EventTarget();
+      vi.stubGlobal('window', win);
+      vi.stubGlobal('document', doc);
+      const t = make();
+      t.d.run.phase = 'playing';
+      expect(() => wireWindow(t.d)).not.toThrow();
+      win.dispatchEvent(new Event('blur'));
+      expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('still routes the keys and the resize it always did', () => {
+    const { win } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'playing';
+    (t.nav as Record<string, unknown>).relayout = vi.fn();
+    wireWindow(t.d);
+    win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyP' }));
+    expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    win.dispatchEvent(new Event('resize'));
+    expect((t.nav as Record<string, unknown>).relayout).toHaveBeenCalled();
   });
 });

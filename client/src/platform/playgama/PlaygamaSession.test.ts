@@ -147,15 +147,16 @@ describe('PlaygamaSession — the platform switches', () => {
     const h = harness();
     h.walk('menu', 'playing');
     h.pause(true);
-    expect(h.log.at(-1)).toBe('clock:stop');
+    // The bracket closes with the clock, not a tick later: the stopped clock has no tick.
+    expect(h.log.slice(-2)).toEqual(['clock:stop', 'gameplay_stopped']);
     expect(h.mutes.at(-1)).toBe(true);
     h.walk('playing');
-    expect(h.log.at(-1)).toBe('gameplay_stopped');
+    expect(h.count('gameplay_stopped')).toBe(2); // the menu's, then the pause's — no repeat
     h.pause(false);
-    expect(h.log.at(-1)).toBe('clock:start');
+    expect(h.log.slice(-2)).toEqual(['clock:start', 'gameplay_started']);
     expect(h.mutes.at(-1)).toBe(false);
     h.walk('playing');
-    expect(h.log.at(-1)).toBe('gameplay_started');
+    expect(h.count('gameplay_started')).toBe(2);
   });
 
   it('a repeated pause signal touches the clock once', () => {
@@ -217,6 +218,76 @@ describe('PlaygamaSession.rewardedAd', () => {
     expect(h.log.at(-1)).toBe('gameplay_stopped');
     h.pending[0]!.resolve(true);
     await expect(shown).resolves.toBe(true);
-    expect(h.session.diagnostics()).toBe('holds none · muted false · interstitials 0');
+    expect(h.session.diagnostics()).toBe('holds none · muted false · interstitials 0 · gameplay');
+  });
+});
+
+describe('PlaygamaSession — a frame with no area', () => {
+  function sized(w0: number, h0: number) {
+    const log: string[] = [];
+    let phase: Phase = 'playing';
+    let size = { w: w0, h: h0 };
+    const listeners: Array<() => void> = [];
+    const bridge = {
+      send: (m: string) => void log.push(m),
+      onPause: () => undefined,
+      onMute: () => undefined,
+      interstitial: async () => undefined,
+      rewarded: async () => false,
+      rewardedSupported: () => false,
+      adInFlight: () => false,
+    };
+    const clock = { stop: () => void log.push('clock:stop'), start: () => void log.push('clock:start') };
+    const mutes: boolean[] = [];
+    const viewport = { size: () => size, onResize: (fn: () => void) => void listeners.push(fn) };
+    const session = new PlaygamaSession({ getPhase: () => phase }, bridge, clock, (m) => void mutes.push(m), viewport);
+    session.start();
+    session.update();
+    return {
+      session, log, mutes, listeners,
+      resize: (w: number, h: number) => {
+        size = { w, h };
+        for (const fn of listeners) fn();
+      },
+      setPhase: (p: Phase) => void (phase = p),
+    };
+  }
+
+  it('holds a run that boots into a 0x0 iframe, and reports gameplay stopped though the clock is', () => {
+    const h = sized(0, 0);
+    expect(h.log).toEqual(['gameplay_started']);
+    h.session.watchViewport();
+    expect(h.log).toEqual(['gameplay_started', 'clock:stop', 'gameplay_stopped']);
+    expect(h.mutes.at(-1)).toBe(true);
+    expect(h.session.diagnostics()).toContain('holds unsized');
+  });
+
+  it('releases the hold when the host gives the frame an area, and only then', () => {
+    const h = sized(0, 0);
+    h.session.watchViewport();
+    h.resize(960, 0); // one axis is not enough to see anything
+    expect(h.log.filter((m) => m === 'clock:start')).toHaveLength(0);
+    h.resize(960, 540);
+    expect(h.log.slice(-2)).toEqual(['clock:start', 'gameplay_started']);
+    expect(h.mutes.at(-1)).toBe(false);
+    h.resize(0, 540);
+    expect(h.log.slice(-2)).toEqual(['clock:stop', 'gameplay_stopped']);
+  });
+
+  it('does nothing to a frame that already has an area', () => {
+    const h = sized(800, 600);
+    h.session.watchViewport();
+    expect(h.log).toEqual(['gameplay_started']);
+    expect(h.listeners).toHaveLength(1);
+    expect(h.session.diagnostics()).toContain('holds none');
+  });
+
+  it('does not announce gameplay when the hold lifts on a menu', () => {
+    const h = sized(0, 0);
+    h.session.watchViewport();
+    h.setPhase('menu');
+    h.resize(960, 540);
+    expect(h.log.at(-1)).toBe('clock:start');
+    expect(h.log.filter((m) => m === 'gameplay_started')).toHaveLength(1);
   });
 });
