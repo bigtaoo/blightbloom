@@ -29,8 +29,8 @@
  * that says nothing, the same rule the client log module already follows.
  */
 
-/** The three build targets, matching `client/src/platform/hostKind.ts`'s `HostKind`. */
-export const HOSTS = ['web', 'wechat', 'crazygames'] as const;
+/** The build targets, matching `client/src/platform/hostKind.ts`'s `HostKind`. */
+export const HOSTS = ['web', 'wechat', 'crazygames', 'playgama'] as const;
 export type AnalyticsHost = (typeof HOSTS)[number];
 
 /** The coarse device split on `session_start` (`visitContext.ts` decides which is which). */

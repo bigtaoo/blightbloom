@@ -1031,3 +1031,30 @@ describe('MainMenu — the chapter picker (2026-10-06)', () => {
     expect(() => privateOf(m).routes.chapters.cycle(1)).not.toThrow();
   });
 });
+
+describe('MainMenu — a portal with no server (Playgama)', () => {
+  it('setAccountEntry(false, false) hides the account button AND the data notice and its link', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false, false);
+    m.show(800, 600);
+    const p = privateOf(m);
+    expect(p.accountBtn.view.visible).toBe(false);
+    expect(p.dataNotice.visible).toBe(false);
+    expect(p.privacyLink.visible).toBe(false);
+  });
+
+  it('setOnlineRoutes(false) reaches the lobby column, which then draws no CO-OP door', () => {
+    const m = new MainMenu();
+    m.setOnlineRoutes(false);
+    m.show(800, 600);
+    const routes = (m as unknown as { routes: { coopBtn: { view: { visible: boolean } } } }).routes;
+    expect(routes.coopBtn.view.visible).toBe(false);
+  });
+
+  it('the notice still follows the entry by default (the CrazyGames build)', () => {
+    const m = new MainMenu();
+    m.setAccountEntry(false);
+    m.show(800, 600);
+    expect(privateOf(m).dataNotice.visible).toBe(true);
+  });
+});

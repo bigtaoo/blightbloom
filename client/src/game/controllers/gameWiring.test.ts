@@ -27,6 +27,15 @@ import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
 
 describe('keydownAction', () => {
+  it('leaves Escape to the host where it is not ours (Playgama), and P/O still work', () => {
+    for (const phase of ['settings', 'playing', 'paused', 'menu']) {
+      expect(keydownAction('Escape', phase, false, false), phase).toBe('forge');
+    }
+    expect(keydownAction('KeyP', 'playing', false, false)).toBe('pause');
+    expect(keydownAction('KeyO', 'settings', false, false)).toBe('closeSettings');
+    expect(keydownAction('Escape', 'playing', false, true)).toBe('pause');
+  });
+
   it('closes the settings screen on Escape or O, from the settings phase only', () => {
     expect(keydownAction('Escape', 'settings', false)).toBe('closeSettings');
     expect(keydownAction('KeyO', 'settings', false)).toBe('closeSettings');
@@ -141,7 +150,7 @@ function make() {
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
     mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onSelectChapter', 'onCoop', 'onPvpSolo', 'onSquad',
       'onForge', 'onTutorial', 'onAccount', 'onSettings'),
-      setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
+      setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), setOnlineRoutes: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
     partyScreen: screenStub('onBack', 'onStartMatch', 'chapterOf') as never,
@@ -535,11 +544,32 @@ describe('wireScreens — the portal host', () => {
       onAccount: (() => void) | null;
       setAccountEntry: ReturnType<typeof vi.fn>;
     };
-    expect(menu.setAccountEntry).toHaveBeenCalledWith(false);
+    // The data notice stays: CrazyGames' build talks to our server, so there is data to declare.
+    expect(menu.setAccountEntry).toHaveBeenCalledWith(false, true);
     expect(menu.onAccount).toBeNull();
     // ...and pressing it reaches nothing, rather than reaching the screen.
     menu.onAccount?.();
     expect(t.called).toEqual([]);
+  });
+
+  it('on Playgama also drops the online routes and the data notice — there is no server', () => {
+    setHostKind('playgama');
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as {
+      onAccount: (() => void) | null;
+      setAccountEntry: ReturnType<typeof vi.fn>;
+      setOnlineRoutes: ReturnType<typeof vi.fn>;
+    };
+    expect(menu.setAccountEntry).toHaveBeenCalledWith(false, false);
+    expect(menu.setOnlineRoutes).toHaveBeenCalledWith(false);
+    expect(menu.onAccount).toBeNull();
+  });
+
+  it('leaves the online routes alone where the host can play online', () => {
+    const t = make();
+    wireScreens(t.d);
+    expect((t.d.mainMenu as unknown as { setOnlineRoutes: ReturnType<typeof vi.fn> }).setOnlineRoutes).not.toHaveBeenCalled();
   });
 
   it('keeps the account entry on the default host', () => {

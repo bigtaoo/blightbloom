@@ -20,7 +20,7 @@
 
 /** The hosts this client ships to. `web` is the default (a plain browser on our own
  *  domain), so nothing that fails to opt in changes behaviour. */
-export type HostKind = 'web' | 'wechat' | 'crazygames';
+export type HostKind = 'web' | 'wechat' | 'crazygames' | 'playgama';
 
 let current: HostKind = 'web';
 
@@ -49,7 +49,7 @@ export function resetHostKind(): void {
  * it here instead of adding a second `=== 'crazygames'` everywhere.
  */
 export function isPortalHost(kind: HostKind = current): boolean {
-  return kind === 'crazygames';
+  return kind === 'crazygames' || kind === 'playgama';
 }
 
 /**
@@ -76,8 +76,67 @@ const SIGN_IN_AVAILABLE: Record<HostKind, boolean> = {
   // logged-out player is not a state that exists there — and the platform forbids our own
   // login as a call to action anyway (`MainMenu.setAccountEntry` carries the citation).
   crazygames: false,
+  // No server to sign in to: the frame cannot reach ours (`ONLINE_AVAILABLE` below).
+  playgama: false,
 };
 
 export function canSignIn(kind: HostKind = current): boolean {
   return SIGN_IN_AVAILABLE[kind];
+}
+
+/**
+ * Whether this host's frame can reach our server at all — matchsvc's WebSocket for co-op, PvP
+ * and parties, and its HTTP routes for logs, flags and accounts.
+ *
+ * Added 2026-11-06 with the Playgama target. Playgama's sandbox frame has a CSP that admits
+ * only Playgama's own origins (Holy Kicker measured it: every request to its backend refused),
+ * so every online door there would open onto a connection error. The build is single-player
+ * instead, and the lobby draws no online routes (`LobbyRoutes.setOnline`) rather than routes
+ * that fail. A `Record` for `SIGN_IN_AVAILABLE`'s reason: a new host has to answer.
+ */
+const ONLINE_AVAILABLE: Record<HostKind, boolean> = {
+  web: true,
+  wechat: true,
+  crazygames: true,
+  playgama: false,
+};
+
+export function canPlayOnline(kind: HostKind = current): boolean {
+  return ONLINE_AVAILABLE[kind];
+}
+
+/**
+ * Whether the game may open a page outside itself — today only the privacy-policy link the
+ * portal menu shows beside its data notice (`MainMenu.setAccountEntry`).
+ *
+ * False on Playgama, whose requirements forbid links that lead a player out of the game; the
+ * policy pages are the platform's own there.
+ */
+const LINK_OUT_AVAILABLE: Record<HostKind, boolean> = {
+  web: true,
+  wechat: true,
+  crazygames: true,
+  playgama: false,
+};
+
+export function canLinkOut(kind: HostKind = current): boolean {
+  return LINK_OUT_AVAILABLE[kind];
+}
+
+/**
+ * Whether the Escape key is the game's to bind. It pauses a run and closes the settings screen
+ * elsewhere (`gameWiring.keydownAction`); P and O do the same, so nothing is lost without it.
+ *
+ * False on Playgama, whose requirements reserve Escape for the platform (it leaves full screen
+ * there, and a game that also pauses on it does two things on one press).
+ */
+const ESCAPE_KEY_AVAILABLE: Record<HostKind, boolean> = {
+  web: true,
+  wechat: true,
+  crazygames: true,
+  playgama: false,
+};
+
+export function canBindEscape(kind: HostKind = current): boolean {
+  return ESCAPE_KEY_AVAILABLE[kind];
 }

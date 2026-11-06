@@ -82,6 +82,12 @@ export interface AnalyticsInstallOptions {
   build: () => string | null;
   /** The current language, read per flush — a player can change it mid-visit. */
   locale: () => string;
+  /**
+   * Where a batch goes INSTEAD of `POST {baseUrl}/client/events`. For a host whose frame cannot
+   * reach our server at all (Playgama's sandbox admits only its own origins), so the events are
+   * handed to the platform's analytics; `baseUrl` and `token` are then unused.
+   */
+  send?: (batch: AnalyticsBatch) => void;
   /** Injected by tests. */
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -168,7 +174,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   const doFetch = opts.fetchImpl ?? (typeof fetch === 'function' ? fetch : undefined);
   const url = `${opts.baseUrl.replace(/\/$/, '')}${CLIENT_EVENTS_PATH}`;
 
-  const send = (batch: AnalyticsBatch): void => {
+  const send = opts.send ?? ((batch: AnalyticsBatch): void => {
     if (doFetch === undefined) return;
     const token = opts.token();
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -185,7 +191,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     }).catch(() => {
       /* a log store that is down must not surface anywhere near a player */
     });
-  };
+  });
 
   const startedAt = now();
   const pageOpen = opts.pageOpen === undefined ? readPageOpen() : opts.pageOpen;
