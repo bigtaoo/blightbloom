@@ -21,6 +21,9 @@ interface Emitter {
 export interface BridgeShape {
   initialize?: () => unknown;
   version?: string;
+  /** Bridge 2.1+: sent as `game_version` on every event, Bridge's own included; set before
+   *  `initialize()` (D:/jump does the same), so the dashboards can split by build. */
+  gameVersion?: string;
   platform?: Emitter & {
     id?: string;
     language?: string;
@@ -85,9 +88,10 @@ export class PlaygamaBridge {
   ) {}
 
   /** Runs `initialize()`; false without the script, on a rejection or after `BRIDGE_WAIT_MS`. */
-  async init(): Promise<boolean> {
+  async init(gameVersion?: string): Promise<boolean> {
     const sdk = this.global.bridge;
     if (!sdk || typeof sdk.initialize !== 'function') return false;
+    if (gameVersion) sdk.gameVersion = gameVersion;
     const done = settle(async () => {
       await sdk.initialize?.();
       return true;

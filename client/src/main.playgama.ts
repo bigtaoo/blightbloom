@@ -8,6 +8,8 @@ import { PlaygamaBridge } from './platform/playgama/bridge';
 import { adoptBridgeStorage } from './platform/playgama/bridgeStorage';
 import { bridgeSender } from './platform/playgama/bridgeAnalytics';
 import { PlaygamaSession } from './platform/playgama/PlaygamaSession';
+import { browserPerfHost, installPerfSample, PerfSampler } from './platform/playgama/perfSample';
+import { activeQuality } from './render/quality';
 import { baseAssetHost, setAssetHost } from './render/assetHost';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
@@ -40,7 +42,7 @@ async function boot() {
   // reads `webStorage()` once, when it is constructed. `init()` never rejects: without the
   // script (a blocked CDN, a plain local preview) the game runs as an offline browser build.
   const bridge = new PlaygamaBridge();
-  await bridge.init();
+  await bridge.init(import.meta.env.VITE_GAME_VERSION);
   const storage = await adoptBridgeStorage({ bridge });
 
   // The platform's language decides a FIRST visit (the requirements' "follow
@@ -58,7 +60,7 @@ async function boot() {
     baseUrl: '',
     token: () => null,
     host: 'playgama',
-    build: () => null,
+    build: () => import.meta.env.VITE_GAME_VERSION ?? null,
     locale: getLocale,
     send: bridgeSender(bridge),
   });
@@ -107,6 +109,11 @@ async function boot() {
 
   await afterFirstRenderedFrame(app.ticker);
   session.ready();
+  session.watchViewport();
+  // Playgama's `performance_sample`: frame times of live play only, per ~30 s (perfSample.ts).
+  const perfSample = new PerfSampler((d) => bridge.track('performance_sample', d), import.meta.env.VITE_GAME_VERSION ?? 'unknown');
+  perfSample.context = () => ({ q: activeQuality().tier });
+  installPerfSample(browserPerfHost(app.ticker, app.canvas, () => game.getPhase() === 'playing'), perfSample);
   await hideBootSplash();
 }
 

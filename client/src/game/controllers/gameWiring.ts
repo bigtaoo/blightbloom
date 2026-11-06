@@ -251,7 +251,7 @@ export function wireHud(d: WiringDeps): void {
   // sim loop unconditionally — see ScreenNav's own note on why that is unsafe for a shared
   // match).
   d.hud.onPause = () => {
-    if (!d.run.online && d.run.phase === 'playing') d.nav.pause();
+    if (canPause(d.run.phase, d.run.online)) d.nav.pause();
   };
   // Tapping the idle-slot chip (HudView, design/10 HUD follow-up) swaps the active weapon —
   // same latch as the keyboard/touch swap controls.
@@ -299,8 +299,13 @@ export function keydownAction(code: string, phase: string, online: boolean, esca
   return 'forge';
 }
 
+/** Whether a pause may open now: a running local run only (ScreenNav's note on online). */
+export function canPause(phase: string, online: boolean): boolean {
+  return !online && phase === 'playing';
+}
+
 /**
- * The two `window` listeners. Guarded to the DOM: WeChat has no `window`, and its settings
+ * The `window` listeners (keys, resize, and the away-pause on blur or a hidden tab). Guarded to the DOM: WeChat has no `window`, and its settings
  * entry is the SETTINGS button instead.
  *
  * The resize listener registers AFTER WebPlatform's own `resizeTo: window` (added during
@@ -323,4 +328,15 @@ export function wireWindow(d: WiringDeps): void {
     }
   });
   window.addEventListener('resize', () => requestAnimationFrame(() => d.nav.relayout()));
+  // A player who switches tab or app comes back to the pause menu, not to a run that kept
+  // going without them (borrowed from D:/jump's `awayPause`). The same guard as the button.
+  const away = (): void => {
+    if (canPause(d.run.phase, d.run.online)) d.nav.pause();
+  };
+  window.addEventListener('blur', away);
+  // `?.` because a test host may hand over a document with no listeners (the replay-save fakes).
+  const doc = globalThis.document;
+  doc?.addEventListener?.('visibilitychange', () => {
+    if (doc.hidden) away();
+  });
 }

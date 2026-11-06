@@ -9,7 +9,8 @@
 //  - No backend at all. The sandbox frame's CSP admits only Playgama's origins, so there is no
 //    `VITE_MATCHSVC_URL`, no `pageOpenBeacon` (its inline `fetch` would be a refused request in
 //    the console on every load), and analytics go through Bridge (`main.playgama.ts`).
-import { rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -85,8 +86,23 @@ export const playgamaHtml = () => {
   };
 };
 
+/** `<package version>+<short commit>`: Bridge stamps it on every event as `game_version`
+ *  (`bridge.ts` `init`), which is what tells two uploaded archives apart in the dashboards.
+ *  A checkout without git still builds, as `+unknown`. */
+export function gameVersion(sha = () => execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()) {
+  const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  let commit = 'unknown';
+  try {
+    commit = sha() || 'unknown';
+  } catch {
+    // no git, or not a checkout
+  }
+  return `${pkg.version}+${commit}`;
+}
+
 export default defineConfig({
   base: './',
+  define: { 'import.meta.env.VITE_GAME_VERSION': JSON.stringify(gameVersion()) },
   resolve: { alias: engineAlias },
   plugins: [
     playgamaHtml(),

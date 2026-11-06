@@ -150,6 +150,9 @@ const PURE_FILES = [
   'ui/pickupRefusal.ts',
   // When a first-ever boot skips the menu into the first run (design/20 "Onboarding", 2026-11-06).
   'controllers/firstRunAutostart.ts',
+  // Which door to head for once a room is done, and how the arrow at it is posed (2026-11-06, the
+  // "cleared a room, now what" report). Its Pixi half, `scene/NextRoomArrow.ts`, is not here.
+  'ui/nextRoomGuide.ts',
 ] as const;
 
 /**

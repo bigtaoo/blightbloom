@@ -14,6 +14,9 @@ interface ImportMetaEnv {
    *  `render/assetHost.ts`'s `baseAssetHost`, which is what rewrites this repository's own
    *  absolute asset paths. Vite always defines it. */
   readonly BASE_URL: string;
+  /** The Playgama build's version, `<package version>+<short commit>`, defined by
+   *  `vite.playgama.config.js`; undefined in every other build. */
+  readonly VITE_GAME_VERSION: string | undefined;
 }
 
 interface ImportMeta {
@@ -45,6 +48,7 @@ declare module '*/vite.playgama.config.js' {
   export const playgamaHtml: unknown;
   export const BRIDGE_CONFIG: { advertisement: { minimumDelayBetweenInterstitial: number } };
   export const DROPPED_FILES: readonly string[];
+  export const gameVersion: (sha?: () => string) => string;
 }
 
 /** `import source from './file.ts?raw'` — Vite hands back the file's text unparsed.
