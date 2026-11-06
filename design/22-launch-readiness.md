@@ -341,7 +341,8 @@ new player clicks, the click only shoots, and nothing says that WASD walks. Two 
   20 wide, and at some bearings a wing read as the tip: the reported door down-left of the
   player looked like an arrow pointing right.
 
-Not yet uploaded to the sandbox.
+Shipped as archive `blightbloom-0.0.1+21e5b74f-guide-label` (check PASSED, Bridge 2.4.1),
+re-published to the sandbox on the owner's yes, same link.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
