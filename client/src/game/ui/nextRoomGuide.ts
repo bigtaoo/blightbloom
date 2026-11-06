@@ -121,6 +121,11 @@ export const GUIDE_ARRIVE_PX = 72;
  *  pacing at the line dims the arrow rather than blinking it. */
 export const GUIDE_FOE_NEAR_PX = 224;
 export const GUIDE_FOE_FADE_PX = 64;
+/** How fast the aim swings to a new bearing, ms (the time constant of an exponential ease). A
+ *  target can change in a frame — the fight's nearest enemy flips as the player crosses between
+ *  two, the room clears and the door takes over — and an instant swing of the arrow round the
+ *  body reads as a jolt; ~0.3 s to settle reads as the arrow turning. */
+export const GUIDE_TURN_TAU_MS = 90;
 /** The pulse along the pointing direction: amplitude in px and period in ms. */
 const GUIDE_PULSE_PX = 5;
 const GUIDE_PULSE_MS = 900;
@@ -137,27 +142,30 @@ export interface ArrowPose {
 const HIDDEN: ArrowPose = { visible: false, x: 0, y: 0, rotation: 0, alpha: 0 };
 
 /** Where the arrow sits this frame, given how long the current target has been shown (`age`, ms).
- *  `foe` marks an enemy target, which fades out on approach instead of stepping aside at a door. */
+ *  `foe` marks an enemy target, which fades out on approach instead of stepping aside at a door.
+ *  `aim` (radians) overrides the bearing it points along — `GuideClock`'s eased one. */
 export function arrowPose(
   target: { x: number; y: number } | null,
   player: { x: number; y: number } | null,
   age: number,
   foe = false,
+  aim?: number,
 ): ArrowPose {
   if (!target || !player || age < GUIDE_DELAY_MS) return HIDDEN;
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const d = Math.hypot(dx, dy);
   if (d <= (foe ? GUIDE_FOE_NEAR_PX : GUIDE_ARRIVE_PX)) return HIDDEN;
-  const ux = dx / d;
-  const uy = dy / d;
+  const rotation = aim ?? Math.atan2(dy, dx);
+  const ux = Math.cos(rotation);
+  const uy = Math.sin(rotation);
   const shown = age - GUIDE_DELAY_MS;
   const r = GUIDE_ORBIT_PX + GUIDE_PULSE_PX * Math.sin((shown / GUIDE_PULSE_MS) * Math.PI * 2);
   return {
     visible: true,
     x: player.x + ux * r,
     y: player.y + uy * r,
-    rotation: Math.atan2(dy, dx),
+    rotation,
     alpha: Math.min(1, shown / GUIDE_FADE_MS, foe ? (d - GUIDE_FOE_NEAR_PX) / GUIDE_FOE_FADE_PX : 1),
   };
 }
@@ -171,6 +179,9 @@ export function arrowPose(
 export class GuideClock {
   private target: GuideTarget | null = null;
   private age = 0;
+  /** The bearing the arrow points along, eased toward the target's; null while hidden, so the
+   *  arrow appears already pointing the right way rather than swinging in. */
+  private aim: number | null = null;
 
   /** Feed one reconcile's verdict (`nextRoomGuide`). `undefined` holds the current target. */
   set(next: GuideTarget | null | undefined): void {
@@ -202,11 +213,25 @@ export class GuideClock {
     const t = this.target;
     if (t) this.age += dt;
     const at = t?.kind === 'foe' ? (foeAt?.(t.id) ?? t) : t;
-    return arrowPose(at, player, this.age, t?.kind === 'foe');
+    const foe = t?.kind === 'foe';
+    const shown = arrowPose(at, player, this.age, foe);
+    if (!shown.visible || !at || !player) {
+      this.aim = null;
+      return shown;
+    }
+    const want = Math.atan2(at.y - player.y, at.x - player.x);
+    if (this.aim === null) this.aim = want;
+    else {
+      // The shortest way round, so a bearing crossing ±π does not spin the long way.
+      const diff = Math.atan2(Math.sin(want - this.aim), Math.cos(want - this.aim));
+      this.aim += diff * (1 - Math.exp(-dt / GUIDE_TURN_TAU_MS));
+    }
+    return arrowPose(at, player, this.age, foe, this.aim);
   }
 
   clear(): void {
     this.target = null;
     this.age = 0;
+    this.aim = null;
   }
 }

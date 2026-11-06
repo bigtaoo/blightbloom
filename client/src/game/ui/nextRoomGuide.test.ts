@@ -14,6 +14,7 @@ import {
   GUIDE_ARRIVE_PX,
   GUIDE_DELAY_MS,
   GUIDE_ORBIT_PX,
+  GUIDE_TURN_TAU_MS,
   GUIDE_FOE_FADE_PX,
   GUIDE_FOE_NEAR_PX,
   GuideClock,
@@ -234,9 +235,8 @@ describe('GuideClock', () => {
     c.pose(GUIDE_DELAY_MS, at);
     c.set(undefined);
     c.set({ kind: 'door', door: 1, x: 0, y: 400 });
-    const p = c.pose(0, at);
-    expect(p.visible).toBe(true);
-    expect(p.rotation).toBeCloseTo(Math.PI / 2);
+    expect(c.pose(0, at).visible).toBe(true);
+    expect(c.pose(2000, at).rotation).toBeCloseTo(Math.PI / 2); // turned there, not restarted
   });
 
   it('keeps its clock from one foe to the next, restarts it from a foe to a door', () => {
@@ -257,8 +257,8 @@ describe('GuideClock', () => {
     c.set({ kind: 'foe', id: 1, x: 400, y: 0 });
     const drawn = c.pose(GUIDE_DELAY_MS + 1000, at, (id) => (id === 1 ? { x: 0, y: 400 } : null));
     expect(drawn.rotation).toBeCloseTo(Math.PI / 2);
-    expect(c.pose(0, at, () => null).rotation).toBeCloseTo(0);
-    expect(c.pose(0, at).rotation).toBeCloseTo(0);
+    expect(c.pose(2000, at, () => null).rotation).toBeCloseTo(0);
+    expect(c.pose(2000, at).rotation).toBeCloseTo(0);
   });
 
   it('restarts the delay when the target is lost, and on clear()', () => {
@@ -272,5 +272,50 @@ describe('GuideClock', () => {
     c.clear();
     c.set(t);
     expect(c.pose(GUIDE_DELAY_MS - 1, at).visible).toBe(false);
+  });
+
+  // 2026-11-06: the foe arrow flipped round the body in one frame as the player crossed between
+  // the entry room's two mobs (a 32 px jump of the chevron, measured in the live game).
+  describe('the aim eases to a new bearing', () => {
+    const east = { kind: 'foe', id: 1, x: 400, y: 0 } as const;
+    const south = { kind: 'foe', id: 2, x: 0, y: 400 } as const;
+
+    it('appears already pointing at its target', () => {
+      const c = new GuideClock();
+      c.set(south);
+      expect(c.pose(GUIDE_DELAY_MS, at).rotation).toBeCloseTo(Math.PI / 2);
+    });
+
+    it('turns by an exponential ease, not in one frame', () => {
+      const c = new GuideClock();
+      c.set(east);
+      c.pose(GUIDE_DELAY_MS, at);
+      c.set(south);
+      const step = c.pose(16, at);
+      expect(step.rotation).toBeCloseTo((Math.PI / 2) * (1 - Math.exp(-16 / GUIDE_TURN_TAU_MS)), 6);
+      expect(Math.hypot(step.x, step.y)).toBeCloseTo(GUIDE_ORBIT_PX, -1); // still on the orbit
+      expect(c.pose(1000, at).rotation).toBeCloseTo(Math.PI / 2, 3);
+    });
+
+    it('turns the short way across ±π', () => {
+      const c = new GuideClock();
+      c.set({ kind: 'foe', id: 1, x: -400, y: -10 }); // just above west: bearing ≈ -π
+      c.pose(GUIDE_DELAY_MS, at);
+      c.set({ kind: 'foe', id: 2, x: -400, y: 10 }); // just below west: bearing ≈ +π
+      const r = c.pose(16, at).rotation;
+      expect(Math.abs(Math.cos(r) + 1)).toBeLessThan(0.01); // still pointing west, no spin through east
+    });
+
+    it('forgets the bearing while hidden, so it reappears pointing straight', () => {
+      const c = new GuideClock();
+      c.set(east);
+      c.pose(GUIDE_DELAY_MS, at);
+      c.pose(0, null); // no drawn player this frame: hidden
+      c.set(south);
+      expect(c.pose(0, at).rotation).toBeCloseTo(Math.PI / 2);
+      c.clear();
+      c.set(east);
+      expect(c.pose(GUIDE_DELAY_MS, at).rotation).toBeCloseTo(0);
+    });
   });
 });
