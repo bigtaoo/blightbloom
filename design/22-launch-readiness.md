@@ -19,6 +19,7 @@ system was documented as done from its own side.
 | **Web** (`b.gamestao.com`) | Yes, live, auto-deployed from `main` | No | The Paddle checkout end to end (§1), legal pages that admit a payment processor (§1.4), a store listing somewhere (§4) |
 | **CrazyGames** portal | Yes, built and verified on the SDK's `local` mode | No, by platform rule (`hostKind.ts`) | The upload and review, and every behaviour that only exists on a registered domain (§2) |
 | **WeChat** mini-game | Yes in the simulator; the owner reported a real-device run on 2026-09-17 | No (`storePlatform.ts` returns `null` on `wx`) | A revenue decision (§3.1), the regulatory filings (§3.2), the device checklist (§3.3) |
+| **Playgama** sandbox | Built (`npm run build:playgama`), archive uploaded and passing the console's check (Bridge 2.4.1) on 2026-11-06; single-player, offline | No (no in-app products) | Nothing for the test in §4.1; it is a measurement, not a launch |
 
 Engineering-wise the game is in Stage 2 (polish), with 90/90 coverage, five PvE chapters,
 the PvP battle royale and co-op all shipped. **Nothing below is gameplay.** The launch is
@@ -251,6 +252,41 @@ question). Write down what each one answered.
   screenshots, trailer, icon set or keywords, in any of the eight shipped locales. The
   CrazyGames listing in §2 is the first of these; the web build has no storefront at all.
 
+### 4.1 OWNER — the Playgama sandbox test: is the core loop worth more work?
+
+Added 2026-11-06. The cheapest way to put the game in front of strangers: Playgama's sandbox
+gives an unmoderated page and a one-off traffic bonus. It answers a narrower question than the
+closed multiplayer test above — *does the single-player run hold a stranger?* — and it
+answers it in days.
+
+**What ships.** The `playgama` build target (`client/vite.playgama.config.js`,
+`client/src/main.playgama.ts`, `client/src/platform/playgama/`). The sandbox's CSP blocks our
+backend, so the build is offline: PvE only, no account, no co-op/PvP/squad routes
+(`hostKind.canPlayOnline`), no outbound links, no Escape binding. Saves go through Bridge
+storage, analytics through Bridge, and the interstitial is asked only when a run ends, with a
+60 s cooldown in the Bridge config the build emits (`BRIDGE_CONFIG` in
+`client/vite.playgama.config.js`).
+
+**Console state (2026-11-06).** Game "Blightbloom" created as a draft; archive
+`blightbloom-0.0.1-playgama-2026-11-06` uploaded, unpacked, Bridge found, check PASSED. The
+sandbox is **not** published and no traffic has been spent; both are one-way and wait on the
+owner's yes.
+
+**The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
+
+| Measure | Pass | Why this line |
+| --- | --- | --- |
+| Sessions | n ≥ 300 | Below this, the rates below swing by ±5 points on noise alone |
+| Survives 60 s of the first run | ≥ 60% | The first minute is the hook; losing 4 in 10 there is an onboarding problem, not a depth one |
+| Day-1 return | ≥ 10–15% | The usual floor for a web casual game worth iterating on |
+| Runs on day 0, median | ≥ 2 | A player who starts a second run has accepted the loop |
+
+**How to read the result.** All four pass → the loop is worth the launch work in §1–§3.
+Sessions pass and the 60 s line fails → fix the first minute (onboarding, first wave) and
+retest; do not read D1 yet. The 60 s line passes and D1 or runs-per-day fail → the loop does
+not hold, and that is a design question before any channel work. Under 300 sessions → no
+verdict; buy more traffic or wait, and do not tune on it.
+
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
@@ -258,7 +294,8 @@ question). Write down what each one answered.
    exercised the day its credentials exist. *(2026-10-16: §1.1 and §1.2 built, §1.4 drafted,
    §1.5 waits on §1.3's prices. Nothing has run against a real sandbox yet — that needs §1.3's
    client token and one price id.)*
-3. **§4's closed test**, on the web build, in parallel with the paperwork.
+3. **§4.1's Playgama sandbox test first** (days, no paperwork), then **§4's closed test**, on
+   the web build, in parallel with the paperwork.
 4. **CrazyGames (§2)** — the cheapest real launch: no payments, no filings, the SDK handles the
    ads.
 5. **WeChat (§3)**, once §3.1 is decided and §3.2 has answers.
