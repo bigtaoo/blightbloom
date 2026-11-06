@@ -299,6 +299,14 @@ it on the owner's yes, same link, so every player the test measures starts in th
   `<package version>+<short sha>`, also set as `bridge.gameVersion`). It goes straight to
   `bridge.track`, not through `net/analytics.ts`.
 
+These four shipped as archive `blightbloom-0.0.1+935340c-next-room-arrow-r2` (check PASSED,
+Bridge 2.4.1), re-published to the sandbox on the owner's yes, same link. The first upload of
+that build failed the check with `BRIDGE_NOT_INITIALIZED`. The code was fine; the zip was not.
+Windows PowerShell 5.1's `Compress-Archive` writes entry names with backslashes
+(`assets\index-….js`), so the unpacked page could not load its own scripts. Zip the build with
+something that writes `/` (Python's `zipfile`, 7-Zip), and check with `unzip -l` before
+uploading.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
