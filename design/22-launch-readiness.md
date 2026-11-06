@@ -307,6 +307,14 @@ Windows PowerShell 5.1's `Compress-Archive` writes entry names with backslashes
 something that writes `/` (Python's `zipfile`, 7-Zip), and check with `unzip -l` before
 uploading.
 
+The third onboarding pass (design/20, "Onboarding, third pass") followed the same day, after
+the owner's own first run ended inside ten seconds with no guidance seen. It makes the entry
+room a warm-up with two `basic` mobs in the far corners (ENGINE_VERSION 89) and shows each
+lesson in a large top-centre panel that waits for the player. It shipped as archive
+`blightbloom-0.0.1+40382ff8-onboarding` (check PASSED, Bridge 2.4.1), re-published to the
+sandbox on the owner's yes, same link. No sandbox traffic was spent on either earlier build,
+so the gates below still read from a clean start.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
