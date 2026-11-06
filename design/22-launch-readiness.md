@@ -278,8 +278,8 @@ its own yes. Until it runs, the sandbox has only the players its link reaches.
 A second archive, `blightbloom-2026-11-06-first-run-autostart`, was uploaded the same day with
 the first-boot autostart (design/20 "Onboarding, second pass"): a new player lands in the first
 run, not on the menu, which is what the 60 s survival gate below assumes. It sits in the form
-beside the first one; the published sandbox serves the new one only after a re-publish, which
-waits on its own yes like the first.
+beside the first one. Its check PASSED (Bridge 2.4.1) and the sandbox was **re-published** with
+it on the owner's yes, same link, so every player the test measures starts in the first run.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
