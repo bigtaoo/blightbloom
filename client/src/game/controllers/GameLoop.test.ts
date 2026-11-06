@@ -57,6 +57,7 @@ function fakeScene() {
     enemies: [] as ReadonlyArray<{ curX: number; curY: number; bodySilhouette: { halfW: number; bodyH: number } }>,
     pickups: [] as ReadonlyArray<{ curX: number; curY: number; bodySilhouette: { halfW: number; bodyH: number } }>,
     interpolate: vi.fn(),
+    drawGuides: vi.fn(),
     reconcile: vi.fn(),
     positionLocal: vi.fn(),
     // The spawn count  forwards to the reactor (design/11). Mutable on the fake so
@@ -529,6 +530,19 @@ describe('GameLoop — the render frame every per-actor clock rides on', () => {
     const calls = (scene.interpolate as ReturnType<typeof vi.fn>).mock.calls as Array<[number, number]>;
     for (const [, dt] of calls) expect(dt).toBe(50);
   });
+
+  // The guide arrow (2026-11-06, "the arrow shakes badly while moving") is posed from where the
+  // player was DRAWN, and the camera's whole-pixel nudge of the player lands in `updateCamera` —
+  // so the arrow has to come after it, on both running paths, once per frame, with the frame dt.
+  // The online path is the same assertion, in that path's describe (it needs its fake session).
+  it('poses the guides after the camera, once per frame (offline)', () => {
+    const { deps, scene, fx } = buildDeps();
+    const loop = new GameLoop(deps, buildHost({ getEngine: () => createGameEngine(CFG) }));
+    loop.update(16);
+    expect(scene.drawGuides).toHaveBeenCalledTimes(1);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16);
+    expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
+  });
 });
 
 describe('GameLoop — hit-stop', () => {
@@ -637,6 +651,17 @@ describe('GameLoop — online path (advanceOnline)', () => {
     expect(session.submit).toHaveBeenCalledTimes(1);
     expect(session.drive).toHaveBeenCalledWith(1);
     expect(scene.reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('poses the guides after the camera, once per frame (online)', () => {
+    const { deps, scene, fx } = buildDeps();
+    const session = fakeSession();
+    session.q.ready = 1;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    loop.update(16);
+    expect(scene.drawGuides).toHaveBeenCalledTimes(1);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16);
+    expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
   });
 
   it("draws the local seat ahead of confirmed by the session's measured input delay", () => {

@@ -14,8 +14,11 @@ import {
   GUIDE_ARRIVE_PX,
   GUIDE_DELAY_MS,
   GUIDE_ORBIT_PX,
+  GUIDE_FOE_FADE_PX,
+  GUIDE_FOE_NEAR_PX,
   GuideClock,
   nextRoomGuide,
+  type GuideTarget,
 } from './nextRoomGuide';
 import { fpToPx } from '../coords';
 
@@ -39,6 +42,17 @@ function floor(roles: (string | undefined)[] = [undefined, undefined, 'extractio
     ({ door: { roomA, roomB, passageGrid: { x, y: 4, w: 2, h: 2 } }, passageAabb: rect(x, 4, 2, 2), locked: false }) as never;
   s.dungeonDoors.push(door('A', 'B', 10), door('B', 'C', 22));
   return s;
+}
+
+/** The door index of a door target, else undefined. */
+const doorOf = (t: GuideTarget | null | undefined) => (t?.kind === 'door' ? t.door : undefined);
+
+/** Mark `id` entered and still being fought, with enemies at the given grid points. */
+function fighting(s: GameState, id: string, foes: { id: number; x: number; y: number; alive?: boolean; room?: string }[]): void {
+  s.dungeonRoomRuntime[s.dungeonRoomIndexById.get(id)!] = runtime({ activated: true, hasLiveEnemy: true });
+  for (const f of foes) {
+    s.enemies.push({ id: f.id, gx: fp(f.x), gy: fp(f.y), alive: f.alive ?? true, roomId: f.room ?? id } as never);
+  }
 }
 
 /** Mark `id` entered and finished: every scheduled wave out, nothing alive. */
@@ -65,7 +79,7 @@ describe('nextRoomGuide', () => {
   it('points at the centre of the door into the next unentered room once the room is done', () => {
     const s = floor();
     done(s, 'A');
-    expect(nextRoomGuide(s, 'A')).toEqual({ door: 0, x: px(11), y: px(5) });
+    expect(nextRoomGuide(s, 'A')).toEqual({ kind: 'door', door: 0, x: px(11), y: px(5) });
   });
 
   it.each<[string, Partial<DungeonRoomRuntime>]>([
@@ -90,8 +104,8 @@ describe('nextRoomGuide', () => {
     done(s, 'A');
     done(s, 'B');
     // From A, C is the only unentered room; the first step is still the A–B door.
-    expect(nextRoomGuide(s, 'A')?.door).toBe(0);
-    expect(nextRoomGuide(s, 'B')?.door).toBe(1);
+    expect(doorOf(nextRoomGuide(s, 'A'))).toBe(0);
+    expect(doorOf(nextRoomGuide(s, 'B'))).toBe(1);
   });
 
   it('with every room entered, heads for the extraction room — and stops there', () => {
@@ -99,7 +113,7 @@ describe('nextRoomGuide', () => {
     done(s, 'A');
     done(s, 'B');
     done(s, 'C');
-    expect(nextRoomGuide(s, 'C')?.door).toBe(1); // back toward A, the extraction room
+    expect(doorOf(nextRoomGuide(s, 'C'))).toBe(1); // back toward A, the extraction room
     expect(nextRoomGuide(s, 'A')).toBeNull(); // already there: the floor ends here
   });
 
@@ -109,7 +123,40 @@ describe('nextRoomGuide', () => {
     (s.dungeonDoors[0] as { locked: boolean }).locked = true;
     expect(nextRoomGuide(s, 'A')).toBeNull();
     (s.dungeonDoors[0] as { locked: boolean }).locked = false;
-    expect(nextRoomGuide(s, 'A')?.door).toBe(0);
+    expect(doorOf(nextRoomGuide(s, 'A'))).toBe(0);
+  });
+});
+
+describe('nextRoomGuide — while the room is fought', () => {
+  const at = { gx: fp(1), gy: fp(5) };
+
+  it('points at the nearest live enemy of the player’s own room', () => {
+    const s = floor();
+    fighting(s, 'A', [
+      { id: 7, x: 9, y: 9 },
+      { id: 8, x: 8, y: 5 }, // nearest
+      { id: 9, x: 2, y: 5, alive: false }, // nearer, but dead
+    ]);
+    s.enemies.push({ id: 10, gx: fp(13), gy: fp(5), alive: true, roomId: 'B' } as never); // nearer than 7, other room
+    expect(nextRoomGuide(s, 'A', at)).toEqual({ kind: 'foe', id: 8, x: px(8), y: px(5) });
+  });
+
+  it('says nothing without the player’s position, or with no live enemy found', () => {
+    const s = floor();
+    fighting(s, 'A', [{ id: 8, x: 8, y: 5 }]);
+    expect(nextRoomGuide(s, 'A')).toBeNull();
+    s.enemies[0]!.alive = false;
+    expect(nextRoomGuide(s, 'A', at)).toBeNull();
+  });
+
+  it('a lull between waves still points nowhere, position or not', () => {
+    const s = floor();
+    s.dungeonRoomRuntime[0] = runtime({
+      activated: true,
+      schedule: [{ atTick: 0, spawnPoint: 0 }, { atTick: 99, spawnPoint: 0 }],
+      cursor: 1,
+    });
+    expect(nextRoomGuide(s, 'A', at)).toBeNull();
   });
 });
 
@@ -152,8 +199,26 @@ describe('arrowPose', () => {
   });
 });
 
+describe('arrowPose — a foe target', () => {
+  const player = { x: 0, y: 0 };
+  const late = GUIDE_DELAY_MS + 10_000;
+
+  it('is gone within the near line, where a door arrow would still show', () => {
+    const near = { x: GUIDE_FOE_NEAR_PX, y: 0 };
+    expect(arrowPose(near, player, late, true).visible).toBe(false);
+    expect(arrowPose(near, player, late, false).visible).toBe(true);
+  });
+
+  it('fades in over the band beyond the line, rather than blinking at it', () => {
+    const mid = arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX / 2, y: 0 }, player, late, true);
+    expect(mid.visible).toBe(true);
+    expect(mid.alpha).toBeCloseTo(0.5);
+    expect(arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX, y: 0 }, player, late, true).alpha).toBe(1);
+  });
+});
+
 describe('GuideClock', () => {
-  const t = { door: 0, x: 400, y: 0 };
+  const t = { kind: 'door', door: 0, x: 400, y: 0 } as const;
   const at = { x: 0, y: 0 };
 
   it('shows the arrow only after the target has been held for the delay', () => {
@@ -168,10 +233,32 @@ describe('GuideClock', () => {
     c.set(t);
     c.pose(GUIDE_DELAY_MS, at);
     c.set(undefined);
-    c.set({ door: 1, x: 0, y: 400 });
+    c.set({ kind: 'door', door: 1, x: 0, y: 400 });
     const p = c.pose(0, at);
     expect(p.visible).toBe(true);
     expect(p.rotation).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('keeps its clock from one foe to the next, restarts it from a foe to a door', () => {
+    const c = new GuideClock();
+    expect(c.kind).toBeNull();
+    c.set({ kind: 'foe', id: 1, x: 400, y: 0 });
+    c.pose(GUIDE_DELAY_MS, at);
+    c.set({ kind: 'foe', id: 2, x: 0, y: 400 });
+    expect(c.pose(0, at).visible).toBe(true);
+    c.set(t);
+    expect(c.kind).toBe('door');
+    expect(c.pose(GUIDE_DELAY_MS - 1, at).visible).toBe(false);
+    expect(c.pose(1, at).visible).toBe(true);
+  });
+
+  it('aims a foe arrow at the drawn position foeAt gives, falling back to the sim’s', () => {
+    const c = new GuideClock();
+    c.set({ kind: 'foe', id: 1, x: 400, y: 0 });
+    const drawn = c.pose(GUIDE_DELAY_MS + 1000, at, (id) => (id === 1 ? { x: 0, y: 400 } : null));
+    expect(drawn.rotation).toBeCloseTo(Math.PI / 2);
+    expect(c.pose(0, at, () => null).rotation).toBeCloseTo(0);
+    expect(c.pose(0, at).rotation).toBeCloseTo(0);
   });
 
   it('restarts the delay when the target is lost, and on clear()', () => {
