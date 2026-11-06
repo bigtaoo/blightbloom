@@ -19,7 +19,7 @@ system was documented as done from its own side.
 | **Web** (`b.gamestao.com`) | Yes, live, auto-deployed from `main` | No | The Paddle checkout end to end (§1), legal pages that admit a payment processor (§1.4), a store listing somewhere (§4) |
 | **CrazyGames** portal | Yes, built and verified on the SDK's `local` mode | No, by platform rule (`hostKind.ts`) | The upload and review, and every behaviour that only exists on a registered domain (§2) |
 | **WeChat** mini-game | Yes in the simulator; the owner reported a real-device run on 2026-09-17 | No (`storePlatform.ts` returns `null` on `wx`) | A revenue decision (§3.1), the regulatory filings (§3.2), the device checklist (§3.3) |
-| **Playgama** sandbox | Built (`npm run build:playgama`), archive uploaded and passing the console's check (Bridge 2.4.1) on 2026-11-06; single-player, offline | No (no in-app products) | Nothing for the test in §4.1; it is a measurement, not a launch |
+| **Playgama** sandbox | Built (`npm run build:playgama`), archive passing the console's check (Bridge 2.4.1) and the sandbox published on 2026-11-06; single-player, offline | No (no in-app products) | Nothing for the test in §4.1; it is a measurement, not a launch |
 
 Engineering-wise the game is in Stage 2 (polish), with 90/90 coverage, five PvE chapters,
 the PvP battle royale and co-op all shipped. **Nothing below is gameplay.** The launch is
@@ -269,8 +269,11 @@ storage, analytics through Bridge, and the interstitial is asked only when a run
 
 **Console state (2026-11-06).** Game "Blightbloom" created as a draft; archive
 `blightbloom-0.0.1-playgama-2026-11-06` uploaded, unpacked, Bridge found, check PASSED. The
-sandbox is **not** published and no traffic has been spent; both are one-way and wait on the
-owner's yes.
+sandbox was **published** the same day on the owner's yes (`https://playgama.ai/play/4g34tdpnqftrct`),
+after the form (category `action`, eight languages, desktop/Android/iOS, landscape) and the
+three covers (composed from `client/public/ui/lobby_bg.jpg` and the three `lobby_hero_*.png`)
+were filled in. **No traffic has been spent**: `start_sandbox_traffic` is one-way and waits on
+its own yes. Until it runs, the sandbox has only the players its link reaches.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
