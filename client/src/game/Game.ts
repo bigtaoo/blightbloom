@@ -45,18 +45,17 @@ import { OnlineMatch } from './controllers/OnlineMatch';
 import { ForgeInput } from './controllers/ForgeInput';
 import { wireHud, wireScreens, wireWindow } from './controllers/gameWiring';
 import { assembleGame } from './controllers/gameAssembly';
+import { autoStartFirstRun } from './controllers/firstRunAutostart';
 import { readGameQueryParams } from './match/gameQueryParams';
 import { computeScreenSize } from './viewport';
 import type { Phase } from './phase';
 import { RunState } from './runState';
 import type { AudioBus, InputCanvas, InputSource } from '../platform/types';
 
-// The demo runs the Ember biome as a seeded dungeon (design/05/09, ROADMAP 1.3): each
-// floor is traversed room by room. The engine owns the geometry now — the render layer
-// reads state.walls / state.obstacles / worldW/H per room and rebuilds on the
-// `room_enter` event (RoomBuilder.build), so there are no fixed WORLD dimensions, wave
-// list, or pillar layout here any more (offlineConfig.ts's own PLACEHOLDER_WORLD is
-// ignored in dungeon/arena mode — each room/arena resizes the world as it loads).
+// The demo runs the Ember biome as a seeded dungeon (design/05/09, ROADMAP 1.3), room by
+// room. The engine owns the geometry: the render layer reads state.walls / obstacles /
+// worldW/H per room and rebuilds on `room_enter` (RoomBuilder.build) — no fixed WORLD,
+// wave list or pillar layout here (offlineConfig.ts's PLACEHOLDER_WORLD is ignored).
 
 // Render-side run phases (design/10). The engine only knows idle/playing/gameover;
 // the main menu (the boot front door), the loadout screen and the forge outpost beside it
@@ -314,9 +313,8 @@ export class Game {
     this.gameLoop = parts.gameLoop; this.nav = parts.nav; this.runs = parts.runs;
     this.net = parts.net; this.forgeInput = parts.forgeInput;
 
-    // Every screen's buttons, the HUD's own controls and the two `window` listeners —
-    // `controllers/gameWiring.ts`, a table of free functions with no state of its own. What
-    // stays here is only the deps object that names the two sides.
+    // Every screen's buttons, the HUD's controls and the two `window` listeners live in
+    // `controllers/gameWiring.ts` (stateless); what stays here is the deps naming both sides.
     const wiring = {
       run: this.run, nav: this.nav, runs: this.runs, net: this.net,
       forgeInput: this.forgeInput, builder: this.builder, input: this.input,
@@ -338,10 +336,12 @@ export class Game {
     if (this.run.replayUrl) void this.runs.beginReplayRun(this.run.replayUrl);
   }
 
-  // ---- Scene construction (static) ----
-  //
-  // Room/pillar geometry construction now lives in RoomBuilder (extracted 2026-07-28)
-  // — see roomBuilder.build() in RunLifecycle and roomBuilder.enterRoom() in onRoomEnter.
+  /** A first-ever boot skips the menu into the run that teaches — `controllers/firstRunAutostart.ts`. */
+  startFirstRunIfNew(): boolean {
+    return autoStartFirstRun({ run: this.run, runs: this.runs });
+  }
+
+  // ---- Scene construction (static) — room geometry lives in RoomBuilder (2026-07-28) ----
 
   private buildHud() {
     // Assembly + the settings button live in `controllers/hudLayer.ts`; the button is

@@ -131,6 +131,13 @@ describe('main.playgama.ts — the boot order', () => {
     }
   });
 
+  it('auto-starts the first run right after start(), before the session exists', () => {
+    // `game/controllers/firstRunAutostart.ts`: a first-time visitor skips the menu. Before the
+    // session, so the first phase it observes is the run and `gameplay_started` is its first word.
+    expect(at('game.start();')).toBeLessThan(at('game.startFirstRunIfNew();'));
+    expect(at('game.startFirstRunIfNew();')).toBeLessThan(at('new PlaygamaSession('));
+  });
+
   it('says game_ready only after the first rendered frame', () => {
     expect(at('await afterFirstRenderedFrame(')).toBeLessThan(at('session.ready()'));
   });

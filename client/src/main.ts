@@ -153,6 +153,8 @@ async function boot() {
 
   const game = new Game(app, input, audio);
   game.start();
+  // A first-ever visit skips the menu into the run that teaches (game/controllers/firstRunAutostart.ts).
+  game.startFirstRunIfNew();
 
   // Frame-timing monitor (src/perf, ported from `funny` — see that folder's README for the
   // deviations). Installed after `start()` so its two ticker brackets sit outside every

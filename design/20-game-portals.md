@@ -337,6 +337,28 @@ hand-picked repeater+hammer and are not true over a real loadout:
   to aim manually in a game that auto-faces. Two keys per lesson now, off
   `InputSource.getTouchVisual().active`.
 
+### Onboarding, second pass (2026-11-06): the first boot makes the click itself
+
+One click was the portal's ceiling, not a target, and the click was still on the wrong side of a
+lobby a first-time player cannot read yet: PLAY sits beside SELECT MODE, the Forge and the loadout,
+and every visitor who wanders into one of those instead is a session that never reached gameplay —
+exactly what the Playgama sandbox's "60-second survival" gate (`design/22` §4.1) counts as lost.
+
+So a **first-ever boot skips the menu** and starts the same quick run PLAY would, with the
+first-run hints above armed. `controllers/firstRunAutostart.ts` holds the rule and its refusals:
+not for a player with `hasSeenTutorial` (every later boot shows the menu as before), not when a
+run save exists (`beginRun` clears the one slot — any save, resumable or not), not once something
+else has moved the game off the menu, and not on a dev `?online=1` / `?pvp=1` / `?replay=` page.
+`Game.start()` itself is unchanged — it still lands on the menu, which every `Game` test relies on
+— and each entry calls `Game.startFirstRunIfNew()` straight after it. The exception is
+`main.crazygames.ts`, which waits until its boot intent answers `'none'`: an accepted invite or
+instant multiplayer moves the player off the menu on its own, and a solo run started first would be
+pulled out from under them (`onlineEntry.joinPartyByCode` opens the squad screen, not a run exit).
+
+Like the hints, it is not behind a host branch. One accepted cost: the browser keeps audio locked
+until the first input, so the first run's opening seconds are silent until the player presses a
+key or touches the screen, which the hint on screen asks them to do anyway.
+
 ## The multiplayer requirements (2026-09-08)
 
 Applies because the project owner decided the **first submission keeps multiplayer**. The
