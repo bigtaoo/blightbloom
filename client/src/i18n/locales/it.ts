@@ -341,6 +341,10 @@ export const it: Translations<typeof en> = {
     hintDeflect: 'Colpisci i proiettili in arrivo con la tua arma da mischia per deviarli.',
     hintCleared: 'Ben fatto — conosci le basi.',
     skip: 'SALTA TUTORIAL',
+    guideFoe: 'Nemici avanti — segui la freccia rossa',
+    guideDoor: 'Stanza ripulita — segui la freccia verde verso la stanza successiva',
+    guideMoveKeys: 'Muoversi: WASD o frecce',
+    guideMoveTouch: 'Muoversi: trascina il lato sinistro dello schermo',
   },
   results: {
     mainMenuButton: 'MENU PRINCIPALE',

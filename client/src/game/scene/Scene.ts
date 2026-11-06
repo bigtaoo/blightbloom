@@ -386,9 +386,10 @@ export class Scene {
    * player and its target were actually DRAWN. Call once per frame AFTER the camera update:
    * `FxController.updateCamera` nudges the followed player by the camera's whole-pixel rounding,
    * and an arrow placed before that nudge would wobble against the body by up to half a pixel.
+   * `touch` is whether this session plays on touch controls: the label's move wording.
    */
-  drawGuides(frameDt: number): void {
-    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)));
+  drawGuides(frameDt: number, touch = false): void {
+    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)), touch);
   }
 
   /**

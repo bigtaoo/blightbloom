@@ -341,6 +341,10 @@ export const fr: Translations<typeof en> = {
     hintDeflect: 'Frappez les balles entrantes avec votre arme de mêlée pour les dévier.',
     hintCleared: 'Bien joué — vous connaissez les bases.',
     skip: 'PASSER LE TUTORIEL',
+    guideFoe: 'Ennemis devant — suivez la flèche rouge',
+    guideDoor: 'Salle nettoyée — suivez la flèche verte vers la salle suivante',
+    guideMoveKeys: 'Se déplacer : ZQSD ou flèches',
+    guideMoveTouch: 'Se déplacer : faites glisser le côté gauche de l’écran',
   },
   results: {
     mainMenuButton: 'MENU PRINCIPAL',

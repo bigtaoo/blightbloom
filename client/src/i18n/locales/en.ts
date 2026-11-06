@@ -4,6 +4,8 @@
  * enforces at compile time that a translation has exactly this same set of keys, so a
  * new English string can never silently ship untranslated in another locale.
  */
+import { enTutorial } from './enTutorial';
+
 export const en = {
   mainMenu: {
     title: 'BLIGHTBLOOM',
@@ -349,18 +351,7 @@ export const en = {
     errorGeneric: 'Could not connect — try again.',
     errorThrottled: 'Too many attempts — wait a few minutes before searching again.',
   },
-  tutorial: {
-    step: 'STEP {n}/{of}',
-    hintMoveKeys: 'Move with WASD.',
-    hintMoveTouch: 'Drag the left side of the screen to move.',
-    hintAttackKeys: 'Hold the left mouse button to attack — aiming is automatic.',
-    hintAttackTouch: 'Hold the right side of the screen to attack — aiming is automatic.',
-    hintSwapKeys: 'Press 1 or 2 to switch weapon.',
-    hintSwapTouch: 'Tap a weapon button to switch weapon.',
-    hintDeflect: 'Swing your melee weapon into incoming bullets to deflect them.',
-    hintCleared: 'Nicely done — you know the basics.',
-    skip: 'SKIP TUTORIAL',
-  },
+  tutorial: enTutorial,
   results: {
     mainMenuButton: 'MAIN MENU',
     extractedTitle: 'EXTRACTED',

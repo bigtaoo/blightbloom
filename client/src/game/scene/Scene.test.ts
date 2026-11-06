@@ -1476,7 +1476,7 @@ describe('Scene — the arrow to the next room (2026-11-06)', () => {
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 2000);
     scene.drawGuides(2000);
-    const arrow = layers.numbers.children.at(-1)!;
+    const arrow = layers.numbers.children.at(-2)!; // the dart; the label is added after it;
     expect(arrow.visible).toBe(true);
     expect(arrow.rotation).toBeCloseTo(0, 1); // east, toward the door
     expect(arrow.x).toBeGreaterThan(100);
@@ -1500,7 +1500,7 @@ describe('Scene — the arrow to the next room (2026-11-06)', () => {
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 2000);
     scene.drawGuides(2000);
-    const arrow = layers.numbers.children.at(-1) as Graphics;
+    const arrow = layers.numbers.children.at(-2) as Graphics; // the dart; the label is last;
     expect(arrow.visible).toBe(true);
     expect(arrow.rotation).toBeCloseTo(Math.PI / 2, 1); // south, toward room A's enemy
     expect(arrow.tint).toBe(GUIDE_TINT.foe);

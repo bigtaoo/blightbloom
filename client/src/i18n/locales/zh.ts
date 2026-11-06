@@ -340,6 +340,10 @@ export const zh: Translations<typeof en> = {
     hintDeflect: '用近战武器挥砍来袭子弹以将其弹反。',
     hintCleared: '做得好——基础操作已掌握。',
     skip: '跳过教程',
+    guideFoe: '前方有敌人——跟着红色箭头走',
+    guideDoor: '房间已清空——跟着绿色箭头去下一个房间',
+    guideMoveKeys: '移动：WASD 或方向键',
+    guideMoveTouch: '移动：拖动屏幕左侧',
   },
   results: {
     mainMenuButton: '主菜单',

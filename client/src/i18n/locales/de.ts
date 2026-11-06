@@ -341,6 +341,10 @@ export const de: Translations<typeof en> = {
     hintDeflect: 'Schlage mit deiner Nahkampfwaffe in ankommende Kugeln, um sie abzuwehren.',
     hintCleared: 'Gut gemacht — du kennst die Grundlagen.',
     skip: 'TUTORIAL ÜBERSPRINGEN',
+    guideFoe: 'Gegner voraus — folge dem roten Pfeil',
+    guideDoor: 'Raum geräumt — folge dem grünen Pfeil zum nächsten Raum',
+    guideMoveKeys: 'Bewegen: WASD oder Pfeiltasten',
+    guideMoveTouch: 'Bewegen: linke Bildschirmhälfte ziehen',
   },
   results: {
     mainMenuButton: 'HAUPTMENÜ',
