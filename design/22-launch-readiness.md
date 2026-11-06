@@ -315,6 +315,17 @@ lesson in a large top-centre panel that waits for the player. It shipped as arch
 sandbox on the owner's yes, same link. No sandbox traffic was spent on either earlier build,
 so the gates below still read from a clean start.
 
+The owner's next run of that build reported two things the same day. **The arrow shook while
+the player moved:** it was posed from the player view's `curX/curY`, the tick-rate target the
+view lerps toward, so it stepped 30 times a second around a smoothly drawn body. It is now posed
+once per frame from the player's DRAWN ground position, after the camera's whole-pixel nudge
+(`Scene.drawGuides`, called at the end of `GameLoop.updateCamera`). **The spawn looked empty:**
+the entry room's two mobs stand ten grid from the spawn, off the edge of an 800 px frame. While
+a room is fought, the same arrow now points at its nearest live enemy in the enemy red (after the
+same 1.2 s delay), fading out as that enemy comes within 7 grid (224 px, on screen); once the
+room is done it turns into the gold door arrow, with the delay restarted so the drops get a look
+first. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

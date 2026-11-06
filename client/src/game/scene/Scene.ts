@@ -303,7 +303,7 @@ export class Scene {
       seen.add(it.id);
     }
     this.refusalHints.show(this.refusalTracker.update(state, local));
-    this.nextRoom.setTarget(local?.alive ? nextRoomGuide(state, local.roomId) : null);
+    this.nextRoom.setTarget(local?.alive ? nextRoomGuide(state, local.roomId, local) : null);
 
     this.chests.update(state);
     this.shops.update(state);
@@ -371,7 +371,6 @@ export class Scene {
     // detached from any engine entity, so there is nothing left to interpolate them against.
     this.flights.update(frameDt);
     this.refusalHints.update(frameDt);
-    this.nextRoom.update(frameDt, this.playerView);
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const v = this.dying[i];
       v.interpolate(alpha, frameDt);
@@ -380,6 +379,16 @@ export class Scene {
         this.dying.splice(i, 1);
       }
     }
+  }
+
+  /**
+   * Pose the frame's world-space guides — today the next-room / nearest-foe arrow — at where the
+   * player and its target were actually DRAWN. Call once per frame AFTER the camera update:
+   * `FxController.updateCamera` nudges the followed player by the camera's whole-pixel rounding,
+   * and an arrow placed before that nudge would wobble against the body by up to half a pixel.
+   */
+  drawGuides(frameDt: number): void {
+    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)));
   }
 
   /**
@@ -432,4 +441,9 @@ export class Scene {
       this.spawnedActors++;
     }
   }
+}
+
+/** An actor's ground point as drawn this frame: the container sits `drawnLift` above it. */
+function drawnGround(a: Actor | null | undefined): { x: number; y: number } | null {
+  return a ? { x: a.x, y: a.y + a.drawnLift } : null;
 }

@@ -20,6 +20,7 @@ import type { Brad } from '@dd/engine/math/trig';
 import { ENEMY_TEAM_ID, type EnemyActor, type Projectile, type PickupItem } from '@dd/engine/state/entities';
 import type { GameEvent } from '@dd/engine/state/events';
 import { Scene } from './Scene';
+import { GUIDE_TINT } from './NextRoomArrow';
 import { Pickup } from './Pickup';
 import { FLIGHT_MS } from './pickupFlight';
 import { Layers } from './layers';
@@ -1474,6 +1475,7 @@ describe('Scene — the arrow to the next room (2026-11-06)', () => {
     const scene = new Scene(layers);
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 2000);
+    scene.drawGuides(2000);
     const arrow = layers.numbers.children.at(-1)!;
     expect(arrow.visible).toBe(true);
     expect(arrow.rotation).toBeCloseTo(0, 1); // east, toward the door
@@ -1482,7 +1484,26 @@ describe('Scene — the arrow to the next room (2026-11-06)', () => {
     s.dungeonRoomRuntime[0]!.hasLiveEnemy = true;
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 16);
+    scene.drawGuides(16);
     expect(arrow.visible).toBe(false);
+  });
+
+  it('while the room is fought, points at its nearest live enemy, in the enemy colour', () => {
+    const s = twoRooms();
+    s.dungeonRoomRuntime[0]!.hasLiveEnemy = true;
+    const far = addEnemy(s, 100, 600, 0 as Brad); // ~440 px south of the player at (100, 160)
+    far.roomId = 'A';
+    const other = addEnemy(s, 600, 160, 0 as Brad); // nearer, but in room B: not this fight
+    other.roomId = 'B';
+    const layers = new Layers();
+    const scene = new Scene(layers);
+    scene.reconcile(s, s.players[0]!.id);
+    scene.interpolate(1, 2000);
+    scene.drawGuides(2000);
+    const arrow = layers.numbers.children.at(-1) as Graphics;
+    expect(arrow.visible).toBe(true);
+    expect(arrow.rotation).toBeCloseTo(Math.PI / 2, 1); // south, toward room A's enemy
+    expect(arrow.tint).toBe(GUIDE_TINT.foe);
   });
 
   it('shows nothing for a dead local player, and nothing after clear()', () => {
@@ -1492,11 +1513,13 @@ describe('Scene — the arrow to the next room (2026-11-06)', () => {
     const scene = new Scene(layers);
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 2000);
+    scene.drawGuides(2000);
     expect(layers.numbers.children.some((c) => c.visible)).toBe(false);
 
     s.players[0]!.alive = true;
     scene.reconcile(s, s.players[0]!.id);
     scene.interpolate(1, 2000);
+    scene.drawGuides(2000);
     expect(layers.numbers.children.some((c) => c.visible)).toBe(true);
     scene.clear();
     expect(layers.numbers.children.some((c) => c.visible)).toBe(false);
