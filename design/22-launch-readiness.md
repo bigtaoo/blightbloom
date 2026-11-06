@@ -361,7 +361,9 @@ instead of 5 of 10. It also made two chapter-sim gates pass that were red on the
 (chapter 2 "harder than chapter 1"). Two other chapter-sim gates are red before and after,
 unchanged: a frost room's worst one-second burst equals the effective HP pool (10 vs 10), and
 chapter 3's entrance is cleared off floor 0 in 4 of 80 careful runs against a gate of 5. Neither
-chapter can be reached from the client yet.
+chapter can be reached from the client yet. Shipped as archive
+`blightbloom-0.0.1+14af20b3-chapter1-ramp`, re-published to the sandbox on the owner's yes, same
+link.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
