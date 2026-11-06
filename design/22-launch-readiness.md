@@ -324,7 +324,9 @@ the entry room's two mobs stand ten grid from the spawn, off the edge of an 800 
 a room is fought, the same arrow now points at its nearest live enemy in the enemy red (after the
 same 1.2 s delay), fading out as that enemy comes within 7 grid (224 px, on screen); once the
 room is done it turns into the gold door arrow, with the delay restarted so the drops get a look
-first. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
+first. Its bearing eases toward the target (90 ms time constant) instead of snapping: walking
+between the two mobs flipped the nearest one, and the chevron jumped 32 world px round the body
+in a single frame. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
