@@ -330,12 +330,15 @@ export const zh: Translations<typeof en> = {
     errorThrottled: '尝试次数过多，请等几分钟后再开始匹配。',
   },
   tutorial: {
-    hintMoveKeys: '用 WASD 移动。按住鼠标左键攻击——自动瞄准。',
-    hintMoveTouch: '拖动屏幕左侧移动。按住右侧攻击——自动瞄准。',
+    step: '第 {n}/{of} 步',
+    hintMoveKeys: '用 WASD 移动。',
+    hintMoveTouch: '拖动屏幕左侧移动。',
+    hintAttackKeys: '按住鼠标左键攻击——自动瞄准。',
+    hintAttackTouch: '按住屏幕右侧攻击——自动瞄准。',
     hintSwapKeys: '按 1 或 2 切换武器。',
     hintSwapTouch: '点击武器按钮切换武器。',
     hintDeflect: '用近战武器挥砍来袭子弹以将其弹反。',
-    hintCleared: '完成！前往传送门。',
+    hintCleared: '做得好——基础操作已掌握。',
     skip: '跳过教程',
   },
   results: {

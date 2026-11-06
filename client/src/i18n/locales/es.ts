@@ -331,12 +331,15 @@ export const es: Translations<typeof en> = {
     errorThrottled: 'Demasiados intentos — espera unos minutos antes de volver a buscar.',
   },
   tutorial: {
-    hintMoveKeys: 'Muévete con WASD. Mantén el clic izquierdo para atacar: el apuntado es automático.',
-    hintMoveTouch: 'Arrastra el lado izquierdo de la pantalla para moverte y mantén el lado derecho para atacar: el apuntado es automático.',
+    step: 'PASO {n}/{of}',
+    hintMoveKeys: 'Muévete con WASD.',
+    hintMoveTouch: 'Arrastra el lado izquierdo de la pantalla para moverte.',
+    hintAttackKeys: 'Mantén el clic izquierdo para atacar: el apuntado es automático.',
+    hintAttackTouch: 'Mantén pulsado el lado derecho de la pantalla para atacar: el apuntado es automático.',
     hintSwapKeys: 'Pulsa 1 o 2 para cambiar de arma.',
     hintSwapTouch: 'Toca un botón de arma para cambiar de arma.',
     hintDeflect: 'Golpea las balas entrantes con tu arma cuerpo a cuerpo para desviarlas.',
-    hintCleared: 'Bien hecho — dirígete al portal.',
+    hintCleared: 'Bien hecho — ya conoces lo básico.',
     skip: 'OMITIR TUTORIAL',
   },
   results: {

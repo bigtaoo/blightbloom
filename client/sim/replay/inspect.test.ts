@@ -379,11 +379,13 @@ describe('inspectReplay end to end, on a real recorded dungeon run', () => {
   });
 
   it('stops where the ENGINE stops — a run that ended is not inspected past its end', () => {
-    // An idle stream: the player never moves and never fires, and the run is over long
-    // before the 6000 ticks the file declares.
+    // A stream that never fires: the player walks east into the entry room's garrison and
+    // stays there, and the run is over long before the 6000 ticks the file declares. (Not
+    // standing still: since ENGINE_VERSION 89 the entry room's two mobs stand outside
+    // their aggro range of the spawn, so a player who never moves is never shot.)
     const idle = new LocalInputSource();
     for (let t = 1; t <= 6000; t++) {
-      idle.submit(makeCommand({ owner: 0, tick: t, ...quantizeMove(0, 0), buttons: 0 }));
+      idle.submit(makeCommand({ owner: 0, tick: t, ...quantizeMove(1, 0), buttons: 0 }));
     }
     const pack = (marks: { tick: number; note: string }[]) => packReplayFile({
       config: CONFIG, commands: idle.recorded(), ticks: 6000, label: 'dungeon-idle', marks, recordedAtMs: 0,

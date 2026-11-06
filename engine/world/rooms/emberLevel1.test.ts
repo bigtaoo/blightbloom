@@ -42,7 +42,16 @@ const EXPECTED_ROOM_COUNTS = [6, 7, 8, 8, 6];
  * roster has to be exactly the pieces with no enemy spawns, capstone aside.
  */
 const SIDE_PIECES = new Set(['ember_l1_cache', 'ember_l1_vault', 'ember_l1_market']);
-const isFight = (p: RoomPiece): boolean => p.role !== 'extraction' && !SIDE_PIECES.has(p.id);
+/**
+ * The level's ENTRY room (2026-11-06): the room every run starts in, and so the first thing a
+ * brand-new player meets. It held the full ramp's eight mobs (four of them fire emberlings)
+ * 6-10 grid from the spawn, all spawning on the first tick — a new player was dead in under
+ * ten seconds, before reading the first hint. It is now a warm-up: two `basic` mobs in the
+ * far corners. Named, like the side rooms, so the ramp below exempts exactly this one piece.
+ */
+const ENTRY_PIECE = 'ember_l1_cell';
+const ENTRY_ENEMIES = 2;
+const isFight = (p: RoomPiece): boolean => p.role !== 'extraction' && !SIDE_PIECES.has(p.id) && p.id !== ENTRY_PIECE;
 const MIN_SIDE = 15;
 const MAX_SIDE = 20;
 const MIN_ENEMIES = 8;
@@ -126,7 +135,7 @@ describe('level 1 room pieces', () => {
 
   it('enemy count scales with cell count, 8 at 15x15 up to 14 at 20x20', () => {
     for (const piece of EMBER_L1_ROOMS) {
-      if (!isFight(piece)) continue; // the checkpoint room and the three side rooms are deliberately empty
+      if (!isFight(piece)) continue; // the checkpoint room and the three side rooms are deliberately empty; the entry room is a warm-up
       const area = piece.sizeGrid.w * piece.sizeGrid.h;
       const expected = Math.max(MIN_ENEMIES, Math.min(MAX_ENEMIES, Math.round(8 + (6 * (area - 225)) / 175)));
       expect(piece.spawns.enemy.length, piece.id).toBe(expected);
@@ -155,6 +164,18 @@ describe('level 1 room pieces', () => {
         }
       }
     }
+  });
+
+  it('the entry room is a warm-up: the room floor 1 starts in, two basic mobs, none within 9 grid of a spawn', () => {
+    expect(floorAt(0).rooms[0]?.pieceId).toBe(ENTRY_PIECE);
+    const entry = pieceFor(ENTRY_PIECE);
+    expect(entry.spawns.enemy.map((e) => e.type)).toEqual(Array(ENTRY_ENEMIES).fill('basic'));
+    for (const e of entry.spawns.enemy) {
+      for (const p of entry.spawns.player) expect(Math.hypot(e.x - p.x, e.y - p.y)).toBeGreaterThan(9);
+    }
+    // Used nowhere else: a lighter room in the middle of a floor would break the ramp unseen.
+    const uses = [...Object.values(EMBER_L1_FLOORS), EMBER_L1_FLOOR_2_BRANCH, EMBER_L1_FLOOR_3_BRANCH, EMBER_L1_FLOOR_4_BRANCH].flatMap((f) => f!.rooms).filter((r) => r.pieceId === ENTRY_PIECE);
+    expect(uses).toHaveLength(1);
   });
 
   it('the extraction capstone stays enemy-free — it is the checkpoint, not a second boss fight', () => {
