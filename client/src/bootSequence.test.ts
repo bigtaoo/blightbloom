@@ -148,3 +148,19 @@ describe('a boot entry waits for events, never for a clock', () => {
     expect(src).not.toMatch(/setTimeout|setInterval/);
   });
 });
+
+describe('a first-time visitor skips the menu into the first run', () => {
+  // `game/controllers/firstRunAutostart.ts`. The web and WeChat entries call it right after
+  // `start()`; the CrazyGames one waits for its boot intent (asserted in `portalBuild.test.ts`),
+  // and Playgama's is in `playgamaBuild.test.ts`. A removed call is invisible to every runtime
+  // test — `Game.start()` alone still lands on a perfectly good menu.
+  it.each(['main.ts', 'main.wechat.ts'])('%s: calls startFirstRunIfNew() straight after start()', (entry) => {
+    const stmt = statementLocator(entry);
+    const start = stmt('game.start();');
+    const auto = stmt('game.startFirstRunIfNew();');
+    expect(start).toBeLessThan(auto);
+    // Nothing but the explaining comment sits between them.
+    const between = source(entry).slice(start, auto).split('\n').slice(2);
+    expect(between.every((l) => l.trim().startsWith('//'))).toBe(true);
+  });
+});

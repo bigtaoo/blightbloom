@@ -241,6 +241,8 @@ async function boot() {
 
   const game = new Game(app, input, audio);
   game.start();
+  // A first-ever visit skips the menu into the run that teaches (game/controllers/firstRunAutostart.ts).
+  game.startFirstRunIfNew();
 
   // Same frame-timing monitor as the web entry (src/perf). No overlay here: there is no
   // `?query=` to turn one on in a mini-game, and this runtime has no PerformanceObserver,

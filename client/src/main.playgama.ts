@@ -79,6 +79,8 @@ async function boot() {
 
   const game = new Game(app, input, audio);
   game.start();
+  // A first-ever visit skips the menu into the run that teaches (game/controllers/firstRunAutostart.ts).
+  game.startFirstRunIfNew();
 
   installPerf(app, {
     overlay: parseGameQueryParams(location.search).perf,
