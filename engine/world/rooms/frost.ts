@@ -83,6 +83,10 @@ export const FROST_L1_FLOORS: Partial<Record<number, DungeonFloorMap>> = {
  *    garrisons themselves are chapter 1's, so this is the one knob that makes the second chapter
  *    the harder one. The HP a player meets is still a whole number (`Math.round(maxHp × scale)`:
  *    on floor 1 a 3-HP mob stays 3, a 4 becomes 5, a 6 becomes 7).
+ *    Since ENGINE_VERSION 90 chapter 1 itself runs `{ base: 0.6, perFloor: 0.35 }` plus a
+ *    one-shooter first floor (`ember.ts`, "the learning chapter"); chapter 2 kept its numbers, so
+ *    the gap is now wider early and an eighth at the boss floor (×2.125 against ×2). The table
+ *    below was measured against the old chapter 1.
  *
  * Set by `client/sim/chapterSim.sim.ts` (2026-10-06), careful bot, 80 seeds, full runs. Of the
  * runs, the share that got off floor 0 (the bot's wall in both chapters):

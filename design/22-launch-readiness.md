@@ -344,6 +344,25 @@ new player clicks, the click only shoots, and nothing says that WASD walks. Two 
 Shipped as archive `blightbloom-0.0.1+21e5b74f-guide-label` (check PASSED, Bridge 2.4.1),
 re-published to the sandbox on the owner's yes, same link.
 
+The owner's next run got past the warm-up and **died in the second room**, `ember_l1_alcove`:
+nine mobs, all live from the first tick, entered through the door they stand nearest to. The
+sibling games agree on the rule this broke (Holy Kicker, Potion Siege, Notebook Wars): the first
+chapter teaches, the second tests. Two changes, both on chapter 1 only (ENGINE_VERSION 90,
+`engine/ENGINE_VERSION_HISTORY.md` has the numbers):
+
+- **One shooter per room on chapter 1's first floor** (`DungeonConfig.fireBudgetByFloor`,
+  `[1]`; every other floor keeps `ROOM_FIRE_BUDGET` 2).
+- **Chapter 1 mobs have less HP early** (`difficultyCurve` 0.6 + 0.35 per floor, was 1 + 0.25),
+  reaching the same ×2 at the boss floor.
+
+On `client/sim/pveLevelSim` (40 seeds per bot) both bots now clear floor 1 every time, where the
+careful bot cleared it 4 times in 40 and the aggressive one never did; the alcove costs 1–2 HP
+instead of 5 of 10. It also made two chapter-sim gates pass that were red on the daily branch
+(chapter 2 "harder than chapter 1"). Two other chapter-sim gates are red before and after,
+unchanged: a frost room's worst one-second burst equals the effective HP pool (10 vs 10), and
+chapter 3's entrance is cleared off floor 0 in 4 of 80 careful runs against a gate of 5. Neither
+chapter can be reached from the client yet.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { FROST_DUNGEON, FROST_L1_FLOORS, FROST_L1_ROOMS } from './frost';
 import { EMBER_DUNGEON } from './ember';
+import { curveAt } from '../dungeon/generateFloor';
 import { EMBER_L1_FLOORS, EMBER_L1_ROOMS } from './emberLevel1';
 import type { DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
@@ -85,8 +86,15 @@ describe('FROST_DUNGEON is chapter 2', () => {
   });
 
   it('is the harder chapter: every floor scales mob HP above the same floor of chapter 1', () => {
-    expect(FROST_DUNGEON.difficultyCurve.perFloor).toBe(EMBER_DUNGEON.difficultyCurve.perFloor);
-    expect(FROST_DUNGEON.difficultyCurve.base).toBeGreaterThan(EMBER_DUNGEON.difficultyCurve.base);
+    // Stated floor by floor rather than as "same perFloor, higher base": since ENGINE_VERSION 90
+    // chapter 1 starts lower and climbs faster (it is the learning chapter, ember.ts), so the two
+    // curves no longer run parallel, and the property that matters is the one in the title.
+    for (const i of FLOOR_INDICES) {
+      expect(curveAt(FROST_DUNGEON.difficultyCurve, i), `floor ${i}`).toBeGreaterThan(curveAt(EMBER_DUNGEON.difficultyCurve, i));
+    }
+    // And chapter 1's one-shooter opener stays chapter 1's: a later chapter that copied it would
+    // stop testing what its first floor was tuned to test.
+    expect(FROST_DUNGEON.fireBudgetByFloor).toBeUndefined();
   });
 
   it('wires the same three branch variants as chapter 1, plain layout first', () => {

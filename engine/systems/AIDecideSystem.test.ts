@@ -467,6 +467,20 @@ describe('AIDecideSystem.tick — per-room fire budget + staggered notice (ENGIN
     expect(b.filter((e) => e.firing).length).toBe(ROOM_FIRE_BUDGET);
   });
 
+  it("uses the dungeon's per-floor budget where it sets one, and ROOM_FIRE_BUDGET past it (v90)", () => {
+    const s = createGameState({
+      ...CFG,
+      dungeon: { config: { ...DUMMY_DUNGEON, fireBudgetByFloor: [1] }, library: [DUMMY_ROOM] },
+    });
+    activateRoom(s, 'r0');
+    const mobs = crowd(s, 6);
+    new AIDecideSystem().tick(s);
+    expect(mobs.map((e) => e.firing)).toEqual(mobs.map((_, i) => i === 0)); // the nearest one only
+    s.floorIndex = 1; // past the table's end
+    new AIDecideSystem().tick(s);
+    expect(mobs.filter((e) => e.firing).length).toBe(ROOM_FIRE_BUDGET);
+  });
+
   it('frees a slot when a shooter dies — the queue advances instead of the room going quiet', () => {
     const s = dungeonState();
     activateRoom(s, 'r0');
