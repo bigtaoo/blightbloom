@@ -323,11 +323,25 @@ once per frame from the player's DRAWN ground position, after the camera's whole
 the entry room's two mobs stand ten grid from the spawn, off the edge of an 800 px frame. While
 a room is fought, the same arrow now points at its nearest live enemy in the enemy red (after the
 same 1.2 s delay), fading out as that enemy comes within 7 grid (224 px, on screen); once the
-room is done it turns into the gold door arrow, with the delay restarted so the drops get a look
+room is done it turns into the green door arrow, with the delay restarted so the drops get a look
 first. Its bearing eases toward the target (90 ms time constant) instead of snapping: walking
 between the two mobs flipped the nearest one, and the chevron jumped 32 world px round the body
 in a single frame. Both fixes shipped as archive `blightbloom-0.0.1+f63ae5fa-guide-arrow` (check
 PASSED, Bridge 2.4.1), re-published to the sandbox on the owner's yes, same link. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
+
+The owner's run of that build answered with the next problem: **a bare arrow says nothing.** A
+new player clicks, the click only shoots, and nothing says that WASD walks. Two changes:
+
+- **The arrow carries words.** Under the player, unrotated, in the arrow's colour: "Enemies ahead
+  — follow the red arrow" or "Room clear — follow the green arrow to the next room", plus a
+  second line with the move keys ("Move: WASD or arrow keys", or the touch wording) until the
+  player has walked 8 grid in the run. The label shows and hides with the arrow, on every run,
+  in all eight locales (`scene/NextRoomArrow.ts`).
+- **The chevron became a dart** (22 long, 18 wide, notched tail). The old one was 14 long and
+  20 wide, and at some bearings a wing read as the tip: the reported door down-left of the
+  player looked like an arrow pointing right.
+
+Not yet uploaded to the sandbox.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
