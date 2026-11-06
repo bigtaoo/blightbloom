@@ -326,7 +326,8 @@ same 1.2 s delay), fading out as that enemy comes within 7 grid (224 px, on scre
 room is done it turns into the gold door arrow, with the delay restarted so the drops get a look
 first. Its bearing eases toward the target (90 ms time constant) instead of snapping: walking
 between the two mobs flipped the nearest one, and the chevron jumped 32 world px round the body
-in a single frame. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
+in a single frame. Both fixes shipped as archive `blightbloom-0.0.1+f63ae5fa-guide-arrow` (check
+PASSED, Bridge 2.4.1), re-published to the sandbox on the owner's yes, same link. Unlike the lessons, which only show on a player's first run, this arrow shows on every run.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
