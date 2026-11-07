@@ -404,7 +404,8 @@ endless difficulty gates, calibrated against the old bot, went red. And the co-o
 revives the ally" check moved to chapter 2, because chapter 1 now almost never downs the ally.
 With those, `npm run test:sims` is green, including the two chapter-sim gates that were red on
 the daily branch.
-Not yet uploaded or re-published.
+Shipped as archive `blightbloom-0.0.1+99cba6ee-first-run-fixes` (check PASSED, Bridge 2.4.1),
+re-published to the sandbox on the owner's yes, same link.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
