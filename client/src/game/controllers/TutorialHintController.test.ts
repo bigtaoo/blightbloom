@@ -7,14 +7,16 @@
  *
  * Every "advances" case below is paired with a "does not advance" case on the same lesson:
  * the change this file pins is that a lesson is NOT left on a timer, and a test that only
- * ever performed the action could not tell a waiting lesson from a timed one.
+ * ever performed the action could not tell a waiting lesson from a timed one. The two lessons
+ * a player can leave undone for good (swap, deflect) do give up, after a window far longer
+ * than the action takes; their cases pin both sides of that window.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
 import { fp } from '@dd/engine/math/fixed';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { GameEvent } from '@dd/engine/state/events';
-import { DEFLECT_GIVE_UP_TICKS, TutorialHintController } from './TutorialHintController';
+import { DEFLECT_GIVE_UP_TICKS, SWAP_GIVE_UP_TICKS, TutorialHintController } from './TutorialHintController';
 
 function fakePrompt() {
   return { show: vi.fn(), finish: vi.fn(), hide: vi.fn() };
@@ -151,6 +153,53 @@ describe('TutorialHintController — swap and deflect', () => {
     expect(prompt.finish).not.toHaveBeenCalled();
     tick();
     expect(prompt.finish).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('TutorialHintController — the swap lesson gives up (2026-11-07)', () => {
+  function atSwap() {
+    const x = setup();
+    x.tick();
+    walk(x.s);
+    x.tick();
+    x.tick([fired(x.s)]);
+    return x;
+  }
+
+  it('moves on to deflect, unearned, after the give-up window and not a tick before', () => {
+    const { prompt, tick, lastShown } = atSwap();
+    expect(lastShown()).toMatch(/switch weapon/);
+    for (let i = 0; i < SWAP_GIVE_UP_TICKS - 1; i++) tick();
+    expect(lastShown()).toMatch(/switch weapon/);
+    tick();
+    expect(lastShown()).toMatch(/deflect/);
+    expect(prompt.show).toHaveBeenLastCalledWith(expect.any(String), 4, 4);
+  });
+
+  it('an all-ranged loadout that never swaps ends quietly, with no congratulation', () => {
+    const { prompt, s, tick } = setup();
+    const ranged = s.players[0]!.weapons.find((w) => w.spec.kind !== 'melee')!;
+    s.players[0]!.weapons = [ranged, ranged];
+    tick();
+    walk(s);
+    tick();
+    tick([fired(s)]);
+    for (let i = 0; i < SWAP_GIVE_UP_TICKS; i++) tick();
+    expect(prompt.finish).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('TutorialHintController — teachingMove', () => {
+  it('is true only while the move lesson is up', () => {
+    const { c, s, tick } = setup();
+    expect(c.teachingMove).toBe(false); // nothing taught yet (and never, on a run that does not teach)
+    tick();
+    expect(c.teachingMove).toBe(true);
+    walk(s);
+    tick();
+    expect(c.teachingMove).toBe(false);
+    c.reset();
+    expect(c.teachingMove).toBe(false);
   });
 });
 

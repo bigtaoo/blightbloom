@@ -55,6 +55,7 @@ import { cardBuffId, rollFloorCardOffer, tallyCardVote } from '../balance/floorC
 import { PORTAL_COUNTDOWN_TICKS } from '../config';
 import { floorOffersDescend, floorOffersExtract } from '../world/dungeon';
 import type { PlayerActor } from '../state/entities';
+import { applyRunBuff } from './runBuffApply';
 
 export class ExtractionSystem {
   tick(state: GameState): void {
@@ -283,8 +284,11 @@ export class ExtractionSystem {
 
     state.floorCards.push(cardId);
     const buffId = cardBuffId(cardId);
+    // Through `applyRunBuff`, the one definition of taking a buff (ENGINE_VERSION 91). A raw
+    // `buffs.push` was enough for the mult_* cards, which are read at use time, but not for the
+    // flat_* ones: Bulwark's "+2 max HP" landed in the stack and never reached `maxHp`.
     if (buffId !== undefined) {
-      for (const seat of state.players) seat.buffs.push(buffId);
+      for (const seat of state.players) applyRunBuff(seat, buffId);
     }
   }
 }

@@ -42,6 +42,33 @@ describe('TutorialPrompt', () => {
     expect(p.view.visible).toBe(false);
   });
 
+  it('steps aside for a checkpoint panel and comes back with the same lesson (2026-11-07)', () => {
+    const p = new TutorialPrompt();
+    p.show('Press 1 or 2.', 3, 4);
+    p.setYielded(true);
+    expect(p.view.visible).toBe(false);
+    expect(p.holding).toBe(true);
+    p.setYielded(true); // repeated every frame the panel stays open: no change
+    expect(p.view.visible).toBe(false);
+    p.setYielded(false);
+    expect(p.view.visible).toBe(true);
+    expect(p.bodyText).toBe('Press 1 or 2.');
+  });
+
+  it('a lesson shown while yielded waits; one hidden while yielded stays hidden', () => {
+    const p = new TutorialPrompt();
+    p.setYielded(true);
+    p.show('later', 4, 4);
+    expect(p.view.visible).toBe(false);
+    p.setYielded(false);
+    expect(p.view.visible).toBe(true);
+    p.setYielded(true);
+    p.hide();
+    p.setYielded(false);
+    expect(p.view.visible).toBe(false);
+    expect(p.holding).toBe(false);
+  });
+
   it('a new lesson cancels a finish in progress', () => {
     const p = new TutorialPrompt();
     p.finish('done');

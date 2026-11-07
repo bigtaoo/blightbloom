@@ -16,6 +16,7 @@ export const enTutorial = {
   // the player has walked a little — which keys move, since a click only shoots.
   guideFoe: 'Enemies ahead — follow the red arrow',
   guideDoor: 'Room clear — follow the green arrow to the next room',
+  guidePortal: "Floor clear — walk to the portal to choose what's next",
   guideMoveKeys: 'Move: WASD or arrow keys',
   guideMoveTouch: 'Move: drag the left side of the screen',
 } as const;

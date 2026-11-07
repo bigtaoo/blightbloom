@@ -118,7 +118,7 @@ function buildDeps(extra: Partial<GameLoopDeps> = {}) {
   const ally = new AllyController();
   const events = { consume: vi.fn() };
   const runOutcome = { handle: vi.fn() };
-  const tutorialHints = { consume: vi.fn(), reset: vi.fn() };
+  const tutorialHints = { consume: vi.fn(), reset: vi.fn(), teachingMove: false };
   // The two power-budget knobs (game/powerBudget.ts) — plain objects, exactly the two
   // properties the loop writes. Seeded to the OPPOSITE of what a playing frame wants so a
   // test that asserts them cannot pass on the initial value.
@@ -540,8 +540,16 @@ describe('GameLoop — the render frame every per-actor clock rides on', () => {
     const loop = new GameLoop(deps, buildHost({ getEngine: () => createGameEngine(CFG) }));
     loop.update(16);
     expect(scene.drawGuides).toHaveBeenCalledTimes(1);
-    expect(scene.drawGuides).toHaveBeenCalledWith(16, false);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16, false, false);
     expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
+  });
+
+  it("passes the tutorial's move lesson through to the guide label", () => {
+    const { deps, scene, tutorialHints } = buildDeps();
+    const loop = new GameLoop(deps, buildHost({ getEngine: () => createGameEngine(CFG) }));
+    tutorialHints.teachingMove = true;
+    loop.update(16);
+    expect(scene.drawGuides).toHaveBeenLastCalledWith(16, false, true);
   });
 });
 
@@ -660,7 +668,7 @@ describe('GameLoop — online path (advanceOnline)', () => {
     const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
     loop.update(16);
     expect(scene.drawGuides).toHaveBeenCalledTimes(1);
-    expect(scene.drawGuides).toHaveBeenCalledWith(16, false);
+    expect(scene.drawGuides).toHaveBeenCalledWith(16, false, false);
     expect(scene.drawGuides.mock.invocationCallOrder[0]!).toBeGreaterThan(fx.updateCamera.mock.invocationCallOrder[0]!);
   });
 

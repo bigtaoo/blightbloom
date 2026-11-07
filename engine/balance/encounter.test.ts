@@ -43,10 +43,13 @@ describe('roomFireBudget (ENGINE_VERSION 90)', () => {
     expect(roomFireBudget(undefined, 0)).toBe(ROOM_FIRE_BUDGET);
   });
 
-  it("chapter 1's first floor is the one-shooter opener, and only its first", () => {
-    // The 2026-11-06 report: a first-time player died walking into floor 1's second room.
-    expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, 0)).toBe(1);
-    for (let f = 1; f < EMBER_DUNGEON.floorCount; f++) expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, f), `floor ${f}`).toBe(ROOM_FIRE_BUDGET);
+  it("chapter 1 is one shooter at a time on every floor but the boss's (ENGINE_VERSION 91)", () => {
+    // The 2026-11-06 report: a first-time player died walking into floor 1's second room. v90
+    // made only floor 1 a one-shooter floor, and the 2026-11-07 first-run pass found the wall had
+    // moved to floor 2, where the second shooter arrived; every floor before the boss is one now.
+    const last = EMBER_DUNGEON.floorCount - 1;
+    for (let f = 0; f < last; f++) expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, f), `floor ${f}`).toBe(1);
+    expect(roomFireBudget(EMBER_DUNGEON.fireBudgetByFloor, last)).toBe(ROOM_FIRE_BUDGET);
   });
 
   it('every authored entry is a whole number from 1 up to ROOM_FIRE_BUDGET — an opener is never the harder floor', () => {

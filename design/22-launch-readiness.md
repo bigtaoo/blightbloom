@@ -365,6 +365,47 @@ chapter can be reached from the client yet. Shipped as archive
 `blightbloom-0.0.1+14af20b3-chapter1-ramp`, re-published to the sandbox on the owner's yes, same
 link.
 
+Then a local first-run pass, played headless and in the browser against that build, found the
+wall had moved rather than gone, plus seven smaller faults. All fixed together (ENGINE_VERSION
+91, `engine/ENGINE_VERSION_HISTORY.md` has the numbers):
+
+- **Floor 2 was the new wall.** The second shooter per room and the bigger HP multiplier arrived
+  together there. Chapter 1 now fields one shooter per room on every floor except the boss
+  (`fireBudgetByFloor` `[1, 1, 1, 1]`); the HP curve is unchanged, so the boss floor is as hard as
+  before. A "novice" bot (never seeks heals, never rests, never swaps) went from dying on floors 2
+  and 3 at a mean of 135 s to dying on floors 3–5 at a mean of 385 s.
+- **Bulwark did nothing.** Its "+2 max HP" never reached the player; the floor card now applies
+  its buff the same way a pickup does.
+- **Aim stuck on a foe behind cover** while one in the open shot back. Auto-aim now prefers the
+  nearest foe in sight.
+- **The exit room had no arrow to the portal.** Once a floor is clear, the arrow points at the
+  portal in the extraction colour, with its own label ("Floor clear — walk to the portal to
+  choose what's next"), and hides at the portal's own prompt radius.
+- **The arrow vanished in the doorway gap**: it hid within 72 px of a door, the width of the gap.
+  Now 40 px.
+- **The swap lesson could wait forever** and its panel covered the portal. It gives up after 15 s
+  like the deflect lesson does, and the lesson panel steps aside while either checkpoint panel is
+  open.
+- **The card panel covered the hero.** In pick mode its bottom now sits 100 px above the screen
+  centre, scaling down (not below half size) on a short screen.
+- **The opening said the same thing twice**: the STEP 1 move panel and the arrow's move-keys
+  line. The arrow drops its keys line while the move lesson is on screen.
+
+One item from the report was left as is on purpose: an arrow toward a foe behind cover. From a
+top-down camera a foe behind a pillar is still on screen, so pointing at it is not misleading.
+The sim instruments needed adjusting, not the game. The chapter sim's no-softlock gate caught the
+level bot walking onto a heal it could not take (full HP, empty shield) and standing on it until the
+run timed out. The co-op revive gate caught the bot circling a foe behind a wall block into that
+block forever: its stuck detector measures movement per tick, so a seat sliding a pixel back and
+forth on the wall face never counted as pinned. The orbit now watches its own net distance and goes
+the other way round when it has gone nowhere (`client/sim/pve/botOrbit.ts`); making the general
+detector net-distance instead made the bot so much better at travel that four chapter-2-to-4 and
+endless difficulty gates, calibrated against the old bot, went red. And the co-op gate's "leader
+revives the ally" check moved to chapter 2, because chapter 1 now almost never downs the ally.
+With those, `npm run test:sims` is green, including the two chapter-sim gates that were red on
+the daily branch.
+Not yet uploaded or re-published.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

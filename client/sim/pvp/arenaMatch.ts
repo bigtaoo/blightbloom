@@ -167,7 +167,9 @@ export function runArenaMatch(seed: number, seats: number, profile: ArenaBotProf
       const was = before[i]!;
       if (p.bandages > was.bandages) st.bandagesPicked += p.bandages - was.bandages;
       else if (p.bandages < was.bandages) st.bandagesSpent += was.bandages - p.bandages;
-      if (was.downed && p.reviveProgressTicks > was.progress) st.channelTicks++;
+      // The tick that completes a channel resets progress to 0 (ReviveSystem), so it is counted
+      // by the revive itself; without that every revive read one tick short of a full channel.
+      if (was.downed && (p.reviveProgressTicks > was.progress || revivedNow.has(i))) st.channelTicks++;
       // A channel that reset without bringing the seat up: the reviver let go or was driven off.
       if (was.progress > 0 && p.reviveProgressTicks === 0 && !revivedNow.has(i)) st.interrupted++;
       if (!p.alive || p.downed) return;
