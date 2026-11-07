@@ -2882,3 +2882,31 @@ aggressive one in 0, which is why both changes ship.
 
 The golden gate, run before this bump, was red on `ember-dungeon-floor1` only (the other
 dungeon scenarios run chapter-agnostic fixture configs). Golden fixture regenerated.
+
+v91 (2026-11-07 — the one-shooter rule runs to the boss, aim prefers a foe in sight, Bulwark
+works). A local first-run pass on the v90 build found the wall v90 removed had only moved: most
+novice runs now died on floor 2, where the second shooter per room and the larger HP multiplier
+arrive together. The same pass found two engine bugs on the way. Three changes, any one of which
+diverges a recorded run:
+ - `EMBER_DUNGEON.fireBudgetByFloor` `[1, 1, 1, 1]` (was `[1]`): one shooter per room on every
+   chapter-1 floor except the boss floor. A 30-seed `client/sim/pve/levelSim` sweep per bot, plus
+   a "novice" profile that never seeks heals, rests or swaps, showed the fire budget is the lever,
+   not the HP curve: wherever budget 2 began, that floor became the wall. Novice deaths went from
+   16 on floor 2 and 14 on floor 3 (mean 135 s) to 3 / 11 / 15 across floors 3-5 (mean 385 s); the
+   careful bot extracts in 4 of 30, still "passable, not free". The HP curve is unchanged, so the
+   boss floor is exactly as hard as v90's. Chapters 2-4 are untouched.
+ - Auto-aim prefers a foe in sight (`systems/targeting.ts` `aimTarget`, sight test in the new
+   `systems/lineOfSight.ts`): of the `AIM_SIGHT_CHECKS` (6) nearest hostiles, the nearest with no
+   wall or pillar between it and the player; if none is in sight, the plain nearest, as before.
+   The first-run report had a player's aim locked on a foe behind a pillar while one in the open
+   shot back. The sight test is integer orientation tests only (no division, no sqrt), pillars
+   tested as their bounding square. `ApplyInputSystem` faces it; homing and deflect still use
+   `nearestHostile`.
+ - `ExtractionSystem.applyFloorCard` applies the card's buff through `applyRunBuff`, the one
+   definition of taking a buff. It used a raw `buffs.push`, which is enough for the `mult_*` cards
+   (read at use time) but not for the `flat_*` ones: Bulwark's "+2 max HP" sat in the stack and
+   never reached `maxHp` or `hp`.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1`, `storm-dungeon-floor1`
+and `launch-arena-pvp` (the aim change reaches every scenario with a wall between two actors) and
+green on the rest. Golden fixture regenerated.

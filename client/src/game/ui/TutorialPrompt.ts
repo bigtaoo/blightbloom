@@ -51,6 +51,9 @@ export class TutorialPrompt {
   private screen = { w: 1280, h: 720 };
   /** Milliseconds left on a `finish` message, then the panel hides itself. 0 = not finishing. */
   private finishMs = 0;
+  /** Whether there is something to show, and whether a checkpoint panel has asked it aside. */
+  private wanted = false;
+  private yielded = false;
   private pulseMs = 0;
   private bottomY = 0;
 
@@ -91,7 +94,7 @@ export class TutorialPrompt {
     this.counter.text = t('tutorial.step', { n: step, of });
     this.body.text = text;
     this.body.style.fill = 0xffffff;
-    this.view.visible = true;
+    this.shown(true);
     this.view.alpha = 1;
     this.layout();
   }
@@ -106,7 +109,7 @@ export class TutorialPrompt {
     this.counter.text = '';
     this.body.text = text;
     this.body.style.fill = 0x9ae6b4;
-    this.view.visible = true;
+    this.shown(true);
     this.view.alpha = 1;
     this.finishMs = TutorialPrompt.FINISH_MS;
     this.layout();
@@ -114,7 +117,25 @@ export class TutorialPrompt {
 
   hide(): void {
     this.finishMs = 0;
-    this.view.visible = false;
+    this.shown(false);
+  }
+
+  /** Step aside while a checkpoint panel is open (`controllers/checkpointOverlays.ts`), keeping
+   *  the lesson: it comes back as it was when the panel closes. */
+  setYielded(yielded: boolean): void {
+    if (yielded === this.yielded) return;
+    this.yielded = yielded;
+    this.shown(this.wanted);
+  }
+
+  /** Is a lesson (or the finish message) being held, shown or stepped aside — read by tests. */
+  get holding(): boolean {
+    return this.wanted;
+  }
+
+  private shown(wanted: boolean): void {
+    this.wanted = wanted;
+    this.view.visible = wanted && !this.yielded;
   }
 
   reposition(screenPx: { w: number; h: number }): void {

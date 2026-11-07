@@ -343,6 +343,7 @@ export const de: Translations<typeof en> = {
     skip: 'TUTORIAL ÜBERSPRINGEN',
     guideFoe: 'Gegner voraus — folge dem roten Pfeil',
     guideDoor: 'Raum geräumt — folge dem grünen Pfeil zum nächsten Raum',
+    guidePortal: 'Etage geräumt — geh zum Portal, um weiterzumachen',
     guideMoveKeys: 'Bewegen: WASD oder Pfeiltasten',
     guideMoveTouch: 'Bewegen: linke Bildschirmhälfte ziehen',
   },

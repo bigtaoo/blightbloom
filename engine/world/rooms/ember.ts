@@ -239,6 +239,17 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * Re-measured: both bots clear floor 1 in 40 of 40 runs, the alcove costs 1-2 HP, and the
  * careful bot extracts in 4 of 40 (it was 0), still inside the sim's "passable, not free" gate.
  *
+ * **The one-shooter rule runs to the boss (`ENGINE_VERSION` 91, 2026-11-07).** v90 moved the wall,
+ * it did not remove it: a local first-run pass found most runs now dying on floor 2 (index 1),
+ * where the second shooter per room and the ×0.95 HP arrive together. A 30-seed sweep per bot
+ * (`client/sim/pve/levelSim`, plus a "novice" profile that never seeks heals, never rests and never
+ * swaps) showed the fire budget, not the HP curve, is the lever — wherever budget 2 began, that
+ * floor became the wall (`[1, 1]` sent 28 of 30 novice deaths to floor 3 instead). So the budget
+ * stays 1 through floor 4 and only the boss floor gets the second shooter; the HP curve is left
+ * alone, so the boss floor is exactly as hard as v90's. Novice deaths went from 16 on floor 2 and
+ * 14 on floor 3 (mean 135 s) to 3 / 11 / 15 across floors 3-5 (mean 385 s); the careful bot
+ * extracts 4 of 30, still "passable, not free".
+ *
  * `layout: 'graph2d'` (design/05, 2026-08-05 follow-up; was `'linear'`) — the
  * module doc above lists which pieces actually make a floor bend now. Only the
  * fallback path reads it at all, since every floor here is authored.
@@ -273,7 +284,7 @@ export const EMBER_DUNGEON: DungeonConfig = {
   extractionPieceId: 'ember_l1_extraction',
   bossPieceId: 'ember_l1_boss',
   difficultyCurve: { base: 0.6, perFloor: 0.35 },
-  fireBudgetByFloor: [1],
+  fireBudgetByFloor: [1, 1, 1, 1],
   floorMaps: EMBER_L1_FLOORS,
   floorLayoutVariants: {
     1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH],

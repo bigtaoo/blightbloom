@@ -258,3 +258,29 @@ describe('cards first, then the portal', () => {
     expect(far.suppressFire).toHaveBeenLastCalledWith(false);
   });
 });
+
+describe('the tutorial panel steps aside (2026-11-07, the first-run report)', () => {
+  /** The panel's `isOpen` flags as each prompt's `update` would leave them, then one pass. */
+  function pass(open: { portal: boolean; cards: boolean } | null) {
+    const t = fakeDeps();
+    if (open) {
+      t.portalPrompt.update.mockImplementation(() => void (t.portalPrompt.isOpen = open.portal));
+      t.floorCardPrompt.update.mockImplementation(() => void (t.floorCardPrompt.isOpen = open.cards));
+    }
+    const tutorialPrompt = { setYielded: vi.fn() };
+    const deps = { ...(t.deps as object), tutorialPrompt } as never;
+    updateCheckpointOverlays(state({ distPx: 0 }), 0, deps);
+    return tutorialPrompt.setYielded;
+  }
+
+  it('yields while either checkpoint panel is open, and only then', () => {
+    expect(pass({ portal: true, cards: false })).toHaveBeenCalledWith(true);
+    expect(pass({ portal: false, cards: true })).toHaveBeenCalledWith(true);
+    expect(pass({ portal: false, cards: false })).toHaveBeenCalledWith(false);
+  });
+
+  it('runs with no tutorial panel at all', () => {
+    const t = fakeDeps();
+    expect(() => updateCheckpointOverlays(state({ distPx: 0 }), 0, t.deps)).not.toThrow();
+  });
+});

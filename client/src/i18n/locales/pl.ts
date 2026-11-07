@@ -343,6 +343,7 @@ export const pl: Translations<typeof en> = {
     skip: 'POMIŃ SAMOUCZEK',
     guideFoe: 'Wrogowie przed tobą — idź za czerwoną strzałką',
     guideDoor: 'Pokój oczyszczony — idź za zieloną strzałką do następnego pokoju',
+    guidePortal: 'Piętro oczyszczone — podejdź do portalu, by wybrać, co dalej',
     guideMoveKeys: 'Ruch: WASD lub strzałki',
     guideMoveTouch: 'Ruch: przeciągnij lewą stronę ekranu',
   },

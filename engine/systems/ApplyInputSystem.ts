@@ -4,7 +4,8 @@
  * no longer player input), the firing flag, and the edge-detected weapon-swap action.
  *
  * Facing (design/10, reversed-then-reversed-again 2026-08-03): there is no manual aim
- * input at all anymore. Every tick, a player faces the nearest hostile actor if one
+ * input at all anymore. Every tick, a player faces the nearest hostile actor IN SIGHT
+ * (ENGINE_VERSION 91, `aimTarget` — else the plain nearest) if one
  * exists (any distance — same unlimited-range contract `nearestHostile` already gives
  * homing/deflect), else the direction it's moving, else it holds last tick's facing
  * (idle default, same as before). Because this is engine-decided rather than fought
@@ -28,7 +29,7 @@ import { Button, type PlayerCommand } from '../state/commands';
 import type { PlayerActor } from '../state/entities';
 import { PLAYER_BASE } from '../content/players';
 import { closeSwing } from '../content/weapons';
-import { nearestHostile } from './targeting';
+import { aimTarget } from './targeting';
 import { reviveTarget } from './ReviveSystem';
 
 export class ApplyInputSystem {
@@ -61,7 +62,8 @@ export class ApplyInputSystem {
     p.vx = Math.trunc((cos * speed * cmd.moveMag) / (FP_SCALE * 255)) as Fp;
     p.vy = Math.trunc((sin * speed * cmd.moveMag) / (FP_SCALE * 255)) as Fp;
 
-    const target = nearestHostile(state, p, p.gx, p.gy);
+    // The nearest hostile in sight, else the nearest (`aimTarget`, ENGINE_VERSION 91).
+    const target = aimTarget(state, p);
     if (target) {
       p.facing = atan2Brad(target.gy - p.gy, target.gx - p.gx);
     } else if (cmd.moveMag > 0) {

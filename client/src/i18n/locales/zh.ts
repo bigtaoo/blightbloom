@@ -342,6 +342,7 @@ export const zh: Translations<typeof en> = {
     skip: '跳过教程',
     guideFoe: '前方有敌人——跟着红色箭头走',
     guideDoor: '房间已清空——跟着绿色箭头去下一个房间',
+    guidePortal: '本层已清空——走到传送门前选择下一步',
     guideMoveKeys: '移动：WASD 或方向键',
     guideMoveTouch: '移动：拖动屏幕左侧',
   },

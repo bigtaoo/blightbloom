@@ -31,6 +31,15 @@ const MOVE_LEARNED_FP = 1500;
  *  the run: 20 s at the engine's fixed 30 Hz step (design/06). */
 export const DEFLECT_GIVE_UP_TICKS = 600;
 
+/** The swap lesson's give-up (2026-11-07, the first-run report): a player who never presses 1/2
+ *  — the fight is going fine with the first weapon — used to keep "Press 1 or 2" on screen for
+ *  the rest of the run, over the portal and the card panel. After 15 s it moves on to the next
+ *  lesson, unearned. */
+export const SWAP_GIVE_UP_TICKS = 450;
+
+/** Each lesson's give-up, ticks; a lesson missing here waits for the player for good. */
+const GIVE_UP_TICKS: Partial<Record<Lesson, number>> = { swap: SWAP_GIVE_UP_TICKS, deflect: DEFLECT_GIVE_UP_TICKS };
+
 /**
  * The teaching beats (design/10 screen-flow gap, design/20 onboarding) — render-only, follows
  * EventReactor's exact shape (reads `GameState` + the per-tick `events` queue, never mutates
@@ -47,7 +56,8 @@ export const DEFLECT_GIVE_UP_TICKS = 600;
  *
  * 1. **move** — the seat is 1.5 grid from where the lesson started.
  * 2. **attack** — a `bullet_fired` or `melee_swing` owned by the seat.
- * 3. **swap** — `PlayerActor.activeSlot` differs from the slot the lesson started on.
+ * 3. **swap** — `PlayerActor.activeSlot` differs from the slot the lesson started on; dropped
+ *    after `SWAP_GIVE_UP_TICKS`.
  * 4. **deflect** — a `'deflect'` event; dropped after `DEFLECT_GIVE_UP_TICKS`.
  *
  * ## Two things this learned when it stopped being tutorial-only (2026-09-08)
@@ -89,17 +99,17 @@ export class TutorialHintController {
       this.begin('move', s, p);
     }
 
-    if (this.step !== 'done' && this.learned(this.step, p, events)) {
-      this.begin(this.next(this.step), s, p);
-    } else if (this.step === 'deflect' && s.tick - this.stepStartTick >= DEFLECT_GIVE_UP_TICKS) {
-      this.begin('done', s, p);
+    if (this.step !== 'done') {
+      const limit = GIVE_UP_TICKS[this.step];
+      if (this.learned(this.step, p, events)) this.begin(this.next(this.step), s, p);
+      else if (limit !== undefined && s.tick - this.stepStartTick >= limit) this.begin(this.skip(this.step), s, p);
     }
 
     if (this.step !== this.shownForStep) {
       this.shownForStep = this.step;
       if (this.step === 'done') {
-        // The last lesson that applied was learned — the only way to `done` but the deflect
-        // timeout — so a loadout with no melee weapon still earns its congratulation.
+        // The last lesson that applied was learned, not given up on (`skip`), so a loadout with
+        // no melee weapon still earns its congratulation.
         this.prompt.finish(this.doneEarned ? t('tutorial.hintCleared') : null);
       } else {
         this.prompt.show(this.messageFor(this.step), this.lessons.indexOf(this.step) + 1, this.lessons.length);
@@ -127,6 +137,17 @@ export class TutorialHintController {
     const next = this.lessons[i + 1];
     if (!next) this.doneEarned = true;
     return next ?? 'done';
+  }
+
+  /** The lesson after `step`, given up on rather than learned: never an earned `done`. */
+  private skip(step: Lesson): Step {
+    return this.lessons[this.lessons.indexOf(step) + 1] ?? 'done';
+  }
+
+  /** Is the move lesson's panel up — the guide arrow's label then leaves the move keys to it
+   *  (`scene/NextRoomArrow.ts`), rather than saying the same thing twice in two places. */
+  get teachingMove(): boolean {
+    return this.stepStartTick >= 0 && this.step === 'move';
   }
 
   /** Start `step`: every lesson measures from where the player was when it began, so a

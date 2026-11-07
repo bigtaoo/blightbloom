@@ -13,7 +13,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Texture } from 'pixi.js';
 import type { GameState } from '@dd/engine';
 import { FLOOR_CARDS, RUN_BUFFS } from '@dd/engine';
-import { FloorCardPrompt, PANEL_W } from './FloorCardPrompt';
+import { CARD_HERO_CLEAR_PX, CARD_MIN_SCALE, FloorCardPrompt, PANEL_H, PANEL_W } from './FloorCardPrompt';
 import { resetLocaleForTests, t } from '../../i18n';
 import { useLocale } from '../../i18n/loadLocale';
 
@@ -386,6 +386,28 @@ describe('two steps: pick, then a summary with Change', () => {
     const p = new FloorCardPrompt();
     p.update(state(['card_from_the_future', 'edge', 'cadence'], [1]), true, 0);
     expect(stepOf(p).summaryText.text).toBe(t('hud.floorCardChosen', { card: 'card_from_the_future' }));
+  });
+
+  it('keeps the three cards above the hero, who stands at the screen centre (2026-11-07)', () => {
+    // The first-run report: the card panel sat over the hero, so a player choosing a card
+    // could not see the foes still walking in. Its bottom now clears the centre.
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 1280, h: 720 });
+    p.update(state(OFFER, [0]), true, 0);
+    expect(p.view.y + PANEL_H * p.view.scale.y).toBeLessThanOrEqual(720 / 2 - CARD_HERO_CLEAR_PX);
+    expect(p.view.y).toBeGreaterThanOrEqual(8);
+  });
+
+  it('shrinks the pick panel to fit above the hero on a short screen, but never below CARD_MIN_SCALE', () => {
+    const p = new FloorCardPrompt();
+    p.reposition({ w: 1280, h: 420 });
+    p.update(state(OFFER, [0]), true, 0);
+    expect(p.view.scale.y).toBeLessThan(1);
+    expect(p.view.y + PANEL_H * p.view.scale.y).toBeLessThanOrEqual(420 / 2 - CARD_HERO_CLEAR_PX + 1e-6);
+    const q = new FloorCardPrompt();
+    q.reposition({ w: 1280, h: 300 });
+    q.update(state(OFFER, [0]), true, 0);
+    expect(q.view.scale.y).toBe(CARD_MIN_SCALE);
   });
 
   it('re-lays itself out on a mode change after reposition, moving the strip down to the portal', () => {

@@ -20,8 +20,12 @@ export interface GuidePoint {
   y: number;
 }
 
-/** The arrow's colour per target: the extraction glow toward a door, the enemy red toward a foe. */
-export const GUIDE_TINT = { door: THEME.colors.extractGlow, foe: THEME.colors.enemy } as const;
+/** The arrow's colour per target: the extraction glow toward a door or the portal (the portal's
+ *  own colour, `Portal.ts`), the enemy red toward a foe. */
+export const GUIDE_TINT = { door: THEME.colors.extractGlow, foe: THEME.colors.enemy, portal: THEME.colors.extractGlow } as const;
+
+/** The label's first line per target. */
+const GUIDE_WORDS = { door: 'tutorial.guideDoor', foe: 'tutorial.guideFoe', portal: 'tutorial.guidePortal' } as const;
 
 /** How far below the player's ground point the label's top sits, world px: clear of the feet and
  *  of the arrow when it points straight down (orbit 44 + pulse 5 + the dart's 15 px tip). */
@@ -65,9 +69,17 @@ export class NextRoomArrow {
    * It used to ride the view's `curX/curY`: the tick-rate target the view lerps toward, which steps
    * 30 times a second while the body and the camera glide, so on the screen the arrow jumped up to
    * a whole tick of travel back and forth around a smoothly moving player. `foeAt` gives an
-   * enemy's drawn position for the same reason. `touch` picks the label's move wording.
+   * enemy's drawn position for the same reason. `touch` picks the label's move wording;
+   * `moveTaught` (the tutorial's move-lesson panel is up) drops it, since that panel already
+   * says it, larger (2026-11-07, the first-run report's two copies of one instruction).
    */
-  update(dt: number, player: GuidePoint | null, foeAt?: (id: number) => GuidePoint | null, touch = false): void {
+  update(
+    dt: number,
+    player: GuidePoint | null,
+    foeAt?: (id: number) => GuidePoint | null,
+    touch = false,
+    moveTaught = false,
+  ): void {
     this.track(player);
     const p = this.clock.pose(dt, player, foeAt);
     if (!p.visible || !player) {
@@ -84,8 +96,8 @@ export class NextRoomArrow {
     g.alpha = p.alpha;
 
     const label = (this.label ??= this.buildLabel());
-    let words = t(kind === 'foe' ? 'tutorial.guideFoe' : 'tutorial.guideDoor');
-    if (this.walked < MOVE_LEARNED_PX) words += `
+    let words = t(GUIDE_WORDS[kind]);
+    if (this.walked < MOVE_LEARNED_PX && !moveTaught) words += `
 ${t(touch ? 'tutorial.guideMoveTouch' : 'tutorial.guideMoveKeys')}`;
     if (label.text !== words) label.text = words;
     label.visible = true;

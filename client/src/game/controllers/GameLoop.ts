@@ -447,7 +447,7 @@ export class GameLoop {
     const worldSize = s ? { w: fpToPx(s.worldW), h: fpToPx(s.worldH) } : null;
     const { w: vw, h: vh } = this.host.screenSize();
     this.deps.fx.updateCamera(alpha, { vw, vh }, worldSize, this.deps.scene.player, this.cameraFrame(s), dt);
-    this.deps.scene.drawGuides(dt, this.deps.input.getTouchVisual().active); // after the camera's whole-pixel nudge: posed where the player is drawn
+    this.deps.scene.drawGuides(dt, this.deps.input.getTouchVisual().active, this.deps.tutorialHints.teachingMove); // after the camera's whole-pixel nudge
   }
 
   /**
@@ -487,11 +487,11 @@ export class GameLoop {
     this.deps.hud.update(s, dt, buildHudContext(this.host));
     this.deps.pickupDebugOverlay?.update(s);
 
-    // Everything that appears once a floor is finished — the portal, its popup, the
-    // floor-card offer, and the fire suppression they share — is one pass off one
-    // condition (`controllers/checkpointOverlays.ts`).
+    // Everything that appears once a floor is finished — the portal, its popup, the floor-card
+    // offer, the fire gate, the tutorial panel stepping aside — is one pass (`checkpointOverlays`).
     updateCheckpointOverlays(s, this.host.localOwner, {
       roomBuilder: this.deps.roomBuilder,
+      tutorialPrompt: this.deps.hud.tutorialPrompt,
       portalPrompt: this.deps.portalPrompt,
       floorCardPrompt: this.deps.floorCardPrompt,
       suppressFire: (active) => this.deps.builder.suppressFire(active),

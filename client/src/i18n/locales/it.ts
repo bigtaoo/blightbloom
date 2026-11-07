@@ -343,6 +343,7 @@ export const it: Translations<typeof en> = {
     skip: 'SALTA TUTORIAL',
     guideFoe: 'Nemici avanti — segui la freccia rossa',
     guideDoor: 'Stanza ripulita — segui la freccia verde verso la stanza successiva',
+    guidePortal: 'Piano ripulito — vai al portale per scegliere come proseguire',
     guideMoveKeys: 'Muoversi: WASD o frecce',
     guideMoveTouch: 'Muoversi: trascina il lato sinistro dello schermo',
   },

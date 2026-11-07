@@ -17,6 +17,7 @@ import type { Fp } from '../math/fixed';
 import type { GameState } from '../state/GameState';
 import { isDowned, isHostile, type Actor, type Teamed } from '../state/entities';
 import { nearestByPosition } from './nearest';
+import { hasLineOfSight } from './lineOfSight';
 
 /**
  * Per-tick cache of "which players/enemies are on a team hostile to teamId T"
@@ -95,4 +96,30 @@ export function hostileTargets(state: GameState, self: Teamed): Actor[] {
  * (design/06). Used for a deflected bullet's new target and homing's turn. */
 export function nearestHostile(state: GameState, self: Teamed, x: Fp, y: Fp): Actor | null {
   return nearestByPosition(x, y, hostileTargets(state, self));
+}
+
+/** How many of the nearest hostiles `aimTarget` checks for a clear line before it gives up and
+ *  takes the nearest. A bound on the per-tick cost; a room never has more than a handful of foes
+ *  behind cover at once. */
+export const AIM_SIGHT_CHECKS = 6;
+
+/**
+ * Who a player's auto-aim faces (ENGINE_VERSION 91): the nearest hostile it has a clear line
+ * of sight to, among the `AIM_SIGHT_CHECKS` nearest; the plain nearest when none of them is
+ * in sight. Until v91 it was always the plain nearest, so a foe a step behind a pillar held
+ * the aim while every shot went into the pillar and a foe in the open shot back — a new
+ * player stood in r2 of the first floor for two minutes doing exactly that (2026-11-07
+ * first-run report). Ties by distance keep array order (a stable sort), as `nearestHostile`.
+ */
+export function aimTarget(state: GameState, self: Teamed & { gx: Fp; gy: Fp }): Actor | null {
+  const ranked = hostileTargets(state, self)
+    .map((t) => ({ t, d: (t.gx - self.gx) * (t.gx - self.gx) + (t.gy - self.gy) * (t.gy - self.gy) }))
+    .sort((a, b) => a.d - b.d);
+  if (ranked.length === 0) return null;
+  const checks = Math.min(AIM_SIGHT_CHECKS, ranked.length);
+  for (let i = 0; i < checks; i++) {
+    const t = ranked[i]!.t;
+    if (hasLineOfSight(state, self.gx, self.gy, t.gx, t.gy)) return t;
+  }
+  return ranked[0]!.t;
 }

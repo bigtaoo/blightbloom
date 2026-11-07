@@ -15,17 +15,26 @@
 //    path (`ai/roomRoute.ts`, the same breadth-first search the co-op ally walks).
 //  - With every room entered, toward the floor's exit — its extraction room, else its last placed
 //    room, the same reading the minimap's exit marker uses (`minimapLayout.dungeonRoomMarkers`).
+//  - In the capstone room once the floor's checkpoint is reached, toward the PORTAL (2026-11-07, the
+//    first-run report: the exit room had no arrow, and the portal's panels only open within
+//    `PORTAL_PROMPT_RADIUS_PX` of it, so a player who stopped short saw nothing at all). This wins
+//    over an unentered side room: the portal is the floor's goal, a side room is optional.
 //  - Otherwise nothing: the player is where the floor ends.
 import { FP_SCALE, type GameState } from '@dd/engine';
 import type { RoomId } from '@dd/engine/content/arenas';
 import { fpToPx } from '../coords';
 import { nextRoomToward, type RouteMap } from '../controllers/ai/roomRoute';
+import { PORTAL_PROMPT_RADIUS_PX } from '../controllers/checkpointOverlays';
+import { checkpointReached } from '../match/floorCount';
+import { portalCenterPx } from '../scene/portalPlacement';
 
 /** What the arrow points at, centre in world px: the door to walk through next (its index in
- *  `state.dungeonDoors`), or the nearest enemy still alive in the room (its entity id). */
+ *  `state.dungeonDoors`), the nearest enemy still alive in the room (its entity id), or the open
+ *  portal of the room the floor ends in. */
 export type GuideTarget =
   | { kind: 'door'; door: number; x: number; y: number }
-  | { kind: 'foe'; id: number; x: number; y: number };
+  | { kind: 'foe'; id: number; x: number; y: number }
+  | { kind: 'portal'; x: number; y: number };
 
 const maps = new WeakMap<GameState, { stamp: string; map: RouteMap }>();
 
@@ -71,6 +80,9 @@ export function nextRoomGuide(
   if (!rt || !rt.activated) return null;
   if (rt.hasLiveEnemy) return from ? nearestFoe(s, roomId, from) : null;
   if (rt.cursor < rt.schedule.length) return null;
+  if (roomId === s.dungeonRoomRects[s.dungeonRoomRects.length - 1]?.id && checkpointReached(s)) {
+    return { kind: 'portal', ...portalCenterPx(s, 0, 0) };
+  }
 
   const map = openMap(s);
   const unentered = (id: RoomId): boolean => {
@@ -114,8 +126,10 @@ const GUIDE_FADE_MS = 300;
 /** How far from the player's centre the arrow rides, world px — outside a body's ~16 px radius
  *  and its weapon, close enough to read as the player's own. */
 export const GUIDE_ORBIT_PX = 44;
-/** Within this of the door's centre the player has found it, and the arrow steps aside. */
-export const GUIDE_ARRIVE_PX = 72;
+/** Within this of the door's centre the player has found it, and the arrow steps aside. 40 (it
+ *  was 72 until 2026-11-07): at 72 the arrow vanished a body's length short of the doorway and
+ *  nothing replaced it until the player was through, a gap the first-run report caught. */
+export const GUIDE_ARRIVE_PX = 40;
 /** Within this of the nearest enemy the foe arrow is gone: 7 grid, which an 800 x 600 frame at
  *  the room camera's zoom still shows. It fades in over the `GUIDE_FOE_FADE_PX` beyond, so a foe
  *  pacing at the line dims the arrow rather than blinking it. */
@@ -141,21 +155,30 @@ export interface ArrowPose {
 
 const HIDDEN: ArrowPose = { visible: false, x: 0, y: 0, rotation: 0, alpha: 0 };
 
+/** How near each kind of target has to be for the arrow to step aside: a door once the player is
+ *  at it, an enemy once it is on screen, the portal once its panels open (the panels take over). */
+export const GUIDE_HIDE_PX: Record<GuideTarget['kind'], number> = {
+  door: GUIDE_ARRIVE_PX,
+  foe: GUIDE_FOE_NEAR_PX,
+  portal: PORTAL_PROMPT_RADIUS_PX,
+};
+
 /** Where the arrow sits this frame, given how long the current target has been shown (`age`, ms).
- *  `foe` marks an enemy target, which fades out on approach instead of stepping aside at a door.
+ *  `kind` sets where it steps aside (`GUIDE_HIDE_PX`); an enemy target fades out on approach.
  *  `aim` (radians) overrides the bearing it points along — `GuideClock`'s eased one. */
 export function arrowPose(
   target: { x: number; y: number } | null,
   player: { x: number; y: number } | null,
   age: number,
-  foe = false,
+  kind: GuideTarget['kind'] = 'door',
   aim?: number,
 ): ArrowPose {
   if (!target || !player || age < GUIDE_DELAY_MS) return HIDDEN;
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const d = Math.hypot(dx, dy);
-  if (d <= (foe ? GUIDE_FOE_NEAR_PX : GUIDE_ARRIVE_PX)) return HIDDEN;
+  const foe = kind === 'foe';
+  if (d <= GUIDE_HIDE_PX[kind]) return HIDDEN;
   const rotation = aim ?? Math.atan2(dy, dx);
   const ux = Math.cos(rotation);
   const uy = Math.sin(rotation);
@@ -173,8 +196,10 @@ export function arrowPose(
 /**
  * The arrow's clock: holds the target and how long it has been shown. A new target of the same
  * kind (another door of the same done room, another enemy of the same fight) keeps the clock
- * running; losing the target, or switching between a foe and a door (the room just cleared),
- * restarts the delay, so the cleared room's drops get their look before the door arrow comes.
+ * running; losing the target, or switching from a foe to a door or the portal (the room just
+ * cleared), restarts the delay, so the cleared room's drops get their look before the arrow comes.
+ * Switching TO a foe does not (2026-11-07): stepping through a door into the next fight used to
+ * blank the arrow for another `GUIDE_DELAY_MS` at exactly the moment the player needed it.
  */
 export class GuideClock {
   private target: GuideTarget | null = null;
@@ -191,7 +216,7 @@ export class GuideClock {
       this.age = 0;
       return;
     }
-    if (this.target && this.target.kind !== next.kind) this.age = 0;
+    if (this.target && this.target.kind !== next.kind && next.kind !== 'foe') this.age = 0;
     this.target = next;
   }
 
@@ -213,8 +238,8 @@ export class GuideClock {
     const t = this.target;
     if (t) this.age += dt;
     const at = t?.kind === 'foe' ? (foeAt?.(t.id) ?? t) : t;
-    const foe = t?.kind === 'foe';
-    const shown = arrowPose(at, player, this.age, foe);
+    const kind = t?.kind ?? 'door';
+    const shown = arrowPose(at, player, this.age, kind);
     if (!shown.visible || !at || !player) {
       this.aim = null;
       return shown;
@@ -226,7 +251,7 @@ export class GuideClock {
       const diff = Math.atan2(Math.sin(want - this.aim), Math.cos(want - this.aim));
       this.aim += diff * (1 - Math.exp(-dt / GUIDE_TURN_TAU_MS));
     }
-    return arrowPose(at, player, this.age, foe, this.aim);
+    return arrowPose(at, player, this.age, kind, this.aim);
   }
 
   clear(): void {

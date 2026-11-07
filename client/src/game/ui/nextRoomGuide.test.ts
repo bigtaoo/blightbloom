@@ -17,11 +17,13 @@ import {
   GUIDE_TURN_TAU_MS,
   GUIDE_FOE_FADE_PX,
   GUIDE_FOE_NEAR_PX,
+  GUIDE_HIDE_PX,
   GuideClock,
   nextRoomGuide,
   type GuideTarget,
 } from './nextRoomGuide';
 import { fpToPx } from '../coords';
+import { PORTAL_PROMPT_RADIUS_PX } from '../controllers/checkpointOverlays';
 
 const fp = (grid: number) => grid * FP_SCALE;
 const rect = (x: number, y: number, w: number, h: number) => ({ x: fp(x), y: fp(y), w: fp(w), h: fp(h) }) as AABB;
@@ -206,15 +208,62 @@ describe('arrowPose — a foe target', () => {
 
   it('is gone within the near line, where a door arrow would still show', () => {
     const near = { x: GUIDE_FOE_NEAR_PX, y: 0 };
-    expect(arrowPose(near, player, late, true).visible).toBe(false);
-    expect(arrowPose(near, player, late, false).visible).toBe(true);
+    expect(arrowPose(near, player, late, 'foe').visible).toBe(false);
+    expect(arrowPose(near, player, late, 'door').visible).toBe(true);
   });
 
   it('fades in over the band beyond the line, rather than blinking at it', () => {
-    const mid = arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX / 2, y: 0 }, player, late, true);
+    const mid = arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX / 2, y: 0 }, player, late, 'foe');
     expect(mid.visible).toBe(true);
     expect(mid.alpha).toBeCloseTo(0.5);
-    expect(arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX, y: 0 }, player, late, true).alpha).toBe(1);
+    expect(arrowPose({ x: GUIDE_FOE_NEAR_PX + GUIDE_FOE_FADE_PX, y: 0 }, player, late, 'foe').alpha).toBe(1);
+  });
+});
+
+describe('the portal target (2026-11-07, the first-run report)', () => {
+  /** The floor as a dungeon: what makes `checkpointReached` read the capstone's runtime. */
+  const dungeon = (roles?: (string | undefined)[]) => {
+    const s = floor(roles);
+    (s as { dungeonEnabled: boolean }).dungeonEnabled = true;
+    return s;
+  };
+
+  it('points at the portal, the capstone room centre, once the capstone is done', () => {
+    const s = dungeon();
+    done(s, 'A');
+    done(s, 'B');
+    done(s, 'C');
+    expect(nextRoomGuide(s, 'C')).toEqual({ kind: 'portal', x: px(29), y: px(5) });
+  });
+
+  it('wins over a side room nobody has entered: the portal is the goal', () => {
+    const s = dungeon();
+    done(s, 'B');
+    done(s, 'C'); // A never entered
+    expect(nextRoomGuide(s, 'C')?.kind).toBe('portal');
+    expect(doorOf(nextRoomGuide(s, 'B'))).toBe(0); // outside the capstone, the old rule
+  });
+
+  it('says nothing about the portal before the checkpoint, or outside a dungeon', () => {
+    const s = dungeon();
+    done(s, 'A');
+    done(s, 'B');
+    fighting(s, 'C', [{ id: 9, x: 30, y: 5 }]);
+    expect(nextRoomGuide(s, 'C')).toBeNull(); // no `from`: a fight with nowhere to measure from
+    expect(nextRoomGuide(s, 'C', { gx: fp(25), gy: fp(5) })?.kind).toBe('foe');
+    const flat = floor();
+    done(flat, 'A');
+    done(flat, 'B');
+    done(flat, 'C');
+    expect(nextRoomGuide(flat, 'C')).toBeNull(); // not a dungeon run: `checkpointReached` is the waves rule
+  });
+
+  it('steps aside where the portal panels open, not at a door distance', () => {
+    expect(GUIDE_HIDE_PX.portal).toBe(PORTAL_PROMPT_RADIUS_PX);
+    const player = { x: 0, y: 0 };
+    expect(arrowPose({ x: PORTAL_PROMPT_RADIUS_PX, y: 0 }, player, 5000, 'portal').visible).toBe(false);
+    expect(arrowPose({ x: PORTAL_PROMPT_RADIUS_PX + 1, y: 0 }, player, 5000, 'portal').visible).toBe(true);
+    expect(arrowPose({ x: PORTAL_PROMPT_RADIUS_PX + 1, y: 0 }, player, 5000, 'portal').alpha).toBe(1);
   });
 });
 
@@ -237,6 +286,24 @@ describe('GuideClock', () => {
     c.set({ kind: 'door', door: 1, x: 0, y: 400 });
     expect(c.pose(0, at).visible).toBe(true);
     expect(c.pose(2000, at).rotation).toBeCloseTo(Math.PI / 2); // turned there, not restarted
+  });
+
+  it('keeps its clock from a door to a foe: through a doorway into the next fight (2026-11-07)', () => {
+    const c = new GuideClock();
+    c.set(t);
+    c.pose(GUIDE_DELAY_MS, at);
+    c.set({ kind: 'foe', id: 1, x: 0, y: 400 });
+    expect(c.kind).toBe('foe');
+    expect(c.pose(0, at).visible).toBe(true);
+  });
+
+  it('restarts it from a foe to the portal, like a door', () => {
+    const c = new GuideClock();
+    c.set({ kind: 'foe', id: 1, x: 400, y: 0 });
+    c.pose(GUIDE_DELAY_MS, at);
+    c.set({ kind: 'portal', x: 400, y: 0 });
+    expect(c.pose(GUIDE_DELAY_MS - 1, at).visible).toBe(false);
+    expect(c.pose(1, at).visible).toBe(true);
   });
 
   it('keeps its clock from one foe to the next, restarts it from a foe to a door', () => {

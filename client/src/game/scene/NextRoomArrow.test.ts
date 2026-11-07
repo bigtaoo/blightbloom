@@ -124,6 +124,26 @@ ${tut.guideMoveTouch}`);
       expect((parent.children[1] as Text).style.fill).toBe(GUIDE_TINT.foe);
     });
 
+    it('leaves the move keys to the tutorial panel while it teaches them (2026-11-07)', () => {
+      const a = new NextRoomArrow(new Container());
+      a.setTarget(door);
+      a.update(GUIDE_DELAY_MS + 1000, player, undefined, false, true);
+      expect(a.words).toBe(tut.guideDoor);
+      a.update(16, player, undefined, false, false);
+      expect(a.words).toBe(`${tut.guideDoor}
+${tut.guideMoveKeys}`);
+    });
+
+    it('names the portal toward the portal, in the portal colour (2026-11-07)', () => {
+      const parent = new Container();
+      const a = new NextRoomArrow(parent);
+      a.setTarget({ kind: 'portal', x: 100, y: 900 });
+      a.update(GUIDE_DELAY_MS + 1000, player);
+      expect(a.words?.startsWith(tut.guidePortal)).toBe(true);
+      expect(a.visible).toBe(true);
+      expect((parent.children[1] as Text).style.fill).toBe(GUIDE_TINT.portal);
+    });
+
     it('drops the move keys once the player has walked MOVE_LEARNED_PX, and not before', () => {
       const a = new NextRoomArrow(new Container());
       shown(a);

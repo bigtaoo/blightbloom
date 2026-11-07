@@ -388,8 +388,8 @@ export class Scene {
    * and an arrow placed before that nudge would wobble against the body by up to half a pixel.
    * `touch` is whether this session plays on touch controls: the label's move wording.
    */
-  drawGuides(frameDt: number, touch = false): void {
-    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)), touch);
+  drawGuides(frameDt: number, touch = false, moveTaught = false): void {
+    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)), touch, moveTaught);
   }
 
   /**

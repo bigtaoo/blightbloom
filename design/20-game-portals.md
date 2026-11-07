@@ -385,6 +385,11 @@ the nearest a few grid from the spawn, all awake on tick 0.
 - **The rest of floor 1 stays gentle** (`ENGINE_VERSION` 90): the next room killed the owner
   anyway, so chapter 1's first floor fields one shooter per room and chapter 1 mobs start at
   ×0.6 HP. design/22 §4.1 has the measurements.
+- **…and the gentle part runs to the boss** (`ENGINE_VERSION` 91): a later pass found floor 2 had
+  become the wall, so the one-shooter rule now covers every chapter-1 floor but the boss's. The
+  swap lesson gives up after 15 s, the lesson panel steps aside for the portal and card panels,
+  the card panel sits above the hero, and the arrow points at the portal once a floor is clear.
+  design/22 §4.1 lists the whole pass.
 
 ## The multiplayer requirements (2026-09-08)
 

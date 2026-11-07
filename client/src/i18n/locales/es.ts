@@ -343,6 +343,7 @@ export const es: Translations<typeof en> = {
     skip: 'OMITIR TUTORIAL',
     guideFoe: 'Enemigos adelante: sigue la flecha roja',
     guideDoor: 'Sala despejada: sigue la flecha verde a la siguiente sala',
+    guidePortal: 'Piso despejado: ve al portal para elegir qué sigue',
     guideMoveKeys: 'Moverse: WASD o flechas',
     guideMoveTouch: 'Moverse: arrastra el lado izquierdo de la pantalla',
   },

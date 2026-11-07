@@ -343,6 +343,7 @@ export const fr: Translations<typeof en> = {
     skip: 'PASSER LE TUTORIEL',
     guideFoe: 'Ennemis devant — suivez la flèche rouge',
     guideDoor: 'Salle nettoyée — suivez la flèche verte vers la salle suivante',
+    guidePortal: 'Étage nettoyé — rejoignez le portail pour choisir la suite',
     guideMoveKeys: 'Se déplacer : ZQSD ou flèches',
     guideMoveTouch: 'Se déplacer : faites glisser le côté gauche de l’écran',
   },

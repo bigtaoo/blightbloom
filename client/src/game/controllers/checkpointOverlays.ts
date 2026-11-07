@@ -25,6 +25,10 @@ export const PORTAL_PROMPT_RADIUS_PX = 90;
 
 export interface CheckpointOverlayDeps {
   roomBuilder: RoomBuilder;
+  /** The tutorial's lesson panel (`ui/TutorialPrompt.ts`), which steps aside while either
+   *  checkpoint panel is open (2026-11-07, the first-run report: "Press 1 or 2 to swap" sat over
+   *  the portal and the card panel for the rest of the floor). Optional: no teaching, no panel. */
+  tutorialPrompt?: { setYielded(yielded: boolean): void };
   portalPrompt: PortalPrompt;
   floorCardPrompt: FloorCardPrompt;
   /** Fire is suppressed while the PORTAL popup — or the card panel, which on a floor still
@@ -69,5 +73,7 @@ export function updateCheckpointOverlays(s: GameState, localOwner: number, d: Ch
   d.floorCardPrompt.update(s, show, localOwner);
   d.portalPrompt.update(s, show, localOwner, portalOffers(s), d.floorCardPrompt.isPicking);
   // Either panel counts: on a floor still picking, the card panel is the only one open.
-  d.suppressFire((d.portalPrompt.isOpen || d.floorCardPrompt.isOpen) && nearPortal);
+  const panelOpen = d.portalPrompt.isOpen || d.floorCardPrompt.isOpen;
+  d.suppressFire(panelOpen && nearPortal);
+  d.tutorialPrompt?.setYielded(panelOpen);
 }
