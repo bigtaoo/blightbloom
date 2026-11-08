@@ -18,9 +18,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Ticker } from 'pixi.js';
 import type { Phase } from './phase';
-import { QualityWatchdog } from '../render/qualityWatchdog';
+import { playFpsFloor } from '../render/qualityWatchdog';
+import { activeQuality, resetActiveQuality } from '../render/quality';
+import { RenderQualityController } from './renderQuality';
 import type { FrameRateSetting } from './powerBudget';
 import {
+  deliveredFps,
+  expectedPlayFps,
   FRAME_RATE_SETTINGS,
   IDLE_MAX_FPS,
   PLAY_MAX_FPS,
@@ -165,22 +169,87 @@ describe('the play-cap mirror', () => {
 });
 
 describe('IDLE_MAX_FPS vs the auto-quality watchdog', () => {
-  it('never reads as a device that cannot hold the frame', () => {
-    // The two systems share one input. `PerfMonitor` keeps sampling while the player sits in a
-    // menu, and `QualityWatchdog` latches a permanent downgrade after three consecutive windows
-    // under its fps floor — so an idle cap set below that floor would make every player who
-    // paused for six seconds come back to the low tier, with the settings screen still saying
-    // `auto` and nothing having actually been slow. 30 clears the floor of 25 by design; this is
-    // the assertion that keeps it clearing it.
-    const watchdog = new QualityWatchdog();
-    for (let i = 0; i < 10; i++) {
-      expect(watchdog.observe({ fps: IDLE_MAX_FPS, frames: IDLE_MAX_FPS * 2, discarded: false })).toBe(false);
+  // The two systems share one input. `PerfMonitor` keeps sampling while the player sits in a
+  // menu, and the watchdog steps the tier down after three consecutive slow windows — so if
+  // menu windows reached it, every player who paused for six seconds would come back to a
+  // cheaper tier, with the settings screen still saying `auto` and nothing having been slow.
+  // Until 2026-11-08 a MARGIN prevented that (30 cleared a flat floor of 25). The floor now
+  // follows the in-run rate and a 30 fps menu cannot clear 45, so the protection is a GATE in
+  // the controller: only windows wholly inside a run are evidence. These pin both halves.
+  const quality = () => {
+    const calls = { applied: 0 };
+    const ctl = new RenderQualityController({
+      fx: { applyQuality: () => calls.applied++ },
+      scene: { refreshQuality: () => {} },
+      renderer: { resolution: 1, resize: () => {} },
+      screenSize: () => ({ w: 800, h: 600 }),
+    });
+    return { ctl, calls };
+  };
+  const idle = { fps: IDLE_MAX_FPS, frames: IDLE_MAX_FPS * 2, discarded: false };
+
+  afterEach(() => resetActiveQuality());
+
+  it('sits under the floor a 60 fps run is judged by — the margin no longer protects it', () => {
+    // The premise of the gate. If this ever passes the other way round, the gate is belt and
+    // braces; while it holds, the gate is the only thing between a pause and a downgrade.
+    expect(IDLE_MAX_FPS).toBeLessThan(playFpsFloor(PLAY_MAX_FPS));
+  });
+
+  it('never downgrades on windows closed outside a run, however many', () => {
+    const { ctl, calls } = quality();
+    for (const phase of ALL_PHASES.filter((p) => !worldDrawnInPhase(p))) {
+      for (let i = 0; i < 5; i++) ctl.observeWindow('auto', idle, false);
+      expect(activeQuality().tier, phase).toBe('high');
     }
-    expect(watchdog.downgrades).toBe(0);
-    // ...and the same watchdog does latch on a genuinely slow window, so the case above is
-    // passing because the cap clears the floor and not because the watchdog is inert.
-    for (let i = 0; i < 3; i++) watchdog.observe({ fps: 12, frames: 24, discarded: false });
-    expect(watchdog.downgrades).toBeGreaterThanOrEqual(1);
+    expect(calls.applied).toBe(0);
+  });
+
+  it('does downgrade on the same windows inside a run — the gate is doing the work', () => {
+    const { ctl } = quality();
+    ctl.observeWindow('auto', idle, true); // closes over the run's start: skipped
+    for (let i = 0; i < 3; i++) ctl.observeWindow('auto', idle, true);
+    expect(activeQuality().tier).toBe('medium');
+  });
+});
+
+describe('deliveredFps', () => {
+  it('is the target on an unmeasured display', () => {
+    expect(deliveredFps(60, null)).toBe(60);
+    expect(deliveredFps(30, null)).toBe(30);
+  });
+
+  it('is the display rate when the display is at or below the target (uncapped)', () => {
+    expect(deliveredFps(60, 60)).toBe(60);
+    expect(deliveredFps(60, 59.94)).toBe(59.94);
+    expect(deliveredFps(60, 61)).toBe(61); // inside the 1.02 slack: still uncapped
+    expect(deliveredFps(60, 50)).toBe(50);
+  });
+
+  it('is a whole division of a faster display, the rate tickerCapFor snaps to', () => {
+    expect(deliveredFps(60, 120)).toBe(60);
+    expect(deliveredFps(60, 144)).toBe(72);
+    expect(deliveredFps(30, 144)).toBe(144 / 5);
+    expect(deliveredFps(60, 100)).toBe(50);
+  });
+
+  it('agrees with the cap tickerCapFor writes — the rate fits under that cap', () => {
+    for (const hz of [75, 90, 100, 120, 144, 165, 240]) {
+      for (const target of FRAME_RATE_SETTINGS) {
+        const cap = tickerCapFor(target, hz);
+        // The cap is a hair above the delivered rate: one frame per whole vsync count fits it.
+        expect(deliveredFps(target, hz), `${target}@${hz}`).toBeLessThanOrEqual(cap);
+        expect(deliveredFps(target, hz) * 1.25, `${target}@${hz}`).toBeGreaterThan(cap);
+      }
+    }
+  });
+
+  it('expectedPlayFps reads both mirrors', () => {
+    expect(expectedPlayFps()).toBe(60);
+    setPlayFrameCap(30);
+    expect(expectedPlayFps()).toBe(30);
+    setDisplayHz(144);
+    expect(expectedPlayFps()).toBe(144 / 5);
   });
 });
 

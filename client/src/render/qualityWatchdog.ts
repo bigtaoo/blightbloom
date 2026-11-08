@@ -21,8 +21,10 @@ export interface FrameWindowLike {
 export interface QualityWatchdogOptions {
   /** Sustained fps below this is a downgrade candidate. Default 25 — the same floor
    *  `frameSampler` warns at, chosen there as "5fps of headroom below 30, so a 30Hz-locked
-   *  device is not slow". */
-  fpsFloor?: number;
+   *  device is not slow". A function is read once per window: the shipped game passes
+   *  {@link playFpsFloor} of the rate the display can actually deliver, which the player's
+   *  frame-rate setting and the display probe can both change mid-session. */
+  fpsFloor?: number | (() => number);
   /** Consecutive qualifying windows before the downgrade fires. Default 3 (~6s at the
    *  sampler's 2s window) — long enough to outlast a room load, short enough that a player
    *  on a struggling phone is not made to sit through 10s of stutter first. Counted again
@@ -39,6 +41,27 @@ export interface QualityWatchdogOptions {
 }
 
 const DEFAULT_FPS_FLOOR = 25;
+
+/**
+ * The floor for a run whose frames SHOULD arrive at `expectedFps` (2026-11-08).
+ *
+ * A flat 25 was chosen when the only question was "is this a 30 Hz device or a broken one".
+ * It cannot see the commonest slow device in the Playgama sandbox telemetry (0.0.1+99cba6ee,
+ * ~60 players): a desktop that sustains ~30 fps on the high tier while capped at 60. One
+ * 30 s window in ten read `fps_p10` around 28-30, `q` read `high` in 47 of 55 sessions, and
+ * none of those players was ever stepped down — 30 clears 25, so by the watchdog's lights
+ * they were fine, and they played at half the frame rate the game asked for.
+ *
+ * Three quarters of the expected rate: 45 at 60 fps. Below that a quarter of the frames the
+ * game asked for are missing for six seconds straight, which a single hitch does not produce
+ * and which a cheaper tier is the one lever that can recover. Never below the old 25, so a
+ * run capped at 30 keeps exactly the behaviour it had: 30 clears 25 with the same five frames
+ * of headroom that floor was chosen for. Rounded to a whole number so the floor is a number
+ * somebody could have chosen, not an artefact of the arithmetic.
+ */
+export function playFpsFloor(expectedFps: number): number {
+  return Math.max(DEFAULT_FPS_FLOOR, Math.round((expectedFps * 3) / 4));
+}
 const DEFAULT_SUSTAIN_WINDOWS = 3;
 const DEFAULT_MIN_FRAMES = 5;
 const DEFAULT_MAX_STEPS = 2;
@@ -53,7 +76,7 @@ const DEFAULT_MAX_STEPS = 2;
  * is already at the cheapest tier".
  */
 export class QualityWatchdog {
-  private readonly fpsFloor: number;
+  private readonly fpsFloor: () => number;
   private readonly sustainWindows: number;
   private readonly minFrames: number;
   private readonly maxSteps: number;
@@ -61,7 +84,8 @@ export class QualityWatchdog {
   private steps = 0;
 
   constructor(opts: QualityWatchdogOptions = {}) {
-    this.fpsFloor = opts.fpsFloor ?? DEFAULT_FPS_FLOOR;
+    const floor = opts.fpsFloor ?? DEFAULT_FPS_FLOOR;
+    this.fpsFloor = typeof floor === 'function' ? floor : () => floor;
     this.sustainWindows = opts.sustainWindows ?? DEFAULT_SUSTAIN_WINDOWS;
     this.minFrames = opts.minFrames ?? DEFAULT_MIN_FRAMES;
     this.maxSteps = opts.maxSteps ?? DEFAULT_MAX_STEPS;
@@ -75,7 +99,7 @@ export class QualityWatchdog {
     // way, and treating it as evidence of health would let a player who tabbed away mid-stutter
     // come back to a reset counter every time.
     if (w.discarded || w.frames < this.minFrames) return false;
-    if (w.fps >= this.fpsFloor) {
+    if (w.fps >= this.fpsFloor()) {
       this.streak = 0;
       return false;
     }

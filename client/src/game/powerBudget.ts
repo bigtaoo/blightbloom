@@ -86,12 +86,13 @@ export const PLAY_MAX_FPS: FrameRateSetting = 60;
  *  visually identical menu at half the frames, and the idle screens are where a game that
  *  someone left open spends its hours.
  *
- *  It has a FLOOR, and it is not taste: `PerfMonitor` keeps sampling on a menu and
- *  `QualityWatchdog` latches a permanent low tier after three consecutive windows under 25 fps
- *  (`render/qualityWatchdog.ts`). An idle cap below that would downgrade the renderer for
- *  anyone who paused for six seconds, with the settings screen still reading `auto` and
- *  nothing having actually been slow. `powerBudget.test.ts` asserts the clearance against the
- *  real watchdog rather than against the number. */
+ *  It used to have a FLOOR: `PerfMonitor` keeps sampling on a menu, and `QualityWatchdog`
+ *  steps the tier down after three consecutive slow windows, so an idle cap under the old
+ *  flat 25 fps floor would have downgraded anyone who paused for six seconds. Since
+ *  2026-11-08 the floor follows the in-run rate (45 at 60 fps, `playFpsFloor`), which this
+ *  cap cannot clear — so the watchdog now sees run windows ONLY
+ *  (`RenderQualityController.observeWindow`), and `powerBudget.test.ts` asserts that gate
+ *  against the real controller rather than a margin against a number. */
 export const IDLE_MAX_FPS = 30;
 
 // ---- the cap, as Pixi actually applies it ----
@@ -201,6 +202,27 @@ export function tickerCapFor(targetFps: number, hz: number | null): number {
   // last bit of a double. `EPSILON` is far too small to survive the same round trip; a
   // thousandth of a millisecond is below anything the gate can resolve and is not.
   return 1000 / (minMs - GATE_EPSILON_MS);
+}
+
+/**
+ * The frame rate {@link tickerCapFor}'s cap actually DELIVERS for `targetFps` on this
+ * display — the same three cases, answered as a rate rather than as a `maxFPS`. A 60 Hz panel
+ * asked for 60 delivers 60, a 50 Hz panel 50 (uncapped, so the display is the limit), a
+ * 144 Hz panel 72 (two vsyncs per frame), and an unmeasured display is taken at its word.
+ *
+ * What the auto-quality watchdog measures a run against (`playFpsFloor`): judging a 50 Hz
+ * panel against 60 would read its every window as a sixth short, and judging a 144 Hz panel
+ * against 60 would hide twelve frames of slowness behind headroom it never had.
+ */
+export function deliveredFps(targetFps: number, hz: number | null): number {
+  if (hz === null) return targetFps;
+  if (hz <= targetFps * 1.02) return hz;
+  return hz / Math.max(1, Math.round(hz / targetFps));
+}
+
+/** {@link deliveredFps} of the player's in-run cap on the measured display. */
+export function expectedPlayFps(): number {
+  return deliveredFps(playCap, displayHz);
 }
 
 /** The one display bit this needs — narrowed per CLAUDE.md rather than taking `Layers` or a
