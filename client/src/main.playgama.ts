@@ -10,6 +10,7 @@ import { bridgeSender } from './platform/playgama/bridgeAnalytics';
 import { PlaygamaSession } from './platform/playgama/PlaygamaSession';
 import { browserPerfHost, installPerfSample, PerfSampler } from './platform/playgama/perfSample';
 import { activeQuality } from './render/quality';
+import { expectedPlayFps } from './game/powerBudget';
 import { baseAssetHost, setAssetHost } from './render/assetHost';
 import { beginDeferredArt, preloadLobbyArt } from './render/preloadArt';
 import { disableBrokenLetterSpacing, pinTextMeasurementToPaintCanvas } from './render/textMetrics';
@@ -63,6 +64,9 @@ async function boot() {
     build: () => import.meta.env.VITE_GAME_VERSION ?? null,
     locale: getLocale,
     send: bridgeSender(bridge),
+    // No `page_open` beacon on this host (vite.playgama.config.js), so `boot_ms` runs from
+    // the navigation start instead.
+    bootStartedAt: globalThis.performance?.timeOrigin,
   });
 
   const platform = new WebPlatform();
@@ -113,6 +117,7 @@ async function boot() {
   // Playgama's `performance_sample`: frame times of live play only, per ~30 s (perfSample.ts).
   const perfSample = new PerfSampler((d) => bridge.track('performance_sample', d), import.meta.env.VITE_GAME_VERSION ?? 'unknown');
   perfSample.context = () => ({ q: activeQuality().tier });
+  perfSample.targetFps = expectedPlayFps;
   installPerfSample(browserPerfHost(app.ticker, app.canvas, () => game.getPhase() === 'playing'), perfSample);
   await hideBootSplash();
 }

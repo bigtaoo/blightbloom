@@ -57,6 +57,25 @@ describe('PerfSampler', () => {
     expect(d.fps_avg).toBe(46.9);
   });
 
+  it('reports the target the entry wires, read per sample and rounded', () => {
+    let t = 0;
+    const { s, sent } = sampler(() => t);
+    let target = 30;
+    s.targetFps = () => target;
+    s.frame(33, true); // arm
+    const window = (): void => {
+      for (let i = 0; i < 400; i++) {
+        t += 33;
+        s.frame(33, true);
+      }
+      s.flush(); // 13.2 s: over PERF_MIN_MS, so it is sent
+    };
+    window();
+    target = 144 / 5; // a 144 Hz display at the 30 cap delivers 28.8
+    window();
+    expect(sent.map((d) => d.target_fps)).toEqual([30, 29]);
+  });
+
   it('never counts the frame that spans a pause, a menu or a hidden tab', () => {
     const { s, sent } = sampler();
     play(s, 2, 16);

@@ -36,6 +36,14 @@ export class PerfSampler {
   };
   /** Where the game stands, sent with each sample. */
   context: () => SampleData = () => ({});
+  /**
+   * The rate this window was MEANT to hold — Playgama's `target_fps`, read when the sample is
+   * built. Not a constant: the player's frame-rate cap (60 or 30) and the display's own rate
+   * (a 50 Hz panel, a 144 Hz one that the cap divides to 72) both move it, and a 30 fps window
+   * reported against a target of 60 reads as a slow device when it is a battery setting.
+   * Rounded, since Playgama's dashboard compares it to integer fps. 60 until the entry wires it.
+   */
+  targetFps: () => number = () => 60;
 
   constructor(
     private readonly send: (data: SampleData) => void,
@@ -80,7 +88,7 @@ export class PerfSampler {
     const at = (p: number): number => s[Math.min(s.length - 1, Math.floor(p * s.length))]!;
     const r1 = (n: number): number => Math.round(n * 10) / 10;
     const data: SampleData = {
-      target_fps: 60,
+      target_fps: Math.round(this.targetFps()),
       window_ms: Math.round(this.now() - this.startedAt),
       active_ms: Math.round(this.active),
       frame_count: s.length,
