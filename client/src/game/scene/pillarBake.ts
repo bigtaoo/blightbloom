@@ -81,13 +81,26 @@ const CAP_GRAIN_FLOOR = 0.92;
 
 const luma = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
 
+/** `capStoneColour` per swatch PIXELS: a 512 px swatch is 262 144 texels to sort, and every door
+ *  state and every pillar shape of a chapter asks for the same one (`readSwatch` hands them the
+ *  same array). Weak, so a swatch dropped from `readSwatch`'s cache takes its entry with it. */
+const stoneColours = new WeakMap<object, { rgb: [number, number, number]; luma: number }>();
+
 /** The wall top's STONE, without its joints: the mean colour of its texels at or above the median
- *  luma (the block faces; the joints are the dark tail), and that median. */
+ *  luma (the block faces; the joints are the dark tail), and that median. Memoised per pixel array. */
 export function capStoneColour(cap: Swatch): { rgb: [number, number, number]; luma: number } {
+  const hit = stoneColours.get(cap.data);
+  if (hit) return hit;
+  const out = measureStoneColour(cap);
+  stoneColours.set(cap.data, out);
+  return out;
+}
+
+function measureStoneColour(cap: Swatch): { rgb: [number, number, number]; luma: number } {
   const n = cap.width * cap.height;
   const ls = new Float32Array(n);
   for (let i = 0; i < n; i++) ls[i] = luma(cap.data[i * 4]!, cap.data[i * 4 + 1]!, cap.data[i * 4 + 2]!);
-  const median = Float32Array.from(ls).sort()[n >> 1]!;
+  const median = nthSmallest(Float32Array.from(ls), n >> 1);
   const sum = [0, 0, 0];
   let count = 0;
   for (let i = 0; i < n; i++) {
@@ -97,6 +110,33 @@ export function capStoneColour(cap: Swatch): { rgb: [number, number, number]; lu
   }
   const rgb = sum.map((v) => v / count) as [number, number, number];
   return { rgb, luma: luma(...rgb) };
+}
+
+/** The `k`-th smallest value of `a` (0-based) — the value `a.sort()[k]` reads, found by
+ *  selection rather than a full sort of a quarter-million texels. Reorders `a` in place. */
+export function nthSmallest(a: Float32Array, k: number): number {
+  let lo = 0;
+  let hi = a.length - 1;
+  while (lo < hi) {
+    const pivot = a[(lo + hi) >> 1]!;
+    let i = lo;
+    let j = hi;
+    while (i <= j) {
+      while (a[i]! < pivot) i++;
+      while (a[j]! > pivot) j--;
+      if (i <= j) {
+        const t = a[i]!;
+        a[i] = a[j]!;
+        a[j] = t;
+        i++;
+        j--;
+      }
+    }
+    if (k <= j) hi = j;
+    else if (k >= i) lo = i;
+    else return a[k]!;
+  }
+  return a[k]!;
 }
 
 /** A stable tone per stone, in [-1, 1]: a small integer hash, no `Math.random`. */
@@ -173,19 +213,27 @@ export interface PillarShape {
 /** Bilinear sample, wrapping horizontally; `wrapY` wraps vertically too, else clamps. Shared with
  *  `doorBake.ts`. */
 export function sample(s: Swatch, u: number, v: number, wrapY: boolean, out: number[]): void {
+  // Hot: a door is 127 600 texels and a pillar ~100 000, each sampling once or twice. So no
+  // closures and no property reads in the loop (2026-11-08: the per-call wrap closures were most of
+  // a bake's cost) — the arithmetic is unchanged, and so is every byte it paints.
+  const w = s.width;
+  const h = s.height;
+  const px = s.data;
   const x0 = Math.floor(u);
   const y0 = Math.floor(v);
   const fx = u - x0;
   const fy = v - y0;
-  const wx = (x: number) => ((x % s.width) + s.width) % s.width;
-  const wy = (y: number) => (wrapY ? ((y % s.height) + s.height) % s.height : Math.min(s.height - 1, Math.max(0, y)));
-  const a = (wy(y0) * s.width + wx(x0)) * 4;
-  const b = (wy(y0) * s.width + wx(x0 + 1)) * 4;
-  const c = (wy(y0 + 1) * s.width + wx(x0)) * 4;
-  const d = (wy(y0 + 1) * s.width + wx(x0 + 1)) * 4;
+  const xa = ((x0 % w) + w) % w;
+  const xb = (((x0 + 1) % w) + w) % w;
+  const ya = wrapY ? ((y0 % h) + h) % h : Math.min(h - 1, Math.max(0, y0));
+  const yb = wrapY ? (((y0 + 1) % h) + h) % h : Math.min(h - 1, Math.max(0, y0 + 1));
+  const a = (ya * w + xa) * 4;
+  const b = (ya * w + xb) * 4;
+  const c = (yb * w + xa) * 4;
+  const d = (yb * w + xb) * 4;
   for (let k = 0; k < 3; k++) {
-    const top = s.data[a + k]! * (1 - fx) + s.data[b + k]! * fx;
-    const bot = s.data[c + k]! * (1 - fx) + s.data[d + k]! * fx;
+    const top = px[a + k]! * (1 - fx) + px[b + k]! * fx;
+    const bot = px[c + k]! * (1 - fx) + px[d + k]! * fx;
     out[k] = top * (1 - fy) + bot * fy;
   }
 }
@@ -228,6 +276,7 @@ export function paintStonePillar(
   const aoH = p.height * BASE_AO_FRACTION;
   const stone = capStoneColour(cap);
   const px: number[] = [0, 0, 0];
+  const cs: number[] = [0, 0, 0];
   for (let j = 0; j < height; j++) {
     const ly = (j + 0.5) / scale - (p.height + p.capRy);
     for (let i = 0; i < width; i++) {
@@ -287,7 +336,6 @@ export function paintStonePillar(
         const back = clamp01(-ey / p.capRy);
         const coping = COPING_ALPHA * back * clamp01(1 - Math.abs(inside - 1.25) / 0.75);
         const edge = EDGE_ALPHA * clamp01(1 - inside / EDGE_WIDTH);
-        const cs: number[] = [0, 0, 0];
         for (let k = 0; k < 3; k++) {
           let c = Math.min(255, px[k]! * TOP_LIFT * masonry);
           c += (255 - c) * coping;
@@ -296,11 +344,13 @@ export function paintStonePillar(
         }
         // `over`, straight alpha.
         const outA = capCover + aa * (1 - capCover);
-        const mix = (top: number, under: number) =>
-          outA > 0 ? (top * capCover + under * aa * (1 - capCover)) / outA : 0;
-        rr = mix(cs[0]!, rr);
-        gg = mix(cs[1]!, gg);
-        bb = mix(cs[2]!, bb);
+        if (outA > 0) {
+          rr = (cs[0]! * capCover + rr * aa * (1 - capCover)) / outA;
+          gg = (cs[1]! * capCover + gg * aa * (1 - capCover)) / outA;
+          bb = (cs[2]! * capCover + bb * aa * (1 - capCover)) / outA;
+        } else {
+          rr = gg = bb = 0;
+        }
         aa = outA;
       }
 
@@ -318,6 +368,23 @@ export function paintStonePillar(
  *  tainted source) — the caller keeps the shipped sprite (here and in `doorBake.ts`). Through `DOMAdapter` for the
  *  reason `capLight.ts` documents: the WeChat runtime has no `document`. */
 export function readSwatch(tex: Texture, texelsPerPx: number): Swatch | undefined {
+  // Cached per texture (2026-11-08): one floor's build bakes both door states and every pillar
+  // shape from the same face, and each used to read it back through a fresh canvas.
+  const hit = swatches.get(tex.uid);
+  if (hit) return { ...hit, texelsPerPx };
+  const read = readPixels(tex);
+  if (!read) return undefined;
+  swatches.set(tex.uid, read);
+  // Oldest first: a chapter needs two (face and top), so four spans a chapter change.
+  if (swatches.size > SWATCH_CACHE) swatches.delete(swatches.keys().next().value!);
+  return { ...read, texelsPerPx };
+}
+
+/** Swatch pixels kept, per texture uid: ~1 MB each at 512 px. */
+const SWATCH_CACHE = 4;
+const swatches = new Map<number, Omit<Swatch, 'texelsPerPx'>>();
+
+function readPixels(tex: Texture): Omit<Swatch, 'texelsPerPx'> | undefined {
   const src = tex.source;
   const w = src.pixelWidth;
   const h = src.pixelHeight;
@@ -327,7 +394,7 @@ export function readSwatch(tex: Texture, texelsPerPx: number): Swatch | undefine
     const ctx = canvas.getContext('2d', { willReadFrequently: true }) as ICanvasRenderingContext2D | null;
     if (!ctx) return undefined;
     ctx.drawImage(src.resource as CanvasImageSource, 0, 0, w, h);
-    return { data: ctx.getImageData(0, 0, w, h).data, width: w, height: h, texelsPerPx };
+    return { data: ctx.getImageData(0, 0, w, h).data, width: w, height: h };
   } catch {
     return undefined;
   }
@@ -383,4 +450,10 @@ export function pixelsToTexture(
 /** Drop every cached bake. Tests only. */
 export function resetStonePillarCache(): void {
   baked.clear();
+  resetSwatchCache();
+}
+
+/** Drop every cached swatch read. Tests only (both bake caches' resets call it). */
+export function resetSwatchCache(): void {
+  swatches.clear();
 }
