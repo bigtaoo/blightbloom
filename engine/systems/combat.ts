@@ -15,7 +15,7 @@
 import { addFp, mulFp } from '../math/fixed';
 import { atan2Brad, cosFp, sinFp } from '../math/trig';
 import type { GameState } from '../state/GameState';
-import type { Actor, DamageSrc, ShieldBreakSim } from '../state/entities';
+import type { Actor, DamageSrc, EnemyActor, ShieldBreakSim } from '../state/entities';
 import type { DamageType } from '../content/damage';
 import { hostileTargets } from './targeting';
 
@@ -38,8 +38,13 @@ export function takeDamage(
   crit = false,
 ): void {
   target.ticksSinceHit = 0;
-  // A dormant mob woken by the hit itself (ENGINE_VERSION 92, `EnemyActor.wakeOnHurt`).
-  if ((target as { wakeOnHurt?: boolean }).wakeOnHurt === true) (target as { aggroed?: boolean }).aggroed = true;
+  // A dormant mob woken by the hit itself (ENGINE_VERSION 92, `EnemyActor.wakeOnHurt`) — only a
+  // real hit from the player side: a hazard tile, a stray AoE or a fully resisted 0 is not the
+  // player acting, and "stand still and nothing comes for you" is the warm-up room's promise.
+  if (src === 'player' && dmg > 0 && target.faction === 'enemy') {
+    const mob = target as EnemyActor;
+    if (mob.wakeOnHurt === true) mob.aggroed = true;
+  }
   const hadShield = target.shield > 0;
   if (target.shield >= dmg) {
     target.shield -= dmg;

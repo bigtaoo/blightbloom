@@ -66,6 +66,10 @@ export interface AnalyticsDeps {
   now: () => number;
   /** Fire-and-forget. Never awaited, never allowed to throw into a caller. */
   send: (batch: AnalyticsBatch) => void;
+  /** Flush on every `track` instead of waiting for the caller's timer — a one-event batch each
+   *  time. For a `send` that hands events on one at a time anyway (`AnalyticsInstallOptions.
+   *  sendEachEvent` has the why). Off by default. */
+  sendEachEvent?: boolean;
 }
 
 export interface Analytics {
@@ -88,9 +92,10 @@ export function createAnalytics(deps: AnalyticsDeps): Analytics {
     const event: AnalyticsEvent = props === undefined ? { name, at: deps.now() } : { name, at: deps.now(), props: { ...props } };
     queue.push(event);
     while (queue.length > QUEUE_CAPACITY) queue.shift();
+    if (deps.sendEachEvent === true) flush();
   };
 
-  const flush = (): void => {
+  function flush(): void {
     if (queue.length === 0) return;
     // Splice first, then send. If `send` throws synchronously the events are already gone,
     // which is the correct outcome: keeping them would mean the next flush retries a batch
@@ -110,7 +115,7 @@ export function createAnalytics(deps: AnalyticsDeps): Analytics {
     } catch {
       /* a sender that throws is a sender that sent nothing; the game continues */
     }
-  };
+  }
 
   return { track, flush, pending: () => queue.length };
 }

@@ -105,4 +105,16 @@ describe('wakeOnHurt (takeDamage)', () => {
     expect(sleeper.aggroed).toBe(true);
     expect(plain.aggroed).toBe(false);
   });
+
+  it('only a real hit from the player side wakes it: not a hazard, not enemy fire, not a 0', () => {
+    const eng = engineWith([{ x: 15, y: 2, type: 'basic', dormant: true }]);
+    run(eng, 2);
+    const sleeper = enemyAt(eng, 15, 2);
+    takeDamage(eng.state, sleeper, 1, 'environment', 'physical');
+    takeDamage(eng.state, sleeper, 1, 'enemy', 'physical');
+    takeDamage(eng.state, sleeper, 0, 'player', 'physical');
+    expect(sleeper.aggroed).toBe(false);
+    takeDamage(eng.state, sleeper, 1, 'player', 'physical'); // the control
+    expect(sleeper.aggroed).toBe(true);
+  });
 });
