@@ -33,6 +33,7 @@ describe('the vocabulary', () => {
       'active_time',
       'ad_completed',
       'ad_offer_shown',
+      'first_input',
       'floor_reached',
       'page_open',
       'run_end',
@@ -60,6 +61,8 @@ describe('the vocabulary', () => {
     expect(Object.keys(EVENTS.session_end).sort()).toEqual(['active_s', 'duration_s']);
     expect(Object.keys(EVENTS.active_time)).toEqual(['active_s']);
     expect(Object.keys(EVENTS.page_open)).toEqual([]);
+    expect(Object.keys(EVENTS.first_input).sort()).toEqual(['kind', 'ms', 'screen']);
+    expect(coerceProp(EVENTS.first_input.kind, 'gamepad')).toBeUndefined();
     // A referrer host is folded into the id alphabet; anything else is dropped, not stored.
     expect(coerceProp(EVENTS.session_start.source, 'ref:www.reddit.com')).toBe('ref:www.reddit.com');
     expect(coerceProp(EVENTS.session_start.source, 'ref:a b')).toBeUndefined();

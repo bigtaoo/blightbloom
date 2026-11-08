@@ -406,3 +406,31 @@ describe('installAnalytics — a host that cannot reach our server', () => {
     expect(batches[0]!.events.map((e) => e.name)).toContain('run_end');
   });
 });
+
+describe('installAnalytics — sendEachEvent', () => {
+  it('sends each event the moment it is tracked, its own session_start included', () => {
+    const batches: { events: readonly { name: string }[] }[] = [];
+    const h = harness({ host: 'playgama', send: (b) => void batches.push(b), sendEachEvent: true });
+    // No flush call anywhere: a visit torn down before the timer still sent session_start.
+    expect(batches.map((b) => b.events.map((e) => e.name))).toEqual([['session_start']]);
+    track('screen_view', { screen: 'playing' });
+    h.analytics.track('run_start', { character: 'c' });
+    expect(batches.map((b) => b.events.map((e) => e.name))).toEqual([['session_start'], ['screen_view'], ['run_start']]);
+    expect(h.analytics.pending()).toBe(0);
+  });
+
+  it('sends session_end on pagehide without waiting for the flush', () => {
+    const batches: { events: readonly { name: string }[] }[] = [];
+    const h = harness({ host: 'playgama', send: (b) => void batches.push(b), sendEachEvent: true });
+    h.listeners.get('pagehide')!();
+    expect(batches.at(-1)!.events.map((e) => e.name)).toEqual(['session_end']);
+  });
+
+  it('batches as before when it is off', () => {
+    const batches: unknown[] = [];
+    const h = harness({ host: 'playgama', send: (b) => void batches.push(b) });
+    h.analytics.track('run_start', { character: 'c' });
+    expect(batches).toEqual([]);
+    expect(h.analytics.pending()).toBe(2);
+  });
+});

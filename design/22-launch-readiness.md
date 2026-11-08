@@ -434,6 +434,23 @@ sandbox re-published at 12:06 UTC, same link. Telemetry before that time is the 
   the loading cover. It still counts as "playing" for `performance_sample`, on purpose: a
   covered stall is still a stall the player waits through, so hiding it would flatter the number.
 
+**The first thirty seconds (2026-11-08, after the `a6febbce` build).** The likes went up (6), but
+52% of loaded sessions left inside 30 s. Three fixes on the `08.11.2026` daily branch, not yet
+shipped to the sandbox (design/20 "Onboarding, fourth pass" has the detail):
+
+- **Telemetry that survives a quick exit.** On Playgama every custom event is now sent the moment
+  it is tracked instead of batched (`sendEachEvent`), so a 10-second visit still reports. New
+  event `first_input` (`ms`, `kind` key|pointer, `screen`): the share of sessions with no
+  `first_input` is the share that never touched the game, which separates "did not start" from
+  "started and did not like it".
+- **The first room has something on screen** (`ENGINE_VERSION` 92): the two warm-up mobs are
+  dormant, 6.5 grid away, and wake when approached or shot.
+- **Swap and deflect are taught when they apply**: swap once a fight is on, deflect on the first
+  enemy shot, not in a room the player just cleared.
+
+Read on the next build: the `first_input` rate and its `ms`, and the 30-second exit share,
+split on `build_version`.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

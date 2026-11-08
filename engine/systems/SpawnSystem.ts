@@ -14,7 +14,7 @@ import { SIM } from '../sim.config';
 import { mechanismRing } from '../content/chests';
 import { rollShopStock } from '../content/shops';
 import { pxToFp, toFpGrid } from '../content/convert';
-import { buildEnemyActor, BOSS_POOL } from '../content/enemies';
+import { buildEnemyActor, BOSS_POOL, DORMANT_AGGRO_RANGE_FP } from '../content/enemies';
 import type { WaveScript, RoomPiece } from '../content/rooms';
 import type { ArenaRoom } from '../content/arenas';
 import {
@@ -375,6 +375,10 @@ export class SpawnSystem {
       if (sp) {
         const enemy = this.spawnEnemyAt(state, toFpGrid(sp.x + room.offsetXGrid), toFpGrid(sp.y + room.offsetYGrid), ev.enemyType);
         enemy.roomId = room.id;
+        if (sp.dormant === true) {
+          enemy.aggroRangeFp = DORMANT_AGGRO_RANGE_FP;
+          enemy.wakeOnHurt = true;
+        }
       }
       rt.cursor++;
     }

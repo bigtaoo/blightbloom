@@ -95,6 +95,7 @@ export function runLevel(opts: RunOptions): RunMetrics {
     effectiveHp: tracker.effectiveHp,
     lowestHpFrac: tracker.lowestHpFrac,
     drops: tracker.drops,
+    chestWeapons: tracker.chestWeapons,
     fires: tracker.fires,
     killsByFloor: tracker.killsByFloor,
     checkpointFloors: tracker.checkpointFloors,

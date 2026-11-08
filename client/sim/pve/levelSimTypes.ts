@@ -124,6 +124,9 @@ export interface RunMetrics {
   /** Every drop the run produced, in spawn order — the loot-economy measurement
    *  (2026-09-05: "每层只出产 2 到 3 个武器" / "血瓶概率非常低"). */
   drops: DropRecord[];
+  /** How many of `drops` came out of an opened chest (`chest_open.weapons`) rather than off a
+   *  kill — the one other loot source in PvE. */
+  chestWeapons: number;
   /** Enemy kills per floor index. The DENOMINATOR a per-floor drop count has to be
    *  read against: a bot that beelines the capstone leaves most of a floor's roster
    *  alive, and that shows up as few drops through no fault of the drop table. */

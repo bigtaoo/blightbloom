@@ -29,6 +29,14 @@ export interface Point {
  * unknown → basic, same forward-compat rule as a wave's `SpawnSpec`, design/09). */
 export interface SpawnPoint extends Point {
   type?: string;
+  /**
+   * A DORMANT spawn (ENGINE_VERSION 92, the first-run warm-up): the mob notices the player
+   * only inside `DORMANT_AGGRO_RANGE_FP` instead of its blueprint's radius, and wakes the
+   * moment it is hurt. It exists so the first room a new player sees can put targets ON
+   * screen without those targets opening fire on someone still finding the move keys —
+   * standing still is safe, walking at them or shooting them starts the fight.
+   */
+  dormant?: boolean;
 }
 
 /** A static rectangular solid, human grid units (design/09 "integer-grid AABBs"). */

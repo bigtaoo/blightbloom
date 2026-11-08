@@ -131,6 +131,21 @@ export const EVENTS = {
   /** A screen was shown. The funnel's early steps live here. */
   screen_view: { screen: { kind: 'id' } },
   /**
+   * The player's first key press or pointer press of the visit (`firstInput.ts`), once.
+   *
+   * `ms` is measured from the moment the game was READY — first frame drawn, splash going —
+   * not from the navigation, so it is the player's own hesitation and not the download.
+   * `screen` is the phase it landed on (`playing` for a first-ever visit, which skips the
+   * menu). It exists for the visit that leaves within half a minute: on the portal those
+   * were invisible (2026-11-08, design/22 §4.1), and "never touched anything" and "touched
+   * at once, then left" are different problems with different fixes.
+   */
+  first_input: {
+    ms: { kind: 'int', min: 0, max: 600_000 },
+    kind: { kind: 'enum', values: ['key', 'pointer'] },
+    screen: { kind: 'id' },
+  },
+  /**
    * A run began.
    *
    * `character` only, and the missing `weapon` is a finding rather than an omission: no
