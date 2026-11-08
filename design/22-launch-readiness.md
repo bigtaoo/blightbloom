@@ -408,9 +408,10 @@ Shipped as archive `blightbloom-0.0.1+99cba6ee-first-run-fixes` (check PASSED, B
 re-published to the sandbox on the owner's yes, same link.
 
 **The telemetry from those builds, read on 2026-11-08,** pointed at three things that were not
-gameplay. Fixed together on the `06.11.2026` daily branch; no archive has been built or published
-from it yet, so the sandbox still runs `99cba6ee` and none of this shows in its numbers until a
-re-publish.
+gameplay. Fixed together on the `06.11.2026` daily branch and shipped the same day on the
+owner's yes: archive `blightbloom-2026-11-08-a6febbce-perf-ladder` (check PASSED, Bridge 2.4.1),
+sandbox re-published at 12:06 UTC, same link. Telemetry before that time is the old build
+(`99cba6ee`); split any before/after read on `build_version`.
 
 - **Auto quality never stepped down on ~30 fps devices.** About 1 window in 10 sat at
   `fps_p10` 28–30, yet 47 of 55 sessions stayed on `high`: the watchdog's flat 25 fps floor
