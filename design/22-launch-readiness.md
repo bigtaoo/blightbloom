@@ -407,6 +407,32 @@ the daily branch.
 Shipped as archive `blightbloom-0.0.1+99cba6ee-first-run-fixes` (check PASSED, Bridge 2.4.1),
 re-published to the sandbox on the owner's yes, same link.
 
+**The telemetry from those builds, read on 2026-11-08,** pointed at three things that were not
+gameplay. Fixed together on the `06.11.2026` daily branch; no archive has been built or published
+from it yet, so the sandbox still runs `99cba6ee` and none of this shows in its numbers until a
+re-publish.
+
+- **Auto quality never stepped down on ~30 fps devices.** About 1 window in 10 sat at
+  `fps_p10` 28–30, yet 47 of 55 sessions stayed on `high`: the watchdog's flat 25 fps floor
+  sat under them. The floor is now three quarters of the rate the display delivers at the
+  player's frame cap (45 at the 60 cap, 25 at the 30 cap, 54 on a 144 Hz panel; `powerBudget.ts`
+  `deliveredFps` / `expectedPlayFps`, `qualityWatchdog.ts`), and only windows wholly inside a
+  run count, since a menu idles at 30 by design (`renderQuality.ts`).
+- **Two of our events doubled Playgama's own.** Bridge already reports `session_end` and
+  `active_time`; ours went through `bridge.analytics.send` as well and the dashboard counted
+  both. `bridgeAnalytics.ts` `PLATFORM_OWNED_EVENTS` now drops ours on this host only.
+  `session_start` gained `boot_ms` (measured from `performance.timeOrigin`, as this host has no
+  inline beacon), and `performance_sample` reports the real `target_fps` instead of a fixed 60, so
+  a player on the 30 fps battery setting no longer reads as a slow device.
+- **`long_task_max_ms` of ~600 ms during play** were room builds. A cold run profiled at 6×
+  CPU throttle put the first build at ~560 ms, ~430 of it in the procedural stone bakes
+  (`paintStoneDoor`, `paintStonePillar`, and a full sort of a quarter-million texels to find the
+  wall top's median luma). The bakes are now byte-identical and 1.5–5× faster: quickselect for the
+  median, memoised per swatch; swatch read-backs cached per texture; closures and per-pixel arrays
+  out of the inner loops. Every remaining long frame over ~150 ms in that profile happens behind
+  the loading cover. It still counts as "playing" for `performance_sample`, on purpose: a
+  covered stall is still a stall the player waits through, so hiding it would flatter the number.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

@@ -200,3 +200,12 @@ measurement. There is no instrument here that reads power draw, so what is prove
 went away — 30 of 40 draws on an idle screen, half the frames on a 120 Hz panel, 8 of 11
 framebuffer binds at `medium` — and not how many minutes that buys. The device holding the report
 is the only instrument for that.
+
+**Follow-up, 2026-11-08: the watchdog floor follows the cap.** Playgama's sandbox telemetry showed
+devices holding ~30 fps at the 60 cap staying on `high` for whole sessions: 25 fps was a floor
+under them. The floor is now 3/4 of `expectedPlayFps()`, the rate the display actually delivers
+at the player's cap, and the watchdog only judges windows wholly inside a run
+(`RenderQualityController.observeWindow`'s `playing` flag). That retires the first constraint
+above: menus no longer feed the watchdog at all, so the idle cap and the floor cannot collide.
+The second (an idle screen never costs more frames than the run) stands. Account in
+`design/22-launch-readiness.md` §4.1.
