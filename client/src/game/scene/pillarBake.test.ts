@@ -17,9 +17,12 @@ import {
   capMasonry,
   capStoneColour,
   drumShade,
+  nthSmallest,
   paintStonePillar,
   PILLAR_BAKE_SCALE,
+  readSwatch,
   resetStonePillarCache,
+  resetSwatchCache,
   type PillarShape,
   type Swatch,
 } from './pillarBake';
@@ -265,6 +268,40 @@ describe("capStoneColour — the wall top's stone, without its joints", () => {
       for (let k = 0; k < 3; k++) expect(b[k]! / a[k]!, `x=${x} ch${k}`).toBeGreaterThan(0.955);
     }
   });
+
+  it('measures each swatch once: a repeat read of the same pixels is the same answer, new pixels a new one', () => {
+    const s = swatch(16, 16, [90, 80, 70], 4);
+    const a = capStoneColour(s);
+    expect(capStoneColour({ ...s, texelsPerPx: 1 })).toBe(a); // same pixel array, another density
+    const b = capStoneColour(swatch(16, 16, [90, 80, 70], 4));
+    expect(b).not.toBe(a);
+    expect(b).toEqual(a);
+  });
+});
+
+describe('nthSmallest — the median without a full sort', () => {
+  it('reads exactly what a sort reads at every index, duplicates and all', () => {
+    let seed = 7;
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    for (const n of [1, 2, 3, 5, 16, 97, 256]) {
+      for (const levels of [2, 7, 1000]) {
+        const src = Float32Array.from({ length: n }, () => Math.floor(rnd() * levels) / levels);
+        const sorted = Float32Array.from(src).sort();
+        for (let k = 0; k < n; k++) expect(nthSmallest(Float32Array.from(src), k), `n=${n} levels=${levels} k=${k}`).toBe(sorted[k]);
+      }
+    }
+  });
+
+  it('handles already-sorted, reversed and constant input', () => {
+    const up = Float32Array.from({ length: 64 }, (_, i) => i);
+    const down = Float32Array.from(up).reverse();
+    const flat = new Float32Array(64).fill(3);
+    for (const k of [0, 31, 32, 63]) {
+      expect(nthSmallest(Float32Array.from(up), k)).toBe(k);
+      expect(nthSmallest(Float32Array.from(down), k)).toBe(k);
+      expect(nthSmallest(Float32Array.from(flat), k)).toBe(3);
+    }
+  });
 });
 
 describe('bakeStonePillar — the canvas plumbing', () => {
@@ -405,5 +442,34 @@ describe('bakeStonePillar — the canvas plumbing', () => {
     } finally {
       DOMAdapter.set(adapter);
     }
+  });
+
+  it('reads a texture back once, hands each caller its own density, and keeps the four newest', () => {
+    const texs = Array.from({ length: 5 }, () => textureWithResource(8, 8));
+    withFakeCanvas((made) => {
+      const a = readSwatch(texs[0]!, 1)!;
+      const b = readSwatch(texs[0]!, 4)!;
+      expect(made.length).toBe(1);
+      expect(b.data).toBe(a.data);
+      expect([a.texelsPerPx, b.texelsPerPx]).toEqual([1, 4]);
+      for (const t of texs.slice(1)) readSwatch(t, 1); // the fifth evicts the oldest
+      expect(made.length).toBe(5);
+      readSwatch(texs[4]!, 1);
+      expect(made.length).toBe(5);
+      expect(readSwatch(texs[0]!, 1)!.data).not.toBe(a.data);
+      expect(made.length).toBe(6);
+      resetSwatchCache();
+      readSwatch(texs[0]!, 1);
+      expect(made.length).toBe(7);
+    });
+  });
+
+  it('never caches a failed read: the next call tries again', () => {
+    const t = textureWithResource(8, 8);
+    withFakeCanvas(() => expect(readSwatch(t, 1)).toBeUndefined(), false);
+    withFakeCanvas((made) => {
+      expect(readSwatch(t, 1)).toBeDefined();
+      expect(made.length).toBe(1);
+    });
   });
 });

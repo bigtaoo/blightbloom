@@ -281,7 +281,7 @@ export class Game {
   /** One closed perf sampling window (`src/perf`), handed over by whichever entry installed the
    *  monitor. Feeds the auto-downgrade watchdog — see `RenderQualityController.observeWindow`. */
   observePerfWindow(w: FrameWindowLike) {
-    this.quality.observeWindow(this.settings.quality, w);
+    this.quality.observeWindow(this.settings.quality, w, this.getPhase() === 'playing');
   }
 
   start() {

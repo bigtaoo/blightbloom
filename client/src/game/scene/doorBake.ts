@@ -26,7 +26,7 @@
 import type { Texture } from 'pixi.js';
 import { swatchMeta } from '../../render/biomeTiles';
 import { FLAME_BAND, OPEN_HOLE } from './doorMotion';
-import { capStoneColour, pixelsToTexture, readSwatch, sample, type Swatch } from './pillarBake';
+import { capStoneColour, pixelsToTexture, readSwatch, resetSwatchCache, sample, type Swatch } from './pillarBake';
 import { DOOR_H } from './wallGeometry';
 import { EDGE_ALPHA, EDGE_COLOR } from './wallTone';
 
@@ -144,6 +144,21 @@ function stoneTone(k: number): number {
   return ((h >>> 8) % 1000) / 500 - 1;
 }
 
+/** The stone whose every side holds `(x, y)` inside, or the first stone if none does (a texel on
+ *  the antialiased rim of the opening). Loops, not `findIndex`/`every`: it runs per texel. */
+function stoneAt(stones: readonly Side[][], x: number, y: number): number {
+  for (let k = 0; k < stones.length; k++) {
+    const sides = stones[k]!;
+    let inside = true;
+    for (let i = 0; i < sides.length && inside; i++) {
+      const e = sides[i]!;
+      inside = e.nx * x + e.ny * y <= e.c + 1e-6;
+    }
+    if (inside) return k;
+  }
+  return 0;
+}
+
 /** Signed distance into the opening, world px: positive inside it, negative in the stone. */
 function intoOpening(x: number, y: number, h: number, locked: boolean): number {
   const xl = JAMB_IN * DESIGN_W;
@@ -184,8 +199,7 @@ export function paintStoneDoor(
       let g = 0;
       let b = 0;
       if (cover > 0) {
-        let k = stones.findIndex((s) => s.every((e) => e.nx * x + e.ny * y <= e.c + 1e-6));
-        if (k < 0) k = 0;
+        const k = stoneAt(stones, x, y);
         const tone = stoneTone(k);
         // Each stone samples the face from its own offset, so no painted course runs across a joint.
         const u = (x + (tone + 1) * 97) * faceTexelsPerPx;
@@ -205,13 +219,12 @@ export function paintStoneDoor(
         const lit = FRAME_LIFT * grain * (1 + shade) * (1 + TONE_SPREAD * tone);
         const m = lit + (JOINT_SHADE - lit) * line;
         const edge = EDGE_ALPHA * clamp01(1 + d / OPEN_EDGE);
-        const c = [0, 1, 2].map((q) => {
-          const s = Math.min(255, stone.rgb[q]! * m);
-          return s + (EDGE[q]! - s) * edge;
-        });
-        r = c[0]!;
-        g = c[1]!;
-        b = c[2]!;
+        const sr = Math.min(255, stone.rgb[0]! * m);
+        const sg = Math.min(255, stone.rgb[1]! * m);
+        const sb = Math.min(255, stone.rgb[2]! * m);
+        r = sr + (EDGE[0]! - sr) * edge;
+        g = sg + (EDGE[1]! - sg) * edge;
+        b = sb + (EDGE[2]! - sb) * edge;
       }
       let a = cover;
       if (locked && panel && cover < 1) {
@@ -262,6 +275,7 @@ export function stoneDoorLeaf(face: Texture | undefined, shipped: Texture | unde
 /** Drop every cached bake. Tests only. */
 export function resetStoneDoorCache(): void {
   baked.clear();
+  resetSwatchCache();
 }
 
 // `OPEN_HOLE` is imported for the contract the jamb constant states, checked in the test.

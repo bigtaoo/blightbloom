@@ -125,6 +125,15 @@ export interface AnalyticsInstallOptions {
    * Defaults to `globalThis.__bbOpen`; `null` means there was none.
    */
   pageOpen?: PageOpen | null;
+  /**
+   * Epoch ms that `boot_ms` is measured from when there is no `pageOpen` — for a build that
+   * cannot ship the beacon (Playgama: its inline `fetch` would be refused by the frame's CSP).
+   * That entry passes `performance.timeOrigin`, the navigation start, which is a little
+   * EARLIER than the beacon's first byte of script (it includes fetching the HTML), so its
+   * `boot_ms` reads slightly long next to a web row; it is the same wait from the player's
+   * side. Ignored when a beacon hand-off exists, and absent by default.
+   */
+  bootStartedAt?: number;
   /** Visibility for the playtime clock. `globalThis.document` by default; with no document
    *  (WeChat) the visit counts as visible throughout. */
   doc?: VisibilitySource | null;
@@ -265,7 +274,8 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   const visit = opts.visit ?? browserVisit(globalThis as Parameters<typeof browserVisit>[0]);
   const props: Record<string, string | number> = { storage: installIdStorage() };
   for (const [k, v] of Object.entries(visit)) if (v !== undefined) props[k] = v;
-  if (pageOpen !== null) props.boot_ms = Math.max(0, Math.round(now() - pageOpen.at));
+  const bootFrom = pageOpen?.at ?? opts.bootStartedAt;
+  if (bootFrom !== undefined && Number.isFinite(bootFrom)) props.boot_ms = Math.max(0, Math.round(now() - bootFrom));
   analytics.track('session_start', props);
   return analytics;
 }

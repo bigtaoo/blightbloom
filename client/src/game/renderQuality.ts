@@ -11,7 +11,8 @@
 // Nothing here reads or writes engine state: a quality tier is presentation-only, which is what
 // keeps two clients on different tiers byte-identical in simulation (design/06/12).
 import { resolveTier, setActiveQuality, activeQuality, type QualitySetting } from '../render/quality';
-import { QualityWatchdog, type FrameWindowLike } from '../render/qualityWatchdog';
+import { QualityWatchdog, playFpsFloor, type FrameWindowLike } from '../render/qualityWatchdog';
+import { expectedPlayFps } from './powerBudget';
 
 export interface RenderQualityDeps {
   /** Re-mounts exactly the full-viewport filter passes the active tier calls for. */
@@ -25,7 +26,11 @@ export interface RenderQualityDeps {
 }
 
 export class RenderQualityController {
-  private readonly watchdog = new QualityWatchdog();
+  // Judged against what THIS display delivers at the player's in-run cap, read per window — see
+  // `playFpsFloor` for why a flat floor let a 30 fps desktop keep the high tier forever.
+  private readonly watchdog = new QualityWatchdog({ fpsFloor: () => playFpsFloor(expectedPlayFps()) });
+  /** Whether the previous window closed during a run — see `observeWindow`. */
+  private lastWindowPlaying = false;
   /** Whatever resolution the PLATFORM picked at `createApp()` — `min(devicePixelRatio, 2)` in
    *  both of them today. A tier's `resolutionCap` only ever lowers this, never raises it: the
    *  platform knows things about the host (a mini-game's `pixelRatio`, a browser's
@@ -68,9 +73,18 @@ export class RenderQualityController {
    * on a pinned tier the watchdog has no authority, and letting it accumulate a verdict anyway
    * would leak measurements taken under one renderer configuration into a later `'auto'` session
    * running a different one.
+   *
+   * And only a window that lies wholly inside a run (`playing` at its close AND at the close
+   * of the one before it) is evidence. Every other phase runs at `IDLE_MAX_FPS` = 30 on
+   * purpose (`powerBudget.ts`), under the 45 fps floor a 60 fps run is judged by, so a menu
+   * window would read as a slow device; and the window that straddles a run's start holds the
+   * loading screen's frames, which describe the load and not the game. Like a `discarded`
+   * window, a skipped one neither counts toward the streak nor resets it.
    */
-  observeWindow(setting: QualitySetting, w: FrameWindowLike): void {
-    if (setting !== 'auto') return;
+  observeWindow(setting: QualitySetting, w: FrameWindowLike, playing: boolean): void {
+    const wholeRun = playing && this.lastWindowPlaying;
+    this.lastWindowPlaying = playing;
+    if (setting !== 'auto' || !wholeRun) return;
     if (!this.watchdog.observe(w)) return;
     // Deliberately does not touch the persisted setting: a downgrade is a fact about this
     // session's measured framerate, not a choice the player made, and writing it to disk would
