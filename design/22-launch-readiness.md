@@ -435,8 +435,10 @@ sandbox re-published at 12:06 UTC, same link. Telemetry before that time is the 
   covered stall is still a stall the player waits through, so hiding it would flatter the number.
 
 **The first thirty seconds (2026-11-08, after the `a6febbce` build).** The likes went up (6), but
-52% of loaded sessions left inside 30 s. Three fixes on the `08.11.2026` daily branch, not yet
-shipped to the sandbox (design/20 "Onboarding, fourth pass" has the detail):
+52% of loaded sessions left inside 30 s. Three fixes on the `08.11.2026` daily branch, shipped the
+same day on the owner's ask: archive `blightbloom-2026-11-08-5e325436-first-30s` (check PASSED,
+Bridge 2.4.1), sandbox re-published at 16:34 UTC, same link. Telemetry between 12:06 and 16:34 UTC
+is `a6febbce` (design/20 "Onboarding, fourth pass" has the detail):
 
 - **Telemetry that survives a quick exit.** On Playgama every custom event is now sent the moment
   it is tracked instead of batched (`sendEachEvent`), so a 10-second visit still reports. New
