@@ -1,4 +1,4 @@
-import type { GameEvent, GameState, PlayerActor } from '@dd/engine';
+import type { EnemyActor, GameEvent, GameState, PlayerActor } from '@dd/engine';
 import { t } from '../../i18n';
 
 /** The one HUD widget the lessons draw on: `HudView.tutorialPrompt` (ui/TutorialPrompt.ts),
@@ -69,7 +69,8 @@ const CUED: ReadonlySet<Lesson> = new Set(['swap', 'deflect']);
  * Swap and deflect used to go up the tick the previous lesson was learned, which on a first
  * run was usually a cleared room: "swing your melee weapon into incoming bullets" with no bullet
  * anywhere, timing out unread. Each now waits, panel hidden, for its CUE (`cued`): swap for a
- * fight (a live enemy that has noticed the player), deflect for the first enemy shot. Only then
+ * fight (a live enemy that has noticed the player), deflect for the first enemy shot, both in
+ * the player's own room. Only then
  * does its panel go up and its give-up clock start. A run that never meets the cue never shows
  * the lesson, which costs nothing.
  *
@@ -124,7 +125,7 @@ export class TutorialHintController {
     // Checked after the advance, so a cue already present goes straight to the panel with no
     // hidden tick between lessons. Re-measured from the cue: a slot swapped while the panel was
     // hidden is not the lesson.
-    if (this.step !== 'done' && !this.armed && this.cued(this.step, s, events)) this.begin(this.step, s, p, true);
+    if (this.step !== 'done' && !this.armed && this.cued(this.step, s, p, events)) this.begin(this.step, s, p, true);
 
     const showing = this.step !== 'done' && !this.armed ? 'waiting' : this.step;
     if (showing !== this.shownFor) {
@@ -141,13 +142,20 @@ export class TutorialHintController {
     }
   }
 
-  /** Has the moment for a cued lesson come: a fight for swap, an enemy shot for deflect. */
-  private cued(step: Lesson, s: GameState, events: readonly GameEvent[]): boolean {
+  /** Has the moment for a cued lesson come: a fight for swap, an enemy shot for deflect — in
+   *  the room the local seat stands in (`roomId`, the engine's own membership cache; undefined
+   *  on both sides in a room-less config, which then counts as one room). Anywhere else would
+   *  teach off a fight the player cannot see: a co-op ally's, or a dormant mob woken by a shot
+   *  through a door into a room whose AI has not switched on yet. */
+  private cued(step: Lesson, s: GameState, p: PlayerActor, events: readonly GameEvent[]): boolean {
+    const here = (e: EnemyActor | undefined): boolean => e !== undefined && e.roomId === p.roomId;
     switch (step) {
       case 'swap':
-        return s.enemies.some((e) => e.alive && e.aggroed);
+        return s.enemies.some((e) => e.alive && e.aggroed && here(e));
       case 'deflect':
-        return events.some((e) => e.type === 'bullet_fired' && e.faction === 'enemy');
+        return events.some(
+          (ev) => ev.type === 'bullet_fired' && ev.faction === 'enemy' && here(s.enemies.find((e) => e.id === ev.ownerId)),
+        );
       default:
         return true;
     }

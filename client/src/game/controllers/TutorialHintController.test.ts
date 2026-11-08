@@ -35,19 +35,23 @@ const NO_EVENTS: readonly GameEvent[] = [];
 const fired = (s: GameState): GameEvent =>
   ({ type: 'bullet_fired', ownerId: s.players[0]!.id, faction: 'player' } as GameEvent);
 const DEFLECT = { type: 'deflect', gx: 0, gy: 0 } as GameEvent;
-/** The deflect lesson's cue: a shot from the enemy side. */
-const ENEMY_SHOT = { type: 'bullet_fired', ownerId: 999, faction: 'enemy' } as GameEvent;
+/** The id of the fixture's one standing shooter, which `setup` places in the player's room. */
+const SHOOTER_ID = 999;
+/** The deflect lesson's cue: a shot from the enemy side, by an enemy in the player's room. */
+const ENEMY_SHOT = { type: 'bullet_fired', ownerId: SHOOTER_ID, faction: 'enemy' } as GameEvent;
 
-/** The swap lesson's cue: a live enemy that has noticed the player. Only the two fields the
- *  controller reads are real; the fixture's enemy list is otherwise empty. */
+/** The swap lesson's cue: a live enemy that has noticed the player, in the player's room. Only
+ *  the fields the controller reads are real. */
 function fight(s: GameState, enemy: Partial<EnemyActor> = {}): void {
-  s.enemies.push({ alive: true, aggroed: true, ...enemy } as EnemyActor);
+  s.enemies.push({ alive: true, aggroed: true, roomId: s.players[0]!.roomId, ...enemy } as EnemyActor);
 }
 
 function setup(touch?: () => boolean) {
   const prompt = fakePrompt();
   const c = new TutorialHintController(prompt, { localOwner: 0 }, touch);
   const s = baseState();
+  // `ENEMY_SHOT`'s owner: present, in the same (room-less) room, and not a fight on its own.
+  s.enemies.push({ id: SHOOTER_ID, alive: true, aggroed: false } as EnemyActor);
   /** One tick: consume, then advance the clock. */
   const tick = (events: readonly GameEvent[] = NO_EVENTS) => {
     c.consume(s, events);
@@ -277,6 +281,29 @@ describe('TutorialHintController — swap and deflect wait for their moment (202
     expect(prompt.finish).not.toHaveBeenCalled();
     tick([DEFLECT]);
     expect(prompt.finish).toHaveBeenCalledWith('Nicely done — you know the basics.');
+  });
+
+  it('a fight or a shot in ANOTHER room is not a cue (a co-op ally’s, or a mob woken through a door)', () => {
+    const { prompt, s, tick, lastShown } = atAttack();
+    s.players[0]!.roomId = 'r1_entrance';
+    fight(s, { roomId: 'r2_side' });
+    tick([fired(s)]);
+    for (let i = 0; i < 30; i++) tick();
+    expect(prompt.show).toHaveBeenCalledTimes(2); // still waiting: swap never went up
+    fight(s); // the control: the same fight in the player's room
+    tick();
+    expect(lastShown()).toMatch(/switch weapon/);
+    s.players[0]!.activeSlot = 1;
+    tick();
+    s.enemies.push({ id: 1234, alive: true, aggroed: true, roomId: 'r2_side' } as EnemyActor);
+    const farShot = { type: 'bullet_fired', ownerId: 1234, faction: 'enemy' } as GameEvent;
+    for (let i = 0; i < 30; i++) tick([farShot]);
+    expect(lastShown()).toMatch(/switch weapon/); // deflect still hidden
+    tick([ENEMY_SHOT]); // the fixture's shooter is still room-less, so not in r1_entrance either
+    expect(lastShown()).toMatch(/switch weapon/);
+    s.enemies.find((e) => e.id === SHOOTER_ID)!.roomId = 'r1_entrance';
+    tick([ENEMY_SHOT]); // the control: the same shot from the player's room
+    expect(lastShown()).toMatch(/deflect/);
   });
 
   it('a cue already present when the lesson starts shows it on the same tick, never hiding', () => {

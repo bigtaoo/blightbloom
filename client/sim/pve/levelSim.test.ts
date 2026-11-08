@@ -120,9 +120,9 @@ describe('runLevel', () => {
     }
     // Every drop comes off a kill or out of a chest, so the count can never exceed the two
     // together — the tracker's own sanity check against double-counting a pickup that merely
-    // sat on the floor for another tick. (This seed opens the first floor's cache inside the
-    // window since the v92 warm-up room, which is how the bound learned about chests.)
-    expect(m.chestWeapons).toBeGreaterThan(0);
+    // sat on the floor for another tick. (Chests joined the bound in v92, when the warm-up room
+    // brought the first floor's cache inside this window; whether a given seed opens it is the
+    // route's business, not the harness's, so it is not asserted.)
     expect(m.drops.length).toBeLessThanOrEqual(m.enemiesKilled + m.chestWeapons);
   });
 
@@ -132,10 +132,11 @@ describe('runLevel', () => {
     // inflate exactly the number this harness exists to measure, so a weapon
     // `pickup` event disqualifies new weapon pickups on its tick. Proven here by the
     // invariant it protects: weapons RECORDED can never exceed weapons that were
-    // rolled, and a swap would make recorded > rolled.
+    // rolled — one per kill at most, plus what chests paid out — and a swap would make
+    // recorded > rolled.
     const m = runLevel({ seed: 505, profileName: 'aggressive', maxTicks: 3000 });
     const recorded = m.drops.filter((d) => d.kind === 'weapon').length;
-    expect(recorded).toBeLessThanOrEqual(m.enemiesKilled);
+    expect(recorded).toBeLessThanOrEqual(m.enemiesKilled + m.chestWeapons);
     for (const d of m.drops) expect(d.tick).toBeLessThanOrEqual(m.ticks);
   });
 

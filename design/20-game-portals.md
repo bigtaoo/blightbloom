@@ -398,20 +398,25 @@ The sandbox telemetry after the third pass: 52% of loaded visits gone inside 30 
 events that would have said why mostly never arrived (the client's batch flushed on a timer the
 leavers did not wait for). design/22 §4.1 has the numbers; three fixes:
 
-- **Every Playgama event goes out at once** (`analyticsInstall.ts` `sendEachEvent`, set only by
+- **Every Playgama event goes out at once** (`sendEachEvent`, a `createAnalytics` option set only by
   `main.playgama.ts`), and a new `first_input` event (`net/firstInput.ts`) records the ms from
-  `session.ready()` to the first key or pointer press, and on which screen. A visit that leaves
+  `session.ready()` to the first pointer or GAME key press (`isGameKey`: not a modifier, a
+  function key, Tab, or a Ctrl/Alt/Meta chord — the Alt of an Alt-Tab is someone leaving), and on
+  which screen. A visit that leaves
   with no `first_input` never touched the game; one that has it left after trying.
 - **The warm-up room starts on screen and asleep** (`ENGINE_VERSION` 92). The two `basic` mobs
   moved from the far corners (10 grid out, off the first screen) to (9,4) and (9,7), about
   6.5 grid from the spawns, as `dormant` spawns: a 5-grid perception radius instead of 10, and
-  `wakeOnHurt`, so a hit from range starts the fight (`combat.ts` `takeDamage`). Standing still
+  `wakeOnHurt`, so a hit from range starts the fight (`combat.ts` `takeDamage`; only a player-side hit
+  that deals damage — a hazard, enemy fire or a fully resisted 0 does not). Standing still
   is still safe; walking toward them or shooting wakes them. The derived chapters' `*_l1_cell`
   pieces carry it.
 - **Swap and deflect wait for their moment** (`TutorialHintController` `CUED`). They used to go
   up the tick the previous lesson was learned, which after the warm-up meant teaching a weapon
   swap and a deflect in a cleared, silent room. Now swap waits, panel hidden and no give-up clock
-  running, until an enemy is alive and aggroed; deflect waits for the first ENEMY `bullet_fired`.
+  running, until an enemy is alive and aggroed; deflect waits for the first ENEMY `bullet_fired` — both
+  in the local player's own room (`roomId`), so a co-op ally's fight, or a mob woken through a
+  door into a room whose AI is still off, does not cue a lesson the player cannot see.
   A cue already present on the tick the previous lesson ends shows the panel that same tick, so
   there is no one-tick hide between lessons, and nothing done while a lesson waits counts toward
   it. Checked in the dev client: swap hid at tick 470 and showed at 485, the tick a warm-up mob
