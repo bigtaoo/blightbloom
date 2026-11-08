@@ -29,6 +29,8 @@
     "build": "tsc --noEmit && vite build",
     "build:crazygames": "tsc --noEmit && vite build --config vite.crazygames.config.js",
     "dev:crazygames": "vite --config vite.crazygames.config.js",
+    "build:playgama": "tsc --noEmit && vite build --config vite.playgama.config.js",
+    "dev:playgama": "vite --config vite.playgama.config.js",
     "build:wechat": "tsc --noEmit && vite build --config vite.wechat.config.js",
     "build:wechat:debug": "tsc --noEmit && vite build --config vite.wechat.config.js --mode development",
     "preview": "vite preview --port 4173",

@@ -9,7 +9,8 @@
  *     anywhere on the floor: the control for the held-back fight;
  *   - `ally`: the ally as it ships, the leader not reviving (the leader bot has no rule of its own);
  *   - `ally + leader`: the same rule laid over the leader as well, a stand-in for a player who
- *     always goes back for the ally.
+ *     always goes back for the ally. Its gate runs on chapter 2 (see the comment at it): chapter 1
+ *     rarely downs the ally any more.
  *
  * What it gates is the instrument, not a balance verdict: nobody comes back up without a rule
  * that revives, the shipped ally does bring the leader back up, a seat is only revived from a down
@@ -17,6 +18,7 @@
  * (ENGINE_VERSION 88). The rest is printed.
  */
 import { describe, expect, it } from 'vitest';
+import { CHAPTERS } from '@dd/engine';
 import { runLevel } from './pve/levelSim';
 import { runCoop, type CoopRun, type CoopSeat } from './pve/coopRun';
 
@@ -75,7 +77,14 @@ describe('co-op PvE revive (shipped ally, bot leader — first-signal data, not 
       // The shipped ally brings the leader back up; the leader alone revives nobody.
       expect(r.ally!.leader.revived, profileName).toBeGreaterThan(0);
       expect(r.ally!.ally.revived, profileName).toBe(0);
-      expect(r['ally + leader']!.ally.revived, profileName).toBeGreaterThan(0);
+      // The leader's rule needs an ally that goes down with the leader still up, and since chapter 1
+      // became the learning chapter (ENGINE_VERSION 91) it almost never does: 5 and 12 ally downs in
+      // 40 runs, 1 and 0 of them with the leader up, so that condition never fires. The check moves
+      // to chapter 2, where it does (10 and 6 revives, 2026-11-07); chapter 1's line stays above.
+      const frost = summarize(SEEDS.map((seed) => runCoop({ seed, profileName, allyRevives: true, leaderRevives: true, dungeon: CHAPTERS.frost })));
+      lines.push(`${profileName.padEnd(10)} ${'+ leader, ch2'.padEnd(13)} extracted ${frost.outcomes.extracted}  leader: ${seatText(frost.leader)}  ally: ${seatText(frost.ally)}`);
+      expect(frost.ally.revived, profileName).toBeGreaterThan(0);
+      expect(frost.outcomes.timeout + frost.outcomes.stranded, profileName).toBe(0);
       // The ally takes the second plate of a big chest (`ai/chestPlate.ts`): until it did, no
       // co-op run ever opened one.
       expect(r.ally!.bigChests, profileName).toBeGreaterThan(0);

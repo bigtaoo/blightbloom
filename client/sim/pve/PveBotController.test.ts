@@ -228,6 +228,14 @@ describe('PveBotController — heal seeking', () => {
     expect(dir(bot().build(s, 0, 501).moveBrad).x).toBeLessThan(-0.9); // kiting, not detouring
   });
 
+  it('ignores a heal at full HP even with the shield empty — the engine would not take it', () => {
+    // The total reads low (shield 0), but PickupSystem refuses a heal at hp === maxHp: walking
+    // onto it pinned the bot on that spot for a whole chapter-sim run (2026-11-07).
+    const s = fixture({ playerAt: [5, 5], shield: 0, enemies: [[7, 5, 'a']], heals: [[5, 9]] });
+    expect(s.players[0]!.hp).toBe(s.players[0]!.maxHp); // the control: full HP, empty shield
+    expect(dir(bot().build(s, 0, 501).moveBrad).x).toBeLessThan(-0.9); // kiting, not detouring
+  });
+
   it('collects a heal in a quiet room before moving on', () => {
     const s = fixture({ playerAt: [5, 5], hp: 2, shield: 0, heals: [[5, 9]] });
     expect(dir(bot().build(s, 0, 501).moveBrad).y).toBeGreaterThan(0.9);
@@ -370,12 +378,12 @@ describe('PveBotController — circling a target nothing is killing', () => {
     const b = bot();
     expect(dir(b.build(s, 0, 501).moveBrad).x).toBeLessThan(-0.9); // kiting, as usual
 
-    // Jitter the seat a hair per tick: a bot that never MOVES also trips the separate
+    // Drift the seat a little each tick: a bot that never MOVES also trips the separate
     // stuck-unstick rotation, which would rotate the orbit heading on top of itself and
     // muddy what is being asserted. A real kiting bot is always drifting.
     let cmd = b.build(s, 0, 502);
     for (let t = 2; t <= 200; t++) {
-      setSeatY(s, 5 + (t % 2 === 0 ? 0.05 : -0.05));
+      setSeatY(s, 5 + (t % 40) * 0.05);
       cmd = b.build(s, 0, 501 + t); // nothing ever dies
     }
     // Perpendicular to the target direction: mostly vertical, not the radial ±x.
@@ -383,11 +391,33 @@ describe('PveBotController — circling a target nothing is killing', () => {
     expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE); // still shooting while it circles
   });
 
+  it('circles the other way once a blocked orbit has gone nowhere (seed 31, a foe behind a wall block)', () => {
+    const s = fixture({ playerAt: [5, 5], enemies: [[7, 5, 'a']] });
+    const b = bot();
+    let cmd = b.build(s, 0, 501);
+    for (let t = 1; t <= 200; t++) {
+      setSeatY(s, 5 + (t % 40) * 0.05);
+      cmd = b.build(s, 0, 501 + t); // drifting, so the orbit starts without an unstick
+    }
+    const before = dir(cmd.moveBrad).y;
+    expect(Math.abs(before)).toBeGreaterThan(0.7);
+    // Now pinned, sliding a hair to and fro on the block's face: it moves every tick, so the
+    // per-tick unstick never fires, but the orbit has gone nowhere for 24 ticks and must turn
+    // the other way round rather than press into the same corner forever.
+    for (let t = 201; t <= 230; t++) {
+      setSeatY(s, 5 + (t % 2 === 0 ? 0.05 : -0.05));
+      cmd = b.build(s, 0, 501 + t);
+    }
+    const after = dir(cmd.moveBrad).y;
+    expect(Math.abs(after)).toBeGreaterThan(0.7);
+    expect(Math.sign(after)).toBe(-Math.sign(before));
+  });
+
   it('goes back to holding spacing as soon as something dies', () => {
     const s = fixture({ playerAt: [5, 5], enemies: [[7, 5, 'a'], [8, 5, 'a']] });
     const b = bot();
     for (let t = 0; t <= 200; t++) {
-      setSeatY(s, 5 + (t % 2 === 0 ? 0.05 : -0.05));
+      setSeatY(s, 5 + (t % 40) * 0.05);
       b.build(s, 0, 501 + t); // long enough to start circling
     }
     setSeatY(s, 5);

@@ -103,6 +103,19 @@ describe('session_start — the visit', () => {
     expect(h.events()[0]!.props?.boot_ms).toBe(0);
   });
 
+  it('measures boot_ms from bootStartedAt when there is no beacon (the Playgama build)', () => {
+    const h = harness({ pageOpen: null, bootStartedAt: 100_000 - 2500.6 });
+    expect(h.events()[0]!.props?.boot_ms).toBe(2501);
+  });
+
+  it('prefers the beacon over bootStartedAt, and ignores a non-finite one', () => {
+    let h = harness({ pageOpen: { session: 'v', at: 100_000 - 700 }, bootStartedAt: 100_000 - 9000 });
+    expect(h.events()[0]!.props?.boot_ms).toBe(700);
+    uninstallAnalyticsForTests();
+    h = harness({ pageOpen: null, bootStartedAt: Number.NaN });
+    expect(h.events()[0]!.props).not.toHaveProperty('boot_ms');
+  });
+
   it('reads the hand-off from globalThis.__bbOpen by default, and only in its own shape', () => {
     (globalThis as { __bbOpen?: unknown }).__bbOpen = { session: 'v-global', at: 99_000 };
     let h = harness({ pageOpen: undefined });

@@ -230,6 +230,18 @@ describe('the reward is team-wide', () => {
     });
   });
 
+  it('a flat_hp card raises max HP and heals by the same amount, like the floor pickup (v91)', () => {
+    // 2026-11-07 first-run report: Bulwark ("+2 max HP") was pushed onto the stack raw and
+    // never reached maxHp — the one card a struggling new player picks did nothing.
+    const eng = checkpointOffering('bulwark', 2);
+    const before = eng.state.players.map((p) => [p.maxHp, p.hp]);
+    pickCard(eng, 'bulwark');
+    eng.state.players.forEach((p, i) => {
+      expect(p.maxHp).toBe(before[i]![0]! + 2);
+      expect(p.hp).toBe(before[i]![1]! + 2);
+    });
+  });
+
   it('gives it to a DOWNED seat too — they are still on the team', () => {
     const eng = checkpointOffering('edge', 2);
     const downed = eng.state.players[1]!;

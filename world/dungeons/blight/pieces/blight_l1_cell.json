@@ -46,44 +46,14 @@
     ],
     "enemy": [
       {
-        "x": 12.5,
-        "y": 6.5,
-        "type": "basic"
-      },
-      {
-        "x": 12.5,
+        "x": 11.5,
         "y": 2.5,
-        "type": "blightling"
-      },
-      {
-        "x": 10.5,
-        "y": 4.5,
         "type": "basic"
-      },
-      {
-        "x": 8.5,
-        "y": 6.5,
-        "type": "blightling"
-      },
-      {
-        "x": 6.5,
-        "y": 6.5,
-        "type": "basic"
-      },
-      {
-        "x": 6.5,
-        "y": 2.5,
-        "type": "blightling"
       },
       {
         "x": 4.5,
-        "y": 4.5,
+        "y": 2.5,
         "type": "basic"
-      },
-      {
-        "x": 2.5,
-        "y": 6.5,
-        "type": "blightling"
       }
     ]
   },

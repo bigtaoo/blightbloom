@@ -21,7 +21,7 @@
 // `keydownAction` is the piece with real behaviour, and it is a PURE function on purpose:
 // the key table used to be an `if` chain inside a DOM listener, so the rule that F9 and pause
 // are offline-only could not be asserted without a `window`.
-import { isPortalHost } from '../../platform/hostKind';
+import { canBindEscape, canPlayOnline, isPortalHost } from '../../platform/hostKind';
 import { setPublicFlagsListener } from '../../net/clientFlags';
 import { onSessionChanged } from '../../platform/sessionEvents';
 import { setOnlineEntry } from '../../platform/onlineEntry';
@@ -119,10 +119,16 @@ export function wireScreens(d: WiringDeps): void {
     // unwired rather than pointed at a screen the platform would reject. `LoginScreen` is
     // still constructed and mounted, exactly as `StoreScreen` is on a build that may not
     // sell — one policy fact, one screen unreachable, no screen with an opinion about it.
-    d.mainMenu.setAccountEntry(false);
+    // The data notice names what our SERVER stores; with no server to reach there is nothing
+    // to declare.
+    d.mainMenu.setAccountEntry(false, canPlayOnline());
   } else {
     d.mainMenu.onAccount = () => d.nav.showAccount();
   }
+  // ...and none of the online routes on a host whose frame cannot reach our server (Playgama:
+  // `hostKind.ts` `canPlayOnline`). Hidden, not disabled — a door that always fails is the
+  // dead-door failure the lobby was cleared of.
+  if (!canPlayOnline()) d.mainMenu.setOnlineRoutes(false);
   // The maintenance banner's live half (design/21 §9's delivery path). `show()` already
   // re-reads the flag, so this is only about the player who is ALREADY sitting in the menu
   // when an operator puts a notice up — which is precisely the player a notice about a
@@ -245,7 +251,7 @@ export function wireHud(d: WiringDeps): void {
   // sim loop unconditionally — see ScreenNav's own note on why that is unsafe for a shared
   // match).
   d.hud.onPause = () => {
-    if (!d.run.online && d.run.phase === 'playing') d.nav.pause();
+    if (canPause(d.run.phase, d.run.online)) d.nav.pause();
   };
   // Tapping the idle-slot chip (HudView, design/10 HUD follow-up) swaps the active weapon —
   // same latch as the keyboard/touch swap controls.
@@ -278,9 +284,11 @@ export type KeyAction = 'forge' | 'closeSettings' | 'pause' | 'resume' | 'saveRe
  *    loadout phase OPENS it, which is the `forge` action (ForgeInput owns that table).
  *
  * Every code that is not a shell hotkey returns `forge`, because ForgeInput's own handler is
- * phase-guarded and ignores anything it does not recognise.
+ * phase-guarded and ignores anything it does not recognise. On a host that keeps Escape for
+ * itself (`canBindEscape`), Escape is one of those codes and P / O are the only way.
  */
-export function keydownAction(code: string, phase: string, online: boolean): KeyAction {
+export function keydownAction(code: string, phase: string, online: boolean, escape = canBindEscape()): KeyAction {
+  if (code === 'Escape' && !escape) return 'forge';
   if (phase === 'settings' && (code === 'Escape' || code === 'KeyO')) return 'closeSettings';
   if (online) return 'forge';
   if (phase === 'playing' && (code === 'Escape' || code === 'KeyP')) return 'pause';
@@ -291,8 +299,13 @@ export function keydownAction(code: string, phase: string, online: boolean): Key
   return 'forge';
 }
 
+/** Whether a pause may open now: a running local run only (ScreenNav's note on online). */
+export function canPause(phase: string, online: boolean): boolean {
+  return !online && phase === 'playing';
+}
+
 /**
- * The two `window` listeners. Guarded to the DOM: WeChat has no `window`, and its settings
+ * The `window` listeners (keys, resize, and the away-pause on blur or a hidden tab). Guarded to the DOM: WeChat has no `window`, and its settings
  * entry is the SETTINGS button instead.
  *
  * The resize listener registers AFTER WebPlatform's own `resizeTo: window` (added during
@@ -315,4 +328,15 @@ export function wireWindow(d: WiringDeps): void {
     }
   });
   window.addEventListener('resize', () => requestAnimationFrame(() => d.nav.relayout()));
+  // A player who switches tab or app comes back to the pause menu, not to a run that kept
+  // going without them (borrowed from D:/jump's `awayPause`). The same guard as the button.
+  const away = (): void => {
+    if (canPause(d.run.phase, d.run.online)) d.nav.pause();
+  };
+  window.addEventListener('blur', away);
+  // `?.` because a test host may hand over a document with no listeners (the replay-save fakes).
+  const doc = globalThis.document;
+  doc?.addEventListener?.('visibilitychange', () => {
+    if (doc.hidden) away();
+  });
 }

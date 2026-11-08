@@ -393,3 +393,16 @@ describe('installAnalytics — lifecycle', () => {
     expect(a.pending()).toBe(0);
   });
 });
+
+describe('installAnalytics — a host that cannot reach our server', () => {
+  it('hands every batch to `send` and never fetches', () => {
+    const batches: { host: string; events: readonly { name: string }[] }[] = [];
+    const h = harness({ host: 'playgama', send: (b) => void batches.push(b) });
+    h.analytics.track('run_end', { outcome: 'loss', floor: 2 });
+    h.analytics.flush();
+    expect(h.calls).toEqual([]);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.host).toBe('playgama');
+    expect(batches[0]!.events.map((e) => e.name)).toContain('run_end');
+  });
+});

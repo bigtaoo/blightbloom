@@ -20,13 +20,22 @@ import { RunState } from '../runState';
 import { resetHostKind, setHostKind } from '../../platform/hostKind';
 import { notifySessionChanged, resetSessionEvents } from '../../platform/sessionEvents';
 import { onlineEntry, setOnlineEntry } from '../../platform/onlineEntry';
-import { keydownAction, wireHud, wireScreens, type WiringDeps } from './gameWiring';
+import { canPause, keydownAction, wireHud, wireScreens, wireWindow, type WiringDeps } from './gameWiring';
 import { setPublicFlags, setPublicFlagsListener } from '../../net/clientFlags';
 import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 
 const store: MetaStore = { load: () => defaultMetaState(), save: () => {} };
 
 describe('keydownAction', () => {
+  it('leaves Escape to the host where it is not ours (Playgama), and P/O still work', () => {
+    for (const phase of ['settings', 'playing', 'paused', 'menu']) {
+      expect(keydownAction('Escape', phase, false, false), phase).toBe('forge');
+    }
+    expect(keydownAction('KeyP', 'playing', false, false)).toBe('pause');
+    expect(keydownAction('KeyO', 'settings', false, false)).toBe('closeSettings');
+    expect(keydownAction('Escape', 'playing', false, true)).toBe('pause');
+  });
+
   it('closes the settings screen on Escape or O, from the settings phase only', () => {
     expect(keydownAction('Escape', 'settings', false)).toBe('closeSettings');
     expect(keydownAction('KeyO', 'settings', false)).toBe('closeSettings');
@@ -141,7 +150,7 @@ function make() {
     floorCardPrompt: screenStub('onVote', 'onPressStart') as never,
     mainMenu: { ...screenStub('onPlay', 'onContinue', 'onSolo', 'onSelectChapter', 'onCoop', 'onPvpSolo', 'onSquad',
       'onForge', 'onTutorial', 'onAccount', 'onSettings'),
-      setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), refreshBanner: vi.fn() } as never,
+      setQuickPlay: vi.fn(), setAccountEntry: vi.fn(), setOnlineRoutes: vi.fn(), refreshBanner: vi.fn() } as never,
     pvpPreview: screenStub('onQueue', 'onBack') as never,
     matchmaking: screenStub('onConnected', 'onCancelled') as never,
     partyScreen: screenStub('onBack', 'onStartMatch', 'chapterOf') as never,
@@ -535,11 +544,32 @@ describe('wireScreens — the portal host', () => {
       onAccount: (() => void) | null;
       setAccountEntry: ReturnType<typeof vi.fn>;
     };
-    expect(menu.setAccountEntry).toHaveBeenCalledWith(false);
+    // The data notice stays: CrazyGames' build talks to our server, so there is data to declare.
+    expect(menu.setAccountEntry).toHaveBeenCalledWith(false, true);
     expect(menu.onAccount).toBeNull();
     // ...and pressing it reaches nothing, rather than reaching the screen.
     menu.onAccount?.();
     expect(t.called).toEqual([]);
+  });
+
+  it('on Playgama also drops the online routes and the data notice — there is no server', () => {
+    setHostKind('playgama');
+    const t = make();
+    wireScreens(t.d);
+    const menu = t.d.mainMenu as unknown as {
+      onAccount: (() => void) | null;
+      setAccountEntry: ReturnType<typeof vi.fn>;
+      setOnlineRoutes: ReturnType<typeof vi.fn>;
+    };
+    expect(menu.setAccountEntry).toHaveBeenCalledWith(false, false);
+    expect(menu.setOnlineRoutes).toHaveBeenCalledWith(false);
+    expect(menu.onAccount).toBeNull();
+  });
+
+  it('leaves the online routes alone where the host can play online', () => {
+    const t = make();
+    wireScreens(t.d);
+    expect((t.d.mainMenu as unknown as { setOnlineRoutes: ReturnType<typeof vi.fn> }).setOnlineRoutes).not.toHaveBeenCalled();
   });
 
   it('keeps the account entry on the default host', () => {
@@ -682,5 +712,75 @@ describe('wireScreens — the two multiplayer doors a host can push (design/20)'
     onlineEntry()!.joinPartyByCode('ABCD');
     expect(t.called).toEqual(['nav.showSquad']);
     expect(joins).toEqual(['ABCD']);
+  });
+});
+
+describe('wireWindow — leaving the window pauses a local run (D:/jump awayPause)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubWindow() {
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { hidden: false });
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', doc);
+    vi.stubGlobal('requestAnimationFrame', (fn: () => void) => fn());
+    return { win, doc };
+  }
+
+  it('canPause: a running local run, and nothing else', () => {
+    expect(canPause('playing', false)).toBe(true);
+    expect(canPause('playing', true)).toBe(false);
+    for (const p of ['menu', 'paused', 'settings', 'victory', 'defeat']) expect(canPause(p, false), p).toBe(false);
+  });
+
+  it('a blur or a hidden tab opens the pause menu mid-run; a visible one does not', () => {
+    const { win, doc } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'playing';
+    wireWindow(t.d);
+    doc.dispatchEvent(new Event('visibilitychange')); // became visible: no pause
+    expect(t.nav.pause).not.toHaveBeenCalled();
+    win.dispatchEvent(new Event('blur'));
+    expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(t.nav.pause).toHaveBeenCalledTimes(2);
+  });
+
+  it('never pauses an online match or a screen that is not a run', () => {
+    const { win } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'menu';
+    wireWindow(t.d);
+    win.dispatchEvent(new Event('blur'));
+    t.d.run.phase = 'playing';
+    t.d.run.online = true;
+    win.dispatchEvent(new Event('blur'));
+    expect(t.nav.pause).not.toHaveBeenCalled();
+  });
+
+  it('wires the blur alone when the host has no document, or one with no listeners', () => {
+    for (const doc of [undefined, { hidden: true }]) {
+      const win = new EventTarget();
+      vi.stubGlobal('window', win);
+      vi.stubGlobal('document', doc);
+      const t = make();
+      t.d.run.phase = 'playing';
+      expect(() => wireWindow(t.d)).not.toThrow();
+      win.dispatchEvent(new Event('blur'));
+      expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('still routes the keys and the resize it always did', () => {
+    const { win } = stubWindow();
+    const t = make();
+    t.d.run.phase = 'playing';
+    (t.nav as Record<string, unknown>).relayout = vi.fn();
+    wireWindow(t.d);
+    win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyP' }));
+    expect(t.nav.pause).toHaveBeenCalledTimes(1);
+    win.dispatchEvent(new Event('resize'));
+    expect((t.nav as Record<string, unknown>).relayout).toHaveBeenCalled();
   });
 });

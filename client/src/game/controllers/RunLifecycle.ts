@@ -142,7 +142,7 @@ export class RunLifecycle {
     // which is why it lives here and not behind a host branch. `hasSeenTutorial` retires it
     // (`GameLoop` marks it at gameover), so it is once per player, not once per run.
     d.run.firstRunHints = !d.run.meta.hasSeenTutorial;
-    if (d.run.firstRunHints) d.tutorialHints.reset();
+    d.tutorialHints.reset(); // every run: it also clears a lesson panel a taught run left up
 
     // `?arenaDemo=1` (dev-only, see RunState's field comment) — a synthetic local PvP arena
     // instead of the PvE dungeon, purely so the zone HUD row + Minimap have real data to

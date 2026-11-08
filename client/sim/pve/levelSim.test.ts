@@ -66,7 +66,9 @@ describe('runLevel', () => {
   });
 
   it('takes real damage and records it against the room that dealt it', () => {
-    const m = runLevel({ seed: 505, profileName: 'aggressive', ...SHORT });
+    // Longer than SHORT: since ENGINE_VERSION 90 chapter 1's first floor has one shooter
+    // per room, and 400 ticks no longer reliably draws blood there.
+    const m = runLevel({ seed: 505, profileName: 'aggressive', maxTicks: 1500 });
     const hit = m.encounters.filter((e) => e.damageTaken > 0);
     expect(hit.length).toBeGreaterThan(0);
     // Per-room damage must add up to no more than the run total (bullets in flight can

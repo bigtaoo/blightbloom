@@ -249,6 +249,16 @@ describe('main.crazygames.ts — the boot order that cannot be observed from a m
     expect(stmt('game.start();')).toBeLessThan(at('return applyPortalBootIntent(sdk);'));
   });
 
+  it('auto-starts the first run only after the boot intent answered none', () => {
+    // A first-time visitor skips the menu (`game/controllers/firstRunAutostart.ts`) — but an
+    // accepted invite or instant multiplayer moves the player off the menu itself, and a solo
+    // run started first would be yanked out from under them. So here, unlike every other
+    // entry, the call waits on the intent, and only on 'none'.
+    const call = at("if (intent.action === 'none') game.startFirstRunIfNew();");
+    expect(at('return applyPortalBootIntent(sdk);')).toBeLessThan(call);
+    expect(ENTRY.split('startFirstRunIfNew(').length - 1).toBe(1);
+  });
+
   it('leaves nothing in the SDK chain unhandled', () => {
     // `portal.start()` can reject (it awaits `sdk.init()` and `ads.probe()`), and until this
     // pass the whole chain was a bare `void ...` with no catch — an unhandled rejection on a

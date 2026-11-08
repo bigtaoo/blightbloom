@@ -156,10 +156,12 @@ describe('chapter 4 garrison', () => {
     const ember = enemyTypes(EMBER_L1_ROOMS);
     expect(count(blight, 'blightling')).toBe(count(ember, 'emberling'));
     expect(count(blight, 'emberling')).toBe(0);
-    // The leading element: more blightlings than any other elemental critter, and the others as
-    // chapter 1 had them.
+    // The leading element: at least as many blightlings as any other elemental critter, and the
+    // others as chapter 1 had them. "At least": since the entry room became a three-`basic`
+    // warm-up (2026-11-06) the four emberlings it held are gone, which leaves blightlings level
+    // with ironclads rather than ahead of them.
     for (const other of ['frostling', 'galvanist', 'ironclad']) {
-      expect(count(blight, 'blightling'), other).toBeGreaterThan(count(blight, other));
+      expect(count(blight, 'blightling'), other).toBeGreaterThanOrEqual(count(blight, other));
       expect(count(blight, other), other).toBe(count(ember, other));
     }
   });

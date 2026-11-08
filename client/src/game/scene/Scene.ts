@@ -15,6 +15,8 @@ import { PickupFlightLayer, type FlightPoint } from './pickupFlight';
 import { ChestLayer } from './ChestLayer';
 import { ShopLayer } from './ShopLayer';
 import { PickupRefusalLayer } from './PickupRefusalLayer';
+import { NextRoomArrow } from './NextRoomArrow';
+import { nextRoomGuide } from '../ui/nextRoomGuide';
 import { RefusalHintTracker, pickupRefusalReason } from '../ui/pickupRefusal';
 import { fpToPx, bradToRad } from '../coords';
 import { turnToward, BODY_TURN_PER_TICK } from '../../render/facing';
@@ -64,6 +66,8 @@ export class Scene {
    *  `flights` is — this class already knows the local seat and every drop's view. */
   private readonly refusalTracker = new RefusalHintTracker();
   private readonly refusalHints = new PickupRefusalLayer(this.layers.numbers);
+  /** The arrow toward the next room once the local player's room is done (`ui/nextRoomGuide.ts`). */
+  private readonly nextRoom = new NextRoomArrow(this.layers.numbers);
 
   /**
    * How many Actor views the last `reconcile()` built — the `spawn` cue's whole trigger
@@ -142,6 +146,7 @@ export class Scene {
     this.flights.clear();
     this.refusalTracker.clear();
     this.refusalHints.clear();
+    this.nextRoom.clear();
     for (const v of this.views.values()) v.destroy();
     this.views.clear();
     for (const v of this.dying) v.destroy();
@@ -298,6 +303,7 @@ export class Scene {
       seen.add(it.id);
     }
     this.refusalHints.show(this.refusalTracker.update(state, local));
+    this.nextRoom.setTarget(local?.alive ? nextRoomGuide(state, local.roomId, local) : null);
 
     this.chests.update(state);
     this.shops.update(state);
@@ -376,6 +382,17 @@ export class Scene {
   }
 
   /**
+   * Pose the frame's world-space guides — today the next-room / nearest-foe arrow — at where the
+   * player and its target were actually DRAWN. Call once per frame AFTER the camera update:
+   * `FxController.updateCamera` nudges the followed player by the camera's whole-pixel rounding,
+   * and an arrow placed before that nudge would wobble against the body by up to half a pixel.
+   * `touch` is whether this session plays on touch controls: the label's move wording.
+   */
+  drawGuides(frameDt: number, touch = false, moveTaught = false): void {
+    this.nextRoom.update(frameDt, drawnGround(this.playerView), (id) => drawnGround(this.actorAt(id)), touch, moveTaught);
+  }
+
+  /**
    * Override the LOCAL player's view with a predicted pose (ROADMAP 3.3 follow-up, online
    * prediction). Call AFTER reconcile() and BEFORE interpolate(): it snaps the local view
    * onto the predicted (px, radians) position so the sprite — and the camera that follows
@@ -425,4 +442,9 @@ export class Scene {
       this.spawnedActors++;
     }
   }
+}
+
+/** An actor's ground point as drawn this frame: the container sits `drawnLift` above it. */
+function drawnGround(a: Actor | null | undefined): { x: number; y: number } | null {
+  return a ? { x: a.x, y: a.y + a.drawnLift } : null;
 }

@@ -148,6 +148,11 @@ const PURE_FILES = [
   // Which drop the local player would be refused, and when to say so (2026-10-13, the "standing
   // on it and nothing happens" report). Its Pixi half, `scene/PickupRefusalLayer.ts`, is not here.
   'ui/pickupRefusal.ts',
+  // When a first-ever boot skips the menu into the first run (design/20 "Onboarding", 2026-11-06).
+  'controllers/firstRunAutostart.ts',
+  // Which door to head for once a room is done, and how the arrow at it is posed (2026-11-06, the
+  // "cleared a room, now what" report). Its Pixi half, `scene/NextRoomArrow.ts`, is not here.
+  'ui/nextRoomGuide.ts',
 ] as const;
 
 /**

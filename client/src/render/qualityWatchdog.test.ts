@@ -12,7 +12,7 @@
  * rung, and never more than there are rungs".
  */
 import { describe, it, expect } from 'vitest';
-import { QualityWatchdog, type FrameWindowLike } from './qualityWatchdog';
+import { QualityWatchdog, playFpsFloor, type FrameWindowLike } from './qualityWatchdog';
 
 /** A window that would trip the detector, unless something else disqualifies it. */
 function slow(over: Partial<FrameWindowLike> = {}): FrameWindowLike {
@@ -115,5 +115,42 @@ describe('QualityWatchdog', () => {
     const wd = new QualityWatchdog();
     expect(wd.observe(slow())).toBe(false);
     expect(wd.downgrades).toBe(0);
+  });
+});
+
+describe('the floor follows the rate the run is expected to hold (2026-11-08)', () => {
+  it('playFpsFloor is three quarters of the expected rate, never under the old flat 25', () => {
+    expect(playFpsFloor(60)).toBe(45);
+    expect(playFpsFloor(72)).toBe(54);
+    expect(playFpsFloor(50)).toBe(38); // 37.5 rounds up
+    expect(playFpsFloor(30)).toBe(25); // 22.5 -> clamped to the flat floor
+    expect(playFpsFloor(144 / 5)).toBe(25);
+  });
+
+  it('playFpsFloor is always a whole number of frames per second', () => {
+    for (let fps = 20; fps <= 240; fps += 0.25) {
+      expect(Number.isInteger(playFpsFloor(fps)), String(fps)).toBe(true);
+    }
+  });
+
+  it('a numeric floor judges a 30 fps window slow against 45 and healthy against 25', () => {
+    const at30 = (): FrameWindowLike => ({ fps: 30, frames: 60, discarded: false });
+    const strict = new QualityWatchdog({ fpsFloor: 45 });
+    expect(fire(strict, [at30(), at30(), at30()])).toBe(1);
+    const lax = new QualityWatchdog({ fpsFloor: 25 });
+    expect(fire(lax, [at30(), at30(), at30()])).toBe(0);
+  });
+
+  it('a function floor is re-read on every window, not captured once', () => {
+    // The player can change the frame-rate cap mid-session; the floor has to move with it, so a
+    // streak judged at 45 must stop accumulating the moment the floor drops to 25.
+    let floor = 45;
+    const wd = new QualityWatchdog({ fpsFloor: () => floor });
+    const at30 = (): FrameWindowLike => ({ fps: 30, frames: 60, discarded: false });
+    expect(fire(wd, [at30(), at30()])).toBe(0);
+    floor = 25;
+    expect(fire(wd, [at30(), at30(), at30(), at30()])).toBe(0); // healthy now: streak reset
+    floor = 45;
+    expect(fire(wd, [at30(), at30(), at30()])).toBe(1);
   });
 });

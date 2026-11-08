@@ -20,10 +20,19 @@ import { installPerf } from '../perf';
 import { defaultSettingsState, MemorySettingsStore, type SettingsState } from '../settings';
 import { SettingsBinding } from './settingsBinding';
 import type { RenderQualityController } from './renderQuality';
+import type { Phase } from './phase';
+import { resetDisplayHz, resetPlayFrameCap, setDisplayHz, setPlayFrameCap } from './powerBudget';
 
 installFakeTextCanvas();
 
-afterEach(() => resetActiveQuality());
+afterEach(() => {
+  resetActiveQuality();
+  resetPlayFrameCap();
+  resetDisplayHz();
+});
+
+/** A window that is no evidence either way — see `newGame`. */
+const PRIMER = { fps: 0, frames: 0, discarded: true };
 
 const NO_TOUCH = {
   active: false, stickRadius: 0, move: null,
@@ -59,6 +68,7 @@ interface GameInternals {
   settingsScreen: { onChange: ((s: SettingsState) => void) | null };
   settingsBinding: SettingsBinding;
   quality: RenderQualityController;
+  run: { phase: Phase };
 }
 
 function newGame(settings: Partial<SettingsState> = {}, resolution = 2) {
@@ -86,6 +96,11 @@ function newGame(settings: Partial<SettingsState> = {}, resolution = 2) {
   );
   inner.settingsBinding.load();
   game.start();
+  // The watchdog only hears windows from inside a run (`RenderQualityController.observeWindow`):
+  // put the game in one, and close one window there so the next is wholly in it. A discarded
+  // window is the primer because it is no evidence either way — it moves no streak.
+  inner.run.phase = 'playing';
+  game.observePerfWindow(PRIMER);
   return { game, renderer, inner };
 }
 
@@ -260,6 +275,92 @@ describe('Game — the auto downgrade', () => {
     feed(game, [SLOW, SLOW]);
     expect(activeQuality().tier).toBe('high');
     feed(game, [SLOW]);
+    expect(activeQuality().tier).toBe('medium');
+  });
+});
+
+/** A closed window at `fps`, two seconds long, visible. */
+const at = (fps: number) => ({ fps, frames: fps * 2, discarded: false });
+
+describe('Game — what counts as slow is relative to the rate the run should hold (2026-11-08)', () => {
+  it('steps a 60 fps run that sustains 30 — the device the sandbox telemetry found', () => {
+    // ~10% of the sandbox's 30 s windows read ~30 fps on the high tier and none of those players
+    // was ever stepped down: 30 cleared the old flat floor of 25.
+    const { game } = newGame({ quality: 'auto' }, 2);
+    for (let i = 0; i < 3; i++) game.observePerfWindow(at(30));
+    expect(activeQuality().tier).toBe('medium');
+  });
+
+  it('judges a run at the 45 fps boundary as holding — exactly at the floor is not slow', () => {
+    const { game } = newGame({ quality: 'auto' }, 2);
+    for (let i = 0; i < 6; i++) game.observePerfWindow(at(45));
+    expect(activeQuality().tier).toBe('high');
+    for (let i = 0; i < 3; i++) game.observePerfWindow(at(44));
+    expect(activeQuality().tier).toBe('medium');
+  });
+
+  it('keeps the old floor for a player who chose 30 — a run holding 30 is healthy', () => {
+    const { game } = newGame({ quality: 'auto', frameRate: 30 }, 2);
+    setPlayFrameCap(30);
+    for (let i = 0; i < 10; i++) game.observePerfWindow(at(30));
+    expect(activeQuality().tier).toBe('high');
+    // ...and the same setting does step on a run that cannot hold even that.
+    for (let i = 0; i < 3; i++) game.observePerfWindow(at(22));
+    expect(activeQuality().tier).toBe('medium');
+  });
+
+  it('judges a 50 Hz display against 50, not against the 60 it cannot show', () => {
+    const { game } = newGame({ quality: 'auto' }, 2);
+    setDisplayHz(50);
+    for (let i = 0; i < 10; i++) game.observePerfWindow(at(40)); // floor 38
+    expect(activeQuality().tier).toBe('high');
+    // Control: the same windows on an unmeasured display (taken as 60, floor 45) do step.
+    resetDisplayHz();
+    for (let i = 0; i < 3; i++) game.observePerfWindow(at(40));
+    expect(activeQuality().tier).toBe('medium');
+  });
+
+  it('judges a 144 Hz display against the 72 its cap delivers', () => {
+    const { game } = newGame({ quality: 'auto' }, 2);
+    setDisplayHz(144);
+    for (let i = 0; i < 3; i++) game.observePerfWindow(at(50)); // floor 54
+    expect(activeQuality().tier).toBe('medium');
+  });
+});
+
+describe('Game — only windows wholly inside a run are evidence', () => {
+  it('never steps down on menu windows, at the idle cap or below it', () => {
+    const { game, inner } = newGame({ quality: 'auto' }, 2);
+    inner.run.phase = 'menu';
+    // `IDLE_MAX_FPS` = 30 is under a 60 fps run's floor of 45 by design (`powerBudget.ts`), so
+    // a menu counted as a run would downgrade everyone who paused for six seconds.
+    for (let i = 0; i < 10; i++) game.observePerfWindow(at(30));
+    for (let i = 0; i < 10; i++) game.observePerfWindow(SLOW);
+    expect(activeQuality().tier).toBe('high');
+  });
+
+  it('skips the window that straddles a run starting, then counts the run', () => {
+    const { game, inner } = newGame({ quality: 'auto' }, 2);
+    inner.run.phase = 'menu';
+    game.observePerfWindow(at(30));
+    inner.run.phase = 'playing';
+    // Three slow windows, but the first closed over the menu's frames: two count, no step.
+    for (let i = 0; i < 3; i++) game.observePerfWindow(SLOW);
+    expect(activeQuality().tier).toBe('high');
+    game.observePerfWindow(SLOW);
+    expect(activeQuality().tier).toBe('medium');
+  });
+
+  it('neither resets nor advances the streak across a pause', () => {
+    const { game, inner } = newGame({ quality: 'auto' }, 2);
+    game.observePerfWindow(SLOW);
+    game.observePerfWindow(SLOW);
+    inner.run.phase = 'paused';
+    for (let i = 0; i < 5; i++) game.observePerfWindow(FAST);
+    inner.run.phase = 'playing';
+    game.observePerfWindow(FAST); // the straddling window: skipped, not a reset
+    expect(activeQuality().tier).toBe('high');
+    game.observePerfWindow(SLOW);
     expect(activeQuality().tier).toBe('medium');
   });
 });

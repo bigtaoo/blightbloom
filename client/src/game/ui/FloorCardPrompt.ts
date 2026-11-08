@@ -65,6 +65,12 @@ const TITLE_H = 26;
  *  the full-screen menus — the HUD is outside that layer and has to do its own). */
 export const PANEL_W = 3 * CARD_W + 2 * GAP + 2 * PANEL_PAD;
 export const PANEL_H = CARD_H + TITLE_H + 2 * PANEL_PAD + 14;
+/** How far above the screen's middle the card panel's bottom sits, px: the hero stands within
+ *  `PORTAL_PROMPT_RADIUS_PX` (90 world px) of a portal the room camera centres, so this clears a
+ *  hero standing at the north edge of that reach. */
+export const CARD_HERO_CLEAR_PX = 100;
+/** The smallest the card panel is scaled to fit a short screen. */
+export const CARD_MIN_SCALE = 0.5;
 /** The collapsed strip: the chosen card's text on the left, Change on the right. Exported for
  *  `hudLabelFit.test.ts`, which measures the summary text against the room it is given. */
 export const SUMMARY_H = 60;
@@ -184,11 +190,19 @@ export class FloorCardPrompt {
     const pick = this.mode === 'pick';
     const panelH = pick ? PANEL_H : SUMMARY_H;
     this.panel.layout(PANEL_W, panelH);
-    const scale = Math.min(1, (w - 16) / PANEL_W);
+    // The three cards sit in the screen's upper half, their bottom `CARD_HERO_CLEAR_PX` above the
+    // middle (2026-11-07, the first-run report): stacked on the portal popup as they were, they
+    // covered the middle of the screen, which is where the room camera puts the portal and so the
+    // hero standing at it, while the sim runs on. Height joins width in the fit, floored so a
+    // short screen still gets readable cards (and lets them overlap rather than vanish).
+    // The picked summary is one strip and stays on the popup: "here is what you won, here is
+    // where you go" (`portalPanelTop`: 0.6 of the screen height, raised on a short screen).
+    const fitW = (w - 16) / PANEL_W;
+    const fitH = Math.max(CARD_MIN_SCALE, (h / 2 - CARD_HERO_CLEAR_PX - 8) / panelH);
+    const scale = Math.min(1, fitW, pick ? fitH : 1);
     this.view.scale.set(scale);
-    // Above the portal popup (`portalPanelTop`: 0.6 of the screen height, raised on a short
-    // screen), so the two read as one stack: "here is what you won, here is where you go".
-    this.view.position.set(w / 2 - (PANEL_W * scale) / 2, Math.max(8, portalPanelTop(h) - panelH * scale - 12));
+    const bottom = pick ? h / 2 - CARD_HERO_CLEAR_PX : portalPanelTop(h) - 12;
+    this.view.position.set(w / 2 - (PANEL_W * scale) / 2, Math.max(8, bottom - panelH * scale));
     this.panel.view.position.set(0, 0);
     this.titleText.position.set(PANEL_W / 2, 8);
     for (let i = 0; i < this.cards.length; i++) {

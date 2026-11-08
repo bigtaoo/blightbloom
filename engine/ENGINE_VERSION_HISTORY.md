@@ -2834,3 +2834,79 @@ The new field is hashed in `serializeState`. The golden gate, run before this bu
 the field was hashed, was green: no scenario has a bot seat. A recorded co-op run with a bot
 ally whose player died diverges on that tick. Golden fixture regenerated (version stamp and
 the new field).
+
+v89 (2026-11-06 — the entry room is a warm-up). A first-time sandbox player was dead inside
+ten seconds: floor 1 starts in `ember_l1_cell`, which held eight mobs (four `basic`, four
+`emberling`) that all spawn at tick 0 and the nearest of which stood a few grid from the
+player spawn. The owner's call: the entry room teaches, it does not test. Its garrison is now
+two `basic` mobs in the far corners, each more than 9 grid from either player spawn
+(`emberLevel1.test.ts` pins both, and that the piece is used nowhere else). The three derived
+chapters' `*_l1_cell` pieces carry the same change through `deriveChapter.mjs`'s own
+`derivePiece`, so they are still the transform of chapter 1 their tests say they are; with
+four emberlings gone, chapter 4's blightlings now tie its ironclads instead of leading them.
+
+Why two and not three: measured headless on the real first-run config (seed 0xda1d, solo).
+Standing still is safe at any count (no mob is within aggro range of the spawn). A player who
+walks in and only starts shooting 5 s later ends the room on 3/6 HP against three mobs and
+5/6 against two; one who walks along the near wall without shooting is killed at 17 s by three
+and untouched by two. One mob is barely a fight. A player who walks in and NEVER shoots still
+dies (~8 s): `ROOM_FIRE_BUDGET` caps the room at two shooters whatever its size, and teaching
+the shot is the lesson panel's job, not the room's.
+
+The golden gate, run before this bump, was red on the four `*-dungeon-floor1` scenarios and
+green on every other: their floor's first room changed. Any recorded dungeon run diverges at
+tick 0. Golden fixture regenerated.
+
+v90 (2026-11-06 — chapter 1 is the learning chapter). The same sandbox player, past the new
+warm-up room, died walking into floor 1's second room, `ember_l1_alcove`: nine mobs of four
+types, all spawned at tick 0, the nearest a few grid from the east door the player enters by
+(the spawn-clearance rule measures against the piece's player spawns, which only floor 2 uses).
+`client/sim/pveLevelSim` saw the same wall: the careful bot got off floor 1 in 4 of 40 runs and
+the aggressive one in 0 of 40, and the alcove alone took 5 of the starter's 10 effective HP.
+
+Two changes, both on `EMBER_DUNGEON` only, so chapters 2-4 keep the difficulty they were tuned
+at (the sibling games' shared rule: the first chapter teaches, the second tests):
+ - New optional `DungeonConfig.fireBudgetByFloor`, read through `balance/encounter.ts`
+   `roomFireBudget` by `AIDecideSystem.grantFireSlots`. Chapter 1 sets `[1]`: on its first
+   floor one mob per room shoots at a time. Absent on every other config, which reads exactly
+   as before.
+ - `EMBER_DUNGEON.difficultyCurve` `{ base: 0.6, perFloor: 0.35 }` (was `{ 1, 0.25 }`): mob HP
+   ×0.6 on floor 1 (a 3-HP mob has 2), meeting the old curve's ×2 at the boss floor. The chapter
+   tests that pinned "same perFloor as chapter 1" now state their real property floor by floor:
+   every later chapter scales HP above chapter 1 on every floor.
+
+Measured on the same sim (40 seeds per profile): both bots clear floor 1 in 40 of 40 runs; the
+alcove costs 1-2 HP; the careful bot extracts in 4 of 40 (was 0), inside the "passable, not
+free" gate. HP alone (without the budget) got the careful bot off floor 1 in 30 of 40 and the
+aggressive one in 0, which is why both changes ship.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1` only (the other
+dungeon scenarios run chapter-agnostic fixture configs). Golden fixture regenerated.
+
+v91 (2026-11-07 — the one-shooter rule runs to the boss, aim prefers a foe in sight, Bulwark
+works). A local first-run pass on the v90 build found the wall v90 removed had only moved: most
+novice runs now died on floor 2, where the second shooter per room and the larger HP multiplier
+arrive together. The same pass found two engine bugs on the way. Three changes, any one of which
+diverges a recorded run:
+ - `EMBER_DUNGEON.fireBudgetByFloor` `[1, 1, 1, 1]` (was `[1]`): one shooter per room on every
+   chapter-1 floor except the boss floor. A 30-seed `client/sim/pve/levelSim` sweep per bot, plus
+   a "novice" profile that never seeks heals, rests or swaps, showed the fire budget is the lever,
+   not the HP curve: wherever budget 2 began, that floor became the wall. Novice deaths went from
+   16 on floor 2 and 14 on floor 3 (mean 135 s) to 3 / 11 / 15 across floors 3-5 (mean 385 s); the
+   careful bot extracts in 4 of 30, still "passable, not free". The HP curve is unchanged, so the
+   boss floor is exactly as hard as v90's. Chapters 2-4 are untouched.
+ - Auto-aim prefers a foe in sight (`systems/targeting.ts` `aimTarget`, sight test in the new
+   `systems/lineOfSight.ts`): of the `AIM_SIGHT_CHECKS` (6) nearest hostiles, the nearest with no
+   wall or pillar between it and the player; if none is in sight, the plain nearest, as before.
+   The first-run report had a player's aim locked on a foe behind a pillar while one in the open
+   shot back. The sight test is integer orientation tests only (no division, no sqrt), pillars
+   tested as their bounding square. `ApplyInputSystem` faces it; homing and deflect still use
+   `nearestHostile`.
+ - `ExtractionSystem.applyFloorCard` applies the card's buff through `applyRunBuff`, the one
+   definition of taking a buff. It used a raw `buffs.push`, which is enough for the `mult_*` cards
+   (read at use time) but not for the `flat_*` ones: Bulwark's "+2 max HP" sat in the stack and
+   never reached `maxHp` or `hp`.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1`, `storm-dungeon-floor1`
+and `launch-arena-pvp` (the aim change reaches every scenario with a wall between two actors) and
+green on the rest. Golden fixture regenerated.

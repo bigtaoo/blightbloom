@@ -66,8 +66,8 @@ describe('the vocabulary', () => {
     expect(coerceProp(EVENTS.session_start.device, 'toaster')).toBeUndefined();
   });
 
-  it('names the three build targets and nothing else', () => {
-    expect([...HOSTS]).toEqual(['web', 'wechat', 'crazygames']);
+  it('names the four build targets and nothing else', () => {
+    expect([...HOSTS]).toEqual(['web', 'wechat', 'crazygames', 'playgama']);
   });
 
   it('declares only field kinds the parser handles', () => {

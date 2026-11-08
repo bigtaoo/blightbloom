@@ -10,6 +10,8 @@
 // is worse than none". That is why `policyUrl` returns `string | null` rather than a bare
 // constant: a screen has to handle the absent case, and blanking an entry below is a
 // supported way to turn the link off everywhere at once.
+import { canLinkOut, getHostKind, type HostKind } from './hostKind';
+
 const URLS = {
   privacy: 'https://b.gamestao.com/privacy',
   terms: 'https://b.gamestao.com/terms',
@@ -41,8 +43,10 @@ export function isUsablePolicyUrl(raw: string): boolean {
   return /^https?:\/\/.+/.test(url);
 }
 
-/** The URL for a policy page, or `null` if this build has none it can use. */
-export function policyUrl(kind: PolicyKind, urls: PolicyUrls = URLS): string | null {
+/** The URL for a policy page, or `null` if this build has none it can use — or runs on a host
+ *  that forbids linking out (`hostKind.ts` `canLinkOut`), which hides every link that reads this. */
+export function policyUrl(kind: PolicyKind, urls: PolicyUrls = URLS, host: HostKind = getHostKind()): string | null {
+  if (!canLinkOut(host)) return null;
   const raw = urls[kind].trim();
   return isUsablePolicyUrl(raw) ? raw : null;
 }

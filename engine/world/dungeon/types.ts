@@ -69,6 +69,12 @@ export interface DungeonConfig {
    * the last entry past the end (`materialTierForFloor`). Absent, the tier is the floor index
    * itself — the identity curve every config shipped with. */
   materialTierByDepth?: readonly number[];
+  /** Optional per-floor room fire budget (ENGINE_VERSION 90): entry `i` is how many of a room's
+   * mobs may shoot at once on floor index `i` (`balance/encounter.ts` `roomFireBudget`). A floor
+   * past the end, or a config without the field, uses `ROOM_FIRE_BUDGET`. Chapter 1 sets
+   * `[1, 1, 1, 1]` (ENGINE_VERSION 91; `[1]` in v90) so every floor before its boss is a place to
+   * learn; every other config leaves it absent. */
+  fireBudgetByFloor?: readonly number[];
   /** Optional: makes this an endless dungeon (design/gameplay/04-chapters.md "The Endless
    * Descent", 2026-10-06). Its floors are its segments' floors, segment after segment, and
    * after the last segment the cycle starts over, for ever (`dungeon/floorSource.ts`). Each

@@ -82,6 +82,12 @@ export interface AnalyticsInstallOptions {
   build: () => string | null;
   /** The current language, read per flush — a player can change it mid-visit. */
   locale: () => string;
+  /**
+   * Where a batch goes INSTEAD of `POST {baseUrl}/client/events`. For a host whose frame cannot
+   * reach our server at all (Playgama's sandbox admits only its own origins), so the events are
+   * handed to the platform's analytics; `baseUrl` and `token` are then unused.
+   */
+  send?: (batch: AnalyticsBatch) => void;
   /** Injected by tests. */
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -119,6 +125,15 @@ export interface AnalyticsInstallOptions {
    * Defaults to `globalThis.__bbOpen`; `null` means there was none.
    */
   pageOpen?: PageOpen | null;
+  /**
+   * Epoch ms that `boot_ms` is measured from when there is no `pageOpen` — for a build that
+   * cannot ship the beacon (Playgama: its inline `fetch` would be refused by the frame's CSP).
+   * That entry passes `performance.timeOrigin`, the navigation start, which is a little
+   * EARLIER than the beacon's first byte of script (it includes fetching the HTML), so its
+   * `boot_ms` reads slightly long next to a web row; it is the same wait from the player's
+   * side. Ignored when a beacon hand-off exists, and absent by default.
+   */
+  bootStartedAt?: number;
   /** Visibility for the playtime clock. `globalThis.document` by default; with no document
    *  (WeChat) the visit counts as visible throughout. */
   doc?: VisibilitySource | null;
@@ -168,7 +183,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   const doFetch = opts.fetchImpl ?? (typeof fetch === 'function' ? fetch : undefined);
   const url = `${opts.baseUrl.replace(/\/$/, '')}${CLIENT_EVENTS_PATH}`;
 
-  const send = (batch: AnalyticsBatch): void => {
+  const send = opts.send ?? ((batch: AnalyticsBatch): void => {
     if (doFetch === undefined) return;
     const token = opts.token();
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -185,7 +200,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     }).catch(() => {
       /* a log store that is down must not surface anywhere near a player */
     });
-  };
+  });
 
   const startedAt = now();
   const pageOpen = opts.pageOpen === undefined ? readPageOpen() : opts.pageOpen;
@@ -259,7 +274,8 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   const visit = opts.visit ?? browserVisit(globalThis as Parameters<typeof browserVisit>[0]);
   const props: Record<string, string | number> = { storage: installIdStorage() };
   for (const [k, v] of Object.entries(visit)) if (v !== undefined) props[k] = v;
-  if (pageOpen !== null) props.boot_ms = Math.max(0, Math.round(now() - pageOpen.at));
+  const bootFrom = pageOpen?.at ?? opts.bootStartedAt;
+  if (bootFrom !== undefined && Number.isFinite(bootFrom)) props.boot_ms = Math.max(0, Math.round(now() - bootFrom));
   analytics.track('session_start', props);
   return analytics;
 }

@@ -11,7 +11,7 @@
  * ally's shipped rule (`ai/revive.ts`) over it: a stand-in for a player who always goes back for
  * the ally, the upper bound of what a human's revives buy.
  */
-import { Button, createGameEngine, makeCommand, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, createGameEngine, makeCommand, type ChapterContent, type GameState, type PlayerCommand } from '@dd/engine';
 import { reviveMove } from '../../src/game/controllers/ai/revive';
 import { buildDungeonRunConfig } from '../../src/game/match/offlineConfig';
 import { AllyController } from '../../src/game/controllers/AllyController';
@@ -58,13 +58,14 @@ export interface CoopOptions {
   allyHoldsBack?: boolean;
   /** The ally's revive rule laid over the leader too. */
   leaderRevives?: boolean;
+  /** Another chapter's dungeon in place of chapter 1's, the hook `runLevel` has too. */
+  dungeon?: ChapterContent;
   maxTicks?: number;
 }
 
 export function runCoop(opts: CoopOptions): CoopRun {
-  const engine = createGameEngine(
-    buildDungeonRunConfig({ seed: opts.seed, coop: true, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'juggernaut' }),
-  );
+  const config = buildDungeonRunConfig({ seed: opts.seed, coop: true, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'juggernaut' });
+  const engine = createGameEngine(opts.dungeon ? { ...config, dungeon: opts.dungeon } : config);
   const leader = new PveBotController(BOT_PROFILES[opts.profileName ?? 'careful']);
   const ally = new AllyController({ revives: opts.allyRevives, holdsBack: opts.allyHoldsBack });
   const s = engine.state;

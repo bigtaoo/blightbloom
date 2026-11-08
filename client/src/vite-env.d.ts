@@ -14,6 +14,9 @@ interface ImportMetaEnv {
    *  `render/assetHost.ts`'s `baseAssetHost`, which is what rewrites this repository's own
    *  absolute asset paths. Vite always defines it. */
   readonly BASE_URL: string;
+  /** The Playgama build's version, `<package version>+<short commit>`, defined by
+   *  `vite.playgama.config.js`; undefined in every other build. */
+  readonly VITE_GAME_VERSION: string | undefined;
 }
 
 interface ImportMeta {
@@ -35,6 +38,17 @@ declare module '*/vite.crazygames.config.js' {
   /** The plugin FACTORY. Its build guard is per-instance state, so a test that asserts
    *  "a build with no rewrite fails" needs a fresh one. */
   export const portalHtml: unknown;
+}
+
+/** The Playgama build config, for `platform/playgama/playgamaBuild.test.ts` — same reason. */
+declare module '*/vite.playgama.config.js' {
+  const config: unknown;
+  export default config;
+  export const rewritePlaygamaHtml: (html: string) => string;
+  export const playgamaHtml: unknown;
+  export const BRIDGE_CONFIG: { advertisement: { minimumDelayBetweenInterstitial: number } };
+  export const DROPPED_FILES: readonly string[];
+  export const gameVersion: (sha?: () => string) => string;
 }
 
 /** `import source from './file.ts?raw'` — Vite hands back the file's text unparsed.

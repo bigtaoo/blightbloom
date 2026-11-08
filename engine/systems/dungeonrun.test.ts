@@ -18,6 +18,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createGameEngine } from '@dd/engine/GameEngine';
+import { sumBuffs } from '@dd/engine/balance/runbuffs';
 import { hashState } from '@dd/engine/replay';
 import type { EngineConfig } from '@dd/engine/state/GameState';
 import { Button } from '@dd/engine/state/commands';
@@ -448,13 +449,16 @@ describe('Dungeon mode — DESCEND leaves the floor’s stranded enemies behind 
     const p = s.players[0]!;
     const weaponBefore = p.weapon?.spec.name;
     const maxHpBefore = p.maxHp;
+    const flatHpBefore = sumBuffs(p.buffs).flat_hp;
 
     eng.step([confirmDescend(11)]);
     expect(s.players).toHaveLength(1);
     expect(s.players[0]).toBe(p); // the same object, not a rebuilt one
     expect(p.alive).toBe(true);
     expect(p.hp).toBeGreaterThan(0); // (exact hp is combat's business — the stranded pair shoots)
-    expect(p.maxHp).toBe(maxHpBefore);
+    // Carried, not rebuilt: max HP moves only by what the floor card the descend applied
+    // adds (ENGINE_VERSION 91 — Bulwark's +2 now reaches `maxHp`; before, it never did).
+    expect(p.maxHp).toBe(maxHpBefore + sumBuffs(p.buffs).flat_hp - flatHpBefore);
     expect(p.weapon?.spec.name).toBe(weaponBefore);
     expect(s.players[0]!.bankedMaterials.mat_fire).toBe(4); // the floor buffer still banks normally
   });

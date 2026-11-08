@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { STORM_DUNGEON, STORM_L1_FLOORS, STORM_L1_ROOMS } from './storm';
 import { FROST_DUNGEON } from './frost';
 import { EMBER_DUNGEON } from './ember';
+import { curveAt } from '../dungeon/generateFloor';
 import { EMBER_L1_FLOORS, EMBER_L1_ROOMS } from './emberLevel1';
 import type { DungeonFloorMap } from '../dungeon';
 import type { RoomPiece } from '../../content/rooms';
@@ -113,7 +114,10 @@ describe('STORM_DUNGEON is chapter 3', () => {
     // later floor is scaled above the same floor of both earlier chapters.
     expect(STORM_DUNGEON.difficultyCurve.base).toBe(FROST_DUNGEON.difficultyCurve.base);
     expect(STORM_DUNGEON.difficultyCurve.perFloor).toBeGreaterThan(FROST_DUNGEON.difficultyCurve.perFloor);
-    expect(FROST_DUNGEON.difficultyCurve.perFloor).toBe(EMBER_DUNGEON.difficultyCurve.perFloor);
+    for (const i of FLOOR_INDICES) {
+      expect(curveAt(STORM_DUNGEON.difficultyCurve, i), `floor ${i}`).toBeGreaterThan(curveAt(EMBER_DUNGEON.difficultyCurve, i));
+    }
+    expect(STORM_DUNGEON.fireBudgetByFloor).toBeUndefined();
   });
 
   it('wires the same three branch variants as chapter 1, plain layout first', () => {

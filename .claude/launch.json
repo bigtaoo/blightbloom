@@ -54,6 +54,19 @@
       "url": "http://localhost:4180"
     },
     {
+      // The Playgama upload as it will be served: a sub-path, with the Bridge script loading
+      // from Playgama's CDN (it reports platform `mock` on a page that is not theirs). Run
+      // `npm run build:playgama --prefix client` first.
+      "name": "client-playgama-subpath",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "exec", "--", "vite", "preview", "client",
+        "--outDir", "dist-playgama", "--base", "/games/blightbloom/", "--port", "4181"
+      ],
+      "port": 4181,
+      "url": "http://localhost:4181"
+    },
+    {
       "name": "map-editor-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "tools/map-editor"],

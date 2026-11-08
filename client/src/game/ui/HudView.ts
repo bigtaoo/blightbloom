@@ -18,6 +18,7 @@ import { WeaponSlotChip } from './WeaponSlotChip';
 import { StatChip } from './StatChip';
 import { DownedBanner } from './DownedBanner';
 import { ReviveBanner } from './ReviveBanner';
+import { TutorialPrompt } from './TutorialPrompt';
 import type { HudIconId } from './hudIcons';
 import type { GameState, SeatNames } from '@dd/engine';
 import { t, type TranslationKey } from '../../i18n';
@@ -99,6 +100,7 @@ export class HudView {
   readonly seatRoster = new SeatRoster();
   readonly downedBanner = new DownedBanner();
   readonly reviveBanner = new ReviveBanner();
+  readonly tutorialPrompt = new TutorialPrompt();
   readonly chips = new Map<ChipKey, StatChip>();
   // Ground weapon-pickup panel (design/03, ENGINE_VERSION 32) — lists every nearby
   // floor weapon (icon + name); tapping one is the collect action itself. Replaces the
@@ -147,6 +149,7 @@ export class HudView {
   private statsPanel!: Panel;
   private readonly dividers = new Graphics();
   private toasts!: ToastQueue;
+  private toastY = 0;
   private panelW = 0;
   private panelH = 0;
 
@@ -183,6 +186,7 @@ export class HudView {
       this.chestPrompt.view,
       this.downedBanner.view,
       this.reviveBanner.view,
+      this.tutorialPrompt.view,
       this.pauseBtn.view,
       this.replayBtn.view,
     );
@@ -203,7 +207,8 @@ export class HudView {
   /** Re-anchor the elements whose position depends on viewport size — call on build()
    *  and whenever the caller's own screenSize() changes. */
   reposition(screenPx: { w: number; h: number }): void {
-    this.toasts.view.position.set(screenPx.w / 2 - 110, screenPx.h * 0.22);
+    this.toastY = screenPx.h * 0.22;
+    this.toasts.view.position.set(screenPx.w / 2 - 110, this.toastY);
     this.minimap.view.position.set(screenPx.w - 140 - 20, 60);
     this.pauseBtn.view.position.set(screenPx.w - 20 - 36, 12); // top-right corner, above the minimap
     // Beside the pause button, not under it: the minimap starts at y=60 on the same
@@ -211,6 +216,7 @@ export class HudView {
     this.replayBtn.view.position.set(screenPx.w - 20 - 36 - 42, 12);
     this.downedBanner.reposition(screenPx);
     this.reviveBanner.reposition(screenPx);
+    this.tutorialPrompt.reposition(screenPx);
     this.chestPrompt.reposition(screenPx);
   }
 
@@ -303,6 +309,9 @@ export class HudView {
     this.updateWeaponPickupPrompt(s, p);
     this.updateShopPrompt(s, p);
     this.updateChestPrompt(s, p);
+    this.tutorialPrompt.update(dt);
+    // A first-run lesson panel taller than the gap above the toast lane pushes it down.
+    this.toasts.view.y = this.tutorialPrompt.view.visible ? Math.max(this.toastY, this.tutorialPrompt.bottom + 8) : this.toastY;
     this.toasts.update(dt);
 
     // Shared room-graph minimap (design/10 "room progress"; PvE wiring 2026-08-05,

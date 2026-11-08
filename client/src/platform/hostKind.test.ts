@@ -8,7 +8,10 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { canSignIn, getHostKind, isPortalHost, resetHostKind, setHostKind, type HostKind } from './hostKind';
+import {
+  canBindEscape, canLinkOut, canPlayOnline, canSignIn, getHostKind, isPortalHost, resetHostKind, setHostKind,
+  type HostKind,
+} from './hostKind';
 // The same three names as a VALUE, which this module only has as a type. `analyticsEvents`
 // owns the runtime list because the server imports it too, and its own comment says it
 // matches `HostKind` — the sweep below is where that agreement is actually exercised.
@@ -136,5 +139,36 @@ describe('every entry point declares its own host', () => {
       return HOSTS.filter((h) => src.includes(`setHostKind('${h}')`));
     });
     expect(declared).toEqual([['web'], ['wechat'], ['crazygames']]);
+  });
+});
+
+/**
+ * The Playgama answers (2026-11-06). Each predicate is `false` on exactly that host and `true`
+ * on the rest, and each defaults to the current host — so the entry's single `setHostKind`
+ * call is what turns the online doors, the policy link and the Escape binding off.
+ */
+describe('the Playgama gates — canPlayOnline, canLinkOut, canBindEscape', () => {
+  afterEach(() => resetHostKind());
+  const gates = { canPlayOnline, canLinkOut, canBindEscape };
+
+  for (const [name, gate] of Object.entries(gates)) {
+    it(`${name} is false on playgama only, and follows the current host`, () => {
+      for (const h of HOSTS) expect(gate(h), `${name}('${h}')`).toBe(h !== 'playgama');
+      expect(gate()).toBe(true);
+      setHostKind('playgama');
+      expect(gate()).toBe(false);
+    });
+  }
+
+  it('playgama is a portal host', () => {
+    expect(isPortalHost('playgama')).toBe(true);
+  });
+
+  it('main.playgama.ts declares playgama before it builds the Game', () => {
+    const src = readFileSync(new URL('../main.playgama.ts', import.meta.url), 'utf8');
+    const declare = src.indexOf("setHostKind('playgama')");
+    expect(declare).toBeGreaterThan(-1);
+    expect(declare).toBeLessThan(src.indexOf('new Game('));
+    expect(HOSTS.filter((h) => src.includes(`setHostKind('${h}')`))).toEqual(['playgama']);
   });
 });

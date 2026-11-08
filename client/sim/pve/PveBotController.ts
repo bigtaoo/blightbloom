@@ -29,6 +29,7 @@
  * state the engine already decided.
  */
 import { Button, makeCommand, quantizeMove, CHEST_MECHANISM_RADIUS_GRID, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { BotOrbit } from './botOrbit';
 import { profileForWeaponId } from './weaponStandoff';
 import { bladeSwapDue, gunWorth } from './weaponChoice';
 import { checkpointReached, portalOffers } from '../../src/game/match/floorCount';
@@ -124,6 +125,7 @@ export class PveBotController {
   private lastPos: Vec = { x: 0, y: 0 };
   private unstickUntil = -1;
   private unstickSign = 1;
+  private readonly orbit = new BotOrbit(STUCK_WINDOW, STUCK_EPSILON_FP);
   private readonly spacingCache = new Map<string, BotProfile>();
   /** The gun in hand the first time the bot fought — the one that keeps the base spacing. */
   private startingWeapon: string | undefined;
@@ -231,7 +233,7 @@ export class PveBotController {
     const move = heal
       ? quantizeMove(heal.x - me.x, heal.y - me.y)
       : this.orbiting(s, tick)
-        ? quantizeMove(-dy, dx) // perpendicular: circle the target to clear the shot
+        ? this.orbit.move(me, dx, dy) // perpendicular: circle the target to clear the shot
         : this.spacingMove(spacing, dx, dy, dist);
     return this.withUnstick(owner, tick, me, move, buttons);
   }
@@ -379,9 +381,12 @@ export class PveBotController {
    * room whose last mob is still alive would walk at that unreachable heal, into a locked
    * door, until the run timed out — which is exactly what the sim reported on
    * `careful/seed=404/r5_court`. Standing in a door passage (`room === undefined`) falls
-   * back to a plain radius scan, same convention as `nearestEnemy`.
-   */
+   * back to a plain radius scan, same convention as `nearestEnemy`. Never at full HP
+   * (2026-11-07): `PickupSystem` refuses a heal then, so a low total that was all empty
+   * shield pinned the bot on an uncollectable heal until the run timed out (ember floor 4,
+   * careful, seed 2222). */
   private healToSeek(s: GameState, me: Self, room: string | undefined): Vec | null {
+    if (me.hp >= me.maxHp) return null;
     const frac = (me.hp + me.shield) / Math.max(1, me.maxHp + me.maxShield);
     if (frac > this.profile.healSeekFrac) return null;
     let best = HEAL_SCAN_FP * HEAL_SCAN_FP;

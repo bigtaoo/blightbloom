@@ -336,3 +336,48 @@ describe('the chapter picker sits under SOLO, and a locked chapter takes SOLO ou
     expect(r.startBlocked).toBe(true);
   });
 });
+
+describe('a host with no online play (Playgama) draws no online doors', () => {
+  it('hides CO-OP, PvP and SQUAD, and the block shrinks by exactly their tier', () => {
+    const r = new LobbyRoutes();
+    r.layout();
+    const before = { h: r.height, forgeY: privateOf(r).forgeBtn.view.position.y };
+    r.setOnline(false);
+    r.layout();
+    const p = privateOf(r);
+    expect([p.coopBtn, p.pvpSoloBtn, p.squadBtn].map((b) => b.view.visible)).toEqual([false, false, false]);
+    expect(before.h - r.height).toBe(before.forgeY - p.forgeBtn.view.position.y);
+    expect(r.height).toBeLessThan(before.h);
+    r.setOnline(true);
+    r.layout();
+    expect(r.height).toBe(before.h);
+    expect([p.coopBtn, p.pvpSoloBtn, p.squadBtn].map((b) => b.view.visible)).toEqual([true, true, true]);
+  });
+
+  it('closes the dock up: FORGE leads, TUTORIAL (and its tag) follow it', () => {
+    const r = new LobbyRoutes();
+    r.setOnline(false);
+    r.setRecommendTutorial(true);
+    r.layout();
+    const p = privateOf(r);
+    expect(p.forgeBtn.view.position.x).toBe(0);
+    expect(p.tutorialBtn.view.visible).toBe(true);
+    expect(p.tutorialBtn.view.position.x).toBeGreaterThan(0);
+    expect(p.recommendedTag.position.x).toBeGreaterThan(p.tutorialBtn.view.position.x);
+    expect(p.recommendedTag.position.x).toBeLessThan(LOBBY_ROUTES_W);
+    for (const b of [p.forgeBtn, p.tutorialBtn]) {
+      expect(b.view.position.x + boxOf(b).width).toBeLessThanOrEqual(LOBBY_ROUTES_W + SLACK);
+    }
+  });
+
+  it('gives FORGE the whole dock once TUTORIAL has been seen', () => {
+    const r = new LobbyRoutes();
+    r.setOnline(false);
+    r.setRecommendTutorial(false);
+    r.layout();
+    const p = privateOf(r);
+    expect(p.forgeBtn.view.position.x).toBe(0);
+    expect(boxOf(p.forgeBtn).width).toBeGreaterThan(LOBBY_ROUTES_W - 2 * SLACK - 2);
+    expect(p.tutorialBtn.view.visible).toBe(false);
+  });
+});

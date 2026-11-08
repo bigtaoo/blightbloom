@@ -259,6 +259,11 @@ async function boot() {
       portalRooms.start();
       return applyPortalBootIntent(sdk);
     })
+    // A first-ever visit skips the menu into the run that teaches — but only once no invite or
+    // instant-multiplayer intent has claimed the boot (`game/controllers/firstRunAutostart.ts`).
+    .then((intent) => {
+      if (intent.action === 'none') game.startFirstRunIfNew();
+    })
     .catch((e: unknown) => {
       clientLog()?.log('warn', 'portal', `boot intent: ${e instanceof Error ? e.message : String(e)}`);
     });

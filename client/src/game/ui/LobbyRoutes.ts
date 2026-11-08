@@ -87,6 +87,8 @@ const BLOCKED_ALPHA = 0.45;
 
 /** The block's height when SOLO is the primary (no save, not a portal). */
 export const LOBBY_ROUTES_H = LOBBY_PRIMARY_H + PICKER_SLOT + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
+/** What the block loses without its online tier: CO-OP, PvP and the gaps after each. */
+const ONLINE_TIER_H = SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP;
 /** The block's height when something above SOLO holds the primary — CONTINUE here, or
  *  `MainMenu`'s PLAY — and SOLO is the slim bar. Includes that primary's own slot. */
 export const LOBBY_ROUTES_DEMOTED_H = LOBBY_PRIMARY_H + LOBBY_GAP + SOLO_SLIM_H + PICKER_SLOT + TIER_GAP + SECONDARY_H + LOBBY_GAP + SECONDARY_H + TIER_GAP + DOCK_H;
@@ -111,6 +113,7 @@ export class LobbyRoutes {
   /** Which chapter a new run starts in — see the header. */
   private chapters = new ChapterPicker(LOBBY_ROUTES_W);
   private coopBtn: LobbyCard;
+  private online = true;
   private pvpSoloBtn: LobbyCard;
   private squadBtn: Button;
   /** The crafting page's lobby door (2026-09-21). */
@@ -236,7 +239,17 @@ export class LobbyRoutes {
    *  by something `MainMenu` draws above it (portal PLAY), so the shell can size the column
    *  the same way in every state. */
   get height(): number {
-    return this.soloIsPrimary() ? LOBBY_ROUTES_H : LOBBY_ROUTES_DEMOTED_H;
+    return (this.soloIsPrimary() ? LOBBY_ROUTES_H : LOBBY_ROUTES_DEMOTED_H) - (this.online ? 0 : ONLINE_TIER_H);
+  }
+
+  /**
+   * Whether the online routes exist on this host — CO-OP, PvP and SQUAD. `false` where the
+   * frame cannot reach our server at all (`platform/hostKind.ts` `canPlayOnline`): the block
+   * closes up around their slot instead of drawing three doors onto a connection error.
+   */
+  setOnline(online: boolean): void {
+    this.online = online;
+    for (const b of [this.coopBtn.view, this.pvpSoloBtn.view, this.squadBtn.view]) b.visible = online;
   }
 
   /** Whether the TOP slot of this block is empty and owed to `MainMenu`'s PLAY card. */
@@ -317,24 +330,28 @@ export class LobbyRoutes {
     y += this.soloBtn.height + LOBBY_GAP;
     this.chapters.view.position.set(0, y);
     y += CHAPTER_PICKER_H + TIER_GAP;
-    this.coopBtn.view.position.set(0, y);
-    y += SECONDARY_H + LOBBY_GAP;
-    this.pvpSoloBtn.view.position.set(0, y);
-    y += SECONDARY_H + TIER_GAP;
+    if (this.online) {
+      this.coopBtn.view.position.set(0, y);
+      y += SECONDARY_H + LOBBY_GAP;
+      this.pvpSoloBtn.view.position.set(0, y);
+      y += SECONDARY_H + TIER_GAP;
+    }
 
-    // The dock: three across, or two across once TUTORIAL has been seen.
-    const n = this.recommendTutorial ? 3 : 2;
-    const dockW = this.dockWidth(n);
-    const dock = [this.squadBtn, this.forgeBtn, this.tutorialBtn].slice(0, n);
+    // The dock: three across, or two across once TUTORIAL has been seen — one fewer each
+    // without SQUAD.
+    const all = this.online ? [this.squadBtn, this.forgeBtn, this.tutorialBtn] : [this.forgeBtn, this.tutorialBtn];
+    const dock = this.recommendTutorial ? all : all.slice(0, -1);
+    const dockW = this.dockWidth(dock.length);
     dock.forEach((b, i) => {
       b.setWidth(dockW);
       b.view.position.set(i * (dockW + DOCK_GAP), y);
     });
     // Positioned even when hidden, same as every invisible node in these screens. The badge
     // straddles FORGE's top-right corner, inset so it never pokes past the column's edge.
-    this.forgeBadge.position.set(dockW + DOCK_GAP + dockW - this.forgeBadgeW / 2 - 2, y);
+    const forgeX = dock.indexOf(this.forgeBtn) * (dockW + DOCK_GAP);
+    this.forgeBadge.position.set(forgeX + dockW - this.forgeBadgeW / 2 - 2, y);
     this.tutorialBtn.view.visible = this.recommendTutorial;
-    this.recommendedTag.position.set(2 * (dockW + DOCK_GAP) + dockW / 2, y);
+    this.recommendedTag.position.set((all.length - 1) * (dockW + DOCK_GAP) + dockW / 2, y);
     this.recommendedTag.visible = this.recommendTutorial;
   }
 
