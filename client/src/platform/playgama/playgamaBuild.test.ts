@@ -147,6 +147,14 @@ describe('main.playgama.ts — the boot order', () => {
     }
   });
 
+  it('sends each event at once, since a portal frame dies without a pagehide to flush on', () => {
+    expect(ENTRY).toContain('sendEachEvent: true');
+  });
+
+  it('times the first input from game_ready, not from the download', () => {
+    expect(at('session.ready();')).toBeLessThan(at('trackFirstInput('));
+  });
+
   it('stamps the build version on Bridge and on the analytics batch', () => {
     expect(ENTRY).toContain('build: () => import.meta.env.VITE_GAME_VERSION ?? null');
   });

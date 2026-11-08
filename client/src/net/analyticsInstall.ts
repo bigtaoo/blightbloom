@@ -111,6 +111,17 @@ export interface AnalyticsInstallOptions {
   clearIntervalImpl?: (handle: unknown) => void;
   /** Overridable so a test does not have to wait 30 seconds. */
   flushIntervalMs?: number;
+  /**
+   * Send every event the moment it is tracked instead of batching it for the timer.
+   *
+   * For a `send` that hands events to a platform one at a time anyway (Playgama's
+   * `bridge.track`), where a batch saves no request and costs every visit shorter than
+   * the 30 s flush interval: a portal frame is torn down without a reliable `pagehide`, so
+   * such a visit's queue was never sent at all. On 2026-11-08 that was 52% of the sandbox's
+   * loaded visits — exactly the ones the first-30-seconds work needed to see. The timer still
+   * runs, for the `active_time` heartbeat it carries.
+   */
+  sendEachEvent?: boolean;
   /** The per-visit id. Injected only so a test can pin it; generated otherwise. */
   session?: string;
   /**
@@ -214,6 +225,12 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     send,
   });
 
+  // The handle every call site reaches goes through this wrapper, so "send at once" covers
+  // the install's own `session_start` / `active_time` / `session_end` as well.
+  const handle: Analytics = opts.sendEachEvent === true
+    ? { ...analytics, track: (name, props) => { analytics.track(name, props); analytics.flush(); } }
+    : analytics;
+
   const setIntervalFn = opts.setIntervalImpl ?? ((fn, ms) => setInterval(fn, ms));
   const clearIntervalFn = opts.clearIntervalImpl ?? ((h) => clearInterval(h as ReturnType<typeof setInterval>));
   // Visible time, and the heartbeat that reports it. The heartbeat rides the flush timer
@@ -227,7 +244,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     const active = activeS();
     if (active - reportedS >= minStep) {
       reportedS = active;
-      analytics.track('active_time', { active_s: active });
+      handle.track('active_time', { active_s: active });
     }
   };
   // Going hidden reports whatever has accrued, however little: a backgrounded mobile tab is
@@ -253,7 +270,7 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     // Ordered: the event first, then the flush that carries it. `duration_s` is clamped to
     // the vocabulary's own bound by the server, so a machine that slept for a week reports
     // the cap rather than being dropped.
-    analytics.track('session_end', { duration_s: Math.max(0, Math.round((now() - startedAt) / 1000)), active_s: activeS() });
+    handle.track('session_end', { duration_s: Math.max(0, Math.round((now() - startedAt) / 1000)), active_s: activeS() });
     analytics.flush();
   };
   target?.addEventListener?.('pagehide', onPageHide);
@@ -264,8 +281,8 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     doc?.removeEventListener('visibilitychange', onVisibility);
   };
 
-  installed = analytics;
-  setAnalytics(analytics);
+  installed = handle;
+  setAnalytics(handle);
   // The first event of the visit, and the row every retention cohort is built from. Last,
   // so that a throw anywhere above leaves nothing half-installed reporting a visit.
   // `storage` is read here, after `getInstallId()` above has minted or loaded the id.
@@ -276,8 +293,8 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
   for (const [k, v] of Object.entries(visit)) if (v !== undefined) props[k] = v;
   const bootFrom = pageOpen?.at ?? opts.bootStartedAt;
   if (bootFrom !== undefined && Number.isFinite(bootFrom)) props.boot_ms = Math.max(0, Math.round(now() - bootFrom));
-  analytics.track('session_start', props);
-  return analytics;
+  handle.track('session_start', props);
+  return handle;
 }
 
 /** Test-only: undo the install so the next test file starts clean. */

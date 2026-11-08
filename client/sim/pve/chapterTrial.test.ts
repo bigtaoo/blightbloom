@@ -25,6 +25,7 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
     endRoom: 'r1_cell',
     encounters: [enc()],
     enemiesKilled: 8,
+    chestWeapons: 0,
     damageTaken: 10,
     peakBurstDamage: 4,
     effectiveHp: 10,

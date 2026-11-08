@@ -33,6 +33,7 @@ export class EncounterTracker {
   readonly shopSnapshots: ShopSnapshot[] = [];
   finalMaxEnergy = 0;
   enemiesKilled = 0;
+  chestWeapons = 0;
   damageTaken = 0;
   peakBurstDamage = 0;
   effectiveHp = 0;
@@ -173,6 +174,9 @@ export class EncounterTracker {
       });
     }
     for (const ev of s.events) {
+      // A chest's weapons land as ordinary pickups above; this is the only sign they did not
+      // come off a kill.
+      if (ev.type === 'chest_open') this.chestWeapons += ev.weapons;
       // Both checkpoint resolutions count as "this floor's portal opened": `descend`
       // carries the floor it moved TO (ExtractionSystem increments before pushing),
       // and a `win` in a floors-enabled run is an EXTRACT off the floor still current.

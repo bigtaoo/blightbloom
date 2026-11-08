@@ -46,6 +46,7 @@ function run(over: Partial<RunMetrics> = {}): RunMetrics {
     endRoom: 'r1',
     encounters: [enc()],
     enemiesKilled: 8,
+    chestWeapons: 0,
     damageTaken: 9,
     peakBurstDamage: 5,
     effectiveHp: 9.2,

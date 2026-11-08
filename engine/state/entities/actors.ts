@@ -272,6 +272,11 @@ export interface EnemyActor extends Actor {
   // and idling every tick as its own movement carried it back and forth across it.
   // Required (not optional) so the field always has a stable false default.
   aggroed: boolean;
+  // Set only on a mob from a `dormant` spawn point (ENGINE_VERSION 92): damage latches
+  // `aggroed` on it (`combat.ts` `takeDamage`), so a shot from outside its short perception
+  // radius wakes it rather than hitting a training dummy. Absent on every other mob, whose
+  // behaviour is exactly as before — a mob hurt from beyond ITS radius still stays inert.
+  wakeOnHurt?: boolean;
   // Has this mob ARRIVED — reached engage range and stopped to shoot (ENGINE_VERSION 55)?
   // Written by AIDecideSystem, read by MovementSystem, and the single switch behind the
   // standing-spacing rule: a holding mob claims `standoffRadius` of personal space against

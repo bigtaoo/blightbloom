@@ -38,6 +38,8 @@ export function takeDamage(
   crit = false,
 ): void {
   target.ticksSinceHit = 0;
+  // A dormant mob woken by the hit itself (ENGINE_VERSION 92, `EnemyActor.wakeOnHurt`).
+  if ((target as { wakeOnHurt?: boolean }).wakeOnHurt === true) (target as { aggroed?: boolean }).aggroed = true;
   const hadShield = target.shield > 0;
   if (target.shield >= dmg) {
     target.shield -= dmg;

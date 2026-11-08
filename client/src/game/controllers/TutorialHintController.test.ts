@@ -10,12 +10,17 @@
  * ever performed the action could not tell a waiting lesson from a timed one. The two lessons
  * a player can leave undone for good (swap, deflect) do give up, after a window far longer
  * than the action takes; their cases pin both sides of that window.
+ *
+ * Since 2026-11-08 those two also wait for their CUE before their panel goes up — swap for a
+ * fight (`fight`), deflect for an enemy shot (`ENEMY_SHOT`) — so every case that reaches them
+ * supplies the cue, and the "waits for its moment" block pins the gate itself.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
 import { fp } from '@dd/engine/math/fixed';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { GameEvent } from '@dd/engine/state/events';
+import type { EnemyActor } from '@dd/engine/state/entities';
 import { DEFLECT_GIVE_UP_TICKS, SWAP_GIVE_UP_TICKS, TutorialHintController } from './TutorialHintController';
 
 function fakePrompt() {
@@ -27,8 +32,17 @@ function baseState(): GameState {
 }
 
 const NO_EVENTS: readonly GameEvent[] = [];
-const fired = (s: GameState): GameEvent => ({ type: 'bullet_fired', ownerId: s.players[0]!.id } as GameEvent);
+const fired = (s: GameState): GameEvent =>
+  ({ type: 'bullet_fired', ownerId: s.players[0]!.id, faction: 'player' } as GameEvent);
 const DEFLECT = { type: 'deflect', gx: 0, gy: 0 } as GameEvent;
+/** The deflect lesson's cue: a shot from the enemy side. */
+const ENEMY_SHOT = { type: 'bullet_fired', ownerId: 999, faction: 'enemy' } as GameEvent;
+
+/** The swap lesson's cue: a live enemy that has noticed the player. Only the two fields the
+ *  controller reads are real; the fixture's enemy list is otherwise empty. */
+function fight(s: GameState, enemy: Partial<EnemyActor> = {}): void {
+  s.enemies.push({ alive: true, aggroed: true, ...enemy } as EnemyActor);
+}
 
 function setup(touch?: () => boolean) {
   const prompt = fakePrompt();
@@ -46,6 +60,23 @@ function setup(touch?: () => boolean) {
 /** Walk the seat 2 grid east — past the 1.5-grid move threshold. */
 function walk(s: GameState): void {
   s.players[0]!.gx = fp(s.players[0]!.gx + 2000);
+}
+
+/** Through move, at the attack lesson. */
+function atAttack() {
+  const x = setup();
+  x.tick();
+  walk(x.s);
+  x.tick();
+  return x;
+}
+
+/** At the swap lesson, mid-fight, so its panel is up. */
+function atSwap() {
+  const x = atAttack();
+  fight(x.s);
+  x.tick([fired(x.s)]);
+  return x;
 }
 
 /** The default fixture's loadout is what makes the swap/deflect lessons reachable at all —
@@ -86,17 +117,10 @@ describe('TutorialHintController — move', () => {
 });
 
 describe('TutorialHintController — attack', () => {
-  function atAttack() {
-    const x = setup();
-    x.tick();
-    walk(x.s);
-    x.tick();
-    return x;
-  }
-
   it('advances on the seat’s own shot or swing, and on nothing else', () => {
     const { prompt, s, tick, lastShown } = atAttack();
-    tick([{ type: 'bullet_fired', ownerId: s.players[0]!.id + 99 } as GameEvent]); // someone else's
+    fight(s);
+    tick([{ type: 'bullet_fired', ownerId: s.players[0]!.id + 99, faction: 'player' } as GameEvent]); // someone else's
     tick([DEFLECT]);
     expect(lastShown()).toMatch(/attack/);
     tick([{ type: 'melee_swing', ownerId: s.players[0]!.id } as GameEvent]);
@@ -106,31 +130,25 @@ describe('TutorialHintController — attack', () => {
 
   it('a ranged shot counts too', () => {
     const { s, tick, lastShown } = atAttack();
+    fight(s);
     tick([fired(s)]);
     expect(lastShown()).toMatch(/switch weapon/);
   });
 });
 
 describe('TutorialHintController — swap and deflect', () => {
-  function atSwap() {
-    const x = setup();
-    x.tick();
-    walk(x.s);
-    x.tick();
-    x.tick([fired(x.s)]);
-    return x;
-  }
-
   it('swap measures from the slot the lesson started on, not from construction', () => {
     const x = setup();
     x.s.players[0]!.activeSlot = 1; // swapped early, during the move lesson
     x.tick();
     walk(x.s);
     x.tick();
+    fight(x.s);
     x.tick([fired(x.s)]);
     expect(x.lastShown()).toMatch(/switch weapon/);
     x.s.players[0]!.activeSlot = 0;
     x.tick();
+    x.tick([ENEMY_SHOT]);
     expect(x.lastShown()).toMatch(/deflect/);
     expect(x.prompt.show).toHaveBeenLastCalledWith(expect.any(String), 4, 4);
   });
@@ -139,6 +157,7 @@ describe('TutorialHintController — swap and deflect', () => {
     const { prompt, s, tick } = atSwap();
     s.players[0]!.activeSlot = 1;
     tick();
+    tick([ENEMY_SHOT]);
     tick([DEFLECT]);
     expect(prompt.finish).toHaveBeenCalledWith('Nicely done — you know the basics.');
     for (let i = 0; i < 10; i++) tick([DEFLECT]);
@@ -149,6 +168,7 @@ describe('TutorialHintController — swap and deflect', () => {
     const { prompt, s, tick } = atSwap();
     s.players[0]!.activeSlot = 1;
     tick();
+    tick([ENEMY_SHOT]);
     for (let i = 0; i < DEFLECT_GIVE_UP_TICKS - 1; i++) tick();
     expect(prompt.finish).not.toHaveBeenCalled();
     tick();
@@ -157,21 +177,16 @@ describe('TutorialHintController — swap and deflect', () => {
 });
 
 describe('TutorialHintController — the swap lesson gives up (2026-11-07)', () => {
-  function atSwap() {
-    const x = setup();
-    x.tick();
-    walk(x.s);
-    x.tick();
-    x.tick([fired(x.s)]);
-    return x;
-  }
-
   it('moves on to deflect, unearned, after the give-up window and not a tick before', () => {
     const { prompt, tick, lastShown } = atSwap();
     expect(lastShown()).toMatch(/switch weapon/);
     for (let i = 0; i < SWAP_GIVE_UP_TICKS - 1; i++) tick();
     expect(lastShown()).toMatch(/switch weapon/);
+    expect(prompt.hide).not.toHaveBeenCalled();
     tick();
+    // Deflect is next, and waits hidden for an enemy shot.
+    expect(prompt.hide).toHaveBeenCalledTimes(1);
+    tick([ENEMY_SHOT]);
     expect(lastShown()).toMatch(/deflect/);
     expect(prompt.show).toHaveBeenLastCalledWith(expect.any(String), 4, 4);
   });
@@ -183,9 +198,91 @@ describe('TutorialHintController — the swap lesson gives up (2026-11-07)', () 
     tick();
     walk(s);
     tick();
+    fight(s);
     tick([fired(s)]);
     for (let i = 0; i < SWAP_GIVE_UP_TICKS; i++) tick();
     expect(prompt.finish).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('TutorialHintController — swap and deflect wait for their moment (2026-11-08)', () => {
+  it('swap waits hidden, with no clock running, until a fight starts', () => {
+    const { prompt, s, tick, lastShown } = atAttack();
+    tick([fired(s)]); // attack learned, nothing hostile awake
+    expect(prompt.hide).toHaveBeenCalledTimes(1);
+    expect(lastShown()).toMatch(/attack/);
+    // Far past the give-up window: a lesson that was never shown is never given up on.
+    for (let i = 0; i < SWAP_GIVE_UP_TICKS * 2; i++) tick();
+    expect(prompt.show).toHaveBeenCalledTimes(2);
+    expect(prompt.hide).toHaveBeenCalledTimes(1);
+    fight(s);
+    tick();
+    expect(lastShown()).toBe('Press 1 or 2 to switch weapon.');
+    expect(prompt.show).toHaveBeenLastCalledWith(expect.any(String), 3, 4);
+    // ...and its give-up counts from here.
+    for (let i = 0; i < SWAP_GIVE_UP_TICKS - 1; i++) tick();
+    expect(prompt.hide).toHaveBeenCalledTimes(1);
+    tick();
+    expect(prompt.hide).toHaveBeenCalledTimes(2); // on to deflect, hidden until a shot
+  });
+
+  it('an enemy that has not noticed the player, or a dead one, is not a fight', () => {
+    const { prompt, s, tick } = atAttack();
+    fight(s, { aggroed: false });
+    fight(s, { alive: false });
+    tick([fired(s)]);
+    for (let i = 0; i < 30; i++) tick();
+    expect(prompt.show).toHaveBeenCalledTimes(2);
+    fight(s); // the control: one awake, live enemy is
+    tick();
+    expect(prompt.show).toHaveBeenCalledTimes(3);
+  });
+
+  it('a slot swapped while the swap lesson was hidden is not the lesson', () => {
+    const { prompt, s, tick, lastShown } = atAttack();
+    tick([fired(s)]);
+    s.players[0]!.activeSlot = 1; // swapped in a cleared room, before the fight
+    tick();
+    fight(s);
+    tick();
+    tick();
+    expect(lastShown()).toMatch(/switch weapon/);
+    // Still the swap lesson: had the stale swap counted, deflect's wait would have hidden it.
+    expect(prompt.hide).toHaveBeenCalledTimes(1);
+    s.players[0]!.activeSlot = 0;
+    tick();
+    expect(prompt.hide).toHaveBeenCalledTimes(2); // learned; deflect waits hidden
+    tick([ENEMY_SHOT]);
+    expect(lastShown()).toMatch(/deflect/);
+  });
+
+  it('deflect waits for an ENEMY shot: the player’s own does not cue it', () => {
+    const { prompt, s, tick, lastShown } = atSwap();
+    s.players[0]!.activeSlot = 1;
+    tick();
+    for (let i = 0; i < DEFLECT_GIVE_UP_TICKS * 2; i++) tick([fired(s)]);
+    expect(lastShown()).toMatch(/switch weapon/);
+    expect(prompt.finish).not.toHaveBeenCalled();
+    tick([ENEMY_SHOT]);
+    expect(lastShown()).toMatch(/deflect/);
+  });
+
+  it('a deflect before the lesson is up is not the lesson', () => {
+    const { prompt, s, tick } = atSwap();
+    s.players[0]!.activeSlot = 1;
+    tick();
+    tick([DEFLECT]);
+    expect(prompt.finish).not.toHaveBeenCalled();
+    tick([ENEMY_SHOT, DEFLECT]); // the cue tick arms; it does not also score
+    expect(prompt.finish).not.toHaveBeenCalled();
+    tick([DEFLECT]);
+    expect(prompt.finish).toHaveBeenCalledWith('Nicely done — you know the basics.');
+  });
+
+  it('a cue already present when the lesson starts shows it on the same tick, never hiding', () => {
+    const { prompt } = atSwap();
+    expect(prompt.show).toHaveBeenLastCalledWith('Press 1 or 2 to switch weapon.', 3, 4);
+    expect(prompt.hide).not.toHaveBeenCalled();
   });
 });
 
@@ -212,6 +309,7 @@ describe('TutorialHintController — a lesson this loadout cannot be taught', ()
     walk(s);
     tick();
     tick([fired(s)]);
+    tick([ENEMY_SHOT]);
     expect(lastShown()).toMatch(/deflect/);
     expect(prompt.show).toHaveBeenLastCalledWith(expect.any(String), 3, 3);
   });
@@ -223,6 +321,7 @@ describe('TutorialHintController — a lesson this loadout cannot be taught', ()
     tick();
     walk(s);
     tick();
+    fight(s);
     tick([fired(s)]);
     s.players[0]!.activeSlot = 1;
     tick();
@@ -259,6 +358,7 @@ describe('TutorialHintController — wording follows the input device', () => {
       tick();
       walk(s);
       tick();
+      fight(s);
       tick([fired(s)]);
       const said = prompt.show.mock.calls.map((call) => String(call[0])).join(' | ');
       // Asserted in both directions, so a controller that ignored the flag and always
@@ -273,15 +373,14 @@ describe('TutorialHintController — wording follows the input device', () => {
 
 describe('TutorialHintController — reset', () => {
   it('hides the panel and starts the machine over, including the earned-done flag', () => {
-    const { prompt, c, s, tick } = setup();
-    tick();
-    walk(s);
-    tick();
-    tick([fired(s)]);
+    const { prompt, c, s, tick } = atSwap();
     s.players[0]!.activeSlot = 1;
     tick();
+    tick([ENEMY_SHOT]);
     tick([DEFLECT]);
+    expect(prompt.finish).toHaveBeenCalledTimes(1);
 
+    prompt.hide.mockClear(); // the deflect lesson's wait hid it once already
     c.reset();
     expect(prompt.hide).toHaveBeenCalledTimes(1);
     prompt.show.mockClear();

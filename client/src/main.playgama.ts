@@ -19,6 +19,7 @@ import { afterFirstRenderedFrame, hideBootSplash, setBootProgress } from './boot
 import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { installAnalytics } from './net/analyticsInstall';
+import { trackFirstInput, type FirstInputTarget } from './net/firstInput';
 import { getLocale } from './i18n';
 import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
 import { persistedLocale, setPreferredLanguages } from './settings';
@@ -64,6 +65,9 @@ async function boot() {
     build: () => import.meta.env.VITE_GAME_VERSION ?? null,
     locale: getLocale,
     send: bridgeSender(bridge),
+    // Each event goes to Bridge as it happens: a portal frame is torn down with no reliable
+    // `pagehide`, so a 30 s batch lost every visit shorter than that (design/22 §4.1).
+    sendEachEvent: true,
     // No `page_open` beacon on this host (vite.playgama.config.js), so `boot_ms` runs from
     // the navigation start instead.
     bootStartedAt: globalThis.performance?.timeOrigin,
@@ -113,6 +117,9 @@ async function boot() {
 
   await afterFirstRenderedFrame(app.ticker);
   session.ready();
+  // How long the player looks before touching anything — counted from here, not from the
+  // download, so it is hesitation and not bandwidth (net/firstInput.ts).
+  trackFirstInput(globalThis as unknown as FirstInputTarget, () => performance.now(), () => game.getPhase());
   session.watchViewport();
   // Playgama's `performance_sample`: frame times of live play only, per ~30 s (perfSample.ts).
   const perfSample = new PerfSampler((d) => bridge.track('performance_sample', d), import.meta.env.VITE_GAME_VERSION ?? 'unknown');

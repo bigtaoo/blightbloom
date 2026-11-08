@@ -28,6 +28,7 @@ import type { RoomPiece } from '../../content/rooms';
 import { FP_SCALE } from '../../math/fixed';
 import { toFpGrid } from '../../content/convert';
 import { mechanismRing } from '../../content/chests';
+import { DORMANT_AGGRO_RANGE_FP } from '../../content/enemies';
 import { CHEST_MECHANISM_RING_GRID, CHEST_OPEN_RANGE_GRID, SHOP_INTERACT_RANGE_GRID } from '../../config';
 
 const FLOOR_INDICES = [0, 1, 2, 3, 4] as const;
@@ -46,8 +47,11 @@ const SIDE_PIECES = new Set(['ember_l1_cache', 'ember_l1_vault', 'ember_l1_marke
  * The level's ENTRY room (2026-11-06): the room every run starts in, and so the first thing a
  * brand-new player meets. It held the full ramp's eight mobs (four of them fire emberlings)
  * 6-10 grid from the spawn, all spawning on the first tick — a new player was dead in under
- * ten seconds, before reading the first hint. It is now a warm-up: two `basic` mobs in the
- * far corners. Named, like the side rooms, so the ramp below exempts exactly this one piece.
+ * ten seconds, before reading the first hint. It became a warm-up: two `basic` mobs in the
+ * far corners — which then left the first screen EMPTY, and 52% of portal visits gone inside
+ * 30 s (2026-11-08). Since ENGINE_VERSION 92 the two are dormant and close: on screen at the
+ * spawn, asleep until the player walks up or fires. Named, like the side rooms, so the ramp
+ * below exempts exactly this one piece.
  */
 const ENTRY_PIECE = 'ember_l1_cell';
 const ENTRY_ENEMIES = 2;
@@ -166,12 +170,19 @@ describe('level 1 room pieces', () => {
     }
   });
 
-  it('the entry room is a warm-up: the room floor 1 starts in, two basic mobs, none within 9 grid of a spawn', () => {
+  it('the entry room is a warm-up: the room floor 1 starts in, two dormant basic mobs, close but outside their own wake radius (ENGINE_VERSION 92)', () => {
     expect(floorAt(0).rooms[0]?.pieceId).toBe(ENTRY_PIECE);
     const entry = pieceFor(ENTRY_PIECE);
     expect(entry.spawns.enemy.map((e) => e.type)).toEqual(Array(ENTRY_ENEMIES).fill('basic'));
+    expect(entry.spawns.enemy.map((e) => e.dormant)).toEqual(Array(ENTRY_ENEMIES).fill(true));
+    const wakeGrid = DORMANT_AGGRO_RANGE_FP / FP_SCALE;
     for (const e of entry.spawns.enemy) {
-      for (const p of entry.spawns.player) expect(Math.hypot(e.x - p.x, e.y - p.y)).toBeGreaterThan(9);
+      const nearest = Math.min(...entry.spawns.player.map((p) => Math.hypot(e.x - p.x, e.y - p.y)));
+      // Asleep while the player stands at the spawn: outside its own perception radius.
+      expect(nearest, `(${e.x},${e.y}) vs its wake radius`).toBeGreaterThan(wakeGrid);
+      // ...yet a few steps away, so the opening screen has something on it. Far corners
+      // (10+ grid) were the empty room this replaced.
+      expect(nearest, `(${e.x},${e.y}) is back in the far corner`).toBeLessThanOrEqual(7);
     }
     // Used nowhere else: a lighter room in the middle of a floor would break the ramp unseen.
     const uses = [...Object.values(EMBER_L1_FLOORS), EMBER_L1_FLOOR_2_BRANCH, EMBER_L1_FLOOR_3_BRANCH, EMBER_L1_FLOOR_4_BRANCH].flatMap((f) => f!.rooms).filter((r) => r.pieceId === ENTRY_PIECE);

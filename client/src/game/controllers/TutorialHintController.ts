@@ -37,8 +37,12 @@ export const DEFLECT_GIVE_UP_TICKS = 600;
  *  lesson, unearned. */
 export const SWAP_GIVE_UP_TICKS = 450;
 
-/** Each lesson's give-up, ticks; a lesson missing here waits for the player for good. */
+/** Each lesson's give-up, ticks; a lesson missing here waits for the player for good. Counted
+ *  from when its panel goes up, which for a cued lesson is the cue, not the previous lesson. */
 const GIVE_UP_TICKS: Partial<Record<Lesson, number>> = { swap: SWAP_GIVE_UP_TICKS, deflect: DEFLECT_GIVE_UP_TICKS };
+
+/** The lessons that wait for a moment they make sense in before their panel goes up. */
+const CUED: ReadonlySet<Lesson> = new Set(['swap', 'deflect']);
 
 /**
  * The teaching beats (design/10 screen-flow gap, design/20 onboarding) — render-only, follows
@@ -60,6 +64,15 @@ const GIVE_UP_TICKS: Partial<Record<Lesson, number>> = { swap: SWAP_GIVE_UP_TICK
  *    after `SWAP_GIVE_UP_TICKS`.
  * 4. **deflect** — a `'deflect'` event; dropped after `DEFLECT_GIVE_UP_TICKS`.
  *
+ * ## The last two wait for their moment (2026-11-08)
+ *
+ * Swap and deflect used to go up the tick the previous lesson was learned, which on a first
+ * run was usually a cleared room: "swing your melee weapon into incoming bullets" with no bullet
+ * anywhere, timing out unread. Each now waits, panel hidden, for its CUE (`cued`): swap for a
+ * fight (a live enemy that has noticed the player), deflect for the first enemy shot. Only then
+ * does its panel go up and its give-up clock start. A run that never meets the cue never shows
+ * the lesson, which costs nothing.
+ *
  * ## Two things this learned when it stopped being tutorial-only (2026-09-08)
  *
  * - **A step that cannot apply is SKIPPED, not waited on.** "Swing your melee weapon into
@@ -76,7 +89,11 @@ export class TutorialHintController {
   private originY = 0;
   private baselineSlot = 0;
   private lessons: readonly Lesson[] = [];
-  private shownForStep: Step | null = null;
+  /** Whether the current step's cue has arrived (always true for an un-cued step); a step
+   *  that is not armed keeps the panel hidden and cannot be learned or given up on. */
+  private armed = false;
+  /** What the panel last showed: the step, or `waiting` for a cued step not yet armed. */
+  private shownFor: Step | 'waiting' | null = null;
   /** Whether `done` was EARNED (the last lesson was completed) rather than arrived at by the
    *  deflect lesson timing out. Only an earned one says "nicely done". */
   private doneEarned = false;
@@ -99,21 +116,40 @@ export class TutorialHintController {
       this.begin('move', s, p);
     }
 
-    if (this.step !== 'done') {
+    if (this.step !== 'done' && this.armed) {
       const limit = GIVE_UP_TICKS[this.step];
       if (this.learned(this.step, p, events)) this.begin(this.next(this.step), s, p);
       else if (limit !== undefined && s.tick - this.stepStartTick >= limit) this.begin(this.skip(this.step), s, p);
     }
+    // Checked after the advance, so a cue already present goes straight to the panel with no
+    // hidden tick between lessons. Re-measured from the cue: a slot swapped while the panel was
+    // hidden is not the lesson.
+    if (this.step !== 'done' && !this.armed && this.cued(this.step, s, events)) this.begin(this.step, s, p, true);
 
-    if (this.step !== this.shownForStep) {
-      this.shownForStep = this.step;
-      if (this.step === 'done') {
+    const showing = this.step !== 'done' && !this.armed ? 'waiting' : this.step;
+    if (showing !== this.shownFor) {
+      this.shownFor = showing;
+      if (showing === 'waiting') {
+        this.prompt.hide();
+      } else if (this.step === 'done') {
         // The last lesson that applied was learned, not given up on (`skip`), so a loadout with
         // no melee weapon still earns its congratulation.
         this.prompt.finish(this.doneEarned ? t('tutorial.hintCleared') : null);
       } else {
         this.prompt.show(this.messageFor(this.step), this.lessons.indexOf(this.step) + 1, this.lessons.length);
       }
+    }
+  }
+
+  /** Has the moment for a cued lesson come: a fight for swap, an enemy shot for deflect. */
+  private cued(step: Lesson, s: GameState, events: readonly GameEvent[]): boolean {
+    switch (step) {
+      case 'swap':
+        return s.enemies.some((e) => e.alive && e.aggroed);
+      case 'deflect':
+        return events.some((e) => e.type === 'bullet_fired' && e.faction === 'enemy');
+      default:
+        return true;
     }
   }
 
@@ -153,8 +189,9 @@ export class TutorialHintController {
   /** Start `step`: every lesson measures from where the player was when it began, so a
    *  player who already swapped (or walked) during an earlier lesson still has to do it once
    *  more, on cue — that is the lesson. */
-  private begin(step: Step, s: GameState, p: PlayerActor): void {
+  private begin(step: Step, s: GameState, p: PlayerActor, armed = step === 'done' || !CUED.has(step)): void {
     this.step = step;
+    this.armed = armed;
     this.stepStartTick = s.tick;
     this.originX = p.gx;
     this.originY = p.gy;
@@ -189,7 +226,8 @@ export class TutorialHintController {
     this.step = 'move';
     this.stepStartTick = -1;
     this.lessons = [];
-    this.shownForStep = null;
+    this.armed = false;
+    this.shownFor = null;
     this.doneEarned = false;
     this.prompt.hide();
   }

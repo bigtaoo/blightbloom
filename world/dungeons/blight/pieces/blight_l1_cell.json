@@ -46,14 +46,16 @@
     ],
     "enemy": [
       {
-        "x": 11.5,
-        "y": 2.5,
-        "type": "basic"
+        "x": 11,
+        "y": 6,
+        "type": "basic",
+        "dormant": true
       },
       {
-        "x": 4.5,
-        "y": 2.5,
-        "type": "basic"
+        "x": 8,
+        "y": 6,
+        "type": "basic",
+        "dormant": true
       }
     ]
   },

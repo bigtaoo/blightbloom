@@ -118,10 +118,12 @@ describe('runLevel', () => {
       expect(d.floorIndex).toBe(0); // 1200 ticks never reaches a descend
       expect(d.tick).toBeGreaterThan(0);
     }
-    // Every drop comes off a kill (nothing else spawns loot in PvE yet), so the count
-    // can never exceed the kills — the tracker's own sanity check against
-    // double-counting a pickup that merely sat on the floor for another tick.
-    expect(m.drops.length).toBeLessThanOrEqual(m.enemiesKilled);
+    // Every drop comes off a kill or out of a chest, so the count can never exceed the two
+    // together — the tracker's own sanity check against double-counting a pickup that merely
+    // sat on the floor for another tick. (This seed opens the first floor's cache inside the
+    // window since the v92 warm-up room, which is how the bound learned about chests.)
+    expect(m.chestWeapons).toBeGreaterThan(0);
+    expect(m.drops.length).toBeLessThanOrEqual(m.enemiesKilled + m.chestWeapons);
   });
 
   it('does not count a weapon the PLAYER dropped by swapping as a drop the table produced', () => {
