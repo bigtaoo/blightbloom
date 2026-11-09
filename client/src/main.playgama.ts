@@ -20,7 +20,7 @@ import { installPerf } from './perf';
 import { parseGameQueryParams } from './game/match/gameQueryParams';
 import { installAnalytics } from './net/analyticsInstall';
 import { trackFirstInput, type FirstInputTarget } from './net/firstInput';
-import { getLocale } from './i18n';
+import { appliedLocaleOr } from './i18n';
 import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
 import { persistedLocale, setPreferredLanguages } from './settings';
 
@@ -63,7 +63,9 @@ async function boot() {
     token: () => null,
     host: 'playgama',
     build: () => import.meta.env.VITE_GAME_VERSION ?? null,
-    locale: getLocale,
+    // Not `getLocale`: nothing applies a locale until the Game is constructed, and a flush before
+    // that would report the default as this visit's language (i18n/index.ts `appliedLocaleOr`).
+    locale: () => appliedLocaleOr(bootLocale),
     send: bridgeSender(bridge),
     // Each event goes to Bridge as it happens: a portal frame is torn down with no reliable
     // `pagehide`, so a 30 s batch lost every visit shorter than that (design/22 §4.1).

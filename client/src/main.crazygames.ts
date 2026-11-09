@@ -20,7 +20,7 @@ import { resolveMatchBaseUrl } from './game/runState';
 import { installClientLog, clientLog } from './net/clientLogInstall';
 import { installAnalytics } from './net/analyticsInstall';
 import { installPublicFlags } from './net/clientFlags';
-import { getLocale } from './i18n';
+import { appliedLocaleOr } from './i18n';
 import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
 import { persistedLocale } from './settings';
 import { getSession } from './net/session';
@@ -138,7 +138,9 @@ async function boot() {
     token: () => getSession()?.token ?? null,
     host: 'crazygames',
     build: () => null,
-    locale: getLocale,
+    // Not `getLocale`: nothing applies a locale until the Game is constructed, and a flush before
+    // that would report the default as this visit's language (i18n/index.ts `appliedLocaleOr`).
+    locale: () => appliedLocaleOr(bootLocale),
   });
 
   // The public feature flags (design/21 §9's delivery path). This is the host the

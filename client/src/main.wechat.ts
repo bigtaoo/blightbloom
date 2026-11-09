@@ -23,7 +23,7 @@ import { createWeChatIdentityStore } from './platform/wechat/weChatStorage';
 import { createWeChatFetch } from './platform/wechat/weChatFetch';
 import { createWeChatVisibility, weChatDevice } from './platform/wechat/weChatVisibility';
 import { resolveMatchBaseUrl } from './game/runState';
-import { getLocale } from './i18n';
+import { appliedLocaleOr } from './i18n';
 import { ensureLocale, prefetchLocales } from './i18n/loadLocale';
 import { persistedLocale } from './settings';
 import { getSession } from './net/session';
@@ -130,7 +130,9 @@ async function boot() {
     token: sessionToken,
     host: 'wechat',
     build: () => null,
-    locale: getLocale,
+    // Not `getLocale`: nothing applies a locale until the Game is constructed, and a flush before
+    // that would report the default as this visit's language (i18n/index.ts `appliedLocaleOr`).
+    locale: () => appliedLocaleOr(bootLocale),
     fetchImpl: wxFetch,
     visit: { ...weChatDevice(wxPlatform), browser: 'wechat' },
     pageOpen: null,
