@@ -12,6 +12,9 @@ import { join } from 'node:path';
 import { getLocale, isLocaleLoaded, resetLocaleForTests, setLocale, t, LOCALES } from './index';
 import { ensureLocale, prefetchLocales, resetLoadedLocalesForTests, useLocale } from './loadLocale';
 
+/** Every client entry point. `main.playgama.ts` was missing from these pins until 2026-11-09. */
+const ENTRIES = ['main.ts', 'main.wechat.ts', 'main.crazygames.ts', 'main.playgama.ts'];
+
 beforeEach(() => {
   resetLoadedLocalesForTests();
   resetLocaleForTests();
@@ -126,7 +129,7 @@ describe('the entry points', () => {
     // passed to widgets, not re-read per frame), so a table that lands after `new Game(...)`
     // leaves English baked into whatever nothing re-renders. The symptom is a menu that is
     // half translated, on the machines that are slowest to fetch a chunk.
-    for (const entry of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
+    for (const entry of ENTRIES) {
       const src = readFileSync(new URL(`../${entry}`, import.meta.url), 'utf8');
       const read = src.indexOf('const bootLocale = persistedLocale();');
       const kick = src.indexOf('const localeReady = ensureLocale(bootLocale)');
@@ -148,10 +151,25 @@ describe('the entry points', () => {
     }
   });
 
+  it('report the boot locale to analytics until the game has applied one', () => {
+    // Analytics reads its batch `locale` at flush time, and a flush can come before
+    // `new Game(...)` — on Playgama the visit's `session_start` always does, one flush per
+    // event — when `getLocale` still answers the default. Build 5e325436 shipped that: every
+    // `session_start` said `en` while the same visit's later events said `ru`/`fr`/`es`.
+    for (const entry of ENTRIES) {
+      const src = readFileSync(new URL(`../${entry}`, import.meta.url), 'utf8');
+      const install = src.indexOf('installAnalytics({');
+      expect(install, `${entry}: no installAnalytics`).toBeGreaterThan(-1);
+      const opts = src.slice(install, src.indexOf('});', install));
+      expect(opts, entry).toMatch(/\n\s*locale: \(\) => appliedLocaleOr\(bootLocale\),/);
+      expect(src.indexOf('const bootLocale = persistedLocale();'), `${entry}: bootLocale is read after the install`).toBeLessThan(install);
+    }
+  });
+
   it('prefetch the rest, and only after the lobby is up', () => {
     // Never on the critical path: the prefetch is the reason the language button feels like a
     // toggle, and it must not be a reason the first screen is slower.
-    for (const entry of ['main.ts', 'main.wechat.ts', 'main.crazygames.ts']) {
+    for (const entry of ENTRIES) {
       const src = readFileSync(new URL(`../${entry}`, import.meta.url), 'utf8');
       expect(src.indexOf('await preloadLobbyArt('), entry).toBeLessThan(src.indexOf('prefetchLocales()'));
       expect(src, entry).not.toMatch(/await prefetchLocales/);
