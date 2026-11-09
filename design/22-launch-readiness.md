@@ -453,6 +453,16 @@ is `a6febbce` (design/20 "Onboarding, fourth pass" has the detail):
 Read on the next build: the `first_input` rate and its `ms`, and the 30-second exit share,
 split on `build_version`.
 
+The traffic run ended at 16:52 UTC, 18 minutes after that publish, so `5e325436` got only three
+sessions. They did show one regression: every `session_start` said locale `en` while the same
+visit's later events said `ru`/`fr`/`es`. Per-event sending flushes `session_start` during boot,
+and `getLocale` answers the default until `new Game(...)` applies the persisted one. The fix is
+`appliedLocaleOr(bootLocale)` in all four entry points. Archive
+`blightbloom-2026-11-09-6d2ae6b5-locale-fix` passed its check (Bridge 2.4.1) and was re-published on
+2026-11-09 at 07:59 UTC, same link, with no update note because players will see no difference.
+On `5e325436` alone, a locale split of `session_start` counts every visit as English. Older
+builds batched their events, so they are not affected.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
