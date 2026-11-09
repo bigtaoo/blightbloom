@@ -359,6 +359,8 @@ export const ru: Translations<typeof en> = {
     victoryTitle: 'ПОБЕДА РОЯЛЬ',
     eliminatedTitle: 'ВЫБЫЛ',
     confirmButton: 'ПОДТВЕРДИТЬ',
+    retryButton: 'ЕЩЁ РАЗ',
+    loadoutButton: 'СНАРЯЖЕНИЕ',
     timeLine: 'Время {m}:{ss}',
     floorLine: 'Этаж {floor}/{floorCount}',
     floorLineEndless: 'Этаж {floor}',

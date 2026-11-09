@@ -55,6 +55,8 @@ interface RecordedHost extends RunOutcomeHost {
    *  call site passed none at all (every arm but the PvE win), `null` when it passed one
    *  and decided against it — two different facts, so they stay distinguishable. */
   readonly offer: ResultOffer | null | undefined;
+  /** The `retry` flag the last `showOutcomeScreen` was handed (TRY AGAIN). */
+  readonly retry: boolean | undefined;
   online: boolean;
 }
 
@@ -66,6 +68,7 @@ function mockHost(localOwner = 0): RecordedHost {
   let hudHidden = false;
   let shown: { won: boolean; title: string; lines: readonly string[] } | undefined;
   let offer: ResultOffer | null | undefined;
+  let retry: boolean | undefined;
   return {
     localOwner,
     online: false,
@@ -79,13 +82,14 @@ function mockHost(localOwner = 0): RecordedHost {
       if (includeBlueprint && pickup !== null) granted.push(pickup);
     },
     isOnline() { return this.online; },
-    showOutcomeScreen: (won, title, lines, o) => { shown = { won, title, lines }; offer = o; },
+    showOutcomeScreen: (won, title, lines, o, r) => { shown = { won, title, lines }; offer = o; retry = r; },
     get phaseSet() { return phaseSet; },
     get hudHidden() { return hudHidden; },
     get banked() { return banked; },
     get granted() { return granted; },
     get shown() { return shown; },
     get offer() { return offer; },
+    get retry() { return retry; },
   };
 }
 
@@ -221,6 +225,56 @@ describe('RunOutcome — PvE extraction/death', () => {
     const host = mockHost();
     new RunOutcome(host).handle(s);
     expect(host.shown?.lines).toContain('Materials banked: 0');
+  });
+});
+
+/** TRY AGAIN (2026-11-09) restarts through `RunLifecycle.beginRun`, which only ever builds an
+ *  OFFLINE DUNGEON run — so it is offered on exactly the losses that were one. */
+describe('RunOutcome — TRY AGAIN on a loss', () => {
+  function dungeonState(): GameState {
+    return createGameState(
+      buildDungeonRunConfig({ seed: 3, coop: false, localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'skirmisher' }),
+    );
+  }
+
+  it('is offered on an offline dungeon death', () => {
+    const s = dungeonState();
+    s.winner = 'enemies';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.shown?.won).toBe(false);
+    expect(host.retry).toBe(true);
+  });
+
+  it('is not offered on an online dungeon death — a match cannot be rebuilt from here', () => {
+    const s = dungeonState();
+    s.winner = 'enemies';
+    const host = mockHost();
+    host.online = true;
+    new RunOutcome(host).handle(s);
+    expect(host.retry).toBe(false);
+  });
+
+  it('is not offered on a flat-mode (tutorial-shaped) death, which is not a dungeon run', () => {
+    const s = pveState();
+    s.winner = 'enemies';
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    expect(host.retry).toBe(false);
+  });
+
+  it('is never passed on a win or an arena result', () => {
+    const won = dungeonState();
+    won.winner = 0;
+    const winHost = mockHost();
+    new RunOutcome(winHost).handle(won);
+    expect(winHost.retry).toBeUndefined();
+    const arena = pvpState(2);
+    arena.winner = 1;
+    const arenaHost = mockHost();
+    new RunOutcome(arenaHost).handle(arena);
+    expect(arenaHost.shown?.won).toBe(false);
+    expect(arenaHost.retry).toBeUndefined();
   });
 });
 
@@ -778,6 +832,19 @@ describe('RunOutcome — run_end analytics', () => {
     const s = createGameState({ seed: 1, worldW: 0, worldH: 0, waves: [], dungeon: { config: FROST_DUNGEON, library: FROST_L1_ROOMS } });
     new RunOutcome(mockHost()).handle(s);
     expect(sent.find((e) => e.name === 'run_end')?.props?.chapter).toBe('frost');
+  });
+
+  it('follows a loss, and only a loss, with its cause of death in run_death', () => {
+    const lost = pveState();
+    lost.winner = 'enemies';
+    new RunOutcome(mockHost()).handle(lost);
+    expect(sent.map((e) => e.name)).toEqual(['run_end', 'run_death']);
+    expect(sent[0]!.props!.outcome).toBe('loss');
+    sent = [];
+    const won = pveState();
+    won.winner = 0;
+    new RunOutcome(mockHost()).handle(won);
+    expect(sent.map((e) => e.name)).toEqual(['run_end']);
   });
 
   it('carries no chapter key for a run outside the catalog or an arena', () => {

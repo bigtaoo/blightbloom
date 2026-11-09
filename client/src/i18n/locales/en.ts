@@ -359,6 +359,8 @@ export const en = {
     victoryTitle: 'VICTORY ROYALE',
     eliminatedTitle: 'ELIMINATED',
     confirmButton: 'CONFIRM',
+    retryButton: 'TRY AGAIN',
+    loadoutButton: 'LOADOUT',
     timeLine: 'Time {m}:{ss}',
     floorLine: 'Floor {floor}/{floorCount}',
     floorLineEndless: 'Floor {floor}',

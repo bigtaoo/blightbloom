@@ -6,6 +6,7 @@ import { clearSavedRun } from '../match/runSaveStore';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
 import { track } from '../../net/analytics';
+import { deathReportProps } from '../deathCause';
 import { publicFlag } from '../../net/clientFlags';
 import { getSession } from '../../net/session';
 import { canSignIn } from '../../platform/hostKind';
@@ -37,8 +38,9 @@ export interface RunOutcomeHost {
   isOnline(): boolean;
   /** `won` drives the result icon (Screens.ts) — kept as an explicit flag rather than
    * inferred from `title` text now that `title` is a translated, locale-dependent
-   * string (design/17-i18n.md) instead of a fixed English literal. */
-  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer?: ResultOffer | null): void;
+   * string (design/17-i18n.md) instead of a fixed English literal. `retry` draws TRY AGAIN
+   * on a loss (`Screens.show`). */
+  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer?: ResultOffer | null, retry?: boolean): void;
 }
 
 /** Total materials safely banked so far this run, for THIS local seat (design/05 carry-out
@@ -136,6 +138,7 @@ export class RunOutcome {
     // outcome the way four could. The abandon case is NOT here: it has no gameover state to
     // reach this method with, and is detected from the phase change instead
     // (`analyticsTracking.ts`). `chapter` is the run's own dungeon's, absent in an arena.
+    // A loss is followed by its cause of death (`run_death`, `deathCause.ts`).
     const chapter = chapterIdOfConfig(s.dungeonConfig);
     track('run_end', {
       outcome: won ? 'win' : 'loss',
@@ -143,6 +146,7 @@ export class RunOutcome {
       duration_s: Math.max(0, Math.floor(s.tick / TICK_RATE)),
       ...(chapter === null ? {} : { chapter }),
     });
+    if (!won) track('run_death', { ...deathReportProps(s, this.host.localOwner) });
     if (s.zoneEnabled) {
       if (won) this.winArena(s);
       else this.loseArena(s);
@@ -250,14 +254,25 @@ export class RunOutcome {
     const floor = s.floorIndex + 1;
     this.host.setPhase('defeat');
     this.host.hideHud();
-    this.host.showOutcomeScreen(false, t('results.defeatTitle'), [
-      isEndlessRun(s)
-        ? t('results.fellOnFloorEndless', { floor })
-        : t('results.fellOnFloor', { floor, floorCount: totalFloorCount(s) }),
-      t('results.materialsLost', { count: totalForfeited(s, this.host.localOwner) }),
-      timeText(s),
-      t('results.scoreLine', { score: this.host.currentScore() }),
-    ]);
+    // TRY AGAIN starts a fresh OFFLINE dungeon run (`RunLifecycle.beginRun`), so it is offered
+    // only where that is the same thing the player just lost: not an online match, which has
+    // a room and a party this screen cannot rebuild, and not the flat-mode tutorial, whose
+    // retry is not a dungeon run and whose exit already goes back to the lobby.
+    const retry = !this.host.isOnline() && s.dungeonEnabled;
+    this.host.showOutcomeScreen(
+      false,
+      t('results.defeatTitle'),
+      [
+        isEndlessRun(s)
+          ? t('results.fellOnFloorEndless', { floor })
+          : t('results.fellOnFloor', { floor, floorCount: totalFloorCount(s) }),
+        t('results.materialsLost', { count: totalForfeited(s, this.host.localOwner) }),
+        timeText(s),
+        t('results.scoreLine', { score: this.host.currentScore() }),
+      ],
+      undefined, // a death is never offered anything (see `doubleOffer`)
+      retry,
+    );
   }
 
   /** PvP arena victory (design/15) — last seat standing. No materials/floor concept. */

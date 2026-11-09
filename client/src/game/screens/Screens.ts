@@ -64,6 +64,9 @@ export class Screens {
   private readonly box = new Graphics();
   private sub: Text;
   private confirmBtn: Button;
+  /** TRY AGAIN — a fresh run straight from a lost one (2026-11-09). Shown only when `show` is
+   *  told the loss can be retried; see `show`'s own note for which losses those are. */
+  private retryBtn: Button;
   /** The optional offer button (see `ResultOffer`). Hidden unless `show` is handed one,
    *  which is every build without a rewarded ad installed and every result that has
    *  nothing to offer. `autoWidth` because its label is translated and the longest
@@ -92,6 +95,9 @@ export class Screens {
   // decided result-screen content: confirm still re-enters the loadout screen; this
   // is for a player who wants to fully back out to the main menu instead).
   onMenu: (() => void) | null = null;
+  // TRY AGAIN — start the next run now, on the loadout the account holds, skipping the
+  // loadout screen that CONFIRM opens.
+  onRetry: (() => void) | null = null;
 
   constructor() {
     this.shell = new MenuShell({ title: '', back: t('results.mainMenuButton') });
@@ -115,11 +121,16 @@ export class Screens {
     this.offerBtn = new Button('', { w: CONTENT_W, h: OFFER_H, fontSize: 14, color: 0x975a16, borderColor: 0xf6ad55, autoWidth: true });
     this.offerBtn.onTap = () => void this.claim();
     this.offerBtn.view.visible = false;
+    // The go-green, and the bottom row CONFIRM holds on every other result: when it is
+    // shown, it takes CONFIRM's place under the thumb and CONFIRM moves up as the secondary.
+    this.retryBtn = new Button(t('results.retryButton'), { w: CONTENT_W, h: CONFIRM_H, fontSize: 17, ...MENU_BUTTONS.primary });
+    this.retryBtn.onTap = () => this.onRetry?.();
+    this.retryBtn.view.visible = false;
 
     this.resultIcon.anchor.set(0.5, 0);
     this.resultIcon.visible = false;
 
-    this.shell.content.addChild(this.box, this.resultIcon, this.sub, this.offerBtn.view, this.confirmBtn.view);
+    this.shell.content.addChild(this.box, this.resultIcon, this.sub, this.offerBtn.view, this.confirmBtn.view, this.retryBtn.view);
     this.shell.mount(this.view);
     this.view.visible = false;
   }
@@ -144,6 +155,9 @@ export class Screens {
     this.offerBtn.view.position.set(cx - this.offerBtn.width / 2, y);
     if (this.offerBtn.view.visible) y += OFFER_H + GAP;
     this.confirmBtn.view.position.set(0, y);
+    if (!this.retryBtn.view.visible) return y + CONFIRM_H;
+    y += CONFIRM_H + GAP;
+    this.retryBtn.view.position.set(0, y);
     return y + CONFIRM_H;
   }
 
@@ -156,10 +170,26 @@ export class Screens {
     this.shell.layout(w, h, SHEET_W, SHEET_TITLE_H + 18 + this.flow() + SHEET_PAD);
   }
 
-  show(w: number, h: number, won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null) {
+  /**
+   * `retry` adds TRY AGAIN (2026-11-09). The first sandbox traffic showed most runs ending in
+   * a death on floor 1 within minutes, and the way back into a run from here was two screens
+   * long: CONFIRM to the loadout screen, then START RUN. A player who has just lost and has
+   * nothing crafted to choose between is asked to make a decision that is not there. So a
+   * retriable loss gets the one-tap route as its primary button, and CONFIRM stays, relabelled
+   * for where it actually goes, for the player who does want to gear up first. Only the
+   * caller knows which losses can be retried (an online match cannot be restarted from here),
+   * so it says so; a win never gets the button however it is called.
+   */
+  show(w: number, h: number, won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null, retry = false) {
     // Retext on show (design/17-i18n.md) so a language change takes effect next time
     // this screen opens, same convention as MainMenu.ts's `retext()`.
-    this.confirmBtn.setText(t('results.confirmButton'));
+    const retrying = retry && !won;
+    this.retryBtn.view.visible = retrying;
+    this.retryBtn.setText(t('results.retryButton'));
+    this.confirmBtn.setText(t(retrying ? 'results.loadoutButton' : 'results.confirmButton'));
+    const confirmStyle = retrying ? MENU_BUTTONS.secondary : MENU_BUTTONS.primary;
+    this.confirmBtn.setFill(confirmStyle.color);
+    this.confirmBtn.setBorder(confirmStyle.borderColor);
     this.shell.setBack(t('results.mainMenuButton'));
     // The offer's label is already translated by whoever built it (it names the reward,
     // which is not this screen's knowledge) — so it is set, not re-derived, here.

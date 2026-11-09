@@ -395,3 +395,84 @@ describe('Screens — the rows that can be absent (design/10 "One shell for ever
     expect(sheetAt(s).y).not.toBe(shown.y);
   });
 });
+
+/**
+ * TRY AGAIN (2026-11-09): the one-tap way from a lost run into the next. Before it, a retry
+ * was two screens — CONFIRM to the loadout screen, then START RUN.
+ */
+describe('Screens — TRY AGAIN on a retriable loss', () => {
+  const retryOf = (s: Screens) => (s as unknown as { retryBtn: Tappable & { width: number } }).retryBtn;
+  const fillOf = (b: unknown) => (b as { color: number }).color;
+
+  it('is hidden by default, on a win, and on a loss the caller did not mark retriable', () => {
+    const s = new Screens();
+    s.show(800, 600, false, 'DEFEAT', ['a']);
+    expect(retryOf(s).view.visible).toBe(false);
+    s.show(800, 600, true, 'EXTRACTED', ['a'], null, true); // a win never gets it, flag or not
+    expect(retryOf(s).view.visible).toBe(false);
+    expect(privateOf(s).confirmBtn.label.text).toBe('CONFIRM');
+  });
+
+  it('takes the bottom, primary row; CONFIRM moves above it, relabelled LOADOUT and no longer green', () => {
+    const plain = new Screens();
+    plain.show(800, 600, false, 'DEFEAT', ['a', 'b']);
+    const confirmY = privateOf(plain).confirmBtn.view.position.y;
+    const primaryFill = fillOf(privateOf(plain).confirmBtn);
+
+    const s = new Screens();
+    s.show(800, 600, false, 'DEFEAT', ['a', 'b'], null, true);
+    const retry = retryOf(s);
+    const confirm = privateOf(s).confirmBtn;
+    expect(retry.view.visible).toBe(true);
+    expect(retry.label.text).toBe('TRY AGAIN');
+    expect(confirm.label.text).toBe('LOADOUT');
+    expect(confirm.view.position.y).toBe(confirmY); // CONFIRM's row did not move...
+    expect(retry.view.position.y).toBe(confirmY + 48 + 14); // ...TRY AGAIN is added under it
+    expect(fillOf(retry)).toBe(primaryFill);
+    expect(fillOf(confirm)).not.toBe(primaryFill);
+  });
+
+  it('a tap calls onRetry, not onConfirm; CONFIRM still calls onConfirm', () => {
+    const s = new Screens();
+    const retry = vi.fn();
+    const confirm = vi.fn();
+    s.onRetry = retry;
+    s.onConfirm = confirm;
+    s.show(800, 600, false, 'DEFEAT', ['a'], null, true);
+    emitTap(retryOf(s).view);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+    emitTap(privateOf(s).confirmBtn.view);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later show() without it restores CONFIRM — label, colour and the sheet height', () => {
+    const s = new Screens();
+    s.show(800, 600, false, 'DEFEAT', ['a']);
+    const before = { fill: fillOf(privateOf(s).confirmBtn), h: privateOf(s).shell.sheet.height };
+    s.show(800, 600, false, 'DEFEAT', ['a'], null, true);
+    expect(privateOf(s).shell.sheet.height).toBeGreaterThan(before.h);
+    s.show(800, 600, false, 'DEFEAT', ['a']);
+    expect(retryOf(s).view.visible).toBe(false);
+    expect(privateOf(s).confirmBtn.label.text).toBe('CONFIRM');
+    expect(fillOf(privateOf(s).confirmBtn)).toBe(before.fill);
+    expect(privateOf(s).shell.sheet.height).toBe(before.h);
+  });
+
+  it('is translated on show() like the rest of the screen', async () => {
+    await useLocale('zh');
+    const s = new Screens();
+    s.show(800, 600, false, '失败', ['a'], null, true);
+    expect(retryOf(s).label.text).toBe('再来一局');
+    expect(privateOf(s).confirmBtn.label.text).toBe('调整装备');
+  });
+
+  it('fits with five stat lines and the badge on a phone held sideways', () => {
+    badge.tex = Texture.WHITE;
+    const s = new Screens();
+    s.show(844, 390, false, 'DEFEAT', ['1', '2', '3', '4', '5'], null, true);
+    const b = (retryOf(s).view as unknown as { getBounds(): { maxY: number } }).getBounds();
+    expect(b.maxY).toBeLessThanOrEqual(390);
+  });
+});

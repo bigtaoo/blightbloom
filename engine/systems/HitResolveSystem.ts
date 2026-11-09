@@ -199,7 +199,7 @@ export class HitResolveSystem {
   ): void {
     const dmg = applyResist(rawDamage, type, target.resist);
     // Shield-first absorb + hit event + shield_break (design/07 two-pool takeDamage).
-    takeDamage(state, target, dmg, attacker, type, true, crit);
+    takeDamage(state, target, dmg, attacker, type, true, crit, sourceOwnerId);
     if (lifestealPermille) this.applyLifesteal(state, sourceOwnerId, dmg, lifestealPermille);
     // Status magnitude keys off the resisted hit, independent of how it split shield/hp.
     this.applyStatus(state, target, dmg, type, group);

@@ -193,6 +193,9 @@ const SCREENS: Array<[string, Build]> = [
     s.show(w, h, true, 'EXTRACTED', ['line one'], { label: 'СМОТРЕТЬ РЕКЛАМУ: МАТЕРИАЛЫ x2', claim: async () => [] });
     return s;
   }],
+  // A retriable loss draws TRY AGAIN and relabels CONFIRM to LOADOUT: two labels the other
+  // two cases never set, and the longest of them (pl) is the one that has to fit.
+  ['Screens + retry', (w, h) => { const s = new Screens(); s.show(w, h, false, 'DEFEAT', ['line one'], null, true); return s; }],
   ['Settings', (w, h) => { const s = new Settings(); s.show(w, h, defaultSettingsState()); return s; }],
   ['PauseMenu', (w, h) => { const s = new PauseMenu(); s.show(w, h); return s; }],
   ['PartyScreen', (w, h) => { const s = new PartyScreen({ matchBaseUrl: '' }); s.show(w, h); return s; }],
@@ -299,8 +302,9 @@ describe('the sweep measured what it claims to', () => {
       'PartyScreen: 6',
       'PauseMenu: 5', // + the shell's RESUME chip (2026-09-27)
       'PvpPreview: 2',
-      'Screens + ad offer: 3',
-      'Screens: 3',
+      'Screens + ad offer: 4',
+      'Screens + retry: 4',
+      'Screens: 4',
       'Settings: 8',
       'StoreScreen: 9',
     ]);
