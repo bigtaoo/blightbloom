@@ -48,7 +48,13 @@ export type GameEvent =
   // bullet at fire time or onto the swing at swing time, exactly where the roll itself lives
   // (design/07 "one frozen payload"). Absent on every other hit, so a build without a crit buff
   // produces the same events it always did. Render-only: the damage number prints it bigger.
-  | { type: 'hit'; target: number; faction: DamageSrc; gx: Fp; gy: Fp; damage: number; damageType: DamageType; shieldRemaining?: number; crit?: true }
+  //
+  // `by` is the actor id that dealt the hit, when there is one: the bullet's or swing's owner,
+  // or the player whose shield-break burst it was. Absent for hazards, DoT ticks and lightning
+  // chain hops, which have no single attacker. Read by the client's cause-of-death telemetry
+  // (`client/src/game/deathCause.ts`), the only record of WHAT killed a player once the run is
+  // over. Additive and inert for the sim (see the header), so no bump.
+  | { type: 'hit'; target: number; faction: DamageSrc; gx: Fp; gy: Fp; damage: number; damageType: DamageType; shieldRemaining?: number; crit?: true; by?: number }
   // A pool was topped up by something the player DID — a heal or shield pickup, a shop's heal or
   // shield line, a lifesteal hit — never the shield's idle regen, which ticks every few frames and
   // would print a "+1" forever. `amount` is what actually went in after the clamp to the cap, so

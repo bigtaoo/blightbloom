@@ -179,6 +179,25 @@ export const EVENTS = {
     chapter: { kind: 'id' },
   },
   /**
+   * The cause of a lost run, sent right after its `run_end { outcome: 'loss' }` and never on
+   * a win or an abandon (`client/src/game/deathCause.ts` has the reasoning for each field):
+   * `killer` is the blueprint type that landed the last hit (or `environment`, `player`,
+   * `<element>_status`, `unknown`), `room` the dungeon room of the last hit, `hits` the hits
+   * taken over the whole run, and `burst_pct` the damage of the last five seconds as a
+   * percentage of the full HP + shield pool. Added 2026-11-09, when most sandbox runs were
+   * ending in a floor-1 death the PvE bots never suffer.
+   *
+   * Its own event rather than four more fields on `run_end`, which would double that event
+   * past the per-event field cap (`analyticsEvents.test.ts`) for something only one of its
+   * three outcomes can carry. The two join on the visit id and arrive in the same batch.
+   */
+  run_death: {
+    killer: { kind: 'id' },
+    room: { kind: 'id' },
+    hits: { kind: 'int', min: 0, max: 99_999 },
+    burst_pct: { kind: 'int', min: 0, max: 999 },
+  },
+  /**
    * A purchase completed.
    *
    * There is no `store_open` beside it, and that is a decision rather than a gap: opening

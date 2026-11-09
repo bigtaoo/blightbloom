@@ -11,6 +11,7 @@ import type { FxController } from '../fx/FxController';
 import type { HudView } from '../ui/HudView';
 import type { AudioBus, AudioCue } from '../../platform/types';
 import { localSeatWon } from './localOutcome';
+import { noteDeathCauseEvents } from '../deathCause';
 
 /** How far above a dying actor's ground anchor its death burst is centred, in multiples of
  *  that actor's own drawn body radius — see the `death` case for why this reactor eyeballs
@@ -96,6 +97,9 @@ export class EventReactor {
       cues.set(id, (cues.get(id) ?? 0) + 1);
     };
     if (spawnedActors > 0) cues.set('spawn', spawnedActors);
+    // Cause-of-death telemetry reads the same stream; skipped on an empty frame for the
+    // reason `isLocalSeat` below resolves lazily.
+    if (events.length > 0) noteDeathCauseEvents(this.host.activeState(), this.host.localOwner, events);
     // "Is this entity the seat I am playing?" — the gate on `hurt` and `death.player`, the
     // only two cues that fire for ONE actor rather than for a world position. Both are
     // meaningless without it: `impact` already says a hit landed somewhere, so a `hurt` that

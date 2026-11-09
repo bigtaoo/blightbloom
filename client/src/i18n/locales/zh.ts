@@ -353,6 +353,8 @@ export const zh: Translations<typeof en> = {
     victoryTitle: '大吉大利',
     eliminatedTitle: '已淘汰',
     confirmButton: '确定',
+    retryButton: '再来一局',
+    loadoutButton: '调整装备',
     timeLine: '用时 {m}:{ss}',
     floorLine: '楼层 {floor}/{floorCount}',
     floorLineEndless: '楼层 {floor}',

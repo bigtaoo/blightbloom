@@ -36,6 +36,7 @@ describe('the vocabulary', () => {
       'first_input',
       'floor_reached',
       'page_open',
+      'run_death',
       'run_end',
       'run_start',
       'screen_view',
@@ -51,6 +52,7 @@ describe('the vocabulary', () => {
     expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character']);
     expect(Object.keys(EVENTS.floor_reached).sort()).toEqual(['chapter', 'floor']);
     expect(Object.keys(EVENTS.run_end).sort()).toEqual(['chapter', 'duration_s', 'floor', 'outcome']);
+    expect(Object.keys(EVENTS.run_death).sort()).toEqual(['burst_pct', 'hits', 'killer', 'room']);
     // An id, not an enum of the catalog: a client a chapter ahead of the server keeps the field.
     expect(coerceProp(EVENTS.run_end.chapter, 'a_chapter_this_build_has_never_heard_of')).toBe('a_chapter_this_build_has_never_heard_of');
     expect(coerceProp(EVENTS.run_end.chapter, '<script>')).toBeUndefined();

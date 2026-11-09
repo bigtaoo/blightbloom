@@ -28,6 +28,7 @@
 // why a per-visit id was a reason to send nothing at all.
 import { chapterIdOfConfig, type DungeonConfig } from '@dd/engine';
 import { track } from '../net/analytics';
+import { resetDeathCause } from './deathCause';
 import type { Phase } from './phase';
 
 /**
@@ -226,6 +227,7 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
     const character = state?.character;
     const props = { ...(character === undefined ? {} : { character }), ...chapterProp(state ?? {}) };
     track('run_start', Object.keys(props).length === 0 ? undefined : props);
+    resetDeathCause();
   }
   return true;
 }

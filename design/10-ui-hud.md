@@ -436,6 +436,12 @@ these screens now composes the same three things:
 - **Results** — the outcome as the sheet's title, green for a win and red for a loss; the badge;
   the stat lines in a field box; the optional amber offer on its own row; CONFIRM across the sheet.
   MAIN MENU moved from a small button under CONFIRM to the top-left chip, off CONFIRM's thumb spot.
+  **A retriable loss (2026-11-09)** adds TRY AGAIN, a green primary button under CONFIRM. It
+  starts a fresh run with the starter kit straight away (`RunLifecycle.beginRun`). CONFIRM turns
+  secondary and reads LOADOUT, since that is where it goes. Before this, retrying took two taps
+  through the Loadout screen, and the first sandbox traffic was mostly floor-1 deaths. A loss is
+  retriable only offline and in the dungeon: an online match has a room and a party this screen
+  cannot rebuild, and the flat-mode tutorial's exit already returns to the lobby.
 
 **Kept, deliberately.** Every screen is still pure presentation with the same callbacks; each keeps
 its backdrop in a field named `panel`, which `menuCoversWorld.test.ts` reads; the widgets keep

@@ -354,6 +354,8 @@ export const fr: Translations<typeof en> = {
     victoryTitle: 'VICTOIRE ROYALE',
     eliminatedTitle: 'ÉLIMINÉ',
     confirmButton: 'CONFIRMER',
+    retryButton: 'RÉESSAYER',
+    loadoutButton: 'ÉQUIPEMENT',
     timeLine: 'Temps {m}:{ss}',
     floorLine: 'Étage {floor}/{floorCount}',
     floorLineEndless: 'Étage {floor}',
