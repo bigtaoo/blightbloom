@@ -463,6 +463,14 @@ and `getLocale` answers the default until `new Game(...)` applies the persisted 
 On `5e325436` alone, a locale split of `session_start` counts every visit as English. Older
 builds batched their events, so they are not affected.
 
+Then `4f9804f3` (design/21 §2.10, design/10 Results) was published on 2026-11-09 at 09:34 UTC,
+same link, in the middle of the traffic run. It adds two things. A lost run now sends a
+`run_death` event (killer type, room, hits taken, last-five-seconds burst) after its
+`run_end`. And the defeat screen has a one-tap TRY AGAIN that starts a fresh run. Archive
+`blightbloom-2026-11-09-4f9804f3-death-cause` passed its check (Bridge 2.4.1). The update note
+tells players about TRY AGAIN. When reading the traffic run, split it at 09:34 UTC: sessions
+before then can retry only through the Loadout screen and send no `run_death`.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
