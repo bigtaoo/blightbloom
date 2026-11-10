@@ -64,6 +64,17 @@ export class PerfSampler {
     this.wasActive = active;
   }
 
+  /**
+   * The page went away (hidden, or being unloaded): send the window so far and disarm, so the
+   * frame that ends the absence is not taken for one frozen frame. rAF does not fire while a tab
+   * is hidden, so without this the first frame back would carry the whole time away in its
+   * unclamped length (`installPerfSample` reads `elapsedMS`, not the clamped `deltaMS`).
+   */
+  away(): void {
+    this.flush();
+    this.wasActive = false;
+  }
+
   /** A long task the page saw during play (PerformanceObserver 'longtask'). */
   longTask(ms: number): void {
     if (!this.wasActive) return;
@@ -108,8 +119,15 @@ export class PerfSampler {
 
 /** What `installPerfSample` reads from the page, injectable so a test needs no browser. */
 export interface PerfSampleHost {
-  /** The render ticker: `add` is called once with a per-frame callback receiving `deltaMS`. */
-  ticker: { add(fn: (t: { deltaMS: number }) => void): unknown };
+  /**
+   * The render ticker: `add` is called once with a per-frame callback. It reads `elapsedMS`, the
+   * frame's real length, NOT `deltaMS`: Pixi clamps that to `maxElapsedMS` (100 ms), so a device
+   * drawing 3 frames a second reported 10 fps and a frame frozen for seconds read 100 ms. The first
+   * sandbox numbers showed both: `frame_time_max_ms` sat at exactly 100 in the slow windows,
+   * `frames_over_100ms` was 0 in every window while long tasks ran to 7 s, and the slowest windows
+   * took ~90 s of wall clock to bank 30 s of "active" frames (design/22 §4.1, 2026-11-10).
+   */
+  ticker: { add(fn: (t: { elapsedMS: number }) => void): unknown };
   /** Is play active this frame (a local run, not paused, not on a menu)? */
   playing(): boolean;
   hidden(): boolean;
@@ -144,14 +162,36 @@ export function browserPerfHost(
 /** Wire a sampler to the page: frames off the ticker, counters off the page's own events, and a
  *  flush whenever the page may be going away. */
 export function installPerfSample(host: PerfSampleHost, sampler: PerfSampler): PerfSampler {
-  host.ticker.add((t) => sampler.frame(t.deltaMS, host.playing() && !host.hidden()));
+  host.ticker.add((t) => sampler.frame(t.elapsedMS, host.playing() && !host.hidden()));
   host.on('window', 'error', () => sampler.counts.js_error_count++);
   host.on('window', 'unhandledrejection', () => sampler.counts.unhandled_rejection_count++);
   host.on('canvas', 'webglcontextlost', () => sampler.counts.webgl_context_loss_count++);
-  host.on('window', 'pagehide', () => sampler.flush());
+  host.on('window', 'pagehide', () => sampler.away());
   host.on('document', 'visibilitychange', () => {
-    if (host.hidden()) sampler.flush();
+    if (host.hidden()) sampler.away();
   });
   host.observeLongTasks((ms) => sampler.longTask(ms));
   return sampler;
+}
+
+/**
+ * Whether WebGL is drawn by a software rasterizer (no usable GPU, or one the browser blocklisted):
+ * `'software'`, `'hardware'`, or `'unknown'` where the browser hides the renderer string. Sent with
+ * each sample as `gl`, so the slowest windows can be split by it; a coarse class rather than the
+ * renderer string itself, which would be a fingerprint.
+ */
+export function rendererClass(rendererString: string | null): 'software' | 'hardware' | 'unknown' {
+  if (!rendererString) return 'unknown';
+  return /swiftshader|llvmpipe|softpipe|basic render|software/i.test(rendererString) ? 'software' : 'hardware';
+}
+
+/** The unmasked renderer string of a WebGL context, or null where the browser does not expose it. */
+export function webglRenderer(gl: { getExtension(name: string): unknown; getParameter(p: number): unknown } | null | undefined): string | null {
+  try {
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info') as { UNMASKED_RENDERER_WEBGL: number } | null | undefined;
+    const r = ext ? gl!.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
+    return typeof r === 'string' ? r : null;
+  } catch {
+    return null;
+  }
 }
