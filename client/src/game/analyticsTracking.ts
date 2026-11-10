@@ -121,6 +121,12 @@ let lastPhase: Phase | null = null;
  */
 let lastRun: TrackedState | null = null;
 
+/** When the run's loading screen went up (`noteRunWait`), or null. Read and cleared by the
+ *  next `run_start`. Wall-clock milliseconds; injected in tests. */
+let waitStartedAt: number | null = null;
+const defaultClock = (): number => Date.now();
+let clock: () => number = defaultClock;
+
 /** The shape `trackedRunFrom` reads out of a live `GameState`, narrowed to the fields it
  *  needs so a test can hand it a plain object. */
 export interface RunStateLike {
@@ -225,7 +231,12 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
 
   if (!inRun(previous ?? 'menu') && inRun(phase)) {
     const character = state?.character;
-    const props = { ...(character === undefined ? {} : { character }), ...chapterProp(state ?? {}) };
+    const props = {
+      ...(character === undefined ? {} : { character }),
+      ...chapterProp(state ?? {}),
+      ...(waitStartedAt === null ? {} : { wait_ms: Math.max(0, Math.round(clock() - waitStartedAt)) }),
+    };
+    waitStartedAt = null;
     track('run_start', Object.keys(props).length === 0 ? undefined : props);
     resetDeathCause();
   }
@@ -248,8 +259,20 @@ export function lastRenderedPhase(): Phase | null {
   return lastPhase;
 }
 
+/**
+ * The run's loading screen went up: report `run_wait`, and start the clock the next
+ * `run_start` reads as `wait_ms`. Called by `TransitionGate` for a gate INTO a run only.
+ * A second call while one is open keeps the first stamp — the player has been waiting since then.
+ */
+export function noteRunWait(artPending: boolean): void {
+  track('run_wait', { art: artPending ? 'pending' : 'ready' });
+  waitStartedAt ??= clock();
+}
+
 /** Test-only: forget the last phase and the run snapshot. */
-export function resetAnalyticsTrackingForTests(): void {
+export function resetAnalyticsTrackingForTests(clockFn: () => number = defaultClock): void {
   lastPhase = null;
   lastRun = null;
+  waitStartedAt = null;
+  clock = clockFn;
 }

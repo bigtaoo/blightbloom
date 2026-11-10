@@ -9,7 +9,7 @@ import { adoptBridgeStorage } from './platform/playgama/bridgeStorage';
 import { bridgeSender } from './platform/playgama/bridgeAnalytics';
 import { attention } from './platform/keyFocus';
 import { PlaygamaSession } from './platform/playgama/PlaygamaSession';
-import { browserPerfHost, installPerfSample, PerfSampler } from './platform/playgama/perfSample';
+import { browserPerfHost, installPerfSample, PerfSampler, rendererClass, webglRenderer } from './platform/playgama/perfSample';
 import { activeQuality } from './render/quality';
 import { expectedPlayFps } from './game/powerBudget';
 import { baseAssetHost, setAssetHost } from './render/assetHost';
@@ -129,7 +129,8 @@ async function boot() {
   session.watchKeys();
   // Playgama's `performance_sample`: frame times of live play only, per ~30 s (perfSample.ts).
   const perfSample = new PerfSampler((d) => bridge.track('performance_sample', d), import.meta.env.VITE_GAME_VERSION ?? 'unknown');
-  perfSample.context = () => ({ q: activeQuality().tier });
+  const gl = rendererClass(webglRenderer((app.renderer as { gl?: Parameters<typeof webglRenderer>[0] }).gl));
+  perfSample.context = () => ({ q: activeQuality().tier, gl });
   perfSample.targetFps = expectedPlayFps;
   installPerfSample(browserPerfHost(app.ticker, app.canvas, () => game.getPhase() === 'playing'), perfSample);
   await hideBootSplash();

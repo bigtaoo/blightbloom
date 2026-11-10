@@ -483,6 +483,42 @@ the hold. Every Playgama event now also carries `focus` and `input`, so the next
 the panel showed, the run stayed frozen, and one click released it. CrazyGames gets the focus
 call and the hint but not the hold.
 
+**Three more reads of the traffic run (2026-11-10, not yet published).**
+
+- **Visits that never start a run.** 26 sessions sent no `run_start`. All of them lasted 0 s,
+  and 8 never sent a `screen_view`, so they left during the load. From the old data, leaving
+  while the run art was still downloading could not be told apart from never reaching the start
+  at all. Now it can: the run gate sends `run_wait` (`art` pending|ready) when it holds, and
+  `run_start` carries `wait_ms` (design/21 §2.11). The music pack (3.41 MB) was downloading at
+  the same time as the run art. It now starts only after the run art is in
+  (`preloadArt.ts` `beginDeferredArt`). Resizing the curtain stays the owner's call, as decided
+  on 2026-09-01.
+- **The room-2 deaths (`ember_l1_alcove`).** The bots do not reproduce them. Five profiles were
+  run on 40 paired seeds each: careful, aggressive, novice, a close-range "brawler" and a
+  "rusher" that only fires at 2 grid. In the alcove they take 0.9–4 HP, and none dies there.
+  Humans died there taking 10–15 hits. Two candidate fixes were A/B'd and neither was kept:
+  - Every alcove spawn dormant: the aggressive bot's damage went 0.9 → 2.0, and brawler deaths
+    in the next room went 1 → 14.
+  - Two of the three emberlings removed: the damage moved up for some profiles and down for
+    others.
+
+  Neither moves damage one way across the bots, so neither is a fix. The missing ingredient is
+  probably aim, which every bot does perfectly. The next step is the human data: `run_death`
+  (killer, room, hits, burst) on more visits, and a replay of one alcove death. No engine change
+  until those agree with a measurement.
+- **Frame rate on the slowest devices was under-reported.** `performance_sample` read Pixi's
+  `deltaMS`, which is clamped to 100 ms. In the slow windows `frame_time_max_ms` sat at exactly
+  100, and `frames_over_100ms` was 0 everywhere while long tasks ran to 7 s. Those windows took
+  about 90 s of wall clock to bank 30 s of "active" frames. The devices reporting 10 fps were
+  really drawing about 3. The sampler now reads `elapsedMS`. It disarms on hide and on
+  `pagehide`, so the first frame back is not counted as one frozen frame. Each sample now also
+  carries `gl` (software|hardware|unknown, from the unmasked renderer string, never the string
+  itself). That tells whether the slowest windows are machines drawing WebGL in software, which
+  no quality tier can rescue. `low` already ran on 14 of 38 sessions. Read on the next build
+  before tuning anything: `fps_p10` and `frames_over_250ms` split by `gl`. A software-renderer
+  share would argue for starting those machines at `low` at boot, a decision this data cannot
+  make yet.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
