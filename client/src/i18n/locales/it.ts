@@ -333,6 +333,7 @@ export const it: Translations<typeof en> = {
   tutorial: {
     step: 'PASSO {n}/{of}',
     hintMoveKeys: 'Muoviti con WASD.',
+    hintClickFirst: 'Clicca prima sul gioco, poi usa i tasti.',
     hintMoveTouch: 'Trascina il lato sinistro dello schermo per muoverti.',
     hintAttackKeys: 'Tieni premuto il tasto sinistro del mouse per attaccare: la mira è automatica.',
     hintAttackTouch: 'Tieni premuto il lato destro dello schermo per attaccare: la mira è automatica.',

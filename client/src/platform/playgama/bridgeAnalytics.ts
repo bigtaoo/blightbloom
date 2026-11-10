@@ -27,15 +27,25 @@
  */
 import type { AnalyticsBatch } from '../../net/analyticsEvents';
 import type { PlaygamaBridge } from './bridge';
+import type { Attention } from '../keyFocus';
 
 /** Events Bridge already records on its own, which this host therefore never forwards. */
 export const PLATFORM_OWNED_EVENTS: ReadonlySet<string> = new Set(['session_end', 'active_time']);
 
-export function bridgeSender(bridge: Pick<PlaygamaBridge, 'track'>): (batch: AnalyticsBatch) => void {
+/**
+ * `attention` (2026-11-10) adds `focus` and `input` to every event (`platform/keyFocus.ts`): has
+ * the game ever had the keys, and has the player pressed inside it. Two booleans, so no
+ * cardinality to speak of, and they split a run that went unplayed into "the keys never got
+ * here" and "the player never tried".
+ */
+export function bridgeSender(
+  bridge: Pick<PlaygamaBridge, 'track'>,
+  attention: () => Attention | null = () => null,
+): (batch: AnalyticsBatch) => void {
   return (batch) => {
     for (const e of batch.events) {
       if (PLATFORM_OWNED_EVENTS.has(e.name)) continue;
-      bridge.track(e.name, { ...e.props, build: batch.build, locale: batch.locale });
+      bridge.track(e.name, { ...e.props, ...attention(), build: batch.build, locale: batch.locale });
     }
   };
 }

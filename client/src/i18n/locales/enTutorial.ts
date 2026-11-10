@@ -4,6 +4,7 @@
 export const enTutorial = {
   step: 'STEP {n}/{of}',
   hintMoveKeys: 'Move with WASD.',
+  hintClickFirst: 'Click the game first, then use the keys.',
   hintMoveTouch: 'Drag the left side of the screen to move.',
   hintAttackKeys: 'Hold the left mouse button to attack — aiming is automatic.',
   hintAttackTouch: 'Hold the right side of the screen to attack — aiming is automatic.',

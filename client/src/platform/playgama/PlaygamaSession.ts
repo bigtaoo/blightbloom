@@ -20,6 +20,7 @@ import type { RewardedAd } from '../rewardedAd';
 import { GameplayBracket, isGameplayPhase } from '../crazygames/GameplayBracket';
 import type { SuspendableClock } from '../crazygames/suspension';
 import type { PlaygamaBridge } from './bridge';
+import { heldForKeys, onKeyFocus } from '../keyFocus';
 
 export interface PlaygamaGameView {
   getPhase(): Phase;
@@ -31,7 +32,18 @@ type SessionBridge = Pick<
 >;
 
 /** Why the game is stopped or silent right now; it runs again only when this is empty. */
-type Hold = 'ad' | 'pause' | 'unsized';
+type Hold = 'ad' | 'pause' | 'unsized' | 'keys';
+
+/**
+ * The keys' side of `platform/keyFocus.ts`: whether the move lesson is waiting on keys that go
+ * to the portal's page, and a way to hear the moment they arrive. Injected for the tests.
+ */
+export interface SessionKeys {
+  held(): boolean;
+  onFocus(fn: () => void): void;
+}
+
+const sinkKeys: SessionKeys = { held: heldForKeys, onFocus: onKeyFocus };
 
 /**
  * The frame the game is drawn into. Playgama's sandbox mounts the game in an iframe that starts
@@ -56,6 +68,7 @@ export class PlaygamaSession {
   private previous: Phase | null = null;
   private lastSubstantive: Phase | null = null;
   private interstitials = 0;
+  private keys: SessionKeys | null = null;
 
   constructor(
     private readonly game: PlaygamaGameView,
@@ -98,8 +111,23 @@ export class PlaygamaSession {
     this.viewport.onResize(check);
   }
 
+  /**
+   * Hold a run whose move lesson is asking for a click (`keyFocus.ts`): the sandbox's first runs
+   * played on unseen, the keys going to the portal's page and the consent popup over the frame,
+   * until the player had lost the fight they never steered (Holy Kicker measured ~38 such runs,
+   * D:/standing `ui/runWatch.ts`). Held, the frame stays on the panel that says what to do, no
+   * `gameplay_started` goes out, and the first focus — a click anywhere in the frame — lets it go.
+   * Released from the focus event, because a stopped clock runs no `update()` to notice it.
+   */
+  watchKeys(keys: SessionKeys = sinkKeys): void {
+    this.keys = keys;
+    keys.onFocus(() => this.setHold('keys', false));
+  }
+
   update(): void {
     const phase = this.game.getPhase();
+    const keys = this.keys !== null && phase === 'playing' && this.keys.held();
+    if (keys !== this.holds.has('keys')) this.setHold('keys', keys);
     this.bracket.update(phase, this.holds.size > 0);
     if (phase !== this.previous) this.onPhaseChange(phase);
     this.previous = phase;

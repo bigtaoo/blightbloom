@@ -1,5 +1,6 @@
 import type { EnemyActor, GameEvent, GameState, PlayerActor } from '@dd/engine';
 import { t } from '../../i18n';
+import { keysReach, setAwaitingKeys } from '../../platform/keyFocus';
 
 /** The one HUD widget the lessons draw on: `HudView.tutorialPrompt` (ui/TutorialPrompt.ts),
  *  narrowed to what this calls so the step machine stays testable without Pixi. */
@@ -82,6 +83,14 @@ const CUED: ReadonlySet<Lesson> = new Set(['swap', 'deflect']);
  *   lessons that apply.
  * - **The text depends on the input device, not on the platform.** `touch` picks one
  *   truthful sentence instead of printing two.
+ *
+ * ## The keys may not reach the game yet (2026-11-10)
+ *
+ * In a portal's iframe a key press goes to the portal's page until the player clicks the game
+ * (`platform/keyFocus.ts`). While that is so, "Move with WASD" is advice that cannot work, so a
+ * keyboard player's move panel says "click the game first" instead (`click`), and flags it with
+ * `setAwaitingKeys` for a host session to hold the run still meanwhile. It swaps back to the
+ * move lesson on the first tick the keys arrive.
  */
 export class TutorialHintController {
   private step: Step = 'move';
@@ -94,7 +103,7 @@ export class TutorialHintController {
    *  that is not armed keeps the panel hidden and cannot be learned or given up on. */
   private armed = false;
   /** What the panel last showed: the step, or `waiting` for a cued step not yet armed. */
-  private shownFor: Step | 'waiting' | null = null;
+  private shownFor: Step | 'waiting' | 'click' | null = null;
   /** Whether `done` was EARNED (the last lesson was completed) rather than arrived at by the
    *  deflect lesson timing out. Only an earned one says "nicely done". */
   private doneEarned = false;
@@ -127,9 +136,10 @@ export class TutorialHintController {
     // hidden is not the lesson.
     if (this.step !== 'done' && !this.armed && this.cued(this.step, s, p, events)) this.begin(this.step, s, p, true);
 
-    const showing = this.step !== 'done' && !this.armed ? 'waiting' : this.step;
+    const showing = this.step !== 'done' && !this.armed ? 'waiting' : this.clickFirst() ? 'click' : this.step;
     if (showing !== this.shownFor) {
       this.shownFor = showing;
+      setAwaitingKeys(showing === 'click');
       if (showing === 'waiting') {
         this.prompt.hide();
       } else if (this.step === 'done') {
@@ -137,7 +147,8 @@ export class TutorialHintController {
         // no melee weapon still earns its congratulation.
         this.prompt.finish(this.doneEarned ? t('tutorial.hintCleared') : null);
       } else {
-        this.prompt.show(this.messageFor(this.step), this.lessons.indexOf(this.step) + 1, this.lessons.length);
+        const text = showing === 'click' ? t('tutorial.hintClickFirst') : this.messageFor(this.step);
+        this.prompt.show(text, this.lessons.indexOf(this.step) + 1, this.lessons.length);
       }
     }
   }
@@ -206,6 +217,11 @@ export class TutorialHintController {
     this.baselineSlot = p.activeSlot;
   }
 
+  /** Is this the keyboard move lesson, with the keys still going somewhere else? */
+  private clickFirst(): boolean {
+    return this.step === 'move' && !this.touch() && !keysReach();
+  }
+
   private applies(step: Lesson, p: PlayerActor): boolean {
     if (step === 'swap') return p.weapons.length > 1;
     if (step === 'deflect') return p.weapons.some((w) => w.spec.kind === 'melee');
@@ -237,6 +253,7 @@ export class TutorialHintController {
     this.armed = false;
     this.shownFor = null;
     this.doneEarned = false;
+    setAwaitingKeys(false);
     this.prompt.hide();
   }
 }

@@ -15,13 +15,14 @@
  * fight (`fight`), deflect for an enemy shot (`ENEMY_SHOT`) — so every case that reaches them
  * supplies the cue, and the "waits for its moment" block pins the gate itself.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { createGameState } from '@dd/engine/state/GameState';
 import { fp } from '@dd/engine/math/fixed';
 import type { GameState } from '@dd/engine/state/GameState';
 import type { GameEvent } from '@dd/engine/state/events';
 import type { EnemyActor } from '@dd/engine/state/entities';
 import { DEFLECT_GIVE_UP_TICKS, SWAP_GIVE_UP_TICKS, TutorialHintController } from './TutorialHintController';
+import { heldForKeys, installKeyFocus, resetKeyFocus } from '../../platform/keyFocus';
 
 function fakePrompt() {
   return { show: vi.fn(), finish: vi.fn(), hide: vi.fn() };
@@ -413,5 +414,59 @@ describe('TutorialHintController — reset', () => {
     prompt.show.mockClear();
     c.consume(baseState(), NO_EVENTS);
     expect(prompt.show).toHaveBeenCalledWith('Move with WASD.', 1, 4);
+  });
+});
+
+describe('TutorialHintController — the keys have not reached the game yet (2026-11-10)', () => {
+  afterEach(resetKeyFocus);
+
+  /** A portal iframe whose keys are elsewhere until `has` is set. */
+  function unfocused() {
+    const frame = { has: false };
+    installKeyFocus({ focus: () => undefined, addEventListener: () => undefined }, { hasFocus: () => frame.has });
+    return frame;
+  }
+
+  it('asks for a click instead of teaching WASD, holds, and swaps to the lesson when the keys arrive', () => {
+    const frame = unfocused();
+    const { prompt, tick } = setup();
+    tick();
+    expect(prompt.show).toHaveBeenLastCalledWith('Click the game first, then use the keys.', 1, 4);
+    expect(heldForKeys()).toBe(true);
+    tick();
+    expect(prompt.show).toHaveBeenCalledTimes(1); // shown once, not re-shown every tick
+    frame.has = true;
+    tick();
+    expect(prompt.show).toHaveBeenLastCalledWith('Move with WASD.', 1, 4);
+    expect(heldForKeys()).toBe(false);
+  });
+
+  it('a touch session is never asked to click: its controls need no keys', () => {
+    unfocused();
+    const { prompt, tick } = setup(() => true);
+    tick();
+    expect(String(prompt.show.mock.lastCall?.[0])).not.toContain('Click the game first');
+    expect(heldForKeys()).toBe(false);
+  });
+
+  it('only the move lesson asks: a later lesson with the keys gone teaches as before', () => {
+    const frame = unfocused();
+    frame.has = true;
+    const { prompt, s, tick } = setup();
+    tick();
+    walk(s);
+    frame.has = false;
+    tick();
+    expect(prompt.show.mock.lastCall).toEqual([expect.stringContaining('left mouse button'), 2, 4]);
+    expect(heldForKeys()).toBe(false);
+  });
+
+  it('reset clears the wait, so a held flag never outlives its run', () => {
+    unfocused();
+    const { c, tick } = setup();
+    tick();
+    expect(heldForKeys()).toBe(true);
+    c.reset();
+    expect(heldForKeys()).toBe(false);
   });
 });

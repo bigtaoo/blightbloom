@@ -333,6 +333,7 @@ export const de: Translations<typeof en> = {
   tutorial: {
     step: 'SCHRITT {n}/{of}',
     hintMoveKeys: 'Mit WASD bewegen.',
+    hintClickFirst: 'Erst ins Spiel klicken, dann die Tasten nutzen.',
     hintMoveTouch: 'Zum Bewegen die linke Bildschirmhälfte ziehen.',
     hintAttackKeys: 'Linke Maustaste halten, um anzugreifen — das Zielen läuft automatisch.',
     hintAttackTouch: 'Die rechte Bildschirmhälfte halten, um anzugreifen — das Zielen läuft automatisch.',

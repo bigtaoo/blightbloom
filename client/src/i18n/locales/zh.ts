@@ -332,6 +332,7 @@ export const zh: Translations<typeof en> = {
   tutorial: {
     step: '第 {n}/{of} 步',
     hintMoveKeys: '用 WASD 移动。',
+    hintClickFirst: '先点一下游戏画面，再用键盘。',
     hintMoveTouch: '拖动屏幕左侧移动。',
     hintAttackKeys: '按住鼠标左键攻击——自动瞄准。',
     hintAttackTouch: '按住屏幕右侧攻击——自动瞄准。',
