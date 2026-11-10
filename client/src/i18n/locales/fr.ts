@@ -333,6 +333,7 @@ export const fr: Translations<typeof en> = {
   tutorial: {
     step: 'ÉTAPE {n}/{of}',
     hintMoveKeys: 'Déplacez-vous avec ZQSD.',
+    hintClickFirst: "Cliquez d'abord sur le jeu, puis utilisez les touches.",
     hintMoveTouch: 'Faites glisser le côté gauche de l’écran pour vous déplacer.',
     hintAttackKeys: 'Maintenez le clic gauche pour attaquer — la visée est automatique.',
     hintAttackTouch: 'Maintenez le côté droit de l’écran pour attaquer — la visée est automatique.',

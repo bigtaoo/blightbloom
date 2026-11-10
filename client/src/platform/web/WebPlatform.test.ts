@@ -6,11 +6,12 @@
  * worth stubbing. `createInput`/`createAudio` are plain factories with no such
  * dependency — fully covered here.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Application } from 'pixi.js';
 import { WebPlatform } from './WebPlatform';
 import { WebInput } from './WebInput';
 import { WebAudio } from './WebAudio';
+import { attention, resetKeyFocus } from '../keyFocus';
 
 describe('WebPlatform', () => {
   it('createInput returns a fresh WebInput, ignoring the app argument (Web input never needs it)', () => {
@@ -28,5 +29,27 @@ describe('WebPlatform', () => {
     const platform = new WebPlatform();
     expect(platform.createInput({} as Application)).not.toBe(platform.createInput({} as Application));
     expect(platform.createAudio()).not.toBe(platform.createAudio());
+  });
+
+  describe('the constructor asks for the keys (platform/keyFocus.ts)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      resetKeyFocus();
+    });
+
+    it('installs key focus on the real window when there is one', () => {
+      const focus = vi.fn();
+      vi.stubGlobal('window', { focus, addEventListener: vi.fn() });
+      vi.stubGlobal('document', { hasFocus: () => false });
+      new WebPlatform();
+      expect(focus).toHaveBeenCalledTimes(1);
+      expect(attention()).toEqual({ focus: false, input: false });
+    });
+
+    it('does nothing without a window (a test, a host with no DOM)', () => {
+      vi.stubGlobal('window', undefined);
+      new WebPlatform();
+      expect(attention()).toBeNull();
+    });
   });
 });

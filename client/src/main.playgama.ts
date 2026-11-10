@@ -7,6 +7,7 @@ import { setRewardedAd } from './platform/rewardedAd';
 import { PlaygamaBridge } from './platform/playgama/bridge';
 import { adoptBridgeStorage } from './platform/playgama/bridgeStorage';
 import { bridgeSender } from './platform/playgama/bridgeAnalytics';
+import { attention } from './platform/keyFocus';
 import { PlaygamaSession } from './platform/playgama/PlaygamaSession';
 import { browserPerfHost, installPerfSample, PerfSampler } from './platform/playgama/perfSample';
 import { activeQuality } from './render/quality';
@@ -56,6 +57,8 @@ async function boot() {
 
   setAssetHost(baseAssetHost(import.meta.env.BASE_URL));
   setHostKind('playgama');
+  // Asks for the keys (platform/keyFocus.ts) — before analytics, whose events carry `attention()`.
+  const platform = new WebPlatform();
 
   // Analytics through Bridge. `baseUrl` and `token` are unused when `send` is given.
   installAnalytics({
@@ -66,7 +69,7 @@ async function boot() {
     // Not `getLocale`: nothing applies a locale until the Game is constructed, and a flush before
     // that would report the default as this visit's language (i18n/index.ts `appliedLocaleOr`).
     locale: () => appliedLocaleOr(bootLocale),
-    send: bridgeSender(bridge),
+    send: bridgeSender(bridge, attention),
     // Each event goes to Bridge as it happens: a portal frame is torn down with no reliable
     // `pagehide`, so a 30 s batch lost every visit shorter than that (design/22 §4.1).
     sendEachEvent: true,
@@ -75,7 +78,6 @@ async function boot() {
     bootStartedAt: globalThis.performance?.timeOrigin,
   });
 
-  const platform = new WebPlatform();
   const app = await platform.createApp();
   const input = platform.createInput(app);
   const audio = platform.createAudio();
@@ -123,6 +125,8 @@ async function boot() {
   // download, so it is hesitation and not bandwidth (net/firstInput.ts).
   trackFirstInput(globalThis as unknown as FirstInputTarget, () => performance.now(), () => game.getPhase());
   session.watchViewport();
+  // Hold the first run while its move lesson asks for a click the keys need (keyFocus.ts).
+  session.watchKeys();
   // Playgama's `performance_sample`: frame times of live play only, per ~30 s (perfSample.ts).
   const perfSample = new PerfSampler((d) => bridge.track('performance_sample', d), import.meta.env.VITE_GAME_VERSION ?? 'unknown');
   perfSample.context = () => ({ q: activeQuality().tier });

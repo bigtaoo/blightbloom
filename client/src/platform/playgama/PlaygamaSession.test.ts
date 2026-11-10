@@ -291,3 +291,65 @@ describe('PlaygamaSession — a frame with no area', () => {
     expect(h.log.filter((m) => m === 'gameplay_started')).toHaveLength(1);
   });
 });
+
+describe('PlaygamaSession — the keys hold (2026-11-10)', () => {
+  /** A `SessionKeys` the test drives: `held` is the lesson's wait, `focus()` the window event. */
+  function keys() {
+    const k = { held: false, listeners: [] as Array<() => void> };
+    return {
+      k,
+      gate: { held: () => k.held, onFocus: (fn: () => void) => void k.listeners.push(fn) },
+      focus: () => k.listeners.forEach((fn) => fn()),
+    };
+  }
+
+  it('holds a run whose lesson waits on the keys: clock stopped, muted, no gameplay_started', () => {
+    const h = harness();
+    const { k, gate, focus } = keys();
+    h.session.watchKeys(gate);
+    k.held = true;
+    h.walk('menu', 'playing');
+    expect(h.count('clock:stop')).toBe(1);
+    expect(h.mutes.at(-1)).toBe(true);
+    expect(h.count('gameplay_started')).toBe(0);
+    expect(h.session.diagnostics()).toContain('holds keys');
+
+    // The clock is stopped, so `update()` does not run: the focus event alone lets it go.
+    k.held = false;
+    focus();
+    expect(h.count('clock:start')).toBe(1);
+    expect(h.mutes.at(-1)).toBe(false);
+    expect(h.count('gameplay_started')).toBe(1);
+    h.walk('playing');
+    expect(h.count('clock:stop')).toBe(1);
+  });
+
+  it('holds nothing outside a running run, and nothing before watchKeys', () => {
+    const h = harness();
+    const { k, gate } = keys();
+    k.held = true;
+    h.walk('playing'); // not watching yet
+    expect(h.count('clock:stop')).toBe(0);
+    h.session.watchKeys(gate);
+    h.walk('paused', 'menu');
+    expect(h.count('clock:stop')).toBe(0);
+  });
+
+  it('a lesson that stops waiting releases the hold on the next frame too', () => {
+    const h = harness();
+    const { k, gate } = keys();
+    h.session.watchKeys(gate);
+    k.held = true;
+    h.walk('playing');
+    k.held = false;
+    h.walk('playing');
+    expect(h.log.filter((m) => m.startsWith('clock'))).toEqual(['clock:stop', 'clock:start']);
+  });
+
+  it('defaults to the keyFocus sink, which holds nothing on a host with no iframe', () => {
+    const h = harness();
+    h.session.watchKeys();
+    h.walk('playing');
+    expect(h.count('clock:stop')).toBe(0);
+  });
+});

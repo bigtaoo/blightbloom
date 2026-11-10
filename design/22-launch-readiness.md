@@ -471,6 +471,18 @@ same link, in the middle of the traffic run. It adds two things. A lost run now 
 tells players about TRY AGAIN. When reading the traffic run, split it at 09:34 UTC: sessions
 before then can retry only through the Loadout screen and send no `run_death`.
 
+**Keys that never reach the game (2026-11-10, not yet published).** The traffic run's first
+inputs were 46 pointer presses and no key, and 17 of 63 runs got no input at all. A portal
+iframe gets no key presses until the player clicks inside it. The fix is ported from Holy
+Kicker and lives in `client/src/platform/keyFocus.ts`. The game calls `window.focus()` at boot
+and on every press. While `document.hasFocus()` is false on a non-touch session, the move
+lesson reads "Click the game first, then use the keys." and the Playgama session holds the run
+(hold `keys`: clock stopped, `gameplay_started` withheld). The window's focus event releases
+the hold. Every Playgama event now also carries `focus` and `input`, so the next read can tell
+"never had the keys" apart from "had them and left". Checked in a browser pane without focus:
+the panel showed, the run stayed frozen, and one click released it. CrazyGames gets the focus
+call and the hint but not the hold.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
