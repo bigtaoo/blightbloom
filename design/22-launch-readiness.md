@@ -471,7 +471,7 @@ same link, in the middle of the traffic run. It adds two things. A lost run now 
 tells players about TRY AGAIN. When reading the traffic run, split it at 09:34 UTC: sessions
 before then can retry only through the Loadout screen and send no `run_death`.
 
-**Keys that never reach the game (2026-11-10, not yet published).** The traffic run's first
+**Keys that never reach the game (2026-11-10, published with `ee9465b8` below).** The traffic run's first
 inputs were 46 pointer presses and no key, and 17 of 63 runs got no input at all. A portal
 iframe gets no key presses until the player clicks inside it. The fix is ported from Holy
 Kicker and lives in `client/src/platform/keyFocus.ts`. The game calls `window.focus()` at boot
@@ -483,7 +483,7 @@ the hold. Every Playgama event now also carries `focus` and `input`, so the next
 the panel showed, the run stayed frozen, and one click released it. CrazyGames gets the focus
 call and the hint but not the hold.
 
-**Three more reads of the traffic run (2026-11-10, not yet published).**
+**Three more reads of the traffic run (2026-11-10).**
 
 - **Visits that never start a run.** 26 sessions sent no `run_start`. All of them lasted 0 s,
   and 8 never sent a `screen_view`, so they left during the load. From the old data, leaving
@@ -518,6 +518,12 @@ call and the hint but not the hold.
   before tuning anything: `fps_p10` and `frames_over_250ms` split by `gl`. A software-renderer
   share would argue for starting those machines at `low` at boot, a decision this data cannot
   make yet.
+
+Both blocks above shipped in `ee9465b8`. Archive `blightbloom-2026-11-10-ee9465b8-real-frametimes`
+passed its check (Bridge 2.4.1) and was re-published on 2026-11-10 at 09:32 UTC, same link. Its
+update note tells players about the click-to-start keys fix and the faster run start. Split
+every read from here on `build_version` `ee9465b8`. Earlier builds send no `focus`/`input`,
+`run_wait`, `wait_ms` or `gl`, and their frame times are clamped at 100 ms.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
