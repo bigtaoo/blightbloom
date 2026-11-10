@@ -28,7 +28,7 @@ import {
 const SCREENISH = ['store_open', 'forge_open', 'menu_open', 'settings_open'];
 
 describe('the vocabulary', () => {
-  it('is exactly the events design/21 §2.2, §2.8 and §2.9 name', () => {
+  it('is exactly the events design/21 §2.2, §2.8, §2.9, §2.10 and §2.11 name', () => {
     expect([...EVENT_NAMES].sort()).toEqual([
       'active_time',
       'ad_completed',
@@ -39,6 +39,7 @@ describe('the vocabulary', () => {
       'run_death',
       'run_end',
       'run_start',
+      'run_wait',
       'screen_view',
       'session_end',
       'session_start',
@@ -49,7 +50,8 @@ describe('the vocabulary', () => {
   it('gives the run events exactly these fields — chapter included (privacy.html names it)', () => {
     // Hand-written for the same reason as the list above: a new FIELD changes what is
     // collected as much as a new event does.
-    expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character']);
+    expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character', 'wait_ms']);
+    expect(Object.keys(EVENTS.run_wait).sort()).toEqual(['art']);
     expect(Object.keys(EVENTS.floor_reached).sort()).toEqual(['chapter', 'floor']);
     expect(Object.keys(EVENTS.run_end).sort()).toEqual(['chapter', 'duration_s', 'floor', 'outcome']);
     expect(Object.keys(EVENTS.run_death).sort()).toEqual(['burst_pct', 'hits', 'killer', 'room']);

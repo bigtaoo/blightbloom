@@ -163,7 +163,16 @@ export const EVENTS = {
    * would have to be a second copy of the chapter list here (this module imports nothing),
    * and a client one chapter ahead of the server would have that field silently dropped.
    */
-  run_start: { character: { kind: 'id' }, chapter: { kind: 'id' } },
+  run_start: { character: { kind: 'id' }, chapter: { kind: 'id' }, wait_ms: { kind: 'int', min: 0, max: 600_000 } },
+  /**
+   * The loading screen in front of a run went up (`TransitionGate.deferRunBoundary`). `art` is
+   * whether it is waiting on the run-art download or only on its one-second floor. Paired with
+   * `run_start{wait_ms}`, which is the same wait from the other end: a session with a
+   * `run_wait` and no `run_start` left WHILE it was loading (2026-11-10). Before this the
+   * sandbox's 23 new visitors who never started a run could not be told apart from players
+   * who never got as far as the gate.
+   */
+  run_wait: { art: { kind: 'enum', values: ['pending', 'ready'] } },
   /**
    * A run reached a new floor (1-based; the first is implied by `run_start`, so this starts at
    * 2). Derived from the frame like `run_start` (`analyticsTracking.ts`). It exists for the

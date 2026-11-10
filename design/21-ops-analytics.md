@@ -155,7 +155,8 @@ First cut:
 | `session_end` | duration seconds (bounded); visible seconds (added §2.9) | Session length; the exit half of the funnel |
 | `active_time` | visible seconds so far (added §2.9) | Playtime that survives a visit killed without `pagehide` |
 | `page_open` | — (added §2.9; sent by `index.html`, not the bundle) | The visitor who left before the game booted |
-| `run_start` | character | Q2's second step; whether the roster is used |
+| `run_start` | character; wait_ms (added §2.11) | Q2's second step; whether the roster is used |
+| `run_wait` | art: `pending` / `ready` (added §2.11) | A loading screen into a run went up; without a `run_start`, the visitor left while it loaded |
 | `floor_reached` | floor (added §2.8) | How deep a run got when it ended with no `run_end` (a closed tab) |
 | `run_end` | outcome, floor reached, duration | The difficulty curve, and where runs actually end |
 | `run_death` | killer, room, hits, burst_pct (added §2.10; after a `loss` only) | Why a run was lost, not just that it was |
@@ -569,6 +570,34 @@ has the reasoning for each):
 **Not done:** a console or Grafana panel. The first readings come from the raw events. The
 sandbox build does not carry it yet: it ships with the next publish, after the current
 traffic run.
+
+### 2.11 The wait in front of the first run (2026-11-10)
+
+The first sandbox traffic on build `4f9804f3` had 84 new visitors, and 23 of them never sent a
+`run_start`, although a new visitor is dropped straight into the teaching run
+(`firstRunAutostart.ts`). Everything those sessions sent fits in their first second: a
+`session_start`, usually a `screen_view{menu}`, and nothing else. Eight sent no `screen_view`
+at all, so they left before the first frame and no run-side change can reach them.
+
+The rest stood on the menu phase, which is also where the loading screen in front of a run
+sits: `RunLifecycle` defers `beginRun` through `TransitionGate.deferRunBoundary`, and the
+phase stays `menu` until the gate releases. Leaving during the load and never reaching the
+gate looked the same in the data. Two changes:
+
+- **`run_wait { art }`, and `wait_ms` on `run_start`.** The gate reports when its screen goes
+  up into a run (`noteRunWait` in `analyticsTracking.ts`), and `pending` means it is waiting on
+  the run-art download rather than only the one-second floor. The next `run_start` carries the
+  milliseconds since then. A `run_wait` with no `run_start` is a player who left while loading.
+  It fires once per screen; an Enter swallowed by a screen already showing does not count again.
+- **The music waits for the run art.** `beginDeferredArt` used to start the `background` packs
+  (3.41 MB of music) together with the run art (~2.3 MB), so the gate a new player was waiting
+  on shared the line with a download nothing waits for. The background packs now start once
+  `ensureRunArt` settles, success or not (`preloadArt.test.ts` pins the order with frozen
+  downloads). The menu bed for a returning player arrives that much later, which is what
+  "never awaited" already allowed.
+
+**Not done:** shrinking the run art itself. Its largest file, `door_curtain_raw.png` (607 kB),
+is kept at full size by the owner's call of 2026-09-01 (design/12).
 
 ## 3. Phase B — the read-only console
 

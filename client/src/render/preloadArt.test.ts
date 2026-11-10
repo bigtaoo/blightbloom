@@ -138,6 +138,26 @@ describe('beginDeferredArt — the download nobody asked for', () => {
     await ensureRunArt();
   });
 
+  it('holds the background packs until the run art is in, so they never share the line', async () => {
+    // 2026-11-10: a new player's run gate opens a frame after this call, and the 3.41 MB of
+    // music used to download beside the run art it was waiting for. Frozen downloads make the
+    // order visible: while any run pack is outstanding, no background pack may have been asked for.
+    const h = countingHost({ blocking: true });
+    setAssetHost(h.host);
+    const background = new Set(backgroundPackNames());
+    expect(background.size).toBeGreaterThan(0); // else the absence below is vacuous
+
+    beginDeferredArt();
+    await vi.waitFor(() => expect(h.packLoads.length).toBeGreaterThan(0));
+    expect(h.packLoads.filter((n) => background.has(n))).toEqual([]);
+
+    // Release the run packs; the loader pass follows, and only then the background.
+    for (const name of runPackNames()) h.release(name);
+    await vi.waitFor(() => expect(h.packLoads.filter((n) => background.has(n)).sort()).toEqual([...background].sort()));
+    h.release();
+    await ensureRunArt();
+  });
+
   it('runs the loader pass too, not just the downloads', async () => {
     // The other half of the same mutant: `beginDeferredArt` could fetch the packs and still leave
     // every rig/weapon/biome loader for the gate to run, which is where the seconds actually go.

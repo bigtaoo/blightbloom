@@ -116,11 +116,19 @@ let runArtDone = false;
 /**
  * Phase two, kicked and not awaited: start the background download the moment the lobby is up.
  *
- * The `background` packs go first and are never awaited by anything (`music` — 3.41 MB, and the
- * one asset class a game can start without). Its completion is the single push
- * `musicDirector`'s per-frame derivation needs: a deck handed a path inside an unfetched pack
- * plays nothing and records the track as current anyway, so without this the menu bed would be
- * silent for the session. See design/12, "Music is loaded but never awaited".
+ * The run art goes FIRST, and the `background` packs wait for it (2026-11-10). They are never
+ * awaited by anything (`music` — 3.41 MB, and the one asset class a game can start without),
+ * but they used to start at the same moment as the run art and split the line with it. A new
+ * player is dropped straight into the teaching run (`firstRunAutostart.ts`), so the run gate
+ * opens within a frame of this call and that player sat on the loading screen while 3.41 MB of
+ * music shared the bandwidth with the ~2.3 MB the gate was actually waiting for. In the
+ * Playgama sandbox, 23 of 84 new visitors left without a `run_start` (design/22 §4.1).
+ *
+ * The background completion is still the single push `musicDirector`'s per-frame derivation
+ * needs: a deck handed a path inside an unfetched pack plays nothing and records the track as
+ * current anyway, so without it the menu bed would be silent for the session. See design/12,
+ * "Music is loaded but never awaited". It runs whether or not the run art loaded cleanly —
+ * every loader is best-effort, and a failure there is no reason to also lose the music.
  */
 export function beginDeferredArt(): void {
   deferred = true;
@@ -128,12 +136,14 @@ export function beginDeferredArt(): void {
   // function every loader's path goes through, so renaming or re-splitting the music pack in
   // `assetPacks.json` keeps this working and no pack name is spelled in TypeScript.
   const musicPack = packOf(`${MUSIC_DIR}/`);
-  for (const pack of packsForPhase('background')) {
-    void ensurePack(pack.name).then(() => {
-      if (pack.name === musicPack) invalidateMusicTrack();
-    });
-  }
-  void ensureRunArt();
+  const background = (): void => {
+    for (const pack of packsForPhase('background')) {
+      void ensurePack(pack.name).then(() => {
+        if (pack.name === musicPack) invalidateMusicTrack();
+      });
+    }
+  };
+  void ensureRunArt().then(background, background);
 }
 
 /**

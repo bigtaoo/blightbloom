@@ -22,6 +22,7 @@ import { createAnalytics, resetAnalyticsForTests, setAnalytics } from '../net/an
 import {
   SCREEN_IDS,
   TICK_RATE,
+  noteRunWait,
   reportFrame,
   resetAnalyticsTrackingForTests,
   runSeconds,
@@ -145,6 +146,48 @@ describe('run_start', () => {
   it('omits props when there is no state at all', () => {
     reportFrame('playing', null);
     expect(sent.find((e) => e.name === 'run_start')?.props).toBeUndefined();
+  });
+});
+
+describe('run_wait and wait_ms — the loading screen in front of a run', () => {
+  let now = 0;
+  beforeEach(() => {
+    now = 1_000;
+    resetAnalyticsTrackingForTests(() => now);
+  });
+
+  it('reports the wait, then stamps run_start with how long it took', () => {
+    reportFrame('menu', null);
+    noteRunWait(true);
+    expect(sent.at(-1)).toEqual({ name: 'run_wait', props: { art: 'pending' } });
+    now += 2_345;
+    reportFrame('playing', run({ character: 'char_vanguard' }));
+    expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ character: 'char_vanguard', wait_ms: 2_345 });
+  });
+
+  it("says 'ready' when only the floor is being waited out", () => {
+    noteRunWait(false);
+    expect(sent.at(-1)?.props).toEqual({ art: 'ready' });
+  });
+
+  it('measures from the FIRST note when two arrive before the run starts', () => {
+    noteRunWait(true);
+    now += 500;
+    noteRunWait(true);
+    now += 500;
+    reportFrame('playing', run());
+    expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ wait_ms: 1_000 });
+  });
+
+  it('is spent by the run it timed: the next run without a wait carries no wait_ms', () => {
+    noteRunWait(true);
+    now += 100;
+    reportFrame('playing', run());
+    reportFrame('menu', null);
+    now += 60_000;
+    reportFrame('playing', run());
+    const starts = sent.filter((e) => e.name === 'run_start');
+    expect(starts.map((e) => e.props)).toEqual([{ wait_ms: 100 }, undefined]);
   });
 });
 
