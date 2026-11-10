@@ -131,6 +131,21 @@ export const EVENTS = {
   /** A screen was shown. The funnel's early steps live here. */
   screen_view: { screen: { kind: 'id' } },
   /**
+   * The player's first key press or pointer press of the visit (`firstInput.ts`), once.
+   *
+   * `ms` is measured from the moment the game was READY — first frame drawn, splash going —
+   * not from the navigation, so it is the player's own hesitation and not the download.
+   * `screen` is the phase it landed on (`playing` for a first-ever visit, which skips the
+   * menu). It exists for the visit that leaves within half a minute: on the portal those
+   * were invisible (2026-11-08, design/22 §4.1), and "never touched anything" and "touched
+   * at once, then left" are different problems with different fixes.
+   */
+  first_input: {
+    ms: { kind: 'int', min: 0, max: 600_000 },
+    kind: { kind: 'enum', values: ['key', 'pointer'] },
+    screen: { kind: 'id' },
+  },
+  /**
    * A run began.
    *
    * `character` only, and the missing `weapon` is a finding rather than an omission: no
@@ -148,7 +163,16 @@ export const EVENTS = {
    * would have to be a second copy of the chapter list here (this module imports nothing),
    * and a client one chapter ahead of the server would have that field silently dropped.
    */
-  run_start: { character: { kind: 'id' }, chapter: { kind: 'id' } },
+  run_start: { character: { kind: 'id' }, chapter: { kind: 'id' }, wait_ms: { kind: 'int', min: 0, max: 600_000 } },
+  /**
+   * The loading screen in front of a run went up (`TransitionGate.deferRunBoundary`). `art` is
+   * whether it is waiting on the run-art download or only on its one-second floor. Paired with
+   * `run_start{wait_ms}`, which is the same wait from the other end: a session with a
+   * `run_wait` and no `run_start` left WHILE it was loading (2026-11-10). Before this the
+   * sandbox's 23 new visitors who never started a run could not be told apart from players
+   * who never got as far as the gate.
+   */
+  run_wait: { art: { kind: 'enum', values: ['pending', 'ready'] } },
   /**
    * A run reached a new floor (1-based; the first is implied by `run_start`, so this starts at
    * 2). Derived from the frame like `run_start` (`analyticsTracking.ts`). It exists for the
@@ -162,6 +186,25 @@ export const EVENTS = {
     floor: { kind: 'int', min: 0, max: 999 },
     duration_s: { kind: 'int', min: 0, max: 86_400 },
     chapter: { kind: 'id' },
+  },
+  /**
+   * The cause of a lost run, sent right after its `run_end { outcome: 'loss' }` and never on
+   * a win or an abandon (`client/src/game/deathCause.ts` has the reasoning for each field):
+   * `killer` is the blueprint type that landed the last hit (or `environment`, `player`,
+   * `<element>_status`, `unknown`), `room` the dungeon room of the last hit, `hits` the hits
+   * taken over the whole run, and `burst_pct` the damage of the last five seconds as a
+   * percentage of the full HP + shield pool. Added 2026-11-09, when most sandbox runs were
+   * ending in a floor-1 death the PvE bots never suffer.
+   *
+   * Its own event rather than four more fields on `run_end`, which would double that event
+   * past the per-event field cap (`analyticsEvents.test.ts`) for something only one of its
+   * three outcomes can carry. The two join on the visit id and arrive in the same batch.
+   */
+  run_death: {
+    killer: { kind: 'id' },
+    room: { kind: 'id' },
+    hits: { kind: 'int', min: 0, max: 99_999 },
+    burst_pct: { kind: 'int', min: 0, max: 999 },
   },
   /**
    * A purchase completed.

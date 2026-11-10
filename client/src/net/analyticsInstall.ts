@@ -111,6 +111,18 @@ export interface AnalyticsInstallOptions {
   clearIntervalImpl?: (handle: unknown) => void;
   /** Overridable so a test does not have to wait 30 seconds. */
   flushIntervalMs?: number;
+  /**
+   * Send every event the moment it is tracked instead of batching it for the timer.
+   *
+   * For a `send` that hands events to a platform one at a time anyway (Playgama's
+   * `bridge.track`), where a batch saves no request and costs every visit shorter than
+   * the 30 s flush interval: a portal frame is torn down without a reliable `pagehide`, so
+   * such a visit's queue was never sent at all. On 2026-11-08 that was 52% of the sandbox's
+   * loaded visits — exactly the ones the first-30-seconds work needed to see. Passed through to
+   * `createAnalytics`, so the queue flushes itself; the timer still runs to raise the
+   * `active_time` heartbeat (which a host's sender may then drop as platform-owned).
+   */
+  sendEachEvent?: boolean;
   /** The per-visit id. Injected only so a test can pin it; generated otherwise. */
   session?: string;
   /**
@@ -212,6 +224,9 @@ export function installAnalytics(opts: AnalyticsInstallOptions): Analytics {
     locale: opts.locale,
     now,
     send,
+    // Inside the queue itself, so it covers every `track` — the install's own
+    // `session_start` / `active_time` / `session_end` included — with no second handle.
+    sendEachEvent: opts.sendEachEvent === true,
   });
 
   const setIntervalFn = opts.setIntervalImpl ?? ((fn, ms) => setInterval(fn, ms));

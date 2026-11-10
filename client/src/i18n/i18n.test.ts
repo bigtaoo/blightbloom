@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { t, getLocale, resetLocaleForTests, LOCALES, detectBrowserLocale } from './index';
+import { t, getLocale, resetLocaleForTests, LOCALES, detectBrowserLocale, appliedLocaleOr, setLocale } from './index';
 import { en } from './locales/en';
 import { zh } from './locales/zh';
 import { useLocale } from '../i18n/loadLocale';
@@ -30,6 +30,26 @@ describe('t()', () => {
     await useLocale('zh');
     resetLocaleForTests();
     expect(getLocale()).toBe('en');
+  });
+});
+
+describe('appliedLocaleOr', () => {
+  // The analytics locale before `new Game(...)` applies one. The fallback (`ru`) differs from
+  // the default (`en`) on purpose: with the two equal, "returned the default" and "returned the
+  // fallback" are the same answer and the first assertion pins nothing.
+  it('answers the fallback until something applies a locale, then the live one', () => {
+    expect(appliedLocaleOr('ru')).toBe('ru');
+    expect(getLocale()).toBe('en'); // the bug: the reader that was used said this
+    setLocale('en');
+    // An applied choice wins over the fallback even when it IS the default: a player who
+    // picked English in Settings is English, whatever the platform language said.
+    expect(appliedLocaleOr('ru')).toBe('en');
+  });
+
+  it('resetLocaleForTests forgets that a locale was applied', () => {
+    setLocale('en');
+    resetLocaleForTests();
+    expect(appliedLocaleOr('ru')).toBe('ru');
   });
 });
 

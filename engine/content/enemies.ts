@@ -120,6 +120,10 @@ export const DEFAULT_ENEMY_ENGAGE_RANGE_FP = pxToFp(180); // ~5.6 grid — stop 
 // longer sets its whole garrison marching at you at once. Latched via `EnemyActor.aggroed`
 // — once a mob has noticed you it stays awake, so this is a wake-up trigger, not a leash.
 export const DEFAULT_ENEMY_AGGRO_RANGE_FP = pxToFp(320); // 10 grid
+// A `dormant` spawn's perception radius (ENGINE_VERSION 92): 5 grid, under the 6 grid every
+// authored enemy keeps from a player spawn (`emberLevel1.test.ts`), so a dormant mob never
+// wakes on a player who has not moved toward it.
+export const DORMANT_AGGRO_RANGE_FP = pxToFp(160);
 
 // ── Basic (neutral) ─────────────────────────────────────────────────────────────
 export const BASIC_ENEMY: EnemyBlueprint = {

@@ -141,10 +141,23 @@ describe('main.playgama.ts — the boot order', () => {
   });
 
   it('sends analytics through Bridge, and never reaches for our server', () => {
-    expect(ENTRY).toContain('send: bridgeSender(bridge)');
+    expect(ENTRY).toContain('send: bridgeSender(bridge, attention)');
     for (const banned of ['VITE_MATCHSVC_URL', 'installClientLog', 'fetchPublicFlags', 'pageOpenBeacon']) {
       expect(ENTRY, banned).not.toContain(banned);
     }
+  });
+
+  it('sends each event at once, since a portal frame dies without a pagehide to flush on', () => {
+    expect(ENTRY).toContain('sendEachEvent: true');
+  });
+
+  it('asks for the keys before analytics, whose events carry attention, and holds on them after ready', () => {
+    expect(at('new WebPlatform()')).toBeLessThan(at('installAnalytics('));
+    expect(at('session.ready();')).toBeLessThan(at('session.watchKeys();'));
+  });
+
+  it('times the first input from game_ready, not from the download', () => {
+    expect(at('session.ready();')).toBeLessThan(at('trackFirstInput('));
   });
 
   it('stamps the build version on Bridge and on the analytics batch', () => {

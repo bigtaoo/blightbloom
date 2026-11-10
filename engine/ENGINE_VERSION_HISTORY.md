@@ -2910,3 +2910,27 @@ diverges a recorded run:
 The golden gate, run before this bump, was red on `ember-dungeon-floor1`, `storm-dungeon-floor1`
 and `launch-arena-pvp` (the aim change reaches every scenario with a wall between two actors) and
 green on the rest. Golden fixture regenerated.
+
+v92 (2026-11-08 — the first room has something to do, and it waits for the player). The Playgama
+sandbox numbers showed 52% of loaded visits leaving inside 30 seconds. The first run starts in
+`ember_l1_cell`, whose two enemies sat 10 grid from the spawns at the room's far edge: on a
+first visit the opening screen was an empty room. Two changes:
+ - A room spawn point may be `dormant` (`content/rooms.ts` `SpawnPoint.dormant`). A dormant
+   enemy gets `DORMANT_AGGRO_RANGE_FP` (5 grid, `content/enemies.ts`) as its perception radius
+   instead of the default 10, and `wakeOnHurt`: `combat.ts` `takeDamage` latches `aggroed` on any
+   hit, so shooting it from range starts the fight. Damage did not wake a mob before this, and
+   still does not for any enemy without the flag, so every other room and chapter fights exactly
+   as it did.
+ - `ember_l1_cell` moves its two `basic` enemies to (9,4) and (9,7), both dormant: about 6.5 grid
+   from the nearest player spawn, so they are on the first screen yet outside the 6-grid spawn
+   clearance `emberLevel1.test.ts` requires, and outside their own 5-grid perception radius
+   until the player walks toward them or fires. Chapters 2-4 are pinned as transforms of
+   chapter 1 (`tools/map-editor/scripts/deriveChapter.mjs`, checked by each
+   `<chapter>Level1.test.ts`), so their entry rooms (`frost_l1_cell`, `storm_l1_cell`,
+   `blight_l1_cell`) were re-derived and carry the same two dormant mobs; no other piece or
+   floor map changed.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1` (witness: one fewer
+`bullet_fired`, one more `pickup`), and after the re-derive on `frost-`, `storm-` and
+`blight-dungeon-floor1` too (a shot, a pickup or a clash traded places in each; no death count
+moved), and green on the rest. Golden fixture regenerated.

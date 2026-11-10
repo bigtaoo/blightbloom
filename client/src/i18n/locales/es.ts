@@ -333,6 +333,7 @@ export const es: Translations<typeof en> = {
   tutorial: {
     step: 'PASO {n}/{of}',
     hintMoveKeys: 'Muévete con WASD.',
+    hintClickFirst: 'Haz clic primero en el juego y luego usa las teclas.',
     hintMoveTouch: 'Arrastra el lado izquierdo de la pantalla para moverte.',
     hintAttackKeys: 'Mantén el clic izquierdo para atacar: el apuntado es automático.',
     hintAttackTouch: 'Mantén pulsado el lado derecho de la pantalla para atacar: el apuntado es automático.',
@@ -354,6 +355,8 @@ export const es: Translations<typeof en> = {
     victoryTitle: 'VICTORIA REAL',
     eliminatedTitle: 'ELIMINADO',
     confirmButton: 'CONFIRMAR',
+    retryButton: 'REINTENTAR',
+    loadoutButton: 'EQUIPAMIENTO',
     timeLine: 'Tiempo {m}:{ss}',
     floorLine: 'Piso {floor}/{floorCount}',
     floorLineEndless: 'Piso {floor}',

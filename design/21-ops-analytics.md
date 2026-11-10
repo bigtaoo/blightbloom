@@ -155,9 +155,11 @@ First cut:
 | `session_end` | duration seconds (bounded); visible seconds (added §2.9) | Session length; the exit half of the funnel |
 | `active_time` | visible seconds so far (added §2.9) | Playtime that survives a visit killed without `pagehide` |
 | `page_open` | — (added §2.9; sent by `index.html`, not the bundle) | The visitor who left before the game booted |
-| `run_start` | character | Q2's second step; whether the roster is used |
+| `run_start` | character; wait_ms (added §2.11) | Q2's second step; whether the roster is used |
+| `run_wait` | art: `pending` / `ready` (added §2.11) | A loading screen into a run went up; without a `run_start`, the visitor left while it loaded |
 | `floor_reached` | floor (added §2.8) | How deep a run got when it ended with no `run_end` (a closed tab) |
 | `run_end` | outcome, floor reached, duration | The difficulty curve, and where runs actually end |
+| `run_death` | killer, room, hits, burst_pct (added §2.10; after a `loss` only) | Why a run was lost, not just that it was |
 | `screen_view` | screen name (allowlisted) | Where people stop before they ever start a run |
 | `store_purchase` | sku | The commerce funnel, once anything is on sale. There is no `store_open`: opening the store is a `screen_view`, and the rollup counts those per screen |
 | `ad_offer_shown` / `ad_completed` | — | The rewarded-ad offer's real take-up rate |
@@ -529,6 +531,73 @@ now pins all six names.
 
 **Not done:** deploying it. And no attribution beyond the first visit: an install's segment is
 its first day's first `session_start`.
+
+### 2.10 Cause of death (2026-11-09)
+
+The first Playgama sandbox traffic showed most recorded runs ending in a death on floor 1,
+inside four minutes. The PvE balance sims (40 seeds) never lose a bot on floor 1: they take 0
+to 5 of 16 effective HP there and clear it every time. Their deaths sit on floors 2 to 4
+(the bastion, rampart and caldera rooms, and the floor-5 boss). So the numbers alone do not
+explain the floor-1 deaths, and `run_end { outcome: 'loss' }` said only that they happened.
+
+`run_death` follows a lost run's `run_end` with four fields (`client/src/game/deathCause.ts`
+has the reasoning for each):
+
+- `killer`: the blueprint type that landed the last hit, or `environment`, `player`,
+  `<element>_status` (a burn or poison tick, which has no attacker), or `unknown`.
+- `room`: the dungeon room of the last hit inside a room rect. A doorway gap no rect covers
+  keeps the previous one.
+- `hits`: hits taken over the whole run.
+- `burst_pct`: the damage of the five seconds before the last hit, as a percentage of the full
+  HP + shield pool. Near 100 means "never saw it coming"; low means a slow bleed.
+
+**What building it settled.**
+
+- **A separate event, not four more `run_end` fields.** Four more fields would put `run_end`
+  at eight, past the per-event cap of four that `analyticsEvents.test.ts` holds (only
+  `session_start` is exempt). And only one of `run_end`'s three outcomes could ever carry
+  them.
+- **The attacker rides on the engine's `hit` event as `by`.** `takeDamage` takes it from
+  `HitResolveSystem` (the projectile's `ownerId`) and from a shield-break AoE. Hit events are
+  not part of the state hash, so there was no `ENGINE_VERSION` bump.
+- **The attacker's type comes from the client, not the sim.** A dead enemy is compacted out
+  of `state.enemies` on the tick it dies, and its bullets keep flying. So the type is cached
+  from `bullet_fired` / `melee_swing` while the shooter is alive. It is read back from the
+  blueprint signature (`tint`, `bodyRig`, `boss`), which a test pins as unique.
+- **It never throws.** It runs on every frame of `EventReactor.consume`, which also sees
+  partial states.
+
+**Not done:** a console or Grafana panel. The first readings come from the raw events. The
+sandbox build does not carry it yet: it ships with the next publish, after the current
+traffic run.
+
+### 2.11 The wait in front of the first run (2026-11-10)
+
+The first sandbox traffic on build `4f9804f3` had 84 new visitors, and 23 of them never sent a
+`run_start`, although a new visitor is dropped straight into the teaching run
+(`firstRunAutostart.ts`). Everything those sessions sent fits in their first second: a
+`session_start`, usually a `screen_view{menu}`, and nothing else. Eight sent no `screen_view`
+at all, so they left before the first frame and no run-side change can reach them.
+
+The rest stood on the menu phase, which is also where the loading screen in front of a run
+sits: `RunLifecycle` defers `beginRun` through `TransitionGate.deferRunBoundary`, and the
+phase stays `menu` until the gate releases. Leaving during the load and never reaching the
+gate looked the same in the data. Two changes:
+
+- **`run_wait { art }`, and `wait_ms` on `run_start`.** The gate reports when its screen goes
+  up into a run (`noteRunWait` in `analyticsTracking.ts`), and `pending` means it is waiting on
+  the run-art download rather than only the one-second floor. The next `run_start` carries the
+  milliseconds since then. A `run_wait` with no `run_start` is a player who left while loading.
+  It fires once per screen; an Enter swallowed by a screen already showing does not count again.
+- **The music waits for the run art.** `beginDeferredArt` used to start the `background` packs
+  (3.41 MB of music) together with the run art (~2.3 MB), so the gate a new player was waiting
+  on shared the line with a download nothing waits for. The background packs now start once
+  `ensureRunArt` settles, success or not (`preloadArt.test.ts` pins the order with frozen
+  downloads). The menu bed for a returning player arrives that much later, which is what
+  "never awaited" already allowed.
+
+**Not done:** shrinking the run art itself. Its largest file, `door_curtain_raw.png` (607 kB),
+is kept at full size by the owner's call of 2026-09-01 (design/12).
 
 ## 3. Phase B — the read-only console
 

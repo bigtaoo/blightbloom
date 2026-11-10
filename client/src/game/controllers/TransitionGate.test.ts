@@ -31,6 +31,8 @@ import {
 import { pinTextMeasurementToPaintCanvas } from '../../render/textMetrics';
 import { LoadingScreen } from '../ui/loadingScreen';
 import { t } from '../../i18n';
+import { resetAnalyticsForTests, setAnalytics } from '../../net/analytics';
+import { resetAnalyticsTrackingForTests } from '../analyticsTracking';
 
 /** A host whose pack downloads never settle until released — the only way to observe a gate
  *  that is actually waiting, rather than one that has already let go. */
@@ -558,5 +560,63 @@ describe('the run boundary holds its screen until the frames settle', () => {
     });
     release();
     await vi.waitFor(() => expect(seen).toBe(0));
+  });
+});
+
+describe('run_wait — the gate reports the screen it puts up in front of a run', () => {
+  let waits: unknown[];
+  beforeEach(() => {
+    waits = [];
+    resetAnalyticsTrackingForTests();
+    setAnalytics({
+      track: (name, props) => {
+        if (name === 'run_wait') waits.push(props);
+      },
+      flush: () => {},
+      pending: () => 0,
+    });
+  });
+  afterEach(() => resetAnalyticsForTests());
+
+  it("says 'pending' while the run art is still downloading, once per screen", async () => {
+    const { host, release } = blockingHost();
+    setAssetHost(host);
+    const clock = heldClock();
+    const { gate, ticker } = gateWith(clock.sleep);
+    beginDeferredArt();
+
+    expect(gate.deferRunBoundary('run', () => {})).toBe(true);
+    // The Enter that arrives again under the spinner is swallowed, and is not a second wait.
+    expect(gate.deferRunBoundary('run', () => {})).toBe(true);
+    expect(waits).toEqual([{ art: 'pending' }]);
+
+    release();
+    clock.elapse();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+    settle(ticker);
+  });
+
+  it("says 'ready' when only the floor is left, and says nothing for the way back to the hub", async () => {
+    const clock = heldClock();
+    const { gate, ticker } = gateWith(clock.sleep);
+    await withArtAlreadyIn();
+
+    gate.deferRunBoundary('hub', () => {});
+    expect(waits).toEqual([]);
+    clock.elapse();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+    settle(ticker);
+
+    gate.deferRunBoundary('run', () => {});
+    expect(waits).toEqual([{ art: 'ready' }]);
+    clock.elapse();
+    await vi.waitFor(() => expect(gate.waiting).toBe(false));
+    settle(ticker);
+  });
+
+  it('says nothing in a session that never armed the art phases — no screen, no wait', () => {
+    const { gate } = gateWith();
+    expect(gate.deferRunBoundary('run', () => {})).toBe(false);
+    expect(waits).toEqual([]);
   });
 });

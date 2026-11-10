@@ -121,8 +121,9 @@ export class AIDecideSystem {
         // face them either — a mob that tracks you with its gun barrel from across the
         // room while standing still reads as "aware but passive", which is the opposite
         // of what the perception radius is for.
-        // No `holding = false` here, deliberately: `aggroed` is a one-way latch with a single
-        // writer, and `holding` can only ever be set AFTER that latch is on, so a mob reaching
+        // No `holding = false` here, deliberately: `aggroed` is a one-way latch whose writers
+        // (`hasAggro` below, and `takeDamage` for a `wakeOnHurt` mob since v92) only ever set
+        // it, and `holding` can only ever be set AFTER that latch is on, so a mob reaching
         // this branch has never held. A mutation battery (v55) found the reset dead — it was
         // the only mutant of the three survivors that wanted deleting rather than testing.
         e.firing = false;

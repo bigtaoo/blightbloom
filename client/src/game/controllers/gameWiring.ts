@@ -202,6 +202,10 @@ export function wireScreens(d: WiringDeps): void {
   // held rather than instant (`ScreenNav.leaveRunTo`). `showMenu` here would be the one exit
   // out of four that jump-cuts.
   d.screens.onMenu = () => d.nav.leaveRunTo('menu');
+  // TRY AGAIN on a lost offline run: straight into the next one. `beginRun` is the run
+  // boundary itself (it holds the screen, clears the save, spends the loadout) — the same
+  // call START RUN reaches through `confirm()` from the loadout screen.
+  d.screens.onRetry = () => d.runs.beginRun();
   d.pauseMenu.onResume = () => d.nav.resume();
   d.pauseMenu.onSettings = () => d.nav.openSettingsFromPause();
   // The two exits are separate verbs on purpose (design/05 "Only the boss floor ends a run",

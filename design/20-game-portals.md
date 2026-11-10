@@ -372,7 +372,8 @@ the nearest a few grid from the spawn, all awake on tick 0.
   completion off state and events it already had: move = 1.5 grid from where the lesson started;
   attack = a `bullet_fired` / `melee_swing` owned by the seat; swap = `activeSlot` changed since
   the lesson started; deflect = a `deflect` event, dropped silently after 20 s since it can fail
-  for reasons that are not the player's. The counter counts only the lessons this loadout can be
+  for reasons that are not the player's. (Since 2026-11-08 swap and deflect also wait for a cue
+  before they show; see the fourth pass below.) The counter counts only the lessons this loadout can be
   taught. Move and attack are now separate lessons — the old first hint said both in one toast.
   The panel never takes pointer input, and the toast lane moves below it while it shows.
 - **The entry room is a warm-up** (`ENGINE_VERSION` 89): two `basic` mobs in the far corners,
@@ -390,6 +391,37 @@ the nearest a few grid from the spawn, all awake on tick 0.
   swap lesson gives up after 15 s, the lesson panel steps aside for the portal and card panels,
   the card panel sits above the hero, and the arrow points at the portal once a floor is clear.
   design/22 §4.1 lists the whole pass.
+
+### Onboarding, fourth pass (2026-11-08): the first thirty seconds
+
+The sandbox telemetry after the third pass: 52% of loaded visits gone inside 30 s, and the custom
+events that would have said why mostly never arrived (the client's batch flushed on a timer the
+leavers did not wait for). design/22 §4.1 has the numbers; three fixes:
+
+- **Every Playgama event goes out at once** (`sendEachEvent`, a `createAnalytics` option set only by
+  `main.playgama.ts`), and a new `first_input` event (`net/firstInput.ts`) records the ms from
+  `session.ready()` to the first pointer or GAME key press (`isGameKey`: not a modifier, a
+  function key, Tab, or a Ctrl/Alt/Meta chord — the Alt of an Alt-Tab is someone leaving), and on
+  which screen. A visit that leaves
+  with no `first_input` never touched the game; one that has it left after trying.
+- **The warm-up room starts on screen and asleep** (`ENGINE_VERSION` 92). The two `basic` mobs
+  moved from the far corners (10 grid out, off the first screen) to (9,4) and (9,7), about
+  6.5 grid from the spawns, as `dormant` spawns: a 5-grid perception radius instead of 10, and
+  `wakeOnHurt`, so a hit from range starts the fight (`combat.ts` `takeDamage`; only a player-side hit
+  that deals damage — a hazard, enemy fire or a fully resisted 0 does not). Standing still
+  is still safe; walking toward them or shooting wakes them. The derived chapters' `*_l1_cell`
+  pieces carry it.
+- **Swap and deflect wait for their moment** (`TutorialHintController` `CUED`). They used to go
+  up the tick the previous lesson was learned, which after the warm-up meant teaching a weapon
+  swap and a deflect in a cleared, silent room. Now swap waits, panel hidden and no give-up clock
+  running, until an enemy is alive and aggroed; deflect waits for the first ENEMY `bullet_fired` — both
+  in the local player's own room (`roomId`), so a co-op ally's fight, or a mob woken through a
+  door into a room whose AI is still off, does not cue a lesson the player cannot see.
+  A cue already present on the tick the previous lesson ends shows the panel that same tick, so
+  there is no one-tick hide between lessons, and nothing done while a lesson waits counts toward
+  it. Checked in the dev client: swap hid at tick 470 and showed at 485, the tick a warm-up mob
+  woke under fire; deflect stayed hidden through the cleared warm-up and showed in r2_alcove on
+  the first enemy shot.
 
 ## The multiplayer requirements (2026-09-08)
 

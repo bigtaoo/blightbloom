@@ -382,9 +382,9 @@ export class Game {
     this.store.save(this.run.meta);
   }
 
-  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null): void {
+  showOutcomeScreen(won: boolean, title: string, lines: readonly string[], offer: ResultOffer | null = null, retry = false): void {
     const { w, h } = this.layers.menu.fit(this.screenSize());
-    this.screens.show(w, h, won, title, lines, offer);
+    this.screens.show(w, h, won, title, lines, offer, retry);
   }
 
   /**

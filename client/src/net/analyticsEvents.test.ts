@@ -28,15 +28,18 @@ import {
 const SCREENISH = ['store_open', 'forge_open', 'menu_open', 'settings_open'];
 
 describe('the vocabulary', () => {
-  it('is exactly the events design/21 §2.2, §2.8 and §2.9 name', () => {
+  it('is exactly the events design/21 §2.2, §2.8, §2.9, §2.10 and §2.11 name', () => {
     expect([...EVENT_NAMES].sort()).toEqual([
       'active_time',
       'ad_completed',
       'ad_offer_shown',
+      'first_input',
       'floor_reached',
       'page_open',
+      'run_death',
       'run_end',
       'run_start',
+      'run_wait',
       'screen_view',
       'session_end',
       'session_start',
@@ -47,9 +50,11 @@ describe('the vocabulary', () => {
   it('gives the run events exactly these fields — chapter included (privacy.html names it)', () => {
     // Hand-written for the same reason as the list above: a new FIELD changes what is
     // collected as much as a new event does.
-    expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character']);
+    expect(Object.keys(EVENTS.run_start).sort()).toEqual(['chapter', 'character', 'wait_ms']);
+    expect(Object.keys(EVENTS.run_wait).sort()).toEqual(['art']);
     expect(Object.keys(EVENTS.floor_reached).sort()).toEqual(['chapter', 'floor']);
     expect(Object.keys(EVENTS.run_end).sort()).toEqual(['chapter', 'duration_s', 'floor', 'outcome']);
+    expect(Object.keys(EVENTS.run_death).sort()).toEqual(['burst_pct', 'hits', 'killer', 'room']);
     // An id, not an enum of the catalog: a client a chapter ahead of the server keeps the field.
     expect(coerceProp(EVENTS.run_end.chapter, 'a_chapter_this_build_has_never_heard_of')).toBe('a_chapter_this_build_has_never_heard_of');
     expect(coerceProp(EVENTS.run_end.chapter, '<script>')).toBeUndefined();
@@ -60,6 +65,8 @@ describe('the vocabulary', () => {
     expect(Object.keys(EVENTS.session_end).sort()).toEqual(['active_s', 'duration_s']);
     expect(Object.keys(EVENTS.active_time)).toEqual(['active_s']);
     expect(Object.keys(EVENTS.page_open)).toEqual([]);
+    expect(Object.keys(EVENTS.first_input).sort()).toEqual(['kind', 'ms', 'screen']);
+    expect(coerceProp(EVENTS.first_input.kind, 'gamepad')).toBeUndefined();
     // A referrer host is folded into the id alphabet; anything else is dropped, not stored.
     expect(coerceProp(EVENTS.session_start.source, 'ref:www.reddit.com')).toBe('ref:www.reddit.com');
     expect(coerceProp(EVENTS.session_start.source, 'ref:a b')).toBeUndefined();

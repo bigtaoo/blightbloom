@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   browserPerfHost,
   installPerfSample,
+  rendererClass,
+  webglRenderer,
   PERF_MIN_MS,
   PERF_WINDOW_MS,
   PerfSampler,
@@ -127,7 +129,7 @@ describe('PerfSampler', () => {
 
 describe('installPerfSample', () => {
   function host(playing = true) {
-    let tick: (t: { deltaMS: number }) => void = () => {};
+    let tick: (t: { elapsedMS: number; deltaMS: number }) => void = () => {};
     const handlers = new Map<string, () => void>();
     let longTask: (ms: number) => void = () => {};
     const state = { playing, hidden: false };
@@ -138,7 +140,7 @@ describe('installPerfSample', () => {
       on: (target, type, fn) => handlers.set(`${target}:${type}`, fn),
       observeLongTasks: (fn) => (longTask = fn),
     };
-    return { h, state, frame: (ms: number) => tick({ deltaMS: ms }), fire: (k: string) => handlers.get(k)!(), long: (ms: number) => longTask(ms) };
+    return { h, state, frame: (ms: number, clamped = Math.min(ms, 100)) => tick({ elapsedMS: ms, deltaMS: clamped }), fire: (k: string) => handlers.get(k)!(), long: (ms: number) => longTask(ms) };
   }
 
   it('feeds the ticker’s frames, active only while playing and visible', () => {
@@ -153,6 +155,61 @@ describe('installPerfSample', () => {
     x.state.playing = false;
     x.frame(16);
     expect(frame.mock.calls).toEqual([[16, true], [16, false], [16, false]]);
+  });
+
+  it('reads the frame’s real length, not Pixi’s clamped deltaMS', () => {
+    const x = host();
+    const s = new PerfSampler(() => {}, 'v');
+    const frame = vi.spyOn(s, 'frame');
+    installPerfSample(x.h, s);
+    x.frame(16);
+    x.frame(3000); // a frozen frame: deltaMS would say 100
+    expect(frame.mock.calls).toEqual([[16, true], [3000, true]]);
+  });
+
+  it('counts a frozen frame as over 1000 ms, which the clamped length never could', () => {
+    const x = host();
+    const sent: Record<string, string | number>[] = [];
+    const s = new PerfSampler((d) => sent.push(d), 'v');
+    installPerfSample(x.h, s);
+    x.frame(16); // arm
+    for (let i = 0; i < 9; i++) x.frame(1000);
+    x.frame(3000);
+    x.fire('window:pagehide');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ frames_over_1000ms: 1, frames_over_500ms: 10, frame_time_max_ms: 3000 });
+  });
+
+  it('does not take the frame that ends a hidden tab for one frozen frame', () => {
+    const x = host();
+    const sent: Record<string, string | number>[] = [];
+    const s = new PerfSampler((d) => sent.push(d), 'v');
+    installPerfSample(x.h, s);
+    x.frame(16); // arm
+    x.frame(16);
+    x.state.hidden = true;
+    x.fire('document:visibilitychange'); // rAF stops here: no frame is fed while hidden
+    x.state.hidden = false;
+    x.frame(120_000); // the first frame back spans the whole absence: it re-arms, it is not banked
+    for (let i = 0; i < 11; i++) x.frame(1000);
+    x.fire('window:pagehide');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ frame_count: 12, frame_time_max_ms: 1000, frames_over_1000ms: 0 }); // the 16 ms before the hide (too short to send, kept) + 11
+  });
+
+  it('does the same for a page that is unloaded and restored (pagehide)', () => {
+    const x = host();
+    const sent: Record<string, string | number>[] = [];
+    const s = new PerfSampler((d) => sent.push(d), 'v');
+    installPerfSample(x.h, s);
+    x.frame(16);
+    x.frame(16);
+    x.fire('window:pagehide');
+    x.frame(60_000);
+    for (let i = 0; i < 11; i++) x.frame(1000);
+    s.flush();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ frame_count: 12, frame_time_max_ms: 1000 });
   });
 
   it('counts the page’s errors, lost contexts and long tasks, and flushes on pagehide and on hide', () => {
@@ -174,6 +231,35 @@ describe('installPerfSample', () => {
     x.state.hidden = true;
     x.fire('document:visibilitychange');
     expect(flush).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('rendererClass', () => {
+  it('names the software rasterizers, and calls any other renderer hardware', () => {
+    expect(rendererClass('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)')).toBe('software');
+    expect(rendererClass('llvmpipe (LLVM 15.0.7, 256 bits)')).toBe('software');
+    expect(rendererClass('ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0)')).toBe('software');
+    expect(rendererClass('ANGLE (Intel, Intel(R) Arc(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)')).toBe('hardware');
+    expect(rendererClass('Apple GPU')).toBe('hardware');
+  });
+
+  it('says unknown where the browser hides the renderer', () => {
+    expect(rendererClass(null)).toBe('unknown');
+    expect(rendererClass('')).toBe('unknown');
+  });
+});
+
+describe('webglRenderer', () => {
+  it('reads the unmasked renderer through the debug extension', () => {
+    const gl = { getExtension: () => ({ UNMASKED_RENDERER_WEBGL: 7 }), getParameter: (p: number) => (p === 7 ? 'Apple GPU' : null) };
+    expect(webglRenderer(gl)).toBe('Apple GPU');
+  });
+
+  it('returns null with no context, no extension, a non-string answer, or a throwing context', () => {
+    expect(webglRenderer(undefined)).toBeNull();
+    expect(webglRenderer({ getExtension: () => null, getParameter: () => 'x' })).toBeNull();
+    expect(webglRenderer({ getExtension: () => ({ UNMASKED_RENDERER_WEBGL: 7 }), getParameter: () => 42 })).toBeNull();
+    expect(webglRenderer({ getExtension: () => { throw new Error('lost'); }, getParameter: () => 'x' })).toBeNull();
   });
 });
 

@@ -44,6 +44,7 @@
 // squad, settings, store — draws from the `lobby` pack alone and is never gated at all.
 import type { Container, Ticker } from 'pixi.js';
 import { ensureRunArt, isDeferredArtArmed, isRunArtReady } from '../../render/preloadArt';
+import { noteRunWait } from '../analyticsTracking';
 import { t } from '../../i18n';
 import { LoadingScreen } from '../ui/loadingScreen';
 
@@ -121,7 +122,13 @@ export class TransitionGate {
    */
   deferRunBoundary(into: RunBoundary, retry: () => void): boolean {
     const label = t(into === 'run' ? 'loading.enteringRun' : 'loading.returningToHub');
-    return this.open(retry, label, isDeferredArtArmed() ? MIN_TRANSITION_MS : 0, true);
+    const artPending = !isRunArtReady();
+    const already = this.waiting;
+    const deferred = this.open(retry, label, isDeferredArtArmed() ? MIN_TRANSITION_MS : 0, true);
+    // Counted once per screen that went up into a run: not the retry sailing past, and not a
+    // repeated Enter swallowed by the screen already showing.
+    if (deferred && !already && into === 'run') noteRunWait(artPending);
+    return deferred;
   }
 
   /** Whether a wait is currently on screen. Test/diagnostic surface. */

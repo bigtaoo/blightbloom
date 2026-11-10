@@ -434,6 +434,97 @@ sandbox re-published at 12:06 UTC, same link. Telemetry before that time is the 
   the loading cover. It still counts as "playing" for `performance_sample`, on purpose: a
   covered stall is still a stall the player waits through, so hiding it would flatter the number.
 
+**The first thirty seconds (2026-11-08, after the `a6febbce` build).** The likes went up (6), but
+52% of loaded sessions left inside 30 s. Three fixes on the `08.11.2026` daily branch, shipped the
+same day on the owner's ask: archive `blightbloom-2026-11-08-5e325436-first-30s` (check PASSED,
+Bridge 2.4.1), sandbox re-published at 16:34 UTC, same link. Telemetry between 12:06 and 16:34 UTC
+is `a6febbce` (design/20 "Onboarding, fourth pass" has the detail):
+
+- **Telemetry that survives a quick exit.** On Playgama every custom event is now sent the moment
+  it is tracked instead of batched (`sendEachEvent`), so a 10-second visit still reports. New
+  event `first_input` (`ms`, `kind` key|pointer, `screen`): the share of sessions with no
+  `first_input` is the share that never touched the game, which separates "did not start" from
+  "started and did not like it".
+- **The first room has something on screen** (`ENGINE_VERSION` 92): the two warm-up mobs are
+  dormant, 6.5 grid away, and wake when approached or shot.
+- **Swap and deflect are taught when they apply**: swap once a fight is on, deflect on the first
+  enemy shot, not in a room the player just cleared.
+
+Read on the next build: the `first_input` rate and its `ms`, and the 30-second exit share,
+split on `build_version`.
+
+The traffic run ended at 16:52 UTC, 18 minutes after that publish, so `5e325436` got only three
+sessions. They did show one regression: every `session_start` said locale `en` while the same
+visit's later events said `ru`/`fr`/`es`. Per-event sending flushes `session_start` during boot,
+and `getLocale` answers the default until `new Game(...)` applies the persisted one. The fix is
+`appliedLocaleOr(bootLocale)` in all four entry points. Archive
+`blightbloom-2026-11-09-6d2ae6b5-locale-fix` passed its check (Bridge 2.4.1) and was re-published on
+2026-11-09 at 07:59 UTC, same link, with no update note because players will see no difference.
+On `5e325436` alone, a locale split of `session_start` counts every visit as English. Older
+builds batched their events, so they are not affected.
+
+Then `4f9804f3` (design/21 §2.10, design/10 Results) was published on 2026-11-09 at 09:34 UTC,
+same link, in the middle of the traffic run. It adds two things. A lost run now sends a
+`run_death` event (killer type, room, hits taken, last-five-seconds burst) after its
+`run_end`. And the defeat screen has a one-tap TRY AGAIN that starts a fresh run. Archive
+`blightbloom-2026-11-09-4f9804f3-death-cause` passed its check (Bridge 2.4.1). The update note
+tells players about TRY AGAIN. When reading the traffic run, split it at 09:34 UTC: sessions
+before then can retry only through the Loadout screen and send no `run_death`.
+
+**Keys that never reach the game (2026-11-10, published with `ee9465b8` below).** The traffic run's first
+inputs were 46 pointer presses and no key, and 17 of 63 runs got no input at all. A portal
+iframe gets no key presses until the player clicks inside it. The fix is ported from Holy
+Kicker and lives in `client/src/platform/keyFocus.ts`. The game calls `window.focus()` at boot
+and on every press. While `document.hasFocus()` is false on a non-touch session, the move
+lesson reads "Click the game first, then use the keys." and the Playgama session holds the run
+(hold `keys`: clock stopped, `gameplay_started` withheld). The window's focus event releases
+the hold. Every Playgama event now also carries `focus` and `input`, so the next read can tell
+"never had the keys" apart from "had them and left". Checked in a browser pane without focus:
+the panel showed, the run stayed frozen, and one click released it. CrazyGames gets the focus
+call and the hint but not the hold.
+
+**Three more reads of the traffic run (2026-11-10).**
+
+- **Visits that never start a run.** 26 sessions sent no `run_start`. All of them lasted 0 s,
+  and 8 never sent a `screen_view`, so they left during the load. From the old data, leaving
+  while the run art was still downloading could not be told apart from never reaching the start
+  at all. Now it can: the run gate sends `run_wait` (`art` pending|ready) when it holds, and
+  `run_start` carries `wait_ms` (design/21 §2.11). The music pack (3.41 MB) was downloading at
+  the same time as the run art. It now starts only after the run art is in
+  (`preloadArt.ts` `beginDeferredArt`). Resizing the curtain stays the owner's call, as decided
+  on 2026-09-01.
+- **The room-2 deaths (`ember_l1_alcove`).** The bots do not reproduce them. Five profiles were
+  run on 40 paired seeds each: careful, aggressive, novice, a close-range "brawler" and a
+  "rusher" that only fires at 2 grid. In the alcove they take 0.9–4 HP, and none dies there.
+  Humans died there taking 10–15 hits. Two candidate fixes were A/B'd and neither was kept:
+  - Every alcove spawn dormant: the aggressive bot's damage went 0.9 → 2.0, and brawler deaths
+    in the next room went 1 → 14.
+  - Two of the three emberlings removed: the damage moved up for some profiles and down for
+    others.
+
+  Neither moves damage one way across the bots, so neither is a fix. The missing ingredient is
+  probably aim, which every bot does perfectly. The next step is the human data: `run_death`
+  (killer, room, hits, burst) on more visits, and a replay of one alcove death. No engine change
+  until those agree with a measurement.
+- **Frame rate on the slowest devices was under-reported.** `performance_sample` read Pixi's
+  `deltaMS`, which is clamped to 100 ms. In the slow windows `frame_time_max_ms` sat at exactly
+  100, and `frames_over_100ms` was 0 everywhere while long tasks ran to 7 s. Those windows took
+  about 90 s of wall clock to bank 30 s of "active" frames. The devices reporting 10 fps were
+  really drawing about 3. The sampler now reads `elapsedMS`. It disarms on hide and on
+  `pagehide`, so the first frame back is not counted as one frozen frame. Each sample now also
+  carries `gl` (software|hardware|unknown, from the unmasked renderer string, never the string
+  itself). That tells whether the slowest windows are machines drawing WebGL in software, which
+  no quality tier can rescue. `low` already ran on 14 of 38 sessions. Read on the next build
+  before tuning anything: `fps_p10` and `frames_over_250ms` split by `gl`. A software-renderer
+  share would argue for starting those machines at `low` at boot, a decision this data cannot
+  make yet.
+
+Both blocks above shipped in `ee9465b8`. Archive `blightbloom-2026-11-10-ee9465b8-real-frametimes`
+passed its check (Bridge 2.4.1) and was re-published on 2026-11-10 at 09:32 UTC, same link. Its
+update note tells players about the click-to-start keys fix and the faster run start. Split
+every read from here on `build_version` `ee9465b8`. Earlier builds send no `focus`/`input`,
+`run_wait`, `wait_ms` or `gl`, and their frame times are clamped at 100 ms.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

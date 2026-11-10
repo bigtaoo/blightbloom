@@ -338,6 +338,7 @@ export const ru: Translations<typeof en> = {
   tutorial: {
     step: 'ШАГ {n}/{of}',
     hintMoveKeys: 'Движение — WASD.',
+    hintClickFirst: 'Сначала щёлкните по игре, потом управляйте клавишами.',
     hintMoveTouch: 'Ведите пальцем по левой части экрана, чтобы двигаться.',
     hintAttackKeys: 'Удерживайте левую кнопку мыши для атаки: прицеливание автоматическое.',
     hintAttackTouch: 'Удерживайте правую часть экрана для атаки: прицеливание автоматическое.',
@@ -359,6 +360,8 @@ export const ru: Translations<typeof en> = {
     victoryTitle: 'ПОБЕДА РОЯЛЬ',
     eliminatedTitle: 'ВЫБЫЛ',
     confirmButton: 'ПОДТВЕРДИТЬ',
+    retryButton: 'ЕЩЁ РАЗ',
+    loadoutButton: 'СНАРЯЖЕНИЕ',
     timeLine: 'Время {m}:{ss}',
     floorLine: 'Этаж {floor}/{floorCount}',
     floorLineEndless: 'Этаж {floor}',

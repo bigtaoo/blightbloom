@@ -56,4 +56,15 @@ describe('bridgeSender', () => {
     bridgeSender({ track: () => void sent.push(1) })(batch([]));
     expect(sent).toEqual([]);
   });
+
+  it('carries attention on every event when given, and nothing when it is null', () => {
+    const sent: Record<string, unknown>[] = [];
+    let att: { focus: boolean; input: boolean } | null = null;
+    const send = bridgeSender({ track: (_e, d) => void sent.push(d ?? {}) }, () => att);
+    send(batch([{ name: 'run_start', at: 1 }]));
+    att = { focus: false, input: true };
+    send(batch([{ name: 'first_input', at: 2, props: { kind: 'pointer' } }]));
+    expect(sent[0]).not.toHaveProperty('focus');
+    expect(sent[1]).toEqual({ kind: 'pointer', focus: false, input: true, build: 'unknown', locale: 'de' });
+  });
 });

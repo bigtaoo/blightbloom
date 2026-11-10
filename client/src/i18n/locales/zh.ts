@@ -332,6 +332,7 @@ export const zh: Translations<typeof en> = {
   tutorial: {
     step: '第 {n}/{of} 步',
     hintMoveKeys: '用 WASD 移动。',
+    hintClickFirst: '先点一下游戏画面，再用键盘。',
     hintMoveTouch: '拖动屏幕左侧移动。',
     hintAttackKeys: '按住鼠标左键攻击——自动瞄准。',
     hintAttackTouch: '按住屏幕右侧攻击——自动瞄准。',
@@ -353,6 +354,8 @@ export const zh: Translations<typeof en> = {
     victoryTitle: '大吉大利',
     eliminatedTitle: '已淘汰',
     confirmButton: '确定',
+    retryButton: '再来一局',
+    loadoutButton: '调整装备',
     timeLine: '用时 {m}:{ss}',
     floorLine: '楼层 {floor}/{floorCount}',
     floorLineEndless: '楼层 {floor}',

@@ -54,9 +54,26 @@ export function isLocaleLoaded(locale: Locale): boolean {
 }
 
 let currentLocale: Locale = DEFAULT_LOCALE;
+/** Has anything called `setLocale` yet? Until it has, `currentLocale` is the default, not a choice. */
+let localeApplied = false;
 
 export function getLocale(): Locale {
   return currentLocale;
+}
+
+/**
+ * The live locale once something has applied one, and `fallback` until then.
+ *
+ * For a reader that runs BEFORE `new Game(...)` — whose `settingsBinding.load()` is the first
+ * `setLocale` of a visit — and must not report the default as the player's language. Analytics
+ * is that reader: its batch `locale` is read at flush time, and on Playgama (one flush per
+ * event) the visit's `session_start` flushes during boot, so `getLocale` labelled every one of
+ * them `en` while the same visit's later events said `ru`/`fr`/`es` (build 5e325436, the first
+ * with per-event sending). The entry points pass their `bootLocale`, the same persisted value
+ * the binding is about to apply.
+ */
+export function appliedLocaleOr(fallback: Locale): Locale {
+  return localeApplied ? currentLocale : fallback;
 }
 
 /**
@@ -72,12 +89,14 @@ export function getLocale(): Locale {
  */
 export function setLocale(locale: Locale): void {
   currentLocale = locale;
+  localeApplied = true;
 }
 
 /** Test-only: reset to the default locale so a test that calls `setLocale` doesn't leak
  * into the next one (same convention as `net/session.ts`'s `resetSessionCacheForTests`). */
 export function resetLocaleForTests(): void {
   currentLocale = DEFAULT_LOCALE;
+  localeApplied = false;
 }
 
 /** Test-only: forget every lazily-registered table, leaving the statically bundled `en`.

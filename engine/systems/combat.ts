@@ -15,7 +15,7 @@
 import { addFp, mulFp } from '../math/fixed';
 import { atan2Brad, cosFp, sinFp } from '../math/trig';
 import type { GameState } from '../state/GameState';
-import type { Actor, DamageSrc, ShieldBreakSim } from '../state/entities';
+import type { Actor, DamageSrc, EnemyActor, ShieldBreakSim } from '../state/entities';
 import type { DamageType } from '../content/damage';
 import { hostileTargets } from './targeting';
 
@@ -27,6 +27,9 @@ import { hostileTargets } from './targeting';
  *
  * `firePassive` guards against recursive break (design/07): the passive's own AoE
  * damage calls back in with `false`, so a break can never trigger another passive.
+ *
+ * `sourceId` is the attacker's actor id when there is one; it rides on the hit event as `by`
+ * for the client's cause-of-death telemetry and is never read by the sim.
  */
 export function takeDamage(
   state: GameState,
@@ -36,8 +39,16 @@ export function takeDamage(
   type: DamageType,
   firePassive = true,
   crit = false,
+  sourceId?: number,
 ): void {
   target.ticksSinceHit = 0;
+  // A dormant mob woken by the hit itself (ENGINE_VERSION 92, `EnemyActor.wakeOnHurt`) — only a
+  // real hit from the player side: a hazard tile, a stray AoE or a fully resisted 0 is not the
+  // player acting, and "stand still and nothing comes for you" is the warm-up room's promise.
+  if (src === 'player' && dmg > 0 && target.faction === 'enemy') {
+    const mob = target as EnemyActor;
+    if (mob.wakeOnHurt === true) mob.aggroed = true;
+  }
   const hadShield = target.shield > 0;
   if (target.shield >= dmg) {
     target.shield -= dmg;
@@ -55,6 +66,7 @@ export function takeDamage(
     damageType: type,
     shieldRemaining: target.shield,
     ...(crit ? { crit: true as const } : {}),
+    ...(sourceId !== undefined ? { by: sourceId } : {}),
   });
   if (hadShield && target.shield === 0) {
     state.events.push({ type: 'shield_break', id: target.id, gx: target.gx, gy: target.gy });
@@ -103,7 +115,7 @@ function fireShieldBreak(state: GameState, owner: Actor, passive: ShieldBreakSim
     const reach = passive.radius + f.radius;
     if (dx * dx + dy * dy > reach * reach) continue;
     if (passive.kind === 'aoe') {
-      takeDamage(state, f, passive.damage, owner.faction, 'physical', false); // guard: no re-trigger
+      takeDamage(state, f, passive.damage, owner.faction, 'physical', false, false, owner.id); // guard: no re-trigger
     } else {
       const ang = atan2Brad(dy, dx); // outward, from owner to foe
       f.knockVx = addFp(f.knockVx, mulFp(cosFp(ang), passive.impulse));

@@ -333,6 +333,7 @@ export const pl: Translations<typeof en> = {
   tutorial: {
     step: 'KROK {n}/{of}',
     hintMoveKeys: 'Poruszaj się klawiszami WASD.',
+    hintClickFirst: 'Najpierw kliknij grę, potem używaj klawiszy.',
     hintMoveTouch: 'Przeciągnij lewą stronę ekranu, aby się poruszyć.',
     hintAttackKeys: 'Przytrzymaj lewy przycisk myszy, aby atakować — celowanie jest automatyczne.',
     hintAttackTouch: 'Przytrzymaj prawą stronę ekranu, aby atakować — celowanie jest automatyczne.',
@@ -354,6 +355,8 @@ export const pl: Translations<typeof en> = {
     victoryTitle: 'ZWYCIĘSTWO ROYALE',
     eliminatedTitle: 'WYELIMINOWANO',
     confirmButton: 'POTWIERDŹ',
+    retryButton: 'SPRÓBUJ PONOWNIE',
+    loadoutButton: 'WYPOSAŻENIE',
     timeLine: 'Czas {m}:{ss}',
     floorLine: 'Piętro {floor}/{floorCount}',
     floorLineEndless: 'Piętro {floor}',
