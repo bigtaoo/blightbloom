@@ -2,9 +2,10 @@
  * `PlaygamaSession` — what Bridge is told and what Bridge may stop, derived from the phase
  * stream alone. Written as phase SEQUENCES a player walks, like `PortalSession.test.ts`.
  *
- * What would fail silently: an interstitial on entering a run instead of on leaving one (or
- * on opening Settings from a paused run), a platform pause that never stops the clock, an ad
- * ending that unmutes a game the platform had muted, and a `gameplay_started` while an ad is up.
+ * What would fail silently: an interstitial on entering a run instead of at one of the three
+ * natural pauses `naturalPause()` names (or on opening Settings from a paused run), a platform
+ * pause that never stops the clock, an ad ending that unmutes a game the platform had muted,
+ * and a `gameplay_started` while an ad is up.
  */
 import { describe, expect, it } from 'vitest';
 import { PlaygamaSession } from './PlaygamaSession';
@@ -106,16 +107,49 @@ describe('PlaygamaSession — the interstitial', () => {
 
   it('treats Settings as an overlay: paused → settings → paused asks nothing', () => {
     const h = harness();
-    h.walk('menu', 'playing', 'paused', 'settings', 'paused', 'playing');
+    h.walk('menu', 'playing', 'paused', 'settings', 'paused');
     expect(h.count('ad:interstitial')).toBe(0);
     h.walk('victory', 'settings', 'menu');
     expect(h.count('ad:interstitial')).toBe(1);
+  });
+
+  // The two pauses added 2026-11-11, the ones the sandbox showed the player actually takes.
+  // Each lands back on `playing` without ever leaving `inRun`, which is why the old single
+  // `inRun(from) && !inRun(to)` condition could not see either of them.
+  it('asks when the player RESUMES from the pause menu', () => {
+    const h = harness();
+    h.walk('menu', 'playing', 'paused');
+    expect(h.count('ad:interstitial')).toBe(0);
+    h.walk('playing');
+    expect(h.count('ad:interstitial')).toBe(1);
+  });
+
+  it('asks when the player RESTARTS from a result screen, on either outcome', () => {
+    const h = harness();
+    h.walk('menu', 'playing', 'defeat');
+    expect(h.count('ad:interstitial')).toBe(0);
+    h.walk('playing'); // TRY AGAIN
+    expect(h.count('ad:interstitial')).toBe(1);
+    h.walk('victory', 'playing');
+    expect(h.count('ad:interstitial')).toBe(2);
   });
 
   it('does not ask on the very first phase', () => {
     const h = harness();
     h.walk('playing');
     expect(h.count('ad:interstitial')).toBe(0);
+  });
+
+  // The guide's one hard rule about the FIRST ad: not in the opening seconds of play. A run
+  // started from the hub is not a pause, however it was reached.
+  it('never asks on the way INTO a run, from any hub screen', () => {
+    const h = harness();
+    h.walk('menu', 'playing', 'menu'); // bank one, so a later count cannot pass by being 0
+    expect(h.count('ad:interstitial')).toBe(1);
+    h.walk('loadout', 'playing');
+    expect(h.count('ad:interstitial')).toBe(1);
+    h.walk('menu', 'matchmaking', 'playing');
+    expect(h.count('ad:interstitial')).toBe(2); // the one for playing → menu, and nothing since
   });
 
   it('holds the clock, the sound and the bracket only once the ad has OPENED', async () => {

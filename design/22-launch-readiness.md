@@ -263,9 +263,10 @@ answers it in days.
 `client/src/main.playgama.ts`, `client/src/platform/playgama/`). The sandbox's CSP blocks our
 backend, so the build is offline: PvE only, no account, no co-op/PvP/squad routes
 (`hostKind.canPlayOnline`), no outbound links, no Escape binding. Saves go through Bridge
-storage, analytics through Bridge, and the interstitial is asked only when a run ends, with a
-60 s cooldown in the Bridge config the build emits (`BRIDGE_CONFIG` in
-`client/vite.playgama.config.js`).
+storage, analytics through Bridge, and the interstitial is asked at each of the three natural
+pauses `PlaygamaSession.naturalPause()` names — a run walked out of, a resume from the pause
+menu, a restart from a result screen (2026-11-11c below) — with a 60 s cooldown in the Bridge
+config the build emits (`BRIDGE_CONFIG` in `client/vite.playgama.config.js`).
 
 **Console state (2026-11-06).** Game "Blightbloom" created as a draft; archive
 `blightbloom-0.0.1-playgama-2026-11-06` uploaded, unpacked, Bridge found, check PASSED. The
@@ -608,6 +609,52 @@ One lead was chased and found clean: `screen_view` shows `paused` in 61 of 239 p
 sessions, which looked like the Playgama iframe auto-pausing a quarter of the players.
 It is not — `PlaygamaSession` maps `pause_state_changed` to a `Hold`, which stops the clock
 without touching `RunState.phase`. Those are players opening the pause menu themselves.
+
+**2026-11-11c — the ad was placed at the one pause the player does not take.** Ad Shows per
+Play is the second gate (≥ 0.30) and the week of 2026-11-05..11 read **0.236** — 25 shows
+(24 interstitial, 1 rewarded) over 106 qualifying plays, with 10 `interstitial_failed` on top.
+The shortfall is not a cooldown or a failure rate. It is placement.
+
+`PlaygamaSession` asked for an interstitial on one condition, `inRun(from) && !inRun(to)`, and
+`inRun` folds play, the pause menu and the result screen into a single state. So the only
+moment that could ever be marked was the walk back to the lobby — the pause taken by the
+player who has decided to stop. The telemetry shows how rare that is: **274 `run_start`s
+produced 62 `run_end`s**, so 77% of runs end with the tab closing mid-floor, and those 62 ends
+could yield at most 34 requests. Meanwhile the pauses the player *does* take were invisible:
+`screen_view` recorded `paused` in 61 of 239 playing sessions (the lead cleared above — those
+are real pause-menu opens), and 43 of the 62 ends were losses, each sitting under a TRY AGAIN
+button that feeds straight back into `playing`. Both are named in Playgama's own monetization
+guide — "when the player resumes from pause", "shortly after the player presses restart" —
+and neither leaves `inRun`, so neither could fire.
+
+The fix is `naturalPause(from, to)`, which keeps the run-ended arm and adds those two. It adds
+no timer and no counter of our own: the guide is explicit that Bridge owns the spacing
+(`minimumDelayBetweenInterstitial`), and a request inside the cooldown fails at once without
+showing anything, which is why marking *more* moments is the only lever we have. `whileAd`
+already holds the clock, the sound and the gameplay bracket from the moment an ad opens, so
+none of the three can interrupt play (requirements 2.1.3 and 2.1.6).
+
+Deliberately not marked: **the start of a run** (the opening seconds are what Bridge holds its
+first ad back to protect), and **the floor-to-floor descent** — "between levels" on paper, but
+this game descends without a screen in between, so the player would be standing in a room with
+their hand on the keys. A pause the player did not take is not a pause.
+
+Also rejected, and worth recording so they are not re-proposed:
+- *A revive / second-chance rewarded ad on defeat.* design/05's wipe rule is locked: a death
+  may never be bought back. This is the single highest-volume ad slot in the game (43 losses a
+  week) and it stays shut.
+- *Offering the material double on `abandon` or `loss`.* `RunOutcome.doubleOffer()` is reached
+  only from `win()` because carry-out banks only on extraction, so `carried` is 0 by rule on
+  every other outcome. Its true cost is already visible: `ad_offer_shown` fired **3** times in
+  the week, exactly matching the 3 wins. The rewarded offer is attached to a 5%-frequency
+  event and could not move the gate at 100% conversion.
+- *A banner on the loss screen.* The guide calls this out as effective and we ship none, but it
+  needs layout safe-zones across every result screen. A larger change than this pass, not a
+  rejection — it is the next candidate if 0.30 is still out of reach.
+
+What to read next week: `interstitial_opened` per qualifying play (the gate itself), and
+whether `interstitial_failed` rises — a rise there is the cooldown doing its job against the
+new volume, not a regression.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
