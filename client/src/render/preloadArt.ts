@@ -195,12 +195,18 @@ export function ensureRunArt(onProgress?: ArtProgress): Promise<void> {
 
 async function loadRunArt(): Promise<void> {
   await ensurePacks(packsForPhase('run'), tickRun);
-  // The lobby's decoration before any run art: it is what the player is looking at while this
-  // downloads, and on a slow web link everything below would otherwise share the line with it.
-  // A few hundred kB, and a player cannot reach the run gate in the time it takes. After the
-  // packs rather than before, because on web `ensurePacks` is free, and on WeChat these files
-  // are already local (they ship in `lobby`) while the packs are the real download.
-  await preloadUiTier('lobby');
+  // THE LOBBY TIER IS NOT AWAITED HERE, AND USED TO BE (2026-11-11). It sat on this line as
+  // `await preloadUiTier('lobby')`, with the reasoning "a player cannot reach the run gate in
+  // the time it takes". The Playgama sandbox measured that: `run_wait{art}` came back `pending`
+  // in 113 of 113 sessions, because `firstRunAutostart.ts` opens the run gate within a frame of
+  // `beginDeferredArt()` — the same frame `preloadLobbyArt` kicks this tier. So it was not
+  // ahead of the player, it was in front of them: ~253 kB of the screen they had just left,
+  // strictly serialised before the ~2.3 MB this gate is actually for, and the whole of it still
+  // in flight. See design/22 §4.2.
+  //
+  // It is still downloading — `preloadLobbyArt` kicks it at boot and `preloadUiTier` memoises
+  // per tier, so nothing here needs to start it. A key that lands after a menu is drawn reaches
+  // that menu through `whenUiTexture`, which is how the `late` tier has always worked.
   await Promise.all([
     // The UI files no menu on the lobby draws — the other screens' icons, the floor-card and
     // result art, the damage digits. On WeChat they live in a `run`-phase pack (`ui-late`),

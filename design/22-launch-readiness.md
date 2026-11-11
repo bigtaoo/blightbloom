@@ -558,6 +558,57 @@ until this change the eastward walk died at tick 438). Nothing is built or publi
 yet — the next sandbox archive carries it, and the honest read is the 60 s survival line in the
 gates below, split on the build version that first ships it.
 
+**2026-11-11b — the run gate, and the instrument that was measuring it wrong.** The same
+window read from the other end. `run_wait.art` came back `pending` in **113 of 113** sessions:
+the run art is never in when the player asks for a run, because `firstRunAutostart.ts` opens
+the gate within a frame of `beginDeferredArt()`. The median `wait_ms` was 4,621 ms. Two
+changes, neither sim-visible (no `ENGINE_VERSION` bump):
+
+- **The lobby UI tier is off the gate's critical path.** `loadRunArt()` opened with
+  `await preloadUiTier('lobby')`, on the written reasoning that "a player cannot reach the run
+  gate in the time it takes". The 113/113 is that reasoning being measured and failing: the
+  tier is kicked by `preloadLobbyArt` in the same frame the gate opens, so ~253 kB of the
+  decoration of the screen the player has just LEFT sat strictly serialised in front of the
+  ~2.3 MB the gate actually exists for. The await is gone; the kick and `preloadUiTier`'s
+  per-tier memo are untouched, so nothing downloads any later than it did, and a key that
+  lands after a menu is drawn still reaches it through `whenUiTexture` exactly as the `late`
+  tier always has. Asserted as an absence in `preloadArt.test.ts` — the gate must not ask for
+  those files, not merely not block on them.
+- **`wait_ms` stopped counting tabs nobody was looking at.** It was wall clock from
+  `noteRunWait` to `run_start`, so a player who opened the gate and switched tabs banked the
+  whole absence: p90 4,752,650 ms (79 minutes), max 42,434,681 (11.8 hours). The unreadable
+  top end was the smaller half. `net/analyticsEvents.ts` bounds the field at 600,000 and
+  `coerceProp` DROPS an out-of-range int rather than clamping it, so those sessions carried no
+  `wait_ms` at all — and since the waits most likely to be backgrounded are the slow ones, the
+  bound was deleting the rows the field exists to find and the surviving median was measured
+  over whoever stayed on the tab. It now accrues per frame in `reportFrame`, each step clamped
+  to `MAX_WAIT_STEP_MS` (250 ms); a hidden tab runs no `requestAnimationFrame`, so the absence
+  arrives as one oversized frame and the clamp is what eats it. Same shape as `perfSample.ts`,
+  for the same reason. **Every `wait_ms` before this build is a different measurement** — split
+  on `build_version` before comparing, and expect the new median to be higher, not lower, now
+  that the slow sessions are no longer being discarded.
+
+**Considered in the same pass and deliberately not done**, so the next reader does not spend
+the afternoon re-deriving them:
+
+- *Narrowing the run gate's biome await to the entering chapter's element* (~203 kB: ice,
+  lightning and poison are locked behind clearing the chapter before them). `assetPacks.json`
+  already answers this in writing — `biome-ice`/`-lightning`/`-poison` are in the `run` phase
+  precisely "so a frost run never starts on the flat fallback palette" — and narrowing only the
+  web loader would buy nothing on WeChat, where the packs are the real download. It would also
+  open a new path to the flat fallback for a co-op guest on the host's chapter, since an online
+  run does not cross this gate at all. 9% of the gate is not worth re-litigating that for.
+- *Re-encoding `door_curtain_raw.png`* (593 kB, 26% of the gate, 12x the next-largest door
+  state). design/12's "Update (2026-09-01b)" records a render comparison put to the owner and
+  answered "leave it alone", with a note asking that it not be re-litigated. It is not.
+- *Releasing the gate on a critical subset.* That is the partial-availability state design/12's
+  phase-boundary rule exists to forbid, and this repo's worst bug class.
+
+One lead was chased and found clean: `screen_view` shows `paused` in 61 of 239 playing
+sessions, which looked like the Playgama iframe auto-pausing a quarter of the players.
+It is not — `PlaygamaSession` maps `pause_state_changed` to a `Hold`, which stops the clock
+without touching `RunState.phase`. Those are players opening the pause menu themselves.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
