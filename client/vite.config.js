@@ -40,6 +40,14 @@ export default defineConfig({
   // config for this reason: nothing ran it, its alias list silently drifted behind the real
   // one, and 4 of its 11 files died at load there while the live config ran all 11 green.
   test: {
+    // 15s, not vitest's 5s default. Ten test files sweep the whole source tree with
+    // synchronous `readdirSync` + `readFileSync` (uiSkins, pureLayerBoundary, assetManifest,
+    // shippedPngFormat and friends) — each a few hundred files of I/O on one thread. Alone
+    // they take under 3s even instrumented, but under a full `npm run coverage` run they
+    // compete with every other worker for the disk: `uiSkins.test.ts` timed out at 5s once
+    // on 2026-11-11 and passed on a bare re-run. A flaky red on a REQUIRED check is worse
+    // than a slow one, because it teaches you to re-run instead of to read.
+    testTimeout: 15_000,
     coverage: {
       provider: 'v8',
       // `text` for the local run, `json-summary` for build/checkCoverageThreshold.mjs (the
