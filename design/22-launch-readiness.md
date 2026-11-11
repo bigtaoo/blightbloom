@@ -779,6 +779,49 @@ what this pass bought. If `run_resume` and `run_restart` together are not the ma
 requests, 2026-11-11c placed the ad in the wrong two pauses and the banner in its rejected list
 becomes the next candidate.
 
+**2026-11-11f — published, and the one thing every reading of it has to be split on.** All of
+2026-11-11a..e went up as a single archive,
+`blightbloom-2026-11-11-9403aaf9-ad-placements` (7,217,261 bytes, 249 entries, Bridge 2.4.1,
+build check PASSED), live at the sandbox link as revision `cmwc9jdpw0jj5hj0hodzswsi1` since
+2026-11-11T15:17:39Z. It replaces the 2026-11-10 09:32 revision (archive
+`cmwahou2c1d5wm80h9gygw3s6`, commit `ee9465b8`) — **which is the build every number in
+2026-11-11a..e was measured on**. Five commits were sitting unpublished behind it, and each
+one is aimed at one of the two failing gates:
+
+| commit | what a player meets | gate |
+| --- | --- | --- |
+| `cfd3fdb8` | the first floor is survivable (ENGINE_VERSION 93) | Avg Play Time |
+| `6416a86b` | the lobby tier is off the run gate; `wait_ms` counts visible time only | Avg Play Time |
+| `72a8b337` | an interstitial at the resume and the restart, not only the walk-out | Ad Shows per Play |
+| `f9f48c25` | the defeat screen names what killed you | Avg Play Time |
+| `0031fc04` | named placements, and the commonest one preloaded | Ad Shows per Play |
+
+So **no gate number spanning 2026-11-11 15:17 means anything unsplit**. Split on
+`build_version` (`gameVersion()` stamps the short commit into it) before comparing anything,
+and expect three fields in particular to be incomparable across that line: `wait_ms` (a
+different measurement since `6416a86b` — 2026-11-11b), `advertisement_interstitial_opened`
+(three placements where there was one), and the 60 s survival rate (a different first floor).
+
+**The confounder that outlives the publish, and the natural experiment that ends it.** The free
+traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until **2026-11-12T08:32:14Z**. Its
+arrivals are ad clicks and they read like it: daily average session 11-08 **530.4 s** (p50
+28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **≈126 s** (p50 ≈0, ~74).
+That fall is traffic composition, build regression, or both, and **this data cannot separate
+them** — the campaign started 11-09 08:32, a day before the build it is blamed on. When it
+stops, organic traffic returns on its own and the comparison becomes readable. Until then, read
+the two gates per build_version and ignore the headline averages.
+
+The gates are a rolling window of the last 100 qualifying plays (a play = a session reaching
+60 s, `gameplay_60s`), so the window refreshes only as fast as plays arrive: 3–11/day organic,
+~30/day with the campaign. The honest estimate is **3–4 days to a clean reading while the
+campaign runs, 10–30 days without it**.
+
+**The zip, again.** Built with a Python `zipfile` helper and verified at **0 entries
+containing a backslash** before the upload — the check that exists because PowerShell 5.1's
+`Compress-Archive` wrote `assets\index-….js` once and the unpacked page could not load its own
+scripts (`BRIDGE_NOT_INITIALIZED`). Run that check every time; it costs one line and it has
+already been paid for once.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
