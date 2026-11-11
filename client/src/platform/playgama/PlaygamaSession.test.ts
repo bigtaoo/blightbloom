@@ -8,7 +8,7 @@
  * and a `gameplay_started` while an ad is up.
  */
 import { describe, expect, it } from 'vitest';
-import { PlaygamaSession } from './PlaygamaSession';
+import { AD_PLACEMENTS, PlaygamaSession } from './PlaygamaSession';
 import type { Phase } from '../../game/phase';
 
 interface Pending {
@@ -23,6 +23,8 @@ function harness(opts: { rewarded?: boolean; throwOnOpen?: boolean } = {}) {
   let mute: ((m: boolean) => void) | null = null;
   let inFlight = false;
   const pending: Pending[] = [];
+  /** The placement id each interstitial request carried, in order. */
+  const placements: (string | undefined)[] = [];
   const ad = (kind: string) => (opened: () => void): Promise<boolean> => {
     log.push(`ad:${kind}`);
     if (opts.throwOnOpen) {
@@ -44,7 +46,10 @@ function harness(opts: { rewarded?: boolean; throwOnOpen?: boolean } = {}) {
     send: (m: string) => void log.push(m),
     onPause: (cb: (p: boolean) => void) => void (pause = cb),
     onMute: (cb: (m: boolean) => void) => void (mute = cb),
-    interstitial: async (opened: () => void) => void (await ad('interstitial')(opened)),
+    interstitial: async (placement?: string, opened?: () => void) => {
+      placements.push(placement);
+      await ad('interstitial')(opened ?? (() => undefined));
+    },
     rewarded: ad('rewarded'),
     rewardedSupported: () => opts.rewarded ?? true,
     adInFlight: () => inFlight,
@@ -66,7 +71,7 @@ function harness(opts: { rewarded?: boolean; throwOnOpen?: boolean } = {}) {
   };
   const count = (m: string) => log.filter((x) => x === m).length;
   return {
-    session, log, mutes, walk, settle, pending, count,
+    session, log, mutes, walk, settle, pending, count, placements,
     pause: (p: boolean) => pause!(p),
     mute: (m: boolean) => mute!(m),
   };
@@ -103,6 +108,7 @@ describe('PlaygamaSession — the interstitial', () => {
     h.walk('loadout', 'forge', 'menu');
     expect(h.count('ad:interstitial')).toBe(1);
     expect(h.session.diagnostics()).toContain('interstitials 1');
+    expect(h.placements).toEqual([AD_PLACEMENTS.runEnd]);
   });
 
   it('treats Settings as an overlay: paused → settings → paused asks nothing', () => {
@@ -122,6 +128,7 @@ describe('PlaygamaSession — the interstitial', () => {
     expect(h.count('ad:interstitial')).toBe(0);
     h.walk('playing');
     expect(h.count('ad:interstitial')).toBe(1);
+    expect(h.placements).toEqual([AD_PLACEMENTS.runResume]);
   });
 
   it('asks when the player RESTARTS from a result screen, on either outcome', () => {
@@ -132,6 +139,31 @@ describe('PlaygamaSession — the interstitial', () => {
     expect(h.count('ad:interstitial')).toBe(1);
     h.walk('victory', 'playing');
     expect(h.count('ad:interstitial')).toBe(2);
+    expect(h.placements).toEqual([AD_PLACEMENTS.runRestart, AD_PLACEMENTS.runRestart]);
+  });
+
+  // The placement is the only thing that tells the three apart once the request has left us:
+  // without it every pause reaches the platform as the same unnamed `showInterstitial()`, and
+  // `advertisement_interstitial_opened` cannot say which pause earned the ad.
+  it('names a DIFFERENT placement for each of the three pauses, in one session', () => {
+    const h = harness();
+    h.walk('menu', 'playing', 'paused', 'playing'); // resume
+    h.walk('defeat', 'playing'); // TRY AGAIN
+    h.walk('menu'); // out to the hub
+    expect(h.placements).toEqual([
+      AD_PLACEMENTS.runResume, AD_PLACEMENTS.runRestart, AD_PLACEMENTS.runEnd,
+    ]);
+    expect(new Set(h.placements).size).toBe(3);
+  });
+
+  // Every id the game can send has to be one the config declares, or the platform has no
+  // placement to route the request to. `playgamaBuild.test.ts` agrees the other direction.
+  it('sends only ids `AD_PLACEMENTS` declares', () => {
+    const h = harness();
+    h.walk('menu', 'playing', 'paused', 'playing', 'defeat', 'playing', 'victory', 'menu');
+    const declared = new Set<string>(Object.values(AD_PLACEMENTS));
+    expect(h.placements.length).toBeGreaterThan(0);
+    for (const p of h.placements) expect(declared.has(p!)).toBe(true);
   });
 
   it('does not ask on the very first phase', () => {
@@ -266,7 +298,7 @@ describe('PlaygamaSession — a frame with no area', () => {
       send: (m: string) => void log.push(m),
       onPause: () => undefined,
       onMute: () => undefined,
-      interstitial: async () => undefined,
+      interstitial: async (_placement?: string) => undefined,
       rewarded: async () => false,
       rewardedSupported: () => false,
       adInFlight: () => false,
