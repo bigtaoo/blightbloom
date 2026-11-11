@@ -551,6 +551,14 @@ has the reasoning for each):
 - `burst_pct`: the damage of the five seconds before the last hit, as a percentage of the full
   HP + shield pool. Near 100 means "never saw it coming"; low means a slow bleed.
 
+Since 2026-11-11 these are no longer telemetry-only: `hits` and `burst_pct` also decide the
+defeat screen's one diagnosis line (`client/src/game/deathAdvice.ts`, design/22's 2026-11-11d
+entry), which is why `RunOutcome` reads `deathReportProps` ONCE and hands the same object to
+both the event and the screen — the module state behind it is cleared by the next `run_start`,
+so two reads agree only by luck of ordering. There is deliberately no `hint` field recording
+which line was shown: it is a pure function of two fields already here, and `run_death` is at
+the four-field cap `analyticsEvents.test.ts` enforces.
+
 **What building it settled.**
 
 - **A separate event, not four more `run_end` fields.** Four more fields would put `run_end`
