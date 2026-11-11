@@ -908,6 +908,96 @@ describe('GameLoop — the scene is reconciled BEFORE the tick\'s events are con
   });
 });
 
+// The first-input hold (`openingHold.ts`, design/22 section 4.1, 2026-11-11). The decision —
+// how long to wait and what counts as an answer — has its own suite next door; what cannot be
+// seen from there, and is the half that would silently stop working, is whether the main loop
+// actually consults it, arms it per run, and lets it go again. The failure mode of each of
+// these is a green suite and a game that either never freezes (the change does nothing) or
+// never unfreezes (the change is the bug).
+describe('GameLoop — the first-input hold', () => {
+  function armedRun(hostOverrides: Partial<GameLoopHost> = {}) {
+    const built = buildDeps();
+    const engine = createGameEngine(CFG);
+    const advance = vi.spyOn(engine, 'advance');
+    const loop = new GameLoop(built.deps, buildHost({ getEngine: () => engine, ...hostOverrides }));
+    loop.resetForNewRun();
+    return { ...built, loop, advance };
+  }
+
+  it('runs ONE tick, then holds — the opening frame still writes the HUD and the lesson', () => {
+    // `TutorialHintController.consume` and `updateHud` both run inside a tick. Freezing at
+    // tick zero would be a motionless dungeon behind a screen that never said "Move with WASD".
+    const { loop, advance } = armedRun();
+    for (let i = 0; i < 60; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases on the first input and then runs normally', () => {
+    const { loop, advance, input } = armedRun();
+    for (let i = 0; i < 10; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(1);
+
+    input.state.moveX = 1;
+    for (let i = 0; i < 10; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(11);
+  });
+
+  it('is armed per run, not once per loop — a second run waits for its own first input', () => {
+    const { loop, advance, input } = armedRun();
+    input.state.firing = true;
+    for (let i = 0; i < 10; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    const afterFirstRun = advance.mock.calls.length;
+    expect(afterFirstRun).toBe(10); // the first run is live
+
+    input.state.firing = false;
+    loop.resetForNewRun();
+    for (let i = 0; i < 60; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(afterFirstRun + 1); // one tick, then held again
+  });
+
+  it('does not hold a replay — the recording is the input and nobody is sitting there', () => {
+    const { loop, advance } = armedRun({ replayStopTick: () => 10 });
+    for (let i = 0; i < 5; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not hold the arena demo, which drives itself', () => {
+    const { loop, advance } = armedRun({ isArenaDemo: () => true });
+    for (let i = 0; i < 5; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not hold an online run — the server is the clock and cannot be paused for one seat', () => {
+    // `advanceSim` is where the hold lives, and online runs never reach it. Pinned because
+    // "freeze until the player moves" is exactly the kind of rule that gets hoisted into
+    // `update()` later by someone tidying up, and co-op would desync on the spot.
+    const { deps, input } = buildDeps();
+    const session = { started: false } as unknown as CoopSession;
+    const loop = new GameLoop(deps, buildHost({ isOnline: () => true, getSession: () => session }));
+    loop.resetForNewRun();
+    input.state.moveX = 0; // the hold's own trigger condition, held for a hundred frames
+    for (let i = 0; i < 100; i++) expect(() => loop.update(SIM_DT_MS_FOR_TESTS)).not.toThrow();
+  });
+
+  it('keeps rendering while held, so the opening frame is alive rather than a still image', () => {
+    const { loop, scene, fx } = armedRun();
+    for (let i = 0; i < 5; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(scene.interpolate).toHaveBeenCalledTimes(5);
+    expect(fx.updateFx).toHaveBeenCalledTimes(5);
+    expect(fx.updateCamera).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not bank the wait — releasing does not burst a catch-up of skipped ticks', () => {
+    // The same property hit-stop relies on: `acc` must not accumulate while frozen, or ten
+    // held seconds would arrive as 300 ticks in one frame and kill the player on release.
+    const { loop, advance, input } = armedRun();
+    for (let i = 0; i < 100; i++) loop.update(SIM_DT_MS_FOR_TESTS);
+    input.state.moveX = 1;
+    loop.update(SIM_DT_MS_FOR_TESTS);
+    expect(advance).toHaveBeenCalledTimes(2); // the opening tick, and this one
+  });
+});
+
 describe('GameLoop — reset hooks (run-lifecycle callbacks)', () => {
   it('resetForNewRun zeroes the accumulator, so the very next frame needs a full tick before stepping', () => {
     const { deps } = buildDeps();

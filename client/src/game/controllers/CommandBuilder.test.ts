@@ -249,3 +249,37 @@ describe('CommandBuilder.lastMove', () => {
     expect(held.mag).toBeGreaterThan(0);
   });
 });
+
+describe('CommandBuilder.hasLatchedAction — what the opening hold reads', () => {
+  // The freeze in `openingHold.ts` holds the world still until the player shows up, and a
+  // frozen sim never calls build(). So every one-shot latch has to be VISIBLE before it is
+  // consumed, or a run whose first action is a HUD tap stays frozen until the 20 s fuse.
+  // One case per latch, because a getter that forgot one would still pass a single-case test.
+  const latch: ReadonlyArray<readonly [string, (b: CommandBuilder) => void]> = [
+    ['swap', (b) => b.requestSwap()],
+    ['confirm extract', (b) => b.requestConfirmExtract()],
+    ['confirm descend', (b) => b.requestConfirmDescend()],
+    ['ground pickup', (b) => b.requestPickup(7)],
+    ['shop buy', (b) => b.requestShopBuy(3)],
+    ['floor-card vote', (b) => b.requestCardVote(2)],
+  ];
+
+  it('is false for a builder nobody has touched', () => {
+    expect(new CommandBuilder(fakeInput(IDLE_STATE)).hasLatchedAction).toBe(false);
+  });
+
+  it.each(latch)('reports a pending %s, and stops once build() has carried it', (_, set) => {
+    const b = new CommandBuilder(fakeInput(IDLE_STATE));
+    set(b);
+    expect(b.hasLatchedAction).toBe(true);
+    b.build(1, 0);
+    expect(b.hasLatchedAction).toBe(false);
+  });
+
+  it('is not set by firing or interacting — those are read from the device, not latched', () => {
+    // The control: without it, a getter that simply returned `true` would pass every case
+    // above. These two reach the command through `InputState`, which the hold reads itself.
+    const b = new CommandBuilder(fakeInput({ ...IDLE_STATE, firing: true, interacting: true }));
+    expect(b.hasLatchedAction).toBe(false);
+  });
+});

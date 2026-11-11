@@ -1,8 +1,10 @@
 /**
  * Level 1's content gate — holds `world/dungeons/ember/`'s JSON to the level spec
  * (5 floors of 6/7/8/8/6 rooms, every room 15x15..20x20, enemy count ramping with
- * cell count from 8 to 14) and, most importantly, proves every door is PHYSICALLY
- * PASSABLE.
+ * cell count from 8 to 14 — except floor one's three fight rooms, which sit UNDER
+ * that ramp since ENGINE_VERSION 93 and are pinned one by one in
+ * `FIRST_FLOOR_GARRISONS` below) and, most importantly, proves every door is
+ * PHYSICALLY PASSABLE.
  *
  * "Passable" is deliberately checked the expensive way. `tools/map-editor`'s
  * `validateDungeonFloorMap` already covers the structural half (no overlaps, doors
@@ -55,6 +57,29 @@ const SIDE_PIECES = new Set(['ember_l1_cache', 'ember_l1_vault', 'ember_l1_marke
  */
 const ENTRY_PIECE = 'ember_l1_cell';
 const ENTRY_ENEMIES = 2;
+/**
+ * FLOOR ONE's garrison, cut below the ramp on 2026-11-11 and pinned here because it is a
+ * decision rather than a drift. Measured on the Playgama sandbox: `run_end.floor` has a
+ * median of 1 — half of all runs end in the room they started on or the next one — and
+ * `run_death.room` puts 23 of 25 deaths in a floor-1 room, 10 of them in `r2_alcove` alone
+ * (12 counting floor 2's reuse of the same piece, i.e. 48% of every death in the game). The
+ * killers are the cheapest mobs in the tree (`basic` 11, `emberling` 7; no stalker, no
+ * ravager) at a median of 13 hits taken — attrition from a crowd, not a spike from one
+ * dangerous thing, which is the one shape that fewer bodies actually fixes.
+ *
+ * So these three keep their ramp SHAPE (the bigger room is still the heavier fight) while
+ * sitting under the line, deepest where the deaths were. The ramp itself is untouched from
+ * `ember_l1_kiln` (288 cells) up, so floors 3-5 are exactly as authored.
+ *
+ * Pinned as literals, and cross-checked below against the pieces floor 1 actually uses, so
+ * that neither half can move alone: an editor drag that empties a garrison fails, and so does
+ * a floor map that quietly brings a fourth piece under the exemption.
+ */
+const FIRST_FLOOR_GARRISONS = new Map([
+  ['ember_l1_alcove', 5], // was 9 — 16x15, the room that killed most
+  ['ember_l1_gallery', 7], // was 10 — 15x18
+  ['ember_l1_forge', 8], // was 10 — 17x16
+]);
 const isFight = (p: RoomPiece): boolean => p.role !== 'extraction' && !SIDE_PIECES.has(p.id) && p.id !== ENTRY_PIECE;
 const MIN_SIDE = 15;
 const MAX_SIDE = 20;
@@ -141,9 +166,21 @@ describe('level 1 room pieces', () => {
     for (const piece of EMBER_L1_ROOMS) {
       if (!isFight(piece)) continue; // the checkpoint room and the three side rooms are deliberately empty; the entry room is a warm-up
       const area = piece.sizeGrid.w * piece.sizeGrid.h;
-      const expected = Math.max(MIN_ENEMIES, Math.min(MAX_ENEMIES, Math.round(8 + (6 * (area - 225)) / 175)));
+      const ramp = Math.max(MIN_ENEMIES, Math.min(MAX_ENEMIES, Math.round(8 + (6 * (area - 225)) / 175)));
+      const expected = FIRST_FLOOR_GARRISONS.get(piece.id) ?? ramp;
       expect(piece.spawns.enemy.length, piece.id).toBe(expected);
+      if (FIRST_FLOOR_GARRISONS.has(piece.id)) {
+        expect(expected, `${piece.id} is exempt to be LIGHTER than the ramp, not heavier`).toBeLessThan(ramp);
+      }
     }
+  });
+
+  it('only floor one is cut below the ramp — the exemption is exactly its garrison', () => {
+    const fightsOnFloorOne = floorAt(0)
+      .rooms.map((r) => r.pieceId)
+      .filter((id) => isFight(pieceFor(id)))
+      .sort();
+    expect([...FIRST_FLOOR_GARRISONS.keys()].sort()).toEqual(fightsOnFloorOne);
   });
 
   it('the enemy count is monotonic in cell count — a bigger room is never a lighter fight', () => {

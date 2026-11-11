@@ -1,106 +1,25 @@
-import { hashState, PLAYER_BASE, roomRects, type GameEngine, type GameEvent, type GameState } from '@dd/engine';
-import type { CoopSession } from '../../net/CoopSession';
-import type { InputSource } from '../../platform/types';
-import type { Phase } from '../phase';
+import { hashState, PLAYER_BASE, roomRects, type GameEvent, type GameState } from '@dd/engine';
 import { updateMusicForFrame } from '../musicDirector';
 import { fpToPx, bradToRad } from '../coords';
 import { ELEMENT_COLORS } from '../theme';
 import { LocalPredictor, DEFAULT_PREDICTOR, walkableFor } from './LocalPredictor';
-import type { CommandBuilder } from './CommandBuilder';
-import type { AllyController } from './AllyController';
-import type { EventReactor } from './EventReactor';
-import type { RunOutcome } from './RunOutcome';
-import type { TutorialHintController } from './TutorialHintController';
-import type { Scene } from '../scene/Scene';
-import type { RoomBuilder } from '../scene/RoomBuilder';
 import { MAX_WALL_HEIGHT } from '../scene/wallGeometry';
 import { DoorFxDriver } from '../scene/doorTick';
 import { OnlineInterpolation } from './onlineInterpolation';
 import type { OcclusionFocus } from '../scene/occlusion';
-import type { FxController } from '../fx/FxController';
-import type { HudView } from '../ui/HudView';
-import type { TouchControlsView } from '../ui/TouchControlsView';
-import type { PortalPrompt } from '../ui/PortalPrompt';
-import type { FloorCardPrompt } from '../ui/FloorCardPrompt';
 import { updateCheckpointOverlays } from './checkpointOverlays';
 import { buildHudContext } from './hudContext';
-import type { PickupDebugOverlay } from '../scene/PickupDebugOverlay';
-import { applyPowerBudget, type FrameRateLike, type WorldLayerLike } from '../powerBudget';
+import { applyPowerBudget } from '../powerBudget';
 import { reportFrame, trackedRunFrom } from '../analyticsTracking';
+import { OpeningHold } from './openingHold';
+import type { GameLoopDeps, GameLoopHost } from './gameLoopTypes';
+// The two contracts live in `./gameLoopTypes` (CLAUDE.md 500-line convention) and are
+// re-exported here so every caller and test double keeps importing them from this path.
+export type { GameLoopDeps, GameLoopHost } from './gameLoopTypes';
 
 const SIM_DT_MS = 1000 / 30; // fixed sim step: the engine runs at 30 Hz (design/06)
 const MAX_STEPS = 5; // catch-up cap per render frame → no spiral of death
 
-/** Every already-independent collaborator the main loop drives — none of these need a
- * host callback themselves (they're either stateless adapters or, for `runOutcome`/
- * `events`/`tutorialHints`, already wired to Game as THEIR OWN host — GameLoop just
- * calls through them transparently, same as Game itself used to). */
-export interface GameLoopDeps {
-  scene: Scene;
-  roomBuilder: RoomBuilder;
-  fx: FxController;
-  hud: HudView;
-  touchControlsView: TouchControlsView;
-  portalPrompt: PortalPrompt;
-  floorCardPrompt: FloorCardPrompt;
-  /** Screens with their own per-frame clock outside a run (party poll, Matchmaking timers). */
-  lobbyScreens: readonly { update(dt: number): void }[];
-  /** Every other full-screen menu, for its backdrop's motion (`ui/MenuShell.ts`) — also
-   *  while paused, since the pause menu is one. Each no-ops while hidden. */
-  menuScreens: readonly { animate(dt: number): void }[];
-  /** `layers.world` and the app ticker, each narrowed to the one knob `powerBudget.ts`
-   *  writes: the world is not DRAWN outside a run, and the render rate is capped. */
-  world: WorldLayerLike;
-  ticker: FrameRateLike;
-  builder: CommandBuilder;
-  ally: AllyController;
-  input: InputSource;
-  events: EventReactor;
-  runOutcome: RunOutcome;
-  tutorialHints: TutorialHintController;
-  /** `?pickupDebug=1` only — see gameQueryParams.ts and PickupDebugOverlay's own doc
-   *  comment. Null in every normal session. */
-  pickupDebugOverlay: PickupDebugOverlay | null;
-}
-
-/** The bits of Game the main loop needs but doesn't own itself — `phase`/`engine`/
- * `session`/`meta`/the co-op/PvP-demo flags are all genuinely shared with the run-
- * lifecycle and forge concerns (no single one of them owns these more than another),
- * so this stays a callback interface (same EventReactor/RunOutcome-style decoupling:
- * this file never imports Game.ts). Several of these (`activeState`/`currentScore`)
- * are methods Game already implements for EventReactorHost/RunOutcomeHost — reused
- * here rather than duplicated. */
-export interface GameLoopHost {
-  getPhase(): Phase;
-  isOnline(): boolean;
-  isCoop(): boolean;
-  isArenaDemo(): boolean;
-  /** Whether this run is TEACHING — the standalone tutorial level, or a first-time
-   *  player's first real run (`RunState.firstRunHints`). The hint toasts and the
-   *  "tutorial seen" mark both key off this rather than off the tutorial flag alone. */
-  isTeaching(): boolean;
-  /** `?replay=` playback only (design/06 replay, match/replayPlayback.ts): the tick the
-   *  recording is being watched AT. Non-null means the run's input comes from the
-   *  recorded stream, so nothing here may submit a live command — and once that tick is
-   *  reached the sim stops advancing while the render loop keeps running, which is what
-   *  makes the reported moment inspectable. Null in every normal session. */
-  replayStopTick(): number | null;
-  readonly localOwner: number;
-  getEngine(): GameEngine | null;
-  getSession(): CoopSession | null;
-  activeState(): GameState | null;
-  currentScore(): number;
-  selectedSkinId(): string;
-  allySkinId(): string;
-  screenSize(): { w: number; h: number };
-  /** Guest-local "tutorial seen" flag — shared with quitRun's Skip path, so it stays
-   * on the host rather than duplicated here. */
-  markTutorialSeen(): void;
-  /** Phase-routing on a menu/result-screen confirm (Fire/Enter) — reaches into
-   * run-lifecycle (`beginRun`) and screen-flow (`showForge`/`showMenu`), neither
-   * of which this file owns. */
-  confirm(): void;
-}
 
 /**
  * The fixed-step sim + interpolated render main loop, split out of Game.ts (CLAUDE.md
@@ -133,6 +52,11 @@ export class GameLoop {
   private onlineTick = -1; // the confirmed tick the scene mirrors; -1 = none yet
   private readonly doorFx = new DoorFxDriver(); // per-frame fixture motion (`scene/doorTick.ts`)
 
+  // "The run has not started yet": sim ticks are skipped until the player's first input
+  // of the run. Offline/local only, like hit-stop — see `openingHold.ts` for the
+  // measurement that put it here and why it freezes everything rather than the enemies.
+  private readonly openingHold = new OpeningHold();
+
   // Reused by every `updateFx` call rather than a fresh object per actor per frame; safe because
   // `RoomBuilder.updateOcclusion` reads it synchronously and never keeps it.
   private readonly occlusionFociScratch: OcclusionFocus[] = [];
@@ -147,6 +71,13 @@ export class GameLoop {
    * separately) online. */
   resetForNewRun(): void {
     this.acc = 0;
+    this.openingHold.arm();
+  }
+
+  /** Is the sim still waiting for the player's first input of this run? Render-side
+   *  callers (guides, HUD) use it to say so; the loop itself reads the hold directly. */
+  get awaitingFirstInput(): boolean {
+    return this.openingHold.held;
   }
 
   /** Run lifecycle's `finalizeOnlineRun` (Game.ts) — re-anchors the predictor on the
@@ -205,7 +136,17 @@ export class GameLoop {
     // skipped, and `acc` deliberately does NOT accumulate `dt` while frozen, so the sim
     // resumes at a clean single-tick cadence afterward instead of bursting through a
     // catch-up.
-    if (this.deps.fx.consumeHitStop(dt)) {
+    // The other full freeze (`openingHold.ts`): the world holds still until the player's
+    // first input of the run. Evaluated into a local BEFORE the `||` below, because
+    // `consumeHitStop` is a consume and short-circuiting past it would leave a pending
+    // hit-stop to fire late; this way the existing path is byte-for-byte what it was
+    // whenever the hold is not waiting. Skipped for replay playback (the recorded stream
+    // is the input and there is no one to wait for) and for the `?arenaDemo=1` harness,
+    // both of which drive themselves.
+    const live = this.host.replayStopTick() === null && !this.host.isArenaDemo();
+    const waiting = live
+      && this.openingHold.update(dt, this.deps.input.read(), this.deps.builder.hasLatchedAction);
+    if (this.deps.fx.consumeHitStop(dt) || waiting) {
       // frozen this frame — sim skipped, render still animates below
     } else {
       this.acc += dt;
@@ -231,6 +172,7 @@ export class GameLoop {
   // One deterministic sim frame: collect input → command → advance the engine →
   // mirror the new state into views → react to this tick's events.
   private stepSim(): void {
+    this.openingHold.sawFirstTick(); // see openingHold.ts — the hold starts AFTER tick one
     const engine = this.host.getEngine()!;
     const s = engine.state;
     const localOwner = this.host.localOwner;
