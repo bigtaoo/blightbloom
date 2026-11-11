@@ -6,7 +6,8 @@ import { clearSavedRun } from '../match/runSaveStore';
 import { localSeatWon } from './localOutcome';
 import { rewardedAd } from '../../platform/rewardedAd';
 import { track } from '../../net/analytics';
-import { deathReportProps } from '../deathCause';
+import { deathReportProps, type DeathProps } from '../deathCause';
+import { deathAdvice } from '../deathAdvice';
 import { publicFlag } from '../../net/clientFlags';
 import { getSession } from '../../net/session';
 import { canSignIn } from '../../platform/hostKind';
@@ -105,6 +106,14 @@ function timeText(s: GameState): string {
   return t('results.timeLine', { m, ss: String(sec).padStart(2, '0') });
 }
 
+/** The defeat screen's diagnosis row, as zero or one line (`deathAdvice.ts` picks which,
+ *  and returns nothing when the run recorded no hit to read). A list rather than a string
+ *  so the absent case closes up instead of leaving a blank row in the stat box. */
+function adviceLines(death: DeathProps): readonly string[] {
+  const advice = deathAdvice(death);
+  return advice === null ? [] : [t(advice.key, advice.params)];
+}
+
 /**
  * Decides + shows a run's outcome from the sim's own gameover state (design/15's
  * placement model for an arena run, the PvE extract/wipe model otherwise). Shared by
@@ -146,13 +155,17 @@ export class RunOutcome {
       duration_s: Math.max(0, Math.floor(s.tick / TICK_RATE)),
       ...(chapter === null ? {} : { chapter }),
     });
-    if (!won) track('run_death', { ...deathReportProps(s, this.host.localOwner) });
+    // Read ONCE, because the screen and the event have to agree about the same death:
+    // `deathReportProps` reads module state that the next `run_start` clears, so two reads
+    // agree today only by luck of ordering.
+    const death = won ? null : deathReportProps(s, this.host.localOwner);
+    if (death !== null) track('run_death', { ...death });
     if (s.zoneEnabled) {
       if (won) this.winArena(s);
       else this.loseArena(s);
     } else {
       if (won) this.win(s);
-      else this.lose(s);
+      else this.lose(s, death ?? {});
     }
   }
 
@@ -250,7 +263,7 @@ export class RunOutcome {
     };
   }
 
-  private lose(s: GameState): void {
+  private lose(s: GameState, death: DeathProps): void {
     const floor = s.floorIndex + 1;
     this.host.setPhase('defeat');
     this.host.hideHud();
@@ -269,6 +282,10 @@ export class RunOutcome {
         t('results.materialsLost', { count: totalForfeited(s, this.host.localOwner) }),
         timeText(s),
         t('results.scoreLine', { score: this.host.currentScore() }),
+        // Last, directly above TRY AGAIN: the ledger says what was lost, this says what to
+        // do about it, and the button that acts on it is the next thing under the thumb.
+        // Absent rather than blank when the run recorded no hit at all (`deathAdvice`).
+        ...adviceLines(death),
       ],
       undefined, // a death is never offered anything (see `doubleOffer`)
       retry,

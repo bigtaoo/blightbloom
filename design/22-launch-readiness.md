@@ -656,6 +656,59 @@ What to read next week: `interstitial_opened` per qualifying play (the gate itse
 whether `interstitial_failed` rises — a rise there is the cooldown doing its job against the
 new volume, not a regression.
 
+**2026-11-11d — the screen half the sessions end on said nothing a player could act on.**
+Session facts for the 30 sandbox sessions of 2026-11-09..11, grouped by the last screen each
+one was on when it stopped: **defeat 14, playing 6, paused 5, loadout 4, menu 1**. Just under
+half of all sessions end on the defeat screen, which makes it the single highest-traffic
+screen in the game that is not the run itself — and the one with the least on it.
+
+The obvious reading, that losing is expensive to recover from, is **wrong and was measured**:
+of 28 recorded losses **16 (57%) were restarted**, and the gap from the loss to the next
+`run_start` has a **p50 of 0.0 s** — TRY AGAIN (2026-11-09) already made the retry one tap, and
+players take it instantly. Restart friction is solved. What the remaining 43% walk away from is
+not a cost; it is an absence. The defeat screen was four lines — floor fallen on, materials
+lost, time, score — every one of them a restatement of the loss, none of them naming a cause
+and none naming a fix. A player who closes the tab there closes it not knowing what to change.
+
+Meanwhile the game has known since 2026-11-09 exactly why they died and has been telling only
+us: `run_death` carries `killer`, `room`, `hits` and `burst_pct` (§2.10, `deathCause.ts`). So
+this pass spends none of that on new instrumentation and all of it on the player.
+`client/src/game/deathAdvice.ts` turns those numbers into **one line, below the ledger and
+directly above TRY AGAIN**, in three readings that each name a *different* action:
+
+- **spike** (`burst_pct` ≥ 70): most of the pool went inside five seconds. The action is
+  positional — keep moving, break line of sight — because no amount of healing survives it.
+- **attrition** (anything else above 3 hits): the median sandbox death, 13 hits at 50% burst.
+  Nothing spiked; the player stood in fire and never let the shield come back. The action is
+  the 1.5 s shield-regen delay chapter 1 gained in ENGINE_VERSION 93 — which exists for exactly
+  this death and which nothing on screen mentioned.
+- **fragile** (≤ 3 hits, no spike): a run ended by a handful of hits is an unbuilt character
+  walking downstairs, not a misplayed fight. The action is the loadout, before the next
+  descent.
+
+A death with no recorded hit at all (a disconnect, a resumed run killed on its first frame)
+gets no line rather than a guess, and the row simply closes up — the stat box is one wrapped
+`Text`, so nothing in the layout had to move.
+
+Three things deliberately NOT done:
+
+- *Naming the killer.* `killer` is a blueprint id (`basic`, `turret`, `fire_status`), not a
+  display name. Showing it would buy a display string per enemy in **eight** locales to tell
+  the player something the fight already showed them. The one thing they could not see is
+  which of the three mistakes above they made.
+- *A `hint` prop on `run_death`.* The per-event field cap is **4** (`analyticsEvents.test.ts`)
+  and `run_death` is at 4. It is also unnecessary: the reading is a pure function of `hits` and
+  `burst_pct`, both already sent, so next week's "did the line change the retry rate" question
+  can be answered off the data as it stands without loosening a cap that exists to keep an
+  internet-facing write bounded.
+- *Anything resembling a second chance.* design/05's wipe rule is locked: a death may never be
+  bought back, so there is no revive ad here and no reward on the defeat screen. This pass
+  changes what the screen SAYS, not what the loss costs.
+
+This is client-only and needs no `ENGINE_VERSION` bump. What to read next week: `run_end`
+per session (1.63 today, and ~5 is what a 330 s average needs at a p50 run of 61 s), and the
+loss→restart rate against today's 57%.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
