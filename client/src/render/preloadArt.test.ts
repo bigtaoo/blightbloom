@@ -342,4 +342,32 @@ describe('the UI tiers each phase waits for (2026-09-28)', () => {
     await gate;
     expect(resolved).toBe(true);
   });
+
+  it('ensureRunArt does NOT hold the gate for the `lobby` tier, and never asks for it', async () => {
+    // The other half of the pair above, and it is an ABSENCE, so it is asserted directly rather
+    // than inferred from the gate resolving.
+    //
+    // `loadRunArt` opened with `await preloadUiTier('lobby')` until 2026-11-11, on the reasoning
+    // that a player cannot reach the run gate in the time a few hundred kB takes. The Playgama
+    // sandbox measured that reasoning and it was wrong in every session: `run_wait{art}` came
+    // back `pending` in 113 of 113, because `firstRunAutostart.ts` opens the gate within a frame
+    // of `beginDeferredArt()` — the same frame `preloadLobbyArt` kicks this tier. So it was not
+    // running ahead of the player, it was standing in front of them: the decoration of the
+    // screen they had just LEFT, strictly serialised before the ~2.3 MB this gate is for.
+    //
+    // Restore that await and both expectations below go red — the first because the gate asks
+    // for the files, the second because it then never resolves.
+    setAssetHost(countingHost().host);
+    const lobby = tierFiles('lobby');
+    expect(lobby.length).toBeGreaterThan(0);
+    const loads = watchLoads(lobby);
+
+    let resolved = false;
+    const gate = ensureRunArt().then(() => { resolved = true; });
+    await vi.waitFor(() => expect(resolved).toBe(true));
+    await gate;
+
+    for (const src of lobby) expect(loads.srcs).not.toContain(src);
+    loads.release();
+  });
 });

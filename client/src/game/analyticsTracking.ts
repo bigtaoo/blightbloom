@@ -121,11 +121,57 @@ let lastPhase: Phase | null = null;
  */
 let lastRun: TrackedState | null = null;
 
-/** When the run's loading screen went up (`noteRunWait`), or null. Read and cleared by the
- *  next `run_start`. Wall-clock milliseconds; injected in tests. */
-let waitStartedAt: number | null = null;
+/**
+ * The run gate's wait so far, accrued in VISIBLE milliseconds — `null` when no gate is open.
+ * Read and cleared by the next `run_start`.
+ *
+ * It was the wall clock from `noteRunWait` to `run_start` until 2026-11-11, and that did not
+ * measure a wait. A player who opens the gate and switches tabs comes back minutes or hours
+ * later, and every one of those milliseconds went into the number: the Playgama sandbox's
+ * first window read a p50 of 4,621 ms against a p90 of 4,752,650 (79 minutes) and a max of
+ * 42,434,681 (11.8 hours).
+ *
+ * Unreadable at the top end is the smaller half of it. `net/analyticsEvents.ts` bounds
+ * `wait_ms` at 600,000 and `coerceProp` DROPS anything outside that range rather than
+ * clamping it, so those sessions carried no `wait_ms` at all. The waits most likely to be
+ * backgrounded are the slow ones, which means the bound was quietly deleting the very rows
+ * this field exists to find and the surviving p50 was measured over the fast half.
+ *
+ * So it accrues per frame instead, each step clamped to `MAX_WAIT_STEP_MS`. A hidden tab runs
+ * no `requestAnimationFrame` and so produces no frames at all, and the clamp is for the single
+ * enormous delta on the frame after the player comes back. Same shape — and the same reason —
+ * as `platform/playgama/perfSample.ts`, which already refuses to count the gap after a hidden
+ * tab as a frozen frame.
+ */
+let waitMs: number | null = null;
+/** When the wait last accrued, so the next frame can size its own step. */
+let waitTickedAt = 0;
 const defaultClock = (): number => Date.now();
 let clock: () => number = defaultClock;
+
+/**
+ * The most one frame may add to the accrued wait.
+ *
+ * Well above any real frame — a 30 Hz floor is 33 ms, and `TransitionGate`'s settle logic
+ * deliberately tolerates 100 ms+ frames while a run spins up — and far below any interval a
+ * player would experience as having left and come back.
+ */
+export const MAX_WAIT_STEP_MS = 250;
+
+/**
+ * Advance the visible-wait clock by this frame's step.
+ *
+ * Called once per frame from `reportFrame`, which `GameLoop.update` drives in EVERY phase from
+ * the app ticker (`Game.ts`) — including the frames the gate's loading screen is up, which are
+ * exactly the ones being counted. The gate does not stop that ticker; its own `LoadingScreen`
+ * animates on it.
+ */
+function advanceRunWait(): void {
+  if (waitMs === null) return;
+  const now = clock();
+  waitMs += Math.min(Math.max(0, now - waitTickedAt), MAX_WAIT_STEP_MS);
+  waitTickedAt = now;
+}
 
 /** The shape `trackedRunFrom` reads out of a live `GameState`, narrowed to the fields it
  *  needs so a test can hand it a plain object. */
@@ -190,6 +236,10 @@ export function runSeconds(state: TrackedState): number {
  * assertable without inspecting the queue.
  */
 export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
+  // Before every early return below: the frames that matter to this are the ones where
+  // nothing changes, because a wait is precisely a run of them.
+  advanceRunWait();
+
   // A run being entered starts with no snapshot: the one left over from a run that ended on
   // a result screen (which never clears it) would otherwise be the baseline the next run's
   // floors are compared against, and every floor up to that run's depth would go unreported.
@@ -234,9 +284,9 @@ export function reportFrame(phase: Phase, state: TrackedState | null): boolean {
     const props = {
       ...(character === undefined ? {} : { character }),
       ...chapterProp(state ?? {}),
-      ...(waitStartedAt === null ? {} : { wait_ms: Math.max(0, Math.round(clock() - waitStartedAt)) }),
+      ...(waitMs === null ? {} : { wait_ms: Math.round(waitMs) }),
     };
-    waitStartedAt = null;
+    waitMs = null;
     track('run_start', Object.keys(props).length === 0 ? undefined : props);
     resetDeathCause();
   }
@@ -266,13 +316,16 @@ export function lastRenderedPhase(): Phase | null {
  */
 export function noteRunWait(artPending: boolean): void {
   track('run_wait', { art: artPending ? 'pending' : 'ready' });
-  waitStartedAt ??= clock();
+  if (waitMs !== null) return;
+  waitMs = 0;
+  waitTickedAt = clock();
 }
 
 /** Test-only: forget the last phase and the run snapshot. */
 export function resetAnalyticsTrackingForTests(clockFn: () => number = defaultClock): void {
   lastPhase = null;
   lastRun = null;
-  waitStartedAt = null;
+  waitMs = null;
+  waitTickedAt = 0;
   clock = clockFn;
 }
