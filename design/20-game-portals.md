@@ -423,6 +423,32 @@ leavers did not wait for). design/22 §4.1 has the numbers; three fixes:
   woke under fire; deflect stayed hidden through the cleared warm-up and showed in r2_alcove on
   the first enemy shot.
 
+### Onboarding, fifth pass (2026-11-11): the run waits for the player
+
+The fourth pass made the first room quiet; `first_input` then said why that was not enough. Of 97
+visits that pressed anything at all, the median first press landed **7.7 s** after
+`session.ready()` and the 90th percentile at **50.7 s** - and 76 of those 97 first touches landed
+*inside a live run*. A portal drops a visitor into a run on their first click (the second pass,
+above), so the sim had been ticking for seconds before anyone told it to: ads, a glance at the
+page, a device still settling. The two dormant mobs do not attack an idle player, but everything
+else in a run does - the clock, the bullets already in the air from a woken mob, a hazard.
+
+**So the first run of a session holds.** `game/controllers/openingHold.ts` freezes the sim the
+moment the first run starts and keeps it frozen until the player shows up: a stick past a 0.2
+deadzone, a fire or melee press, an interact - or a tap on a HUD control, which moves no stick and
+presses no button (`CommandBuilder.hasLatchedAction`, the other wire into the same answer). A 20 s
+fuse releases it regardless, so a run can never be stuck behind a hold nobody ends.
+
+The freeze is a *sim* freeze, not a loop freeze: it is the mechanism hit-stop already uses
+(`GameLoop.advanceSim` skips the tick without accumulating `dt`), so the tick STREAM is untouched -
+no golden hash, no replay, and no `ENGINE_VERSION` moves for it. Rendering, input and the HUD keep
+running, so the held frame is a live picture of the room rather than a frozen one.
+
+The same measurement pass cut the floor itself down: chapter 1's shield now refills in 1.5 s
+instead of 3 (`ENGINE_VERSION` 93), and floor one's three fight rooms gave up part of their
+garrison. design/22 §4.1's 2026-11-11 entry has the death data those came from and what they
+measured afterwards.
+
 ## The multiplayer requirements (2026-09-08)
 
 Applies because the project owner decided the **first submission keeps multiplayer**. The

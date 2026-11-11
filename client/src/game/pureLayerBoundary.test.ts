@@ -150,6 +150,11 @@ const PURE_FILES = [
   'ui/pickupRefusal.ts',
   // When a first-ever boot skips the menu into the first run (design/20 "Onboarding", 2026-11-06).
   'controllers/firstRunAutostart.ts',
+  // "The run has not started yet" — how long the sim waits for the player's first input and what
+  // counts as one (design/22 §4.1, 2026-11-11). Reads an `InputState`, which is a type; the
+  // decision is a clock and a dead zone, and being able to test it without a browser is the
+  // whole reason it is not three lines inside GameLoop.
+  'controllers/openingHold.ts',
   // Which door to head for once a room is done, and how the arrow at it is posed (2026-11-06, the
   // "cleared a room, now what" report). Its Pixi half, `scene/NextRoomArrow.ts`, is not here.
   'ui/nextRoomGuide.ts',
@@ -343,6 +348,11 @@ describe('the pure layer', () => {
     // collaborators rather than pure logic — see PURE_FILES' own note on RunLifecycle.
     const KNOWN = new Set(['TransitionGate.ts', 'ForgeActions.ts', 'RunOutcome.ts', 'ScreenFlow.ts',
       'AllyController.ts', 'CommandBuilder.ts', 'EventReactor.ts', 'GameLoop.ts',
+      // The type half of GameLoop.ts, split out of it under the 500-line convention
+      // (2026-11-11). Type-only by construction, so the import graph sees nothing foreign —
+      // but it DECLARES the renderer/engine collaborators, so it sits with GameLoop.ts here
+      // rather than joining the pure layer it only describes.
+      'gameLoopTypes.ts',
       'LocalPredictor.ts', 'PvpBotController.ts', 'TutorialHintController.ts',
       'RunLifecycle.ts', 'gameAssembly.ts', 'confirmEdge.ts', 'ai/tactics.ts',
       // Pure by import graph, but `wireWindow` registers the two real window listeners —

@@ -14,7 +14,7 @@
  * player. It still produces nothing but a normal `PlayerCommand` per tick (design/08
  * "render only produces input"), so the engine cannot tell it from a human seat.
  *
- * Skill profile (`BOT_PROFILES`) is a first-class knob, not a detail: a balance
+ * Skill profile (`BOT_PROFILES`, now in `./botProfiles`) is a first-class knob, not a detail: a balance
  * number that only holds for a perfect kiter is not a balance number. `careful`
  * holds the range an enemy's own `engageRangeFp` cannot reach and backs off when
  * crowded; `aggressive` walks into the mob's face like a new player does. Reading
@@ -28,66 +28,25 @@
  * A run is still fully reproducible, since that memory only ever advances from
  * state the engine already decided.
  */
-import { Button, makeCommand, quantizeMove, CHEST_MECHANISM_RADIUS_GRID, FP_SCALE, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { Button, makeCommand, quantizeMove, CHEST_MECHANISM_RADIUS_GRID, SIM, WEAPON_SPECS, type Brad, type GameState, type PlayerCommand } from '@dd/engine';
+import { g, BOT_PROFILES, type BotProfile } from './botProfiles';
 import { BotOrbit } from './botOrbit';
 import { profileForWeaponId } from './weaponStandoff';
 import { bladeSwapDue, gunWorth } from './weaponChoice';
 import { checkpointReached, portalOffers } from '../../src/game/match/floorCount';
 import { bfsPath, capstoneRoomId, doorCentre, pointInRect, rectCentre, roomIdAt, roomRect, roomRuntime, type Vec } from './pveNav';
 
-const g = (grid: number): number => grid * FP_SCALE;
+// The profile table moved to `./botProfiles` (CLAUDE.md 500-line convention) and is re-exported
+// here so the split is invisible to the sims that have always taken it from this path.
+export { BOT_PROFILES, IDLE_OPENING_TICKS, type BotProfile, type BotProfileName } from './botProfiles';
 
-export interface BotProfile {
-  /** Distance the bot tries to hold from its target while shooting. */
-  standoffFp: number;
-  /** Dead zone around `standoffFp` — stops a bot oscillating one tick in, one out. */
-  hysteresisFp: number;
-  /** Opens fire once the target is this close (its gun's own reach is unlimited;
-   *  this is the bot's discipline, not the weapon's). */
-  fireRangeFp: number;
-  /** Break off toward a heal pickup below this fraction of total effective HP. */
-  healSeekFrac: number;
-  /**
-   * Wait in a cleared room for the shield pool to refill before opening the next
-   * one (config.ts `SHIELD_REGEN_DELAY`/`SHIELD_REGEN_INTERVAL`). This is the single
-   * biggest difference between careful and reckless play in a room-by-room game, and
-   * it has to be modelled or the sim cannot see the effect of any regen tuning at
-   * all: a bot that walks straight on always fights at whatever HP the last room
-   * left it with.
-   */
-  restsBetweenRooms: boolean;
-  /**
-   * Walk to a better GUN lying in a quiet room and take it (2026-09-26). Without this the bot
-   * fought every floor with the starter blaster, so `weaponFireStats` read `blaster 100%` on
-   * every sweep and the energy economy's whole reason to exist — a strong frame running its
-   * pool dry — was never exercised by play, only by staged `loadout` runs. "Better" is a
-   * strictly higher authored dps (`gunWorth` says why not rarity); ranged only, since the
-   * blade is `meleeWhenDry`'s. The bot then stands where the new gun can connect from
-   * (`weaponStandoff.ts`).
-   */
-  swapsWeapons: boolean;
-  /**
-   * Holster a gun it cannot afford and fight with the blade until the pool refills
-   * (2026-09-29). Without it a dry ranged slot left the bot disarmed: it held FIRE on a pull
-   * the engine refused and never touched the melee slot, so a looted frame that ran dry was
-   * dead weight — the "melee is the free fallback" argument `design/03` rests on had never
-   * been exercised. It swaps to the blade when a pull is unaffordable and an enemy shares its
-   * room, and back once the pool holds half its size (`weaponChoice.ts`).
-   */
-  meleeWhenDry: boolean;
-}
 
-/**
- * `careful` sits just outside `DEFAULT_ENEMY_ENGAGE_RANGE_FP` (5.6 grid — the range
- * a mob stops and shoots from, content/enemies.ts), so a competent player's spacing
- * is represented, not just a brawl. `aggressive` closes to the same 4-grid spacing
- * `ai/engage.ts`'s shipped `KEEP_DIST_FP` uses for the co-op ally, i.e. what the
- * game's own existing bot considers normal.
- */
-export const BOT_PROFILES: Record<'careful' | 'aggressive', BotProfile> = {
-  careful: { standoffFp: g(7.5), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.7, restsBetweenRooms: true, swapsWeapons: true, meleeWhenDry: true },
-  aggressive: { standoffFp: g(4), hysteresisFp: g(1), fireRangeFp: g(11), healSeekFrac: 0.5, restsBetweenRooms: false, swapsWeapons: true, meleeWhenDry: true },
-};
+/** "Stay where you are" — what `spacingMove` returns inside its dead zone, and what a
+ *  `holdsGround` profile returns instead of backing off. Safe to hold for any length of
+ *  time: `withUnstick` only counts a tick toward STUCK when the bot INTENDED to move, so
+ *  a deliberate stand never triggers the unstick wiggle. */
+const HOLD_POSITION = { moveBrad: 0 as Brad, moveMag: 0 };
+
 
 /** Enemies further than this are somebody else's problem — keeps the bot from
  *  trying to shoot through a wall at a neighbouring room's garrison. */
@@ -138,6 +97,9 @@ export class PveBotController {
   build(s: GameState, owner: number, tick: number): PlayerCommand {
     const me = s.players[owner];
     if (!me || !me.alive || me.downed) return this.idle(owner, tick);
+    // Nobody at the controls yet (`idleTicks`). `levelSim` starts its tick counter at 1,
+    // so this is a half-open window over the opening ticks of the run.
+    if (tick <= this.profile.idleTicks) return this.idle(owner, tick);
     const cmd = this.decide(s, owner, tick);
     if (!this.wantsSlotSwap(s, owner, tick)) return cmd;
     // The swap rides on whatever the tick decided to do, minus the trigger: the pulled
@@ -333,8 +295,14 @@ export class PveBotController {
   private spacingMove(spacing: BotProfile, dx: number, dy: number, dist: number): { moveBrad: Brad; moveMag: number } {
     const { standoffFp, hysteresisFp } = spacing;
     if (dist > standoffFp + hysteresisFp) return quantizeMove(dx, dy);
-    if (dist < standoffFp - hysteresisFp) return quantizeMove(-dx, -dy);
-    return { moveBrad: 0 as Brad, moveMag: 0 };
+    // The retreat arm is the one skill a first-timer does not have (`holdsGround`): they
+    // walk in, and once they are in they stay in and trade. Only the BACK-OFF is dropped —
+    // the approach above still runs, because a bot that also stopped closing would never
+    // reach a mob it cannot out-range and would stand plinking at the room's far wall
+    // until the run timed out (measured 2026-11-11: 40/40 runs hit the 40 000-tick cap
+    // without a single death, which is a broken instrument rather than a struggling player).
+    if (dist < standoffFp - hysteresisFp && !this.profile.holdsGround) return quantizeMove(-dx, -dy);
+    return HOLD_POSITION;
   }
 
   /**

@@ -45,6 +45,22 @@ export class CommandBuilder {
 
   constructor(private readonly input: InputSource) {}
 
+  /**
+   * Is a deliberate UI action waiting for the next tick to carry it?
+   *
+   * Read by the opening hold (`openingHold.ts`, 2026-11-11), which freezes the sim until
+   * the player shows up. A tap on the weapon chip, a portal button, a shop row or a floor
+   * card is as clear an "I am here" as a first step is, but none of them moves the stick
+   * or presses FIRE, so `InputState` alone cannot see them — and a frozen sim never calls
+   * `build()`, so a latch set during the hold would sit there unanswered until the 20 s
+   * fuse blew. Every one-shot latch counts; `fireSuppressed`/`pressHoldsFire` are not
+   * actions and deliberately do not.
+   */
+  get hasLatchedAction(): boolean {
+    return this.swapLatch || this.confirmExtractLatch || this.confirmDescendLatch
+      || this.cardVoteLatch !== 0 || this.pickupLatchId !== 0 || this.shopLatchId !== 0;
+  }
+
   /** Discrete-action latch, set from Game's onSwitchWeapon routing. */
   requestSwap(): void {
     this.swapLatch = true;

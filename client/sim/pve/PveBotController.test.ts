@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Button, FP_SCALE, WEAPON_SPECS, SIM, weaponProfile, type GameState } from '@dd/engine';
-import { BOT_PROFILES, PveBotController } from './PveBotController';
+import { BOT_PROFILES, IDLE_OPENING_TICKS, PveBotController } from './PveBotController';
 
 const g = (grid: number): number => grid * FP_SCALE;
 
@@ -809,5 +809,94 @@ describe('PveBotController — melee when the gun is dry', () => {
   it('does nothing without a blade to swap to', () => {
     const cmd = primed().build(fight({ held: ['blaster'], energy: 0 }), 0, 501);
     expect(cmd.buttons & Button.SWAP_WEAPON).toBe(0);
+  });
+});
+
+describe('PveBotController — the two human weaknesses (2026-11-11)', () => {
+  // Added with the `frozen`/`rooted`/`newcomer` profiles. Everything above this block
+  // tests a bot that plays WELL; these two traits are the only ones that make it play
+  // like the sandbox telemetry says a first-timer does — a dead opening, and never
+  // breaking contact once the shooting starts. See the `BotProfile` doc comments.
+
+  const fighting = () => fixture({ playerAt: [5, 5], enemies: [[7, 5, 'a']] });
+
+  it('issues nothing at all for exactly its opening window, then plays', () => {
+    const b = bot(BOT_PROFILES.frozen);
+    for (const tick of [1, 2, IDLE_OPENING_TICKS - 1, IDLE_OPENING_TICKS]) {
+      const cmd = b.build(fighting(), 0, tick);
+      expect(cmd.moveMag, `tick ${tick}`).toBe(0);
+      expect(cmd.buttons, `tick ${tick}`).toBe(0);
+    }
+    // One tick past the window the same bot, in the same state, opens fire.
+    expect(b.build(fighting(), 0, IDLE_OPENING_TICKS + 1).buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('idles through the window even with a heal underfoot — nobody is at the controls', () => {
+    // The strongest control available: heal-seeking outranks every other move the bot
+    // makes, so if the idle gate is anywhere but FIRST, this walks.
+    const s = fixture({ playerAt: [5, 5], hp: 2, shield: 0, enemies: [[9, 5, 'a']], heals: [[5, 9]] });
+    expect(bot(BOT_PROFILES.frozen).build(s, 0, 100).moveMag).toBe(0);
+    expect(bot(BOT_PROFILES.careful).build(s, 0, 100).moveMag).toBeGreaterThan(0); // the control
+  });
+
+  it('opens on tick one when the profile has no idle window', () => {
+    expect(BOT_PROFILES.careful.idleTicks).toBe(0); // the control, in case a profile drifts
+    expect(bot().build(fighting(), 0, 1).moveMag).toBeGreaterThan(0);
+  });
+
+  it('never backs off when holdsGround is set — it stands and trades', () => {
+    // 2 grid apart: inside `rooted`'s 4-grid standoff, so the same bot without the trait
+    // backs off. `aggressive` is `rooted` with holdsGround off and is the control.
+    const planted = bot(BOT_PROFILES.rooted).build(fighting(), 0, 501);
+    expect(planted.moveMag).toBe(0);
+    expect(planted.buttons & Button.FIRE).toBe(Button.FIRE);
+
+    const kiting = bot(BOT_PROFILES.aggressive).build(fighting(), 0, 501);
+    expect(kiting.moveMag).toBeGreaterThan(0);
+    expect(dir(kiting.moveBrad).x).toBeLessThan(-0.9);
+  });
+
+  it('still closes on a target it is already shooting — only the RETREAT arm is dropped', () => {
+    // 6 grid apart: inside the 11-grid fire range, outside `rooted`'s 4-grid standoff.
+    // A bot that also stopped closing stalls forever (measured 2026-11-11: 40/40 runs hit
+    // the tick cap without one death), so this is the case that keeps the profile a
+    // weaker PLAYER rather than a broken instrument.
+    const s = fixture({ playerAt: [2, 5], enemies: [[8, 5, 'a']] });
+    const cmd = bot(BOT_PROFILES.rooted).build(s, 0, 501);
+    expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE);
+    expect(cmd.moveMag).toBeGreaterThan(0);
+    expect(dir(cmd.moveBrad).x).toBeGreaterThan(0.9);
+  });
+
+  it('still walks toward a target beyond its fire range', () => {
+    const s = fixture({
+      playerAt: [1, 5],
+      rooms: [
+        { id: 'a', x: 0, y: 0, w: g(40), h: g(40) },
+        { id: 'b', x: g(40), y: 0, w: g(10), h: g(10), activated: false },
+      ],
+      doors: [['a', 'b', { x: g(39.5), y: g(4), w: g(1), h: g(2) }]],
+      enemies: [[20, 5, 'a']], // 19 grid: past the 11-grid fire range
+    });
+    const cmd = bot(BOT_PROFILES.rooted).build(s, 0, 501);
+    expect(cmd.buttons & Button.FIRE).toBe(0);
+    expect(cmd.moveMag).toBeGreaterThan(0);
+    expect(dir(cmd.moveBrad).x).toBeGreaterThan(0.9);
+  });
+
+  it('still breaks for a heal — holding ground is a spacing habit, not paralysis', () => {
+    const s = fixture({ playerAt: [5, 5], hp: 2, shield: 0, enemies: [[7, 5, 'a']], heals: [[5, 9]] });
+    const cmd = bot(BOT_PROFILES.rooted).build(s, 0, 501);
+    expect(dir(cmd.moveBrad).y).toBeGreaterThan(0.9);
+    expect(cmd.buttons & Button.FIRE).toBe(Button.FIRE);
+  });
+
+  it('newcomer carries both traits, and the skilled profiles carry neither', () => {
+    expect(BOT_PROFILES.newcomer.idleTicks).toBe(IDLE_OPENING_TICKS);
+    expect(BOT_PROFILES.newcomer.holdsGround).toBe(true);
+    for (const name of ['careful', 'aggressive', 'novice'] as const) {
+      expect(BOT_PROFILES[name].idleTicks, name).toBe(0);
+      expect(BOT_PROFILES[name].holdsGround, name).toBe(false);
+    }
   });
 });

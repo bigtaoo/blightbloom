@@ -75,6 +75,22 @@ export interface DungeonConfig {
    * `[1, 1, 1, 1]` (ENGINE_VERSION 91; `[1]` in v90) so every floor before its boss is a place to
    * learn; every other config leaves it absent. */
   fireBudgetByFloor?: readonly number[];
+  /** Optional per-dungeon shield regen delay in ticks (2026-11-11), overriding
+   * `config.ts`'s `SHIELD_REGEN_DELAY` for runs in THIS dungeon. `SHIELD_REGEN_INTERVAL`
+   * is deliberately not overridable: the delay is the gate a player in contact never gets
+   * through, while the interval only sets how fast a pool refills once they are already
+   * out of trouble.
+   *
+   * Chapter 1 sets 45 (1.5 s). Measured on the Playgama sandbox: `run_death` names `basic`
+   * — the cheapest mob in the game — as the killer in 11 of 25 deaths, at a median of 13
+   * hits taken and 50% burst share. That is attrition, not a spike, and at a 3-second gate
+   * a player who stays in the room never collects a single point back, which makes the
+   * shield pool a one-time buffer rather than the sustain `design/07` says it is. Every
+   * other config leaves this absent and regenerates exactly as before the field existed.
+   *
+   * Applies to players only in practice: no enemy in the tree is authored with a shield
+   * (`content/enemies.ts`), and the regen branch is gated on `maxShield > 0`. */
+  shieldRegenDelay?: number;
   /** Optional: makes this an endless dungeon (design/gameplay/04-chapters.md "The Endless
    * Descent", 2026-10-06). Its floors are its segments' floors, segment after segment, and
    * after the last segment the cycle starts over, for ever (`dungeon/floorSource.ts`). Each

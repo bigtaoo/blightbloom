@@ -60,6 +60,24 @@ import {
 const SEEDS = Array.from({ length: 40 }, (_, i) => 101 + i * 101);
 const PROFILES = ['careful', 'aggressive'] as const;
 
+/**
+ * The seat the sandbox telemetry actually describes, reported alongside the two gated
+ * profiles since 2026-11-11 and deliberately NOT one of them.
+ *
+ * Every profile in `PROFILES` plays from tick one and kites by reflex. The live game is
+ * played by neither: `first_input.ms` reads a median of 7.7 s with 76 of 97 first touches
+ * landing inside a running run, and `run_death` reads a median of 13 hits at 50% burst —
+ * chip damage from a player who never breaks contact. `newcomer` is those two weaknesses
+ * and nothing else (`PveBotController.ts`: `idleTicks`, `holdsGround`).
+ *
+ * It is a REPORT, not a gate, on purpose. Its runs end in timeouts and near-zero
+ * extractions by design, which the softlock and extraction gates below would read as
+ * failures; and a threshold on a seat this new would pin today's numbers before anyone
+ * knows what the target is. What it buys is that the next tuning pass can SEE the seat
+ * floor 1 has to be survivable for — the one every pass before this date was blind to.
+ */
+const FIRST_TIMER = 'newcomer' as const;
+
 function sweep(profileName: (typeof PROFILES)[number]): RunMetrics[] {
   return SEEDS.map((seed) => runLevel({ seed, profileName }));
 }
@@ -231,8 +249,37 @@ describe('PvE level 1 balance sim (bot-driven real runs — first-signal data, n
     const descended = rows.filter((r) => r.floorReached >= 1).length;
     const floorDescents = Math.max(1, Math.round(rows.length * 0.1));
     expect(descended, `${descended}/${rows.length} careful runs descended off floor 0`).toBeGreaterThanOrEqual(floorDescents);
+    // The walkover cap, raised from a half to three fifths 2026-11-11 with floor 1's garrisons.
+    //
+    // It used to read "the bot is a LOWER bound on a human, so a bot clearing more than half
+    // the seeds means a human walks it". The Playgama sandbox falsified the premise rather than
+    // the number: over 104 real plays `run_end.floor` has a p50 of 1 and `run_death.room` puts
+    // 23 of 25 deaths in floor-1 rooms (design/22 §4.1). The `careful` bot was never a lower
+    // bound on that population — it was far above them, and calibrating a cap against it was
+    // measuring the wrong player. Cutting the three floor-one garrisons for the people actually
+    // dying there moved it 19/40 → 21/40, two runs past a cap that was already at 19.
+    //
+    // Three fifths still fails what this is for: a floor that has become free reads far higher
+    // (the pre-side-room content read 8/40 EXTRACTED at the bottom end of this same scale). The
+    // real walkover check now lives in the live build's own `run_end.floor`, and the companion
+    // signal is the ungated `newcomer` report below — 6/40 on the same content, same seeds.
     const extracted = rows.filter((r) => r.outcome === 'extracted').length;
-    expect(extracted, `${extracted}/${rows.length} careful runs extracted`).toBeLessThanOrEqual(Math.floor(rows.length * 0.5));
+    expect(extracted, `${extracted}/${rows.length} careful runs extracted`).toBeLessThanOrEqual(Math.floor(rows.length * 0.6));
+  }, 600_000);
+
+  it('reports the first-timer seat — the opening nobody plays, and a player who never backs off', () => {
+    const rows = SEEDS.map((seed) => runLevel({ seed, profileName: FIRST_TIMER }));
+    // eslint-disable-next-line no-console
+    console.log(`
+${formatSummary(`profile=${FIRST_TIMER} (REPORT, ungated)`, summarize(rows))}`);
+    // eslint-disable-next-line no-console
+    console.log(formatRoomTable(roomStats(rows)));
+    // Anti-vacuity: the whole point of this seat is that it plays WORSE than the gated
+    // ones. If it ever extracts as often as `careful`, the two traits have stopped
+    // expressing anything and the table above is measuring the same bot twice.
+    const mine = rows.filter((r) => r.outcome === 'extracted').length;
+    const theirs = runs('careful').filter((r) => r.outcome === 'extracted').length;
+    expect(mine, `first-timer extracted ${mine}/${rows.length} vs careful ${theirs}`).toBeLessThan(theirs);
   }, 600_000);
 
   it('gate: nothing softlocks — a run always ends in a real outcome, never a stall', () => {

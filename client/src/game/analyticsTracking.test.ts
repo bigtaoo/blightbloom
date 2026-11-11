@@ -20,6 +20,7 @@ import { TICK_RATE as ENGINE_TICK_RATE, EMBER_DUNGEON, FROST_DUNGEON, type Dunge
 import { EVENTS, ID_RE, coerceProp, type AnalyticsBatch, type AnalyticsEventName, type PropValue } from '../net/analyticsEvents';
 import { createAnalytics, resetAnalyticsForTests, setAnalytics } from '../net/analytics';
 import {
+  MAX_WAIT_STEP_MS,
   SCREEN_IDS,
   TICK_RATE,
   noteRunWait,
@@ -156,11 +157,31 @@ describe('run_wait and wait_ms — the loading screen in front of a run', () => 
     resetAnalyticsTrackingForTests(() => now);
   });
 
+  /**
+   * Sit on the gate for `ms` the way a real session does: frames keep arriving while the
+   * loading screen is up, because `Game.ts` drives `reportFrame` from the app ticker in every
+   * phase, and the wait accrues one frame at a time.
+   *
+   * A frame interval, deliberately, and not one jump of `ms`. One jump is what a HIDDEN tab
+   * looks like from here — no `requestAnimationFrame`, so no frames, and the whole gap lands
+   * on the single frame after the player comes back. That case is its own test below, and
+   * these four would not be testing anything if they were written in its shape.
+   */
+  const hold = (ms: number, step = 16): void => {
+    for (let left = ms; left > 0; left -= step) {
+      now += Math.min(step, left);
+      reportFrame('menu', null);
+    }
+  };
+
+  /** The `wait_ms` the one `run_start` carried, or undefined. */
+  const waited = (): PropValue | undefined => sent.find((e) => e.name === 'run_start')?.props?.wait_ms;
+
   it('reports the wait, then stamps run_start with how long it took', () => {
     reportFrame('menu', null);
     noteRunWait(true);
     expect(sent.at(-1)).toEqual({ name: 'run_wait', props: { art: 'pending' } });
-    now += 2_345;
+    hold(2_345);
     reportFrame('playing', run({ character: 'char_vanguard' }));
     expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ character: 'char_vanguard', wait_ms: 2_345 });
   });
@@ -172,22 +193,48 @@ describe('run_wait and wait_ms — the loading screen in front of a run', () => 
 
   it('measures from the FIRST note when two arrive before the run starts', () => {
     noteRunWait(true);
-    now += 500;
+    hold(500);
     noteRunWait(true);
-    now += 500;
+    hold(500);
     reportFrame('playing', run());
-    expect(sent.find((e) => e.name === 'run_start')?.props).toEqual({ wait_ms: 1_000 });
+    expect(waited()).toBe(1_000);
   });
 
   it('is spent by the run it timed: the next run without a wait carries no wait_ms', () => {
     noteRunWait(true);
-    now += 100;
+    hold(100);
     reportFrame('playing', run());
     reportFrame('menu', null);
     now += 60_000;
     reportFrame('playing', run());
     const starts = sent.filter((e) => e.name === 'run_start');
     expect(starts.map((e) => e.props)).toEqual([{ wait_ms: 100 }, undefined]);
+  });
+
+  it('does not count a tab the player left: the gap arrives as one frame, and a frame is capped', () => {
+    noteRunWait(true);
+    hold(2_000);
+    // They switch tabs. `requestAnimationFrame` stops entirely, so no frames arrive at all —
+    // and the one that does, forty minutes later, carries the whole gap in its delta.
+    now += 40 * 60_000;
+    reportFrame('playing', run());
+    expect(waited()).toBe(2_000 + MAX_WAIT_STEP_MS);
+  });
+
+  it('survives the ingest bound, which the wall clock silently did not', () => {
+    noteRunWait(true);
+    hold(3_000);
+    // The sandbox's measured maximum, 2026-11-11: 11.8 hours, a tab left open overnight.
+    now += Math.round(11.8 * 60 * 60_000);
+    reportFrame('playing', run());
+
+    // Not merely a smaller number — a SURVIVING one, which is the half of this that does not
+    // show up by reading the value. `coerceProp` drops an int outside its range rather than
+    // clamping it, so the old wall-clock reading did not arrive as an implausible wait, it did
+    // not arrive at all: the sessions that waited longest were the ones missing from the
+    // field, and the p50 was being measured over whoever stayed on the tab.
+    expect(coerceProp(EVENTS.run_start.wait_ms, waited())).toBe(waited());
+    expect(coerceProp(EVENTS.run_start.wait_ms, 42_434_681)).toBeUndefined();
   });
 });
 

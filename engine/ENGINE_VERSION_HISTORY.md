@@ -2934,3 +2934,65 @@ The golden gate, run before this bump, was red on `ember-dungeon-floor1` (witnes
 `bullet_fired`, one more `pickup`), and after the re-derive on `frost-`, `storm-` and
 `blight-dungeon-floor1` too (a shot, a pickup or a clash traded places in each; no death count
 moved), and green on the rest. Golden fixture regenerated.
+
+v93 (2026-11-11 — floor one stops killing half the players). Three sim-visible changes, all
+aimed at the same measurement: on the Playgama sandbox `run_end.floor` has a median of 1, and
+`run_death.room` puts 23 of 25 deaths in a floor-1 room. The killers are the cheapest mobs in
+the tree (`basic` 11, `emberling` 7; no stalker, no ravager) at a median of 13 hits taken and a
+50% burst share — attrition from a crowd rather than a spike from one dangerous thing.
+ - `DungeonConfig.shieldRegenDelay` (`world/dungeon/types.ts`), read by `StatusEffectSystem`
+   in place of `config.ts`'s `SHIELD_REGEN_DELAY` when a dungeon sets it. `EMBER_DUNGEON` sets
+   45 ticks (1.5 s) against the global 90. At 3 seconds a player who stays in the room is hit
+   again before the gate ever opens, so the whole shield pool was effectively switched off for
+   exactly the player this chapter is for. `SHIELD_REGEN_INTERVAL` is deliberately NOT
+   overridable — the delay is the gate, the interval only sets the refill rate. Every dungeon
+   that does not set the field (chapters 2-4, the arena, endless) is unchanged.
+ - Floor 1's three fight rooms lose part of their garrison: `ember_l1_alcove` 9 -> 5 (the piece
+   behind 12 of 25 deaths, counting floor 2's reuse of it), `ember_l1_gallery` 10 -> 7,
+   `ember_l1_forge` 10 -> 8. They keep the ramp's shape — the bigger room is still the heavier
+   fight — but now sit under its line; `emberLevel1.test.ts`'s `FIRST_FLOOR_GARRISONS` pins the
+   three counts and checks they are exactly the pieces floor 1 uses. The ramp itself is
+   untouched from `ember_l1_kiln` (288 cells) up, so floors 3-5 are exactly as authored. Note
+   that `alcove`, `gallery` and `forge` are also reused on floors 2-3, which this lightens too.
+ - Chapters 2-4 keep the garrisons they were authored with, and this is the first place they
+   stop being the plain transform of chapter 1 that
+   `tools/map-editor/scripts/deriveChapter.mjs` seeded them as. Propagating the cut was tried
+   and measured first: it turns `client/sim/chapterSim.sim.ts` red twice — chapter 3's floor-2
+   trial stops being harder than chapter 2's (20.6 kills against an 18.75 ceiling), and a
+   chapter-4 blight room starts bursting 12 damage into a 10-point effective HP pool. The cut
+   is beginner tuning for the first rooms a NEW player meets, and essentially nobody reaches a
+   later chapter (`run_end.floor` p50 = 1), so the three chapters were left alone. The
+   exemption is checked rather than waived: each `{frost,storm,blight}Level1.test.ts` still
+   requires the three pieces to match `derivePiece(ember)` in every field outside
+   `spawns.enemy`, and requires chapter 1's thinned garrison to be a strict SUBSET of the one
+   the chapter still fields. Re-running `deriveChapter.mjs` over them would silently undo this.
+ - No floor map, and no piece outside chapter 1's three, changed.
+
+How far the shield change reaches, measured after the fact and now gated: in chapter 1 a
+player who walks one direction and never fires CANNOT die in the entry room any more — all
+eight compass directions, 1200 ticks (40 s) each, every one still `playing`. Until this bump
+the eastward walk died at tick 438. The entry room chips slower than once every 1.5 s, so the
+new delay lets the shield outpace it outright; the garrison cut above is not involved, since
+`ember_l1_cell` was left alone. That is what making the first floor survivable MEANS for a
+player who has not started playing yet, and `client/sim/firstFloorSurvival.test.ts` now pins
+it, with chapter 2's identical walk (tick 258, global delay) as the control that keeps the
+assertion from passing against a build where nothing can hurt anyone. One fixture moved with
+it: `sim/replay/inspect.test.ts`'s "a run that ended" case needed a run that ends, so it walks
+chapter 2 instead — south, which is east under that chapter's `transpose`.
+
+Not in this bump, because it changes no tick: the client's first-input hold
+(`client/src/game/controllers/openingHold.ts`) freezes the whole sim before a run's first
+input, exactly as hit-stop does — it SKIPS ticks rather than altering them, so the tick stream,
+replays and this version are untouched by it.
+
+The golden gate, run before this bump, was red on `ember-dungeon-floor1` alone: the scenario
+now clears its second room inside the 1500 ticks — 7 deaths instead of 10, 12 hits taken
+instead of 18, both doors unlocked instead of one. `frost-`, `storm-` and `blight-dungeon-floor1`
+all stayed green, which is the chapter exemption above showing up in the fixture rather than a
+coincidence. Golden fixture regenerated.
+
+Also moved, outside the engine: `client/sim/pveLevelSim.sim.ts`'s walkover cap, from half the
+seeds to three fifths, because the cut took the `careful` bot from 19/40 extracted to 21/40.
+That cap was calibrated on the premise that the bot is a lower bound on a human; 104 real plays
+say it is well ABOVE the people this change is for, so the premise, not the content, is what
+gave way. The gate's comment carries the full account.

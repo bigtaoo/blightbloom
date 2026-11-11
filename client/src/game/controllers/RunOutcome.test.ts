@@ -10,7 +10,7 @@ import { setRewardedAd, type RewardedAd } from '../../platform/rewardedAd';
 import { setPublicFlags } from '../../net/clientFlags';
 import { PUBLIC_FLAG_DEFAULTS } from '../../net/publicFlags';
 import type { ResultOffer } from '../screens/Screens';
-import { setLocale, resetLocaleForTests } from '../../i18n';
+import { setLocale, resetLocaleForTests, t } from '../../i18n';
 import { resetHostKind, setHostKind } from '../../platform/hostKind';
 import { resetSessionCacheForTests, setSession, type Session } from '../../net/session';
 import { createGameState } from '@dd/engine/state/GameState';
@@ -25,6 +25,9 @@ import { loadSavedRun, resetRunSaveCacheForTests, writeSavedRun } from '../match
 import { RunOutcome, type RunOutcomeHost } from './RunOutcome';
 import { SCORE } from '../score';
 import { useLocale } from '../../i18n/loadLocale';
+import { BURST_WINDOW_TICKS, noteDeathCauseEvents, resetDeathCause } from '../deathCause';
+import { BURST_ADVICE_PCT } from '../deathAdvice';
+import type { GameEvent } from '@dd/engine';
 
 const MINI_MAP: ArenaMap = {
   id: 'mini',
@@ -34,6 +37,20 @@ const MINI_MAP: ArenaMap = {
   spawns: [{ x: 5, y: 5 }],
   eyeCandidates: [{ roomId: 'A' }],
 };
+
+// `deathCause` keeps the run's hits in MODULE state (reset by the next `run_start`), so a
+// test that feeds it must hand the next test a clean one — otherwise the four-line control
+// below would start seeing a previous test's hits and the diagnosis row would appear where
+// it is asserted absent.
+afterEach(() => resetDeathCause());
+
+/** Feed `deathCause` one enemy hit on the local player at a given tick, the way
+ *  `EventReactor.consume` would. The tick matters: it is what puts a hit inside or outside
+ *  the five-second burst window, which is what separates a spike from a bleed. */
+function feedHit(me: { id: number; maxHp: number; maxShield: number }, tick: number, damage: number): void {
+  const event = { type: 'hit', target: me.id, faction: 'enemy', by: 7, gx: 0, gy: 0, damage, damageType: 'physical' } as GameEvent;
+  noteDeathCauseEvents({ tick, players: [{ id: me.id, gx: 0, gy: 0, maxHp: me.maxHp, maxShield: me.maxShield }] }, 0, [event]);
+}
 
 function pveState(): GameState {
   return createGameState({ seed: 1, worldW: 0, worldH: 0, waves: [] });
@@ -189,6 +206,46 @@ describe('RunOutcome — PvE extraction/death', () => {
         'Score 0',
       ],
     });
+  });
+
+  // The diagnosis row (2026-11-11, `deathAdvice.ts`). The test ABOVE is its control: that
+  // run recorded no hit, so the screen is four lines and no fifth — which is also what a
+  // stub `deathAdvice` returning `null` forever would produce, and the only reason that
+  // cannot pass unnoticed is this test asserting the line IS there when there are hits.
+  it('lose (death): a death with hits behind it ends on the line that names the fix', () => {
+    const s = pveState();
+    s.winner = 'enemies';
+    const me = s.players[0]!;
+    // Thirteen hits of 1, each a full burst window after the last, so the five-second
+    // window holds only the final one: the median sandbox death, a bleed and not a spike.
+    for (let i = 0; i < 13; i++) feedHit(me, 10 + i * (BURST_WINDOW_TICKS + 1), 1);
+    const host = mockHost();
+    new RunOutcome(host).handle(s);
+    const lines = host.shown!.lines;
+    expect(lines).toHaveLength(5);
+    expect(lines[4]).toBe(t('results.adviceAttrition', { hits: 13 }));
+    expect(lines.slice(0, 4).some((l) => l.includes('shield'))).toBe(false); // it is the NEW row
+  });
+
+  it('lose (death): the screen and run_death read the same death, not two reads of it', () => {
+    const s = pveState();
+    s.winner = 'enemies';
+    const me = s.players[0]!;
+    // One hit for most of the pool: a spike, so the two readings disagree unless both come
+    // from the same props. `burst_pct` is the damage over the full HP + shield pool.
+    feedHit(me, 10, Math.ceil((me.maxHp + me.maxShield) * 0.9));
+    const sent: { name: string; props?: Readonly<Record<string, PropValue>> }[] = [];
+    setAnalytics({ track: (name, props) => void sent.push({ name, props }), flush: () => {}, pending: () => 0 });
+    try {
+      const host = mockHost();
+      new RunOutcome(host).handle(s);
+      const death = sent.find((e) => e.name === 'run_death')!.props!;
+      expect(death.hits).toBe(1);
+      expect(Number(death.burst_pct)).toBeGreaterThanOrEqual(BURST_ADVICE_PCT);
+      expect(host.shown!.lines[4]).toBe(t('results.adviceBurst', { hits: 1 }));
+    } finally {
+      resetAnalyticsForTests();
+    }
   });
 
   // design/05's locked wipe rule: a death forfeits the ENTIRE un-extracted carry-out —

@@ -263,9 +263,12 @@ answers it in days.
 `client/src/main.playgama.ts`, `client/src/platform/playgama/`). The sandbox's CSP blocks our
 backend, so the build is offline: PvE only, no account, no co-op/PvP/squad routes
 (`hostKind.canPlayOnline`), no outbound links, no Escape binding. Saves go through Bridge
-storage, analytics through Bridge, and the interstitial is asked only when a run ends, with a
-60 s cooldown in the Bridge config the build emits (`BRIDGE_CONFIG` in
-`client/vite.playgama.config.js`).
+storage, analytics through Bridge, and the interstitial is asked at each of the three natural
+pauses `PlaygamaSession.naturalPause()` names — a run walked out of, a resume from the pause
+menu, a restart from a result screen (2026-11-11c below) — each under its own placement id
+(`AD_PLACEMENTS`), which `BRIDGE_CONFIG` in `client/vite.playgama.config.js` declares back to
+Bridge along with the 60 s cooldown and a `preloadOnStart` for the commonest of the three
+(2026-11-11e below).
 
 **Console state (2026-11-06).** Game "Blightbloom" created as a draft; archive
 `blightbloom-0.0.1-playgama-2026-11-06` uploaded, unpacked, Bridge found, check PASSED. The
@@ -524,6 +527,300 @@ passed its check (Bridge 2.4.1) and was re-published on 2026-11-10 at 09:32 UTC,
 update note tells players about the click-to-start keys fix and the faster run start. Split
 every read from here on `build_version` `ee9465b8`. Earlier builds send no `focus`/`input`,
 `run_wait`, `wait_ms` or `gl`, and their frame times are clamped at 100 ms.
+
+**2026-11-11 — the first floor, from the sandbox's own death data.** Not a guess at what is
+hard: `run_end.floor` has a median of 1, `run_death.room` puts 23 of 25 deaths in a floor-1
+room (`r2_alcove` 10, `r1_cell` 6, `r4_forge` 5), and the killers are the cheapest mobs in the
+tree — `basic` 11, `emberling` 7, and not one stalker or ravager — at a median of 13 hits taken
+with a 50% burst share. That is attrition from a crowd, not a spike from one dangerous thing,
+so the fix is sustain and crowd size rather than any single enemy. Four changes, three of them
+sim-visible (`ENGINE_VERSION` 93, full account in `engine/ENGINE_VERSION_HISTORY.md`):
+
+- **The run waits for the player.** `first_input.ms` has a median of 7.7 s and 76 of 97 first
+  touches land INSIDE a live run — the portal build autostarts, so for those seconds the player
+  is reading the screen while the dungeon shoots at them. `client/src/game/controllers/openingHold.ts`
+  freezes the sim until the first deliberate input (stick, fire, interact, or a latched HUD tap
+  such as the weapon chip), with a 20 s fuse for a seat nobody is sitting in. It skips ticks
+  exactly as hit-stop does, so replays, golden hashes and the engine version are untouched.
+- **Chapter 1's shield refills in 1.5 s instead of 3.** `DungeonConfig.shieldRegenDelay`, set
+  on `EMBER_DUNGEON` only. At 3 s a player who stays in the room is hit again before the gate
+  ever opens, which switched the whole shield pool off for exactly the player this chapter is
+  for.
+- **Floor 1's three fight rooms lose part of their garrison** — alcove 9 → 5, gallery 10 → 7,
+  forge 10 → 8 — keeping the ramp's shape. Chapters 2-4 keep the garrisons they were authored
+  with; propagating the cut was tried first and turned the chapter-difficulty sims red.
+- **The sim bots learned the two human weaknesses** that make the measurement above readable:
+  a `newcomer` profile that does nothing for the first 7.7 s and never backs off. It extracts
+  6 of 40 seeds where the `careful` bot now extracts 21 — the first instrument here that sits
+  BELOW the sandbox population instead of above it.
+
+What it is worth, measured rather than hoped: the `careful` bot went 19/40 → 21/40 extracted,
+and in chapter 1 a player who walks one direction and never fires can no longer die in the
+entry room at all (eight directions × 40 s, gated by `client/sim/firstFloorSurvival.test.ts`;
+until this change the eastward walk died at tick 438). Nothing is built or published from this
+yet — the next sandbox archive carries it, and the honest read is the 60 s survival line in the
+gates below, split on the build version that first ships it.
+
+**2026-11-11b — the run gate, and the instrument that was measuring it wrong.** The same
+window read from the other end. `run_wait.art` came back `pending` in **113 of 113** sessions:
+the run art is never in when the player asks for a run, because `firstRunAutostart.ts` opens
+the gate within a frame of `beginDeferredArt()`. The median `wait_ms` was 4,621 ms. Two
+changes, neither sim-visible (no `ENGINE_VERSION` bump):
+
+- **The lobby UI tier is off the gate's critical path.** `loadRunArt()` opened with
+  `await preloadUiTier('lobby')`, on the written reasoning that "a player cannot reach the run
+  gate in the time it takes". The 113/113 is that reasoning being measured and failing: the
+  tier is kicked by `preloadLobbyArt` in the same frame the gate opens, so ~253 kB of the
+  decoration of the screen the player has just LEFT sat strictly serialised in front of the
+  ~2.3 MB the gate actually exists for. The await is gone; the kick and `preloadUiTier`'s
+  per-tier memo are untouched, so nothing downloads any later than it did, and a key that
+  lands after a menu is drawn still reaches it through `whenUiTexture` exactly as the `late`
+  tier always has. Asserted as an absence in `preloadArt.test.ts` — the gate must not ask for
+  those files, not merely not block on them.
+- **`wait_ms` stopped counting tabs nobody was looking at.** It was wall clock from
+  `noteRunWait` to `run_start`, so a player who opened the gate and switched tabs banked the
+  whole absence: p90 4,752,650 ms (79 minutes), max 42,434,681 (11.8 hours). The unreadable
+  top end was the smaller half. `net/analyticsEvents.ts` bounds the field at 600,000 and
+  `coerceProp` DROPS an out-of-range int rather than clamping it, so those sessions carried no
+  `wait_ms` at all — and since the waits most likely to be backgrounded are the slow ones, the
+  bound was deleting the rows the field exists to find and the surviving median was measured
+  over whoever stayed on the tab. It now accrues per frame in `reportFrame`, each step clamped
+  to `MAX_WAIT_STEP_MS` (250 ms); a hidden tab runs no `requestAnimationFrame`, so the absence
+  arrives as one oversized frame and the clamp is what eats it. Same shape as `perfSample.ts`,
+  for the same reason. **Every `wait_ms` before this build is a different measurement** — split
+  on `build_version` before comparing, and expect the new median to be higher, not lower, now
+  that the slow sessions are no longer being discarded.
+
+**Considered in the same pass and deliberately not done**, so the next reader does not spend
+the afternoon re-deriving them:
+
+- *Narrowing the run gate's biome await to the entering chapter's element* (~203 kB: ice,
+  lightning and poison are locked behind clearing the chapter before them). `assetPacks.json`
+  already answers this in writing — `biome-ice`/`-lightning`/`-poison` are in the `run` phase
+  precisely "so a frost run never starts on the flat fallback palette" — and narrowing only the
+  web loader would buy nothing on WeChat, where the packs are the real download. It would also
+  open a new path to the flat fallback for a co-op guest on the host's chapter, since an online
+  run does not cross this gate at all. 9% of the gate is not worth re-litigating that for.
+- *Re-encoding `door_curtain_raw.png`* (593 kB, 26% of the gate, 12x the next-largest door
+  state). design/12's "Update (2026-09-01b)" records a render comparison put to the owner and
+  answered "leave it alone", with a note asking that it not be re-litigated. It is not.
+- *Releasing the gate on a critical subset.* That is the partial-availability state design/12's
+  phase-boundary rule exists to forbid, and this repo's worst bug class.
+
+One lead was chased and found clean: `screen_view` shows `paused` in 61 of 239 playing
+sessions, which looked like the Playgama iframe auto-pausing a quarter of the players.
+It is not — `PlaygamaSession` maps `pause_state_changed` to a `Hold`, which stops the clock
+without touching `RunState.phase`. Those are players opening the pause menu themselves.
+
+**2026-11-11c — the ad was placed at the one pause the player does not take.** Ad Shows per
+Play is the second gate (≥ 0.30) and the week of 2026-11-05..11 read **0.236** — 25 shows
+(24 interstitial, 1 rewarded) over 106 qualifying plays, with 10 `interstitial_failed` on top.
+The shortfall is not a cooldown or a failure rate. It is placement.
+
+`PlaygamaSession` asked for an interstitial on one condition, `inRun(from) && !inRun(to)`, and
+`inRun` folds play, the pause menu and the result screen into a single state. So the only
+moment that could ever be marked was the walk back to the lobby — the pause taken by the
+player who has decided to stop. The telemetry shows how rare that is: **274 `run_start`s
+produced 62 `run_end`s**, so 77% of runs end with the tab closing mid-floor, and those 62 ends
+could yield at most 34 requests. Meanwhile the pauses the player *does* take were invisible:
+`screen_view` recorded `paused` in 61 of 239 playing sessions (the lead cleared above — those
+are real pause-menu opens), and 43 of the 62 ends were losses, each sitting under a TRY AGAIN
+button that feeds straight back into `playing`. Both are named in Playgama's own monetization
+guide — "when the player resumes from pause", "shortly after the player presses restart" —
+and neither leaves `inRun`, so neither could fire.
+
+The fix is `naturalPause(from, to)`, which keeps the run-ended arm and adds those two. It adds
+no timer and no counter of our own: the guide is explicit that Bridge owns the spacing
+(`minimumDelayBetweenInterstitial`), so marking *more* moments is the lever we have.
+(**Corrected 2026-11-11e**: this paragraph originally added "and a request inside the cooldown
+fails at once without showing anything". The Bridge SDK's own interstitial page says the
+opposite — "Call `showInterstitial()` at every natural pause; if it is too early, Bridge waits
+or skips according to platform behavior instead of showing ads too frequently." An early call
+is not a wasted one, which is the whole reason a client-side cooldown of ours would be a
+regression rather than a safeguard.) `whileAd`
+already holds the clock, the sound and the gameplay bracket from the moment an ad opens, so
+none of the three can interrupt play (requirements 2.1.3 and 2.1.6).
+
+Deliberately not marked: **the start of a run** (the opening seconds are what Bridge holds its
+first ad back to protect), and **the floor-to-floor descent** — "between levels" on paper, but
+this game descends without a screen in between, so the player would be standing in a room with
+their hand on the keys. A pause the player did not take is not a pause.
+
+Also rejected, and worth recording so they are not re-proposed:
+- *A revive / second-chance rewarded ad on defeat.* design/05's wipe rule is locked: a death
+  may never be bought back. This is the single highest-volume ad slot in the game (43 losses a
+  week) and it stays shut.
+- *Offering the material double on `abandon` or `loss`.* `RunOutcome.doubleOffer()` is reached
+  only from `win()` because carry-out banks only on extraction, so `carried` is 0 by rule on
+  every other outcome. Its true cost is already visible: `ad_offer_shown` fired **3** times in
+  the week, exactly matching the 3 wins. The rewarded offer is attached to a 5%-frequency
+  event and could not move the gate at 100% conversion.
+- *A banner on the loss screen.* The guide calls this out as effective and we ship none, but it
+  needs layout safe-zones across every result screen. A larger change than this pass, not a
+  rejection — it is the next candidate if 0.30 is still out of reach.
+
+What to read next week: `interstitial_opened` per qualifying play (the gate itself), and
+whether `interstitial_failed` rises — a rise there is the cooldown doing its job against the
+new volume, not a regression.
+
+**2026-11-11d — the screen half the sessions end on said nothing a player could act on.**
+Session facts for the 30 sandbox sessions of 2026-11-09..11, grouped by the last screen each
+one was on when it stopped: **defeat 14, playing 6, paused 5, loadout 4, menu 1**. Just under
+half of all sessions end on the defeat screen, which makes it the single highest-traffic
+screen in the game that is not the run itself — and the one with the least on it.
+
+The obvious reading, that losing is expensive to recover from, is **wrong and was measured**:
+of 28 recorded losses **16 (57%) were restarted**, and the gap from the loss to the next
+`run_start` has a **p50 of 0.0 s** — TRY AGAIN (2026-11-09) already made the retry one tap, and
+players take it instantly. Restart friction is solved. What the remaining 43% walk away from is
+not a cost; it is an absence. The defeat screen was four lines — floor fallen on, materials
+lost, time, score — every one of them a restatement of the loss, none of them naming a cause
+and none naming a fix. A player who closes the tab there closes it not knowing what to change.
+
+Meanwhile the game has known since 2026-11-09 exactly why they died and has been telling only
+us: `run_death` carries `killer`, `room`, `hits` and `burst_pct` (§2.10, `deathCause.ts`). So
+this pass spends none of that on new instrumentation and all of it on the player.
+`client/src/game/deathAdvice.ts` turns those numbers into **one line, below the ledger and
+directly above TRY AGAIN**, in three readings that each name a *different* action:
+
+- **spike** (`burst_pct` ≥ 70): most of the pool went inside five seconds. The action is
+  positional — keep moving, break line of sight — because no amount of healing survives it.
+- **attrition** (anything else above 3 hits): the median sandbox death, 13 hits at 50% burst.
+  Nothing spiked; the player stood in fire and never let the shield come back. The action is
+  the 1.5 s shield-regen delay chapter 1 gained in ENGINE_VERSION 93 — which exists for exactly
+  this death and which nothing on screen mentioned.
+- **fragile** (≤ 3 hits, no spike): a run ended by a handful of hits is an unbuilt character
+  walking downstairs, not a misplayed fight. The action is the loadout, before the next
+  descent.
+
+A death with no recorded hit at all (a disconnect, a resumed run killed on its first frame)
+gets no line rather than a guess, and the row simply closes up — the stat box is one wrapped
+`Text`, so nothing in the layout had to move.
+
+Three things deliberately NOT done:
+
+- *Naming the killer.* `killer` is a blueprint id (`basic`, `turret`, `fire_status`), not a
+  display name. Showing it would buy a display string per enemy in **eight** locales to tell
+  the player something the fight already showed them. The one thing they could not see is
+  which of the three mistakes above they made.
+- *A `hint` prop on `run_death`.* The per-event field cap is **4** (`analyticsEvents.test.ts`)
+  and `run_death` is at 4. It is also unnecessary: the reading is a pure function of `hits` and
+  `burst_pct`, both already sent, so next week's "did the line change the retry rate" question
+  can be answered off the data as it stands without loosening a cap that exists to keep an
+  internet-facing write bounded.
+- *Anything resembling a second chance.* design/05's wipe rule is locked: a death may never be
+  bought back, so there is no revive ad here and no reward on the defeat screen. This pass
+  changes what the screen SAYS, not what the loss costs.
+
+This is client-only and needs no `ENGINE_VERSION` bump. What to read next week: `run_end`
+per session (1.63 today, and ~5 is what a 330 s average needs at a p50 run of 61 s), and the
+loss→restart rate against today's 57%.
+
+**2026-11-11e — two of the three things this pass set out to do turned out to be things that
+must not be done.** The brief was: find out why `active_time` stopped firing on 11-08, convert
+it to a 30 s wall-clock heartbeat to match Swarm Orbit's, and fix the interstitial timing to
+pull the 28.6% failure rate down. All three rested on a reading of the telemetry that does not
+survive contact with the code or with Playgama's own guides. Recorded in full, because the
+same three conclusions are easy to reach again from the same console screen.
+
+- *`active_time` did not break; it was removed on purpose.* Commit `bc1769ca` (2026-11-08,
+  "stop duplicating Bridge's session signals") added it to `PLATFORM_OWNED_EVENTS` in
+  `client/src/platform/playgama/bridgeAnalytics.ts`, alongside `session_end`. The telemetry
+  guide (v1.1.2) is unambiguous about why: "Do not duplicate session, playtime, advertisement
+  or purchase signals already supplied by the platform." Re-adding it — in any cadence, wall
+  clock or otherwise — would be re-breaking something that was fixed three days ago.
+- *The measurement we were about to build already exists, and nobody had read it.*
+  `client/src/platform/playgama/perfSample.ts` emits `performance_sample` roughly every 30 s
+  and has been doing so all along: 857 events across 157 sessions, last one 2026-11-11T12:07.
+  Every sample carries **both** notions of time — `window_ms` (wall clock: p50 30,015, p10
+  29,634, p90 30,352, max 1,410,834) and `active_ms` (p50 30,012, max 30,090). The cadence is
+  exactly the 30 s heartbeat the brief asked for.
+- *And what it says is worth more than the heartbeat would have been.* `sum(window_ms)` over
+  those 157 sessions is 27,472 s, i.e. **≈175 s of instrumented gameplay per session**, against
+  the **266.6 s** the platform credits each session on average. About a third of the graded
+  wall clock is time this instrument deliberately never looks at — loading, menus, pauses, a
+  parked tab — because the guide requires `performance_sample` to exclude exactly that. Which
+  also settles what to do about the gap: **nothing**. Padding our sample window to close the
+  distance to the platform's number would not lengthen a single session; it would only make our
+  own perf data lie, in the direction the gate happens to reward. The gate is moved by keeping
+  players, and §1/§2 above are the ways to do that.
+- *The 28.6% ad failure rate is a stale blend.* Daily `interstitial` opened/failed:
+  11-06 4/1, 11-07 2/3, 11-08 8/6, **11-09 3/0, 11-10 6/0, 11-11 2/0**. The last
+  `advertisement_interstitial_failed` fired 2026-11-08T16:24; the 11 requests since have all
+  opened. The 28.6% is dominated by a window that closed three days ago — the same window in
+  which the sandbox was first published and the Bridge config first shipped. Reading a
+  week-aggregate rate as a current one is how an already-fixed problem gets fixed twice.
+
+**What shipped instead**, from the one genuinely new fact in the pass — the Bridge SDK's
+interstitial page documents three `advertisement.interstitial` config keys this build was not
+using:
+
+- `placements`, declaring `run_end`, `run_restart` and `run_resume`, and `naturalPause()` now
+  returns which of the three earned each request (`AD_PLACEMENTS` in `PlaygamaSession.ts`).
+  Until now every pause arrived as the same unnamed `showInterstitial()`, so
+  `advertisement_interstitial_opened` could not be split by pause and 2026-11-11c's whole
+  premise — that the two newly-marked pauses are the common ones — was unfalsifiable.
+- `preloadOnStart: 'run_end'`, which fetches the first creative right after init rather than
+  inside the player's two-second pause. This is the SDK's own answer to a slow fill, and
+  `run_end` is the placement that fires first in most sessions.
+- `placementFallback: 'run_end'`, so a request that somehow carries no id is still routed and
+  still counted rather than landing nowhere.
+
+The two halves of that list live either side of the build/source line — the ids the game sends
+are in `AD_PLACEMENTS`, the ids the platform can route are in the JSON the config emits — and
+nothing at runtime would report a mismatch, since an undeclared id just falls back. So
+`playgamaBuild.test.ts` agrees them, reading the **emitted bytes** rather than the config
+object: `client/tsconfig.json` has no `allowJs`, so a `.ts` test importing that `.js` sees only
+one level of the shape and the nested `interstitial` object is invisible to the type checker.
+Four new tests, 4/4 mutants killed.
+
+What to read next week: `advertisement_interstitial_opened` **split by placement**, which is
+what this pass bought. If `run_resume` and `run_restart` together are not the majority of
+requests, 2026-11-11c placed the ad in the wrong two pauses and the banner in its rejected list
+becomes the next candidate.
+
+**2026-11-11f — published, and the one thing every reading of it has to be split on.** All of
+2026-11-11a..e went up as a single archive,
+`blightbloom-2026-11-11-9403aaf9-ad-placements` (7,217,261 bytes, 249 entries, Bridge 2.4.1,
+build check PASSED), live at the sandbox link as revision `cmwc9jdpw0jj5hj0hodzswsi1` since
+2026-11-11T15:17:39Z. It replaces the 2026-11-10 09:32 revision (archive
+`cmwahou2c1d5wm80h9gygw3s6`, commit `ee9465b8`) — **which is the build every number in
+2026-11-11a..e was measured on**. Five commits were sitting unpublished behind it, and each
+one is aimed at one of the two failing gates:
+
+| commit | what a player meets | gate |
+| --- | --- | --- |
+| `cfd3fdb8` | the first floor is survivable (ENGINE_VERSION 93) | Avg Play Time |
+| `6416a86b` | the lobby tier is off the run gate; `wait_ms` counts visible time only | Avg Play Time |
+| `72a8b337` | an interstitial at the resume and the restart, not only the walk-out | Ad Shows per Play |
+| `f9f48c25` | the defeat screen names what killed you | Avg Play Time |
+| `0031fc04` | named placements, and the commonest one preloaded | Ad Shows per Play |
+
+So **no gate number spanning 2026-11-11 15:17 means anything unsplit**. Split on
+`build_version` (`gameVersion()` stamps the short commit into it) before comparing anything,
+and expect three fields in particular to be incomparable across that line: `wait_ms` (a
+different measurement since `6416a86b` — 2026-11-11b), `advertisement_interstitial_opened`
+(three placements where there was one), and the 60 s survival rate (a different first floor).
+
+**The confounder that outlives the publish, and the natural experiment that ends it.** The free
+traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until **2026-11-12T08:32:14Z**. Its
+arrivals are ad clicks and they read like it: daily average session 11-08 **530.4 s** (p50
+28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **≈126 s** (p50 ≈0, ~74).
+That fall is traffic composition, build regression, or both, and **this data cannot separate
+them** — the campaign started 11-09 08:32, a day before the build it is blamed on. When it
+stops, organic traffic returns on its own and the comparison becomes readable. Until then, read
+the two gates per build_version and ignore the headline averages.
+
+The gates are a rolling window of the last 100 qualifying plays (a play = a session reaching
+60 s, `gameplay_60s`), so the window refreshes only as fast as plays arrive: 3–11/day organic,
+~30/day with the campaign. The honest estimate is **3–4 days to a clean reading while the
+campaign runs, 10–30 days without it**.
+
+**The zip, again.** Built with a Python `zipfile` helper and verified at **0 entries
+containing a backslash** before the upload — the check that exists because PowerShell 5.1's
+`Compress-Archive` wrote `assets\index-….js` once and the unpacked page could not load its own
+scripts (`BRIDGE_NOT_INITIALIZED`). Run that check every time; it costs one line and it has
+already been paid for once.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 

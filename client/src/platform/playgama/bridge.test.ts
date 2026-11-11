@@ -17,6 +17,8 @@ function fakeSdk(over: Partial<BridgeShape> = {}) {
   const tracked: [string, unknown][] = [];
   const stored = new Map<string, unknown>();
   const shown: string[] = [];
+  /** The placement id each `showInterstitial` call carried, in order. */
+  const placements: (string | undefined)[] = [];
   const sdk: BridgeShape = {
     initialize: () => Promise.resolve(),
     version: '2.4.1',
@@ -37,7 +39,10 @@ function fakeSdk(over: Partial<BridgeShape> = {}) {
     advertisement: {
       isInterstitialSupported: true,
       isRewardedSupported: true,
-      showInterstitial: () => void shown.push('interstitial'),
+      showInterstitial: (p) => {
+        shown.push('interstitial');
+        placements.push(p);
+      },
       showRewarded: () => void shown.push('rewarded'),
       on: (e, cb) => void listeners.set(`ad:${e}`, cb),
     },
@@ -46,7 +51,7 @@ function fakeSdk(over: Partial<BridgeShape> = {}) {
     ...over,
   };
   const fire = (key: string, ...a: unknown[]) => listeners.get(key)?.(...a);
-  return { sdk, listeners, sent, tracked, stored, shown, fire };
+  return { sdk, listeners, sent, tracked, stored, shown, placements, fire };
 }
 
 /** A wait the test resolves by hand, so the watchdog's timing is the test's to choose. */
@@ -289,6 +294,22 @@ describe('PlaygamaBridge — ads', () => {
     await second;
     expect(subscriptions).toBe(1);
     expect(f.shown).toEqual(['interstitial', 'interstitial']);
+  });
+
+  // Bridge routes by placement: the config maps each id to the platform's own placement, so
+  // an id dropped on the way through the wrapper arrives as `undefined` and falls back to one
+  // name for every pause. Nothing downstream would notice, which is why this is asserted here.
+  it('forwards the placement id to showInterstitial, and passes none along as none', async () => {
+    const f = await ready();
+    const first = f.bridge.interstitial('run_restart');
+    await flush();
+    f.fire('ad:interstitial_state_changed', 'closed');
+    await first;
+    const second = f.bridge.interstitial();
+    await flush();
+    f.fire('ad:interstitial_state_changed', 'closed');
+    await second;
+    expect(f.placements).toEqual(['run_restart', undefined]);
   });
 
   it('ignores an event for the other ad kind', async () => {

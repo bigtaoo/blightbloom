@@ -15,8 +15,10 @@ import { describe, expect, it } from 'vitest';
 import playgamaConfig, {
   BRIDGE_CONFIG, DROPPED_FILES, gameVersion, playgamaHtml, rewritePlaygamaHtml,
 } from '../../../vite.playgama.config.js';
+import { AD_PLACEMENTS } from './PlaygamaSession';
 
 const read = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
+
 const ENTRY = read('../../main.playgama.ts');
 const INDEX_HTML = read('../../../index.html');
 
@@ -32,6 +34,13 @@ interface Plugin {
 }
 
 const fresh = (): Plugin => (playgamaHtml as () => Plugin)();
+
+/** The `playgama-bridge-config.json` the build emits, parsed — the bytes Bridge fetches. */
+function emitConfig(): Record<string, unknown> {
+  const emitted: { fileName?: string; source?: string }[] = [];
+  fresh().generateBundle.call({ emitFile: (f) => void emitted.push(f as never) });
+  return JSON.parse(emitted[0]!.source!) as Record<string, unknown>;
+}
 
 describe('vite.playgama.config.js', () => {
   it('serves from a relative base into its own outDir, with the plugin first', () => {
@@ -61,6 +70,25 @@ describe('vite.playgama.config.js', () => {
     expect(p.transform('export {}', 'x.ts')).toBeNull();
     expect(p.transform(INDEX_HTML, '/abs/index.html')).toContain('main.playgama.ts');
     expect(p.transformIndexHtml(INDEX_HTML)).toContain('bridge.playgama.com');
+  });
+
+  // The two halves of the placement list live either side of the build/source line — the ids
+  // the game sends are in `AD_PLACEMENTS`, the ids the platform can route are in the JSON this
+  // config emits — and nothing at runtime would report a mismatch: an undeclared id just falls
+  // back to `placementFallback`, so every pause would arrive under one name and the split
+  // between them would quietly read as zero.
+  //
+  // Read back out of the EMITTED bytes rather than off `BRIDGE_CONFIG` directly: those are
+  // what Bridge fetches, and the object this file imports is a `.js` export whose nested
+  // members TypeScript does not see from a `.ts` test (no `allowJs` here, by design).
+  it('declares exactly the placements the game sends, and preloads one of them', () => {
+    const ad = emitConfig().advertisement as {
+      interstitial: { preloadOnStart: string; placementFallback: string; placements: { id: string }[] };
+    };
+    const declared = ad.interstitial.placements.map((pl) => pl.id);
+    expect([...declared].sort()).toEqual([...Object.values(AD_PLACEMENTS)].sort());
+    expect(declared).toContain(ad.interstitial.preloadOnStart);
+    expect(declared).toContain(ad.interstitial.placementFallback);
   });
 
   it('emits the Bridge config, and the dev server serves the same bytes', () => {

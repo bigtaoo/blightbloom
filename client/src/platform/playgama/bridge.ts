@@ -194,10 +194,17 @@ export class PlaygamaBridge {
     return this.show('rewarded_state_changed', (ad) => ad.showRewarded?.(), opened);
   }
 
-  /** One interstitial; resolves when it closed or failed (a cooldown fails at once). */
-  async interstitial(opened?: () => void): Promise<void> {
+  /**
+   * One interstitial, for the named placement; resolves when it closed or failed.
+   *
+   * The placement is Bridge's own routing key: `playgama-bridge-config.json` declares the list
+   * and maps each id to a platform's native placement, and a call that passes none falls back
+   * to the config's `placementFallback`. Naming the pause costs nothing here and is what lets
+   * the platform tell one pause from another.
+   */
+  async interstitial(placement?: string, opened?: () => void): Promise<void> {
     if (!this.interstitialSupported()) return;
-    await this.show('interstitial_state_changed', (ad) => ad.showInterstitial?.(), opened);
+    await this.show('interstitial_state_changed', (ad) => ad.showInterstitial?.(placement), opened);
   }
 
   /** Whether an ad is on screen or being requested right now. */
