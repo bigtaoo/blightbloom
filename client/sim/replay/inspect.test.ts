@@ -379,16 +379,30 @@ describe('inspectReplay end to end, on a real recorded dungeon run', () => {
   });
 
   it('stops where the ENGINE stops — a run that ended is not inspected past its end', () => {
-    // A stream that never fires: the player walks east into the entry room's garrison and
+    // A stream that never fires: the player walks south into the entry room's garrison and
     // stays there, and the run is over long before the 6000 ticks the file declares. (Not
     // standing still: since ENGINE_VERSION 89 the entry room's two mobs stand outside
     // their aggro range of the spawn, so a player who never moves is never shot.)
+    //
+    // CHAPTER 2, and that is the whole point of this comment. This fixture walked EAST in
+    // chapter 1 and died at tick 438 until ENGINE_VERSION 93, when chapter 1 took
+    // `shieldRegenDelay: 45` (`ember.ts`, "the learning chapter"): half the global 3 s
+    // wait, which is longer than the entry room chips at, so the shield now outpaces that
+    // garrison outright. Measured 2026-11-11, all eight compass directions × 6000 ticks —
+    // in chapter 1 a player who never fires cannot die in the entry room any more, which
+    // is what making the first floor survivable MEANS. Chapter 2 keeps the global delay,
+    // and south is east rotated by the `transpose` this chapter is derived through
+    // (`deriveChapter.mjs`): the same room, the same mobs, the same death, tick 258.
+    const FROST = buildDungeonRunConfig({
+      seed: 0xda1d, chapterId: 'frost', coop: false,
+      localSeat: { skinId: 'vanguard', loadout: [] }, allySkinId: 'skirmisher',
+    });
     const idle = new LocalInputSource();
     for (let t = 1; t <= 6000; t++) {
-      idle.submit(makeCommand({ owner: 0, tick: t, ...quantizeMove(1, 0), buttons: 0 }));
+      idle.submit(makeCommand({ owner: 0, tick: t, ...quantizeMove(0, 1), buttons: 0 }));
     }
     const pack = (marks: { tick: number; note: string }[]) => packReplayFile({
-      config: CONFIG, commands: idle.recorded(), ticks: 6000, label: 'dungeon-idle', marks, recordedAtMs: 0,
+      config: FROST, commands: idle.recorded(), ticks: 6000, label: 'dungeon-idle', marks, recordedAtMs: 0,
     });
 
     const oracle = runReplay(pack([]).replay, 6000); // runHeadless has the same break, by design

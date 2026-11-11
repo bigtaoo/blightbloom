@@ -1,11 +1,11 @@
 {
-  "engineVersion": 92,
+  "engineVersion": 93,
   "scenarios": [
     {
       "name": "arena-waves",
       "pins": "the flat wave path: fire cadence, crit/drop rolls, actor pairs, win condition",
       "ticks": 500,
-      "hash": 235031250,
+      "hash": 3004900335,
       "witness": {
         "tick": 185,
         "phase": "gameover",
@@ -33,7 +33,7 @@
       "name": "walls-and-pillars",
       "pins": "MovementSystem's rect/circle push-out and its tie-breaks — the geometry half of design/18",
       "ticks": 600,
-      "hash": 173717762,
+      "hash": 1073143953,
       "witness": {
         "tick": 600,
         "phase": "playing",
@@ -59,29 +59,29 @@
       "name": "ember-dungeon-floor1",
       "pins": "authored floor-1 roomgen + room entry + door lock/unlock + freeStanding north brim + pickup clamping",
       "ticks": 1500,
-      "hash": 1676871274,
+      "hash": 547380125,
       "witness": {
         "tick": 1500,
         "phase": "playing",
         "winner": "null",
         "seats": 1,
-        "enemiesAlive": 1,
-        "projectiles": 0,
-        "pickups": 7,
+        "enemiesAlive": 0,
+        "projectiles": 2,
+        "pickups": 5,
         "floorIndex": 0,
         "hpTotal": 6,
         "energyTotal": 99,
-        "prngCursors": 13236560966,
+        "prngCursors": 15323408974,
         "events": {
-          "bullet_fired": 140,
+          "bullet_fired": 136,
           "room_enter": 2,
           "door_locked": 2,
-          "hit": 18,
-          "death": 10,
+          "hit": 12,
+          "death": 7,
           "melee_swing": 67,
-          "clash": 4,
-          "door_unlocked": 1,
-          "pickup": 3,
+          "clash": 1,
+          "door_unlocked": 2,
+          "pickup": 2,
           "force_regroup": 1,
           "deflect": 1
         }
@@ -91,7 +91,7 @@
       "name": "frost-dungeon-floor1",
       "pins": "chapter 2 authored floor-1 roomgen + transposed doors/brim + frost garrison + chapter difficulty base",
       "ticks": 1500,
-      "hash": 1286994192,
+      "hash": 1176151733,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -121,7 +121,7 @@
       "name": "storm-dungeon-floor1",
       "pins": "chapter 3 authored floor-1 roomgen + half-turned doors/brim + storm garrison",
       "ticks": 1500,
-      "hash": 3843603535,
+      "hash": 3135315386,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -153,7 +153,7 @@
       "name": "blight-dungeon-floor1",
       "pins": "chapter 4 authored floor-1 roomgen + mirrored doors/brim + blight garrison",
       "ticks": 1500,
-      "hash": 942299027,
+      "hash": 2865923542,
       "witness": {
         "tick": 1500,
         "phase": "playing",
@@ -182,7 +182,7 @@
       "name": "brim-grinder",
       "pins": "WALL_NORTH_BRIM itself: a free-standing block's brimmed north face vs its three bare ones",
       "ticks": 800,
-      "hash": 167336936,
+      "hash": 457756425,
       "witness": {
         "tick": 800,
         "phase": "playing",
@@ -210,7 +210,7 @@
       "name": "extraction-gate",
       "pins": "which floor may END a run: an interior CONFIRM_EXTRACT ignored, the boss floor's honoured",
       "ticks": 400,
-      "hash": 3887556098,
+      "hash": 2905160531,
       "witness": {
         "tick": 252,
         "phase": "gameover",
@@ -243,7 +243,7 @@
       "name": "endless-descent",
       "pins": "the endless dungeon: a card offer and a DESCEND on its boss floor, and the lap wrap",
       "ticks": 700,
-      "hash": 2899979622,
+      "hash": 2844834031,
       "witness": {
         "tick": 700,
         "phase": "playing",
@@ -274,7 +274,7 @@
       "name": "launch-arena-pvp",
       "pins": "arena geometry + zone shrink + two hostile seats + per-skin arena stat scaling",
       "ticks": 900,
-      "hash": 887116467,
+      "hash": 2378682288,
       "witness": {
         "tick": 900,
         "phase": "playing",
@@ -304,7 +304,7 @@
       "name": "chest-room",
       "pins": "both chest kinds opening: the big one gated on every plate, the small one on INTERACT",
       "ticks": 400,
-      "hash": 2486367155,
+      "hash": 2384398740,
       "witness": {
         "tick": 400,
         "phase": "playing",

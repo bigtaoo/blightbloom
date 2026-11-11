@@ -103,9 +103,50 @@ describe('FROST_DUNGEON is chapter 2', () => {
   });
 });
 
+// ── The one place the transform is deliberately NOT followed (2026-11-11) ──────────────
+//
+// Chapter 1's three floor-one fight rooms were cut below the density ramp — alcove 9→5,
+// gallery 10→7, forge 10→8 — because `run_death.room` on the Playgama sandbox put 23 of 25
+// deaths inside them (design/22 §4.1, `engine/world/rooms/emberLevel1.test.ts`). That is
+// beginner tuning for the first rooms a NEW player ever meets, and chapter 2 is reached by
+// essentially nobody: `run_end.floor` has a p50 of 1.
+//
+// Propagating the cut here was tried and measured, and it is worse: `client/sim/chapterSim.sim.ts`
+// turns red twice — chapter 3's floor-2 trial stops being harder than chapter 2's (20.6 vs a
+// 18.75 ceiling), and a chapter-4 blight room starts bursting 12 damage into a 10-point
+// effective HP pool. The chapters keep the garrisons they were authored with.
+//
+// So the pieces below are exempt from `toEqual(derivePiece(ember))` in ONE field, and the
+// exemption is checked rather than waved through: everything outside `spawns.enemy` must still
+// match the transform exactly, and the garrison chapter 1 kept must be a strict SUBSET of the
+// one this chapter still fields. `deriveChapter.mjs` would silently re-propagate the cut if it
+// were ever re-run over these three — delete this block and re-derive the day a chapter is
+// deliberately brought back in line.
+const BEGINNER_CUT = new Set(['ember_l1_alcove', 'ember_l1_gallery', 'ember_l1_forge']);
+const spawnKey = (e: RoomPiece['spawns']['enemy'][number]): string => `${e.type ?? 'basic'}@${e.x},${e.y}`;
+
+const CUT_RENAMED = new Set([...BEGINNER_CUT].map(renameId));
+/**
+ * The garrison OUTSIDE the three rooms chapter 1 thinned — the fair basis for comparing two
+ * chapters' rosters now that those three deliberately differ. Takes either chapter's library;
+ * the ids are filtered under both spellings.
+ */
+const typesOutsideCut = (pieces: readonly RoomPiece[]): string[] =>
+  enemyTypes(pieces.filter((p) => !BEGINNER_CUT.has(p.id) && !CUT_RENAMED.has(p.id)));
+
 describe('chapter 2 is still the transform of chapter 1 it was seeded as', () => {
   it.each(EMBER_L1_ROOMS.map((p) => [p.id, p] as const))('%s', (_, ember) => {
-    expect(pieceFor(renameId(ember.id))).toEqual(derivePiece(ember));
+    const derived = derivePiece(ember);
+    const actual = pieceFor(derived.id);
+    if (!BEGINNER_CUT.has(ember.id)) {
+      expect(actual).toEqual(derived);
+      return;
+    }
+    const blank = (p: RoomPiece): RoomPiece => ({ ...p, spawns: { ...p.spawns, enemy: [] } });
+    expect(blank(actual), `${ember.id} may differ in its garrison and nowhere else`).toEqual(blank(derived));
+    const fielded = actual.spawns.enemy.map(spawnKey);
+    for (const e of derived.spawns.enemy) expect(fielded, `${ember.id} dropped a mob chapter 1 kept`).toContain(spawnKey(e));
+    expect(actual.spawns.enemy.length, `${ember.id} is exempt to be HEAVIER than chapter 1, not lighter`).toBeGreaterThan(derived.spawns.enemy.length);
   });
 
   it('every floor map, plain and branch', () => {
@@ -130,9 +171,10 @@ describe('chapter 2 garrison', () => {
 
   it('is frost-led: more frostlings than emberlings, the mirror image of chapter 1', () => {
     const frost = enemyTypes(FROST_L1_ROOMS);
-    const ember = enemyTypes(EMBER_L1_ROOMS);
     expect(count(frost, 'frostling')).toBeGreaterThan(count(frost, 'emberling'));
-    expect(count(frost, 'frostling')).toBe(count(ember, 'emberling'));
+    // Counted outside the three rooms chapter 1 thinned for beginners (BEGINNER_CUT above).
+    // There the two chapters differ on purpose, and the transform test pins exactly how.
+    expect(count(typesOutsideCut(FROST_L1_ROOMS), 'frostling')).toBe(count(typesOutsideCut(EMBER_L1_ROOMS), 'emberling'));
   });
 
   it('names only blueprints that exist', () => {

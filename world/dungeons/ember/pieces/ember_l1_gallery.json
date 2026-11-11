@@ -96,29 +96,14 @@
         "type": "basic"
       },
       {
-        "x": 12.5,
-        "y": 6.5,
-        "type": "floater"
-      },
-      {
         "x": 10.5,
         "y": 8.5,
         "type": "emberling"
-      },
-      {
-        "x": 12.5,
-        "y": 8.5,
-        "type": "basic"
       },
       {
         "x": 10.5,
         "y": 10.5,
         "type": "stalker"
-      },
-      {
-        "x": 12.5,
-        "y": 10.5,
-        "type": "emberling"
       },
       {
         "x": 8.5,

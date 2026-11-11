@@ -525,6 +525,39 @@ update note tells players about the click-to-start keys fix and the faster run s
 every read from here on `build_version` `ee9465b8`. Earlier builds send no `focus`/`input`,
 `run_wait`, `wait_ms` or `gl`, and their frame times are clamped at 100 ms.
 
+**2026-11-11 — the first floor, from the sandbox's own death data.** Not a guess at what is
+hard: `run_end.floor` has a median of 1, `run_death.room` puts 23 of 25 deaths in a floor-1
+room (`r2_alcove` 10, `r1_cell` 6, `r4_forge` 5), and the killers are the cheapest mobs in the
+tree — `basic` 11, `emberling` 7, and not one stalker or ravager — at a median of 13 hits taken
+with a 50% burst share. That is attrition from a crowd, not a spike from one dangerous thing,
+so the fix is sustain and crowd size rather than any single enemy. Four changes, three of them
+sim-visible (`ENGINE_VERSION` 93, full account in `engine/ENGINE_VERSION_HISTORY.md`):
+
+- **The run waits for the player.** `first_input.ms` has a median of 7.7 s and 76 of 97 first
+  touches land INSIDE a live run — the portal build autostarts, so for those seconds the player
+  is reading the screen while the dungeon shoots at them. `client/src/game/controllers/openingHold.ts`
+  freezes the sim until the first deliberate input (stick, fire, interact, or a latched HUD tap
+  such as the weapon chip), with a 20 s fuse for a seat nobody is sitting in. It skips ticks
+  exactly as hit-stop does, so replays, golden hashes and the engine version are untouched.
+- **Chapter 1's shield refills in 1.5 s instead of 3.** `DungeonConfig.shieldRegenDelay`, set
+  on `EMBER_DUNGEON` only. At 3 s a player who stays in the room is hit again before the gate
+  ever opens, which switched the whole shield pool off for exactly the player this chapter is
+  for.
+- **Floor 1's three fight rooms lose part of their garrison** — alcove 9 → 5, gallery 10 → 7,
+  forge 10 → 8 — keeping the ramp's shape. Chapters 2-4 keep the garrisons they were authored
+  with; propagating the cut was tried first and turned the chapter-difficulty sims red.
+- **The sim bots learned the two human weaknesses** that make the measurement above readable:
+  a `newcomer` profile that does nothing for the first 7.7 s and never backs off. It extracts
+  6 of 40 seeds where the `careful` bot now extracts 21 — the first instrument here that sits
+  BELOW the sandbox population instead of above it.
+
+What it is worth, measured rather than hoped: the `careful` bot went 19/40 → 21/40 extracted,
+and in chapter 1 a player who walks one direction and never fires can no longer die in the
+entry room at all (eight directions × 40 s, gated by `client/sim/firstFloorSurvival.test.ts`;
+until this change the eastward walk died at tick 438). Nothing is built or published from this
+yet — the next sandbox archive carries it, and the honest read is the 60 s survival line in the
+gates below, split on the build version that first ships it.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |

@@ -88,12 +88,19 @@ export class StatusEffectSystem {
     // capped at maxShield. Because a DoT tick this frame already zeroed ticksSinceHit
     // (takeDamage), an actor still burning/poisoned can't regen — the "clear your
     // status to recover" rule falls out for free. maxShield 0 → nothing to regen.
+    //
+    // The delay is per-dungeon since 2026-11-11 (`DungeonConfig.shieldRegenDelay`), because
+    // "stay unhit for 3 s" is a rule a learning player in their first room never satisfies
+    // — they are hit about once a second and collect nothing back. A config without the
+    // field reads `SHIELD_REGEN_DELAY`, i.e. every run outside chapter 1 is unchanged.
+    // Only the delay moves: `SHIELD_REGEN_INTERVAL` still sets the refill rate everywhere.
+    const regenDelay = state.dungeonConfig?.shieldRegenDelay ?? SHIELD_REGEN_DELAY;
     a.ticksSinceHit++;
     if (
       a.maxShield > 0 &&
       a.shield < a.maxShield &&
-      a.ticksSinceHit >= SHIELD_REGEN_DELAY &&
-      (a.ticksSinceHit - SHIELD_REGEN_DELAY) % SHIELD_REGEN_INTERVAL === 0
+      a.ticksSinceHit >= regenDelay &&
+      (a.ticksSinceHit - regenDelay) % SHIELD_REGEN_INTERVAL === 0
     ) {
       a.shield = Math.min(a.maxShield, a.shield + 1);
     }

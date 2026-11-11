@@ -51,6 +51,27 @@ describe('two-pool health — takeDamage shield-first absorb (design/07)', () =>
 describe('two-pool health — idle shield regen (design/07)', () => {
   const sys = new StatusEffectSystem();
 
+  /** The smallest dungeon that carries a config — only `shieldRegenDelay` is read here. */
+  const dungeon = (shieldRegenDelay?: number): GameState =>
+    createGameState({
+      ...CFG,
+      dungeon: {
+        config: {
+          biomeId: 't',
+          nameKey: 't',
+          floorCount: 1,
+          roomsPerFloor: { min: 1, max: 1 },
+          pieceTags: ['t'],
+          layout: 'linear',
+          extractionPieceId: 't_extract',
+          bossPieceId: 't_boss',
+          difficultyCurve: { base: 1, perFloor: 1 },
+          ...(shieldRegenDelay === undefined ? {} : { shieldRegenDelay }),
+        },
+        library: [],
+      },
+    });
+
   it('does not regen before the delay, then refills +1 at the delay boundary', () => {
     const s = createGameState(CFG);
     const p = s.players[0]!;
@@ -72,6 +93,31 @@ describe('two-pool health — idle shield regen (design/07)', () => {
     // Run long past full — it caps at maxShield.
     idle(sys, s, SHIELD_REGEN_INTERVAL * (p.maxShield + 2));
     expect(p.shield).toBe(p.maxShield);
+  });
+
+  it("a dungeon's own shieldRegenDelay replaces the global one (chapter 1, 2026-11-11)", () => {
+    // Chapter 1 halves the gate to 45 ticks because its killers are chip damage: a player
+    // who stays in the room never waits out 90 unhit ticks and collects nothing back.
+    const short = 45;
+    const s = dungeon(short);
+    const p = s.players[0]!;
+    p.shield = 0;
+    idle(sys, s, short - 1);
+    expect(p.shield, 'regen must not start one tick early').toBe(0);
+    idle(sys, s, 1);
+    expect(p.shield).toBe(1);
+    // The INTERVAL is untouched by the override — only the gate in front of it moved.
+    idle(sys, s, SHIELD_REGEN_INTERVAL);
+    expect(p.shield).toBe(2);
+    // The control: the same state WITHOUT the field is still waiting at that tick.
+    const plain = dungeon();
+    const q = plain.players[0]!;
+    q.shield = 0;
+    expect(short).toBeLessThan(SHIELD_REGEN_DELAY); // the control's control
+    idle(sys, plain, short);
+    expect(q.shield, 'a config without the field must still be waiting on the global delay').toBe(0);
+    idle(sys, plain, SHIELD_REGEN_DELAY - short);
+    expect(q.shield).toBe(1);
   });
 
   it('a lingering DoT resets the timer, suppressing regen while the status persists', () => {

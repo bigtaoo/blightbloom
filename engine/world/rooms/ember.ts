@@ -250,6 +250,24 @@ export const EMBER_ROOMS: readonly RoomPiece[] = [
  * 14 on floor 3 (mean 135 s) to 3 / 11 / 15 across floors 3-5 (mean 385 s); the careful bot
  * extracts 4 of 30, still "passable, not free".
  *
+ * **The first floor stops killing half the players (`ENGINE_VERSION` 93, 2026-11-11).** v90 and
+ * v91 were tuned against bots; this one is tuned against 104 real sandbox plays, and they say
+ * the wall never moved past floor 1. `run_end.floor` has a median of 1, `run_death.room` puts
+ * 23 of 25 deaths in a floor-1 room, and the killers are the cheapest mobs in the tree
+ * (`basic` 11, `emberling` 7; no stalker, no ravager) at a median of 13 hits taken — attrition
+ * from a crowd, not a spike from one dangerous thing. Two more changes, again on this config
+ * and its own pieces only:
+ *  - `shieldRegenDelay: 45` (field below) — the 3-second global gate is one a player standing
+ *    in the room never gets through, so the sustain pool was effectively switched off for
+ *    exactly the player this chapter is for.
+ *  - floor one's three fight rooms lose part of their garrison (`ember_l1_alcove` 9 -> 5,
+ *    `_gallery` 10 -> 7, `_forge` 10 -> 8), keeping the ramp's shape while sitting under its
+ *    line. `ember_l1_cell`, the entry room, is untouched.
+ * Re-measured: the careful bot extracts 21 of 40 (was 19), a new `newcomer` bot that does
+ * nothing for the first 7.7 s and never backs off extracts 6 of 40, and a player who walks one
+ * direction and never fires can no longer die in the entry room at all
+ * (`client/sim/firstFloorSurvival.test.ts`; the eastward walk used to die at tick 438).
+ *
  * `layout: 'graph2d'` (design/05, 2026-08-05 follow-up; was `'linear'`) — the
  * module doc above lists which pieces actually make a floor bend now. Only the
  * fallback path reads it at all, since every floor here is authored.
@@ -285,6 +303,10 @@ export const EMBER_DUNGEON: DungeonConfig = {
   bossPieceId: 'ember_l1_boss',
   difficultyCurve: { base: 0.6, perFloor: 0.35 },
   fireBudgetByFloor: [1, 1, 1, 1],
+  // 45 ticks (1.5 s), half the global 90 — chapter 1 only. See `DungeonConfig.shieldRegenDelay`
+  // for the measurement: here the mobs that kill are the cheapest ones, a hit at a time, and a
+  // 3-second gate is one a player standing in the room never gets through.
+  shieldRegenDelay: 45,
   floorMaps: EMBER_L1_FLOORS,
   floorLayoutVariants: {
     1: [EMBER_L1_FLOORS[1]!, EMBER_L1_FLOOR_2_BRANCH],
