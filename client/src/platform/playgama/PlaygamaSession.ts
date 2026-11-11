@@ -8,9 +8,9 @@
  *  - `gameplay_started` / `gameplay_stopped` around real play, from the same
  *    `GameplayBracket` the CrazyGames build uses.
  *  - An interstitial at every natural pause, and never on a timer of our own; Bridge's
- *    `minimumDelayBetweenInterstitial` (`playgama-bridge-config.json`) owns the cooldown and a
- *    call inside it fails at once without showing anything. `naturalPause()` below is the list
- *    of pauses and why each one is on it.
+ *    `minimumDelayBetweenInterstitial` (`playgama-bridge-config.json`) owns the cooldown and
+ *    waits or skips a call inside it by itself. `naturalPause()` below is the list of pauses,
+ *    why each one is on it, and the placement id each is reported under.
  *  - `pause_state_changed` stops the game's clock and its sound; `audio_state_changed` and
  *    `isAudioEnabled` mute it. Both are folded with the ad's own hold into one mute and one
  *    clock, because two owners of `setExternalMute` would unmute each other.
@@ -26,6 +26,25 @@ import { heldForKeys, onKeyFocus } from '../keyFocus';
 export interface PlaygamaGameView {
   getPhase(): Phase;
 }
+
+/**
+ * The three pauses `naturalPause()` marks, as Bridge placement ids.
+ *
+ * `vite.playgama.config.js` declares the same three in `playgama-bridge-config.json` —
+ * `playgamaBuild.test.ts` agrees the two lists, because they live either side of the
+ * build/source line and nothing else would notice them drifting apart. A placement the config
+ * does not declare is a request the platform cannot route.
+ */
+export const AD_PLACEMENTS = {
+  /** The run is over and the hub is coming up: a result screen or an abandon, walked out of. */
+  runEnd: 'run_end',
+  /** TRY AGAIN on a result screen. */
+  runRestart: 'run_restart',
+  /** Resume out of the pause menu. */
+  runResume: 'run_resume',
+} as const;
+
+export type AdPlacement = (typeof AD_PLACEMENTS)[keyof typeof AD_PLACEMENTS];
 
 type SessionBridge = Pick<
   PlaygamaBridge,
@@ -152,10 +171,11 @@ export class PlaygamaSession {
     if (to === 'settings') return;
     const from = this.lastSubstantive;
     this.lastSubstantive = to;
-    if (from !== null && naturalPause(from, to)) {
+    const placement = from === null ? null : naturalPause(from, to);
+    if (placement !== null) {
       this.interstitials += 1;
       // Nobody awaits an interstitial, so a rejection would surface as an unhandled one.
-      this.whileAd((opened) => this.bridge.interstitial(opened)).catch(() => undefined);
+      this.whileAd((opened) => this.bridge.interstitial(placement, opened)).catch(() => undefined);
     }
   }
 
@@ -192,9 +212,14 @@ function inRun(p: Phase): boolean {
 }
 
 /**
- * Is this phase transition a natural pause — a moment the player has already stopped playing,
- * where Bridge's monetization guide ("Best practices", read 2026-11-11) says to request an
- * interstitial? We mark the moment; Bridge alone decides whether an ad actually appears.
+ * Which natural pause is this phase transition, if any — a moment the player has already
+ * stopped playing, where Bridge's monetization guide ("Best practices", read 2026-11-11) says
+ * to request an interstitial? We mark the moment and name it; Bridge alone decides whether an
+ * ad actually appears, and the SDK docs are explicit that this is the whole of our job:
+ * "Call `showInterstitial()` at every natural pause; if it is too early, Bridge waits or skips
+ * according to platform behavior instead of showing ads too frequently"
+ * (api/advertisement/interstitial, read 2026-11-11). A cooldown clock of our own could only
+ * suppress a call Bridge would have chosen to WAIT on, so there is none here.
  *
  * THE POINT OF THE LAST TWO CASES. Until 2026-11-11 this was the single expression
  * `inRun(from) && !inRun(to)`, and `inRun` folds the whole run — play, pause menu and result
@@ -216,11 +241,12 @@ function inRun(p: Phase): boolean {
  * game descends without stopping, so the player would be in a room with their hand on the
  * keys. A pause the player did not take is not a pause.
  */
-function naturalPause(from: Phase, to: Phase): boolean {
+function naturalPause(from: Phase, to: Phase): AdPlacement | null {
   // The run is over and the hub is coming up: a result screen or an abandon, walked out of.
-  if (inRun(from) && !inRun(to)) return true;
+  if (inRun(from) && !inRun(to)) return AD_PLACEMENTS.runEnd;
   // Back INTO play from one of the run's own menus: TRY AGAIN on a result screen, or resume
   // from the pause menu. Both land on `playing` and so never leave `inRun`.
-  if (to !== 'playing') return false;
-  return from === 'paused' || from === 'victory' || from === 'defeat';
+  if (to !== 'playing') return null;
+  if (from === 'victory' || from === 'defeat') return AD_PLACEMENTS.runRestart;
+  return from === 'paused' ? AD_PLACEMENTS.runResume : null;
 }

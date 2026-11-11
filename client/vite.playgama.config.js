@@ -23,9 +23,37 @@ const DEFAULT_ENTRY = '/src/main.ts';
 const PORTAL_ENTRY = '/src/main.playgama.ts';
 const CONFIG_FILE = 'playgama-bridge-config.json';
 
-/** Bridge's own settings. The cooldown is Bridge's to enforce: a `showInterstitial` inside it
- *  fails at once, so the game asks at every run end and never keeps a clock of its own. */
-export const BRIDGE_CONFIG = { advertisement: { minimumDelayBetweenInterstitial: 60 } };
+/**
+ * Bridge's own settings, read from `playgama-bridge-config.json` at `initialize()`.
+ *
+ * The cooldown is Bridge's to keep, not ours. The SDK docs are explicit about the division:
+ * "Call `showInterstitial()` at every natural pause; if it is too early, Bridge waits or skips
+ * according to platform behavior instead of showing ads too frequently"
+ * (api/advertisement/interstitial, read 2026-11-11). So the game marks pauses and keeps no
+ * clock of its own — a second clock here could only suppress a call Bridge would have chosen
+ * to WAIT on, which costs a shown ad and buys nothing.
+ *
+ * `preloadOnStart` fetches the first placement's creative right after init rather than inside
+ * the player's pause. The sandbox failed 10 of its first 15 interstitial requests between
+ * 2026-11-06 and 11-08 (`advertisement_interstitial_failed`, 1/3/6 across those three days,
+ * then zero across the 11 requests since), and a request that has to go and fetch during a
+ * two-second pause is the one that comes back empty. This is the SDK's own answer to it.
+ *
+ * `placementFallback` names the placement for any call that passes none, so nothing reaches
+ * the platform unnamed; `placements` declares the three `naturalPause()` marks by the ids
+ * `AD_PLACEMENTS` holds in `src/platform/playgama/PlaygamaSession.ts`. Those two lists sit
+ * either side of the build/source line, so `playgamaBuild.test.ts` agrees them.
+ */
+export const BRIDGE_CONFIG = {
+  advertisement: {
+    minimumDelayBetweenInterstitial: 60,
+    interstitial: {
+      preloadOnStart: 'run_end',
+      placementFallback: 'run_end',
+      placements: [{ id: 'run_end' }, { id: 'run_restart' }, { id: 'run_resume' }],
+    },
+  },
+};
 
 /** Files `public/` carries for our own domain that have no place in the upload: the
  *  Cloudflare headers file, and the policy pages a player there cannot be linked to

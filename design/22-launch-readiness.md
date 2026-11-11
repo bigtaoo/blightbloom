@@ -265,8 +265,10 @@ backend, so the build is offline: PvE only, no account, no co-op/PvP/squad route
 (`hostKind.canPlayOnline`), no outbound links, no Escape binding. Saves go through Bridge
 storage, analytics through Bridge, and the interstitial is asked at each of the three natural
 pauses `PlaygamaSession.naturalPause()` names — a run walked out of, a resume from the pause
-menu, a restart from a result screen (2026-11-11c below) — with a 60 s cooldown in the Bridge
-config the build emits (`BRIDGE_CONFIG` in `client/vite.playgama.config.js`).
+menu, a restart from a result screen (2026-11-11c below) — each under its own placement id
+(`AD_PLACEMENTS`), which `BRIDGE_CONFIG` in `client/vite.playgama.config.js` declares back to
+Bridge along with the 60 s cooldown and a `preloadOnStart` for the commonest of the three
+(2026-11-11e below).
 
 **Console state (2026-11-06).** Game "Blightbloom" created as a draft; archive
 `blightbloom-0.0.1-playgama-2026-11-06` uploaded, unpacked, Bridge found, check PASSED. The
@@ -629,8 +631,13 @@ and neither leaves `inRun`, so neither could fire.
 
 The fix is `naturalPause(from, to)`, which keeps the run-ended arm and adds those two. It adds
 no timer and no counter of our own: the guide is explicit that Bridge owns the spacing
-(`minimumDelayBetweenInterstitial`), and a request inside the cooldown fails at once without
-showing anything, which is why marking *more* moments is the only lever we have. `whileAd`
+(`minimumDelayBetweenInterstitial`), so marking *more* moments is the lever we have.
+(**Corrected 2026-11-11e**: this paragraph originally added "and a request inside the cooldown
+fails at once without showing anything". The Bridge SDK's own interstitial page says the
+opposite — "Call `showInterstitial()` at every natural pause; if it is too early, Bridge waits
+or skips according to platform behavior instead of showing ads too frequently." An early call
+is not a wasted one, which is the whole reason a client-side cooldown of ours would be a
+regression rather than a safeguard.) `whileAd`
 already holds the clock, the sound and the gameplay bracket from the moment an ad opens, so
 none of the three can interrupt play (requirements 2.1.3 and 2.1.6).
 
@@ -708,6 +715,69 @@ Three things deliberately NOT done:
 This is client-only and needs no `ENGINE_VERSION` bump. What to read next week: `run_end`
 per session (1.63 today, and ~5 is what a 330 s average needs at a p50 run of 61 s), and the
 loss→restart rate against today's 57%.
+
+**2026-11-11e — two of the three things this pass set out to do turned out to be things that
+must not be done.** The brief was: find out why `active_time` stopped firing on 11-08, convert
+it to a 30 s wall-clock heartbeat to match Swarm Orbit's, and fix the interstitial timing to
+pull the 28.6% failure rate down. All three rested on a reading of the telemetry that does not
+survive contact with the code or with Playgama's own guides. Recorded in full, because the
+same three conclusions are easy to reach again from the same console screen.
+
+- *`active_time` did not break; it was removed on purpose.* Commit `bc1769ca` (2026-11-08,
+  "stop duplicating Bridge's session signals") added it to `PLATFORM_OWNED_EVENTS` in
+  `client/src/platform/playgama/bridgeAnalytics.ts`, alongside `session_end`. The telemetry
+  guide (v1.1.2) is unambiguous about why: "Do not duplicate session, playtime, advertisement
+  or purchase signals already supplied by the platform." Re-adding it — in any cadence, wall
+  clock or otherwise — would be re-breaking something that was fixed three days ago.
+- *The measurement we were about to build already exists, and nobody had read it.*
+  `client/src/platform/playgama/perfSample.ts` emits `performance_sample` roughly every 30 s
+  and has been doing so all along: 857 events across 157 sessions, last one 2026-11-11T12:07.
+  Every sample carries **both** notions of time — `window_ms` (wall clock: p50 30,015, p10
+  29,634, p90 30,352, max 1,410,834) and `active_ms` (p50 30,012, max 30,090). The cadence is
+  exactly the 30 s heartbeat the brief asked for.
+- *And what it says is worth more than the heartbeat would have been.* `sum(window_ms)` over
+  those 157 sessions is 27,472 s, i.e. **≈175 s of instrumented gameplay per session**, against
+  the **266.6 s** the platform credits each session on average. About a third of the graded
+  wall clock is time this instrument deliberately never looks at — loading, menus, pauses, a
+  parked tab — because the guide requires `performance_sample` to exclude exactly that. Which
+  also settles what to do about the gap: **nothing**. Padding our sample window to close the
+  distance to the platform's number would not lengthen a single session; it would only make our
+  own perf data lie, in the direction the gate happens to reward. The gate is moved by keeping
+  players, and §1/§2 above are the ways to do that.
+- *The 28.6% ad failure rate is a stale blend.* Daily `interstitial` opened/failed:
+  11-06 4/1, 11-07 2/3, 11-08 8/6, **11-09 3/0, 11-10 6/0, 11-11 2/0**. The last
+  `advertisement_interstitial_failed` fired 2026-11-08T16:24; the 11 requests since have all
+  opened. The 28.6% is dominated by a window that closed three days ago — the same window in
+  which the sandbox was first published and the Bridge config first shipped. Reading a
+  week-aggregate rate as a current one is how an already-fixed problem gets fixed twice.
+
+**What shipped instead**, from the one genuinely new fact in the pass — the Bridge SDK's
+interstitial page documents three `advertisement.interstitial` config keys this build was not
+using:
+
+- `placements`, declaring `run_end`, `run_restart` and `run_resume`, and `naturalPause()` now
+  returns which of the three earned each request (`AD_PLACEMENTS` in `PlaygamaSession.ts`).
+  Until now every pause arrived as the same unnamed `showInterstitial()`, so
+  `advertisement_interstitial_opened` could not be split by pause and 2026-11-11c's whole
+  premise — that the two newly-marked pauses are the common ones — was unfalsifiable.
+- `preloadOnStart: 'run_end'`, which fetches the first creative right after init rather than
+  inside the player's two-second pause. This is the SDK's own answer to a slow fill, and
+  `run_end` is the placement that fires first in most sessions.
+- `placementFallback: 'run_end'`, so a request that somehow carries no id is still routed and
+  still counted rather than landing nowhere.
+
+The two halves of that list live either side of the build/source line — the ids the game sends
+are in `AD_PLACEMENTS`, the ids the platform can route are in the JSON the config emits — and
+nothing at runtime would report a mismatch, since an undeclared id just falls back. So
+`playgamaBuild.test.ts` agrees them, reading the **emitted bytes** rather than the config
+object: `client/tsconfig.json` has no `allowJs`, so a `.ts` test importing that `.js` sees only
+one level of the shape and the nested `interstitial` object is invisible to the type checker.
+Four new tests, 4/4 mutants killed.
+
+What to read next week: `advertisement_interstitial_opened` **split by placement**, which is
+what this pass bought. If `run_resume` and `run_restart` together are not the majority of
+requests, 2026-11-11c placed the ad in the wrong two pauses and the banner in its rejected list
+becomes the next candidate.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
