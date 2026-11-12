@@ -1212,12 +1212,24 @@ and the `SKIP`/`RGBA_ALLOWED` comments naming the owner call. Everything those c
 assert is a *ratio* — the curtain is fit by width through the same `doorLeafFrame` call as the
 leaf — so the halving changed no expectation, only the two sizes the fit is computed from.
 
-**Measured on the gate.** `npm run check:bundlesize` over a real `build:crazygames` reads
-`run.wait` **2548.7 → 2013.6 KiB**, i.e. -535.1 KiB, which is this file's 548,026 bytes to the
-rounding. Nothing else in the `run` phase moved. Note what that also shows: design/21 §2.12's
-rig-tier split took ~300 kB off the run gate and moved this number by *zero*, because the
-`/skins/` rig bundles are not packs and so are invisible to the gate (design/20, "`run.wait` is
-not the whole wait").
+**Measured on the gate.** `npm run check:bundlesize` over a *freshly built* `build:crazygames`
+reads `run.wait` **2010.7 KiB** (2026-11-12), against **2548.7 KiB** measured 2026-10-15. This
+file accounts for 535.2 KiB of that 538.0 KiB gap (its own 548,026 bytes); the remaining ~2.8 KiB
+is other `run`-phase art that moved between the two dates — about thirty files under
+`client/public` changed in the month — and is nothing this change did.
+
+**The figure first written here, 2013.6 KiB, was arithmetic wearing a measurement's clothes**
+(corrected 2026-11-12). It is 2548.7 − 535.1: a month-old baseline minus this file's own saving,
+reported as if the gate had printed it. Two ways to get this wrong are live at once. The gate
+reads whatever `client/dist-crazygames` already holds and does **not** build it, so a stale dist
+answers confidently — the first attempt at this measurement read 4258.4 KiB, OVER BUDGET, off a
+dist predating the 2026-10-15 palette pass. And subtracting a saving from a baseline assumes
+nothing else moved since, which over a month is never true. Build the dist in the checkout you
+are measuring in, immediately before reading any budget, and quote what it prints.
+
+Note what the number also shows: design/21 §2.12's rig-tier split took ~300 kB off the run gate
+and moved it by *zero*, because the `/skins/` rig bundles are not packs and so are invisible to
+the gate (design/20, "`run.wait` is not the whole wait").
 
 The 3.9 MB master at `art/environment/door_curtain_raw.png` is untouched and remains the source
 for any future re-encode.
