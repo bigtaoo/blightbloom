@@ -28,7 +28,8 @@
 // person does not have to rediscover it by reordering two lines and getting `undefined`.
 import type { InputSource } from '../../platform/types';
 import type { SettingsState } from '../../settings';
-import { type GameState } from '@dd/engine';
+import { SKIN_DEFS, type GameState } from '@dd/engine';
+import { DEFAULT_CHARACTER_RIG, setRunCharacterRig } from '../../render/preloadArt';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PartyScreen } from '../screens/PartyScreen';
 import { StoreScreen } from '../screens/StoreScreen';
@@ -136,6 +137,13 @@ export interface AssembledGame {
 
 /** Build the late-constructed half of the shell, mount the menu layer, and return the parts. */
 export function assembleGame(p: AssemblyParts, host: GameShellHost): AssembledGame {
+  // Which character rig the run gate must wait for (`render/preloadArt.ts`). Pushed from here
+  // because this is the first point on EVERY entry path where the answer exists: the art
+  // phases were armed by `beginDeferredArt()` before this object graph did, `run.loadMeta()`
+  // has since read the persisted pick and `applyQueryParams` has applied any `?skin=`
+  // override. It cannot live in `runState.ts`, which owns `meta` but is in the pure layer
+  // (`pureLayerBoundary.test.ts`) and so may not reach a render module at all.
+  setRunCharacterRig(SKIN_DEFS[p.run.meta.selectedSkin]?.atlasKey ?? DEFAULT_CHARACTER_RIG);
   const partyScreen = new PartyScreen({ matchBaseUrl: p.run.matchBaseUrl });
   const loginScreen = new LoginScreen({ matchBaseUrl: p.run.matchBaseUrl });
 

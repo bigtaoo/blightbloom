@@ -32,11 +32,17 @@ import { resetPackLoader } from './packLoader';
 import { resetUiSkinsForTests, uiTierOf, UI_ASSETS, UI_ASSET_KEYS, type UiTier } from './uiSkins';
 import {
   beginDeferredArt,
+  CHARACTER_RIGS,
+  CHAR_BUNDLES,
+  CORE_RIGS,
+  DEFAULT_CHARACTER_RIG,
   ensureRunArt,
+  LATE_RIGS,
   preloadCoreArt,
   preloadLobbyArt,
   resetPreloadArt,
   runArtUnitCount,
+  setRunCharacterRig,
 } from './preloadArt';
 
 interface CountingHost {
@@ -369,5 +375,101 @@ describe('the UI tiers each phase waits for (2026-09-28)', () => {
 
     for (const src of lobby) expect(loads.srcs).not.toContain(src);
     loads.release();
+  });
+});
+
+describe('the rig tiers — what the run gate pays for (2026-11-12)', () => {
+  // `jsonReads` is the instrument: two sidecars per rig bundle, so a bundle's directory
+  // appearing there IS the loader pass for that rig having run. Nothing here asserts a
+  // texture; every load fails against this host, which is the file header's own convention.
+  const dirOf = (atlasKey: string): string => {
+    const entry = CHAR_BUNDLES.find(([name]) => name === atlasKey);
+    expect(entry, atlasKey).toBeDefined();
+    return entry![1];
+  };
+  const touched = (reads: string[], atlasKey: string): boolean => reads.some((r) => r.startsWith(dirOf(atlasKey)));
+
+  it('is a real split: the three tiers partition every rig this game ships, with no repeats', () => {
+    // Without this, a rig dropped from all three lists would simply never load and every
+    // behavioural case below would still pass — the gate would be fast and the game wrong.
+    const tiered = [...CORE_RIGS, ...CHARACTER_RIGS, ...LATE_RIGS].map(([name]) => name);
+    expect([...tiered].sort()).toEqual(CHAR_BUNDLES.map(([name]) => name).sort());
+    expect(new Set(tiered).size).toBe(tiered.length);
+    expect(CHARACTER_RIGS.map(([name]) => name)).toContain(DEFAULT_CHARACTER_RIG);
+  });
+
+  it('waits for the core rigs and the ONE selected character, and for no other rig', async () => {
+    // The whole point of the change: before it, this gate read all seven bundles — 508 kB of
+    // skins where at most 245 kB can appear on the first floor. A mutant that puts the other
+    // characters back in `loadRunArt` fails here on the absences, not on the presences.
+    const h = countingHost();
+    setAssetHost(h.host);
+    setRunCharacterRig('char_skirmisher');
+
+    await ensureRunArt();
+
+    for (const [name] of CORE_RIGS) expect(touched(h.jsonReads, name), name).toBe(true);
+    expect(touched(h.jsonReads, 'char_skirmisher')).toBe(true);
+    for (const name of ['char_vanguard', 'char_juggernaut', ...LATE_RIGS.map(([n]) => n)]) {
+      expect(touched(h.jsonReads, name), name).toBe(false);
+    }
+  });
+
+  it('loads the rigs it did not wait for behind the gate, so the forge and floor 5 still have them', async () => {
+    // The other half: deferring a rig past the gate is only correct if something still fetches
+    // it. `beginDeferredArt` and nothing else — the background tier has to do this by itself.
+    const h = countingHost();
+    setAssetHost(h.host);
+
+    beginDeferredArt();
+
+    await vi.waitFor(() => {
+      for (const [name] of CHAR_BUNDLES) expect(touched(h.jsonReads, name), name).toBe(true);
+    });
+    await ensureRunArt();
+  });
+
+  it('a character chosen after the download began is still waited for', async () => {
+    // `loadRunArt` ticks whichever rig was selected when it STARTED, so the selected rig is
+    // awaited outside that memo. Delete that and a player who cycled character in the forge
+    // crosses the gate on the rig they are no longer playing — which draws the placeholder.
+    //
+    // Deliberately without `beginDeferredArt`: unarmed, `setRunCharacterRig` starts nothing of
+    // its own, so the read below can only have come from the gate itself.
+    const h = countingHost({ blocking: true });
+    setAssetHost(h.host);
+    const gate = ensureRunArt();
+    await vi.waitFor(() => expect(h.packLoads.length).toBeGreaterThan(0));
+    expect(touched(h.jsonReads, 'char_juggernaut')).toBe(false);
+
+    setRunCharacterRig('char_juggernaut');
+    h.release();
+    await gate;
+
+    expect(touched(h.jsonReads, 'char_juggernaut')).toBe(true);
+  });
+
+  it('asks for a rig at most once, however many tiers and gates want it', async () => {
+    // `preloadRigSkin` re-reads both sidecars rather than skipping a bundle it already holds,
+    // so an unmemoised rig is a real repeated cost — and the selected character is wanted by
+    // the gate AND by the background tier, which is exactly where a double would appear.
+    const h = countingHost();
+    setAssetHost(h.host);
+
+    beginDeferredArt();
+    await vi.waitFor(() => {
+      for (const [name] of CHAR_BUNDLES) expect(touched(h.jsonReads, name), name).toBe(true);
+    });
+    await ensureRunArt();
+    await ensureRunArt();
+
+    for (const [name] of CHAR_BUNDLES) {
+      const dir = dirOf(name);
+      expect(h.jsonReads.filter((r) => r.startsWith(dir)).length, name).toBe(2);
+    }
+  });
+
+  it('counts the units it actually waits for, so the bar is not sized for seven rigs', () => {
+    expect(runArtUnitCount()).toBe(packsForPhase('run').length + CORE_RIGS.length + 1 + 4);
   });
 });

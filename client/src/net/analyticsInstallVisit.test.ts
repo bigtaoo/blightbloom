@@ -158,6 +158,42 @@ describe('browserVisit', () => {
     ).toEqual({ device: 'phone', os: 'ios', browser: 'safari', source: 'discord' });
   });
 
+  it('reads the pointer from the media query and the shape from the window', () => {
+    // Both are media/layout facts, not user-agent ones: a Windows laptop with a touch screen
+    // is a `desktop` that answers `(pointer: coarse)` false, and a phone in a landscape
+    // iframe is a `phone` whose frame is `wide`. That is the whole reason they were added.
+    expect(
+      browserVisit({
+        matchMedia: (q) => ({ matches: q === '(pointer: coarse)' }),
+        innerWidth: 390,
+        innerHeight: 844,
+      }),
+    ).toEqual({ pointer: 'touch', aspect: 'tall' });
+    expect(browserVisit({ matchMedia: () => ({ matches: false }), innerWidth: 1920, innerHeight: 1080 })).toEqual({
+      pointer: 'mouse',
+      aspect: 'wide',
+    });
+  });
+
+  it('leaves each prop absent when the host cannot answer, and survives a matchMedia that throws', () => {
+    // Absent is a THIRD reading, distinct from both enum values: some embedded webviews have
+    // no `matchMedia` and some throw out of it, and a visit that cannot say must not be
+    // counted as a mouse. An `innerWidth` of 0 is a different thing — a frame that exists
+    // with no area — and reads `unsized`, which is why that one is not absent here.
+    expect(browserVisit({ innerWidth: 1920, innerHeight: 1080 })).toEqual({ aspect: 'wide' });
+    expect(browserVisit({ matchMedia: () => ({ matches: true }) })).toEqual({ pointer: 'touch' });
+    expect(browserVisit({ matchMedia: () => ({}) })).toEqual({});
+    expect(
+      browserVisit({
+        matchMedia: () => {
+          throw new Error('SecurityError');
+        },
+        innerWidth: 0,
+        innerHeight: 0,
+      }),
+    ).toEqual({ aspect: 'unsized' });
+  });
+
   it('degrades to fewer props, never a throw, without the globals', () => {
     expect(browserVisit({})).toEqual({});
     expect(browserVisit({ navigator: {}, document: { referrer: 'https://poki.com/' } })).toEqual({ source: 'ref:poki.com' });

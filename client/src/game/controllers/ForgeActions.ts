@@ -2,6 +2,7 @@ import type { MetaState, MetaStore } from '../../meta';
 import { playUiCue } from '../../audio/uiSound';
 import { clearLoadout, craft, selectCharacter } from '../../meta';
 import { SKIN_DEFS } from '@dd/engine';
+import { DEFAULT_CHARACTER_RIG, setRunCharacterRig } from '../../render/preloadArt';
 import type { Forge } from '../screens/Forge';
 import type { Loadout } from '../screens/Loadout';
 
@@ -75,6 +76,11 @@ export class ForgeActions {
     const next = owned.length < 2 ? meta : selectCharacter(meta, owned[(owned.indexOf(meta.selectedSkin) + 1) % owned.length]!);
     if (next !== meta) {
       this.deps.store.save(next);
+      // The gate's rig follows the pick (`render/preloadArt.ts`): cycling here is the one way
+      // a player changes character after `gameAssembly.ts` pushed the booted one, and the next
+      // run must not cross the run gate on the rig they are no longer playing. Starting the
+      // download at the moment of the choice is also why that gate normally finds it in hand.
+      setRunCharacterRig(SKIN_DEFS[next.selectedSkin]?.atlasKey ?? DEFAULT_CHARACTER_RIG);
       this.deps.loadout.render(next, w, h);
     }
     return next;

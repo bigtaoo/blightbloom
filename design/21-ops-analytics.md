@@ -151,7 +151,7 @@ First cut:
 
 | Event | Fields beyond the common ones | What it is for |
 |---|---|---|
-| `session_start` | storage: `stored` / `new` / `unpersisted` (added §2.8); source, device, os, browser, boot_ms (added §2.9) | DAU, the retention cohort; whether the install id survived; who came from where, on what |
+| `session_start` | storage: `stored` / `new` / `unpersisted` (added §2.8); source, device, os, browser, boot_ms (added §2.9); pointer, aspect (added §2.12) | DAU, the retention cohort; whether the install id survived; who came from where, on what, pointing with what, in a frame of what shape |
 | `session_end` | duration seconds (bounded); visible seconds (added §2.9) | Session length; the exit half of the funnel |
 | `active_time` | visible seconds so far (added §2.9) | Playtime that survives a visit killed without `pagehide` |
 | `page_open` | — (added §2.9; sent by `index.html`, not the bundle) | The visitor who left before the game booted |
@@ -606,6 +606,59 @@ gate looked the same in the data. Two changes:
 
 **Not done:** shrinking the run art itself. Its largest file, `door_curtain_raw.png` (607 kB),
 is kept at full size by the owner's call of 2026-09-01 (design/12).
+
+### 2.12 What the wait is actually made of, and who was pointing at it (2026-11-12)
+
+§2.11 built the instrument; the second sandbox window read it. Over 2026-11-11..12, 129
+sessions: `run_wait { art: pending }` in **117 of 118**, p90 6.6 s, and the funnel below it —
+126 `core_initialization_started` → 123 `session_start` → 118 `run_wait` → 77 `run_start` → 52
+`first_input` → 40 `gameplay_30s` → 26 `gameplay_60s`. 79% of arrivals never reach the 60 s
+that makes a session a qualifying PLAY, which starves both sandbox gates at once (Avg Play
+Time and Ad Shows per Play), so the moderation door stays shut on arithmetic rather than on
+judgement.
+
+**The pack phases are a WeChat-only lever, and the first plan was wrong about it.** The
+obvious fix — move `forge` and `boss` to a later asset phase — saves nothing on a portal:
+`AssetHost.loadPack` is ABSENT on web (`render/packLoader.ts`, `render/assetHost.ts`), every
+file is simply served, and `ensurePacks` resolves without fetching a byte. What the gate
+actually waits for is the five loaders in `loadRunArt()`, and the bill, measured over
+`client/public/`, is ~2.2 MB: environment 1.20 MB, skins 508 kB (all seven rigs), biome 411 kB
+(all four elements), weapons 207 kB, plus the late UI tier.
+
+**The rigs are now three tiers** (`render/preloadArt.ts`). A run draws exactly ONE playable
+character, so the gate waits for the selected rig alone, and the other two ride the background
+tier with the music; `boss-core` goes with them, since all six bosses share it and none is
+drawn before floor 5. The three enemy bodies floor 1 garrisons its rooms with stay inside the
+gate — far too early to defer, and 83 kB together. The rule this must not break is design/12's:
+the set of available textures changes only at a phase boundary, so a rig the FIRST ROOM draws
+cannot be deferred past the gate.
+
+Which character that is has to be PUSHED in, not pulled: `beginDeferredArt()` runs before
+`new Game(...)` on every entry point, so the download starts before the answer exists.
+`gameAssembly.ts` pushes it once the persisted pick and any `?skin=` override are in, and
+`ForgeActions.cycleCharacter` pushes it again when the player changes character.
+`runState.ts` owns `meta` and would be the obvious home, but it is in the pure layer
+(`pureLayerBoundary.test.ts`) and may not reach a render module at all.
+
+**Two more `session_start` fields, because `device` was guessing.** `first_input.ms` read p50
+8.5 s / p90 55 s and nothing in the split could say why. `pointer` (`touch` / `mouse`) is the
+`(pointer: coarse)` media query's answer rather than the user agent's — which control scheme
+the player was handed is decided by touch, and `deviceOf` reads a UA string, so a touch laptop
+reads `desktop`. `aspect` (`wide` / `square` / `tall` / `unsized`) is the FRAME, not the
+screen: a portal sizes the iframe itself, and `unsized` is a reading and not a gap, since
+Playgama's sandbox starts that frame at 0x0 (`PlaygamaSession.watchViewport` holds the game
+for exactly this). Both are closed enums, deliberately, because `coerceProp` DROPS an
+out-of-range number instead of clamping it — a bad reading would arrive indistinguishable from
+a browser that could not answer. This takes `session_start` to 8 fields and moves that event's
+exemption in `analyticsEvents.test.ts` from 6 to 8; the bound on the exemption is unchanged,
+and it is that every field on it is a property of the VISIT that the rollups split by.
+
+**Still not done:** `door_curtain_raw.png`, 607 kB at 468x832 — 51% of the environment tier
+and ~27% of everything the gate waits for. The 2026-09-01b call to leave it alone was made,
+in that doc's own words, "now that no gate presses on it"; one does now. design/12 records the
+ladder: 512 px would make it ~250 kB, 416 px ~174 kB. It is an owner's call, not a
+measurement — a lossless re-encode is byte-identical and the alpha bbox is the full canvas, so
+pixel count is the only lever there is.
 
 ## 3. Phase B — the read-only console
 

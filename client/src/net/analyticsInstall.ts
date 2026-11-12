@@ -37,10 +37,10 @@
  * one, which for the last batch of a visit means "instead of nowhere".
  */
 import { CLIENT_EVENTS_PATH, createAnalytics, setAnalytics, type Analytics } from './analytics';
-import type { AnalyticsBatch, AnalyticsHost, DeviceClass, OsFamily, BrowserFamily } from './analyticsEvents';
+import type { AnalyticsBatch, AnalyticsHost, AspectClass, DeviceClass, OsFamily, BrowserFamily, PointerKind } from './analyticsEvents';
 import { getInstallId, installIdStorage } from './identity';
 import { createActiveClock } from './activeClock';
-import { deviceSplit, trafficSource } from './visitContext';
+import { aspectOf, deviceSplit, trafficSource } from './visitContext';
 
 /** What `session_start` says about where the visit came from and what it runs on. */
 export interface VisitProps {
@@ -48,6 +48,8 @@ export interface VisitProps {
   device?: DeviceClass;
   os?: OsFamily;
   browser?: BrowserFamily;
+  pointer?: PointerKind;
+  aspect?: AspectClass;
 }
 
 /** What `index.html`'s inline beacon leaves on `globalThis.__bbOpen`: the visit id it sent
@@ -167,12 +169,32 @@ export function browserVisit(g: {
   navigator?: { userAgent?: string; maxTouchPoints?: number };
   location?: { search?: string; hostname?: string };
   document?: { referrer?: string };
+  matchMedia?: (query: string) => { matches?: boolean };
+  innerWidth?: number;
+  innerHeight?: number;
 }): VisitProps {
   const visit: VisitProps = {};
   const ua = g.navigator?.userAgent;
   if (typeof ua === 'string') Object.assign(visit, deviceSplit(ua, g.navigator?.maxTouchPoints ?? 0));
   const source = trafficSource(g.location?.search ?? '', g.document?.referrer ?? '', g.location?.hostname ?? '');
   if (source !== undefined) visit.source = source;
+  // `(pointer: coarse)` is the primary pointer, which is the one the control scheme is chosen
+  // for. Settled here rather than in `visitContext.ts` because it is a media query's boolean
+  // and not a rule; `matchMedia` itself is guarded for the same reason every global here is,
+  // and a host that throws out of it (some embedded webviews do) leaves the prop absent
+  // rather than taking the visit down with it.
+  let coarse: boolean | undefined;
+  try {
+    coarse = g.matchMedia?.('(pointer: coarse)').matches;
+  } catch {
+    coarse = undefined;
+  }
+  if (coarse !== undefined) visit.pointer = coarse ? 'touch' : 'mouse';
+  // Absent, rather than `unsized`, when there is no window at all: `unsized` means a frame
+  // that exists and has no area, which is the portal case worth counting.
+  if (typeof g.innerWidth === 'number' && typeof g.innerHeight === 'number') {
+    visit.aspect = aspectOf(g.innerWidth, g.innerHeight);
+  }
   return visit;
 }
 
