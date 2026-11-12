@@ -42,6 +42,7 @@ import {
   resetPreloadArt,
   runArtUnitCount,
   CHAR_BUNDLES,
+  CORE_RIGS,
 } from './preloadArt';
 import { getRigSkin } from './skinRegistry';
 import { getFloorTexture } from './biomeTiles';
@@ -223,8 +224,12 @@ describe('phase two — the run gate', () => {
     // 1..total with no gap — which is also what says the progress is a BROADCAST and not a
     // callback the background kick swallowed (it started the download with no listener at all).
     const total = runArtUnitCount();
-    // + 4: the late UI tier, weapons, biome, environment.
-    expect(total).toBe(packsForPhase('run').length + CHAR_BUNDLES.length + 4);
+    // The three CORE rigs + 1 for the selected character, NOT all of `CHAR_BUNDLES`: since
+    // 2026-11-12 the two characters this run will not draw and the floor-5 boss load behind the
+    // gate, on the background tier (`preloadArt.ts`'s rig tiers). + 4: the late UI tier,
+    // weapons, biome, environment.
+    expect(total).toBe(packsForPhase('run').length + CORE_RIGS.length + 1 + 4);
+    expect(total).toBeLessThan(packsForPhase('run').length + CHAR_BUNDLES.length + 4);
     expect(runTicks.map(([done]) => done)).toEqual(Array.from({ length: total + 1 }, (_, i) => i));
     for (const [, t] of runTicks) expect(t).toBe(total);
   });

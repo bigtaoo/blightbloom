@@ -4,7 +4,7 @@
  * Edge and WeChat say Chrome, Android says Linux, an iPad says Macintosh).
  */
 import { describe, it, expect } from 'vitest';
-import { browserOf, deviceOf, deviceSplit, osOf, trafficSource } from './visitContext';
+import { aspectOf, browserOf, deviceOf, deviceSplit, osOf, trafficSource } from './visitContext';
 
 const UA = {
   winChrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
@@ -85,5 +85,43 @@ describe('trafficSource', () => {
   it('folds a host the id alphabet cannot hold into ref:other', () => {
     expect(trafficSource('', `https://${'x'.repeat(50)}.com/`, '')).toBe('ref:other');
     expect(trafficSource('', 'https://xn--bcher-kva.example/', '')).toBe('ref:xn--bcher-kva.example');
+  });
+});
+
+describe('aspectOf', () => {
+  // The threshold is 5:4 and its reciprocal (design/21 §2.12): wide enough that a 4:3 tablet
+  // held flat reads `wide` and held upright reads `tall`, while a frame that is genuinely
+  // close to square — the shape this game's layout has the least room for — reads `square`.
+  it.each([
+    ['a 16:9 desktop frame', 1920, 1080, 'wide'],
+    ['exactly 5:4, the wide edge of the band', 1250, 1000, 'wide'],
+    ['a 4:3 tablet laid flat', 1024, 768, 'wide'],
+    ['a true square', 800, 800, 'square'],
+    ['just inside square on the wide side', 1249, 1000, 'square'],
+    ['just inside square on the tall side', 1000, 1249, 'square'],
+    ['exactly 4:5, the tall edge of the band', 1000, 1250, 'tall'],
+    ['a phone held upright', 390, 844, 'tall'],
+  ])('reads %s as %s', (_label, w, h, want) => {
+    expect(aspectOf(w, h)).toBe(want);
+  });
+
+  it('labels a transposed frame as the opposite band, never the same one', () => {
+    // Why the tall threshold is 1/1.25 and not 0.75: with 0.75 a 1000x1100 frame and a
+    // 1100x1000 frame would BOTH report `square`, and the split could not see a rotation.
+    for (const [w, h] of [[1920, 1080], [1250, 1000], [1024, 768], [1249, 1000]] as const) {
+      const a = aspectOf(w, h);
+      const flipped = a === 'square' ? 'square' : a === 'wide' ? 'tall' : 'wide';
+      expect(aspectOf(h, w), `${w}x${h}`).toBe(flipped);
+    }
+  });
+
+  it('calls a frame with no area unsized rather than guessing a shape', () => {
+    // The Playgama sandbox's own case: the iframe exists and is measured before it is laid
+    // out. A ratio of 0/0 is NaN, which every comparison below answers `false` to — so this
+    // guard is what stops a 0x0 frame from quietly reporting `square`.
+    for (const [w, h] of [[0, 0], [0, 812], [375, 0], [-1, 800], [800, Number.NaN], [Number.POSITIVE_INFINITY, 0]] as const) {
+      expect(aspectOf(w, h), `${w}x${h}`).toBe('unsized');
+    }
+    expect(aspectOf(Number.POSITIVE_INFINITY, 1080)).toBe('wide');
   });
 });

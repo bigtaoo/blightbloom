@@ -19,7 +19,7 @@
  * never its path, which can carry a search query or a post title — prefixed `ref:`. Neither
  * present is "direct", and the server writes that label rather than the client sending it.
  */
-import { ID_RE, type DeviceClass, type OsFamily, type BrowserFamily } from './analyticsEvents';
+import { ID_RE, type AspectClass, type DeviceClass, type OsFamily, type BrowserFamily } from './analyticsEvents';
 
 export interface DeviceSplit {
   device: DeviceClass;
@@ -63,6 +63,29 @@ export function deviceOf(ua: string, maxTouchPoints: number): DeviceClass {
 
 export function deviceSplit(ua: string, maxTouchPoints: number): DeviceSplit {
   return { device: deviceOf(ua, maxTouchPoints), os: osOf(ua, maxTouchPoints), browser: browserOf(ua) };
+}
+
+/**
+ * How wide the frame is relative to its height, at the one threshold that means something
+ * here: 5:4. The game lays its HUD and its touch stick out from the short edge, so the
+ * question is not the exact ratio but which edge is short — and a band around square keeps a
+ * window a few pixels off from flipping between two labels on a resize.
+ *
+ * Reciprocal on purpose (1.25 and 0.8), so `aspectOf(a, b)` and `aspectOf(b, a)` are always
+ * opposite labels rather than both landing in the same band.
+ */
+const WIDE_RATIO = 1.25;
+
+/**
+ * Wide, square or tall — or `unsized` for a frame with no area at all, which is a reading and
+ * not a gap (see `POINTER_KINDS`' note in `analyticsEvents.ts`). Takes the numbers rather
+ * than reading `innerWidth`, like everything else in this file.
+ */
+export function aspectOf(w: number, h: number): AspectClass {
+  if (!(w > 0) || !(h > 0)) return 'unsized';
+  const ratio = w / h;
+  if (ratio >= WIDE_RATIO) return 'wide';
+  return ratio <= 1 / WIDE_RATIO ? 'tall' : 'square';
 }
 
 /** A campaign tag's charset and length. Narrower than `ID_RE` on purpose: a tag is something

@@ -6,9 +6,12 @@
  * inline. Two screens since the 2026-09-21 split: crafting redraws the forge, the character
  * cycle and CLEAR redraw the loadout screen.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { DOMAdapter } from 'pixi.js';
+import { SKIN_DEFS } from '@dd/engine';
 import { defaultMetaState, purchasableBlueprints, grantCharacter, MemoryMetaStore, type MetaState } from '../../meta';
+import { setAssetHost, resetAssetHost } from '../../render/assetHost';
+import { CHAR_BUNDLES, ensureRunArt, resetPreloadArt } from '../../render/preloadArt';
 import { Forge } from '../screens/Forge';
 import { Loadout } from '../screens/Loadout';
 import { ForgeActions } from './ForgeActions';
@@ -253,5 +256,59 @@ describe('ForgeActions — the UI cue follows the outcome', () => {
     const forge = new Forge();
     const actions = new ForgeActions({ forge, loadout: new Loadout(), store: new MemoryMetaStore() });
     expect(() => actions.craftAt(craftableMeta(), forge.order.indexOf('repeater'), 800, 600)).not.toThrow();
+  });
+});
+
+/**
+ * The run gate's rig follows the character the player picked (2026-11-12, design/21 §2.12).
+ *
+ * Since that pass the gate waits for ONE character rig instead of all three, which only
+ * works if every way of changing character tells `preloadArt.ts` about it. `gameAssembly.ts`
+ * pushes the booted pick; cycling here is the other way, and the one a player uses. Without
+ * this wiring the next run crosses the gate holding the rig they just stopped playing — and
+ * what that looks like on screen is a placeholder where the character should be.
+ */
+describe('ForgeActions — the character cycle moves the rig the run gate waits for', () => {
+  const dirOf = (skin: string): string => {
+    const atlas = SKIN_DEFS[skin]?.atlasKey;
+    const entry = CHAR_BUNDLES.find(([name]) => name === atlas);
+    expect(entry, `${skin} -> ${String(atlas)}`).toBeDefined();
+    return entry![1];
+  };
+
+  afterEach(() => {
+    resetAssetHost();
+    resetPreloadArt();
+    vi.restoreAllMocks();
+  });
+
+  it('makes the gate load the newly selected character, and not the one left behind', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const reads: string[] = [];
+    setAssetHost({
+      assetsInit: { skipDetections: true },
+      resolveUrl: (path) => path,
+      readJson: (path) => {
+        reads.push(path);
+        // Every load fails against this host on purpose: what is being asserted is which
+        // bundles were ASKED for, and a real texture needs a GPU this suite does not have.
+        return Promise.reject(new Error('no sidecar in tests'));
+      },
+      readBinary: () => Promise.reject(new Error('no bytes in tests')),
+    });
+    resetPreloadArt();
+
+    const actions = new ForgeActions({ forge: new Forge(), loadout: new Loadout(), store: new MemoryMetaStore() });
+    const meta = grantCharacter(defaultMetaState(), 'skirmisher');
+    const next = actions.cycleCharacter(meta, 800, 600);
+    expect(next.selectedSkin).not.toBe(meta.selectedSkin);
+
+    await ensureRunArt();
+
+    const picked = dirOf(next.selectedSkin);
+    const dropped = dirOf(meta.selectedSkin);
+    expect(picked).not.toBe(dropped);
+    expect(reads.some((r) => r.startsWith(picked)), picked).toBe(true);
+    expect(reads.some((r) => r.startsWith(dropped)), dropped).toBe(false);
   });
 });

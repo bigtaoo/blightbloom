@@ -42,6 +42,25 @@ export const BROWSER_FAMILIES = ['chrome', 'safari', 'firefox', 'edge', 'samsung
 export type BrowserFamily = (typeof BROWSER_FAMILIES)[number];
 
 /**
+ * What the player actually points with, and the shape of the frame they play in — added
+ * 2026-11-12, when the Playgama sandbox showed `first_input` at p90 55 s and nothing in the
+ * split above could say why. Both answer a question `device` only guesses at:
+ *
+ *  - `pointer` is the MEDIA QUERY's answer, not the user agent's. `deviceOf` reads a UA
+ *    string, so a touch laptop reads `desktop` and a desktop-UA tablet reads whatever it
+ *    claims; which control scheme the player was handed is decided by touch, and that is the
+ *    thing a 55-second time-to-first-input is about.
+ *  - `aspect` is the frame, not the screen. A portal mounts the game in an iframe it sizes
+ *    itself, and `unsized` is a real reading rather than a missing one: Playgama's sandbox
+ *    starts that frame at 0x0 (`platform/playgama/PlaygamaSession.ts` holds the game for
+ *    exactly this), so a session that reports it was counted before it had a picture.
+ */
+export const POINTER_KINDS = ['touch', 'mouse'] as const;
+export type PointerKind = (typeof POINTER_KINDS)[number];
+export const ASPECT_CLASSES = ['wide', 'square', 'tall', 'unsized'] as const;
+export type AspectClass = (typeof ASPECT_CLASSES)[number];
+
+/**
  * Caps on every client-supplied value. Sized so that a full batch at the wire limit is a
  * few tens of KB rather than a megabyte, and so that no single field can carry a payload.
  */
@@ -100,6 +119,13 @@ export const EVENTS = {
     device: { kind: 'enum', values: DEVICE_CLASSES },
     os: { kind: 'enum', values: OS_FAMILIES },
     browser: { kind: 'enum', values: BROWSER_FAMILIES },
+    /** Touch or mouse, and the frame's shape — see POINTER_KINDS' note for what each is for.
+     *  Enums rather than a pointer count and a raw ratio because `coerceProp` DROPS an
+     *  out-of-range number instead of clamping it, so a bad reading would arrive as a missing
+     *  field and be indistinguishable from a browser that could not answer. Absent together
+     *  when there is no `matchMedia` and no window to measure. */
+    pointer: { kind: 'enum', values: POINTER_KINDS },
+    aspect: { kind: 'enum', values: ASPECT_CLASSES },
     /** Milliseconds from the page's first byte of script (`page_open`) to this event — how
      *  long the boot made the player wait. Absent when there was no `page_open` (WeChat). */
     boot_ms: { kind: 'int', min: 0, max: 600_000 },

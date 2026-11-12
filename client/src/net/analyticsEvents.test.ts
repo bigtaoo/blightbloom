@@ -61,7 +61,7 @@ describe('the vocabulary', () => {
   });
 
   it('gives the visit events exactly these fields (privacy.html names each)', () => {
-    expect(Object.keys(EVENTS.session_start).sort()).toEqual(['boot_ms', 'browser', 'device', 'os', 'source', 'storage']);
+    expect(Object.keys(EVENTS.session_start).sort()).toEqual(['aspect', 'boot_ms', 'browser', 'device', 'os', 'pointer', 'source', 'storage']);
     expect(Object.keys(EVENTS.session_end).sort()).toEqual(['active_s', 'duration_s']);
     expect(Object.keys(EVENTS.active_time)).toEqual(['active_s']);
     expect(Object.keys(EVENTS.page_open)).toEqual([]);
@@ -71,6 +71,9 @@ describe('the vocabulary', () => {
     expect(coerceProp(EVENTS.session_start.source, 'ref:www.reddit.com')).toBe('ref:www.reddit.com');
     expect(coerceProp(EVENTS.session_start.source, 'ref:a b')).toBeUndefined();
     expect(coerceProp(EVENTS.session_start.device, 'toaster')).toBeUndefined();
+    // `unsized` is a frame that exists and has no area — a reading, not a missing field.
+    expect(coerceProp(EVENTS.session_start.aspect, 'unsized')).toBe('unsized');
+    expect(coerceProp(EVENTS.session_start.pointer, 'stylus')).toBeUndefined();
   });
 
   it('names the four build targets and nothing else', () => {
@@ -117,10 +120,12 @@ describe('the vocabulary', () => {
 
   it('holds no event with more fields than a batch can carry meaning for', () => {
     // `session_start` is the one exception, and a bounded one: it is sent once per visit,
-    // and every field on it is a property of the VISIT (where from, what on, how long the
-    // boot took) that the rollups split by. A per-action event never needs that many.
+    // and every field on it is a property of the VISIT (where from, what on, what it is
+    // pointed with, what shape its frame is, how long the boot took) that the rollups split
+    // by. A per-action event never needs that many. 6 -> 8 on 2026-11-12 with `pointer` and
+    // `aspect` (design/21 §2.12); what bounds the exemption is that sentence, not the number.
     for (const [name, spec] of Object.entries(EVENTS)) {
-      expect(Object.keys(spec).length, name).toBeLessThanOrEqual(name === 'session_start' ? 6 : 4);
+      expect(Object.keys(spec).length, name).toBeLessThanOrEqual(name === 'session_start' ? 8 : 4);
     }
   });
 });
