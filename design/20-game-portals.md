@@ -554,7 +554,7 @@ from `funny`) and held under absolute budgets in `build/bundle-size-budget.json`
 | --- | --- | --- | --- |
 | `entry.brotli` | 305.3 KiB | 350 KiB | the entry module + its modulepreloads, brotli q11 (a relative metric; the edge compresses lower) |
 | `lobby.wait` | 836.0 KiB | 1000 KiB | `main` + `lobby` phase art; only the uiSkins `boot` tier (~338 kB) is awaited behind the splash |
-| `run.wait` | 2548.7 KiB | 3000 KiB | `run` phase art, awaited by the run gate on the first Play |
+| `run.wait` | 2013.6 KiB | 3000 KiB | `run` phase art, awaited by the run gate on the first Play (2548.7 on 2026-10-15; -535.1 from the curtain halve+quantise, design/12 2026-11-12) |
 | `dist.total` | 8130.3 KiB | 9500 KiB | the upload, ~3.4 MB of it the six never-awaited music loops |
 
 The budgets are decisions with written reasons, not high-water marks. Raising one means editing
@@ -565,6 +565,13 @@ boot, is design/12's 2026-10-15 update.
 
 Not measured here: wire time on a real portal page, and a cold load through the CrazyGames QA
 tool. Both need the registered domain listed under "What remains".
+
+**`run.wait` is not the whole wait, and the name oversells it** (noted 2026-11-12). It sums the
+`run`-phase packs out of `assetPacks.json` — `ui-late`, `forge`, `run`, the three biome packs and
+`boss`. The character and enemy RIG bundles under `/skins/` are not packs, so `ensureRig` fetches
+them outside anything this gate can see, and `loadRunArt` awaits them all the same. That is how
+design/21 §2.12's rig-tier split (~300 kB off the real gate) moved this number by zero. Read
+`run.wait` as a floor on the first-Play wait, never as its total.
 
 ## What remains
 

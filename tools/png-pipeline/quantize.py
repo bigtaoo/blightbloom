@@ -25,8 +25,11 @@ from PIL import Image
 MAX_MEAN = 2.93
 MAX_P99 = 14.0
 BACKDROPS = [(0, 0, 0), (16, 16, 24), (64, 64, 72)]
-# design/12 2026-09-01b: the curtain stays as it is, by the owner's call.
-SKIP = {'environment/door_curtain_raw.png'}
+# Nothing is skipped by preference. The curtain was, from 2026-09-01b until 2026-11-12, when
+# the Playgama sandbox put a gate on the bytes that the 2026-09-01b call had assumed nobody was
+# pressing on -- it then measured mean 2.32 / p99 7.7, well inside the bar. A file belongs here
+# only if quantising it is WRONG for a reason the bar cannot see, not because it is precious.
+SKIP: set[str] = set()
 
 
 def error(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
