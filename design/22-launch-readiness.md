@@ -803,7 +803,7 @@ different measurement since `6416a86b` — 2026-11-11b), `advertisement_intersti
 (three placements where there was one), and the 60 s survival rate (a different first floor).
 
 **The confounder that outlives the publish, and the natural experiment that ends it.** The free
-traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until **2026-11-12T08:32:14Z**. Its
+traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until ~~2026-11-12T08:32:14Z~~ **2026-11-14T15:35:40Z** (corrected 2026-11-12, below: this was the start plus the nominal 3 days, not the campaign's own `endsAt`). Its
 arrivals are ad clicks and they read like it: daily average session 11-08 **530.4 s** (p50
 28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **≈126 s** (p50 ≈0, ~74).
 That fall is traffic composition, build regression, or both, and **this data cannot separate
@@ -821,6 +821,43 @@ containing a backslash** before the upload — the check that exists because Pow
 `Compress-Archive` wrote `assets\index-….js` once and the unpacked page could not load its own
 scripts (`BRIDGE_NOT_INITIALIZED`). Run that check every time; it costs one line and it has
 already been paid for once.
+
+**2026-11-12 — published, and why tomorrow's card still cannot show it.** Archive
+`blightbloom-2026-11-12-4e30e5f5-run-gate-payload` (6,669,404 bytes, 249 entries, Bridge
+2.4.2, build check PASSED), live at the sandbox link as revision
+`cmwddfot22681hj0hj0ac4rwy` since **2026-11-12T09:54:32Z**, replacing the 2026-11-11
+15:17 revision (archive `cmwc9i1fi0gfck30i7ljladf6`, commit `9403aaf9`). `build_version`
+is `0.0.1+4e30e5f5`. Two code commits, both aimed at the same thing — the bytes a player waits through before the first run:
+
+| commit | what it does | measured |
+| --- | --- | --- |
+| `4ada8868` | the run gate awaits one character rig, not all seven | — |
+| `48ef2db9` | `door_curtain_raw.png` 606,730 → 58,704 B (−90.3%) | `run.wait` 2548.7 → 2010.7 KiB |
+
+**This build is invisible to the Sandbox card by construction, and that is not a bug in the
+build.** The card's Avg Play Time is a rolling window over the last 100 *qualifying* plays,
+and a qualifying play is a session that already reached 60 s (`gameplay_60s`). Everything
+above happens before the first frame of gameplay, so a session it rescues either becomes a
+qualifying play — entering the window at whatever length it then runs — or never counted in
+the first place. Reading the card the next morning tests nothing. Read instead, split on
+`build_version`: `run_start.wait_ms`, `first_input` (`ms`, `kind`, `screen`) and the 60 s
+survival rate. Those three move immediately or not at all.
+
+**Correction to the entry above: the campaign runs to 2026-11-14T15:35:40Z, not
+2026-11-12T08:32:14Z.** `get_sandbox_traffic` on 2026-11-12 reports run
+`cmw906b1t27fdmt0hzvv5ony1` still `RUNNING`, `startsAt` 2026-11-09T08:32:14Z, `endsAt`
+**2026-11-14T15:35:40.190Z**, `goalProgress` 0.645, `spentRatio` 0.1233. The earlier wording
+read the start time plus the nominal 3 days instead of the campaign's own `endsAt`; a
+campaign's duration is not its budget's duration. So this publish lands mid-run exactly as
+2026-11-11f's did, the "natural experiment" that was expected to begin on the 12th begins on
+the 14th, and every headline average spanning either date stays a blend. The free offer is
+spent (`verdict.reason` PAYMENT_REQUIRED, `remainingFreeRuns` 0, paid is $20 for 3 days).
+
+**Also corrected: `run.wait` must be measured on a freshly built dist.** `checkBundleSize.mjs`
+reads `client/dist-crazygames`, a gitignored directory it does not build. The 2026-11-12
+measurement was first taken in a worktree that was then deleted, so the main checkout's copy
+was a pre-palette-pass build and the gate reported 4258.4 KiB — a figure that looks exactly
+like a regression and was a stale directory. Build the target before reading its budget.
 
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
