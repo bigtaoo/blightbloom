@@ -1200,8 +1200,10 @@ shape as the master's 14.9 / 0.0 / 85.1.
 **`quantize.py`'s `SKIP` set is now empty, and stays that way.** It held one entry, by preference
 rather than by measurement, and a preference-shaped exemption is how a measured gate turns
 decorative. A file belongs in `SKIP` only if quantising it is wrong for a reason the bar cannot
-see. `shippedPngFormat.test.ts`'s `RGBA_ALLOWED` is down to the seven files that genuinely fail
-the bar; its `it.each` stale-entry check is what forced the removal rather than leaving a lie.
+see. `shippedPngFormat.test.ts`'s `RGBA_ALLOWED` is now exactly the eight files that genuinely
+fail the bar — the four elemental swords, the skirmisher's shell and belly, and the two icons the
+2026-10-15 pass already named; the curtain was the only entry there for any other reason. Its
+`it.each` stale-entry check is what forced the removal rather than leaving a lie.
 
 **Three places hardcoded 468/832 and all three are updated** — `doorCurtainCoverage.test.ts`'s
 `CURTAIN_ART_W`/`CURTAIN_ART_H` (which the 2026-09-01b section had already flagged as the thing
