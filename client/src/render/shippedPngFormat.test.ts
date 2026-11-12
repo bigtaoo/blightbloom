@@ -18,7 +18,6 @@ const PUBLIC = fileURLToPath(new URL('../../public/', import.meta.url));
 /** Files that stay RGBA, each with why. quantize.py's numbers are mean / p99 against a bar of
  *  2.93 / 14 — fine gradients and thin glints that band visibly in 256 colours. */
 const RGBA_ALLOWED: Readonly<Record<string, string>> = {
-  'environment/door_curtain_raw.png': 'owner call: the curtain keeps its source pixels (design/12 2026-09-01b)',
   'skins/skirmisher-core/belly.png': 'fails the bar: p99 14.3',
   'skins/skirmisher-core/shell.png': 'fails the bar: p99 16.0',
   'ui/icon_party_create.png': 'fails the bar: mean 3.66, p99 15.0',

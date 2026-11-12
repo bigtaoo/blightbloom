@@ -38,9 +38,13 @@ const FLOOR_INDICES = Object.keys(EMBER_L1_FLOORS).map(Number);
  *  here would defeat the file the same way it would in `doorLightCoverage.test.ts`. */
 const OPEN_ART_W = 156;
 const OPEN_ART_H = 224;
-/** The shipped curtain's own real size (client/public/environment/door_curtain_raw.png). */
-const CURTAIN_ART_W = 468;
-const CURTAIN_ART_H = 832;
+/** The shipped curtain's own real size (client/public/environment/door_curtain_raw.png).
+ *  Halved from 468x832 on 2026-11-12 (design/12 "the curtain re-encode"), which is why these are
+ *  constants rather than literals: the fit is by WIDTH, so every number this file asserts is a
+ *  RATIO and survives the halving unchanged -- the one thing that would not survive is a
+ *  fiction here, which would let the art and the test drift apart silently. */
+const CURTAIN_ART_W = 234;
+const CURTAIN_ART_H = 416;
 
 function tex(w: number, h: number): Texture {
   return new Texture({ source: new TextureSource({ width: w, height: h }) });

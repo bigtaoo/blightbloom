@@ -37,25 +37,100 @@ import { preloadEnvironmentSprites } from './environmentSprites';
 import { invalidateMusicTrack } from '../game/musicDirector';
 import { MUSIC_DIR } from '../audio/musicCatalogue';
 
-/** Registry keys are `SkinDef.atlasKey` values (content/skins.ts) — the three launch
- *  characters (design/13), all on the shared orb-core rig — plus the enemy bodies
- *  ('critter-core' and its two variants, design/13's "one neutral-grey critter, re-tinted
- *  per variant") and the boss. */
-export const CHAR_BUNDLES: ReadonlyArray<[string, string]> = [
-  ['char_vanguard', '/skins/orb-core'],
-  ['char_skirmisher', '/skins/skirmisher-core'],
-  ['char_juggernaut', '/skins/juggernaut-core'],
+/**
+ * The rig bundles, in three tiers — keys are `SkinDef.atlasKey` values (content/skins.ts).
+ *
+ * WHY THIS IS THREE LISTS AND NOT ONE (2026-11-12). On web there are no subpackages:
+ * `AssetHost.loadPack` is absent, every file is simply served, and `ensurePacks` resolves
+ * without fetching a byte. So on the Playgama portal a pack's `phase` moves nothing, and THESE
+ * LOADERS are the whole of what the run gate waits for. The sandbox measured the bill:
+ * `run_wait{art}` came back `pending` in 117 of 118 sessions at p90 6.6 s, with
+ * `firstRunAutostart.ts` opening the gate within a frame of `beginDeferredArt()` (design/22).
+ * Which tier a rig sits in is therefore a byte decision about that wait.
+ *
+ * The rule a tier must not break is design/12's: the set of available textures changes only at
+ * a phase boundary, so a rig the FIRST ROOM draws cannot be deferred past the gate.
+ */
+
+/** CORE — the enemy bodies, all three inside the gate. Chapter 1 floor 1 garrisons its rooms
+ *  with `basic` (critter-core) in room 1, `floater`/`stalker` (floater-core) in room 2 and
+ *  `brute`/`ravager` (brute-core) in room 4 (`world/dungeons/ember/pieces`), which is far too
+ *  early to defer any of them. 83 kB together, so there is little to win by trying. */
+export const CORE_RIGS: ReadonlyArray<[string, string]> = [
   ['critter-core', '/skins/critter-core'],
   ['brute-core', '/skins/brute-core'],
   ['floater-core', '/skins/floater-core'],
-  ['boss-core', '/skins/boss-core'],
 ];
 
+/** CHARACTER — one per playable character (design/13). A run draws exactly ONE of them, so the
+ *  gate waits for the selected rig alone (`setRunCharacterRig`) and the other two ride the
+ *  background tier: 369 kB shipped, at most 163 kB of it ever on screen in a given run. */
+export const CHARACTER_RIGS: ReadonlyArray<[string, string]> = [
+  ['char_vanguard', '/skins/orb-core'],
+  ['char_skirmisher', '/skins/skirmisher-core'],
+  ['char_juggernaut', '/skins/juggernaut-core'],
+];
+
+/** LATE — drawn on floor 5 and never before it (`engine/content/bosses.ts`: all six bosses
+ *  share this one rig), so 55 kB a first-room gate has no reason to hold. */
+export const LATE_RIGS: ReadonlyArray<[string, string]> = [['boss-core', '/skins/boss-core']];
+
+/** Every rig this game ships, in the order the single pre-2026-11-12 list had them. The
+ *  manifest and packaging tests walk THIS; the tiers above decide only when each one loads. */
+export const CHAR_BUNDLES: ReadonlyArray<[string, string]> = [...CHARACTER_RIGS, ...CORE_RIGS, ...LATE_RIGS];
+
+/** What a first-ever visit plays, and the same key `game/scene/Actor.ts` already falls back to
+ *  for a player whose `atlasKey` it does not recognise. */
+export const DEFAULT_CHARACTER_RIG = 'char_vanguard';
+
+let characterRig: string = DEFAULT_CHARACTER_RIG;
+
+/**
+ * Which playable character's rig the run gate must wait for.
+ *
+ * PUSHED IN by `Game` from `MetaState.selectedSkin`, not pulled from it, because
+ * `beginDeferredArt()` runs BEFORE `new Game(...)` on every entry point — the background
+ * download has to start before the answer exists, and a player who cycles character in the
+ * forge changes it again afterwards. Setting it starts that rig at once when the art phases are
+ * armed, so by the time a gate asks, it is normally paying for something already in flight.
+ */
+export function setRunCharacterRig(atlasKey: string): void {
+  if (atlasKey === characterRig) return;
+  characterRig = atlasKey;
+  if (deferred) void ensureRig(atlasKey);
+}
+
+/** Memoised per rig. `preloadRigSkin` re-reads its two JSON sidecars rather than skipping a
+ *  bundle it already holds (this file's header), so a rig both the gate and the background tier
+ *  want must not be asked for twice. Best-effort per rig, like every other loader here: a rig
+ *  that fails — or a key this build ships no bundle for — still counts as settled, because a
+ *  `rigDone` that never fills would leave `isRunArtReady()` false for the rest of the session. */
+const rigLoads = new Map<string, Promise<void>>();
+const rigDone = new Set<string>();
+
+function ensureRig(name: string): Promise<void> {
+  let p = rigLoads.get(name);
+  if (!p) {
+    const entry = CHAR_BUNDLES.find(([n]) => n === name);
+    const load = entry
+      ? preloadRigSkin(entry[0], entry[1]).catch((err) => {
+          console.warn(`${name} skin preload failed, falling back to placeholder`, err);
+        })
+      : Promise.resolve();
+    p = load.then(() => {
+      rigDone.add(name);
+    });
+    rigLoads.set(name, p);
+  }
+  return p;
+}
+
 /** Progress ticks a caller can expect from `ensureRunArt`: one per `run`-phase pack, then one
- *  per loader (each rig bundle, then the late UI tier and weapons/biome/environment). Exported so the loading screen
- *  can size its bar before the first tick arrives rather than growing it as it goes. */
+ *  per loader (the three core rigs and the ONE selected character, then the late UI tier and
+ *  weapons/biome/environment). Exported so the loading screen can size its bar before the first
+ *  tick arrives rather than growing it as it goes. */
 export function runArtUnitCount(): number {
-  return packsForPhase('run').length + CHAR_BUNDLES.length + 4;
+  return packsForPhase('run').length + CORE_RIGS.length + 1 + 4;
 }
 
 /** Told once per pack/loader as it settles, with how many of `total` are done. */
@@ -137,6 +212,12 @@ export function beginDeferredArt(): void {
   // `assetPacks.json` keeps this working and no pack name is spelled in TypeScript.
   const musicPack = packOf(`${MUSIC_DIR}/`);
   const background = (): void => {
+    // The rigs the gate deliberately did not wait for: the two characters THIS run will not
+    // draw, and the boss (floor 5). They are behind the gate's art for the same reason the
+    // music is — started together, they split the line with the bytes the player is sitting
+    // on. Memoised by `ensureRig`, so the one already loaded as the selected character here
+    // costs nothing and a later forge switch finds it in hand.
+    for (const [name] of [...CHARACTER_RIGS, ...LATE_RIGS]) void ensureRig(name);
     for (const pack of packsForPhase('background')) {
       void ensurePack(pack.name).then(() => {
         if (pack.name === musicPack) invalidateMusicTrack();
@@ -152,7 +233,7 @@ export function beginDeferredArt(): void {
  * transition whose art is already loaded stays exactly as synchronous as it was.
  */
 export function isRunArtReady(): boolean {
-  return !deferred || runArtDone;
+  return !deferred || (runArtDone && rigDone.has(characterRig));
 }
 
 /**
@@ -185,12 +266,19 @@ export function ensureRunArt(onProgress?: ArtProgress): Promise<void> {
     if (!runArtDone) runListeners.add(onProgress);
     onProgress(runDone, runArtUnitCount());
   }
-  runArt ??= loadRunArt().then(() => {
+  const shared = (runArt ??= loadRunArt().then(() => {
     runArtDone = true;
     // Nothing more will ever be reported, and a gate's callback closes over its `LoadingScreen`.
     runListeners.clear();
-  });
-  return runArt;
+  }));
+  // The selected character's rig is awaited OUTSIDE that memo, and has to be: `loadRunArt`
+  // waited for whichever character was selected when it ran, and a player who cycled character
+  // in the forge afterwards must not cross the gate on the rig they are no longer playing.
+  // Normally already settled — `setRunCharacterRig` starts it at the moment of the choice — so
+  // this costs a microtask and no bytes. It is also why the bar can read full for an instant
+  // before the gate opens: the count sizes the SHARED units, which is the honest thing for it
+  // to report when the one outstanding unit is a rig chosen after the download began.
+  return shared.then(() => ensureRig(characterRig));
 }
 
 async function loadRunArt(): Promise<void> {
@@ -213,14 +301,10 @@ async function loadRunArt(): Promise<void> {
     // which is why this comes after `ensurePacks` above; either way the gate this promise
     // backs is what guarantees a run never starts without them.
     preloadUiTier('late').then(tickRun),
-    ...CHAR_BUNDLES.map(async ([name, baseUrl]) => {
-      try {
-        await preloadRigSkin(name, baseUrl);
-      } catch (err) {
-        console.warn(`${name} skin preload failed, falling back to placeholder`, err);
-      }
-      tickRun();
-    }),
+    // The enemy bodies the first floor fields, and the ONE character this run will draw — not
+    // all seven rigs, which is what this line asked for until 2026-11-12. See `CORE_RIGS`.
+    ensureRig(characterRig).then(tickRun),
+    ...CORE_RIGS.map(([name]) => ensureRig(name).then(tickRun)),
     preloadWeaponSkins()
       .catch((err) => {
         console.warn('weapon skins preload failed, socket stays unarmed-looking', err);
@@ -241,7 +325,7 @@ export async function preloadCoreArt(): Promise<void> {
   await ensureAllPacks();
   // Through `ensureRunArt` rather than `loadRunArt` so the memo is shared: a caller that took
   // this path and then hit a gate anyway must not run every loader a second time.
-  await Promise.all([preloadUiArt(), ensureRunArt()]);
+  await Promise.all([preloadUiArt(), ensureRunArt(), ...CHAR_BUNDLES.map(([name]) => ensureRig(name))]);
 }
 
 /** Drops the phase memo. Tests only — module state outlives a single test file, and a resolved
@@ -252,4 +336,7 @@ export function resetPreloadArt(): void {
   runArtDone = false;
   runDone = 0;
   runListeners.clear();
+  rigLoads.clear();
+  rigDone.clear();
+  characterRig = DEFAULT_CHARACTER_RIG;
 }

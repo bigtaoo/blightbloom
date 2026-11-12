@@ -1139,7 +1139,7 @@ before rewriting it:
   "First-download size"). Eight fail and stay RGBA: the emberblade, frostbrand, leech and
   stormglaive swords, the skirmisher's shell and belly, and `icon_party_create` /
   `icon_result_extract`. All are fine gradients or thin glints, which is where 256 colours
-  band. The curtain stays as it is (2026-09-01b). On a 2–3× contact sheet, the ten passing
+  band. The curtain stayed as it was (2026-09-01b) — until 2026-11-12, below. On a 2–3× contact sheet, the ten passing
   files that scored worst read the same as their originals.
 
 **The guard moved from one tier to the whole tree.** `client/src/render/shippedPngFormat.test.ts`
@@ -1156,6 +1156,83 @@ and assumed RGBA until this pass.
 fetched right after but not waited for (418,048 → 338,252 awaited bytes, en). A language
 switch shows the other logo one fetch later: `MainMenu` already re-lays itself out on a
 `lobby` arrival.
+
+## Update (2026-11-12): the curtain's exemptions both expire — 606,730 B → 58,704 B
+
+The 2026-09-01b section above ends by naming what would reopen it: *"byte pressure returning to
+the `run` pack."* That is what happened. The Playgama sandbox publish (design/22) put a hard gate
+in front of the run art — the player waits for `loadRunArt()` before a run starts, on a portal
+whose cohort abandons during that wait — and the curtain was **27% of everything that gate waits
+for**, 51% of the environment tier alone. The 2026-09-01b call was made under the explicit premise
+"now that no gate presses on it". The premise is gone, so the call goes with it, and both
+exemptions the curtain held come off at once:
+
+| | bytes | vs. shipped |
+| --- | --- | --- |
+| 468x832 RGBA (2026-09-01b) | 606,730 | — |
+| 234x416 RGBA (the halving) | 178,199 | -70.6% |
+| 234x416 **palette** (shipped) | **58,704** | **-90.3%** |
+
+**The resolution half was already measured, at a harder zoom than today's.** Variant C in the
+2026-09-01b table *is* this file: 234x416, detail RMS 73% of the master, mean abs diff 1.78 —
+measured in the live scene at the then-MAX_ZOOM of 4.29. `cameraRig.MAX_ZOOM` has since dropped
+4.5 → 3.5 (2026-09-28, motion comfort), so the worst-case perimeter-door rect is now about
+448x643 device px rather than 549x788. The upscale this variant was judged on is the hardest one
+it will ever face again. Nothing new had to be decided about it; only the premise had changed.
+
+**The palette half is new, and it is nearly free — which is not obvious.** Quantising a smooth
+additive gradient is the case `quantize.py`'s bar exists to catch, and it is why the curtain was
+in that script's `SKIP` set at all. Measured on the halved file it reads **mean 2.32 / p99 7.7**,
+inside the 2.93 / 14 bar with room to spare. The reason is worth keeping: *the downsample's own
+box average has already removed most of the fine filament structure that would band*, so the two
+costs do not add. Composited additively over black at the rect the game actually draws
+(openingW 128, `doorLeafFrame`'s bottom crop), measured against the untouched 468x832 master:
+
+| | mean abs luma | p99 | max |
+| --- | --- | --- | --- |
+| 234x416 RGBA | 1.38 | 8.95 | 33.66 |
+| 234x416 palette (shipped) | **1.69** | **8.86** | 33.34 |
+
+Quantising on top of the halving costs 0.31 mean and *lowers* p99. Alpha character survives
+intact: 14.2% fully transparent, 0% fully opaque, 85.8% midtone — the same haze-is-the-content
+shape as the master's 14.9 / 0.0 / 85.1.
+
+**`quantize.py`'s `SKIP` set is now empty, and stays that way.** It held one entry, by preference
+rather than by measurement, and a preference-shaped exemption is how a measured gate turns
+decorative. A file belongs in `SKIP` only if quantising it is wrong for a reason the bar cannot
+see. `shippedPngFormat.test.ts`'s `RGBA_ALLOWED` is now exactly the eight files that genuinely
+fail the bar — the four elemental swords, the skirmisher's shell and belly, and the two icons the
+2026-10-15 pass already named; the curtain was the only entry there for any other reason. Its
+`it.each` stale-entry check is what forced the removal rather than leaving a lie.
+
+**Three places hardcoded 468/832 and all three are updated** — `doorCurtainCoverage.test.ts`'s
+`CURTAIN_ART_W`/`CURTAIN_ART_H` (which the 2026-09-01b section had already flagged as the thing
+that would otherwise stay green against a fiction), `doorFxCoverage.test.ts`'s `tex(468, 832)`,
+and the `SKIP`/`RGBA_ALLOWED` comments naming the owner call. Everything those coverage tests
+assert is a *ratio* — the curtain is fit by width through the same `doorLeafFrame` call as the
+leaf — so the halving changed no expectation, only the two sizes the fit is computed from.
+
+**Measured on the gate.** `npm run check:bundlesize` over a *freshly built* `build:crazygames`
+reads `run.wait` **2010.7 KiB** (2026-11-12), against **2548.7 KiB** measured 2026-10-15. This
+file accounts for 535.2 KiB of that 538.0 KiB gap (its own 548,026 bytes); the remaining ~2.8 KiB
+is other `run`-phase art that moved between the two dates — about thirty files under
+`client/public` changed in the month — and is nothing this change did.
+
+**The figure first written here, 2013.6 KiB, was arithmetic wearing a measurement's clothes**
+(corrected 2026-11-12). It is 2548.7 − 535.1: a month-old baseline minus this file's own saving,
+reported as if the gate had printed it. Two ways to get this wrong are live at once. The gate
+reads whatever `client/dist-crazygames` already holds and does **not** build it, so a stale dist
+answers confidently — the first attempt at this measurement read 4258.4 KiB, OVER BUDGET, off a
+dist predating the 2026-10-15 palette pass. And subtracting a saving from a baseline assumes
+nothing else moved since, which over a month is never true. Build the dist in the checkout you
+are measuring in, immediately before reading any budget, and quote what it prints.
+
+Note what the number also shows: design/21 §2.12's rig-tier split took ~300 kB off the run gate
+and moved it by *zero*, because the `/skins/` rig bundles are not packs and so are invisible to
+the gate (design/20, "`run.wait` is not the whole wait").
+
+The 3.9 MB master at `art/environment/door_curtain_raw.png` is untouched and remains the source
+for any future re-encode.
 
 ## Open questions
 
