@@ -50,7 +50,7 @@ const skin = (): DoorSkin => ({
   cap: tex(256, 256),
   face: tex(256, 128),
   floor: tex(64, 64),
-  curtain: tex(468, 832),
+  curtain: tex(234, 416), // the shipped curtain's real size (halved 2026-11-12, design/12)
   leaf: tex(LOCKED_ART_W, LOCKED_ART_H),
 });
 
