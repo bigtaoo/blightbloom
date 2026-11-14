@@ -1133,14 +1133,23 @@ Three unrelated games, one channel, the same third of arrivals lost before any i
 Kicker's fix was to hold a desktop first run on a click hint until the keys can actually reach
 it, and to tag its events with `focus` / `input` so the two causes can be told apart.
 
-**This is a specific, testable charge against `openingHold.ts`.** That controller holds the
-world until *intent* arrives, with a 20 s fuse. If the keys physically cannot reach the iframe,
-intent never arrives, the fuse expires, and the dungeon starts moving in front of a player who
-still has no way in — which is exactly the shape of the 34.9%. This test's own data cannot
-confirm it: `focus` and `input` were recorded as **true 88 / false 0** on the sessions that
-reached `floor_reached`, i.e. only on sessions that had already succeeded, so the field never
-observed a failing arrival. The hold was built on the right measurement and may have been
-aimed at the wrong half of the problem.
+**This is a specific, testable charge against `openingHold.ts`** — and the test's own data
+already answers most of it, against the hypothesis. That controller holds the world until
+*intent* arrives, with a 20 s fuse. If the keys physically cannot reach the iframe, intent never
+arrives, the fuse expires, and the dungeon starts moving in front of a player who still has no
+way in — which is the shape of the 34.9%.
+
+> **Corrected 2026-11-14d (and the first version of this paragraph had it backwards).** It said
+> the data could not confirm the charge because `focus` was recorded **true 88 / false 0** only
+> on sessions that reached `floor_reached` — survivors — "so the field never observed a failing
+> arrival". That is a misreading of which event carries the field. `run_start` fires for every
+> started run, touched or not, and on it `focus` reads **true 228 / false 28**
+> (`data/playgama-sandbox-2026-11/03-event-field-summaries.md`). The field observed failing
+> arrivals all along: **89% of started runs had the keys.** So unreachable keys can account for
+> at most ~11 of the 34.9 points, not for the bulk of them. The dominant case is a player whose
+> frame has focus, with an instruction on screen, who presses nothing. The same file also records
+> `run_start.input` **true 42 / false 214** — 83.6% — which is the autostart measured, not a
+> problem.
 
 **What survives from the first version of this entry.** Two things, both still load-bearing:
 
@@ -1172,10 +1181,12 @@ re-run the sandbox" is not an available experiment**, at any price this project 
    than can be said for the sandbox. Their submission material is reusable: Potion Siege has a
    15-language store listing, and Holy Kicker has a Basic Launch scorecard and a written
    relaunch request.
-2. **Before that, test the iframe-focus hypothesis.** It is hours of work, it has a named
-   mechanism, a sibling's reproduction and a sibling's fix, and it addresses the single largest
-   loss this test measured. Tag arrival events with `focus` / `input` on *failing* arrivals,
-   not only successful ones.
+2. ~~**Before that, test the iframe-focus hypothesis.**~~ **Superseded 2026-11-14d — it was
+   already built, and the data already answers it.** `platform/keyFocus.ts` shipped 2026-11-10
+   with exactly the sibling's fix (a click hint instead of "Move with WASD" while the keys are
+   elsewhere, and a host-session hold meanwhile), and the attention fields were on every
+   forwarded event. The correction above reads them: 89% of started runs had focus. The charge
+   is worth ~11 points, not 35. What replaced this item is the 2026-11-14d entry.
 3. **The closed test of §4 is still the cheapest instrument not yet used**, and it is the only
    one that can answer *why* an arrival gives up — ten to twenty people who did not build this
    game, watched, with the replay recorder running. Everything above is channel arithmetic; it
@@ -1188,6 +1199,60 @@ channel, and three games lose the same third of arrivals before a first input on
 this one was tested on. None of that is evidence the dungeon is good — it was reached by 33 of
 198 engaged sessions and remains unjudged. It is evidence that the dungeon is not what this
 test measured.
+**2026-11-14d — doing everything that can be done without players, and finding most of it
+already done.**
+
+The brief was "make everything we can as good as it can be, then keep testing". The survey that
+started it found four of the five things on the list already shipped, which is the finding worth
+recording — the 34.9% untouched third was NOT the symptom of a missing fix:
+
+| the fix the 2026-11 findings ranked | state found |
+|---|---|
+| tell the player there is something to press | **already ships.** `OpeningHold` does not bite until `sawFirstTick()`, so tick one always runs, `TutorialHintController` always raises its panel, and the world then freezes with "Move with WASD" centred. `firstRunHints` is on for anyone never taught — on a portal, everybody |
+| hold the keyboard first run until the keys can reach it | **already ships** (2026-11-10, `platform/keyFocus.ts`): "Click the game first" instead of WASD, `setAwaitingKeys` holding the Playgama session meanwhile |
+| tag events with `focus` / `input` | **already ships**, and already answered the question — see the correction in 2026-11-14c: 89% of started runs had focus |
+| freeze the world until the player arrives | **already ships** (2026-11-11, `openingHold.ts`) |
+| measure session length on a portal | **broken, and by our own hand** — see below |
+
+So the honest state of the first minute is: the world waits, the panel is up, the keys reach
+the frame in 89% of starts, and **a third of players still press nothing.** That is not a bug
+with a fix waiting; it is the real reading, and it was never visible before because the untouched
+third existed only as an absence.
+
+**Two instruments, which is all this pass could honestly add.** Both are in design/21 §2.13.
+
+1. **`opening_hold { outcome, waited_ms, reach }`** turns the untouched third from an absence
+   into a presence. `fuse` is a run nobody touched, reported when it happens; `input` is its
+   control, without which the event counts untouched runs but cannot express them as a share.
+   `reach` (`keys` / `nokeys`) carries the key-reachability reading on the event itself rather
+   than leaving it to the host envelope — Playgama's sender attaches attention to everything it
+   forwards and no other host does, so a `fuse` on CrazyGames, the next channel, would otherwise
+   arrive unsplittable. Deliberately no member for "left while frozen": that stays an absence,
+   countable by subtraction, because nothing this side of `pagehide` fires on a frame that never
+   comes.
+2. **`active_time` forwards on Playgama again.** It was put in `PLATFORM_OWNED_EVENTS` on
+   2026-11-08 beside `session_end`, on the reasoning that Bridge measures playtime itself.
+   `session_end` belongs there — it rides `pagehide`, which a torn-down portal frame mostly
+   never sees. `active_time` does not: cumulative, sent about once a minute while the visit
+   grows, a lost batch costs a minute. It is the one ruler of ours that survives the exact
+   failure that justified dropping `session_end`, and dropping it is why **the game's own
+   `session_end` arrived once in 673 sessions** and every duration in the archive is the
+   platform's — the same platform figure that read `p50 0` on four of nine days and produced
+   the false 11-12 headline.
+
+**What this does not buy.** Neither instrument makes the Playgama sandbox a usable experiment:
+the power analysis in 2026-11-14c is unchanged, and ~1,000 sessions per arm is still not
+purchasable here. They make the NEXT channel legible, which is the point — CrazyGames scores a
+submission out of 15 and publishes its reference bars, so a `fuse` rate with a `reach` split is
+a number that can be argued with there.
+
+**Where that leaves "continue testing".** The order in §5 is unchanged and item 2 is struck:
+the closed test of §4 is now the only cheap instrument left unused, and it is the one that can
+answer the question these two cannot — *why* a player with a working frame and an instruction
+on screen presses nothing. Ten to twenty people who did not build this game, watched, with the
+replay recorder running. After that, CrazyGames Basic Launch, scored, with the stop conditions
+declared before the submission rather than after the score.
+
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
@@ -1195,12 +1260,13 @@ test measured.
    exercised the day its credentials exist. *(2026-10-16: §1.1 and §1.2 built, §1.4 drafted,
    §1.5 waits on §1.3's prices. Nothing has run against a real sandbox yet — that needs §1.3's
    client token and one price id.)*
-3. **The three cheap instruments, before any further channel work**: the `pagehide` beacon,
-   the iframe-focus test, and **§4's closed test** on the web build, in parallel with the
-   paperwork. *(Revised 2026-11-14: §4.1's sandbox test ran and is answered — see the
-   2026-11-14b and 2026-11-14c entries. It was listed first here because it was cheap and
-   fast; it is now known not to be re-runnable as an experiment at this traffic, so these
-   three lead instead. All are hours, not weeks.)*
+3. **§4's closed test on the web build**, in parallel with the paperwork — now the only one of
+   the three cheap instruments still outstanding, and the only one that can answer *why* an
+   arrival gives up. *(Revised 2026-11-14: §4.1's sandbox test ran and is answered — see the
+   2026-11-14b and 2026-11-14c entries; it is not re-runnable as an experiment at this traffic.
+   Revised again 2026-11-14d: the other two are done. The `pagehide` beacon was never missing —
+   it was switched off at the Playgama filter and is back; the iframe-focus fix shipped
+   2026-11-10. See 2026-11-14d.)*
 4. **CrazyGames (§2)** — the cheapest real launch: no payments, no filings, the SDK handles the
    ads. *(Promoted 2026-11-14 ahead of any further sandbox run: the same sibling game scored
    73% 60-second survival there against 39% on Playgama ad traffic. Two siblings have been
