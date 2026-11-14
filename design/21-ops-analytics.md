@@ -157,6 +157,7 @@ First cut:
 | `page_open` | — (added §2.9; sent by `index.html`, not the bundle) | The visitor who left before the game booted |
 | `run_start` | character; wait_ms (added §2.11) | Q2's second step; whether the roster is used |
 | `run_wait` | art: `pending` / `ready` (added §2.11) | A loading screen into a run went up; without a `run_start`, the visitor left while it loaded |
+| `opening_hold` | outcome: `input` / `fuse`; waited_ms; reach: `keys` / `nokeys` (added §2.13) | Whether the player who autostarted into a run ever arrived — and if not, whether the keys could have reached them |
 | `floor_reached` | floor (added §2.8) | How deep a run got when it ended with no `run_end` (a closed tab) |
 | `run_end` | outcome, floor reached, duration | The difficulty curve, and where runs actually end |
 | `run_death` | killer, room, hits, burst_pct (added §2.10; after a `loss` only) | Why a run was lost, not just that it was |
@@ -659,6 +660,64 @@ in that doc's own words, "now that no gate presses on it"; one does now. design/
 ladder: 512 px would make it ~250 kB, 416 px ~174 kB. It is an owner's call, not a
 measurement — a lossless re-encode is byte-identical and the alpha bbox is the full canvas, so
 pixel count is the only lever there is.
+
+### 2.13 The untouched run, reported instead of inferred (2026-11-14)
+
+The 2026-11 Playgama sandbox test ended on this number: over 2026-11-09..13, **304 `run_start`
+against 198 `first_input` — 34.9% of started runs were never touched at all**
+(`data/playgama-sandbox-2026-11/05-funnel-and-findings.md`). Not quit early. Never given an
+input. It is the largest single loss in the funnel and it happens before any game design has a
+chance to matter.
+
+**It was an ABSENCE, and that is why nothing could be done about it.** A run with no
+`first_input` after it is a hole in the row stream, and a hole cannot be split by cause. Three
+explanations fit the same hole exactly — the keys never reached the iframe, they reached it
+and nobody pressed, or the visitor closed the tab while the world was still frozen — and they
+have three different fixes. §2.11's instrument measured the wait IN FRONT of the run;
+nothing measured the wait inside it.
+
+`opening_hold` closes that. `OpeningHold` (`client/src/game/controllers/openingHold.ts`, the
+first-input freeze) already knows exactly how its wait ended, so it now says so:
+
+- **`outcome: 'input'`** — a player arrived, after `waited_ms`. This arm is the control. Without
+  it the event would say how many runs ended untouched and not what SHARE of runs that is.
+- **`outcome: 'fuse'`** — the 20 s fuse burned with no input. This is the untouched third,
+  reported as a presence, at the moment it happens.
+- **`reach: 'keys' | 'nokeys'`** — could the keys reach the game when the hold ended
+  (`platform/keyFocus.ts`). This is the split the absence could not be given, and it is a prop
+  of the event rather than a host envelope field on purpose: Playgama's sender attaches
+  `focus`/`input` to everything it forwards (`playgama/bridgeAnalytics.ts`) and no other host
+  does, so a `fuse` measured on CrazyGames — an iframe exactly like Playgama's — would
+  otherwise arrive with nothing to split it by.
+
+An enum and not a boolean because `PropValue` is `string | number`; `waited_ms` is rounded at
+the call site because `coerceProp` DROPS a non-integer rather than clamping it, so an unrounded
+float would arrive as a missing column and read exactly like a build that never sent the field.
+
+**There is deliberately no third member for "the player left while the world was frozen".** That
+one stays an absence, countable by subtraction — a `run_start` with no `opening_hold` after it
+— because no listener this side of `pagehide` can be trusted to fire on a frame that never
+comes, which is the same reason §2.9 built `active_time` in the first place.
+
+**What this pass did NOT need to build.** The sandbox findings ranked "tell the player there is
+something to press" first, on the reading that the hold buys 20 s and nothing spends it on an
+instruction. That reading was wrong, and the code says so: the hold does not bite until
+`sawFirstTick()`, so tick one always runs, `TutorialHintController` always puts its panel up,
+and the world then freezes WITH "Move with WASD" (or "Click the game first", when the keys are
+elsewhere) large and centred. `firstRunHints` is on for anyone who has never been taught, which
+on a portal is everybody. So the untouched third happened with the instruction already on
+screen, and building a second one would have measured nothing.
+
+**And one instrument that was switched off by mistake.** `active_time` was added to
+`PLATFORM_OWNED_EVENTS` on 2026-11-08 alongside `session_end`, on the reasoning that Bridge
+records playtime itself. `session_end` belongs there: ours rides `pagehide`, which a portal
+frame torn down by its parent mostly never sees. `active_time` does not — it is cumulative and
+sent about once a minute WHILE the visit grows, so a lost batch costs a minute and nothing else.
+It is the one ruler of ours that survives the exact failure that justified dropping `session_end`.
+The cost of having dropped it is on the record: across 673 sessions of that test the game's own
+`session_end` arrived **once**, so every duration in the archive is the platform's — and the
+platform's read `p50 0` on four of nine days and produced the false 11-12 headline (mean up 22%,
+total seconds up 1.2%, denominator down from 104 to 86).
 
 ## 3. Phase B — the read-only console
 

@@ -10,7 +10,7 @@ import type { OcclusionFocus } from '../scene/occlusion';
 import { updateCheckpointOverlays } from './checkpointOverlays';
 import { buildHudContext } from './hudContext';
 import { applyPowerBudget } from '../powerBudget';
-import { reportFrame, trackedRunFrom } from '../analyticsTracking';
+import { noteOpeningHoldEnd, reportFrame, trackedRunFrom } from '../analyticsTracking';
 import { OpeningHold } from './openingHold';
 import type { GameLoopDeps, GameLoopHost } from './gameLoopTypes';
 // The two contracts live in `./gameLoopTypes` (CLAUDE.md 500-line convention) and are
@@ -55,7 +55,7 @@ export class GameLoop {
   // "The run has not started yet": sim ticks are skipped until the player's first input
   // of the run. Offline/local only, like hit-stop — see `openingHold.ts` for the
   // measurement that put it here and why it freezes everything rather than the enemies.
-  private readonly openingHold = new OpeningHold();
+  private readonly openingHold = new OpeningHold(noteOpeningHoldEnd);
 
   // Reused by every `updateFx` call rather than a fresh object per actor per frame; safe because
   // `RoomBuilder.updateOcclusion` reads it synchronously and never keeps it.

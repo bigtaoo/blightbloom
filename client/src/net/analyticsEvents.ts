@@ -172,6 +172,35 @@ export const EVENTS = {
     screen: { kind: 'id' },
   },
   /**
+   * The opening hold let go (`game/controllers/openingHold.ts`), and why.
+   *
+   * `outcome` is `input` for a player who arrived and `fuse` for a run nobody ever touched in
+   * `OPENING_HOLD_MAX_MS`. The second one is the reason this event exists. The 2026-11 Playgama
+   * test measured that 34.9% of started runs received no input at all and could not say WHY,
+   * because "never touched" was an absence — a `run_start` with no `first_input` behind it — and
+   * an absence carries no properties to split it by. This is the same fact as a presence, so on
+   * Playgama it arrives with the visit's `focus`/`input` attention attached (`keyFocus.ts`) and
+   * the untouched runs divide into "the keys never reached the frame" and "they did, and nobody
+   * pressed". Those two have nothing in common except the hole they leave in the funnel.
+   *
+   * `waited_ms` is real time, not sim time — the hold freezes the tick stream, so there is no
+   * sim time to measure. Bounded by the fuse, with headroom for a frame that overshoots it.
+   */
+  opening_hold: {
+    outcome: { kind: 'enum', values: ['input', 'fuse'] },
+    waited_ms: { kind: 'int', min: 0, max: 60_000 },
+    /**
+     * Could the keys reach the game when the hold ended (`platform/keyFocus.ts`)? Carried as a
+     * prop of this event rather than left to the host envelope on purpose: Playgama's sender
+     * attaches `focus`/`input` to every event it forwards (`playgama/bridgeAnalytics.ts`), and
+     * no other host does, so a `fuse` measured on CrazyGames — an iframe exactly like
+     * Playgama's, and the next channel this is tested on — would arrive with nothing to split
+     * it by. An enum and not a boolean because `PropValue` is `string | number`; two values, so
+     * no cardinality to speak of.
+     */
+    reach: { kind: 'enum', values: ['keys', 'nokeys'] },
+  },
+  /**
    * A run began.
    *
    * `character` only, and the missing `weapon` is a finding rather than an omission: no

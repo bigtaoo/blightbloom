@@ -142,3 +142,88 @@ describe('OpeningHold', () => {
     expect(hold.update(FRAME, IDLE)).toBe(true);
   });
 });
+
+/**
+ * The report (2026-11-14). The hold's own behaviour is unchanged by it, which is half of what
+ * is asserted here: a hold constructed with no callback must still hold, release and fuse
+ * exactly as every test above says it does.
+ *
+ * The other half is the thing the 2026-11 sandbox test could not answer. 34.9% of started runs
+ * were never touched, and that was an ABSENCE — a `run_start` with no `first_input` — so it
+ * could not be split by cause. `fuse` is that same population reported as a presence, at the
+ * moment it happens, and `input` is its control: without both arms the event would say how
+ * many runs ended untouched and not what share of runs that is.
+ */
+describe('OpeningHold reporting', () => {
+  /** A hold that records what it reported, armed and stepped like `running()`. */
+  function reporting(): { hold: OpeningHold; ends: [string, number][] } {
+    const ends: [string, number][] = [];
+    const hold = new OpeningHold((outcome, ms) => void ends.push([outcome, ms]));
+    hold.arm();
+    hold.sawFirstTick();
+    return { hold, ends };
+  }
+
+  it('reports `input` with the time the player took to arrive', () => {
+    const { hold, ends } = reporting();
+    hold.update(1000, IDLE);
+    hold.update(500, IDLE);
+    hold.update(FRAME, { ...IDLE, firing: true });
+    // 1500, not 1500 + FRAME: the releasing frame is the player's, not part of the wait.
+    expect(ends).toEqual([['input', 1500]]);
+  });
+
+  it('reports `fuse` for a run nobody ever touched', () => {
+    const { hold, ends } = reporting();
+    while (hold.update(FRAME, IDLE)) { /* wait it out */ }
+    expect(ends).toHaveLength(1);
+    expect(ends[0]![0]).toBe('fuse');
+    expect(ends[0]![1]).toBeGreaterThanOrEqual(OPENING_HOLD_MAX_MS);
+  });
+
+  it('reports a latched UI tap as `input` — a tap is a player arriving', () => {
+    const { hold, ends } = reporting();
+    hold.update(FRAME, IDLE, true);
+    expect(ends).toEqual([['input', 0]]);
+  });
+
+  it('reports exactly once per run, however many frames follow', () => {
+    // Both ways to end it, each followed by frames that must add nothing: a double count
+    // would inflate the untouched share without changing any other number in the funnel.
+    const { hold, ends } = reporting();
+    hold.update(FRAME, { ...IDLE, moveX: 1 });
+    for (let i = 0; i < 10; i++) hold.update(FRAME, IDLE);
+    expect(ends).toHaveLength(1);
+
+    hold.arm();
+    hold.sawFirstTick();
+    while (hold.update(FRAME, IDLE)) { /* fuse */ }
+    for (let i = 0; i < 10; i++) hold.update(FRAME, IDLE);
+    expect(ends).toHaveLength(2);
+  });
+
+  it('reports nothing for a hold that never bit', () => {
+    // A replay, the arena demo and an unarmed hold all run through `update` and must stay
+    // silent — otherwise every watched recording would land in the funnel as a played run.
+    const ends: unknown[] = [];
+    const hold = new OpeningHold(() => void ends.push(1));
+    hold.sawFirstTick();
+    for (let i = 0; i < 100; i++) hold.update(FRAME, IDLE);
+    expect(ends).toEqual([]);
+
+    // Armed but never stepped: the world never froze, so nothing waited.
+    hold.arm();
+    for (let i = 0; i < 100; i++) hold.update(FRAME, IDLE);
+    expect(ends).toEqual([]);
+  });
+
+  it('holds exactly as it does without a callback', () => {
+    const plain = running();
+    const { hold } = reporting();
+    const frames: [boolean, boolean][] = [];
+    for (let i = 0; i < 5; i++) frames.push([plain.update(FRAME, IDLE), hold.update(FRAME, IDLE)]);
+    frames.push([plain.update(FRAME, { ...IDLE, moveY: 1 }), hold.update(FRAME, { ...IDLE, moveY: 1 })]);
+    expect(frames.every(([a, b]) => a === b)).toBe(true);
+    expect(plain.held).toBe(hold.held);
+  });
+});
