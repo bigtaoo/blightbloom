@@ -1069,101 +1069,125 @@ losses, 1 unhandled rejection across 1,267 performance windows), which makes the
 cheap to attempt and unguaranteed to land. Re-run this test against today's build and it fails
 the same three gates.
 
-**2026-11-14c — the cross-project reading: one portal, two games, the same wall.**
+**2026-11-14c — every portal test this family has run, and what they say together.**
 
-The entry above scores this test against its own four gates and finds three of them missed.
-What it cannot do is separate the two readings of that result: *this game's first minute is
-bad*, or *this traffic does this to everything*. A single-arm test has no answer to that, and
-the data is now gone.
+> **Corrected the same day, before anyone relied on it.** The first version of this entry
+> claimed that three of eleven sibling projects had ever been in front of strangers, and that
+> this test and Swarm Orbit's were "the only measurements of real players this codebase family
+> holds". Both are false. Nivara and Holy Kicker have each been through a CrazyGames **Basic
+> Launch**, snowfort ran a Playgama challenge, and Potion Siege and the Corgi Commando reskin
+> have Playgama revenue figures. The error mattered: it made this test look like an isolated
+> result when it is one of at least seven, and it buried the single most useful comparison
+> available — the same game measured on two different channels. What follows is the corrected
+> reading.
 
-A control did exist, in another project, and it is recorded here before it is deleted too.
-**Swarm Orbit** (sibling checkout `jump`, archive frozen under jump/telemetry-archive/ on
-2026-11-14 for the same reason this one was) ran on the **same Playgama console, in an
-overlapping window — 2026-11-05 .. 2026-11-14 — and was withdrawn on the same day**. It is a
-different game by every description: an orbital wave game, not a dungeon crawler, different
-input, different session shape, built in a different month. Its totals are 18,531 events /
-541 unique sessions / 423 unique users.
+The entry above scores this test against its own four gates and finds three missed. What it
+cannot do is separate the two readings of that result: *this game's first minute is bad*, or
+*this channel does this to everything*. A single-arm test has no answer. The sibling checkouts
+turn out to hold six more arms.
 
-| | Blightbloom (this test) | Swarm Orbit |
+| game (checkout) | channel | outcome |
 |---|---|---|
-| runs started per session | **1.11** (436 / 394) | **1.21** (n=53 engaged) |
-| share that started ≤ 1 run | — | **87%** (46 of 53) |
-| its own one-line verdict | "most of the people who arrived never pressed anything" | "the loop does not loop — that, not pacing, is the ceiling" |
-| where the player leaves | 34.9% of started runs never receive an input | 42% left with < 5 s since their last input, p50 quiet 5 s |
+| Nivara (`funny`) | CrazyGames Basic Launch | rejected 2026-10-07 ("overall quality"); resubmitted, **5/15** on 2026-10-17 |
+| Holy Kicker (`standing`) | CrazyGames Basic Launch, 10-10..10-16 | rejected — **8/15 desktop, 8/15 mobile**, one point under on each |
+| Holy Kicker | Playgama sandbox | 172 plays at 4:01 avg |
+| Corgi Commando (Holy Kicker reskin) | Playgama sandbox | 190 plays at 4:59; submitted to moderation 2026-10-30 |
+| Potion Siege (`fang`) | Playgama sandbox | live long enough to earn (~$2.3 / 1,000 plays, 2026-10-31) |
+| snowfort | Playgama "Player Two Found" challenge | **25th of 87**; 219 plays, 8 likes, 4:08 avg against a 5:00 qualifying bar — missed |
+| Swarm Orbit (`jump`) | Playgama sandbox | withdrawn 2026-11-14; 1.21 runs/session, 87% started ≤ 1 run |
+| **Blightbloom (this repo)** | Playgama sandbox | 3 of 4 gates missed (entry above) |
 
-Two unrelated games, same week, same channel, landing within 0.1 runs of each other. That is
-the strongest evidence available that **the loss measured here sits upstream of this game's
-design** — in the arrival, the first ninety seconds, and the channel — rather than in the
-dungeon. It does not clear the dungeon, which was never reached by enough sessions to be
-judged (33 of 198 engaged sessions saw floor 2). It does mean a redesign of floor 1 is not
-what this data asks for.
+Seven portal tests before this one. **Every one of them failed the bar its channel set.** That
+is the first thing this test is not: unusual.
 
-**The finding that changes what §4.1 can ever be used for.** Swarm Orbit's archive carries a
-power analysis this one does not. Comparing two of its builds at this traffic, the bootstrap
-95% CI on the difference in median play length was **−48 s to +150 s** — a result consistent
-with a large win, a large loss and nothing at all. At 80% power it puts the sample cost of
-detecting an improvement at roughly **1,000 sessions per arm for +15%, ~390 for +30%, ~153 for
-+50%**, against the ~60 engaged sessions that two days of this traffic produce.
+**The measurement worth more than all of them: one game, two channels.** Holy Kicker was
+instrumented on both, and its own retention doc (sibling checkout standing, docs/retention.md,
+dated 2026-10-19) reports the first-run funnel from each:
 
-So the sandbox test is an instrument with exactly two readings: a catastrophic no, or a win
-over +50%. The three missed gates are far enough below their thresholds that the no is real —
-36.5% against 60%, a median of 1 run against 2. But **every fix those gates suggest lands in
-the band this instrument cannot see.** "Ship the opening prompt and re-run the sandbox" is
-therefore not an available experiment, at any price this project would pay, and §4.1's rubric
-should not be read as offering it. That is a property of the traffic volume, not of the
-instrumentation — the missing `pagehide` beacon (`05-funnel-and-findings.md` §3) makes the
-measurement worse, but fixing it does not make a 15% effect detectable at 60 sessions.
+| | share of first runs lasting ≥ 60 s |
+|---|---|
+| Holy Kicker on **CrazyGames** (262 installs) | **73%** (desktop 70%, mobile 81%) |
+| Holy Kicker on **Playgama** ad traffic | **39%** |
+| Blightbloom on **Playgama** ad traffic | **36.5%** |
+| CrazyGames' own published reference bar | 80% |
 
-**What the other projects have and have not measured.** Recorded because the question "is it
-the game?" was answered above by looking outside this repo, and the next person to ask it
-should know what the comparison set actually is. First and last commit per sibling checkout,
-read 2026-11-14:
+The same game, same month, same build lineage, loses **roughly half its 60-second survival**
+moving from CrazyGames' catalog traffic to Playgama's purchased sandbox traffic. And on that
+channel it lands at 39% — within three points of this game's 36.5%.
 
-| project | span | commits | has been in front of strangers |
-|---|---|---|---|
-| `funny` — Nivara | 2026-05-22 .. 11-10 | 4,341 | no |
-| `number` — SumQuest | 2026-04-10 .. 09-15 | 183 | yes — itch.io + iOS, live since ~09 |
-| **this repo** — Blightbloom | 2026-07-07 .. 11-14 | 914 | yes — Playgama, deleted 11-14 |
-| `standing` — Holy Kicker | 2026-09-30 .. 11-06 | 632 | no |
-| `fang` — Potion Siege | 2026-10-15 .. 11-05 | 469 | no |
-| `jump` — Swarm Orbit | 2026-10-28 .. 11-14 | 194 | yes — Playgama, deleted 11-14 |
-| `automatic` | 2026-10-06 .. 10-18 | 49 | no |
-| `snowfort` | 2026-10-26 .. 10-31 | 63 | no |
-| `marchenwerk` | 2026-11-05 .. 11-05 | 2 | no |
-| `Tidehook` | 2026-11-08 .. 11-11 | 29 | no |
-| `moto` | 2026-11-09 .. 11-11 | 62 | no |
+That is the answer §4.1 could not get for itself. **This game's Playgama result is normal for
+Playgama**, not a verdict on its first minute. It also puts a ceiling on what the best outcome
+here would have looked like: Holy Kicker's 73%, its strongest number anywhere, is still under
+CrazyGames' 80% reference bar, and its Basic Launch was rejected at 8/15 anyway.
 
-Three of eleven have met a player. Two of those three are being deleted from their channel
-today. The third has been listed on two stores for two months and **no player figure for it is
-recorded in any document in any of these checkouts** — its own distribution doc tracks eight
-platforms by listing status and carries no retention, session or install number at all. So the
-two Playgama archives, this one and Swarm Orbit's, are the only measurements of real players
-this codebase family holds, and both were taken in the same nine days.
+**A named mechanism, already reproduced and fixed by a sibling.** The largest single loss in
+this test is the 34.9% of started runs that never receive an input. Holy Kicker's Corgi
+Commando sandbox run hit the same shape and found a cause: **Playgama's consent popup covers
+the iframe while the run plays behind it, and after it closes the keys still do not reach the
+game until a click.** Its figures: 243 users at the `move` hint, 99 at `auto`, yet 137 reached
+30 s of play — about 38 played on without ever steering. snowfort, independently, measured
+~35% leaving within the first 6 seconds of the first match, before throwing a single snowball,
+touch and keyboard alike.
 
-**What this changes in §5.** Three things, and they are the reason this entry exists rather
-than only the scoring above:
+Three unrelated games, one channel, the same third of arrivals lost before any input. Holy
+Kicker's fix was to hold a desktop first run on a click hint until the keys can actually reach
+it, and to tag its events with `focus` / `input` so the two causes can be told apart.
 
-1. **The closed test of §4 moves ahead of any further channel test.** It is the cheapest
-   instrument not yet used and the only one that can answer the 34.9%: ten to twenty people
-   who did not build this game, watched while they play, with the replay recorder (`● / F9`)
-   running. A funnel over 673 sessions could not say why a third of started runs are never
-   touched; ten watched sessions will, in an afternoon. The asymmetry is the whole point —
-   the question that stopped this test is a qualitative one, and it was being asked with a
-   quantitative instrument that cannot resolve it.
-2. **CrazyGames (§2) is now the next channel, not another sandbox run.** Its traffic is
-   organic catalog traffic rather than purchased clicks into an unmoderated page, which is a
-   different population and a different signal — and the one upward caveat in the entry above
-   (`source` cardinality 1, so these figures are a lower bound) is precisely the thing a
-   catalog placement would settle.
-3. **The `pagehide` / `visibilitychange` beacon precedes both.** `session_end` fired once in
-   673 sessions. Neither of the two items above is worth running while the game still cannot
-   measure how long it was played.
+**This is a specific, testable charge against `openingHold.ts`.** That controller holds the
+world until *intent* arrives, with a 20 s fuse. If the keys physically cannot reach the iframe,
+intent never arrives, the fuse expires, and the dungeon starts moving in front of a player who
+still has no way in — which is exactly the shape of the 34.9%. This test's own data cannot
+confirm it: `focus` and `input` were recorded as **true 88 / false 0** on the sessions that
+reached `floor_reached`, i.e. only on sessions that had already succeeded, so the field never
+observed a failing arrival. The hold was built on the right measurement and may have been
+aimed at the wrong half of the problem.
 
-None of this is an argument for stopping work on the dungeon, and none of it is evidence the
-dungeon is good. It is the narrower claim the data supports: **the first ninety seconds have
-never been observed, on any channel, by anyone who did not build this game** — and until they
-are, every further hour spent past floor 1 is spent on the part of the game that the measured
-losses never reached.
+**What survives from the first version of this entry.** Two things, both still load-bearing:
+
+- **Swarm Orbit as a second arm.** Same console, overlapping window (2026-11-05 .. 11-14),
+  withdrawn the same day; 18,531 events / 541 sessions / 423 users. It recorded **1.21 runs per
+  session against this game's 1.11**, with 87% of engaged sessions starting at most one run,
+  and its own verdict — "the loop does not loop" — reached from a different game's data.
+- **The power analysis, which is the finding that limits what §4.1 can ever be used for.** Its
+  archive compares two builds at this traffic: the bootstrap 95% CI on the difference in median
+  play length is **−48 s to +150 s**, consistent with a large win, a large loss and nothing. At
+  80% power the sample cost of detecting an improvement is roughly **1,000 sessions per arm for
+  +15%, ~390 for +30%, ~153 for +50%** — against the ~60 engaged sessions two days of this
+  traffic produces. snowfort's retrospective measured the same ceiling from the money side:
+  $12 of promotion bought ~300 sessions over ~3 days, and the day promotion stopped, traffic
+  fell to single digits.
+
+So the sandbox has exactly two readings: a catastrophic no, or a win over +50%. The three
+missed gates are far enough below their thresholds that the no is real. But every fix those
+gates suggest lands in the band this instrument cannot see. **"Ship the opening prompt and
+re-run the sandbox" is not an available experiment**, at any price this project would pay, and
+§4.1's rubric should not be read as offering it.
+
+**What this changes in §5.** Three things:
+
+1. **CrazyGames (§2) becomes the next channel, ahead of any further sandbox run.** Not on
+   general grounds — on the measurement above: the same game scored 73% there against 39%
+   here. Two siblings have already been through its Basic Launch and been rejected (5/15 and
+   8/15), so its bar is known to be hard and its scoring is known to be legible, which is more
+   than can be said for the sandbox. Their submission material is reusable: Potion Siege has a
+   15-language store listing, and Holy Kicker has a Basic Launch scorecard and a written
+   relaunch request.
+2. **Before that, test the iframe-focus hypothesis.** It is hours of work, it has a named
+   mechanism, a sibling's reproduction and a sibling's fix, and it addresses the single largest
+   loss this test measured. Tag arrival events with `focus` / `input` on *failing* arrivals,
+   not only successful ones.
+3. **The closed test of §4 is still the cheapest instrument not yet used**, and it is the only
+   one that can answer *why* an arrival gives up — ten to twenty people who did not build this
+   game, watched, with the replay recorder running. Everything above is channel arithmetic; it
+   cannot see a player's face.
+
+What the first version of this entry got right, and what the corrected evidence states more
+strongly: **the loss measured here sits upstream of this game's design.** Not one sibling's
+portal test has cleared its channel's bar, the same game scores twice as well on a different
+channel, and three games lose the same third of arrivals before a first input on the channel
+this one was tested on. None of that is evidence the dungeon is good — it was reached by 33 of
+198 engaged sessions and remains unjudged. It is evidence that the dungeon is not what this
+test measured.
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
@@ -1171,11 +1195,15 @@ losses never reached.
    exercised the day its credentials exist. *(2026-10-16: §1.1 and §1.2 built, §1.4 drafted,
    §1.5 waits on §1.3's prices. Nothing has run against a real sandbox yet — that needs §1.3's
    client token and one price id.)*
-3. **§4's closed test**, on the web build, in parallel with the paperwork, with the
-   `pagehide` beacon shipped first. *(Revised 2026-11-14: §4.1's sandbox test ran and is
-   answered — see the 2026-11-14b and 2026-11-14c entries. It was listed first here because
-   it was cheap and fast; it is now known not to be re-runnable as an experiment at this
-   traffic, so the closed test leads and this is the cheapest instrument left unused.)*
+3. **The three cheap instruments, before any further channel work**: the `pagehide` beacon,
+   the iframe-focus test, and **§4's closed test** on the web build, in parallel with the
+   paperwork. *(Revised 2026-11-14: §4.1's sandbox test ran and is answered — see the
+   2026-11-14b and 2026-11-14c entries. It was listed first here because it was cheap and
+   fast; it is now known not to be re-runnable as an experiment at this traffic, so these
+   three lead instead. All are hours, not weeks.)*
 4. **CrazyGames (§2)** — the cheapest real launch: no payments, no filings, the SDK handles the
-   ads.
+   ads. *(Promoted 2026-11-14 ahead of any further sandbox run: the same sibling game scored
+   73% 60-second survival there against 39% on Playgama ad traffic. Two siblings have been
+   through its Basic Launch and been rejected at 5/15 and 8/15, so expect a hard bar and a
+   legible scorecard; their listing and relaunch material is reusable.)*
 5. **WeChat (§3)**, once §3.1 is decided and §3.2 has answers.
