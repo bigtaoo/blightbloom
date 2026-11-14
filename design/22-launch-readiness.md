@@ -1004,6 +1004,166 @@ learn here:
   What is real is hitching, not frame rate: `frames_over_250ms` and `frames_over_500ms` share a
   maximum of **44**, meaning one 30 s window stalled 44 separate times for over half a second.
 
+**2026-11-14b — scoring the test against its own four gates, and what passing would take.**
+
+The entry above records that the test did not pass. This one records *by how much*, because
+"did not pass" and "was four points short" are different instructions to whoever picks this up.
+
+| Gate (above) | Pass | Measured | Gap |
+| --- | --- | --- | --- |
+| Sessions | n ≥ 300 | **673** | met — and the only one of the four that can be bought |
+| Survives 60 s of the first run | ≥ 60% | **36.5%** (111 of 304 run-starting sessions) | 23.5 points |
+| Runs on day 0, median | ≥ 2 | **1.11** mean, median **1** | a whole run |
+| Day-1 return | ≥ 10–15% | **≤ 3.9%**, derived below | a factor of three |
+
+**The D1 line is derived here and was never read during the test.** `01-`'s per-day
+`unique_users` sum to 538 over a window whose de-duplicated total is 518, so at most 20 people
+appeared on a second day — ≤ 3.9% of 518 users, and fewer if anyone appeared on three. The two
+figures differing at all is what makes the derivation possible: ids *are* being de-duplicated
+across days, so they persist. If a portal visitor instead gets a fresh id per visit, the true
+return rate is unknowable rather than low, and this row should be read as "not measured".
+
+**The arithmetic that decides whether fixing the opening is enough. It is not.**
+
+> 34.9% of started runs were never given an input. Suppose every one of them is recovered, and
+> suppose each then behaves exactly like a session that does press something today. 60 s
+> survival among touched runs is 111 / 198 = **56.1%** — still under the 60% gate.
+
+So the way in and the first minute both have to move; the way in alone cannot reach the line.
+And 56.1% is the optimistic end of it, because some part of click-sourced traffic is a misclick
+that no opening recovers.
+
+Measured from arrival rather than from `run_start`, the same funnel (2026-11-09..13) reads:
+
+| stage | sessions | % of arrivals |
+| --- | --- | --- |
+| `core_initialization_started` | 479 | 100% |
+| `run_start` | 304 | 63.5% |
+| `first_input` | 198 | 41.3% |
+| `gameplay_60s` | 111 | 23.2% |
+| `floor_reached` | 33 | 6.9% |
+
+**36.5% leave before a run begins at all.** That is the payload and the wait — engineering, and
+already improved once (`wait_ms` p50 2,559 → 1,033 ms on the 11-12 build). Everything lost after
+`run_start` is not.
+
+**The hardest gate is the median of 2 runs, and no tuning pass reaches it.** 304 `run_start`s
+produced 39 `run_end`s: seven of eight runs end with the tab closing mid-floor, so there is no
+"lost it, one more go" loop to tune — a run mostly has no ending at all. A median of 2 asks that
+most sessions finish a run *and* start another, which is a change to what a run is rather than
+to its numbers.
+
+**What this scoring cannot settle, in both directions.** Upward: `source` had cardinality 1, so
+ad-click traffic to an unmoderated sandbox page cannot be separated from organic, and that is
+close to the lowest-intent traffic obtainable — these figures are a lower bound on what a
+moderated catalog placement would show, not an estimate of it. Downward: if `gameplay_30s` /
+`gameplay_60s` count wall clock, the opening hold's 20 s fuse counts toward them and every
+survival rate here reads high; and `frames_over_500ms` peaking at 44 stalls in a single 30 s
+window is a real player-facing fault that may account for part of the 34.9%. Both questions
+needed a traffic tag and a focus-vs-idle split that this test did not carry, and neither can be
+asked again — the data is gone (entry above).
+
+**The summary for whoever asks how close it was.** One gate of four, and it was the purchased
+one. Nothing in the way is engineering debt: the build is clean (0 JS errors, 0 WebGL context
+losses, 1 unhandled rejection across 1,267 performance windows), which makes the remaining work
+cheap to attempt and unguaranteed to land. Re-run this test against today's build and it fails
+the same three gates.
+
+**2026-11-14c — the cross-project reading: one portal, two games, the same wall.**
+
+The entry above scores this test against its own four gates and finds three of them missed.
+What it cannot do is separate the two readings of that result: *this game's first minute is
+bad*, or *this traffic does this to everything*. A single-arm test has no answer to that, and
+the data is now gone.
+
+A control did exist, in another project, and it is recorded here before it is deleted too.
+**Swarm Orbit** (sibling checkout `jump`, archive frozen under jump/telemetry-archive/ on
+2026-11-14 for the same reason this one was) ran on the **same Playgama console, in an
+overlapping window — 2026-11-05 .. 2026-11-14 — and was withdrawn on the same day**. It is a
+different game by every description: an orbital wave game, not a dungeon crawler, different
+input, different session shape, built in a different month. Its totals are 18,531 events /
+541 unique sessions / 423 unique users.
+
+| | Blightbloom (this test) | Swarm Orbit |
+|---|---|---|
+| runs started per session | **1.11** (436 / 394) | **1.21** (n=53 engaged) |
+| share that started ≤ 1 run | — | **87%** (46 of 53) |
+| its own one-line verdict | "most of the people who arrived never pressed anything" | "the loop does not loop — that, not pacing, is the ceiling" |
+| where the player leaves | 34.9% of started runs never receive an input | 42% left with < 5 s since their last input, p50 quiet 5 s |
+
+Two unrelated games, same week, same channel, landing within 0.1 runs of each other. That is
+the strongest evidence available that **the loss measured here sits upstream of this game's
+design** — in the arrival, the first ninety seconds, and the channel — rather than in the
+dungeon. It does not clear the dungeon, which was never reached by enough sessions to be
+judged (33 of 198 engaged sessions saw floor 2). It does mean a redesign of floor 1 is not
+what this data asks for.
+
+**The finding that changes what §4.1 can ever be used for.** Swarm Orbit's archive carries a
+power analysis this one does not. Comparing two of its builds at this traffic, the bootstrap
+95% CI on the difference in median play length was **−48 s to +150 s** — a result consistent
+with a large win, a large loss and nothing at all. At 80% power it puts the sample cost of
+detecting an improvement at roughly **1,000 sessions per arm for +15%, ~390 for +30%, ~153 for
++50%**, against the ~60 engaged sessions that two days of this traffic produce.
+
+So the sandbox test is an instrument with exactly two readings: a catastrophic no, or a win
+over +50%. The three missed gates are far enough below their thresholds that the no is real —
+36.5% against 60%, a median of 1 run against 2. But **every fix those gates suggest lands in
+the band this instrument cannot see.** "Ship the opening prompt and re-run the sandbox" is
+therefore not an available experiment, at any price this project would pay, and §4.1's rubric
+should not be read as offering it. That is a property of the traffic volume, not of the
+instrumentation — the missing `pagehide` beacon (`05-funnel-and-findings.md` §3) makes the
+measurement worse, but fixing it does not make a 15% effect detectable at 60 sessions.
+
+**What the other projects have and have not measured.** Recorded because the question "is it
+the game?" was answered above by looking outside this repo, and the next person to ask it
+should know what the comparison set actually is. First and last commit per sibling checkout,
+read 2026-11-14:
+
+| project | span | commits | has been in front of strangers |
+|---|---|---|---|
+| `funny` — Nivara | 2026-05-22 .. 11-10 | 4,341 | no |
+| `number` — SumQuest | 2026-04-10 .. 09-15 | 183 | yes — itch.io + iOS, live since ~09 |
+| **this repo** — Blightbloom | 2026-07-07 .. 11-14 | 914 | yes — Playgama, deleted 11-14 |
+| `standing` — Holy Kicker | 2026-09-30 .. 11-06 | 632 | no |
+| `fang` — Potion Siege | 2026-10-15 .. 11-05 | 469 | no |
+| `jump` — Swarm Orbit | 2026-10-28 .. 11-14 | 194 | yes — Playgama, deleted 11-14 |
+| `automatic` | 2026-10-06 .. 10-18 | 49 | no |
+| `snowfort` | 2026-10-26 .. 10-31 | 63 | no |
+| `marchenwerk` | 2026-11-05 .. 11-05 | 2 | no |
+| `Tidehook` | 2026-11-08 .. 11-11 | 29 | no |
+| `moto` | 2026-11-09 .. 11-11 | 62 | no |
+
+Three of eleven have met a player. Two of those three are being deleted from their channel
+today. The third has been listed on two stores for two months and **no player figure for it is
+recorded in any document in any of these checkouts** — its own distribution doc tracks eight
+platforms by listing status and carries no retention, session or install number at all. So the
+two Playgama archives, this one and Swarm Orbit's, are the only measurements of real players
+this codebase family holds, and both were taken in the same nine days.
+
+**What this changes in §5.** Three things, and they are the reason this entry exists rather
+than only the scoring above:
+
+1. **The closed test of §4 moves ahead of any further channel test.** It is the cheapest
+   instrument not yet used and the only one that can answer the 34.9%: ten to twenty people
+   who did not build this game, watched while they play, with the replay recorder (`● / F9`)
+   running. A funnel over 673 sessions could not say why a third of started runs are never
+   touched; ten watched sessions will, in an afternoon. The asymmetry is the whole point —
+   the question that stopped this test is a qualitative one, and it was being asked with a
+   quantitative instrument that cannot resolve it.
+2. **CrazyGames (§2) is now the next channel, not another sandbox run.** Its traffic is
+   organic catalog traffic rather than purchased clicks into an unmoderated page, which is a
+   different population and a different signal — and the one upward caveat in the entry above
+   (`source` cardinality 1, so these figures are a lower bound) is precisely the thing a
+   catalog placement would settle.
+3. **The `pagehide` / `visibilitychange` beacon precedes both.** `session_end` fired once in
+   673 sessions. Neither of the two items above is worth running while the game still cannot
+   measure how long it was played.
+
+None of this is an argument for stopping work on the dungeon, and none of it is evidence the
+dungeon is good. It is the narrower claim the data supports: **the first ninety seconds have
+never been observed, on any channel, by anyone who did not build this game** — and until they
+are, every further hour spent past floor 1 is spent on the part of the game that the measured
+losses never reached.
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
@@ -1011,8 +1171,11 @@ learn here:
    exercised the day its credentials exist. *(2026-10-16: §1.1 and §1.2 built, §1.4 drafted,
    §1.5 waits on §1.3's prices. Nothing has run against a real sandbox yet — that needs §1.3's
    client token and one price id.)*
-3. **§4.1's Playgama sandbox test first** (days, no paperwork), then **§4's closed test**, on
-   the web build, in parallel with the paperwork.
+3. **§4's closed test**, on the web build, in parallel with the paperwork, with the
+   `pagehide` beacon shipped first. *(Revised 2026-11-14: §4.1's sandbox test ran and is
+   answered — see the 2026-11-14b and 2026-11-14c entries. It was listed first here because
+   it was cheap and fast; it is now known not to be re-runnable as an experiment at this
+   traffic, so the closed test leads and this is the cheapest instrument left unused.)*
 4. **CrazyGames (§2)** — the cheapest real launch: no payments, no filings, the SDK handles the
    ads.
 5. **WeChat (§3)**, once §3.1 is decided and §3.2 has answers.
