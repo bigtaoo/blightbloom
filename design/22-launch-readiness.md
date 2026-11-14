@@ -19,7 +19,7 @@ system was documented as done from its own side.
 | **Web** (`b.gamestao.com`) | Yes, live, auto-deployed from `main` | No | The Paddle checkout end to end (§1), legal pages that admit a payment processor (§1.4), a store listing somewhere (§4) |
 | **CrazyGames** portal | Yes, built and verified on the SDK's `local` mode | No, by platform rule (`hostKind.ts`) | The upload and review, and every behaviour that only exists on a registered domain (§2) |
 | **WeChat** mini-game | Yes in the simulator; the owner reported a real-device run on 2026-09-17 | No (`storePlatform.ts` returns `null` on `wx`) | A revenue decision (§3.1), the regulatory filings (§3.2), the device checklist (§3.3) |
-| **Playgama** sandbox | Built (`npm run build:playgama`), archive passing the console's check (Bridge 2.4.1) and the sandbox published on 2026-11-06; single-player, offline | No (no in-app products) | Nothing for the test in §4.1; it is a measurement, not a launch |
+| **Playgama** sandbox | **Test ended 2026-11-14 and the application is deleted.** Ran 2026-11-06..13; the build target still works | No (no in-app products) | Nothing — it was a measurement, and it returned an answer (§4.1). Its data survives only in `data/playgama-sandbox-2026-11/` |
 
 Engineering-wise the game is in Stage 2 (polish), with 90/90 coverage, five PvE chapters,
 the PvP battle royale and co-op all shipped. **Nothing below is gameplay.** The launch is
@@ -252,7 +252,14 @@ question). Write down what each one answered.
   screenshots, trailer, icon set or keywords, in any of the eight shipped locales. The
   CrazyGames listing in §2 is the first of these; the web build has no storefront at all.
 
-### 4.1 OWNER — the Playgama sandbox test: is the core loop worth more work?
+### 4.1 ~~OWNER — the Playgama sandbox test: is the core loop worth more work?~~ — ANSWERED 2026-11-14
+
+**Answered: not as it stands.** The test ran 2026-11-06..13 and was withdrawn on 2026-11-14
+without passing its gates — 34.9% of started runs were never given a single input, 33 of 198
+engaged sessions ever reached floor 2, and runs per run-starting session came to 1.11 against a
+gate of 2. The loop is worth more work, but not more *traffic* until the opening and the first
+floor change. The entries below are kept in full because they are the only record of how the
+answer was arrived at; the data itself is in `data/playgama-sandbox-2026-11/`.
 
 Added 2026-11-06. The cheapest way to put the game in front of strangers: Playgama's sandbox
 gives an unmoderated page and a one-off traffic bonus. It answers a narrower question than the
@@ -805,7 +812,8 @@ different measurement since `6416a86b` — 2026-11-11b), `advertisement_intersti
 **The confounder that outlives the publish, and the natural experiment that ends it.** The free
 traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until ~~2026-11-12T08:32:14Z~~ **2026-11-14T15:35:40Z** (corrected 2026-11-12, below: this was the start plus the nominal 3 days, not the campaign's own `endsAt`). Its
 arrivals are ad clicks and they read like it: daily average session 11-08 **530.4 s** (p50
-28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **≈126 s** (p50 ≈0, ~74).
+28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **110.1 s** (p50 0, 104 — the "≈126 s / ~74" first recorded
+here was a mid-day read, corrected 2026-11-13 below).
 That fall is traffic composition, build regression, or both, and **this data cannot separate
 them** — the campaign started 11-09 08:32, a day before the build it is blamed on. When it
 stops, organic traffic returns on its own and the comparison becomes readable. Until then, read
@@ -859,6 +867,92 @@ measurement was first taken in a worktree that was then deleted, so the main che
 was a pre-palette-pass build and the gate reported 4258.4 KiB — a figure that looks exactly
 like a regression and was a stale directory. Build the target before reading its budget.
 
+**2026-11-13 — reading `4e30e5f5`, and the funnel underneath the headline.**
+
+*The headline average moved; nothing underneath it did.* Mean session length went 11-11
+**110.1 s** (104 sessions) → 11-12 **134.8 s** (86), which reads as +22%. Total measured
+session time across the same two days went **11,453.7 s → 11,590.0 s (+1.2%)**: the mean rose
+because the denominator fell 17%, not because anyone played longer. One session carries it —
+the longest on 11-12 is 5,148 s, **44.4%** of that day's total against 33.2% for 11-11's
+longest — and dropping each day's longest session leaves **74.3 s vs 75.8 s**, which is the
+same day twice. `p50` is **0 on both days**: more than half of all sessions still produce no
+measurable duration at all. The depth measure moved the other way — 60 s survival per
+run-starting session **33.8% → 30.4%**, per initialized session **21.0% → 18.1%** — with only
+the 30 s rate up (47.7% → 53.6%).
+
+*What `4e30e5f5` did move is exactly what the entry above said to read.* `run_start.wait_ms`,
+11-12 (n=59, two builds) → 11-13 (n=65, `build` cardinality 1, so a single build): p50
+**2,559 → 1,033 ms**, p90 **10,991 → 5,038 ms**, mean **3,892 → 2,995 ms**. The one-rig run
+gate and the 90%-lighter door curtain are worth roughly **1.5 s off the median wait and 6 s off
+the p90**. The Sandbox card, as predicted, shows none of this.
+
+*The funnel (2026-11-09..13, 479 initialized sessions; 11-13 is a half day, to 08:04 UTC).*
+
+| step | sessions | of init | of `run_start` |
+| --- | ---: | ---: | ---: |
+| `core_initialization_started` | 479 | 100% | — |
+| `platform_message_game_ready` | 425 | 88.7% | — |
+| `run_wait` | 338 | 70.6% | — |
+| `run_start` | 304 | 63.5% | 100% |
+| `first_input` | 198 | 41.3% | **65.1%** |
+| `gameplay_30s` | 161 | 33.6% | 53.0% |
+| `gameplay_60s` | 111 | 23.2% | 36.5% |
+| `floor_reached` (≥ 2) | 33 | 6.9% | **10.9%** |
+| `run_end` | 39 | 8.1% | 12.8% |
+
+Runs per run-starting session is **333/304 = 1.10**, against the §4 gate's median of 2.
+
+*Four findings, in the order they cost play time.*
+
+- **A third to a half of the sessions that enter a run never press anything.** `run_start` →
+  `first_input` is 63% / 61% / 52% on 11-11 / 11-12 / 11-13. `first_input.ms` p50 **6,724 ms**,
+  p90 29,488 ms; `first_input.screen` is `playing` for **81** of 107, so three in four first
+  touches land inside a live run; `kind` is `pointer` **88** against `key` 19. `OpeningHold`
+  (`cfd3fdb8`) has been live since the 2026-11-11f publish and this share has not improved —
+  consistent with what it actually does: freezing the world stops the player being shot while
+  they read the screen, it does not tell them to move. What is missing is a pointer-first prompt
+  drawn *during* the hold.
+- **Nine in ten players never see floor 2.** `floor_reached` covers 33 sessions; `run_end.floor`
+  p50 is **1**. `run_death.room` puts **59%** of deaths in the first two rooms (`r2_alcove` 11,
+  `r1_cell` 6, `r1_alcove` 2), with `r4_forge` 8 behind them. The deaths are not one-shots:
+  `hits` min **10**, p50 **14**, mean 20.3; `burst_pct` p50 50. That is attrition against
+  `SHIELD_REGEN_DELAY`'s three unhit seconds, not a spike.
+- **Almost nobody reaches a result screen, so the retry loop never starts.** `screen_view` over
+  11-11..13: `playing` **180** sessions, `defeat` **8**, `victory` **2**, `loadout` 8, `forge` 6.
+  `run_end.outcome` is `loss` 25 sessions / `abandon` 14 / `win` **3**. Players leave *mid-run*,
+  not after losing — which also means `f9f48c25`'s named cause of death reached 8 sessions in
+  three days, and that the whole meta layer is effectively unvisited. A tab close reports
+  nothing, so the place they leave is currently unmeasured; a `pagehide` beacon carrying room
+  and elapsed time would be the cheapest instrument this section is missing.
+- **Both ad placements are structurally out of reach.** The interstitial needs a `run_end` (39
+  sessions in five days); the rewarded offer needs a win that carried materials out
+  (`RunOutcome.doubleOffer`), and `ad_offer_shown` fired in **3** sessions. Against 111
+  qualifying plays, counting every `advertisement_interstitial_opened` as a show gives **0.33**,
+  just over the card's 0.30 — but `opened` and `failed` arrive in equal numbers (11-12: 6 and 6;
+  11-13: 13 and 13), and removing the failures leaves **0.14**. Sandbox fill is unreliable by
+  design, so the number is not the point; the structure is. This gate cannot be reached by
+  waiting for fill.
+
+*Performance is a jank problem, not a crash problem.* Over 11-11..13, of the 77 sessions
+reporting `performance_sample`, **28 ran at `q: low`** and 15 at `medium` (a session can cross
+tiers, so these overlap the 49 seen at `high`). On 11-13 alone (n=24 — below the 30-session line
+the telemetry guide sets, so indicative only): `fps_avg` p10 28.2 / min 5.5, `fps_p10`'s own p10
+**15**, `frames_over_50ms` p90 **110 per 30 s window**, `frame_time_max_ms` p90 400 / p99 1,650,
+`long_task_max_ms` p90 227. `js_error_count`, `unhandled_rejection_count` and
+`webgl_context_loss_count` are **0 across all 272 samples**.
+
+*What the next build should aim at, in order:* the opening prompt drawn during the hold (the
+largest share, and the cheapest change); the first floor's attrition in `r1`/`r2`; the
+`pagehide` beacon that makes mid-run exits visible at all; then an interstitial placement that a
+majority of qualifying plays actually passes through.
+
+*Caveats that travel with every number above.* The campaign runs to 2026-11-14T15:35:40Z, so the
+composition is still ad-click traffic; 11-13 is a half day; the performance read is under 30
+sessions; sandbox ad fill does not predict production. And one measurement question this pass
+did not settle: if `gameplay_30s` / `gameplay_60s` count wall-clock time from the start of
+gameplay, the opening hold's 20 s fuse counts toward them and every survival rate above reads
+high.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
@@ -873,6 +967,42 @@ Sessions pass and the 60 s line fails → fix the first minute (onboarding, firs
 retest; do not read D1 yet. The 60 s line passes and D1 or runs-per-day fail → the loop does
 not hold, and that is a design question before any channel work. Under 300 sessions → no
 verdict; buy more traffic or wait, and do not tune on it.
+
+**2026-11-14 — the test ends, and the only copy of its data is now in this repository.**
+
+The sandbox test did not pass its gates and is being withdrawn; the application and the test
+are deleted on the Playgama side. Before that, every reading the telemetry tools would still
+answer was transcribed by hand into **`data/playgama-sandbox-2026-11/`** — `README.md` plus
+six files: the application record and all 16 archives, per-day totals, a per-day event
+breakdown for all nine days, every numeric and boolean field summary, every categorical
+distribution, and one derived findings file. There was never a raw export, only preaggregated
+views, so **that directory is the whole evidence base** for everything the entries above claim;
+after the deletion nothing in §4.1 can be re-queried. `04-` closes with a table naming each
+field whose cardinality is known but whose values were never expanded — those are gone.
+
+Two corrections the final full-range pull forced on the entry above, both from summing per-day
+figures instead of asking for the range. A session that crosses midnight is counted in both
+days: `core_initialization_started` sums to 481 against the range query's **479**, `run_wait`
+339 against **338**, `platform_message_game_ready` 426 against **425**. And `run_start` is
+**304**, not 302 — an arithmetic slip, which moves `first_input` to 65.1% of run-starting
+sessions and leaves **34.9%** of started runs never touched. The conclusions do not move; the
+habit that produced them is the point. **Sum per-day uniques and you are counting people
+twice.**
+
+Three facts worth carrying into whatever replaces this test, each of which cost a week to
+learn here:
+
+- **`session_end` fired once in 673 sessions** — 2026-11-08T05:09:44.682Z, and never again. The
+  game had no view of its own session length for the entire test, which is exactly what let the
+  11-12 "playtime improved" reading stand for a day. The `pagehide` beacon named above is not an
+  improvement to the instrumentation; without it there is no instrument.
+- **`source` was present on 26 of 555 `session_start` events, with cardinality 1**, so campaign
+  traffic could never be told from organic. §4.1's funnel has to use a date window as a proxy
+  for a traffic source, and that is a weakness in the evidence, not a choice.
+- **The build was technically sound and that was never the question.** Zero `js_error_count`,
+  zero `webgl_context_loss_count` and one unhandled rejection across 1,267 performance windows.
+  What is real is hitching, not frame rate: `frames_over_250ms` and `frames_over_500ms` share a
+  maximum of **44**, meaning one 30 s window stalled 44 separate times for over half a second.
 
 ## 5. Suggested order
 
