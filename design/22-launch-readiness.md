@@ -19,7 +19,7 @@ system was documented as done from its own side.
 | **Web** (`b.gamestao.com`) | Yes, live, auto-deployed from `main` | No | The Paddle checkout end to end (§1), legal pages that admit a payment processor (§1.4), a store listing somewhere (§4) |
 | **CrazyGames** portal | Yes, built and verified on the SDK's `local` mode | No, by platform rule (`hostKind.ts`) | The upload and review, and every behaviour that only exists on a registered domain (§2) |
 | **WeChat** mini-game | Yes in the simulator; the owner reported a real-device run on 2026-09-17 | No (`storePlatform.ts` returns `null` on `wx`) | A revenue decision (§3.1), the regulatory filings (§3.2), the device checklist (§3.3) |
-| **Playgama** sandbox | Built (`npm run build:playgama`), archive passing the console's check (Bridge 2.4.1) and the sandbox published on 2026-11-06; single-player, offline | No (no in-app products) | Nothing for the test in §4.1; it is a measurement, not a launch |
+| **Playgama** sandbox | **Test ended 2026-11-14 and the application is deleted.** Ran 2026-11-06..13; the build target still works | No (no in-app products) | Nothing — it was a measurement, and it returned an answer (§4.1). Its data survives only in `data/playgama-sandbox-2026-11/` |
 
 Engineering-wise the game is in Stage 2 (polish), with 90/90 coverage, five PvE chapters,
 the PvP battle royale and co-op all shipped. **Nothing below is gameplay.** The launch is
@@ -252,7 +252,14 @@ question). Write down what each one answered.
   screenshots, trailer, icon set or keywords, in any of the eight shipped locales. The
   CrazyGames listing in §2 is the first of these; the web build has no storefront at all.
 
-### 4.1 OWNER — the Playgama sandbox test: is the core loop worth more work?
+### 4.1 ~~OWNER — the Playgama sandbox test: is the core loop worth more work?~~ — ANSWERED 2026-11-14
+
+**Answered: not as it stands.** The test ran 2026-11-06..13 and was withdrawn on 2026-11-14
+without passing its gates — 34.9% of started runs were never given a single input, 33 of 198
+engaged sessions ever reached floor 2, and runs per run-starting session came to 1.11 against a
+gate of 2. The loop is worth more work, but not more *traffic* until the opening and the first
+floor change. The entries below are kept in full because they are the only record of how the
+answer was arrived at; the data itself is in `data/playgama-sandbox-2026-11/`.
 
 Added 2026-11-06. The cheapest way to put the game in front of strangers: Playgama's sandbox
 gives an unmoderated page and a one-off traffic bonus. It answers a narrower question than the
@@ -805,7 +812,8 @@ different measurement since `6416a86b` — 2026-11-11b), `advertisement_intersti
 **The confounder that outlives the publish, and the natural experiment that ends it.** The free
 traffic campaign (`cmw906b1t27fdmt0hzvv5ony1`) runs until ~~2026-11-12T08:32:14Z~~ **2026-11-14T15:35:40Z** (corrected 2026-11-12, below: this was the start plus the nominal 3 days, not the campaign's own `endsAt`). Its
 arrivals are ad clicks and they read like it: daily average session 11-08 **530.4 s** (p50
-28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **≈126 s** (p50 ≈0, ~74).
+28.8 s, 68 sessions) → 11-10 **199.7 s** (p50 5.0 s, 118) → 11-11 **110.1 s** (p50 0, 104 — the "≈126 s / ~74" first recorded
+here was a mid-day read, corrected 2026-11-13 below).
 That fall is traffic composition, build regression, or both, and **this data cannot separate
 them** — the campaign started 11-09 08:32, a day before the build it is blamed on. When it
 stops, organic traffic returns on its own and the comparison becomes readable. Until then, read
@@ -859,6 +867,92 @@ measurement was first taken in a worktree that was then deleted, so the main che
 was a pre-palette-pass build and the gate reported 4258.4 KiB — a figure that looks exactly
 like a regression and was a stale directory. Build the target before reading its budget.
 
+**2026-11-13 — reading `4e30e5f5`, and the funnel underneath the headline.**
+
+*The headline average moved; nothing underneath it did.* Mean session length went 11-11
+**110.1 s** (104 sessions) → 11-12 **134.8 s** (86), which reads as +22%. Total measured
+session time across the same two days went **11,453.7 s → 11,590.0 s (+1.2%)**: the mean rose
+because the denominator fell 17%, not because anyone played longer. One session carries it —
+the longest on 11-12 is 5,148 s, **44.4%** of that day's total against 33.2% for 11-11's
+longest — and dropping each day's longest session leaves **74.3 s vs 75.8 s**, which is the
+same day twice. `p50` is **0 on both days**: more than half of all sessions still produce no
+measurable duration at all. The depth measure moved the other way — 60 s survival per
+run-starting session **33.8% → 30.4%**, per initialized session **21.0% → 18.1%** — with only
+the 30 s rate up (47.7% → 53.6%).
+
+*What `4e30e5f5` did move is exactly what the entry above said to read.* `run_start.wait_ms`,
+11-12 (n=59, two builds) → 11-13 (n=65, `build` cardinality 1, so a single build): p50
+**2,559 → 1,033 ms**, p90 **10,991 → 5,038 ms**, mean **3,892 → 2,995 ms**. The one-rig run
+gate and the 90%-lighter door curtain are worth roughly **1.5 s off the median wait and 6 s off
+the p90**. The Sandbox card, as predicted, shows none of this.
+
+*The funnel (2026-11-09..13, 479 initialized sessions; 11-13 is a half day, to 08:04 UTC).*
+
+| step | sessions | of init | of `run_start` |
+| --- | ---: | ---: | ---: |
+| `core_initialization_started` | 479 | 100% | — |
+| `platform_message_game_ready` | 425 | 88.7% | — |
+| `run_wait` | 338 | 70.6% | — |
+| `run_start` | 304 | 63.5% | 100% |
+| `first_input` | 198 | 41.3% | **65.1%** |
+| `gameplay_30s` | 161 | 33.6% | 53.0% |
+| `gameplay_60s` | 111 | 23.2% | 36.5% |
+| `floor_reached` (≥ 2) | 33 | 6.9% | **10.9%** |
+| `run_end` | 39 | 8.1% | 12.8% |
+
+Runs per run-starting session is **333/304 = 1.10**, against the §4 gate's median of 2.
+
+*Four findings, in the order they cost play time.*
+
+- **A third to a half of the sessions that enter a run never press anything.** `run_start` →
+  `first_input` is 63% / 61% / 52% on 11-11 / 11-12 / 11-13. `first_input.ms` p50 **6,724 ms**,
+  p90 29,488 ms; `first_input.screen` is `playing` for **81** of 107, so three in four first
+  touches land inside a live run; `kind` is `pointer` **88** against `key` 19. `OpeningHold`
+  (`cfd3fdb8`) has been live since the 2026-11-11f publish and this share has not improved —
+  consistent with what it actually does: freezing the world stops the player being shot while
+  they read the screen, it does not tell them to move. What is missing is a pointer-first prompt
+  drawn *during* the hold.
+- **Nine in ten players never see floor 2.** `floor_reached` covers 33 sessions; `run_end.floor`
+  p50 is **1**. `run_death.room` puts **59%** of deaths in the first two rooms (`r2_alcove` 11,
+  `r1_cell` 6, `r1_alcove` 2), with `r4_forge` 8 behind them. The deaths are not one-shots:
+  `hits` min **10**, p50 **14**, mean 20.3; `burst_pct` p50 50. That is attrition against
+  `SHIELD_REGEN_DELAY`'s three unhit seconds, not a spike.
+- **Almost nobody reaches a result screen, so the retry loop never starts.** `screen_view` over
+  11-11..13: `playing` **180** sessions, `defeat` **8**, `victory` **2**, `loadout` 8, `forge` 6.
+  `run_end.outcome` is `loss` 25 sessions / `abandon` 14 / `win` **3**. Players leave *mid-run*,
+  not after losing — which also means `f9f48c25`'s named cause of death reached 8 sessions in
+  three days, and that the whole meta layer is effectively unvisited. A tab close reports
+  nothing, so the place they leave is currently unmeasured; a `pagehide` beacon carrying room
+  and elapsed time would be the cheapest instrument this section is missing.
+- **Both ad placements are structurally out of reach.** The interstitial needs a `run_end` (39
+  sessions in five days); the rewarded offer needs a win that carried materials out
+  (`RunOutcome.doubleOffer`), and `ad_offer_shown` fired in **3** sessions. Against 111
+  qualifying plays, counting every `advertisement_interstitial_opened` as a show gives **0.33**,
+  just over the card's 0.30 — but `opened` and `failed` arrive in equal numbers (11-12: 6 and 6;
+  11-13: 13 and 13), and removing the failures leaves **0.14**. Sandbox fill is unreliable by
+  design, so the number is not the point; the structure is. This gate cannot be reached by
+  waiting for fill.
+
+*Performance is a jank problem, not a crash problem.* Over 11-11..13, of the 77 sessions
+reporting `performance_sample`, **28 ran at `q: low`** and 15 at `medium` (a session can cross
+tiers, so these overlap the 49 seen at `high`). On 11-13 alone (n=24 — below the 30-session line
+the telemetry guide sets, so indicative only): `fps_avg` p10 28.2 / min 5.5, `fps_p10`'s own p10
+**15**, `frames_over_50ms` p90 **110 per 30 s window**, `frame_time_max_ms` p90 400 / p99 1,650,
+`long_task_max_ms` p90 227. `js_error_count`, `unhandled_rejection_count` and
+`webgl_context_loss_count` are **0 across all 272 samples**.
+
+*What the next build should aim at, in order:* the opening prompt drawn during the hold (the
+largest share, and the cheapest change); the first floor's attrition in `r1`/`r2`; the
+`pagehide` beacon that makes mid-run exits visible at all; then an interstitial placement that a
+majority of qualifying plays actually passes through.
+
+*Caveats that travel with every number above.* The campaign runs to 2026-11-14T15:35:40Z, so the
+composition is still ad-click traffic; 11-13 is a half day; the performance read is under 30
+sessions; sandbox ad fill does not predict production. And one measurement question this pass
+did not settle: if `gameplay_30s` / `gameplay_60s` count wall-clock time from the start of
+gameplay, the opening hold's 20 s fuse counts toward them and every survival rate above reads
+high.
+
 **The gates.** Read after the traffic bonus is spent, on Playgama's own telemetry:
 
 | Measure | Pass | Why this line |
@@ -874,6 +968,312 @@ retest; do not read D1 yet. The 60 s line passes and D1 or runs-per-day fail →
 not hold, and that is a design question before any channel work. Under 300 sessions → no
 verdict; buy more traffic or wait, and do not tune on it.
 
+**2026-11-14 — the test ends, and the only copy of its data is now in this repository.**
+
+The sandbox test did not pass its gates and is being withdrawn; the application and the test
+are deleted on the Playgama side. Before that, every reading the telemetry tools would still
+answer was transcribed by hand into **`data/playgama-sandbox-2026-11/`** — `README.md` plus
+six files: the application record and all 16 archives, per-day totals, a per-day event
+breakdown for all nine days, every numeric and boolean field summary, every categorical
+distribution, and one derived findings file. There was never a raw export, only preaggregated
+views, so **that directory is the whole evidence base** for everything the entries above claim;
+after the deletion nothing in §4.1 can be re-queried. `04-` closes with a table naming each
+field whose cardinality is known but whose values were never expanded — those are gone.
+
+Two corrections the final full-range pull forced on the entry above, both from summing per-day
+figures instead of asking for the range. A session that crosses midnight is counted in both
+days: `core_initialization_started` sums to 481 against the range query's **479**, `run_wait`
+339 against **338**, `platform_message_game_ready` 426 against **425**. And `run_start` is
+**304**, not 302 — an arithmetic slip, which moves `first_input` to 65.1% of run-starting
+sessions and leaves **34.9%** of started runs never touched. The conclusions do not move; the
+habit that produced them is the point. **Sum per-day uniques and you are counting people
+twice.**
+
+Three facts worth carrying into whatever replaces this test, each of which cost a week to
+learn here:
+
+- **`session_end` fired once in 673 sessions** — 2026-11-08T05:09:44.682Z, and never again. The
+  game had no view of its own session length for the entire test, which is exactly what let the
+  11-12 "playtime improved" reading stand for a day. The `pagehide` beacon named above is not an
+  improvement to the instrumentation; without it there is no instrument.
+- **`source` was present on 26 of 555 `session_start` events, with cardinality 1**, so campaign
+  traffic could never be told from organic. §4.1's funnel has to use a date window as a proxy
+  for a traffic source, and that is a weakness in the evidence, not a choice.
+- **The build was technically sound and that was never the question.** Zero `js_error_count`,
+  zero `webgl_context_loss_count` and one unhandled rejection across 1,267 performance windows.
+  What is real is hitching, not frame rate: `frames_over_250ms` and `frames_over_500ms` share a
+  maximum of **44**, meaning one 30 s window stalled 44 separate times for over half a second.
+
+**2026-11-14b — scoring the test against its own four gates, and what passing would take.**
+
+The entry above records that the test did not pass. This one records *by how much*, because
+"did not pass" and "was four points short" are different instructions to whoever picks this up.
+
+| Gate (above) | Pass | Measured | Gap |
+| --- | --- | --- | --- |
+| Sessions | n ≥ 300 | **673** | met — and the only one of the four that can be bought |
+| Survives 60 s of the first run | ≥ 60% | **36.5%** (111 of 304 run-starting sessions) | 23.5 points |
+| Runs on day 0, median | ≥ 2 | **1.11** mean, median **1** | a whole run |
+| Day-1 return | ≥ 10–15% | **≤ 3.9%**, derived below | a factor of three |
+
+**The D1 line is derived here and was never read during the test.** `01-`'s per-day
+`unique_users` sum to 538 over a window whose de-duplicated total is 518, so at most 20 people
+appeared on a second day — ≤ 3.9% of 518 users, and fewer if anyone appeared on three. The two
+figures differing at all is what makes the derivation possible: ids *are* being de-duplicated
+across days, so they persist. If a portal visitor instead gets a fresh id per visit, the true
+return rate is unknowable rather than low, and this row should be read as "not measured".
+
+**The arithmetic that decides whether fixing the opening is enough. It is not.**
+
+> 34.9% of started runs were never given an input. Suppose every one of them is recovered, and
+> suppose each then behaves exactly like a session that does press something today. 60 s
+> survival among touched runs is 111 / 198 = **56.1%** — still under the 60% gate.
+
+So the way in and the first minute both have to move; the way in alone cannot reach the line.
+And 56.1% is the optimistic end of it, because some part of click-sourced traffic is a misclick
+that no opening recovers.
+
+Measured from arrival rather than from `run_start`, the same funnel (2026-11-09..13) reads:
+
+| stage | sessions | % of arrivals |
+| --- | --- | --- |
+| `core_initialization_started` | 479 | 100% |
+| `run_start` | 304 | 63.5% |
+| `first_input` | 198 | 41.3% |
+| `gameplay_60s` | 111 | 23.2% |
+| `floor_reached` | 33 | 6.9% |
+
+**36.5% leave before a run begins at all.** That is the payload and the wait — engineering, and
+already improved once (`wait_ms` p50 2,559 → 1,033 ms on the 11-12 build). Everything lost after
+`run_start` is not.
+
+**The hardest gate is the median of 2 runs, and no tuning pass reaches it.** 304 `run_start`s
+produced 39 `run_end`s: seven of eight runs end with the tab closing mid-floor, so there is no
+"lost it, one more go" loop to tune — a run mostly has no ending at all. A median of 2 asks that
+most sessions finish a run *and* start another, which is a change to what a run is rather than
+to its numbers.
+
+**What this scoring cannot settle, in both directions.** Upward: `source` had cardinality 1, so
+ad-click traffic to an unmoderated sandbox page cannot be separated from organic, and that is
+close to the lowest-intent traffic obtainable — these figures are a lower bound on what a
+moderated catalog placement would show, not an estimate of it. Downward: if `gameplay_30s` /
+`gameplay_60s` count wall clock, the opening hold's 20 s fuse counts toward them and every
+survival rate here reads high; and `frames_over_500ms` peaking at 44 stalls in a single 30 s
+window is a real player-facing fault that may account for part of the 34.9%. Both questions
+needed a traffic tag and a focus-vs-idle split that this test did not carry, and neither can be
+asked again — the data is gone (entry above).
+
+**The summary for whoever asks how close it was.** One gate of four, and it was the purchased
+one. Nothing in the way is engineering debt: the build is clean (0 JS errors, 0 WebGL context
+losses, 1 unhandled rejection across 1,267 performance windows), which makes the remaining work
+cheap to attempt and unguaranteed to land. Re-run this test against today's build and it fails
+the same three gates.
+
+**2026-11-14c — every portal test this family has run, and what they say together.**
+
+> **Corrected the same day, before anyone relied on it.** The first version of this entry
+> claimed that three of eleven sibling projects had ever been in front of strangers, and that
+> this test and Swarm Orbit's were "the only measurements of real players this codebase family
+> holds". Both are false. Nivara and Holy Kicker have each been through a CrazyGames **Basic
+> Launch**, snowfort ran a Playgama challenge, and Potion Siege and the Corgi Commando reskin
+> have Playgama revenue figures. The error mattered: it made this test look like an isolated
+> result when it is one of at least seven, and it buried the single most useful comparison
+> available — the same game measured on two different channels. What follows is the corrected
+> reading.
+
+The entry above scores this test against its own four gates and finds three missed. What it
+cannot do is separate the two readings of that result: *this game's first minute is bad*, or
+*this channel does this to everything*. A single-arm test has no answer. The sibling checkouts
+turn out to hold six more arms.
+
+| game (checkout) | channel | outcome |
+|---|---|---|
+| Nivara (`funny`) | CrazyGames Basic Launch | rejected 2026-10-07 ("overall quality"); resubmitted, **5/15** on 2026-10-17 |
+| Holy Kicker (`standing`) | CrazyGames Basic Launch, 10-10..10-16 | rejected — **8/15 desktop, 8/15 mobile**, one point under on each |
+| Holy Kicker | Playgama sandbox | 172 plays at 4:01 avg |
+| Corgi Commando (Holy Kicker reskin) | Playgama sandbox | 190 plays at 4:59; submitted to moderation 2026-10-30 |
+| Potion Siege (`fang`) | Playgama sandbox | live long enough to earn (~$2.3 / 1,000 plays, 2026-10-31) |
+| snowfort | Playgama "Player Two Found" challenge | **25th of 87**; 219 plays, 8 likes, 4:08 avg against a 5:00 qualifying bar — missed |
+| Swarm Orbit (`jump`) | Playgama sandbox | withdrawn 2026-11-14; 1.21 runs/session, 87% started ≤ 1 run |
+| **Blightbloom (this repo)** | Playgama sandbox | 3 of 4 gates missed (entry above) |
+
+Seven portal tests before this one. **Every one of them failed the bar its channel set.** That
+is the first thing this test is not: unusual.
+
+**The measurement worth more than all of them: one game, two channels.** Holy Kicker was
+instrumented on both, and its own retention doc (sibling checkout standing, docs/retention.md,
+dated 2026-10-19) reports the first-run funnel from each:
+
+| | share of first runs lasting ≥ 60 s |
+|---|---|
+| Holy Kicker on **CrazyGames** (262 installs) | **73%** (desktop 70%, mobile 81%) |
+| Holy Kicker on **Playgama** ad traffic | **39%** |
+| Blightbloom on **Playgama** ad traffic | **36.5%** |
+| CrazyGames' own published reference bar | 80% |
+
+The same game, same month, same build lineage, loses **roughly half its 60-second survival**
+moving from CrazyGames' catalog traffic to Playgama's purchased sandbox traffic. And on that
+channel it lands at 39% — within three points of this game's 36.5%.
+
+That is the answer §4.1 could not get for itself. **This game's Playgama result is normal for
+Playgama**, not a verdict on its first minute. It also puts a ceiling on what the best outcome
+here would have looked like: Holy Kicker's 73%, its strongest number anywhere, is still under
+CrazyGames' 80% reference bar, and its Basic Launch was rejected at 8/15 anyway.
+
+**A named mechanism, already reproduced and fixed by a sibling.** The largest single loss in
+this test is the 34.9% of started runs that never receive an input. Holy Kicker's Corgi
+Commando sandbox run hit the same shape and found a cause: **Playgama's consent popup covers
+the iframe while the run plays behind it, and after it closes the keys still do not reach the
+game until a click.** Its figures: 243 users at the `move` hint, 99 at `auto`, yet 137 reached
+30 s of play — about 38 played on without ever steering. snowfort, independently, measured
+~35% leaving within the first 6 seconds of the first match, before throwing a single snowball,
+touch and keyboard alike.
+
+Three unrelated games, one channel, the same third of arrivals lost before any input. Holy
+Kicker's fix was to hold a desktop first run on a click hint until the keys can actually reach
+it, and to tag its events with `focus` / `input` so the two causes can be told apart.
+
+**This is a specific, testable charge against `openingHold.ts`** — and the test's own data
+already answers most of it, against the hypothesis. That controller holds the world until
+*intent* arrives, with a 20 s fuse. If the keys physically cannot reach the iframe, intent never
+arrives, the fuse expires, and the dungeon starts moving in front of a player who still has no
+way in — which is the shape of the 34.9%.
+
+> **Corrected 2026-11-14d (and the first version of this paragraph had it backwards).** It said
+> the data could not confirm the charge because `focus` was recorded **true 88 / false 0** only
+> on sessions that reached `floor_reached` — survivors — "so the field never observed a failing
+> arrival". That is a misreading of which event carries the field. `run_start` fires for every
+> started run, touched or not, and on it `focus` reads **true 228 / false 28**
+> (`data/playgama-sandbox-2026-11/03-event-field-summaries.md`). The field observed failing
+> arrivals all along: **89% of started runs had the keys.** So unreachable keys can account for
+> at most ~11 of the 34.9 points, not for the bulk of them. The dominant case is a player whose
+> frame has focus, with an instruction on screen, who presses nothing. The same file also records
+> `run_start.input` **true 42 / false 214** — 83.6% — which is the autostart measured, not a
+> problem.
+
+**What survives from the first version of this entry.** Two things, both still load-bearing:
+
+- **Swarm Orbit as a second arm.** Same console, overlapping window (2026-11-05 .. 11-14),
+  withdrawn the same day; 18,531 events / 541 sessions / 423 users. It recorded **1.21 runs per
+  session against this game's 1.11**, with 87% of engaged sessions starting at most one run,
+  and its own verdict — "the loop does not loop" — reached from a different game's data.
+- **The power analysis, which is the finding that limits what §4.1 can ever be used for.** Its
+  archive compares two builds at this traffic: the bootstrap 95% CI on the difference in median
+  play length is **−48 s to +150 s**, consistent with a large win, a large loss and nothing. At
+  80% power the sample cost of detecting an improvement is roughly **1,000 sessions per arm for
+  +15%, ~390 for +30%, ~153 for +50%** — against the ~60 engaged sessions two days of this
+  traffic produces. snowfort's retrospective measured the same ceiling from the money side:
+  $12 of promotion bought ~300 sessions over ~3 days, and the day promotion stopped, traffic
+  fell to single digits.
+
+So the sandbox has exactly two readings: a catastrophic no, or a win over +50%. The three
+missed gates are far enough below their thresholds that the no is real. But every fix those
+gates suggest lands in the band this instrument cannot see. **"Ship the opening prompt and
+re-run the sandbox" is not an available experiment**, at any price this project would pay, and
+§4.1's rubric should not be read as offering it.
+
+**What this changes in §5.** Three things:
+
+1. **CrazyGames (§2) becomes the next channel, ahead of any further sandbox run.** Not on
+   general grounds — on the measurement above: the same game scored 73% there against 39%
+   here. Two siblings have already been through its Basic Launch and been rejected (5/15 and
+   8/15), so its bar is known to be hard and its scoring is known to be legible, which is more
+   than can be said for the sandbox. Their submission material is reusable: Potion Siege has a
+   15-language store listing, and Holy Kicker has a Basic Launch scorecard and a written
+   relaunch request.
+2. ~~**Before that, test the iframe-focus hypothesis.**~~ **Superseded 2026-11-14d — it was
+   already built, and the data already answers it.** `platform/keyFocus.ts` shipped 2026-11-10
+   with exactly the sibling's fix (a click hint instead of "Move with WASD" while the keys are
+   elsewhere, and a host-session hold meanwhile), and the attention fields were on every
+   forwarded event. The correction above reads them: 89% of started runs had focus. The charge
+   is worth ~11 points, not 35. What replaced this item is the 2026-11-14d entry.
+3. **The closed test of §4 is still the cheapest instrument not yet used**, and it is the only
+   one that can answer *why* an arrival gives up — ten to twenty people who did not build this
+   game, watched, with the replay recorder running. Everything above is channel arithmetic; it
+   cannot see a player's face.
+
+What the first version of this entry got right, and what the corrected evidence states more
+strongly: **the loss measured here sits upstream of this game's design.** Not one sibling's
+portal test has cleared its channel's bar, the same game scores twice as well on a different
+channel, and three games lose the same third of arrivals before a first input on the channel
+this one was tested on. None of that is evidence the dungeon is good — it was reached by 33 of
+198 engaged sessions and remains unjudged. It is evidence that the dungeon is not what this
+test measured.
+**2026-11-14d — doing everything that can be done without players, and finding most of it
+already done.**
+
+The brief was "make everything we can as good as it can be, then keep testing". The survey that
+started it found four of the five things on the list already shipped, which is the finding worth
+recording — the 34.9% untouched third was NOT the symptom of a missing fix:
+
+| the fix the 2026-11 findings ranked | state found |
+|---|---|
+| tell the player there is something to press | **already ships.** `OpeningHold` does not bite until `sawFirstTick()`, so tick one always runs, `TutorialHintController` always raises its panel, and the world then freezes with "Move with WASD" centred. `firstRunHints` is on for anyone never taught — on a portal, everybody |
+| hold the keyboard first run until the keys can reach it | **already ships** (2026-11-10, `platform/keyFocus.ts`): "Click the game first" instead of WASD, `setAwaitingKeys` holding the Playgama session meanwhile |
+| tag events with `focus` / `input` | **already ships**, and already answered the question — see the correction in 2026-11-14c: 89% of started runs had focus |
+| freeze the world until the player arrives | **already ships** (2026-11-11, `openingHold.ts`) |
+| measure session length on a portal | **broken, and by our own hand** — see below |
+
+So the honest state of the first minute is: the world waits, the panel is up, the keys reach
+the frame in 89% of starts, and **a third of players still press nothing.** That is not a bug
+with a fix waiting; it is the real reading, and it was never visible before because the untouched
+third existed only as an absence.
+
+**Two instruments, which is all this pass could honestly add.** Both are in design/21 §2.13.
+
+1. **`opening_hold { outcome, waited_ms, reach }`** turns the untouched third from an absence
+   into a presence. `fuse` is a run nobody touched, reported when it happens; `input` is its
+   control, without which the event counts untouched runs but cannot express them as a share.
+   `reach` (`keys` / `nokeys`) carries the key-reachability reading on the event itself rather
+   than leaving it to the host envelope — Playgama's sender attaches attention to everything it
+   forwards and no other host does, so a `fuse` on CrazyGames, the next channel, would otherwise
+   arrive unsplittable. Deliberately no member for "left while frozen": that stays an absence,
+   countable by subtraction, because nothing this side of `pagehide` fires on a frame that never
+   comes.
+2. **`active_time` forwards on Playgama again.** It was put in `PLATFORM_OWNED_EVENTS` on
+   2026-11-08 beside `session_end`, on the reasoning that Bridge measures playtime itself.
+   `session_end` belongs there — it rides `pagehide`, which a torn-down portal frame mostly
+   never sees. `active_time` does not: cumulative, sent about once a minute while the visit
+   grows, a lost batch costs a minute. It is the one ruler of ours that survives the exact
+   failure that justified dropping `session_end`, and dropping it is why **the game's own
+   `session_end` arrived once in 673 sessions** and every duration in the archive is the
+   platform's — the same platform figure that read `p50 0` on four of nine days and produced
+   the false 11-12 headline.
+
+**What this does not buy.** Neither instrument makes the Playgama sandbox a usable experiment:
+the power analysis in 2026-11-14c is unchanged, and ~1,000 sessions per arm is still not
+purchasable here. They make the NEXT channel legible, which is the point — CrazyGames scores a
+submission out of 15 and publishes its reference bars, so a `fuse` rate with a `reach` split is
+a number that can be argued with there.
+
+**Where that leaves "continue testing".** The order in §5 is unchanged and item 2 is struck:
+the closed test of §4 is now the only cheap instrument left unused, and it is the one that can
+answer the question these two cannot — *why* a player with a working frame and an instruction
+on screen presses nothing. Ten to twenty people who did not build this game, watched, with the
+replay recorder running. After that, CrazyGames Basic Launch, scored, with the stop conditions
+declared before the submission rather than after the score.
+
+### 4.2 The art charge, measured — the direction is fine, the cast is thin (2026-11-15)
+
+Raised while reading this section: that the game's weakness is *art coherence* — no shared light,
+no shared palette, no shared material logic, the "assembled a piece at a time" failure mode. It was
+measured over the **126 shipped sprites in `client/public/`** rather than argued, and the
+measurement **refuted it**: light direction 87° at R = 0.70 overall (biome 0.98, ui 0.81, skins
+0.80), 76/126 inside one teal band, actors a full value key above their ground, outlines 0.37 on
+actors against 0.05 on biome. One real outlier — `weapons` at 58°, ~50° off the world — which is
+open. A unified direction exists and is being followed, so spending there buys nothing.
+
+What the same count found instead: **6 bosses share 1 rig, ~10 enemy types share 3, and until
+2026-11-15 those 3 shipped byte-identical animations**, so the first minute of play — the minute
+36.5% of sandbox sessions did not survive — showed a scuttling bug, a hovering drone and a heavy
+walking the same walk. Three distinct gaits now ship (`12`, 2026-11-15). That is data, not art:
+no new sprites, no engine change, no `ENGINE_VERSION` bump.
+
+**It does not move a gate on its own.** None of §4.1's four thresholds is an animation metric, and
+nothing here has been in front of a player. It is a cheap removal of a defect that was certainly
+visible, done while the one instrument that can explain the 60-second drop — §4's closed test —
+is still the next thing to run.
+
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
@@ -881,8 +1281,16 @@ verdict; buy more traffic or wait, and do not tune on it.
    exercised the day its credentials exist. *(2026-10-16: §1.1 and §1.2 built, §1.4 drafted,
    §1.5 waits on §1.3's prices. Nothing has run against a real sandbox yet — that needs §1.3's
    client token and one price id.)*
-3. **§4.1's Playgama sandbox test first** (days, no paperwork), then **§4's closed test**, on
-   the web build, in parallel with the paperwork.
+3. **§4's closed test on the web build**, in parallel with the paperwork — now the only one of
+   the three cheap instruments still outstanding, and the only one that can answer *why* an
+   arrival gives up. *(Revised 2026-11-14: §4.1's sandbox test ran and is answered — see the
+   2026-11-14b and 2026-11-14c entries; it is not re-runnable as an experiment at this traffic.
+   Revised again 2026-11-14d: the other two are done. The `pagehide` beacon was never missing —
+   it was switched off at the Playgama filter and is back; the iframe-focus fix shipped
+   2026-11-10. See 2026-11-14d.)*
 4. **CrazyGames (§2)** — the cheapest real launch: no payments, no filings, the SDK handles the
-   ads.
+   ads. *(Promoted 2026-11-14 ahead of any further sandbox run: the same sibling game scored
+   73% 60-second survival there against 39% on Playgama ad traffic. Two siblings have been
+   through its Basic Launch and been rejected at 5/15 and 8/15, so expect a hard bar and a
+   legible scorecard; their listing and relaunch material is reusable.)*
 5. **WeChat (§3)**, once §3.1 is decided and §3.2 has answers.

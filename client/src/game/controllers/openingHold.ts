@@ -41,12 +41,42 @@ export function hasIntent(i: InputState): boolean {
   return i.firing || i.interacting || Math.hypot(i.moveX, i.moveY) >= MOVE_DEADZONE;
 }
 
+
+/**
+ * What ended a hold, as `opening_hold{outcome}` reports it (`analyticsTracking.ts`).
+ *
+ * The split is the whole point of the event. `input` is a player who arrived. `fuse` is a run
+ * nobody ever touched — which until 2026-11-14 could only be INFERRED, from a `run_start` with
+ * no `first_input` after it. That is an absence, and an absence cannot be split by cause: the
+ * 2026-11 sandbox test could say 34.9% of started runs were never touched and could not say
+ * whether the keys failed to reach the frame or reached it and nobody pressed. Reported as it
+ * happens, this event carries the visit's `focus`/`input` attention, which every Playgama event
+ * gets for free (`platform/keyFocus.ts`, attached by `bridgeAnalytics.ts`) — so `fuse` with
+ * `focus:false` and `fuse` with `focus:true` are two different problems with two different fixes.
+ *
+ * There is deliberately no third member for "the player left while the world was still frozen".
+ * That one stays an absence on purpose: a `run_start` with no `opening_hold` after it, countable
+ * by subtraction, because no listener this side of `pagehide` can be trusted to fire on a frame
+ * that never comes.
+ */
+export type OpeningHoldOutcome = 'input' | 'fuse';
+
 export class OpeningHold {
   private waiting = false;
   private waitedMs = 0;
   private stepped = false;
 
-  /** Armed at the top of every run (`GameLoop.resetForNewRun`). */
+  /**
+   * @param onEnd Fired once per hold, the moment it releases, with how long it had waited.
+   *   Defaults to a no-op so this unit stays constructible — and testable — with no analytics
+   *   anywhere near it; `GameLoop` passes the reporter (`noteOpeningHoldEnd`).
+   */
+  constructor(
+    private readonly onEnd: (outcome: OpeningHoldOutcome, waitedMs: number) => void = () => {},
+  ) {}
+
+  /** Armed at the top of every run (`GameLoop.resetForNewRun`). A hold still waiting when the
+   *  next run arms is dropped without a report, which is the "left while frozen" absence above. */
   arm(): void {
     this.waiting = true;
     this.waitedMs = 0;
@@ -92,18 +122,19 @@ export class OpeningHold {
    */
   update(dt: number, input: InputState, uiIntent = false): boolean {
     if (!this.waiting) return false;
-    if (uiIntent || hasIntent(input)) {
-      this.waiting = false;
-      return false;
-    }
+    if (uiIntent || hasIntent(input)) return this.release('input');
     // An answer is heard from the first frame; only the FREEZE waits for the opening tick,
     // so a press made before the world had drawn itself is honoured rather than dropped.
     if (!this.stepped) return false;
     this.waitedMs += dt;
-    if (this.waitedMs >= OPENING_HOLD_MAX_MS) {
-      this.waiting = false;
-      return false;
-    }
+    if (this.waitedMs >= OPENING_HOLD_MAX_MS) return this.release('fuse');
     return true;
+  }
+
+  /** End the hold and say why. Returns false — the caller's "do not skip this frame". */
+  private release(outcome: OpeningHoldOutcome): false {
+    this.waiting = false;
+    this.onEnd(outcome, this.waitedMs);
+    return false;
   }
 }

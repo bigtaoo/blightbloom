@@ -1831,9 +1831,13 @@ Every dated pass, newest volume last. Tags are the same vocabulary as the theme 
 
 - **10-15** [The first download, measured and cut](roadmap/145-2026-10-15-first-download-size.md#the-first-download-measured-and-cut-2026-10-15-client--art--build--test--docs-no-engine_version-change) — "好的，你参考standing和funny项目，处理首包的加载大小问题": nothing measured what a portal player waits on. `build/checkBundleSize.mjs` (ported from funny) reads the real CrazyGames build against absolute budgets with written reasons: entry 305 KiB brotli, lobby 836 KiB, run 2549 KiB, upload 8130 KiB. The run wait was 4258 KiB before 110 RGBA PNGs were palette-quantised by `tools/png-pipeline/quantize.py`, under the error bar the owner had already accepted for the lobby set; 8 that fail it stay RGBA. The awaited boot tier carries one logo, not two (418 → 338 kB). `shippedPngFormat.test.ts` fails any RGBA PNG outside a reasoned allowlist. `art` `perf` `platform` `tools` `test` `docs`
 
+**[2026-11-15 — One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md)**
+
+- **11-15** [One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md#one-rig-three-gaits--and-the-art-charge-measured-2026-11-15-client--tools--docs-no-engine_version-change) — "这个问题能先解决掉吗" / "把你能改的全部改好": the charge was that the art has no single hand — no shared light, palette or material logic. Measured over the 126 SHIPPED sprites (not `art/`, whose intermediates and deliberately-varied elemental bullets read falsely incoherent) it does not hold: light 87° at R = 0.70, 76/126 in one teal band, actors a full value key above their ground. One real outlier, `weapons` at 58°, still open. What is thin is the CAST — 6 bosses on 1 rig, ~10 enemy types on 3, and those 3 shipping byte-identical animations, so room 1's bug, room 2's drone and room 4's brute walked the same walk. Three gaits now ship (scurry / lumber / drift), data only, no `ENGINE_VERSION` change. The byte-identity test inverts into one pinning each rig's own property, mutation-verified three times. `art` `test` `tools` `docs`
+
 ## The work log — by theme
 
-The same 262 entries, grouped. An entry with more than one tag appears more than once.
+The same 263 entries, grouped. An entry with more than one tag appears more than once.
 
 **`render`** — how the frame is drawn — walls, doors, floor, occlusion, shaders *(84)*
 
@@ -1922,7 +1926,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-13 [A door framed in the wall's own stone](roadmap/141-2026-10-13-stone-door.md#a-door-framed-in-the-walls-own-stone-2026-10-13-client--test--docs-no-engine_version-change)
 
-**`art`** — authored assets and the art pipeline *(31)*
+**`art`** — authored assets and the art pipeline *(32)*
 
 - 08-12 [Shield-centering follow-up + rig-art aliasing fix](roadmap/02-2026-08-12--08-15.md#shield-centering-follow-up--rig-art-aliasing-fix--2026-08-12)
 - 08-17 [The rigged characters were assembled wrong on screen](roadmap/03-2026-08-17--08-19.md#the-rigged-characters-were-assembled-wrong-on-screen-2026-08-17-user-report)
@@ -1955,6 +1959,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-12 [One stone: calmer walls, and pillars painted from the walls](roadmap/140-2026-10-12-calmer-floor.md#one-stone-calmer-walls-and-pillars-painted-from-the-walls-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-12 [Coursed walls and a built pillar top](roadmap/140-2026-10-12-calmer-floor.md#coursed-walls-and-a-built-pillar-top-2026-10-12-client--art--test--docs-no-engine_version-change)
 - 10-15 [The first download, measured and cut](roadmap/145-2026-10-15-first-download-size.md#the-first-download-measured-and-cut-2026-10-15-client--art--build--test--docs-no-engine_version-change)
+- 11-15 [One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md#one-rig-three-gaits--and-the-art-charge-measured-2026-11-15-client--tools--docs-no-engine_version-change)
 
 **`perf`** — frame time, draw calls, geometry budgets *(20)*
 
@@ -2078,7 +2083,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-06 [Chapter 4, the Blight Descent: blightling, Rotbloom, and the finale](roadmap/135-2026-10-06-blight-chapter.md#chapter-4-the-blight-descent-blightling-rotbloom-and-the-finale-2026-10-06-engine--client--art--audio--sim--docs-no-engine_version-change)
 - 10-06 [The Endless Descent: a fifth chapter with no last floor](roadmap/136-2026-10-06-endless-mode.md#the-endless-descent-a-fifth-chapter-with-no-last-floor-2026-10-06-engine--client--art--sim--docs-no-engine_version-change)
 
-**`test`** — coverage sweeps, gates, mutation batteries *(168)*
+**`test`** — coverage sweeps, gates, mutation batteries *(169)*
 
 - 08-04 [Client hardening pass](roadmap/01-2026-07-24--08-05.md#client-hardening-pass--2026-08-04)
 - 08-05 [Platform-layer test coverage pass](roadmap/01-2026-07-24--08-05.md#platform-layer-test-coverage-pass--2026-08-05-add-tests-everywhere)
@@ -2248,6 +2253,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 - 10-13 [Pick a card, then descend](roadmap/144-2026-10-13-card-then-portal.md#pick-a-card-then-descend-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 - 10-15 [The first download, measured and cut](roadmap/145-2026-10-15-first-download-size.md#the-first-download-measured-and-cut-2026-10-15-client--art--build--test--docs-no-engine_version-change)
+- 11-15 [One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md#one-rig-three-gaits--and-the-art-charge-measured-2026-11-15-client--tools--docs-no-engine_version-change)
 
 **`audio`** — cues, music, the engine to sound channel *(13)*
 
@@ -2366,7 +2372,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 - 10-13 [Pick a card, then descend](roadmap/144-2026-10-13-card-then-portal.md#pick-a-card-then-descend-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 
-**`tools`** — sims, profilers, editors, build scripts *(55)*
+**`tools`** — sims, profilers, editors, build scripts *(56)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-12 [File-length convention pass](roadmap/02-2026-08-12--08-15.md#file-length-convention-pass--2026-08-12)
@@ -2423,8 +2429,9 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-10 [Warm stone, dark edges, light pools: a new environment direction, ember first](roadmap/139-2026-10-10-warm-stone-direction.md#warm-stone-dark-edges-light-pools-a-new-environment-direction-ember-first-2026-10-10-client--art--tools--test--docs-no-engine_version-change)
 - 10-12 [A calmer floor: darker stone, softer joints, and no relief on the ground](roadmap/140-2026-10-12-calmer-floor.md#a-calmer-floor-darker-stone-softer-joints-and-no-relief-on-the-ground-2026-10-12-client--art--tools--test--docs-no-engine_version-change)
 - 10-15 [The first download, measured and cut](roadmap/145-2026-10-15-first-download-size.md#the-first-download-measured-and-cut-2026-10-15-client--art--build--test--docs-no-engine_version-change)
+- 11-15 [One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md#one-rig-three-gaits--and-the-art-charge-measured-2026-11-15-client--tools--docs-no-engine_version-change)
 
-**`docs`** — design docs and this log itself *(179)*
+**`docs`** — design docs and this log itself *(180)*
 
 - 08-02 [Repo structure pass](roadmap/01-2026-07-24--08-05.md#repo-structure-pass--2026-08-02)
 - 08-02 [Documentation pass](roadmap/01-2026-07-24--08-05.md#documentation-pass--2026-08-02)
@@ -2605,6 +2612,7 @@ The same 262 entries, grouped. An entry with more than one tag appears more than
 - 10-13 [Shop rows name their weapon and wear an icon](roadmap/143-2026-10-13-shop-row-labels.md#shop-rows-name-their-weapon-and-wear-an-icon-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 - 10-13 [Pick a card, then descend](roadmap/144-2026-10-13-card-then-portal.md#pick-a-card-then-descend-2026-10-13-client--ui--i18n--test--docs-no-engine_version-change)
 - 10-15 [The first download, measured and cut](roadmap/145-2026-10-15-first-download-size.md#the-first-download-measured-and-cut-2026-10-15-client--art--build--test--docs-no-engine_version-change)
+- 11-15 [One rig, three gaits — and the art charge, measured](roadmap/146-2026-11-15-three-gaits.md#one-rig-three-gaits--and-the-art-charge-measured-2026-11-15-client--tools--docs-no-engine_version-change)
 
 **`net`** — matchmaking, sockets, reconnect *(43)*
 

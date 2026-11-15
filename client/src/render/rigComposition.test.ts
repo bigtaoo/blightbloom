@@ -900,15 +900,66 @@ describe('rig composition — the move/attack clips against every shipped body',
     }
   });
 
-  it('the three one-bone enemy bundles ship byte-identical animations', () => {
-    // `critter-core` is the only one of the three with a build script; `brute-core` and
-    // `floater-core` are hand-maintained copies sharing its one `Rig`, and that script's header
-    // now tells the next reader to copy any clip change across. Nothing enforced it until here,
-    // so a change to one could silently give three creatures on the same skeleton three gaits.
+  it('the three one-bone enemy bundles carry three deliberately different gaits', () => {
+    // Until 2026-11-15 this asserted the OPPOSITE — that the three bundles ship byte-identical
+    // animations — because `critter-core` is the only one of the three with a build script and
+    // the other two were hand-maintained copies of it. What that guarded against (a silent
+    // one-sided edit) was real; what it also enforced was that a brute, a critter and a hovering
+    // floater all walk the same walk, which is the first thing a player sees and the cheapest
+    // cast variety this rig can buy. The three now diverge ON PURPOSE, so the check inverts:
+    // each bundle must still differ from the other two, and each must keep the property that
+    // makes its gait ITS gait. Everything they genuinely share — the clip vocabulary, the
+    // move/attack cadence, the additive-overlay contract, the lifecycle shapes — stays pinned
+    // by the sibling cases in this file, which run over all seven bundles rather than these.
     const clipsOf = (dir: string) => readJson<AnimationJson>(`skins/${dir}/animation.json`).animations;
-    const critter = JSON.stringify(clipsOf('critter-core'));
-    for (const dir of ['brute-core', 'floater-core']) {
-      expect(JSON.stringify(clipsOf(dir)), `${dir} has drifted from critter-core`).toBe(critter);
+    const dirs = ['critter-core', 'brute-core', 'floater-core'];
+    for (let i = 0; i < dirs.length; i++) {
+      for (let j = i + 1; j < dirs.length; j++) {
+        expect(JSON.stringify(clipsOf(dirs[i]!)), `${dirs[i]} and ${dirs[j]} have collapsed back into one gait`)
+          .not.toBe(JSON.stringify(clipsOf(dirs[j]!)));
+      }
+    }
+
+    // Sampled through `sampleClip`, not read off the keyframes, so these describe what the
+    // renderer actually produces rather than how the file happens to be authored.
+    const samples = (dir: string, clip: string): ResolvedBoneTransform[] => {
+      const c = deserializeClip(clipsOf(dir)[clip]!);
+      return Array.from({ length: 601 }, (_, i) => sampleClip(c, (c.duration * i) / 600).get('body')!);
+    };
+    /** Footfalls per `move` cycle: how many times the body bottoms out and rises again. */
+    const footfalls = (dir: string): number => {
+      const ty = samples(dir, 'move').map(t => t.translateY);
+      let falling = false, count = 0;
+      for (let i = 1; i < ty.length; i++) {
+        const d = ty[i]! - ty[i - 1]!;
+        if (d < -1e-9) falling = true;
+        else if (d > 1e-9 && falling) { count++; falling = false; }
+      }
+      return count;
+    };
+    const peak = (dir: string, clip: string, pick: (t: ResolvedBoneTransform) => number): number =>
+      Math.max(...samples(dir, clip).map(t => Math.abs(pick(t))));
+
+    // critter — SCURRY: three quick patters per cycle, the fastest footfall rate of the three.
+    expect(footfalls('critter-core'), 'critter move should patter three times per cycle').toBe(3);
+    // brute — LUMBER: one heavy step, and it is the only one of the three whose `move` squashes
+    // the body: that widening IS the landing, and it is what makes the step read as weight.
+    expect(footfalls('brute-core'), 'brute move should take one heavy step per cycle').toBe(1);
+    expect(peak('brute-core', 'move', t => t.scaleX - 1), 'brute move should land with a squash')
+      .toBeGreaterThan(0.05);
+    for (const dir of ['critter-core', 'floater-core']) {
+      expect(peak(dir, 'move', t => t.scaleX - 1), `${dir} move should not squash — only the brute lands`)
+        .toBeLessThan(1e-9);
+    }
+    // floater — DRIFT: it hovers (`actorLift`'s HOVER table gives it a standing 8.5 world px and
+    // no grounded archetype any entry at all), so its `move` must not plant a foot. Banking
+    // sideways is the whole gait: lateral travel dominates vertical, which is true of neither
+    // of the others.
+    expect(peak('floater-core', 'move', t => t.translateX), 'floater move should lead with lateral drift')
+      .toBeGreaterThan(peak('floater-core', 'move', t => t.translateY));
+    for (const dir of ['critter-core', 'brute-core']) {
+      expect(peak(dir, 'move', t => t.translateY), `${dir} move should lead with vertical travel`)
+        .toBeGreaterThan(peak(dir, 'move', t => t.translateX));
     }
   });
 

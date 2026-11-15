@@ -28,13 +28,14 @@ import {
 const SCREENISH = ['store_open', 'forge_open', 'menu_open', 'settings_open'];
 
 describe('the vocabulary', () => {
-  it('is exactly the events design/21 §2.2, §2.8, §2.9, §2.10 and §2.11 name', () => {
+  it('is exactly the events design/21 §2.2, §2.8, §2.9, §2.10, §2.11 and §2.13 name', () => {
     expect([...EVENT_NAMES].sort()).toEqual([
       'active_time',
       'ad_completed',
       'ad_offer_shown',
       'first_input',
       'floor_reached',
+      'opening_hold',
       'page_open',
       'run_death',
       'run_end',

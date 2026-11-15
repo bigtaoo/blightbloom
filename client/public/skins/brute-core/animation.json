@@ -13,30 +13,61 @@
   },
   "animations": {
     "idle": {
-      "duration": 2,
+      "duration": 3,
       "loop": true,
       "keyframes": [
         {
           "time": 0,
           "bones": {
             "body": {
-              "translateY": 0
+              "translateY": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
             }
           }
         },
         {
-          "time": 1,
+          "time": 0.8,
           "bones": {
             "body": {
-              "translateY": -6
+              "translateY": -3,
+              "rotation": -1,
+              "scaleX": 0.98,
+              "scaleY": 1.03
             }
           }
         },
         {
-          "time": 2,
+          "time": 1.6,
           "bones": {
             "body": {
-              "translateY": 0
+              "translateY": 0,
+              "rotation": 0,
+              "scaleX": 1.04,
+              "scaleY": 0.96
+            }
+          }
+        },
+        {
+          "time": 2.4,
+          "bones": {
+            "body": {
+              "translateY": -2,
+              "rotation": 1,
+              "scaleX": 0.99,
+              "scaleY": 1.02
+            }
+          }
+        },
+        {
+          "time": 3,
+          "bones": {
+            "body": {
+              "translateY": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
             }
           }
         }
@@ -52,37 +83,45 @@
             "body": {
               "translateY": 0,
               "translateX": 0,
-              "rotation": 0
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
             }
           }
         },
         {
-          "time": 0.15,
+          "time": 0.22,
+          "bones": {
+            "body": {
+              "translateY": -7,
+              "translateX": 2.5,
+              "rotation": -2,
+              "scaleX": 0.96,
+              "scaleY": 1.05
+            }
+          }
+        },
+        {
+          "time": 0.38,
           "bones": {
             "body": {
               "translateY": -5,
-              "translateX": 1.5,
-              "rotation": -3
+              "translateX": -1,
+              "rotation": 2,
+              "scaleX": 0.98,
+              "scaleY": 1.03
             }
           }
         },
         {
-          "time": 0.3,
+          "time": 0.48,
           "bones": {
             "body": {
               "translateY": 0,
               "translateX": 0,
-              "rotation": 0
-            }
-          }
-        },
-        {
-          "time": 0.45,
-          "bones": {
-            "body": {
-              "translateY": -5,
-              "translateX": -1.5,
-              "rotation": 3
+              "rotation": 0,
+              "scaleX": 1.12,
+              "scaleY": 0.88
             }
           }
         },
@@ -92,7 +131,9 @@
             "body": {
               "translateY": 0,
               "translateX": 0,
-              "rotation": 0
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
             }
           }
         }
@@ -108,30 +149,45 @@
             "body": {
               "translateX": 0,
               "translateY": 0,
+              "rotation": 0,
               "scaleX": 1,
               "scaleY": 1
             }
           }
         },
         {
-          "time": 0.06,
+          "time": 0.12,
           "bones": {
             "body": {
-              "translateX": -3,
-              "translateY": -1,
-              "scaleX": 0.92,
-              "scaleY": 1.08
+              "translateX": -5,
+              "translateY": -2,
+              "rotation": -6,
+              "scaleX": 0.9,
+              "scaleY": 1.1
             }
           }
         },
         {
-          "time": 0.16,
+          "time": 0.2,
           "bones": {
             "body": {
-              "translateX": 9,
-              "translateY": 2,
-              "scaleX": 1.14,
-              "scaleY": 0.88
+              "translateX": 8,
+              "translateY": 4,
+              "rotation": 8,
+              "scaleX": 1.22,
+              "scaleY": 0.8
+            }
+          }
+        },
+        {
+          "time": 0.28,
+          "bones": {
+            "body": {
+              "translateX": 3,
+              "translateY": 1,
+              "rotation": 3,
+              "scaleX": 1.06,
+              "scaleY": 0.95
             }
           }
         },
@@ -141,6 +197,7 @@
             "body": {
               "translateX": 0,
               "translateY": 0,
+              "rotation": 0,
               "scaleX": 1,
               "scaleY": 1
             }
@@ -158,27 +215,30 @@
             "body": {
               "scaleX": 1,
               "scaleY": 1,
-              "alpha": 1
+              "alpha": 1,
+              "translateY": 0
             }
           }
         },
         {
-          "time": 0.06,
+          "time": 0.08,
           "bones": {
             "body": {
-              "scaleX": 1.15,
-              "scaleY": 0.8,
-              "alpha": 0.6
+              "scaleX": 1.24,
+              "scaleY": 0.78,
+              "alpha": 0.65,
+              "translateY": 2
             }
           }
         },
         {
-          "time": 0.18,
+          "time": 0.2,
           "bones": {
             "body": {
-              "scaleX": 0.95,
-              "scaleY": 1.05,
-              "alpha": 1
+              "scaleX": 0.94,
+              "scaleY": 1.06,
+              "alpha": 1,
+              "translateY": 0
             }
           }
         },
@@ -188,7 +248,8 @@
             "body": {
               "scaleX": 1,
               "scaleY": 1,
-              "alpha": 1
+              "alpha": 1,
+              "translateY": 0
             }
           }
         }
@@ -205,29 +266,32 @@
               "scaleX": 1,
               "scaleY": 1,
               "translateY": 0,
+              "rotation": 0,
               "alpha": 1
             }
           }
         },
         {
-          "time": 0.3,
+          "time": 0.25,
           "bones": {
             "body": {
-              "scaleX": 1.1,
-              "scaleY": 0.85,
-              "translateY": 6,
+              "scaleX": 1.18,
+              "scaleY": 0.84,
+              "translateY": 3,
+              "rotation": -8,
               "alpha": 1
             }
           }
         },
         {
-          "time": 0.6,
+          "time": 0.55,
           "bones": {
             "body": {
-              "scaleX": 0.7,
-              "scaleY": 0.5,
-              "translateY": 14,
-              "alpha": 0.5
+              "scaleX": 1,
+              "scaleY": 0.62,
+              "translateY": 11,
+              "rotation": 26,
+              "alpha": 0.6
             }
           }
         },
@@ -235,9 +299,10 @@
           "time": 0.9,
           "bones": {
             "body": {
-              "scaleX": 0.4,
+              "scaleX": 0.45,
               "scaleY": 0.3,
-              "translateY": 18,
+              "translateY": 22,
+              "rotation": 46,
               "alpha": 0
             }
           }
@@ -252,28 +317,31 @@
           "time": 0,
           "bones": {
             "body": {
-              "scaleX": 0.2,
-              "scaleY": 0.2,
+              "scaleX": 0.3,
+              "scaleY": 0.3,
+              "translateY": -14,
               "alpha": 0
             }
           }
         },
         {
-          "time": 0.15,
+          "time": 0.16,
           "bones": {
             "body": {
-              "scaleX": 1.15,
-              "scaleY": 0.85,
+              "scaleX": 1.25,
+              "scaleY": 0.74,
+              "translateY": 0,
               "alpha": 1
             }
           }
         },
         {
-          "time": 0.25,
+          "time": 0.26,
           "bones": {
             "body": {
-              "scaleX": 0.95,
-              "scaleY": 1.05
+              "scaleX": 0.93,
+              "scaleY": 1.06,
+              "translateY": 0
             }
           }
         },
@@ -282,7 +350,8 @@
           "bones": {
             "body": {
               "scaleX": 1,
-              "scaleY": 1
+              "scaleY": 1,
+              "translateY": 0
             }
           }
         }

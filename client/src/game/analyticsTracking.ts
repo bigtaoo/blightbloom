@@ -28,7 +28,9 @@
 // why a per-visit id was a reason to send nothing at all.
 import { chapterIdOfConfig, type DungeonConfig } from '@dd/engine';
 import { track } from '../net/analytics';
+import { keysReach } from '../platform/keyFocus';
 import { resetDeathCause } from './deathCause';
+import type { OpeningHoldOutcome } from './controllers/openingHold';
 import type { Phase } from './phase';
 
 /**
@@ -319,6 +321,31 @@ export function noteRunWait(artPending: boolean): void {
   if (waitMs !== null) return;
   waitMs = 0;
   waitTickedAt = clock();
+}
+
+/**
+ * The opening hold let go: report `opening_hold` (`controllers/openingHold.ts`).
+ *
+ * Here rather than in the hold itself for this module's own reason — the hold is a pure unit
+ * with no analytics import, testable without a `track`, exactly like the sim units around it.
+ * It is told what to call and this module knows what to send, which is the same division
+ * `noteRunWait` keeps with `TransitionGate`.
+ *
+ * `reach` is read HERE, at the moment the hold ends, for the same reason: the hold may not
+ * import a browser-dependent module (it is in `pureLayerBoundary.test.ts`'s list), and the
+ * reading is only worth anything at the instant it is taken — the keys arriving a minute later
+ * does not change what the frozen player could do.
+ *
+ * Rounded because the field is an int and `coerceProp` DROPS an out-of-range or non-integer
+ * number rather than clamping it — an unrounded float would arrive as a missing column and be
+ * indistinguishable from a build that never sent it.
+ */
+export function noteOpeningHoldEnd(outcome: OpeningHoldOutcome, waitedMs: number): void {
+  track('opening_hold', {
+    outcome,
+    waited_ms: Math.max(0, Math.round(waitedMs)),
+    reach: keysReach() ? 'keys' : 'nokeys',
+  });
 }
 
 /** Test-only: forget the last phase and the run snapshot. */

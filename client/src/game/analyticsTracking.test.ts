@@ -15,7 +15,7 @@
  * outside the server's `[a-z0-9_.:-]` charset is dropped at the boundary, so the step simply
  * never appears and the funnel has a hole in it with nothing anywhere going red.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TICK_RATE as ENGINE_TICK_RATE, EMBER_DUNGEON, FROST_DUNGEON, type DungeonConfig } from '@dd/engine';
 import { EVENTS, ID_RE, coerceProp, type AnalyticsBatch, type AnalyticsEventName, type PropValue } from '../net/analyticsEvents';
 import { createAnalytics, resetAnalyticsForTests, setAnalytics } from '../net/analytics';
@@ -23,6 +23,7 @@ import {
   MAX_WAIT_STEP_MS,
   SCREEN_IDS,
   TICK_RATE,
+  noteOpeningHoldEnd,
   noteRunWait,
   reportFrame,
   resetAnalyticsTrackingForTests,
@@ -30,6 +31,7 @@ import {
   trackedRunFrom,
 } from './analyticsTracking';
 import type { Phase } from './phase';
+import { resetKeyFocus, installKeyFocus } from '../platform/keyFocus';
 
 /** Every event the module emitted, in order. */
 let sent: { name: AnalyticsEventName; props?: Readonly<Record<string, PropValue>> }[];
@@ -492,5 +494,57 @@ describe('trackedRunFrom — chapter', () => {
     expect('chapter' in trackedRunFrom(state(), 0)!).toBe(false);
     // A fixture reusing a chapter's biome id is not that chapter (`chapterIdOfConfig`).
     expect('chapter' in trackedRunFrom(state({ ...FROST_DUNGEON }), 0)!).toBe(false);
+  });
+});
+
+/**
+ * `noteOpeningHoldEnd` — the untouched third, reported as a presence.
+ *
+ * Two of these assert against `coerceProp` rather than against the call, because this event's
+ * way of being wrong is silence. A float `waited_ms` or a value outside the declared range is
+ * DROPPED at the boundary, not clamped: the event still arrives, the column simply is not
+ * there, and the console shows exactly what a build that never sent the field shows.
+ */
+describe('noteOpeningHoldEnd', () => {
+  const spec = (prop: string) =>
+    (EVENTS.opening_hold as Record<string, Parameters<typeof coerceProp>[0]>)[prop]!;
+
+  afterEach(() => resetKeyFocus());
+
+  it('sends the outcome and the wait', () => {
+    noteOpeningHoldEnd('fuse', 20_000);
+    expect(sent).toEqual([{ name: 'opening_hold', props: { outcome: 'fuse', waited_ms: 20_000, reach: 'keys' } }]);
+  });
+
+  it('rounds the wait, because the server would drop a float outright', () => {
+    noteOpeningHoldEnd('input', 1500.4);
+    expect(sent[0]!.props!.waited_ms).toBe(1500);
+    // The control: unrounded, the field would not survive the boundary at all.
+    expect(coerceProp(spec('waited_ms'), 1500.4)).toBeUndefined();
+    expect(coerceProp(spec('waited_ms'), 1500)).toBe(1500);
+  });
+
+  it('floors a negative wait rather than sending one the server drops', () => {
+    noteOpeningHoldEnd('input', -1);
+    expect(sent[0]!.props!.waited_ms).toBe(0);
+    expect(coerceProp(spec('waited_ms'), -1)).toBeUndefined();
+  });
+
+  it('sends both outcomes as values the server stores', () => {
+    for (const outcome of ['input', 'fuse'] as const) {
+      expect(coerceProp(spec('outcome'), outcome), outcome).toBe(outcome);
+    }
+    expect(coerceProp(spec('outcome'), 'left')).toBeUndefined();
+  });
+
+  it('reports whether the keys could reach the game', () => {
+    // The whole reason the field is on the event rather than left to the host envelope: this
+    // is the reading that splits a `fuse` into "the keys never got here" and "they did and
+    // nobody pressed", and only Playgama's sender attaches attention of its own.
+    const doc = { hasFocus: () => false, addEventListener: () => {} };
+    installKeyFocus({ focus: () => {}, addEventListener: () => {} } as never, doc as never);
+    noteOpeningHoldEnd('fuse', 20_000);
+    expect(sent[0]!.props!.reach).toBe('nokeys');
+    for (const v of ['keys', 'nokeys'] as const) expect(coerceProp(spec('reach'), v), v).toBe(v);
   });
 });

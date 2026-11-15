@@ -39,16 +39,32 @@ describe('bridgeSender', () => {
     expect(sent[0]).not.toHaveProperty('session');
   });
 
-  it('drops the session signals Bridge records itself, and only those', () => {
+  it('drops the one session signal Bridge records itself, and only that one', () => {
     const sent: string[] = [];
     bridgeSender({ track: (e) => void sent.push(e) })(batch([
       { name: 'session_start', at: 1 },
-      { name: 'active_time', at: 2, props: { active_s: 60 } },
-      { name: 'run_start', at: 3 },
-      { name: 'session_end', at: 4, props: { duration_s: 90, active_s: 61 } },
+      { name: 'run_start', at: 2 },
+      { name: 'session_end', at: 3, props: { duration_s: 90, active_s: 61 } },
     ]));
     expect(sent).toEqual(['session_start', 'run_start']);
-    expect([...PLATFORM_OWNED_EVENTS].sort()).toEqual(['active_time', 'session_end']);
+    expect([...PLATFORM_OWNED_EVENTS]).toEqual(['session_end']);
+  });
+
+  // The regression this file exists for. `active_time` was in PLATFORM_OWNED_EVENTS from
+  // 2026-11-08 to 2026-11-14 on the reasoning that Bridge measures playtime itself, and the
+  // cost is on the record: across 673 sessions of the 2026-11 sandbox test the game's own
+  // `session_end` arrived ONCE, so the archive has no duration the game measured at all
+  // (`data/playgama-sandbox-2026-11/`). Unlike `session_end`, `active_time` does not ride
+  // `pagehide` — it is cumulative and sent while the visit grows — so it is the only ruler of
+  // ours that survives a portal frame being torn down. Dropping it again would be silent: the
+  // event would keep being produced and the console would simply never show a column.
+  it('forwards active_time — the only duration of ours that survives a torn-down frame', () => {
+    const sent: [string, unknown][] = [];
+    bridgeSender({ track: (e, d) => void sent.push([e, d]) })(
+      batch([{ name: 'active_time', at: 2, props: { active_s: 60 } }]),
+    );
+    expect(sent).toEqual([['active_time', { active_s: 60, build: 'unknown', locale: 'de' }]]);
+    expect(PLATFORM_OWNED_EVENTS.has('active_time')).toBe(false);
   });
 
   it('sends nothing for an empty batch', () => {
