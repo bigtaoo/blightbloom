@@ -1234,6 +1234,103 @@ the gate (design/20, "`run.wait` is not the whole wait").
 The 3.9 MB master at `art/environment/door_curtain_raw.png` is untouched and remains the source
 for any future re-encode.
 
+## Update (2026-11-15): one rig, three gaits — and what the art measurement actually said
+
+This entry exists because a diagnosis in this doc's spirit was **wrong**, and the measurement that
+replaced it pointed somewhere else. Both halves are worth keeping: the wrong one is the cheaper
+mistake to repeat.
+
+**The charge.** After the Playgama sandbox test (`22`, 2026-11-14b) the reading offered was the
+classic failure mode of art assembled a piece at a time: *no single hand* — every sprite acceptable
+on its own, no shared light, no shared palette, no shared material logic, so the screen reads as
+"from nowhere in particular". That is a real failure mode. It is not this one.
+
+**The measurement.** Over the **126 shipped sprites in `client/public/`** — not `art/`, which also
+holds `_raw`/`_original`/`_alt`/`_master` pipeline intermediates and an `environment/` folder of
+elemental bullets that *must* differ in hue, and which reads falsely incoherent for exactly that
+reason:
+
+| property | result |
+|---|---|
+| light direction | **87°**, R = **0.70** over all 126 (biome 0.98, ui 0.81, skins 0.80, environment 0.75) |
+| the one outlier | `weapons` at **58°**, R = 0.58 — about **50° off** the rest of the world |
+| palette | 76/126 inside the 180–210° teal band, 27 inside the 0–30° warm band |
+| value key | floor/biome 0.187 against actors ~0.50 — actors sit a full key above their ground |
+| edges | outline strength 0.37 on actors, 0.05 on biome |
+
+A unified art direction **already exists and is being followed**. There is nothing to "solve first"
+on that axis, and money spent there buys nothing. (The weapons outlier is real and is NOT fixed
+here — see "what this deliberately leaves" below.)
+
+**What is actually thin is the CAST**, and the count is the whole argument:
+
+- **6 bosses → 1 rig.** All six `bodyRig: 'boss-core'` (`engine/content/bosses.ts`), i.e. one
+  `core.png` + `ring_a.png` + `ring_b.png` for every boss in the game.
+- **~10 enemy types → 3 rigs**, each a single `body.png`.
+- **3 player skins → one 5-part rig**, down to a byte-identical `socket_l.png` across all three.
+
+And until this entry, those three enemy rigs shipped **byte-identical `animation.json`** files
+(md5 `0d601f03…`), which is the form the thinness takes in the first minute of play: floor 1 room 1
+is `basic` (critter-core), room 2 is `floater`/`stalker` (floater-core), room 4 is `brute`/`ravager`
+(brute-core) — so a player who survives to room 4 has watched a scuttling bug, a hovering drone and
+a heavy walk the **same walk**. 36.5% of sandbox sessions never reached 60 seconds.
+
+**What shipped.** Three gaits, authored in the bundles, no engine change, no `ENGINE_VERSION` bump,
+no new art:
+
+- **critter-core — "scurry".** `move` patters **three** times per 0.6 s cycle (was two), the lean
+  alternating; `idle` shortened 2 s → 1.4 s and given a breath on scale so it never quite settles.
+- **brute-core — "lumber".** `move` takes **one** heavy step per cycle and is the only one of the
+  three whose `move` touches `scaleX` — the widening at t=0.48 *is* the landing, and it is what
+  makes the step read as weight. `idle` slowed to 3 s; `attack` winds up for 120 ms instead of 50;
+  `spawn` drops in from translateY −14; `death` topples through 46°.
+- **floater-core — "drift".** `move` **banks sideways**: lateral travel dominates vertical, so it
+  never plants a foot — which it must not, since `actorLift`'s `HOVER` already holds it 8.5 world px
+  off the floor while no grounded archetype has an entry at all. Its `attack` is the one that gets
+  *shoved backwards* (nose up, no ground to brace against), and its `death` spins out rather than
+  collapsing.
+
+Every shared contract this doc already states is untouched and still asserted over all seven
+bundles: the six-clip vocabulary, the `move`/`attack` cadence (0.6 s loop / 0.35 s once), the
+additive-overlay identity rule, `spawn`/`death` as base-layer lifecycle clips, the t=0-keyframe
+rule, and the peak-translate bound against each rig's drawn half-width.
+
+**The test had to be inverted, not deleted.** `rigComposition.test.ts` asserted *"the three one-bone
+enemy bundles ship byte-identical animations"*. Its reason was sound — `critter-core` is the only
+one of the three with a build script, so a one-sided edit could drift silently — but what it also
+enforced was the sameness this entry removes. It is now
+*"…carry three deliberately different gaits"*: each bundle must differ from the other two, **and**
+each must keep the property that makes its gait its own, sampled through `sampleClip` rather than
+read off the keyframes. Three named, mutation-verified properties:
+
+| rig | pinned property | mutation that breaks it |
+|---|---|---|
+| critter | 3 footfalls per `move` cycle | copying any other bundle's `move` in |
+| brute | 1 footfall **and** a landing squash (peak `scaleX` − 1 > 0.05) | flattening `move`'s scale to 1 |
+| floater | peak \|`translateX`\| > peak \|`translateY`\| | swapping the two channels |
+
+Each was verified by making exactly that mutation and watching the named case fail alone
+(225 passed / 1 failed, three times).
+
+`build-critter-project.mjs`'s header is corrected the same way. It told the next reader to copy any
+clip change into the other two bundles; it now says the opposite, and `animations` joined `bindings`
+and `body.png` under the script's existing **"the shipped bundle is ground truth"** rule — a re-run
+keeps whatever `critter-core` ships and cannot revert the gait.
+
+**What this deliberately leaves**, so neither is mistaken for done:
+
+- **The weapons sprites' 50° lighting offset.** Fixing it is per-pixel relighting of shipped art,
+  verifiable only by eye, and this pass had no way to check its own work. It is the one place the
+  measurement found a real defect, and it is open.
+- **A real enemy telegraph.** `attack` is a **recoil, not a windup** — `ClipLayers.attack()`'s own
+  comment is "an attack just left this rig", and the 60 ms wind-back plays *after* the bullet is
+  out. There is no telegraph anywhere in the sim (`grep` for telegraph/windup finds only the zone
+  WARN, the boss volley comments, and the player's own melee swing). Adding one is a 7th clip
+  across all seven bundles **plus** a sim-side wind-up state, which means `ENGINE_VERSION`, the
+  golden-hash gate and a balance pass. That is a product decision, not a render one.
+- **Six distinct boss rigs.** The correct fix for the boss count, and the wrong place to spend
+  next: median runs per session is 1.11 and nobody is reaching floor 5.
+
 ## Open questions
 
 - **Texture format & max page size on the lowest base library** — must be measured on a real device (`04` checklist), not chosen from docs; affects atlas packing.

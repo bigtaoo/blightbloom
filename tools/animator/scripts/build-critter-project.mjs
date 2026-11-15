@@ -21,10 +21,18 @@
 // build-character-projects.mjs reached about its own `orbWorldWidth`. Both are now preserved
 // when a bundle already exists on disk, and the raw values below are the bootstrap path only.
 //
-// NOTE brute-core and floater-core ship BYTE-IDENTICAL animations to critter-core's (they
-// share this one rig, see client/src/render/skinRegistry.ts's RIG_DEFS) but have no build
-// script of their own -- their bundles are hand-maintained copies. Anything changed in the
-// `animations` table below has to be copied into their animation.json too.
+// NOTE brute-core and floater-core share this one RIG (client/src/render/skinRegistry.ts's
+// RIG_DEFS) but as of 2026-11-15 they no longer share its MOTION: each of the three bundles
+// now carries a deliberately different gait (critter scurries, brute lumbers, floater drifts
+// -- design/12). They have no build script of their own, and their clips must NOT be copied
+// from the table below any more; `rigComposition.test.ts` pins each one's distinguishing
+// property so a copy-paste that flattens the three back into one fails the suite.
+//
+// The same "shipped bundle is ground truth" rule the CAUTION above states for bindings and
+// body.png therefore now covers `animations` as well: a re-run keeps whatever critter-core
+// ships and never touches the other two bundles. The table below is the bootstrap path only
+// -- it is also what goes into the .editortao, so it is kept in sync with critter's bundle
+// by hand.
 //
 // Run from tools/animator: node scripts/build-critter-project.mjs
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -61,20 +69,21 @@ async function main() {
       },
     },
     animations: {
+      // critter-core's own gait -- "scurry": small, quick, three patters per `move` cycle, an
+      // `idle` that never quite settles. brute-core (one heavy step, lands with a squash) and
+      // floater-core (lateral bank, no footfall) carry their own; see the NOTE at the top.
       idle: {
-        duration: 2,
+        duration: 1.4,
         loop: true,
         keyframes: [
-          { time: 0, bones: { body: { translateY: 0 } } },
-          { time: 1, bones: { body: { translateY: -6 } } },
-          { time: 2, bones: { body: { translateY: 0 } } },
+          { time: 0, bones: { body: { translateY: 0, scaleX: 1, scaleY: 1 } } },
+          { time: 0.35, bones: { body: { translateY: -4, scaleX: 0.97, scaleY: 1.03 } } },
+          { time: 0.7, bones: { body: { translateY: 0, scaleX: 1.04, scaleY: 0.96 } } },
+          { time: 1.05, bones: { body: { translateY: -3, scaleX: 0.98, scaleY: 1.02 } } },
+          { time: 1.4, bones: { body: { translateY: 0, scaleX: 1, scaleY: 1 } } },
         ],
       },
-      // `move` and `attack` complete the shared clip vocabulary every rig now carries
-      // (idle / move / attack / hurt / death / spawn) so ONE render-side rule can drive
-      // all seven bundles -- see client/src/render/rigClipLayer.ts.
-      //
-      // `move`: two hops per cycle with the lean alternating, so it reads as a gait rather
+      // `move`: THREE hops per cycle with the lean alternating, so it reads as a scurry rather
       // than a faster idle bob. Starts AND ends at identity, because a base-clip swap has no
       // cross-fade (`RigSkin.playClip` swaps outright) and an idle<->move switch pops by
       // exactly however far this clip's t=0 sits from rest.
@@ -83,9 +92,11 @@ async function main() {
         loop: true,
         keyframes: [
           { time: 0, bones: { body: { translateY: 0, translateX: 0, rotation: 0 } } },
-          { time: 0.15, bones: { body: { translateY: -5, translateX: 1.5, rotation: -3 } } },
-          { time: 0.3, bones: { body: { translateY: 0, translateX: 0, rotation: 0 } } },
-          { time: 0.45, bones: { body: { translateY: -5, translateX: -1.5, rotation: 3 } } },
+          { time: 0.1, bones: { body: { translateY: -6, translateX: 1.5, rotation: -5 } } },
+          { time: 0.2, bones: { body: { translateY: 0, translateX: 0, rotation: 0 } } },
+          { time: 0.3, bones: { body: { translateY: -6, translateX: -1.5, rotation: 5 } } },
+          { time: 0.4, bones: { body: { translateY: 0, translateX: 0, rotation: 0 } } },
+          { time: 0.5, bones: { body: { translateY: -6, translateX: 1.5, rotation: -5 } } },
           { time: 0.6, bones: { body: { translateY: 0, translateX: 0, rotation: 0 } } },
         ],
       },
@@ -101,8 +112,9 @@ async function main() {
         loop: false,
         keyframes: [
           { time: 0, bones: { body: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 } } },
-          { time: 0.06, bones: { body: { translateX: -3, translateY: -1, scaleX: 0.92, scaleY: 1.08 } } },
-          { time: 0.16, bones: { body: { translateX: 9, translateY: 2, scaleX: 1.14, scaleY: 0.88 } } },
+          { time: 0.05, bones: { body: { translateX: -3, translateY: -2, scaleX: 0.88, scaleY: 1.12 } } },
+          { time: 0.13, bones: { body: { translateX: 11, translateY: 2, scaleX: 1.18, scaleY: 0.84 } } },
+          { time: 0.22, bones: { body: { translateX: 2, translateY: 0, scaleX: 0.96, scaleY: 1.04 } } },
           { time: 0.35, bones: { body: { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 } } },
         ],
       },
@@ -110,29 +122,30 @@ async function main() {
         duration: 0.3,
         loop: false,
         keyframes: [
-          { time: 0, bones: { body: { scaleX: 1, scaleY: 1, alpha: 1 } } },
-          { time: 0.06, bones: { body: { scaleX: 1.15, scaleY: 0.8, alpha: 0.6 } } },
-          { time: 0.18, bones: { body: { scaleX: 0.95, scaleY: 1.05, alpha: 1 } } },
-          { time: 0.3, bones: { body: { scaleX: 1, scaleY: 1, alpha: 1 } } },
+          { time: 0, bones: { body: { scaleX: 1, scaleY: 1, alpha: 1, rotation: 0 } } },
+          { time: 0.05, bones: { body: { scaleX: 1.2, scaleY: 0.76, alpha: 0.5, rotation: -6 } } },
+          { time: 0.14, bones: { body: { scaleX: 0.9, scaleY: 1.1, alpha: 1, rotation: 5 } } },
+          { time: 0.22, bones: { body: { scaleX: 1.04, scaleY: 0.97, alpha: 1, rotation: -2 } } },
+          { time: 0.3, bones: { body: { scaleX: 1, scaleY: 1, alpha: 1, rotation: 0 } } },
         ],
       },
       death: {
         duration: 0.9,
         loop: false,
         keyframes: [
-          { time: 0, bones: { body: { scaleX: 1, scaleY: 1, translateY: 0, alpha: 1 } } },
-          { time: 0.3, bones: { body: { scaleX: 1.1, scaleY: 0.85, translateY: 6, alpha: 1 } } },
-          { time: 0.6, bones: { body: { scaleX: 0.7, scaleY: 0.5, translateY: 14, alpha: 0.5 } } },
-          { time: 0.9, bones: { body: { scaleX: 0.4, scaleY: 0.3, translateY: 18, alpha: 0 } } },
+          { time: 0, bones: { body: { scaleX: 1, scaleY: 1, translateY: 0, rotation: 0, alpha: 1 } } },
+          { time: 0.18, bones: { body: { scaleX: 1.25, scaleY: 0.75, translateY: 4, rotation: 0, alpha: 1 } } },
+          { time: 0.45, bones: { body: { scaleX: 0.6, scaleY: 0.55, translateY: 13, rotation: 14, alpha: 0.45 } } },
+          { time: 0.9, bones: { body: { scaleX: 0.25, scaleY: 0.2, translateY: 20, rotation: 30, alpha: 0 } } },
         ],
       },
       spawn: {
         duration: 0.35,
         loop: false,
         keyframes: [
-          { time: 0, bones: { body: { scaleX: 0.2, scaleY: 0.2, alpha: 0 } } },
-          { time: 0.15, bones: { body: { scaleX: 1.15, scaleY: 0.85, alpha: 1 } } },
-          { time: 0.25, bones: { body: { scaleX: 0.95, scaleY: 1.05 } } },
+          { time: 0, bones: { body: { scaleX: 0.15, scaleY: 0.15, alpha: 0 } } },
+          { time: 0.13, bones: { body: { scaleX: 1.22, scaleY: 0.8, alpha: 1 } } },
+          { time: 0.23, bones: { body: { scaleX: 0.92, scaleY: 1.08 } } },
           { time: 0.35, bones: { body: { scaleX: 1, scaleY: 1 } } },
         ],
       },
@@ -167,7 +180,9 @@ async function main() {
   const animationJson = {
     version: 2,
     bindings: shipped?.bindings ?? editorJson.bindings,
-    animations: editorJson.animations,
+    // ... and the clips too, since 2026-11-15: critter's gait is now authored in the bundle and
+    // is one of three deliberately different ones (see the NOTE at the top of this file).
+    animations: shipped?.animations ?? editorJson.animations,
   };
   writeFileSync(shippedPath, `${JSON.stringify(animationJson, null, 2)}\n`);
   writeFileSync(path.join(skinOutDir, 'frames.json'), JSON.stringify({ body: ['default'] }, null, 2));

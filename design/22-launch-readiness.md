@@ -1253,6 +1253,27 @@ on screen presses nothing. Ten to twenty people who did not build this game, wat
 replay recorder running. After that, CrazyGames Basic Launch, scored, with the stop conditions
 declared before the submission rather than after the score.
 
+### 4.2 The art charge, measured — the direction is fine, the cast is thin (2026-11-15)
+
+Raised while reading this section: that the game's weakness is *art coherence* — no shared light,
+no shared palette, no shared material logic, the "assembled a piece at a time" failure mode. It was
+measured over the **126 shipped sprites in `client/public/`** rather than argued, and the
+measurement **refuted it**: light direction 87° at R = 0.70 overall (biome 0.98, ui 0.81, skins
+0.80), 76/126 inside one teal band, actors a full value key above their ground, outlines 0.37 on
+actors against 0.05 on biome. One real outlier — `weapons` at 58°, ~50° off the world — which is
+open. A unified direction exists and is being followed, so spending there buys nothing.
+
+What the same count found instead: **6 bosses share 1 rig, ~10 enemy types share 3, and until
+2026-11-15 those 3 shipped byte-identical animations**, so the first minute of play — the minute
+36.5% of sandbox sessions did not survive — showed a scuttling bug, a hovering drone and a heavy
+walking the same walk. Three distinct gaits now ship (`12`, 2026-11-15). That is data, not art:
+no new sprites, no engine change, no `ENGINE_VERSION` bump.
+
+**It does not move a gate on its own.** None of §4.1's four thresholds is an animation metric, and
+nothing here has been in front of a player. It is a cheap removal of a defect that was certainly
+visible, done while the one instrument that can explain the 60-second drop — §4's closed test —
+is still the next thing to run.
+
 ## 5. Suggested order
 
 1. **§3.2's domain question first.** It is the only item that could change architecture.
